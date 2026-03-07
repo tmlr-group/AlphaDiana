@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "alphadiana"
+version = "0.1.0"
+description = "Evaluation system for foundation models on frontier reasoning benchmarks"
+requires-python = ">=3.10"
+dependencies = [
+    "pyyaml>=6.0",
+    "click>=8.0",
+]
+
+[project.optional-dependencies]
+benchmarks = ["datasets>=2.0"]
+agents = ["openai>=1.0"]
+sandbox = ["requests>=2.28"]
+all = ["datasets>=2.0", "openai>=1.0", "requests>=2.28"]
+dev = ["pytest>=7.0", "pytest-asyncio>=0.21"]
+
+[project.scripts]
+alphadiana = "alphadiana.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: tests that require external services (vLLM, ROCK, OpenClaw)",
+    "asyncio: async tests",
+]

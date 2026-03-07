@@ -1,0 +1,31 @@
+run_id: "zeroclaw-gpt4o-hle-001"
+
+agent:
+  name: zeroclaw
+  version: "v0.1.0"
+  config:
+    model: gpt-4o
+    api_base: "https://api.openai.com/v1"
+    api_key: "${OPENAI_API_KEY}"
+    temperature: 0.0
+    max_tokens: 16384
+
+benchmark:
+  name: hle
+  config:
+    split: "test"
+
+sandbox: null
+
+scorer:
+  name: llm_judge
+  config:
+    judge_model: gpt-4o
+    api_base: "https://api.openai.com/v1"
+    api_key: "${OPENAI_API_KEY}"
+
+max_concurrent: 2
+output_dir: "./results"
+metadata:
+  author: "zjk"
+  notes: "zeroclaw baseline on HLE"

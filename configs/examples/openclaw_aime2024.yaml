@@ -1,0 +1,33 @@
+run_id: "openclaw-qwen3-8b-aime2024-001"
+
+agent:
+  name: openclaw
+  version: "latest"
+  config:
+    # OpenClaw gateway endpoint (proxied via ROCK)
+    # Replace <SANDBOX_ID> with your actual sandbox ID
+    api_base: "http://localhost:9001/apis/envs/sandbox/v1/sandboxes/<SANDBOX_ID>/proxy/v1"
+    model: openclaw
+    gateway_token: "OPENCLAW"
+    temperature: 0.0
+    max_tokens: 8192
+
+benchmark:
+  name: aime
+  config:
+    dataset: "HuggingFaceH4/aime_2024"
+    split: "train"
+
+sandbox: null   # OpenClaw already runs inside ROCK; no extra sandbox needed here
+
+scorer:
+  name: numeric
+  config:
+    tolerance: 1e-6
+
+max_concurrent: 1
+output_dir: "./results"
+metadata:
+  author: "zjk"
+  gpu: "A800"
+  notes: "OpenClaw + Qwen3-8B on AIME 2024"

@@ -1,0 +1,57 @@
+# AlphaDiana Experiment Configuration Schema
+#
+# All experiments are defined by a single YAML file with the following structure.
+
+# run_id: (optional) Unique identifier for this run. Auto-generated if omitted.
+run_id: string
+
+# agent: (required) Agent system configuration.
+agent:
+  name: string        # Agent name, e.g. "openclaw", "zeroclaw"
+  version: string     # Pinned version tag (REQUIRED), e.g. "v0.3.1"
+  config:             # Pass-through config for the agent (model settings, etc.)
+    model: string
+    api_base: string
+    api_key: string
+    temperature: float
+    max_tokens: integer
+
+# benchmark: (required) Benchmark configuration.
+benchmark:
+  name: string        # Benchmark name, e.g. "aime", "math", "hle", "frontier_math", "terminal_bench", "osworld"
+  config:             # Benchmark-specific params
+    split: string
+    year: string
+    subset: string
+    data_path: string
+
+# sandbox: (optional) Execution environment. Set to null if not needed.
+sandbox:
+  name: string        # Sandbox name, e.g. "local", "rock", "boxlite"
+  config:             # Sandbox-specific params
+    endpoint: string
+    image: string
+    timeout: integer
+    api_key: string
+    workdir: string
+
+# scorer: (required) Scoring method configuration.
+scorer:
+  name: string        # Scorer name, e.g. "exact_match", "numeric", "llm_judge"
+  config:             # Scorer-specific params
+    tolerance: float
+    judge_model: string
+    api_base: string
+    api_key: string
+
+# max_concurrent: (optional, default=1) Number of parallel task executions.
+max_concurrent: integer
+
+# output_dir: (optional, default="./results") Directory for result output.
+output_dir: string
+
+# metadata: (optional) Free-form tags for tracking experiments.
+metadata:
+  author: string
+  gpu: string
+  notes: string
