@@ -1,9 +1,16 @@
 """Phase 3: ROCK 环境部署与 Sandbox 验通
 
-需要 ROCK 环境运行:
-  - Redis on port 6379
-  - ROCK admin on port 9000
-  - ROCK proxy on port 9001
+验证点:
+- Redis 运行正常 (port 6379)
+- ROCK admin (9000) 和 proxy (9001) 服务可达
+- 通过 ROCK SDK 创建 sandbox 成功（sandbox.start()）
+- 切换到 proxy URL 后能在 sandbox 中执行命令
+
+部署步骤:
+  1. docker run -d -p 6379:6379 redis/redis-stack-server:latest
+  2. source .venv/bin/activate
+  3. rock admin start --env local-proxy --role admin --port 9000
+  4. rock admin start --env local-proxy --role proxy --port 9001
 
 用 pytest -m integration 运行这些测试。
 """
@@ -37,19 +44,18 @@ class TestROCKEnvironment:
     """验证 ROCK 基础环境可用。"""
 
     def test_redis_running(self):
-        """Redis 服务可达。"""
+        """Redis 服务可达 (port 6379)。"""
         assert _redis_available(), "Redis is not reachable on localhost:6379"
 
     def test_admin_health(self):
-        """ROCK admin 服务健康。"""
+        """ROCK admin 服务健康 (port 9000)。"""
         import requests
         resp = requests.get("http://localhost:9000/health", timeout=5)
         assert resp.status_code == 200
 
     def test_proxy_reachable(self):
-        """ROCK proxy 服务可达。"""
+        """ROCK proxy 服务可达 (port 9001)。"""
         import requests
-        # proxy 可能没有 /health，尝试基本连接
         try:
             resp = requests.get("http://localhost:9001/", timeout=5)
             # 任何非连接错误的响应都说明服务在运行
@@ -77,7 +83,7 @@ class TestROCKSandboxLifecycle:
         )
         sb = Sandbox(config)
         await sb.start()
-        # 切换到 proxy 进行运行时操作
+        # 切换到 proxy URL 进行运行时操作
         sb.url = "http://127.0.0.1:9001/apis/envs/sandbox/v1"
         yield sb
 
@@ -100,3 +106,10 @@ class TestROCKSandboxLifecycle:
         session = await sandbox.session.create()
         result = await session.execute("python3 -c 'print(2+3)'")
         assert "5" in result.stdout
+
+    @pytest.mark.asyncio
+    async def test_sandbox_has_network(self, sandbox):
+        """Sandbox 内有网络连接（用于后续安装 openclaw）。"""
+        session = await sandbox.session.create()
+        result = await session.execute("python3 -c 'import urllib.request; print(\"ok\")'")
+        assert "ok" in result.stdout

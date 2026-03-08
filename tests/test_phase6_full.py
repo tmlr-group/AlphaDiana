@@ -1,17 +1,21 @@
 """Phase 6: 全量 AIME 2024 评估并获取准确率
 
-跑完全部 30 道 AIME 2024 题目，生成报告。
+验证点:
+- 30 道题全部完成（completed=30, failed=0）
+- 结果写入 JSONL 文件
+- 生成 RunSummary，包含 accuracy, mean_score, total_tokens
+- 能输出 markdown 报告
+- 准确率指标合理（AIME 答案为 0-999 的整数）
 
 需要:
   - OpenClaw gateway 可用 (Phase 4)
   - OPENCLAW_SANDBOX_ID 环境变量
 
-用 pytest -m integration 运行这些测试。
-
 也可以直接用 CLI:
   alphadiana run configs/examples/openclaw_aime2024.yaml
+
+用 pytest -m integration 运行这些测试。
 """
-import json
 import os
 from pathlib import Path
 
@@ -38,7 +42,7 @@ class TestFullAIME2024Evaluation:
 
     @pytest.fixture(scope="class")
     def run_result(self, tmp_path_factory):
-        """跑完整 AIME 2024 评估并返回 (summary, result_store)。"""
+        """跑完整 AIME 2024 评估并返回 (summary, result_store, output_dir)。"""
         from alphadiana.config.experiment_config import ExperimentConfig
         from alphadiana.runner.runner import Runner
 
@@ -75,7 +79,7 @@ class TestFullAIME2024Evaluation:
         return summary, runner.result_store, output_dir
 
     def test_all_tasks_completed(self, run_result):
-        """30 道题全部完成。"""
+        """30 道题全部完成（completed=30, failed=0）。"""
         summary, _, _ = run_result
         assert summary.total_tasks == 30
         assert summary.completed == 30
@@ -92,7 +96,7 @@ class TestFullAIME2024Evaluation:
         print(f"Total Tokens: {summary.total_tokens}")
 
     def test_jsonl_file_created(self, run_result):
-        """结果 JSONL 文件已创建。"""
+        """结果 JSONL 文件已创建且包含 30 条记录。"""
         _, store, _ = run_result
         assert Path(store.path).exists()
         results = store.load()
@@ -111,13 +115,28 @@ class TestFullAIME2024Evaluation:
                 assert field in r, f"Missing field '{field}' in result {r.get('task_id')}"
 
     def test_answers_are_integers(self, run_result):
-        """预测的答案应可解析为数字（即使错误）。"""
+        """预测的答案应非空（即使错误）。"""
         _, store, _ = run_result
         results = store.load()
         for r in results:
             predicted = str(r["predicted"])
-            # 答案应该是从模型输出中提取的，可能是数字或包含数字的字符串
             assert len(predicted) > 0, f"Empty prediction for {r['task_id']}"
+
+    def test_ground_truth_in_range(self, run_result):
+        """所有 ground_truth 为 0-999 的整数。"""
+        _, store, _ = run_result
+        results = store.load()
+        for r in results:
+            gt = int(r["ground_truth"])
+            assert 0 <= gt <= 999, f"Ground truth {gt} out of range for {r['task_id']}"
+
+    def test_summary_has_tokens(self, run_result):
+        """RunSummary 包含 total_tokens 统计。"""
+        summary, _, _ = run_result
+        assert "prompt_tokens" in summary.total_tokens
+        assert "completion_tokens" in summary.total_tokens
+        assert summary.total_tokens["prompt_tokens"] > 0
+        assert summary.total_tokens["completion_tokens"] > 0
 
     def test_report_generation(self, run_result):
         """能生成 markdown 报告。"""

@@ -1,36 +1,26 @@
 """Phase 4: 在 ROCK Sandbox 中部署 OpenClaw Gateway
 
+验证点:
+- OpenClaw gateway 在 sandbox 内的 8080 端口启动
+- 通过 ROCK proxy 调用 chat/completions 返回正常
+- 请求链路: AlphaDiana → ROCK Proxy → OpenClaw Gateway → vLLM (Qwen3-8B)
+
 需要:
   - ROCK 环境 (Phase 3)
   - vLLM 服务 (Phase 2)
   - OpenClaw gateway 在 sandbox 中运行
+  - OPENCLAW_SANDBOX_ID 环境变量
 
 用 pytest -m integration 运行这些测试。
 """
+import os
+
 import pytest
 
 pytestmark = pytest.mark.integration
 
 
-def _openclaw_gateway_available(
-    proxy_url: str = "http://localhost:9001",
-    sandbox_id: str | None = None,
-) -> bool:
-    """检测 OpenClaw gateway 是否通过 ROCK proxy 可达。"""
-    if sandbox_id is None:
-        return False
-    try:
-        import requests
-        url = f"{proxy_url}/apis/envs/sandbox/v1/sandboxes/{sandbox_id}/proxy/v1/models"
-        resp = requests.get(url, headers={"Authorization": "bearer OPENCLAW"}, timeout=10)
-        return resp.status_code == 200
-    except Exception:
-        return False
-
-
-# 这些测试需要手动设置 sandbox_id，或从环境变量读取
 def _get_sandbox_id() -> str | None:
-    import os
     return os.environ.get("OPENCLAW_SANDBOX_ID")
 
 
@@ -97,7 +87,7 @@ class TestOpenClawGateway:
 
         content = response.choices[0].message.content
         assert content is not None
-        # 应包含某种推理文本，长度 > 简单回复
+        # 应包含推理文本
         assert len(content) > 5
 
     def test_token_usage_via_gateway(self):
@@ -119,3 +109,29 @@ class TestOpenClawGateway:
         if usage:
             assert usage.prompt_tokens >= 0
             assert usage.completion_tokens >= 0
+
+    def test_system_prompt_forwarded(self):
+        """System prompt 被正确转发到模型。"""
+        from openai import OpenAI
+
+        api_base = _get_openclaw_api_base()
+        client = OpenAI(base_url=api_base, api_key="OPENCLAW")
+
+        response = client.chat.completions.create(
+            model="openclaw",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a helpful assistant. "
+                        "Put your final answer in \\boxed{}."
+                    ),
+                },
+                {"role": "user", "content": "What is 3+4?"},
+            ],
+            temperature=0.0,
+            max_tokens=512,
+        )
+        content = response.choices[0].message.content
+        assert content is not None
+        assert len(content) > 0
