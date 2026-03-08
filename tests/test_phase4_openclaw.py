@@ -47,7 +47,8 @@ class TestOpenClawGateway:
             timeout=10,
         )
         # gateway 应返回模型列表或至少不是连接错误
-        assert resp.status_code in (200, 404)
+        # OpenClaw may return 405 for GET on endpoints that only support POST
+        assert resp.status_code in (200, 404, 405)
 
     def test_chat_completion_via_gateway(self):
         """通过 OpenClaw gateway 调用 chat completions。"""

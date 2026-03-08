@@ -104,7 +104,10 @@ class OpenClawAgent(Agent):
 
         wall_time = time.time() - start
 
-        raw_output = response.choices[0].message.content or ""
+        if not response.choices:
+            raw_output = ""
+        else:
+            raw_output = response.choices[0].message.content or ""
         answer = _extract_answer(raw_output)
 
         usage = response.usage
