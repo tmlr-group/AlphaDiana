@@ -9,6 +9,8 @@ env/
 build/
 dist/
 *.egg-info/
+*.egg
+.eggs/
 *.log
 
 # pyenv
@@ -34,3 +36,12 @@ ENV/
 # Sublime Text settings
 *.sublime-workspace
 *.sublime-project
+
+# Claude Code
+.claude/
+
+# Redis dump
+dump.rdb
+
+# Results (generated at runtime)
+results/
