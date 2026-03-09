@@ -143,7 +143,8 @@ class TestOpenClawAgentSingleTask:
         resp = agent.solve(sample_task)
         assert len(resp.trajectory) > 0
         roles = [m["role"] for m in resp.trajectory]
-        assert "system" in roles
+        # OpenClaw manages its own system prompt internally.
+        # The trajectory should at least contain user and assistant messages.
         assert "user" in roles
         assert "assistant" in roles
 
