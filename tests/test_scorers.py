@@ -64,6 +64,18 @@ class TestExactMatchScorer:
         assert result.correct is True
         assert result.score == 1.0
 
+    def test_fraction_normalization(self):
+        r"""简单 LaTeX 分数与普通分数字面量视为一致。"""
+        scorer = ExactMatchScorer()
+        result = scorer.score(_FakeTask("1/2"), _FakeResponse(r"\frac{1}{2}"))
+        assert result.correct is True
+
+    def test_answer_prefix_normalization(self):
+        """提取 Final Answer 行。"""
+        scorer = ExactMatchScorer()
+        result = scorer.score(_FakeTask("42"), _FakeResponse("Final Answer: 42"))
+        assert result.correct is True
+
     def test_scorer_name(self):
         """scorer name 为 'exact_match'。"""
         scorer = ExactMatchScorer()
@@ -140,11 +152,25 @@ class TestNumericScorer:
         result = scorer.score(_FakeTask("0.75"), _FakeResponse("3/4"))
         assert result.correct is True
 
+    def test_latex_fraction(self):
+        r"""LaTeX 分数: '\frac{3}{4}' vs '0.75'。"""
+        scorer = NumericScorer()
+        scorer.setup({"tolerance": 1e-6})
+        result = scorer.score(_FakeTask("0.75"), _FakeResponse(r"\frac{3}{4}"))
+        assert result.correct is True
+
     def test_percentage(self):
         """百分比: '75%' vs '0.75'。"""
         scorer = NumericScorer()
         scorer.setup({"tolerance": 1e-6})
         result = scorer.score(_FakeTask("0.75"), _FakeResponse("75%"))
+        assert result.correct is True
+
+    def test_answer_prefix_numeric(self):
+        """从 Final Answer 前缀中提取数字。"""
+        scorer = NumericScorer()
+        scorer.setup({"tolerance": 1e-6})
+        result = scorer.score(_FakeTask("42"), _FakeResponse("Final Answer: 42."))
         assert result.correct is True
 
     def test_thousands_separator(self):
@@ -185,3 +211,5 @@ class TestNumericScorer:
         result = scorer.score(_FakeTask("42"), _FakeResponse("42"))
         assert result.metadata["expected_num"] == 42.0
         assert result.metadata["predicted_num"] == 42.0
+        assert result.metadata["expected_normalized"] == "42"
+        assert result.metadata["predicted_normalized"] == "42"

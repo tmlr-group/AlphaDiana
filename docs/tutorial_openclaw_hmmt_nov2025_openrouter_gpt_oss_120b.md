@@ -1,10 +1,6 @@
-# AlphaDiana 实验说明：OpenClaw + OpenRouter `openai/gpt-oss-120b:free` + `MathArena/hmmt_nov_2025`
+# AlphaDiana Beginner Tutorial: OpenClaw + OpenRouter `openai/gpt-oss-120b:free` + `MathArena/hmmt_nov_2025`
 
-本文档说明如何在 AlphaDiana 中，用 **OpenClaw agent** 评估 **`MathArena/hmmt_nov_2025`**，底层模型使用 OpenRouter 的 **`openai/gpt-oss-120b:free`**。
-
-这份说明先聚焦实验方案和配置，不要求你先把整套流程跑通。等文档确认后，再补脚本或执行细节更稳妥。
-
-## 1. 实验目标
+This guide is a beginner-ready runbook for this repo. It shows how to run one complete AlphaDiana evaluation with:
 
 - Agent: `openclaw`
 - Model provider: OpenRouter
@@ -13,23 +9,11 @@
 - Benchmark loader: `aime`
 - Scorer: `exact_match`
 
-选择 `aime` loader 的原因是它已经支持从 Hugging Face 直接读取指定数据集，并允许自定义 `dataset`、`split`、`problem_field`、`answer_field`。
+The goal is not to explain every subsystem in depth. The goal is to get you from a fresh checkout to a first successful run, with clear checkpoints when something fails.
 
-选择 `exact_match` 的原因是这类竞赛数学题答案不一定是纯数字，也可能是分式、根式、LaTeX 表达式。`numeric` scorer 容易把合法答案误判为无法解析。
+## 0. What You Are Running
 
-## 2. 当前假设
-
-本实验基于以下假设：
-
-- Hugging Face 数据集 ID 为 `MathArena/hmmt_nov_2025`
-- split 使用 `train`
-- 题目字段为 `problem`
-- 标准答案字段为 `answer`
-- 数据集规模为 30 题
-
-如果你后续确认字段名不同，只需要调整配置中的 `problem_field` 或 `answer_field`。
-
-## 3. 整体架构
+The request flow for this tutorial is:
 
 ```text
 AlphaDiana Runner
@@ -41,7 +25,7 @@ ROCK Proxy (:9001)
 ROCK Sandbox
        |
        v
-OpenClaw Gateway (:8080 in sandbox)
+OpenClaw Gateway (:8080 inside sandbox)
        |
        v
 OpenRouter API
@@ -50,21 +34,103 @@ OpenRouter API
 openai/gpt-oss-120b:free
 ```
 
-这里的关键点是：
+Important:
 
-- AlphaDiana 不直接调用 OpenRouter
-- AlphaDiana 调的是 sandbox 里的 OpenClaw gateway
-- OpenClaw gateway 再转发到 OpenRouter
+- AlphaDiana does not call OpenRouter directly in this setup.
+- AlphaDiana calls an OpenClaw gateway running inside a ROCK sandbox.
+- The OpenClaw gateway forwards model requests to OpenRouter.
 
-## 4. API Key 管理
+## 1. Files Used In This Tutorial
 
-建议在仓库根目录放一个 `.env` 文件：
+You only need a few repo files to follow this guide:
+
+- Template eval config: [openclaw_hmmt_nov2025_openrouter_gpt_oss_120b.yaml](.examples/openclaw_hmmt_nov2025_openrouter_gpt_oss_120b.yaml)
+- Local config generator: [run_openclaw_hmmt_openrouter.py](./dev/run_openclaw_hmmt_openrouter.py)
+- OpenClaw gateway config template: [openclaw.json](./openclaw_deploy/openclaw.json)
+- ROCK agent config template: [rock_agent_config.yaml](./openclaw_deploy/rock_agent_config.yaml)
+
+You do not need to edit all of them manually. The helper script generates local copies for you.
+
+## 2. Prerequisites
+
+Before you start, make sure you have:
+
+- Linux
+- Python 3.10 to 3.12
+- Docker
+- Conda or another Python environment manager
+- A working ROCK installation
+- A running Redis instance for ROCK
+- A running Ray head node for ROCK
+- An OpenRouter API key with access to `openai/gpt-oss-120b:free`
+
+If you are new to AlphaDiana, you should already be able to run:
 
 ```bash
-OPENROUTER_API_KEY="sk-or-v1-..."
+pip install -e ".[all,dev]"
+alphadiana list-benchmarks
 ```
 
-如果你要在 bash 里使用它，可以这样加载：
+Expected output includes `aime`.
+
+## 3. Why This Tutorial Uses `aime` + `exact_match`
+
+We reuse the existing `aime` benchmark loader because it already supports:
+
+- loading a Hugging Face dataset by name
+- choosing the split
+- selecting custom `problem_field`
+- selecting custom `answer_field`
+
+We use `exact_match` instead of `numeric` because HMMT answers may be integers, fractions, radicals, or LaTeX-style text. In this repo, `exact_match` now applies math-aware normalization first, including common forms like:
+
+- `\boxed{42}`
+- `Final Answer: 42`
+- `\frac{1}{2}` and `1/2`
+- extra math wrappers like `$...$`
+
+This is still not full symbolic equivalence. It is only a practical normalization layer.
+
+## 4. Step 1: Create the Python Environment
+
+From the repo root:
+
+```bash
+conda create -n alphadiana python=3.11 -y
+conda activate alphadiana
+cd AlphaDiana
+pip install -e ".[all,dev]"
+```
+
+Quick verification:
+
+```bash
+alphadiana list-benchmarks
+```
+
+You should see:
+
+```text
+Registered benchmarks:
+  - aime
+  - math
+  - hle
+  - frontier_math
+  - terminal_bench
+  - osworld
+```
+
+## 5. Step 2: Create `.env`
+
+Create a repo-local `.env` file:
+
+```bash
+cat > .env <<'EOF'
+OPENROUTER_API_KEY="sk-or-v1-..."
+EOF
+```
+
+You can also export it into the current shell:
 
 ```bash
 set -a
@@ -72,99 +138,73 @@ source .env
 set +a
 ```
 
-这样后续 Python 进程就能直接通过：
+The helper script in this tutorial reads `OPENROUTER_API_KEY` from `.env` first, then from the environment.
 
-```python
-import os
+## 6. Step 3: Start ROCK Dependencies
 
-api_key = os.environ["OPENROUTER_API_KEY"]
+This tutorial assumes OpenClaw will run inside ROCK. You need:
+
+1. Redis
+2. Ray
+3. ROCK admin on port `9000`
+4. ROCK proxy on port `9001`
+
+A typical sequence looks like this:
+
+```bash
+docker run -d --name redis-stack -p 6379:6379 redis/redis-stack-server:latest
+ray start --head --port=6380
+python -m rock.deployments.admin
+python -m rock.deployments.proxy
 ```
 
-读取这个 key。
+If your setup differs, that is fine. What matters is that these health checks pass:
 
-## 5. OpenClaw 的 ROCK 配置
-
-当前仓库已有 OpenClaw 的 ROCK agent 配置模板：
-
-- `ref/ROCK/examples/agents/openclaw/rock_agent_config.yaml`
-- `ref/ROCK/examples/agents/openclaw/openclaw.json`
-
-你需要把 `rock_agent_config.yaml` 中的 OpenAI 兼容后端改成 OpenRouter：
-
-```yaml
-env:
-  OPENAI_BASE_URL: "https://openrouter.ai/api/v1"
-  OPENAI_API_KEY: "YOUR_OPENROUTER_API_KEY"
-  OPENAI_MODEL_NAME: "openai/gpt-oss-120b:free"
-  OPENCLAW_GATEWAY_TOKEN: "OPENCLAW"
+```bash
+curl http://localhost:9000/health
+curl http://localhost:9001/health
 ```
 
-更稳妥的做法不是把真实 key 直接写进 git 跟踪文件，而是运行前生成一份本地副本，或者在部署脚本里把 `.env` 中的值注入进去。
+If they do not, stop here and fix ROCK first. Do not move on to AlphaDiana yet.
 
-## 6. AlphaDiana 评估配置
+## 7. Step 4: Deploy OpenClaw Into ROCK
 
-建议新增一个实验配置，例如：
+This repo already contains deployment templates under [openclaw_deploy](./openclaw_deploy).
 
-```yaml
-run_id: "openclaw-gpt-oss-120b-free-hmmt-nov-2025"
+The simplest path is:
 
-agent:
-  name: openclaw
-  version: "latest"
-  config:
-    api_base: "http://localhost:9001/apis/envs/sandbox/v1/sandboxes/<SANDBOX_ID>/proxy/v1"
-    model: openclaw
-    gateway_token: "OPENCLAW"
-    temperature: 0.0
-    max_tokens: 16384
-
-benchmark:
-  name: aime
-  config:
-    dataset: "MathArena/hmmt_nov_2025"
-    split: "train"
-    problem_field: "problem"
-    answer_field: "answer"
-
-sandbox: null
-
-scorer:
-  name: exact_match
-
-max_concurrent: 1
-output_dir: "./results"
-metadata:
-  author: "your_name"
-  notes: "OpenClaw + OpenRouter openai/gpt-oss-120b:free on MathArena/hmmt_nov_2025"
+```bash
+cd ./openclaw_deploy
+python deploy.py
 ```
 
-说明：
+This should print a sandbox ID similar to:
 
-- `sandbox: null` 是因为 OpenClaw 已经预先部署在 ROCK sandbox 中，Runner 这里直接打 gateway
-- `max_concurrent: 1` 是保守配置，先降低 OpenRouter 免费模型的限流风险
-- `api_base` 里的 `<SANDBOX_ID>` 需要替换成实际部署出来的 sandbox ID
+```text
+Sandbox ID: a37118857bee43188375c7ce2f343eb5
+API base: http://127.0.0.1:9001/apis/envs/sandbox/v1/sandboxes/a37118857bee43188375c7ce2f343eb5/proxy/v1
+```
 
-## 7. 推荐执行顺序
+Save that sandbox ID:
 
-推荐按下面顺序推进：
+```bash
+export OPENCLAW_SANDBOX_ID=a37118857bee43188375c7ce2f343eb5
+```
 
-1. 准备 `.env`
-2. 启动 Redis
-3. 启动 Ray
-4. 启动 ROCK admin / proxy
-5. 部署 OpenClaw gateway 到 sandbox
-6. 用一条简单问题验证 gateway 可用
-7. 再跑 `MathArena/hmmt_nov_2025`
+If deployment fails, the problem is usually one of these:
 
-不要一开始就直接跑 benchmark。先确保 gateway 对一个最小请求能返回结果，否则排查成本会很高。
+- ROCK is not healthy
+- Docker access is missing
+- the OpenClaw package could not be installed inside the sandbox
+- network access from the sandbox to OpenRouter is blocked
 
-## 8. 最小验证请求
+## 8. Step 5: Verify the OpenClaw Gateway Before Running a Benchmark
 
-在 OpenClaw sandbox 部署完成后，可以先测一条简单请求：
+Do not start with the benchmark. First check that the OpenClaw gateway can answer a trivial prompt.
 
 ```bash
 curl -X POST \
-  "http://localhost:9001/apis/envs/sandbox/v1/sandboxes/<SANDBOX_ID>/proxy/v1/chat/completions" \
+  "http://localhost:9001/apis/envs/sandbox/v1/sandboxes/${OPENCLAW_SANDBOX_ID}/proxy/v1/chat/completions" \
   -H "Authorization: bearer OPENCLAW" \
   -H "Content-Type: application/json" \
   -d '{
@@ -177,36 +217,163 @@ curl -X POST \
   }'
 ```
 
-如果这一步都不通，就不要直接进入 benchmark。
+If this fails, do not continue to the HMMT run. Fix the gateway first.
 
-## 9. 结果文件
+## 9. Step 6: Generate Local Config Files
 
-运行完成后，结果会写到：
+Go back to the repo root:
+
+```bash
+cd AlphaDiana
+```
+
+Run:
+
+```bash
+python dev/run_openclaw_hmmt_openrouter.py --sandbox-id "${OPENCLAW_SANDBOX_ID}"
+```
+
+This script does three things:
+
+1. reads `OPENROUTER_API_KEY` from `.env` or the environment
+2. generates a local eval config with the real sandbox ID
+3. generates a local ROCK agent config with the OpenRouter settings filled in
+
+Generated files:
+
+- [openclaw_hmmt_nov2025_openrouter_gpt_oss_120b.local.yaml](./dev/generated/openclaw_hmmt_nov2025_openrouter_gpt_oss_120b.local.yaml)
+- [rock_agent_config.openrouter_gpt_oss_120b.local.yaml](./dev/generated/rock_agent_config.openrouter_gpt_oss_120b.local.yaml)
+
+The generated eval config is based on [openclaw_hmmt_nov2025_openrouter_gpt_oss_120b.yaml](./configs/examples/openclaw_hmmt_nov2025_openrouter_gpt_oss_120b.yaml).
+
+## 10. Step 7: Inspect the Generated Eval Config
+
+The important part of the generated eval config is:
+
+```yaml
+agent:
+  name: openclaw
+  config:
+    api_base: "http://localhost:9001/apis/envs/sandbox/v1/sandboxes/<YOUR_SANDBOX_ID>/proxy/v1"
+    model: openclaw
+    gateway_token: "OPENCLAW"
+
+benchmark:
+  name: aime
+  config:
+    dataset: "MathArena/hmmt_nov_2025"
+    split: "train"
+    problem_field: "problem"
+    answer_field: "answer"
+
+scorer:
+  name: exact_match
+```
+
+If your dataset field names differ, edit the generated local file, not the shared example file.
+
+## 11. Step 8: Validate the Config
+
+Run:
+
+```bash
+alphadiana validate dev/generated/openclaw_hmmt_nov2025_openrouter_gpt_oss_120b.local.yaml
+```
+
+Expected output:
+
+```text
+Config is valid.
+```
+
+If validation fails, fix that before you run the benchmark.
+
+## 12. Step 9: Run the Benchmark
+
+Use either of these:
+
+```bash
+alphadiana run dev/generated/openclaw_hmmt_nov2025_openrouter_gpt_oss_120b.local.yaml
+```
+
+or:
+
+```bash
+python dev/run_openclaw_hmmt_openrouter.py --sandbox-id "${OPENCLAW_SANDBOX_ID}" --run
+```
+
+Recommended initial settings in this tutorial:
+
+- `max_concurrent: 1`
+- `temperature: 0.0`
+
+This is intentionally conservative because free OpenRouter models are more likely to hit queueing or rate limits.
+
+## 13. Step 10: Read the Results
+
+Results are written under [results](./results).
+
+The main output file is:
 
 ```text
 results/<run_id>.jsonl
 ```
 
-建议至少记录以下信息：
+Per-task artifacts may also appear under:
 
-- OpenRouter model ID
-- OpenClaw 版本
-- 数据集 ID
-- split
-- sandbox ID
-- 运行日期
-- 是否命中过限流
+```text
+results/artifacts/
+```
 
-## 10. 风险与注意事项
+The JSONL records typically include:
 
-- `free` 后缀是 OpenRouter 侧的产品标签，不应长期假设永远可用，实际执行前最好再查一次模型页面
-- 免费模型常见问题是速率限制、排队和偶发 5xx
-- 数学题答案格式可能不统一，必要时要针对 `exact_match` 做额外归一化
-- 如果 `MathArena/hmmt_nov_2025` 的字段名不是 `problem` / `answer`，评估会在数据加载阶段失败
+- task ID
+- problem text
+- ground truth
+- predicted answer
+- correctness
+- score
+- rationale
+- OpenClaw trajectory metadata when available
 
-## 11. 下一步
+## 14. Common Beginner Failure Points
 
-这份文档先把实验定义固定下来。下一步可以继续做两件事：
+If you are stuck, check these in order:
 
-1. 把上面的 YAML 真正落成 `configs/examples/...`
-2. 写一个脚本，从 `.env` 读取 `OPENROUTER_API_KEY`，生成本地运行配置并执行
+1. `alphadiana list-benchmarks` works.
+2. `.env` contains a valid `OPENROUTER_API_KEY`.
+3. `curl http://localhost:9000/health` works.
+4. `curl http://localhost:9001/health` works.
+5. `python openclaw_deploy/deploy.py` returns a sandbox ID.
+6. The `curl` chat-completions smoke test succeeds.
+7. `alphadiana validate ...local.yaml` succeeds.
+8. Only then run `alphadiana run ...local.yaml`.
+
+This order matters. If step 6 fails, the benchmark run will fail too.
+
+## 15. What To Change Later
+
+Once the beginner path works, the most common next edits are:
+
+- change `max_tokens`
+- change `max_concurrent`
+- change the benchmark dataset or split
+- change `problem_field` or `answer_field`
+- switch from `exact_match` to another scorer if the task format changes
+
+Make those changes in the generated local config first. Keep the example config as a reusable template.
+
+## 16. Summary
+
+For a first successful run, the shortest path is:
+
+1. install AlphaDiana
+2. create `.env`
+3. start ROCK
+4. deploy OpenClaw
+5. smoke test the gateway
+6. generate the local config
+7. validate it
+8. run `alphadiana`
+
+That is the intended beginner workflow for this repo for the HMMT OpenRouter setup.

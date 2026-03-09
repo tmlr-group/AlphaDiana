@@ -7,13 +7,13 @@ agentic orchestration (no tool calling, no multi-turn, no code execution).
 """
 from __future__ import annotations
 
-import re
 import time
 from typing import Any
 
 from alphadiana.agent.base import Agent, AgentResponse
 from alphadiana.agent.registry import AgentRegistry
 from alphadiana.benchmark.base import BenchmarkTask
+from alphadiana.utils.math_answer import extract_answer_candidate
 
 _DEFAULT_SYSTEM_PROMPT = (
     "You are a helpful assistant that solves problems step by step. "
@@ -23,24 +23,7 @@ _DEFAULT_SYSTEM_PROMPT = (
 
 def _extract_answer(text: str) -> str:
     """Extract the answer from model output, preferring \\boxed{} content."""
-    # Try \boxed{} extraction with nested brace handling
-    idx = text.rfind("\\boxed{")
-    if idx != -1:
-        start = idx + len("\\boxed{")
-        depth = 1
-        pos = start
-        while pos < len(text) and depth > 0:
-            if text[pos] == "{":
-                depth += 1
-            elif text[pos] == "}":
-                depth -= 1
-            pos += 1
-        if depth == 0:
-            return text[start:pos - 1].strip()
-
-    # Fallback: last non-empty line
-    lines = [l.strip() for l in text.strip().splitlines() if l.strip()]
-    return lines[-1] if lines else text.strip()
+    return extract_answer_candidate(text)
 
 
 class DirectLLMAgent(Agent):

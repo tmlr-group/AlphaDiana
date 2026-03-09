@@ -31,52 +31,14 @@ from typing import Any
 from alphadiana.agent.base import Agent, AgentResponse
 from alphadiana.agent.registry import AgentRegistry
 from alphadiana.benchmark.base import BenchmarkTask
+from alphadiana.utils.math_answer import extract_answer_candidate
 
 logger = logging.getLogger(__name__)
 
 
 def _extract_answer(text: str) -> str:
-    r"""Extract the answer from model output.
-
-    Priority:
-      1. \boxed{...} content (last occurrence)
-      2. "Answer: <value>" or "**Answer:** <value>" pattern
-      3. Last non-empty line (fallback)
-    """
-    # 1. Try \boxed{} (last occurrence)
-    idx = text.rfind("\\boxed{")
-    if idx != -1:
-        start = idx + len("\\boxed{")
-        depth = 1
-        pos = start
-        while pos < len(text) and depth > 0:
-            if text[pos] == "{":
-                depth += 1
-            elif text[pos] == "}":
-                depth -= 1
-            pos += 1
-        if depth == 0:
-            return text[start:pos - 1].strip()
-
-    # 2. Try "Answer: <value>" or "answer is <value>" pattern
-    answer_pattern = re.compile(
-        r"(?:\*{0,2})(?:the\s+)?(?:final\s+)?answer(?:\*{0,2})\s*(?:[:：]|is)\s*(.+)",
-        re.IGNORECASE,
-    )
-    matches = list(answer_pattern.finditer(text))
-    if matches:
-        raw = matches[-1].group(1).strip()
-        # Strip trailing period, markdown, units for numeric answers
-        raw = re.sub(r"[.\s]*$", "", raw)
-        # Try to extract just the number if there's surrounding text
-        num_match = re.search(r"(-?\d[\d,]*\.?\d*)", raw)
-        if num_match:
-            return num_match.group(1).replace(",", "")
-        return raw
-
-    # 3. Fallback to last non-empty line
-    lines = [l.strip() for l in text.strip().splitlines() if l.strip()]
-    return lines[-1] if lines else text.strip()
+    r"""Extract the final answer from model output."""
+    return extract_answer_candidate(text)
 
 
 def _coerce_text_content(content: Any) -> str:
