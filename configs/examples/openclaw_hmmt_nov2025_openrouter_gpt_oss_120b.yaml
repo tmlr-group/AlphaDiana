@@ -2,7 +2,7 @@ run_id: "openclaw-gpt-oss-120b-free-hmmt-nov-2025-001"
 
 agent:
   name: openclaw
-  version: "latest"
+  version: "2026.3.7"
   config:
     # Replace <SANDBOX_ID> with your actual ROCK sandbox ID.
     api_base: "http://localhost:9001/apis/envs/sandbox/v1/sandboxes/<SANDBOX_ID>/proxy/v1"

@@ -162,7 +162,7 @@ run_cmd: >
 runtime_env_config:
   type: node
   npm_registry: https://registry.npmmirror.com
-  custom_install_cmd: npm install -g openclaw@latest
+  custom_install_cmd: npm install -g openclaw@2026.3.7
   install_timeout: 1200
 
 env:

@@ -2,7 +2,7 @@ run_id: "openclaw-qwen3-8b-aime2024-001"
 
 agent:
   name: openclaw
-  version: "latest"
+  version: "2026.3.7"
   config:
     # OpenClaw gateway endpoint (proxied via ROCK)
     # Replace <SANDBOX_ID> with your actual sandbox ID
