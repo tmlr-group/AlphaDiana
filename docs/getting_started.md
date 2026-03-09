@@ -9,7 +9,7 @@ AlphaDiana 是一个基金模型与 Agent 系统的评估框架，支持在多�
 - [0. 架构概览](#0-架构概览)
 - [1. 环境准备](#1-环境准备)
 - [2. 安装 AlphaDiana](#2-安装-alphadiana)
-- [3. 快速验证（ZeroClaw 直接调 LLM）](#3-快速验证zeroclaw-直接调-llm)
+- [3. 快速验证（Direct LLM 基线）](#3-快速验证direct-llm-基线)
 - [4. 搭建 ROCK 沙箱环境](#4-搭建-rock-沙箱环境)
 - [5. 部署 OpenClaw Agent](#5-部署-openclaw-agent)
 - [6. 运行 OpenClaw 评估](#6-运行-openclaw-评估)
@@ -24,7 +24,7 @@ AlphaDiana 是一个基金模型与 Agent 系统的评估框架，支持在多�
 
 AlphaDiana 有两种评估模式：
 
-### 模式一：ZeroClaw（直接调 LLM，简单快速）
+### 模式一：Direct LLM（直接调 LLM，简单快速）
 
 ```
 AlphaDiana Runner
@@ -122,7 +122,7 @@ CUDA_VISIBLE_DEVICES=0 python -m vllm.entrypoints.openai.api_server \
     --max-model-len 32768 &
 ```
 
-> `--enable-auto-tool-choice --tool-call-parser hermes` 是给 OpenClaw 用的。如果只跑 ZeroClaw 可以不加。
+> `--enable-auto-tool-choice --tool-call-parser hermes` 是给 OpenClaw 用的。如果只跑 Direct LLM 基线可以不加。
 >
 > `--max-model-len 32768` 很重要：OpenClaw 的内部 system prompt 约 8K tokens，16K 会溢出。
 
@@ -165,19 +165,19 @@ Registered benchmarks:
 
 ---
 
-## 3. 快速验证（ZeroClaw 直接调 LLM）
+## 3. 快速验证（Direct LLM 基线）
 
-这是最简单的模式，不需要 ROCK 和 OpenClaw，只需要 vLLM 在跑。
+这是最简单的模式，不需要 ROCK 和 OpenClaw，只需要 vLLM 在跑。Direct LLM 是一个纯 LLM 基线 Agent，直接单轮调用 LLM API，不带工具调用和多轮推理。
 
 ### 3.1 编写配置文件
 
 创建 `configs/my_first_run.yaml`：
 
 ```yaml
-run_id: "zeroclaw-qwen3-8b-aime2024"
+run_id: "direct-llm-qwen3-8b-aime2024"
 
 agent:
-  name: zeroclaw
+  name: direct_llm
   version: "1.0"
   config:
     model: "/path/to/Qwen3-8B"           # ← 改成你的模型路径
@@ -220,12 +220,12 @@ alphadiana run configs/my_first_run.yaml
 1. 从 HuggingFace 加载 AIME 2024 数据集（30 道题）
 2. 逐题发给 vLLM，获取回答
 3. 用 NumericScorer 评分
-4. 结果写入 `results/zeroclaw-qwen3-8b-aime2024.jsonl`
+4. 结果写入 `results/direct-llm-qwen3-8b-aime2024.jsonl`
 
 输出示例：
 
 ```
-Run completed: zeroclaw-qwen3-8b-aime2024
+Run completed: direct-llm-qwen3-8b-aime2024
   Accuracy:   0.1333
   Mean Score: 0.1333
   Tasks:      30/30 completed
@@ -250,7 +250,7 @@ finally:
     runner.teardown()
 ```
 
-**到这里，如果 ZeroClaw 能跑通，说明 AlphaDiana + vLLM 环境没问题。** 下面搭建 Agent 系统。
+**到这里，如果 Direct LLM 基线能跑通，说明 AlphaDiana + vLLM 环境没问题。** 下面搭建 Agent 系统。
 
 ---
 
@@ -563,7 +563,7 @@ for step in r["trajectory"]:
 run_id: string           # 运行标识（不填则自动生成 UUID）
 
 agent:
-  name: string           # "zeroclaw" | "openclaw"
+  name: string           # "direct_llm" | "openclaw"
   version: string        # 版本号（如 "latest", "v1.0"）
   config: {}             # Agent 特定配置（见下方）
 
@@ -586,11 +586,11 @@ metadata: {}             # 自定义元数据
 
 ### 8.2 Agent 配置
 
-**ZeroClaw（直接调 LLM）：**
+**Direct LLM（直接调 LLM 基线）：**
 
 ```yaml
 agent:
-  name: zeroclaw
+  name: direct_llm
   version: "1.0"
   config:
     model: "模型名称"
@@ -664,9 +664,9 @@ scorer:
     api_key: "sk-..."
 ```
 
-### 8.5 ZeroClaw vs OpenClaw 对比
+### 8.5 Direct LLM vs OpenClaw 对比
 
-| | ZeroClaw | OpenClaw |
+| | Direct LLM | OpenClaw |
 |---|---------|----------|
 | 评测对象 | 裸模型能力 | Agent 系统能力 |
 | 推理方式 | 单轮问答 | 多轮推理 + 工具调用 |
@@ -687,7 +687,7 @@ AlphaDiana/
 │   ├── agent/                     # Agent 实现
 │   │   ├── base.py                #   Agent 基类 + AgentResponse
 │   │   ├── registry.py            #   Agent 注册表
-│   │   ├── zeroclaw.py            #   ZeroClaw: 直接调 LLM
+│   │   ├── direct_llm.py           #   Direct LLM: 直接调 LLM 基线
 │   │   └── openclaw.py            #   OpenClaw: Agent 系统（多轮推理+工具调用）
 │   ├── benchmark/                 # Benchmark 数据集
 │   │   ├── base.py                #   Benchmark 基类 + BenchmarkTask

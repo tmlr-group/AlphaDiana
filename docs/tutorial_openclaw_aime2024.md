@@ -249,7 +249,7 @@ metadata:
 | 字段 | 说明 |
 |------|------|
 | `run_id` | 本次运行的唯一标识，结果文件名基于此 |
-| `agent.name` | 使用的 agent 名称（`openclaw`, `zeroclaw`） |
+| `agent.name` | 使用的 agent 名称（`openclaw`, `direct_llm`） |
 | `agent.config` | Agent 特定配置（API 地址、模型名、token 等） |
 | `benchmark.name` | 数据集名称（`aime`, `math`, `hle` 等） |
 | `benchmark.config` | 数据集配置（HuggingFace 路径、split） |
@@ -434,12 +434,12 @@ OPENCLAW_SANDBOX_ID=<your_id> python -m pytest tests/ -v
 
 ## 扩展：使用其他 Agent/Benchmark 组合
 
-### ZeroClaw + MATH 数据集
+### Direct LLM + MATH 数据集
 
 ```yaml
-run_id: "zeroclaw-qwen3-8b-math"
+run_id: "direct-llm-qwen3-8b-math"
 agent:
-  name: zeroclaw
+  name: direct_llm
   config:
     model: "/hd1/models/models--Qwen--Qwen3-8B/snapshots/..."
     api_base: "http://localhost:8000/v1"
@@ -457,7 +457,7 @@ max_concurrent: 4
 output_dir: "./results"
 ```
 
-> **ZeroClaw** 直接调用 vLLM API，不经过 OpenClaw/ROCK，适合快速基线测试。
+> **Direct LLM** 直接调用 vLLM API，不经过 OpenClaw/ROCK，适合快速基线测试。
 
 ### 自定义 Agent
 

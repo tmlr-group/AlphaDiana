@@ -1,4 +1,10 @@
-"""ZeroClaw agent - minimal direct LLM prompting without an agent framework."""
+"""Direct LLM baseline - single-turn prompting without an agent framework.
+
+This agent calls an OpenAI-compatible API directly with a system prompt
+and the user's problem, returning the model's raw output.  It serves as
+a baseline to measure the LLM's own reasoning ability without any
+agentic orchestration (no tool calling, no multi-turn, no code execution).
+"""
 from __future__ import annotations
 
 import re
@@ -37,10 +43,14 @@ def _extract_answer(text: str) -> str:
     return lines[-1] if lines else text.strip()
 
 
-class ZeroClawAgent(Agent):
-    """Minimal agent that directly calls an OpenAI-compatible LLM API."""
+class DirectLLMAgent(Agent):
+    """Baseline agent that directly calls an OpenAI-compatible LLM API.
 
-    name = "zeroclaw"
+    Single-turn prompting: system prompt + user problem -> model response.
+    No tool calling, no multi-turn reasoning, no agent framework.
+    """
+
+    name = "direct_llm"
 
     def setup(self, config: dict) -> None:
         self.version = config.get("version", "unknown")
@@ -56,7 +66,7 @@ class ZeroClawAgent(Agent):
             from openai import OpenAI
         except ImportError:
             raise RuntimeError(
-                "The 'openai' package is required for ZeroClawAgent. "
+                "The 'openai' package is required for DirectLLMAgent. "
                 "Install with: pip install openai"
             )
 
@@ -103,4 +113,4 @@ class ZeroClawAgent(Agent):
         pass
 
 
-AgentRegistry.register("zeroclaw", ZeroClawAgent)
+AgentRegistry.register("direct_llm", DirectLLMAgent)

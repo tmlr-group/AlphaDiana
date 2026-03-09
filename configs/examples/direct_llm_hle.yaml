@@ -1,7 +1,7 @@
-run_id: "zeroclaw-gpt4o-hle-001"
+run_id: "direct-llm-gpt4o-hle-001"
 
 agent:
-  name: zeroclaw
+  name: direct_llm
   version: "v0.1.0"
   config:
     model: gpt-4o
@@ -28,4 +28,4 @@ max_concurrent: 2
 output_dir: "./results"
 metadata:
   author: "zjk"
-  notes: "zeroclaw baseline on HLE"
+  notes: "direct LLM baseline on HLE"

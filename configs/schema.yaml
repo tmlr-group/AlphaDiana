@@ -7,7 +7,7 @@ run_id: string
 
 # agent: (required) Agent system configuration.
 agent:
-  name: string        # Agent name, e.g. "openclaw", "zeroclaw"
+  name: string        # Agent name, e.g. "openclaw", "direct_llm"
   version: string     # Pinned version tag (REQUIRED), e.g. "v0.3.1"
   config:             # Pass-through config for the agent (model settings, etc.)
     model: string
