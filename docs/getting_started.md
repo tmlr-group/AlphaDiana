@@ -1,6 +1,6 @@
 # AlphaDiana 完整上手教程
 
-AlphaDiana 是一个基金模型与 Agent 系统的评估框架，支持在多个 Benchmark（AIME、MATH、HLE 等）上评测不同的 Agent。
+AlphaDiana 是一个基座模型（Foundation Model）与 Agent 系统的评估框架，支持在多个 Benchmark（AIME、MATH、HLE 等）上评测不同的 Agent。
 
 本教程以 **Qwen3-8B + AIME 2024** 为例，从零开始，一步步搭建并运行评估。
 
