@@ -12,18 +12,13 @@ request it does NOT just proxy to the LLM; instead it:
   4. Stores the full internal trajectory in session JSONL files at
      /root/.openclaw/agents/main/sessions/<session_id>.jsonl
 
-This wrapper calls the gateway, then retrieves the session file from the
-sandbox to capture the real agentic trajectory (tool calls, intermediate
-reasoning, token usage, etc.).
+This wrapper supports two modes:
+  - Static: ``api_base`` is pre-configured (gateway already running)
+  - Dynamic: ``rock_agent_config_path`` + ``openclaw_config_path`` provided,
+    gateway is bootstrapped inside a live ROCK sandbox automatically
 
 Deployment reference:
   https://github.com/alibaba/ROCK/blob/master/examples/agents/openclaw/REAMDE.md
-
-Prerequisites:
-  1. Start ROCK admin + proxy servers
-  2. Launch a sandbox with OpenClaw gateway installed (npm install -g openclaw@latest)
-  3. Configure openclaw.json with model provider (OPENAI_BASE_URL, OPENAI_API_KEY, etc.)
-  4. The gateway listens on port 8080 inside the sandbox, proxied via ROCK proxy
 """
 from __future__ import annotations
 
@@ -45,9 +40,8 @@ def _extract_answer(text: str) -> str:
 
     Priority:
       1. \boxed{...} content (last occurrence)
-      2. $\boxed{...}$ content (LaTeX variant)
-      3. "Answer: <value>" or "**Answer:** <value>" pattern
-      4. Last non-empty line (fallback)
+      2. "Answer: <value>" or "**Answer:** <value>" pattern
+      3. Last non-empty line (fallback)
     """
     # 1. Try \boxed{} (last occurrence)
     idx = text.rfind("\\boxed{")
@@ -85,6 +79,109 @@ def _extract_answer(text: str) -> str:
     return lines[-1] if lines else text.strip()
 
 
+def _coerce_text_content(content: Any) -> str:
+    """Coerce various content formats to a plain string."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+                continue
+            if not isinstance(item, dict):
+                continue
+            text = item.get("text")
+            if isinstance(text, str):
+                parts.append(text)
+                continue
+            if item.get("type") == "output_text":
+                value = item.get("text") or item.get("content")
+                if isinstance(value, str):
+                    parts.append(value)
+        return "".join(parts).strip()
+    return ""
+
+
+def _extract_raw_output_from_payload(payload: Any) -> str:
+    """Extract assistant text from various gateway response formats."""
+    if not isinstance(payload, dict):
+        return ""
+
+    # Standard OpenAI format
+    choices = payload.get("choices")
+    if isinstance(choices, list) and choices:
+        message = choices[0].get("message", {})
+        if isinstance(message, dict):
+            content = _coerce_text_content(message.get("content"))
+            if content:
+                return content
+        delta = choices[0].get("delta", {})
+        if isinstance(delta, dict):
+            content = _coerce_text_content(delta.get("content"))
+            if content:
+                return content
+        text = choices[0].get("text")
+        if isinstance(text, str) and text.strip():
+            return text.strip()
+
+    # Gateway-specific variants
+    output_text = payload.get("output_text")
+    if isinstance(output_text, str) and output_text.strip():
+        return output_text.strip()
+
+    output = payload.get("output")
+    if isinstance(output, list):
+        for item in output:
+            if not isinstance(item, dict):
+                continue
+            content = _coerce_text_content(item.get("content"))
+            if content:
+                return content
+
+    message = payload.get("message")
+    if isinstance(message, dict):
+        content = _coerce_text_content(message.get("content"))
+        if content:
+            return content
+
+    return ""
+
+
+def _extract_reasoning_trajectory_from_payload(payload: Any) -> list[dict]:
+    """Best-effort extraction of a structured reasoning/tool trajectory."""
+    if not isinstance(payload, dict):
+        return []
+
+    for key in (
+        "trajectory",
+        "reasoning_trajectory",
+        "reasoning_trace",
+        "trace",
+        "steps",
+        "events",
+    ):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+
+    output = payload.get("output")
+    if isinstance(output, list):
+        extracted = [item for item in output if isinstance(item, dict)]
+        if extracted:
+            return extracted
+
+    choices = payload.get("choices")
+    if isinstance(choices, list) and choices:
+        message = choices[0].get("message")
+        if isinstance(message, dict):
+            tool_calls = message.get("tool_calls")
+            if isinstance(tool_calls, list):
+                return [item for item in tool_calls if isinstance(item, dict)]
+
+    return []
+
+
 def _parse_openclaw_session(session_jsonl: str) -> list[dict]:
     """Parse an OpenClaw session JSONL file into a trajectory list.
 
@@ -99,9 +196,6 @@ def _parse_openclaw_session(session_jsonl: str) -> list[dict]:
           - "tool_use" / "tool_result": alternative names for the above
       - "custom": custom events (model-snapshot, etc.)
       - "thinking_level_change": thinking mode changes
-
-    We extract these into a flat list of trajectory events, preserving
-    the full detail of each step including thinking and tool calls.
     """
     trajectory = []
     for line in session_jsonl.strip().splitlines():
@@ -117,10 +211,8 @@ def _parse_openclaw_session(session_jsonl: str) -> list[dict]:
         if event_type == "message":
             msg = event.get("message", {})
             role = msg.get("role", "unknown")
-            # Content can be a string or a list of content blocks
             content = msg.get("content", "")
             if isinstance(content, list):
-                # Extract structured info from content blocks
                 text_parts = []
                 thinking_parts = []
                 tool_calls = []
@@ -141,7 +233,6 @@ def _parse_openclaw_session(session_jsonl: str) -> list[dict]:
                         })
                     elif block_type in ("toolResult", "tool_result"):
                         tc = block.get("content", "")
-                        # Content can be a list of text blocks
                         if isinstance(tc, list):
                             tc = "\n".join(
                                 b.get("text", "")
@@ -164,7 +255,6 @@ def _parse_openclaw_session(session_jsonl: str) -> list[dict]:
             else:
                 entry = {"role": role, "content": content}
 
-            # Add usage info if present (for assistant messages)
             usage = msg.get("usage")
             if usage:
                 entry["usage"] = usage
@@ -218,6 +308,8 @@ class OpenClawAgent(Agent):
       - rock_sandbox_url: ROCK proxy base URL for retrieving session files
                           (e.g. "http://127.0.0.1:9001/apis/envs/sandbox/v1")
       - sandbox_id: ROCK sandbox ID (extracted from api_base if not set)
+      - rock_agent_config_path: Path to ROCK agent config YAML (for dynamic bootstrap)
+      - openclaw_config_path: Path to OpenClaw gateway config JSON (for dynamic bootstrap)
     """
 
     name = "openclaw"
@@ -229,6 +321,7 @@ class OpenClawAgent(Agent):
         self._gateway_token = config.get("gateway_token", "OPENCLAW")
         self._temperature = config.get("temperature", 0.0)
         self._max_tokens = config.get("max_tokens", 8192)
+        self._max_attempts = max(1, int(config.get("max_attempts", 3)))
         self._config = config
 
         # For retrieving agentic trajectory from sandbox
@@ -250,6 +343,13 @@ class OpenClawAgent(Agent):
         # ROCK SDK client for reading session files (lazy init)
         self._sandbox_client = None
 
+        # Runtime manager for dynamic gateway bootstrap
+        try:
+            from alphadiana.agent.openclaw_runtime import OpenClawRuntimeManager
+            self._runtime_manager = OpenClawRuntimeManager(config)
+        except ImportError:
+            self._runtime_manager = None
+
     def _get_sandbox_client(self):
         """Lazily initialize the ROCK sandbox client for trajectory retrieval."""
         if self._sandbox_client is not None:
@@ -262,9 +362,6 @@ class OpenClawAgent(Agent):
             from rock.sdk.sandbox.client import Sandbox
             from rock.sdk.sandbox.config import SandboxConfig
 
-            # Create a client that points to the existing sandbox.
-            # We use a dummy base_url for SandboxConfig since we override
-            # the URL to the proxy for runtime operations.
             admin_url = self._rock_sandbox_url.replace(
                 "/apis/envs/sandbox/v1", ""
             ).replace(":9001", ":9000")
@@ -279,10 +376,7 @@ class OpenClawAgent(Agent):
             return None
 
     async def _retrieve_session_trajectory(self) -> list[dict]:
-        """Retrieve the latest session JSONL from the sandbox.
-
-        Returns the parsed trajectory, or an empty list on failure.
-        """
+        """Retrieve the latest session JSONL from the sandbox."""
         sb = self._get_sandbox_client()
         if sb is None:
             return []
@@ -290,7 +384,6 @@ class OpenClawAgent(Agent):
         try:
             from rock.actions.sandbox.request import CreateBashSessionRequest
 
-            # Ensure we have a session for running commands
             try:
                 await sb.create_session(
                     CreateBashSessionRequest(session="trajectory")
@@ -298,7 +391,6 @@ class OpenClawAgent(Agent):
             except Exception:
                 pass  # Session may already exist
 
-            # List session files, sorted by modification time (newest first)
             result = await sb.arun(
                 "ls -t /root/.openclaw/agents/main/sessions/*.jsonl 2>/dev/null | head -1",
                 session="trajectory",
@@ -307,7 +399,6 @@ class OpenClawAgent(Agent):
             if not session_file or not session_file.endswith(".jsonl"):
                 return []
 
-            # Read the session file
             result = await sb.arun(
                 f"cat {session_file}",
                 session="trajectory",
@@ -325,7 +416,6 @@ class OpenClawAgent(Agent):
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
-                # We're inside an existing event loop; run in a new thread
                 import concurrent.futures
                 with concurrent.futures.ThreadPoolExecutor() as pool:
                     future = pool.submit(
@@ -344,56 +434,106 @@ class OpenClawAgent(Agent):
 
     def solve(self, task: BenchmarkTask, sandbox: Any = None) -> AgentResponse:
         try:
-            from openai import OpenAI
+            import httpx
         except ImportError:
             raise RuntimeError(
-                "The 'openai' package is required for OpenClawAgent. "
-                "Install with: pip install openai"
+                "The 'httpx' package is required for OpenClawAgent. "
+                "Install with: pip install httpx"
             )
 
         start = time.time()
 
-        client = OpenAI(
-            base_url=self._api_base,
-            api_key=self._gateway_token,
-        )
-
-        # OpenClaw's gateway builds its own system prompt internally
-        # (AGENTS.md, SOUL.md, tool definitions, skills, etc.).
-        # We only send the user message.  The gateway wraps it in
-        # its agentic framework and runs a multi-turn agent loop.
-        messages = [
+        # OpenClaw's gateway builds its own system prompt internally.
+        # We only send the user message.
+        request_messages = [
             {"role": "user", "content": task.problem},
         ]
 
-        response = client.chat.completions.create(
-            model=self._model,
-            messages=messages,
-            temperature=self._temperature,
-            max_tokens=self._max_tokens,
-        )
+        sandbox_id = self._sandbox_id
+        if sandbox is not None:
+            sandbox_id = str(getattr(sandbox, "sandbox_id", "") or sandbox_id)
+
+        # Dynamic bootstrap if api_base not set but runtime manager is configured
+        runtime_info: dict[str, Any] = {
+            "sandbox_id": sandbox_id,
+            "gateway_url": f"{self._api_base}/chat/completions" if self._api_base else "",
+            "api_base": self._api_base,
+        }
+        artifact_data: dict[str, Any] = {
+            "artifact_manifest": {},
+            "gateway_log_excerpt": "",
+            "workspace_snapshot_paths": [],
+            "workspace_file_contents": {},
+            "sandbox_metadata": {},
+        }
+        if not runtime_info["api_base"] and sandbox is not None and self._runtime_manager and self._runtime_manager.is_configured:
+            runtime_info = self._runtime_manager.ensure_ready(sandbox)
+        elif not runtime_info["api_base"]:
+            raise RuntimeError(
+                "OpenClawAgent requires either agent.config.api_base or a live ROCK "
+                "sandbox plus rock_agent_config_path/openclaw_config_path."
+            )
+
+        url = f"{runtime_info['api_base'].rstrip('/')}/chat/completions"
+        headers = {
+            "Authorization": f"bearer {self._gateway_token}",
+            "Content-Type": "application/json",
+        }
+        request_payload = {
+            "model": self._model,
+            "messages": request_messages,
+            "temperature": self._temperature,
+            "max_tokens": self._max_tokens,
+            "stream": False,
+        }
+
+        # Retry loop with exponential backoff
+        response_json: dict = {}
+        raw_output = ""
+        last_error: Exception | None = None
+        for attempt in range(1, self._max_attempts + 1):
+            try:
+                with httpx.Client(timeout=300.0, trust_env=False) as client:
+                    response = client.post(url, headers=headers, json=request_payload)
+                response.raise_for_status()
+                response_json = response.json()
+                raw_output = _extract_raw_output_from_payload(response_json)
+                if raw_output:
+                    break
+                last_error = RuntimeError(
+                    f"OpenClaw returned no assistant content on attempt {attempt}"
+                )
+            except Exception as exc:
+                last_error = exc
+                logger.warning("OpenClaw attempt %d/%d failed: %s", attempt, self._max_attempts, exc)
+
+            if attempt < self._max_attempts:
+                time.sleep(min(2, attempt))
+
+        if not raw_output:
+            if last_error is not None and not response_json:
+                raise last_error
+            detail = response_json or {"url": url, "request": request_payload}
+            raise RuntimeError(f"OpenClaw response did not contain assistant text: {detail}")
 
         wall_time = time.time() - start
 
-        if not response.choices:
-            raw_output = ""
-        else:
-            raw_output = response.choices[0].message.content or ""
         answer = _extract_answer(raw_output)
 
-        usage = response.usage
         token_usage = {}
+        usage = response_json.get("usage")
         if usage:
             token_usage = {
-                "prompt_tokens": usage.prompt_tokens,
-                "completion_tokens": usage.completion_tokens,
-                "total_tokens": usage.total_tokens,
+                "prompt_tokens": int(usage.get("prompt_tokens", 0)),
+                "completion_tokens": int(usage.get("completion_tokens", 0)),
+                "total_tokens": int(usage.get("total_tokens", 0)),
             }
 
         # Try to retrieve the real agentic trajectory from the sandbox.
-        # This contains the full multi-turn conversation including tool
-        # calls, intermediate reasoning, etc.
         trajectory = self._retrieve_trajectory_sync()
+        if not trajectory:
+            # Also try extracting from response payload
+            trajectory = _extract_reasoning_trajectory_from_payload(response_json)
         if not trajectory:
             # Fallback: record what we know from the API response
             trajectory = [
@@ -401,15 +541,33 @@ class OpenClawAgent(Agent):
                 {"role": "assistant", "content": raw_output},
             ]
 
+        # Collect artifacts from runtime manager if available
+        if sandbox is not None and self._runtime_manager and self._runtime_manager.is_configured:
+            try:
+                artifact_data = self._runtime_manager.collect_artifacts(sandbox)
+            except Exception as exc:
+                logger.warning("Artifact collection failed: %s", exc)
+
         return AgentResponse(
             answer=answer,
             trajectory=trajectory,
+            reasoning_trajectory=_extract_reasoning_trajectory_from_payload(response_json),
             raw_output=raw_output,
             token_usage=token_usage,
             wall_time_sec=wall_time,
+            request_messages=request_messages,
+            response_json=response_json,
+            sandbox_id=runtime_info.get("sandbox_id", ""),
+            gateway_url=runtime_info.get("gateway_url", ""),
+            artifact_manifest=artifact_data.get("artifact_manifest", {}),
+            gateway_log_excerpt=artifact_data.get("gateway_log_excerpt", ""),
+            workspace_snapshot_paths=artifact_data.get("workspace_snapshot_paths", []),
+            workspace_file_contents=artifact_data.get("workspace_file_contents", {}),
+            sandbox_metadata=artifact_data.get("sandbox_metadata", {}),
             metadata={
-                "gateway_response_id": response.id,
-                "sandbox_id": self._sandbox_id,
+                "gateway_response_id": response_json.get("id", ""),
+                "sandbox_id": sandbox_id,
+                "model": self._model,
             },
         )
 

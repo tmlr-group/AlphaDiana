@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import TYPE_CHECKING
 
 from alphadiana.agent.registry import AgentRegistry
@@ -21,6 +22,16 @@ if TYPE_CHECKING:
     from alphadiana.scorer.base import Scorer
 
 logger = logging.getLogger(__name__)
+
+
+def _build_error_info(exc: Exception) -> dict:
+    """Build a serializable error dict from an exception."""
+    return {
+        "error": str(exc),
+        "error_type": type(exc).__name__,
+        "request_payload": getattr(exc, "request_payload", None),
+        "response_body": getattr(exc, "response_body", None),
+    }
 
 
 class Runner:
@@ -113,9 +124,18 @@ class Runner:
             sandbox_session = None
             if self.sandbox is not None:
                 sandbox_session = self.sandbox.create_session()
+            start = time.monotonic()
+            response = None
             try:
                 # Run the agent.
                 response = self.agent.solve(task, sandbox_session)
+                # Propagate sandbox metadata if not already set.
+                if sandbox_session is not None and not response.sandbox_metadata:
+                    response.sandbox_metadata = sandbox_session.metadata()
+                if sandbox_session is not None and not response.sandbox_id:
+                    response.sandbox_id = response.sandbox_metadata.get("sandbox_id", "")
+                if self.sandbox is not None:
+                    response.metadata.setdefault("sandbox_backend", self.sandbox.name)
                 # Score the result.
                 score = self.scorer.score(task, response)
                 # Store the result.
@@ -125,6 +145,43 @@ class Runner:
                     "correct": score.correct,
                     "score": score.score,
                 }
+            except Exception as exc:
+                logger.error("Task %s failed: %s", task.task_id, exc)
+                # Build a partial response for error recording.
+                error_response = response
+                if error_response is None:
+                    from alphadiana.agent.base import AgentResponse
+                    error_response = AgentResponse(
+                        answer=None,
+                        wall_time_sec=time.monotonic() - start,
+                    )
+                # Collect sandbox metadata and artifacts on failure.
+                if sandbox_session is not None:
+                    if not error_response.sandbox_metadata:
+                        error_response.sandbox_metadata = sandbox_session.metadata()
+                    if not error_response.sandbox_id:
+                        error_response.sandbox_id = error_response.sandbox_metadata.get("sandbox_id", "")
+                    runtime_manager = getattr(self.agent, "_runtime_manager", None)
+                    if runtime_manager is not None and getattr(runtime_manager, "is_configured", False):
+                        try:
+                            artifact_data = runtime_manager.collect_artifacts(sandbox_session)
+                            error_response.artifact_manifest = artifact_data["artifact_manifest"]
+                            error_response.gateway_log_excerpt = artifact_data["gateway_log_excerpt"]
+                            error_response.workspace_snapshot_paths = artifact_data["workspace_snapshot_paths"]
+                            error_response.workspace_file_contents = artifact_data["workspace_file_contents"]
+                            error_response.sandbox_metadata = artifact_data["sandbox_metadata"]
+                        except Exception as artifact_exc:
+                            logger.warning("Artifact collection failed for task %s: %s", task.task_id, artifact_exc)
+                    if not error_response.gateway_url and hasattr(sandbox_session, "proxy_v1_base"):
+                        error_response.gateway_url = f"{sandbox_session.proxy_v1_base()}/chat/completions"
+                if self.sandbox is not None:
+                    error_response.metadata.setdefault("sandbox_backend", self.sandbox.name)
+                self.result_store.append_error(
+                    task,
+                    error=_build_error_info(exc),
+                    response=error_response,
+                )
+                raise
             finally:
                 if sandbox_session is not None:
                     sandbox_session.close()

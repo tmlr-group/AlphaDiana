@@ -41,13 +41,16 @@ class ReportGenerator:
         """Load results from the store and compute summary statistics."""
         results = result_store.load()
         total = len(results)
-        completed = sum(1 for r in results if r.get("score") is not None)
+
+        # Only count tasks that were scored (excludes infrastructure errors).
+        completed_results = [r for r in results if r.get("score") is not None]
+        completed = len(completed_results)
         failed = total - completed
 
-        correct_count = sum(1 for r in results if r.get("correct", False))
-        accuracy = correct_count / total if total > 0 else 0.0
+        correct_count = sum(1 for r in completed_results if r.get("correct", False))
+        accuracy = correct_count / completed if completed > 0 else 0.0
 
-        scores = [r.get("score", 0.0) for r in results]
+        scores = [r.get("score", 0.0) for r in completed_results]
         mean_score = sum(scores) / len(scores) if scores else 0.0
 
         wall_times = [r.get("wall_time_sec", 0.0) for r in results]
@@ -68,13 +71,15 @@ class ReportGenerator:
         # Per-category accuracy (based on task metadata "category" field).
         category_correct: dict[str, int] = {}
         category_total: dict[str, int] = {}
-        for r in results:
-            # The category may be stored in the task metadata; we look for it
-            # in the result record's problem or via a convention.
-            # For now, use a "category" key if present in the result metadata.
+        for r in completed_results:
             cat = "default"
-            if isinstance(r.get("metadata"), dict):
-                cat = r["metadata"].get("category", "default")
+            # Check both task_metadata and metadata for category.
+            task_meta = r.get("task_metadata", {})
+            resp_meta = r.get("metadata", {})
+            if isinstance(task_meta, dict) and task_meta.get("category"):
+                cat = task_meta["category"]
+            elif isinstance(resp_meta, dict) and resp_meta.get("category"):
+                cat = resp_meta["category"]
             category_total[cat] = category_total.get(cat, 0) + 1
             if r.get("correct", False):
                 category_correct[cat] = category_correct.get(cat, 0) + 1

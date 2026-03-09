@@ -20,6 +20,18 @@ class AgentResponse:
     wall_time_sec: float = 0.0
     metadata: dict = field(default_factory=dict)
 
+    # --- Extended fields absorbed from codex-dev for observability ---
+    reasoning_trajectory: list[dict] = field(default_factory=list)
+    request_messages: list[dict] = field(default_factory=list)
+    response_json: dict = field(default_factory=dict)
+    sandbox_id: str = ""
+    gateway_url: str = ""
+    artifact_manifest: dict = field(default_factory=dict)
+    gateway_log_excerpt: str = ""
+    workspace_snapshot_paths: list[str] = field(default_factory=list)
+    workspace_file_contents: dict[str, str] = field(default_factory=dict)
+    sandbox_metadata: dict = field(default_factory=dict)
+
 
 class Agent(ABC):
     """Abstract base class for agent systems."""

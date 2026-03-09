@@ -43,6 +43,14 @@ class SandboxSession(ABC):
         """Close and clean up the session."""
         ...
 
+    def metadata(self) -> dict:
+        """Return metadata about this session. Override for richer info."""
+        return {"session_id": self.session_id}
+
+    def read_text(self, filename: str) -> str:
+        """Read a text file from the sandbox. Default: download + decode."""
+        return self.download(filename).decode("utf-8", errors="replace")
+
 
 class Sandbox(ABC):
     """Abstract base class for a sandbox provider."""

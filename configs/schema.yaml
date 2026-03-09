@@ -8,13 +8,17 @@ run_id: string
 # agent: (required) Agent system configuration.
 agent:
   name: string        # Agent name, e.g. "openclaw", "direct_llm"
-  version: string     # Pinned version tag (REQUIRED), e.g. "v0.3.1"
+  version: string     # Pinned version tag or "latest"
   config:             # Pass-through config for the agent (model settings, etc.)
     model: string
     api_base: string
+    gateway_token: string           # OpenClaw gateway auth token (default: "OPENCLAW")
+    rock_agent_config_path: string  # Path to ROCK agent config YAML (for dynamic bootstrap)
+    openclaw_config_path: string    # Path to OpenClaw gateway config JSON (for dynamic bootstrap)
     api_key: string
     temperature: float
     max_tokens: integer
+    max_attempts: integer           # Retry attempts for OpenClaw (default: 3)
 
 # benchmark: (required) Benchmark configuration.
 benchmark:
@@ -29,9 +33,17 @@ benchmark:
 sandbox:
   name: string        # Sandbox name, e.g. "local", "rock", "boxlite"
   config:             # Sandbox-specific params
+    # ROCK SDK config
+    admin_base_url: string          # ROCK admin server URL (e.g. "http://localhost:9000")
+    proxy_base_url: string          # ROCK proxy server URL (e.g. "http://localhost:9001")
+    image: string                   # Docker image (default: "python:3.11")
+    memory: string                  # Memory limit, e.g. "2g", "512m" (default: "2g")
+    cpus: float                     # CPU limit (default: 0.5)
+    startup_timeout: integer        # Sandbox startup timeout in seconds (default: 300)
+    auto_clear_seconds: integer     # Auto-cleanup timeout in seconds (default: 3600)
+    start_retries: integer          # Number of startup retries (default: 1)
+    # Generic sandbox config
     endpoint: string
-    image: string
-    timeout: integer
     api_key: string
     workdir: string
 
