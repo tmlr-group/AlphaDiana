@@ -1,6 +1,6 @@
 # AlphaDiana
 
-`AlphaDiana` 用于评估 foundation model 和 agent system 在推理 benchmark 上的表现。本仓库当前重点验证一条可复现链路：
+`AlphaDiana` 用于评估 foundation model 和 agent system 在推理 benchmark 上的表现。本README当前重点验证一条可复现链路：
 
 - OpenClaw agent system
 - OpenRouter 上的 `qwen/qwen-2.5-7b-instruct`
