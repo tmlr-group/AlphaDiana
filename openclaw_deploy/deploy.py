@@ -8,12 +8,15 @@ from pathlib import Path
 
 import httpx
 
+from alphadiana.utils.rock_ports import resolve_rock_ports_from_env
 from rock.sdk.sandbox.client import Sandbox
 from rock.sdk.sandbox.config import SandboxConfig
 
 
-DEFAULT_BASE_URL = "http://127.0.0.1:9000"
-DEFAULT_PROXY_URL = "http://127.0.0.1:9001/apis/envs/sandbox/v1"
+DEFAULT_PORTS = resolve_rock_ports_from_env()
+DEFAULT_BASE_URL = os.environ.get("ROCK_BASE_URL", DEFAULT_PORTS.base_url)
+DEFAULT_PROXY_URL = os.environ.get("ROCK_PROXY_URL", DEFAULT_PORTS.proxy_api_url)
+DEFAULT_REDIS_PORT = DEFAULT_PORTS.redis_port
 DEPLOY_DIR = Path(__file__).resolve().parent
 REPO_ROOT = DEPLOY_DIR.parent
 INVOKE_CWD = Path.cwd().resolve()
@@ -72,9 +75,10 @@ async def _check_endpoint(name: str, url: str) -> None:
             f"{name} is not reachable at {url}: {exc}\n"
             "Start these services in separate terminals first:\n"
             "  cd ref/ROCK\n"
-            "  ray start --head --port=6380 --disable-usage-stats --block\n"
-            "  python -m rock.admin.main --env local-proxy --role admin --port 9000\n"
-            "  python -m rock.admin.main --env local-proxy --role proxy --port 9001"
+            "  source ../../dev/.rock_ports.env\n"
+            "  ray start --head --port=$ROCK_RAY_PORT --dashboard-port=$ROCK_RAY_DASHBOARD_PORT --ray-client-server-port=$ROCK_RAY_CLIENT_SERVER_PORT --temp-dir=$RAY_TMPDIR --disable-usage-stats --block\n"
+            "  python -m rock.admin.main --env local-proxy --role admin --port $ROCK_ADMIN_PORT\n"
+            "  python -m rock.admin.main --env local-proxy --role proxy --port $ROCK_PROXY_PORT"
         ) from exc
 
 
@@ -157,7 +161,7 @@ async def deploy(args: argparse.Namespace) -> None:
             f"Failed to create sandbox via {args.base_url}: {exc}{details}\n"
             "Common causes:\n"
             "  - Docker is not running or the current user cannot access Docker\n"
-            "  - redis-stack is not running on localhost:6379\n"
+            f"  - {os.environ.get('ROCK_REDIS_CONTAINER', 'redis-stack')} is not running on localhost:{os.environ.get('ROCK_REDIS_PORT', str(DEFAULT_REDIS_PORT))}\n"
             "  - the sandbox image pull is slow or blocked\n"
             "  - ref/ROCK/.venv does not point to the active conda environment\n"
             "  - ROCK admin/proxy was started in a shell without `source dev/rock_env.sh`"

@@ -10,6 +10,8 @@ from pathlib import Path
 
 import yaml
 
+from alphadiana.utils.rock_ports import resolve_rock_ports_from_env
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_CONFIG = REPO_ROOT / "configs/examples/openclaw_aime2024.yaml"
@@ -38,12 +40,21 @@ def _write_yaml(path: Path, data: dict) -> None:
     path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
 
 
+def _resolve_proxy_api_base() -> str:
+    env_proxy_url = os.environ.get("ROCK_PROXY_URL", "").strip()
+    if env_proxy_url:
+        return env_proxy_url.rstrip("/")
+    return resolve_rock_ports_from_env().proxy_api_url
+
+
 def _build_eval_config(template_path: Path, sandbox_id: str, author: str) -> dict:
     if not template_path.exists():
         raise FileNotFoundError(f"Eval template file not found: {template_path}")
     data = yaml.safe_load(template_path.read_text(encoding="utf-8"))
-    api_base = data["agent"]["config"]["api_base"]
-    data["agent"]["config"]["api_base"] = api_base.replace("<SANDBOX_ID>", sandbox_id)
+    proxy_api_base = _resolve_proxy_api_base()
+    data["agent"]["config"]["api_base"] = (
+        f"{proxy_api_base}/sandboxes/{sandbox_id}/proxy/v1"
+    )
     data.setdefault("metadata", {})
     data["metadata"]["author"] = author
     data["run_id"] = "openclaw-qwen-2.5-7b-instruct-openrouter-aime2024"

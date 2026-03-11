@@ -1,6 +1,8 @@
 """AIME benchmark loader."""
 from __future__ import annotations
 
+import os
+
 from alphadiana.benchmark.base import Benchmark, BenchmarkTask
 from alphadiana.benchmark.registry import BenchmarkRegistry
 
@@ -37,7 +39,17 @@ class AIMEBenchmark(Benchmark):
         problem_field = config.get("problem_field", "problem")
         answer_field = config.get("answer_field", "answer")
 
-        dataset = load_dataset(dataset_path, split=split)
+        try:
+            dataset = load_dataset(dataset_path, split=split)
+        except Exception as exc:
+            hf_endpoint = os.environ.get("HF_ENDPOINT", "").strip()
+            raise RuntimeError(
+                "Failed to load AIME dataset from Hugging Face. "
+                "If direct access is unavailable, source `dev/rock_env.sh` first "
+                "or set `HF_ENDPOINT=https://hf-mirror.com` and retry. "
+                f"Current HF_ENDPOINT={hf_endpoint or '<unset>'}. "
+                f"Original error: {exc}"
+            ) from exc
 
         tasks: list[BenchmarkTask] = []
         for idx, item in enumerate(dataset):

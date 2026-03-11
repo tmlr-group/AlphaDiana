@@ -17,7 +17,10 @@ import os
 
 import pytest
 
+from alphadiana.utils.rock_ports import resolve_rock_ports_from_env
+
 pytestmark = pytest.mark.integration
+PORTS = resolve_rock_ports_from_env()
 
 
 def _get_sandbox_id() -> str | None:
@@ -26,7 +29,7 @@ def _get_sandbox_id() -> str | None:
 
 def _get_openclaw_api_base() -> str:
     sandbox_id = _get_sandbox_id()
-    proxy_url = "http://localhost:9001"
+    proxy_url = PORTS.proxy_root_url
     return f"{proxy_url}/apis/envs/sandbox/v1/sandboxes/{sandbox_id}/proxy/v1"
 
 

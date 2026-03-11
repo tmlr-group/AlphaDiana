@@ -47,3 +47,6 @@ dump.rdb
 results/
 
 dev/generated
+
+.cache
+node_modules/

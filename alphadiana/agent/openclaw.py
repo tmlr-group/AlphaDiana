@@ -27,11 +27,13 @@ import logging
 import re
 import time
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from alphadiana.agent.base import Agent, AgentResponse
 from alphadiana.agent.registry import AgentRegistry
 from alphadiana.benchmark.base import BenchmarkTask
 from alphadiana.utils.math_answer import extract_answer_candidate
+from alphadiana.utils.rock_ports import resolve_rock_ports_from_env
 
 logger = logging.getLogger(__name__)
 
@@ -324,9 +326,7 @@ class OpenClawAgent(Agent):
             from rock.sdk.sandbox.client import Sandbox
             from rock.sdk.sandbox.config import SandboxConfig
 
-            admin_url = self._rock_sandbox_url.replace(
-                "/apis/envs/sandbox/v1", ""
-            ).replace(":9001", ":9000")
+            admin_url = self._derive_admin_url()
             config = SandboxConfig(base_url=admin_url, image="python:3.11")
             sb = Sandbox(config)
             sb._sandbox_id = self._sandbox_id
@@ -336,6 +336,21 @@ class OpenClawAgent(Agent):
         except Exception as e:
             logger.warning("Failed to create ROCK sandbox client: %s", e)
             return None
+
+    def _derive_admin_url(self) -> str:
+        if not self._rock_sandbox_url:
+            return resolve_rock_ports_from_env().base_url
+
+        parsed = urlsplit(self._rock_sandbox_url)
+        env_ports = resolve_rock_ports_from_env()
+        hostname = parsed.hostname or "127.0.0.1"
+        netloc = f"{hostname}:{env_ports.admin_port}"
+        if parsed.username:
+            auth = parsed.username
+            if parsed.password:
+                auth = f"{auth}:{parsed.password}"
+            netloc = f"{auth}@{netloc}"
+        return urlunsplit((parsed.scheme or "http", netloc, "", "", ""))
 
     async def _retrieve_session_trajectory(self) -> list[dict]:
         """Retrieve the latest session JSONL from the sandbox."""
