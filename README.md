@@ -103,7 +103,7 @@ source dev/rock_env.sh
 `local-proxy` 模式依赖 Redis，而且 Redis 端口也应该动态化。先生成端口和动态 ROCK 配置：
 
 ```bash
-cd /data2/xuan/AlphaDiana
+cd AlphaDiana
 conda activate alphadiana
 source dev/rock_env.sh
 python dev/find_rock_ports.py --write-env dev/.rock_ports.env
@@ -142,7 +142,7 @@ docker ps
 如果你需要先清理本用户之前残留的 ROCK / OpenClaw 相关监听端口，可以在仓库根目录执行：
 
 ```bash
-cd /data2/xuan/AlphaDiana
+cd AlphaDiana
 conda activate alphadiana
 source dev/rock_env.sh
 source dev/.rock_ports.env
@@ -203,8 +203,8 @@ export ROCK_PROXY_PORT=9005
 export ROCK_BASE_URL=http://127.0.0.1:9004
 export ROCK_PROXY_ROOT_URL=http://127.0.0.1:9005
 export ROCK_PROXY_URL=http://127.0.0.1:9005/apis/envs/sandbox/v1
-export ROCK_DYNAMIC_CONFIG="/data2/xuan/AlphaDiana/dev/generated/rock-local-proxy.dynamic.yml"
-export RAY_TMPDIR="/data2/xuan/AlphaDiana/.cache/ray"
+export ROCK_DYNAMIC_CONFIG="AlphaDiana/dev/generated/rock-local-proxy.dynamic.yml"
+export RAY_TMPDIR="AlphaDiana/.cache/ray"
 ```
 
 之后所有终端都先执行：
@@ -274,7 +274,7 @@ python -m rock.admin.main --env local-proxy --role proxy --port "$ROCK_PROXY_POR
 在任意新终端里执行：
 
 ```bash
-cd /data2/xuan/AlphaDiana
+cd AlphaDiana
 conda activate alphadiana
 source dev/rock_env.sh
 source dev/.rock_ports.env
@@ -302,7 +302,7 @@ PONG
 ### 1. 生成部署配置
 
 ```bash
-cd /data2/xuan/AlphaDiana
+cd AlphaDiana
 conda activate alphadiana
 source dev/rock_env.sh
 python dev/run_openclaw_aime_openrouter.py
@@ -319,7 +319,7 @@ dev/generated/rock_agent_config.openrouter_qwen_2_5_7b.resolved.yaml
 ```bash
 newgrp docker
 
-cd /data2/xuan/AlphaDiana
+cd AlphaDiana
 conda activate alphadiana
 source dev/rock_env.sh
 python openclaw_deploy/deploy.py \
@@ -346,7 +346,7 @@ API base: http://127.0.0.1:<ROCK_PROXY_PORT>/apis/envs/sandbox/v1/sandboxes/<SAN
 ### 3. 生成评估配置
 
 ```bash
-cd /data2/xuan/AlphaDiana
+cd AlphaDiana
 conda activate alphadiana
 source dev/rock_env.sh
 python dev/run_openclaw_aime_openrouter.py --sandbox-id <SANDBOX_ID>
@@ -388,14 +388,14 @@ curl -X POST \
 先校验配置：
 
 ```bash
-cd /data2/xuan/AlphaDiana
+cd AlphaDiana
 alphadiana validate dev/generated/openclaw_qwen25_7b_openrouter_aime2024.resolved.yaml
 ```
 
 再运行评估：
 
 ```bash
-cd /data2/xuan/AlphaDiana
+cd AlphaDiana
 alphadiana run dev/generated/openclaw_qwen25_7b_openrouter_aime2024.resolved.yaml
 ```
 
@@ -410,14 +410,14 @@ results/openclaw-qwen-2.5-7b-instruct-openrouter-aime2024.jsonl
 查看已经完成多少题：
 
 ```bash
-cd /data2/xuan/AlphaDiana
+cd AlphaDiana
 wc -l results/openclaw-qwen-2.5-7b-instruct-openrouter-aime2024.jsonl
 ```
 
 查看简单摘要：
 
 ```bash
-cd /data2/xuan/AlphaDiana
+cd AlphaDiana
 python - <<'PY'
 import json
 from pathlib import Path
@@ -455,7 +455,7 @@ python -m rock.admin.main --env local-proxy --role proxy --port "$ROCK_PROXY_POR
 请使用：
 
 ```bash
-cd /data2/xuan/AlphaDiana
+cd AlphaDiana
 source dev/rock_env.sh
 ```
 
@@ -470,7 +470,7 @@ export ROCK_CONFIG=dev/generated/rock-local-proxy.dynamic.yml
 先检查：
 
 ```bash
-cd /data2/xuan/AlphaDiana
+cd AlphaDiana
 curl "$ROCK_BASE_URL/"
 curl "$ROCK_PROXY_ROOT_URL/"
 docker ps
@@ -502,7 +502,7 @@ connecting to localhost:<ROCK_REDIS_PORT>
 说明不是 admin 端口问题，而是 Redis 没启动。先执行：
 
 ```bash
-cd /data2/xuan/AlphaDiana
+cd AlphaDiana
 conda activate alphadiana
 source dev/rock_env.sh
 source dev/.rock_ports.env
@@ -520,7 +520,7 @@ docker exec "$ROCK_REDIS_CONTAINER" redis-cli ping
 确认返回 `PONG` 后，再重启：
 
 ```bash
-cd /data2/xuan/AlphaDiana
+cd AlphaDiana
 conda activate alphadiana
 source dev/rock_env.sh
 source dev/.rock_ports.env
@@ -571,7 +571,7 @@ docker ps
 推荐直接执行这组修复命令：
 
 ```bash
-cd /data2/xuan/AlphaDiana
+cd AlphaDiana
 newgrp docker
 ```
 
@@ -598,7 +598,7 @@ docker exec "$ROCK_REDIS_CONTAINER" redis-cli ping
 推荐顺序：
 
 ```bash
-cd /data2/xuan/AlphaDiana
+cd AlphaDiana
 newgrp docker
 ```
 
@@ -617,7 +617,7 @@ docker start "$ROCK_REDIS_CONTAINER" || docker run -d --name "$ROCK_REDIS_CONTAI
 然后分别在 3 个新终端里重新启动：
 
 ```bash
-cd /data2/xuan/AlphaDiana
+cd AlphaDiana
 conda activate alphadiana
 source dev/rock_env.sh
 source dev/.rock_ports.env
@@ -627,7 +627,7 @@ ray start --head --port="$ROCK_RAY_PORT" --dashboard-port="$ROCK_RAY_DASHBOARD_P
 ```
 
 ```bash
-cd /data2/xuan/AlphaDiana
+cd AlphaDiana
 conda activate alphadiana
 source dev/rock_env.sh
 source dev/.rock_ports.env
@@ -636,7 +636,7 @@ python -m rock.admin.main --env local-proxy --role admin --port "$ROCK_ADMIN_POR
 ```
 
 ```bash
-cd /data2/xuan/AlphaDiana
+cd AlphaDiana
 conda activate alphadiana
 source dev/rock_env.sh
 source dev/.rock_ports.env
@@ -680,7 +680,7 @@ sudo docker ps
 确认当前 shell 已加载：
 
 ```bash
-cd /data2/xuan/AlphaDiana
+cd AlphaDiana
 source dev/rock_env.sh
 source dev/.rock_ports.env
 ```
@@ -703,7 +703,7 @@ ray start --head \
 如果你已经知道各步骤在做什么，只想直接照抄命令：
 
 ```bash
-cd /data2/xuan/AlphaDiana
+cd AlphaDiana
 conda activate alphadiana
 source dev/rock_env.sh
 python dev/find_rock_ports.py --write-env dev/.rock_ports.env
@@ -711,7 +711,7 @@ source dev/.rock_ports.env
 
 cd ref/ROCK
 ray start --head --port="$ROCK_RAY_PORT" --dashboard-port="$ROCK_RAY_DASHBOARD_PORT" --ray-client-server-port="$ROCK_RAY_CLIENT_SERVER_PORT" --temp-dir="$RAY_TMPDIR" --disable-usage-stats --block
-cd /data2/xuan/AlphaDiana
+cd AlphaDiana
 
 python dev/run_openclaw_aime_openrouter.py
 python openclaw_deploy/deploy.py \
