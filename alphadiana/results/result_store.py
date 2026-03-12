@@ -24,7 +24,7 @@ class ResultStore:
         self.output_dir = Path(output_dir)
         self.run_id = run_id
         self.path = str(self.output_dir / f"{run_id}.jsonl")
-        self.artifacts_dir = self.output_dir / "artifacts"
+        self.artifacts_dir = self.output_dir / run_id / "artifacts"
         self.artifacts_dir.mkdir(parents=True, exist_ok=True)
 
     def append(
@@ -57,6 +57,7 @@ class ResultStore:
             "gateway_log_excerpt": response.gateway_log_excerpt,
             "workspace_snapshot_paths": response.workspace_snapshot_paths,
             "sandbox_metadata": response.sandbox_metadata,
+            "system_prompt": response.system_prompt,
             "metadata": response.metadata,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
@@ -95,6 +96,7 @@ class ResultStore:
             "gateway_log_excerpt": response.gateway_log_excerpt,
             "workspace_snapshot_paths": response.workspace_snapshot_paths,
             "sandbox_metadata": response.sandbox_metadata,
+            "system_prompt": response.system_prompt,
             "metadata": response.metadata,
             "error": error,
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -134,6 +136,21 @@ class ResultStore:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(response.sandbox_metadata, indent=2), encoding="utf-8")
             files["sandbox_metadata"] = str(rel)
+
+        if response.system_prompt:
+            rel = Path(task.task_id) / "openclaw" / "system_prompt.txt"
+            path = self.artifacts_dir / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(response.system_prompt, encoding="utf-8")
+            files["system_prompt"] = str(rel)
+
+        retry_responses = response.metadata.get("retry_responses")
+        if retry_responses:
+            rel = Path(task.task_id) / "openclaw" / "retry_responses.json"
+            path = self.artifacts_dir / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(retry_responses, indent=2), encoding="utf-8")
+            files["retry_responses"] = str(rel)
 
         if response.workspace_file_contents:
             workspace_files: dict[str, str] = {}

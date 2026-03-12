@@ -43,6 +43,53 @@ def _extract_answer(text: str) -> str:
     return extract_answer_candidate(text)
 
 
+def extract_system_prompt(trajectory: list[dict]) -> str:
+    """Extract system prompt from a trajectory list."""
+    for entry in trajectory:
+        if entry.get("role") == "system":
+            return entry.get("content", "")
+    # Fallback: check first assistant message for agent-like instructions
+    for entry in trajectory:
+        if entry.get("role") == "assistant":
+            content = entry.get("content", "")
+            if "You are" in content:
+                return content
+    return ""
+
+
+def classify_error(
+    exc: Exception | None = None,
+    *,
+    response_json: dict | None = None,
+    status_code: int | None = None,
+) -> str:
+    """Classify an error into a category for reporting."""
+    if exc is not None:
+        try:
+            import httpx
+            if isinstance(exc, httpx.TimeoutException):
+                return "timeout"
+        except ImportError:
+            pass
+
+    if isinstance(response_json, dict):
+        msg = response_json.get("message", "")
+        if "post proxy failed" in str(msg).lower():
+            return "proxy_timeout"
+        choices = response_json.get("choices", [])
+        if isinstance(choices, list) and choices:
+            message = choices[0].get("message", {})
+            if isinstance(message, dict):
+                content = message.get("content", "")
+                if content == "" or content is None:
+                    return "empty_response"
+
+    if status_code is not None and status_code >= 500:
+        return "gateway_error"
+
+    return "unknown"
+
+
 def _coerce_text_content(content: Any) -> str:
     """Coerce various content formats to a plain string."""
     if isinstance(content, str):
@@ -283,10 +330,18 @@ class OpenClawAgent(Agent):
         self._api_base = config.get("api_base", "")
         self._model = config.get("model", "openclaw")
         self._gateway_token = config.get("gateway_token", "OPENCLAW")
-        self._temperature = config.get("temperature", 0.0)
-        self._max_tokens = config.get("max_tokens", 8192)
+        self._temperature = config.get("temperature", 0.7)
+        self._max_tokens = config.get("max_tokens", None)
         self._max_attempts = max(1, int(config.get("max_attempts", 3)))
+        self._request_timeout = float(config.get("request_timeout", 600))
         self._config = config
+
+        # Agent.md customization
+        self._agent_md_mode = config.get("agent_md_mode", "none")
+        self._agent_md_content = config.get("agent_md_content", "")
+
+        # Cached resolved max_tokens
+        self._resolved_max_tokens: int | None = None
 
         # For retrieving agentic trajectory from sandbox
         self._rock_sandbox_url = config.get("rock_sandbox_url", "")
@@ -409,6 +464,103 @@ class OpenClawAgent(Agent):
             logger.warning("Trajectory retrieval failed: %s", e)
             return []
 
+    # Paths that OpenClaw uses for system prompt components in the workspace.
+    _SYSTEM_PROMPT_PATHS = [
+        "/root/.openclaw/workspace/SOUL.md",
+        "/root/.openclaw/workspace/AGENTS.md",
+    ]
+
+    def _retrieve_system_prompt_from_sandbox(self, sandbox: Any = None) -> str:
+        """Try to read system prompt files from the sandbox workspace."""
+        # Try via sandbox session object (passed from Runner)
+        if sandbox is not None:
+            try:
+                parts = []
+                for path in self._SYSTEM_PROMPT_PATHS:
+                    try:
+                        content = sandbox.read_text(path)
+                        if content and content.strip():
+                            parts.append(content.strip())
+                    except Exception:
+                        continue
+                if parts:
+                    return "\n\n".join(parts)
+            except Exception as exc:
+                logger.debug("System prompt retrieval via sandbox session failed: %s", exc)
+
+        # Try via standalone SDK client
+        sb = self._get_sandbox_client()
+        if sb is None:
+            return ""
+        try:
+            import asyncio
+
+            async def _read_files():
+                from rock.actions.sandbox.request import CreateBashSessionRequest
+                try:
+                    await sb.create_session(CreateBashSessionRequest(session="sysprompt"))
+                except Exception:
+                    pass
+                result = await sb.arun(
+                    "cat " + " ".join(self._SYSTEM_PROMPT_PATHS) + " 2>/dev/null",
+                    session="sysprompt",
+                )
+                return getattr(result, "output", "").strip()
+
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor() as pool:
+                        future = pool.submit(asyncio.run, _read_files())
+                        return future.result(timeout=15)
+                else:
+                    return loop.run_until_complete(_read_files())
+            except RuntimeError:
+                return asyncio.run(_read_files())
+        except Exception as exc:
+            logger.debug("System prompt retrieval via SDK client failed: %s", exc)
+            return ""
+
+    def _resolve_max_tokens(self) -> int:
+        """Resolve max_tokens by querying /v1/models or using cached/fallback."""
+        if self._resolved_max_tokens is not None:
+            return self._resolved_max_tokens
+        if self._max_tokens is not None:
+            self._resolved_max_tokens = self._max_tokens
+            return self._max_tokens
+        # Try to query vLLM /v1/models
+        try:
+            import httpx
+            api_base = self._api_base.rstrip("/")
+            # For OpenClaw gateway, the upstream model info may not be available,
+            # so we try but don't fail hard
+            resp = httpx.get(f"{api_base}/models", timeout=5.0)
+            if resp.status_code == 200:
+                data = resp.json().get("data", [])
+                if data:
+                    max_len = data[0].get("max_model_len")
+                    if isinstance(max_len, int) and max_len > 0:
+                        self._resolved_max_tokens = max_len
+                        return max_len
+        except Exception:
+            pass
+        self._resolved_max_tokens = 32768
+        return 32768
+
+    def _build_request_payload(self, messages: list[dict]) -> dict:
+        """Build the request payload for chat completions."""
+        payload: dict[str, Any] = {
+            "model": self._model,
+            "messages": messages,
+            "temperature": self._temperature,
+            "stream": False,
+        }
+        resolved = self._resolve_max_tokens()
+        if resolved is not None:
+            payload["max_tokens"] = resolved
+        return payload
+
     def solve(self, task: BenchmarkTask, sandbox: Any = None) -> AgentResponse:
         try:
             import httpx
@@ -456,13 +608,7 @@ class OpenClawAgent(Agent):
             "Authorization": f"bearer {self._gateway_token}",
             "Content-Type": "application/json",
         }
-        request_payload = {
-            "model": self._model,
-            "messages": request_messages,
-            "temperature": self._temperature,
-            "max_tokens": self._max_tokens,
-            "stream": False,
-        }
+        request_payload = self._build_request_payload(request_messages)
 
         # Retry loop with exponential backoff
         response_json: dict = {}
@@ -470,7 +616,7 @@ class OpenClawAgent(Agent):
         last_error: Exception | None = None
         for attempt in range(1, self._max_attempts + 1):
             try:
-                with httpx.Client(timeout=300.0, trust_env=False) as client:
+                with httpx.Client(timeout=self._request_timeout, trust_env=False) as client:
                     response = client.post(url, headers=headers, json=request_payload)
                 response.raise_for_status()
                 response_json = response.json()
@@ -541,6 +687,7 @@ class OpenClawAgent(Agent):
             workspace_snapshot_paths=artifact_data.get("workspace_snapshot_paths", []),
             workspace_file_contents=artifact_data.get("workspace_file_contents", {}),
             sandbox_metadata=artifact_data.get("sandbox_metadata", {}),
+            system_prompt=extract_system_prompt(trajectory) or self._retrieve_system_prompt_from_sandbox(sandbox),
             metadata={
                 "gateway_response_id": response_json.get("id", ""),
                 "sandbox_id": sandbox_id,

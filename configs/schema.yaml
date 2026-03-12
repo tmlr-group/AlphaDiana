@@ -19,6 +19,11 @@ agent:
     temperature: float
     max_tokens: integer
     max_attempts: integer           # Retry attempts for OpenClaw (default: 3)
+    request_timeout: float          # HTTP request timeout in seconds (default: 600)
+    agent_md_mode: string           # Agent.md customization: "none", "append", "override" (default: "none")
+    agent_md_content: string        # Content for agent.md injection
+    embedding_api_base: string      # Embedding model API base URL
+    embedding_api_key: string       # Embedding model API key
 
 # benchmark: (required) Benchmark configuration.
 benchmark:
@@ -42,6 +47,8 @@ sandbox:
     startup_timeout: integer        # Sandbox startup timeout in seconds (default: 300)
     auto_clear_seconds: integer     # Auto-cleanup timeout in seconds (default: 3600)
     start_retries: integer          # Number of startup retries (default: 1)
+    reset_between_tasks: boolean    # Reset workspace between tasks (default: true)
+    proxy_timeout: integer          # Proxy timeout in seconds (default: 600)
     # Generic sandbox config
     endpoint: string
     api_key: string

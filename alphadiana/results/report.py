@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
@@ -27,7 +28,8 @@ class RunSummary:
     mean_wall_time_sec: float
     total_tokens: dict
     per_category: dict[str, float]
-    timestamp: str
+    error_distribution: dict[str, int] = field(default_factory=dict)
+    timestamp: str = ""
 
 
 class ReportGenerator:
@@ -89,6 +91,14 @@ class ReportGenerator:
             for cat in category_total
         }
 
+        # Compute error distribution from failed tasks
+        error_dist: dict[str, int] = {}
+        for r in results:
+            err = r.get("error")
+            if isinstance(err, dict):
+                etype = err.get("error_type", "unknown")
+                error_dist[etype] = error_dist.get(etype, 0) + 1
+
         return RunSummary(
             run_id=config.run_id,
             agent=config.agent_name,
@@ -102,6 +112,7 @@ class ReportGenerator:
             mean_wall_time_sec=mean_wall_time,
             total_tokens=total_tokens,
             per_category=per_category,
+            error_distribution=error_dist,
             timestamp=datetime.now(timezone.utc).isoformat(),
         )
 

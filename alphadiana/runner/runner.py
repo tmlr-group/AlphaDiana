@@ -118,11 +118,23 @@ class Runner:
         tasks = self.benchmark.load_tasks(self.config.benchmark_config)
         logger.info("Loaded %d tasks from benchmark '%s'", len(tasks), self.config.benchmark_name)
 
+        # Set up sandbox pool for concurrent execution.
+        pool = None
+        if self.sandbox is not None and self.config.max_concurrent > 1:
+            from alphadiana.sandbox.pool import SandboxPool
+            pool_size = self.config.max_concurrent
+            logger.info("Creating SandboxPool with %d sessions", pool_size)
+            pool = SandboxPool(self.sandbox, pool_size)
+
         # Create the solve function that wraps agent + sandbox + scorer.
         def solve_fn(task):
-            # Create sandbox session if configured.
+            # Acquire sandbox session: from pool (concurrent) or create fresh (sequential).
             sandbox_session = None
-            if self.sandbox is not None:
+            used_pool = False
+            if pool is not None:
+                sandbox_session = pool.acquire()
+                used_pool = True
+            elif self.sandbox is not None:
                 sandbox_session = self.sandbox.create_session()
             start = time.monotonic()
             response = None
@@ -184,11 +196,18 @@ class Runner:
                 raise
             finally:
                 if sandbox_session is not None:
-                    sandbox_session.close()
+                    if used_pool:
+                        pool.release(sandbox_session)
+                    else:
+                        sandbox_session.close()
 
         # Dispatch tasks.
         dispatcher = TaskDispatcher(max_concurrent=self.config.max_concurrent)
         outcomes = dispatcher.dispatch(tasks, solve_fn)
+
+        # Teardown pool if used.
+        if pool is not None:
+            pool.teardown()
 
         succeeded = sum(1 for o in outcomes if o["success"])
         failed = sum(1 for o in outcomes if not o["success"])

@@ -146,7 +146,7 @@ def render_exports(ports: RockPorts) -> str:
         f"export ROCK_PROXY_ROOT_URL={ports.proxy_root_url}",
         f"export ROCK_PROXY_URL={ports.proxy_api_url}",
         f'export ROCK_DYNAMIC_CONFIG="${{ROCK_DYNAMIC_CONFIG:-{REPO_ROOT / "dev/generated/rock-local-proxy.dynamic.yml"}}}"',
-        f'export RAY_TMPDIR="${{RAY_TMPDIR:-{REPO_ROOT / ".cache/ray"}}}"',
+        f'export RAY_TMPDIR="${{RAY_TMPDIR:-${{TMPDIR:-/tmp}}/ray}}"',
     ]
     return "\n".join(lines) + "\n"
 

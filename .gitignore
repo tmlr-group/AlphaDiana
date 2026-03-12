@@ -3,6 +3,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+ref/
+
 # Distribution / packaging
 .Python
 env/
@@ -43,8 +45,9 @@ ENV/
 # Redis dump
 dump.rdb
 
-# Results (generated at runtime)
-results/
+# Results (generated at runtime, root-level only)
+/results/
+!alphadiana/results/
 
 dev/generated
 

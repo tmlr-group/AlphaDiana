@@ -87,9 +87,47 @@ class OpenClawRuntimeManager:
         self._remote_openclaw_config_path = config.get("remote_openclaw_config_path", "/tmp/openclaw.json")
         self._started_sandboxes: set[str] = set()
 
+        # Agent.md customization
+        self._agent_md_mode = config.get("agent_md_mode", "none")
+        self._agent_md_content = config.get("agent_md_content", "")
+
+        # Embedding configuration
+        self._embedding_api_base = config.get("embedding_api_base", "")
+        self._embedding_api_key = config.get("embedding_api_key", "")
+
     @property
     def is_configured(self) -> bool:
         return bool(self._rock_agent_config_path and self._openclaw_config_path)
+
+    def inject_agent_md(self, sandbox: Any) -> None:
+        """Inject or modify AGENTS.md in the sandbox based on mode."""
+        agent_md_path = "/root/AGENTS.md"
+        if self._agent_md_mode == "append":
+            existing = sandbox.read_text(agent_md_path)
+            new_content = existing + self._agent_md_content
+            sandbox.upload(agent_md_path, new_content.encode("utf-8"))
+        elif self._agent_md_mode == "override":
+            sandbox.upload(agent_md_path, self._agent_md_content.encode("utf-8"))
+        # mode == "none": do nothing
+
+    def _build_openclaw_config(self) -> dict:
+        """Build OpenClaw gateway config dict with optional embedding provider."""
+        config: dict[str, Any] = {}
+        providers: list[dict] = []
+
+        if self._embedding_api_base:
+            providers.append({
+                "id": "embedding",
+                "baseUrl": self._embedding_api_base,
+                "apiKey": self._embedding_api_key or "EMPTY",
+            })
+        else:
+            config["memory"] = {"enabled": False}
+
+        if providers:
+            config["modelProviders"] = providers
+
+        return config
 
     def ensure_ready(self, sandbox: Any) -> dict:
         """Ensure OpenClaw gateway is running inside the sandbox.

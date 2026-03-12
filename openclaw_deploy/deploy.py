@@ -100,10 +100,47 @@ def _ensure_rock_local_runtime() -> None:
         local_runtime_link.symlink_to(expected_target, target_is_directory=True)
 
 
+async def _check_redis(container: str, port: int) -> None:
+    """Verify that Redis is reachable before proceeding with deployment."""
+    import subprocess
+
+    # Try docker exec first
+    try:
+        result = subprocess.run(
+            ["docker", "exec", container, "redis-cli", "ping"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode == 0 and "PONG" in result.stdout:
+            return
+    except (FileNotFoundError, subprocess.TimeoutExpired, subprocess.SubprocessError):
+        pass
+
+    # Fallback: try connecting via TCP
+    import socket
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=5):
+            return
+    except OSError:
+        pass
+
+    raise RuntimeError(
+        f"Redis is not reachable (container={container}, port={port}).\n"
+        "Start Redis first:\n"
+        f"  docker start {container} || "
+        f"docker run -d --name {container} -p {port}:6379 redis/redis-stack-server:latest\n"
+        f"  docker exec {container} redis-cli ping"
+    )
+
+
 async def _preflight(base_url: str, proxy_url: str, agent_config: Path) -> None:
     if not agent_config.exists():
         raise FileNotFoundError(f"Agent config file not found: {agent_config}")
     _ensure_rock_local_runtime()
+
+    redis_container = os.environ.get("ROCK_REDIS_CONTAINER", "redis-stack")
+    redis_port = int(os.environ.get("ROCK_REDIS_PORT", str(DEFAULT_REDIS_PORT)))
+    await _check_redis(redis_container, redis_port)
+
     await _check_endpoint("ROCK admin", base_url)
     proxy_root = proxy_url.removesuffix("/apis/envs/sandbox/v1")
     await _check_endpoint("ROCK proxy", proxy_root)

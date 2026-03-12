@@ -25,6 +25,11 @@ from alphadiana.sandbox.registry import register_sandbox
 logger = logging.getLogger(__name__)
 _PROFILE_CACHE: dict[tuple[str, str], tuple[str, float]] = {}
 
+CLEANUP_PATHS = [
+    "/root/.openclaw/workspace",
+    "/root/.openclaw/agents/main/sessions",
+]
+
 
 def _progress(message: str) -> None:
     print(f"[ROCK] {message}", flush=True)
@@ -544,6 +549,13 @@ class ROCKSession(SandboxSession):
             "command_history": self.command_history,
         }
 
+    def _cleanup_workspace(self) -> None:
+        """Remove workspace and session files between tasks."""
+        if not getattr(self, "_reset_between_tasks", True):
+            return
+        paths = " ".join(CLEANUP_PATHS)
+        self.execute(f"rm -rf {paths}")
+
     def close(self) -> None:
         stop = getattr(self._sandbox, "stop", None)
         if stop is None:
@@ -568,6 +580,8 @@ class ROCKSandbox(Sandbox):
 
     def setup(self, config: dict) -> None:
         _require_rock_sdk()
+        self._reset_between_tasks = config.get("reset_between_tasks", True)
+        self._proxy_timeout = int(config.get("proxy_timeout", 600))
         self._config = {
             "admin_base_url": config["admin_base_url"],
             "proxy_base_url": config["proxy_base_url"],

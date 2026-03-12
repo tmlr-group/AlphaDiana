@@ -1,10 +1,50 @@
 from __future__ import annotations
 
+import copy
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import yaml
+
+
+def deep_merge(base: dict, override: dict) -> dict:
+    """Deep merge *override* into *base* (non-mutating)."""
+    result = copy.deepcopy(base)
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = deep_merge(result[key], value)
+        else:
+            result[key] = copy.deepcopy(value)
+    return result
+
+
+def parse_override(s: str) -> dict:
+    """Parse ``'a.b.c=value'`` into ``{'a': {'b': {'c': value}}}``."""
+    if "=" not in s:
+        raise ValueError(f"Invalid override (missing '='): {s}")
+    key_path, raw_value = s.split("=", 1)
+    value: Any = raw_value
+    # Try to coerce to int/float/bool
+    if raw_value.lower() in ("true", "false"):
+        value = raw_value.lower() == "true"
+    else:
+        try:
+            value = int(raw_value)
+        except ValueError:
+            try:
+                value = float(raw_value)
+            except ValueError:
+                pass
+    parts = key_path.split(".")
+    result: dict = {}
+    current = result
+    for part in parts[:-1]:
+        current[part] = {}
+        current = current[part]
+    current[parts[-1]] = value
+    return result
 
 
 @dataclass
@@ -28,9 +68,16 @@ class ExperimentConfig:
             self.run_id = uuid.uuid4().hex[:12]
 
     @classmethod
-    def from_yaml(cls, path: str) -> ExperimentConfig:
+    def from_yaml(
+        cls,
+        path: str,
+        overrides: dict | None = None,
+    ) -> ExperimentConfig:
         with open(path) as f:
             data = yaml.safe_load(f)
+
+        if overrides:
+            data = deep_merge(data, overrides)
 
         agent = data.get("agent", {})
         benchmark = data.get("benchmark", {})

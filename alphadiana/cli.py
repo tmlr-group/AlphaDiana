@@ -16,12 +16,21 @@ def main():
 
 @main.command()
 @click.argument("config_yaml", type=click.Path(exists=True))
-def run(config_yaml: str):
+@click.option(
+    "--override", "-o",
+    multiple=True,
+    help="Override config values, e.g. -o agent.config.temperature=0.5",
+)
+def run(config_yaml: str, override: tuple[str, ...]):
     """Run an evaluation experiment from a YAML config file."""
-    from alphadiana.config.experiment_config import ExperimentConfig
+    from alphadiana.config.experiment_config import ExperimentConfig, deep_merge, parse_override
     from alphadiana.runner.runner import Runner
 
-    config = ExperimentConfig.from_yaml(config_yaml)
+    overrides: dict = {}
+    for ov in override:
+        overrides = deep_merge(overrides, parse_override(ov))
+
+    config = ExperimentConfig.from_yaml(config_yaml, overrides=overrides or None)
     runner = Runner(config)
 
     try:
@@ -95,6 +104,38 @@ def report(results_dir: str):
         markdown = report_gen.to_markdown(summary)
         click.echo(markdown)
         click.echo("")
+
+
+@main.command()
+@click.argument("config_yamls", nargs=-1, required=True, type=click.Path(exists=True))
+@click.option("--parallel", is_flag=True, help="Run experiments in parallel.")
+@click.option(
+    "--override", "-o",
+    multiple=True,
+    help="Override config values applied to all configs.",
+)
+def batch(config_yamls: tuple[str, ...], parallel: bool, override: tuple[str, ...]):
+    """Run multiple experiment configs sequentially or in parallel."""
+    from alphadiana.config.experiment_config import ExperimentConfig, deep_merge, parse_override
+    from alphadiana.runner.batch_runner import BatchRunner
+
+    overrides: dict = {}
+    for ov in override:
+        overrides = deep_merge(overrides, parse_override(ov))
+
+    configs = [
+        ExperimentConfig.from_yaml(p, overrides=overrides or None)
+        for p in config_yamls
+    ]
+
+    runner = BatchRunner(configs, parallel=parallel)
+    summaries = runner.run()
+
+    for summary in summaries:
+        if summary is None:
+            click.echo("  [FAILED]")
+        else:
+            click.echo(f"  {summary.run_id}: accuracy={summary.accuracy:.4f}")
 
 
 @main.command("list-benchmarks")

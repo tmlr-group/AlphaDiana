@@ -31,6 +31,7 @@ class AgentResponse:
     workspace_snapshot_paths: list[str] = field(default_factory=list)
     workspace_file_contents: dict[str, str] = field(default_factory=dict)
     sandbox_metadata: dict = field(default_factory=dict)
+    system_prompt: str = ""
 
 
 class Agent(ABC):

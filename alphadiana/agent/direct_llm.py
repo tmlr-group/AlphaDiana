@@ -40,8 +40,8 @@ class DirectLLMAgent(Agent):
         self._model = config.get("model", "")
         self._api_base = config.get("api_base", "")
         self._api_key = config.get("api_key", "EMPTY")
-        self._temperature = config.get("temperature", 0.0)
-        self._max_tokens = config.get("max_tokens", 8192)
+        self._temperature = config.get("temperature", 0.7)
+        self._max_tokens = config.get("max_tokens", None)
         self._system_prompt = config.get("system_prompt", _DEFAULT_SYSTEM_PROMPT)
 
     def solve(self, task: BenchmarkTask, sandbox: Any = None) -> AgentResponse:

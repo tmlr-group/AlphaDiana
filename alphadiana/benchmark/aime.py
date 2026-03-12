@@ -51,6 +51,8 @@ class AIMEBenchmark(Benchmark):
                 f"Original error: {exc}"
             ) from exc
 
+        max_tasks = config.get("max_tasks")
+
         tasks: list[BenchmarkTask] = []
         for idx, item in enumerate(dataset):
             task_id_val = item.get("id", idx)
@@ -65,6 +67,8 @@ class AIMEBenchmark(Benchmark):
                     "url": item.get("url", ""),
                 },
             ))
+            if max_tasks is not None and len(tasks) >= max_tasks:
+                break
         return tasks
 
     def default_scorer(self) -> str:

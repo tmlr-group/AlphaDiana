@@ -9,6 +9,18 @@
 
 ## Quick Start
 
+**一键启动**（推荐）：
+
+```bash
+bash dev/quickstart.sh
+```
+
+该脚本会自动完成环境创建、依赖安装、端口检测和服务启动。完成后按提示操作即可。
+
+如果需要手动操作，请继续往下看。
+
+---
+
 默认约定：除非某一步明确写了 `cd ref/ROCK`，否则 README 里的命令都应在仓库根目录执行，也就是：
 
 ```bash
@@ -203,8 +215,15 @@ export ROCK_PROXY_PORT=9005
 export ROCK_BASE_URL=http://127.0.0.1:9004
 export ROCK_PROXY_ROOT_URL=http://127.0.0.1:9005
 export ROCK_PROXY_URL=http://127.0.0.1:9005/apis/envs/sandbox/v1
-export ROCK_DYNAMIC_CONFIG="AlphaDiana/dev/generated/rock-local-proxy.dynamic.yml"
-export RAY_TMPDIR="AlphaDiana/.cache/ray"
+export ROCK_DYNAMIC_CONFIG="/home/<user>/AlphaDiana/dev/generated/rock-local-proxy.dynamic.yml"
+export RAY_TMPDIR="/tmp/ray"
+```
+
+**注意**：如果之前已经 source 过环境变量并想更新端口，需要先关闭当前终端再开一个新终端，或者在 source 之前手动 `unset` 相关变量：
+
+```bash
+unset ROCK_RAY_PORT ROCK_RAY_DASHBOARD_PORT ROCK_RAY_CLIENT_SERVER_PORT ROCK_REDIS_PORT ROCK_ADMIN_PORT ROCK_PROXY_PORT RAY_TMPDIR
+source dev/.rock_ports.env
 ```
 
 之后所有终端都先执行：
@@ -247,13 +266,16 @@ ray start --head \
 
 终端 2：
 
+`newgrp docker` 会开一个新 shell，之前 export 的环境变量全部丢失，所以必须重新 `conda activate` 和 `source`。
+
 ```bash
 newgrp docker
 
-cd ref/ROCK
+cd AlphaDiana
 conda activate alphadiana
 source dev/rock_env.sh
 source dev/.rock_ports.env
+cd ref/ROCK
 python -m rock.admin.main --env local-proxy --role admin --port "$ROCK_ADMIN_PORT"
 ```
 
@@ -262,10 +284,11 @@ python -m rock.admin.main --env local-proxy --role admin --port "$ROCK_ADMIN_POR
 ```bash
 newgrp docker
 
-cd ref/ROCK
+cd AlphaDiana
 conda activate alphadiana
 source dev/rock_env.sh
 source dev/.rock_ports.env
+cd ref/ROCK
 python -m rock.admin.main --env local-proxy --role proxy --port "$ROCK_PROXY_PORT"
 ```
 
@@ -322,6 +345,7 @@ newgrp docker
 cd AlphaDiana
 conda activate alphadiana
 source dev/rock_env.sh
+source dev/.rock_ports.env
 python openclaw_deploy/deploy.py \
   --agent-config dev/generated/rock_agent_config.openrouter_qwen_2_5_7b.resolved.yaml
 ```
@@ -685,10 +709,11 @@ source dev/rock_env.sh
 source dev/.rock_ports.env
 ```
 
-然后使用：
+先停止旧的 Ray 进程（如果有），再启动：
 
 ```bash
 cd ref/ROCK
+ray stop
 ray start --head \
   --port="$ROCK_RAY_PORT" \
   --dashboard-port="$ROCK_RAY_DASHBOARD_PORT" \
@@ -697,6 +722,37 @@ ray start --head \
   --disable-usage-stats \
   --block
 ```
+
+### 7. Sandbox 容器创建后立即退出
+
+如果 `deploy.py` 报 sandbox 启动超时，且 admin 日志中显示 `Container process terminated`，可能原因：
+
+1. **`ref/ROCK/.venv` 失效**：容器内的 `LocalRuntimeEnv` 依赖这个软链接，确认它指向当前 conda 环境：
+
+```bash
+ls -la ref/ROCK/.venv
+# 应该指向类似 /home/<user>/anaconda3/envs/alphadiana
+```
+
+如果不对，重新创建：
+
+```bash
+ln -sfn "$(python -c 'import sys; print(sys.prefix)')" ref/ROCK/.venv
+```
+
+2. **`rl-rock` editable install 路径错误**：容器内 `import rock` 失败。重新安装：
+
+```bash
+pip install --no-build-isolation -e ref/ROCK
+```
+
+然后验证：
+
+```bash
+python -c "import rock; print(rock.__file__)"
+```
+
+路径应该在 `ref/ROCK/` 下面。
 
 ## 最短复现版
 

@@ -175,7 +175,7 @@ export ROCK_BASE_URL="${ROCK_BASE_URL:-http://127.0.0.1:${ROCK_ADMIN_PORT}}"
 export ROCK_PROXY_ROOT_URL="${ROCK_PROXY_ROOT_URL:-http://127.0.0.1:${ROCK_PROXY_PORT}}"
 export ROCK_PROXY_URL="${ROCK_PROXY_URL:-${ROCK_PROXY_ROOT_URL}/apis/envs/sandbox/v1}"
 export ROCK_DYNAMIC_CONFIG="${ROCK_DYNAMIC_CONFIG:-${_rock_env_dynamic_config_default}}"
-export RAY_TMPDIR="${RAY_TMPDIR:-${_rock_env_project_root}/.cache/ray}"
+export RAY_TMPDIR="${RAY_TMPDIR:-${TMPDIR:-/tmp}/ray}"
 mkdir -p "${RAY_TMPDIR}"
 
 export PYTHONPATH="${_rock_env_rock_root}:${_rock_env_project_root}${PYTHONPATH:+:${PYTHONPATH}}"
