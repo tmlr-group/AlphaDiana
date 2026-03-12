@@ -17,8 +17,9 @@
 set -euo pipefail
 
 ENV_NAME="${1:-alphadiana}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="${SCRIPT_DIR%/dev}"
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+SCRIPT_DIR="$(dirname "${SCRIPT_PATH}")"
+PROJECT_ROOT="${SCRIPT_DIR}/.."
 
 cd "${PROJECT_ROOT}"
 
@@ -27,6 +28,7 @@ cd "${PROJECT_ROOT}"
 log_section() { echo -e "\n========== $1 =========="; }
 log_ok()      { echo "  ✓ $1"; }
 log_fail()    { echo "  ✗ $1" >&2; }
+log_info()    { echo "  • $1"; }
 
 with_nounset_disabled() {
   local had_nounset=0
@@ -45,11 +47,42 @@ init_conda_shell() {
   return "${status}"
 }
 
+detect_container_host_port() {
+  local container_name="$1"
+  local container_port="$2"
+  local line
+
+  while IFS= read -r line; do
+    case "${line}" in
+      *:*)
+        echo "${line##*:}"
+        return 0
+        ;;
+    esac
+  done < <(docker port "${container_name}" "${container_port}" 2>/dev/null || true)
+
+  return 1
+}
+
+refresh_generated_ports() {
+  python "${SCRIPT_DIR}/find_rock_ports.py" \
+    --ray-port "${ROCK_RAY_PORT}" \
+    --ray-dashboard-port "${ROCK_RAY_DASHBOARD_PORT}" \
+    --ray-client-server-port "${ROCK_RAY_CLIENT_SERVER_PORT}" \
+    --redis-port "${ROCK_REDIS_PORT}" \
+    --redis-container "${ROCK_REDIS_CONTAINER}" \
+    --admin-port "${ROCK_ADMIN_PORT}" \
+    --proxy-port "${ROCK_PROXY_PORT}" \
+    --write-env "${SCRIPT_DIR}/.rock_ports.env" >/dev/null
+  # shellcheck disable=SC1091
+  source "${SCRIPT_DIR}/rock_env.sh"
+}
+
 # ── 1. Prerequisites ────────────────────────────────────────────────────────
 
 log_section "Checking prerequisites"
 
-for cmd in conda git; do
+for cmd in conda git curl; do
   if ! command -v "${cmd}" >/dev/null 2>&1; then
     log_fail "${cmd} not found in PATH"
     exit 1
@@ -86,29 +119,40 @@ log_section "Installing ROCK editable package"
 if python -c "import rock" >/dev/null 2>&1; then
   log_ok "rl-rock already importable"
 else
-  pip install --no-build-isolation -e ref/ROCK
+  python -m pip install --no-build-isolation -e ref/ROCK
   log_ok "rl-rock installed"
 fi
 
 # ── 5. Source rock_env and detect ports ──────────────────────────────────────
 
 log_section "Detecting available ports"
-# shellcheck disable=SC1091
-source "${SCRIPT_DIR}/rock_env.sh"
+unset ROCK_DYNAMIC_CONFIG RAY_TMPDIR ROCK_CONFIG TMPDIR
 python "${SCRIPT_DIR}/find_rock_ports.py" --write-env "${SCRIPT_DIR}/.rock_ports.env"
 # shellcheck disable=SC1091
-source "${SCRIPT_DIR}/.rock_ports.env"
+source "${SCRIPT_DIR}/rock_env.sh"
 log_ok "Ports written to dev/.rock_ports.env"
 
 # ── 6. Start services ───────────────────────────────────────────────────────
 
 log_section "Starting services"
+mkdir -p dev/generated
+
+if [ -f "${SCRIPT_DIR}/cleanup_rock_ports.sh" ]; then
+  log_info "Cleaning existing listeners on selected ROCK ports"
+  bash "${SCRIPT_DIR}/cleanup_rock_ports.sh"
+fi
 
 # Redis
 echo "  Starting Redis..."
 docker start "${ROCK_REDIS_CONTAINER}" 2>/dev/null \
   || docker run -d --name "${ROCK_REDIS_CONTAINER}" -p "${ROCK_REDIS_PORT}:6379" redis/redis-stack-server:latest
 sleep 2
+ACTUAL_REDIS_PORT="$(detect_container_host_port "${ROCK_REDIS_CONTAINER}" 6379/tcp || true)"
+if [ -n "${ACTUAL_REDIS_PORT}" ] && [ "${ACTUAL_REDIS_PORT}" != "${ROCK_REDIS_PORT}" ]; then
+  log_info "Redis container is mapped to host port ${ACTUAL_REDIS_PORT}; updating runtime ports"
+  export ROCK_REDIS_PORT="${ACTUAL_REDIS_PORT}"
+  refresh_generated_ports
+fi
 if docker exec "${ROCK_REDIS_CONTAINER}" redis-cli ping 2>/dev/null | grep -q PONG; then
   log_ok "Redis is running on port ${ROCK_REDIS_PORT}"
 else
@@ -118,38 +162,52 @@ fi
 
 # Ray
 echo "  Starting Ray head..."
-cd ref/ROCK
-ray stop 2>/dev/null || true
-ray start --head \
-  --port="${ROCK_RAY_PORT}" \
-  --dashboard-port="${ROCK_RAY_DASHBOARD_PORT}" \
-  --ray-client-server-port="${ROCK_RAY_CLIENT_SERVER_PORT}" \
-  --temp-dir="${RAY_TMPDIR}" \
-  --disable-usage-stats
-cd "${PROJECT_ROOT}"
+(
+  cd ref/ROCK
+  ray start --head \
+    --port="${ROCK_RAY_PORT}" \
+    --dashboard-port="${ROCK_RAY_DASHBOARD_PORT}" \
+    --ray-client-server-port="${ROCK_RAY_CLIENT_SERVER_PORT}" \
+    --temp-dir="${RAY_TMPDIR}" \
+    --disable-usage-stats
+)
 log_ok "Ray head started on port ${ROCK_RAY_PORT}"
 
 # Admin
 echo "  Starting ROCK admin on port ${ROCK_ADMIN_PORT}..."
-cd ref/ROCK
-nohup python -m rock.admin.main --env local-proxy --role admin --port "${ROCK_ADMIN_PORT}" \
-  > "${PROJECT_ROOT}/dev/generated/admin.log" 2>&1 &
-ADMIN_PID=$!
-cd "${PROJECT_ROOT}"
+(
+  cd ref/ROCK
+  nohup python -m rock.admin.main --env local-proxy --role admin --port "${ROCK_ADMIN_PORT}" \
+    > ../../dev/generated/admin.log 2>&1 &
+  echo $! > ../../dev/generated/admin.pid
+)
+ADMIN_PID="$(cat dev/generated/admin.pid)"
+rm -f dev/generated/admin.pid
 
 # Proxy
 echo "  Starting ROCK proxy on port ${ROCK_PROXY_PORT}..."
-cd ref/ROCK
-nohup python -m rock.admin.main --env local-proxy --role proxy --port "${ROCK_PROXY_PORT}" \
-  > "${PROJECT_ROOT}/dev/generated/proxy.log" 2>&1 &
-PROXY_PID=$!
-cd "${PROJECT_ROOT}"
+(
+  cd ref/ROCK
+  nohup python -m rock.admin.main --env local-proxy --role proxy --port "${ROCK_PROXY_PORT}" \
+    > ../../dev/generated/proxy.log 2>&1 &
+  echo $! > ../../dev/generated/proxy.pid
+)
+PROXY_PID="$(cat dev/generated/proxy.pid)"
+rm -f dev/generated/proxy.pid
 
 # Wait for admin/proxy to be ready
 echo "  Waiting for admin and proxy to start..."
 for i in $(seq 1 30); do
   if curl -s "${ROCK_BASE_URL}/" >/dev/null 2>&1 && curl -s "${ROCK_PROXY_ROOT_URL}/" >/dev/null 2>&1; then
     break
+  fi
+  if ! kill -0 "${ADMIN_PID}" 2>/dev/null; then
+    log_fail "ROCK admin exited early; see dev/generated/admin.log"
+    exit 1
+  fi
+  if ! kill -0 "${PROXY_PID}" 2>/dev/null; then
+    log_fail "ROCK proxy exited early; see dev/generated/proxy.log"
+    exit 1
   fi
   sleep 2
 done

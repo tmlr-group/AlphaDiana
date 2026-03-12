@@ -152,6 +152,7 @@ _rock_env_project_root="${_rock_env_script_dir%/dev}"
 _rock_env_rock_root="${_rock_env_project_root}/ref/ROCK"
 _rock_env_ports_file="${_rock_env_script_dir}/.rock_ports.env"
 _rock_env_dynamic_config_default="${_rock_env_project_root}/dev/generated/rock-local-proxy.dynamic.yml"
+_rock_env_cache_root="${_rock_env_project_root}/.cache"
 
 if [ ! -d "${_rock_env_rock_root}" ]; then
   echo "ROCK repository not found at ${_rock_env_rock_root}" >&2
@@ -175,7 +176,9 @@ export ROCK_BASE_URL="${ROCK_BASE_URL:-http://127.0.0.1:${ROCK_ADMIN_PORT}}"
 export ROCK_PROXY_ROOT_URL="${ROCK_PROXY_ROOT_URL:-http://127.0.0.1:${ROCK_PROXY_PORT}}"
 export ROCK_PROXY_URL="${ROCK_PROXY_URL:-${ROCK_PROXY_ROOT_URL}/apis/envs/sandbox/v1}"
 export ROCK_DYNAMIC_CONFIG="${ROCK_DYNAMIC_CONFIG:-${_rock_env_dynamic_config_default}}"
-export RAY_TMPDIR="${RAY_TMPDIR:-${TMPDIR:-/tmp}/ray}"
+export TMPDIR="${TMPDIR:-${_rock_env_cache_root}/tmp}"
+export RAY_TMPDIR="${RAY_TMPDIR:-${_rock_env_cache_root}/ray}"
+mkdir -p "${TMPDIR}"
 mkdir -p "${RAY_TMPDIR}"
 
 export PYTHONPATH="${_rock_env_rock_root}:${_rock_env_project_root}${PYTHONPATH:+:${PYTHONPATH}}"
