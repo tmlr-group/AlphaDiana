@@ -41,6 +41,7 @@ class DirectLLMAgent(Agent):
         self._api_base = config.get("api_base", "")
         self._api_key = config.get("api_key", "EMPTY")
         self._temperature = config.get("temperature", 0.7)
+        self._top_p = config.get("top_p", None)
         self._max_tokens = config.get("max_tokens", None)
         self._resolved_max_tokens: int | None = None
         self._system_prompt = config.get("system_prompt", _DEFAULT_SYSTEM_PROMPT)
@@ -92,6 +93,8 @@ class DirectLLMAgent(Agent):
             "temperature": self._temperature,
             "max_tokens": self._resolve_max_tokens(),
         }
+        if self._top_p is not None:
+            request_kwargs["top_p"] = self._top_p
         response = client.chat.completions.create(
             **request_kwargs,
         )

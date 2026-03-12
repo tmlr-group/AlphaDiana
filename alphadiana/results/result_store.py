@@ -63,6 +63,7 @@ class ResultStore:
         }
         with open(self.path, "a", encoding="utf-8") as f:
             f.write(json.dumps(record) + "\n")
+        self._save_per_task_json(task.task_id, record)
 
     def append_error(
         self,
@@ -103,6 +104,7 @@ class ResultStore:
         }
         with open(self.path, "a", encoding="utf-8") as f:
             f.write(json.dumps(record) + "\n")
+        self._save_per_task_json(task.task_id, record)
 
     def _persist_artifacts(self, task: BenchmarkTask, response: AgentResponse) -> dict:
         """Write gateway logs, response JSON, and workspace files to disk."""
@@ -167,6 +169,21 @@ class ResultStore:
         if task_dir.exists():
             manifest["local_artifact_root"] = str(Path(task.task_id))
         return manifest
+
+    def _save_per_task_json(self, task_id: str, record: dict) -> None:
+        """Write a per-task JSON file under {run_id}/tasks/{task_id}.json."""
+        tasks_dir = self.output_dir / self.run_id / "tasks"
+        tasks_dir.mkdir(parents=True, exist_ok=True)
+        path = tasks_dir / f"{task_id}.json"
+        path.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    def completed_task_ids(self) -> set[str]:
+        """Return task_ids of successfully completed records (correct is not None)."""
+        completed: set[str] = set()
+        for record in self.load():
+            if record.get("correct") is not None:
+                completed.add(record["task_id"])
+        return completed
 
     def load(self) -> list[dict]:
         """Read and parse all JSONL lines from the results file."""

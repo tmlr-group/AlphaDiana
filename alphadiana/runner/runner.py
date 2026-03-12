@@ -119,6 +119,31 @@ class Runner:
         tasks = self.benchmark.load_tasks(self.config.benchmark_config)
         logger.info("Loaded %d tasks from benchmark '%s'", len(tasks), self.config.benchmark_name)
 
+        # Checkpoint: skip already-completed tasks unless redo_all is set.
+        if not getattr(self.config, "redo_all", False):
+            completed = self.result_store.completed_task_ids()
+            if completed:
+                before = len(tasks)
+                tasks = [t for t in tasks if t.task_id not in completed]
+                logger.info(
+                    "Checkpoint: skipping %d completed tasks, %d remaining",
+                    before - len(tasks),
+                    len(tasks),
+                )
+
+        # Initialize plain-text dashboard.
+        dashboard = None
+        try:
+            from alphadiana.runner.dashboard import PlainTextDashboard
+            from pathlib import Path
+            status_dir = Path(self.config.output_dir) / self.config.run_id / "status"
+            status_dir.mkdir(parents=True, exist_ok=True)
+            dashboard = PlainTextDashboard(
+                status_dir / "dashboard.txt", tasks,
+            )
+        except Exception:
+            logger.debug("Dashboard initialization skipped", exc_info=True)
+
         # Set up sandbox pool for concurrent execution.
         pool = None
         if self.sandbox is not None and self.config.max_concurrent > 1:
@@ -153,6 +178,20 @@ class Runner:
                 score = self.scorer.score(task, response)
                 # Store the result.
                 self.result_store.append(task, response, score)
+                # Log predicted vs ground_truth comparison.
+                logger.info(
+                    "Task %s done: predicted=%r vs ground_truth=%r correct=%s",
+                    task.task_id,
+                    response.answer,
+                    task.ground_truth,
+                    score.correct,
+                )
+                # Update dashboard.
+                if dashboard is not None:
+                    try:
+                        dashboard.update(task.task_id, score.correct)
+                    except Exception:
+                        pass
                 return {
                     "task_id": task.task_id,
                     "correct": score.correct,

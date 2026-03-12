@@ -350,6 +350,7 @@ class OpenClawAgent(Agent):
         self._model = config.get("model", "openclaw")
         self._gateway_token = config.get("gateway_token", "OPENCLAW")
         self._temperature = config.get("temperature", 0.7)
+        self._top_p = config.get("top_p", None)
         self._max_tokens = config.get("max_tokens", None)
         self._max_attempts = max(1, int(config.get("max_attempts", 3)))
         self._request_timeout = float(config.get("request_timeout", 600))
@@ -591,6 +592,8 @@ class OpenClawAgent(Agent):
         resolved = self._resolve_max_tokens()
         if resolved is not None:
             payload["max_tokens"] = resolved
+        if self._top_p is not None:
+            payload["top_p"] = self._top_p
         return payload
 
     def solve(self, task: BenchmarkTask, sandbox: Any = None) -> AgentResponse:
@@ -650,41 +653,89 @@ class OpenClawAgent(Agent):
         last_error: Exception | None = None
         retry_responses: list[dict[str, Any]] = []
         for attempt in range(1, self._max_attempts + 1):
+            attempt_start = time.monotonic()
             try:
                 chunks: list[str] = []
+                status_code: int = 0
+                resp_headers: dict = {}
                 with httpx.Client(timeout=self._request_timeout, trust_env=False) as client:
                     with client.stream("POST", url, headers=headers, json=request_payload) as response:
-                        response.raise_for_status()
-                        for line in response.iter_lines():
-                            if not line.startswith("data:"):
-                                continue
-                            data = line[len("data:"):].strip()
-                            if data == "[DONE]":
-                                break
+                        status_code = response.status_code
+                        resp_headers = dict(response.headers)
+                        content_type = response.headers.get("content-type", "")
+
+                        if "application/json" in content_type:
+                            # Non-SSE JSON response (error or non-streaming reply).
+                            response.read()
+                            body_text = response.text
                             try:
-                                chunk_json = json.loads(data)
+                                response_json = json.loads(body_text)
                             except json.JSONDecodeError:
-                                continue
-                            choices = chunk_json.get("choices") or []
-                            delta = choices[0].get("delta", {}) if choices else {}
-                            content = delta.get("content")
-                            if content:
-                                chunks.append(content)
-                            # Capture final chunk usage if present
-                            if chunk_json.get("usage"):
-                                response_json = chunk_json
+                                response_json = {}
+                            if status_code >= 400:
+                                # Error response — preserve the JSON body for diagnostics.
+                                pass
+                            else:
+                                # Successful non-streaming JSON — extract assistant content.
+                                choices = response_json.get("choices") or []
+                                if choices:
+                                    msg = choices[0].get("message", {})
+                                    assistant_content = msg.get("content", "")
+                                    if assistant_content:
+                                        chunks.append(_coerce_text_content(assistant_content))
+                        else:
+                            # SSE path (text/event-stream or unspecified Content-Type).
+                            if status_code >= 400:
+                                # Read the error body before raise_for_status.
+                                raw_parts: list[str] = []
+                                for line in response.iter_lines():
+                                    raw_parts.append(line)
+                                full_body = "\n".join(raw_parts)
+                                try:
+                                    response_json = json.loads(full_body)
+                                except json.JSONDecodeError:
+                                    response_json = {}
+                            else:
+                                for line in response.iter_lines():
+                                    if not line.startswith("data:"):
+                                        continue
+                                    data = line[len("data:"):].strip()
+                                    if data == "[DONE]":
+                                        break
+                                    try:
+                                        chunk_json = json.loads(data)
+                                    except json.JSONDecodeError:
+                                        continue
+                                    choices = chunk_json.get("choices") or []
+                                    delta = choices[0].get("delta", {}) if choices else {}
+                                    content = delta.get("content")
+                                    if content:
+                                        chunks.append(content)
+                                    if chunk_json.get("usage"):
+                                        response_json = chunk_json
+
                 raw_output = "".join(chunks)
                 if raw_output:
                     break
+                elapsed = time.monotonic() - attempt_start
+                response_body = response_json or ""
                 error_type = classify_error(
                     response_json=response_json,
-                    status_code=response.status_code,
+                    status_code=status_code,
                 )
+                retry_responses.append({
+                    "attempt": attempt,
+                    "status_code": status_code,
+                    "headers": resp_headers,
+                    "body": str(response_body),
+                    "elapsed_sec": elapsed,
+                    "error_type": error_type,
+                })
                 logger.warning(
                     "OpenClaw attempt %d/%d returned empty content: status=%s elapsed=%.2fs body=%r",
                     attempt,
                     self._max_attempts,
-                    response.status_code,
+                    status_code,
                     elapsed,
                     response_body,
                 )
@@ -696,15 +747,24 @@ class OpenClawAgent(Agent):
                     retry_responses=retry_responses,
                 )
             except Exception as exc:
-                elapsed = time.monotonic() - attempt_start if "attempt_start" in locals() else 0.0
+                elapsed = time.monotonic() - attempt_start
                 last_error = exc
-                error_type = classify_error(exc)
+                # Extract status code / body from httpx HTTPStatusError if available.
+                exc_status = getattr(getattr(exc, "response", None), "status_code", None)
+                exc_body = str(exc)
+                if exc_status is not None:
+                    try:
+                        exc_body = getattr(exc, "response", None).text or exc_body
+                        response_json = json.loads(exc_body)
+                    except Exception:
+                        pass
+                error_type = classify_error(exc, response_json=response_json or None, status_code=exc_status)
                 retry_responses.append(
                     {
                         "attempt": attempt,
-                        "status_code": None,
-                        "headers": {},
-                        "body": str(exc),
+                        "status_code": exc_status,
+                        "headers": dict(getattr(getattr(exc, "response", None), "headers", {})),
+                        "body": exc_body,
                         "elapsed_sec": elapsed,
                         "error_type": error_type,
                     }

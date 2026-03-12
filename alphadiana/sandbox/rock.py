@@ -362,6 +362,7 @@ class ROCKSession(SandboxSession):
         start_retries: int = 1,
         reset_between_tasks: bool = True,
         proxy_timeout: int = 600,
+        network_mode: str | None = None,
     ) -> None:
         _require_rock_sdk()
         self._id = str(uuid.uuid4())
@@ -375,6 +376,7 @@ class ROCKSession(SandboxSession):
         self._start_retries = max(1, start_retries)
         self._reset_between_tasks = reset_between_tasks
         self._proxy_timeout = proxy_timeout
+        self._network_mode = network_mode
         self._command_history: list[dict[str, Any]] = []
         _progress(
             f"create_session requested image={self._image} memory={self._memory} "
@@ -418,6 +420,12 @@ class ROCKSession(SandboxSession):
                     self._cpus = cpus
                     _PROFILE_CACHE[(self._admin_base_url, self._image)] = (memory, cpus)
                     sandbox.url = self._proxy_base_url
+                    # When network_mode is "host", resolve the host IP so that
+                    # sandbox-internal URLs can reach the host machine.
+                    if self._network_mode == "host":
+                        host_ip = getattr(sandbox, "host_ip", None)
+                        if host_ip:
+                            _progress(f"network_mode=host, host_ip={host_ip}")
                     _install_create_session_waiter(sandbox)
                     _progress(
                         f"sandbox started sandbox_id={getattr(sandbox, 'sandbox_id', '')} "
@@ -601,6 +609,7 @@ class ROCKSandbox(Sandbox):
         _require_rock_sdk()
         self._reset_between_tasks = config.get("reset_between_tasks", True)
         self._proxy_timeout = int(config.get("proxy_timeout", 600))
+        self._network_mode = config.get("network_mode", None)
         self._config = {
             "admin_base_url": config["admin_base_url"],
             "proxy_base_url": config["proxy_base_url"],
@@ -612,6 +621,7 @@ class ROCKSandbox(Sandbox):
             "start_retries": int(config.get("start_retries", 1)),
             "reset_between_tasks": bool(self._reset_between_tasks),
             "proxy_timeout": self._proxy_timeout,
+            "network_mode": self._network_mode,
         }
 
     def create_session(self) -> ROCKSession:

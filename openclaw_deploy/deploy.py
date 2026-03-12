@@ -2,8 +2,10 @@
 import argparse
 import asyncio
 import json
+import logging
 import os
 import sys
+import time
 from pathlib import Path
 
 import httpx
@@ -12,6 +14,7 @@ from alphadiana.utils.rock_ports import resolve_rock_ports_from_env
 from rock.sdk.sandbox.client import Sandbox
 from rock.sdk.sandbox.config import SandboxConfig
 
+logger = logging.getLogger(__name__)
 
 DEFAULT_PORTS = resolve_rock_ports_from_env()
 DEFAULT_BASE_URL = os.environ.get("ROCK_BASE_URL", DEFAULT_PORTS.base_url)
@@ -21,6 +24,10 @@ DEPLOY_DIR = Path(__file__).resolve().parent
 REPO_ROOT = DEPLOY_DIR.parent
 INVOKE_CWD = Path.cwd().resolve()
 ROCK_ROOT = REPO_ROOT / "ref/ROCK"
+
+# Retry constants for agent.install()
+INSTALL_RETRY_INTERVAL = 10
+INSTALL_MAX_RETRIES = 2
 
 
 def parse_args() -> argparse.Namespace:
@@ -61,6 +68,17 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=180,
         help="Sandbox startup timeout in seconds.",
+    )
+    parser.add_argument(
+        "--network-mode",
+        default=None,
+        help="Docker network mode for sandbox (e.g. 'host').",
+    )
+    parser.add_argument(
+        "--auto-clear-seconds",
+        type=int,
+        default=7200,
+        help="Sandbox auto-clear timeout in seconds (default: 7200).",
     )
     return parser.parse_args()
 
@@ -170,19 +188,67 @@ def _resolve_agent_config(path_str: str) -> Path:
     return candidates[0]
 
 
+async def _wait_for_running(sandbox: Sandbox, timeout: float = 60.0) -> None:
+    """Poll sandbox status until it reports running/alive."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            status = await sandbox.get_status()
+            if getattr(status, "is_alive", False):
+                print(f"  Sandbox is running (status={status.status})")
+                return
+            print(f"  Waiting for sandbox... (status={status.status})")
+        except Exception as exc:
+            print(f"  Status check failed: {exc}")
+        await asyncio.sleep(3)
+    raise RuntimeError(f"Sandbox did not reach running state within {timeout:.0f}s")
+
+
+async def _install_with_retry(
+    sandbox: Sandbox,
+    agent_config: str,
+    max_retries: int = INSTALL_MAX_RETRIES,
+    interval: int = INSTALL_RETRY_INTERVAL,
+) -> None:
+    """Install agent with retry on transient upstream errors."""
+    last_error: Exception | None = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            print(f"  agent.install() attempt {attempt}/{max_retries}...")
+            await sandbox.agent.install(config=agent_config)
+            return
+        except Exception as exc:
+            last_error = exc
+            msg = str(exc).lower()
+            is_transient = (
+                "upstream server is not reachable" in msg
+                or "service unavailable" in msg
+            )
+            if not is_transient or attempt == max_retries:
+                break
+            print(f"  install failed (transient): {exc}")
+            print(f"  Retrying in {interval}s...")
+            await asyncio.sleep(interval)
+    assert last_error is not None
+    raise last_error
+
+
 async def deploy(args: argparse.Namespace) -> None:
     agent_config = _resolve_agent_config(args.agent_config)
     await _preflight(args.base_url, args.proxy_url, agent_config)
 
+    auto_clear = getattr(args, "auto_clear_seconds", 7200)
     config = SandboxConfig(
         base_url=args.base_url,
         image=args.image,
         memory=args.memory,
         cpus=args.cpus,
-        auto_clear_seconds=3600,
+        auto_clear_seconds=auto_clear,
         startup_timeout=args.startup_timeout,
     )
     sandbox = Sandbox(config)
+    network_mode = getattr(args, "network_mode", None)
+
     print("Creating sandbox...")
     try:
         await sandbox.start()
@@ -205,16 +271,26 @@ async def deploy(args: argparse.Namespace) -> None:
         ) from exc
     print(f"Sandbox ID: {sandbox.sandbox_id}")
 
+    # Wait for sandbox to be fully running before proceeding.
+    print("Waiting for sandbox readiness...")
+    await _wait_for_running(sandbox, timeout=args.startup_timeout)
+
     sandbox.url = args.proxy_url
 
+    # Store network_mode for reference (SDK doesn't natively support it,
+    # but the host_ip returned by the sandbox can be used for URL resolution).
+    if network_mode:
+        print(f"Network mode: {network_mode} (host_ip={getattr(sandbox, 'host_ip', 'unknown')})")
+
     print(f"Installing OpenClaw agent from {agent_config}...")
-    await sandbox.agent.install(config=str(agent_config))
+    await _install_with_retry(sandbox, str(agent_config))
     print("Running OpenClaw gateway...")
     await sandbox.agent.run("")
 
     print("\nOpenClaw deployed successfully!")
     print(f"Sandbox ID: {sandbox.sandbox_id}")
     print(f"API base: {args.proxy_url}/sandboxes/{sandbox.sandbox_id}/proxy/v1")
+    print(f"Auto-clear: {auto_clear}s ({auto_clear // 60} minutes)")
 
 
 if __name__ == "__main__":

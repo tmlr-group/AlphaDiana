@@ -365,8 +365,10 @@ class TestEmbeddingConfig:
 
         uploaded = sb.upload.call_args.args[1].decode("utf-8")
         payload = json.loads(uploaded)
-        assert payload["memory"]["enabled"] is False
+        # memory.enabled is incompatible with openclaw@2026.3.7 — should be removed
+        assert "memory" not in payload or "enabled" not in payload.get("memory", {})
 
     def test_static_template_disables_memory_by_default(self):
         payload = json.loads((Path(__file__).parent.parent / "openclaw_deploy" / "openclaw.json").read_text())
-        assert payload["memory"]["enabled"] is False
+        # memory.enabled is incompatible with openclaw@2026.3.7 — should be removed
+        assert "memory" not in payload or "enabled" not in payload.get("memory", {})

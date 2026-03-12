@@ -61,6 +61,7 @@ class ExperimentConfig:
     scorer_config: dict = field(default_factory=dict)
     max_concurrent: int = 1
     output_dir: str = "./results"
+    redo_all: bool = False
     metadata: dict = field(default_factory=dict)
 
     def __post_init__(self):
@@ -97,5 +98,6 @@ class ExperimentConfig:
             scorer_config=scorer.get("config", {}),
             max_concurrent=data.get("max_concurrent", 1),
             output_dir=data.get("output_dir", "./results"),
+            redo_all=data.get("redo_all", False),
             metadata=data.get("metadata", {}),
         )

@@ -5,7 +5,32 @@ from __future__ import annotations
 import os
 import sys
 
+import logging
+
 import click
+
+logger = logging.getLogger(__name__)
+
+_PROXY_VARS = ("ALL_PROXY", "HTTP_PROXY", "HTTPS_PROXY",
+               "all_proxy", "http_proxy", "https_proxy")
+
+
+def _warn_proxy() -> bool:
+    """Check for proxy environment variables and warn if present.
+
+    Returns True if any proxy variable is set, False otherwise.
+    Suggests sourcing rock_env.sh to clean the environment.
+    """
+    found = {k: os.environ[k] for k in _PROXY_VARS if k in os.environ}
+    if found:
+        names = ", ".join(sorted(found))
+        logger.warning(
+            "Proxy variables detected: %s. This may cause network issues "
+            "inside ROCK sandboxes. Run 'source dev/rock_env.sh' to unset them.",
+            names,
+        )
+        return True
+    return False
 
 
 @click.group()
@@ -21,7 +46,8 @@ def main():
     multiple=True,
     help="Override config values, e.g. -o agent.config.temperature=0.5",
 )
-def run(config_yaml: str, override: tuple[str, ...]):
+@click.option("--redo-all", is_flag=True, default=False, help="Ignore checkpoint and redo all tasks.")
+def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
     """Run an evaluation experiment from a YAML config file."""
     from alphadiana.config.experiment_config import ExperimentConfig, deep_merge, parse_override
     from alphadiana.runner.runner import Runner
@@ -30,7 +56,10 @@ def run(config_yaml: str, override: tuple[str, ...]):
     for ov in override:
         overrides = deep_merge(overrides, parse_override(ov))
 
+    if redo_all:
+        overrides = deep_merge(overrides, {"redo_all": True})
     config = ExperimentConfig.from_yaml(config_yaml, overrides=overrides or None)
+    _warn_proxy()
     runner = Runner(config)
 
     try:

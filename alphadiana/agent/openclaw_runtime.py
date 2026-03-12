@@ -17,6 +17,18 @@ from typing import Any
 import yaml
 
 
+import logging as _logging
+
+_logger = _logging.getLogger(__name__)
+
+# Hint for slow npm installs in restricted networks.
+NPM_TIMEOUT_HINT = (
+    "npm install is taking too long. Consider switching to a faster registry:\n"
+    "  npm config set registry https://registry.npmmirror.com/\n"
+    "See https://npmmirror.com/ for details."
+)
+
+
 def _progress(message: str) -> None:
     print(f"[OpenClaw] {message}", flush=True)
 
@@ -96,6 +108,7 @@ class OpenClawRuntimeManager:
         # Embedding configuration
         self._embedding_api_base = config.get("embedding_api_base", "")
         self._embedding_api_key = config.get("embedding_api_key", "")
+        self._workspace = config.get("workspace", "")
 
     @property
     def is_configured(self) -> bool:
@@ -128,8 +141,17 @@ class OpenClawRuntimeManager:
                 "apiKey": self._embedding_api_key or "EMPTY",
                 "api": "openai",
             }
-        else:
-            config["memory"] = {"enabled": False}
+        if self._workspace:
+            agents = config.setdefault("agents", {})
+            defaults = agents.setdefault("defaults", {})
+            defaults["workspace"] = self._workspace
+
+        # Remove memory.enabled — incompatible with openclaw@2026.3.7
+        memory = config.get("memory", {})
+        if isinstance(memory, dict):
+            memory.pop("enabled", None)
+            if not memory:
+                config.pop("memory", None)
 
         return config
 
