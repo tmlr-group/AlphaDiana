@@ -38,6 +38,25 @@ from alphadiana.utils.rock_ports import resolve_rock_ports_from_env
 logger = logging.getLogger(__name__)
 
 
+class OpenClawRequestError(RuntimeError):
+    """Request failure with attached diagnostics for result persistence."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        error_type: str,
+        request_payload: dict | None = None,
+        response_body: Any = None,
+        retry_responses: list[dict] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.error_type = error_type
+        self.request_payload = request_payload
+        self.response_body = response_body
+        self.retry_responses = retry_responses or []
+
+
 def _extract_answer(text: str) -> str:
     r"""Extract the final answer from model output."""
     return extract_answer_candidate(text)
@@ -369,6 +388,19 @@ class OpenClawAgent(Agent):
         except ImportError:
             self._runtime_manager = None
 
+    def _ensure_agent_md(self, sandbox: Any = None) -> None:
+        if (
+            sandbox is None
+            or self._runtime_manager is None
+            or self._agent_md_mode == "none"
+            or not hasattr(self._runtime_manager, "inject_agent_md")
+        ):
+            return
+        try:
+            self._runtime_manager.inject_agent_md(sandbox)
+        except Exception as exc:
+            logger.warning("Failed to inject AGENTS.md customization: %s", exc)
+
     def _get_sandbox_client(self):
         """Lazily initialize the ROCK sandbox client for trajectory retrieval."""
         if self._sandbox_client is not None:
@@ -602,6 +634,8 @@ class OpenClawAgent(Agent):
                 "OpenClawAgent requires either agent.config.api_base or a live ROCK "
                 "sandbox plus rock_agent_config_path/openclaw_config_path."
             )
+        else:
+            self._ensure_agent_md(sandbox)
 
         url = f"{runtime_info['api_base'].rstrip('/')}/chat/completions"
         headers = {
@@ -614,30 +648,94 @@ class OpenClawAgent(Agent):
         response_json: dict = {}
         raw_output = ""
         last_error: Exception | None = None
+        retry_responses: list[dict[str, Any]] = []
         for attempt in range(1, self._max_attempts + 1):
             try:
+                attempt_start = time.monotonic()
                 with httpx.Client(timeout=self._request_timeout, trust_env=False) as client:
                     response = client.post(url, headers=headers, json=request_payload)
+                elapsed = time.monotonic() - attempt_start
+                try:
+                    response_json = response.json()
+                    response_body: Any = response_json
+                except Exception:
+                    response_json = {}
+                    response_body = response.text
+                retry_responses.append(
+                    {
+                        "attempt": attempt,
+                        "status_code": response.status_code,
+                        "headers": dict(response.headers),
+                        "body": response_body,
+                        "elapsed_sec": elapsed,
+                    }
+                )
                 response.raise_for_status()
-                response_json = response.json()
                 raw_output = _extract_raw_output_from_payload(response_json)
                 if raw_output:
                     break
-                last_error = RuntimeError(
-                    f"OpenClaw returned no assistant content on attempt {attempt}"
+                error_type = classify_error(
+                    response_json=response_json,
+                    status_code=response.status_code,
+                )
+                logger.warning(
+                    "OpenClaw attempt %d/%d returned empty content: status=%s elapsed=%.2fs body=%r",
+                    attempt,
+                    self._max_attempts,
+                    response.status_code,
+                    elapsed,
+                    response_body,
+                )
+                last_error = OpenClawRequestError(
+                    f"OpenClaw returned no assistant content on attempt {attempt}",
+                    error_type=error_type,
+                    request_payload=request_payload,
+                    response_body=response_body,
+                    retry_responses=retry_responses,
                 )
             except Exception as exc:
+                elapsed = time.monotonic() - attempt_start if "attempt_start" in locals() else 0.0
                 last_error = exc
-                logger.warning("OpenClaw attempt %d/%d failed: %s", attempt, self._max_attempts, exc)
+                error_type = classify_error(exc)
+                retry_responses.append(
+                    {
+                        "attempt": attempt,
+                        "status_code": None,
+                        "headers": {},
+                        "body": str(exc),
+                        "elapsed_sec": elapsed,
+                        "error_type": error_type,
+                    }
+                )
+                logger.warning(
+                    "OpenClaw attempt %d/%d failed: error_type=%s timeout=%.1fs elapsed=%.2fs error=%s",
+                    attempt,
+                    self._max_attempts,
+                    error_type,
+                    self._request_timeout,
+                    elapsed,
+                    exc,
+                )
 
             if attempt < self._max_attempts:
                 time.sleep(min(2, attempt))
 
         if not raw_output:
-            if last_error is not None and not response_json:
+            if isinstance(last_error, OpenClawRequestError):
                 raise last_error
+            error_type = classify_error(
+                last_error,
+                response_json=response_json or None,
+                status_code=retry_responses[-1]["status_code"] if retry_responses else None,
+            )
             detail = response_json or {"url": url, "request": request_payload}
-            raise RuntimeError(f"OpenClaw response did not contain assistant text: {detail}")
+            raise OpenClawRequestError(
+                f"OpenClaw response did not contain assistant text: {detail}",
+                error_type=error_type,
+                request_payload=request_payload,
+                response_body=detail,
+                retry_responses=retry_responses,
+            )
 
         wall_time = time.time() - start
 
@@ -692,6 +790,7 @@ class OpenClawAgent(Agent):
                 "gateway_response_id": response_json.get("id", ""),
                 "sandbox_id": sandbox_id,
                 "model": self._model,
+                "retry_responses": retry_responses,
             },
         )
 

@@ -29,6 +29,7 @@ log_section() { echo -e "\n========== $1 =========="; }
 log_ok()      { echo "  ✓ $1"; }
 log_fail()    { echo "  ✗ $1" >&2; }
 log_info()    { echo "  • $1"; }
+log_warn()    { echo "  ! $1"; }
 
 with_nounset_disabled() {
   local had_nounset=0
@@ -76,6 +77,12 @@ refresh_generated_ports() {
     --write-env "${SCRIPT_DIR}/.rock_ports.env" >/dev/null
   # shellcheck disable=SC1091
   source "${SCRIPT_DIR}/rock_env.sh"
+}
+
+ensure_writable_dir() {
+  local dir_path="$1"
+  mkdir -p "${dir_path}"
+  [ -w "${dir_path}" ]
 }
 
 # ── 1. Prerequisites ────────────────────────────────────────────────────────
@@ -162,6 +169,13 @@ fi
 
 # Ray
 echo "  Starting Ray head..."
+if ! ensure_writable_dir "${RAY_TMPDIR}"; then
+  log_fail "RAY_TMPDIR is not writable: ${RAY_TMPDIR}"
+  exit 1
+fi
+if ! ray stop --force >/dev/null 2>&1; then
+  log_warn "ray stop reported no running local Ray processes"
+fi
 (
   cd ref/ROCK
   ray start --head \

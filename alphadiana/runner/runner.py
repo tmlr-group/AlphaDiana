@@ -26,9 +26,10 @@ logger = logging.getLogger(__name__)
 
 def _build_error_info(exc: Exception) -> dict:
     """Build a serializable error dict from an exception."""
+    error_type = getattr(exc, "error_type", type(exc).__name__)
     return {
         "error": str(exc),
-        "error_type": type(exc).__name__,
+        "error_type": error_type,
         "request_payload": getattr(exc, "request_payload", None),
         "response_body": getattr(exc, "response_body", None),
     }
@@ -188,6 +189,9 @@ class Runner:
                         error_response.gateway_url = f"{sandbox_session.proxy_v1_base()}/chat/completions"
                 if self.sandbox is not None:
                     error_response.metadata.setdefault("sandbox_backend", self.sandbox.name)
+                retry_responses = getattr(exc, "retry_responses", None)
+                if retry_responses and "retry_responses" not in error_response.metadata:
+                    error_response.metadata["retry_responses"] = retry_responses
                 self.result_store.append_error(
                     task,
                     error=_build_error_info(exc),

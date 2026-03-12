@@ -113,21 +113,23 @@ class TestSandboxIsolation:
         from alphadiana.sandbox.rock import ROCKSandbox
 
         sb = ROCKSandbox()
-        sb.setup({
-            "admin_base_url": "http://localhost:9000",
-            "proxy_base_url": "http://localhost:9001",
-        })
+        with patch("alphadiana.sandbox.rock._require_rock_sdk"):
+            sb.setup({
+                "admin_base_url": "http://localhost:9000",
+                "proxy_base_url": "http://localhost:9001",
+            })
         assert sb._reset_between_tasks is True
 
     def test_reset_between_tasks_configurable(self):
         from alphadiana.sandbox.rock import ROCKSandbox
 
         sb = ROCKSandbox()
-        sb.setup({
-            "admin_base_url": "http://localhost:9000",
-            "proxy_base_url": "http://localhost:9001",
-            "reset_between_tasks": False,
-        })
+        with patch("alphadiana.sandbox.rock._require_rock_sdk"):
+            sb.setup({
+                "admin_base_url": "http://localhost:9000",
+                "proxy_base_url": "http://localhost:9001",
+                "reset_between_tasks": False,
+            })
         assert sb._reset_between_tasks is False
 
     def test_close_executes_cleanup(self):
@@ -144,6 +146,23 @@ class TestSandboxIsolation:
         assert "/root/.openclaw/workspace" in cmd
         assert "/root/.openclaw/agents/main/sessions" in cmd
 
+    def test_close_calls_cleanup_before_stop(self):
+        from alphadiana.sandbox.rock import ROCKSession
+
+        session = object.__new__(ROCKSession)
+        session._sandbox = MagicMock()
+        session._admin_base_url = "http://localhost:9000"
+        session._cleanup_workspace = MagicMock()
+
+        with patch("alphadiana.sandbox.rock._run_async"), patch(
+            "alphadiana.sandbox.rock._maybe_await",
+            new=MagicMock(return_value=None),
+        ):
+            ROCKSession.close(session)
+
+        session._cleanup_workspace.assert_called_once()
+        session._sandbox.stop.assert_called_once()
+
     def test_close_skips_cleanup_when_disabled(self):
         from alphadiana.sandbox.rock import ROCKSession
 
@@ -154,6 +173,16 @@ class TestSandboxIsolation:
         ROCKSession._cleanup_workspace(session)
 
         session.execute.assert_not_called()
+
+    def test_reset_executes_cleanup(self):
+        from alphadiana.sandbox.rock import ROCKSession
+
+        session = MagicMock(spec=ROCKSession)
+        session._cleanup_workspace = MagicMock()
+
+        ROCKSession.reset(session)
+
+        session._cleanup_workspace.assert_called_once()
 
     def test_cleanup_paths_in_module(self):
         from alphadiana.sandbox.rock import CLEANUP_PATHS
@@ -167,6 +196,25 @@ class TestSandboxIsolation:
 
         schema = (Path(__file__).parent.parent / "configs" / "schema.yaml").read_text()
         assert "reset_between_tasks" in schema
+
+    def test_create_session_passes_reset_and_proxy_timeout(self):
+        from alphadiana.sandbox.rock import ROCKSandbox
+
+        sb = ROCKSandbox()
+        with patch("alphadiana.sandbox.rock._require_rock_sdk"):
+            sb.setup({
+                "admin_base_url": "http://localhost:9000",
+                "proxy_base_url": "http://localhost:9001",
+                "reset_between_tasks": False,
+                "proxy_timeout": 321,
+            })
+
+        with patch("alphadiana.sandbox.rock.ROCKSession") as Session:
+            sb.create_session()
+
+        kwargs = Session.call_args.kwargs
+        assert kwargs["reset_between_tasks"] is False
+        assert kwargs["proxy_timeout"] == 321
 
 
 # ===================================================================
@@ -256,6 +304,21 @@ class TestBatchRunner:
         assert len(instances) == 2
         assert instances[0] is not instances[1]
 
+    def test_runner_lifecycle_wrapped(self):
+        from alphadiana.runner.batch_runner import BatchRunner
+
+        configs = [_make_config("r0")]
+
+        with patch("alphadiana.runner.batch_runner.Runner") as R:
+            runner = MagicMock()
+            runner.run.return_value = MagicMock(accuracy=1.0)
+            R.return_value = runner
+            BatchRunner(configs, parallel=False).run()
+
+        runner.setup.assert_called_once()
+        runner.run.assert_called_once()
+        runner.teardown.assert_called_once()
+
 
 # ===================================================================
 # 1.4 SandboxPool
@@ -287,6 +350,23 @@ class TestSandboxPool:
         assert pool.available == 0
         pool.release(s)
         assert pool.available == 1
+
+    def test_release_resets_session_before_requeue(self):
+        pool, sessions = self._make_pool(1)
+        session = pool.acquire()
+
+        pool.release(session)
+
+        sessions[0].reset.assert_called_once()
+
+    def test_reused_session_is_same_instance_after_reset(self):
+        pool, sessions = self._make_pool(1)
+        first = pool.acquire()
+        pool.release(first)
+        second = pool.acquire()
+
+        assert first is second
+        sessions[0].reset.assert_called_once()
 
     def test_acquire_raises_when_empty(self):
         pool, _ = self._make_pool(1)

@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+import getpass
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -134,6 +135,9 @@ def detect_ports(args: argparse.Namespace) -> RockPorts:
 
 
 def render_exports(ports: RockPorts) -> str:
+    user_name = getpass.getuser() or "user"
+    dynamic_config_path = REPO_ROOT / "dev/generated/rock-local-proxy.dynamic.yml"
+    ray_tmpdir_default = Path("/tmp") / f"{user_name}-ray"
     lines = [
         f"export ROCK_RAY_PORT={ports.ray_port}",
         f"export ROCK_RAY_DASHBOARD_PORT={ports.ray_dashboard_port}",
@@ -145,6 +149,8 @@ def render_exports(ports: RockPorts) -> str:
         f"export ROCK_BASE_URL={ports.base_url}",
         f"export ROCK_PROXY_ROOT_URL={ports.proxy_root_url}",
         f"export ROCK_PROXY_URL={ports.proxy_api_url}",
+        f'export ROCK_DYNAMIC_CONFIG="${{ROCK_DYNAMIC_CONFIG:-{dynamic_config_path}}}"',
+        f'export RAY_TMPDIR="${{RAY_TMPDIR:-{ray_tmpdir_default}}}"',
     ]
     return "\n".join(lines) + "\n"
 

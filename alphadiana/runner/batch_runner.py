@@ -35,13 +35,18 @@ class BatchRunner:
     def _run_sequential(self) -> list:
         summaries = []
         for config in self._configs:
+            runner = None
             try:
                 runner = Runner(config)
+                runner.setup()
                 summary = runner.run()
                 summaries.append(summary)
             except Exception as exc:
                 logger.error("Run %s failed: %s", config.run_id, exc)
                 summaries.append(None)
+            finally:
+                if runner is not None:
+                    runner.teardown()
         return summaries
 
     def _run_parallel(self) -> list:
@@ -62,4 +67,8 @@ class BatchRunner:
     @staticmethod
     def _run_one(config: ExperimentConfig):
         runner = Runner(config)
-        return runner.run()
+        try:
+            runner.setup()
+            return runner.run()
+        finally:
+            runner.teardown()

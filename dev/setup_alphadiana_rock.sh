@@ -153,6 +153,8 @@ _rock_env_rock_root="${_rock_env_project_root}/ref/ROCK"
 _rock_env_ports_file="${_rock_env_script_dir}/.rock_ports.env"
 _rock_env_dynamic_config_default="${_rock_env_project_root}/dev/generated/rock-local-proxy.dynamic.yml"
 _rock_env_cache_root="${_rock_env_project_root}/.cache"
+_rock_env_user_name="${USER:-$(id -un 2>/dev/null || echo user)}"
+_rock_env_ray_tmpdir_default="/tmp/${_rock_env_user_name}-ray"
 
 if [ ! -d "${_rock_env_rock_root}" ]; then
   echo "ROCK repository not found at ${_rock_env_rock_root}" >&2
@@ -177,7 +179,7 @@ export ROCK_PROXY_ROOT_URL="${ROCK_PROXY_ROOT_URL:-http://127.0.0.1:${ROCK_PROXY
 export ROCK_PROXY_URL="${ROCK_PROXY_URL:-${ROCK_PROXY_ROOT_URL}/apis/envs/sandbox/v1}"
 export ROCK_DYNAMIC_CONFIG="${ROCK_DYNAMIC_CONFIG:-${_rock_env_dynamic_config_default}}"
 export TMPDIR="${TMPDIR:-${_rock_env_cache_root}/tmp}"
-export RAY_TMPDIR="${RAY_TMPDIR:-${_rock_env_cache_root}/ray}"
+export RAY_TMPDIR="${RAY_TMPDIR:-${_rock_env_ray_tmpdir_default}}"
 mkdir -p "${TMPDIR}"
 mkdir -p "${RAY_TMPDIR}"
 
@@ -230,6 +232,8 @@ The helper exports absolute ROCK paths after it is loaded.
 It also clears HTTP/HTTPS/ALL proxy variables to avoid local ROCK services inheriting host proxy settings.
 If dev/.rock_ports.env exists, it will also load dynamically detected ROCK ports.
 If dev/generated/rock-local-proxy.dynamic.yml exists, ROCK_CONFIG will point to that generated config.
+Before running python dev/find_rock_ports.py manually, unset TMPDIR to avoid carrying an old long socket path:
+  unset TMPDIR
 
 Start services in separate terminals:
   source ${ENV_REL}

@@ -6,8 +6,6 @@ agent:
   config:
     model: qwen2.5-72b
     api_base: "http://localhost:8000/v1"
-    temperature: 0.0
-    max_tokens: 8192
 
 benchmark:
   name: math

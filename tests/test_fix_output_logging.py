@@ -109,21 +109,23 @@ class TestProxyTimeout:
         from alphadiana.sandbox.rock import ROCKSandbox
 
         sb = ROCKSandbox()
-        sb.setup({
-            "admin_base_url": "http://localhost:9000",
-            "proxy_base_url": "http://localhost:9001",
-        })
+        with patch("alphadiana.sandbox.rock._require_rock_sdk"):
+            sb.setup({
+                "admin_base_url": "http://localhost:9000",
+                "proxy_base_url": "http://localhost:9001",
+            })
         assert sb._proxy_timeout == 600
 
     def test_custom_value(self):
         from alphadiana.sandbox.rock import ROCKSandbox
 
         sb = ROCKSandbox()
-        sb.setup({
-            "admin_base_url": "http://localhost:9000",
-            "proxy_base_url": "http://localhost:9001",
-            "proxy_timeout": 300,
-        })
+        with patch("alphadiana.sandbox.rock._require_rock_sdk"):
+            sb.setup({
+                "admin_base_url": "http://localhost:9000",
+                "proxy_base_url": "http://localhost:9001",
+                "proxy_timeout": 300,
+            })
         assert sb._proxy_timeout == 300
 
 
@@ -237,6 +239,18 @@ class TestRetryResponseArtifact:
         saved = json.loads(path.read_text())
         assert saved[0]["status_code"] == 502
 
+    def test_openclaw_request_error_carries_retry_responses(self):
+        from alphadiana.agent.openclaw import OpenClawRequestError
+
+        err = OpenClawRequestError(
+            "boom",
+            error_type="gateway_error",
+            retry_responses=[{"attempt": 1, "status_code": 502}],
+        )
+
+        assert err.error_type == "gateway_error"
+        assert err.retry_responses[0]["status_code"] == 502
+
 
 class TestErrorDistribution:
     """RunSummary 中的错误分布统计。"""
@@ -287,3 +301,21 @@ class TestErrorDistribution:
 
         summary = ReportGenerator().generate(store, self._cfg("cnt"))
         assert summary.error_distribution["empty_response"] == 3
+
+    def test_markdown_includes_error_distribution_table(self, tmp_path):
+        from alphadiana.results.report import ReportGenerator
+
+        store = ResultStore(output_dir=str(tmp_path), run_id="md")
+        task = BenchmarkTask(task_id="e1", problem="P", ground_truth="42")
+        store.append_error(
+            task,
+            error={"error": "timeout", "error_type": "timeout"},
+            response=AgentResponse(answer=None),
+        )
+
+        gen = ReportGenerator()
+        summary = gen.generate(store, self._cfg("md"))
+        markdown = gen.to_markdown(summary)
+
+        assert "## Error Distribution" in markdown
+        assert "| timeout | 1 |" in markdown

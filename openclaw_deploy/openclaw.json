@@ -49,5 +49,6 @@
     ]
   },
   "plugins": { "entries": {} },
-  "messages": { "ackReactionScope": "group-mentions" }
+  "messages": { "ackReactionScope": "group-mentions" },
+  "memory": { "enabled": false }
 }

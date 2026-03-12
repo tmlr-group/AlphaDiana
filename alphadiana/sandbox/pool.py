@@ -58,6 +58,9 @@ class SandboxPool:
 
     def release(self, session: Any) -> None:
         """Return a session to the pool."""
+        reset = getattr(session, "reset", None)
+        if callable(reset):
+            reset()
         with self._lock:
             self._available.append(session)
             self._event.set()

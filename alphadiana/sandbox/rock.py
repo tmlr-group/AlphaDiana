@@ -38,6 +38,7 @@ def _progress(message: str) -> None:
 try:
     from rock.actions import BashAction, Command, CreateBashSessionRequest
     from rock.actions.sandbox.request import WriteFileRequest
+    from rock.config import ProxyServiceConfig
     from rock.sdk.sandbox.client import Sandbox as ROCKClientSandbox
     from rock.sdk.sandbox.config import SandboxConfig
 except ImportError:
@@ -45,6 +46,7 @@ except ImportError:
     Command = None  # type: ignore[assignment]
     CreateBashSessionRequest = None  # type: ignore[assignment]
     WriteFileRequest = None  # type: ignore[assignment]
+    ProxyServiceConfig = None  # type: ignore[assignment]
     ROCKClientSandbox = None  # type: ignore[assignment]
     SandboxConfig = None  # type: ignore[assignment]
 
@@ -358,6 +360,8 @@ class ROCKSession(SandboxSession):
         startup_timeout: int,
         auto_clear_seconds: int,
         start_retries: int = 1,
+        reset_between_tasks: bool = True,
+        proxy_timeout: int = 600,
     ) -> None:
         _require_rock_sdk()
         self._id = str(uuid.uuid4())
@@ -369,6 +373,8 @@ class ROCKSession(SandboxSession):
         self._startup_timeout = startup_timeout
         self._auto_clear_seconds = auto_clear_seconds
         self._start_retries = max(1, start_retries)
+        self._reset_between_tasks = reset_between_tasks
+        self._proxy_timeout = proxy_timeout
         self._command_history: list[dict[str, Any]] = []
         _progress(
             f"create_session requested image={self._image} memory={self._memory} "
@@ -401,6 +407,11 @@ class ROCKSession(SandboxSession):
                     startup_timeout=float(attempt_timeout),
                 )
                 sandbox = ROCKClientSandbox(config)
+                if ProxyServiceConfig is not None and hasattr(sandbox, "config"):
+                    try:
+                        setattr(sandbox.config, "proxy_service", ProxyServiceConfig(timeout=float(self._proxy_timeout)))
+                    except Exception:
+                        logger.debug("Failed to apply proxy timeout to ROCK sandbox config", exc_info=True)
                 try:
                     _run_async(sandbox.start())
                     self._memory = memory
@@ -556,7 +567,15 @@ class ROCKSession(SandboxSession):
         paths = " ".join(CLEANUP_PATHS)
         self.execute(f"rm -rf {paths}")
 
+    def reset(self) -> None:
+        """Reset the reusable sandbox session to a clean state."""
+        self._cleanup_workspace()
+
     def close(self) -> None:
+        try:
+            self._cleanup_workspace()
+        except Exception:
+            logger.debug("Workspace cleanup failed for sandbox_id=%s", self.sandbox_id, exc_info=True)
         stop = getattr(self._sandbox, "stop", None)
         if stop is None:
             return
@@ -591,6 +610,8 @@ class ROCKSandbox(Sandbox):
             "startup_timeout": int(config.get("startup_timeout", 300)),
             "auto_clear_seconds": int(config.get("auto_clear_seconds", 3600)),
             "start_retries": int(config.get("start_retries", 1)),
+            "reset_between_tasks": bool(self._reset_between_tasks),
+            "proxy_timeout": self._proxy_timeout,
         }
 
     def create_session(self) -> ROCKSession:

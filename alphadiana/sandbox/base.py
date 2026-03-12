@@ -43,6 +43,10 @@ class SandboxSession(ABC):
         """Close and clean up the session."""
         ...
 
+    def reset(self) -> None:
+        """Reset session state between tasks without tearing it down."""
+        return None
+
     def metadata(self) -> dict:
         """Return metadata about this session. Override for richer info."""
         return {"session_id": self.session_id}

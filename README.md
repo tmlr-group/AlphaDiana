@@ -17,7 +17,9 @@ bash dev/quickstart.sh
 
 该脚本会自动完成环境创建、依赖安装、端口检测和服务启动。完成后按提示操作即可。
 
-如果需要手动操作，请继续往下看。
+详细的手动部署和排障步骤已整理到 [`docs/setup_detail.md`](/data2/xuan/AlphaDiana/docs/setup_detail.md)。
+
+如果需要手动操作，请继续往下看，或直接查看上面的详细文档。
 
 ---
 

@@ -152,4 +152,15 @@ class ReportGenerator:
                 lines.append(f"| {cat} | {acc:.4f} |")
             lines.append("")
 
+        if summary.error_distribution:
+            lines.extend([
+                "## Error Distribution",
+                "",
+                "| Error Type | Count |",
+                "|------------|-------|",
+            ])
+            for error_type, count in sorted(summary.error_distribution.items()):
+                lines.append(f"| {error_type} | {count} |")
+            lines.append("")
+
         return "\n".join(lines)

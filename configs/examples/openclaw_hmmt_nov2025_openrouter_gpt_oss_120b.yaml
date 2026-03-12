@@ -8,8 +8,6 @@ agent:
     api_base: "http://localhost:9001/apis/envs/sandbox/v1/sandboxes/<SANDBOX_ID>/proxy/v1"
     model: openclaw
     gateway_token: "OPENCLAW"
-    temperature: 0.0
-    max_tokens: 16384
 
 benchmark:
   name: aime

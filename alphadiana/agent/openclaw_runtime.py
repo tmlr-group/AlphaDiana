@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import tempfile
 import time
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -86,6 +87,7 @@ class OpenClawRuntimeManager:
         self._workspace_path = config.get("workspace_path", "/root/.openclaw/workspace")
         self._remote_openclaw_config_path = config.get("remote_openclaw_config_path", "/tmp/openclaw.json")
         self._started_sandboxes: set[str] = set()
+        self._agent_md_applied_sandboxes: set[str] = set()
 
         # Agent.md customization
         self._agent_md_mode = config.get("agent_md_mode", "none")
@@ -101,6 +103,9 @@ class OpenClawRuntimeManager:
 
     def inject_agent_md(self, sandbox: Any) -> None:
         """Inject or modify AGENTS.md in the sandbox based on mode."""
+        sandbox_id = str(getattr(sandbox, "sandbox_id", ""))
+        if sandbox_id and sandbox_id in self._agent_md_applied_sandboxes:
+            return
         agent_md_path = "/root/AGENTS.md"
         if self._agent_md_mode == "append":
             existing = sandbox.read_text(agent_md_path)
@@ -109,23 +114,22 @@ class OpenClawRuntimeManager:
         elif self._agent_md_mode == "override":
             sandbox.upload(agent_md_path, self._agent_md_content.encode("utf-8"))
         # mode == "none": do nothing
+        if sandbox_id and self._agent_md_mode != "none":
+            self._agent_md_applied_sandboxes.add(sandbox_id)
 
-    def _build_openclaw_config(self) -> dict:
+    def _build_openclaw_config(self, base_config: dict | None = None) -> dict:
         """Build OpenClaw gateway config dict with optional embedding provider."""
-        config: dict[str, Any] = {}
-        providers: list[dict] = []
-
+        config: dict[str, Any] = deepcopy(base_config or {})
         if self._embedding_api_base:
-            providers.append({
-                "id": "embedding",
+            models = config.setdefault("models", {})
+            providers = models.setdefault("providers", {})
+            providers["embedding"] = {
                 "baseUrl": self._embedding_api_base,
                 "apiKey": self._embedding_api_key or "EMPTY",
-            })
+                "api": "openai",
+            }
         else:
             config["memory"] = {"enabled": False}
-
-        if providers:
-            config["modelProviders"] = providers
 
         return config
 
@@ -141,6 +145,9 @@ class OpenClawRuntimeManager:
 
         _progress(f"preparing runtime files for sandbox_id={sandbox_id}")
         config_dir = self._prepare_runtime_files(sandbox)
+        if self._agent_md_mode != "none":
+            _progress("injecting AGENTS.md customizations")
+            self.inject_agent_md(sandbox)
         _progress(f"installing ROCK agent from config_dir={config_dir}")
         sandbox.install_agent(config_dir=config_dir)
         _progress("starting OpenClaw gateway inside sandbox")
@@ -213,7 +220,12 @@ class OpenClawRuntimeManager:
         _progress(
             f"uploading OpenClaw config {openclaw_config} to sandbox path {self._remote_openclaw_config_path}"
         )
-        sandbox.upload(self._remote_openclaw_config_path, openclaw_config.read_bytes())
+        base_openclaw_config = json.loads(openclaw_config.read_text(encoding="utf-8"))
+        rendered_openclaw_config = self._build_openclaw_config(base_openclaw_config)
+        sandbox.upload(
+            self._remote_openclaw_config_path,
+            json.dumps(rendered_openclaw_config, indent=2).encode("utf-8"),
+        )
 
         generated_config = yaml.safe_load(rock_agent_config.read_text(encoding="utf-8"))
         generated_config["working_dir"] = None
