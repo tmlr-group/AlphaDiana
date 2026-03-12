@@ -164,6 +164,7 @@ fi
 echo "  Starting Ray head..."
 (
   cd ref/ROCK
+  ray stop >/dev/null 2>&1 || true
   ray start --head \
     --port="${ROCK_RAY_PORT}" \
     --dashboard-port="${ROCK_RAY_DASHBOARD_PORT}" \

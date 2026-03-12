@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import re
 import subprocess
 import sys
@@ -134,6 +135,8 @@ def detect_ports(args: argparse.Namespace) -> RockPorts:
 
 
 def render_exports(ports: RockPorts) -> str:
+    dynamic_config_path = (REPO_ROOT / "dev/generated/rock-local-proxy.dynamic.yml").resolve()
+    ray_tmpdir = Path("/tmp") / f"ray-{getpass.getuser()}"
     lines = [
         f"export ROCK_RAY_PORT={ports.ray_port}",
         f"export ROCK_RAY_DASHBOARD_PORT={ports.ray_dashboard_port}",
@@ -145,6 +148,8 @@ def render_exports(ports: RockPorts) -> str:
         f"export ROCK_BASE_URL={ports.base_url}",
         f"export ROCK_PROXY_ROOT_URL={ports.proxy_root_url}",
         f"export ROCK_PROXY_URL={ports.proxy_api_url}",
+        f'export ROCK_DYNAMIC_CONFIG="{dynamic_config_path}"',
+        f'export RAY_TMPDIR="{ray_tmpdir}"',
     ]
     return "\n".join(lines) + "\n"
 

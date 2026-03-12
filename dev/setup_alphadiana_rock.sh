@@ -153,6 +153,7 @@ _rock_env_rock_root="${_rock_env_project_root}/ref/ROCK"
 _rock_env_ports_file="${_rock_env_script_dir}/.rock_ports.env"
 _rock_env_dynamic_config_default="${_rock_env_project_root}/dev/generated/rock-local-proxy.dynamic.yml"
 _rock_env_cache_root="${_rock_env_project_root}/.cache"
+_rock_env_user="${USER:-$(id -un 2>/dev/null || echo user)}"
 
 if [ ! -d "${_rock_env_rock_root}" ]; then
   echo "ROCK repository not found at ${_rock_env_rock_root}" >&2
@@ -177,7 +178,7 @@ export ROCK_PROXY_ROOT_URL="${ROCK_PROXY_ROOT_URL:-http://127.0.0.1:${ROCK_PROXY
 export ROCK_PROXY_URL="${ROCK_PROXY_URL:-${ROCK_PROXY_ROOT_URL}/apis/envs/sandbox/v1}"
 export ROCK_DYNAMIC_CONFIG="${ROCK_DYNAMIC_CONFIG:-${_rock_env_dynamic_config_default}}"
 export TMPDIR="${TMPDIR:-${_rock_env_cache_root}/tmp}"
-export RAY_TMPDIR="${RAY_TMPDIR:-${_rock_env_cache_root}/ray}"
+export RAY_TMPDIR="${RAY_TMPDIR:-/tmp/ray-${_rock_env_user}}"
 mkdir -p "${TMPDIR}"
 mkdir -p "${RAY_TMPDIR}"
 
