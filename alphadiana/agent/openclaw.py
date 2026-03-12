@@ -554,7 +554,7 @@ class OpenClawAgent(Agent):
             "model": self._model,
             "messages": messages,
             "temperature": self._temperature,
-            "stream": False,
+            "stream": True,
         }
         resolved = self._resolve_max_tokens()
         if resolved is not None:
@@ -616,11 +616,29 @@ class OpenClawAgent(Agent):
         last_error: Exception | None = None
         for attempt in range(1, self._max_attempts + 1):
             try:
+                chunks: list[str] = []
                 with httpx.Client(timeout=self._request_timeout, trust_env=False) as client:
-                    response = client.post(url, headers=headers, json=request_payload)
-                response.raise_for_status()
-                response_json = response.json()
-                raw_output = _extract_raw_output_from_payload(response_json)
+                    with client.stream("POST", url, headers=headers, json=request_payload) as response:
+                        response.raise_for_status()
+                        for line in response.iter_lines():
+                            if not line.startswith("data:"):
+                                continue
+                            data = line[len("data:"):].strip()
+                            if data == "[DONE]":
+                                break
+                            try:
+                                chunk_json = json.loads(data)
+                            except json.JSONDecodeError:
+                                continue
+                            choices = chunk_json.get("choices") or []
+                            delta = choices[0].get("delta", {}) if choices else {}
+                            content = delta.get("content")
+                            if content:
+                                chunks.append(content)
+                            # Capture final chunk usage if present
+                            if chunk_json.get("usage"):
+                                response_json = chunk_json
+                raw_output = "".join(chunks)
                 if raw_output:
                     break
                 last_error = RuntimeError(
