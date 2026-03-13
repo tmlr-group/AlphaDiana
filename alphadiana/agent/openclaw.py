@@ -360,6 +360,9 @@ class OpenClawAgent(Agent):
         self._agent_md_mode = config.get("agent_md_mode", "none")
         self._agent_md_content = config.get("agent_md_content", "")
 
+        # Optional system prompt prepended to the user message
+        self._user_system_prompt = config.get("system_prompt", "")
+
         # Cached resolved max_tokens
         self._resolved_max_tokens: int | None = None
 
@@ -608,9 +611,13 @@ class OpenClawAgent(Agent):
         start = time.time()
 
         # OpenClaw's gateway builds its own system prompt internally.
-        # We only send the user message.
+        # We only send the user message, optionally prefixed with a custom system prompt.
+        if self._user_system_prompt:
+            user_content = f"{self._user_system_prompt}\n\n{task.problem}"
+        else:
+            user_content = task.problem
         request_messages = [
-            {"role": "user", "content": task.problem},
+            {"role": "user", "content": user_content},
         ]
 
         sandbox_id = self._sandbox_id
