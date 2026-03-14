@@ -27,7 +27,7 @@ benchmark:
 sandbox: null   # OpenClaw already runs inside ROCK; no extra sandbox needed here
 
 scorer:
-  name: numeric
+  name: math_verify
   config:
     tolerance: 1e-6
 
