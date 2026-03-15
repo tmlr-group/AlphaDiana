@@ -45,9 +45,11 @@ ENV/
 # Redis dump
 dump.rdb
 
-# Results (generated at runtime, root-level only)
+# Results, configs, artifacts (generated at runtime)
 /results/
 !alphadiana/results/
+/configs/
+/artifacts/
 
 dev/generated
 

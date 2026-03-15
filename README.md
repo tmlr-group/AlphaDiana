@@ -786,3 +786,62 @@ curl -X POST \
 alphadiana validate dev/generated/openclaw_qwen25_7b_openrouter_aime2024.resolved.yaml
 alphadiana run dev/generated/openclaw_qwen25_7b_openrouter_aime2024.resolved.yaml
 ```
+
+## Dashboard
+
+提供了一个 Web 界面来管理和查看评估任务，无需手动编写配置文件或读 JSONL。
+
+### 启动
+
+```bash
+cd AlphaDiana
+conda activate alphadiana
+source dev/rock_env.sh
+source dev/.rock_ports.env
+
+uvicorn alphadiana.dashboard.backend.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+浏览器访问 `http://<host>:8000`。`--reload` 会在后端代码变更时自动重载；前端修改后需要重新 build：
+
+```bash
+cd alphadiana/dashboard/frontend
+npm run build
+```
+
+### 功能
+
+- **Runs**：查看所有评估结果，包括准确率、pass@k/avg@k（多采样时）、per-category 分数、耗时分布等
+- **Compare**：选择多个 run 进行逐题对比
+- **Jobs**：创建、监控评估任务，实时查看进度和日志
+- **New Evaluation**：通过表单配置并启动评估，支持 Direct LLM 和 OpenClaw 两种 agent
+
+### API Key 配置
+
+Dashboard 的 API Key 输入支持两种模式：
+
+1. **直接粘贴**：在输入框中直接粘贴 API key
+2. **引用环境变量**：输入 `$变量名`（如 `$OPENROUTER_API_KEY`），后端会从项目根目录的 `.env` 文件或系统环境变量中读取实际值
+
+在仓库根目录的 `.env` 中配置好常用密钥：
+
+```bash
+cat > .env <<'EOF'
+OPENROUTER_API_KEY="sk-or-v1-xxxxxxxx"
+OPENAI_API_KEY="sk-xxxxxxxx"
+SILICONFLOW_API_KEY="sk-xxxxxxxx"
+ARK_API_KEY="xxxxxxxx"
+EOF
+```
+
+输入 API Base URL 时，Dashboard 会根据域名自动匹配对应的环境变量名并填入 API Key 输入框，例如：
+
+| API Base URL | 自动匹配变量 |
+|---|---|
+| `https://openrouter.ai/api/v1/` | `$OPENROUTER_API_KEY` |
+| `https://api.openai.com/v1/` | `$OPENAI_API_KEY` |
+| `https://api.siliconflow.cn/v1/` | `$SILICONFLOW_API_KEY` |
+| `https://ark.cn-beijing.volces.com/api/...` | `$ARK_API_KEY` |
+| `https://api.deepseek.com/v1/` | `$DEEPSEEK_API_KEY` |
+
+这样只需配置一次 `.env`，之后在 Dashboard 中选择 provider 时 key 会自动填充，无需反复粘贴。
