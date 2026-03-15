@@ -60,6 +60,10 @@ export function listSandboxes(): Promise<SandboxInfo[]> {
   return fetchJson<SandboxInfo[]>(`${BASE}/sandboxes`);
 }
 
+export function probeSandbox(sandboxId: string): Promise<{ gateway_ready: boolean; model: string }> {
+  return fetchJson(`${BASE}/sandboxes/${encodeURIComponent(sandboxId)}/probe`);
+}
+
 export function deploySandbox(params: {
   model_api_base?: string;
   model_api_key?: string;
@@ -80,6 +84,10 @@ export function getDeployStatus(deployId: string): Promise<DeployJob> {
 
 export function getDeployLogs(deployId: string): Promise<{ deploy_id: string; logs: string }> {
   return fetchJson(`${BASE}/sandboxes/deploy/${deployId}/logs`);
+}
+
+export function listEnvKeys(): Promise<{ keys: string[] }> {
+  return fetchJson(`${BASE}/env-keys`);
 }
 
 export function deployAndRun(req: DeployAndRunRequest): Promise<{ job_id: string; run_id: string; deploy_id: string; status: string }> {

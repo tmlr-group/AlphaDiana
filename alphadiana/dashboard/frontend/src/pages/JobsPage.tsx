@@ -120,6 +120,13 @@ export default function JobsPage() {
       key: 'agent',
     },
     {
+      title: 'Model',
+      dataIndex: 'model',
+      key: 'model',
+      render: (model: string) =>
+        model ? <Text ellipsis={{ tooltip: model }} style={{ maxWidth: 180 }}>{model}</Text> : <Text type="secondary">-</Text>,
+    },
+    {
       title: 'Benchmark',
       dataIndex: 'benchmark',
       key: 'benchmark',

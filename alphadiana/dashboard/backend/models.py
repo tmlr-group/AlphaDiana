@@ -16,16 +16,23 @@ class RunSummaryResponse(BaseModel):
     completed: int
     failed: int
     accuracy: float
+    accuracy_total: float = 0.0
     mean_score: float
     mean_wall_time_sec: float
     total_tokens: dict[str, int]
     per_category: dict[str, float]
     error_distribution: dict[str, int] = {}
+    num_samples: int = 1
+    pass_at_k: float = 0.0
+    avg_at_k: float = 0.0
+    per_category_pass_at_k: dict[str, float] = {}
+    per_category_avg_at_k: dict[str, float] = {}
     timestamp: str = ""
 
 
 class TaskResult(BaseModel):
     task_id: str
+    sample_index: int = 0
     problem: str = ""
     ground_truth: Any = None
     predicted: Any = None
@@ -70,6 +77,7 @@ class CreateJobRequest(BaseModel):
     sandbox_config: dict[str, Any] = {}
     max_concurrent: int = 1
     redo_all: bool = False
+    num_samples: int = 1
     metadata: dict[str, Any] = {}
 
 
@@ -81,6 +89,7 @@ class JobStatus(BaseModel):
     status: str  # "pending", "running", "completed", "failed"
     agent: str = ""
     benchmark: str = ""
+    model: str = ""
     progress: int = 0  # completed tasks
     total_tasks: int = 0
     accuracy: float | None = None
@@ -107,4 +116,5 @@ class DeployAndRunRequest(BaseModel):
     scorer_config: dict[str, Any] = {}
     max_concurrent: int = 1
     redo_all: bool = False
+    num_samples: int = 1
     metadata: dict[str, Any] = {}

@@ -70,6 +70,36 @@ export default function SummaryCard({ summary }: { summary: RunSummary }) {
           />
         </Col>
       </Row>
+      {summary.num_samples > 1 && (
+        <Row gutter={16} style={{ marginTop: 16 }}>
+          <Col span={4}>
+            <Statistic
+              title={`Samples (k)`}
+              value={summary.num_samples}
+              prefix={<ThunderboltOutlined />}
+            />
+          </Col>
+          <Col span={4}>
+            <Statistic
+              title={`Pass@${summary.num_samples}`}
+              value={Math.round(summary.pass_at_k * 100)}
+              suffix="%"
+              prefix={<CheckCircleOutlined />}
+              valueStyle={{
+                color: summary.pass_at_k >= 0.8 ? '#3f8600' : '#cf1322',
+              }}
+            />
+          </Col>
+          <Col span={4}>
+            <Statistic
+              title={`Avg@${summary.num_samples}`}
+              value={Math.round(summary.avg_at_k * 100)}
+              suffix="%"
+              prefix={<CheckCircleOutlined />}
+            />
+          </Col>
+        </Row>
+      )}
     </Card>
   );
 }

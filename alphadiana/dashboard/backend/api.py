@@ -91,6 +91,62 @@ def compare_runs(runs: str = Query(..., description="Comma-separated run IDs")):
     return _get_loader().compare_runs(run_ids)
 
 
+# --- Environment variable helpers ---
+
+
+def _load_dotenv() -> dict[str, str]:
+    """Read .env file from project root and return key-value pairs."""
+    from pathlib import Path
+    env_path = Path(__file__).resolve().parents[3] / ".env"
+    result: dict[str, str] = {}
+    if not env_path.exists():
+        return result
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip()
+        if (value.startswith('"') and value.endswith('"')) or (
+            value.startswith("'") and value.endswith("'")
+        ):
+            value = value[1:-1]
+        if key:
+            result[key] = value
+    return result
+
+
+def resolve_env_ref(value: str) -> str:
+    """If value starts with '$', resolve it from .env or os.environ."""
+    import os
+    if not value.startswith("$"):
+        return value
+    var_name = value[1:]
+    dotenv = _load_dotenv()
+    resolved = dotenv.get(var_name) or os.environ.get(var_name) or ""
+    return resolved
+
+
+@router.get("/env-keys")
+def list_env_keys():
+    """List environment variable names from .env that look like API keys/tokens.
+
+    Only reads from the project .env file (not all of os.environ) to avoid
+    leaking unrelated system variable names. Returns only names, never values.
+    """
+    dotenv = _load_dotenv()
+    key_names: list[str] = []
+    for name in dotenv:
+        upper = name.upper()
+        if any(kw in upper for kw in ("KEY", "TOKEN", "SECRET")):
+            key_names.append(name)
+    key_names.sort()
+    return {"keys": key_names}
+
+
 # --- Job management endpoints ---
 
 
@@ -103,6 +159,10 @@ def list_jobs():
 @router.post("/jobs", response_model=JobStatus, status_code=201)
 def create_job(req: CreateJobRequest):
     """Create and start a new evaluation job."""
+    # Resolve $ENV_VAR references in agent config
+    for key in ("api_key", "gateway_token"):
+        if key in req.agent_config and isinstance(req.agent_config[key], str):
+            req.agent_config[key] = resolve_env_ref(req.agent_config[key])
     return _get_job_manager().create_job(req)
 
 
@@ -145,6 +205,13 @@ async def list_sandboxes():
     return [s.to_dict() for s in sandboxes]
 
 
+@router.get("/sandboxes/{sandbox_id}/probe")
+async def probe_sandbox(sandbox_id: str):
+    """Probe a sandbox for gateway health and model info (slow, on-demand)."""
+    mgr = _get_sandbox_manager()
+    return await mgr.probe_sandbox(sandbox_id)
+
+
 @router.post("/sandboxes/deploy", status_code=201)
 def deploy_sandbox(
     model_api_base: str = "",
@@ -154,6 +221,7 @@ def deploy_sandbox(
     auto_clear_seconds: int = 28800,
 ):
     """Start a new sandbox deployment."""
+    model_api_key = resolve_env_ref(model_api_key)
     mgr = _get_sandbox_manager()
     job = mgr.deploy_sandbox(
         agent_config_path=agent_config_path,
@@ -202,6 +270,12 @@ def deploy_and_run(req: DeployAndRunRequest):
     sandbox_mgr = _get_sandbox_manager()
     job_mgr = _get_job_manager()
 
+    # Resolve $ENV_VAR references
+    req.model_api_key = resolve_env_ref(req.model_api_key)
+    for key in ("api_key", "gateway_token"):
+        if key in req.agent_config and isinstance(req.agent_config[key], str):
+            req.agent_config[key] = resolve_env_ref(req.agent_config[key])
+
     # Start sandbox deploy
     deploy_job = sandbox_mgr.deploy_sandbox(
         model_api_base=req.model_api_base,
@@ -222,10 +296,12 @@ def deploy_and_run(req: DeployAndRunRequest):
         scorer_config=req.scorer_config,
         max_concurrent=req.max_concurrent,
         redo_all=req.redo_all,
+        num_samples=req.num_samples,
         metadata={
             **req.metadata,
             "deploy_id": deploy_job.deploy_id,
             "deploy_and_run": True,
+            "base_model": req.model_name,
         },
     )
 

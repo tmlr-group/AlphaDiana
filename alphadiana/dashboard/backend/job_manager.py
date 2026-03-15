@@ -78,12 +78,15 @@ class JobManager:
         run_id = req.run_id or f"{req.agent_name}-{req.benchmark_name}-{job_id}"
 
         benchmark_label = req.metadata.get("benchmark_label", req.benchmark_name)
+        # Extract model name from agent config
+        model = req.agent_config.get("model", "")
         status = JobStatus(
             job_id=job_id,
             run_id=run_id,
             status="pending",
             agent=req.agent_name,
             benchmark=benchmark_label,
+            model=model,
             created_at=datetime.now(timezone.utc).isoformat(),
         )
         with self._lock:
@@ -110,6 +113,7 @@ class JobManager:
         job_id = uuid.uuid4().hex[:12]
         run_id = req.run_id or f"{req.agent_name}-{req.benchmark_name}-{job_id}"
         benchmark_label = req.metadata.get("benchmark_label", req.benchmark_name)
+        model = req.agent_config.get("model", "") or req.metadata.get("base_model", "")
 
         status = JobStatus(
             job_id=job_id,
@@ -117,6 +121,7 @@ class JobManager:
             status="pending",
             agent=req.agent_name,
             benchmark=benchmark_label,
+            model=model,
             created_at=datetime.now(timezone.utc).isoformat(),
         )
         with self._lock:
@@ -254,7 +259,13 @@ class JobManager:
 
         _log(f"Job {job_id} started (run_id={run_id})")
         _log(f"Agent: {req.agent_name}, Benchmark: {req.benchmark_name}")
-        _log(f"Agent config: { {k: ('***' if 'key' in k.lower() else v) for k, v in req.agent_config.items()} }")
+        def _mask(k: str, v: object) -> object:
+            if 'key' in k.lower() and isinstance(v, str) and len(v) > 12:
+                return f"{v[:6]}...{v[-4:]}"
+            elif 'key' in k.lower():
+                return '***'
+            return v
+        _log(f"Agent config: { {k: _mask(k, v) for k, v in req.agent_config.items()} }")
 
         try:
             config = ExperimentConfig(
@@ -271,6 +282,7 @@ class JobManager:
                 max_concurrent=req.max_concurrent,
                 output_dir=self._results_dir,
                 redo_all=req.redo_all,
+                num_samples=req.num_samples,
                 metadata=req.metadata,
             )
 
@@ -287,6 +299,21 @@ class JobManager:
                 if job.status == "cancelled":
                     _log("Job cancelled before execution")
                     return
+
+            # Pre-evaluation gateway health check for openclaw agents
+            api_base = req.agent_config.get("api_base", "")
+            if req.agent_name == "openclaw" and api_base:
+                _log(f"Probing OpenClaw gateway at {api_base} ...")
+                if not self._probe_gateway(api_base):
+                    _log("[ERROR] OpenClaw gateway is not responding. Aborting job.")
+                    with self._lock:
+                        self._jobs[job_id].status = "failed"
+                        self._jobs[job_id].error = (
+                            f"OpenClaw gateway not ready at {api_base}. "
+                            "Please check sandbox status before starting evaluation."
+                        )
+                    return
+                _log("Gateway health check passed.")
 
             try:
                 _log("Starting evaluation run...")
@@ -334,13 +361,16 @@ class JobManager:
             if config_path.exists():
                 return  # Don't overwrite existing config
 
-            # Build a serializable dict from ExperimentConfig
+            # Build a serializable dict from ExperimentConfig.
+            # Use a copy of agent_config to avoid mutating the original
+            # when masking API keys below.
+            import copy
             data = {
                 "run_id": config.run_id,
                 "agent": {
                     "name": config.agent_name,
                     "version": getattr(config, "agent_version", ""),
-                    "config": config.agent_config,
+                    "config": copy.deepcopy(config.agent_config),
                 },
                 "benchmark": {
                     "name": config.benchmark_name,
@@ -351,6 +381,7 @@ class JobManager:
                     "config": getattr(config, "scorer_config", {}),
                 },
                 "max_concurrent": config.max_concurrent,
+                "num_samples": getattr(config, "num_samples", 1),
                 "redo_all": getattr(config, "redo_all", False),
                 "metadata": getattr(config, "metadata", {}),
             }
@@ -359,12 +390,56 @@ class JobManager:
             if isinstance(agent_cfg, dict):
                 for key in list(agent_cfg.keys()):
                     if "key" in key.lower() and agent_cfg[key]:
-                        agent_cfg[key] = agent_cfg[key][:8] + "***"
+                        v = agent_cfg[key]
+                        agent_cfg[key] = f"{v[:6]}...{v[-4:]}" if len(v) > 12 else "***"
 
             with open(config_path, "w", encoding="utf-8") as f:
                 yaml.safe_dump(data, f, default_flow_style=False, allow_unicode=True)
         except Exception:
             logger.debug("Failed to save config for %s", run_id, exc_info=True)
+
+    @staticmethod
+    def _probe_gateway(api_base: str, timeout: float = 30.0, retries: int = 2) -> bool:
+        """Synchronous gateway health check via chat/completions endpoint.
+
+        Retries a few times to tolerate transient failures.
+        """
+        import json as _json
+        import urllib.request
+        import time as _time
+
+        payload = _json.dumps({
+            "model": "openclaw",
+            "messages": [{"role": "user", "content": "ping"}],
+            "max_tokens": 1,
+        }).encode()
+
+        for attempt in range(retries + 1):
+            try:
+                req = urllib.request.Request(
+                    f"{api_base}/chat/completions",
+                    data=payload,
+                    headers={
+                        "Authorization": "bearer OPENCLAW",
+                        "Content-Type": "application/json",
+                    },
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    body = _json.loads(resp.read())
+                    if isinstance(body, dict) and body.get("status") == "Failed":
+                        logger.warning("Gateway probe attempt %d: ROCK returned Failed", attempt + 1)
+                    elif isinstance(body, dict) and body.get("choices"):
+                        return True
+                    else:
+                        logger.warning("Gateway probe attempt %d: unexpected response: %s", attempt + 1, body)
+            except Exception as exc:
+                logger.warning("Gateway probe attempt %d failed: %s", attempt + 1, exc)
+
+            if attempt < retries:
+                _time.sleep(5)
+
+        return False
 
     def refresh_progress(self, job_id: str) -> None:
         """Refresh job progress by reading the JSONL file and job logs."""
@@ -380,14 +455,20 @@ class JobManager:
             current_total = job.total_tasks
 
         # If we don't know total_tasks yet, try to parse it from the job logs.
-        # The runner logs: "Loaded 15 tasks from benchmark 'aime'"
+        # The runner logs: "Total work items: 60 (tasks=15, num_samples=4)"
+        # This includes num_samples, so progress/total_tasks are on the same scale.
         if current_total == 0:
             log_buf = self._job_logs.get(job_id)
             if log_buf:
                 log_text = log_buf.getvalue()
-                m = re.search(r"Loaded (\d+) tasks from benchmark", log_text)
+                m = re.search(r"Total work items: (\d+)", log_text)
                 if m:
                     current_total = int(m.group(1))
+                else:
+                    # Fallback: "Loaded N tasks from benchmark" (single-sample)
+                    m = re.search(r"Loaded (\d+) tasks from benchmark", log_text)
+                    if m:
+                        current_total = int(m.group(1))
 
         jsonl_path = Path(self._results_dir) / f"{run_id}.jsonl"
         if not jsonl_path.exists():

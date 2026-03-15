@@ -51,6 +51,8 @@ export default function RunDetailPage() {
     return true;
   });
 
+  const isMultiSample = detail.summary.num_samples > 1;
+
   const columns: ColumnsType<TaskResult> = [
     {
       title: 'Task ID',
@@ -59,6 +61,19 @@ export default function RunDetailPage() {
       width: 120,
       sorter: (a, b) => a.task_id.localeCompare(b.task_id),
     },
+    ...(isMultiSample
+      ? [
+          {
+            title: 'Sample',
+            dataIndex: 'sample_index',
+            key: 'sample_index',
+            width: 80,
+            sorter: (a: TaskResult, b: TaskResult) =>
+              a.sample_index - b.sample_index,
+            render: (si: number) => `s${si}`,
+          },
+        ]
+      : []),
     {
       title: 'Problem',
       dataIndex: 'problem',
@@ -199,7 +214,7 @@ export default function RunDetailPage() {
                 <Table<TaskResult>
                   columns={columns}
                   dataSource={filteredResults}
-                  rowKey="task_id"
+                  rowKey={(r) => `${r.task_id}_s${r.sample_index}`}
                   pagination={false}
                   size="small"
                   onRow={(record) => ({

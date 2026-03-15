@@ -7,16 +7,23 @@ export interface RunSummary {
   completed: number;
   failed: number;
   accuracy: number;
+  accuracy_total: number;
   mean_score: number;
   mean_wall_time_sec: number;
   total_tokens: { prompt_tokens: number; completion_tokens: number };
   per_category: Record<string, number>;
   error_distribution: Record<string, number>;
+  num_samples: number;
+  pass_at_k: number;
+  avg_at_k: number;
+  per_category_pass_at_k: Record<string, number>;
+  per_category_avg_at_k: Record<string, number>;
   timestamp: string;
 }
 
 export interface TaskResult {
   task_id: string;
+  sample_index: number;
   problem: string;
   ground_truth: unknown;
   predicted: unknown;
@@ -69,6 +76,7 @@ export interface CreateJobRequest {
   sandbox_config: Record<string, unknown>;
   max_concurrent: number;
   redo_all: boolean;
+  num_samples: number;
   metadata: Record<string, unknown>;
 }
 
@@ -78,6 +86,7 @@ export interface JobStatus {
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
   agent: string;
   benchmark: string;
+  model: string;
   progress: number;
   total_tasks: number;
   accuracy: number | null;
@@ -117,5 +126,6 @@ export interface DeployAndRunRequest {
   scorer_config?: Record<string, unknown>;
   max_concurrent?: number;
   redo_all?: boolean;
+  num_samples?: number;
   metadata?: Record<string, unknown>;
 }

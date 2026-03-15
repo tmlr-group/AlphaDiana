@@ -170,6 +170,8 @@ class Runner:
                         len(work_items),
                     )
 
+        logger.info("Total work items: %d (tasks=%d, num_samples=%d)", len(work_items), len(tasks), num_samples)
+
         # Initialize plain-text dashboard.
         dashboard = None
         try:

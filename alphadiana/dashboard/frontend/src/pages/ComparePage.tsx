@@ -111,6 +111,24 @@ export default function ComparePage() {
                   />
                 </Col>
               </Row>
+              {e.summary.num_samples > 1 && (
+                <Row gutter={16} style={{ marginTop: 8 }}>
+                  <Col span={8}>
+                    <Statistic
+                      title={`Pass@${e.summary.num_samples}`}
+                      value={Math.round(e.summary.pass_at_k * 100)}
+                      suffix="%"
+                    />
+                  </Col>
+                  <Col span={8}>
+                    <Statistic
+                      title={`Avg@${e.summary.num_samples}`}
+                      value={Math.round(e.summary.avg_at_k * 100)}
+                      suffix="%"
+                    />
+                  </Col>
+                </Row>
+              )}
             </Card>
           </Col>
         ))}

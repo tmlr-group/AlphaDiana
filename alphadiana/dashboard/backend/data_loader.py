@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,17 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
     return results
 
 
+def _get_category(r: dict[str, Any]) -> str:
+    """Extract category from a result record."""
+    task_meta = r.get("task_metadata", {})
+    resp_meta = r.get("metadata", {})
+    if isinstance(task_meta, dict) and task_meta.get("category"):
+        return task_meta["category"]
+    if isinstance(resp_meta, dict) and resp_meta.get("category"):
+        return resp_meta["category"]
+    return "default"
+
+
 def _build_summary(run_id: str, records: list[dict[str, Any]]) -> RunSummaryResponse:
     """Compute summary statistics from a list of result records."""
     total = len(records)
@@ -36,11 +48,12 @@ def _build_summary(run_id: str, records: list[dict[str, Any]]) -> RunSummaryResp
 
     correct_count = sum(1 for r in completed_records if r.get("correct", False))
     accuracy = correct_count / completed if completed > 0 else 0.0
+    accuracy_total = correct_count / total if total > 0 else 0.0
 
     scores = [r.get("score", 0.0) for r in completed_records]
     mean_score = sum(scores) / len(scores) if scores else 0.0
 
-    wall_times = [r.get("wall_time_sec", 0.0) for r in records]
+    wall_times = [r.get("wall_time_sec", 0.0) for r in completed_records]
     mean_wall_time = sum(wall_times) / len(wall_times) if wall_times else 0.0
 
     total_prompt = 0
@@ -54,10 +67,7 @@ def _build_summary(run_id: str, records: list[dict[str, Any]]) -> RunSummaryResp
     cat_correct: dict[str, int] = {}
     cat_total: dict[str, int] = {}
     for r in completed_records:
-        cat = "default"
-        task_meta = r.get("task_metadata", {})
-        if isinstance(task_meta, dict) and task_meta.get("category"):
-            cat = task_meta["category"]
+        cat = _get_category(r)
         cat_total[cat] = cat_total.get(cat, 0) + 1
         if r.get("correct", False):
             cat_correct[cat] = cat_correct.get(cat, 0) + 1
@@ -73,11 +83,59 @@ def _build_summary(run_id: str, records: list[dict[str, Any]]) -> RunSummaryResp
             etype = err.get("error_type", "unknown")
             error_dist[etype] = error_dist.get(etype, 0) + 1
 
+    # Group results by task_id for pass@k / avg@k computation.
+    by_task: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for r in records:
+        by_task[r.get("task_id", "")].append(r)
+
+    # Detect num_samples from data (max samples per task).
+    num_samples = max((len(samples) for samples in by_task.values()), default=1)
+
+    # Pass@K: fraction of unique tasks where at least 1 sample is correct.
+    num_unique_tasks = len(by_task)
+    tasks_passed = sum(
+        1 for samples in by_task.values()
+        if any(s.get("correct", False) for s in samples)
+    )
+    pass_at_k = tasks_passed / num_unique_tasks if num_unique_tasks > 0 else 0.0
+
+    # Per-category pass@k
+    cat_tasks_total: dict[str, set[str]] = defaultdict(set)
+    cat_tasks_passed: dict[str, set[str]] = defaultdict(set)
+    for task_id, samples in by_task.items():
+        cat = _get_category(samples[0])
+        cat_tasks_total[cat].add(task_id)
+        if any(s.get("correct", False) for s in samples):
+            cat_tasks_passed[cat].add(task_id)
+    per_category_pass_at_k = {
+        cat: len(cat_tasks_passed.get(cat, set())) / len(task_ids)
+        for cat, task_ids in cat_tasks_total.items()
+    }
+
+    # Avg@K: per-task average correctness rate, then averaged across tasks.
+    task_avg_scores: list[float] = []
+    for samples in by_task.values():
+        n_total = len(samples)
+        n_correct = sum(1 for s in samples if s.get("correct", False))
+        task_avg_scores.append(n_correct / n_total if n_total > 0 else 0.0)
+    avg_at_k = sum(task_avg_scores) / len(task_avg_scores) if task_avg_scores else 0.0
+
+    # Per-category avg@k
+    cat_task_avgs: dict[str, list[float]] = defaultdict(list)
+    for task_id, samples in by_task.items():
+        cat = _get_category(samples[0])
+        n_total = len(samples)
+        n_correct = sum(1 for s in samples if s.get("correct", False))
+        cat_task_avgs[cat].append(n_correct / n_total if n_total > 0 else 0.0)
+    per_category_avg_at_k = {
+        cat: sum(avgs) / len(avgs) if avgs else 0.0
+        for cat, avgs in cat_task_avgs.items()
+    }
+
     # Infer agent/benchmark from records or run_id
     agent = ""
     agent_version = ""
     benchmark = ""
-    # Try to get from metadata in the first record
     if records:
         meta = records[0].get("metadata", {})
         if isinstance(meta, dict):
@@ -100,6 +158,7 @@ def _build_summary(run_id: str, records: list[dict[str, Any]]) -> RunSummaryResp
         completed=completed,
         failed=failed,
         accuracy=accuracy,
+        accuracy_total=accuracy_total,
         mean_score=mean_score,
         mean_wall_time_sec=mean_wall_time,
         total_tokens={
@@ -108,6 +167,11 @@ def _build_summary(run_id: str, records: list[dict[str, Any]]) -> RunSummaryResp
         },
         per_category=per_category,
         error_distribution=error_dist,
+        num_samples=num_samples,
+        pass_at_k=pass_at_k,
+        avg_at_k=avg_at_k,
+        per_category_pass_at_k=per_category_pass_at_k,
+        per_category_avg_at_k=per_category_avg_at_k,
         timestamp=timestamp,
     )
 
@@ -116,6 +180,7 @@ def _record_to_task_result(record: dict[str, Any]) -> TaskResult:
     """Convert a raw JSONL record to a TaskResult."""
     return TaskResult(
         task_id=record.get("task_id", ""),
+        sample_index=record.get("sample_index", 0),
         problem=record.get("problem", ""),
         ground_truth=record.get("ground_truth"),
         predicted=record.get("predicted"),

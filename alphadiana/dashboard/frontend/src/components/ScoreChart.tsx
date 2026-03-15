@@ -5,14 +5,17 @@ import type { TaskResult } from '../types';
 
 const { Text } = Typography;
 
-/** Group results by base task (strip trailing _sN sample suffix if present). */
+/** Group results by task_id (multi-sample runs share the same task_id with different sample_index). */
 function groupByTask(results: TaskResult[]) {
   const map = new Map<string, TaskResult[]>();
   for (const r of results) {
-    const m = r.task_id.match(/^(.+?)(?:_s\d+)?$/);
-    const base = m ? m[1] : r.task_id;
+    const base = r.task_id;
     if (!map.has(base)) map.set(base, []);
     map.get(base)!.push(r);
+  }
+  // Sort samples within each task by sample_index.
+  for (const samples of map.values()) {
+    samples.sort((a, b) => (a.sample_index ?? 0) - (b.sample_index ?? 0));
   }
   return map;
 }

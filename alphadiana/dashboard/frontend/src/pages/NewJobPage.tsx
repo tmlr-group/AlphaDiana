@@ -31,7 +31,7 @@ import {
   QuestionCircleOutlined,
 } from '@ant-design/icons';
 import type { CreateJobRequest, SandboxInfo, DeployJob, DeployAndRunRequest } from '../types';
-import { createJob, listSandboxes, deploySandbox, getDeployStatus, getDeployLogs, deployAndRun } from '../api';
+import { createJob, getRun, listSandboxes, probeSandbox, deploySandbox, getDeployStatus, getDeployLogs, deployAndRun, listEnvKeys } from '../api';
 
 const { Title, Text } = Typography;
 
@@ -156,6 +156,37 @@ const SCORERS = [
   { value: 'llm_judge', label: 'LLM Judge', description: 'Use LLM to evaluate correctness' },
 ];
 
+// Known API base URL -> env var name mappings
+const API_BASE_ENV_MAP: { pattern: string; envVar: string }[] = [
+  { pattern: 'openrouter.ai', envVar: 'OPENROUTER_API_KEY' },
+  { pattern: 'api.openai.com', envVar: 'OPENAI_API_KEY' },
+  { pattern: 'siliconflow.cn', envVar: 'SILICONFLOW_API_KEY' },
+  { pattern: 'volces.com', envVar: 'ARK_API_KEY' },
+  { pattern: 'volcengine.com', envVar: 'ARK_API_KEY' },
+  { pattern: 'api.deepseek.com', envVar: 'DEEPSEEK_API_KEY' },
+  { pattern: 'api.anthropic.com', envVar: 'ANTHROPIC_API_KEY' },
+  { pattern: 'api.moonshot.cn', envVar: 'MOONSHOT_API_KEY' },
+  { pattern: 'dashscope.aliyuncs.com', envVar: 'DASHSCOPE_API_KEY' },
+  { pattern: 'api.together.xyz', envVar: 'TOGETHER_API_KEY' },
+];
+
+function suggestEnvVar(apiBase: string): string {
+  if (!apiBase) return '';
+  const lower = apiBase.toLowerCase();
+  for (const { pattern, envVar } of API_BASE_ENV_MAP) {
+    if (lower.includes(pattern)) return envVar;
+  }
+  return '';
+}
+
+const API_KEY_TOOLTIP = (
+  <span>
+    Two modes supported:<br />
+    <b>1. Direct key</b>: paste your API key directly<br />
+    <b>2. Env variable</b>: type <code>$VAR_NAME</code> (e.g. <code>$OPENROUTER_API_KEY</code>) to reference a variable from the server&apos;s <code>.env</code> file or system environment
+  </span>
+);
+
 export default function NewJobPage() {
   const [form] = Form.useForm();
   const navigate = useNavigate();
@@ -174,27 +205,85 @@ export default function NewJobPage() {
   const [logDrawerOpen, setLogDrawerOpen] = useState(false);
   const deployTimerRef = useRef<ReturnType<typeof setInterval>>(undefined);
   const logTimerRef = useRef<ReturnType<typeof setInterval>>(undefined);
+  // Per-sandbox probe results: sandbox_id -> { gateway_ready, model, probing }
+  const [probeResults, setProbeResults] = useState<Record<string, { gateway_ready?: boolean; model?: string; probing: boolean }>>({});
+
+  // Available env var names from .env
+  const [envKeys, setEnvKeys] = useState<string[]>([]);
+
+  // Existing run detection
+  const [existingRun, setExistingRun] = useState<{ run_id: string; completed: number; total_tasks: number } | null>(null);
+  const runIdCheckRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const agentDef = AGENTS.find((a) => a.value === selectedAgent);
   const presetDef = BENCHMARK_PRESETS.find((b) => b.value === selectedPreset);
   const isCustom = selectedPreset === 'custom-aime';
 
-  // Load sandboxes when openclaw is selected
+  // Probe a single sandbox for gateway health and model info
+  const handleProbe = (sid: string) => {
+    setProbeResults((prev) => ({ ...prev, [sid]: { ...prev[sid], probing: true } }));
+    probeSandbox(sid)
+      .then((result) => {
+        setProbeResults((prev) => ({
+          ...prev,
+          [sid]: { gateway_ready: result.gateway_ready, model: result.model, probing: false },
+        }));
+        // Also update the sandbox list in-place
+        setSandboxes((prev) =>
+          prev.map((s) =>
+            s.sandbox_id === sid
+              ? { ...s, gateway_ready: result.gateway_ready, model: result.model || s.model }
+              : s
+          )
+        );
+      })
+      .catch(() => {
+        setProbeResults((prev) => ({ ...prev, [sid]: { ...prev[sid], probing: false } }));
+      });
+  };
+
+  // Load sandboxes when openclaw is selected (fast: no gateway probe)
   const fetchSandboxes = () => {
     setSandboxesLoading(true);
+    setProbeResults({});
     listSandboxes()
       .then((data) => {
         setSandboxes(data);
         if (data.length > 0 && !selectedSandbox) {
-          // Prefer a gateway-ready sandbox, otherwise first running one
-          const ready = data.find((s) => s.gateway_ready);
           const running = data.find((s) => s.status === 'running');
-          setSelectedSandbox((ready || running || data[0]).sandbox_id);
+          setSelectedSandbox((running || data[0]).sandbox_id);
         }
       })
       .catch(() => setSandboxes([]))
       .finally(() => setSandboxesLoading(false));
   };
+
+  // Check if a run_id already exists (debounced)
+  const checkExistingRun = (runId: string) => {
+    clearTimeout(runIdCheckRef.current);
+    if (!runId.trim()) {
+      setExistingRun(null);
+      return;
+    }
+    runIdCheckRef.current = setTimeout(() => {
+      getRun(runId.trim())
+        .then((detail) => {
+          setExistingRun({
+            run_id: detail.summary.run_id,
+            completed: detail.summary.completed,
+            total_tasks: detail.summary.total_tasks,
+          });
+        })
+        .catch(() => setExistingRun(null));
+    }, 500);
+  };
+
+  // Load available env keys on mount
+  useEffect(() => {
+    listEnvKeys()
+      .then((data) => setEnvKeys(data.keys))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (selectedAgent === 'openclaw') {
@@ -318,6 +407,7 @@ export default function NewJobPage() {
         scorer_config: scorerConfig,
         max_concurrent: (values.max_concurrent as number) || 1,
         redo_all: (values.redo_all as boolean) || false,
+        num_samples: (values.num_samples as number) || 1,
         metadata: {
           notes: values.notes || '',
           preset: selectedPreset,
@@ -367,6 +457,7 @@ export default function NewJobPage() {
         sandbox_config: {},
         max_concurrent: (values.max_concurrent as number) || 1,
         redo_all: (values.redo_all as boolean) || false,
+        num_samples: (values.num_samples as number) || 1,
         metadata: {
           notes: values.notes || '',
           preset: selectedPreset,
@@ -408,6 +499,7 @@ export default function NewJobPage() {
           benchmark_preset: 'aime2025-I',
           scorer_name: 'numeric',
           max_concurrent: 3,
+          num_samples: 1,
           redo_all: false,
           smoke_test: false,
           agent_temperature: 0.6,
@@ -419,7 +511,10 @@ export default function NewJobPage() {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item name="run_id" label="Run ID (optional)">
-                <Input placeholder="Auto-generated if empty" />
+                <Input
+                  placeholder="Auto-generated if empty"
+                  onChange={(e) => checkExistingRun(e.target.value)}
+                />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -428,6 +523,19 @@ export default function NewJobPage() {
               </Form.Item>
             </Col>
           </Row>
+          {existingRun && (
+            <Alert
+              message={`Run "${existingRun.run_id}" already exists (${existingRun.completed}/${existingRun.total_tasks} completed)`}
+              description={
+                form.getFieldValue('redo_all')
+                  ? 'Redo All is ON: all tasks will be re-evaluated. New results will overwrite previous answers in the report (the JSONL file retains all history, latest result per task is used).'
+                  : `Resume mode: ${existingRun.total_tasks - existingRun.completed} remaining tasks will be evaluated. Already completed tasks will be skipped.`
+              }
+              type={form.getFieldValue('redo_all') ? 'warning' : 'info'}
+              showIcon
+              style={{ marginTop: -8 }}
+            />
+          )}
         </Card>
 
         {/* Benchmark Selection */}
@@ -555,62 +663,89 @@ export default function NewJobPage() {
                       notFoundContent={
                         sandboxesLoading ? <Spin size="small" /> : <Text type="secondary">No sandboxes found</Text>
                       }
-                      options={sandboxes.map((s) => ({
-                        value: s.sandbox_id,
-                        label: (
-                          <span>
-                            {s.gateway_ready ? (
-                              <Tag color="green" style={{ marginRight: 4 }}>Ready</Tag>
-                            ) : s.status === 'running' ? (
-                              <Tag color="orange" style={{ marginRight: 4 }}>No Gateway</Tag>
-                            ) : (
-                              <Tag color="default" style={{ marginRight: 4 }}>{s.status}</Tag>
-                            )}
-                            {s.model ? (
-                              <>
-                                <strong>{s.model}</strong>
-                                <Text type="secondary" style={{ marginLeft: 6, fontSize: 11 }}>({s.sandbox_id.slice(0, 8)})</Text>
-                              </>
-                            ) : (
-                              <span>{s.sandbox_id.slice(0, 12)}</span>
-                            )}
-                          </span>
-                        ),
-                      }))}
+                      options={sandboxes.map((s) => {
+                        const probe = probeResults[s.sandbox_id];
+                        const model = probe?.model || s.model;
+                        const gwReady = probe ? probe.gateway_ready : undefined;
+                        const gwTag = gwReady === true ? (
+                          <Tag color="green" style={{ marginRight: 4 }}>Ready</Tag>
+                        ) : gwReady === false ? (
+                          <Tag color="red" style={{ marginRight: 4 }}>No Gateway</Tag>
+                        ) : s.status === 'running' ? (
+                          <Tag color="default" style={{ marginRight: 4 }}>{s.status}</Tag>
+                        ) : (
+                          <Tag color="default" style={{ marginRight: 4 }}>{s.status}</Tag>
+                        );
+                        return {
+                          value: s.sandbox_id,
+                          label: (
+                            <span>
+                              {gwTag}
+                              {model ? (
+                                <>
+                                  <strong>{model}</strong>
+                                  <Text type="secondary" style={{ marginLeft: 6, fontSize: 11 }}>({s.sandbox_id.slice(0, 8)})</Text>
+                                </>
+                              ) : (
+                                <span>{s.sandbox_id.slice(0, 12)}</span>
+                              )}
+                            </span>
+                          ),
+                        };
+                      })}
                     />
                     <Button icon={<ReloadOutlined />} onClick={fetchSandboxes} loading={sandboxesLoading} />
                   </div>
-                  {selectedSandbox && (
-                    <>
-                      <div style={{ background: '#f6f6f6', padding: '8px 12px', borderRadius: 4, fontSize: 12 }}>
-                        {(() => {
-                          const sb = sandboxes.find((s) => s.sandbox_id === selectedSandbox);
-                          return sb?.model ? (
-                            <div style={{ marginBottom: 4 }}>
-                              <Text type="secondary">Model:</Text>{' '}
-                              <Text strong>{sb.model}</Text>
+                  {selectedSandbox && (() => {
+                    const sb = sandboxes.find((s) => s.sandbox_id === selectedSandbox);
+                    const probe = probeResults[selectedSandbox];
+                    const model = probe?.model || sb?.model;
+                    const gwReady = probe ? probe.gateway_ready : undefined;
+                    const isProbing = probe?.probing ?? false;
+                    return (
+                      <>
+                        <div style={{ background: '#f6f6f6', padding: '8px 12px', borderRadius: 4, fontSize: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div>
+                            {model && (
+                              <div style={{ marginBottom: 4 }}>
+                                <Text type="secondary">Model:</Text>{' '}
+                                <Text strong>{model}</Text>
+                              </div>
+                            )}
+                            <div>
+                              <Text type="secondary">API Base:</Text>{' '}
+                              <Text code>{getSelectedSandboxApiBase()}</Text>
                             </div>
-                          ) : null;
-                        })()}
-                        <Text type="secondary">API Base:</Text>{' '}
-                        <Text code>{getSelectedSandboxApiBase()}</Text>
-                      </div>
-                      {(() => {
-                        const sb = sandboxes.find((s) => s.sandbox_id === selectedSandbox);
-                        if (sb && !sb.gateway_ready) {
-                          return (
-                            <Alert
-                              message="This sandbox does not have a working OpenClaw gateway. The evaluation will fail with 'All connection attempts failed'. Deploy a new sandbox instead."
-                              type="error"
-                              showIcon
-                              style={{ marginTop: 8 }}
-                            />
-                          );
-                        }
-                        return null;
-                      })()}
-                    </>
-                  )}
+                            {gwReady !== undefined && (
+                              <div style={{ marginTop: 4 }}>
+                                <Text type="secondary">Gateway:</Text>{' '}
+                                {gwReady ? (
+                                  <Tag color="green">Ready</Tag>
+                                ) : (
+                                  <Tag color="red">Not Available</Tag>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          <Button
+                            size="small"
+                            loading={isProbing}
+                            onClick={() => handleProbe(selectedSandbox)}
+                          >
+                            {isProbing ? 'Checking...' : gwReady === undefined ? 'Check Status' : 'Re-check'}
+                          </Button>
+                        </div>
+                        {gwReady === false && (
+                          <Alert
+                            message="This sandbox does not have a working OpenClaw gateway. The evaluation will fail. Deploy a new sandbox instead."
+                            type="error"
+                            showIcon
+                            style={{ marginTop: 8 }}
+                          />
+                        )}
+                      </>
+                    );
+                  })()}
                   {sandboxes.length === 0 && !sandboxesLoading && (
                     <Alert
                       message="No sandboxes available. Deploy a new one or check ROCK service."
@@ -633,7 +768,18 @@ export default function NewJobPage() {
                   <Row gutter={16}>
                     <Col span={12}>
                       <Form.Item name="sandbox_api_base" label="Model API Base URL">
-                        <Input placeholder="e.g. https://openrouter.ai/api/v1/" />
+                        <Input
+                          placeholder="e.g. https://openrouter.ai/api/v1/"
+                          onChange={(e) => {
+                            const suggested = suggestEnvVar(e.target.value);
+                            if (suggested) {
+                              const currentKey = form.getFieldValue('sandbox_api_key') || '';
+                              if (!currentKey || currentKey.startsWith('$')) {
+                                form.setFieldValue('sandbox_api_key', `$${suggested}`);
+                              }
+                            }
+                          }}
+                        />
                       </Form.Item>
                     </Col>
                     <Col span={12}>
@@ -642,9 +788,43 @@ export default function NewJobPage() {
                       </Form.Item>
                     </Col>
                     <Col span={12}>
-                      <Form.Item name="sandbox_api_key" label="Model API Key">
-                        <Input.Password placeholder="API key for the base model" />
+                      <Form.Item
+                        name="sandbox_api_key"
+                        label={
+                          <Space size={4}>
+                            <span>Model API Key</span>
+                            <Tooltip title={API_KEY_TOOLTIP} overlayStyle={{ maxWidth: 360 }}>
+                              <QuestionCircleOutlined style={{ color: '#8c8c8c' }} />
+                            </Tooltip>
+                          </Space>
+                        }
+                      >
+                        <Input
+                          placeholder="sk-... or $ENV_VAR_NAME"
+                          allowClear
+                        />
                       </Form.Item>
+                      <div style={{ marginTop: -16, marginBottom: 12 }}>
+                        <Text type="secondary" style={{ fontSize: 11, marginRight: 6 }}>Quick fill:</Text>
+                        {(() => {
+                          const apiBase = form.getFieldValue('sandbox_api_base') || '';
+                          const suggested = suggestEnvVar(apiBase);
+                          const defaults = ['OPENAI_API_KEY', 'OPENROUTER_API_KEY'];
+                          const tags = suggested && !defaults.includes(suggested)
+                            ? [suggested, ...defaults]
+                            : defaults;
+                          return tags.map((k) => (
+                            <Tag
+                              key={k}
+                              style={{ cursor: 'pointer', fontSize: 11 }}
+                              color={k === suggested ? 'blue' : undefined}
+                              onClick={() => form.setFieldValue('sandbox_api_key', `$${k}`)}
+                            >
+                              ${k}{k === suggested && envKeys.includes(k) ? ' (.env)' : ''}
+                            </Tag>
+                          ));
+                        })()}
+                      </div>
                     </Col>
                   </Row>
                   <Space wrap>
@@ -710,27 +890,85 @@ export default function NewJobPage() {
 
           {/* Common agent fields */}
           <Row gutter={16}>
-            {agentDef?.fields.map((f) => (
-              <Col span={f.type === 'number' ? 8 : 12} key={f.name}>
-                <Form.Item
-                  name={`agent_${f.name}`}
-                  label={f.label}
-                  rules={f.required ? [{ required: true, message: `${f.label} is required` }] : []}
-                >
-                  {f.type === 'number' ? (
-                    <InputNumber
-                      style={{ width: '100%' }}
-                      placeholder={String(f.default ?? '')}
-                    />
-                  ) : (
-                    <Input
-                      placeholder={f.placeholder}
-                      type={'password' in f && f.password ? 'password' : 'text'}
-                    />
-                  )}
-                </Form.Item>
-              </Col>
-            ))}
+            {agentDef?.fields.map((f) => {
+              // Special handling for api_key fields
+              if ('password' in f && f.password) {
+                return (
+                  <Col span={12} key={f.name}>
+                    <Form.Item
+                      name={`agent_${f.name}`}
+                      label={
+                        <Space size={4}>
+                          <span>{f.label}</span>
+                          <Tooltip title={API_KEY_TOOLTIP} overlayStyle={{ maxWidth: 360 }}>
+                            <QuestionCircleOutlined style={{ color: '#8c8c8c' }} />
+                          </Tooltip>
+                        </Space>
+                      }
+                      rules={f.required ? [{ required: true, message: `${f.label} is required` }] : []}
+                    >
+                      <Input
+                        placeholder="sk-... or $ENV_VAR_NAME"
+                        allowClear
+                      />
+                    </Form.Item>
+                    <div style={{ marginTop: -16, marginBottom: 12 }}>
+                      <Text type="secondary" style={{ fontSize: 11, marginRight: 6 }}>Quick fill:</Text>
+                      {(() => {
+                        const apiBase = form.getFieldValue('agent_api_base') || '';
+                        const suggested = suggestEnvVar(apiBase);
+                        // Curated defaults + auto-matched suggestion
+                        const defaults = ['OPENAI_API_KEY', 'OPENROUTER_API_KEY'];
+                        const tags = suggested && !defaults.includes(suggested)
+                          ? [suggested, ...defaults]
+                          : defaults;
+                        return tags.map((k) => (
+                          <Tag
+                            key={k}
+                            style={{ cursor: 'pointer', fontSize: 11 }}
+                            color={k === suggested ? 'blue' : undefined}
+                            onClick={() => form.setFieldValue(`agent_${f.name}`, `$${k}`)}
+                          >
+                            ${k}{k === suggested && envKeys.includes(k) ? ' (.env)' : ''}
+                          </Tag>
+                        ));
+                      })()}
+                    </div>
+                  </Col>
+                );
+              }
+
+              return (
+                <Col span={f.type === 'number' ? 8 : 12} key={f.name}>
+                  <Form.Item
+                    name={`agent_${f.name}`}
+                    label={f.label}
+                    rules={f.required ? [{ required: true, message: `${f.label} is required` }] : []}
+                  >
+                    {f.type === 'number' ? (
+                      <InputNumber
+                        style={{ width: '100%' }}
+                        placeholder={String(f.default ?? '')}
+                      />
+                    ) : (
+                      <Input
+                        placeholder={f.placeholder}
+                        onChange={f.name === 'api_base' ? (e) => {
+                          // Auto-suggest env var when base URL changes
+                          const suggested = suggestEnvVar(e.target.value);
+                          if (suggested) {
+                            const currentKey = form.getFieldValue('agent_api_key') || '';
+                            if (!currentKey || currentKey.startsWith('$')) {
+                              form.setFieldValue('agent_api_key', `$${suggested}`);
+                            }
+                          }
+                        } : undefined}
+                      />
+                    )}
+                  </Form.Item>
+                </Col>
+              );
+            })}
           </Row>
         </Card>
 
@@ -785,7 +1023,33 @@ export default function NewJobPage() {
               </Form.Item>
             </Col>
             <Col span={4}>
-              <Form.Item name="redo_all" label="Redo All" valuePropName="checked">
+              <Form.Item
+                name="num_samples"
+                label={
+                  <Space size={4}>
+                    <span>Samples (k)</span>
+                    <Tooltip title="Number of independent samples per task for pass@k evaluation. When k > 1, each task is solved k times independently, and pass@k / avg@k metrics are reported.">
+                      <QuestionCircleOutlined style={{ color: '#8c8c8c' }} />
+                    </Tooltip>
+                  </Space>
+                }
+              >
+                <InputNumber min={1} max={64} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={4}>
+              <Form.Item
+                name="redo_all"
+                label={
+                  <Space size={4}>
+                    <span>Redo All</span>
+                    <Tooltip title="When OFF (default): resumes from checkpoint — skips already completed tasks and only evaluates remaining ones. When ON: re-evaluates all tasks from scratch. New results overwrite previous answers in the final report (JSONL file keeps full history, deduplication keeps the latest result per task).">
+                      <QuestionCircleOutlined style={{ color: '#8c8c8c' }} />
+                    </Tooltip>
+                  </Space>
+                }
+                valuePropName="checked"
+              >
                 <Switch />
               </Form.Item>
             </Col>

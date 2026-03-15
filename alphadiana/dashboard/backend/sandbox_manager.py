@@ -250,16 +250,58 @@ class SandboxManager:
                         created_at=item.get("created_at", ""),
                     ))
 
-                # Probe gateway health for each sandbox concurrently
-                if sandboxes:
-                    await self._probe_sandbox_gateways(client, sandboxes)
-
-                # Enrich with model info from deploy jobs
+                # Enrich with model info from deploy jobs (in-memory, instant)
                 self._enrich_sandbox_model_info(sandboxes)
 
         except Exception as exc:
             logger.warning("Failed to list sandboxes from ROCK: %s", exc)
         return sandboxes
+
+    async def probe_sandbox(self, sandbox_id: str) -> dict[str, Any]:
+        """Probe a single sandbox for gateway health and model info.
+
+        Returns {"gateway_ready": bool, "model": str}.
+        Uses subprocess curl for gateway probe to avoid event-loop contention
+        with long-running evaluation tasks.
+        """
+        import json as _json
+
+        _, proxy_url = _get_rock_urls()
+        api_base = f"{proxy_url}/sandboxes/{sandbox_id}/proxy/v1"
+        result: dict[str, Any] = {"gateway_ready": False, "model": ""}
+
+        # Read model info from container
+        sb_for_model = SandboxInfo(sandbox_id=sandbox_id, status="running")
+        await self._read_model_from_containers([sb_for_model])
+        result["model"] = sb_for_model.model
+
+        # Probe gateway via curl subprocess (avoids httpx event-loop issues)
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "curl", "-s", "--max-time", "15",
+                "-X", "POST",
+                f"{api_base}/chat/completions",
+                "-H", "Authorization: bearer OPENCLAW",
+                "-H", "Content-Type: application/json",
+                "-d", _json.dumps({
+                    "model": "openclaw",
+                    "messages": [{"role": "user", "content": "ping"}],
+                    "max_tokens": 1,
+                }),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=20.0)
+            if proc.returncode == 0 and stdout:
+                body = _json.loads(stdout)
+                if isinstance(body, dict) and body.get("status") == "Failed":
+                    result["gateway_ready"] = False
+                elif isinstance(body, dict) and body.get("choices"):
+                    result["gateway_ready"] = True
+        except Exception as exc:
+            logger.debug("Gateway probe %s via curl failed: %s", sandbox_id, exc)
+
+        return result
 
     def _enrich_sandbox_model_info(self, sandboxes: list[SandboxInfo]) -> None:
         """Fill in model name from deploy job records for each sandbox."""
@@ -276,6 +318,36 @@ class SandboxManager:
                 sb.model = dj.model_name or sb.model
                 if not sb.model and dj.model_api_base:
                     sb.model = dj.model_api_base
+
+    @staticmethod
+    async def _read_model_from_containers(sandboxes: list[SandboxInfo]) -> None:
+        """Read model info from ~/.openclaw/agents/main/agent/models.json inside containers."""
+        import json as _json
+
+        async def _read_one(sb: SandboxInfo) -> None:
+            if sb.model or sb.status != "running":
+                return
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "docker", "exec", sb.sandbox_id,
+                    "cat", "/root/.openclaw/agents/main/agent/models.json",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+                if proc.returncode != 0 or not stdout:
+                    return
+                data = _json.loads(stdout)
+                # Extract first model name from providers
+                for provider in data.get("providers", {}).values():
+                    models = provider.get("models", [])
+                    if models:
+                        sb.model = models[0].get("name") or models[0].get("id", "")
+                        return
+            except Exception:
+                pass
+
+        await asyncio.gather(*[_read_one(sb) for sb in sandboxes])
 
     async def _probe_sandbox_gateways(
         self,
@@ -299,14 +371,18 @@ class SandboxManager:
                         "messages": [{"role": "user", "content": "ping"}],
                         "max_tokens": 1,
                     },
-                    timeout=5.0,
+                    timeout=30.0,
                 )
                 body = resp.json() if resp.status_code == 200 else {}
                 if isinstance(body, dict) and body.get("status") == "Failed":
                     sb.gateway_ready = False
+                    logger.debug("Gateway probe %s: ROCK returned Failed: %s", sb.sandbox_id, body.get("error", ""))
                 elif resp.status_code == 200 and body.get("choices"):
                     sb.gateway_ready = True
-            except Exception:
+                else:
+                    logger.debug("Gateway probe %s: unexpected response status=%s body=%s", sb.sandbox_id, resp.status_code, body)
+            except Exception as exc:
+                logger.debug("Gateway probe %s: exception: %s", sb.sandbox_id, exc)
                 sb.gateway_ready = False
 
         await asyncio.gather(*[_probe_one(sb) for sb in sandboxes])
