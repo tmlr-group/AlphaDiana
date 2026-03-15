@@ -228,10 +228,17 @@ class DataLoader:
             summaries.append(summary)
         return summaries
 
+    def _safe_path(self, *parts: str) -> Path | None:
+        """Join parts under results_dir and return None if the result escapes it."""
+        resolved = (self.results_dir / Path(*parts)).resolve()
+        if not resolved.is_relative_to(self.results_dir.resolve()):
+            return None
+        return resolved
+
     def get_run(self, run_id: str) -> RunDetailResponse | None:
         """Return full detail for a single run."""
-        jsonl_path = self.results_dir / f"{run_id}.jsonl"
-        if not jsonl_path.exists():
+        jsonl_path = self._safe_path(f"{run_id}.jsonl")
+        if jsonl_path is None or not jsonl_path.exists():
             return None
         records = _load_jsonl(jsonl_path)
         summary = _build_summary(run_id, records)
@@ -248,13 +255,13 @@ class DataLoader:
     def get_task(self, run_id: str, task_id: str) -> TaskResult | None:
         """Return a single task result."""
         # Try per-task JSON first
-        task_path = self.results_dir / run_id / "tasks" / f"{task_id}.json"
-        if task_path.exists():
+        task_path = self._safe_path(run_id, "tasks", f"{task_id}.json")
+        if task_path is not None and task_path.exists():
             record = json.loads(task_path.read_text(encoding="utf-8"))
             return _record_to_task_result(record)
         # Fallback: scan JSONL
-        jsonl_path = self.results_dir / f"{run_id}.jsonl"
-        if not jsonl_path.exists():
+        jsonl_path = self._safe_path(f"{run_id}.jsonl")
+        if jsonl_path is None or not jsonl_path.exists():
             return None
         for record in _load_jsonl(jsonl_path):
             if record.get("task_id") == task_id:

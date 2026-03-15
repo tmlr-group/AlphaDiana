@@ -12,6 +12,7 @@ class AIMEBenchmark(Benchmark):
 
     Config keys:
         dataset: HuggingFace dataset path (required, e.g. "HuggingFaceH4/aime_2024")
+        data_config: Dataset config name for multi-config datasets (e.g. "AIME2025-I")
         split: Dataset split (default: "train")
         problem_field: Column name for problem text (default: "problem")
         answer_field: Column name for answer (default: "answer")
@@ -39,8 +40,6 @@ class AIMEBenchmark(Benchmark):
         data_config = config.get("data_config")
         problem_field = config.get("problem_field", "problem")
         answer_field = config.get("answer_field", "answer")
-
-        data_config = config.get("data_config")
 
         try:
             dataset = load_dataset(dataset_path, data_config, split=split)

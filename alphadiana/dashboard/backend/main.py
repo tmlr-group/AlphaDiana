@@ -17,10 +17,19 @@ from alphadiana.dashboard.backend.sandbox_manager import SandboxManager
 
 app = FastAPI(title="AlphaDiana Dashboard", version="1.0.0")
 
-# CORS for local development (Vite dev server on port 5173)
+# CORS for local development — include whatever frontend port is actually in use.
+_frontend_port = os.environ.get("ALPHADIANA_FRONTEND_PORT", "5173")
+_cors_origins = [
+    f"http://localhost:{_frontend_port}",
+    f"http://127.0.0.1:{_frontend_port}",
+]
+# Always include the default port so hard-coded bookmarks still work.
+if _frontend_port != "5173":
+    _cors_origins += ["http://localhost:5173", "http://127.0.0.1:5173"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=_cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -49,7 +58,8 @@ if FRONTEND_DIST.exists():
     @app.get("/{path:path}")
     async def serve_spa(request: Request, path: str):
         """Serve static files or fall back to index.html for SPA routing."""
-        file_path = FRONTEND_DIST / path
-        if path and file_path.exists() and file_path.is_file():
+        file_path = (FRONTEND_DIST / path).resolve()
+        # Guard against path traversal (e.g. ../../etc/passwd)
+        if path and file_path.is_relative_to(FRONTEND_DIST.resolve()) and file_path.is_file():
             return FileResponse(file_path)
         return FileResponse(FRONTEND_DIST / "index.html")
