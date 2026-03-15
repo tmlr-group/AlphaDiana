@@ -36,6 +36,7 @@ class AIMEBenchmark(Benchmark):
             )
 
         split = config.get("split", "train")
+        data_config = config.get("data_config")
         problem_field = config.get("problem_field", "problem")
         answer_field = config.get("answer_field", "answer")
 
