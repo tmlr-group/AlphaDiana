@@ -34,11 +34,14 @@ class ResultStore:
         task: BenchmarkTask,
         response: AgentResponse,
         score: ScoreResult,
+        *,
+        sample_index: int = 0,
     ) -> None:
         """Append a single result record to the JSONL file."""
-        artifact_manifest = self._persist_artifacts(task, response)
+        artifact_manifest = self._persist_artifacts(task, response, sample_index=sample_index)
         record = {
             "task_id": task.task_id,
+            "sample_index": sample_index,
             "problem": task.problem,
             "ground_truth": task.ground_truth,
             "task_metadata": task.metadata,
@@ -75,12 +78,14 @@ class ResultStore:
         *,
         error: dict,
         response: AgentResponse | None = None,
+        sample_index: int = 0,
     ) -> None:
         """Append a failed task attempt with preserved runtime artifacts."""
         response = response or AgentResponse(answer=None)
-        artifact_manifest = self._persist_artifacts(task, response)
+        artifact_manifest = self._persist_artifacts(task, response, sample_index=sample_index)
         record = {
             "task_id": task.task_id,
+            "sample_index": sample_index,
             "problem": task.problem,
             "ground_truth": task.ground_truth,
             "task_metadata": task.metadata,
@@ -112,41 +117,46 @@ class ResultStore:
                 f.write(json.dumps(record) + "\n")
         self._save_per_task_json(task.task_id, record)
 
-    def _persist_artifacts(self, task: BenchmarkTask, response: AgentResponse) -> dict:
+    def _persist_artifacts(
+        self, task: BenchmarkTask, response: AgentResponse, *, sample_index: int = 0,
+    ) -> dict:
         """Write gateway logs, response JSON, and workspace files to disk."""
         manifest = dict(response.artifact_manifest)
         files = manifest.setdefault("files", {})
 
+        # For multi-sample runs, nest artifacts under sample_<N> subdirectory.
+        sample_prefix = Path(task.task_id) / f"sample_{sample_index}" if sample_index > 0 else Path(task.task_id)
+
         if response.gateway_log_excerpt:
-            rel = Path(task.task_id) / "agent" / "gateway.log"
+            rel = sample_prefix / "agent" / "gateway.log"
             path = self.artifacts_dir / rel
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(response.gateway_log_excerpt, encoding="utf-8")
             files["gateway_log"] = str(rel)
 
         if response.response_json:
-            rel = Path(task.task_id) / "agent" / "response.json"
+            rel = sample_prefix / "agent" / "response.json"
             path = self.artifacts_dir / rel
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(response.response_json, indent=2), encoding="utf-8")
             files["response_json"] = str(rel)
 
         if response.request_messages:
-            rel = Path(task.task_id) / "agent" / "request_messages.json"
+            rel = sample_prefix / "agent" / "request_messages.json"
             path = self.artifacts_dir / rel
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(response.request_messages, indent=2), encoding="utf-8")
             files["request_messages"] = str(rel)
 
         if response.sandbox_metadata:
-            rel = Path(task.task_id) / "sandbox" / "sandbox_meta.json"
+            rel = sample_prefix / "sandbox" / "sandbox_meta.json"
             path = self.artifacts_dir / rel
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(response.sandbox_metadata, indent=2), encoding="utf-8")
             files["sandbox_metadata"] = str(rel)
 
         if response.system_prompt:
-            rel = Path(task.task_id) / "agent" / "system_prompt.txt"
+            rel = sample_prefix / "agent" / "system_prompt.txt"
             path = self.artifacts_dir / rel
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(response.system_prompt, encoding="utf-8")
@@ -154,7 +164,7 @@ class ResultStore:
 
         retry_responses = response.metadata.get("retry_responses")
         if retry_responses:
-            rel = Path(task.task_id) / "agent" / "retry_responses.json"
+            rel = sample_prefix / "agent" / "retry_responses.json"
             path = self.artifacts_dir / rel
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(retry_responses, indent=2), encoding="utf-8")
@@ -164,42 +174,56 @@ class ResultStore:
             workspace_files: dict[str, str] = {}
             for remote_path, content in response.workspace_file_contents.items():
                 normalized = remote_path.lstrip("/") or task.task_id
-                rel = Path(task.task_id) / "workspace" / normalized
+                rel = sample_prefix / "workspace" / normalized
                 path = self.artifacts_dir / rel
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(content, encoding="utf-8")
                 workspace_files[remote_path] = str(rel)
             files["workspace_files"] = workspace_files
 
-        task_dir = self.artifacts_dir / task.task_id
-        if task_dir.exists():
-            manifest["local_artifact_root"] = str(Path(task.task_id))
+        artifact_root = self.artifacts_dir / sample_prefix
+        if artifact_root.exists():
+            manifest["local_artifact_root"] = str(sample_prefix)
         return manifest
 
     def _save_per_task_json(self, task_id: str, record: dict) -> None:
         """Write a per-task JSON file under {run_id}/tasks/{task_id}.json."""
         tasks_dir = self.output_dir / self.run_id / "tasks"
         tasks_dir.mkdir(parents=True, exist_ok=True)
-        path = tasks_dir / f"{task_id}.json"
+        sample_index = record.get("sample_index", 0)
+        filename = f"{task_id}.json" if sample_index == 0 else f"{task_id}_s{sample_index}.json"
+        path = tasks_dir / filename
         path.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
 
     def completed_task_ids(self) -> set[str]:
-        """Return task_ids of successfully completed records (correct is not None)."""
+        """Return task_ids of successfully completed records (correct is not None).
+
+        For backward compatibility this returns task_ids regardless of sample_index.
+        """
         completed: set[str] = set()
         for record in self.load():
             if record.get("correct") is not None:
                 completed.add(record["task_id"])
         return completed
 
+    def completed_sample_ids(self) -> set[tuple[str, int]]:
+        """Return (task_id, sample_index) pairs that have been completed."""
+        completed: set[tuple[str, int]] = set()
+        for record in self.load():
+            if record.get("correct") is not None:
+                completed.add((record["task_id"], record.get("sample_index", 0)))
+        return completed
+
     def load(self) -> list[dict]:
-        """Read and parse all JSONL lines, deduplicating by task_id (keep latest)."""
+        """Read and parse all JSONL lines, deduplicating by (task_id, sample_index)."""
         if not os.path.exists(self.path):
             return []
-        records: dict[str, dict] = {}
+        records: dict[tuple[str, int], dict] = {}
         with open(self.path, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if line:
                     record = json.loads(line)
-                    records[record["task_id"]] = record
+                    key = (record["task_id"], record.get("sample_index", 0))
+                    records[key] = record
         return list(records.values())

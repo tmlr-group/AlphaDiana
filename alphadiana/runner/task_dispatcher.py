@@ -33,6 +33,15 @@ class TaskDispatcher:
             return self._dispatch_sequential(tasks, solve_fn)
         return self._dispatch_concurrent(tasks, solve_fn)
 
+    @staticmethod
+    def _item_id(item: Any) -> str:
+        """Extract a human-readable ID from a work item (task or (task, sample_index) tuple)."""
+        if isinstance(item, tuple) and len(item) == 2:
+            task, si = item
+            tid = getattr(task, "task_id", "?")
+            return f"{tid}[s{si}]" if si > 0 else tid
+        return getattr(item, "task_id", str(id(item)))
+
     def _dispatch_sequential(
         self,
         tasks: list,
@@ -41,7 +50,7 @@ class TaskDispatcher:
         outcomes: list[dict] = []
         total = len(tasks)
         for idx, task in enumerate(tasks, 1):
-            task_id = getattr(task, "task_id", str(idx))
+            task_id = self._item_id(task)
             logger.info("Processing task %s (%d/%d)", task_id, idx, total)
             try:
                 result = solve_fn(task)
@@ -76,7 +85,7 @@ class TaskDispatcher:
             for future in as_completed(future_to_task):
                 completed += 1
                 task = future_to_task[future]
-                task_id = getattr(task, "task_id", str(completed))
+                task_id = self._item_id(task)
                 logger.info("Completed task %s (%d/%d)", task_id, completed, total)
                 try:
                     result = future.result()

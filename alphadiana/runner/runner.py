@@ -135,17 +135,40 @@ class Runner:
         tasks = self.benchmark.load_tasks(self.config.benchmark_config)
         logger.info("Loaded %d tasks from benchmark '%s'", len(tasks), self.config.benchmark_name)
 
-        # Checkpoint: skip already-completed tasks unless redo_all is set.
+        num_samples = getattr(self.config, "num_samples", 1)
+
+        # Expand tasks into (task, sample_index) work items.
+        work_items = [
+            (task, si)
+            for task in tasks
+            for si in range(num_samples)
+        ]
+
+        # Checkpoint: skip already-completed samples unless redo_all is set.
         if not getattr(self.config, "redo_all", False):
-            completed = self.result_store.completed_task_ids()
-            if completed:
-                before = len(tasks)
-                tasks = [t for t in tasks if t.task_id not in completed]
-                logger.info(
-                    "Checkpoint: skipping %d completed tasks, %d remaining",
-                    before - len(tasks),
-                    len(tasks),
-                )
+            if num_samples > 1:
+                completed_samples = self.result_store.completed_sample_ids()
+                if completed_samples:
+                    before = len(work_items)
+                    work_items = [
+                        (t, si) for t, si in work_items
+                        if (t.task_id, si) not in completed_samples
+                    ]
+                    logger.info(
+                        "Checkpoint: skipping %d completed samples, %d remaining",
+                        before - len(work_items),
+                        len(work_items),
+                    )
+            else:
+                completed = self.result_store.completed_task_ids()
+                if completed:
+                    before = len(work_items)
+                    work_items = [(t, si) for t, si in work_items if t.task_id not in completed]
+                    logger.info(
+                        "Checkpoint: skipping %d completed tasks, %d remaining",
+                        before - len(work_items),
+                        len(work_items),
+                    )
 
         # Initialize plain-text dashboard.
         dashboard = None
@@ -155,7 +178,7 @@ class Runner:
             status_dir = Path(self.config.output_dir) / self.config.run_id / "status"
             status_dir.mkdir(parents=True, exist_ok=True)
             dashboard = PlainTextDashboard(
-                status_dir / "dashboard.txt", tasks,
+                status_dir / "dashboard.txt", [t for t, _ in work_items],
             )
         except Exception:
             logger.debug("Dashboard initialization skipped", exc_info=True)
@@ -169,7 +192,8 @@ class Runner:
             pool = SandboxPool(self.sandbox, pool_size)
 
         # Create the solve function that wraps agent + sandbox + scorer.
-        def solve_fn(task):
+        def solve_fn(work_item):
+            task, sample_index = work_item
             # Acquire sandbox session: from pool (concurrent) or create fresh (sequential).
             sandbox_session = None
             used_pool = False
@@ -193,11 +217,13 @@ class Runner:
                 # Score the result.
                 score = self.scorer.score(task, response)
                 # Store the result.
-                self.result_store.append(task, response, score)
+                self.result_store.append(task, response, score, sample_index=sample_index)
                 # Log predicted vs ground_truth comparison.
+                sample_tag = f" [sample {sample_index}]" if num_samples > 1 else ""
                 logger.info(
-                    "Task %s done: predicted=%r vs ground_truth=%r correct=%s",
+                    "Task %s%s done: predicted=%r vs ground_truth=%r correct=%s",
                     task.task_id,
+                    sample_tag,
                     response.answer,
                     task.ground_truth,
                     score.correct,
@@ -251,6 +277,7 @@ class Runner:
                     task,
                     error=_build_error_info(exc),
                     response=error_response,
+                    sample_index=sample_index,
                 )
                 raise
             finally:
@@ -263,9 +290,9 @@ class Runner:
                     except Exception as cleanup_exc:
                         logger.warning("Cleanup failed for task %s: %s", task.task_id, cleanup_exc)
 
-        # Dispatch tasks.
+        # Dispatch work items (task, sample_index) tuples.
         dispatcher = TaskDispatcher(max_concurrent=self.config.max_concurrent)
-        outcomes = dispatcher.dispatch(tasks, solve_fn)
+        outcomes = dispatcher.dispatch(work_items, solve_fn)
 
         # Teardown pool if used.
         if pool is not None:

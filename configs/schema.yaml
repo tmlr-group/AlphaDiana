@@ -66,6 +66,11 @@ scorer:
 # max_concurrent: (optional, default=1) Number of parallel task executions.
 max_concurrent: integer
 
+# num_samples: (optional, default=1) Number of independent samples per task for pass@k evaluation.
+# When num_samples > 1, each task is solved k times independently, and pass@k is reported
+# as the fraction of tasks where at least 1 of k samples is correct.
+num_samples: integer
+
 # output_dir: (optional, default="./results") Directory for result output.
 output_dir: string
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
@@ -30,7 +30,23 @@ class RunSummary:
     total_tokens: dict
     per_category: dict[str, float]
     error_distribution: dict[str, int] = field(default_factory=dict)
+    num_samples: int = 1
+    pass_at_k: float = 0.0
+    avg_at_k: float = 0.0
+    per_category_pass_at_k: dict[str, float] = field(default_factory=dict)
+    per_category_avg_at_k: dict[str, float] = field(default_factory=dict)
     timestamp: str = ""
+
+
+def _get_category(r: dict) -> str:
+    """Extract category from a result record."""
+    task_meta = r.get("task_metadata", {})
+    resp_meta = r.get("metadata", {})
+    if isinstance(task_meta, dict) and task_meta.get("category"):
+        return task_meta["category"]
+    if isinstance(resp_meta, dict) and resp_meta.get("category"):
+        return resp_meta["category"]
+    return "default"
 
 
 class ReportGenerator:
@@ -44,6 +60,7 @@ class ReportGenerator:
         """Load results from the store and compute summary statistics."""
         results = result_store.load()
         total = len(results)
+        num_samples = getattr(config, "num_samples", 1)
 
         # Only count tasks that were scored (excludes infrastructure errors).
         completed_results = [r for r in results if r.get("score") is not None]
@@ -72,18 +89,16 @@ class ReportGenerator:
             "completion_tokens": total_completion,
         }
 
+        # Group results by task_id for per-category and pass@k computation.
+        by_task: dict[str, list[dict]] = defaultdict(list)
+        for r in results:
+            by_task[r["task_id"]].append(r)
+
         # Per-category accuracy (based on task metadata "category" field).
         category_correct: dict[str, int] = {}
         category_total: dict[str, int] = {}
         for r in completed_results:
-            cat = "default"
-            # Check both task_metadata and metadata for category.
-            task_meta = r.get("task_metadata", {})
-            resp_meta = r.get("metadata", {})
-            if isinstance(task_meta, dict) and task_meta.get("category"):
-                cat = task_meta["category"]
-            elif isinstance(resp_meta, dict) and resp_meta.get("category"):
-                cat = resp_meta["category"]
+            cat = _get_category(r)
             category_total[cat] = category_total.get(cat, 0) + 1
             if r.get("correct", False):
                 category_correct[cat] = category_correct.get(cat, 0) + 1
@@ -101,6 +116,50 @@ class ReportGenerator:
                 etype = err.get("error_type", "unknown")
                 error_dist[etype] = error_dist.get(etype, 0) + 1
 
+        # Pass@K: fraction of unique tasks where at least 1 sample is correct.
+        num_unique_tasks = len(by_task)
+        tasks_passed = sum(
+            1 for samples in by_task.values()
+            if any(s.get("correct", False) for s in samples)
+        )
+        pass_at_k = tasks_passed / num_unique_tasks if num_unique_tasks > 0 else 0.0
+
+        # Per-category pass@k
+        cat_tasks_total: dict[str, set[str]] = defaultdict(set)
+        cat_tasks_passed: dict[str, set[str]] = defaultdict(set)
+        for task_id, samples in by_task.items():
+            cat = _get_category(samples[0])
+            cat_tasks_total[cat].add(task_id)
+            if any(s.get("correct", False) for s in samples):
+                cat_tasks_passed[cat].add(task_id)
+
+        per_category_pass_at_k = {
+            cat: len(cat_tasks_passed.get(cat, set())) / len(task_ids)
+            for cat, task_ids in cat_tasks_total.items()
+        }
+
+        # Avg@K: per-task average correctness rate, then averaged across tasks.
+        # For each task, compute (number of correct samples) / (number of total samples).
+        task_avg_scores: list[float] = []
+        for samples in by_task.values():
+            n_total = len(samples)
+            n_correct = sum(1 for s in samples if s.get("correct", False))
+            task_avg_scores.append(n_correct / n_total if n_total > 0 else 0.0)
+        avg_at_k = sum(task_avg_scores) / len(task_avg_scores) if task_avg_scores else 0.0
+
+        # Per-category avg@k
+        cat_task_avgs: dict[str, list[float]] = defaultdict(list)
+        for task_id, samples in by_task.items():
+            cat = _get_category(samples[0])
+            n_total = len(samples)
+            n_correct = sum(1 for s in samples if s.get("correct", False))
+            cat_task_avgs[cat].append(n_correct / n_total if n_total > 0 else 0.0)
+
+        per_category_avg_at_k = {
+            cat: sum(avgs) / len(avgs) if avgs else 0.0
+            for cat, avgs in cat_task_avgs.items()
+        }
+
         return RunSummary(
             run_id=config.run_id,
             agent=config.agent_name,
@@ -116,8 +175,17 @@ class ReportGenerator:
             total_tokens=total_tokens,
             per_category=per_category,
             error_distribution=error_dist,
+            num_samples=num_samples,
+            pass_at_k=pass_at_k,
+            avg_at_k=avg_at_k,
+            per_category_pass_at_k=per_category_pass_at_k,
+            per_category_avg_at_k=per_category_avg_at_k,
             timestamp=datetime.now(timezone.utc).isoformat(),
         )
+
+    @staticmethod
+    def _get_category(r: dict) -> str:
+        return _get_category(r)
 
     def to_markdown(self, summary: RunSummary) -> str:
         """Generate a markdown report string with a summary table."""
@@ -136,8 +204,11 @@ class ReportGenerator:
             f"| Total Tasks | {summary.total_tasks} |",
             f"| Completed | {summary.completed} |",
             f"| Failed | {summary.failed} |",
+            f"| Num Samples (k) | {summary.num_samples} |",
             f"| Accuracy (completed) | {summary.accuracy:.4f} |",
             f"| Accuracy (total) | {summary.accuracy_total:.4f} |",
+            f"| Pass@{summary.num_samples} | {summary.pass_at_k:.4f} |",
+            f"| Avg@{summary.num_samples} | {summary.avg_at_k:.4f} |",
             f"| Mean Score | {summary.mean_score:.4f} |",
             f"| Mean Wall Time (s) | {summary.mean_wall_time_sec:.2f} |",
             f"| Prompt Tokens | {summary.total_tokens.get('prompt_tokens', 0)} |",
@@ -154,6 +225,19 @@ class ReportGenerator:
             ])
             for cat, acc in sorted(summary.per_category.items()):
                 lines.append(f"| {cat} | {acc:.4f} |")
+            lines.append("")
+
+        if summary.num_samples > 1 and summary.per_category_pass_at_k:
+            lines.extend([
+                f"## Per-Category Pass@{summary.num_samples} / Avg@{summary.num_samples}",
+                "",
+                f"| Category | Pass@{summary.num_samples} | Avg@{summary.num_samples} |",
+                "|----------|----------|----------|",
+            ])
+            for cat in sorted(summary.per_category_pass_at_k.keys()):
+                pk = summary.per_category_pass_at_k.get(cat, 0.0)
+                ak = summary.per_category_avg_at_k.get(cat, 0.0)
+                lines.append(f"| {cat} | {pk:.4f} | {ak:.4f} |")
             lines.append("")
 
         if summary.error_distribution:
