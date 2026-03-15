@@ -31,6 +31,7 @@ const STATUS_COLORS: Record<string, string> = {
   completed: 'success',
   failed: 'error',
   cancelled: 'warning',
+  interrupted: 'orange',
 };
 
 export default function JobsPage() {
@@ -212,6 +213,11 @@ export default function JobsPage() {
           {job.status === 'failed' && job.error && (
             <Text type="danger" style={{ fontSize: 12 }}>
               {job.error.length > 60 ? job.error.slice(0, 60) + '...' : job.error}
+            </Text>
+          )}
+          {job.status === 'interrupted' && (
+            <Text type="warning" style={{ fontSize: 12 }}>
+              Server restarted. Re-submit same Run ID to resume.
             </Text>
           )}
         </Space>

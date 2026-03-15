@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import contextvars
 import io
+import json
 import logging
+import os
 import threading
 import uuid
 from datetime import datetime, timezone
@@ -56,6 +58,57 @@ class JobManager:
         self._jobs: dict[str, JobStatus] = {}
         self._job_logs: dict[str, io.StringIO] = {}
         self._lock = threading.Lock()
+        self._jobs_file = os.path.join(results_dir, ".jobs.json")
+        self._load_persisted_jobs()
+
+    # --- Persistence ---
+
+    def _load_persisted_jobs(self) -> None:
+        """Restore job history from disk on startup.
+
+        Jobs that were 'running' or 'pending' when the server last stopped
+        are marked as 'interrupted' so the user knows they can resume.
+        """
+        if not os.path.exists(self._jobs_file):
+            return
+        try:
+            with open(self._jobs_file, encoding="utf-8") as f:
+                records = json.load(f)
+            for rec in records:
+                job = JobStatus(**rec)
+                if job.status in ("running", "pending"):
+                    job.status = "interrupted"
+                    job.error = (
+                        "Server restarted while this job was running. "
+                        "Results up to this point are saved. "
+                        "Re-submit the same Run ID to resume."
+                    )
+                self._jobs[job.job_id] = job
+            logger.info("Restored %d jobs from %s", len(records), self._jobs_file)
+        except Exception:
+            logger.warning("Failed to load persisted jobs", exc_info=True)
+
+    def _persist_jobs(self) -> None:
+        """Save all job statuses to disk. Must be called with self._lock held."""
+        try:
+            os.makedirs(os.path.dirname(self._jobs_file) or ".", exist_ok=True)
+            records = [job.model_dump() for job in self._jobs.values()]
+            tmp = self._jobs_file + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(records, f, ensure_ascii=False)
+            os.replace(tmp, self._jobs_file)
+        except Exception:
+            logger.warning("Failed to persist jobs", exc_info=True)
+
+    def _update_job(self, job_id: str, **fields: object) -> None:
+        """Update job fields and persist to disk. Thread-safe."""
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if not job:
+                return
+            for k, v in fields.items():
+                setattr(job, k, v)
+            self._persist_jobs()
 
     def list_jobs(self) -> list[JobStatus]:
         with self._lock:
@@ -92,6 +145,7 @@ class JobManager:
         with self._lock:
             self._jobs[job_id] = status
             self._job_logs[job_id] = io.StringIO()
+            self._persist_jobs()
 
         thread = threading.Thread(
             target=self._run_job,
@@ -127,6 +181,7 @@ class JobManager:
         with self._lock:
             self._jobs[job_id] = status
             self._job_logs[job_id] = io.StringIO()
+            self._persist_jobs()
 
         def _wait_and_run() -> None:
             # Tag this thread with the job ID for log isolation
@@ -163,9 +218,7 @@ class JobManager:
                     deploy_job = sandbox_manager.get_deploy_job(deploy_id)
                     if deploy_job is None:
                         _log(f"[ERROR] Deploy job {deploy_id} not found")
-                        with self._lock:
-                            self._jobs[job_id].status = "failed"
-                            self._jobs[job_id].error = f"Deploy job {deploy_id} not found"
+                        self._update_job(job_id, status="failed", error=f"Deploy job {deploy_id} not found")
                         return
 
                     if deploy_job.status == "completed":
@@ -176,9 +229,7 @@ class JobManager:
                         break
                     elif deploy_job.status == "failed":
                         _log(f"[ERROR] Sandbox deploy failed: {deploy_job.error}")
-                        with self._lock:
-                            self._jobs[job_id].status = "failed"
-                            self._jobs[job_id].error = f"Sandbox deploy failed: {deploy_job.error}"
+                        self._update_job(job_id, status="failed", error=f"Sandbox deploy failed: {deploy_job.error}")
                         return
 
                     # Forward deploy logs
@@ -191,9 +242,7 @@ class JobManager:
                     _time.sleep(5)
                 else:
                     _log("[ERROR] Sandbox deploy timed out (10 min)")
-                    with self._lock:
-                        self._jobs[job_id].status = "failed"
-                        self._jobs[job_id].error = "Sandbox deploy timed out"
+                    self._update_job(job_id, status="failed", error="Sandbox deploy timed out")
                     return
 
                 # Now run the actual evaluation
@@ -202,9 +251,7 @@ class JobManager:
 
             except Exception as exc:
                 logger.exception("Deploy-and-run job %s failed", job_id)
-                with self._lock:
-                    self._jobs[job_id].status = "failed"
-                    self._jobs[job_id].error = str(exc)
+                self._update_job(job_id, status="failed", error=str(exc))
             finally:
                 root_logger.removeHandler(handler)
 
@@ -218,6 +265,7 @@ class JobManager:
             job = self._jobs.get(job_id)
             if job and job.status in ("pending", "running"):
                 job.status = "cancelled"
+                self._persist_jobs()
                 return True
             return False
 
@@ -254,8 +302,7 @@ class JobManager:
                 if buf:
                     buf.write(f"{ts} [INFO] job_manager: {msg}\n")
 
-        with self._lock:
-            self._jobs[job_id].status = "running"
+        self._update_job(job_id, status="running")
 
         _log(f"Job {job_id} started (run_id={run_id})")
         _log(f"Agent: {req.agent_name}, Benchmark: {req.benchmark_name}")
@@ -306,12 +353,10 @@ class JobManager:
                 _log(f"Probing OpenClaw gateway at {api_base} ...")
                 if not self._probe_gateway(api_base):
                     _log("[ERROR] OpenClaw gateway is not responding. Aborting job.")
-                    with self._lock:
-                        self._jobs[job_id].status = "failed"
-                        self._jobs[job_id].error = (
-                            f"OpenClaw gateway not ready at {api_base}. "
-                            "Please check sandbox status before starting evaluation."
-                        )
+                    self._update_job(
+                        job_id, status="failed",
+                        error=f"OpenClaw gateway not ready at {api_base}. Please check sandbox status before starting evaluation.",
+                    )
                     return
                 _log("Gateway health check passed.")
 
@@ -320,29 +365,28 @@ class JobManager:
                 summary = runner.run()
                 _log(f"Evaluation complete: {summary.completed}/{summary.total_tasks} tasks, accuracy={summary.accuracy:.2%}")
                 with self._lock:
-                    job = self._jobs[job_id]
-                    if job.status == "cancelled":
+                    job = self._jobs.get(job_id)
+                    if not job or job.status == "cancelled":
                         return
-                    job.status = "completed"
                     job.progress = summary.completed
                     job.total_tasks = summary.total_tasks
                     job.accuracy = summary.accuracy
-                    # If all tasks failed, surface the error
                     if summary.completed == 0 and summary.total_tasks > 0:
                         job.status = "failed"
                         job.error = f"All {summary.total_tasks} tasks failed. Check logs for details."
                     elif summary.failed > 0:
+                        job.status = "completed"
                         job.error = f"{summary.failed}/{summary.total_tasks} tasks failed"
+                    else:
+                        job.status = "completed"
+                    self._persist_jobs()
             finally:
                 runner.teardown()
 
         except Exception as exc:
             logger.exception("Job %s failed", job_id)
             _log(f"[ERROR] Job failed: {exc}")
-            with self._lock:
-                job = self._jobs[job_id]
-                job.status = "failed"
-                job.error = str(exc)
+            self._update_job(job_id, status="failed", error=str(exc))
         finally:
             if handler is not None:
                 root_logger.removeHandler(handler)

@@ -83,7 +83,7 @@ export interface CreateJobRequest {
 export interface JobStatus {
   job_id: string;
   run_id: string;
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted';
   agent: string;
   benchmark: string;
   model: string;
