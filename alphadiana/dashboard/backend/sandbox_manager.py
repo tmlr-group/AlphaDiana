@@ -1,0 +1,652 @@
+"""Manage ROCK sandboxes for OpenClaw deployment."""
+
+from __future__ import annotations
+
+import asyncio
+import io
+import logging
+import os
+import threading
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+import httpx
+
+from alphadiana.utils.rock_ports import resolve_rock_ports_from_env
+
+logger = logging.getLogger(__name__)
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+DEPLOY_DIR = PROJECT_ROOT / "openclaw_deploy"
+
+
+ROCK_PORTS_ENV_FILE = PROJECT_ROOT / "dev" / ".rock_ports.env"
+
+# Cache for resolved working ROCK URLs
+_resolved_rock_urls: tuple[str, str] | None = None
+
+
+def _load_rock_ports_env() -> None:
+    """Source dev/.rock_ports.env into os.environ if present and not already set."""
+    if not ROCK_PORTS_ENV_FILE.exists():
+        return
+    for line in ROCK_PORTS_ENV_FILE.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:]
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip()
+        if "${" in value:
+            continue
+        if (value.startswith('"') and value.endswith('"')) or (
+            value.startswith("'") and value.endswith("'")
+        ):
+            value = value[1:-1]
+        if key and not os.environ.get(key):
+            os.environ[key] = value
+
+
+# Load ROCK port config on module import
+_load_rock_ports_env()
+
+
+def _probe_url(url: str, timeout: float = 3.0, check_body: bool = False) -> bool:
+    """Synchronously check if a URL is reachable and returns a successful response.
+
+    If check_body is True, also verify the JSON body doesn't contain
+    a ROCK-style failure (status=Failed).
+    """
+    import json as _json
+    import urllib.request
+    try:
+        req = urllib.request.Request(url, method="GET")
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            if not check_body:
+                return True
+            body = resp.read()
+            data = _json.loads(body)
+            if isinstance(data, dict) and data.get("status") == "Failed":
+                return False
+            return True
+    except Exception:
+        return False
+
+
+def _get_rock_urls() -> tuple[str, str]:
+    """Return (base_url, proxy_url), probing paired admin/proxy candidates.
+
+    ROCK admin and proxy MUST be from the same cluster (sharing one Redis).
+    By convention, proxy port = admin port + 1 (e.g., admin 9020 ↔ proxy 9021).
+    We probe (admin, proxy) pairs together to ensure they're from the same cluster.
+    """
+    global _resolved_rock_urls
+    if _resolved_rock_urls is not None:
+        return _resolved_rock_urls
+
+    ports = resolve_rock_ports_from_env()
+
+    # Build candidate (admin_port, proxy_port) pairs.
+    # Each ROCK cluster has admin=N, proxy=N+1.
+    seen_admin_ports: set[int] = set()
+    pairs: list[tuple[str, str]] = []
+
+    def _add_pair(admin_url: str, proxy_api_url: str) -> None:
+        """Add a pair if not already seen."""
+        import re
+        m = re.search(r":(\d+)", admin_url)
+        if m:
+            port = int(m.group(1))
+            if port in seen_admin_ports:
+                return
+            seen_admin_ports.add(port)
+        pairs.append((admin_url, proxy_api_url))
+
+    # Priority 1: env-configured pair
+    env_base = os.environ.get("ROCK_BASE_URL", "")
+    env_proxy = os.environ.get("ROCK_PROXY_URL", "")
+    if env_base and env_proxy:
+        _add_pair(env_base, env_proxy)
+
+    # Priority 2: resolved from .rock_ports.env
+    _add_pair(ports.base_url, ports.proxy_api_url)
+
+    # Priority 3: common port pairs (admin, proxy=admin+1)
+    for admin_port in [9020, 9010, 9000]:
+        _add_pair(
+            f"http://127.0.0.1:{admin_port}",
+            f"http://127.0.0.1:{admin_port + 1}/apis/envs/sandbox/v1",
+        )
+
+    # Find first pair where BOTH admin and proxy are reachable and proxy returns Success
+    for admin_url, proxy_url in pairs:
+        if not _probe_url(admin_url):
+            continue
+        if not _probe_url(f"{proxy_url}/sandboxes", check_body=True):
+            continue
+        logger.info("ROCK cluster found: admin=%s proxy=%s", admin_url, proxy_url)
+        _resolved_rock_urls = (admin_url, proxy_url)
+        return _resolved_rock_urls
+
+    # Fallback: use first reachable admin with its paired proxy
+    for admin_url, proxy_url in pairs:
+        if _probe_url(admin_url):
+            logger.warning("Using admin %s (proxy %s may not be working)", admin_url, proxy_url)
+            _resolved_rock_urls = (admin_url, proxy_url)
+            return _resolved_rock_urls
+
+    # Last resort: return first candidates
+    _resolved_rock_urls = (pairs[0][0], pairs[0][1]) if pairs else (
+        "http://127.0.0.1:9020",
+        "http://127.0.0.1:9021/apis/envs/sandbox/v1",
+    )
+    return _resolved_rock_urls
+
+
+class SandboxInfo:
+    def __init__(
+        self,
+        sandbox_id: str,
+        status: str = "unknown",
+        api_base: str = "",
+        model: str = "",
+        created_at: str = "",
+        gateway_ready: bool = False,
+    ):
+        self.sandbox_id = sandbox_id
+        self.status = status
+        self.api_base = api_base
+        self.model = model
+        self.created_at = created_at
+        self.gateway_ready = gateway_ready
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "sandbox_id": self.sandbox_id,
+            "status": self.status,
+            "api_base": self.api_base,
+            "model": self.model,
+            "created_at": self.created_at,
+            "gateway_ready": self.gateway_ready,
+        }
+
+
+class DeployJob:
+    def __init__(self, deploy_id: str):
+        self.deploy_id = deploy_id
+        self.status: str = "pending"  # pending, deploying, completed, failed
+        self.sandbox_id: str = ""
+        self.api_base: str = ""
+        self.error: str = ""
+        self.created_at: str = datetime.now(timezone.utc).isoformat()
+        self.logs: io.StringIO = io.StringIO()
+        self.model_name: str = ""
+        self.model_api_base: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "deploy_id": self.deploy_id,
+            "status": self.status,
+            "sandbox_id": self.sandbox_id,
+            "api_base": self.api_base,
+            "error": self.error,
+            "created_at": self.created_at,
+            "model_name": self.model_name,
+            "model_api_base": self.model_api_base,
+        }
+
+
+class SandboxManager:
+    """Manages ROCK sandbox lifecycle for OpenClaw."""
+
+    def __init__(self) -> None:
+        self._deploy_jobs: dict[str, DeployJob] = {}
+        self._lock = threading.Lock()
+
+    async def list_sandboxes(self) -> list[SandboxInfo]:
+        """List existing sandboxes from ROCK proxy API, with gateway health check."""
+        _, proxy_url = _get_rock_urls()
+        sandboxes: list[SandboxInfo] = []
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(f"{proxy_url}/sandboxes")
+                resp.raise_for_status()
+                data = resp.json()
+
+                # ROCK response format: {status, result: {items: [...]}}
+                items: list = []
+                if isinstance(data, dict):
+                    result = data.get("result")
+                    if isinstance(result, dict):
+                        items = result.get("items", [])
+                    elif isinstance(result, list):
+                        items = result
+                    else:
+                        # Fallback: try data directly or data.data
+                        items = data.get("data", data.get("items", []))
+                if isinstance(data, list):
+                    items = data
+                if not isinstance(items, list):
+                    items = []
+
+                for item in items:
+                    sid = item.get("sandbox_id", item.get("id", ""))
+                    if not sid:
+                        continue
+                    # ROCK uses "state" (running/pending), not "status"
+                    state = item.get("state", item.get("status", "unknown"))
+                    if isinstance(state, dict):
+                        state = "unknown"
+                    api_base = f"{proxy_url}/sandboxes/{sid}/proxy/v1"
+                    sandboxes.append(SandboxInfo(
+                        sandbox_id=sid,
+                        status=state,
+                        api_base=api_base,
+                        model=item.get("model", ""),
+                        created_at=item.get("created_at", ""),
+                    ))
+
+                # Probe gateway health for each sandbox concurrently
+                if sandboxes:
+                    await self._probe_sandbox_gateways(client, sandboxes)
+
+                # Enrich with model info from deploy jobs
+                self._enrich_sandbox_model_info(sandboxes)
+
+        except Exception as exc:
+            logger.warning("Failed to list sandboxes from ROCK: %s", exc)
+        return sandboxes
+
+    def _enrich_sandbox_model_info(self, sandboxes: list[SandboxInfo]) -> None:
+        """Fill in model name from deploy job records for each sandbox."""
+        with self._lock:
+            # Build sandbox_id -> deploy job lookup
+            sid_to_deploy: dict[str, DeployJob] = {}
+            for dj in self._deploy_jobs.values():
+                if dj.sandbox_id:
+                    sid_to_deploy[dj.sandbox_id] = dj
+
+        for sb in sandboxes:
+            dj = sid_to_deploy.get(sb.sandbox_id)
+            if dj:
+                sb.model = dj.model_name or sb.model
+                if not sb.model and dj.model_api_base:
+                    sb.model = dj.model_api_base
+
+    async def _probe_sandbox_gateways(
+        self,
+        client: httpx.AsyncClient,
+        sandboxes: list[SandboxInfo],
+    ) -> None:
+        """Probe gateway /chat/completions for each sandbox to check if it's ready."""
+
+        async def _probe_one(sb: SandboxInfo) -> None:
+            if sb.status != "running":
+                return
+            try:
+                resp = await client.post(
+                    f"{sb.api_base}/chat/completions",
+                    headers={
+                        "Authorization": "bearer OPENCLAW",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": "openclaw",
+                        "messages": [{"role": "user", "content": "ping"}],
+                        "max_tokens": 1,
+                    },
+                    timeout=5.0,
+                )
+                body = resp.json() if resp.status_code == 200 else {}
+                if isinstance(body, dict) and body.get("status") == "Failed":
+                    sb.gateway_ready = False
+                elif resp.status_code == 200 and body.get("choices"):
+                    sb.gateway_ready = True
+            except Exception:
+                sb.gateway_ready = False
+
+        await asyncio.gather(*[_probe_one(sb) for sb in sandboxes])
+
+    def list_deploy_jobs(self) -> list[dict[str, Any]]:
+        with self._lock:
+            return [j.to_dict() for j in reversed(self._deploy_jobs.values())]
+
+    def get_deploy_job(self, deploy_id: str) -> DeployJob | None:
+        with self._lock:
+            return self._deploy_jobs.get(deploy_id)
+
+    def get_deploy_logs(self, deploy_id: str) -> str | None:
+        with self._lock:
+            job = self._deploy_jobs.get(deploy_id)
+            if job is None:
+                return None
+            return job.logs.getvalue()
+
+    def deploy_sandbox(
+        self,
+        agent_config_path: str | None = None,
+        model_api_base: str = "",
+        model_api_key: str = "",
+        model_name: str = "",
+        auto_clear_seconds: int = 28800,
+    ) -> DeployJob:
+        """Start sandbox deployment in a background thread."""
+        deploy_id = uuid.uuid4().hex[:12]
+        job = DeployJob(deploy_id)
+        job.model_name = model_name
+        job.model_api_base = model_api_base
+        with self._lock:
+            self._deploy_jobs[deploy_id] = job
+
+        thread = threading.Thread(
+            target=self._run_deploy,
+            args=(deploy_id, agent_config_path, model_api_base, model_api_key, model_name, auto_clear_seconds),
+            daemon=True,
+        )
+        thread.start()
+        return job
+
+    def _run_deploy(
+        self,
+        deploy_id: str,
+        agent_config_path: str | None,
+        model_api_base: str,
+        model_api_key: str,
+        model_name: str,
+        auto_clear_seconds: int,
+    ) -> None:
+        """Execute deploy in background thread."""
+        with self._lock:
+            job = self._deploy_jobs[deploy_id]
+            job.status = "deploying"
+
+        def log(msg: str) -> None:
+            ts = datetime.now().strftime("%H:%M:%S")
+            line = f"{ts} {msg}"
+            logger.info("[deploy:%s] %s", deploy_id, msg)
+            with self._lock:
+                job.logs.write(line + "\n")
+
+        try:
+            asyncio.run(self._async_deploy(
+                deploy_id, agent_config_path, model_api_base, model_api_key,
+                model_name, auto_clear_seconds, log,
+            ))
+        except Exception as exc:
+            logger.exception("Deploy %s failed", deploy_id)
+            with self._lock:
+                job.status = "failed"
+                job.error = str(exc)
+            log(f"[ERROR] Deploy failed: {exc}")
+
+    async def _async_deploy(
+        self,
+        deploy_id: str,
+        agent_config_path: str | None,
+        model_api_base: str,
+        model_api_key: str,
+        model_name: str,
+        auto_clear_seconds: int,
+        log,
+    ) -> None:
+        import tempfile
+
+        import yaml
+        from rock.sdk.sandbox.client import Sandbox
+        from rock.sdk.sandbox.config import SandboxConfig
+
+        # Clear cached ROCK URLs to re-probe the correct admin/proxy pair.
+        # This prevents stale cache from directing deploys to wrong clusters.
+        global _resolved_rock_urls
+        _resolved_rock_urls = None
+
+        base_url, proxy_url = _get_rock_urls()
+
+        with self._lock:
+            job = self._deploy_jobs[deploy_id]
+
+        # Resolve agent config
+        if agent_config_path:
+            config_file = Path(agent_config_path)
+            if not config_file.is_absolute():
+                for candidate in [PROJECT_ROOT / config_file, DEPLOY_DIR / config_file]:
+                    if candidate.exists():
+                        config_file = candidate
+                        break
+        else:
+            # Generate agent config from model parameters.
+            # Use DEPLOY_DIR as working_dir so that openclaw.json is uploaded to sandbox.
+            deploy_dir_abs = str(DEPLOY_DIR)
+
+            # Use --omit=optional to skip git-based optional deps (libsignal-node)
+            # that fail in sandboxes without GitHub network access.
+            custom_install_cmd = "npm install -g openclaw@2026.3.7 --omit=optional"
+
+            # run_cmd: use ${bin_dir} placeholder (replaced by ROCK SDK with
+            # the node runtime bin directory) to ensure openclaw is on PATH.
+            run_cmd = (
+                "export PATH=${bin_dir}:$PATH && "
+                "OPENCLAW_CONFIG_PATH=${working_dir}/openclaw.json "
+                "nohup openclaw gateway >> /root/gateway.log 2>&1 &"
+            )
+
+            template_path = DEPLOY_DIR / "rock_agent_config.yaml"
+            if template_path.exists():
+                with open(template_path) as f:
+                    config_data = yaml.safe_load(f)
+            else:
+                config_data = {}
+
+            # Always override critical fields to ensure correctness
+            config_data["working_dir"] = deploy_dir_abs
+            config_data["run_cmd"] = run_cmd
+            config_data.setdefault("runtime_env_config", {})
+            config_data["runtime_env_config"].update({
+                "type": "node",
+                "npm_registry": "https://registry.npmmirror.com",
+                "custom_install_cmd": custom_install_cmd,
+                "install_timeout": 1200,
+            })
+
+            # Override env with user-provided model parameters
+            env = config_data.setdefault("env", {})
+            if model_api_base:
+                env["OPENAI_BASE_URL"] = model_api_base
+            if model_api_key:
+                env["OPENAI_API_KEY"] = model_api_key
+            if model_name:
+                env["OPENAI_MODEL_NAME"] = model_name
+            env.setdefault("OPENCLAW_GATEWAY_TOKEN", "OPENCLAW")
+
+            tmp = tempfile.NamedTemporaryFile(
+                mode="w", suffix=".yaml", delete=False, prefix="agent_config_"
+            )
+            yaml.safe_dump(config_data, tmp)
+            tmp.close()
+            config_file = Path(tmp.name)
+
+        log(f"Using agent config: {config_file}")
+        log(f"ROCK base_url: {base_url}")
+        log(f"ROCK proxy_url: {proxy_url}")
+
+        # Preflight checks
+        log("Running preflight checks...")
+
+        # Check ROCK admin reachability
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            try:
+                resp = await client.get(base_url)
+                resp.raise_for_status()
+                log(f"  ROCK admin OK ({base_url})")
+            except Exception as exc:
+                raise RuntimeError(
+                    f"ROCK admin is not reachable at {base_url}: {exc}\n"
+                    "Ensure ROCK admin is running and ROCK_BASE_URL / ROCK_ADMIN_PORT are correct."
+                ) from exc
+
+            # Check ROCK proxy reachability
+            proxy_root = proxy_url.removesuffix("/apis/envs/sandbox/v1")
+            try:
+                resp = await client.get(proxy_root)
+                resp.raise_for_status()
+                log(f"  ROCK proxy OK ({proxy_root})")
+            except Exception as exc:
+                raise RuntimeError(
+                    f"ROCK proxy is not reachable at {proxy_root}: {exc}\n"
+                    "Ensure ROCK proxy is running and ROCK_PROXY_URL / ROCK_PROXY_PORT are correct."
+                ) from exc
+
+        # Check Redis
+        import socket as _socket
+        redis_port = int(os.environ.get("ROCK_REDIS_PORT", "6379"))
+        try:
+            with _socket.create_connection(("127.0.0.1", redis_port), timeout=5):
+                log(f"  Redis OK (port {redis_port})")
+        except OSError:
+            raise RuntimeError(
+                f"Redis is not reachable on port {redis_port}.\n"
+                f"Start Redis: docker start redis-stack"
+            )
+
+        # Ensure ROCK .venv symlink
+        rock_root = PROJECT_ROOT / "ref" / "ROCK"
+        venv_link = rock_root / ".venv"
+        import sys
+        expected_target = Path(sys.prefix).resolve()
+        if venv_link.exists() or venv_link.is_symlink():
+            if venv_link.is_symlink() and venv_link.resolve() != expected_target:
+                log(f"  Fixing .venv symlink: {venv_link.resolve()} -> {expected_target}")
+                venv_link.unlink()
+                venv_link.symlink_to(expected_target, target_is_directory=True)
+        elif rock_root.exists():
+            log(f"  Creating .venv symlink -> {expected_target}")
+            venv_link.symlink_to(expected_target, target_is_directory=True)
+        log("Preflight checks passed.")
+
+        # Create sandbox
+        log("Creating sandbox...")
+        config = SandboxConfig(
+            base_url=base_url,
+            image="python:3.11",
+            memory="4g",
+            cpus=1,
+            auto_clear_seconds=auto_clear_seconds,
+            startup_timeout=180,
+        )
+        sandbox = Sandbox(config)
+
+        try:
+            await sandbox.start()
+        except Exception as exc:
+            raise RuntimeError(f"Failed to create sandbox: {exc}") from exc
+
+        sandbox_id = sandbox.sandbox_id
+        log(f"Sandbox created: {sandbox_id}")
+
+        with self._lock:
+            job.sandbox_id = sandbox_id
+
+        # Wait for sandbox readiness
+        log("Waiting for sandbox to be ready...")
+        import time
+        deadline = time.monotonic() + 180
+        while time.monotonic() < deadline:
+            try:
+                status = await sandbox.get_status()
+                if getattr(status, "is_alive", False):
+                    log(f"Sandbox is running (status={status.status})")
+                    break
+                log(f"  Waiting... (status={status.status})")
+            except Exception as exc:
+                log(f"  Status check: {exc}")
+            await asyncio.sleep(3)
+        else:
+            raise RuntimeError("Sandbox did not reach running state within 180s")
+
+        sandbox.url = proxy_url
+
+        # Install agent
+        log(f"Installing OpenClaw agent...")
+        try:
+            await sandbox.agent.install(config=str(config_file))
+            log("Agent installed successfully")
+        except Exception as exc:
+            log(f"Install failed, retrying in 10s: {exc}")
+            await asyncio.sleep(10)
+            await sandbox.agent.install(config=str(config_file))
+            log("Agent installed on retry")
+
+        # Run gateway
+        log("Starting OpenClaw gateway...")
+        await sandbox.agent.run("")
+        log("OpenClaw gateway command sent")
+
+        api_base = f"{proxy_url}/sandboxes/{sandbox_id}/proxy/v1"
+
+        # Wait for OpenClaw gateway to be actually ready.
+        # The agent.install() and agent.run() return before the actual npm install
+        # and gateway startup complete, so we must probe until the gateway responds.
+        log("Waiting for OpenClaw gateway to be ready (this may take several minutes for npm install)...")
+        import time
+        gw_deadline = time.monotonic() + 900  # 15 min — npm install can be very slow
+        gateway_ready = False
+        last_log_time = 0.0
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            while time.monotonic() < gw_deadline:
+                try:
+                    # Try a lightweight chat completions request
+                    resp = await client.post(
+                        f"{api_base}/chat/completions",
+                        headers={
+                            "Authorization": "bearer OPENCLAW",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "model": "openclaw",
+                            "messages": [{"role": "user", "content": "ping"}],
+                            "max_tokens": 5,
+                        },
+                        timeout=30.0,
+                    )
+                    body = resp.json() if resp.status_code == 200 else {}
+                    # ROCK proxy returns 200 with status=Failed when gateway isn't ready
+                    if isinstance(body, dict) and body.get("status") == "Failed":
+                        err = body.get("error", "")
+                        now = time.monotonic()
+                        if now - last_log_time > 15:
+                            log(f"  Gateway not ready: {err}")
+                            last_log_time = now
+                    elif resp.status_code == 200 and body.get("choices"):
+                        log("OpenClaw gateway is ready!")
+                        gateway_ready = True
+                        break
+                    else:
+                        now = time.monotonic()
+                        if now - last_log_time > 15:
+                            log(f"  Gateway probe: status={resp.status_code}")
+                            last_log_time = now
+                except Exception as exc:
+                    now = time.monotonic()
+                    if now - last_log_time > 15:
+                        log(f"  Gateway probe: {exc}")
+                        last_log_time = now
+                await asyncio.sleep(10)
+
+        if not gateway_ready:
+            raise RuntimeError(
+                "OpenClaw gateway did not become ready within 15 minutes. "
+                "Check sandbox logs for npm install or gateway startup errors."
+            )
+
+        log(f"Deploy complete!")
+        log(f"Sandbox ID: {sandbox_id}")
+        log(f"API base: {api_base}")
+        log(f"Auto-clear: {auto_clear_seconds}s ({auto_clear_seconds // 60} min)")
+
+        with self._lock:
+            job.status = "completed"
+            job.api_base = api_base
