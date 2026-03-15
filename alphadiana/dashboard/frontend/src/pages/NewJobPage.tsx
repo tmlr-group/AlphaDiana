@@ -256,6 +256,7 @@ export default function NewJobPage() {
         if (data.length > 0 && !selectedSandbox) {
           const running = data.find((s) => s.status === 'running');
           setSelectedSandbox((running || data[0]).sandbox_id);
+          schedulePreviewUpdate();
         }
       })
       .catch(() => setSandboxes([]))
@@ -372,20 +373,7 @@ export default function NewJobPage() {
       const { agentConfig, benchmarkConfig } = buildEvalConfig(values);
       const agentName = selectedAgent;
       const benchmarkName = presetDef?.benchmarkName || 'aime';
-      // Exclude credential fields from hash — they don't affect results
-      const CREDENTIAL_FIELDS = new Set(['api_key', 'gateway_token', 'secret', 'secret_key', 'token']);
-      const filteredAgentConfig: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(agentConfig)) {
-        if (!CREDENTIAL_FIELDS.has(k.toLowerCase())) {
-          filteredAgentConfig[k] = v;
-        }
-      }
-      const keyParts = sortKeys({
-        agent: agentName,
-        agent_config: filteredAgentConfig,
-        benchmark: benchmarkName,
-        benchmark_config: benchmarkConfig,
-      });
+      const keyParts = sortKeys(buildRunIdentity(values, agentConfig, benchmarkConfig));
       const canonical = JSON.stringify(keyParts);
       const hashHex = await sha256Hex(canonical);
       const runId = `${agentName}-${benchmarkName}-${hashHex.slice(0, 12)}`;
@@ -408,7 +396,7 @@ export default function NewJobPage() {
       computePreviewRunId();
     }, 150);
     return () => clearTimeout(timer);
-  }, [previewTrigger, selectedAgent, selectedPreset]);
+  }, [previewTrigger, selectedAgent, selectedPreset, sandboxMode, selectedSandbox]);
 
   // Load available env keys on mount
   useEffect(() => {
@@ -517,6 +505,48 @@ export default function NewJobPage() {
     return { agentConfig, benchmarkConfig, scorerConfig };
   };
 
+  const buildRunIdentity = (
+    values: Record<string, unknown>,
+    agentConfig: Record<string, unknown>,
+    benchmarkConfig: Record<string, unknown>
+  ) => {
+    const benchmarkName = presetDef?.benchmarkName || 'aime';
+    const credentialFields = new Set(['api_key', 'gateway_token', 'secret', 'secret_key', 'token']);
+    const filteredAgentConfig: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(agentConfig)) {
+      if (!credentialFields.has(k.toLowerCase())) {
+        filteredAgentConfig[k] = v;
+      }
+    }
+
+    const identity: Record<string, unknown> = {
+      agent: selectedAgent,
+      benchmark: benchmarkName,
+      agent_config: filteredAgentConfig,
+      benchmark_config: benchmarkConfig,
+    };
+
+    if (selectedAgent === 'openclaw') {
+      if (sandboxMode === 'existing') {
+        if (selectedSandbox) {
+          identity.sandbox_id = selectedSandbox;
+        }
+      } else {
+        identity.deploy_and_run = true;
+        const baseModel = (values.sandbox_model_name as string) || '';
+        const modelApiBase = (values.sandbox_api_base as string) || '';
+        if (baseModel) {
+          identity.base_model = baseModel;
+        }
+        if (modelApiBase) {
+          identity.model_api_base = modelApiBase;
+        }
+      }
+    }
+
+    return identity;
+  };
+
   const handleDeployAndRun = async () => {
     const values = form.getFieldsValue();
     setSubmitting(true);
@@ -545,6 +575,9 @@ export default function NewJobPage() {
           preset: selectedPreset,
           benchmark_label: presetDef?.label || presetDef?.benchmarkName || '',
           smoke_test: !!values.smoke_test,
+          deploy_and_run: true,
+          base_model: (values.sandbox_model_name as string) || '',
+          model_api_base: (values.sandbox_api_base as string) || '',
         },
       };
 
@@ -565,6 +598,11 @@ export default function NewJobPage() {
 
       // For OpenClaw, set api_base from selected sandbox
       if (selectedAgent === 'openclaw') {
+        if (sandboxMode === 'new') {
+          message.error('OpenClaw is in "Deploy New Sandbox" mode. Use "Deploy & Run Evaluation" or "Deploy Only" first.');
+          setSubmitting(false);
+          return;
+        }
         const apiBase = getSelectedSandboxApiBase();
         if (!apiBase) {
           message.error('Please select a sandbox or deploy a new one');
@@ -595,6 +633,7 @@ export default function NewJobPage() {
           preset: selectedPreset,
           benchmark_label: presetDef?.label || presetDef?.benchmarkName || '',
           smoke_test: !!values.smoke_test,
+          sandbox_mode: selectedAgent === 'openclaw' ? sandboxMode : undefined,
           sandbox_id: selectedAgent === 'openclaw' ? selectedSandbox : undefined,
         },
       };
@@ -631,7 +670,7 @@ export default function NewJobPage() {
           const keys = Object.keys(changed);
           const affects = keys.some(k =>
             k.startsWith('agent_') || k === 'benchmark_preset' || k === 'smoke_test' ||
-            k.startsWith('bench_') || k === 'agent_name'
+            k.startsWith('bench_') || k.startsWith('sandbox_') || k === 'agent_name'
           );
           if (affects) schedulePreviewUpdate();
         }}
@@ -803,7 +842,10 @@ export default function NewJobPage() {
 
               <Radio.Group
                 value={sandboxMode}
-                onChange={(e) => setSandboxMode(e.target.value)}
+                onChange={(e) => {
+                  setSandboxMode(e.target.value);
+                  schedulePreviewUpdate();
+                }}
                 style={{ marginBottom: 16 }}
               >
                 <Radio.Button value="existing">Use Existing Sandbox</Radio.Button>
@@ -818,7 +860,10 @@ export default function NewJobPage() {
                       placeholder={sandboxesLoading ? 'Loading sandboxes...' : 'Select a sandbox'}
                       loading={sandboxesLoading}
                       value={selectedSandbox || undefined}
-                      onChange={setSelectedSandbox}
+                      onChange={(value) => {
+                        setSelectedSandbox(value);
+                        schedulePreviewUpdate();
+                      }}
                       notFoundContent={
                         sandboxesLoading ? <Spin size="small" /> : <Text type="secondary">No sandboxes found</Text>
                       }
@@ -989,6 +1034,7 @@ export default function NewJobPage() {
                   <Space wrap>
                     <Button
                       icon={<PlusOutlined />}
+                      htmlType="button"
                       onClick={handleDeploySandbox}
                       loading={deploying}
                     >
@@ -997,6 +1043,7 @@ export default function NewJobPage() {
                     <Button
                       type="primary"
                       icon={<PlayCircleOutlined />}
+                      htmlType="button"
                       onClick={handleDeployAndRun}
                       loading={submitting}
                     >
@@ -1259,10 +1306,13 @@ export default function NewJobPage() {
           htmlType="submit"
           icon={<PlayCircleOutlined />}
           loading={submitting}
+          disabled={selectedAgent === 'openclaw' && sandboxMode === 'new'}
           size="large"
           block
         >
-          Start Evaluation
+          {selectedAgent === 'openclaw' && sandboxMode === 'new'
+            ? 'Use Deploy & Run Evaluation Above'
+            : 'Start Evaluation'}
         </Button>
       </Form>
 

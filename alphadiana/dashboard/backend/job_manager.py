@@ -391,24 +391,53 @@ class JobManager:
         return None
 
     @staticmethod
+    def _run_identity_parts(req: CreateJobRequest) -> dict[str, Any]:
+        """Build the deterministic identity payload for a run.
+
+        OpenClaw runs need sandbox/deploy context in addition to agent params.
+        Otherwise a fresh deploy-and-run job can collide with an existing-sandbox
+        run and be treated as the same checkpointed evaluation.
+        """
+        # Strip credential fields from agent_config before hashing
+        credential_fields = {"api_key", "gateway_token", "secret", "secret_key", "token"}
+        filtered_agent_config = {
+            k: v for k, v in req.agent_config.items()
+            if k.lower() not in credential_fields
+        }
+        key_parts: dict[str, Any] = {
+            "agent": req.agent_name,
+            "benchmark": req.benchmark_name,
+            "agent_config": filtered_agent_config,
+            "benchmark_config": req.benchmark_config,
+        }
+
+        metadata = req.metadata if isinstance(req.metadata, dict) else {}
+        if req.agent_name == "openclaw":
+            sandbox_id = metadata.get("sandbox_id")
+            if sandbox_id:
+                key_parts["sandbox_id"] = sandbox_id
+
+            if metadata.get("deploy_and_run"):
+                key_parts["deploy_and_run"] = True
+
+            base_model = metadata.get("base_model")
+            if base_model:
+                key_parts["base_model"] = base_model
+
+            model_api_base = metadata.get("model_api_base")
+            if model_api_base:
+                key_parts["model_api_base"] = model_api_base
+
+        return key_parts
+
+    @staticmethod
     def _deterministic_run_id(req: CreateJobRequest) -> str:
         """Generate a deterministic run_id from config content.
 
         Same config → same run_id → automatic checkpoint resume.
         Excludes credentials (api_key, tokens) — they don't affect results.
         """
-        # Strip credential fields from agent_config before hashing
-        _CREDENTIAL_FIELDS = {"api_key", "gateway_token", "secret", "secret_key", "token"}
-        filtered_agent_config = {
-            k: v for k, v in req.agent_config.items()
-            if k.lower() not in _CREDENTIAL_FIELDS
-        }
-        key_parts = {
-            "agent": req.agent_name,
-            "benchmark": req.benchmark_name,
-            "agent_config": filtered_agent_config,
-            "benchmark_config": req.benchmark_config,
-        }
+        key_parts = JobManager._run_identity_parts(req)
         # Use compact separators to match JavaScript's JSON.stringify output
         canonical = json.dumps(key_parts, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
         short_hash = hashlib.sha256(canonical.encode()).hexdigest()[:12]

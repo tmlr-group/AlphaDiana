@@ -184,6 +184,21 @@ def _stash_env_refs(req: CreateJobRequest) -> None:
         req.metadata["_env_refs"] = env_refs
 
 
+def _validate_openclaw_submission_mode(req: CreateJobRequest) -> None:
+    """Reject impossible OpenClaw submissions caused by stale or wrong UI paths."""
+    if req.agent_name != "openclaw":
+        return
+    metadata = req.metadata if isinstance(req.metadata, dict) else {}
+    if metadata.get("sandbox_mode") == "new":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "OpenClaw is in 'Deploy New Sandbox' mode. "
+                "Use 'Deploy & Run Evaluation' or 'Deploy Only' first."
+            ),
+        )
+
+
 @router.get("/env-keys")
 def list_env_keys():
     """List environment variable names from .env that look like API keys/tokens.
@@ -218,6 +233,7 @@ def list_jobs():
 @router.post("/jobs", response_model=JobStatus, status_code=201)
 def create_job(req: CreateJobRequest):
     """Create and start a new evaluation job."""
+    _validate_openclaw_submission_mode(req)
     # Stash original $VAR_NAME references before resolution (for resume)
     _stash_env_refs(req)
     # Resolve $ENV_VAR references in agent config
@@ -486,6 +502,7 @@ def deploy_and_run(req: DeployAndRunRequest):
             "deploy_id": deploy_job.deploy_id,
             "deploy_and_run": True,
             "base_model": req.model_name,
+            "model_api_base": req.model_api_base,
         },
     )
 
