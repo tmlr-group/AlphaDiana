@@ -95,6 +95,8 @@ class JobStatus(BaseModel):
     accuracy: float | None = None
     error: str | None = None
     created_at: str = ""
+    # Original request config (persisted for resume/continue)
+    original_request: dict[str, Any] | None = None
 
 
 class DeployAndRunRequest(BaseModel):

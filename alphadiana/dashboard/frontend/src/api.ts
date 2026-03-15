@@ -18,6 +18,10 @@ export function getRun(runId: string): Promise<RunDetail> {
   return fetchJson<RunDetail>(`${BASE}/runs/${encodeURIComponent(runId)}`);
 }
 
+export function getRunConfig(runId: string): Promise<Record<string, unknown>> {
+  return fetchJson<Record<string, unknown>>(`${BASE}/runs/${encodeURIComponent(runId)}/config`);
+}
+
 export function getTask(runId: string, taskId: string): Promise<TaskResult> {
   return fetchJson<TaskResult>(
     `${BASE}/runs/${encodeURIComponent(runId)}/tasks/${encodeURIComponent(taskId)}`
@@ -52,6 +56,18 @@ export function cancelJob(jobId: string): Promise<void> {
 
 export function getJobLogs(jobId: string): Promise<{ job_id: string; logs: string }> {
   return fetchJson(`${BASE}/jobs/${jobId}/logs`);
+}
+
+export function resumeJob(jobId: string): Promise<JobStatus> {
+  return fetchJson<JobStatus>(`${BASE}/jobs/${jobId}/resume`, { method: 'POST' });
+}
+
+export function deleteJob(jobId: string): Promise<{ status: string; job_id: string }> {
+  return fetchJson(`${BASE}/jobs/${jobId}`, { method: 'DELETE' });
+}
+
+export function deleteRun(runId: string): Promise<{ run_id: string; jobs_removed: number; files_removed: string[] }> {
+  return fetchJson(`${BASE}/runs/${encodeURIComponent(runId)}?confirm=true`, { method: 'DELETE' });
 }
 
 // --- Sandbox APIs ---

@@ -41,12 +41,26 @@ def _get_category(r: dict[str, Any]) -> str:
 
 def _build_summary(run_id: str, records: list[dict[str, Any]]) -> RunSummaryResponse:
     """Compute summary statistics from a list of result records."""
-    total = len(records)
+    # Count unique tasks (by task_id), not raw JSONL records.
+    # For multi-sample runs, each task may have multiple records.
+    unique_task_ids = {r.get("task_id", "") for r in records}
+    total = len(unique_task_ids)
+
+    # A task is "completed" if at least one sample has a score.
+    completed_task_ids: set[str] = set()
+    for r in records:
+        if r.get("score") is not None:
+            completed_task_ids.add(r.get("task_id", ""))
     completed_records = [r for r in records if r.get("score") is not None]
-    completed = len(completed_records)
+    completed = len(completed_task_ids)
     failed = total - completed
 
-    correct_count = sum(1 for r in completed_records if r.get("correct", False))
+    # For accuracy, count unique tasks with at least one correct sample.
+    correct_task_ids: set[str] = set()
+    for r in completed_records:
+        if r.get("correct", False):
+            correct_task_ids.add(r.get("task_id", ""))
+    correct_count = len(correct_task_ids)
     accuracy = correct_count / completed if completed > 0 else 0.0
     accuracy_total = correct_count / total if total > 0 else 0.0
 

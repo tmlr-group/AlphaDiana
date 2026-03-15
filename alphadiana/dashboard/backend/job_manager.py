@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import contextvars
+import hashlib
 import io
 import json
 import logging
 import os
+import re
 import threading
 import uuid
 from datetime import datetime, timezone
+from typing import Any
 
 from alphadiana.dashboard.backend.models import CreateJobRequest, JobStatus
 
@@ -57,23 +60,38 @@ class JobManager:
         self._configs_dir = configs_dir
         self._jobs: dict[str, JobStatus] = {}
         self._job_logs: dict[str, io.StringIO] = {}
+        self._cancel_events: dict[str, threading.Event] = {}
         self._lock = threading.Lock()
         self._jobs_file = os.path.join(results_dir, ".jobs.json")
+        self._logs_dir = os.path.join(results_dir, ".job_logs")
         self._load_persisted_jobs()
 
     # --- Persistence ---
+
+    # Status priority for dedup: higher = preferred when same run_id
+    _STATUS_PRIORITY = {
+        "running": 6,
+        "pending": 5,
+        "completed": 4,
+        "interrupted": 3,
+        "failed": 2,
+        "cancelled": 1,
+    }
 
     def _load_persisted_jobs(self) -> None:
         """Restore job history from disk on startup.
 
         Jobs that were 'running' or 'pending' when the server last stopped
         are marked as 'interrupted' so the user knows they can resume.
+        Progress is recovered from the JSONL file on disk.
+        Deduplicates by run_id, keeping only the highest-priority / newest entry.
         """
         if not os.path.exists(self._jobs_file):
             return
         try:
             with open(self._jobs_file, encoding="utf-8") as f:
                 records = json.load(f)
+            all_jobs: list[JobStatus] = []
             for rec in records:
                 job = JobStatus(**rec)
                 if job.status in ("running", "pending"):
@@ -83,10 +101,124 @@ class JobManager:
                         "Results up to this point are saved. "
                         "Re-submit the same Run ID to resume."
                     )
+                # Always recover progress from JSONL (may have stale values)
+                if job.status in ("interrupted", "completed", "failed"):
+                    self._recover_progress(job)
+                all_jobs.append(job)
+
+            # Dedup by run_id: keep highest priority, then newest
+            deduped = self._dedup_by_run_id(all_jobs)
+            for job in deduped:
                 self._jobs[job.job_id] = job
-            logger.info("Restored %d jobs from %s", len(records), self._jobs_file)
+                self._load_job_log(job.job_id)
+            logger.info(
+                "Restored %d jobs (%d after dedup) from %s",
+                len(records), len(deduped), self._jobs_file,
+            )
         except Exception:
             logger.warning("Failed to load persisted jobs", exc_info=True)
+
+    @staticmethod
+    def _parse_total_from_log(log_text: str) -> int:
+        """Parse the true total task count from runner log text.
+
+        The runner logs:
+          "Total work items: 15 (tasks=15, num_samples=2)"
+        The first number is *remaining* after checkpoint, but tasks * num_samples
+        is the true total. We use tasks * num_samples when available.
+        Falls back to the first number for old-format logs, or "Loaded N tasks".
+        """
+        # Best: parse tasks=T, num_samples=K from the parenthetical
+        m = re.search(r"Total work items: \d+ \(tasks=(\d+), num_samples=(\d+)\)", log_text)
+        if m:
+            return int(m.group(1)) * int(m.group(2))
+        # Fallback: old format without parenthetical
+        m = re.search(r"Total work items: (\d+)", log_text)
+        if m:
+            return int(m.group(1))
+        # Last resort: "Loaded N tasks from benchmark" (single-sample, no checkpoint info)
+        m = re.search(r"Loaded (\d+) tasks from benchmark", log_text)
+        if m:
+            return int(m.group(1))
+        return 0
+
+    @staticmethod
+    def _count_jsonl(jsonl_path: str) -> tuple[int, int]:
+        """Count unique results and correct count from a JSONL file.
+
+        Deduplicates by (task_id, sample_index) keeping the latest entry,
+        so redo_all runs that append to existing files are counted correctly.
+        Returns (unique_count, correct_count).
+        """
+        # Keep last entry per (task_id, sample_index) to handle redo_all
+        seen: dict[tuple[str, int], bool] = {}
+        try:
+            with open(jsonl_path, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        record = json.loads(line)
+                        key = (record.get("task_id", ""), record.get("sample_index", 0))
+                        seen[key] = bool(record.get("correct"))
+                    except json.JSONDecodeError:
+                        pass
+        except Exception:
+            return 0, 0
+        count = len(seen)
+        correct = sum(1 for v in seen.values() if v)
+        return count, correct
+
+    def _recover_progress(self, job: JobStatus) -> None:
+        """Read the JSONL file to recover progress/accuracy for an interrupted job.
+
+        Also parses persisted log files for total_tasks.
+        """
+        from pathlib import Path
+
+        # Try to recover total_tasks from persisted log file
+        log_path = os.path.join(self._logs_dir, f"{job.job_id}.log")
+        if os.path.exists(log_path):
+            try:
+                with open(log_path, encoding="utf-8") as f:
+                    log_text = f.read()
+                parsed = self._parse_total_from_log(log_text)
+                if parsed > 0:
+                    job.total_tasks = parsed
+            except Exception:
+                pass
+
+        jsonl_path = Path(self._results_dir) / f"{job.run_id}.jsonl"
+        if not jsonl_path.exists():
+            return
+        count, correct = self._count_jsonl(str(jsonl_path))
+        if count > 0:
+            job.progress = count
+            job.accuracy = correct / count
+
+    def _save_job_log(self, job_id: str) -> None:
+        """Persist in-memory log buffer to disk so it survives restarts."""
+        try:
+            os.makedirs(self._logs_dir, exist_ok=True)
+            buf = self._job_logs.get(job_id)
+            if buf:
+                log_path = os.path.join(self._logs_dir, f"{job_id}.log")
+                with open(log_path, "w", encoding="utf-8") as f:
+                    f.write(buf.getvalue())
+        except Exception:
+            logger.debug("Failed to save log for %s", job_id, exc_info=True)
+
+    def _load_job_log(self, job_id: str) -> None:
+        """Restore log from disk into in-memory buffer."""
+        log_path = os.path.join(self._logs_dir, f"{job_id}.log")
+        if os.path.exists(log_path):
+            try:
+                with open(log_path, encoding="utf-8") as f:
+                    content = f.read()
+                self._job_logs[job_id] = io.StringIO(content)
+            except Exception:
+                logger.debug("Failed to load log for %s", job_id, exc_info=True)
 
     def _persist_jobs(self) -> None:
         """Save all job statuses to disk. Must be called with self._lock held."""
@@ -100,6 +232,94 @@ class JobManager:
         except Exception:
             logger.warning("Failed to persist jobs", exc_info=True)
 
+    def remove_job(self, job_id: str) -> None:
+        """Remove a job from the list (used when resuming replaces the old entry)."""
+        with self._lock:
+            self._jobs.pop(job_id, None)
+            self._job_logs.pop(job_id, None)
+            self._persist_jobs()
+        # Clean up persisted log file
+        log_path = os.path.join(self._logs_dir, f"{job_id}.log")
+        try:
+            if os.path.exists(log_path):
+                os.remove(log_path)
+        except OSError:
+            pass
+
+    def delete_run_data(self, run_id: str) -> dict[str, Any]:
+        """Delete all data for a run: JSONL, YAML config, associated jobs, and logs.
+
+        Refuses to delete if any associated job is currently running.
+        Returns a summary of what was deleted.
+        """
+        from pathlib import Path
+
+        deleted: dict[str, Any] = {"run_id": run_id, "jobs_removed": 0, "files_removed": []}
+
+        # Check for running jobs with this run_id
+        with self._lock:
+            for job in self._jobs.values():
+                if job.run_id == run_id and job.status in ("running", "pending"):
+                    raise ValueError(f"Cannot delete: job {job.job_id} is {job.status}")
+
+        # Remove all job entries with this run_id
+        with self._lock:
+            to_remove = [jid for jid, j in self._jobs.items() if j.run_id == run_id]
+            for jid in to_remove:
+                self._jobs.pop(jid, None)
+                self._job_logs.pop(jid, None)
+                # Remove persisted log
+                log_path = os.path.join(self._logs_dir, f"{jid}.log")
+                try:
+                    if os.path.exists(log_path):
+                        os.remove(log_path)
+                except OSError:
+                    pass
+            deleted["jobs_removed"] = len(to_remove)
+            if to_remove:
+                self._persist_jobs()
+
+        # Remove JSONL results file
+        jsonl_path = Path(self._results_dir) / f"{run_id}.jsonl"
+        if jsonl_path.exists():
+            try:
+                jsonl_path.unlink()
+                deleted["files_removed"].append(str(jsonl_path))
+            except OSError:
+                pass
+
+        # Remove YAML config file
+        if self._configs_dir:
+            yaml_path = Path(self._configs_dir) / f"{run_id}.yaml"
+            if yaml_path.exists():
+                try:
+                    yaml_path.unlink()
+                    deleted["files_removed"].append(str(yaml_path))
+                except OSError:
+                    pass
+
+        return deleted
+
+    def remove_jobs_by_status(self, status_list: list[str]) -> int:
+        """Remove all job entries matching the given statuses. Returns count removed."""
+        with self._lock:
+            to_remove = [
+                jid for jid, j in self._jobs.items()
+                if j.status in status_list
+            ]
+            for jid in to_remove:
+                self._jobs.pop(jid, None)
+                self._job_logs.pop(jid, None)
+                log_path = os.path.join(self._logs_dir, f"{jid}.log")
+                try:
+                    if os.path.exists(log_path):
+                        os.remove(log_path)
+                except OSError:
+                    pass
+            if to_remove:
+                self._persist_jobs()
+            return len(to_remove)
+
     def _update_job(self, job_id: str, **fields: object) -> None:
         """Update job fields and persist to disk. Thread-safe."""
         with self._lock:
@@ -110,9 +330,28 @@ class JobManager:
                 setattr(job, k, v)
             self._persist_jobs()
 
+    @classmethod
+    def _dedup_by_run_id(cls, jobs: list[JobStatus]) -> list[JobStatus]:
+        """Deduplicate jobs by run_id, keeping the highest-priority / newest."""
+        best: dict[str, JobStatus] = {}
+        for job in jobs:
+            existing = best.get(job.run_id)
+            if existing is None:
+                best[job.run_id] = job
+                continue
+            ep = cls._STATUS_PRIORITY.get(existing.status, 0)
+            jp = cls._STATUS_PRIORITY.get(job.status, 0)
+            if jp > ep or (jp == ep and job.created_at > existing.created_at):
+                best[job.run_id] = job
+        return list(best.values())
+
     def list_jobs(self) -> list[JobStatus]:
         with self._lock:
-            return list(reversed(self._jobs.values()))
+            all_jobs = list(self._jobs.values())
+        deduped = self._dedup_by_run_id(all_jobs)
+        # Sort newest first
+        deduped.sort(key=lambda j: j.created_at, reverse=True)
+        return deduped
 
     def get_job(self, job_id: str) -> JobStatus | None:
         with self._lock:
@@ -121,18 +360,71 @@ class JobManager:
     def get_job_logs(self, job_id: str) -> str | None:
         with self._lock:
             buf = self._job_logs.get(job_id)
-            if buf is None:
-                return None
-            return buf.getvalue()
+            if buf is not None:
+                content = buf.getvalue()
+                if content:
+                    return content
+            job = self._jobs.get(job_id)
+
+        # Try loading from disk if not in memory
+        log_path = os.path.join(self._logs_dir, f"{job_id}.log")
+        if os.path.exists(log_path):
+            try:
+                with open(log_path, encoding="utf-8") as f:
+                    content = f.read()
+                if content:
+                    return content
+            except Exception:
+                pass
+
+        # Job exists but no logs available — return friendly hint
+        if job is not None:
+            hints = {
+                "pending": "Job is pending. Logs will appear once execution starts.",
+                "running": "Job is running but no log output yet.",
+                "completed": "Logs are no longer available for this completed job.",
+                "interrupted": "Logs are no longer available. The job was interrupted by a server restart.",
+                "failed": "Logs are no longer available for this failed job.",
+                "cancelled": "Job was cancelled. No logs were captured.",
+            }
+            return hints.get(job.status, "No logs available.")
+        return None
+
+    @staticmethod
+    def _deterministic_run_id(req: CreateJobRequest) -> str:
+        """Generate a deterministic run_id from config content.
+
+        Same config → same run_id → automatic checkpoint resume.
+        Excludes credentials (api_key, tokens) — they don't affect results.
+        """
+        # Strip credential fields from agent_config before hashing
+        _CREDENTIAL_FIELDS = {"api_key", "gateway_token", "secret", "secret_key", "token"}
+        filtered_agent_config = {
+            k: v for k, v in req.agent_config.items()
+            if k.lower() not in _CREDENTIAL_FIELDS
+        }
+        key_parts = {
+            "agent": req.agent_name,
+            "benchmark": req.benchmark_name,
+            "agent_config": filtered_agent_config,
+            "benchmark_config": req.benchmark_config,
+        }
+        # Use compact separators to match JavaScript's JSON.stringify output
+        canonical = json.dumps(key_parts, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+        short_hash = hashlib.sha256(canonical.encode()).hexdigest()[:12]
+        return f"{req.agent_name}-{req.benchmark_name}-{short_hash}"
 
     def create_job(self, req: CreateJobRequest) -> JobStatus:
         """Create and start a new evaluation job in a background thread."""
         job_id = uuid.uuid4().hex[:12]
-        run_id = req.run_id or f"{req.agent_name}-{req.benchmark_name}-{job_id}"
+        run_id = req.run_id or self._deterministic_run_id(req)
 
         benchmark_label = req.metadata.get("benchmark_label", req.benchmark_name)
         # Extract model name from agent config
         model = req.agent_config.get("model", "")
+        # Mask API keys in persisted request to avoid storing secrets
+        persisted_req = self._mask_request(req)
+
         status = JobStatus(
             job_id=job_id,
             run_id=run_id,
@@ -141,6 +433,7 @@ class JobManager:
             benchmark=benchmark_label,
             model=model,
             created_at=datetime.now(timezone.utc).isoformat(),
+            original_request=persisted_req,
         )
         with self._lock:
             self._jobs[job_id] = status
@@ -155,6 +448,25 @@ class JobManager:
         thread.start()
         return status
 
+    @staticmethod
+    def _mask_request(req: CreateJobRequest) -> dict[str, Any]:
+        """Return a serializable copy of CreateJobRequest with API keys masked.
+
+        Preserves $VAR_NAME references (they are not secrets and are needed
+        for resume). Only masks resolved key values.
+        """
+        data = req.model_dump()
+        agent_cfg = data.get("agent_config", {})
+        if isinstance(agent_cfg, dict):
+            for key in list(agent_cfg.keys()):
+                if "key" in key.lower() and isinstance(agent_cfg.get(key), str) and agent_cfg[key]:
+                    v = agent_cfg[key]
+                    # Keep $VAR_NAME env references as-is for resume
+                    if v.startswith("$"):
+                        continue
+                    agent_cfg[key] = f"{v[:6]}...{v[-4:]}" if len(v) > 12 else "***"
+        return data
+
     def create_job_after_deploy(
         self,
         req: "CreateJobRequest",
@@ -165,9 +477,10 @@ class JobManager:
         import time as _time
 
         job_id = uuid.uuid4().hex[:12]
-        run_id = req.run_id or f"{req.agent_name}-{req.benchmark_name}-{job_id}"
+        run_id = req.run_id or self._deterministic_run_id(req)
         benchmark_label = req.metadata.get("benchmark_label", req.benchmark_name)
         model = req.agent_config.get("model", "") or req.metadata.get("base_model", "")
+        persisted_req = self._mask_request(req)
 
         status = JobStatus(
             job_id=job_id,
@@ -177,6 +490,7 @@ class JobManager:
             benchmark=benchmark_label,
             model=model,
             created_at=datetime.now(timezone.utc).isoformat(),
+            original_request=persisted_req,
         )
         with self._lock:
             self._jobs[job_id] = status
@@ -254,18 +568,27 @@ class JobManager:
                 self._update_job(job_id, status="failed", error=str(exc))
             finally:
                 root_logger.removeHandler(handler)
+                self._save_job_log(job_id)
 
         thread = threading.Thread(target=_wait_and_run, daemon=True)
         thread.start()
         return status
 
     def cancel_job(self, job_id: str) -> bool:
-        """Mark a job as cancelled (the thread will check this flag)."""
+        """Cancel a running or pending job.
+
+        Sets the cancel event so the TaskDispatcher stops dispatching new tasks.
+        Already-running tasks will finish but no new ones will start.
+        """
         with self._lock:
             job = self._jobs.get(job_id)
             if job and job.status in ("pending", "running"):
                 job.status = "cancelled"
                 self._persist_jobs()
+                # Signal the cancel event so the dispatcher stops
+                cancel_ev = self._cancel_events.get(job_id)
+                if cancel_ev:
+                    cancel_ev.set()
                 return True
             return False
 
@@ -302,6 +625,10 @@ class JobManager:
                 if buf:
                     buf.write(f"{ts} [INFO] job_manager: {msg}\n")
 
+        # Create a cancel event for this job
+        cancel_event = threading.Event()
+        self._cancel_events[job_id] = cancel_event
+
         self._update_job(job_id, status="running")
 
         _log(f"Job {job_id} started (run_id={run_id})")
@@ -336,8 +663,16 @@ class JobManager:
             # Save config as YAML so RunDetail page can display it
             self._save_config(run_id, config)
 
+            # redo_all: clear existing results so we truly start from scratch
+            if req.redo_all:
+                from pathlib import Path
+                jsonl_path = Path(self._results_dir) / f"{run_id}.jsonl"
+                if jsonl_path.exists():
+                    _log(f"redo_all: clearing existing results ({jsonl_path.name})")
+                    jsonl_path.unlink()
+
             _log("Setting up runner...")
-            runner = Runner(config)
+            runner = Runner(config, cancel_event=cancel_event)
             runner.setup()
             _log("Runner ready. Tasks will be loaded when evaluation starts.")
 
@@ -363,11 +698,13 @@ class JobManager:
             try:
                 _log("Starting evaluation run...")
                 summary = runner.run()
-                _log(f"Evaluation complete: {summary.completed}/{summary.total_tasks} tasks, accuracy={summary.accuracy:.2%}")
                 with self._lock:
                     job = self._jobs.get(job_id)
                     if not job or job.status == "cancelled":
+                        _log(f"Job cancelled. {summary.completed}/{summary.total_tasks} tasks completed before cancellation.")
+                        self._persist_jobs()
                         return
+                    _log(f"Evaluation complete: {summary.completed}/{summary.total_tasks} tasks, accuracy={summary.accuracy:.2%}")
                     job.progress = summary.completed
                     job.total_tasks = summary.total_tasks
                     job.accuracy = summary.accuracy
@@ -388,8 +725,11 @@ class JobManager:
             _log(f"[ERROR] Job failed: {exc}")
             self._update_job(job_id, status="failed", error=str(exc))
         finally:
+            self._cancel_events.pop(job_id, None)
             if handler is not None:
                 root_logger.removeHandler(handler)
+            # Persist log to disk so it survives restarts
+            self._save_job_log(job_id)
 
     def _save_config(self, run_id: str, config) -> None:
         """Save ExperimentConfig as YAML so the RunDetail page can load it."""
@@ -498,21 +838,17 @@ class JobManager:
             run_id = job.run_id
             current_total = job.total_tasks
 
-        # If we don't know total_tasks yet, try to parse it from the job logs.
-        # The runner logs: "Total work items: 60 (tasks=15, num_samples=4)"
-        # This includes num_samples, so progress/total_tasks are on the same scale.
-        if current_total == 0:
-            log_buf = self._job_logs.get(job_id)
-            if log_buf:
-                log_text = log_buf.getvalue()
-                m = re.search(r"Total work items: (\d+)", log_text)
-                if m:
-                    current_total = int(m.group(1))
-                else:
-                    # Fallback: "Loaded N tasks from benchmark" (single-sample)
-                    m = re.search(r"Loaded (\d+) tasks from benchmark", log_text)
-                    if m:
-                        current_total = int(m.group(1))
+        # Parse true total from job logs. The runner logs:
+        #   "Total work items: 15 (tasks=15, num_samples=2)"
+        # We use tasks * num_samples (= true total), not the first number
+        # (which is remaining after checkpoint and can be misleading).
+        # Always parse — even if current_total is set from resume, the log
+        # value is authoritative (config may have changed, e.g. k=1 → k=2).
+        log_buf = self._job_logs.get(job_id)
+        if log_buf:
+            parsed = self._parse_total_from_log(log_buf.getvalue())
+            if parsed > 0:
+                current_total = parsed
 
         jsonl_path = Path(self._results_dir) / f"{run_id}.jsonl"
         if not jsonl_path.exists():
@@ -524,25 +860,16 @@ class JobManager:
                         job.total_tasks = current_total
             return
 
-        count = 0
-        correct = 0
-        with open(jsonl_path, encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    count += 1
-                    try:
-                        record = json.loads(line)
-                        if record.get("correct"):
-                            correct += 1
-                    except json.JSONDecodeError:
-                        pass
+        count, correct = self._count_jsonl(str(jsonl_path))
 
         with self._lock:
             job = self._jobs.get(job_id)
             if job:
-                job.progress = count
-                if current_total > 0:
+                if current_total > 0 and job.total_tasks != current_total:
                     job.total_tasks = current_total
+                changed = job.progress != count
+                job.progress = count
                 if count > 0:
                     job.accuracy = correct / count
+                if changed:
+                    self._persist_jobs()

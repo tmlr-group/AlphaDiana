@@ -31,7 +31,7 @@ import {
   QuestionCircleOutlined,
 } from '@ant-design/icons';
 import type { CreateJobRequest, SandboxInfo, DeployJob, DeployAndRunRequest } from '../types';
-import { createJob, getRun, listSandboxes, probeSandbox, deploySandbox, getDeployStatus, getDeployLogs, deployAndRun, listEnvKeys } from '../api';
+import { createJob, getRun, getRunConfig, listSandboxes, probeSandbox, deploySandbox, getDeployStatus, getDeployLogs, deployAndRun, listEnvKeys } from '../api';
 
 const { Title, Text } = Typography;
 
@@ -214,6 +214,10 @@ export default function NewJobPage() {
   // Existing run detection
   const [existingRun, setExistingRun] = useState<{ run_id: string; completed: number; total_tasks: number } | null>(null);
   const runIdCheckRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // Auto-generated run ID preview (shown when user hasn't entered a custom one)
+  const [previewRunId, setPreviewRunId] = useState<string>('');
+  // Bump this to trigger preview re-computation
+  const [previewTrigger, setPreviewTrigger] = useState(0);
 
   const agentDef = AGENTS.find((a) => a.value === selectedAgent);
   const presetDef = BENCHMARK_PRESETS.find((b) => b.value === selectedPreset);
@@ -258,7 +262,7 @@ export default function NewJobPage() {
       .finally(() => setSandboxesLoading(false));
   };
 
-  // Check if a run_id already exists (debounced)
+  // Check if a run_id already exists (debounced) and auto-fill form from saved config
   const checkExistingRun = (runId: string) => {
     clearTimeout(runIdCheckRef.current);
     if (!runId.trim()) {
@@ -273,10 +277,138 @@ export default function NewJobPage() {
             completed: detail.summary.completed,
             total_tasks: detail.summary.total_tasks,
           });
+          // Auto-fill form from saved config
+          getRunConfig(runId.trim())
+            .then((config) => {
+              const agentCfg = (config.agent as Record<string, unknown>) || {};
+              const benchCfg = (config.benchmark as Record<string, unknown>) || {};
+              const agentConfig = (agentCfg.config as Record<string, unknown>) || {};
+              const benchConfig = (benchCfg.config as Record<string, unknown>) || {};
+              const agentName = (agentCfg.name as string) || '';
+              const benchmarkName = (benchCfg.name as string) || '';
+
+              // Find matching preset
+              const matchedPreset = BENCHMARK_PRESETS.find(
+                (p) => p.benchmarkName === benchmarkName &&
+                  JSON.stringify(p.benchmarkConfig) === JSON.stringify(benchConfig)
+              );
+
+              // Update agent selection
+              if (agentName) {
+                setSelectedAgent(agentName);
+              }
+              if (matchedPreset) {
+                setSelectedPreset(matchedPreset.value);
+              }
+
+              // Fill form fields from saved agent config
+              const formValues: Record<string, unknown> = {
+                run_id: runId.trim(),
+                max_concurrent: config.max_concurrent,
+                num_samples: config.num_samples,
+                benchmark_preset: matchedPreset?.value || selectedPreset,
+              };
+              // Fill all agent config fields dynamically
+              for (const [key, val] of Object.entries(agentConfig)) {
+                if (key === 'api_key' && typeof val === 'string' && val.includes('...')) {
+                  // Skip masked API keys — user needs to re-enter or use $VAR_NAME
+                  continue;
+                }
+                formValues[`agent_${key}`] = val;
+              }
+              // Set metadata fields
+              const metadata = (config.metadata as Record<string, unknown>) || {};
+              if (metadata.notes) formValues.notes = metadata.notes;
+
+              form.setFieldsValue(formValues);
+              message.info('Form auto-filled from saved config');
+            })
+            .catch(() => { /* config not available, that's ok */ });
         })
         .catch(() => setExistingRun(null));
     }, 500);
   };
+
+  // Recursively sort object keys to match Python's json.dumps(sort_keys=True)
+  const sortKeys = (obj: unknown): unknown => {
+    if (obj === null || obj === undefined || typeof obj !== 'object') return obj;
+    if (Array.isArray(obj)) return obj.map(sortKeys);
+    const sorted: Record<string, unknown> = {};
+    for (const k of Object.keys(obj as Record<string, unknown>).sort()) {
+      sorted[k] = sortKeys((obj as Record<string, unknown>)[k]);
+    }
+    return sorted;
+  };
+
+  // Simple SHA-256 that works in both secure and insecure contexts
+  const sha256Hex = async (input: string): Promise<string> => {
+    // Prefer crypto.subtle (requires secure context: HTTPS or localhost)
+    if (globalThis.crypto?.subtle) {
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
+      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+    // Fallback: simple non-crypto hash (FNV-1a inspired, good enough for run ID dedup)
+    let h1 = 0x811c9dc5 >>> 0;
+    let h2 = 0x01000193 >>> 0;
+    for (let i = 0; i < input.length; i++) {
+      const c = input.charCodeAt(i);
+      h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+      h2 = Math.imul(h2 ^ c, 0x811c9dc5) >>> 0;
+    }
+    return (h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0')).slice(0, 12);
+  };
+
+  // Compute deterministic run ID (mirrors backend _deterministic_run_id)
+  const computePreviewRunId = async () => {
+    const values = form.getFieldsValue();
+    const customRunId = (values.run_id as string || '').trim();
+    if (customRunId) {
+      // User specified a custom ID — don't show preview, just check existence
+      setPreviewRunId('');
+      checkExistingRun(customRunId);
+      return;
+    }
+    try {
+      const { agentConfig, benchmarkConfig } = buildEvalConfig(values);
+      const agentName = selectedAgent;
+      const benchmarkName = presetDef?.benchmarkName || 'aime';
+      // Exclude credential fields from hash — they don't affect results
+      const CREDENTIAL_FIELDS = new Set(['api_key', 'gateway_token', 'secret', 'secret_key', 'token']);
+      const filteredAgentConfig: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(agentConfig)) {
+        if (!CREDENTIAL_FIELDS.has(k.toLowerCase())) {
+          filteredAgentConfig[k] = v;
+        }
+      }
+      const keyParts = sortKeys({
+        agent: agentName,
+        agent_config: filteredAgentConfig,
+        benchmark: benchmarkName,
+        benchmark_config: benchmarkConfig,
+      });
+      const canonical = JSON.stringify(keyParts);
+      const hashHex = await sha256Hex(canonical);
+      const runId = `${agentName}-${benchmarkName}-${hashHex.slice(0, 12)}`;
+      setPreviewRunId(runId);
+      checkExistingRun(runId);
+    } catch {
+      setPreviewRunId('');
+      setExistingRun(null);
+    }
+  };
+
+  // Schedule a preview recomputation (debounced via state + useEffect)
+  const schedulePreviewUpdate = () => {
+    setPreviewTrigger((n) => n + 1);
+  };
+
+  // Recompute preview when trigger, agent, or benchmark changes
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      computePreviewRunId();
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [previewTrigger, selectedAgent, selectedPreset]);
 
   // Load available env keys on mount
   useEffect(() => {
@@ -494,6 +626,15 @@ export default function NewJobPage() {
         form={form}
         layout="vertical"
         onFinish={handleSubmit}
+        onValuesChange={(changed) => {
+          // Re-compute preview run ID when config-affecting fields change
+          const keys = Object.keys(changed);
+          const affects = keys.some(k =>
+            k.startsWith('agent_') || k === 'benchmark_preset' || k === 'smoke_test' ||
+            k.startsWith('bench_') || k === 'agent_name'
+          );
+          if (affects) schedulePreviewUpdate();
+        }}
         initialValues={{
           agent_name: 'direct_llm',
           benchmark_preset: 'aime2025-I',
@@ -510,10 +651,18 @@ export default function NewJobPage() {
         <Card size="small" style={{ marginBottom: 16 }}>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="run_id" label="Run ID (optional)">
+              <Form.Item name="run_id" label="Run ID (optional)" tooltip="Leave empty to auto-generate a deterministic ID based on Agent, Benchmark, Agent Config, and Benchmark Config. Same parameters → same Run ID → automatic checkpoint resume. Custom IDs work fine but won't auto-resume across submissions.">
                 <Input
-                  placeholder="Auto-generated if empty"
-                  onChange={(e) => checkExistingRun(e.target.value)}
+                  placeholder={previewRunId ? `Will use: ${previewRunId}` : 'Auto-generated from config (deterministic)'}
+                  onChange={(e) => {
+                    const v = e.target.value.trim();
+                    if (v) {
+                      setPreviewRunId('');
+                      checkExistingRun(v);
+                    } else {
+                      schedulePreviewUpdate();
+                    }
+                  }}
                 />
               </Form.Item>
             </Col>
@@ -523,13 +672,13 @@ export default function NewJobPage() {
               </Form.Item>
             </Col>
           </Row>
-          {existingRun && (
+          {existingRun && form.getFieldValue('run_id') && (
             <Alert
               message={`Run "${existingRun.run_id}" already exists (${existingRun.completed}/${existingRun.total_tasks} completed)`}
               description={
                 form.getFieldValue('redo_all')
-                  ? 'Redo All is ON: all tasks will be re-evaluated. New results will overwrite previous answers in the report (the JSONL file retains all history, latest result per task is used).'
-                  : `Resume mode: ${existingRun.total_tasks - existingRun.completed} remaining tasks will be evaluated. Already completed tasks will be skipped.`
+                  ? `⚠️ Redo All is ON: existing ${existingRun.completed} results will be permanently deleted and all tasks will be re-evaluated from scratch.`
+                  : `Will resume from checkpoint: ${existingRun.total_tasks - existingRun.completed} remaining tasks will be evaluated, ${existingRun.completed} completed tasks will be skipped.`
               }
               type={form.getFieldValue('redo_all') ? 'warning' : 'info'}
               showIcon
@@ -631,7 +780,17 @@ export default function NewJobPage() {
               onChange={(v) => setSelectedAgent(v)}
             />
           </Form.Item>
-          <Form.Item name="agent_version" label="Agent Version">
+          <Form.Item
+            name="agent_version"
+            label={
+              <Space size={4}>
+                <span>Agent Version</span>
+                <Tooltip title="Optional label for tracking which model version or agent variant was used. Displayed in results for reference only — does not affect execution.">
+                  <QuestionCircleOutlined style={{ color: '#8c8c8c' }} />
+                </Tooltip>
+              </Space>
+            }
+          >
             <Input placeholder="e.g. Kimi-K2.5" />
           </Form.Item>
 
@@ -970,6 +1129,22 @@ export default function NewJobPage() {
               );
             })}
           </Row>
+          {!form.getFieldValue('run_id') && previewRunId && (
+            <Alert
+              type={existingRun ? 'info' : undefined}
+              showIcon
+              style={{ marginTop: -4 }}
+              message={
+                existingRun
+                  ? `Run ID "${previewRunId}" already exists (${existingRun.completed}/${existingRun.total_tasks} completed). ${
+                      form.getFieldValue('redo_all')
+                        ? `⚠️ Redo All is ON: existing ${existingRun.completed} results will be permanently deleted.`
+                        : `Will resume from checkpoint, ${existingRun.total_tasks - existingRun.completed} remaining tasks to evaluate.`
+                    }`
+                  : `Run ID: ${previewRunId} (new run)`
+              }
+            />
+          )}
         </Card>
 
         {/* Scorer & Execution */}
@@ -1043,7 +1218,7 @@ export default function NewJobPage() {
                 label={
                   <Space size={4}>
                     <span>Redo All</span>
-                    <Tooltip title="When OFF (default): resumes from checkpoint — skips already completed tasks and only evaluates remaining ones. When ON: re-evaluates all tasks from scratch. New results overwrite previous answers in the final report (JSONL file keeps full history, deduplication keeps the latest result per task).">
+                    <Tooltip title="When OFF (default): resumes from checkpoint — skips already completed tasks and only evaluates remaining ones. When ON: deletes existing results and re-evaluates all tasks from scratch. This is irreversible.">
                       <QuestionCircleOutlined style={{ color: '#8c8c8c' }} />
                     </Tooltip>
                   </Space>

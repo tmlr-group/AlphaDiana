@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from typing import TYPE_CHECKING
 
@@ -54,8 +55,9 @@ class Runner:
     """Top-level orchestrator that loads config, initializes components,
     runs the evaluation loop, and writes results."""
 
-    def __init__(self, config: "ExperimentConfig") -> None:
+    def __init__(self, config: "ExperimentConfig", cancel_event: "threading.Event | None" = None) -> None:
         self.config = config
+        self.cancel_event = cancel_event
         self.benchmark: Benchmark | None = None
         self.agent: Agent | None = None
         self.sandbox: Sandbox | None = None
@@ -293,7 +295,10 @@ class Runner:
                         logger.warning("Cleanup failed for task %s: %s", task.task_id, cleanup_exc)
 
         # Dispatch work items (task, sample_index) tuples.
-        dispatcher = TaskDispatcher(max_concurrent=self.config.max_concurrent)
+        dispatcher = TaskDispatcher(
+            max_concurrent=self.config.max_concurrent,
+            cancel_event=self.cancel_event,
+        )
         outcomes = dispatcher.dispatch(work_items, solve_fn)
 
         # Teardown pool if used.

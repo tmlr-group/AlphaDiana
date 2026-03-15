@@ -73,6 +73,16 @@ def get_run(run_id: str):
     return detail
 
 
+@router.get("/runs/{run_id}/config")
+def get_run_config(run_id: str):
+    """Get the saved YAML config for a run (used by NewJobPage to auto-fill form on resume)."""
+    dl = _get_loader()
+    config = dl._load_config(run_id)
+    if config is None:
+        raise HTTPException(status_code=404, detail=f"No config found for run '{run_id}'")
+    return config
+
+
 @router.get("/runs/{run_id}/tasks/{task_id}", response_model=TaskResult)
 def get_task(run_id: str, task_id: str):
     """Get a single task result with full trajectory."""
@@ -130,6 +140,50 @@ def resolve_env_ref(value: str) -> str:
     return resolved
 
 
+# Known API base URL patterns -> env var name (mirrors frontend API_BASE_ENV_MAP)
+_API_BASE_ENV_MAP = [
+    ("openrouter.ai", "OPENROUTER_API_KEY"),
+    ("api.openai.com", "OPENAI_API_KEY"),
+    ("siliconflow.cn", "SILICONFLOW_API_KEY"),
+    ("volces.com", "ARK_API_KEY"),
+    ("volcengine.com", "ARK_API_KEY"),
+    ("api.deepseek.com", "DEEPSEEK_API_KEY"),
+    ("api.anthropic.com", "ANTHROPIC_API_KEY"),
+    ("api.moonshot.cn", "MOONSHOT_API_KEY"),
+    ("dashscope.aliyuncs.com", "DASHSCOPE_API_KEY"),
+    ("api.together.xyz", "TOGETHER_API_KEY"),
+]
+
+
+def _resolve_key_from_api_base(api_base: str) -> str:
+    """Try to resolve an API key from .env by matching the API base URL pattern."""
+    import os as _os
+    if not api_base:
+        return ""
+    dotenv = _load_dotenv()
+    for pattern, env_var in _API_BASE_ENV_MAP:
+        if pattern in api_base:
+            val = dotenv.get(env_var) or _os.environ.get(env_var) or ""
+            if val:
+                return val
+    return ""
+
+
+def _stash_env_refs(req: CreateJobRequest) -> None:
+    """Save $VAR_NAME references in metadata before they get resolved.
+
+    This allows the resume endpoint to re-resolve env vars from .env/os.environ
+    instead of storing the actual secret values.
+    """
+    env_refs: dict[str, str] = {}
+    for key in ("api_key", "gateway_token"):
+        val = req.agent_config.get(key)
+        if isinstance(val, str) and val.startswith("$"):
+            env_refs[key] = val
+    if env_refs:
+        req.metadata["_env_refs"] = env_refs
+
+
 @router.get("/env-keys")
 def list_env_keys():
     """List environment variable names from .env that look like API keys/tokens.
@@ -150,15 +204,22 @@ def list_env_keys():
 # --- Job management endpoints ---
 
 
-@router.get("/jobs", response_model=list[JobStatus])
+@router.get("/jobs")
 def list_jobs():
-    """List all evaluation jobs (running and completed)."""
-    return _get_job_manager().list_jobs()
+    """List all evaluation jobs (running and completed).
+
+    Excludes original_request from the response to keep the payload small.
+    Use GET /jobs/{job_id} to get the full job details including original_request.
+    """
+    jobs = _get_job_manager().list_jobs()
+    return [job.model_dump(exclude={"original_request"}) for job in jobs]
 
 
 @router.post("/jobs", response_model=JobStatus, status_code=201)
 def create_job(req: CreateJobRequest):
     """Create and start a new evaluation job."""
+    # Stash original $VAR_NAME references before resolution (for resume)
+    _stash_env_refs(req)
     # Resolve $ENV_VAR references in agent config
     for key in ("api_key", "gateway_token"):
         if key in req.agent_config and isinstance(req.agent_config[key], str):
@@ -183,6 +244,129 @@ def cancel_job(job_id: str):
     if not _get_job_manager().cancel_job(job_id):
         raise HTTPException(status_code=400, detail="Job cannot be cancelled")
     return {"status": "cancelled"}
+
+
+@router.post("/jobs/{job_id}/resume", response_model=JobStatus, status_code=201)
+def resume_job(job_id: str):
+    """Resume an interrupted or failed job using its saved config.
+
+    Creates a new job with the same config and run_id, which will
+    automatically pick up where the previous run left off (checkpoint resume).
+    Tries original_request first, then falls back to the saved YAML config.
+    """
+    mgr = _get_job_manager()
+    dl = _get_loader()
+    old_job = mgr.get_job(job_id)
+    if old_job is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+    if old_job.status not in ("interrupted", "failed", "completed"):
+        raise HTTPException(status_code=400, detail=f"Job is {old_job.status}, cannot resume")
+
+    req_data: dict | None = None
+
+    if old_job.original_request:
+        req_data = dict(old_job.original_request)
+        # Restore $VAR_NAME references from stashed env_refs
+        env_refs = req_data.get("metadata", {}).get("_env_refs", {})
+        agent_cfg = req_data.get("agent_config", {})
+        for key, var_ref in env_refs.items():
+            agent_cfg[key] = var_ref
+    else:
+        # Fall back to saved YAML config
+        req_data = _reconstruct_request_from_yaml(dl, old_job.run_id)
+
+    if not req_data:
+        raise HTTPException(
+            status_code=400,
+            detail="No saved config for this job. Please re-submit manually.",
+        )
+
+    # Force the same run_id and disable redo_all for resume
+    req_data["run_id"] = old_job.run_id
+    req_data["redo_all"] = False
+
+    # If api_key is masked (contains '...'), try to auto-resolve from .env
+    agent_cfg = req_data.get("agent_config", {})
+    api_key = agent_cfg.get("api_key", "")
+    if isinstance(api_key, str) and "..." in api_key:
+        resolved = _resolve_key_from_api_base(agent_cfg.get("api_base", ""))
+        if resolved:
+            agent_cfg["api_key"] = resolved
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Cannot resume: API key is masked and no matching env var found in .env. "
+                    "Please add the appropriate API key to your .env file "
+                    "(e.g. SILICONFLOW_API_KEY=sk-xxx) and try again."
+                ),
+            )
+
+    req = CreateJobRequest(**req_data)
+
+    # Stash env refs again for the new job, then resolve
+    _stash_env_refs(req)
+    for key in ("api_key", "gateway_token"):
+        if key in req.agent_config and isinstance(req.agent_config[key], str):
+            req.agent_config[key] = resolve_env_ref(req.agent_config[key])
+
+    # Remove the old job entry FIRST to avoid any window of duplicate run_ids
+    mgr.remove_job(job_id)
+    new_job = mgr.create_job(req)
+    return new_job
+
+
+@router.delete("/jobs/{job_id}")
+def delete_job(job_id: str):
+    """Delete a job entry (not the run data). Only non-running jobs can be deleted."""
+    mgr = _get_job_manager()
+    job = mgr.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+    if job.status in ("running", "pending"):
+        raise HTTPException(status_code=400, detail=f"Cannot delete a {job.status} job. Cancel it first.")
+    mgr.remove_job(job_id)
+    return {"status": "deleted", "job_id": job_id}
+
+
+@router.delete("/runs/{run_id}")
+def delete_run(run_id: str, confirm: bool = Query(False)):
+    """Delete a run and all its data (JSONL, YAML, associated jobs, logs).
+
+    Requires ?confirm=true to proceed.
+    """
+    if not confirm:
+        raise HTTPException(status_code=400, detail="Pass ?confirm=true to confirm deletion")
+    mgr = _get_job_manager()
+    try:
+        result = mgr.delete_run_data(run_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return result
+
+
+def _reconstruct_request_from_yaml(dl: DataLoader, run_id: str) -> dict | None:
+    """Reconstruct a CreateJobRequest dict from a saved YAML config file."""
+    config = dl._load_config(run_id)
+    if not config:
+        return None
+    agent_cfg = config.get("agent", {})
+    bench_cfg = config.get("benchmark", {})
+    scorer_cfg = config.get("scorer", {})
+    return {
+        "run_id": run_id,
+        "agent_name": agent_cfg.get("name", ""),
+        "agent_version": agent_cfg.get("version", ""),
+        "agent_config": agent_cfg.get("config", {}),
+        "benchmark_name": bench_cfg.get("name", ""),
+        "benchmark_config": bench_cfg.get("config", {}),
+        "scorer_name": scorer_cfg.get("name", ""),
+        "scorer_config": scorer_cfg.get("config", {}),
+        "max_concurrent": config.get("max_concurrent", 1),
+        "num_samples": config.get("num_samples", 1),
+        "redo_all": False,
+        "metadata": config.get("metadata", {}),
+    }
 
 
 @router.get("/jobs/{job_id}/logs")

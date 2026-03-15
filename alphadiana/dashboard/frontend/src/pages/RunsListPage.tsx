@@ -11,6 +11,7 @@ import {
   Button,
   Input,
   Space,
+  Popconfirm,
   message,
 } from 'antd';
 import {
@@ -18,24 +19,62 @@ import {
   CheckCircleOutlined,
   ClockCircleOutlined,
   ThunderboltOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { RunSummary } from '../types';
-import { listRuns } from '../api';
+import { listRuns, deleteRun } from '../api';
 
 export default function RunsListPage() {
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
+  const [deleting, setDeleting] = useState(false);
   const navigate = useNavigate();
 
-  useEffect(() => {
+  const fetchRuns = () => {
+    setLoading(true);
     listRuns()
       .then(setRuns)
       .catch((e) => message.error(e.message))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchRuns();
   }, []);
+
+  const handleDeleteRun = async (runId: string) => {
+    try {
+      await deleteRun(runId);
+      message.success(`Run "${runId}" deleted`);
+      fetchRuns();
+      setSelectedKeys((prev) => prev.filter((k) => k !== runId));
+    } catch (e: unknown) {
+      message.error(e instanceof Error ? e.message : 'Failed to delete run');
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedKeys.length === 0) return;
+    setDeleting(true);
+    let ok = 0;
+    let fail = 0;
+    for (const runId of selectedKeys) {
+      try {
+        await deleteRun(runId);
+        ok++;
+      } catch {
+        fail++;
+      }
+    }
+    setDeleting(false);
+    if (ok > 0) message.success(`Deleted ${ok} run(s)`);
+    if (fail > 0) message.error(`Failed to delete ${fail} run(s)`);
+    setSelectedKeys([]);
+    fetchRuns();
+  };
 
   const filtered = runs.filter(
     (r) =>
@@ -155,6 +194,30 @@ export default function RunsListPage() {
       defaultSortOrder: 'descend',
       render: (t: string) => (t ? new Date(t).toLocaleString() : '-'),
     },
+    {
+      title: 'Actions',
+      key: 'actions',
+      width: 80,
+      render: (_: unknown, r: RunSummary) => (
+        <Popconfirm
+          title="Delete this run?"
+          description="This will permanently delete all data (results, config, logs)."
+          onConfirm={(e) => {
+            e?.stopPropagation();
+            handleDeleteRun(r.run_id);
+          }}
+          onCancel={(e) => e?.stopPropagation()}
+        >
+          <Button
+            size="small"
+            icon={<DeleteOutlined />}
+            danger
+            type="text"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </Popconfirm>
+      ),
+    },
   ];
 
   return (
@@ -211,6 +274,21 @@ export default function RunsListPage() {
               style={{ width: 250 }}
               allowClear
             />
+            <Popconfirm
+              title={`Delete ${selectedKeys.length} selected run(s)?`}
+              description="This will permanently delete all data for the selected runs."
+              onConfirm={handleDeleteSelected}
+              disabled={selectedKeys.length === 0}
+            >
+              <Button
+                danger
+                icon={<DeleteOutlined />}
+                disabled={selectedKeys.length === 0}
+                loading={deleting}
+              >
+                Delete ({selectedKeys.length})
+              </Button>
+            </Popconfirm>
             <Button
               type="primary"
               disabled={selectedKeys.length < 2}

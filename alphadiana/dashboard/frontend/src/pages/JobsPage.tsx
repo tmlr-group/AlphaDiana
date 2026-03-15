@@ -18,10 +18,12 @@ import {
   ArrowLeftOutlined,
   StopOutlined,
   FileTextOutlined,
+  PlayCircleOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { JobStatus } from '../types';
-import { listJobs, getJob, cancelJob, getJobLogs } from '../api';
+import { listJobs, getJob, cancelJob, getJobLogs, resumeJob, deleteJob } from '../api';
 
 const { Text } = Typography;
 
@@ -76,7 +78,7 @@ export default function JobsPage() {
     setLogsLoading(true);
     getJobLogs(jobId)
       .then((data) => setLogs(data.logs))
-      .catch(() => setLogs('Failed to load logs'))
+      .catch(() => setLogs('Logs are not available.'))
       .finally(() => setLogsLoading(false));
 
     // Auto-refresh logs every 3s
@@ -100,6 +102,26 @@ export default function JobsPage() {
       fetchJobs();
     } catch (e: unknown) {
       message.error(e instanceof Error ? e.message : 'Failed to cancel');
+    }
+  };
+
+  const handleResume = async (jobId: string) => {
+    try {
+      const newJob = await resumeJob(jobId);
+      message.success(`Resumed as job ${newJob.job_id}`);
+      fetchJobs();
+    } catch (e: unknown) {
+      message.error(e instanceof Error ? e.message : 'Failed to resume');
+    }
+  };
+
+  const handleDelete = async (jobId: string) => {
+    try {
+      await deleteJob(jobId);
+      message.success('Job deleted');
+      fetchJobs();
+    } catch (e: unknown) {
+      message.error(e instanceof Error ? e.message : 'Failed to delete');
     }
   };
 
@@ -145,7 +167,7 @@ export default function JobsPage() {
       key: 'progress',
       width: 200,
       render: (_: unknown, job: JobStatus) => {
-        if (job.total_tasks === 0 && job.status === 'running') {
+        if (job.total_tasks === 0 && job.progress === 0 && job.status === 'running') {
           return <Progress percent={0} status="active" size="small" />;
         }
         if (job.total_tasks > 0) {
@@ -159,7 +181,10 @@ export default function JobsPage() {
             />
           );
         }
-        return <Text type="secondary">{job.progress} tasks</Text>;
+        if (job.progress > 0) {
+          return <Text type="secondary">{job.progress} tasks done</Text>;
+        }
+        return <Text type="secondary">-</Text>;
       },
     },
     {
@@ -210,15 +235,30 @@ export default function JobsPage() {
               View Results
             </Button>
           )}
+          {(job.status === 'interrupted' || job.status === 'failed') && (
+            <Popconfirm
+              title={job.status === 'interrupted' ? 'Resume this job?' : 'Retry this job?'}
+              description="A new job will be created with the same config. Completed tasks will be skipped."
+              onConfirm={() => handleResume(job.job_id)}
+            >
+              <Button size="small" type="primary" icon={<PlayCircleOutlined />}>
+                {job.status === 'interrupted' ? 'Continue' : 'Retry'}
+              </Button>
+            </Popconfirm>
+          )}
           {job.status === 'failed' && job.error && (
             <Text type="danger" style={{ fontSize: 12 }}>
               {job.error.length > 60 ? job.error.slice(0, 60) + '...' : job.error}
             </Text>
           )}
-          {job.status === 'interrupted' && (
-            <Text type="warning" style={{ fontSize: 12 }}>
-              Server restarted. Re-submit same Run ID to resume.
-            </Text>
+          {job.status !== 'running' && job.status !== 'pending' && (
+            <Popconfirm
+              title="Delete this job entry?"
+              description="This only removes the job from the list, not the run data."
+              onConfirm={() => handleDelete(job.job_id)}
+            >
+              <Button size="small" icon={<DeleteOutlined />} danger type="text" />
+            </Popconfirm>
           )}
         </Space>
       ),

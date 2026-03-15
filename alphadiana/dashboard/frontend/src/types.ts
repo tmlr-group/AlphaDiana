@@ -92,6 +92,7 @@ export interface JobStatus {
   accuracy: number | null;
   error: string | null;
   created_at: string;
+  original_request: Record<string, unknown> | null;
 }
 
 export interface SandboxInfo {
