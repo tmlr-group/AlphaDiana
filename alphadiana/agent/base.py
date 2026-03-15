@@ -32,6 +32,7 @@ class AgentResponse:
     workspace_file_contents: dict[str, str] = field(default_factory=dict)
     sandbox_metadata: dict = field(default_factory=dict)
     system_prompt: str = ""
+    finish_reason: str = ""
 
 
 class Agent(ABC):

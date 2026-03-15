@@ -39,8 +39,10 @@ class AIMEBenchmark(Benchmark):
         problem_field = config.get("problem_field", "problem")
         answer_field = config.get("answer_field", "answer")
 
+        data_config = config.get("data_config")
+
         try:
-            dataset = load_dataset(dataset_path, split=split)
+            dataset = load_dataset(dataset_path, data_config, split=split)
         except Exception as exc:
             hf_endpoint = os.environ.get("HF_ENDPOINT", "").strip()
             raise RuntimeError(

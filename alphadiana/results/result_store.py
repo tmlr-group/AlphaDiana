@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -26,6 +27,7 @@ class ResultStore:
         self.path = str(self.output_dir / f"{run_id}.jsonl")
         self.artifacts_dir = self.output_dir / run_id / "artifacts"
         self.artifacts_dir.mkdir(parents=True, exist_ok=True)
+        self._write_lock = threading.Lock()
 
     def append(
         self,
@@ -58,11 +60,13 @@ class ResultStore:
             "workspace_snapshot_paths": response.workspace_snapshot_paths,
             "sandbox_metadata": response.sandbox_metadata,
             "system_prompt": response.system_prompt,
+            "finish_reason": getattr(response, "finish_reason", ""),
             "metadata": response.metadata,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
-        with open(self.path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record) + "\n")
+        with self._write_lock:
+            with open(self.path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(record) + "\n")
         self._save_per_task_json(task.task_id, record)
 
     def append_error(
@@ -99,11 +103,13 @@ class ResultStore:
             "sandbox_metadata": response.sandbox_metadata,
             "system_prompt": response.system_prompt,
             "metadata": response.metadata,
+            "finish_reason": getattr(response, "finish_reason", ""),
             "error": error,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
-        with open(self.path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record) + "\n")
+        with self._write_lock:
+            with open(self.path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(record) + "\n")
         self._save_per_task_json(task.task_id, record)
 
     def _persist_artifacts(self, task: BenchmarkTask, response: AgentResponse) -> dict:
@@ -112,21 +118,21 @@ class ResultStore:
         files = manifest.setdefault("files", {})
 
         if response.gateway_log_excerpt:
-            rel = Path(task.task_id) / "openclaw" / "gateway.log"
+            rel = Path(task.task_id) / "agent" / "gateway.log"
             path = self.artifacts_dir / rel
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(response.gateway_log_excerpt, encoding="utf-8")
             files["gateway_log"] = str(rel)
 
         if response.response_json:
-            rel = Path(task.task_id) / "openclaw" / "response.json"
+            rel = Path(task.task_id) / "agent" / "response.json"
             path = self.artifacts_dir / rel
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(response.response_json, indent=2), encoding="utf-8")
             files["response_json"] = str(rel)
 
         if response.request_messages:
-            rel = Path(task.task_id) / "openclaw" / "request_messages.json"
+            rel = Path(task.task_id) / "agent" / "request_messages.json"
             path = self.artifacts_dir / rel
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(response.request_messages, indent=2), encoding="utf-8")
@@ -140,7 +146,7 @@ class ResultStore:
             files["sandbox_metadata"] = str(rel)
 
         if response.system_prompt:
-            rel = Path(task.task_id) / "openclaw" / "system_prompt.txt"
+            rel = Path(task.task_id) / "agent" / "system_prompt.txt"
             path = self.artifacts_dir / rel
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(response.system_prompt, encoding="utf-8")
@@ -148,7 +154,7 @@ class ResultStore:
 
         retry_responses = response.metadata.get("retry_responses")
         if retry_responses:
-            rel = Path(task.task_id) / "openclaw" / "retry_responses.json"
+            rel = Path(task.task_id) / "agent" / "retry_responses.json"
             path = self.artifacts_dir / rel
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(retry_responses, indent=2), encoding="utf-8")
@@ -186,13 +192,14 @@ class ResultStore:
         return completed
 
     def load(self) -> list[dict]:
-        """Read and parse all JSONL lines from the results file."""
+        """Read and parse all JSONL lines, deduplicating by task_id (keep latest)."""
         if not os.path.exists(self.path):
             return []
-        results: list[dict] = []
+        records: dict[str, dict] = {}
         with open(self.path, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if line:
-                    results.append(json.loads(line))
-        return results
+                    record = json.loads(line)
+                    records[record["task_id"]] = record
+        return list(records.values())

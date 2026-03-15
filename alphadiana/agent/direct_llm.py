@@ -36,15 +36,20 @@ class DirectLLMAgent(Agent):
     name = "direct_llm"
 
     def setup(self, config: dict) -> None:
-        self.version = config.get("version", "unknown")
         self._model = config.get("model", "")
         self._api_base = config.get("api_base", "")
         self._api_key = config.get("api_key", "EMPTY")
         self._temperature = config.get("temperature", 0.7)
         self._top_p = config.get("top_p", None)
         self._max_tokens = config.get("max_tokens", None)
+        self._max_completion_tokens = config.get("max_completion_tokens", None)
         self._resolved_max_tokens: int | None = None
         self._system_prompt = config.get("system_prompt", _DEFAULT_SYSTEM_PROMPT)
+        try:
+            from openai import OpenAI
+            self._client = OpenAI(base_url=self._api_base, api_key=self._api_key)
+        except ImportError:
+            self._client = None
 
     def _resolve_max_tokens(self) -> int:
         """Resolve max_tokens by querying the model endpoint or using a fallback."""
@@ -73,35 +78,42 @@ class DirectLLMAgent(Agent):
         return self._resolved_max_tokens
 
     def solve(self, task: BenchmarkTask, sandbox: Any = None) -> AgentResponse:
-        try:
-            from openai import OpenAI
-        except ImportError:
-            raise RuntimeError(
-                "The 'openai' package is required for DirectLLMAgent. "
-                "Install with: pip install openai"
-            )
+        if self._client is None:
+            try:
+                from openai import OpenAI
+                self._client = OpenAI(base_url=self._api_base, api_key=self._api_key)
+            except ImportError:
+                raise RuntimeError(
+                    "The 'openai' package is required for DirectLLMAgent. "
+                    "Install with: pip install openai"
+                )
 
         start = time.time()
 
-        client = OpenAI(base_url=self._api_base, api_key=self._api_key)
-        request_kwargs = {
+        messages = [
+            {"role": "system", "content": self._system_prompt},
+            {"role": "user", "content": task.problem},
+        ]
+        request_kwargs: dict[str, Any] = {
             "model": self._model,
-            "messages": [
-                {"role": "system", "content": self._system_prompt},
-                {"role": "user", "content": task.problem},
-            ],
+            "messages": messages,
             "temperature": self._temperature,
-            "max_tokens": self._resolve_max_tokens(),
         }
+        if self._max_completion_tokens is not None:
+            request_kwargs["max_completion_tokens"] = self._max_completion_tokens
+        else:
+            request_kwargs["max_tokens"] = self._resolve_max_tokens()
         if self._top_p is not None:
             request_kwargs["top_p"] = self._top_p
-        response = client.chat.completions.create(
+        response = self._client.chat.completions.create(
             **request_kwargs,
         )
 
         wall_time = time.time() - start
 
-        raw_output = response.choices[0].message.content or ""
+        choice = response.choices[0]
+        raw_output = choice.message.content or ""
+        finish_reason = choice.finish_reason or ""
         answer = _extract_answer(raw_output)
 
         usage = response.usage
@@ -123,6 +135,9 @@ class DirectLLMAgent(Agent):
             raw_output=raw_output,
             token_usage=token_usage,
             wall_time_sec=wall_time,
+            system_prompt=self._system_prompt,
+            request_messages=messages,
+            finish_reason=finish_reason,
         )
 
     def teardown(self) -> None:

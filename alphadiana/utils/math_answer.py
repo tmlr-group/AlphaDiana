@@ -44,8 +44,21 @@ def extract_answer_candidate(text: str) -> str:
     if matches:
         return matches[-1].group(1).strip()
 
-    lines = [line.strip() for line in text.strip().splitlines() if line.strip()]
-    return lines[-1] if lines else text.strip()
+    stripped = text.strip()
+
+    # If the text is short (likely already a direct answer), return last line as-is.
+    if len(stripped) <= 50:
+        lines = [l.strip() for l in stripped.splitlines() if l.strip()]
+        return lines[-1] if lines else stripped
+
+    # Fallback for long outputs (e.g. agentic multi-paragraph text without \boxed{}):
+    # extract the last standalone integer from the text.
+    number_matches = list(re.finditer(r'\b(\d+)\b', text))
+    if number_matches:
+        return number_matches[-1].group(1)
+
+    lines = [l.strip() for l in stripped.splitlines() if l.strip()]
+    return lines[-1] if lines else stripped
 
 
 def _strip_outer_pair(text: str, left: str, right: str) -> str:

@@ -100,6 +100,7 @@ class OpenClawRuntimeManager:
         self._remote_openclaw_config_path = config.get("remote_openclaw_config_path", "/tmp/openclaw.json")
         self._started_sandboxes: set[str] = set()
         self._agent_md_applied_sandboxes: set[str] = set()
+        self._temp_dirs: list[tempfile.TemporaryDirectory] = []
 
         # Agent.md customization
         self._agent_md_mode = config.get("agent_md_mode", "none")
@@ -258,7 +259,9 @@ class OpenClawRuntimeManager:
             f"nohup openclaw gateway >> {self._gateway_log_path} 2>&1 &"
         )
 
-        config_dir = Path(tempfile.mkdtemp(prefix="alphadiana-openclaw-"))
+        td = tempfile.TemporaryDirectory(prefix="alphadiana-openclaw-")
+        self._temp_dirs.append(td)
+        config_dir = Path(td.name)
         generated_path = config_dir / "rock_agent_config.yaml"
         generated_path.write_text(
             yaml.safe_dump(generated_config, sort_keys=False),
@@ -269,7 +272,7 @@ class OpenClawRuntimeManager:
 
     def _wait_for_gateway(self, sandbox: Any) -> None:
         """Poll /v1/models until the gateway responds."""
-        import requests
+        import httpx
 
         info = self.runtime_info(sandbox)
         url = f"{info['api_base']}/models"
@@ -281,7 +284,7 @@ class OpenClawRuntimeManager:
             attempt += 1
             try:
                 _progress(f"gateway probe attempt={attempt} url={url}")
-                response = requests.get(url, headers=headers, timeout=10)
+                response = httpx.get(url, headers=headers, timeout=10, trust_env=False)
                 if _is_ready_probe_status(response.status_code):
                     _progress(f"gateway probe succeeded with status={response.status_code}")
                     return
@@ -296,7 +299,7 @@ class OpenClawRuntimeManager:
 
     def _warmup_gateway(self, sandbox: Any) -> None:
         """Send a test chat completion to ensure the endpoint is live."""
-        import requests
+        import httpx
 
         info = self.runtime_info(sandbox)
         url = f"{info['api_base']}/chat/completions"
@@ -326,7 +329,7 @@ class OpenClawRuntimeManager:
             attempt += 1
             try:
                 _progress(f"gateway warmup attempt={attempt} url={url}")
-                response = requests.post(url, headers=headers, json=payload, timeout=120)
+                response = httpx.post(url, headers=headers, json=payload, timeout=120, trust_env=False)
                 body: Any
                 try:
                     body = response.json()
@@ -347,6 +350,15 @@ class OpenClawRuntimeManager:
         if last_error is not None:
             raise RuntimeError(f"OpenClaw gateway warmup did not succeed: {last_error}") from last_error
         raise RuntimeError("OpenClaw gateway warmup did not succeed before timeout")
+
+    def teardown(self) -> None:
+        """Clean up temporary directories."""
+        for td in self._temp_dirs:
+            try:
+                td.cleanup()
+            except Exception:
+                pass
+        self._temp_dirs.clear()
 
     def _safe_read_range(
         self,

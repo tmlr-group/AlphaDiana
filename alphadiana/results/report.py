@@ -24,6 +24,7 @@ class RunSummary:
     completed: int
     failed: int
     accuracy: float
+    accuracy_total: float
     mean_score: float
     mean_wall_time_sec: float
     total_tokens: dict
@@ -51,11 +52,12 @@ class ReportGenerator:
 
         correct_count = sum(1 for r in completed_results if r.get("correct", False))
         accuracy = correct_count / completed if completed > 0 else 0.0
+        accuracy_total = correct_count / total if total > 0 else 0.0
 
         scores = [r.get("score", 0.0) for r in completed_results]
         mean_score = sum(scores) / len(scores) if scores else 0.0
 
-        wall_times = [r.get("wall_time_sec", 0.0) for r in results]
+        wall_times = [r.get("wall_time_sec", 0.0) for r in completed_results]
         mean_wall_time = sum(wall_times) / len(wall_times) if wall_times else 0.0
 
         # Aggregate token usage across all results.
@@ -108,6 +110,7 @@ class ReportGenerator:
             completed=completed,
             failed=failed,
             accuracy=accuracy,
+            accuracy_total=accuracy_total,
             mean_score=mean_score,
             mean_wall_time_sec=mean_wall_time,
             total_tokens=total_tokens,
@@ -133,7 +136,8 @@ class ReportGenerator:
             f"| Total Tasks | {summary.total_tasks} |",
             f"| Completed | {summary.completed} |",
             f"| Failed | {summary.failed} |",
-            f"| Accuracy | {summary.accuracy:.4f} |",
+            f"| Accuracy (completed) | {summary.accuracy:.4f} |",
+            f"| Accuracy (total) | {summary.accuracy_total:.4f} |",
             f"| Mean Score | {summary.mean_score:.4f} |",
             f"| Mean Wall Time (s) | {summary.mean_wall_time_sec:.2f} |",
             f"| Prompt Tokens | {summary.total_tokens.get('prompt_tokens', 0)} |",

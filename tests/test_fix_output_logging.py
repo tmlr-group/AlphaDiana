@@ -92,7 +92,7 @@ class TestSystemPromptPersistence:
 
         store.append(task, resp, score)
 
-        path = tmp_path / "sp-art" / "artifacts" / "t1" / "openclaw" / "system_prompt.txt"
+        path = tmp_path / "sp-art" / "artifacts" / "t1" / "agent" / "system_prompt.txt"
         assert path.exists()
         assert "math expert" in path.read_text()
 
@@ -217,7 +217,7 @@ class TestRetryResponseArtifact:
             response=resp,
         )
 
-        path = tmp_path / "retry" / "artifacts" / "t1" / "openclaw" / "retry_responses.json"
+        path = tmp_path / "retry" / "artifacts" / "t1" / "agent" / "retry_responses.json"
         assert path.exists()
         saved = json.loads(path.read_text())
         assert len(saved) == 2
@@ -235,7 +235,7 @@ class TestRetryResponseArtifact:
             response=resp,
         )
 
-        path = tmp_path / "struct" / "artifacts" / "t1" / "openclaw" / "retry_responses.json"
+        path = tmp_path / "struct" / "artifacts" / "t1" / "agent" / "retry_responses.json"
         saved = json.loads(path.read_text())
         assert saved[0]["status_code"] == 502
 

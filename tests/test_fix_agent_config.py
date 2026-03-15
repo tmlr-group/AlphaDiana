@@ -231,10 +231,9 @@ class TestDirectLLMMaxTokensAutoDetect:
         client = MagicMock()
         client.chat.completions.create = create
 
-        fake_openai_module = types.SimpleNamespace(OpenAI=MagicMock(return_value=client))
-        with patch.dict("sys.modules", {"openai": fake_openai_module}):
-            with patch.object(agent, "_resolve_max_tokens", return_value=54321):
-                agent.solve(BenchmarkTask(task_id="t1", problem="P", ground_truth="42"))
+        agent._client = client
+        with patch.object(agent, "_resolve_max_tokens", return_value=54321):
+            agent.solve(BenchmarkTask(task_id="t1", problem="P", ground_truth="42"))
 
         assert create.call_args.kwargs["max_tokens"] == 54321
 

@@ -70,6 +70,7 @@ def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
         click.echo(f"  Mean Score: {summary.mean_score:.4f}")
         click.echo(f"  Tasks:      {summary.completed}/{summary.total_tasks} completed")
     except Exception as exc:
+        logger.exception("Run failed")
         click.echo(f"Error: {exc}", err=True)
         sys.exit(1)
     finally:

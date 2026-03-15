@@ -62,6 +62,7 @@ class ExperimentConfig:
     max_concurrent: int = 1
     output_dir: str = "./results"
     redo_all: bool = False
+    sandbox_retries: int = 1
     metadata: dict = field(default_factory=dict)
 
     def __post_init__(self):
@@ -99,5 +100,6 @@ class ExperimentConfig:
             max_concurrent=data.get("max_concurrent", 1),
             output_dir=data.get("output_dir", "./results"),
             redo_all=data.get("redo_all", False),
+            sandbox_retries=data.get("sandbox_retries", 1),
             metadata=data.get("metadata", {}),
         )

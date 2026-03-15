@@ -254,10 +254,9 @@ class TestTopPSupport:
         client = MagicMock()
         client.chat.completions.create = create
 
-        fake_openai = types.SimpleNamespace(OpenAI=MagicMock(return_value=client))
-        with patch.dict("sys.modules", {"openai": fake_openai}):
-            with patch.object(agent, "_resolve_max_tokens", return_value=32768):
-                agent.solve(_task())
+        agent._client = client
+        with patch.object(agent, "_resolve_max_tokens", return_value=32768):
+            agent.solve(_task())
 
         call_kwargs = create.call_args.kwargs
         assert call_kwargs.get("top_p") == 0.95
@@ -276,10 +275,9 @@ class TestTopPSupport:
         client = MagicMock()
         client.chat.completions.create = create
 
-        fake_openai = types.SimpleNamespace(OpenAI=MagicMock(return_value=client))
-        with patch.dict("sys.modules", {"openai": fake_openai}):
-            with patch.object(agent, "_resolve_max_tokens", return_value=32768):
-                agent.solve(_task())
+        agent._client = client
+        with patch.object(agent, "_resolve_max_tokens", return_value=32768):
+            agent.solve(_task())
 
         call_kwargs = create.call_args.kwargs
         assert "top_p" not in call_kwargs

@@ -24,6 +24,7 @@ from alphadiana.sandbox.registry import register_sandbox
 
 logger = logging.getLogger(__name__)
 _PROFILE_CACHE: dict[tuple[str, str], tuple[str, float]] = {}
+_chdir_lock = threading.Lock()
 
 CLEANUP_PATHS = [
     "/root/.openclaw/workspace",
@@ -541,15 +542,16 @@ class ROCKSession(SandboxSession):
         method = getattr(agent, method_name, None)
         if method is None:
             raise RuntimeError(f"ROCK sandbox agent helper does not support '{method_name}'")
-        old_cwd = Path.cwd()
-        try:
-            if config_dir is not None:
-                Path(config_dir).mkdir(parents=True, exist_ok=True)
-                os.chdir(str(config_dir))
-            return _run_async(_maybe_await(method(*args)))
-        finally:
-            if config_dir is not None:
-                os.chdir(old_cwd)
+        with _chdir_lock:
+                old_cwd = Path.cwd()
+                try:
+                    if config_dir is not None:
+                        Path(config_dir).mkdir(parents=True, exist_ok=True)
+                        os.chdir(str(config_dir))
+                    return _run_async(_maybe_await(method(*args)))
+                finally:
+                    if config_dir is not None:
+                        os.chdir(old_cwd)
 
     def metadata(self) -> dict:
         info = ROCKSandboxMetadata(

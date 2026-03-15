@@ -345,7 +345,6 @@ class OpenClawAgent(Agent):
     name = "openclaw"
 
     def setup(self, config: dict) -> None:
-        self.version = config.get("version", "unknown")
         self._api_base = config.get("api_base", "")
         self._model = config.get("model", "openclaw")
         self._gateway_token = config.get("gateway_token", "OPENCLAW")
@@ -482,8 +481,12 @@ class OpenClawAgent(Agent):
         import asyncio
 
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+
+            if loop is not None and loop.is_running():
                 import concurrent.futures
                 with concurrent.futures.ThreadPoolExecutor() as pool:
                     future = pool.submit(
@@ -491,11 +494,7 @@ class OpenClawAgent(Agent):
                     )
                     return future.result(timeout=30)
             else:
-                return loop.run_until_complete(
-                    self._retrieve_session_trajectory()
-                )
-        except RuntimeError:
-            return asyncio.run(self._retrieve_session_trajectory())
+                return asyncio.run(self._retrieve_session_trajectory())
         except Exception as e:
             logger.warning("Trajectory retrieval failed: %s", e)
             return []
@@ -544,15 +543,16 @@ class OpenClawAgent(Agent):
                 return getattr(result, "output", "").strip()
 
             try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    import concurrent.futures
-                    with concurrent.futures.ThreadPoolExecutor() as pool:
-                        future = pool.submit(asyncio.run, _read_files())
-                        return future.result(timeout=15)
-                else:
-                    return loop.run_until_complete(_read_files())
+                loop = asyncio.get_running_loop()
             except RuntimeError:
+                loop = None
+
+            if loop is not None and loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    future = pool.submit(asyncio.run, _read_files())
+                    return future.result(timeout=15)
+            else:
                 return asyncio.run(_read_files())
         except Exception as exc:
             logger.debug("System prompt retrieval via SDK client failed: %s", exc)

@@ -6,6 +6,8 @@ import logging
 import time
 from typing import TYPE_CHECKING
 
+import httpx
+
 from alphadiana.agent.registry import AgentRegistry
 from alphadiana.benchmark.registry import BenchmarkRegistry
 from alphadiana.results.report import ReportGenerator, RunSummary
@@ -22,6 +24,19 @@ if TYPE_CHECKING:
     from alphadiana.scorer.base import Scorer
 
 logger = logging.getLogger(__name__)
+
+
+def _is_sandbox_disconnect(exc: Exception) -> bool:
+    """Return True if *exc* looks like a sandbox connection failure."""
+    if isinstance(exc, (ConnectionError, TimeoutError, OSError)):
+        return True
+    try:
+        if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout)):
+            return True
+    except Exception:
+        pass
+    msg = str(exc).lower()
+    return "connection" in msg and ("refused" in msg or "reset" in msg or "timeout" in msg)
 
 
 def _build_error_info(exc: Exception) -> dict:
@@ -240,10 +255,13 @@ class Runner:
                 raise
             finally:
                 if sandbox_session is not None:
-                    if used_pool:
-                        pool.release(sandbox_session)
-                    else:
-                        sandbox_session.close()
+                    try:
+                        if used_pool:
+                            pool.release(sandbox_session)
+                        else:
+                            sandbox_session.close()
+                    except Exception as cleanup_exc:
+                        logger.warning("Cleanup failed for task %s: %s", task.task_id, cleanup_exc)
 
         # Dispatch tasks.
         dispatcher = TaskDispatcher(max_concurrent=self.config.max_concurrent)
