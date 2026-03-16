@@ -515,7 +515,13 @@ class SandboxManager:
                 "nohup openclaw gateway >> /root/gateway.log 2>&1 &"
             )
 
-            template_path = DEPLOY_DIR / "rock_agent_config.yaml"
+            from alphadiana.utils.rock_runtime import is_prebuilt_image
+            template_name = (
+                "rock_agent_config.prebuilt.yaml"
+                if is_prebuilt_image(DEFAULT_SANDBOX_IMAGE)
+                else "rock_agent_config.yaml"
+            )
+            template_path = DEPLOY_DIR / template_name
             if template_path.exists():
                 with open(template_path) as f:
                     config_data = yaml.safe_load(f)

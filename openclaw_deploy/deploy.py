@@ -12,7 +12,11 @@ from pathlib import Path
 import httpx
 
 from alphadiana.utils.rock_ports import resolve_rock_ports_from_env
-from alphadiana.utils.rock_runtime import DEFAULT_SANDBOX_IMAGE, configure_rock_runtime_for_image
+from alphadiana.utils.rock_runtime import (
+    DEFAULT_SANDBOX_IMAGE,
+    configure_rock_runtime_for_image,
+    is_prebuilt_image,
+)
 from rock.sdk.sandbox.client import Sandbox
 from rock.sdk.sandbox.config import SandboxConfig
 
@@ -36,9 +40,14 @@ INSTALL_MAX_RETRIES = 2
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
+    default_config = (
+        "rock_agent_config.prebuilt.yaml"
+        if is_prebuilt_image(DEFAULT_SANDBOX_IMAGE)
+        else "rock_agent_config.yaml"
+    )
     parser.add_argument(
         "--agent-config",
-        default="rock_agent_config.yaml",
+        default=default_config,
         help="Path to the ROCK agent config YAML.",
     )
     parser.add_argument(
