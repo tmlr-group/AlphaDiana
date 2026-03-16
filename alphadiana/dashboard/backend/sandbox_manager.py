@@ -15,6 +15,11 @@ from typing import Any
 import httpx
 
 from alphadiana.utils.rock_ports import resolve_rock_ports_from_env
+from alphadiana.utils.rock_runtime import (
+    DEFAULT_SANDBOX_IMAGE,
+    configure_rock_runtime_for_image,
+    get_custom_install_cmd,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -500,7 +505,7 @@ class SandboxManager:
 
             # Use --omit=optional to skip git-based optional deps (libsignal-node)
             # that fail in sandboxes without GitHub network access.
-            custom_install_cmd = "npm install -g openclaw@2026.3.7 --omit=optional"
+            custom_install_cmd = get_custom_install_cmd(DEFAULT_SANDBOX_IMAGE)
 
             # run_cmd: use ${bin_dir} placeholder (replaced by ROCK SDK with
             # the node runtime bin directory) to ensure openclaw is on PATH.
@@ -544,6 +549,8 @@ class SandboxManager:
             yaml.safe_dump(config_data, tmp)
             tmp.close()
             config_file = Path(tmp.name)
+
+        configure_rock_runtime_for_image(DEFAULT_SANDBOX_IMAGE)
 
         log(f"Using agent config: {config_file}")
         log(f"ROCK base_url: {base_url}")
@@ -607,7 +614,7 @@ class SandboxManager:
         log("Creating sandbox...")
         config = SandboxConfig(
             base_url=base_url,
-            image="python:3.11",
+            image=DEFAULT_SANDBOX_IMAGE,
             memory="4g",
             cpus=1,
             auto_clear_seconds=auto_clear_seconds,

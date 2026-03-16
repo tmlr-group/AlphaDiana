@@ -1,13 +1,11 @@
 working_dir: "."
 
-run_cmd: export PATH=$(find /tmp/rock-runtime-envs/node -name 'npm' -type f ! -path '*/nodewin/*'
-  ! -path '*/shims/*' 2>/dev/null | head -1 | xargs dirname):$PATH && OPENCLAW_CONFIG_PATH=${working_dir}/openclaw.json
-  nohup openclaw gateway >> /root/gateway.log 2>&1 &
+run_cmd: export PATH=${bin_dir}:$PATH && OPENCLAW_CONFIG_PATH=${working_dir}/openclaw.json nohup openclaw gateway >> /root/gateway.log 2>&1 &
 
 runtime_env_config:
   type: node
   npm_registry: https://registry.npmmirror.com
-  custom_install_cmd: git config --global url.'https://github.com/'.insteadOf 'ssh://git@github.com/' && npm install -g openclaw@2026.3.7 --registry https://registry.npmmirror.com
+  custom_install_cmd: openclaw --version || npm install -g openclaw@2026.3.7 --omit=optional
   install_timeout: 1200
 
 env:

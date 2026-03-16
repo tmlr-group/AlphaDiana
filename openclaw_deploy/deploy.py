@@ -11,6 +11,7 @@ from pathlib import Path
 import httpx
 
 from alphadiana.utils.rock_ports import resolve_rock_ports_from_env
+from alphadiana.utils.rock_runtime import DEFAULT_SANDBOX_IMAGE, configure_rock_runtime_for_image
 from rock.sdk.sandbox.client import Sandbox
 from rock.sdk.sandbox.config import SandboxConfig
 
@@ -24,6 +25,8 @@ DEPLOY_DIR = Path(__file__).resolve().parent
 REPO_ROOT = DEPLOY_DIR.parent
 INVOKE_CWD = Path.cwd().resolve()
 ROCK_ROOT = REPO_ROOT / "ref/ROCK"
+
+configure_rock_runtime_for_image(DEFAULT_SANDBOX_IMAGE)
 
 # Retry constants for agent.install()
 INSTALL_RETRY_INTERVAL = 10
@@ -49,7 +52,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--image",
-        default="python:3.11",
+        default=DEFAULT_SANDBOX_IMAGE,
         help="Sandbox image.",
     )
     parser.add_argument(
