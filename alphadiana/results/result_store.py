@@ -20,7 +20,13 @@ class ResultStore:
     evaluating one benchmark task.
     """
 
-    def __init__(self, output_dir: str, run_id: str) -> None:
+    def __init__(
+        self,
+        output_dir: str,
+        run_id: str,
+        *,
+        run_metadata: dict | None = None,
+    ) -> None:
         os.makedirs(output_dir, exist_ok=True)
         self.output_dir = Path(output_dir)
         self.run_id = run_id
@@ -28,6 +34,8 @@ class ResultStore:
         self.artifacts_dir = self.output_dir / run_id / "artifacts"
         self.artifacts_dir.mkdir(parents=True, exist_ok=True)
         self._write_lock = threading.Lock()
+        # Run-level metadata embedded into every record.
+        self._run_metadata: dict = run_metadata or {}
 
     def append(
         self,
@@ -42,6 +50,7 @@ class ResultStore:
         record = {
             "task_id": task.task_id,
             "sample_index": sample_index,
+            **self._run_metadata,
             "problem": task.problem,
             "ground_truth": task.ground_truth,
             "task_metadata": task.metadata,
@@ -86,6 +95,7 @@ class ResultStore:
         record = {
             "task_id": task.task_id,
             "sample_index": sample_index,
+            **self._run_metadata,
             "problem": task.problem,
             "ground_truth": task.ground_truth,
             "task_metadata": task.metadata,

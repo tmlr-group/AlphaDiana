@@ -101,8 +101,7 @@ def validate(config_yaml: str):
 @click.argument("results_dir", type=click.Path(exists=True))
 def report(results_dir: str):
     """Generate reports from existing result files in a directory."""
-    from alphadiana.config.experiment_config import ExperimentConfig
-    from alphadiana.results.report import ReportGenerator, RunSummary
+    from alphadiana.results.report import ReportGenerator
     from alphadiana.results.result_store import ResultStore
 
     jsonl_files = [
@@ -122,15 +121,7 @@ def report(results_dir: str):
             click.echo(f"Skipping {jsonl_file} (empty)")
             continue
 
-        # Create a minimal config for report generation.
-        config = ExperimentConfig(
-            run_id=run_id,
-            agent_name="unknown",
-            agent_version="unknown",
-            benchmark_name="unknown",
-            scorer_name="unknown",
-        )
-        summary = report_gen.generate(store, config)
+        summary = report_gen.generate(store)
         markdown = report_gen.to_markdown(summary)
         click.echo(markdown)
         click.echo("")

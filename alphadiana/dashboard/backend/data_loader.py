@@ -102,8 +102,12 @@ def _build_summary(run_id: str, records: list[dict[str, Any]]) -> RunSummaryResp
     for r in records:
         by_task[r.get("task_id", "")].append(r)
 
-    # Detect num_samples from data (max samples per task).
-    num_samples = max((len(samples) for samples in by_task.values()), default=1)
+    # Prefer num_samples from record data; fall back to max samples per task.
+    num_samples_raw = next((r.get("num_samples") for r in records if r.get("num_samples") is not None), None)
+    if num_samples_raw is not None:
+        num_samples = int(num_samples_raw)
+    else:
+        num_samples = max((len(samples) for samples in by_task.values()), default=1)
 
     # Pass@K: fraction of unique tasks where at least 1 sample is correct.
     num_unique_tasks = len(by_task)
@@ -146,18 +150,24 @@ def _build_summary(run_id: str, records: list[dict[str, Any]]) -> RunSummaryResp
         for cat, avgs in cat_task_avgs.items()
     }
 
-    # Infer agent/benchmark from records or run_id
+    # Infer agent/benchmark from record-level fields first, then metadata fallback.
     agent = ""
     agent_version = ""
     benchmark = ""
     if records:
-        meta = records[0].get("metadata", {})
-        if isinstance(meta, dict):
-            agent = meta.get("agent", "")
-            agent_version = meta.get("agent_version", meta.get("model", ""))
-        task_meta = records[0].get("task_metadata", {})
-        if isinstance(task_meta, dict):
-            benchmark = task_meta.get("source", "")
+        agent = next((r.get("agent_name") for r in records if r.get("agent_name")), "")
+        agent_version = next((r.get("agent_version") for r in records if r.get("agent_version")), "")
+        benchmark = next((r.get("benchmark_name") for r in records if r.get("benchmark_name")), "")
+        # Legacy fallback: read from nested metadata/task_metadata.
+        if not agent or not agent_version:
+            meta = records[0].get("metadata", {})
+            if isinstance(meta, dict):
+                agent = agent or meta.get("agent", "")
+                agent_version = agent_version or meta.get("agent_version", meta.get("model", ""))
+        if not benchmark:
+            task_meta = records[0].get("task_metadata", {})
+            if isinstance(task_meta, dict):
+                benchmark = task_meta.get("source", "")
 
     timestamp = ""
     if records:

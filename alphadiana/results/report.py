@@ -52,15 +52,52 @@ def _get_category(r: dict) -> str:
 class ReportGenerator:
     """Generates summary reports from stored evaluation results."""
 
+    @staticmethod
+    def _infer_from_results(results: list[dict], key: str, fallback: str = "") -> str:
+        """Extract a run-level field from the first record that has it."""
+        for r in results:
+            val = r.get(key)
+            if val is not None and val != "":
+                return str(val)
+        return fallback
+
     def generate(
         self,
         result_store: "ResultStore",
-        config: "ExperimentConfig",
+        config: "ExperimentConfig | None" = None,
     ) -> RunSummary:
-        """Load results from the store and compute summary statistics."""
+        """Load results from the store and compute summary statistics.
+
+        Run-level metadata (run_id, agent_name, etc.) is read from the
+        JSONL records first.  *config* is an optional fallback for legacy
+        files that lack these fields.
+        """
         results = result_store.load()
         total = len(results)
-        num_samples = getattr(config, "num_samples", 1)
+
+        # Infer run-level metadata from data; fall back to config.
+        _cfg = config  # may be None
+        run_id = self._infer_from_results(results, "run_id") or (
+            getattr(_cfg, "run_id", "") if _cfg else "") or result_store.run_id
+        agent_name = self._infer_from_results(results, "agent_name") or (
+            getattr(_cfg, "agent_name", "") if _cfg else "unknown")
+        agent_version = self._infer_from_results(results, "agent_version") or (
+            getattr(_cfg, "agent_version", "") if _cfg else "unknown")
+        benchmark_name = self._infer_from_results(results, "benchmark_name") or (
+            getattr(_cfg, "benchmark_name", "") if _cfg else "unknown")
+
+        # num_samples: prefer data, then config, then infer from max samples per task.
+        num_samples_raw = self._infer_from_results(results, "num_samples")
+        if num_samples_raw:
+            num_samples = int(num_samples_raw)
+        elif _cfg is not None:
+            num_samples = getattr(_cfg, "num_samples", 1)
+        else:
+            by_task_tmp: dict[str, int] = {}
+            for r in results:
+                tid = r.get("task_id", "")
+                by_task_tmp[tid] = by_task_tmp.get(tid, 0) + 1
+            num_samples = max(by_task_tmp.values(), default=1)
 
         # Only count tasks that were scored (excludes infrastructure errors).
         completed_results = [r for r in results if r.get("score") is not None]
@@ -161,10 +198,10 @@ class ReportGenerator:
         }
 
         return RunSummary(
-            run_id=config.run_id,
-            agent=config.agent_name,
-            agent_version=config.agent_version,
-            benchmark=config.benchmark_name,
+            run_id=run_id,
+            agent=agent_name,
+            agent_version=agent_version,
+            benchmark=benchmark_name,
             total_tasks=total,
             completed=completed,
             failed=failed,

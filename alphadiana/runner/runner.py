@@ -115,6 +115,13 @@ class Runner:
         self.result_store = ResultStore(
             output_dir=self.config.output_dir,
             run_id=self.config.run_id,
+            run_metadata={
+                "run_id": self.config.run_id,
+                "agent_name": self.config.agent_name,
+                "agent_version": self.config.agent_version,
+                "benchmark_name": self.config.benchmark_name,
+                "num_samples": getattr(self.config, "num_samples", 1),
+            },
         )
         self.report_generator = ReportGenerator()
 
