@@ -132,13 +132,44 @@ source dev/.rock_ports.env
 
 > **Convention**: All commands should be run from the repository root (`AlphaDiana/`) unless explicitly noted otherwise.
 
+### Faster OpenClaw Deploys with a Pre-built Image
 
+By default, each OpenClaw sandbox deploy downloads Node.js and installs `openclaw`,
+which can take 10-20 minutes. To reduce deploy time to about 1 minute, pull the
+pre-built sandbox image once and set `OPENCLAW_IMAGE` before deploying:
 
+```bash
+docker pull ghcr.io/tsrigo/openclaw-sandbox:2026.3.7
+export OPENCLAW_IMAGE=ghcr.io/tsrigo/openclaw-sandbox:2026.3.7
+```
+
+This applies automatically to all deploy paths, including `python -m openclaw_deploy.deploy`,
+the Dashboard's "Deploy Only" / "Deploy & Run", and the helper scripts under `dev/`.
+
+To switch back to the default `python:3.11` sandbox image:
+
+```bash
+unset OPENCLAW_IMAGE
+```
 
 ### 3. Deploy OpenClaw Agent
-Before deployment, make sure the following fields in `rock_agent_config.yaml` are set correctly
-- OPENAI_BASE_URL
-- OPENAI_MODEL_NAME
+Before deployment, make sure the model configuration is available either through
+environment variables:
+
+```bash
+export OPENAI_BASE_URL="https://openrouter.ai/api/v1"
+export OPENAI_API_KEY="sk-..."
+export OPENAI_MODEL_NAME="moonshotai/kimi-k2.5"
+```
+
+or via CLI flags:
+
+```bash
+python -m openclaw_deploy.deploy \
+  --model-base-url https://openrouter.ai/api/v1 \
+  --model-api-key sk-... \
+  --model-name moonshotai/kimi-k2.5
+```
 
 #### When using vLLM
 
@@ -162,13 +193,25 @@ env:
 ```
 
 ```bash
-# Deploy to ROCK sandbox
-python openclaw_deploy/deploy.py \
+# Deploy to a new ROCK sandbox
+python -m openclaw_deploy.deploy
+
+# Or deploy with a custom ROCK agent config YAML
+python -m openclaw_deploy.deploy \
   --agent-config dev/generated/rock_agent_config.openrouter_qwen_2_5_7b.resolved.yaml
-# Note the SANDBOX_ID from output
 ```
 
-> The generated config file contains your API key -- do not commit or share it.
+The deploy command prints both a `Sandbox ID` and an `API base`, for example:
+
+```text
+Sandbox ID: fa6db7ce565a44c79ced5c9ee49f2b02
+API base: http://127.0.0.1:9051/apis/envs/sandbox/v1/sandboxes/fa6db7ce565a44c79ced5c9ee49f2b02/proxy/v1
+```
+
+> `alphadiana run` does not deploy sandboxes automatically. Deploy first, then
+> copy the printed `api_base` into your evaluation config.
+
+> The generated config file may contain your API key. Do not commit or share it.
 
 Verify the gateway before running benchmarks:
 
@@ -181,7 +224,8 @@ curl -X POST \
 ```
 
 ### 4. Run Evaluation
-Before running the evaluation, make sure to fill in the `api_base` field in openclaw.yaml. The value of api_base should be the base URL printed in the output of the following deployment command.
+Before running the evaluation, fill in the `api_base` field in `openclaw.yaml`
+with the `API base` printed by `python -m openclaw_deploy.deploy`.
 
 ```yaml
 run_id: 
@@ -214,6 +258,9 @@ metadata:
   gpu: 
   notes: 
 ```
+
+You can also start from [`configs/examples/openclaw_aime2025.yaml`](configs/examples/openclaw_aime2025.yaml)
+and replace `<PROXY_PORT>` and `<SANDBOX_ID>` with your values.
 
 ```bash
 # Validate & run
@@ -299,6 +346,14 @@ A web UI for managing and viewing evaluation tasks without manually editing YAML
 ### Start the Dashboard
 
 ```bash
+uvicorn alphadiana.dashboard.backend.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+For faster sandbox deploys from the Dashboard, set `OPENCLAW_IMAGE` before starting
+the backend server:
+
+```bash
+export OPENCLAW_IMAGE=ghcr.io/tsrigo/openclaw-sandbox:2026.3.7
 uvicorn alphadiana.dashboard.backend.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
