@@ -68,6 +68,8 @@ def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
         click.echo(f"\nRun completed: {summary.run_id}")
         click.echo(f"  Accuracy:   {summary.accuracy:.4f}")
         click.echo(f"  Mean Score: {summary.mean_score:.4f}")
+        click.echo(f"  Pass@{summary.num_samples}:    {summary.pass_at_k:.4f}")
+        click.echo(f"  Avg@{summary.num_samples}:     {summary.avg_at_k:.4f}")
         click.echo(f"  Tasks:      {summary.completed}/{summary.total_tasks} completed")
     except Exception as exc:
         logger.exception("Run failed")

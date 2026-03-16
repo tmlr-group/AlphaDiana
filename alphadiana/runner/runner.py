@@ -319,10 +319,14 @@ class Runner:
         # Generate summary report.
         summary = self.report_generator.generate(self.result_store, self.config)
         logger.info(
-            "Run %s complete: accuracy=%.4f, mean_score=%.4f",
+            "Run %s complete: accuracy=%.4f, mean_score=%.4f, pass@%d=%.4f, avg@%d=%.4f",
             self.config.run_id,
             summary.accuracy,
             summary.mean_score,
+            summary.num_samples,
+            summary.pass_at_k,
+            summary.num_samples,
+            summary.avg_at_k,
         )
         return summary
 
