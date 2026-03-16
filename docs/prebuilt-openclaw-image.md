@@ -6,6 +6,14 @@ Every sandbox deployment downloads Node.js and runs `npm install -g openclaw@202
 which takes **10–20 minutes**. Since the openclaw version is pinned, we can bake it
 into the Docker image and reduce deploy time to **~1 minute**.
 
+## Prerequisites
+
+- **ROCK sandbox environment** must be running (Ray, ROCK admin, ROCK proxy).
+  See [docs/getting_started.md § 4. 搭建 ROCK 沙箱环境](getting_started.md#4-搭建-rock-沙箱环境)
+  for setup instructions.
+- Note down your ROCK proxy URL (e.g., `http://127.0.0.1:<PROXY_PORT>/apis/envs/sandbox/v1`).
+  The port depends on your `dev/.rock_ports.env` configuration.
+
 ## Quick Start
 
 ```bash
@@ -19,9 +27,7 @@ export OPENCLAW_IMAGE=openclaw-sandbox:2026.3.7
 That's it. All deploy paths (CLI, dashboard, benchmark runner) will automatically
 use the pre-built image and skip the slow npm install.
 
-## Usage Scenarios
-
-### 1. Deploy a sandbox + run AIME 2025 benchmark (end-to-end)
+## Usage: Deploy sandbox + run AIME 2025 benchmark
 
 ```bash
 # Step 1: Set image and model config
@@ -30,75 +36,31 @@ export OPENAI_BASE_URL=https://ark.cn-beijing.volces.com/api/coding/v3
 export OPENAI_API_KEY=your-api-key
 export OPENAI_MODEL_NAME=Kimi-K2.5
 
-# Step 2: Deploy a sandbox (takes ~1 min with pre-built image)
+# Step 2: Deploy a sandbox (~1 min with pre-built image)
 python -m openclaw_deploy.deploy
-# Output: Sandbox ID: <SANDBOX_ID>
-# Output: API base: http://127.0.0.1:9051/apis/envs/sandbox/v1/sandboxes/<SANDBOX_ID>/proxy/v1
+# Output example:
+#   Sandbox ID: fa6db7ce565a44c79ced5c9ee49f2b02
+#   API base: http://127.0.0.1:9051/apis/envs/sandbox/v1/sandboxes/fa6db7ce.../proxy/v1
 
-# Step 3: Run benchmark with the sandbox
+# Step 3: Edit the config — replace <SANDBOX_ID> and <PROXY_PORT> with your values
+#   See configs/examples/openclaw_aime2025.yaml
 alphadiana run configs/examples/openclaw_aime2025.yaml
 ```
 
-The example config `configs/examples/openclaw_aime2025.yaml`:
+> **Important**: `alphadiana run` does NOT deploy sandboxes automatically.
+> You must run `python -m openclaw_deploy.deploy` first and fill in the
+> sandbox ID in your config YAML before running the benchmark.
 
-```yaml
-run_id: "openclaw-aime2025-001"
-
-agent:
-  name: openclaw
-  config:
-    api_base: "http://localhost:9051/apis/envs/sandbox/v1/sandboxes/<SANDBOX_ID>/proxy/v1"
-    model: openclaw
-    gateway_token: "OPENCLAW"
-    system_prompt: |
-      You are an expert problem solver. When given a problem, actively use your
-      available tools and skills throughout your reasoning process. Do not attempt
-      to solve problems purely in your head when tools can help.
-
-      When you have reached your final answer, present it as: $$\boxed{your answer here}$$
-
-benchmark:
-  name: aime
-  config:
-    dataset: "MathArena/aime_2025"
-    split: "train"
-
-sandbox: null   # OpenClaw already runs inside ROCK; no extra sandbox needed
-
-scorer:
-  name: math_verify
-
-max_concurrent: 1
-output_dir: "./results"
-```
-
-> **Note**: Replace `<SANDBOX_ID>` with the actual sandbox ID from step 2.
-
-### 2. Deploy a standalone sandbox (CLI)
-
-Model config via CLI arguments:
+### Model config via CLI arguments
 
 ```bash
-export OPENCLAW_IMAGE=openclaw-sandbox:2026.3.7
-
 python -m openclaw_deploy.deploy \
   --model-base-url https://ark.cn-beijing.volces.com/api/coding/v3 \
   --model-api-key your-api-key \
   --model-name Kimi-K2.5
 ```
 
-Or via environment variables (same effect):
-
-```bash
-export OPENCLAW_IMAGE=openclaw-sandbox:2026.3.7
-export OPENAI_BASE_URL=https://ark.cn-beijing.volces.com/api/coding/v3
-export OPENAI_API_KEY=your-api-key
-export OPENAI_MODEL_NAME=Kimi-K2.5
-
-python -m openclaw_deploy.deploy
-```
-
-### 3. Dashboard
+### Dashboard
 
 Set `OPENCLAW_IMAGE` before starting the dashboard server. All "Deploy & Run"
 jobs will use the pre-built image automatically.
