@@ -12,7 +12,7 @@ into the Docker image and reduce deploy time to **~1 minute**.
 # Pull the pre-built image (one-time)
 docker pull ghcr.io/tsrigo/openclaw-sandbox:2026.3.7
 
-# Set the environment variable
+# Set the environment variable (add to your .bashrc for persistence)
 export OPENCLAW_IMAGE=openclaw-sandbox:2026.3.7
 ```
 
@@ -21,44 +21,81 @@ use the pre-built image and skip the slow npm install.
 
 ## Usage Scenarios
 
-### 1. Deploy a standalone sandbox (CLI)
+### 1. Deploy a sandbox + run AIME 2025 benchmark (end-to-end)
+
+```bash
+# Step 1: Set image and model config
+export OPENCLAW_IMAGE=openclaw-sandbox:2026.3.7
+export OPENAI_BASE_URL=https://ark.cn-beijing.volces.com/api/coding/v3
+export OPENAI_API_KEY=your-api-key
+export OPENAI_MODEL_NAME=Kimi-K2.5
+
+# Step 2: Deploy a sandbox (takes ~1 min with pre-built image)
+python -m openclaw_deploy.deploy
+# Output: Sandbox ID: <SANDBOX_ID>
+# Output: API base: http://127.0.0.1:9051/apis/envs/sandbox/v1/sandboxes/<SANDBOX_ID>/proxy/v1
+
+# Step 3: Run benchmark with the sandbox
+alphadiana run configs/examples/openclaw_aime2025.yaml
+```
+
+The example config `configs/examples/openclaw_aime2025.yaml`:
+
+```yaml
+run_id: "openclaw-aime2025-001"
+
+agent:
+  name: openclaw
+  config:
+    api_base: "http://localhost:9051/apis/envs/sandbox/v1/sandboxes/<SANDBOX_ID>/proxy/v1"
+    model: openclaw
+    gateway_token: "OPENCLAW"
+    system_prompt: |
+      You are an expert problem solver. When given a problem, actively use your
+      available tools and skills throughout your reasoning process. Do not attempt
+      to solve problems purely in your head when tools can help.
+
+      When you have reached your final answer, present it as: $$\boxed{your answer here}$$
+
+benchmark:
+  name: aime
+  config:
+    dataset: "MathArena/aime_2025"
+    split: "train"
+
+sandbox: null   # OpenClaw already runs inside ROCK; no extra sandbox needed
+
+scorer:
+  name: math_verify
+
+max_concurrent: 1
+output_dir: "./results"
+```
+
+> **Note**: Replace `<SANDBOX_ID>` with the actual sandbox ID from step 2.
+
+### 2. Deploy a standalone sandbox (CLI)
+
+Model config via CLI arguments:
 
 ```bash
 export OPENCLAW_IMAGE=openclaw-sandbox:2026.3.7
 
 python -m openclaw_deploy.deploy \
-  --model-base-url https://api.openai.com/v1 \
-  --model-api-key sk-xxx \
-  --model-name gpt-4o
+  --model-base-url https://ark.cn-beijing.volces.com/api/coding/v3 \
+  --model-api-key your-api-key \
+  --model-name Kimi-K2.5
 ```
 
-Model config can also be passed via environment variables:
+Or via environment variables (same effect):
 
 ```bash
 export OPENCLAW_IMAGE=openclaw-sandbox:2026.3.7
-export OPENAI_BASE_URL=https://api.openai.com/v1
-export OPENAI_API_KEY=sk-xxx
-export OPENAI_MODEL_NAME=gpt-4o
+export OPENAI_BASE_URL=https://ark.cn-beijing.volces.com/api/coding/v3
+export OPENAI_API_KEY=your-api-key
+export OPENAI_MODEL_NAME=Kimi-K2.5
 
 python -m openclaw_deploy.deploy
-```
-
-### 2. Run a benchmark with OpenClaw agent
-
-The benchmark runner reads the same `OPENCLAW_IMAGE` variable. No code changes needed:
-
-```bash
-export OPENCLAW_IMAGE=openclaw-sandbox:2026.3.7
-export OPENAI_BASE_URL=https://api.openai.com/v1
-export OPENAI_API_KEY=sk-xxx
-export OPENAI_MODEL_NAME=gpt-4o
-
-python -m alphadiana.run \
-  --agent openclaw \
-  --benchmark aime \
-  --benchmark-config '{"dataset": "HuggingFaceTB/aime_2024", "split": "train"}' \
-  --sandbox rock \
-  --sandbox-config '{"admin_base_url": "http://127.0.0.1:9050", "proxy_base_url": "http://127.0.0.1:9051"}'
 ```
 
 ### 3. Dashboard
