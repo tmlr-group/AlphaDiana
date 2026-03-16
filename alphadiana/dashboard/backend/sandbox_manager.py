@@ -549,6 +549,17 @@ class SandboxManager:
                 env["OPENAI_MODEL_NAME"] = model_name
             env.setdefault("OPENCLAW_GATEWAY_TOKEN", "OPENCLAW")
 
+            # Validate that required model parameters are resolved
+            import re as _re
+            for _key in ("OPENAI_BASE_URL", "OPENAI_API_KEY", "OPENAI_MODEL_NAME"):
+                _val = str(env.get(_key, ""))
+                if not _val or _re.match(r"^\$\{.+\}$", _val):
+                    raise RuntimeError(
+                        f"Model config '{_key}' is not set. "
+                        f"Provide it via the dashboard model settings or "
+                        f"export {_key}=... in the server environment."
+                    )
+
             tmp = tempfile.NamedTemporaryFile(
                 mode="w", suffix=".yaml", delete=False, prefix="agent_config_"
             )

@@ -82,7 +82,8 @@ docker build -t openclaw-sandbox:2026.3.7 .
 
 ## How It Works
 
-When `OPENCLAW_IMAGE` is set to a non-`python:3.11` value:
+When `OPENCLAW_IMAGE` is set to a known pre-built image name (e.g., `openclaw-sandbox:*`
+or `ghcr.io/tsrigo/openclaw-sandbox:*`):
 
 1. **Image**: Sandboxes are created with the pre-built image instead of bare `python:3.11`
 2. **Node.js**: Already at `/opt/node` in the image; ROCK creates a symlink instead of downloading
@@ -91,6 +92,25 @@ When `OPENCLAW_IMAGE` is set to a non-`python:3.11` value:
 
 When `OPENCLAW_IMAGE` is **not set**, everything falls back to `python:3.11` with
 the original `rock_agent_config.yaml` and full npm install. Zero behavior change.
+
+## Integration with Existing Workflows
+
+Existing scripts and workflows need **zero changes**. Just set one environment
+variable before running any command:
+
+```bash
+export OPENCLAW_IMAGE=openclaw-sandbox:2026.3.7
+```
+
+All deployment paths — CLI (`deploy.py`), dashboard, benchmark runner
+(`alphadiana run`), and dev helper scripts (`dev/run_openclaw_*.py`) — will
+automatically use the prebuilt image and skip the slow npm install.
+
+To switch back to the standard image, simply unset the variable:
+
+```bash
+unset OPENCLAW_IMAGE
+```
 
 ## Environment Variables Reference
 

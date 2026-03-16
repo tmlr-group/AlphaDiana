@@ -18,7 +18,8 @@ OPENCLAW_NPM_INSTALL_CMD = "npm install -g openclaw@2026.3.7 --omit=optional"
 # ---------------------------------------------------------------------------
 NODE_RUNTIME_MIRROR_INSTALL_CMD = (
     "[ -f node.tar.xz ] && rm node.tar.xz; "
-    "[ -d node ] && rm -rf node; "
+    "[ -d runtime-env ] && rm -rf runtime-env; "
+    "[ -d node-v22.18.0-linux-x64 ] && rm -rf node-v22.18.0-linux-x64; "
     "wget -q -O node.tar.xz --tries=10 --waitretry=2 "
     "https://npmmirror.com/mirrors/node/v22.18.0/node-v22.18.0-linux-x64.tar.xz "
     "&& tar -xf node.tar.xz && mv node-v22.18.0-linux-x64 runtime-env"
@@ -33,9 +34,15 @@ NODE_PREBUILT_INSTALL_CMD = "ln -sfn /opt/node runtime-env"
 # Public helpers
 # ---------------------------------------------------------------------------
 
+_PREBUILT_IMAGE_PREFIXES = (
+    "ghcr.io/tsrigo/openclaw-sandbox:",
+    "openclaw-sandbox:",
+)
+
+
 def is_prebuilt_image(image: str) -> bool:
-    """Return True if *image* is a pre-built sandbox image (not bare python)."""
-    return image != "python:3.11" and image != "python:3.11-slim"
+    """Return True if *image* is a known pre-built sandbox image."""
+    return any(image.startswith(prefix) for prefix in _PREBUILT_IMAGE_PREFIXES)
 
 
 def get_custom_install_cmd(image: str) -> str:

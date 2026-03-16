@@ -31,8 +31,6 @@ REPO_ROOT = DEPLOY_DIR.parent
 INVOKE_CWD = Path.cwd().resolve()
 ROCK_ROOT = REPO_ROOT / "ref/ROCK"
 
-configure_rock_runtime_for_image(DEFAULT_SANDBOX_IMAGE)
-
 # Retry constants for agent.install()
 INSTALL_RETRY_INTERVAL = 10
 INSTALL_MAX_RETRIES = 2
@@ -262,6 +260,11 @@ async def _install_with_retry(
 
 
 _MODEL_ENV_KEYS = ("OPENAI_BASE_URL", "OPENAI_API_KEY", "OPENAI_MODEL_NAME")
+_MODEL_ENV_TO_FLAG = {
+    "OPENAI_BASE_URL": "--model-base-url",
+    "OPENAI_API_KEY": "--model-api-key",
+    "OPENAI_MODEL_NAME": "--model-name",
+}
 
 
 def _apply_model_overrides(agent_config: Path, args: argparse.Namespace) -> Path:
@@ -305,7 +308,7 @@ def _apply_model_overrides(agent_config: Path, args: argparse.Namespace) -> Path
         if re.match(r"^\$\{.+\}$", yaml_val) or not yaml_val:
             raise RuntimeError(
                 f"Model config '{key}' is not set.\n"
-                f"Provide it via --{key.lower().replace('_', '-')} or "
+                f"Provide it via {_MODEL_ENV_TO_FLAG[key]} or "
                 f"export {key}=... in your environment."
             )
 
@@ -324,6 +327,7 @@ def _apply_model_overrides(agent_config: Path, args: argparse.Namespace) -> Path
 
 
 async def deploy(args: argparse.Namespace) -> None:
+    configure_rock_runtime_for_image(args.image)
     agent_config = _resolve_agent_config(args.agent_config)
     await _preflight(args.base_url, args.proxy_url, agent_config)
     agent_config = _apply_model_overrides(agent_config, args)
