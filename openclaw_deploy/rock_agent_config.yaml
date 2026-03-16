@@ -9,7 +9,7 @@ runtime_env_config:
   install_timeout: 1200
 
 env:
-  OPENAI_BASE_URL: "http://192.0.2.14:8000/v1"
-  OPENAI_API_KEY: "EMPTY"
-  OPENAI_MODEL_NAME: "/hd1/models/models--Qwen--Qwen3-8B/snapshots/b968826d9c46dd6066d109eabc6255188de91218"
+  OPENAI_BASE_URL: "${OPENAI_BASE_URL}"
+  OPENAI_API_KEY: "${OPENAI_API_KEY}"
+  OPENAI_MODEL_NAME: "${OPENAI_MODEL_NAME}"
   OPENCLAW_GATEWAY_TOKEN: "OPENCLAW"
