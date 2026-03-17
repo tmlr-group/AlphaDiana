@@ -47,7 +47,7 @@ def _store(tmp_path: Path, run_id: str = "run1") -> ResultStore:
 
 
 # ===================================================================
-# 一、并发安全 (问题 1, 3)
+# I. Concurrency safety (Issues 1, 3)
 # ===================================================================
 
 class TestJSONLWriteLock:
@@ -143,7 +143,7 @@ class TestChdirLock:
 
 
 # ===================================================================
-# 二、--redo-all 与报告修正 (问题 2, 10, 19, 29)
+# II. --redo-all and report fixes (Issues 2, 10, 19, 29)
 # ===================================================================
 
 class TestLoadDedup:
@@ -266,7 +266,7 @@ class TestExpectedFieldRemoved:
 
 
 # ===================================================================
-# 三、Agent 配置修正 (问题 6, 7, 16)
+# III. Agent configuration fixes (Issues 6, 7, 16)
 # ===================================================================
 
 class TestVersionNoOverride:
@@ -411,7 +411,7 @@ class TestClientReuse:
 
 
 # ===================================================================
-# 四、思考模型支持 (问题 8)
+# IV. Thinking model support (Issue 8)
 # ===================================================================
 
 class TestFinishReason:
@@ -510,7 +510,7 @@ class TestMaxCompletionTokens:
 
 
 # ===================================================================
-# 五、答案提取 fallback (问题 9)
+# V. Answer extraction fallback (Issue 9)
 # ===================================================================
 
 class TestAnswerFallback:
@@ -556,7 +556,7 @@ class TestAnswerFallback:
 
 
 # ===================================================================
-# 六、运行时健壮性 (问题 5, 12, 13, 14, 11)
+# VI. Runtime robustness (Issues 5, 12, 13, 14, 11)
 # ===================================================================
 
 class TestFinallyProtection:
@@ -650,7 +650,7 @@ class TestHttpxUnified:
 
 
 # ===================================================================
-# 七、Benchmark 兼容 (问题 4)
+# VII. Benchmark compatibility (Issue 4)
 # ===================================================================
 
 class TestAIMEDataConfig:
@@ -700,7 +700,7 @@ class TestAIMEDataConfig:
 
 
 # ===================================================================
-# 八、杂项修正 (问题 18, 25)
+# VIII. Miscellaneous fixes (Issues 18, 25)
 # ===================================================================
 
 class TestArtifactPath:
@@ -739,7 +739,7 @@ class TestReadmeRelativePath:
 
 
 # ===================================================================
-# 九、Sandbox 断连自动恢复 (zongze-3)
+# IX. Automatic recovery from sandbox disconnects (zongze-3)
 # ===================================================================
 
 class TestSandboxReconnect:
@@ -770,7 +770,7 @@ class TestSandboxReconnect:
 
 
 # ===================================================================
-# 十、ResultStore JSONL record 完整性
+# X. ResultStore JSONL record completeness
 # ===================================================================
 
 class TestRecordCompleteness:

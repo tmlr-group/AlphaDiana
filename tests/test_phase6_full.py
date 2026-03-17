@@ -1,20 +1,20 @@
-"""Phase 6: 全量 AIME 2024 评估并获取准确率
+"""Phase 6: run the full AIME 2024 evaluation and obtain accuracy
 
-验证点:
-- 30 道题全部完成（completed=30, failed=0）
-- 结果写入 JSONL 文件
-- 生成 RunSummary，包含 accuracy, mean_score, total_tokens
-- 能输出 markdown 报告
-- 准确率指标合理（AIME 答案为 0-999 的整数）
+Checks:
+- All 30 problems complete (completed=30, failed=0)
+- Results are written to a JSONL file
+- A RunSummary is generated with accuracy, mean_score, and total_tokens
+- A markdown report can be produced
+- The accuracy metric is reasonable (AIME answers are integers from 0 to 999)
 
-需要:
-  - OpenClaw gateway 可用 (Phase 4)
-  - OPENCLAW_SANDBOX_ID 环境变量
+Requires:
+  - OpenClaw gateway available (Phase 4)
+  - OPENCLAW_SANDBOX_ID environment variable
 
-也可以直接用 CLI:
+You can also run it directly with the CLI:
   alphadiana run configs/examples/openclaw_aime2024.yaml
 
-用 pytest -m integration 运行这些测试。
+Run these tests with pytest -m integration.
 """
 import os
 from pathlib import Path
@@ -41,11 +41,11 @@ def _get_openclaw_api_base() -> str:
     reason="OPENCLAW_SANDBOX_ID not set."
 )
 class TestFullAIME2024Evaluation:
-    """全量 AIME 2024 评估。"""
+    """Run the full AIME 2024 evaluation."""
 
     @pytest.fixture(scope="class")
     def run_result(self, tmp_path_factory):
-        """跑完整 AIME 2024 评估并返回 (summary, result_store, output_dir)。"""
+        """Run the full AIME 2024 evaluation and return (summary, result_store, output_dir)."""
         from alphadiana.config.experiment_config import ExperimentConfig
         from alphadiana.runner.runner import Runner
 
@@ -82,14 +82,14 @@ class TestFullAIME2024Evaluation:
         return summary, runner.result_store, output_dir
 
     def test_all_tasks_completed(self, run_result):
-        """30 道题全部完成（completed=30, failed=0）。"""
+        """All 30 problems complete (completed=30, failed=0)."""
         summary, _, _ = run_result
         assert summary.total_tasks == 30
         assert summary.completed == 30
         assert summary.failed == 0
 
     def test_accuracy_in_range(self, run_result):
-        """准确率在合理范围 (0.0 - 1.0)。"""
+        """Accuracy stays within a reasonable range (0.0 - 1.0)."""
         summary, _, _ = run_result
         assert 0.0 <= summary.accuracy <= 1.0
         print(f"\n=== AIME 2024 Results ===")
@@ -99,14 +99,14 @@ class TestFullAIME2024Evaluation:
         print(f"Total Tokens: {summary.total_tokens}")
 
     def test_jsonl_file_created(self, run_result):
-        """结果 JSONL 文件已创建且包含 30 条记录。"""
+        """The results JSONL file is created and contains 30 records."""
         _, store, _ = run_result
         assert Path(store.path).exists()
         results = store.load()
         assert len(results) == 30
 
     def test_each_result_has_fields(self, run_result):
-        """每条结果包含必要字段。"""
+        """Each result contains the required fields."""
         _, store, _ = run_result
         results = store.load()
         required_fields = [
@@ -118,7 +118,7 @@ class TestFullAIME2024Evaluation:
                 assert field in r, f"Missing field '{field}' in result {r.get('task_id')}"
 
     def test_answers_are_integers(self, run_result):
-        """预测的答案应为字符串（可能为空，当 OpenClaw 超时时）。"""
+        """Predicted answers should be strings, even if empty when OpenClaw times out."""
         _, store, _ = run_result
         results = store.load()
         for r in results:
@@ -126,7 +126,7 @@ class TestFullAIME2024Evaluation:
             assert isinstance(predicted, str), f"Prediction should be str for {r['task_id']}"
 
     def test_ground_truth_in_range(self, run_result):
-        """所有 ground_truth 为 0-999 的整数。"""
+        """All ground_truth values are integers between 0 and 999."""
         _, store, _ = run_result
         results = store.load()
         for r in results:
@@ -134,7 +134,7 @@ class TestFullAIME2024Evaluation:
             assert 0 <= gt <= 999, f"Ground truth {gt} out of range for {r['task_id']}"
 
     def test_summary_has_tokens(self, run_result):
-        """RunSummary 包含 total_tokens 统计。"""
+        """RunSummary includes total_tokens statistics."""
         summary, _, _ = run_result
         assert "prompt_tokens" in summary.total_tokens
         assert "completion_tokens" in summary.total_tokens
@@ -144,7 +144,7 @@ class TestFullAIME2024Evaluation:
         assert summary.total_tokens["completion_tokens"] >= 0
 
     def test_report_generation(self, run_result):
-        """能生成 markdown 报告。"""
+        """A markdown report can be generated."""
         from alphadiana.config.experiment_config import ExperimentConfig
         from alphadiana.results.report import ReportGenerator
 
@@ -167,7 +167,7 @@ class TestFullAIME2024Evaluation:
         print(f"\n{md}")
 
     def test_per_task_breakdown(self, run_result):
-        """打印每题得分明细。"""
+        """Print the per-problem scoring breakdown."""
         _, store, _ = run_result
         results = store.load()
 

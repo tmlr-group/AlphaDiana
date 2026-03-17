@@ -1,9 +1,9 @@
-"""OpenClaw 输出与日志（问题 3.1 ~ 3.3）
+"""OpenClaw output and logging (Problems 3.1 ~ 3.3)
 
-覆盖:
-- 3.1 System prompt 提取与持久化：AgentResponse.system_prompt、trajectory 提取、JSONL/artifact
-- 3.2 超时配置与错误分类：proxy_timeout、request_timeout、classify_error
-- 3.3 空响应诊断：错误分类、retry_responses artifact、错误分布统计
+Covers:
+- 3.1 System prompt extraction and persistence: AgentResponse.system_prompt, trajectory extraction, JSONL/artifact
+- 3.2 Timeout configuration and error classification: proxy_timeout, request_timeout, classify_error
+- 3.3 Empty response diagnostics: error classification, retry_responses artifact, error distribution stats
 """
 
 import json
@@ -20,12 +20,12 @@ from alphadiana.scorer.base import ScoreResult
 
 
 # ===================================================================
-# 3.1 System prompt 提取与持久化
+# 3.1 System prompt extraction and persistence
 # ===================================================================
 
 
 class TestSystemPromptField:
-    """AgentResponse 包含 system_prompt 字段。"""
+    """AgentResponse contains system_prompt field."""
 
     def test_field_exists_default_empty(self):
         resp = AgentResponse(answer="42")
@@ -40,7 +40,7 @@ class TestSystemPromptField:
 
 
 class TestExtractSystemPrompt:
-    """从 trajectory 中提取 system prompt。"""
+    """Extract system prompt from trajectory."""
 
     def test_from_system_role(self):
         from alphadiana.agent.openclaw import extract_system_prompt
@@ -71,7 +71,7 @@ class TestExtractSystemPrompt:
 
 
 class TestSystemPromptPersistence:
-    """system_prompt 写入 JSONL 和 artifact。"""
+    """system_prompt written to JSONL and artifact."""
 
     def test_saved_in_jsonl(self, tmp_path):
         store = ResultStore(output_dir=str(tmp_path), run_id="sp-test")
@@ -98,12 +98,12 @@ class TestSystemPromptPersistence:
 
 
 # ===================================================================
-# 3.2 超时配置与错误分类
+# 3.2 Timeout Configuration and Misclassification
 # ===================================================================
 
 
 class TestProxyTimeout:
-    """sandbox proxy_timeout 配置。"""
+    """sandbox proxy_timeout configuration."""
 
     def test_default_600(self):
         from alphadiana.sandbox.rock import ROCKSandbox
@@ -130,7 +130,7 @@ class TestProxyTimeout:
 
 
 class TestRequestTimeout:
-    """agent request_timeout 配置。"""
+    """agent request_timeout configuration."""
 
     def test_default_600(self):
         from alphadiana.agent.openclaw import OpenClawAgent
@@ -148,7 +148,7 @@ class TestRequestTimeout:
 
 
 class TestTimeoutErrorClassification:
-    """超时错误正确分类。"""
+    """Correct classification of timeout errors."""
 
     def test_httpx_timeout(self):
         from alphadiana.agent.openclaw import classify_error
@@ -178,12 +178,12 @@ class TestTimeoutErrorClassification:
 
 
 # ===================================================================
-# 3.3 空响应诊断
+# 3.3 Null Response Diagnostics
 # ===================================================================
 
 
 class TestEmptyResponseClassification:
-    """空响应错误分类。"""
+    """Empty response error classification."""
 
     def test_classify_gateway_error(self):
         from alphadiana.agent.openclaw import classify_error
@@ -200,7 +200,7 @@ class TestEmptyResponseClassification:
 
 
 class TestRetryResponseArtifact:
-    """retry_responses 保存到 artifact。"""
+    """retry_responses saved to artifact."""
 
     def test_saved_to_artifact(self, tmp_path):
         store = ResultStore(output_dir=str(tmp_path), run_id="retry")
@@ -253,7 +253,7 @@ class TestRetryResponseArtifact:
 
 
 class TestErrorDistribution:
-    """RunSummary 中的错误分布统计。"""
+    """Error distribution statistics in RunSummary."""
 
     def _cfg(self, run_id):
         return ExperimentConfig(

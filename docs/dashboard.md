@@ -1,54 +1,59 @@
-# AlphaDiana Dashboard 使用指南
+# AlphaDiana Dashboard User Guide
 
-Dashboard 是 AlphaDiana 的 Web 管理界面，提供以下能力：
+Dashboard is AlphaDiana’s web management interface, providing the following capabilities:
 
-- **浏览评估结果**：查看历史 run 的准确率、pass@k/avg@k、分类得分、耗时分布
-- **对比多个 run**：逐题并排对比，快速找到差异
-- **创建评估任务**：通过表单配置并启动 Direct LLM 或 OpenClaw 评估，实时查看进度和日志
-- **管理沙箱**：部署 OpenClaw 沙箱、查看网关状态与模型信息
+- **Browse evaluation results**: View the accuracy rate, pass@k/avg@k, classification score, and time-consuming distribution of historical runs
+- **Compare multiple runs**: Compare each question side by side to quickly find differences
+- **Create Assessment Task**: Configure and launch a Direct LLM or OpenClaw assessment through a form, view progress and logs in real time
+- **Manage Sandbox**: Deploy OpenClaw sandbox, view gateway status and model information
 
-## 目录
+## Contents
 
-- [前置条件](#前置条件)
-- [安装](#安装)
-- [启动](#启动)
-- [页面功能](#页面功能)
-  - [Runs（历史结果）](#runs历史结果)
-  - [Run Detail（单次详情）](#run-detail单次详情)
-  - [Compare（多 run 对比）](#compare多-run-对比)
-  - [Jobs（任务管理）](#jobs任务管理)
-  - [New Evaluation（新建评估）](#new-evaluation新建评估)
-- [API Key 配置](#api-key-配置)
-- [环境变量参考](#环境变量参考)
-- [常见问题](#常见问题)
+- [Preconditions](#preconditions)
+- [Install](#install)
+- [Start](#start)
+- [Page features](#page-features)
+  - [Runs](#runs-historical-results)
+  - [Run Detail](#run-detail-single-run)
+  - [Compare](#compare-multi-run-comparison)
+  - [Jobs](#jobs-task-management)
+  - [New Evaluation](#new-evaluation)
+- [API Key Configuration](#api-key-configuration)
+- [Environment Variable Reference](#environment-variable-reference)
+- [FAQ](#FAQ)
 
 ---
 
-## 前置条件
+## Preconditions
 
-Dashboard 运行在现有 AlphaDiana 环境之上。请先完成主 README 中的 Quick Start 或手动安装：
+Dashboard runs on top of the existing AlphaDiana environment. Please complete the Quick Start in the main README or install manually:
+
 
 ```bash
 conda activate alphadiana
-pip install -e '.[all]'   # 或 pip install -e '.[all,dev]'
+pip install -e '.[all]' # or pip install -e '.[all,dev]'
 ```
 
-Node.js >= 18（用于构建前端）。
+
+Node.js >= 18 (for building the frontend).
 
 ---
 
-## 安装
+## Installation
 
-### 1. 安装 Dashboard 依赖
+### 1. Install Dashboard dependencies
+
 
 ```bash
 conda activate alphadiana
 pip install -e '.[dashboard]'
 ```
 
-这会额外安装 `fastapi`、`uvicorn`、`httpx`。
 
-### 2. 构建前端
+This will additionally install `fastapi`, `uvicorn`, `httpx`.
+
+### 2. Build the frontend
+
 
 ```bash
 cd alphadiana/dashboard/frontend
@@ -57,141 +62,149 @@ npm run build
 cd ../../..
 ```
 
-> 每次修改前端代码后需重新 `npm run build`（开发模式除外，见下文）。
+
+> Re-run `npm run build` after modifying frontend code, except in development mode.
 
 ---
 
-## 启动
+## Start
 
-### 推荐方式：使用 run.sh
+### Recommended method: use run.sh
+
 
 ```bash
 conda activate alphadiana
-source dev/rock_env.sh       # 加载 ROCK 环境（沙箱功能需要）
-source dev/.rock_ports.env   # 加载动态端口
+source dev/rock_env.sh # Load the ROCK environment (required for sandbox features)
+source dev/.rock_ports.env # Load dynamic ports
 
 cd alphadiana/dashboard
-./run.sh          # 开发模式：前端热更新 + 后端自动重载
-./run.sh --prod   # 生产模式：前后端合并到同一端口
+./run.sh # Development mode: frontend hot reload + backend auto reload
+./run.sh --prod # Production mode: serve the frontend and backend on one port
 ```
 
-启动后：
-- 开发模式：浏览器访问 `http://localhost:5173`（Vite dev server，支持热更新）
-- 生产模式：浏览器访问 `http://localhost:8000`
 
-如果默认端口被占用，`run.sh` 会自动探测并切换到下一个可用端口，并在终端输出实际使用的端口。
+After startup:
+- Development mode: Browser access `http://localhost:5173` (Vite dev server, supports hot update)
+- Production mode: Browser access `http://localhost:8000`
 
-### 手动启动
+If the default port is occupied, `run.sh` will automatically detect and switch to the next available port, and output the actual port used in the terminal.
 
-如需分别控制前后端：
+### Manual start
+
+If you need to control the front and back ends separately:
+
 
 ```bash
-# 终端 1：启动后端
+# Terminal 1: Launch Backend
 conda activate alphadiana
 source dev/rock_env.sh
 uvicorn alphadiana.dashboard.backend.main:app --reload --port 8000
 
-# 终端 2：启动前端（开发模式）
+# Terminal 2: Launch Frontend (Dev Mode)
 cd alphadiana/dashboard/frontend
 VITE_BACKEND_PORT=8000 npm run dev
 ```
 
-### 仅使用后端（已构建前端）
+
+### Use the backend only (frontend already built)
+
 
 ```bash
 conda activate alphadiana
 uvicorn alphadiana.dashboard.backend.main:app --host 0.0.0.0 --port 8000
-# 浏览器访问 http://<host>:8000
+# Browser access http://<host>:8000
 ```
+
 
 ---
 
-## 页面功能
+## Page Features
 
-### Runs（历史结果）
+### Runs (historical results)
 
-列出 `results/` 目录下所有 `.jsonl` 文件对应的评估结果，支持：
+Lists the evaluation results corresponding to all `.jsonl` files in the `results/` directory, supporting:
 
-- 按时间、准确率排序
-- 搜索过滤（run ID、agent、benchmark）
-- 多选后进入 Compare 页面
-- 点击任意行进入 Run Detail
+- Sort by time and accuracy
+- Search and filter (run ID, agent, benchmark)
+- Enter the Compare page after multiple selections
+- Click on any row to enter Run Detail
 
-**多采样结果（num_samples > 1）** 会额外显示 pass@k 和 avg@k 指标。
+**Multiple sample results (num_samples > 1)** additionally display pass@k and avg@k metrics.
 
-### Run Detail（单次详情）
+### Run Detail (single run)
 
-单次评估的完整视图：
+Complete view of a single assessment:
 
-| 区块 | 内容 |
+| Block | Content |
 |------|------|
-| Summary | 总准确率、pass@k、avg@k、分类得分、token 用量 |
-| Score Matrix | 每道题每个 sample 的对错矩阵（多采样时自动展示） |
-| Time Chart | 各任务耗时分布（直方图） |
-| Token Chart | 各任务 token 用量分布 |
-| Config | 对应的 YAML 配置（由 Dashboard 自动保存到 `configs/`） |
-| Results Table | 每道题的得分、答案、是否正确，点击展开 Trajectory 查看完整推理轨迹 |
+| Summary | Total accuracy, pass@k, avg@k, classification score, token usage |
+| Score Matrix | True or false matrix for each sample of each question (automatically displayed when multiple samples are taken) |
+| Time Chart | Time-consuming distribution of each task (histogram) |
+| Token Chart | Token usage distribution for each task |
+| Config | Corresponding YAML configuration (automatically saved to `configs/` by Dashboard) |
+| Results Table | For the score, answer, and correctness of each question, click to expand Trajectory to view the complete reasoning track |
 
-### Compare（多 run 对比）
+### Compare (multi-run comparison)
 
-从 Runs 列表勾选 2 个或更多 run，点击 **Compare** 进入对比页。
+Check 2 or more runs from the Runs list and click **Compare** to enter the comparison page.
 
-- 并排显示各 run 的 summary 指标
-- 按题目逐行对比：每道题在各 run 中的答案和对错情况一目了然
-- 适合对比同 benchmark 下不同 agent、不同模型的表现
+- Display summary indicators of each run side by side
+- Line-by-line comparison by topic: the answers and correct or incorrect status of each question in each run are clear at a glance
+- Suitable for comparing the performance of different agents and different models under the same benchmark
 
-### Jobs（任务管理）
+### Jobs (task management)
 
-查看所有已创建的评估任务：
+View all created assessment tasks:
 
-- **进度条**：实时显示已完成 / 总任务数
-- **实时准确率**：随任务完成动态更新
-- **日志抽屉**：点击任意任务可展开查看实时日志（多任务并发时日志互不干扰）
-- **取消**：对运行中的任务点击 Cancel 可标记为取消
+- **Progress Bar**: Real-time display of completed/total number of tasks
+- **Real-time accuracy**: dynamically updated as tasks are completed
+- **Log Drawer**: Click on any task to expand and view real-time logs (logs do not interfere with each other when multiple tasks are concurrent)
+- **Cancel**: Click Cancel on a running task to mark it as canceled.
 
-> 注意：任务状态仅保存在内存中，重启后端后历史任务记录会清空，但 `results/` 中的 JSONL 文件不受影响。
+> Note: The task status is only saved in memory. The historical task records will be cleared after restarting the backend, but the JSONL file in `results/` will not be affected.
 
-### New Evaluation（新建评估）
+### New Evaluation
 
-通过表单配置并提交评估任务，支持两种 agent：
+Configure and submit assessment tasks through forms, supporting two types of agents:
 
 #### Direct LLM
 
-适合快速基线测试，不需要 ROCK 沙箱。
+Good for quick baseline testing, no ROCK sandbox required.
 
-| 字段 | 说明 |
+| Field | Description |
 |------|------|
-| Benchmark | 选择预置 benchmark 或自定义（AIME 2024/2025、MATH 等） |
-| Model | OpenAI 兼容 API 的模型名（如 `Qwen3-8B`） |
-| API Base URL | 模型服务地址（如 `http://localhost:8000/v1`） |
-| API Key | 直接粘贴，或输入 `$变量名` 引用 `.env` 中的 key |
-| Max Concurrent | 并发任务数 |
-| Num Samples | 每题采样次数（>1 时自动计算 pass@k/avg@k） |
+| Benchmark | Choose preset benchmark or customize (AIME 2024/2025, MATH, etc.) |
+| Model | OpenAI API-compatible model name (such as `Qwen3-8B`) |
+| API Base URL | Model service address (such as `http://localhost:8000/v1`) |
+| API Key | Paste directly, or enter `$VARIABLE_NAME` to reference the key in `.env` |
+| Max Concurrent | Number of concurrent tasks |
+| Num Samples | Number of samples for each question (automatically calculated when >1 pass@k/avg@k) |
 
-#### OpenClaw（需要 ROCK 沙箱）
+#### OpenClaw (requires ROCK sandbox)
 
-提供两种操作：
+Two operations are provided:
 
-**使用已有沙箱**：从 Sandbox 下拉框选择已部署的 OpenClaw 实例，可查看网关状态和已加载的模型信息，直接提交评估。
+**Use an existing sandbox**: Select the deployed OpenClaw instance from the Sandbox drop-down box to view the gateway status and loaded model information, and directly submit for evaluation.
 
-**部署并运行（Deploy & Run）**：同时填写模型 API 配置和评估配置，提交后 Dashboard 会：
-1. 后台启动沙箱部署（等待约 5–10 分钟，含 npm install）
-2. 自动探测网关健康状态
-3. 部署完成后自动开始评估
+**Deploy & Run**: Fill in the model API configuration and evaluation configuration at the same time. After submission, the Dashboard will:
+1. Start sandbox deployment in the background (allow about 5-10 minutes, including `npm install`)
+2. Automatically detect the health status of the gateway
+3. Automatically start evaluation after deployment is complete
 
-整个流程在 Jobs 页面可以全程监控。
+The entire process can be monitored on the Jobs page.
 
 ---
 
-## API Key 配置
+## API Key configuration
 
-API Key 输入框支持两种模式：
+The API Key input box supports two modes:
 
-**直接粘贴**：在输入框中粘贴完整 key。
+**Paste directly**: Paste the complete key in the input box.
 
-**引用环境变量**：输入 `$变量名`（如 `$OPENROUTER_API_KEY`），后端会从项目根目录的 `.env` 文件或系统环境变量中读取实际值，key 不会在 API 响应中暴露。
+**Referencing environment variables**: Enter `$VARIABLE_NAME` (such as `$OPENROUTER_API_KEY`), and the backend will read the actual value from the `.env` file in the project root directory or from a system environment variable. The key will not be exposed in the API response.
 
-在项目根目录创建 `.env` 文件：
+Create the `.env` file in the project root directory:
+
 
 ```bash
 cat > .env <<'EOF'
@@ -203,9 +216,10 @@ DEEPSEEK_API_KEY="sk-xxxxxxxx"
 EOF
 ```
 
-输入 API Base URL 时，Dashboard 会根据域名自动匹配并填入对应变量名：
 
-| API Base URL | 自动匹配变量 |
+When entering the API Base URL, Dashboard will automatically match and fill in the corresponding variable name based on the domain name:
+
+| API Base URL | Automatch variables |
 |---|---|
 | `https://openrouter.ai/api/v1/` | `$OPENROUTER_API_KEY` |
 | `https://api.openai.com/v1/` | `$OPENAI_API_KEY` |
@@ -215,47 +229,51 @@ EOF
 
 ---
 
-## 环境变量参考
+## Environment Variable Reference
 
-| 变量 | 默认值 | 说明 |
+| Variable | Default | Description |
 |------|--------|------|
-| `ALPHADIANA_RESULTS_DIR` | `./results` | 存放 `.jsonl` 结果文件的目录 |
-| `ALPHADIANA_CONFIGS_DIR` | `./configs` | 存放 `.yaml` 配置文件的目录（Dashboard 自动写入） |
-| `ALPHADIANA_BACKEND_PORT` | `8000` | 后端首选端口（被占用时自动递增） |
-| `ALPHADIANA_FRONTEND_PORT` | `5173` | 前端首选端口（被占用时自动递增） |
-| `ROCK_BASE_URL` | 自动探测 | ROCK admin URL，通常由 `dev/rock_env.sh` 注入 |
-| `ROCK_PROXY_URL` | 自动探测 | ROCK proxy URL，通常由 `dev/rock_env.sh` 注入 |
-| `HF_ENDPOINT` | `https://hf-mirror.com` | HuggingFace 镜像站（未设置时自动使用） |
+| `ALPHADIANA_RESULTS_DIR` | `./results` | Directory to store `.jsonl` result files |
+| `ALPHADIANA_CONFIGS_DIR` | `./configs` | Directory to store the `.yaml` configuration file (automatically written by Dashboard) |
+| `ALPHADIANA_BACKEND_PORT` | `8000` | Backend preferred port (automatically incremented when occupied) |
+| `ALPHADIANA_FRONTEND_PORT` | `5173` | Front-end preferred port (automatically incremented when occupied) |
+| `ROCK_BASE_URL` | Automatic detection | ROCK admin URL, usually injected by `dev/rock_env.sh` |
+| `ROCK_PROXY_URL` | Automatic detection | ROCK proxy URL, usually injected by `dev/rock_env.sh` |
+| `HF_ENDPOINT` | `https://hf-mirror.com` | HuggingFace mirror site (automatically used when not set) |
 
-端口变量由 `run.sh` 自动处理，通常无需手动设置。
+Port variables are automatically handled by `run.sh` and usually do not need to be set manually.
 
 ---
 
-## 常见问题
+## FAQ
 
-**Q: 启动时报 `ModuleNotFoundError: No module named 'fastapi'`**
+**Q: Startup shows `ModuleNotFoundError: No module named 'fastapi'`**
+
 
 ```bash
 pip install -e '.[dashboard]'
 ```
 
-**Q: 前端打不开 / 提示 "Cannot connect to backend"**
 
-确认后端已启动，且 `VITE_BACKEND_PORT` 与后端实际端口一致：
+**Q: The frontend cannot be opened, or it shows "Cannot connect to backend"**
+
+Confirm that the backend is started and `VITE_BACKEND_PORT` is consistent with the actual port of the backend:
+
 
 ```bash
-# 开发模式：用 run.sh 启动会自动同步端口
+# Development Mode: Starting with run.sh will automatically sync the ports
 cd alphadiana/dashboard && ./run.sh
 ```
 
-**Q: Jobs 页面日志乱序或混淆**
 
-Dashboard 使用 `contextvars` 隔离并发任务的日志，Python 3.12+ 时 ThreadPoolExecutor 子线程也会正确继承上下文。如果运行 Python 3.10/3.11，并发任务日志可能有轻微混叠，但不影响结果文件。
+**Q: Jobs page logs are out of order or confused**
 
-**Q: 沙箱相关功能不可用（灰色）**
+Dashboard uses `contextvars` to isolate the logs of concurrent tasks. In Python 3.12+, ThreadPoolExecutor child threads will also inherit the context correctly. If running Python 3.10/3.11, there may be slight aliasing in the concurrent task logs, but this does not affect the result files.
 
-ROCK 服务未运行，或 `dev/rock_env.sh` 未 source。不依赖沙箱的功能（浏览结果、Direct LLM 评估）仍然可用。
+**Q: Sandbox related functions are not available (gray)**
 
-**Q: Run Detail 页面的 Config 区域显示空白**
+The ROCK service is not running, or `dev/rock_env.sh` is not sourced. Sandbox-independent functionality (browse results, Direct LLM evaluation) is still available.
 
-Config 由 Dashboard 在创建任务时自动保存到 `configs/<run_id>.yaml`。通过命令行 `alphadiana run` 启动的任务不会自动生成此文件，需手动将配置文件复制到 `configs/` 目录。
+**Q: The Config area of the Run Detail page is blank**
+
+Config is automatically saved to `configs/<run_id>.yaml` by Dashboard when creating a task. Tasks started through the command line `alphadiana run` will not automatically generate this file. You need to manually copy the configuration file to the `configs/` directory.
