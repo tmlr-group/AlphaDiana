@@ -10,6 +10,10 @@ import os
 # ---------------------------------------------------------------------------
 DEFAULT_SANDBOX_IMAGE: str = os.environ.get("OPENCLAW_IMAGE", "python:3.11")
 
+# Pre-built image that ships with Node.js + openclaw already installed.
+# Used as the first-try image in dashboard deploys (fallback: DEFAULT_SANDBOX_IMAGE).
+PREBUILT_SANDBOX_IMAGE: str = "ghcr.io/tsrigo/openclaw-sandbox:2026.3.7"
+
 # Full npm install command (used when running on a bare python:3.11 image).
 OPENCLAW_NPM_INSTALL_CMD = "npm install -g openclaw@2026.3.7 --omit=optional"
 

@@ -134,22 +134,10 @@ source dev/.rock_ports.env
 
 ### Faster OpenClaw Deploys with a Pre-built Image
 
-By default, each OpenClaw sandbox deploy downloads Node.js and installs `openclaw`,
-which can take 10-20 minutes. To reduce deploy time to about 1 minute, pull the
-pre-built sandbox image once and set `OPENCLAW_IMAGE` before deploying:
+The dashboard automatically tries the pre-built image first (Node.js + openclaw pre-installed, ~1 min deploy) and falls back to `python:3.11` (requires npm install, ~15 min) if the image is not cached locally. Pull it once to enable the fast path:
 
 ```bash
 docker pull ghcr.io/tsrigo/openclaw-sandbox:2026.3.7
-export OPENCLAW_IMAGE=ghcr.io/tsrigo/openclaw-sandbox:2026.3.7
-```
-
-This applies automatically to all deploy paths, including `python -m openclaw_deploy.deploy`,
-the Dashboard's "Deploy Only" / "Deploy & Run", and the helper scripts under `dev/`.
-
-To switch back to the default `python:3.11` sandbox image:
-
-```bash
-unset OPENCLAW_IMAGE
 ```
 
 ### 3. Deploy OpenClaw Agent

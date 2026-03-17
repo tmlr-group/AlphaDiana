@@ -17,8 +17,10 @@ import httpx
 from alphadiana.utils.rock_ports import resolve_rock_ports_from_env
 from alphadiana.utils.rock_runtime import (
     DEFAULT_SANDBOX_IMAGE,
+    PREBUILT_SANDBOX_IMAGE,
     configure_rock_runtime_for_image,
     get_custom_install_cmd,
+    is_prebuilt_image,
 )
 
 logger = logging.getLogger(__name__)
@@ -474,14 +476,15 @@ class SandboxManager:
         auto_clear_seconds: int,
         log,
     ) -> None:
+        import sys
         import tempfile
+        import time
 
         import yaml
         from rock.sdk.sandbox.client import Sandbox
         from rock.sdk.sandbox.config import SandboxConfig
 
         # Clear cached ROCK URLs to re-probe the correct admin/proxy pair.
-        # This prevents stale cache from directing deploys to wrong clusters.
         global _resolved_rock_urls
         _resolved_rock_urls = None
 
@@ -490,56 +493,43 @@ class SandboxManager:
         with self._lock:
             job = self._deploy_jobs[deploy_id]
 
-        # Resolve agent config
-        if agent_config_path:
-            config_file = Path(agent_config_path)
-            if not config_file.is_absolute():
-                for candidate in [PROJECT_ROOT / config_file, DEPLOY_DIR / config_file]:
-                    if candidate.exists():
-                        config_file = candidate
-                        break
-        else:
-            # Generate agent config from model parameters.
-            # Use DEPLOY_DIR as working_dir so that openclaw.json is uploaded to sandbox.
-            deploy_dir_abs = str(DEPLOY_DIR)
+        # run_cmd: use ${bin_dir} placeholder so openclaw is on PATH in both image types.
+        _run_cmd = (
+            "export PATH=${bin_dir}:$PATH && "
+            "OPENCLAW_CONFIG_PATH=${working_dir}/openclaw.json "
+            "nohup openclaw gateway >> /root/gateway.log 2>&1 &"
+        )
 
-            # Use --omit=optional to skip git-based optional deps (libsignal-node)
-            # that fail in sandboxes without GitHub network access.
-            custom_install_cmd = get_custom_install_cmd(DEFAULT_SANDBOX_IMAGE)
+        def _make_config(image: str) -> Path:
+            """Build a temporary agent config YAML for *image*, validating model params."""
+            if agent_config_path:
+                p = Path(agent_config_path)
+                if not p.is_absolute():
+                    for candidate in [PROJECT_ROOT / p, DEPLOY_DIR / p]:
+                        if candidate.exists():
+                            p = candidate
+                            break
+                return p
 
-            # run_cmd: use ${bin_dir} placeholder (replaced by ROCK SDK with
-            # the node runtime bin directory) to ensure openclaw is on PATH.
-            run_cmd = (
-                "export PATH=${bin_dir}:$PATH && "
-                "OPENCLAW_CONFIG_PATH=${working_dir}/openclaw.json "
-                "nohup openclaw gateway >> /root/gateway.log 2>&1 &"
-            )
-
-            from alphadiana.utils.rock_runtime import is_prebuilt_image
             template_name = (
                 "rock_agent_config.prebuilt.yaml"
-                if is_prebuilt_image(DEFAULT_SANDBOX_IMAGE)
+                if is_prebuilt_image(image)
                 else "rock_agent_config.yaml"
             )
             template_path = DEPLOY_DIR / template_name
-            if template_path.exists():
-                with open(template_path) as f:
-                    config_data = yaml.safe_load(f)
-            else:
-                config_data = {}
+            config_data = yaml.safe_load(template_path.read_text()) if template_path.exists() else {}
 
-            # Always override critical fields to ensure correctness
-            config_data["working_dir"] = deploy_dir_abs
-            config_data["run_cmd"] = run_cmd
+            config_data["working_dir"] = str(DEPLOY_DIR)
+            config_data["run_cmd"] = _run_cmd
             config_data.setdefault("runtime_env_config", {})
+            install_timeout = 120 if is_prebuilt_image(image) else 1200
             config_data["runtime_env_config"].update({
                 "type": "node",
                 "npm_registry": "https://registry.npmmirror.com",
-                "custom_install_cmd": custom_install_cmd,
-                "install_timeout": 1200,
+                "custom_install_cmd": get_custom_install_cmd(image),
+                "install_timeout": install_timeout,
             })
 
-            # Override env with user-provided model parameters
             env = config_data.setdefault("env", {})
             if model_api_base:
                 env["OPENAI_BASE_URL"] = model_api_base
@@ -549,7 +539,6 @@ class SandboxManager:
                 env["OPENAI_MODEL_NAME"] = model_name
             env.setdefault("OPENCLAW_GATEWAY_TOKEN", "OPENCLAW")
 
-            # Validate that required model parameters are resolved
             import re as _re
             for _key in ("OPENAI_BASE_URL", "OPENAI_API_KEY", "OPENAI_MODEL_NAME"):
                 _val = str(env.get(_key, ""))
@@ -565,15 +554,13 @@ class SandboxManager:
             )
             yaml.safe_dump(config_data, tmp)
             tmp.close()
-            config_file = Path(tmp.name)
+            return Path(tmp.name)
 
-        configure_rock_runtime_for_image(DEFAULT_SANDBOX_IMAGE)
+        # Validate model params early (fast-fail before any sandbox creation).
+        _make_config(DEFAULT_SANDBOX_IMAGE)
 
-        log(f"Using agent config: {config_file}")
         log(f"ROCK base_url: {base_url}")
         log(f"ROCK proxy_url: {proxy_url}")
-
-        # Preflight checks
         log("Running preflight checks...")
 
         # Check ROCK admin reachability
@@ -588,7 +575,6 @@ class SandboxManager:
                     "Ensure ROCK admin is running and ROCK_BASE_URL / ROCK_ADMIN_PORT are correct."
                 ) from exc
 
-            # Check ROCK proxy reachability
             proxy_root = proxy_url.removesuffix("/apis/envs/sandbox/v1")
             try:
                 resp = await client.get(proxy_root)
@@ -615,7 +601,6 @@ class SandboxManager:
         # Ensure ROCK .venv symlink
         rock_root = PROJECT_ROOT / "ref" / "ROCK"
         venv_link = rock_root / ".venv"
-        import sys
         expected_target = Path(sys.prefix).resolve()
         if venv_link.exists() or venv_link.is_symlink():
             if venv_link.is_symlink() and venv_link.resolve() != expected_target:
@@ -627,50 +612,111 @@ class SandboxManager:
             venv_link.symlink_to(expected_target, target_is_directory=True)
         log("Preflight checks passed.")
 
-        # Create sandbox
-        log("Creating sandbox...")
-        config = SandboxConfig(
-            base_url=base_url,
-            image=DEFAULT_SANDBOX_IMAGE,
-            memory="4g",
-            cpus=1,
-            auto_clear_seconds=auto_clear_seconds,
-            startup_timeout=180,
-        )
-        sandbox = Sandbox(config)
+        # ------------------------------------------------------------------
+        # Sandbox creation: try prebuilt image first, fall back to configured image.
+        # This is transparent to the user; progress is reflected only in logs.
+        # ------------------------------------------------------------------
+        import subprocess as _subprocess
 
-        try:
-            await sandbox.start()
-        except Exception as exc:
-            raise RuntimeError(f"Failed to create sandbox: {exc}") from exc
+        def _image_available_locally(image: str) -> bool:
+            """Return True if *image* is already present in the local Docker cache."""
+            try:
+                r = _subprocess.run(
+                    ["docker", "image", "inspect", image],
+                    capture_output=True, timeout=5,
+                )
+                return r.returncode == 0
+            except Exception:
+                return False
+
+        sandbox: Sandbox | None = None
+        active_image = DEFAULT_SANDBOX_IMAGE
+
+        if not is_prebuilt_image(DEFAULT_SANDBOX_IMAGE):
+            if not _image_available_locally(PREBUILT_SANDBOX_IMAGE):
+                log(f"Prebuilt image not in local Docker cache, skipping (run 'docker pull {PREBUILT_SANDBOX_IMAGE}' to enable).")
+                configure_rock_runtime_for_image(DEFAULT_SANDBOX_IMAGE)
+            else:
+                configure_rock_runtime_for_image(PREBUILT_SANDBOX_IMAGE)
+                log(f"Trying prebuilt image ({PREBUILT_SANDBOX_IMAGE}) for faster startup...")
+                try:
+                    _pb_config = SandboxConfig(
+                        base_url=base_url,
+                        image=PREBUILT_SANDBOX_IMAGE,
+                        memory="4g",
+                        cpus=1,
+                        auto_clear_seconds=auto_clear_seconds,
+                        startup_timeout=180,
+                    )
+                    _pb_sb = Sandbox(_pb_config)
+                    await _pb_sb.start()
+                    _pb_sb.url = proxy_url
+
+                    _pb_deadline = time.monotonic() + 180
+                    while time.monotonic() < _pb_deadline:
+                        try:
+                            _pb_status = await _pb_sb.get_status()
+                            if getattr(_pb_status, "is_alive", False):
+                                sandbox = _pb_sb
+                                active_image = PREBUILT_SANDBOX_IMAGE
+                                log(f"Prebuilt sandbox ready: {_pb_sb.sandbox_id}")
+                                break
+                            log(f"  [prebuilt] Waiting... (status={_pb_status.status})")
+                        except Exception as _exc:
+                            log(f"  [prebuilt] Status check: {_exc}")
+                        await asyncio.sleep(3)
+
+                    if sandbox is None:
+                        log("Prebuilt sandbox did not become ready within 180s, falling back to standard image...")
+                        configure_rock_runtime_for_image(DEFAULT_SANDBOX_IMAGE)
+                except Exception as exc:
+                    log(f"Prebuilt image failed ({exc}), falling back to standard image ({DEFAULT_SANDBOX_IMAGE})...")
+                    configure_rock_runtime_for_image(DEFAULT_SANDBOX_IMAGE)
+        else:
+            configure_rock_runtime_for_image(DEFAULT_SANDBOX_IMAGE)
+
+        if sandbox is None:
+            log(f"Creating sandbox ({DEFAULT_SANDBOX_IMAGE})...")
+            _std_config = SandboxConfig(
+                base_url=base_url,
+                image=DEFAULT_SANDBOX_IMAGE,
+                memory="4g",
+                cpus=1,
+                auto_clear_seconds=auto_clear_seconds,
+                startup_timeout=180,
+            )
+            sandbox = Sandbox(_std_config)
+            try:
+                await sandbox.start()
+            except Exception as exc:
+                raise RuntimeError(f"Failed to create sandbox: {exc}") from exc
+            sandbox.url = proxy_url
+
+            log("Waiting for sandbox to be ready...")
+            deadline = time.monotonic() + 180
+            while time.monotonic() < deadline:
+                try:
+                    status = await sandbox.get_status()
+                    if getattr(status, "is_alive", False):
+                        log(f"Sandbox is running (status={status.status})")
+                        break
+                    log(f"  Waiting... (status={status.status})")
+                except Exception as exc:
+                    log(f"  Status check: {exc}")
+                await asyncio.sleep(3)
+            else:
+                raise RuntimeError("Sandbox did not reach running state within 180s")
 
         sandbox_id = sandbox.sandbox_id
-        log(f"Sandbox created: {sandbox_id}")
-
         with self._lock:
             job.sandbox_id = sandbox_id
 
-        # Wait for sandbox readiness
-        log("Waiting for sandbox to be ready...")
-        import time
-        deadline = time.monotonic() + 180
-        while time.monotonic() < deadline:
-            try:
-                status = await sandbox.get_status()
-                if getattr(status, "is_alive", False):
-                    log(f"Sandbox is running (status={status.status})")
-                    break
-                log(f"  Waiting... (status={status.status})")
-            except Exception as exc:
-                log(f"  Status check: {exc}")
-            await asyncio.sleep(3)
-        else:
-            raise RuntimeError("Sandbox did not reach running state within 180s")
-
-        sandbox.url = proxy_url
+        # Build agent config for the image that was actually used
+        config_file = _make_config(active_image)
+        log(f"Using agent config: {config_file} (image: {active_image})")
 
         # Install agent
-        log(f"Installing OpenClaw agent...")
+        log("Installing OpenClaw agent...")
         try:
             await sandbox.agent.install(config=str(config_file))
             log("Agent installed successfully")
@@ -687,18 +733,16 @@ class SandboxManager:
 
         api_base = f"{proxy_url}/sandboxes/{sandbox_id}/proxy/v1"
 
-        # Wait for OpenClaw gateway to be actually ready.
-        # The agent.install() and agent.run() return before the actual npm install
-        # and gateway startup complete, so we must probe until the gateway responds.
-        log("Waiting for OpenClaw gateway to be ready (this may take several minutes for npm install)...")
-        import time
-        gw_deadline = time.monotonic() + 900  # 15 min — npm install can be very slow
+        # Wait for OpenClaw gateway to be ready.
+        # Prebuilt images skip npm install so the gateway starts much faster.
+        gw_timeout = 300 if is_prebuilt_image(active_image) else 900
+        log(f"Waiting for OpenClaw gateway to be ready (timeout: {gw_timeout}s)...")
+        gw_deadline = time.monotonic() + gw_timeout
         gateway_ready = False
         last_log_time = 0.0
         async with httpx.AsyncClient(timeout=10.0) as client:
             while time.monotonic() < gw_deadline:
                 try:
-                    # Try a lightweight chat completions request
                     resp = await client.post(
                         f"{api_base}/chat/completions",
                         headers={
@@ -738,11 +782,11 @@ class SandboxManager:
 
         if not gateway_ready:
             raise RuntimeError(
-                "OpenClaw gateway did not become ready within 15 minutes. "
+                f"OpenClaw gateway did not become ready within {gw_timeout}s. "
                 "Check sandbox logs for npm install or gateway startup errors."
             )
 
-        log(f"Deploy complete!")
+        log("Deploy complete!")
         log(f"Sandbox ID: {sandbox_id}")
         log(f"API base: {api_base}")
         log(f"Auto-clear: {auto_clear_seconds}s ({auto_clear_seconds // 60} min)")
