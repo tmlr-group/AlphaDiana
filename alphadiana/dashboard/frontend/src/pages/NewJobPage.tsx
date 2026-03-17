@@ -75,6 +75,20 @@ interface BenchmarkPreset {
 }
 
 const BENCHMARK_PRESETS: BenchmarkPreset[] = [
+  // --- AIME ---
+  {
+    value: 'aime2026',
+    label: 'AIME 2026',
+    description: 'AIME 2026 Full (30 problems)',
+    benchmarkName: 'aime',
+    defaultScorer: 'numeric',
+    benchmarkConfig: {
+      dataset: 'MathArena/aime_2026',
+      split: 'train',
+      problem_field: 'problem',
+      answer_field: 'answer',
+    },
+  },
   {
     value: 'aime2025',
     label: 'AIME 2025',
@@ -91,11 +105,90 @@ const BENCHMARK_PRESETS: BenchmarkPreset[] = [
   {
     value: 'aime2024',
     label: 'AIME 2024',
-    description: 'AIME 2024 (HuggingFaceH4)',
+    description: 'AIME 2024 Full (30 problems, I + II)',
     benchmarkName: 'aime',
     defaultScorer: 'numeric',
     benchmarkConfig: {
       dataset: 'HuggingFaceH4/aime_2024',
+      split: 'train',
+      problem_field: 'problem',
+      answer_field: 'answer',
+    },
+  },
+  // --- Other competitions ---
+  {
+    value: 'hmmt_feb_2026',
+    label: 'HMMT Feb 2026',
+    description: 'Harvard-MIT Math Tournament February 2026 (33 problems)',
+    benchmarkName: 'aime',
+    defaultScorer: 'math_verify',
+    benchmarkConfig: {
+      dataset: 'MathArena/hmmt_feb_2026',
+      split: 'train',
+      problem_field: 'problem',
+      answer_field: 'answer',
+    },
+  },
+  {
+    value: 'hmmt_nov_2025',
+    label: 'HMMT Nov 2025',
+    description: 'Harvard-MIT Math Tournament November 2025 (30 problems)',
+    benchmarkName: 'aime',
+    defaultScorer: 'math_verify',
+    benchmarkConfig: {
+      dataset: 'MathArena/hmmt_nov_2025',
+      split: 'train',
+      problem_field: 'problem',
+      answer_field: 'answer',
+    },
+  },
+  {
+    value: 'hmmt_feb_2025',
+    label: 'HMMT Feb 2025',
+    description: 'Harvard-MIT Math Tournament February 2025 (30 problems)',
+    benchmarkName: 'aime',
+    defaultScorer: 'math_verify',
+    benchmarkConfig: {
+      dataset: 'MathArena/hmmt_feb_2025',
+      split: 'train',
+      problem_field: 'problem',
+      answer_field: 'answer',
+    },
+  },
+  {
+    value: 'smt2025',
+    label: 'SMT 2025',
+    description: 'Stanford Math Tournament 2025 (53 problems)',
+    benchmarkName: 'aime',
+    defaultScorer: 'math_verify',
+    benchmarkConfig: {
+      dataset: 'MathArena/smt_2025',
+      split: 'train',
+      problem_field: 'problem',
+      answer_field: 'answer',
+    },
+  },
+  {
+    value: 'cmimc2025',
+    label: 'CMIMC 2025',
+    description: 'Carnegie Mellon Informatics & Math Competition 2025 (40 problems)',
+    benchmarkName: 'aime',
+    defaultScorer: 'math_verify',
+    benchmarkConfig: {
+      dataset: 'MathArena/cmimc_2025',
+      split: 'train',
+      problem_field: 'problem',
+      answer_field: 'answer',
+    },
+  },
+  {
+    value: 'brumo2025',
+    label: 'BRUMO 2025',
+    description: 'Bulgarian Math Olympiad 2025 (30 problems)',
+    benchmarkName: 'aime',
+    defaultScorer: 'math_verify',
+    benchmarkConfig: {
+      dataset: 'MathArena/brumo_2025',
       split: 'train',
       problem_field: 'problem',
       answer_field: 'answer',
@@ -137,6 +230,7 @@ const BENCHMARK_PRESETS: BenchmarkPreset[] = [
 
 const SCORERS = [
   { value: 'numeric', label: 'Numeric', description: 'Compare numeric values with tolerance' },
+  { value: 'math_verify', label: 'Math Verify', description: 'Symbolic equivalence via SymPy (handles LaTeX, fractions, expressions)' },
   { value: 'exact_match', label: 'Exact Match', description: 'Math-aware string comparison' },
   { value: 'llm_judge', label: 'LLM Judge', description: 'Use LLM to evaluate correctness' },
 ];
