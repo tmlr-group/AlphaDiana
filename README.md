@@ -176,6 +176,7 @@ If you used `bash dev/quickstart.sh`, this should already be done. For manual se
 confirm the following from the repo root:
 
 ```bash
+docker start "$ROCK_REDIS_CONTAINER" || docker run -d --name "$ROCK_REDIS_CONTAINER" -p 6379:6379 redis/redis-stack-server:latest
 curl http://127.0.0.1:$ROCK_ADMIN_PORT/
 curl http://127.0.0.1:$ROCK_PROXY_PORT/
 ray status
@@ -185,6 +186,9 @@ Expected result:
 
 - both `curl` commands return `{"message":"hello, ROCK!"}`
 - `ray status` shows one active node and no recent failures
+
+If `ray start` fails with `Address already in use`, your current `dev/.rock_ports.env`
+is stale for this machine. Regenerate ports via the setup helper before continuing.
 
 #### When using vLLM
 
@@ -244,6 +248,9 @@ curl -X POST \
   -H "Content-Type: application/json" \
   -d '{"model":"openclaw","messages":[{"role":"user","content":"What is 2+3?"}],"temperature":0.0,"max_tokens":128}'
 ```
+
+If deploy succeeds but this proxy request fails, the issue is in the ROCK proxy path,
+not necessarily in sandbox creation or the OpenClaw gateway itself.
 
 ### 4. Run Evaluation
 Before running the evaluation, fill in the `api_base` field in `openclaw.yaml`
@@ -432,7 +439,9 @@ Common issues at a glance:
 | Issue | Cause | Fix |
 |---|---|---|
 | `permission denied` on Docker socket | Current shell lacks `docker` group | Run `newgrp docker` or re-login |
-| `deploy.py` sandbox timeout | ROCK/Ray not healthy, sandbox memory too high, or Ray `runtime_env` dependency install failed | Check `curl http://127.0.0.1:$ROCK_ADMIN_PORT/`, `curl http://127.0.0.1:$ROCK_PROXY_PORT/`, `ray status`, retry with `--memory 3g`, then inspect `/tmp/kai-ray/session_latest/logs/runtime_env_setup-*.log` |
+| `deploy.py` sandbox timeout | Redis not running, ROCK/Ray not healthy, sandbox memory too high, or Ray `runtime_env` dependency install failed | Start Redis, check `curl http://127.0.0.1:$ROCK_ADMIN_PORT/`, `curl http://127.0.0.1:$ROCK_PROXY_PORT/`, `ray status`, retry with `--memory 3g`, then inspect `/tmp/kai-ray/session_latest/logs/runtime_env_setup-*.log` |
 | Ray port `8265` already in use | Shared server port conflict | Use `find_rock_ports.py` to detect free ports |
+| `ray start` fails with `Address already in use` on configured ports | `dev/.rock_ports.env` is stale or conflicts with existing services | Regenerate ports via the setup helper, then restart Redis / Ray / ROCK |
 | `rock.admin.main` Redis `ConnectionError` | Redis container not started | `docker start "$ROCK_REDIS_CONTAINER"` |
 | Sandbox container exits immediately | `ref/ROCK/.venv` missing or invalid | `ln -sfn "$(python -c 'import sys; print(sys.prefix)')" ref/ROCK/.venv` |
+| Proxy `/chat/completions` fails after successful deploy | ROCK proxy forwarding issue | Check ROCK proxy logs and verify whether the sandbox-exposed gateway port works directly |
