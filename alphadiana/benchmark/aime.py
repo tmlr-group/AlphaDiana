@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 
-from alphadiana.benchmark.base import Benchmark, BenchmarkTask
+from alphadiana.benchmark.base import Benchmark, BenchmarkTask, load_dataset_with_retry
 from alphadiana.benchmark.registry import BenchmarkRegistry
 
 
@@ -42,7 +42,7 @@ class AIMEBenchmark(Benchmark):
         answer_field = config.get("answer_field", "answer")
 
         try:
-            dataset = load_dataset(dataset_path, data_config, split=split)
+            dataset = load_dataset_with_retry(dataset_path, data_config, split=split)
         except Exception as exc:
             hf_endpoint = os.environ.get("HF_ENDPOINT", "").strip()
             raise RuntimeError(

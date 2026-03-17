@@ -8,6 +8,9 @@ from alphadiana.config.experiment_config import ExperimentConfig
 class ConfigValidator:
     SANDBOX_REQUIRED_BENCHMARKS = {"terminal_bench", "osworld"}
 
+    # Agents that require an api_base in agent_config.
+    API_AGENTS = {"openclaw", "direct_llm"}
+
     def validate(self, config: ExperimentConfig) -> list[str]:
         errors: list[str] = []
 
@@ -26,11 +29,26 @@ class ConfigValidator:
             errors.append("scorer_name is required")
         if config.max_concurrent < 1:
             errors.append("max_concurrent must be >= 1")
+        if config.max_concurrent > 64:
+            errors.append("max_concurrent should be <= 64 to avoid resource exhaustion")
         if config.benchmark_name in self.SANDBOX_REQUIRED_BENCHMARKS and not config.sandbox_name:
             errors.append(
                 f"benchmark '{config.benchmark_name}' requires a sandbox "
                 "(set sandbox_name to 'rock', 'boxlite', or 'local')"
             )
+        # Validate agent_config has api_base for agents that need it.
+        if config.agent_name in self.API_AGENTS:
+            if not config.agent_config.get("api_base"):
+                errors.append(
+                    f"agent '{config.agent_name}' requires 'api_base' in agent_config"
+                )
+        # Validate num_samples and task_retries.
+        num_samples = getattr(config, "num_samples", 1)
+        if num_samples < 1:
+            errors.append("num_samples must be >= 1")
+        task_retries = getattr(config, "task_retries", 0)
+        if task_retries < 0:
+            errors.append("task_retries must be >= 0")
 
         return errors
 

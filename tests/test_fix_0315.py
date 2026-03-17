@@ -323,6 +323,8 @@ class TestDirectLLMFields:
         agent._resolved_max_tokens = 100
         agent._max_completion_tokens = None
         agent._system_prompt = _DEFAULT_SYSTEM_PROMPT
+        agent._max_retries = 0
+        agent._stream = False
         agent._client = mock_client
 
         resp = agent.solve(_task())
@@ -355,6 +357,8 @@ class TestDirectLLMFields:
         agent._resolved_max_tokens = 100
         agent._max_completion_tokens = None
         agent._system_prompt = "Be helpful."
+        agent._max_retries = 0
+        agent._stream = False
         agent._client = mock_client
 
         resp = agent.solve(_task())
@@ -398,6 +402,8 @@ class TestClientReuse:
         agent._resolved_max_tokens = 100
         agent._max_completion_tokens = None
         agent._system_prompt = "test"
+        agent._max_retries = 0
+        agent._stream = False
 
         agent.solve(_task())
         # The existing _client should have been used
@@ -436,6 +442,8 @@ class TestFinishReason:
         agent._resolved_max_tokens = 100
         agent._max_completion_tokens = None
         agent._system_prompt = "test"
+        agent._max_retries = 0
+        agent._stream = False
 
         mock_choice = MagicMock()
         mock_choice.message.content = ""
@@ -483,6 +491,8 @@ class TestMaxCompletionTokens:
         agent._resolved_max_tokens = 32768
         agent._max_completion_tokens = 16384
         agent._system_prompt = "test"
+        agent._max_retries = 0
+        agent._stream = False
 
         mock_choice = MagicMock()
         mock_choice.message.content = "ans"

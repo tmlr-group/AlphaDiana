@@ -6,7 +6,12 @@ import time
 logger = logging.getLogger("alphadiana.retry")
 
 
-def retry_with_backoff(max_retries: int = 3, base_delay: float = 1.0, max_delay: float = 60.0):
+def retry_with_backoff(
+    max_retries: int = 3,
+    base_delay: float = 1.0,
+    max_delay: float = 60.0,
+    retryable_exceptions: tuple = (Exception,),
+):
     def decorator(fn):
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
@@ -14,7 +19,7 @@ def retry_with_backoff(max_retries: int = 3, base_delay: float = 1.0, max_delay:
             for attempt in range(max_retries + 1):
                 try:
                     return fn(*args, **kwargs)
-                except Exception as e:
+                except retryable_exceptions as e:
                     last_exc = e
                     if attempt == max_retries:
                         break
@@ -26,6 +31,8 @@ def retry_with_backoff(max_retries: int = 3, base_delay: float = 1.0, max_delay:
                         attempt + 1, max_retries, fn.__name__, e, sleep_time,
                     )
                     time.sleep(sleep_time)
+                except Exception as e:
+                    raise
             raise last_exc
         return wrapper
     return decorator

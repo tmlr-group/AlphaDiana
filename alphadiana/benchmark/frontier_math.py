@@ -1,7 +1,7 @@
 """FrontierMath benchmark loader."""
 from __future__ import annotations
 
-from alphadiana.benchmark.base import Benchmark, BenchmarkTask
+from alphadiana.benchmark.base import Benchmark, BenchmarkTask, load_dataset_with_retry
 from alphadiana.benchmark.registry import BenchmarkRegistry
 
 
@@ -20,7 +20,7 @@ class FrontierMathBenchmark(Benchmark):
             )
 
         split = config.get("split", "test")
-        dataset = load_dataset("AI-MO/FrontierMath", split=split)
+        dataset = load_dataset_with_retry("AI-MO/FrontierMath", split=split)
 
         tasks: list[BenchmarkTask] = []
         for idx, item in enumerate(dataset):

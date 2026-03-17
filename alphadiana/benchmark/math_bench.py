@@ -1,7 +1,7 @@
 """MATH benchmark loader."""
 from __future__ import annotations
 
-from alphadiana.benchmark.base import Benchmark, BenchmarkTask
+from alphadiana.benchmark.base import Benchmark, BenchmarkTask, load_dataset_with_retry
 from alphadiana.benchmark.registry import BenchmarkRegistry
 
 
@@ -24,9 +24,9 @@ class MATHBenchmark(Benchmark):
         dataset_name = "hendrycks/competition_math"
 
         if subset:
-            dataset = load_dataset(dataset_name, subset, split=split)
+            dataset = load_dataset_with_retry(dataset_name, subset, split=split)
         else:
-            dataset = load_dataset(dataset_name, split=split)
+            dataset = load_dataset_with_retry(dataset_name, split=split)
 
         tasks: list[BenchmarkTask] = []
         for idx, item in enumerate(dataset):

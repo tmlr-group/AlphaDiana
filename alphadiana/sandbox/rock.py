@@ -590,11 +590,24 @@ class ROCKSession(SandboxSession):
         stop = getattr(self._sandbox, "stop", None)
         if stop is None:
             return
-        try:
-            self._sandbox.url = f"{self._admin_base_url}/apis/envs/sandbox/v1"
-            _run_async(_maybe_await(stop()))
-        except Exception:
-            pass
+        self._sandbox.url = f"{self._admin_base_url}/apis/envs/sandbox/v1"
+        max_stop_attempts = 3
+        for attempt in range(1, max_stop_attempts + 1):
+            try:
+                _run_async(_maybe_await(stop()))
+                _progress(f"sandbox stopped sandbox_id={self.sandbox_id}")
+                return
+            except Exception as exc:
+                logger.warning(
+                    "sandbox.stop() attempt %d/%d failed for sandbox_id=%s: %s",
+                    attempt, max_stop_attempts, self.sandbox_id, exc,
+                )
+                if attempt < max_stop_attempts:
+                    time.sleep(1)
+        logger.error(
+            "Failed to stop sandbox %s after %d attempts — container may be leaked",
+            self.sandbox_id, max_stop_attempts,
+        )
 
 
 @register_sandbox("rock")

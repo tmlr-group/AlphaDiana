@@ -143,6 +143,7 @@ class TestConfigValidator:
             agent_version="v0.3.1",
             benchmark_name="aime2024",
             scorer_name="numeric",
+            agent_config={"api_base": "http://localhost:8000/v1"},
         )
         validator = ConfigValidator()
         errors = validator.validate(config)
@@ -253,6 +254,8 @@ class TestConfigValidator:
             agent:
               name: openclaw
               version: "v0.3.1"
+              config:
+                api_base: "http://localhost:8000/v1"
             benchmark:
               name: aime
             scorer:

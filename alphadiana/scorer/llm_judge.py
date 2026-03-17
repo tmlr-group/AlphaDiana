@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 
 from alphadiana.scorer.base import Scorer, ScoreResult
 from alphadiana.scorer.registry import register_scorer
+
+logger = logging.getLogger(__name__)
 
 try:
     import requests as _requests
@@ -62,7 +65,13 @@ class LLMJudgeScorer(Scorer):
         self._timeout = int(config.get("timeout", self._timeout))
 
     def _call_llm(self, question: str, expected: str, predicted: str) -> dict:
-        """Send the judging prompt to the LLM and parse the response."""
+        """Send the judging prompt to the LLM and parse the response.
+
+        Retries on 429 / 5xx with exponential backoff (up to 2 retries).
+        """
+        import random
+        import time
+
         if _requests is None:
             raise RuntimeError("requests is not available")
 
@@ -87,15 +96,34 @@ class LLMJudgeScorer(Scorer):
             "temperature": 0.0,
         }
 
-        resp = _requests.post(
-            f"{self._api_base}/chat/completions",
-            headers=headers,
-            json=payload,
-            timeout=self._timeout,
-        )
-        resp.raise_for_status()
-        data = resp.json()
+        max_retries = 2
+        for attempt in range(max_retries + 1):
+            resp = _requests.post(
+                f"{self._api_base}/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=self._timeout,
+            )
+            if resp.status_code in (429, 502, 503, 504) and attempt < max_retries:
+                delay = min(2.0 * (2 ** attempt), 30.0)
+                jitter = random.uniform(0, delay * 0.3)
+                # Respect Retry-After header if present.
+                retry_after = resp.headers.get("Retry-After")
+                if retry_after:
+                    try:
+                        delay = max(float(retry_after), delay)
+                    except ValueError:
+                        pass
+                logger.warning(
+                    "LLM judge attempt %d/%d got %d, retrying in %.1fs",
+                    attempt + 1, max_retries, resp.status_code, delay + jitter,
+                )
+                time.sleep(delay + jitter)
+                continue
+            resp.raise_for_status()
+            break
 
+        data = resp.json()
         content = data["choices"][0]["message"]["content"]
         return self._parse_judge_response(content)
 
@@ -121,6 +149,12 @@ class LLMJudgeScorer(Scorer):
         }
 
     def score(self, task, response) -> ScoreResult:
+        if response.answer is None:
+            return ScoreResult(
+                correct=False, score=0.0,
+                expected=str(task.ground_truth), predicted=None,
+                rationale="No answer produced (answer is None).",
+            )
         expected_raw = str(task.ground_truth)
         predicted_raw = str(response.answer)
         question = task.problem
@@ -128,6 +162,7 @@ class LLMJudgeScorer(Scorer):
         try:
             judge_result = self._call_llm(question, expected_raw, predicted_raw)
         except Exception as exc:
+            logger.warning("LLM judge scoring failed: %s", exc, exc_info=True)
             return ScoreResult(
                 correct=False,
                 score=0.0,

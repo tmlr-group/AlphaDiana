@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 from collections import deque
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class SandboxPool:
@@ -57,15 +60,60 @@ class SandboxPool:
                 self._event.wait()
 
     def release(self, session: Any) -> None:
-        """Return a session to the pool."""
-        reset = getattr(session, "reset", None)
-        if callable(reset):
-            reset()
+        """Return a session to the pool, replacing it if reset fails."""
+        try:
+            reset = getattr(session, "reset", None)
+            if callable(reset):
+                reset()
+        except Exception as exc:
+            logger.warning("Session reset failed, destroying and replacing: %s", exc)
+            try:
+                session.close()
+            except Exception:
+                logger.warning("Failed to close broken session", exc_info=True)
+            # Create a replacement session to keep pool size stable.
+            try:
+                session = self._sandbox.create_session()
+                with self._lock:
+                    self._all_sessions.append(session)
+            except Exception:
+                logger.error("Failed to create replacement session", exc_info=True)
+                # Even if replacement fails, unblock waiting threads.
+                with self._lock:
+                    self._event.set()
+                return
         with self._lock:
             self._available.append(session)
             self._event.set()
 
-    def teardown(self) -> None:
-        """Close all sessions in the pool."""
+    def teardown(self, timeout: float = 30.0) -> None:
+        """Close all sessions in the pool with a per-session timeout.
+
+        Sessions are closed concurrently via threads. Any session whose
+        ``close()`` does not complete within *timeout* seconds is abandoned
+        with a warning (the container will eventually be reclaimed by
+        ROCK's ``auto_clear_seconds``).
+        """
+        threads: list[threading.Thread] = []
+        errors: list[str] = []
+
+        def _close(session: Any) -> None:
+            sid = getattr(session, "session_id", "?")
+            try:
+                session.close()
+            except Exception as exc:
+                errors.append(f"session {sid}: {exc}")
+                logger.warning("Session close failed during teardown: %s", exc)
+
         for session in self._all_sessions:
-            session.close()
+            t = threading.Thread(target=_close, args=(session,), daemon=True)
+            t.start()
+            threads.append(t)
+
+        for t in threads:
+            t.join(timeout=timeout)
+            if t.is_alive():
+                logger.error(
+                    "Session close timed out after %.0fs — abandoning (will be auto-cleared)",
+                    timeout,
+                )

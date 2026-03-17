@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+import random
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed, Future
 from typing import Any, Callable
 
@@ -14,9 +16,15 @@ class TaskDispatcher:
     """Dispatches benchmark tasks to a solve function, either sequentially
     or concurrently using a thread pool."""
 
-    def __init__(self, max_concurrent: int = 1, cancel_event: threading.Event | None = None) -> None:
+    def __init__(
+        self,
+        max_concurrent: int = 1,
+        cancel_event: threading.Event | None = None,
+        task_retries: int = 0,
+    ) -> None:
         self.max_concurrent = max(1, max_concurrent)
         self._cancel = cancel_event
+        self._task_retries = max(0, task_retries)
 
     @property
     def cancelled(self) -> bool:
@@ -48,6 +56,29 @@ class TaskDispatcher:
             return f"{tid}[s{si}]" if si > 0 else tid
         return getattr(item, "task_id", str(id(item)))
 
+    def _solve_with_retry(
+        self, task: Any, solve_fn: Callable[[Any], dict],
+    ) -> dict:
+        """Call *solve_fn* with up to *_task_retries* retries on failure."""
+        last_exc: Exception | None = None
+        for attempt in range(self._task_retries + 1):
+            try:
+                return solve_fn(task)
+            except Exception as exc:
+                last_exc = exc
+                task_id = self._item_id(task)
+                if attempt < self._task_retries:
+                    delay = min(2.0 * (2 ** attempt), 60.0)
+                    jitter = random.uniform(0, delay * 0.3)
+                    logger.warning(
+                        "Task %s attempt %d/%d failed: %s. Retrying in %.1fs",
+                        task_id, attempt + 1, self._task_retries + 1,
+                        exc, delay + jitter,
+                    )
+                    time.sleep(delay + jitter)
+                else:
+                    raise
+
     def _dispatch_sequential(
         self,
         tasks: list,
@@ -62,14 +93,14 @@ class TaskDispatcher:
             task_id = self._item_id(task)
             logger.info("Processing task %s (%d/%d)", task_id, idx, total)
             try:
-                result = solve_fn(task)
+                result = self._solve_with_retry(task, solve_fn)
                 outcomes.append({
                     "task_id": task_id,
                     "success": True,
                     "result": result,
                 })
             except Exception as exc:
-                logger.error("Task %s failed: %s", task_id, exc)
+                logger.error("Task %s failed: %s", task_id, exc, exc_info=True)
                 outcomes.append({
                     "task_id": task_id,
                     "success": False,
@@ -90,7 +121,7 @@ class TaskDispatcher:
                 if self.cancelled:
                     logger.info("Dispatch cancelled, not submitting remaining tasks")
                     break
-                future = executor.submit(solve_fn, task)
+                future = executor.submit(self._solve_with_retry, task, solve_fn)
                 future_to_task[future] = task
 
             completed = 0
@@ -107,7 +138,7 @@ class TaskDispatcher:
                         "result": result,
                     })
                 except Exception as exc:
-                    logger.error("Task %s failed: %s", task_id, exc)
+                    logger.error("Task %s failed: %s", task_id, exc, exc_info=True)
                     outcomes.append({
                         "task_id": task_id,
                         "success": False,
