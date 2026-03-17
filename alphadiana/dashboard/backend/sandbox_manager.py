@@ -618,6 +618,10 @@ class SandboxManager:
         # ------------------------------------------------------------------
         import subprocess as _subprocess
 
+        # SDK 1.4.x: SandboxConfig.base_url must be the proxy root URL (SDK appends
+        # /apis/envs/sandbox/v1 internally). Admin URL is only used for preflight checks.
+        proxy_root = proxy_url.removesuffix("/apis/envs/sandbox/v1")
+
         def _image_available_locally(image: str) -> bool:
             """Return True if *image* is already present in the local Docker cache."""
             try:
@@ -641,7 +645,7 @@ class SandboxManager:
                 log(f"Trying prebuilt image ({PREBUILT_SANDBOX_IMAGE}) for faster startup...")
                 try:
                     _pb_config = SandboxConfig(
-                        base_url=base_url,
+                        base_url=proxy_root,
                         image=PREBUILT_SANDBOX_IMAGE,
                         memory="4g",
                         cpus=1,
@@ -678,7 +682,7 @@ class SandboxManager:
         if sandbox is None:
             log(f"Creating sandbox ({DEFAULT_SANDBOX_IMAGE})...")
             _std_config = SandboxConfig(
-                base_url=base_url,
+                base_url=proxy_root,
                 image=DEFAULT_SANDBOX_IMAGE,
                 memory="4g",
                 cpus=1,

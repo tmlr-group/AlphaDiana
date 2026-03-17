@@ -333,8 +333,11 @@ async def deploy(args: argparse.Namespace) -> None:
     agent_config = _apply_model_overrides(agent_config, args)
 
     auto_clear = getattr(args, "auto_clear_seconds", 7200)
+    # SDK 1.4.x: SandboxConfig.base_url must be the proxy root URL (SDK appends
+    # /apis/envs/sandbox/v1 internally). Admin URL is only used for preflight checks.
+    proxy_root = args.proxy_url.removesuffix("/apis/envs/sandbox/v1")
     config = SandboxConfig(
-        base_url=args.base_url,
+        base_url=proxy_root,
         image=args.image,
         memory=args.memory,
         cpus=args.cpus,
