@@ -120,6 +120,7 @@ class Runner:
                 "agent_name": self.config.agent_name,
                 "agent_version": self.config.agent_version,
                 "benchmark_name": self.config.benchmark_name,
+                "scorer_name": self.config.scorer_name,
                 "num_samples": getattr(self.config, "num_samples", 1),
             },
         )
@@ -155,6 +156,17 @@ class Runner:
 
         # Checkpoint: skip already-completed samples unless redo_all is set.
         if not getattr(self.config, "redo_all", False):
+            # Detect scorer mismatch: warn if existing records used a different scorer.
+            existing_records = self.result_store.load()
+            if existing_records:
+                prev_scorers = {r.get("scorer_name") for r in existing_records if r.get("scorer_name")}
+                if prev_scorers and self.config.scorer_name not in prev_scorers:
+                    logger.warning(
+                        "Scorer mismatch: existing results used %s but current config uses '%s'. "
+                        "Set redo_all=true to re-evaluate all tasks with the new scorer.",
+                        prev_scorers, self.config.scorer_name,
+                    )
+
             if num_samples > 1:
                 completed_samples = self.result_store.completed_sample_ids()
                 if completed_samples:
@@ -202,17 +214,24 @@ class Runner:
             logger.info("Creating SandboxPool with %d sessions", pool_size)
             pool = SandboxPool(self.sandbox, pool_size)
 
+        # For sequential mode, create a single shared session to reuse across
+        # all tasks instead of creating (and tearing down) one per task.
+        shared_session = None
+        if self.sandbox is not None and pool is None:
+            logger.info("Creating shared sandbox session for sequential execution")
+            shared_session = self.sandbox.create_session()
+
         # Create the solve function that wraps agent + sandbox + scorer.
         def solve_fn(work_item):
             task, sample_index = work_item
-            # Acquire sandbox session: from pool (concurrent) or create fresh (sequential).
+            # Acquire sandbox session: from pool (concurrent) or shared (sequential).
             sandbox_session = None
             used_pool = False
             if pool is not None:
                 sandbox_session = pool.acquire()
                 used_pool = True
-            elif self.sandbox is not None:
-                sandbox_session = self.sandbox.create_session()
+            elif shared_session is not None:
+                sandbox_session = shared_session
             start = time.monotonic()
             response = None
             try:
@@ -296,6 +315,9 @@ class Runner:
                     try:
                         if used_pool:
                             pool.release(sandbox_session)
+                        elif shared_session is not None:
+                            # Shared session: reset for next task, don't close.
+                            sandbox_session.reset()
                         else:
                             sandbox_session.close()
                     except Exception as cleanup_exc:
@@ -305,12 +327,22 @@ class Runner:
         dispatcher = TaskDispatcher(
             max_concurrent=self.config.max_concurrent,
             cancel_event=self.cancel_event,
+            task_retries=getattr(self.config, "task_retries", 0),
         )
-        outcomes = dispatcher.dispatch(work_items, solve_fn)
-
-        # Teardown pool if used.
-        if pool is not None:
-            pool.teardown()
+        try:
+            outcomes = dispatcher.dispatch(work_items, solve_fn)
+        finally:
+            # Teardown pool / shared session even if dispatch raises.
+            if pool is not None:
+                try:
+                    pool.teardown()
+                except Exception as exc:
+                    logger.warning("Pool teardown error: %s", exc)
+            if shared_session is not None:
+                try:
+                    shared_session.close()
+                except Exception as exc:
+                    logger.warning("Shared session close error: %s", exc)
 
         succeeded = sum(1 for o in outcomes if o["success"])
         failed = sum(1 for o in outcomes if not o["success"])

@@ -28,6 +28,9 @@ class NumericScorer(Scorer):
         using both absolute and relative comparisons."""
         if math.isnan(a) or math.isnan(b):
             return False
+        if math.isinf(a) or math.isinf(b):
+            # inf == inf is True (handled by a == b below), but inf vs finite is always False.
+            return a == b
         if a == b:
             return True
         if abs(a - b) <= self._tolerance:
@@ -39,6 +42,12 @@ class NumericScorer(Scorer):
         return False
 
     def score(self, task, response) -> ScoreResult:
+        if response.answer is None:
+            return ScoreResult(
+                correct=False, score=0.0,
+                expected=str(task.ground_truth), predicted=None,
+                rationale="No answer produced (answer is None).",
+            )
         expected_raw = str(task.ground_truth)
         predicted_raw = str(response.answer)
 

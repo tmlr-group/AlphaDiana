@@ -64,6 +64,7 @@ class ExperimentConfig:
     redo_all: bool = False
     sandbox_retries: int = 1
     num_samples: int = 1
+    task_retries: int = 0
     metadata: dict = field(default_factory=dict)
 
     def __post_init__(self):
@@ -103,5 +104,6 @@ class ExperimentConfig:
             redo_all=data.get("redo_all", False),
             sandbox_retries=data.get("sandbox_retries", 1),
             num_samples=data.get("num_samples", 1),
+            task_retries=data.get("task_retries", 0),
             metadata=data.get("metadata", {}),
         )

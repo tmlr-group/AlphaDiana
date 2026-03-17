@@ -59,6 +59,12 @@ class MathVerifyScorer(Scorer):
         return "math_verify"
 
     def score(self, task, response) -> ScoreResult:
+        if response.answer is None:
+            return ScoreResult(
+                correct=False, score=0.0,
+                expected=str(task.ground_truth), predicted=None,
+                rationale="No answer produced (answer is None).",
+            )
         expected_raw = str(task.ground_truth)
         predicted_raw = str(response.answer)
 

@@ -1,7 +1,7 @@
 """HLE (Humanity's Last Exam) benchmark loader."""
 from __future__ import annotations
 
-from alphadiana.benchmark.base import Benchmark, BenchmarkTask
+from alphadiana.benchmark.base import Benchmark, BenchmarkTask, load_dataset_with_retry
 from alphadiana.benchmark.registry import BenchmarkRegistry
 
 
@@ -20,7 +20,7 @@ class HLEBenchmark(Benchmark):
             )
 
         split = config.get("split", "test")
-        dataset = load_dataset("cais/hle", split=split)
+        dataset = load_dataset_with_retry("cais/hle", split=split)
 
         tasks: list[BenchmarkTask] = []
         for idx, item in enumerate(dataset):

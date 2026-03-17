@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
+import random
 import re
 import time
 from typing import Any
@@ -353,6 +354,7 @@ class OpenClawAgent(Agent):
         self._max_tokens = config.get("max_tokens", None)
         self._max_attempts = max(1, int(config.get("max_attempts", 3)))
         self._request_timeout = float(config.get("request_timeout", 600))
+        self._proxy_timeout = int(config.get("proxy_timeout", 600))
         self._config = config
 
         # Agent.md customization
@@ -659,6 +661,11 @@ class OpenClawAgent(Agent):
         raw_output = ""
         last_error: Exception | None = None
         retry_responses: list[dict[str, Any]] = []
+        cumulative_token_usage: dict[str, int] = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+        }
         for attempt in range(1, self._max_attempts + 1):
             attempt_start = time.monotonic()
             try:
@@ -722,6 +729,12 @@ class OpenClawAgent(Agent):
                                         response_json = chunk_json
 
                 raw_output = "".join(chunks)
+                # Accumulate token usage across retries.
+                attempt_usage = (response_json or {}).get("usage")
+                if attempt_usage:
+                    cumulative_token_usage["prompt_tokens"] += int(attempt_usage.get("prompt_tokens", 0))
+                    cumulative_token_usage["completion_tokens"] += int(attempt_usage.get("completion_tokens", 0))
+                    cumulative_token_usage["total_tokens"] += int(attempt_usage.get("total_tokens", 0))
                 if raw_output:
                     break
                 elapsed = time.monotonic() - attempt_start
@@ -746,6 +759,13 @@ class OpenClawAgent(Agent):
                     elapsed,
                     response_body,
                 )
+                if error_type == "proxy_timeout":
+                    logger.error(
+                        "Proxy timeout detected (likely ROCK proxy 120s default). "
+                        "Increase sandbox_config.proxy_timeout (current: %ds) or "
+                        "reduce problem complexity. See: sandbox_config.proxy_timeout",
+                        self._proxy_timeout,
+                    )
                 last_error = OpenClawRequestError(
                     f"OpenClaw returned no assistant content on attempt {attempt}",
                     error_type=error_type,
@@ -785,9 +805,18 @@ class OpenClawAgent(Agent):
                     elapsed,
                     exc,
                 )
+                if error_type == "proxy_timeout":
+                    logger.error(
+                        "Proxy timeout detected (likely ROCK proxy 120s default). "
+                        "Increase sandbox_config.proxy_timeout (current: %ds) or "
+                        "reduce problem complexity. See: sandbox_config.proxy_timeout",
+                        self._proxy_timeout,
+                    )
 
             if attempt < self._max_attempts:
-                time.sleep(min(2, attempt))
+                delay = min(2.0 * (2 ** (attempt - 1)), 60.0)
+                jitter = random.uniform(0, delay * 0.3)
+                time.sleep(delay + jitter)
 
         if not raw_output:
             if isinstance(last_error, OpenClawRequestError):
@@ -810,14 +839,17 @@ class OpenClawAgent(Agent):
 
         answer = _extract_answer(raw_output)
 
-        token_usage = {}
-        usage = response_json.get("usage")
-        if usage:
-            token_usage = {
-                "prompt_tokens": int(usage.get("prompt_tokens", 0)),
-                "completion_tokens": int(usage.get("completion_tokens", 0)),
-                "total_tokens": int(usage.get("total_tokens", 0)),
-            }
+        # Use cumulative token usage across all retry attempts.
+        token_usage = cumulative_token_usage if any(cumulative_token_usage.values()) else {}
+        if not token_usage:
+            # Fallback: extract from the final successful response.
+            usage = response_json.get("usage")
+            if usage:
+                token_usage = {
+                    "prompt_tokens": int(usage.get("prompt_tokens", 0)),
+                    "completion_tokens": int(usage.get("completion_tokens", 0)),
+                    "total_tokens": int(usage.get("total_tokens", 0)),
+                }
 
         # Try to retrieve the real agentic trajectory from the sandbox.
         trajectory = self._retrieve_trajectory_sync()
@@ -864,6 +896,11 @@ class OpenClawAgent(Agent):
         )
 
     def teardown(self) -> None:
+        if self._runtime_manager is not None:
+            try:
+                self._runtime_manager.teardown()
+            except Exception as exc:
+                logger.warning("RuntimeManager teardown failed: %s", exc)
         self._sandbox_client = None
 
 
