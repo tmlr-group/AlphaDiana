@@ -73,7 +73,6 @@ class Runner:
         import alphadiana.benchmark.hle  # noqa: F401
         import alphadiana.benchmark.frontier_math  # noqa: F401
         import alphadiana.benchmark.terminal_bench  # noqa: F401
-        import alphadiana.benchmark.osworld  # noqa: F401
 
         # Import agent modules to trigger registration.
         import alphadiana.agent.openclaw  # noqa: F401
@@ -82,7 +81,6 @@ class Runner:
         # Import sandbox modules to trigger registration.
         import alphadiana.sandbox.local  # noqa: F401
         import alphadiana.sandbox.rock  # noqa: F401
-        import alphadiana.sandbox.boxlite  # noqa: F401
 
         # Import scorer modules to trigger registration.
         import alphadiana.scorer.exact_match  # noqa: F401

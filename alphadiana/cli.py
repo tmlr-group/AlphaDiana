@@ -170,7 +170,6 @@ def list_benchmarks():
     import alphadiana.benchmark.hle  # noqa: F401
     import alphadiana.benchmark.frontier_math  # noqa: F401
     import alphadiana.benchmark.terminal_bench  # noqa: F401
-    import alphadiana.benchmark.osworld  # noqa: F401
 
     from alphadiana.benchmark.registry import BenchmarkRegistry
 
