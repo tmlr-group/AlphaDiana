@@ -17,7 +17,9 @@ function NavHeader() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const currentKey = location.pathname.startsWith('/jobs')
+  const currentKey = location.pathname.startsWith('/jobs/new')
+    ? '/jobs/new'
+    : location.pathname.startsWith('/jobs')
     ? '/jobs'
     : '/';
 

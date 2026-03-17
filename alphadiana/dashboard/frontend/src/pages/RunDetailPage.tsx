@@ -24,7 +24,7 @@ import TrajectoryViewer from '../components/TrajectoryViewer';
 
 const { Paragraph, Text } = Typography;
 
-type FilterMode = 'all' | 'correct' | 'wrong';
+type FilterMode = 'all' | 'correct' | 'wrong' | 'error';
 
 export default function RunDetailPage() {
   const { runId } = useParams<{ runId: string }>();
@@ -47,9 +47,14 @@ export default function RunDetailPage() {
 
   const filteredResults = detail.results.filter((r) => {
     if (filter === 'correct') return r.correct === true;
-    if (filter === 'wrong') return r.correct === false || r.correct === null;
+    if (filter === 'wrong') return r.correct === false;
+    if (filter === 'error') return r.correct === null;
     return true;
   });
+
+  const countPass = detail.results.filter((r) => r.correct === true).length;
+  const countFail = detail.results.filter((r) => r.correct === false).length;
+  const countError = detail.results.filter((r) => r.correct === null).length;
 
   const isMultiSample = detail.summary.num_samples > 1;
 
@@ -197,17 +202,16 @@ export default function RunDetailPage() {
                       All ({detail.results.length})
                     </Radio.Button>
                     <Radio.Button value="correct">
-                      Pass ({detail.results.filter((r) => r.correct).length})
+                      Pass ({countPass})
                     </Radio.Button>
                     <Radio.Button value="wrong">
-                      Fail (
-                      {
-                        detail.results.filter(
-                          (r) => r.correct === false || r.correct === null
-                        ).length
-                      }
-                      )
+                      Fail ({countFail})
                     </Radio.Button>
+                    {countError > 0 && (
+                      <Radio.Button value="error">
+                        Error ({countError})
+                      </Radio.Button>
+                    )}
                   </Radio.Group>
                 }
               >
@@ -215,7 +219,13 @@ export default function RunDetailPage() {
                   columns={columns}
                   dataSource={filteredResults}
                   rowKey={(r) => `${r.task_id}_s${r.sample_index}`}
-                  pagination={false}
+                  pagination={{
+                    pageSize: 50,
+                    showSizeChanger: true,
+                    pageSizeOptions: ['20', '50', '100'],
+                    hideOnSinglePage: true,
+                    showTotal: (total, range) => `${range[0]}-${range[1]} / ${total} 条`,
+                  }}
                   size="small"
                   onRow={(record) => ({
                     onClick: () => setDrawerTask(record),
@@ -243,7 +253,13 @@ export default function RunDetailPage() {
       />
 
       <Drawer
-        title={drawerTask ? `Task: ${drawerTask.task_id}` : ''}
+        title={
+          drawerTask
+            ? isMultiSample
+              ? `Task: ${drawerTask.task_id}  ·  sample ${drawerTask.sample_index}`
+              : `Task: ${drawerTask.task_id}`
+            : ''
+        }
         open={!!drawerTask}
         onClose={() => setDrawerTask(null)}
         width={720}
@@ -264,16 +280,32 @@ export default function RunDetailPage() {
                 <Text strong>Predicted:</Text> {String(drawerTask.predicted)}
               </p>
               <p>
-                <Text strong>Correct:</Text>{' '}
+                <Text strong>Result:</Text>{' '}
                 {drawerTask.correct === true ? (
                   <Tag color="success">PASS</Tag>
-                ) : (
+                ) : drawerTask.correct === false ? (
                   <Tag color="error">FAIL</Tag>
+                ) : (
+                  <Tag color="warning">ERROR</Tag>
+                )}
+                {drawerTask.finish_reason === 'length' && (
+                  <Tag color="orange">Truncated</Tag>
                 )}
               </p>
-              <p>
-                <Text strong>Rationale:</Text> {drawerTask.rationale}
-              </p>
+              {drawerTask.error && (
+                <p>
+                  <Text strong>Error:</Text>{' '}
+                  <Text type="danger">
+                    {String(drawerTask.error.error_type ?? '')}
+                    {drawerTask.error.message ? `: ${String(drawerTask.error.message)}` : ''}
+                  </Text>
+                </p>
+              )}
+              {drawerTask.rationale && (
+                <p>
+                  <Text strong>Rationale:</Text> {drawerTask.rationale}
+                </p>
+              )}
             </Card>
 
             <Card size="small" title="Agent Trajectory">

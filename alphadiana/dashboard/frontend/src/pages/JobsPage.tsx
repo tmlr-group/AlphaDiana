@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Card,
@@ -23,7 +23,7 @@ import {
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { JobStatus } from '../types';
-import { listJobs, getJob, cancelJob, getJobLogs, resumeJob, deleteJob } from '../api';
+import { listJobs, cancelJob, getJobLogs, resumeJob, deleteJob } from '../api';
 
 const { Text } = Typography;
 
@@ -45,6 +45,17 @@ export default function JobsPage() {
   const navigate = useNavigate();
   const timerRef = useRef<ReturnType<typeof setInterval>>(undefined);
   const logTimerRef = useRef<ReturnType<typeof setInterval>>(undefined);
+  const logsContainerRef = useRef<HTMLPreElement>(null);
+
+  const scrollLogsToBottom = useCallback(() => {
+    if (logsContainerRef.current) {
+      logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
+    }
+  }, []);
+
+  useEffect(() => {
+    scrollLogsToBottom();
+  }, [logs, scrollLogsToBottom]);
 
   const fetchJobs = () => {
     listJobs()
@@ -56,18 +67,7 @@ export default function JobsPage() {
   useEffect(() => {
     fetchJobs();
     timerRef.current = setInterval(() => {
-      listJobs().then((data) => {
-        setJobs(data);
-        data
-          .filter((j) => j.status === 'running')
-          .forEach((j) => {
-            getJob(j.job_id).then((updated) => {
-              setJobs((prev) =>
-                prev.map((p) => (p.job_id === updated.job_id ? updated : p))
-              );
-            });
-          });
-      });
+      listJobs().then(setJobs);
     }, 5000);
     return () => clearInterval(timerRef.current);
   }, []);
@@ -131,7 +131,7 @@ export default function JobsPage() {
       dataIndex: 'run_id',
       key: 'run_id',
       render: (id: string, job: JobStatus) =>
-        job.status === 'completed' ? (
+        job.progress > 0 || job.status === 'completed' ? (
           <a onClick={() => navigate(`/runs/${encodeURIComponent(id)}`)}>{id}</a>
         ) : (
           <Text>{id}</Text>
@@ -324,6 +324,7 @@ export default function JobsPage() {
           </div>
         ) : logs ? (
           <pre
+            ref={logsContainerRef}
             style={{
               fontSize: 12,
               lineHeight: 1.8,
