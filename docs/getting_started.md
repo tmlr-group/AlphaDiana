@@ -1,117 +1,128 @@
-# AlphaDiana 完整上手教程
+# AlphaDiana Complete Getting Started Tutorial
 
-AlphaDiana 是一个基座模型（Foundation Model）与 Agent 系统的评估框架，支持在多个 Benchmark（AIME、MATH、HLE 等）上评测不同的 Agent。
+AlphaDiana is an evaluation framework for Foundation Model and Agent systems, supporting the evaluation of different Agents on multiple Benchmarks (AIME, MATH, HLE, etc.).
 
-本教程以 **Qwen3-8B + AIME 2024** 为例，从零开始，一步步搭建并运行评估。
+This tutorial takes **Qwen3-8B + AIME 2024** as an example to start from scratch and build and run the evaluation step by step.
 
-## 目录
+## Directory
 
-- [0. 架构概览](#0-架构概览)
-- [1. 环境准备](#1-环境准备)
-- [2. 安装 AlphaDiana](#2-安装-alphadiana)
-- [3. 快速验证（Direct LLM 基线）](#3-快速验证direct-llm-基线)
-- [4. 搭建 ROCK 沙箱环境](#4-搭建-rock-沙箱环境)
-- [5. 部署 OpenClaw Agent](#5-部署-openclaw-agent)
-- [6. 运行 OpenClaw 评估](#6-运行-openclaw-评估)
-- [7. 查看和分析结果](#7-查看和分析结果)
-- [8. 自定义配置](#8-自定义配置)
-- [附录 A：项目结构](#附录-a项目结构)
-- [附录 B：常见问题](#附录-b常见问题)
+- [0. Architecture Overview](#0-Architecture Overview)
+- [1. Environment preparation](#1-Environment preparation)
+- [2. Install AlphaDiana](#2-Install-alphadiana)
+- [3. Quick verification (Direct LLM baseline)] (#3-Quick verification direct-llm-baseline)
+- [4. Build a ROCK sandbox environment] (#4-Build-rock-sandbox environment)
+- [5. Deploy OpenClaw Agent](#5-deployment-openclaw-agent)
+- [6. Run OpenClaw-evaluation](#6-run-openclaw-evaluation)
+- [7. View and analyze results](#7-View and analyze results)
+- [8. Custom configuration](#8-Custom configuration)
+- [Appendix A: Project Structure](#Appendix-aProject Structure)
+- [Appendix B: Frequently Asked Questions](#Appendix-bFrequently Asked Questions)
 
 ---
 
-## 0. 架构概览
+## 0. Architecture Overview
 
-AlphaDiana 有两种评估模式：
+AlphaDiana has two evaluation modes:
 
-### 模式一：Direct LLM（直接调 LLM，简单快速）
+### Mode 1: Direct LLM (direct LLM adjustment, simple and fast)
+
 
 ```
 AlphaDiana Runner
-       │  直接调用 OpenAI 兼容 API
+       │  Direct calls to OpenAI-compatible APIs
        ▼
-  vLLM / 任何 OpenAI 兼容 API
+  vLLM/any OpenAI compatible API
 ```
 
-- 只需要一个能跑的 LLM 服务
-- 测的是**裸模型能力**（单轮问答，不带工具调用）
-- 适合快速基线测试
 
-### 模式二：OpenClaw（Agent 系统，完整评估）
+- Just need a running LLM service
+- The test is **bare model ability** (single round of question and answer, without tool invocation)
+- Perfect for quick baseline testing
+
+### Mode 2: OpenClaw (Agent system, complete evaluation)
+
 
 ```
 AlphaDiana Runner
        │
        ▼
   ROCK Proxy (:9001)
-       │  转发请求到沙箱
+       │  Forward request to sandbox
        ▼
-  ROCK 沙箱 (Docker 容器)
+  Rock Sandbox (Docker Container)
        │
        ▼
   OpenClaw Gateway (:8080)
-       │  内部多轮 Agent 循环:
+       │  Internal Multi-Wheel Agent Cycle:
        │  thinking → tool_call → execute → reasoning → ...
        ▼
   vLLM (:8000)
 ```
 
-- 需要搭建 ROCK 沙箱 + 部署 OpenClaw
-- 测的是 **Agent 系统能力**（多轮推理、工具调用、代码执行等）
-- OpenClaw 内部自动构建 system prompt（~8K tokens），包含 25 个工具定义
 
-**建议先跑模式一确认环境没问题，再搭模式二。**
+- Need to build ROCK sandbox + deploy OpenClaw
+- What is measured is the **Agent system capability** (multiple rounds of reasoning, tool invocation, code execution, etc.)
+- OpenClaw automatically builds system prompt internally (~8K tokens), including 25 tool definitions
+
+**It is recommended to run mode one first to confirm that there is no problem with the environment, and then run mode two. **
 
 ---
 
-## 1. 环境准备
+## 1. Environment preparation
 
-### 1.1 硬件要求
+### 1.1 Hardware requirements
 
-| 组件 | 最低要求 |
+| Components | Minimum Requirements |
 |------|---------|
-| GPU | 1 张 40GB+ 显存（A100/A800），用于 vLLM |
-| 内存 | 32GB+ |
-| 磁盘 | 50GB+ 空闲 |
-| Docker | 已安装，当前用户在 docker 组 |
+| GPU | 1 40GB+ VRAM (A100/A800) for vLLM |
+| Memory | 32GB+ |
+| Disk | 50GB+ free |
+| Docker | Installed, current user is in docker group |
 
-### 1.2 创建 Conda 环境
+### 1.2 Create Conda environment
+
 
 ```bash
 conda create -n alphadiana python=3.11 -y
 conda activate alphadiana
 ```
 
-> Python 版本必须 >=3.10，推荐 3.11。不要用 3.13（ROCK 依赖 gem-llm 只支持 <=3.12）。
 
-### 1.3 安装 vLLM
+> Python version must be >=3.10, 3.11 is recommended. Do not use 3.13 (ROCK depends on gem-llm only supports <=3.12).
+
+### 1.3 Install vLLM
+
 
 ```bash
 pip install vllm
 ```
 
-### 1.4 准备模型
 
-以 Qwen3-8B 为例。如果模型已下载到本地，记下路径；如果没有：
+### 1.4 Prepare the model
+
+Take Qwen3-8B as an example. If the model has been downloaded locally, note the path; if not:
+
 
 ```bash
-# 方式一：用 huggingface-cli 下载
+# Option 1: Download with huggingface-cli
 pip install huggingface_hub
 huggingface-cli download Qwen/Qwen3-8B --local-dir /your/path/Qwen3-8B
 
-# 方式二：如果服务器上已有，直接用路径
-# 例如: /hd1/models/models--Qwen--Qwen3-8B/snapshots/b968826d...
+# Option 2: If it already exists on the server, use the path directly
+# For example:/hd1/models/models--Qwen--Qwen3-8B/snapshots/b968826d...
 ```
 
-### 1.5 启动 vLLM
 
-选一张空闲 GPU：
+### 1.5 Start vLLM
+
+Choose a free GPU:
+
 
 ```bash
-# 查看 GPU 使用情况
+# View GPU Usage
 nvidia-smi
 
-# 启动 vLLM（替换 GPU 编号和模型路径）
+# Start vLLM (replace GPU number and model path)
 CUDA_VISIBLE_DEVICES=0 python -m vllm.entrypoints.openai.api_server \
     --model /path/to/Qwen3-8B \
     --host 0.0.0.0 \
@@ -122,36 +133,44 @@ CUDA_VISIBLE_DEVICES=0 python -m vllm.entrypoints.openai.api_server \
     --max-model-len 32768 &
 ```
 
-> `--enable-auto-tool-choice --tool-call-parser hermes` 是给 OpenClaw 用的。如果只跑 Direct LLM 基线可以不加。
->
-> `--max-model-len 32768` 很重要：OpenClaw 的内部 system prompt 约 8K tokens，16K 会溢出。
 
-验证：
+> `--enable-auto-tool-choice --tool-call-parser hermes` is for OpenClaw. If you only run the Direct LLM baseline, you don’t need to add it.
+>
+> `--max-model-len 32768` is important: OpenClaw's internal system prompt has about 8K tokens, and 16K will overflow.
+
+Verification:
+
 
 ```bash
 curl http://localhost:8000/v1/models
-# 应返回模型列表
+# Model list should be returned
 ```
+
 
 ---
 
-## 2. 安装 AlphaDiana
+## 2. Install AlphaDiana
+
 
 ```bash
 git clone <repo_url> AlphaDiana
 cd AlphaDiana
 
-# 安装（含所有可选依赖）
+# Installation (with all optional dependencies)
 pip install -e ".[all,dev]"
 ```
 
-验证安装：
+
+Verify installation:
+
 
 ```bash
 alphadiana list-benchmarks
 ```
 
-输出：
+
+Output:
+
 
 ```
 Registered benchmarks:
@@ -163,15 +182,17 @@ Registered benchmarks:
   - osworld
 ```
 
+
 ---
 
-## 3. 快速验证（Direct LLM 基线）
+## 3. Quick verification (Direct LLM baseline)
 
-这是最简单的模式，不需要 ROCK 和 OpenClaw，只需要 vLLM 在跑。Direct LLM 是一个纯 LLM 基线 Agent，直接单轮调用 LLM API，不带工具调用和多轮推理。
+This is the simplest mode, which does not require ROCK and OpenClaw, and only requires vLLM to be running. Direct LLM is a pure LLM baseline Agent that directly calls the LLM API in a single round without tool calls and multi-round inference.
 
-### 3.1 编写配置文件
+### 3.1 Write configuration file
 
-创建 `configs/my_first_run.yaml`：
+Create `configs/my_first_run.yaml`:
+
 
 ```yaml
 run_id: "direct-llm-qwen3-8b-aime2024"
@@ -180,8 +201,8 @@ agent:
   name: direct_llm
   version: "1.0"
   config:
-    model: "/path/to/Qwen3-8B"           # ← 改成你的模型路径
-    api_base: "http://localhost:8000/v1"  # ← vLLM 地址
+    model: "/path/to/Qwen3-8B" # ← Change to your model path
+    api_base: "http://localhost:8000/v1" # <- vLLM address
     api_key: "EMPTY"
     temperature: 0.0
     max_tokens: 4096
@@ -201,28 +222,34 @@ max_concurrent: 1
 output_dir: "./results"
 ```
 
-> **注意：** `model` 字段要和 vLLM 启动时的 `--model` 参数**完全一致**（包括完整路径）。
 
-### 3.2 验证配置
+> **Note:** The `model` field must be **exactly consistent** with the `--model` parameter when vLLM is started (including the full path).
+
+### 3.2 Verify configuration
+
 
 ```bash
 alphadiana validate configs/my_first_run.yaml
-# 输出: Config is valid.
+# Output: Config is valid.
 ```
 
-### 3.3 运行评估
+
+### 3.3 Run Evaluation
+
 
 ```bash
 alphadiana run configs/my_first_run.yaml
 ```
 
-这会：
-1. 从 HuggingFace 加载 AIME 2024 数据集（30 道题）
-2. 逐题发给 vLLM，获取回答
-3. 用 NumericScorer 评分
-4. 结果写入 `results/direct-llm-qwen3-8b-aime2024.jsonl`
 
-输出示例：
+This will:
+1. Load the AIME 2024 dataset from HuggingFace (30 questions)
+2. Send the questions to vLLM one by one to get answers.
+3. Score with NumericScorer
+4. Write the result to `results/direct-llm-qwen3-8b-aime2024.jsonl`
+
+Output example:
+
 
 ```
 Run completed: direct-llm-qwen3-8b-aime2024
@@ -231,9 +258,11 @@ Run completed: direct-llm-qwen3-8b-aime2024
   Tasks:      30/30 completed
 ```
 
-### 3.4 用 Python API 运行（可选）
 
-如果想更灵活地控制，可以用 Python：
+### 3.4 Run with Python API (optional)
+
+If you want more flexible control, you can use Python:
+
 
 ```python
 from alphadiana.config.experiment_config import ExperimentConfig
@@ -250,46 +279,54 @@ finally:
     runner.teardown()
 ```
 
-**到这里，如果 Direct LLM 基线能跑通，说明 AlphaDiana + vLLM 环境没问题。** 下面搭建 Agent 系统。
+
+**At this point, if the Direct LLM baseline can run through, it means there is no problem with the AlphaDiana + vLLM environment. ** Build the Agent system below.
 
 ---
 
-## 4. 搭建 ROCK 沙箱环境
+## 4. Build a ROCK sandbox environment
 
-ROCK 是阿里巴巴开源的沙箱系统，用 Docker 容器隔离运行 Agent。OpenClaw 需要部署在 ROCK 沙箱中。
+ROCK is Alibaba's open source sandbox system, which uses Docker containers to run Agents in isolation. OpenClaw needs to be deployed in the ROCK sandbox.
 
-### 4.1 安装 ROCK
+### 4.1 Install ROCK
+
 
 ```bash
 cd /path/to/your/workspace
 git clone https://github.com/alibaba/ROCK.git
 cd ROCK
 pip install -e .
-pip install gem-llm    # ROCK 内部依赖，提供 gem 模块
+pip install gem-llm # rock Internal dependency with gem module
 ```
 
-### 4.2 启动 Redis Stack
 
-ROCK 依赖 Redis Stack（需要 JSON.SET 命令，普通 Redis 不行）：
+### 4.2 Start Redis Stack
+
+ROCK relies on Redis Stack (requires JSON.SET command, ordinary Redis does not work):
+
 
 ```bash
-# 如果需要 sg docker 来获取 docker 组权限：
+# If you need sg docker to get docker group permissions:
 sg docker -c 'docker run -d --name redis-stack -p 6379:6379 redis/redis-stack-server:latest'
 
-# 或者直接（如果 docker 权限已配置）：
+# Or directly (if docker permissions are configured):
 docker run -d --name redis-stack -p 6379:6379 redis/redis-stack-server:latest
 ```
 
-验证：
+
+Verification:
+
 
 ```bash
 redis-cli ping
-# 应返回 PONG
+# should return pong
 ```
 
-### 4.3 配置 ROCK
 
-创建配置文件：
+### 4.3 Configure ROCK
+
+Create configuration file:
+
 
 ```bash
 mkdir -p ~/.rock
@@ -299,47 +336,52 @@ address = auto
 EOF
 ```
 
-创建 `.venv` 软链接（ROCK 的 `LocalRuntimeEnv` 需要它来挂载 Python 环境到容器内）：
+
+Create the `.venv` soft link (ROCK’s `LocalRuntimeEnv` needs it to mount the Python environment into the container):
+
 
 ```bash
 cd /path/to/ROCK
 ln -sf $(python -c "import sys; print(sys.prefix)") .venv
 ```
 
-### 4.4 启动 Ray + ROCK 服务
 
-```bash
-# 设置 ROCK 项目根目录（很重要，Ray worker 需要这个）
+### 4.4 Start Ray + ROCK service```bash
+# Set rock project root (important, Ray worker needs this)
 export ROCK_PROJECT_ROOT=/path/to/ROCK
 
-# 启动 Ray
+# Start Ray
 ray start --head --port=6380
 
-# 启动 ROCK admin（端口 9000，处理写操作）
+# Start rock admin (port 9000, handle writes)
 sg docker -c 'python -m rock.deployments.admin &'
 
-# 启动 ROCK proxy（端口 9001，处理读/运行时操作）
+# Start rock proxy (port 9001, handling read/runtime operations)
 sg docker -c 'python -m rock.deployments.proxy &'
 ```
 
-> 如果不需要 `sg docker`（已有 docker 权限），去掉 `sg docker -c '...'`，直接运行。
 
-验证：
+> If `sg docker` is not needed (you already have docker permissions), remove `sg docker -c '...'` and run it directly.
+
+Verification:
+
 
 ```bash
-curl http://localhost:9000/    # 应返回 {"message":"hello, ROCK!"}
-curl http://localhost:9001/    # 同上
+curl http://localhost: 9000/# should return {"message": "hello, rock!"}
+curl http://localhost: 9001/# Ditto
 ```
+
 
 ---
 
-## 5. 部署 OpenClaw Agent
+## 5. Deploy OpenClaw Agent
 
-OpenClaw 是一个 Agent 框架，通过 npm 安装到 ROCK 沙箱中。它接收用户问题后，会自动进行多轮推理和工具调用。
+OpenClaw is an Agent framework that is installed into the ROCK sandbox via npm. After it receives user questions, it automatically performs multiple rounds of reasoning and tool invocation.
 
-### 5.1 配置 OpenClaw
+### 5.1 Configuring OpenClaw
 
-编辑 `openclaw_deploy/rock_agent_config.yaml`：
+Edit `openclaw_deploy/rock_agent_config.yaml`:
+
 
 ```yaml
 working_dir: "."
@@ -355,22 +397,26 @@ runtime_env_config:
   install_timeout: 1200
 
 env:
-  OPENAI_BASE_URL: "http://<YOUR_HOST_IP>:8000/v1"  # ← vLLM 地址（容器内访问宿主机）
+  OPENAI_base_URL: "http<YOUR_HOST_IP>://: 8000←/v1" # vLLM Address (In-container access host)
   OPENAI_API_KEY: "EMPTY"
-  OPENAI_MODEL_NAME: "/path/to/Qwen3-8B"            # ← 与 vLLM 的 --model 一致
+  OPENAI_model_name: "/path/to/Qwen3-8B" # is consistent ← with vLLM's --model
   OPENCLAW_GATEWAY_TOKEN: "OPENCLAW"
 ```
 
-> **重要：** `OPENAI_BASE_URL` 不能写 `localhost`，因为这是在 Docker 容器内运行的。用宿主机的实际 IP（`hostname -I | awk '{print $1}'` 查看）。
 
-### 5.2 部署
+> **Important:** `OPENAI_BASE_URL` cannot write `localhost` because this is run inside a Docker container. Use the actual IP of the host (see `hostname -I | awk '{print $1}'`).
+
+### 5.2 Deployment
+
 
 ```bash
 cd AlphaDiana/openclaw_deploy
 python deploy.py
 ```
 
-等待 3-5 分钟（npm 安装 + 启动 gateway），输出：
+
+Wait 3-5 minutes (npm installation + start gateway), output:
+
 
 ```
 Creating sandbox...
@@ -383,12 +429,14 @@ Sandbox ID: 90d4a0c01ad1497baa4f4db4b72f3923
 API base: http://127.0.0.1:9001/apis/envs/sandbox/v1/sandboxes/90d4a0c01ad1497baa4f4db4b72f3923/proxy/v1
 ```
 
-**记下 Sandbox ID**，后续配置要用。
 
-### 5.3 验证 OpenClaw
+**Write down the Sandbox ID** for subsequent configuration.
+
+### 5.3 Verification OpenClaw
+
 
 ```bash
-SANDBOX_ID="<你的Sandbox ID>"
+Sandbox_ID = ""
 
 curl -s -X POST \
   "http://localhost:9001/apis/envs/sandbox/v1/sandboxes/${SANDBOX_ID}/proxy/v1/chat/completions" \
@@ -397,15 +445,17 @@ curl -s -X POST \
   -d '{"model":"openclaw","messages":[{"role":"user","content":"What is 2+3?"}],"max_tokens":512}'
 ```
 
-应返回包含答案 "5" 的 JSON 响应。
+
+A JSON response containing the answer "5" should be returned.
 
 ---
 
-## 6. 运行 OpenClaw 评估
+## 6. Run the OpenClaw evaluation
 
-### 6.1 编写配置文件
+### 6.1 Writing configuration files
 
-创建 `configs/openclaw_aime2024.yaml`：
+Create `configs/openclaw_aime2024.yaml`:
+
 
 ```yaml
 run_id: "openclaw-qwen3-8b-aime2024"
@@ -426,7 +476,7 @@ benchmark:
     dataset: "HuggingFaceH4/aime_2024"
     split: "train"
 
-sandbox: null   # OpenClaw 已在 ROCK 中运行，不需要额外的 sandbox
+sandbox: null # OpenClaw is already running in rock, no extra sandbox required
 
 scorer:
   name: numeric
@@ -437,29 +487,33 @@ max_concurrent: 1
 output_dir: "./results"
 ```
 
-> 把 `<SANDBOX_ID>` 替换为第 5 步获得的 Sandbox ID。
 
-### 6.2 运行
+> Replace `<SANDBOX_ID>` with the Sandbox ID obtained in step 5.
+
+### 6.2 Run
+
 
 ```bash
 alphadiana run configs/openclaw_aime2024.yaml
 ```
 
-每道题大约需要 30-60 秒（Agent 内部多轮推理），30 道题预计 15-30 分钟。
 
-### 6.3 或者先跑单题试试
+Each question takes approximately 30-60 seconds (multiple rounds of reasoning within the Agent), and 30 questions are expected to take 15-30 minutes.
+
+### 6.3 Or try a single question first
+
 
 ```python
 from alphadiana.benchmark.aime import AIMEBenchmark
 from alphadiana.agent.openclaw import OpenClawAgent
 from alphadiana.scorer.numeric import NumericScorer
 
-# 加载数据
+Is loading data
 benchmark = AIMEBenchmark()
 tasks = benchmark.load_tasks({"dataset": "HuggingFaceH4/aime_2024", "split": "train"})
 task = tasks[0]
 
-# 初始化 Agent
+# Initialize Agent
 agent = OpenClawAgent()
 agent.setup({
     "version": "latest",
@@ -469,12 +523,12 @@ agent.setup({
     "max_tokens": 8192,
 })
 
-# 求解
+Solve
 resp = agent.solve(task)
 print(f"Answer: {resp.answer}")
 print(f"Wall time: {resp.wall_time_sec:.1f}s")
 
-# 查看 agentic trace
+# View agentic trace
 for step in resp.trajectory:
     role = step.get("role", "?")
     thinking = step.get("thinking", "")
@@ -488,27 +542,31 @@ for step in resp.trajectory:
     if content:
         print(f"  [{role}] {content}")
 
-# 评分
+Review
 scorer = NumericScorer()
 scorer.setup({"tolerance": 1e-6})
 score = scorer.score(task, resp)
 print(f"Correct: {score.correct}, Score: {score.score}")
 ```
 
+
 ---
 
-## 7. 查看和分析结果
+## 7. View and analyze results
 
-### 7.1 结果文件
+### 7.1 Result file
 
-评估结果保存在 `results/<run_id>.jsonl`，每行一条 JSON 记录：
+The evaluation results are saved in `results/<run_id>.jsonl`, with one JSON record per line:
+
 
 ```bash
-# 查看结果摘要
+# See summary of results
 alphadiana report ./results
 ```
 
-### 7.2 逐题分析
+
+### 7.2 Question-by-question analysis
+
 
 ```python
 import json
@@ -526,52 +584,56 @@ for r in results:
     print(f"{r['task_id']:<15} {r['ground_truth']:>5} {str(r['predicted']):>8} {mark:>4} {r['wall_time_sec']:>5.0f}s")
 ```
 
-### 7.3 查看 Agent 的推理过程
 
-每条结果的 `trajectory` 字段包含完整的 agentic trace：
+### 7.3 View the Agent’s reasoning process
+
+The `trajectory` field of each result contains the complete agentic trace:
+
 
 ```python
-r = results[0]  # 第一题
+r = results [0] # Question 1
 
 for step in r["trajectory"]:
     role = step.get("role", "?")
 
-    # thinking: Agent 的内部思考
+    # thinking: Agent's internal thinking
     if step.get("thinking"):
         print(f"[{role}] THINKING: {step['thinking'][:200]}...")
 
-    # tool_calls: Agent 调用了什么工具
+    # tool_calls: What tool was called by the Agent
     for tc in step.get("tool_calls", []):
         print(f"[{role}] TOOL CALL: {tc['tool']}({json.dumps(tc['input'])[:100]})")
 
-    # tool_results: 工具执行结果
+    # tool_results: Tool execution results
     for tr in step.get("tool_results", []):
         print(f"[{role}] TOOL RESULT: {str(tr['content'])[:100]}")
 
-    # content: Agent 的文本输出
+    # content: The text output of the Agent
     if step.get("content"):
         print(f"[{role}] OUTPUT: {step['content'][:200]}")
 ```
 
+
 ---
 
-## 8. 自定义配置
+## 8. Custom configuration
 
-### 8.1 配置文件字段说明
+### 8.1 Configuration file field description
+
 
 ```yaml
-run_id: string           # 运行标识（不填则自动生成 UUID）
+run_id: string # Run ID (leave blank to auto-generate UUID)
 
 agent:
   name: string           # "direct_llm" | "openclaw"
-  version: string        # 版本号（如 "latest", "v1.0"）
-  config: {}             # Agent 特定配置（见下方）
+  version: string # Version number (e.g. "latest", "v1.0")
+  config: {} # Agent-specific configuration (see below)
 
 benchmark:
   name: string           # "aime" | "math" | "hle" | "frontier_math" | "terminal_bench" | "osworld"
-  config: {}             # Benchmark 特定配置（见下方）
+  config: {} # Benchmark specific configuration (see below)
 
-sandbox: null | {}       # 沙箱配置（terminal_bench 和 osworld 必需，其他可选）
+sandbox: null | {} # Sandbox configuration (required for terminal_bench and osworld, optional)
   name: string           # "local" | "rock" | "boxlite"
   config: {}
 
@@ -579,29 +641,33 @@ scorer:
   name: string           # "numeric" | "exact_match" | "llm_judge"
   config: {}
 
-max_concurrent: int      # 并行任务数（默认 1）
-output_dir: string       # 结果输出目录（默认 "./results"）
-metadata: {}             # 自定义元数据
+max_concurrent: int # number of parallel tasks (default 1)
+output_dir: string # Output directory (default "./results")
+metadata: {} # Custom Metadata
 ```
 
-### 8.2 Agent 配置
 
-**Direct LLM（直接调 LLM 基线）：**
+### 8.2 Agent configuration
+
+**Direct LLM (directly adjust LLM baseline):**
+
 
 ```yaml
 agent:
   name: direct_llm
   version: "1.0"
   config:
-    model: "模型名称"
+    model: "Model name"
     api_base: "http://localhost:8000/v1"
     api_key: "EMPTY"
     temperature: 0.0
     max_tokens: 4096
-    # system_prompt: "自定义 system prompt"  # 可选
+    # system_prompt: "Custom system prompt" # Optional
 ```
 
-**OpenClaw（Agent 系统）：**
+
+**OpenClaw (Agent system):**
+
 
 ```yaml
 agent:
@@ -613,10 +679,12 @@ agent:
     gateway_token: "OPENCLAW"
     temperature: 0.0
     max_tokens: 8192
-    # 注意: OpenClaw 有自己的 system prompt，不需要手动设置
+    # Note: OpenClaw has its own system prompt and does not require manual setup
 ```
 
-### 8.3 Benchmark 配置
+
+### 8.3 Benchmark configuration
+
 
 ```yaml
 # AIME 2024
@@ -632,7 +700,7 @@ benchmark:
   config:
     dataset: "hendrycks/competition_math"
     split: "test"
-    # subset: "algebra"  # 可选，只跑子集
+    # subset: "algebra" # Optional, only run subsets
 
 # HLE (Humanity's Last Exam)
 benchmark:
@@ -641,21 +709,23 @@ benchmark:
     split: "test"
 ```
 
-### 8.4 Scorer 配置
+
+### 8.4 Scorer configuration
+
 
 ```yaml
-# 数值比较（AIME 用）
+# Numeric Comparison (for AIME)
 scorer:
   name: numeric
   config:
     tolerance: 1e-6
 
-# 精确匹配（MATH 用）
+# Exact Match (for math)
 scorer:
   name: exact_match
   config: {}
 
-# LLM 判断（HLE 用）
+# LLM judgment (for HLE)
 scorer:
   name: llm_judge
   config:
@@ -664,154 +734,170 @@ scorer:
     api_key: "sk-..."
 ```
 
-### 8.5 Direct LLM vs OpenClaw 对比
+
+### 8.5 Direct LLM vs OpenClaw comparison
 
 | | Direct LLM | OpenClaw |
 |---|---------|----------|
-| 评测对象 | 裸模型能力 | Agent 系统能力 |
-| 推理方式 | 单轮问答 | 多轮推理 + 工具调用 |
-| 需要 ROCK | 否 | 是 |
-| 需要 Docker | 否 | 是 |
-| 每题耗时 | 5-20 秒 | 30-120 秒 |
-| 搭建难度 | 低 | 中 |
-| Trajectory | 简单 (system/user/assistant) | 丰富 (thinking/tool_call/tool_result) |
+| Evaluation objects | Naked model capabilities | Agent system capabilities |
+| Reasoning method | Single round Q&A | Multi-round reasoning + tool calling |
+| ROCK REQUIRED | NO | YES |
+| Requires Docker | No | Yes |
+|Each question takes 5-20 seconds | 30-120 seconds |
+| Construction Difficulty | Low | Medium |
+| Trajectory | Simple (system/user/assistant) | Rich (thinking/tool_call/tool_result) |
 
 ---
 
-## 附录 A：项目结构
+## Appendix A: Project Structure
+
 
 ```
 AlphaDiana/
-├── alphadiana/                    # 核心代码
-│   ├── cli.py                     # CLI 入口 (alphadiana run/validate/report)
-│   ├── agent/                     # Agent 实现
-│   │   ├── base.py                #   Agent 基类 + AgentResponse
-│   │   ├── registry.py            #   Agent 注册表
-│   │   ├── direct_llm.py           #   Direct LLM: 直接调 LLM 基线
-│   │   └── openclaw.py            #   OpenClaw: Agent 系统（多轮推理+工具调用）
-│   ├── benchmark/                 # Benchmark 数据集
-│   │   ├── base.py                #   Benchmark 基类 + BenchmarkTask
-│   │   ├── registry.py            #   Benchmark 注册表
-│   │   ├── aime.py                #   AIME 竞赛数学
+├── alphadiana/# Core Code
+│   ├── cli.py # CLI entry (alphadiana run/validate/report)
+│   ├── agent/# Agent implementation
+│   │   ├── base.py # Agent Base Class + AgentResponse
+│   │   ├── registry.py # Agent Registry
+│   │   ├── direct_llm.py # Direct LLM: Direct LLM Baseline
+│   │   └── openclaw.py # OpenClaw: Agent System (Multiple Reasoning + Tool Calls)
+│   ├── benchmark/# Benchmark dataset
+│   │   ├── base.py # Benchmark Base Class + BenchmarkTask
+│   │   ├── registry.py # Benchmark Registry
+│   │   ├── aime.py # AIME Competition Math
 │   │   ├── math_bench.py          #   Hendrycks MATH
 │   │   ├── hle.py                 #   Humanity's Last Exam
 │   │   ├── frontier_math.py       #   FrontierMath
-│   │   ├── terminal_bench.py      #   终端操作（需要沙箱）
-│   │   └── osworld.py             #   OS 交互（需要沙箱）
-│   ├── scorer/                    # 评分器
-│   │   ├── base.py                #   Scorer 基类 + ScoreResult
-│   │   ├── numeric.py             #   数值比较
-│   │   ├── exact_match.py         #   精确匹配
-│   │   └── llm_judge.py           #   LLM 评判
-│   ├── runner/                    # 运行引擎
-│   │   ├── runner.py              #   Runner: 主编排器
-│   │   └── task_dispatcher.py     #   TaskDispatcher: 并行调度
-│   ├── results/                   # 结果管理
-│   │   ├── result_store.py        #   JSONL 结果存储
-│   │   └── report.py              #   报告生成
-│   ├── sandbox/                   # 沙箱实现
-│   │   ├── local.py               #   本地 subprocess
-│   │   ├── rock.py                #   ROCK 远程沙箱
-│   │   └── boxlite.py             #   Boxlite 云沙箱
-│   └── config/                    # 配置系统
-│       ├── experiment_config.py   #   ExperimentConfig 数据类
-│       └── validator.py           #   配置校验器
-├── configs/examples/              # 示例配置
-├── openclaw_deploy/               # OpenClaw 部署配置
-│   ├── deploy.py                  #   部署脚本
-│   ├── rock_agent_config.yaml     #   ROCK agent 配置
-│   └── openclaw.json              #   OpenClaw gateway 配置
-├── results/                       # 评估结果输出目录
-├── tests/                         # 测试（6 个阶段）
-└── docs/                          # 文档
+│   │   ├── terminal_bench.py # Terminal operation (sandbox required)
+│   │   └── osworld.py # OS Interaction (requires sandbox)
+│   ├── scorer/# Scorer
+│   │   ├── base.py # Scorer Base Class + ScoreResult
+│   │   ├── numeric.py # Numeric Comparison
+│   │   ├── exact_match.py # Exact Match
+│   │   └── llm_judge.py # LLM Judge
+│   ├── runner/# Run Engine
+│   │   ├── runner.py # Runner: Main orchestrator
+│   │   └── task_dispatcher.py # TaskDispatcher: Parallel Scheduling
+│   ├── results/# Results Management
+│   │   ├── result_store.py # JSONL Result Storage
+│   │   └── report.py # Report Generation
+│   ├── sandbox/# sandbox implementation
+│   │   ├── local.py # Local subprocess
+│   │   ├── rock.py # rock remote sandbox
+│   │   └── boxlite.py # Boxlite Cloud Sandbox
+│   └── config/# Configure the system
+│       ├── experiment_config.py # ExperimentConfig data class
+│       └── validator.py # Configure Validator
+├── configs/examples/# Sample configuration
+├── openclaw_deploy/# OpenClaw deployment configuration
+│   ├── deploy.py # Deployment script
+│   ├── rock_agent_config.yaml # rock agent configuration
+│   └── openclaw.json # OpenClaw gateway configuration
+├── results/# Output directory of evaluation results
+├── tests/# testing (6 phases)
+└── docs/# Documentation
 ```
 
-### 核心数据流
+
+### Core Data Flow
+
 
 ```
 YAML Config
     │  ExperimentConfig.from_yaml()
     ▼
 Runner.setup()
-    │  从注册表加载 Benchmark / Agent / Scorer
+    Load Benchmark/Agent/Scorer │  from the registry
     ▼
 Runner.run()
-    │  benchmark.load_tasks() → 加载数据集
+    │  benchmark.load_tasks () → Load dataset
     │  for each task:
     │    agent.solve(task) → AgentResponse (answer, trajectory, ...)
     │    scorer.score(task, response) → ScoreResult (correct, score, ...)
-    │    result_store.append(task, response, score) → 写入 JSONL
+    │    result_store.append (task, response, score) → to JSONL
     │  report_generator.generate() → RunSummary
     ▼
 Runner.teardown()
-    │  清理资源
+    │  Clean up resources
     ▼
-输出: results/<run_id>.jsonl + 控制台报告
+Output: results/<run_id>.jsonl + console report
 ```
+
 
 ---
 
-## 附录 B：常见问题
+## Appendix B: Frequently Asked Questions
 
-### Q: vLLM 启动报显存不足？
+### Q: vLLM reports insufficient video memory when starting?
 
-减小 `--max-model-len`，或者用更大显存的 GPU：
+Reduce `--max-model-len`, or use a GPU with larger memory:
+
 
 ```bash
-# 用更小的上下文长度
+# with a smaller context length
 --max-model-len 16384
 
-# 注意：如果要跑 OpenClaw，最少需要 32768（OpenClaw 系统 prompt ~8K tokens）
+# Note: If you want to run OpenClaw, you need at least 32768 (OpenClaw system prompt ~ 8K tokens)
 ```
 
-### Q: ROCK 沙箱容器立即退出？
 
-检查以下几项：
-1. `ROCK_PROJECT_ROOT` 环境变量是否设置
-2. `.venv` 软链接是否指向有效的 Python 环境
-3. `gem-llm` 包是否已安装
-4. Ray 是否在设置 `ROCK_PROJECT_ROOT` 之后重启
+### Q: Does the ROCK sandbox container exit immediately?
+
+Check the following items:
+1. Is the `ROCK_PROJECT_ROOT` environment variable set?
+2. Whether the `.venv` soft link points to a valid Python environment
+3. Is the `gem-llm` package installed?
+4. Whether Ray restarts after setting `ROCK_PROJECT_ROOT`
+
 
 ```bash
-# 完整的重启流程
+# Complete restart process
 export ROCK_PROJECT_ROOT=/path/to/ROCK
 ray stop
 ray start --head --port=6380
 ```
 
-### Q: OpenClaw 返回 "Context overflow"？
 
-vLLM 的 `--max-model-len` 太小。OpenClaw 内部 system prompt 约 8K tokens，需要至少 32K 的上下文窗口。
+### Q: OpenClaw returns "Context overflow"?
+
+vLLM's `--max-model-len` is too small. OpenClaw's internal system prompt has about 8K tokens and requires at least 32K context windows.
+
 
 ```bash
-# 重启 vLLM
+# Restart vLLM
 --max-model-len 32768
 ```
 
-### Q: OpenClaw 返回 "404 The model does not exist"？
 
-`rock_agent_config.yaml` 中的 `OPENAI_MODEL_NAME` 必须与 vLLM 的 `--model` 参数**完全一致**（包括完整路径）。
+### Q: OpenClaw returns "404 The model does not exist"?
 
-### Q: `OPENAI_BASE_URL` 填什么？
+`OPENAI_MODEL_NAME` in `rock_agent_config.yaml` must be exactly the same as the `--model` parameter of vLLM (including the full path).
 
-在 `rock_agent_config.yaml` 中，这是 Docker 容器内访问 vLLM 的地址。不能用 `localhost`（那是容器内的 localhost）。用宿主机 IP：
+### Q: What to fill in for `OPENAI_BASE_URL`?
+
+In `rock_agent_config.yaml`, this is the address within the Docker container to access the vLLM. You can't use `localhost` (that's localhost inside the container). Use host IP:
+
 
 ```bash
 hostname -I | awk '{print $1}'
-# 例如: 192.0.2.14
-# 则填: http://192.0.2.14:8000/v1
+# Example: 192.0.2.14
+# then: http://192.0.2.14: 8000/v1
 ```
 
-### Q: 如何只跑数据集的一部分？
 
-目前需要修改 Benchmark 实现或在 Python API 中手动切片：
+### Q: How to run only part of the data set?
+
+Currently you need to modify the Benchmark implementation or manually slice in the Python API:
+
 
 ```python
 tasks = benchmark.load_tasks(config)
-tasks = tasks[:5]  # 只跑前 5 题
+tasks = tasks [: 5] # Top 5 questions only
 ```
 
-### Q: 如何注册自定义 Agent？
+
+### Q: How to register a custom Agent?
+
 
 ```python
 # my_agent.py
@@ -823,10 +909,10 @@ class MyAgent(Agent):
 
     def setup(self, config: dict) -> None:
         self.version = config.get("version", "1.0")
-        # 初始化你的 Agent...
+        # Initializing your Agent...
 
     def solve(self, task, sandbox=None) -> AgentResponse:
-        # 调用你的模型/Agent 系统...
+        # Calling your Model/Agent system...
         return AgentResponse(answer="42", raw_output="...", trajectory=[...])
 
     def teardown(self) -> None:
@@ -835,18 +921,19 @@ class MyAgent(Agent):
 AgentRegistry.register("my_agent", MyAgent)
 ```
 
-然后在配置中使用 `agent.name: "my_agent"`。
 
-### Q: 评估结果文件在哪里？
+Then use `agent.name: "my_agent"` in the configuration.
 
-在配置文件的 `output_dir` 目录下（默认 `./results/`），文件名为 `<run_id>.jsonl`。
+### Q: Where are the assessment results files?
 
-每行一条 JSON 记录，包含：
+In the `output_dir` directory of the configuration file (default `./results/`), the file name is `<run_id>.jsonl`.
+
+One JSON record per line, containing:
 
 ```json
 {
   "task_id": "aime_60",
-  "problem": "题目内容...",
+  "problem": "Question content...",
   "ground_truth": "204",
   "predicted": "204",
   "correct": true,

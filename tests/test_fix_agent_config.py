@@ -1,9 +1,9 @@
-"""Agent 配置与定制（问题 2.1 ~ 2.3）
+"""Agent configuration and customization (Problems 2.1 ~ 2.3)
 
-覆盖:
-- 2.1 Agent.md 自定义：append/override/none 三种模式、inject_agent_md()
-- 2.2 默认参数：temperature=0.7、max_tokens=None、自动探测与回退
-- 2.3 Embedding 配置：provider 注入、未配置时禁用 memory
+Covers:
+- 2.1 Agent.md customization: append/override/none modes, inject_agent_md()
+- 2.2 Default parameters: temperature=0.7, max_tokens=None, auto-detect and fallback
+- 2.3 Embedding configuration: provider injection, disable memory when unconfigured
 """
 
 import json
@@ -15,12 +15,12 @@ import pytest
 
 
 # ===================================================================
-# 2.1 Agent.md 自定义
+# 2.1 Agent.md Customization
 # ===================================================================
 
 
 class TestAgentMdConfig:
-    """agent_md_mode / agent_md_content 配置读取。"""
+    """agent_md_mode / agent_md_content config reading."""
 
     def test_default_mode_none(self):
         from alphadiana.agent.openclaw import OpenClawAgent
@@ -66,7 +66,7 @@ class TestAgentMdConfig:
 
 
 class TestAgentMdInjection:
-    """inject_agent_md() 对 sandbox 的读写行为。"""
+    """inject_agent_md() read/write behavior on sandbox."""
 
     def _make_mgr(self, mode="none", content=""):
         from alphadiana.agent.openclaw_runtime import OpenClawRuntimeManager
@@ -128,12 +128,12 @@ class TestAgentMdInjection:
 
 
 # ===================================================================
-# 2.2 默认参数（temperature / max_tokens）
+# 2.2 Default Parameters (temperature / max_tokens)
 # ===================================================================
 
 
 class TestOpenClawDefaults:
-    """OpenClawAgent 默认 temperature=0.7, max_tokens=None。"""
+    """OpenClawAgent defaults: temperature=0.7, max_tokens=None."""
 
     def _setup(self, **extra):
         from alphadiana.agent.openclaw import OpenClawAgent
@@ -156,7 +156,7 @@ class TestOpenClawDefaults:
 
 
 class TestDirectLLMDefaults:
-    """DirectLLMAgent 默认 temperature=0.7, max_tokens=None。"""
+    """DirectLLMAgent defaults: temperature=0.7, max_tokens=None."""
 
     def _setup(self, **extra):
         from alphadiana.agent.direct_llm import DirectLLMAgent
@@ -182,7 +182,7 @@ class TestDirectLLMDefaults:
 
 
 class TestDirectLLMMaxTokensAutoDetect:
-    """DirectLLM max_tokens=None 时自动探测 / 回退。"""
+    """DirectLLM auto-detect / fallback when max_tokens=None."""
 
     def _setup(self, **extra):
         from alphadiana.agent.direct_llm import DirectLLMAgent
@@ -239,7 +239,7 @@ class TestDirectLLMMaxTokensAutoDetect:
 
 
 class TestMaxTokensAutoDetect:
-    """max_tokens=None 时自动探测 / 回退。"""
+    """Auto-detect / fallback when max_tokens=None."""
 
     def test_has_resolve_method(self):
         from alphadiana.agent.openclaw import OpenClawAgent
@@ -277,12 +277,12 @@ class TestMaxTokensAutoDetect:
 
 
 # ===================================================================
-# 2.3 Embedding 配置
+# 2.3 Embedding Configuration
 # ===================================================================
 
 
 class TestEmbeddingConfig:
-    """Embedding provider 注入与 schema 字段。"""
+    """Embedding provider injection and schema fields."""
 
     def _make_mgr(self, **extra):
         from alphadiana.agent.openclaw_runtime import OpenClawRuntimeManager

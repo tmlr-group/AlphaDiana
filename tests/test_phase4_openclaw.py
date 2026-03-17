@@ -1,17 +1,17 @@
-"""Phase 4: 在 ROCK Sandbox 中部署 OpenClaw Gateway
+"""Phase 4: deploy OpenClaw Gateway inside a ROCK sandbox
 
-验证点:
-- OpenClaw gateway 在 sandbox 内的 8080 端口启动
-- 通过 ROCK proxy 调用 chat/completions 返回正常
-- 请求链路: AlphaDiana → ROCK Proxy → OpenClaw Gateway → vLLM (Qwen3-8B)
+Checks:
+- The OpenClaw gateway starts on port 8080 inside the sandbox
+- Calling chat/completions through the ROCK proxy returns normally
+- Request path: AlphaDiana -> ROCK Proxy -> OpenClaw Gateway -> vLLM (Qwen3-8B)
 
-需要:
-  - ROCK 环境 (Phase 3)
-  - vLLM 服务 (Phase 2)
-  - OpenClaw gateway 在 sandbox 中运行
-  - OPENCLAW_SANDBOX_ID 环境变量
+Requires:
+  - ROCK environment (Phase 3)
+  - vLLM service (Phase 2)
+  - OpenClaw gateway running inside the sandbox
+  - OPENCLAW_SANDBOX_ID environment variable
 
-用 pytest -m integration 运行这些测试。
+Run these tests with pytest -m integration.
 """
 import os
 
@@ -38,10 +38,10 @@ def _get_openclaw_api_base() -> str:
     reason="OPENCLAW_SANDBOX_ID not set. Deploy OpenClaw in ROCK first."
 )
 class TestOpenClawGateway:
-    """验证 OpenClaw gateway 通过 ROCK proxy 可用。"""
+    """Verify that the OpenClaw gateway is available through the ROCK proxy."""
 
     def test_gateway_reachable(self):
-        """OpenClaw gateway 端点可达。"""
+        """OpenClaw gateway endpoints are reachable."""
         import requests
         api_base = _get_openclaw_api_base()
         resp = requests.get(
@@ -49,12 +49,12 @@ class TestOpenClawGateway:
             headers={"Authorization": "bearer OPENCLAW"},
             timeout=10,
         )
-        # gateway 应返回模型列表或至少不是连接错误
+        # gateway should return a model list or at least not a connection error
         # OpenClaw may return 405 for GET on endpoints that only support POST
         assert resp.status_code in (200, 404, 405)
 
     def test_chat_completion_via_gateway(self):
-        """通过 OpenClaw gateway 调用 chat completions。"""
+        """Call chat completions through the OpenClaw gateway."""
         from openai import OpenAI
 
         api_base = _get_openclaw_api_base()
@@ -73,7 +73,7 @@ class TestOpenClawGateway:
         assert len(content) > 0
 
     def test_gateway_routes_to_qwen(self):
-        """确认请求经过 OpenClaw → Qwen3-8B → 返回推理结果。"""
+        """Confirm the request is routed through OpenClaw to Qwen3-8B and returns reasoning output."""
         from openai import OpenAI
 
         api_base = _get_openclaw_api_base()
@@ -91,11 +91,11 @@ class TestOpenClawGateway:
 
         content = response.choices[0].message.content
         assert content is not None
-        # 应包含推理文本
+        # The response should contain reasoning text.
         assert len(content) > 5
 
     def test_token_usage_via_gateway(self):
-        """Gateway 返回 token 统计。"""
+        """Gateway returns token statistics."""
         from openai import OpenAI
 
         api_base = _get_openclaw_api_base()
@@ -109,13 +109,13 @@ class TestOpenClawGateway:
         )
 
         usage = response.usage
-        # OpenClaw 可能不总是返回 usage，所以只检查不崩溃
+        # OpenClaw may not always return usage, so only verify that it does not crash.
         if usage:
             assert usage.prompt_tokens >= 0
             assert usage.completion_tokens >= 0
 
     def test_system_prompt_forwarded(self):
-        """System prompt 被正确转发到模型。"""
+        """System prompt is forwarded correctly to the model."""
         from openai import OpenAI
 
         api_base = _get_openclaw_api_base()

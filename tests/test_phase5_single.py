@@ -1,18 +1,18 @@
-"""Phase 5: OpenClawAgent 单题验证
+"""Phase 5: validate OpenClawAgent on a single task
 
-验证点:
-- OpenClawAgent.setup() 正确初始化（api_base, gateway_token, model）
-- OpenClawAgent.solve(task) 调用 OpenClaw gateway 返回 AgentResponse
-- raw_output 包含推理过程文本
-- _extract_answer() 从输出中提取答案（\boxed{} 或末行）
-- NumericScorer.score() 能评分
-- ResultStore.append() 保存结果到 JSONL
+Checks:
+- OpenClawAgent.setup() initializes correctly (api_base, gateway_token, model)
+- OpenClawAgent.solve(task) calls the OpenClaw gateway and returns AgentResponse
+- raw_output contains reasoning text
+- _extract_answer() extracts the answer from the output (\\boxed{} or the last line)
+- NumericScorer.score() can score the output
+- ResultStore.append() saves the result to JSONL
 
-需要:
-  - OpenClaw gateway 可用 (Phase 4)
-  - OPENCLAW_SANDBOX_ID 环境变量
+Requires:
+  - OpenClaw gateway available (Phase 4)
+  - OPENCLAW_SANDBOX_ID environment variable
 
-用 pytest -m integration 运行这些测试。
+Run these tests with pytest -m integration.
 """
 import os
 
@@ -34,11 +34,11 @@ def _get_openclaw_api_base() -> str:
 
 
 # ---------------------------------------------------------------------------
-# 5.1 _extract_answer 单元测试（不需要外部服务）
+# 5.1 _extract_answer unit tests (no external service required)
 # ---------------------------------------------------------------------------
 
 class TestExtractAnswer:
-    """验证 _extract_answer 函数的答案提取逻辑。"""
+    """Validate the answer extraction logic of _extract_answer."""
 
     def test_boxed_simple(self):
         from alphadiana.agent.openclaw import _extract_answer
@@ -74,7 +74,7 @@ class TestExtractAnswer:
 
 
 # ---------------------------------------------------------------------------
-# 5.2 OpenClawAgent 集成测试
+# 5.2 OpenClawAgent integration tests
 # ---------------------------------------------------------------------------
 
 @pytest.mark.skipif(
@@ -82,7 +82,7 @@ class TestExtractAnswer:
     reason="OPENCLAW_SANDBOX_ID not set."
 )
 class TestOpenClawAgentSingleTask:
-    """用 OpenClawAgent 跑一道 AIME 题。"""
+    """Run a single AIME problem with OpenClawAgent."""
 
     @pytest.fixture
     def agent(self):
@@ -100,7 +100,7 @@ class TestOpenClawAgentSingleTask:
 
     @pytest.fixture
     def sample_task(self):
-        """一道简单的 AIME 风格题目。"""
+        """A simple AIME-style problem."""
         from alphadiana.benchmark.base import BenchmarkTask
         return BenchmarkTask(
             task_id="aime_test_1",
@@ -112,12 +112,12 @@ class TestOpenClawAgentSingleTask:
         )
 
     def test_agent_setup(self, agent):
-        """Agent 初始化成功，name 和 version 正确。"""
+        """The agent initializes successfully with the correct name and version."""
         assert agent.name == "openclaw"
         assert agent.version == "latest"
 
     def test_solve_returns_response(self, agent, sample_task):
-        """solve() 返回 AgentResponse。"""
+        """solve() returns AgentResponse."""
         from alphadiana.agent.base import AgentResponse
         resp = agent.solve(sample_task)
         assert isinstance(resp, AgentResponse)
@@ -125,24 +125,24 @@ class TestOpenClawAgentSingleTask:
         assert len(str(resp.answer)) > 0
 
     def test_raw_output_has_reasoning(self, agent, sample_task):
-        """raw_output 包含推理过程文本。"""
+        """raw_output contains reasoning text."""
         resp = agent.solve(sample_task)
         assert len(resp.raw_output) > 50, "Expected reasoning text in raw_output"
 
     def test_wall_time_recorded(self, agent, sample_task):
-        """wall_time_sec 被记录且大于 0。"""
+        """wall_time_sec is recorded and greater than 0."""
         resp = agent.solve(sample_task)
         assert resp.wall_time_sec > 0
 
     def test_token_usage_recorded(self, agent, sample_task):
-        """token_usage 被记录。"""
+        """token_usage is recorded."""
         resp = agent.solve(sample_task)
         if resp.token_usage:
             assert "prompt_tokens" in resp.token_usage
             assert "completion_tokens" in resp.token_usage
 
     def test_trajectory_recorded(self, agent, sample_task):
-        """trajectory 包含对话记录。"""
+        """trajectory contains the conversation history."""
         resp = agent.solve(sample_task)
         assert len(resp.trajectory) > 0
         roles = [m["role"] for m in resp.trajectory]
@@ -152,19 +152,20 @@ class TestOpenClawAgentSingleTask:
         assert "assistant" in roles
 
     def test_scorer_works_on_response(self, agent, sample_task):
-        """NumericScorer 能对 agent 输出评分。"""
+        """NumericScorer can score the agent output."""
         from alphadiana.scorer.numeric import NumericScorer
         resp = agent.solve(sample_task)
         scorer = NumericScorer()
         scorer.setup({"tolerance": 1e-6})
         result = scorer.score(sample_task, resp)
-        # 不检查正确性（模型可能答错），只检查不崩溃
+        # Do not assert correctness here; the model may answer incorrectly.
+        # We only verify that scoring does not crash.
         assert result.score in (0.0, 1.0)
         assert isinstance(result.correct, bool)
         assert result.expected == "27"
 
     def test_result_store_saves(self, agent, sample_task, tmp_path):
-        """ResultStore 能保存 agent 结果到 JSONL。"""
+        """ResultStore can save the agent result to JSONL."""
         from alphadiana.results.result_store import ResultStore
         from alphadiana.scorer.numeric import NumericScorer
 
@@ -183,7 +184,7 @@ class TestOpenClawAgentSingleTask:
 
 
 # ---------------------------------------------------------------------------
-# 5.3 用真实 AIME 2024 第一题测试
+# 5.3 Test with the real first AIME 2024 problem
 # ---------------------------------------------------------------------------
 
 @pytest.mark.skipif(
@@ -191,7 +192,7 @@ class TestOpenClawAgentSingleTask:
     reason="OPENCLAW_SANDBOX_ID not set."
 )
 class TestOpenClawOnRealAIMETask:
-    """用真实 AIME 2024 题目测试全链路。"""
+    """Test the full pipeline with a real AIME 2024 problem."""
 
     @pytest.fixture
     def agent(self):
@@ -208,7 +209,7 @@ class TestOpenClawOnRealAIMETask:
         return a
 
     def test_solve_first_aime_task(self, agent):
-        """加载 AIME 2024 第一题并求解，验证全链路。"""
+        """Load and solve the first AIME 2024 problem to validate the full pipeline."""
         from alphadiana.benchmark.aime import AIMEBenchmark
         from alphadiana.scorer.numeric import NumericScorer
 

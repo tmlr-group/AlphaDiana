@@ -1,15 +1,15 @@
-"""Phase 1: 数据加载与评分验证
+"""Phase 1: data loading and scoring validation
 
-验证点:
-- 从 HuggingFaceH4/aime_2024 加载 30 道题 (split="train")
-- 每道题有 problem（题目文本）和 answer（3 位数字字符串）
-- dataset 路径从 config 传入，不硬编码
-- NumericScorer 正确比对整数答案
-- NumericScorer 处理 \boxed{210} 格式提取
-- ResultStore 写入 JSONL 并可读回
-- ReportGenerator 计算 accuracy 正确
+Checks:
+- Load 30 questions from HuggingFaceH4/aime_2024 (split="train")
+- Each question has a problem field and an answer field (a 3-digit numeric string)
+- The dataset path comes from config rather than being hardcoded
+- NumericScorer compares integer answers correctly
+- NumericScorer can extract answers from the \boxed{210} format
+- ResultStore writes JSONL and can read it back
+- ReportGenerator computes accuracy correctly
 
-无需外部服务（除首次下载 HuggingFace 数据集）。
+No external services are required, other than the initial HuggingFace dataset download.
 """
 import pytest
 
@@ -24,11 +24,11 @@ from alphadiana.scorer.numeric import NumericScorer
 
 
 # ---------------------------------------------------------------------------
-# 1.1 AIME 2024 数据集加载
+# 1.1 AIME 2024 dataset loading
 # ---------------------------------------------------------------------------
 
 class TestAIMEDatasetLoading:
-    """验证从 HuggingFaceH4/aime_2024 正确加载数据。"""
+    """Verify that the data is loaded correctly from HuggingFaceH4/aime_2024."""
 
     @pytest.fixture(scope="class")
     def aime_tasks(self):
@@ -40,62 +40,62 @@ class TestAIMEDatasetLoading:
         return benchmark.load_tasks(config)
 
     def test_loads_30_tasks(self, aime_tasks):
-        """AIME 2024 包含 30 道题（AIME I + AIME II 各 15 题）。"""
+        """AIME 2024 consists of 30 questions (15 for AIME I + 15 for AIME II)."""
         assert len(aime_tasks) == 30
 
     def test_task_has_problem(self, aime_tasks):
-        """每道题有非空的 problem 文本。"""
+        """Each question has a non-empty problem text."""
         for task in aime_tasks:
             assert task.problem, f"Task {task.task_id} has empty problem"
             assert len(task.problem) > 20, f"Task {task.task_id} problem too short"
 
     def test_task_has_ground_truth(self, aime_tasks):
-        """每道题有 ground_truth 答案。"""
+        """Each question has a ground_truth answer."""
         for task in aime_tasks:
             assert task.ground_truth, f"Task {task.task_id} has empty ground_truth"
 
     def test_ground_truth_is_integer_string(self, aime_tasks):
-        """AIME 答案是 0-999 的整数。"""
+        """AIME answers are integers from 0 to 999."""
         for task in aime_tasks:
             val = int(task.ground_truth)
             assert 0 <= val <= 999, f"Task {task.task_id}: answer {val} out of range"
 
     def test_task_id_unique(self, aime_tasks):
-        """task_id 唯一。"""
+        """task_id is unique."""
         ids = [t.task_id for t in aime_tasks]
         assert len(ids) == len(set(ids))
 
     def test_task_has_metadata(self, aime_tasks):
-        """每道题有 metadata（source, index 等）。"""
+        """Each question has metadata (source, index, etc.)."""
         for task in aime_tasks:
             assert "source" in task.metadata
             assert task.metadata["source"] == "HuggingFaceH4/aime_2024"
             assert "index" in task.metadata
 
     def test_dataset_path_from_config(self):
-        """dataset 路径从 config 传入，不硬编码。"""
+        """The dataset path comes from config rather than being hardcoded."""
         benchmark = AIMEBenchmark()
-        # 未指定 dataset 时应报错
+        # Error should be reported when dataset is not specified
         with pytest.raises(ValueError, match="dataset"):
             benchmark.load_tasks({})
 
     def test_default_scorer_is_numeric(self):
-        """AIME benchmark 默认 scorer 是 numeric。"""
+        """AIME benchmark default scorer is numeric."""
         benchmark = AIMEBenchmark()
         assert benchmark.default_scorer() == "numeric"
 
     def test_benchmark_name(self):
-        """Benchmark name 为 'aime'。"""
+        """The benchmark name is 'aime'."""
         benchmark = AIMEBenchmark()
         assert benchmark.name == "aime"
 
 
 # ---------------------------------------------------------------------------
-# 1.2 NumericScorer 对 AIME 答案格式的评分
+# 1.2 NumericScorer scoring for AIME answer formats
 # ---------------------------------------------------------------------------
 
 class TestNumericScorerAIME:
-    """验证 NumericScorer 对 AIME 整数答案的评分逻辑。"""
+    """Validate NumericScorer's scoring logic for AIME integer answers."""
 
     @pytest.fixture
     def scorer(self):
@@ -109,94 +109,94 @@ class TestNumericScorerAIME:
         return task, resp
 
     def test_correct_integer(self, scorer):
-        """整数完全匹配: '210' vs '210' → correct。"""
+        """Exact integer match: '210' vs '210' -> correct."""
         task, resp = self._make("210", "210")
         result = scorer.score(task, resp)
         assert result.correct is True
         assert result.score == 1.0
 
     def test_correct_integer_as_float(self, scorer):
-        """'210' vs '210.0' 应匹配。"""
+        """'210' vs '210.0' should match."""
         task, resp = self._make("210", "210.0")
         result = scorer.score(task, resp)
         assert result.correct is True
 
     def test_incorrect_integer(self, scorer):
-        """答案不同: '210' vs '211' → incorrect。"""
+        """Different answers: '210' vs '211' -> incorrect."""
         task, resp = self._make("210", "211")
         result = scorer.score(task, resp)
         assert result.correct is False
         assert result.score == 0.0
 
     def test_boxed_extraction(self, scorer):
-        r"""从 \boxed{210} 中提取答案。"""
+        r"""Extract the answer from \boxed{210}."""
         task, resp = self._make("210", "The answer is \\boxed{210}.")
         result = scorer.score(task, resp)
         assert result.correct is True
 
     def test_boxed_with_reasoning(self, scorer):
-        r"""推理过程后跟 \boxed{}。"""
+        r"""Reasoning text followed by \boxed{}."""
         output = "First we compute... so the answer is \\boxed{42}"
         task, resp = self._make("42", output)
         result = scorer.score(task, resp)
         assert result.correct is True
 
     def test_boxed_nested_braces(self, scorer):
-        r"""嵌套大括号的 \boxed{}。"""
+        r"""\boxed{} with nested braces."""
         output = "\\boxed{2^{10}}"
         task, resp = self._make("1024", output)
-        # 嵌套内容 "2^{10}" 无法解析为数字，应返回 incorrect
+        # The nested content "2^{10}" cannot be parsed as a number, so it should be incorrect.
         result = scorer.score(task, resp)
         assert result.correct is False
 
     def test_leading_zeros(self, scorer):
-        """AIME 答案可能有前导零如 '042'，NumericScorer 应当处理。"""
+        """AIME answers may have leading zeros such as '042'; NumericScorer should handle them."""
         task, resp = self._make("42", "042")
         result = scorer.score(task, resp)
         assert result.correct is True
 
     def test_answer_zero(self, scorer):
-        """答案为 0。"""
+        """The answer is 0."""
         task, resp = self._make("0", "0")
         result = scorer.score(task, resp)
         assert result.correct is True
 
     def test_answer_999(self, scorer):
-        """答案为 999（AIME 最大值）。"""
+        """The answer is 999 (AIME maximum)."""
         task, resp = self._make("999", "999")
         result = scorer.score(task, resp)
         assert result.correct is True
 
     def test_unparseable_prediction(self, scorer):
-        """无法解析的预测值应返回 incorrect。"""
+        """An unparseable prediction should return incorrect."""
         task, resp = self._make("42", "I don't know")
         result = scorer.score(task, resp)
         assert result.correct is False
         assert result.score == 0.0
 
     def test_score_result_has_expected_and_predicted(self, scorer):
-        """ScoreResult 应包含 expected 和 predicted 字段。"""
+        """ScoreResult should contain expected and predicted fields."""
         task, resp = self._make("42", "42")
         result = scorer.score(task, resp)
         assert result.expected == "42"
         assert result.predicted == "42"
 
     def test_thousands_separator(self, scorer):
-        """包含千位分隔符的数字: '1,000' vs '1000'，scorer 能正确处理。"""
+        """Numbers with thousands separators, like '1,000' vs '1000', are handled correctly."""
         task, resp = self._make("1000", "1,000")
         result = scorer.score(task, resp)
         assert result.correct is True
 
 
 # ---------------------------------------------------------------------------
-# 1.3 ResultStore 写入 JSONL 并可读回
+# 1.3 ResultStore writes JSONL and can read it back
 # ---------------------------------------------------------------------------
 
 class TestResultStore:
-    """验证 ResultStore 的 JSONL 读写。"""
+    """Validate ResultStore's JSONL reads and writes."""
 
     def test_append_and_load_roundtrip(self, tmp_path):
-        """写入后读回，数据一致。"""
+        """Data remains consistent after writing and reading it back."""
         store = ResultStore(output_dir=str(tmp_path), run_id="phase1-test")
 
         task = BenchmarkTask(task_id="aime_1", problem="Compute X.", ground_truth="42")
@@ -224,7 +224,7 @@ class TestResultStore:
         assert "timestamp" in r
 
     def test_multiple_appends(self, tmp_path):
-        """多次 append 后能全部读回。"""
+        """Read it all back after multiple appends."""
         store = ResultStore(output_dir=str(tmp_path), run_id="multi-test")
 
         for i in range(5):
@@ -240,13 +240,13 @@ class TestResultStore:
         assert len(results) == 5
 
     def test_empty_store_returns_empty_list(self, tmp_path):
-        """未写入时 load 返回空列表。"""
+        """Load returns an empty list when not written."""
         store = ResultStore(output_dir=str(tmp_path), run_id="empty-test")
         results = store.load()
         assert results == []
 
     def test_creates_output_dir(self, tmp_path):
-        """自动创建 output_dir。"""
+        """Create output_dir automatically."""
         nested = str(tmp_path / "nested" / "dir")
         store = ResultStore(output_dir=nested, run_id="dir-test")
         task = BenchmarkTask(task_id="t1", problem="P", ground_truth="1")
@@ -257,11 +257,11 @@ class TestResultStore:
 
 
 # ---------------------------------------------------------------------------
-# 1.4 ReportGenerator 计算 accuracy 正确
+# 1.4 ReportGenerator computes accuracy correctly
 # ---------------------------------------------------------------------------
 
 class TestReportGenerator:
-    """验证 ReportGenerator 的准确率计算和报告生成。"""
+    """Verify ReportGenerator accuracy calculation and report generation."""
 
     def _make_config(self, run_id="test-run"):
         return ExperimentConfig(
@@ -273,7 +273,7 @@ class TestReportGenerator:
         )
 
     def test_accuracy_calculation(self, tmp_path):
-        """3 correct / 5 total → accuracy = 0.6。"""
+        """3 correct / 5 total -> accuracy = 0.6."""
         store = ResultStore(output_dir=str(tmp_path), run_id="acc-test")
 
         for i in range(5):
@@ -294,7 +294,7 @@ class TestReportGenerator:
         assert summary.mean_score == pytest.approx(0.6)
 
     def test_perfect_accuracy(self, tmp_path):
-        """全部正确 → accuracy = 1.0。"""
+        """All correct -> accuracy = 1.0."""
         store = ResultStore(output_dir=str(tmp_path), run_id="perfect-test")
 
         for i in range(3):
@@ -308,7 +308,7 @@ class TestReportGenerator:
         assert summary.accuracy == pytest.approx(1.0)
 
     def test_zero_accuracy(self, tmp_path):
-        """全部错误 → accuracy = 0.0。"""
+        """All incorrect -> accuracy = 0.0."""
         store = ResultStore(output_dir=str(tmp_path), run_id="zero-test")
 
         for i in range(3):
@@ -322,7 +322,7 @@ class TestReportGenerator:
         assert summary.accuracy == pytest.approx(0.0)
 
     def test_token_aggregation(self, tmp_path):
-        """Token 统计聚合正确。"""
+        """Token statistics are aggregated correctly."""
         store = ResultStore(output_dir=str(tmp_path), run_id="token-test")
 
         for i in range(3):
@@ -340,7 +340,7 @@ class TestReportGenerator:
         assert summary.total_tokens["completion_tokens"] == 150
 
     def test_markdown_report(self, tmp_path):
-        """生成的 markdown 报告包含关键信息。"""
+        """The resulting markdown report contains key information."""
         store = ResultStore(output_dir=str(tmp_path), run_id="md-test")
 
         task = BenchmarkTask(task_id="t1", problem="P1", ground_truth="42")
@@ -359,7 +359,7 @@ class TestReportGenerator:
         assert "Accuracy" in md
 
     def test_summary_fields(self, tmp_path):
-        """RunSummary 包含所有必要字段。"""
+        """RunSummary contains all required fields."""
         store = ResultStore(output_dir=str(tmp_path), run_id="fields-test")
 
         task = BenchmarkTask(task_id="t1", problem="P1", ground_truth="42")
