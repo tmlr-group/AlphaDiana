@@ -10,10 +10,10 @@ from alphadiana.config.validator import ConfigValidator
 
 
 class TestExperimentConfigFromYAML:
-    """验证从 YAML 文件加载 ExperimentConfig。"""
+    """Verify loading ExperimentConfig from a YAML file."""
 
     def test_full_config(self, tmp_path):
-        """完整 YAML 配置加载正确。"""
+        """A complete YAML config loads correctly."""
         config_content = textwrap.dedent("""\
             run_id: "test-run-001"
             agent:
@@ -56,7 +56,7 @@ class TestExperimentConfigFromYAML:
         assert config.metadata["author"] == "tester"
 
     def test_minimal_config(self, tmp_path):
-        """最小配置（只有必需字段）。"""
+        """Minimal config with only required fields."""
         config_content = textwrap.dedent("""\
             agent:
               name: openclaw
@@ -77,7 +77,7 @@ class TestExperimentConfigFromYAML:
         assert config.output_dir == "./results"  # default
 
     def test_sandbox_config(self, tmp_path):
-        """带 sandbox 配置的 YAML。"""
+        """YAML config with a sandbox section."""
         config_content = textwrap.dedent("""\
             agent:
               name: openclaw
@@ -100,10 +100,10 @@ class TestExperimentConfigFromYAML:
 
 
 class TestExperimentConfigDefaults:
-    """验证 ExperimentConfig 默认值。"""
+    """Verify ExperimentConfig default values."""
 
     def test_auto_run_id(self):
-        """未指定 run_id 时自动生成。"""
+        """run_id is auto-generated when not specified."""
         config = ExperimentConfig(
             agent_name="openclaw",
             agent_version="v1.0",
@@ -113,7 +113,7 @@ class TestExperimentConfigDefaults:
         assert len(config.run_id) == 12  # uuid hex[:12]
 
     def test_default_max_concurrent(self):
-        """默认 max_concurrent 为 1。"""
+        """The default max_concurrent is 1."""
         config = ExperimentConfig(
             agent_name="openclaw",
             agent_version="v1.0",
@@ -123,7 +123,7 @@ class TestExperimentConfigDefaults:
         assert config.max_concurrent == 1
 
     def test_default_output_dir(self):
-        """默认 output_dir 为 ./results。"""
+        """The default output_dir is ./results."""
         config = ExperimentConfig(
             agent_name="openclaw",
             agent_version="v1.0",
@@ -134,10 +134,10 @@ class TestExperimentConfigDefaults:
 
 
 class TestConfigValidator:
-    """验证 ConfigValidator 的校验逻辑。"""
+    """Verify ConfigValidator validation logic."""
 
     def test_valid_config(self):
-        """合法配置无错误。"""
+        """A valid config produces no errors."""
         config = ExperimentConfig(
             agent_name="openclaw",
             agent_version="v0.3.1",
@@ -150,7 +150,7 @@ class TestConfigValidator:
         assert errors == []
 
     def test_missing_agent_name(self):
-        """缺少 agent_name 应报错。"""
+        """Missing agent_name should report an error."""
         config = ExperimentConfig(
             agent_name="",
             agent_version="v0.3.1",
@@ -162,7 +162,7 @@ class TestConfigValidator:
         assert any("agent_name" in e for e in errors)
 
     def test_missing_agent_version(self):
-        """缺少 agent_version 应报错。"""
+        """Missing agent_version should report an error."""
         config = ExperimentConfig(
             agent_name="openclaw",
             agent_version="",
@@ -174,7 +174,7 @@ class TestConfigValidator:
         assert any("agent_version" in e for e in errors)
 
     def test_invalid_version_format(self):
-        """agent_version 不含数字应警告。"""
+        """agent_version containing no digits should trigger a warning."""
         config = ExperimentConfig(
             agent_name="openclaw",
             agent_version="latest",
@@ -186,7 +186,7 @@ class TestConfigValidator:
         assert any("version" in e.lower() for e in errors)
 
     def test_missing_benchmark_name(self):
-        """缺少 benchmark_name 应报错。"""
+        """Missing benchmark_name should report an error."""
         config = ExperimentConfig(
             agent_name="openclaw",
             agent_version="v1.0",
@@ -198,7 +198,7 @@ class TestConfigValidator:
         assert any("benchmark_name" in e for e in errors)
 
     def test_missing_scorer_name(self):
-        """缺少 scorer_name 应报错。"""
+        """Missing scorer_name should report an error."""
         config = ExperimentConfig(
             agent_name="openclaw",
             agent_version="v1.0",
@@ -210,7 +210,7 @@ class TestConfigValidator:
         assert any("scorer_name" in e for e in errors)
 
     def test_sandbox_required_for_terminal_bench(self):
-        """terminal_bench 需要 sandbox 配置。"""
+        """terminal_bench requires sandbox config."""
         config = ExperimentConfig(
             agent_name="openclaw",
             agent_version="v0.3.1",
@@ -223,7 +223,7 @@ class TestConfigValidator:
         assert any("sandbox" in e.lower() for e in errors)
 
     def test_sandbox_required_for_osworld(self):
-        """osworld 需要 sandbox 配置。"""
+        """osworld requires sandbox config."""
         config = ExperimentConfig(
             agent_name="openclaw",
             agent_version="v0.3.1",
@@ -236,7 +236,7 @@ class TestConfigValidator:
         assert any("sandbox" in e.lower() for e in errors)
 
     def test_sandbox_not_required_for_aime(self):
-        """aime 不需要 sandbox。"""
+        """aime does not require sandbox."""
         config = ExperimentConfig(
             agent_name="openclaw",
             agent_version="v0.3.1",
@@ -249,7 +249,7 @@ class TestConfigValidator:
         assert not any("sandbox" in e.lower() for e in errors)
 
     def test_load_and_validate(self, tmp_path):
-        """load_and_validate 加载并验证 YAML 文件。"""
+        """load_and_validate loads and validates a YAML file."""
         config_content = textwrap.dedent("""\
             agent:
               name: openclaw
@@ -269,7 +269,7 @@ class TestConfigValidator:
         assert config.agent_name == "openclaw"
 
     def test_load_and_validate_invalid(self, tmp_path):
-        """load_and_validate 对无效配置抛出 ValueError。"""
+        """load_and_validate raises ValueError for an invalid config."""
         config_content = textwrap.dedent("""\
             agent:
               name: ""

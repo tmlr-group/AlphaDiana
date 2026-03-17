@@ -1,11 +1,11 @@
-"""空响应问题诊断与修复验证。
+"""Diagnostics and fix validation for empty-response issues.
 
-覆盖:
-- OpenClaw 空响应重试退避策略（固定 sleep → 指数退避）
-- 空响应后最终仍返回空时异常包含诊断信息
-- Scorer 对 answer=None 的安全处理
-- JSONL 损坏行不阻断 load()
-- Runner pool teardown 在 finally 中
+Covers:
+- OpenClaw empty-response retry backoff strategy (fixed sleep -> exponential backoff)
+- Exceptions include diagnostic information when retries still end with an empty response
+- Safe scorer handling for answer=None
+- Corrupt JSONL lines do not block load()
+- Runner pool teardown runs in finally
 """
 
 import json
@@ -23,18 +23,18 @@ from alphadiana.scorer.base import ScoreResult
 
 
 # ===================================================================
-# 1. OpenClaw 空响应重试退避 — 验证问题存在
+# 1. OpenClaw empty-response retry backoff — validate the issue
 # ===================================================================
 
 
 class TestOpenClawEmptyResponseProblem:
-    """验证空响应重试退避是固定 sleep 还是指数退避。"""
+    """Validate whether empty-response retry backoff uses fixed sleep or exponential backoff."""
 
     def test_retry_sleep_is_exponential_not_fixed(self):
-        """退避公式应为指数退避，而非 min(2, attempt) 固定值。
+        """The backoff formula should be exponential, not the fixed min(2, attempt) value.
 
-        之前: time.sleep(min(2, attempt)) → 1s, 2s, 2s, 2s...
-        修复后: 指数退避 + jitter
+        Before: time.sleep(min(2, attempt)) -> 1s, 2s, 2s, 2s...
+        After: exponential backoff + jitter
         """
         from alphadiana.agent.openclaw import OpenClawAgent
         import inspect
@@ -42,15 +42,15 @@ class TestOpenClawEmptyResponseProblem:
         agent = OpenClawAgent()
         source = inspect.getsource(agent.solve)
 
-        # 修复后不应再包含 "min(2, attempt)" 固定退避模式
+        # After the fix, the fixed backoff pattern "min(2, attempt)" should be gone.
         assert "min(2, attempt)" not in source, (
-            "OpenClaw retry 仍在使用固定 sleep(min(2, attempt))，"
-            "应改为指数退避 + jitter"
+            "OpenClaw retry is still using the fixed sleep(min(2, attempt)) pattern; "
+            "it should use exponential backoff + jitter"
         )
 
     def test_retry_backoff_increases(self):
-        """验证重试间隔随 attempt 递增（指数退避核心特性）。"""
-        # 模拟指数退避公式，确认间隔递增
+        """Validate that retry intervals increase with attempt, a core exponential-backoff property."""
+        # Simulate the exponential backoff formula and verify increasing delays.
         base_delay = 2.0
         max_delay = 60.0
         delays = []
@@ -58,18 +58,18 @@ class TestOpenClawEmptyResponseProblem:
             delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
             delays.append(delay)
 
-        # 间隔应单调递增（直到 cap）
+        # Delays should increase monotonically until the cap.
         for i in range(1, len(delays)):
             assert delays[i] >= delays[i - 1], (
                 f"Delay at attempt {i+1} ({delays[i]}) should be >= "
                 f"delay at attempt {i} ({delays[i-1]})"
             )
-        # 第 1 次应小于第 3 次
+        # The first attempt should be shorter than the third.
         assert delays[0] < delays[2]
 
 
 class TestOpenClawEmptyResponseHandling:
-    """OpenClaw 处理空响应的行为。"""
+    """Behavior when OpenClaw receives an empty response."""
 
     def _setup_agent(self, **extra):
         from alphadiana.agent.openclaw import OpenClawAgent
@@ -83,13 +83,13 @@ class TestOpenClawEmptyResponseHandling:
         return agent
 
     def test_empty_content_triggers_retry(self):
-        """空 content 应触发重试而非直接返回。"""
+        """Empty content should trigger retries instead of returning immediately."""
         from alphadiana.agent.openclaw import OpenClawAgent, OpenClawRequestError
 
         agent = self._setup_agent(max_attempts=2)
         task = BenchmarkTask(task_id="t1", problem="What is 1+1?", ground_truth="2")
 
-        # Mock httpx to return empty content both times
+        # Mock httpx to return empty content on both attempts.
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.headers = {"content-type": "application/json"}
@@ -109,13 +109,13 @@ class TestOpenClawEmptyResponseHandling:
             with pytest.raises(OpenClawRequestError) as exc_info:
                 agent.solve(task)
 
-        # 应尝试了 2 次
+        # It should have attempted the request twice.
         err = exc_info.value
         assert err.retry_responses is not None
         assert len(err.retry_responses) >= 1
 
     def test_error_carries_diagnostic_info(self):
-        """空响应异常应包含完整诊断信息。"""
+        """Empty-response exceptions should include complete diagnostic information."""
         from alphadiana.agent.openclaw import OpenClawRequestError
 
         err = OpenClawRequestError(
@@ -134,12 +134,12 @@ class TestOpenClawEmptyResponseHandling:
 
 
 # ===================================================================
-# 2. Scorer 空值处理 — 验证问题存在并修复
+# 2. Scorer handling of null answers — validate the issue and fix
 # ===================================================================
 
 
 class TestScorerNoneAnswer:
-    """所有 scorer 对 answer=None 应返回 correct=False 而非将 'None' 当答案评分。"""
+    """All scorers should return correct=False for answer=None instead of scoring 'None' as an answer."""
 
     def _task(self):
         return BenchmarkTask(task_id="t1", problem="P", ground_truth="42")
@@ -153,7 +153,8 @@ class TestScorerNoneAnswer:
         result = scorer.score(self._task(), self._resp_none())
         assert result.correct is False
         assert result.score == 0.0
-        # 关键: predicted 应为 None（不是字符串 "None"），rationale 应说明是空答案
+        # Key point: predicted should be None, not the string "None",
+        # and rationale should explain that the answer is missing.
         assert result.predicted is None
         assert "no answer" in result.rationale.lower()
 
@@ -173,30 +174,30 @@ class TestScorerNoneAnswer:
         assert result.score == 0.0
 
     def test_exact_match_none_is_not_string_none(self):
-        """answer=None 不应被 str() 转为 "None" 然后与 ground_truth 比较。"""
+        """answer=None should not be converted to the string "None" before comparing with ground_truth."""
         from alphadiana.scorer.exact_match import ExactMatchScorer
         scorer = ExactMatchScorer()
-        # 如果 ground_truth 恰好是 "None"，answer=None 也不应判正确
+        # Even if ground_truth happens to be "None", answer=None should not count as correct.
         task = BenchmarkTask(task_id="t2", problem="P", ground_truth="None")
         result = scorer.score(task, self._resp_none())
-        # answer=None 代表任务失败，即使 ground_truth 是 "None" 也不应判对
+        # answer=None means the task failed, so it should not be marked correct.
         assert result.correct is False
 
 
 # ===================================================================
-# 3. JSONL 损坏行恢复 — 验证问题存在并修复
+# 3. JSONL corruption recovery — validate the issue and fix
 # ===================================================================
 
 
 class TestJSONLCorruptionRecovery:
-    """JSONL 文件含损坏行时 load() 不应崩溃。"""
+    """load() should not crash when a JSONL file contains corrupt lines."""
 
     def test_load_skips_corrupt_lines(self, tmp_path):
         from alphadiana.results.result_store import ResultStore
 
         store = ResultStore(output_dir=str(tmp_path), run_id="corrupt")
 
-        # 写入混合正常和损坏的行
+        # Write a mix of valid and corrupt lines.
         with open(store.path, "w") as f:
             f.write(json.dumps({"task_id": "t1", "correct": True, "score": 1.0}) + "\n")
             f.write("THIS IS NOT VALID JSON\n")
@@ -204,7 +205,7 @@ class TestJSONLCorruptionRecovery:
             f.write(json.dumps({"task_id": "t2", "correct": False, "score": 0.0}) + "\n")
 
         records = store.load()
-        # 应该成功加载 2 条有效记录，跳过 2 条损坏行
+        # It should load the 2 valid records and skip the 2 corrupt lines.
         assert len(records) == 2
         task_ids = {r["task_id"] for r in records}
         assert task_ids == {"t1", "t2"}
@@ -232,34 +233,34 @@ class TestJSONLCorruptionRecovery:
 
 
 # ===================================================================
-# 4. Pool teardown 在 finally 中 — 验证修复
+# 4. Pool teardown in finally — validate the fix
 # ===================================================================
 
 
 class TestPoolTeardownInFinally:
-    """pool.teardown() 应在 finally 中，即使 dispatch 异常也能清理。"""
+    """pool.teardown() should live in finally so cleanup still happens when dispatch raises."""
 
     def test_runner_source_has_finally_teardown(self):
-        """Runner.run() 中 pool.teardown() 应在 try/finally 块中。"""
+        """Runner.run() should place pool.teardown() inside a try/finally block."""
         import inspect
         from alphadiana.runner.runner import Runner
 
         source = inspect.getsource(Runner.run)
-        # 检查 pool.teardown() 出现在 finally 块中
-        # 简单验证: source 中 finally 和 pool.teardown 都存在
-        assert "finally" in source, "Runner.run() 应包含 finally 块"
+        # Check that pool.teardown() appears in a finally block.
+        # Simple validation: the source contains both finally and pool.teardown.
+        assert "finally" in source, "Runner.run() should contain a finally block"
         assert "pool.teardown()" in source or "pool.teardown" in source, (
-            "pool.teardown() 应在 Runner.run() 中"
+            "pool.teardown() should be present in Runner.run()"
         )
 
 
 # ===================================================================
-# 5. retry.py 增强 — 可重试异常白名单
+# 5. retry.py enhancement — retryable exception allowlist
 # ===================================================================
 
 
 class TestRetryWithBackoff:
-    """retry_with_backoff 装饰器行为验证。"""
+    """Validate retry_with_backoff decorator behavior."""
 
     def test_basic_retry_succeeds_eventually(self):
         from alphadiana.utils.retry import retry_with_backoff
@@ -278,7 +279,7 @@ class TestRetryWithBackoff:
         assert call_count == 3
 
     def test_non_retryable_exception_raises_immediately(self):
-        """配置了 retryable_exceptions 后，非指定异常不重试。"""
+        """When retryable_exceptions is configured, unspecified exceptions should not be retried."""
         from alphadiana.utils.retry import retry_with_backoff
 
         call_count = 0
@@ -295,11 +296,11 @@ class TestRetryWithBackoff:
         with pytest.raises(ValueError):
             bad()
 
-        # 应只调用 1 次（不重试 ValueError）
+        # It should only be called once because ValueError is not retried.
         assert call_count == 1
 
     def test_retryable_exception_is_retried(self):
-        """指定的可重试异常类型会触发重试。"""
+        """Configured retryable exception types should trigger retries."""
         from alphadiana.utils.retry import retry_with_backoff
 
         call_count = 0
@@ -320,81 +321,81 @@ class TestRetryWithBackoff:
 
 
 # ===================================================================
-# 6. ResultStore artifact locks — 验证并发安全
+# 6. ResultStore artifact locks — validate concurrency safety
 # ===================================================================
 
 
 class TestArtifactLocks:
-    """ResultStore 的 artifact 写入应使用 per-key lock。"""
+    """ResultStore artifact writes should use a per-key lock."""
 
     def test_artifact_lock_exists(self):
-        """ResultStore 应有 _get_artifact_lock 方法。"""
+        """ResultStore should provide a _get_artifact_lock method."""
         from alphadiana.results.result_store import ResultStore
         store = ResultStore(output_dir="/tmp/test_locks", run_id="lock_test")
         lock = store._get_artifact_lock("task1:0")
         assert lock is not None
-        # 同一 key 应返回同一 lock
+        # The same key should return the same lock.
         assert store._get_artifact_lock("task1:0") is lock
-        # 不同 key 应返回不同 lock
+        # Different keys should return different locks.
         assert store._get_artifact_lock("task2:0") is not lock
 
     def test_append_uses_artifact_lock(self):
-        """append() 应在 _persist_artifacts 和 _save_per_task_json 前获取 artifact lock。"""
+        """append() should acquire an artifact lock before _persist_artifacts and _save_per_task_json."""
         import inspect
         from alphadiana.results.result_store import ResultStore
         source = inspect.getsource(ResultStore.append)
         assert "_get_artifact_lock" in source, (
-            "append() 应使用 _get_artifact_lock 保护 artifact 写入"
+            "append() should use _get_artifact_lock to protect artifact writes"
         )
-        # _save_per_task_json 应在锁内（缩进在 with 块中）
+        # _save_per_task_json should run inside the lock.
         lines = source.splitlines()
         lock_line = next(i for i, l in enumerate(lines) if "_get_artifact_lock" in l)
         save_line = next(i for i, l in enumerate(lines) if "_save_per_task_json" in l)
         assert save_line > lock_line, (
-            "_save_per_task_json 应在 _get_artifact_lock 之后"
+            "_save_per_task_json should appear after _get_artifact_lock"
         )
 
     def test_append_error_uses_artifact_lock(self):
-        """append_error() 应在 _persist_artifacts 和 _save_per_task_json 前获取 artifact lock。"""
+        """append_error() should acquire an artifact lock before _persist_artifacts and _save_per_task_json."""
         import inspect
         from alphadiana.results.result_store import ResultStore
         source = inspect.getsource(ResultStore.append_error)
         assert "_get_artifact_lock" in source, (
-            "append_error() 应使用 _get_artifact_lock 保护 artifact 写入"
+            "append_error() should use _get_artifact_lock to protect artifact writes"
         )
         lines = source.splitlines()
         lock_line = next(i for i, l in enumerate(lines) if "_get_artifact_lock" in l)
         save_line = next(i for i, l in enumerate(lines) if "_save_per_task_json" in l)
         assert save_line > lock_line, (
-            "_save_per_task_json 应在 _get_artifact_lock 之后"
+            "_save_per_task_json should appear after _get_artifact_lock"
         )
 
 
 # ===================================================================
-# 7. OpenClaw token usage accumulation — 验证累加
+# 7. OpenClaw token usage accumulation — validate accumulation
 # ===================================================================
 
 
 class TestOpenClawTokenAccumulation:
-    """OpenClaw 重试时 token_usage 应累加而非覆盖。"""
+    """OpenClaw should accumulate token_usage across retries instead of overwriting it."""
 
     def test_solve_source_has_cumulative_token_usage(self):
-        """solve() 应使用 cumulative_token_usage 累加。"""
+        """solve() should accumulate usage via cumulative_token_usage."""
         import inspect
         from alphadiana.agent.openclaw import OpenClawAgent
         source = inspect.getsource(OpenClawAgent.solve)
         assert "cumulative_token_usage" in source, (
-            "OpenClaw solve() 应使用 cumulative_token_usage 累加 token usage"
+            "OpenClaw solve() should use cumulative_token_usage to accumulate token usage"
         )
 
 
 # ===================================================================
-# 8. TaskDispatcher task-level retry — 验证
+# 8. TaskDispatcher task-level retry — validate
 # ===================================================================
 
 
 class TestTaskDispatcherRetry:
-    """TaskDispatcher 支持 task_retries 参数。"""
+    """TaskDispatcher should support the task_retries parameter."""
 
     def test_task_retries_parameter(self):
         from alphadiana.runner.task_dispatcher import TaskDispatcher
@@ -435,33 +436,33 @@ class TestTaskDispatcherRetry:
         assert outcomes[0]["success"] is False
 
     def test_exc_info_in_error_logging(self):
-        """task_dispatcher error logging 应包含 exc_info=True。"""
+        """task_dispatcher error logging should include exc_info=True."""
         import inspect
         from alphadiana.runner.task_dispatcher import TaskDispatcher
         seq_source = inspect.getsource(TaskDispatcher._dispatch_sequential)
         conc_source = inspect.getsource(TaskDispatcher._dispatch_concurrent)
         assert "exc_info=True" in seq_source, (
-            "_dispatch_sequential error logging 应包含 exc_info=True"
+            "_dispatch_sequential error logging should include exc_info=True"
         )
         assert "exc_info=True" in conc_source, (
-            "_dispatch_concurrent error logging 应包含 exc_info=True"
+            "_dispatch_concurrent error logging should include exc_info=True"
         )
 
 
 # ===================================================================
-# 9. Benchmark data loading retry — 验证
+# 9. Benchmark data loading retry — validate
 # ===================================================================
 
 
 class TestBenchmarkLoadRetry:
-    """Benchmark data loading 应有 retry 机制。"""
+    """Benchmark data loading should include a retry mechanism."""
 
     def test_load_dataset_with_retry_exists(self):
         from alphadiana.benchmark.base import load_dataset_with_retry
         assert callable(load_dataset_with_retry)
 
     def test_benchmarks_use_retry_loader(self):
-        """所有使用 HF datasets 的 benchmark 应使用 load_dataset_with_retry。"""
+        """All benchmarks using HF datasets should call load_dataset_with_retry."""
         import inspect
         from alphadiana.benchmark.aime import AIMEBenchmark
         from alphadiana.benchmark.math_bench import MATHBenchmark
@@ -471,17 +472,17 @@ class TestBenchmarkLoadRetry:
         for cls in [AIMEBenchmark, MATHBenchmark, HLEBenchmark, FrontierMathBenchmark]:
             source = inspect.getsource(cls.load_tasks)
             assert "load_dataset_with_retry" in source, (
-                f"{cls.__name__}.load_tasks() 应使用 load_dataset_with_retry"
+                f"{cls.__name__}.load_tasks() should use load_dataset_with_retry"
             )
 
 
 # ===================================================================
-# 10. Config validation 增强 — 验证
+# 10. Config validation enhancement — validate
 # ===================================================================
 
 
 class TestConfigValidation:
-    """ConfigValidator 增强验证。"""
+    """Enhanced ConfigValidator validation."""
 
     def test_max_concurrent_upper_bound(self):
         from alphadiana.config.experiment_config import ExperimentConfig
@@ -548,12 +549,12 @@ class TestConfigValidation:
 
 
 # ===================================================================
-# 11. numeric scorer inf 处理
+# 11. numeric scorer inf handling
 # ===================================================================
 
 
 class TestNumericScorerInf:
-    """NumericScorer 应正确处理 inf 值。"""
+    """NumericScorer should handle inf values correctly."""
 
     def test_inf_vs_finite_is_incorrect(self):
         from alphadiana.scorer.numeric import NumericScorer
@@ -585,47 +586,47 @@ class TestNumericScorerInf:
 
 
 # ===================================================================
-# 12. Checkpoint scorer 变更检测
+# 12. Checkpoint scorer change detection
 # ===================================================================
 
 
 class TestCheckpointScorerMismatch:
-    """resume 时应检测 scorer 配置变更。"""
+    """Resume should detect changes in scorer configuration."""
 
     def test_run_metadata_includes_scorer_name(self):
-        """run_metadata 应包含 scorer_name。"""
+        """run_metadata should include scorer_name."""
         import inspect
         from alphadiana.runner.runner import Runner
         source = inspect.getsource(Runner.setup)
         assert "scorer_name" in source, (
-            "run_metadata 应包含 scorer_name 以支持 checkpoint scorer 变更检测"
+            "run_metadata should include scorer_name to support checkpoint scorer mismatch detection"
         )
 
     def test_checkpoint_detects_scorer_mismatch(self):
-        """checkpoint 逻辑应检测 scorer 不匹配。"""
+        """Checkpoint logic should detect scorer mismatches."""
         import inspect
         from alphadiana.runner.runner import Runner
         source = inspect.getsource(Runner.run)
         assert "scorer_name" in source and "mismatch" in source.lower(), (
-            "Runner.run() 应在 checkpoint 时检测 scorer 不匹配"
+            "Runner.run() should detect scorer mismatches during checkpoint resume"
         )
 
 
 # ===================================================================
-# 13. OpenClaw proxy_timeout 专项诊断
+# 13. OpenClaw proxy_timeout diagnostics
 # ===================================================================
 
 
 class TestOpenClawProxyTimeoutDiagnostic:
-    """proxy_timeout 错误应有明确诊断提示。"""
+    """proxy_timeout errors should include explicit diagnostic guidance."""
 
     def test_solve_source_has_proxy_timeout_diagnostic(self):
         import inspect
         from alphadiana.agent.openclaw import OpenClawAgent
         source = inspect.getsource(OpenClawAgent.solve)
         assert "proxy_timeout" in source, (
-            "OpenClaw solve() 应对 proxy_timeout 错误类型给出诊断提示"
+            "OpenClaw solve() should provide diagnostics for proxy_timeout errors"
         )
         assert "proxy_timeout" in source and "sandbox_config" in source.lower() or "increase" in source.lower(), (
-            "proxy_timeout 诊断应提示用户增大配置"
+            "proxy_timeout diagnostics should suggest increasing the relevant configuration"
         )
