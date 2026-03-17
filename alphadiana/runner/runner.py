@@ -69,10 +69,6 @@ class Runner:
         """Resolve and instantiate all components from their registries."""
         # Import all benchmark/agent/sandbox/scorer modules to trigger registration.
         import alphadiana.benchmark.aime  # noqa: F401
-        import alphadiana.benchmark.math_bench  # noqa: F401
-        import alphadiana.benchmark.hle  # noqa: F401
-        import alphadiana.benchmark.frontier_math  # noqa: F401
-        import alphadiana.benchmark.terminal_bench  # noqa: F401
 
         # Import agent modules to trigger registration.
         import alphadiana.agent.openclaw  # noqa: F401

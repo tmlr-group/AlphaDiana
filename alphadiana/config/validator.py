@@ -6,7 +6,7 @@ from alphadiana.config.experiment_config import ExperimentConfig
 
 
 class ConfigValidator:
-    SANDBOX_REQUIRED_BENCHMARKS = {"terminal_bench"}
+    SANDBOX_REQUIRED_BENCHMARKS: set[str] = set()
 
     # Agents that require an api_base in agent_config.
     API_AGENTS = {"openclaw", "direct_llm"}

@@ -83,7 +83,7 @@ class TestExperimentConfigFromYAML:
               name: openclaw
               version: "v1.0"
             benchmark:
-              name: terminal_bench
+              name: aime
             sandbox:
               name: rock
               config:
@@ -208,32 +208,6 @@ class TestConfigValidator:
         validator = ConfigValidator()
         errors = validator.validate(config)
         assert any("scorer_name" in e for e in errors)
-
-    def test_sandbox_required_for_terminal_bench(self):
-        """terminal_bench 需要 sandbox 配置。"""
-        config = ExperimentConfig(
-            agent_name="openclaw",
-            agent_version="v0.3.1",
-            benchmark_name="terminal_bench",
-            scorer_name="exact_match",
-            sandbox_name=None,
-        )
-        validator = ConfigValidator()
-        errors = validator.validate(config)
-        assert any("sandbox" in e.lower() for e in errors)
-
-    def test_sandbox_required_for_osworld(self):
-        """osworld 需要 sandbox 配置。"""
-        config = ExperimentConfig(
-            agent_name="openclaw",
-            agent_version="v0.3.1",
-            benchmark_name="osworld",
-            scorer_name="exact_match",
-            sandbox_name=None,
-        )
-        validator = ConfigValidator()
-        errors = validator.validate(config)
-        assert any("sandbox" in e.lower() for e in errors)
 
     def test_sandbox_not_required_for_aime(self):
         """aime 不需要 sandbox。"""
