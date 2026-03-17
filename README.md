@@ -171,6 +171,21 @@ python -m openclaw_deploy.deploy \
   --model-name moonshotai/kimi-k2.5
 ```
 
+Before running `deploy`, make sure the local ROCK stack is already healthy.
+If you used `bash dev/quickstart.sh`, this should already be done. For manual setup,
+confirm the following from the repo root:
+
+```bash
+curl http://127.0.0.1:$ROCK_ADMIN_PORT/
+curl http://127.0.0.1:$ROCK_PROXY_PORT/
+ray status
+```
+
+Expected result:
+
+- both `curl` commands return `{"message":"hello, ROCK!"}`
+- `ray status` shows one active node and no recent failures
+
 #### When using vLLM
 
 If you are using `vLLM`, `OPENAI_BASE_URL` must be set to the model service address that is accessible inside the Docker container.
@@ -199,6 +214,13 @@ python -m openclaw_deploy.deploy
 # Or deploy with a custom ROCK agent config YAML
 python -m openclaw_deploy.deploy \
   --agent-config dev/generated/rock_agent_config.openrouter_qwen_2_5_7b.resolved.yaml
+```
+
+On shared or lower-memory machines, the default sandbox spec may be too large.
+If the sandbox stays in `PENDING_CREATION`, try:
+
+```bash
+python -m openclaw_deploy.deploy --memory 3g
 ```
 
 The deploy command prints both a `Sandbox ID` and an `API base`, for example:
@@ -261,6 +283,13 @@ metadata:
 
 You can also start from [`configs/examples/openclaw_aime2025.yaml`](configs/examples/openclaw_aime2025.yaml)
 and replace `<PROXY_PORT>` and `<SANDBOX_ID>` with your values.
+
+To avoid editing the example file, you can override `api_base` directly from CLI:
+
+```bash
+alphadiana run configs/examples/openclaw_aime2025.yaml \
+  -o agent.config.api_base=http://127.0.0.1:<PROXY_PORT>/apis/envs/sandbox/v1/sandboxes/<SANDBOX_ID>/proxy/v1
+```
 
 ```bash
 # Validate & run
@@ -403,7 +432,7 @@ Common issues at a glance:
 | Issue | Cause | Fix |
 |---|---|---|
 | `permission denied` on Docker socket | Current shell lacks `docker` group | Run `newgrp docker` or re-login |
-| `deploy.py` sandbox timeout | Redis not running or `.venv` symlink broken | Check `docker ps` and `ls -la ref/ROCK/.venv` |
+| `deploy.py` sandbox timeout | ROCK/Ray not healthy, sandbox memory too high, or Ray `runtime_env` dependency install failed | Check `curl http://127.0.0.1:$ROCK_ADMIN_PORT/`, `curl http://127.0.0.1:$ROCK_PROXY_PORT/`, `ray status`, retry with `--memory 3g`, then inspect `/tmp/kai-ray/session_latest/logs/runtime_env_setup-*.log` |
 | Ray port `8265` already in use | Shared server port conflict | Use `find_rock_ports.py` to detect free ports |
 | `rock.admin.main` Redis `ConnectionError` | Redis container not started | `docker start "$ROCK_REDIS_CONTAINER"` |
 | Sandbox container exits immediately | `ref/ROCK/.venv` missing or invalid | `ln -sfn "$(python -c 'import sys; print(sys.prefix)')" ref/ROCK/.venv` |
