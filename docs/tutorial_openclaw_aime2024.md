@@ -1,8 +1,9 @@
-# AlphaDiana 评估教程：OpenClaw + Qwen3-8B + AIME 2024
+# AlphaDiana Evaluation Tutorial: OpenClaw + Qwen3-8B + AIME 2024
 
-本教程以 **OpenClaw agent + Qwen3-8B 模型 + AIME 2024 数据集** 为例，演示如何使用 AlphaDiana 评估框架完成一次完整的端到端评估。
+This tutorial takes **OpenClaw agent + Qwen3-8B model + AIME 2024 data set** as an example to demonstrate how to use the AlphaDiana evaluation framework to complete a complete end-to-end evaluation.
 
-## 架构概览
+## Architecture Overview
+
 
 ```
 AlphaDiana Runner
@@ -20,36 +21,42 @@ AlphaDiana Runner
   vLLM (Qwen3-8B, :8000)
 ```
 
-- **AlphaDiana**: 评估编排框架，负责加载数据集、调度任务、评分、保存结果
-- **ROCK**: 沙箱系统，在 Docker 容器中运行 OpenClaw gateway
-- **OpenClaw**: Agent 系统，通过多轮 LLM 调用进行推理
-- **vLLM**: 高性能 LLM 推理服务，提供 OpenAI 兼容 API
 
-## 前置条件
+- **AlphaDiana**: Evaluation orchestration framework, responsible for loading data sets, scheduling tasks, scoring, and saving results
+- **ROCK**: Sandbox system, running OpenClaw gateway in Docker container
+- **OpenClaw**: Agent system, inference through multiple rounds of LLM calls
+- **vLLM**: High-performance LLM inference service, providing OpenAI compatible API
 
-- Linux 服务器，有 NVIDIA GPU（建议 A800/A100，显存 ≥ 40GB）
-- Docker 已安装且当前用户在 docker 组中
-- Conda 包管理器
+## Preconditions
 
-## Step 1: 创建 Conda 环境
+- Linux server with NVIDIA GPU (A800/A100 recommended, video memory ≥ 40GB)
+- Docker is installed and the current user is in the docker group
+- Conda package manager
+
+## Step 1: Create Conda environment
+
 
 ```bash
 conda create -n alphadiana python=3.11 -y
 conda activate alphadiana
 ```
 
-## Step 2: 安装 AlphaDiana
+
+## Step 2: Install AlphaDiana
+
 
 ```bash
 cd /hd2/chentao/AlphaDiana
 pip install -e .
 ```
 
-验证安装：
+
+Verify installation:
+
 
 ```bash
 alphadiana list-benchmarks
-# 输出:
+Data Type
 #   - aime
 #   - math
 #   - hle
@@ -58,15 +65,17 @@ alphadiana list-benchmarks
 #   - osworld
 ```
 
-## Step 3: 启动 vLLM 服务
 
-选一张空闲 GPU 启动 Qwen3-8B：
+## Step 3: Start vLLM service
+
+Select an idle GPU to start Qwen3-8B:
+
 
 ```bash
-# 检查 GPU 使用情况
+# Check GPU usage
 nvidia-smi
 
-# 选一张空闲 GPU（例如 GPU 2）
+# Choose a free GPU (e.g. GPU 2)
 CUDA_VISIBLE_DEVICES=2 python -m vllm.entrypoints.openai.api_server \
     --model /hd1/models/models--Qwen--Qwen3-8B/snapshots/b968826d9c46dd6066d109eabc6255188de91218 \
     --host 0.0.0.0 \
@@ -77,27 +86,33 @@ CUDA_VISIBLE_DEVICES=2 python -m vllm.entrypoints.openai.api_server \
     --max-model-len 16384 &
 ```
 
-> **注意**: `--enable-auto-tool-choice --tool-call-parser hermes` 是 OpenClaw 所需的，因为 OpenClaw 使用 tool calling 进行多轮推理。
 
-验证 vLLM 就绪：
+> **Note**: `--enable-auto-tool-choice --tool-call-parser hermes` is required by OpenClaw because OpenClaw uses tool calling for multi-round inference.
+
+Verify vLLM readiness:
+
 
 ```bash
 curl http://localhost:8000/v1/models
-# 应返回模型列表
+# Model list should be returned
 ```
 
-## Step 4: 启动 ROCK 沙箱环境
 
-### 4.1 安装 ROCK
+## Step 4: Start the ROCK sandbox environment
+
+### 4.1 Install ROCK
+
 
 ```bash
 cd /hd2/chentao/ROCK
 pip install -e .
 ```
 
-### 4.2 安装 Redis Stack
 
-ROCK 依赖 Redis Stack（需要 JSON.SET 命令）：
+### 4.2 Install Redis Stack
+
+ROCK depends on Redis Stack (requires JSON.SET command):
+
 
 ```bash
 sg docker -c 'docker run -d --name redis-stack \
@@ -105,52 +120,62 @@ sg docker -c 'docker run -d --name redis-stack \
     redis/redis-stack-server:latest'
 ```
 
-### 4.3 配置 ROCK
 
-创建配置文件 `~/.rock/config.ini`：
+### 4.3 Configure ROCK
+
+Create configuration file `~/.rock/config.ini`:
+
 
 ```ini
 [ray]
 address = auto
 ```
 
-设置环境变量并创建 `.venv` 软链接：
+
+Set environment variables and create `.venv` soft link:
+
 
 ```bash
 export ROCK_PROJECT_ROOT=/hd2/chentao/ROCK
 
-# LocalRuntimeEnv 需要 .venv 指向 Python 环境
+# LocalRuntimeEnv requires .venv to point to a Python environment
 ln -sf $(conda info --base)/envs/alphadiana /hd2/chentao/ROCK/.venv
 ```
 
-### 4.4 启动 Ray + ROCK 服务
+
+### 4.4 Start Ray + ROCK service
+
 
 ```bash
-# 启动 Ray（ROCK 基于 Ray）
+# Start Ray (rock based on Ray)
 export ROCK_PROJECT_ROOT=/hd2/chentao/ROCK
 ray start --head --port=6380
 
-# 启动 ROCK admin（写操作，端口 9000）
+# Starting rock admin (write operation, port 9000)
 sg docker -c 'python -m rock.deployments.admin &'
 
-# 启动 ROCK proxy（读/运行时操作，端口 9001）
+# Start rock proxy (read/runtime operation, port 9001)
 sg docker -c 'python -m rock.deployments.proxy &'
 ```
 
-验证 ROCK 就绪：
+
+Verify ROCK is ready:
+
 
 ```bash
-curl http://localhost:9000/health     # admin 健康检查
-curl http://localhost:9001/health     # proxy 健康检查
+curl http://localhost: 9000/health # admin Health Check
+curl http://localhost: 9001/health # proxy Health Check
 ```
 
-## Step 5: 部署 OpenClaw Gateway
 
-### 5.1 准备部署配置
+## Step 5: Deploy OpenClaw Gateway
 
-部署配置已在 `openclaw_deploy/` 目录下：
+### 5.1 Prepare deployment configuration
 
-**`openclaw_deploy/rock_agent_config.yaml`** — ROCK agent 配置：
+The deployment configuration is already in the `openclaw_deploy/` directory:
+
+**`openclaw_deploy/rock_agent_config.yaml`** — ROCK agent configuration:
+
 
 ```yaml
 working_dir: "."
@@ -166,35 +191,43 @@ runtime_env_config:
   install_timeout: 1200
 
 env:
-  OPENAI_BASE_URL: "http://192.0.2.14:8000/v1"    # ← 改为你的 vLLM 地址
+  OPENAI_base_URL: "http://192.0.2.14: 8000/v1" # ← Change to your vLLM address
   OPENAI_API_KEY: "EMPTY"
   OPENAI_MODEL_NAME: "/hd1/models/models--Qwen--Qwen3-8B/snapshots/b968826d9c46dd6066d109eabc6255188de91218"
   OPENCLAW_GATEWAY_TOKEN: "OPENCLAW"
 ```
 
-**`openclaw_deploy/openclaw.json`** — OpenClaw gateway 配置，定义模型 provider 和 gateway 认证方式。
 
-### 5.2 创建 Sandbox 并部署
+**`openclaw_deploy/openclaw.json`** — OpenClaw gateway configuration, defining model provider and gateway authentication methods.
+
+### 5.2 Create Sandbox and deploy
+
 
 ```bash
 cd /hd2/chentao/AlphaDiana/openclaw_deploy
 python deploy.py
 ```
 
-脚本会输出 Sandbox ID，记下来：
+
+The script will output the Sandbox ID, write it down:
+
 
 ```
 Sandbox ID: a37118857bee43188375c7ce2f343eb5
 API base: http://127.0.0.1:9001/apis/envs/sandbox/v1/sandboxes/a37118857bee43188375c7ce2f343eb5/proxy/v1
 ```
 
-设置环境变量（后续测试用）：
+
+Set environment variables (for subsequent testing):
+
 
 ```bash
 export OPENCLAW_SANDBOX_ID=a37118857bee43188375c7ce2f343eb5
 ```
 
-验证 OpenClaw gateway 可用：
+
+Verify that the OpenClaw gateway is available:
+
 
 ```bash
 curl -X POST \
@@ -204,9 +237,11 @@ curl -X POST \
   -d '{"model":"openclaw","messages":[{"role":"user","content":"What is 2+3?"}],"max_tokens":256}'
 ```
 
-## Step 6: 编写评估配置
 
-创建 YAML 配置文件 `configs/examples/openclaw_aime2024.yaml`：
+## Step 6: Write evaluation configuration
+
+Create YAML configuration file `configs/examples/openclaw_aime2024.yaml`:
+
 
 ```yaml
 run_id: "openclaw-qwen3-8b-aime2024-001"
@@ -227,7 +262,7 @@ benchmark:
     dataset: "HuggingFaceH4/aime_2024"
     split: "train"
 
-sandbox: null   # OpenClaw 已在 ROCK 中运行，不需要额外的 sandbox
+sandbox: null # OpenClaw is already running in rock, no extra sandbox required
 
 scorer:
   name: numeric
@@ -242,34 +277,38 @@ metadata:
   notes: "OpenClaw + Qwen3-8B on AIME 2024"
 ```
 
-> **重要**: 将 `<SANDBOX_ID>` 替换为 Step 5 中获得的实际 Sandbox ID。
 
-### 配置字段说明
+> **IMPORTANT**: Replace `<SANDBOX_ID>` with the actual Sandbox ID obtained in Step 5.
 
-| 字段 | 说明 |
+### Configuration field description
+
+| Field | Description |
 |------|------|
-| `run_id` | 本次运行的唯一标识，结果文件名基于此 |
-| `agent.name` | 使用的 agent 名称（`openclaw`, `direct_llm`） |
-| `agent.config` | Agent 特定配置（API 地址、模型名、token 等） |
-| `benchmark.name` | 数据集名称（`aime`, `math`, `hle` 等） |
-| `benchmark.config` | 数据集配置（HuggingFace 路径、split） |
-| `scorer.name` | 评分方式（`numeric`, `exact_match`, `llm_judge`） |
-| `max_concurrent` | 并行任务数（1 = 串行） |
-| `output_dir` | JSONL 结果文件输出目录 |
+| `run_id` | The unique identifier of this run, the result file name is based on this |
+| `agent.name` | The agent name used (`openclaw`, `direct_llm`) |
+| `agent.config` | Agent specific configuration (API address, model name, token, etc.) |
+| `benchmark.name` | Data set name (`aime`, `math`, `hle`, etc.) |
+| `benchmark.config` | Dataset configuration (HuggingFace path, split) |
+| `scorer.name` | Scoring method (`numeric`, `exact_match`, `llm_judge`) |
+| `max_concurrent` | Number of parallel tasks (1 = serial) |
+| `output_dir` | JSONL result file output directory |
 
-## Step 7: 运行评估
+## Step 7: Run the evaluation
 
-### 方式 A: CLI 命令（推荐）
+### Method A: CLI command (recommended)
+
 
 ```bash
-# 先验证配置
+# Validate the configuration first
 alphadiana validate configs/examples/openclaw_aime2024.yaml
 
-# 运行评估
+Run assessment
 alphadiana run configs/examples/openclaw_aime2024.yaml
 ```
 
-输出示例：
+
+Output example:
+
 
 ```
 Run completed: openclaw-qwen3-8b-aime2024-001
@@ -278,7 +317,9 @@ Run completed: openclaw-qwen3-8b-aime2024-001
   Tasks:      30/30 completed
 ```
 
-### 方式 B: Python API
+
+### Method B: Python API
+
 
 ```python
 from alphadiana.config.experiment_config import ExperimentConfig
@@ -298,7 +339,9 @@ finally:
     runner.teardown()
 ```
 
-### 方式 C: 直接构造 ExperimentConfig（无需 YAML 文件）
+
+### Method C: Construct ExperimentConfig directly (no YAML file required)
+
 
 ```python
 from alphadiana.config.experiment_config import ExperimentConfig
@@ -334,17 +377,21 @@ finally:
     runner.teardown()
 ```
 
-## Step 8: 查看结果
 
-### 8.1 结果 JSONL 文件
+## Step 8: View results
 
-评估结果保存在 `{output_dir}/{run_id}.jsonl`，每行一条 JSON 记录：
+### 8.1 Result JSONL file
+
+The evaluation results are saved in `{output_dir}/{run_id}.jsonl`, with one JSON record per line:
+
 
 ```bash
 cat results/openclaw-qwen3-8b-aime2024-001.jsonl | python -m json.tool | head -30
 ```
 
-每条记录包含：
+
+Each record contains:
+
 
 ```json
 {
@@ -358,7 +405,7 @@ cat results/openclaw-qwen3-8b-aime2024-001.jsonl | python -m json.tool | head -3
   "trajectory": [
     {"role": "system", "content": "..."},
     {"role": "user", "content": "..."},
-    {"role": "assistant", "content": "...（完整推理过程）..."}
+    {"role": "assistant", "content": "... (full inference process)..."}
   ],
   "token_usage": {"prompt_tokens": 150, "completion_tokens": 1200, "total_tokens": 1350},
   "wall_time_sec": 45.3,
@@ -366,13 +413,17 @@ cat results/openclaw-qwen3-8b-aime2024-001.jsonl | python -m json.tool | head -3
 }
 ```
 
-### 8.2 生成 Markdown 报告
+
+### 8.2 Generate Markdown report
+
 
 ```bash
 alphadiana report ./results
 ```
 
-或在 Python 中：
+
+Or in Python:
+
 
 ```python
 from alphadiana.results.report import ReportGenerator
@@ -384,7 +435,9 @@ summary = gen.generate(store, config)
 print(gen.to_markdown(summary))
 ```
 
-### 8.3 逐题分析
+
+### 8.3 Question-by-question analysis
+
 
 ```python
 import json
@@ -402,41 +455,42 @@ for r in results:
     print(f"{r['task_id']:<20} {r['ground_truth']:>6} {str(r['predicted']):>6} {mark:>4} {r['wall_time_sec']:>7.1f}s")
 ```
 
-## Step 9: 运行测试套件（验证环境）
 
-AlphaDiana 提供 6 个阶段的测试：
+## Step 9: Run the test suite (verification environment)
+
+AlphaDiana offers 6 stages of testing:
+
 
 ```bash
-# Phase 1: 数据加载和评分（不需要外部服务）
+# Phase1: Data loading and scoring (no external service required)
 python -m pytest tests/test_phase1_data.py -v
 
-# Phase 2: vLLM 服务（需要 vLLM 已启动）
+# Phase 2: vLLM Service (requires vLLM to be started)
 python -m pytest tests/test_phase2_vllm.py -v -m integration
 
-# Phase 3: ROCK 沙箱（需要 ROCK 已启动）
+# Phase 3: rock Sandbox (requires rock to be activated)
 python -m pytest tests/test_phase3_rock.py -v -m integration
 
-# Phase 4: OpenClaw Gateway（需要 OpenClaw 已部署）
+# Phase4: OpenClaw Gateway (requires OpenClaw deployed)
 OPENCLAW_SANDBOX_ID=<your_id> python -m pytest tests/test_phase4_openclaw.py -v -m integration
 
-# Phase 5: 单题验证
+# Phase5: Single Question Validation
 OPENCLAW_SANDBOX_ID=<your_id> python -m pytest tests/test_phase5_single.py -v
 
-# Phase 6: 全量 AIME 2024 评估（30 题，耗时较长）
+# Phase 6: Full AIME 2024 assessment (30 questions, time consuming)
 OPENCLAW_SANDBOX_ID=<your_id> python -m pytest tests/test_phase6_full.py -v -m integration
 
-# 一次跑全部（不含集成测试）
+# Run all at once (without integration testing)
 python -m pytest tests/ -v -k "not integration"
 
-# 全部测试（需要所有服务就绪）
+# Test all (requires all services to be ready)
 OPENCLAW_SANDBOX_ID=<your_id> python -m pytest tests/ -v
 ```
 
-## 扩展：使用其他 Agent/Benchmark 组合
 
-### Direct LLM + MATH 数据集
+## Extension: Use other Agent/Benchmark combinations
 
-```yaml
+### Direct LLM + MATH dataset```yaml
 run_id: "direct-llm-qwen3-8b-math"
 agent:
   name: direct_llm
@@ -457,11 +511,13 @@ max_concurrent: 4
 output_dir: "./results"
 ```
 
-> **Direct LLM** 直接调用 vLLM API，不经过 OpenClaw/ROCK，适合快速基线测试。
 
-### 自定义 Agent
+> **Direct LLM** directly calls vLLM API without going through OpenClaw/ROCK, suitable for quick baseline testing.
 
-继承 `Agent` 基类并注册：
+### Custom Agent
+
+Inherit the `Agent` base class and register:
+
 
 ```python
 # alphadiana/agent/my_agent.py
@@ -473,10 +529,10 @@ class MyAgent(Agent):
 
     def setup(self, config: dict) -> None:
         self.version = config.get("version", "1.0")
-        # 初始化你的 agent ...
+        # Initializing your agent...
 
     def solve(self, task, sandbox=None) -> AgentResponse:
-        # 调用你的模型/服务 ...
+        # Calling your model/service...
         return AgentResponse(
             answer="42",
             trajectory=[...],
@@ -491,20 +547,21 @@ class MyAgent(Agent):
 AgentRegistry.register("my_agent", MyAgent)
 ```
 
-## 常见问题
 
-**Q: OpenClaw 超时返回空响应？**
-OpenClaw 的默认超时为 120 秒，复杂 AIME 题目可能需要多轮 LLM 调用。可在 `openclaw.json` 中调整 `maxConcurrent` 或模型参数。AlphaDiana 会将超时视为预测失败（空答案）。
+## FAQ
 
-**Q: vLLM 报 400 错误 "auto tool choice requires --enable-auto-tool-choice"？**
-OpenClaw 使用 tool calling，需要 vLLM 启动时加 `--enable-auto-tool-choice --tool-call-parser hermes`。
+**Q: OpenClaw times out and returns an empty response? **
+OpenClaw's default timeout is 120 seconds, and complex AIME questions may require multiple rounds of LLM calls. `maxConcurrent` or model parameters can be adjusted in `openclaw.json`. AlphaDiana treats timeouts as prediction failures (empty answers).
 
-**Q: ROCK sandbox 容器立即退出？**
-检查：
-1. `ROCK_PROJECT_ROOT` 是否正确设置
-2. `.venv` 软链接是否指向有效的 Python 环境
-3. `gem-llm` 包是否已安装（`pip install gem-llm`）
-4. Ray 是否在设置 `ROCK_PROJECT_ROOT` 后重启
+**Q: vLLM reports 400 error "auto tool choice requires --enable-auto-tool-choice"? **
+OpenClaw uses tool calling, which requires adding `--enable-auto-tool-choice --tool-call-parser hermes` when vLLM is started.
 
-**Q: 如何只跑数据集的子集？**
-在 `benchmark_config` 中可以指定 `split` 和其他 HuggingFace 参数来控制加载的数据量。
+**Q: Does the ROCK sandbox container exit immediately? **
+Check:
+1. Is `ROCK_PROJECT_ROOT` set correctly?
+2. Whether the `.venv` soft link points to a valid Python environment
+3. Whether the `gem-llm` package has been installed (`pip install gem-llm`)
+4. Whether Ray restarts after setting `ROCK_PROJECT_ROOT`
+
+**Q: How to run only a subset of the data set? **
+`split` and other HuggingFace parameters can be specified in `benchmark_config` to control the amount of data loaded.

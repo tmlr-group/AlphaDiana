@@ -224,7 +224,7 @@ export default function RunDetailPage() {
                     showSizeChanger: true,
                     pageSizeOptions: ['20', '50', '100'],
                     hideOnSinglePage: true,
-                    showTotal: (total, range) => `${range[0]}-${range[1]} / ${total} 条`,
+                    showTotal: (total, range) => `${range[0]}-${range[1]} / ${total} items`,
                   }}
                   size="small"
                   onRow={(record) => ({

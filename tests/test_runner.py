@@ -13,10 +13,10 @@ class _FakeTask:
 
 
 class TestTaskDispatcherSequential:
-    """验证 TaskDispatcher 顺序执行。"""
+    """Verify TaskDispatcher sequential execution."""
 
     def test_dispatch_all_success(self):
-        """所有任务成功执行。"""
+        """All tasks execute successfully."""
         tasks = [_FakeTask(f"t{i}") for i in range(5)]
         results_collected = []
 
@@ -36,7 +36,7 @@ class TestTaskDispatcherSequential:
         assert task_ids == {"t0", "t1", "t2", "t3", "t4"}
 
     def test_dispatch_preserves_order(self):
-        """顺序执行时保持任务顺序。"""
+        """Task order preserved during sequential execution."""
         tasks = [_FakeTask(f"t{i}") for i in range(3)]
         order = []
 
@@ -51,10 +51,10 @@ class TestTaskDispatcherSequential:
 
 
 class TestTaskDispatcherConcurrent:
-    """验证 TaskDispatcher 并发执行。"""
+    """Verify TaskDispatcher concurrent execution."""
 
     def test_dispatch_concurrent(self):
-        """并发执行所有任务完成。"""
+        """All tasks complete under concurrent execution."""
         tasks = [_FakeTask(f"t{i}") for i in range(6)]
 
         def solve_fn(task):
@@ -71,10 +71,10 @@ class TestTaskDispatcherConcurrent:
 
 
 class TestTaskDispatcherErrorIsolation:
-    """验证错误隔离：一个任务失败不影响其他任务。"""
+    """Verify error isolation: one task failure does not affect others."""
 
     def test_error_isolation(self):
-        """失败任务不影响成功任务。"""
+        """Failed task does not affect successful tasks."""
         tasks = [_FakeTask("ok1"), _FakeTask("fail"), _FakeTask("ok2")]
 
         def solve_fn(task):
@@ -94,7 +94,7 @@ class TestTaskDispatcherErrorIsolation:
         assert "intentional failure" in failed[0]["error"]
 
     def test_error_isolation_concurrent(self):
-        """并发模式下错误隔离。"""
+        """Error isolation in concurrent mode."""
         tasks = [_FakeTask("ok1"), _FakeTask("fail"), _FakeTask("ok2")]
 
         def solve_fn(task):
@@ -112,13 +112,13 @@ class TestTaskDispatcherErrorIsolation:
         assert len(failed) == 1
 
     def test_empty_tasks(self):
-        """空任务列表返回空结果。"""
+        """Empty task list returns empty results."""
         dispatcher = TaskDispatcher(max_concurrent=1)
         outcomes = dispatcher.dispatch([], lambda t: {})
         assert outcomes == []
 
     def test_max_concurrent_clamped(self):
-        """max_concurrent < 1 被钳制为 1。"""
+        """max_concurrent < 1 is clamped to 1."""
         dispatcher = TaskDispatcher(max_concurrent=0)
         assert dispatcher.max_concurrent == 1
         dispatcher2 = TaskDispatcher(max_concurrent=-1)

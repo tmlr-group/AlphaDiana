@@ -1,11 +1,11 @@
-"""Sandbox session 泄漏修复验证。
+"""Validation for sandbox session leak fixes.
 
-覆盖:
-- SandboxPool.release() reset 失败时重建 session（防止池缩水）
-- SandboxPool.teardown() 单个 session close 失败不中断其他清理
-- ROCKSession.close() 重试 + 日志替代静默吞错
-- 顺序模式复用 shared session 而非每题创建新容器
-- OpenClaw agent teardown 调用 runtime_manager.teardown()
+Covers:
+- Rebuild the session in SandboxPool.release() when reset fails, preventing pool shrinkage
+- SandboxPool.teardown() keeps cleaning other sessions when one close() fails
+- ROCKSession.close() uses retries and logging instead of silently swallowing errors
+- Sequential mode reuses a shared session instead of creating a new container per task
+- OpenClaw agent teardown calls runtime_manager.teardown()
 """
 
 import inspect
@@ -19,12 +19,12 @@ from alphadiana.benchmark.base import BenchmarkTask
 
 
 # ===================================================================
-# 1. SandboxPool — release 失败时重建 session
+# 1. SandboxPool — rebuild the session when release fails
 # ===================================================================
 
 
 class TestPoolReleaseRecovery:
-    """pool.release() 中 reset() 失败时应销毁并重建 session。"""
+    """pool.release() should destroy and rebuild a session when reset() fails."""
 
     def test_release_replaces_broken_session(self):
         from alphadiana.sandbox.pool import SandboxPool
@@ -94,12 +94,12 @@ class TestPoolReleaseRecovery:
 
 
 # ===================================================================
-# 2. SandboxPool — teardown 异常不中断
+# 2. SandboxPool — teardown should continue through exceptions
 # ===================================================================
 
 
 class TestPoolTeardownRobust:
-    """pool.teardown() 单个 session close 失败不应中断其他 session 清理。"""
+    """pool.teardown() should not stop cleaning other sessions when one close() fails."""
 
     def test_teardown_closes_all_despite_errors(self):
         from alphadiana.sandbox.pool import SandboxPool
@@ -120,7 +120,7 @@ class TestPoolTeardownRobust:
         s3.close.assert_called_once()
 
     def test_teardown_does_not_hang_on_blocking_close(self):
-        """close() 挂起时 teardown 应在超时后返回，不无限阻塞。"""
+        """When close() hangs, teardown should return after timeout rather than blocking forever."""
         import time
         from alphadiana.sandbox.pool import SandboxPool
 
@@ -148,106 +148,106 @@ class TestPoolTeardownRobust:
         s2.close.assert_called_once()
 
     def test_teardown_concurrent_close(self):
-        """teardown 应并发关闭所有 session。"""
+        """teardown should close all sessions concurrently."""
         import inspect
         from alphadiana.sandbox.pool import SandboxPool
         source = inspect.getsource(SandboxPool.teardown)
         assert "Thread" in source or "thread" in source, (
-            "teardown() 应使用线程并发关闭 session"
+            "teardown() should use threads to close sessions concurrently"
         )
 
 
 # ===================================================================
-# 3. ROCKSession.close() — 重试机制
+# 3. ROCKSession.close() — retry behavior
 # ===================================================================
 
 
 class TestROCKSessionCloseRetry:
-    """ROCKSession.close() 应重试 stop() 而非静默吞错。"""
+    """ROCKSession.close() should retry stop() rather than silently swallowing errors."""
 
     def test_close_source_has_retry(self):
-        """close() 应有重试逻辑。"""
+        """close() should include retry logic."""
         from alphadiana.sandbox.rock import ROCKSession
         source = inspect.getsource(ROCKSession.close)
         assert "max_stop_attempts" in source or "attempt" in source, (
-            "ROCKSession.close() 应有重试逻辑"
+            "ROCKSession.close() should include retry logic"
         )
         # Should not silently pass on all errors
         assert "except Exception:\n            pass" not in source, (
-            "ROCKSession.close() 不应静默吞掉 stop() 异常"
+            "ROCKSession.close() should not silently swallow stop() exceptions"
         )
 
     def test_close_does_not_silently_swallow(self):
-        """close() 异常应被 warning 而非 pass。"""
+        """close() exceptions should be logged as warnings rather than ignored."""
         from alphadiana.sandbox.rock import ROCKSession
         source = inspect.getsource(ROCKSession.close)
         assert "logger.warning" in source or "logger.error" in source
 
 
 # ===================================================================
-# 4. 顺序模式复用 shared session
+# 4. Reuse a shared session in sequential mode
 # ===================================================================
 
 
 class TestSequentialSharedSession:
-    """max_concurrent=1 时应复用单个 session 而非每题创建新容器。"""
+    """When max_concurrent=1, a single session should be reused instead of creating a new container per task."""
 
     def test_runner_run_uses_shared_session(self):
-        """Runner.run() 应在顺序模式创建 shared_session。"""
+        """Runner.run() should create shared_session in sequential mode."""
         from alphadiana.runner.runner import Runner
         source = inspect.getsource(Runner.run)
         assert "shared_session" in source, (
-            "Runner.run() 应使用 shared_session 复用 sandbox session"
+            "Runner.run() should use shared_session to reuse the sandbox session"
         )
 
     def test_shared_session_reset_between_tasks(self):
-        """shared session 在 finally 中应调 reset() 而非 close()。"""
+        """The shared session should call reset() between tasks instead of close()."""
         from alphadiana.runner.runner import Runner
         source = inspect.getsource(Runner.run)
         assert "sandbox_session.reset()" in source, (
-            "shared session 应在 task 之间调 reset() 而非 close()"
+            "The shared session should call reset() between tasks rather than close()"
         )
 
     def test_shared_session_closed_after_dispatch(self):
-        """dispatch 结束后 shared_session 应被 close()。"""
+        """shared_session should be closed after dispatch finishes."""
         from alphadiana.runner.runner import Runner
         source = inspect.getsource(Runner.run)
         assert "shared_session.close()" in source, (
-            "dispatch 结束后 shared_session 应被 close()"
+            "shared_session should be closed after dispatch completes"
         )
 
 
 # ===================================================================
-# 5. OpenClaw agent teardown 完整清理
+# 5. Complete OpenClaw agent teardown cleanup
 # ===================================================================
 
 
 class TestOpenClawTeardown:
-    """OpenClaw agent teardown 应清理 runtime_manager。"""
+    """OpenClaw agent teardown should clean up runtime_manager."""
 
     def test_teardown_calls_runtime_manager(self):
-        """agent.teardown() 应调用 _runtime_manager.teardown()。"""
+        """agent.teardown() should call _runtime_manager.teardown()."""
         from alphadiana.agent.openclaw import OpenClawAgent
         source = inspect.getsource(OpenClawAgent.teardown)
         assert "_runtime_manager" in source, (
-            "OpenClawAgent.teardown() 应清理 _runtime_manager"
+            "OpenClawAgent.teardown() should clean up _runtime_manager"
         )
         assert "teardown" in source
 
     def test_teardown_cleans_sandbox_client(self):
-        """agent.teardown() 应将 _sandbox_client 置 None。"""
+        """agent.teardown() should set _sandbox_client to None."""
         from alphadiana.agent.openclaw import OpenClawAgent
         source = inspect.getsource(OpenClawAgent.teardown)
         assert "_sandbox_client = None" in source
 
 
 # ===================================================================
-# 6. 集成验证 — session 数量恒定
+# 6. Integration check — session count remains stable
 # ===================================================================
 
 
 class TestSessionCountStable:
-    """验证 pool 在多次 acquire/release 周期后 session 数量恒定。"""
+    """Verify that the pool keeps a stable number of sessions across repeated acquire/release cycles."""
 
     def test_pool_size_stable_after_many_cycles(self):
         from alphadiana.sandbox.pool import SandboxPool
@@ -269,7 +269,7 @@ class TestSessionCountStable:
         assert pool.available == 3
 
     def test_pool_size_stable_with_occasional_reset_failures(self):
-        """偶尔 reset 失败后，pool 应自动替换保持大小。"""
+        """The pool should automatically replace sessions after occasional reset failures and keep its size stable."""
         from alphadiana.sandbox.pool import SandboxPool
 
         mock_sandbox = MagicMock()

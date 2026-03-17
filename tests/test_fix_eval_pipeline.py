@@ -1,10 +1,10 @@
-"""评测流程与实验管理（问题 1.1 ~ 1.4）
+"""Evaluation pipeline and experiment management (Problems 1.1 ~ 1.4)
 
-覆盖:
-- 1.1 Config override 解析与深度合并、ExperimentConfig.from_yaml(overrides=)
-- 1.2 Sandbox 状态隔离：close 时 workspace 清理、reset_between_tasks 配置
-- 1.3 BatchRunner 串行/并行批量运行
-- 1.4 SandboxPool 分配/归还/teardown
+Covers:
+- 1.1 Config override parsing and deep merge, ExperimentConfig.from_yaml(overrides=)
+- 1.2 Sandbox state isolation: workspace cleanup on close, reset_between_tasks config
+- 1.3 BatchRunner sequential/parallel batch execution
+- 1.4 SandboxPool allocation/release/teardown
 """
 
 import textwrap
@@ -21,9 +21,9 @@ from alphadiana.config.experiment_config import ExperimentConfig
 
 
 class TestConfigOverride:
-    """--override 解析与深度合并。"""
+    """--override parsing and deep merge."""
 
-    # --- 解析 ---
+    # --- Parsing ---
 
     def test_parse_dotted_override(self):
         from alphadiana.config.experiment_config import parse_override
@@ -42,7 +42,7 @@ class TestConfigOverride:
         r = parse_override("sandbox.config.reset_between_tasks=false")
         assert r["sandbox"]["config"]["reset_between_tasks"] is False
 
-    # --- 深度合并 ---
+    # --- Deep Merge ---
 
     def test_deep_merge_adds_new_key(self):
         from alphadiana.config.experiment_config import deep_merge
@@ -102,12 +102,12 @@ class TestConfigOverride:
 
 
 # ===================================================================
-# 1.2 Sandbox 状态隔离
+# 1.2 Sandbox Status Isolation
 # ===================================================================
 
 
 class TestSandboxIsolation:
-    """close() 清理 workspace、reset_between_tasks 配置。"""
+    """close() workspace cleanup, reset_between_tasks config."""
 
     def test_reset_between_tasks_default_true(self):
         from alphadiana.sandbox.rock import ROCKSandbox
@@ -233,7 +233,7 @@ def _make_config(run_id: str) -> ExperimentConfig:
 
 
 class TestBatchRunner:
-    """串行/并行批量运行。"""
+    """Sequential/parallel batch execution."""
 
     def test_sequential_runs_all(self):
         from alphadiana.runner.batch_runner import BatchRunner
@@ -326,7 +326,7 @@ class TestBatchRunner:
 
 
 class TestSandboxPool:
-    """SandboxPool 分配/归还/teardown。"""
+    """SandboxPool allocation/release/teardown."""
 
     def _make_pool(self, size=3):
         from alphadiana.sandbox.pool import SandboxPool
