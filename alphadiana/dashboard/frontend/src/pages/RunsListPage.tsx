@@ -17,9 +17,10 @@ import {
 import {
   ExperimentOutlined,
   CheckCircleOutlined,
-  ClockCircleOutlined,
+  DatabaseOutlined,
   ThunderboltOutlined,
   DeleteOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { RunSummary } from '../types';
@@ -257,7 +258,7 @@ export default function RunsListPage() {
             <Statistic
               title="Total Tokens"
               value={totalTokens > 1000 ? `${(totalTokens / 1000).toFixed(0)}K` : totalTokens}
-              prefix={<ClockCircleOutlined />}
+              prefix={<DatabaseOutlined />}
             />
           </Card>
         </Col>
@@ -274,6 +275,7 @@ export default function RunsListPage() {
               style={{ width: 250 }}
               allowClear
             />
+            <Button icon={<ReloadOutlined />} onClick={fetchRuns} loading={loading} />
             <Popconfirm
               title={`Delete ${selectedKeys.length} selected run(s)?`}
               description="This will permanently delete all data for the selected runs."

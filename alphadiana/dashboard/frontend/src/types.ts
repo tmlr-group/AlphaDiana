@@ -36,6 +36,7 @@ export interface TaskResult {
   timestamp: string;
   error: Record<string, unknown> | null;
   task_metadata: Record<string, unknown>;
+  finish_reason: string;
 }
 
 export interface TrajectoryStep {

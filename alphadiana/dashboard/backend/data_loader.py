@@ -18,14 +18,20 @@ from alphadiana.dashboard.backend.models import (
 
 
 def _load_jsonl(path: Path) -> list[dict[str, Any]]:
-    """Read all JSON lines from a file."""
-    results: list[dict[str, Any]] = []
+    """Read JSON lines from a file, deduplicating by (task_id, sample_index).
+
+    The last record for each (task_id, sample_index) pair wins, matching
+    ResultStore.load() semantics so that retried tasks replace error records.
+    """
+    records: dict[tuple[str, int], dict[str, Any]] = {}
     with open(path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if line:
-                results.append(json.loads(line))
-    return results
+                record = json.loads(line)
+                key = (record.get("task_id", ""), record.get("sample_index", 0))
+                records[key] = record
+    return list(records.values())
 
 
 def _get_category(r: dict[str, Any]) -> str:
@@ -217,6 +223,7 @@ def _record_to_task_result(record: dict[str, Any]) -> TaskResult:
         timestamp=record.get("timestamp", ""),
         error=record.get("error"),
         task_metadata=record.get("task_metadata", {}),
+        finish_reason=record.get("finish_reason", ""),
     )
 
 

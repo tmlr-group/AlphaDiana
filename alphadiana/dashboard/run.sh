@@ -25,6 +25,7 @@ fi
 
 DEFAULT_BACKEND_PORT="${ALPHADIANA_BACKEND_PORT:-8000}"
 DEFAULT_FRONTEND_PORT="${ALPHADIANA_FRONTEND_PORT:-5173}"
+DEFAULT_RELOAD_DIRS="alphadiana/dashboard"
 
 # --- Resolve Python environment ---
 # Priority: ALPHADIANA_PYTHON env var > alphadiana conda env > current python3
@@ -99,6 +100,8 @@ Options:
 Environment variables:
     ALPHADIANA_BACKEND_PORT   Preferred backend start port (default: 8000)
     ALPHADIANA_FRONTEND_PORT  Preferred frontend start port (default: 5173)
+    ALPHADIANA_RELOAD_DIRS    Colon-separated dev reload dirs
+                              (default: alphadiana/dashboard)
 
 Behavior:
     If a preferred port is occupied, the script automatically finds the next free port.
@@ -155,6 +158,30 @@ pick_port_with_notice() {
     echo "$picked"
 }
 
+build_reload_args() {
+    local reload_dirs_raw="${ALPHADIANA_RELOAD_DIRS:-$DEFAULT_RELOAD_DIRS}"
+    local -a reload_dirs=()
+    local dir=""
+
+    IFS=':' read -r -a reload_dirs <<< "$reload_dirs_raw"
+    RELOAD_ARGS=()
+    RESOLVED_RELOAD_DIRS=()
+
+    for dir in "${reload_dirs[@]}"; do
+        [ -n "$dir" ] || continue
+        case "$dir" in
+            /*)
+                RELOAD_ARGS+=(--reload-dir "$dir")
+                RESOLVED_RELOAD_DIRS+=("$dir")
+                ;;
+            *)
+                RELOAD_ARGS+=(--reload-dir "$PROJECT_ROOT/$dir")
+                RESOLVED_RELOAD_DIRS+=("$PROJECT_ROOT/$dir")
+                ;;
+        esac
+    done
+}
+
 MODE="dev"
 if [ "$#" -gt 1 ]; then
     echo "[ERROR] Too many arguments." >&2
@@ -194,14 +221,16 @@ if [ "$MODE" = "prod" ]; then
 else
     BACKEND_PORT="$(pick_port_with_notice "$DEFAULT_BACKEND_PORT" "Backend")"
     FRONTEND_PORT="$(pick_port_with_notice "$DEFAULT_FRONTEND_PORT" "Frontend")"
+    build_reload_args
 
     echo "==> Starting backend at http://localhost:${BACKEND_PORT}"
     echo "==> Starting frontend at http://localhost:${FRONTEND_PORT}"
+    echo "==> Backend reload dirs: ${RESOLVED_RELOAD_DIRS[*]}"
     echo ""
 
     # Start backend in background
     cd "$PROJECT_ROOT"
-    "${PYTHON}" -m uvicorn alphadiana.dashboard.backend.main:app --reload --port "$BACKEND_PORT" &
+    "${PYTHON}" -m uvicorn alphadiana.dashboard.backend.main:app --reload "${RELOAD_ARGS[@]}" --port "$BACKEND_PORT" &
     BACKEND_PID=$!
 
     # Start frontend

@@ -45,6 +45,7 @@ class TaskResult(BaseModel):
     timestamp: str = ""
     error: dict[str, Any] | None = None
     task_metadata: dict[str, Any] = {}
+    finish_reason: str = ""
 
 
 class RunDetailResponse(BaseModel):

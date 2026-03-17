@@ -76,30 +76,15 @@ interface BenchmarkPreset {
 
 const BENCHMARK_PRESETS: BenchmarkPreset[] = [
   {
-    value: 'aime2025-I',
-    label: 'AIME 2025-I',
-    description: 'AIME 2025 Part I (15 problems)',
+    value: 'aime2025',
+    label: 'AIME 2025',
+    description: 'AIME 2025 Full (30 problems)',
     benchmarkName: 'aime',
     defaultScorer: 'numeric',
     benchmarkConfig: {
-      dataset: 'opencompass/AIME2025',
-      data_config: 'AIME2025-I',
-      split: 'test',
-      problem_field: 'question',
-      answer_field: 'answer',
-    },
-  },
-  {
-    value: 'aime2025-II',
-    label: 'AIME 2025-II',
-    description: 'AIME 2025 Part II (15 problems)',
-    benchmarkName: 'aime',
-    defaultScorer: 'numeric',
-    benchmarkConfig: {
-      dataset: 'opencompass/AIME2025',
-      data_config: 'AIME2025-II',
-      split: 'test',
-      problem_field: 'question',
+      dataset: 'MathArena/aime_2025',
+      split: 'train',
+      problem_field: 'problem',
       answer_field: 'answer',
     },
   },
@@ -141,9 +126,9 @@ const BENCHMARK_PRESETS: BenchmarkPreset[] = [
     benchmarkConfig: { split: 'test' },
   },
   {
-    value: 'custom-aime',
-    label: 'AIME (Custom HF Dataset)',
-    description: 'Use a custom HuggingFace AIME dataset (optional data_config for multi-config sets)',
+    value: 'custom',
+    label: 'Custom HF Dataset',
+    description: 'Load a HuggingFace dataset with problem + answer fields (numeric scorer)',
     benchmarkName: 'aime',
     defaultScorer: 'numeric',
     benchmarkConfig: {},
@@ -192,7 +177,8 @@ export default function NewJobPage() {
   const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<string>('direct_llm');
-  const [selectedPreset, setSelectedPreset] = useState<string>('aime2025-I');
+  const [selectedPreset, setSelectedPreset] = useState<string>('aime2025');
+  const [redoAll, setRedoAll] = useState(false);
 
   // OpenClaw sandbox state
   const [sandboxMode, setSandboxMode] = useState<'existing' | 'new'>('existing');
@@ -221,7 +207,7 @@ export default function NewJobPage() {
 
   const agentDef = AGENTS.find((a) => a.value === selectedAgent);
   const presetDef = BENCHMARK_PRESETS.find((b) => b.value === selectedPreset);
-  const isCustom = selectedPreset === 'custom-aime';
+  const isCustom = selectedPreset === 'custom';
 
   // Probe a single sandbox for gateway health and model info
   const handleProbe = (sid: string) => {
@@ -668,6 +654,7 @@ export default function NewJobPage() {
         onValuesChange={(changed) => {
           // Re-compute preview run ID when config-affecting fields change
           const keys = Object.keys(changed);
+          if ('redo_all' in changed) setRedoAll(changed.redo_all as boolean);
           const affects = keys.some(k =>
             k.startsWith('agent_') || k === 'benchmark_preset' || k === 'smoke_test' ||
             k.startsWith('bench_') || k.startsWith('sandbox_') || k === 'agent_name'
@@ -676,7 +663,7 @@ export default function NewJobPage() {
         }}
         initialValues={{
           agent_name: 'direct_llm',
-          benchmark_preset: 'aime2025-I',
+          benchmark_preset: 'aime2025',
           scorer_name: 'numeric',
           max_concurrent: 3,
           num_samples: 1,
@@ -715,11 +702,11 @@ export default function NewJobPage() {
             <Alert
               message={`Run "${existingRun.run_id}" already exists (${existingRun.completed}/${existingRun.total_tasks} completed)`}
               description={
-                form.getFieldValue('redo_all')
+                redoAll
                   ? `⚠️ Redo All is ON: existing ${existingRun.completed} results will be permanently deleted and all tasks will be re-evaluated from scratch.`
                   : `Will resume from checkpoint: ${existingRun.total_tasks - existingRun.completed} remaining tasks will be evaluated, ${existingRun.completed} completed tasks will be skipped.`
               }
-              type={form.getFieldValue('redo_all') ? 'warning' : 'info'}
+              type={redoAll ? 'warning' : 'info'}
               showIcon
               style={{ marginTop: -8 }}
             />
@@ -762,9 +749,18 @@ export default function NewJobPage() {
             </div>
           )}
 
-          {/* Custom AIME fields */}
+          {/* Custom HF dataset fields */}
           {isCustom && (
             <>
+              <div style={{ background: '#fffbe6', border: '1px solid #ffe58f', padding: '8px 12px', borderRadius: 4, fontSize: 12, marginBottom: 12 }}>
+                <Text strong style={{ fontSize: 12 }}>Supported dataset format:</Text>
+                <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                  <li>HuggingFace <code>datasets</code> compatible (loaded via <code>load_dataset</code>)</li>
+                  <li>Must contain a <b>problem</b> (text) column and an <b>answer</b> (numeric) column</li>
+                  <li>Answer is compared numerically with tolerance — best suited for math competition datasets (AIME, AMC, custom problem sets, etc.)</li>
+                  <li>Multi-config datasets supported via the Data Config field (e.g. <code>AIME2025-I</code>)</li>
+                </ul>
+              </div>
               <Divider style={{ margin: '12px 0' }} />
               <Row gutter={16}>
                 <Col span={12}>
@@ -773,7 +769,7 @@ export default function NewJobPage() {
                     label="HuggingFace Dataset"
                     rules={[{ required: true, message: 'Dataset is required' }]}
                   >
-                    <Input placeholder="e.g. opencompass/AIME2025" />
+                    <Input placeholder="e.g. HuggingFaceH4/aime_2024" />
                   </Form.Item>
                 </Col>
                 <Col span={12}>
@@ -1184,7 +1180,7 @@ export default function NewJobPage() {
               message={
                 existingRun
                   ? `Run ID "${previewRunId}" already exists (${existingRun.completed}/${existingRun.total_tasks} completed). ${
-                      form.getFieldValue('redo_all')
+                      redoAll
                         ? `⚠️ Redo All is ON: existing ${existingRun.completed} results will be permanently deleted.`
                         : `Will resume from checkpoint, ${existingRun.total_tasks - existingRun.completed} remaining tasks to evaluate.`
                     }`

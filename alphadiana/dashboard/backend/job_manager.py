@@ -26,6 +26,31 @@ _current_job_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
 )
 
 
+class _DualWriter(io.StringIO):
+    """StringIO that simultaneously appends every write to a log file on disk.
+
+    This ensures logs are persisted in real-time so they survive server crashes.
+    The in-memory buffer is kept for fast API access (polling during a run).
+    """
+
+    def __init__(self, log_path: str) -> None:
+        super().__init__()
+        self._log_path = log_path
+        self._file_lock = threading.Lock()
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+
+    def write(self, s: str) -> int:
+        result = super().write(s)
+        if s:
+            try:
+                with self._file_lock:
+                    with open(self._log_path, "a", encoding="utf-8") as f:
+                        f.write(s)
+            except Exception:
+                pass
+        return result
+
+
 class _JobLogCapture(logging.Handler):
     """Captures log messages for a specific job into a StringIO buffer.
 
@@ -61,7 +86,7 @@ class JobManager:
         self._jobs: dict[str, JobStatus] = {}
         self._job_logs: dict[str, io.StringIO] = {}
         self._cancel_events: dict[str, threading.Event] = {}
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()  # RLock: reentrant, same thread can acquire multiple times
         self._jobs_file = os.path.join(results_dir, ".jobs.json")
         self._logs_dir = os.path.join(results_dir, ".job_logs")
         self._load_persisted_jobs()
@@ -143,15 +168,14 @@ class JobManager:
         return 0
 
     @staticmethod
-    def _count_jsonl(jsonl_path: str) -> tuple[int, int]:
-        """Count unique results and correct count from a JSONL file.
+    def _count_jsonl(jsonl_path: str) -> tuple[int, int, int]:
+        """Count unique results, correct count, and error count from a JSONL file.
 
         Deduplicates by (task_id, sample_index) keeping the latest entry,
-        so redo_all runs that append to existing files are counted correctly.
-        Returns (unique_count, correct_count).
+        so retried tasks replace their error records correctly.
+        Returns (unique_count, correct_count, error_count).
         """
-        # Keep last entry per (task_id, sample_index) to handle redo_all
-        seen: dict[tuple[str, int], bool] = {}
+        seen: dict[tuple[str, int], dict] = {}
         try:
             with open(jsonl_path, encoding="utf-8") as f:
                 for line in f:
@@ -161,14 +185,15 @@ class JobManager:
                     try:
                         record = json.loads(line)
                         key = (record.get("task_id", ""), record.get("sample_index", 0))
-                        seen[key] = bool(record.get("correct"))
+                        seen[key] = record
                     except json.JSONDecodeError:
                         pass
         except Exception:
-            return 0, 0
+            return 0, 0, 0
         count = len(seen)
-        correct = sum(1 for v in seen.values() if v)
-        return count, correct
+        correct = sum(1 for r in seen.values() if r.get("correct"))
+        error_count = sum(1 for r in seen.values() if r.get("score") is None)
+        return count, correct, error_count
 
     def _recover_progress(self, job: JobStatus) -> None:
         """Read the JSONL file to recover progress/accuracy for an interrupted job.
@@ -192,10 +217,20 @@ class JobManager:
         jsonl_path = Path(self._results_dir) / f"{job.run_id}.jsonl"
         if not jsonl_path.exists():
             return
-        count, correct = self._count_jsonl(str(jsonl_path))
+        count, correct, error_count = self._count_jsonl(str(jsonl_path))
         if count > 0:
             job.progress = count
             job.accuracy = correct / count
+            # If all tasks are now done with no errors, auto-complete the job.
+            # This handles retries done outside the dashboard (e.g. CLI) or
+            # jobs that were interrupted after the run actually finished.
+            if (
+                job.status == "interrupted"
+                and job.total_tasks > 0
+                and count >= job.total_tasks
+                and error_count == 0
+            ):
+                job.status = "completed"
 
     def _save_job_log(self, job_id: str) -> None:
         """Persist in-memory log buffer to disk so it survives restarts."""
@@ -466,7 +501,8 @@ class JobManager:
         )
         with self._lock:
             self._jobs[job_id] = status
-            self._job_logs[job_id] = io.StringIO()
+            log_path = os.path.join(self._logs_dir, f"{job_id}.log")
+            self._job_logs[job_id] = _DualWriter(log_path)
             self._persist_jobs()
 
         thread = threading.Thread(
@@ -523,7 +559,8 @@ class JobManager:
         )
         with self._lock:
             self._jobs[job_id] = status
-            self._job_logs[job_id] = io.StringIO()
+            log_path = os.path.join(self._logs_dir, f"{job_id}.log")
+            self._job_logs[job_id] = _DualWriter(log_path)
             self._persist_jobs()
 
         def _wait_and_run() -> None:
@@ -889,7 +926,7 @@ class JobManager:
                         job.total_tasks = current_total
             return
 
-        count, correct = self._count_jsonl(str(jsonl_path))
+        count, correct, _error_count = self._count_jsonl(str(jsonl_path))
 
         with self._lock:
             job = self._jobs.get(job_id)

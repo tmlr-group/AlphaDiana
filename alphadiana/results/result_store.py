@@ -206,13 +206,16 @@ class ResultStore:
         path.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
 
     def completed_task_ids(self) -> set[str]:
-        """Return task_ids of successfully completed records (correct is not None).
+        """Return task_ids of records that should NOT be retried.
 
-        For backward compatibility this returns task_ids regardless of sample_index.
+        A record is considered done if it has no error dict — this covers both
+        scored results (correct=True/False) and old scorer records (correct=None,
+        error=None).  Only records with a real error dict (agent crash, timeout,
+        etc.) are eligible for retry when redo_all is False.
         """
         completed: set[str] = set()
         for record in self.load():
-            if record.get("correct") is not None:
+            if record.get("error") is None:
                 completed.add(record["task_id"])
         return completed
 
@@ -220,7 +223,7 @@ class ResultStore:
         """Return (task_id, sample_index) pairs that have been completed."""
         completed: set[tuple[str, int]] = set()
         for record in self.load():
-            if record.get("correct") is not None:
+            if record.get("error") is None:
                 completed.add((record["task_id"], record.get("sample_index", 0)))
         return completed
 
