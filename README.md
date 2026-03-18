@@ -1,5 +1,19 @@
 # AlphaDiana: A modular evaluation framework for agent systems
 
+## Outline
+- [Overview](#overview)
+- [Data Flow](#data-flow)
+- [Quick Start](#quick-start)
+  - [Prerequisites](#prerequisites)
+  - [OpenClaw Agent](#openclaw-agent)
+    - [Per-Terminal Environment Setup](#per-terminal-environment-setup)
+    - [Deploy OpenClaw Agent](#deploy-openclaw-agent)
+    - [Run Evaluation](#run-evaluation)
+    - [View Results](#view-results)
+  - [Direct LLM](#direct-llm)
+- [Dashboard](#dashboard)
+  - [Start the Dashboard](#start-the-dashboard)
+- [FAQs](#faqs)
 
 ## Overview
 AlphaDiana is a modular evaluation framework for foundation models and agent systems on frontier reasoning benchmarks. It offers a pluggable evaluation pipeline to evaluate LLM-based reasoning systems with support for multi-turn agentic workflows, sandboxed code execution, and symbolic math verification.
@@ -21,20 +35,6 @@ YAML Config ----> Runner -----------> Benchmark (load tasks)
                    results/<run_id>.jsonl ----> Report / Dashboard
 ```
 
-## Outline
-- [Overview](#overview)
-- [Data Flow](#data-flow)
-- [Quick Start](#quick-start)
-  - [Prerequisites](#prerequisites)
-  - [OpenClaw Agent](#openclaw-agent)
-    - [Per-Terminal Environment Setup](#per-terminal-environment-setup)
-    - [Deploy OpenClaw Agent](#deploy-openclaw-agent)
-    - [Run Evaluation](#run-evaluation)
-    - [View Results](#view-results)
-  - [Direct LLM](#direct-llm)
-- [Dashboard](#dashboard)
-  - [Start the Dashboard](#start-the-dashboard)
-- [FAQs](#faqs)
 
 ## Quick Start
 
