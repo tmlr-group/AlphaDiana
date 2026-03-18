@@ -29,6 +29,7 @@ To run an OpenClaw evaluation, first execute `bash dev/quickstart.sh` from the p
 ```bash
 git clone <repo-url> 
 cd AlphaDiana
+pip install -e .
 ```
 For manual setup and troubleshooting, see [`docs/setup_detail.md`](docs/setup_detail.md).
 
