@@ -30,18 +30,24 @@ class ResultStore:
         *,
         run_metadata: dict | None = None,
     ) -> None:
-        os.makedirs(output_dir, exist_ok=True)
         self.output_dir = Path(output_dir)
         self.run_id = run_id
         self.path = str(self.output_dir / f"{run_id}.jsonl")
         self.artifacts_dir = self.output_dir / run_id / "artifacts"
-        self.artifacts_dir.mkdir(parents=True, exist_ok=True)
+        self._dirs_created = False
         self._write_lock = threading.Lock()
         # Per-key locks for artifact writes to avoid concurrent overwrites.
         self._artifact_locks: dict[str, threading.Lock] = {}
         self._artifact_locks_guard = threading.Lock()
         # Run-level metadata embedded into every record.
         self._run_metadata: dict = run_metadata or {}
+
+    def _ensure_dirs(self) -> None:
+        """Lazily create output directories on first write."""
+        if not self._dirs_created:
+            os.makedirs(self.output_dir, exist_ok=True)
+            self.artifacts_dir.mkdir(parents=True, exist_ok=True)
+            self._dirs_created = True
 
     def _get_artifact_lock(self, key: str) -> threading.Lock:
         """Return a per-key lock for artifact writes."""
@@ -59,6 +65,7 @@ class ResultStore:
         sample_index: int = 0,
     ) -> None:
         """Append a single result record to the JSONL file."""
+        self._ensure_dirs()
         artifact_key = f"{task.task_id}:{sample_index}"
         with self._get_artifact_lock(artifact_key):
             artifact_manifest = self._persist_artifacts(task, response, sample_index=sample_index)
@@ -105,6 +112,7 @@ class ResultStore:
         sample_index: int = 0,
     ) -> None:
         """Append a failed task attempt with preserved runtime artifacts."""
+        self._ensure_dirs()
         response = response or AgentResponse(answer=None)
         artifact_key = f"{task.task_id}:{sample_index}"
         with self._get_artifact_lock(artifact_key):

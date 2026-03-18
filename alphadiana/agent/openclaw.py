@@ -892,6 +892,8 @@ class OpenClawAgent(Agent):
                 "sandbox_id": sandbox_id,
                 "model": self._model,
                 "retry_responses": retry_responses,
+                "retry_count": attempt,
+                "token_usage_total": cumulative_token_usage,
             },
         )
 

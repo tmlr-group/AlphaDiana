@@ -60,12 +60,10 @@ class TaskDispatcher:
         self, task: Any, solve_fn: Callable[[Any], dict],
     ) -> dict:
         """Call *solve_fn* with up to *_task_retries* retries on failure."""
-        last_exc: Exception | None = None
         for attempt in range(self._task_retries + 1):
             try:
                 return solve_fn(task)
             except Exception as exc:
-                last_exc = exc
                 task_id = self._item_id(task)
                 if attempt < self._task_retries:
                     delay = min(2.0 * (2 ** attempt), 60.0)

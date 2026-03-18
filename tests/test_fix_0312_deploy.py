@@ -25,6 +25,7 @@ class TestSandboxNetworkMode:
     """ROCKSandbox accepts network_mode configuration."""
 
     def test_sandbox_config_accepts_network_mode(self):
+        pytest.importorskip("rock", reason="rock SDK not installed")
         from alphadiana.sandbox.rock import ROCKSandbox
 
         sb = ROCKSandbox()
@@ -37,6 +38,7 @@ class TestSandboxNetworkMode:
         assert sb._network_mode == "host"
 
     def test_sandbox_default_network_mode_none(self):
+        pytest.importorskip("rock", reason="rock SDK not installed")
         from alphadiana.sandbox.rock import ROCKSandbox
 
         sb = ROCKSandbox()
@@ -58,6 +60,7 @@ class TestDeployReadinessAndRetry:
 
     def test_deploy_waits_for_running_status(self):
         """after sandbox.start (), get_status () should be polled until running."""
+        pytest.importorskip("rock", reason="rock SDK not installed")
         # deploy.py's deploy () function should wait after start ()
         from openclaw_deploy.deploy import deploy
 

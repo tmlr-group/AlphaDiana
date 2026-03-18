@@ -217,6 +217,7 @@ class Runner:
 
         # Create the solve function that wraps agent + sandbox + scorer.
         def solve_fn(work_item):
+            nonlocal shared_session
             task, sample_index = work_item
             # Acquire sandbox session: from pool (concurrent) or shared (sequential).
             sandbox_session = None
@@ -311,7 +312,22 @@ class Runner:
                             pool.release(sandbox_session)
                         elif shared_session is not None:
                             # Shared session: reset for next task, don't close.
-                            sandbox_session.reset()
+                            try:
+                                sandbox_session.reset()
+                            except Exception as reset_exc:
+                                logger.warning(
+                                    "shared_session reset failed for task %s: %s, recreating session",
+                                    task.task_id, reset_exc,
+                                )
+                                try:
+                                    sandbox_session.close()
+                                except Exception:
+                                    pass
+                                try:
+                                    shared_session = self.sandbox.create_session()
+                                except Exception as create_exc:
+                                    logger.error("Failed to recreate shared_session: %s", create_exc)
+                                    shared_session = None
                         else:
                             sandbox_session.close()
                     except Exception as cleanup_exc:

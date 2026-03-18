@@ -6,6 +6,9 @@ from pathlib import Path
 
 import pytest
 
+# Exclude standalone scripts from pytest collection.
+collect_ignore = ["test_stream.py"]
+
 
 def pytest_configure(config: pytest.Config) -> None:
     """Initialize file-level progress state for the current test session."""
