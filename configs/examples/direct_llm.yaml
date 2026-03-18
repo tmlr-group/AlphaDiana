@@ -1,0 +1,25 @@
+run_id: ""
+
+agent:
+  name: direct_llm
+  version: "1.0"
+  config:
+    model: ""          
+    api_base: ""  
+    api_key: "EMPTY"
+    temperature: 0.6
+    max_tokens: 
+
+benchmark:
+  name: aime
+  config:
+    dataset: "HuggingFaceH4/aime_2024"
+    split: "train"
+
+scorer:
+  name: numeric
+  config:
+    tolerance: 1e-6
+
+max_concurrent: 
+output_dir: "./results"
