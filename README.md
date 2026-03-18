@@ -68,7 +68,7 @@ source dev/.rock_ports.env
 `dev/rock_env.sh` sets `PYTHONPATH`, `ROCK_CONFIG`, `ROCK_WORKER_ENV_TYPE`, proxy cleanup, and HuggingFace mirror configuration.
 
 ####  Deploy OpenClaw Agent
-Before deployment, make sure the following fields in `rock_agent_config.yaml` are set correctly. If you are using `vLLM`, `OPENAI_BASE_URL` must be set to the model service address that is accessible inside the Docker container.
+Before deployment, make sure the following fields in `openclaw_deploy/rock_agent_config.yaml` are set correctly. If you are using `vLLM`, `OPENAI_BASE_URL` must be set to the model service address that is accessible inside the Docker container.
 ```yaml
 working_dir: "."
 
