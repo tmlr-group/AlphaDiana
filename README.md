@@ -22,14 +22,25 @@ YAML Config ----> Runner -----------> Benchmark (load tasks)
 ```
 
 ## Outline
-To run an OpenClaw evaluation, first execute `bash dev/quickstart.sh` from the project root to set up the environment and supporting services. Then, prepare the agent configuration and run `python openclaw_deploy/deploy.py` to deploy the agent and obtain the `sandbox_id`. Once the deployment is complete, insert the `sandbox_id` into `openclaw.yaml`. With the configuration in place, you can launch the evaluation by running `alphadiana run openclaw.yaml`.
+- [Overview](#overview)
+- [Data Flow](#data-flow)
+- [Quick Start](#quick-start)
+  - [Prerequisites](#prerequisites)
+  - [OpenClaw Agent](#openclaw-agent)
+    - [Per-Terminal Environment Setup](#per-terminal-environment-setup)
+    - [Deploy OpenClaw Agent](#deploy-openclaw-agent)
+    - [Run Evaluation](#run-evaluation)
+    - [View Results](#view-results)
+  - [Direct LLM](#direct-llm)
+- [Dashboard](#dashboard)
+  - [Start the Dashboard](#start-the-dashboard)
+- [FAQs](#faqs)
 
 ## Quick Start
 
 ```bash
 git clone <repo-url> 
 cd AlphaDiana
-pip install -e .
 ```
 For manual setup and troubleshooting, see [`docs/setup_detail.md`](docs/setup_detail.md).
 
@@ -37,13 +48,6 @@ For manual setup and troubleshooting, see [`docs/setup_detail.md`](docs/setup_de
 
 A Linux environment, Python >= 3.10, conda, Docker, Git, and an OpenRouter (or another provider) API key
 
-### Direct LLM
-
-Run the following command:
-```bash
-# run
-alphadiana run direct_llm.yaml
-```
 
 ### OpenClaw Agent
 
@@ -86,7 +90,7 @@ env:
 ```bash
 # Deploy to ROCK sandbox
 python openclaw_deploy/deploy.py \
-  --agent-config dev/generated/rock_agent_config.openrouter_qwen_2_5_7b.resolved.yaml
+  --agent-config openclaw_deploy/rock_agent_config.yaml
 # Note the SANDBOX_ID from output
 ```
 
@@ -101,12 +105,12 @@ curl -X POST \
 ```
 
 ####  Run Evaluation
-Before running the evaluation, make sure to fully complete the `openclaw.yaml` file.
+Before running the evaluation, make sure to fully complete the `configs/examples/openclaw_aime2024.yaml` file.
 
 ```bash
 # Validate & run
-alphadiana validate openclaw.yaml
-alphadiana run openclaw.yaml
+alphadiana validate configs/examples/openclaw_aime2024.yaml
+alphadiana run configs/examples/openclaw_aime2024.yaml
 ```
 
 Results are written to `results/<run_id>.jsonl`.
@@ -115,6 +119,14 @@ Results are written to `results/<run_id>.jsonl`.
 
 ```bash
 alphadiana report results/
+```
+
+### Direct LLM
+
+Run the following command:
+```bash
+# run
+alphadiana run configs/examples/direct_llm.yaml
 ```
 
 
