@@ -94,17 +94,17 @@ python openclaw_deploy/deploy.py \
 # Note the SANDBOX_ID from output
 ```
 
-#### ROCK Proxy 超时配置（重要）
+#### ROCK Proxy Timeout Configuration (Important)
 
-ROCK proxy 默认超时较短，复杂评测（如 AIME）中 agent 运行时间可能远超默认值，导致请求被中途切断并返回空回复。请确认以下配置：
+The default ROCK proxy timeout is too short. During complex evaluations (e.g. AIME), the agent may run much longer than the default, causing requests to be cut off mid-stream and returning empty responses. Please verify the following settings:
 
-1. **ROCK proxy timeout**：检查 ROCK 安装目录下 `rock/sandbox/service/sandbox_proxy_service.py`，确保 `post_proxy` 方法中使用 `timeout=self.proxy_config.timeout` 而非硬编码值。如需调大，在 ROCK YAML 配置中设置：
+1. **ROCK proxy timeout**: In your ROCK installation, open `rock/sandbox/service/sandbox_proxy_service.py` and ensure the `post_proxy` method uses `timeout=self.proxy_config.timeout` instead of a hardcoded value. To increase the timeout, set it in the ROCK YAML config:
    ```yaml
    proxy_service:
      timeout: 600
    ```
-2. **Gateway agent timeout**：`openclaw_deploy/openclaw.json` 中已配置 `agents.defaults.timeoutSeconds: 3600`
-3. **Client request timeout**：实验 YAML 中 `agent.config.request_timeout` 默认 1800s
+2. **Gateway agent timeout**: Already configured in `openclaw_deploy/openclaw.json` as `agents.defaults.timeoutSeconds: 3600`
+3. **Client request timeout**: Set via `agent.config.request_timeout` in the experiment YAML (default: 1800s)
 
 Verify the gateway before running benchmarks:
 
