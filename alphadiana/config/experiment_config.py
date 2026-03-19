@@ -1,12 +1,24 @@
 from __future__ import annotations
 
 import copy
+import os
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+
+def _expand_env_vars(obj: Any) -> Any:
+    """Recursively expand $VAR and ${VAR} in string values."""
+    if isinstance(obj, str):
+        return os.path.expandvars(obj)
+    if isinstance(obj, dict):
+        return {k: _expand_env_vars(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_expand_env_vars(item) for item in obj]
+    return obj
 
 
 def deep_merge(base: dict, override: dict) -> dict:
@@ -79,6 +91,8 @@ class ExperimentConfig:
     ) -> ExperimentConfig:
         with open(path) as f:
             data = yaml.safe_load(f)
+
+        data = _expand_env_vars(data)
 
         if overrides:
             data = deep_merge(data, overrides)

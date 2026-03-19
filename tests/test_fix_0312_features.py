@@ -317,7 +317,9 @@ class TestPerTaskOutput:
 
         per_task = tmp_path / "granular2" / "tasks" / "t1.json"
         if per_task.exists():
-            record = json.loads(per_task.read_text(encoding="utf-8"))
+            content = json.loads(per_task.read_text(encoding="utf-8"))
+            # Per-task JSON is now a list of records (one per sample).
+            record = content[0] if isinstance(content, list) else content
             assert record["task_id"] == "t1"
             assert record["predicted"] == "42"
             assert record["correct"] is True

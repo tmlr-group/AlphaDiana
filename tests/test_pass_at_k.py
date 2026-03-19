@@ -200,8 +200,14 @@ class TestArtifactPathsMultiSample:
         store.append(task, resp, score, sample_index=0)
         store.append(task, resp, score, sample_index=2)
 
-        assert (tmp_path / "ptj" / "tasks" / "t1.json").exists()
-        assert (tmp_path / "ptj" / "tasks" / "t1_s2.json").exists()
+        # All samples for the same task are merged into a single file.
+        task_file = tmp_path / "ptj" / "tasks" / "t1.json"
+        assert task_file.exists()
+        import json
+        content = json.loads(task_file.read_text())
+        assert isinstance(content, list)
+        assert len(content) == 2
+        assert {r["sample_index"] for r in content} == {0, 2}
 
 
 # ===================================================================

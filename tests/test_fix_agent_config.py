@@ -207,7 +207,7 @@ class TestDirectLLMMaxTokensAutoDetect:
     def test_fallback_on_failure(self):
         agent = self._setup(api_base="http://unreachable:8000/v1")
         with patch("httpx.get", side_effect=Exception("fail")):
-            assert agent._resolve_max_tokens() == 32768
+            assert agent._resolve_max_tokens() == 65536
 
     def test_detects_max_model_len(self):
         agent = self._setup()
@@ -262,7 +262,7 @@ class TestMaxTokensAutoDetect:
         agent = OpenClawAgent()
         agent.setup({"api_base": "http://unreachable:8000/v1"})
         with patch("httpx.get", side_effect=Exception("fail")):
-            assert agent._resolve_max_tokens() == 32768
+            assert agent._resolve_max_tokens() == 65536
 
     def test_payload_no_hardcoded_8192(self):
         from alphadiana.agent.openclaw import OpenClawAgent

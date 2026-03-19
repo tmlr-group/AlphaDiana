@@ -362,7 +362,7 @@ class ROCKSession(SandboxSession):
         auto_clear_seconds: int,
         start_retries: int = 1,
         reset_between_tasks: bool = True,
-        proxy_timeout: int = 600,
+        proxy_timeout: int = 1800,
         network_mode: str | None = None,
     ) -> None:
         _require_rock_sdk()
@@ -413,6 +413,12 @@ class ROCKSession(SandboxSession):
                 if ProxyServiceConfig is not None and hasattr(sandbox, "config"):
                     try:
                         setattr(sandbox.config, "proxy_service", ProxyServiceConfig(timeout=float(self._proxy_timeout)))
+                        logger.info(
+                            "proxy_timeout=%ds set on SDK client. Ensure ROCK server "
+                            "post_proxy also uses a compatible timeout (see ROCK "
+                            "deployment config: proxy_service.timeout).",
+                            self._proxy_timeout,
+                        )
                     except Exception:
                         logger.debug("Failed to apply proxy timeout to ROCK sandbox config", exc_info=True)
                 try:
@@ -623,7 +629,7 @@ class ROCKSandbox(Sandbox):
     def setup(self, config: dict) -> None:
         _require_rock_sdk()
         self._reset_between_tasks = config.get("reset_between_tasks", True)
-        self._proxy_timeout = int(config.get("proxy_timeout", 600))
+        self._proxy_timeout = int(config.get("proxy_timeout", 1800))
         self._network_mode = config.get("network_mode", None)
         self._config = {
             "admin_base_url": config["admin_base_url"],

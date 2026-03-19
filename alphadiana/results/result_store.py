@@ -222,13 +222,36 @@ class ResultStore:
         return manifest
 
     def _save_per_task_json(self, task_id: str, record: dict) -> None:
-        """Write a per-task JSON file under {run_id}/tasks/{task_id}.json."""
+        """Write/update a per-task JSON file under {run_id}/tasks/{task_id}.json.
+
+        All samples for the same task_id are stored as a list in a single file.
+        """
         tasks_dir = self.output_dir / self.run_id / "tasks"
         tasks_dir.mkdir(parents=True, exist_ok=True)
+        path = tasks_dir / f"{task_id}.json"
+        # Load existing records if any.
+        existing: list[dict] = []
+        if path.exists():
+            try:
+                content = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(content, list):
+                    existing = content
+                elif isinstance(content, dict):
+                    # Migrate from old single-record format.
+                    existing = [content]
+            except (json.JSONDecodeError, OSError):
+                pass
+        # Replace existing sample with same index, or append.
         sample_index = record.get("sample_index", 0)
-        filename = f"{task_id}.json" if sample_index == 0 else f"{task_id}_s{sample_index}.json"
-        path = tasks_dir / filename
-        path.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
+        replaced = False
+        for i, rec in enumerate(existing):
+            if rec.get("sample_index", 0) == sample_index:
+                existing[i] = record
+                replaced = True
+                break
+        if not replaced:
+            existing.append(record)
+        path.write_text(json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8")
 
     def completed_task_ids(self) -> set[str]:
         """Return task_ids of records that should NOT be retried.

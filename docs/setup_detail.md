@@ -18,6 +18,22 @@ bash dev/quickstart.sh
 
 后续可以再把 `README.md` 里的手动步骤继续迁移到这里。
 
+## ROCK Proxy 超时配置
+
+ROCK proxy 的 `post_proxy` 超时已从硬编码 120s 改为读取 `ProxyServiceConfig.timeout`（默认 180s）。如需更大值（推荐 600s），在 ROCK YAML 配置中设置：
+
+```yaml
+# rock-config.yml（通过 ROCK_CONFIG 环境变量指定）
+proxy_service:
+  timeout: 600
+```
+
+如果使用的 ROCK 版本仍有 `timeout=120` 硬编码，需手动修改：
+
+1. 打开 ROCK 安装目录下 `rock/sandbox/service/sandbox_proxy_service.py`
+2. 找到 `timeout=120`（约第 454 行）
+3. 改为 `timeout=self.proxy_config.timeout`
+
 ## FAQs
 
 Common issues at a glance:
@@ -76,11 +92,13 @@ agent:
   name: openclaw                  # openclaw | direct_llm
   version: "2026.3.7"
   config:
-    api_base: "http://127.0.0.1:9001/apis/envs/sandbox/v1/sandboxes/<ID>/proxy/v1"
+    # 支持环境变量: ${SANDBOX_ID}, ${ROCK_PORT}
+    api_base: "http://127.0.0.1:9001/apis/envs/sandbox/v1/sandboxes/${SANDBOX_ID}/proxy/v1"
     model: openclaw
     gateway_token: "OPENCLAW"
-    max_attempts: 3               # retry attempts (openclaw only)
-    request_timeout: 600          # seconds (openclaw only)
+    max_tokens: 65536             # recommend 65536+ for thinking models
+    max_attempts: 5               # retry attempts (openclaw only)
+    request_timeout: 1800         # seconds (openclaw only)
 
 benchmark:
   name: aime

@@ -114,7 +114,7 @@ class TestProxyTimeout:
                 "admin_base_url": "http://localhost:9000",
                 "proxy_base_url": "http://localhost:9001",
             })
-        assert sb._proxy_timeout == 600
+        assert sb._proxy_timeout == 1800
 
     def test_custom_value(self):
         from alphadiana.sandbox.rock import ROCKSandbox
@@ -137,7 +137,7 @@ class TestRequestTimeout:
 
         agent = OpenClawAgent()
         agent.setup({"api_base": "http://localhost/v1"})
-        assert agent._request_timeout == 600
+        assert agent._request_timeout == 1800
 
     def test_custom_value(self):
         from alphadiana.agent.openclaw import OpenClawAgent

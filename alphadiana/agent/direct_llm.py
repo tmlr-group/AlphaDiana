@@ -80,7 +80,7 @@ class DirectLLMAgent(Agent):
         except Exception:
             pass
 
-        self._resolved_max_tokens = 32768
+        self._resolved_max_tokens = 65536
         return self._resolved_max_tokens
 
     def solve(self, task: BenchmarkTask, sandbox: Any = None) -> AgentResponse:
