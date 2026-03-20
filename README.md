@@ -57,6 +57,29 @@ alphadiana report results/
 
 > **Note:** Default configs are provided in `openclaw_deploy/`. At minimum, set `OPENAI_BASE_URL` and `OPENAI_MODEL_NAME` in `rock_agent_config.yaml` before deploying. For timeout tuning and other details, see [`configs/schema.yaml.md`](configs/schema.yaml.md).
 
+#### Pre-built Image (Faster Deploy)
+
+`bash dev/quickstart.sh` sets up infrastructure but does not deploy OpenClaw — use `bash dev/start_openclaw.sh` for that (~1 min with the pre-built image vs ~15 min with npm install).
+
+Pull the image once (~2.6 GB):
+
+```bash
+docker pull ghcr.io/tsrigo/openclaw-sandbox:2026.3.7
+```
+
+Then start ROCK services and deploy:
+
+```bash
+bash dev/start_openclaw.sh \
+  --model-base-url https://openrouter.ai/api/v1 \
+  --model-api-key  sk-... \
+  --model-name     moonshotai/kimi-k2.5
+```
+
+On success the script prints `Sandbox ID` and `API base` — copy those into your evaluation YAML.
+
+> For full usage details, see [`dev/README_prebuilt.md`](dev/README_prebuilt.md).
+
 ### Direct LLM
 
 Directly evaluate any model without agent - useful for quick baseline
