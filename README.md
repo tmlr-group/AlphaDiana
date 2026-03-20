@@ -16,7 +16,7 @@ AlphaDiana is a modular evaluation framework for foundation models and agent sys
 ## Quick Start
 
 ```bash
-git clone <repo-url>
+git clone <repo-url> 
 cd AlphaDiana
 ```
 For manual setup and troubleshooting, see [`docs/setup_detail.md`](docs/setup_detail.md).
@@ -117,14 +117,6 @@ A web UI for managing and viewing evaluation tasks without manually editing YAML
 uvicorn alphadiana.dashboard.backend.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-For faster sandbox deploys from the Dashboard, set `OPENCLAW_IMAGE` before starting
-the backend server:
-
-```bash
-export OPENCLAW_IMAGE=ghcr.io/tsrigo/openclaw-sandbox:2026.3.7
-uvicorn alphadiana.dashboard.backend.main:app --host 0.0.0.0 --port 8000 --reload
-```
-
 Then open `http://<host>:8000` in your browser.
 
 
@@ -133,14 +125,3 @@ Then open `http://<host>:8000` in your browser.
 
 For comprehensive troubleshooting (Docker permissions, Redis connection errors, Ray port conflicts, sandbox container issues, etc.), see the [`docs/setup_detail.md`](docs/setup_detail.md).
 
-Common issues at a glance:
-
-| Issue | Cause | Fix |
-|---|---|---|
-| `permission denied` on Docker socket | Current shell lacks `docker` group | Run `newgrp docker` or re-login |
-| `deploy.py` sandbox timeout | Redis not running, ROCK/Ray not healthy, sandbox memory too high, or Ray `runtime_env` dependency install failed | Start Redis, check `curl http://127.0.0.1:$ROCK_ADMIN_PORT/`, `curl http://127.0.0.1:$ROCK_PROXY_PORT/`, `ray status`, retry with `--memory 3g`, then inspect `/tmp/kai-ray/session_latest/logs/runtime_env_setup-*.log` |
-| Ray port `8265` already in use | Shared server port conflict | Use `find_rock_ports.py` to detect free ports |
-| `ray start` fails with `Address already in use` on configured ports | `dev/.rock_ports.env` is stale or conflicts with existing services | Regenerate ports via the setup helper, then restart Redis / Ray / ROCK |
-| `rock.admin.main` Redis `ConnectionError` | Redis container not started | `docker start "$ROCK_REDIS_CONTAINER"` |
-| Sandbox container exits immediately (`Container process terminated`) | `rock` editable install path mismatch — switched project directories without re-running `pip install -e .` | `pip install -e ref/ROCK -q` then retry |
-| Proxy `/chat/completions` fails after successful deploy | ROCK proxy forwarding issue | Check ROCK proxy logs and verify whether the sandbox-exposed gateway port works directly |
