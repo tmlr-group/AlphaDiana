@@ -38,7 +38,6 @@ bash dev/quickstart.sh
 #1. Activate environment (required for every new terminal)
 
 conda activate alphadiana && source dev/rock_env.sh && source dev/.rock_ports.env
-
 #2. Edit config files - openclaw_deploy/rock_agent_config.yaml  — ROCK sandbox & model connection parameters
 
 #3. Deploy OpenClaw agent to ROCK sandbox
@@ -47,15 +46,28 @@ python openclaw_deploy/deploy.py \
 
 #4. Edit config files  - configs/examples/openclaw_aime2024.yaml — evaluation parameters
 
-# 5. Run evaluation
+#5. Run evaluation
 alphadiana validate configs/examples/openclaw_aime2024.yaml
 alphadiana run configs/examples/openclaw_aime2024.yaml
 
-# 6. View results
+#6. View results
 alphadiana report results/
 ```
 
 > **Note:** Default configs are provided in `openclaw_deploy/`. At minimum, set `OPENAI_BASE_URL` and `OPENAI_MODEL_NAME` in `rock_agent_config.yaml` before deploying. For timeout tuning and other details, see [`configs/schema.yaml.md`](configs/schema.yaml.md).
+
+The deploy flow uses `DEFAULT_SANDBOX_IMAGE` from `alphadiana/utils/rock_runtime.py`. The current default is:
+
+```text
+ghcr.io/tsrigo/openclaw-reasoning:20260320
+```
+
+This default can still be overridden with `OPENCLAW_SANDBOX_IMAGE` or `--image`.
+
+The reasoning image contains the patched OpenClaw gateway, including:
+- streaming `reasoning_content`
+- cleaned reasoning text without underscore formatting
+- `max_tokens` forwarding for `/v1/chat/completions`
 
 #### Pre-built Image (Faster Deploy)
 
@@ -124,4 +136,3 @@ Then open `http://<host>:8000` in your browser.
 ## FAQs
 
 For comprehensive troubleshooting (Docker permissions, Redis connection errors, Ray port conflicts, sandbox container issues, etc.), see the [`docs/setup_detail.md`](docs/setup_detail.md).
-

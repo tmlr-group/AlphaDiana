@@ -387,24 +387,29 @@ Edit `openclaw_deploy/rock_agent_config.yaml`:
 working_dir: "."
 
 run_cmd: >
+  NPM_BIN_DIR=$(find /tmp/rock-runtime-envs/node -name 'npm' -type f ! -path '*/nodewin/*' ! -path '*/shims/*' 2>/dev/null | head -1 | xargs -r dirname) &&
+  export PATH=${NPM_BIN_DIR:+${NPM_BIN_DIR}:}$PATH
   OPENCLAW_CONFIG_PATH=${working_dir}/openclaw.json
+  OPENCLAW_HOME=/tmp/oc_home
+  OPENCLAW_BUNDLED_PLUGINS_DIR=/tmp/empty-bundled
   nohup openclaw gateway >> /root/gateway.log 2>&1 &
 
 runtime_env_config:
   type: node
   npm_registry: https://registry.npmmirror.com
-  custom_install_cmd: npm install -g openclaw@2026.3.7
+  custom_install_cmd: if command -v openclaw >/dev/null 2>&1; then echo "Using preinstalled OpenClaw from sandbox image"; else git config --global url.'https://github.com/'.insteadOf 'ssh://git@github.com/' && npm install -g openclaw@2026.3.7 --registry https://registry.npmmirror.com; fi
   install_timeout: 1200
 
 env:
-  OPENAI_base_URL: "http<YOUR_HOST_IP>://: 8000←/v1" # vLLM Address (In-container access host)
+  OPENAI_BASE_URL: "http://<YOUR_HOST_IP>:8000/v1" # vLLM address inside the container
   OPENAI_API_KEY: "EMPTY"
-  OPENAI_model_name: "/path/to/Qwen3-8B" # is consistent ← with vLLM's --model
+  OPENAI_MODEL_NAME: "/path/to/Qwen3-8B" # must match vLLM's --model exactly
   OPENCLAW_GATEWAY_TOKEN: "OPENCLAW"
 ```
 
 
 > **Important:** `OPENAI_BASE_URL` cannot write `localhost` because this is run inside a Docker container. Use the actual IP of the host (see `hostname -I | awk '{print $1}'`).
+> The default sandbox image is `ghcr.io/tsrigo/openclaw-reasoning:20260320`. The OpenClaw model itself is still configurable via `OPENAI_MODEL_NAME`.
 
 ### 5.2 Deployment
 

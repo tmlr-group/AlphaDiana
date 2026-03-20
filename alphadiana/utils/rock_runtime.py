@@ -5,13 +5,14 @@ from __future__ import annotations
 import os
 
 # ---------------------------------------------------------------------------
-# Default sandbox image.  Override via the OPENCLAW_IMAGE env-var to use
-# a pre-built image that already contains Node.js + openclaw.
+# Default sandbox image. Override via OPENCLAW_SANDBOX_IMAGE or OPENCLAW_IMAGE.
 # ---------------------------------------------------------------------------
-DEFAULT_SANDBOX_IMAGE: str = os.environ.get("OPENCLAW_IMAGE", "python:3.11")
+DEFAULT_SANDBOX_IMAGE: str = os.environ.get(
+    "OPENCLAW_SANDBOX_IMAGE",
+    os.environ.get("OPENCLAW_IMAGE", "ghcr.io/tsrigo/openclaw-reasoning:20260320"),
+)
 
-# Pre-built image that ships with Node.js + openclaw already installed.
-# Used as the first-try image in dashboard deploys (fallback: DEFAULT_SANDBOX_IMAGE).
+# Alternate pre-built image that ships with Node.js + openclaw already installed.
 PREBUILT_SANDBOX_IMAGE: str = "ghcr.io/tsrigo/openclaw-sandbox:2026.3.7"
 
 # Full npm install command (used when running on a bare python:3.11 image).
@@ -40,7 +41,9 @@ NODE_PREBUILT_INSTALL_CMD = "ln -sfn /opt/node runtime-env"
 
 _PREBUILT_IMAGE_PREFIXES = (
     "ghcr.io/tsrigo/openclaw-sandbox:",
+    "ghcr.io/tsrigo/openclaw-reasoning:",
     "openclaw-sandbox:",
+    "openclaw-reasoning:",
 )
 
 

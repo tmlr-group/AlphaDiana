@@ -181,17 +181,21 @@ The deployment configuration is already in the `openclaw_deploy/` directory:
 working_dir: "."
 
 run_cmd: >
+  NPM_BIN_DIR=$(find /tmp/rock-runtime-envs/node -name 'npm' -type f ! -path '*/nodewin/*' ! -path '*/shims/*' 2>/dev/null | head -1 | xargs -r dirname) &&
+  export PATH=${NPM_BIN_DIR:+${NPM_BIN_DIR}:}$PATH
   OPENCLAW_CONFIG_PATH=${working_dir}/openclaw.json
+  OPENCLAW_HOME=/tmp/oc_home
+  OPENCLAW_BUNDLED_PLUGINS_DIR=/tmp/empty-bundled
   nohup openclaw gateway >> /root/gateway.log 2>&1 &
 
 runtime_env_config:
   type: node
   npm_registry: https://registry.npmmirror.com
-  custom_install_cmd: npm install -g openclaw@2026.3.7
+  custom_install_cmd: if command -v openclaw >/dev/null 2>&1; then echo "Using preinstalled OpenClaw from sandbox image"; else git config --global url.'https://github.com/'.insteadOf 'ssh://git@github.com/' && npm install -g openclaw@2026.3.7 --registry https://registry.npmmirror.com; fi
   install_timeout: 1200
 
 env:
-  OPENAI_base_URL: "http://192.0.2.14: 8000/v1" # ← Change to your vLLM address
+  OPENAI_BASE_URL: "http://192.0.2.14:8000/v1" # ← Change to your vLLM address
   OPENAI_API_KEY: "EMPTY"
   OPENAI_MODEL_NAME: "/hd1/models/models--Qwen--Qwen3-8B/snapshots/b968826d9c46dd6066d109eabc6255188de91218"
   OPENCLAW_GATEWAY_TOKEN: "OPENCLAW"
@@ -199,6 +203,7 @@ env:
 
 
 **`openclaw_deploy/openclaw.json`** — OpenClaw gateway configuration, defining model provider and gateway authentication methods.
+The default image used by `deploy.py` is `ghcr.io/tsrigo/openclaw-reasoning:20260320`. The model stays configurable through `OPENAI_MODEL_NAME`.
 
 ### 5.2 Create Sandbox and deploy
 
