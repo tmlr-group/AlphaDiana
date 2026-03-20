@@ -67,32 +67,27 @@ source dev/.rock_ports.env
 
 `dev/rock_env.sh` sets `PYTHONPATH`, `ROCK_CONFIG`, `ROCK_WORKER_ENV_TYPE`, proxy cleanup, and HuggingFace mirror configuration.
 
-####  Deploy OpenClaw Agent
+```bash
+#1. Activate environment (required for every new terminal)
+conda activate alphadiana && source dev/rock_env.sh && source dev/.rock_ports.env
 
-1. Edit `openclaw_deploy/rock_agent_config.yaml` and `openclaw_deploy/openclaw.json`.
+#2. Edit config files - openclaw_deploy/rock_agent_config.yaml  — ROCK sandbox & model connection parameters
 
-If you are using `vLLM`, `OPENAI_BASE_URL` must be set to the model service address that is accessible inside the Docker container. `OPENAI_MODEL_NAME` remains user-configurable and is used as the default OpenClaw model ref.
+#3. Deploy OpenClaw agent to ROCK sandbox
+python openclaw_deploy/deploy.py \
+  --agent-config openclaw_deploy/rock_agent_config.yaml
 
-```yaml
-working_dir: "."
+#4. Edit config files  - configs/examples/openclaw_aime2024.yaml — evaluation parameters
 
-run_cmd: export PATH=$(find /tmp/rock-runtime-envs/node -name 'npm' -type f ! -path '*/nodewin/*' ! -path '*/shims/*' 2>/dev/null | head -1 | xargs dirname):$PATH &&
-  mkdir -p /tmp/empty-bundled /tmp/oc_home &&
-  OPENCLAW_CONFIG_PATH=${working_dir}/openclaw.json OPENCLAW_HOME=/tmp/oc_home OPENCLAW_BUNDLED_PLUGINS_DIR=/tmp/empty-bundled
-  nohup openclaw gateway >> /tmp/gateway.log 2>&1 &
+#5. Run evaluation
+alphadiana validate configs/examples/openclaw_aime2024.yaml
+alphadiana run configs/examples/openclaw_aime2024.yaml
 
-runtime_env_config:
-  type: node
-  npm_registry: https://registry.npmmirror.com
-  custom_install_cmd: if command -v openclaw >/dev/null 2>&1; then echo "Using preinstalled OpenClaw from sandbox image"; else git config --global url.'https://github.com/'.insteadOf 'ssh://git@github.com/' && npm install -g openclaw@2026.3.7 --registry https://registry.npmmirror.com; fi
-  install_timeout: 1200
-
-env:
-  OPENAI_BASE_URL: ""
-  OPENAI_API_KEY: "EMPTY"
-  OPENAI_MODEL_NAME: ""
-  OPENCLAW_GATEWAY_TOKEN: "OPENCLAW"
+#6. View results
+alphadiana report results/
 ```
+
+> **Note:** Default configs are provided in `openclaw_deploy/`. At minimum, set `OPENAI_BASE_URL` and `OPENAI_MODEL_NAME` in `rock_agent_config.yaml` before deploying. For timeout tuning and other details, see [`configs/schema.yaml.md`](configs/schema.yaml.md).
 
 The deploy script uses `DEFAULT_SANDBOX_IMAGE` in `openclaw_deploy/deploy.py`. The current default is:
 
@@ -104,23 +99,8 @@ This default can still be overridden with `OPENCLAW_SANDBOX_IMAGE` or `--image`.
 
 The reasoning image contains the patched OpenClaw gateway, including:
 - streaming `reasoning_content`
-- cleaned reasoning text without the earlier underscore formatting
+- cleaned reasoning text without underscore formatting
 - `max_tokens` forwarding for `/v1/chat/completions`
-
-You can keep using your own upstream model by editing only these fields before deployment:
-- `openclaw_deploy/rock_agent_config.yaml`
-  - `env.OPENAI_BASE_URL`
-  - `env.OPENAI_API_KEY`
-  - `env.OPENAI_MODEL_NAME`
-- or pass a different sandbox image with `--image`
-
-2. Deploy OpenClaw to the ROCK sandbox.
-
-```bash
-python openclaw_deploy/deploy.py \
-  --agent-config openclaw_deploy/rock_agent_config.yaml
-# Note the SANDBOX_ID from output
-```
 
 #### ROCK Proxy Timeout Configuration (Important)
 
@@ -144,26 +124,26 @@ curl -X POST \
   -d '{"model":"openclaw","messages":[{"role":"user","content":"What is 2+3?"}],"temperature":0.0,"max_tokens":128}'
 ```
 
-####  Run Evaluation
+#### Pre-built Image (Faster Deploy)
 
-3. Edit `configs/examples/openclaw_aime2024.yaml`.
-
-4. Run evaluation.
+`bash dev/quickstart.sh` sets up infrastructure but does not deploy OpenClaw — use `bash dev/start_openclaw.sh` for that (~1 min with the pre-built image vs ~15 min with npm install).
 
 ```bash
-alphadiana validate configs/examples/openclaw_aime2024.yaml
-alphadiana run configs/examples/openclaw_aime2024.yaml
+docker pull ghcr.io/tsrigo/openclaw-sandbox:2026.3.7
 ```
 
-Results are written to `results/<run_id>.jsonl`.
-
-####  View Results
-
-5. View results.
+Then start ROCK services and deploy:
 
 ```bash
-alphadiana report results/
+bash dev/start_openclaw.sh \
+  --model-base-url https://openrouter.ai/api/v1 \
+  --model-api-key  sk-... \
+  --model-name     moonshotai/kimi-k2.5
 ```
+
+On success the script prints `Sandbox ID` and `API base` — copy those into your evaluation YAML.
+
+> For full usage details, see [`dev/README_prebuilt.md`](dev/README_prebuilt.md).
 
 ### Direct LLM
 
