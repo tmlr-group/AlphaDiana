@@ -200,6 +200,65 @@ class Runner:
         except Exception:
             logger.debug("Dashboard initialization skipped", exc_info=True)
 
+        # Auto-create a ROCK sandbox when:
+        #   - agent is "openclaw" with dynamic bootstrap config
+        #     (rock_agent_config_path + openclaw_config_path in agent config)
+        #   - no sandbox_name was explicitly configured (sandbox: null)
+        # This ensures each concurrent slot gets its own Docker container with an
+        # isolated workspace, preventing workspace-state.json.tmp contention.
+        _auto_sandbox = None
+        if (
+            self.sandbox is None
+            and self.config.agent_name == "openclaw"
+            and self.config.agent_config.get("rock_agent_config_path")
+            and self.config.agent_config.get("openclaw_config_path")
+        ):
+            try:
+                import alphadiana.sandbox.rock  # noqa: F401 — trigger registration
+                from alphadiana.sandbox.registry import SandboxRegistry
+                rock_cls = SandboxRegistry.get("rock")
+                _auto_sandbox = rock_cls()
+                # Build sandbox config from agent config, with openclaw-friendly defaults.
+                auto_sandbox_config = {
+                    "admin_base_url": self.config.agent_config.get(
+                        "admin_base_url",
+                        self.config.agent_config.get("rock_admin_url", ""),
+                    ),
+                    "proxy_base_url": self.config.agent_config.get(
+                        "proxy_base_url",
+                        self.config.agent_config.get("rock_proxy_url", ""),
+                    ),
+                    "image": self.config.agent_config.get("rock_image", "python:3.11"),
+                    # Lower resource profile to support multiple parallel sandboxes.
+                    "memory": self.config.agent_config.get("rock_memory", "2g"),
+                    "cpus": float(self.config.agent_config.get("rock_cpus", 0.5)),
+                    "startup_timeout": int(self.config.agent_config.get("rock_startup_timeout", 300)),
+                    "auto_clear_seconds": int(self.config.agent_config.get("rock_auto_clear_seconds", 7200)),
+                    "start_retries": int(self.config.agent_config.get("rock_start_retries", 1)),
+                    # Do NOT reset workspace between tasks: the OpenClaw gateway process
+                    # keeps running in the container and owns the workspace lifecycle.
+                    "reset_between_tasks": False,
+                    "proxy_timeout": int(self.config.agent_config.get("proxy_timeout", 1800)),
+                    "network_mode": self.config.agent_config.get("network_mode", None),
+                }
+                _auto_sandbox.setup(auto_sandbox_config)
+                logger.info(
+                    "Auto-created ROCK sandbox for openclaw concurrent isolation "
+                    "(max_concurrent=%d, memory=%s, cpus=%s)",
+                    self.config.max_concurrent,
+                    auto_sandbox_config["memory"],
+                    auto_sandbox_config["cpus"],
+                )
+                # Treat _auto_sandbox as the sandbox for pool creation below.
+                self.sandbox = _auto_sandbox
+            except Exception as exc:
+                logger.warning(
+                    "Failed to auto-create ROCK sandbox for openclaw isolation: %s. "
+                    "Falling back to shared gateway (may cause workspace contention at max_concurrent>1).",
+                    exc,
+                )
+                _auto_sandbox = None
+
         # Set up sandbox pool for concurrent execution.
         pool = None
         if self.sandbox is not None and self.config.max_concurrent > 1:
@@ -353,6 +412,15 @@ class Runner:
                     shared_session.close()
                 except Exception as exc:
                     logger.warning("Shared session close error: %s", exc)
+            # Teardown auto-created ROCK sandbox (if any) and clear the reference
+            # so Runner.teardown() does not double-teardown.
+            if _auto_sandbox is not None:
+                try:
+                    _auto_sandbox.teardown()
+                except Exception as exc:
+                    logger.warning("Auto-sandbox teardown error: %s", exc)
+                if self.sandbox is _auto_sandbox:
+                    self.sandbox = None
 
         succeeded = sum(1 for o in outcomes if o["success"])
         failed = sum(1 for o in outcomes if not o["success"])
