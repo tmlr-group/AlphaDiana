@@ -2,11 +2,10 @@
   "agents": {
     "defaults": {
       "maxConcurrent": 4,
-      "timeoutSeconds": 3600,
+      "timeoutSeconds": 86400,
       "subagents": { "maxConcurrent": 8 },
       "compaction": { "mode": "safeguard" },
       "workspace": "/root/.openclaw/workspace",
-      "timeoutSeconds": 86400,
       "model": {
         "primary": "custom_openai/${OPENAI_MODEL_NAME}"
       }
