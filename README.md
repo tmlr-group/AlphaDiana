@@ -68,16 +68,18 @@ source dev/.rock_ports.env
 `dev/rock_env.sh` sets `PYTHONPATH`, `ROCK_CONFIG`, `ROCK_WORKER_ENV_TYPE`, proxy cleanup, and HuggingFace mirror configuration.
 
 ####  Deploy OpenClaw Agent
-Before deployment, make sure the following fields in `openclaw_deploy/rock_agent_config.yaml` are set correctly. If you are using `vLLM`, `OPENAI_BASE_URL` must be set to the model service address that is accessible inside the Docker container.
+Before deployment, make sure the following fields in `openclaw_deploy/rock_agent_config.yaml` and `openclaw_deploy/openclaw.json` are set correctly. If you are using `vLLM`, `OPENAI_BASE_URL` must be set to the model service address that is accessible inside the Docker container. `OPENAI_MODEL_NAME` is still user-configurable and is used as the default OpenClaw model ref.
 ```yaml
 working_dir: "."
 
-run_cmd: OPENCLAW_CONFIG_PATH=${working_dir}/openclaw.json nohup openclaw gateway >> /root/gateway.log 2>&1 &
+run_cmd: NPM_BIN_DIR=$(find /tmp/rock-runtime-envs/node -name 'npm' -type f ! -path '*/nodewin/*' ! -path '*/shims/*' 2>/dev/null | head -1 | xargs -r dirname) &&
+  export PATH=${NPM_BIN_DIR:+${NPM_BIN_DIR}:}$PATH OPENCLAW_CONFIG_PATH=${working_dir}/openclaw.json OPENCLAW_HOME=/tmp/oc_home OPENCLAW_BUNDLED_PLUGINS_DIR=/tmp/empty-bundled &&
+  nohup openclaw gateway >> /root/gateway.log 2>&1 &
 
 runtime_env_config:
   type: node
   npm_registry: https://registry.npmmirror.com
-  custom_install_cmd: npm install -g openclaw@2026.3.7
+  custom_install_cmd: if command -v openclaw >/dev/null 2>&1; then echo "Using preinstalled OpenClaw from sandbox image"; else git config --global url.'https://github.com/'.insteadOf 'ssh://git@github.com/' && npm install -g openclaw@2026.3.7 --registry https://registry.npmmirror.com; fi
   install_timeout: 1200
 
 env:
@@ -93,6 +95,8 @@ python openclaw_deploy/deploy.py \
   --agent-config openclaw_deploy/rock_agent_config.yaml
 # Note the SANDBOX_ID from output
 ```
+
+The deploy script now defaults to `--image openclaw-reasoning:20260320`. Override `--image` only if you want a different sandbox image.
 
 #### ROCK Proxy Timeout Configuration (Important)
 
@@ -159,4 +163,3 @@ Then open `http://<host>:8000` in your browser.
 ## FAQs
 
 For comprehensive troubleshooting (Docker permissions, Redis connection errors, Ray port conflicts, sandbox container issues, etc.), see the [`docs/setup_detail.md`](docs/setup_detail.md).
-

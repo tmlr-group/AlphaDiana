@@ -63,6 +63,45 @@ def _extract_answer(text: str) -> str:
     return extract_answer_candidate(text)
 
 
+_PARTIAL_REASONING_ANSWER_RE = re.compile(
+    r"(?:\*{0,2})(?:the\s+)?(?:final\s+)?answer(?:\*{0,2})\s*(?:[:：]|is|=)\s*(.+)",
+    re.IGNORECASE,
+)
+
+
+def _extract_answer_from_partial_reasoning(text: str) -> str | None:
+    """Extract an answer conservatively from incomplete reasoning.
+
+    For partial reasoning, avoid treating arbitrary prose as the answer.
+    Only accept:
+      1. Explicit final-answer markers, e.g. ``the final answer is ...``
+      2. ``\\boxed{...}``
+      3. A short standalone math-like answer string (e.g. ``77``)
+    """
+    stripped = text.strip()
+    if not stripped:
+        return None
+
+    candidate = _extract_answer(stripped).strip().rstrip(".")
+    if not candidate:
+        return None
+
+    if r"\boxed{" in stripped:
+        return candidate
+
+    if _PARTIAL_REASONING_ANSWER_RE.search(stripped):
+        return candidate
+
+    if len(stripped) <= 50 and candidate == stripped and any(ch.isdigit() for ch in candidate):
+        # Accept short direct answers such as "77" or "$77$",
+        # but do not treat short prose snippets as answers.
+        math_like = re.fullmatch(r"[\s$\\(){}\[\]\d+\-*/^.,=%]+", candidate)
+        if math_like:
+            return candidate
+
+    return None
+
+
 def extract_system_prompt(trajectory: list[dict]) -> str:
     """Extract system prompt from a trajectory list."""
     for entry in trajectory:
@@ -211,6 +250,30 @@ def _extract_reasoning_trajectory_from_payload(payload: Any) -> list[dict]:
                 return [item for item in tool_calls if isinstance(item, dict)]
 
     return []
+
+
+def _recover_partial_output_from_trajectory(trajectory: list[dict]) -> tuple[str, str]:
+    """Recover partial assistant output and reasoning from session trajectory."""
+    if not isinstance(trajectory, list):
+        return "", ""
+
+    text_parts: list[str] = []
+    reasoning_parts: list[str] = []
+    for entry in trajectory:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("role") != "assistant":
+            continue
+        content = entry.get("content", "")
+        thinking = entry.get("thinking", "")
+        content_text = _coerce_text_content(content)
+        thinking_text = _coerce_text_content(thinking)
+        if content_text:
+            text_parts.append(content_text)
+        if thinking_text:
+            reasoning_parts.append(thinking_text)
+
+    return "\n".join(text_parts).strip(), "\n".join(reasoning_parts).strip()
 
 
 def _parse_openclaw_session(session_jsonl: str) -> list[dict]:
@@ -708,6 +771,8 @@ class OpenClawAgent(Agent):
             "completion_tokens": 0,
             "total_tokens": 0,
         }
+        recovered_trajectory: list[dict] = []
+        partial_reasoning_only = False
         for attempt in range(1, self._max_attempts + 1):
             attempt_start = time.monotonic()
             try:
@@ -779,6 +844,14 @@ class OpenClawAgent(Agent):
 
                 raw_output = "".join(chunks)
                 raw_reasoning = "".join(reasoning_chunks)
+                recovered_trajectory = []
+                if not raw_output and not raw_reasoning:
+                    recovered_trajectory = self._retrieve_trajectory_sync()
+                    _, recovered_reasoning = _recover_partial_output_from_trajectory(
+                        recovered_trajectory
+                    )
+                    if recovered_reasoning and not raw_reasoning:
+                        raw_reasoning = recovered_reasoning
                 if raw_reasoning:
                     if not response_json:
                         response_json = {
@@ -801,8 +874,6 @@ class OpenClawAgent(Agent):
                             message.setdefault("role", "assistant")
                             message.setdefault("content", raw_output if raw_output else "")
                             message["reasoning_content"] = raw_reasoning
-                if not raw_output and raw_reasoning:
-                    raw_output = raw_reasoning
                 # Accumulate token usage across retries.
                 attempt_usage = (response_json or {}).get("usage")
                 if attempt_usage:
@@ -810,6 +881,9 @@ class OpenClawAgent(Agent):
                     cumulative_token_usage["completion_tokens"] += int(attempt_usage.get("completion_tokens", 0))
                     cumulative_token_usage["total_tokens"] += int(attempt_usage.get("total_tokens", 0))
                 if raw_output:
+                    break
+                if raw_reasoning:
+                    partial_reasoning_only = True
                     break
                 elapsed = time.monotonic() - attempt_start
                 response_body = response_json or ""
@@ -900,7 +974,7 @@ class OpenClawAgent(Agent):
                 logger.info("Retry delay: %.1fs (error_type=%s)", delay + jitter, last_error_type)
                 time.sleep(delay + jitter)
 
-        if not raw_output:
+        if not raw_output and not partial_reasoning_only:
             if isinstance(last_error, OpenClawRequestError):
                 raise last_error
             error_type = classify_error(
@@ -919,7 +993,15 @@ class OpenClawAgent(Agent):
 
         wall_time = time.time() - start
 
-        answer = _extract_answer(raw_output)
+        answer = None
+        answer_source = ""
+        if raw_output:
+            answer = _extract_answer(raw_output)
+            answer_source = "raw_output"
+        elif raw_reasoning:
+            answer = _extract_answer_from_partial_reasoning(raw_reasoning)
+            if answer is not None:
+                answer_source = "reasoning_content"
 
         # Use cumulative token usage across all retry attempts.
         token_usage = cumulative_token_usage if any(cumulative_token_usage.values()) else {}
@@ -934,15 +1016,18 @@ class OpenClawAgent(Agent):
                 }
 
         # Try to retrieve the real agentic trajectory from the sandbox.
-        trajectory = self._retrieve_trajectory_sync()
+        trajectory = recovered_trajectory or self._retrieve_trajectory_sync()
         if not trajectory:
             # Also try extracting from response payload
             trajectory = _extract_reasoning_trajectory_from_payload(response_json)
         if not trajectory:
             # Fallback: record what we know from the API response
+            assistant_entry = {"role": "assistant", "content": raw_output}
+            if raw_reasoning:
+                assistant_entry["thinking"] = raw_reasoning
             trajectory = [
                 {"role": "user", "content": task.problem},
-                {"role": "assistant", "content": raw_output},
+                assistant_entry,
             ]
 
         # Collect artifacts from runtime manager if available
@@ -969,6 +1054,7 @@ class OpenClawAgent(Agent):
             workspace_file_contents=artifact_data.get("workspace_file_contents", {}),
             sandbox_metadata=artifact_data.get("sandbox_metadata", {}),
             system_prompt=extract_system_prompt(trajectory) or self._retrieve_system_prompt_from_sandbox(sandbox),
+            finish_reason="incomplete" if partial_reasoning_only and not raw_output else "",
             metadata={
                 "gateway_response_id": response_json.get("id", ""),
                 "sandbox_id": sandbox_id,
@@ -976,6 +1062,8 @@ class OpenClawAgent(Agent):
                 "retry_responses": retry_responses,
                 "retry_count": attempt,
                 "token_usage_total": cumulative_token_usage,
+                "partial_reasoning_only": partial_reasoning_only and not raw_output,
+                "answer_source": answer_source,
             },
         )
 
