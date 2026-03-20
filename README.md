@@ -96,7 +96,7 @@ python openclaw_deploy/deploy.py \
 # Note the SANDBOX_ID from output
 ```
 
-The deploy script now defaults to `--image openclaw-reasoning:20260320`. Override `--image` only if you want a different sandbox image.
+The deploy script now defaults to `--image ghcr.io/tsrigo/openclaw-reasoning:20260320`. Override `--image` only if you want a different sandbox image.
 
 #### ROCK Proxy Timeout Configuration (Important)
 

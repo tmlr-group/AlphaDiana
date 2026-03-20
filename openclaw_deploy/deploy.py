@@ -49,7 +49,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--image",
-        default="openclaw-reasoning:20260320",
+        default="ghcr.io/tsrigo/openclaw-reasoning:20260320",
         help="Sandbox image.",
     )
     parser.add_argument(

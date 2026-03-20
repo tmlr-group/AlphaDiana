@@ -12,7 +12,7 @@ Goal:
 ## What This Uses
 
 - AlphaDiana branch: the current checked-out branch in this repository
-- Default image: `openclaw-reasoning:20260320`
+- Default image: `ghcr.io/tsrigo/openclaw-reasoning:20260320`
 - Default deploy entry:
   - `openclaw_deploy/deploy.py`
   - `openclaw_deploy/rock_agent_config.yaml`
@@ -31,7 +31,7 @@ Recommended:
 
 - publish it to **GitHub Container Registry (GHCR)**
 - for example:
-  - `ghcr.io/<org-or-user>/openclaw-reasoning:20260320`
+  - `ghcr.io/tsrigo/openclaw-reasoning:20260320`
 
 Why:
 
@@ -41,7 +41,7 @@ Why:
 
 Until the image is published, you can still use the script with:
 
-- a locally preloaded image tagged as `openclaw-reasoning:20260320`
+- access to `ghcr.io/tsrigo/openclaw-reasoning:20260320`
 - or override `OPENCLAW_IMAGE` to another available tag
 
 ## Prerequisites
@@ -82,7 +82,7 @@ bash repro/run_openclaw_reasoning_image.sh
 If you want to override the image:
 
 ```bash
-OPENCLAW_IMAGE="ghcr.io/<org-or-user>/openclaw-reasoning:20260320" \
+OPENCLAW_IMAGE="ghcr.io/tsrigo/openclaw-reasoning:20260320" \
 OPENAI_BASE_URL="https://openrouter.ai/api/v1" \
 OPENAI_API_KEY="sk-or-..." \
 OPENAI_MODEL_NAME="moonshotai/kimi-k2.5" \
@@ -179,4 +179,3 @@ Without them:
 - `openclaw_deploy/openclaw.json`
 - `alphadiana/agent/openclaw.py`
 - `tests/test_fix_empty_response.py`
-

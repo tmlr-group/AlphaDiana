@@ -409,7 +409,7 @@ env:
 
 
 > **Important:** `OPENAI_BASE_URL` cannot write `localhost` because this is run inside a Docker container. Use the actual IP of the host (see `hostname -I | awk '{print $1}'`).
-> The default sandbox image is `openclaw-reasoning:20260320`. The OpenClaw model itself is still configurable via `OPENAI_MODEL_NAME`.
+> The default sandbox image is `ghcr.io/tsrigo/openclaw-reasoning:20260320`. The OpenClaw model itself is still configurable via `OPENAI_MODEL_NAME`.
 
 ### 5.2 Deployment
 
