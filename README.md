@@ -74,9 +74,17 @@ source dev/.rock_ports.env
 
 The pre-built sandbox image (`ghcr.io/tsrigo/openclaw-sandbox:2026.3.7`) ships with Node.js and openclaw pre-installed, reducing deploy time from ~15 minutes (npm install) to ~1 minute.
 
-**One-click script (recommended for day-to-day use)**
+**Step 1 — Pull the image once**
 
-`dev/start_openclaw.sh` starts all ROCK services and deploys the pre-built sandbox in a single command:
+```bash
+docker pull ghcr.io/tsrigo/openclaw-sandbox:2026.3.7
+```
+
+You only need to do this once per machine. The image is ~2.6 GB.
+
+**Step 2 — Start services and deploy with one command**
+
+`dev/start_openclaw.sh` starts all ROCK services and deploys the pre-built sandbox:
 
 ```bash
 bash dev/start_openclaw.sh \
@@ -94,6 +102,8 @@ export OPENAI_MODEL_NAME="moonshotai/kimi-k2.5"
 bash dev/start_openclaw.sh
 ```
 
+The script prints the `Sandbox ID` and `API base` on success — copy those into your evaluation YAML.
+
 The script is idempotent: it cleans up stale ROCK processes and sandbox containers before starting fresh. Additional options are forwarded to `openclaw_deploy.deploy`:
 
 ```bash
@@ -106,12 +116,6 @@ bash dev/start_openclaw.sh --memory 8g --cpus 2 --auto-clear-seconds 28800
 bash dev/start_openclaw.sh \
   --image my-custom-openclaw:latest \
   --model-base-url ... --model-api-key ... --model-name ...
-```
-
-**Pull the image once (if not already cached)**
-
-```bash
-docker pull ghcr.io/tsrigo/openclaw-sandbox:2026.3.7
 ```
 
 The Dashboard also uses the pre-built image automatically when `OPENCLAW_IMAGE` is set (see [Dashboard](#dashboard)).
