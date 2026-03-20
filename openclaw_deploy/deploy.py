@@ -5,12 +5,18 @@ import json
 import logging
 import os
 import sys
+import tempfile
 import time
 from pathlib import Path
 
 import httpx
 
 from alphadiana.utils.rock_ports import resolve_rock_ports_from_env
+from alphadiana.utils.rock_runtime import (
+    DEFAULT_SANDBOX_IMAGE,
+    configure_rock_runtime_for_image,
+    is_prebuilt_image,
+)
 from rock.sdk.sandbox.client import Sandbox
 from rock.sdk.sandbox.config import SandboxConfig
 
@@ -32,9 +38,14 @@ INSTALL_MAX_RETRIES = 2
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
+    default_config = (
+        "rock_agent_config.prebuilt.yaml"
+        if is_prebuilt_image(DEFAULT_SANDBOX_IMAGE)
+        else "rock_agent_config.yaml"
+    )
     parser.add_argument(
         "--agent-config",
-        default="rock_agent_config.yaml",
+        default=default_config,
         help="Path to the ROCK agent config YAML.",
     )
     parser.add_argument(
@@ -49,7 +60,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--image",
-        default="python:3.11",
+        default=DEFAULT_SANDBOX_IMAGE,
         help="Sandbox image.",
     )
     parser.add_argument(
@@ -79,6 +90,21 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=7200,
         help="Sandbox auto-clear timeout in seconds (default: 7200).",
+    )
+    parser.add_argument(
+        "--model-base-url",
+        default=None,
+        help="OPENAI_BASE_URL for the model provider (or export OPENAI_BASE_URL).",
+    )
+    parser.add_argument(
+        "--model-api-key",
+        default=None,
+        help="OPENAI_API_KEY for the model provider (or export OPENAI_API_KEY).",
+    )
+    parser.add_argument(
+        "--model-name",
+        default=None,
+        help="OPENAI_MODEL_NAME to use (or export OPENAI_MODEL_NAME).",
     )
     return parser.parse_args()
 
@@ -233,11 +259,83 @@ async def _install_with_retry(
     raise last_error
 
 
+_MODEL_ENV_KEYS = ("OPENAI_BASE_URL", "OPENAI_API_KEY", "OPENAI_MODEL_NAME")
+_MODEL_ENV_TO_FLAG = {
+    "OPENAI_BASE_URL": "--model-base-url",
+    "OPENAI_API_KEY": "--model-api-key",
+    "OPENAI_MODEL_NAME": "--model-name",
+}
+
+
+def _apply_model_overrides(agent_config: Path, args: argparse.Namespace) -> Path:
+    """Resolve model env vars in agent config YAML.
+
+    Resolution order for each key (first non-empty wins):
+      1. CLI argument (--model-base-url, --model-api-key, --model-name)
+      2. Local environment variable (OPENAI_BASE_URL, etc.)
+      3. Value already in the YAML (if it doesn't look like an unresolved
+         ``${VAR}`` placeholder)
+
+    Returns the (possibly new temporary) config path.
+    """
+    import re
+    import yaml
+
+    cli_map = {
+        "OPENAI_BASE_URL": getattr(args, "model_base_url", None),
+        "OPENAI_API_KEY": getattr(args, "model_api_key", None),
+        "OPENAI_MODEL_NAME": getattr(args, "model_name", None),
+    }
+
+    data = yaml.safe_load(agent_config.read_text(encoding="utf-8"))
+    env = data.setdefault("env", {})
+    changed = False
+
+    for key in _MODEL_ENV_KEYS:
+        # 1) CLI arg
+        if cli_map.get(key):
+            env[key] = cli_map[key]
+            changed = True
+            continue
+        # 2) Local environment
+        local_val = os.environ.get(key)
+        if local_val:
+            env[key] = local_val
+            changed = True
+            continue
+        # 3) Check if YAML value is an unresolved placeholder
+        yaml_val = str(env.get(key, ""))
+        if re.match(r"^\$\{.+\}$", yaml_val) or not yaml_val:
+            raise RuntimeError(
+                f"Model config '{key}' is not set.\n"
+                f"Provide it via {_MODEL_ENV_TO_FLAG[key]} or "
+                f"export {key}=... in your environment."
+            )
+
+    if not changed:
+        return agent_config
+
+    tmp = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".yaml", prefix="rock_agent_", delete=False,
+    )
+    yaml.safe_dump(data, tmp, sort_keys=False)
+    tmp.close()
+    resolved = {k for k in _MODEL_ENV_KEYS if cli_map.get(k) or os.environ.get(k)}
+    if resolved:
+        print(f"Resolved model config: {', '.join(sorted(resolved))}")
+    return Path(tmp.name)
+
+
 async def deploy(args: argparse.Namespace) -> None:
+    configure_rock_runtime_for_image(args.image)
     agent_config = _resolve_agent_config(args.agent_config)
     await _preflight(args.base_url, args.proxy_url, agent_config)
+    agent_config = _apply_model_overrides(agent_config, args)
 
     auto_clear = getattr(args, "auto_clear_seconds", 7200)
+    # SandboxConfig.base_url must be the admin URL: the SDK appends
+    # /apis/envs/sandbox/v1 and calls start_async, which is served by the admin.
+    # After startup, sandbox.url is overridden to the proxy URL for gateway access.
     config = SandboxConfig(
         base_url=args.base_url,
         image=args.image,

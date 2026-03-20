@@ -1,0 +1,76 @@
+"""Helpers for tuning ROCK runtime environment installation."""
+
+from __future__ import annotations
+
+import os
+
+# ---------------------------------------------------------------------------
+# Default sandbox image.  Override via the OPENCLAW_IMAGE env-var to use
+# a pre-built image that already contains Node.js + openclaw.
+# ---------------------------------------------------------------------------
+DEFAULT_SANDBOX_IMAGE: str = os.environ.get("OPENCLAW_IMAGE", "python:3.11")
+
+# Pre-built image that ships with Node.js + openclaw already installed.
+# Used as the first-try image in dashboard deploys (fallback: DEFAULT_SANDBOX_IMAGE).
+PREBUILT_SANDBOX_IMAGE: str = "ghcr.io/tsrigo/openclaw-sandbox:2026.3.7"
+
+# Full npm install command (used when running on a bare python:3.11 image).
+OPENCLAW_NPM_INSTALL_CMD = "npm install -g openclaw@2026.3.7 --omit=optional"
+
+# ---------------------------------------------------------------------------
+# Node.js download commands
+# ---------------------------------------------------------------------------
+NODE_RUNTIME_MIRROR_INSTALL_CMD = (
+    "[ -f node.tar.xz ] && rm node.tar.xz; "
+    "[ -d runtime-env ] && rm -rf runtime-env; "
+    "[ -d node-v22.18.0-linux-x64 ] && rm -rf node-v22.18.0-linux-x64; "
+    "wget -q -O node.tar.xz --tries=10 --waitretry=2 "
+    "https://npmmirror.com/mirrors/node/v22.18.0/node-v22.18.0-linux-x64.tar.xz "
+    "&& tar -xf node.tar.xz && mv node-v22.18.0-linux-x64 runtime-env"
+)
+
+# For pre-built images: node is already at /opt/node, just create the symlink
+# that ROCK expects so ${bin_dir} resolves correctly.
+NODE_PREBUILT_INSTALL_CMD = "ln -sfn /opt/node runtime-env"
+
+
+# ---------------------------------------------------------------------------
+# Public helpers
+# ---------------------------------------------------------------------------
+
+_PREBUILT_IMAGE_PREFIXES = (
+    "ghcr.io/tsrigo/openclaw-sandbox:",
+    "openclaw-sandbox:",
+)
+
+
+def is_prebuilt_image(image: str) -> bool:
+    """Return True if *image* is a known pre-built sandbox image."""
+    return any(image.startswith(prefix) for prefix in _PREBUILT_IMAGE_PREFIXES)
+
+
+def get_custom_install_cmd(image: str) -> str:
+    """Return the ``custom_install_cmd`` appropriate for *image*."""
+    if is_prebuilt_image(image):
+        return "openclaw --version"
+    return OPENCLAW_NPM_INSTALL_CMD
+
+
+def configure_rock_runtime_for_image(image: str) -> None:
+    """Set ROCK env-vars appropriate for *image*.
+
+    For pre-built images the Node.js download is replaced by a symlink;
+    for bare images we use the fast npmmirror download.
+    """
+    if is_prebuilt_image(image):
+        os.environ["ROCK_RTENV_NODE_V22180_INSTALL_CMD"] = NODE_PREBUILT_INSTALL_CMD
+    else:
+        ensure_fast_rock_runtime_mirrors()
+
+
+def ensure_fast_rock_runtime_mirrors() -> None:
+    """Prefer faster public mirrors for ROCK runtime bootstrap downloads."""
+    os.environ.setdefault(
+        "ROCK_RTENV_NODE_V22180_INSTALL_CMD",
+        NODE_RUNTIME_MIRROR_INSTALL_CMD,
+    )
