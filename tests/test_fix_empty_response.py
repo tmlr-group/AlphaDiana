@@ -465,11 +465,8 @@ class TestBenchmarkLoadRetry:
         """All benchmarks using HF datasets should call load_dataset_with_retry."""
         import inspect
         from alphadiana.benchmark.aime import AIMEBenchmark
-        from alphadiana.benchmark.math_bench import MATHBenchmark
-        from alphadiana.benchmark.hle import HLEBenchmark
-        from alphadiana.benchmark.frontier_math import FrontierMathBenchmark
 
-        for cls in [AIMEBenchmark, MATHBenchmark, HLEBenchmark, FrontierMathBenchmark]:
+        for cls in [AIMEBenchmark]:
             source = inspect.getsource(cls.load_tasks)
             assert "load_dataset_with_retry" in source, (
                 f"{cls.__name__}.load_tasks() should use load_dataset_with_retry"

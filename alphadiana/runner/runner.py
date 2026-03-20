@@ -69,11 +69,6 @@ class Runner:
         """Resolve and instantiate all components from their registries."""
         # Import all benchmark/agent/sandbox/scorer modules to trigger registration.
         import alphadiana.benchmark.aime  # noqa: F401
-        import alphadiana.benchmark.math_bench  # noqa: F401
-        import alphadiana.benchmark.hle  # noqa: F401
-        import alphadiana.benchmark.frontier_math  # noqa: F401
-        import alphadiana.benchmark.terminal_bench  # noqa: F401
-        import alphadiana.benchmark.osworld  # noqa: F401
 
         # Import agent modules to trigger registration.
         import alphadiana.agent.openclaw  # noqa: F401
@@ -82,7 +77,6 @@ class Runner:
         # Import sandbox modules to trigger registration.
         import alphadiana.sandbox.local  # noqa: F401
         import alphadiana.sandbox.rock  # noqa: F401
-        import alphadiana.sandbox.boxlite  # noqa: F401
 
         # Import scorer modules to trigger registration.
         import alphadiana.scorer.exact_match  # noqa: F401
@@ -223,6 +217,7 @@ class Runner:
 
         # Create the solve function that wraps agent + sandbox + scorer.
         def solve_fn(work_item):
+            nonlocal shared_session
             task, sample_index = work_item
             # Acquire sandbox session: from pool (concurrent) or shared (sequential).
             sandbox_session = None
@@ -317,7 +312,22 @@ class Runner:
                             pool.release(sandbox_session)
                         elif shared_session is not None:
                             # Shared session: reset for next task, don't close.
-                            sandbox_session.reset()
+                            try:
+                                sandbox_session.reset()
+                            except Exception as reset_exc:
+                                logger.warning(
+                                    "shared_session reset failed for task %s: %s, recreating session",
+                                    task.task_id, reset_exc,
+                                )
+                                try:
+                                    sandbox_session.close()
+                                except Exception:
+                                    pass
+                                try:
+                                    shared_session = self.sandbox.create_session()
+                                except Exception as create_exc:
+                                    logger.error("Failed to recreate shared_session: %s", create_exc)
+                                    shared_session = None
                         else:
                             sandbox_session.close()
                     except Exception as cleanup_exc:

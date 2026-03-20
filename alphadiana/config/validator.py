@@ -6,7 +6,7 @@ from alphadiana.config.experiment_config import ExperimentConfig
 
 
 class ConfigValidator:
-    SANDBOX_REQUIRED_BENCHMARKS = {"terminal_bench", "osworld"}
+    SANDBOX_REQUIRED_BENCHMARKS: set[str] = set()
 
     # Agents that require an api_base in agent_config.
     API_AGENTS = {"openclaw", "direct_llm"}
@@ -34,7 +34,7 @@ class ConfigValidator:
         if config.benchmark_name in self.SANDBOX_REQUIRED_BENCHMARKS and not config.sandbox_name:
             errors.append(
                 f"benchmark '{config.benchmark_name}' requires a sandbox "
-                "(set sandbox_name to 'rock', 'boxlite', or 'local')"
+                "(set sandbox_name to 'rock' or 'local')"
             )
         # Validate agent_config has api_base for agents that need it.
         if config.agent_name in self.API_AGENTS:

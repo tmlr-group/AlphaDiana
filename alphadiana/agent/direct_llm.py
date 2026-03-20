@@ -80,7 +80,7 @@ class DirectLLMAgent(Agent):
         except Exception:
             pass
 
-        self._resolved_max_tokens = 32768
+        self._resolved_max_tokens = 65536
         return self._resolved_max_tokens
 
     def solve(self, task: BenchmarkTask, sandbox: Any = None) -> AgentResponse:
@@ -177,10 +177,28 @@ class DirectLLMAgent(Agent):
         msg = str(exc).lower()
         return "timeout" in msg or "rate" in msg or "429" in msg or "502" in msg or "503" in msg
 
+    _stream_options_supported: bool = True
+
     def _call_streaming(self, request_kwargs: dict) -> tuple[str, str, dict]:
         """Call the API in streaming mode, returning (raw_output, finish_reason, token_usage)."""
-        kwargs = {**request_kwargs, "stream": True, "stream_options": {"include_usage": True}}
-        stream = self._client.chat.completions.create(**kwargs)
+        kwargs = {**request_kwargs, "stream": True}
+        if self._stream_options_supported:
+            kwargs["stream_options"] = {"include_usage": True}
+
+        try:
+            stream = self._client.chat.completions.create(**kwargs)
+        except Exception as exc:
+            # Fallback: some APIs don't support stream_options.
+            if self._stream_options_supported and (
+                "stream_options" in str(exc).lower()
+                or getattr(exc, "status_code", 0) == 400
+            ):
+                logger.info("stream_options not supported by API, retrying without it")
+                self._stream_options_supported = False
+                kwargs.pop("stream_options", None)
+                stream = self._client.chat.completions.create(**kwargs)
+            else:
+                raise
 
         content_parts: list[str] = []
         finish_reason = ""

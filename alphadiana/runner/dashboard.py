@@ -20,7 +20,15 @@ class PlainTextDashboard:
     def __init__(self, path: str | Path, tasks: list[Any], samples_per_task: int = 1) -> None:
         self._path = Path(path)
         self._samples = samples_per_task
-        self._task_ids: list[str] = [getattr(t, "task_id", str(t)) for t in tasks]
+        # Deduplicate task_ids while preserving order.
+        seen: set[str] = set()
+        unique_ids: list[str] = []
+        for t in tasks:
+            tid = getattr(t, "task_id", str(t))
+            if tid not in seen:
+                seen.add(tid)
+                unique_ids.append(tid)
+        self._task_ids: list[str] = unique_ids
         self._results: dict[str, list[bool]] = {tid: [] for tid in self._task_ids}
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._write()

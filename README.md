@@ -1,148 +1,124 @@
-  # AlphaDiana
+# AlphaDiana: A modular evaluation framework for agent systems
 
-A modular evaluation framework for foundation models and agent systems on frontier reasoning benchmarks.
+## Outline
+- [Overview](#overview)
+- [Data Flow](#data-flow)
+- [Quick Start](#quick-start)
+  - [Prerequisites](#prerequisites)
+  - [OpenClaw Agent](#openclaw-agent)
+    - [Per-Terminal Environment Setup](#per-terminal-environment-setup)
+    - [Pre-built Image (Faster Deploy)](#pre-built-image-faster-deploy)
+    - [Deploy OpenClaw Agent](#deploy-openclaw-agent)
+    - [Run Evaluation](#run-evaluation)
+    - [View Results](#view-results)
+  - [Direct LLM](#direct-llm)
+- [Dashboard](#dashboard)
+  - [Start the Dashboard](#start-the-dashboard)
+- [FAQs](#faqs)
 
-AlphaDiana provides a pluggable pipeline to evaluate LLM-based reasoning systems with support for multi-turn agentic workflows, sandboxed code execution, and symbolic math verification. This README walks through a reproducible end-to-end example using OpenClaw + AIME 2024.
+## Overview
+AlphaDiana is a modular evaluation framework for foundation models and agent systems on frontier reasoning benchmarks. It offers a pluggable evaluation pipeline to evaluate LLM-based reasoning systems with support for multi-turn agentic workflows, sandboxed code execution, and symbolic math verification.
 ![Logo](./assets/fig1.jpg)
 
 ## Data Flow
 
+
 ```
-    YAML Config ──→ Runner ──→ Benchmark (load tasks)
-                      │              │
-                      │              ▼
-                      │         Agent (generate answers)
-                      │           │   ↕ Sandbox (code execution)
-                      │           ▼
-                      │         Scorer (verify answers)
-                      │              │
-                      ▼              ▼
-                 results/<run_id>.jsonl ──→ Report / Dashboard
+YAML Config ----> Runner -----------> Benchmark (load tasks)
+                     |                 |
+                     |                 v
+                     |                 Agent (generate answers)
+                     |                 |   <-> Sandbox (code execution)
+                     |                 v
+                     |               Scorer (verify answers)
+                     |                 |
+                     v                 v
+                   results/<run_id>.jsonl ----> Report / Dashboard
 ```
 
-## Features
 
-| Category | Options |
-|---|---|
-| **Agents** | [OpenClaw](https://github.com/anthropics/openclaw) (multi-turn ReAct with tool use), Direct LLM (single-turn baseline) |
-| **Benchmark** | AIME 2024, AIME 2025, AIME 2026
-| **Sandboxes** | ROCK (Docker-based), Local (subprocess), BoxLite (cloud) |
-| **Scorers** | Exact Match, Numeric (configurable tolerance), Math Verify (SymPy symbolic equivalence), LLM Judge |
+## Quick Start
 
-All components use a registry pattern and are extensible via plugins.
-
-## Installation
+```bash
+git clone <repo-url>
+cd AlphaDiana
+```
+For manual setup and troubleshooting, see [`docs/setup_detail.md`](docs/setup_detail.md).
 
 ### Prerequisites
 
-- Linux
-- Python >= 3.10
-- conda
-- Docker
-- Git
-- An OpenRouter (or other provider) API key
+A Linux environment, Python >= 3.10, conda, Docker, Git, and an OpenRouter (or another provider) API key
 
-Verify prerequisites:
 
-```bash
-docker --version && git --version && conda --version
-```
+### OpenClaw Agent
 
-### Direct LLM
-
-```yaml
-run_id: "direct-llm"
-
-agent:
-  name: direct_llm
-  version: "1.0"
-  config:
-    model: ""          
-    api_base: ""
-    api_key: "EMPTY"
-    temperature: 0.6
-    max_tokens: 
-
-benchmark:
-  name: aime
-  config:
-    dataset: "MathArena/aime_2026"
-    split: "train"
-
-scorer:
-  name: numeric
-  config:
-    tolerance: 1e-6
-
-max_concurrent: 
-output_dir: "./results"
-```
-Run the following command:
-```bash
-# run
-alphadiana run direct_llm.yaml
-```
-
-### Quick Start
-
-```bash
-git clone <repo-url> 
-cd AlphaDiana
+``` bash
 bash dev/quickstart.sh
 ```
 
-The quickstart script will:
-- Create a conda environment and install all dependencies
-- Clone and set up `ref/ROCK` with an editable install
-- Detect available ports (avoiding conflicts on shared servers)
-- Start Redis, Ray, ROCK admin, and ROCK proxy services
-- Run health checks and print next steps
+> **Convention**: All commands should be run from the repository root (`AlphaDiana/`) unless explicitly noted otherwise.
 
-For manual setup and troubleshooting, see [`docs/setup_detail.md`](docs/setup_detail.md).
-
-
-### API Key Configuration
-
-Create a `.env` file in the repository root:
-
-```bash
-cat > .env <<'EOF'
-OPENROUTER_API_KEY="sk-or-v1-xxxxxxxx"
-OPENAI_API_KEY="sk-xxxxxxxx"
-EOF
-```
-
-To load into your current shell:
-
-```bash
-set -a && source .env && set +a
-```
-
-### Per-Terminal Environment Setup
+#### Per-Terminal Environment Setup
 
 Every new terminal session requires:
 
 ```bash
 conda activate alphadiana
 source dev/rock_env.sh
-source dev/.rock_ports.env  
+source dev/.rock_ports.env
 ```
 
 `dev/rock_env.sh` sets `PYTHONPATH`, `ROCK_CONFIG`, `ROCK_WORKER_ENV_TYPE`, proxy cleanup, and HuggingFace mirror configuration.
 
-> **Convention**: All commands should be run from the repository root (`AlphaDiana/`) unless explicitly noted otherwise.
+#### Pre-built Image (Faster Deploy)
 
-### Faster OpenClaw Deploys with a Pre-built Image
+The pre-built sandbox image (`ghcr.io/tsrigo/openclaw-sandbox:2026.3.7`) ships with Node.js and openclaw pre-installed, reducing deploy time from ~15 minutes (npm install) to ~1 minute.
 
-The dashboard automatically tries the pre-built image first (Node.js + openclaw pre-installed, ~1 min deploy) and falls back to `python:3.11` (requires npm install, ~15 min) if the image is not cached locally. Pull it once to enable the fast path:
+**One-click script (recommended for day-to-day use)**
+
+`dev/start_openclaw.sh` starts all ROCK services and deploys the pre-built sandbox in a single command:
+
+```bash
+bash dev/start_openclaw.sh \
+  --model-base-url https://openrouter.ai/api/v1 \
+  --model-api-key  sk-... \
+  --model-name     moonshotai/kimi-k2.5
+```
+
+Or equivalently via environment variables:
+
+```bash
+export OPENAI_BASE_URL="https://openrouter.ai/api/v1"
+export OPENAI_API_KEY="sk-..."
+export OPENAI_MODEL_NAME="moonshotai/kimi-k2.5"
+bash dev/start_openclaw.sh
+```
+
+The script is idempotent: it cleans up stale ROCK processes and sandbox containers before starting fresh. Additional options are forwarded to `openclaw_deploy.deploy`:
+
+```bash
+bash dev/start_openclaw.sh --memory 8g --cpus 2 --auto-clear-seconds 28800
+```
+
+**Using a custom or patched image**
+
+```bash
+bash dev/start_openclaw.sh \
+  --image my-custom-openclaw:latest \
+  --model-base-url ... --model-api-key ... --model-name ...
+```
+
+**Pull the image once (if not already cached)**
 
 ```bash
 docker pull ghcr.io/tsrigo/openclaw-sandbox:2026.3.7
 ```
 
-### 3. Deploy OpenClaw Agent
-Before deployment, make sure the model configuration is available either through
-environment variables:
+The Dashboard also uses the pre-built image automatically when `OPENCLAW_IMAGE` is set (see [Dashboard](#dashboard)).
+
+#### Deploy OpenClaw Agent
+
+If you prefer to deploy manually after `bash dev/quickstart.sh`, make sure the model configuration is available either through environment variables:
 
 ```bash
 export OPENAI_BASE_URL="https://openrouter.ai/api/v1"
@@ -178,9 +154,8 @@ Expected result:
 If `ray start` fails with `Address already in use`, your current `dev/.rock_ports.env`
 is stale for this machine. Regenerate ports via the setup helper before continuing.
 
-#### When using vLLM
+When using vLLM, `OPENAI_BASE_URL` must be set to the model service address that is accessible inside the Docker container.
 
-If you are using `vLLM`, `OPENAI_BASE_URL` must be set to the model service address that is accessible inside the Docker container.
 ```yaml
 working_dir: "."
 
@@ -227,6 +202,18 @@ API base: http://127.0.0.1:9051/apis/envs/sandbox/v1/sandboxes/fa6db7ce565a44c79
 
 > The generated config file may contain your API key. Do not commit or share it.
 
+#### ROCK Proxy Timeout Configuration (Important)
+
+The default ROCK proxy timeout is too short. During complex evaluations (e.g. AIME), the agent may run much longer than the default, causing requests to be cut off mid-stream and returning empty responses. Please verify the following settings:
+
+1. **ROCK proxy timeout**: In your ROCK installation, open `rock/sandbox/service/sandbox_proxy_service.py` and ensure the `post_proxy` method uses `timeout=self.proxy_config.timeout` instead of a hardcoded value. To increase the timeout, set it in the ROCK YAML config:
+   ```yaml
+   proxy_service:
+     timeout: 600
+   ```
+2. **Gateway agent timeout**: Already configured in `openclaw_deploy/openclaw.json` as `agents.defaults.timeoutSeconds: 86400`
+3. **Client request timeout**: Set via `agent.config.request_timeout` in the experiment YAML (default: 1800s)
+
 Verify the gateway before running benchmarks:
 
 ```bash
@@ -240,22 +227,23 @@ curl -X POST \
 If deploy succeeds but this proxy request fails, the issue is in the ROCK proxy path,
 not necessarily in sandbox creation or the OpenClaw gateway itself.
 
-### 4. Run Evaluation
-Before running the evaluation, fill in the `api_base` field in `openclaw.yaml`
-with the `API base` printed by `python -m openclaw_deploy.deploy`.
+#### Run Evaluation
+
+Before running the evaluation, fill in the `api_base` field in your evaluation config
+with the `API base` printed by `python -m openclaw_deploy.deploy` (or by `bash dev/start_openclaw.sh`).
 
 ```yaml
-run_id: 
+run_id:
 agent:
   name: openclaw
   version: 2026.3.7
   config:
-    api_base: 
+    api_base:
     model: openclaw
     gateway_token: OPENCLAW
-    temperature: 
+    temperature:
     max_tokens: 32768
-    system_prompt: 
+    system_prompt:
 
 benchmark:
   name: aime
@@ -271,9 +259,9 @@ num_samples: 32
 max_concurrent: 16
 output_dir: ./results
 metadata:
-  author: 
-  gpu: 
-  notes: 
+  author:
+  gpu:
+  notes:
 ```
 
 You can also start from [`configs/examples/openclaw_aime2025.yaml`](configs/examples/openclaw_aime2025.yaml)
@@ -288,80 +276,26 @@ alphadiana run configs/examples/openclaw_aime2025.yaml \
 
 ```bash
 # Validate & run
-alphadiana validate openclaw.yaml
-alphadiana run openclaw.yaml
+alphadiana validate configs/examples/openclaw_aime2025.yaml
+alphadiana run configs/examples/openclaw_aime2025.yaml
 ```
 
 Results are written to `results/<run_id>.jsonl`.
 
-### 5. View Results
+####  View Results
 
 ```bash
 alphadiana report results/
 ```
 
-## Configuration
+### Direct LLM
 
-Experiments are defined by a single YAML file. See [`configs/schema.yaml`](configs/schema.yaml) for the full schema.
-
-```yaml
-run_id: "openclaw-qwen3-8b-aime2024-001"   # auto-generated if omitted
-
-agent:
-  name: openclaw                  # openclaw | direct_llm
-  version: "2026.3.7"
-  config:
-    api_base: "http://127.0.0.1:9001/apis/envs/sandbox/v1/sandboxes/<ID>/proxy/v1"
-    model: openclaw
-    gateway_token: "OPENCLAW"
-    max_attempts: 3               # retry attempts (openclaw only)
-    request_timeout: 600          # seconds (openclaw only)
-
-benchmark:
-  name: aime
-  config:
-    dataset: "HuggingFaceH4/aime_2024"
-    split: "train"
-
-sandbox: null                     # null | rock | local | boxlite
-
-scorer:
-  name: math_verify
-  config:
-    tolerance: 1e-6
-
-max_concurrent: 1                 # parallel task count
-num_samples: 32                   # samples per task (for pass@k)
-output_dir: "./results"
-metadata:                         # free-form tags (optional)
-  author: "team-xyz"
-```
-
-Example configs: [`configs/examples/`](configs/examples/)
-
-## CLI Reference
-
+Run the following command:
 ```bash
-alphadiana run <config.yaml>                # Run evaluation
-alphadiana validate <config.yaml>           # Validate config without running
-alphadiana report <results_dir>             # Generate report from result files
-alphadiana batch <c1.yaml> <c2.yaml> ...    # Run multiple configs (supports --parallel)
-alphadiana list-benchmarks                  # List registered benchmarks
+# run
+alphadiana run configs/examples/direct_llm.yaml
 ```
 
-Override config values from CLI:
-
-```bash
-alphadiana run config.yaml \
-  --override agent.config.temperature=0.5 \
-  --override max_concurrent=4
-```
-
-Re-run failed tasks:
-
-```bash
-alphadiana run config.yaml --redo-all
-```
 
 ## Dashboard
 
@@ -383,44 +317,11 @@ uvicorn alphadiana.dashboard.backend.main:app --host 0.0.0.0 --port 8000 --reloa
 
 Then open `http://<host>:8000` in your browser.
 
-### Capabilities
 
-- **Runs**: Browse all evaluation results -- accuracy, pass@k / avg@k (multi-sample), per-category scores, timing distribution
-- **Compare**: Select multiple runs for side-by-side per-task comparison
-- **Jobs**: Create, monitor, and manage evaluation tasks with real-time progress and logs
-- **New Evaluation**: Configure and launch evaluations via a form (Direct LLM or OpenClaw)
-- **Sandbox Management**: Deploy and manage OpenClaw sandboxes
-
-### API Key Handling in Dashboard
-
-The Dashboard API Key input supports two modes:
-
-1. **Direct paste**: Paste the API key directly
-2. **Environment variable reference**: Enter `$VAR_NAME` (e.g., `$OPENROUTER_API_KEY`) to read from `.env` or system environment
-
-The Dashboard auto-matches API key variables based on the API base URL domain:
-
-| API Base URL | Auto-matched Variable |
-|---|---|
-| `https://openrouter.ai/api/v1/` | `$OPENROUTER_API_KEY` |
-| `https://api.openai.com/v1/` | `$OPENAI_API_KEY` |
-| `https://api.siliconflow.cn/v1/` | `$SILICONFLOW_API_KEY` |
-| `https://ark.cn-beijing.volces.com/api/...` | `$ARK_API_KEY` |
-| `https://api.deepseek.com/v1/` | `$DEEPSEEK_API_KEY` |
-
-## Port Cleanup
-
-On shared servers, you may need to clean up previously allocated ports:
-
-```bash
-bash dev/cleanup_rock_ports.sh
-```
-
-This only terminates processes owned by the current user on ROCK-related ports.
 
 ## FAQs
 
-For comprehensive troubleshooting (Docker permissions, Redis connection errors, Ray port conflicts, sandbox container issues, etc.), see the [Chinese README](README.md) or [`docs/setup_detail.md`](docs/setup_detail.md).
+For comprehensive troubleshooting (Docker permissions, Redis connection errors, Ray port conflicts, sandbox container issues, etc.), see the [`docs/setup_detail.md`](docs/setup_detail.md).
 
 Common issues at a glance:
 
@@ -431,5 +332,5 @@ Common issues at a glance:
 | Ray port `8265` already in use | Shared server port conflict | Use `find_rock_ports.py` to detect free ports |
 | `ray start` fails with `Address already in use` on configured ports | `dev/.rock_ports.env` is stale or conflicts with existing services | Regenerate ports via the setup helper, then restart Redis / Ray / ROCK |
 | `rock.admin.main` Redis `ConnectionError` | Redis container not started | `docker start "$ROCK_REDIS_CONTAINER"` |
-| Sandbox container exits immediately | `ref/ROCK/.venv` missing or invalid | `ln -sfn "$(python -c 'import sys; print(sys.prefix)')" ref/ROCK/.venv` |
+| Sandbox container exits immediately (`Container process terminated`) | `rock` editable install path mismatch — switched project directories without re-running `pip install -e .` | `pip install -e ref/ROCK -q` then retry |
 | Proxy `/chat/completions` fails after successful deploy | ROCK proxy forwarding issue | Check ROCK proxy logs and verify whether the sandbox-exposed gateway port works directly |

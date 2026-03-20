@@ -1,3 +1,11 @@
+# === OpenClaw Timeout Configuration Guide ===
+# Gateway agent timeout: openclaw.json → agents.defaults.timeoutSeconds (已配置 3600s)
+# Client request timeout: agent.config.request_timeout (default: 1800s)
+# ROCK proxy timeout: ROCK 源码 sandbox_proxy_service.py 已修改为读取配置:
+#   timeout=self.proxy_config.timeout (ProxyServiceConfig 默认 180s)
+#   如需更大值，在 ROCK YAML 配置中设置 proxy_service.timeout: 600
+# max_tokens: recommend 65536+ for thinking models (kimi-k2.5 etc.)
+
 run_id: "openclaw-qwen3-8b-aime2024-001"
 
 agent:
@@ -5,10 +13,13 @@ agent:
   version: "2026.3.7"
   config:
     # OpenClaw gateway endpoint (proxied via ROCK)
-    # Replace <SANDBOX_ID> with your actual sandbox ID
-    api_base: "http://localhost:9001/apis/envs/sandbox/v1/sandboxes/<SANDBOX_ID>/proxy/v1"
+    # Supports environment variables: ${SANDBOX_ID}, ${ROCK_PORT}
+    api_base: "http://localhost:9001/apis/envs/sandbox/v1/sandboxes/${SANDBOX_ID}/proxy/v1"
     model: openclaw
     gateway_token: "OPENCLAW"
+    max_tokens: 65536
+    request_timeout: 1800
+    max_attempts: 5
     system_prompt: |
       You are an expert problem solver. When given a problem, actively use your available tools and skills throughout your reasoning process. Do not attempt to solve problems purely in your head when tools can help. Use code execution, search, or any other available capabilities to verify intermediate steps, explore approaches, and confirm your final answer.
 

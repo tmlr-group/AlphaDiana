@@ -83,7 +83,7 @@ class TestExperimentConfigFromYAML:
               name: openclaw
               version: "v1.0"
             benchmark:
-              name: terminal_bench
+              name: aime
             sandbox:
               name: rock
               config:

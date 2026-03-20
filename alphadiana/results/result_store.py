@@ -30,18 +30,24 @@ class ResultStore:
         *,
         run_metadata: dict | None = None,
     ) -> None:
-        os.makedirs(output_dir, exist_ok=True)
         self.output_dir = Path(output_dir)
         self.run_id = run_id
         self.path = str(self.output_dir / f"{run_id}.jsonl")
         self.artifacts_dir = self.output_dir / run_id / "artifacts"
-        self.artifacts_dir.mkdir(parents=True, exist_ok=True)
+        self._dirs_created = False
         self._write_lock = threading.Lock()
         # Per-key locks for artifact writes to avoid concurrent overwrites.
         self._artifact_locks: dict[str, threading.Lock] = {}
         self._artifact_locks_guard = threading.Lock()
         # Run-level metadata embedded into every record.
         self._run_metadata: dict = run_metadata or {}
+
+    def _ensure_dirs(self) -> None:
+        """Lazily create output directories on first write."""
+        if not self._dirs_created:
+            os.makedirs(self.output_dir, exist_ok=True)
+            self.artifacts_dir.mkdir(parents=True, exist_ok=True)
+            self._dirs_created = True
 
     def _get_artifact_lock(self, key: str) -> threading.Lock:
         """Return a per-key lock for artifact writes."""
@@ -59,6 +65,7 @@ class ResultStore:
         sample_index: int = 0,
     ) -> None:
         """Append a single result record to the JSONL file."""
+        self._ensure_dirs()
         artifact_key = f"{task.task_id}:{sample_index}"
         with self._get_artifact_lock(artifact_key):
             artifact_manifest = self._persist_artifacts(task, response, sample_index=sample_index)
@@ -105,6 +112,7 @@ class ResultStore:
         sample_index: int = 0,
     ) -> None:
         """Append a failed task attempt with preserved runtime artifacts."""
+        self._ensure_dirs()
         response = response or AgentResponse(answer=None)
         artifact_key = f"{task.task_id}:{sample_index}"
         with self._get_artifact_lock(artifact_key):
@@ -214,13 +222,36 @@ class ResultStore:
         return manifest
 
     def _save_per_task_json(self, task_id: str, record: dict) -> None:
-        """Write a per-task JSON file under {run_id}/tasks/{task_id}.json."""
+        """Write/update a per-task JSON file under {run_id}/tasks/{task_id}.json.
+
+        All samples for the same task_id are stored as a list in a single file.
+        """
         tasks_dir = self.output_dir / self.run_id / "tasks"
         tasks_dir.mkdir(parents=True, exist_ok=True)
+        path = tasks_dir / f"{task_id}.json"
+        # Load existing records if any.
+        existing: list[dict] = []
+        if path.exists():
+            try:
+                content = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(content, list):
+                    existing = content
+                elif isinstance(content, dict):
+                    # Migrate from old single-record format.
+                    existing = [content]
+            except (json.JSONDecodeError, OSError):
+                pass
+        # Replace existing sample with same index, or append.
         sample_index = record.get("sample_index", 0)
-        filename = f"{task_id}.json" if sample_index == 0 else f"{task_id}_s{sample_index}.json"
-        path = tasks_dir / filename
-        path.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
+        replaced = False
+        for i, rec in enumerate(existing):
+            if rec.get("sample_index", 0) == sample_index:
+                existing[i] = record
+                replaced = True
+                break
+        if not replaced:
+            existing.append(record)
+        path.write_text(json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8")
 
     def completed_task_ids(self) -> set[str]:
         """Return task_ids of records that should NOT be retried.

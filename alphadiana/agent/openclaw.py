@@ -352,8 +352,8 @@ class OpenClawAgent(Agent):
         self._temperature = config.get("temperature", 0.7)
         self._top_p = config.get("top_p", None)
         self._max_tokens = config.get("max_tokens", None)
-        self._max_attempts = max(1, int(config.get("max_attempts", 3)))
-        self._request_timeout = float(config.get("request_timeout", 600))
+        self._max_attempts = max(1, int(config.get("max_attempts", 5)))
+        self._request_timeout = float(config.get("request_timeout", 1800))
         self._proxy_timeout = int(config.get("proxy_timeout", 600))
         self._config = config
 
@@ -366,6 +366,9 @@ class OpenClawAgent(Agent):
 
         # Cached resolved max_tokens
         self._resolved_max_tokens: int | None = None
+
+        # Health check flag
+        self._health_checked: bool = False
 
         # For retrieving agentic trajectory from sandbox
         self._rock_sandbox_url = config.get("rock_sandbox_url", "")
@@ -405,6 +408,31 @@ class OpenClawAgent(Agent):
             self._runtime_manager.inject_agent_md(sandbox)
         except Exception as exc:
             logger.warning("Failed to inject AGENTS.md customization: %s", exc)
+
+    def _health_check(self, url: str, headers: dict) -> None:
+        """One-time connectivity check on first solve() call."""
+        if self._health_checked:
+            return
+        self._health_checked = True
+        import httpx
+        base = url.rsplit("/chat/completions", 1)[0]
+        try:
+            resp = httpx.get(f"{base}/models", headers=headers, timeout=10.0)
+            if resp.status_code >= 400:
+                logger.warning(
+                    "OpenClaw health check failed: GET %s/models returned %d. "
+                    "The gateway may not be deployed correctly. Check: "
+                    "1) sandbox is running, 2) openclaw deploy succeeded, "
+                    "3) proxy port is correct.",
+                    base, resp.status_code,
+                )
+        except Exception as exc:
+            logger.warning(
+                "OpenClaw health check failed: %s. "
+                "Possible causes: sandbox not running, proxy port wrong, "
+                "or OpenClaw gateway not deployed. Continuing anyway...",
+                exc,
+            )
 
     def _get_sandbox_client(self):
         """Lazily initialize the ROCK sandbox client for trajectory retrieval."""
@@ -583,8 +611,8 @@ class OpenClawAgent(Agent):
                         return max_len
         except Exception:
             pass
-        self._resolved_max_tokens = 32768
-        return 32768
+        self._resolved_max_tokens = 65536
+        return 65536
 
     def _build_request_payload(self, messages: list[dict]) -> dict:
         """Build the request payload for chat completions."""
@@ -654,6 +682,9 @@ class OpenClawAgent(Agent):
             "Authorization": f"bearer {self._gateway_token}",
             "Content-Type": "application/json",
         }
+
+        self._health_check(url, headers)
+
         request_payload = self._build_request_payload(request_messages)
 
         # Retry loop with exponential backoff
@@ -814,8 +845,15 @@ class OpenClawAgent(Agent):
                     )
 
             if attempt < self._max_attempts:
-                delay = min(2.0 * (2 ** (attempt - 1)), 60.0)
+                # Distinguish "busy/empty" from real errors for retry delay.
+                last_error_type = retry_responses[-1]["error_type"] if retry_responses else "unknown"
+                if last_error_type == "empty_response":
+                    # Agent likely still busy — wait much longer.
+                    delay = min(60.0 * (2 ** (attempt - 1)), 300.0)
+                else:
+                    delay = min(10.0 * (2 ** (attempt - 1)), 120.0)
                 jitter = random.uniform(0, delay * 0.3)
+                logger.info("Retry delay: %.1fs (error_type=%s)", delay + jitter, last_error_type)
                 time.sleep(delay + jitter)
 
         if not raw_output:
@@ -892,6 +930,8 @@ class OpenClawAgent(Agent):
                 "sandbox_id": sandbox_id,
                 "model": self._model,
                 "retry_responses": retry_responses,
+                "retry_count": attempt,
+                "token_usage_total": cumulative_token_usage,
             },
         )
 

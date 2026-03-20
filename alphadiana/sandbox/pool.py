@@ -67,10 +67,17 @@ class SandboxPool:
                 reset()
         except Exception as exc:
             logger.warning("Session reset failed, destroying and replacing: %s", exc)
+            old_session = session
             try:
-                session.close()
+                old_session.close()
             except Exception:
                 logger.warning("Failed to close broken session", exc_info=True)
+            # Remove the old (closed) session from _all_sessions.
+            with self._lock:
+                try:
+                    self._all_sessions.remove(old_session)
+                except ValueError:
+                    pass
             # Create a replacement session to keep pool size stable.
             try:
                 session = self._sandbox.create_session()

@@ -59,6 +59,17 @@ def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
     if redo_all:
         overrides = deep_merge(overrides, {"redo_all": True})
     config = ExperimentConfig.from_yaml(config_yaml, overrides=overrides or None)
+
+    # Validate config before running.
+    from alphadiana.config.validator import ConfigValidator
+    validator = ConfigValidator()
+    errors = validator.validate(config)
+    if errors:
+        click.echo("Config validation failed:", err=True)
+        for error in errors:
+            click.echo(f"  - {error}", err=True)
+        sys.exit(1)
+
     _warn_proxy()
     runner = Runner(config)
 
@@ -81,12 +92,21 @@ def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
 
 @main.command()
 @click.argument("config_yaml", type=click.Path(exists=True))
-def validate(config_yaml: str):
+@click.option(
+    "--override", "-o",
+    multiple=True,
+    help="Override config values, e.g. -o agent.config.temperature=0.5",
+)
+def validate(config_yaml: str, override: tuple[str, ...]):
     """Validate a YAML config file without running an experiment."""
-    from alphadiana.config.experiment_config import ExperimentConfig
+    from alphadiana.config.experiment_config import ExperimentConfig, deep_merge, parse_override
     from alphadiana.config.validator import ConfigValidator
 
-    config = ExperimentConfig.from_yaml(config_yaml)
+    overrides: dict = {}
+    for ov in override:
+        overrides = deep_merge(overrides, parse_override(ov))
+
+    config = ExperimentConfig.from_yaml(config_yaml, overrides=overrides or None)
     validator = ConfigValidator()
     errors = validator.validate(config)
 
@@ -166,11 +186,6 @@ def list_benchmarks():
     """List all registered benchmarks."""
     # Import benchmark modules to trigger registration.
     import alphadiana.benchmark.aime  # noqa: F401
-    import alphadiana.benchmark.math_bench  # noqa: F401
-    import alphadiana.benchmark.hle  # noqa: F401
-    import alphadiana.benchmark.frontier_math  # noqa: F401
-    import alphadiana.benchmark.terminal_bench  # noqa: F401
-    import alphadiana.benchmark.osworld  # noqa: F401
 
     from alphadiana.benchmark.registry import BenchmarkRegistry
 
