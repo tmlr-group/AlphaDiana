@@ -1,25 +1,18 @@
-# === OpenClaw Timeout Configuration Guide ===
-# Gateway agent timeout: openclaw.json → agents.defaults.timeoutSeconds (已配置 3600s)
-# Client request timeout: agent.config.request_timeout (default: 1800s)
-# ROCK proxy timeout: ROCK 源码 sandbox_proxy_service.py 已修改为读取配置:
-#   timeout=self.proxy_config.timeout (ProxyServiceConfig 默认 180s)
-#   如需更大值，在 ROCK YAML 配置中设置 proxy_service.timeout: 600
-# max_tokens: recommend 65536+ for thinking models (kimi-k2.5 etc.)
-
-run_id: "openclaw-qwen3-8b-aime2024-001"
+run_id: "openclaw-qwen3-8b-aime2024-001"  # Unique identifier for this evaluation run
 
 agent:
-  name: openclaw
-  version: "2026.3.7"
+  name: openclaw                # Agent type: openclaw
+  version: "2026.3.7"           # OpenClaw version 
   config:
     # OpenClaw gateway endpoint (proxied via ROCK)
-    # Supports environment variables: ${SANDBOX_ID}, ${ROCK_PORT}
-    api_base: "http://localhost:9001/apis/envs/sandbox/v1/sandboxes/${SANDBOX_ID}/proxy/v1"
-    model: openclaw
-    gateway_token: "OPENCLAW"
-    max_tokens: 65536
-    request_timeout: 1800
-    max_attempts: 5
+    # Single sandbox:   export SANDBOX_ID=<id>
+    # Multi sandbox:    export SANDBOX_IDS=<id1>,<id2>,<id3>  (auto-builds gateway_pool, raises max_concurrent)
+    api_base: "http://localhost:${ROCK_PROXY_PORT:-9001}/apis/envs/sandbox/v1/sandboxes/${SANDBOX_ID}/proxy/v1"
+    model: openclaw             # Model name as seen by the gateway (always "openclaw")
+    gateway_token: "OPENCLAW"   # Must match OPENCLAW_GATEWAY_TOKEN in rock_agent_config.yaml
+    max_tokens: 65536           # Maximum tokens per response
+    request_timeout: 1800       # Request timeout in seconds (increase for complex tasks)
+    max_attempts: 5             # Max retry attempts per task on failure
     system_prompt: |
       You are an expert problem solver. When given a problem, actively use your available tools and skills throughout your reasoning process. Do not attempt to solve problems purely in your head when tools can help. Use code execution, search, or any other available capabilities to verify intermediate steps, explore approaches, and confirm your final answer.
 
@@ -30,21 +23,21 @@ agent:
       Do not skip the boxed format. The boxed answer must appear at the very end of your response and contain only the final answer, not explanations.
 
 benchmark:
-  name: aime
+  name: aime                    # Benchmark name (aime, math, etc.)
   config:
-    dataset: "HuggingFaceH4/aime_2024"
-    split: "train"
+    dataset: "HuggingFaceH4/aime_2024"  # HuggingFace dataset identifier
+    split: "train"              # Dataset split to evaluate on
 
-sandbox: null   # OpenClaw already runs inside ROCK; no extra sandbox needed here
+sandbox: null                   # OpenClaw already runs inside ROCK; no extra sandbox needed
 
 scorer:
-  name: math_verify
+  name: math_verify             # Scorer type for answer verification
   config:
-    tolerance: 1e-6
+    tolerance: 1e-6             # Numerical tolerance for math answer comparison
 
-max_concurrent: 1
-output_dir: "./results"
+max_concurrent: 1               # Number of tasks to run in parallel
+output_dir: "./results"         # Directory for output JSONL files
 metadata:
-  author: "zjk"
-  gpu: "A800"
-  notes: "OpenClaw + Qwen3-8B on AIME 2024"
+  author: "zjk"                 # Author of this evaluation run
+  gpu: "A800"                   # GPU used for inference
+  notes: "OpenClaw + Qwen3-8B on AIME 2024"  # Free-form notes

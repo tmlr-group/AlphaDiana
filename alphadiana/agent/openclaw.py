@@ -24,9 +24,12 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import random
 import re
+import threading
 import time
+from collections import deque
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
@@ -133,8 +136,20 @@ def classify_error(
 
     if isinstance(response_json, dict):
         msg = response_json.get("message", "")
-        if "post proxy failed" in str(msg).lower():
+        msg_lower = str(msg).lower()
+        if "post proxy failed" in msg_lower:
             return "proxy_timeout"
+
+        # Detect "internal error" from gateway (workspace contention, etc.)
+        error_field = response_json.get("error")
+        error_text = ""
+        if isinstance(error_field, dict):
+            error_text = str(error_field.get("message", "")).lower()
+        elif isinstance(error_field, str):
+            error_text = error_field.lower()
+        if "internal error" in msg_lower or "internal error" in error_text:
+            return "internal_error"
+
         choices = response_json.get("choices", [])
         if isinstance(choices, list) and choices:
             message = choices[0].get("message", {})
@@ -433,6 +448,32 @@ class OpenClawAgent(Agent):
         # Health check flag
         self._health_checked: bool = False
 
+        # Gateway pool for concurrent isolation (static multi-sandbox mode).
+        # Users can set gateway_pool: [url1, url2, url3] in agent config to pre-deploy
+        # multiple OpenClaw gateways and have each concurrent task use a different one.
+        # This prevents workspace-state.json.tmp contention inside the gateway.
+        gateway_pool_list: list[str] = config.get("gateway_pool", [])
+        # Auto-build gateway_pool from SANDBOX_IDS env var (comma-separated).
+        # Example: export SANDBOX_IDS=id1,id2,id3
+        if not gateway_pool_list:
+            sandbox_ids_env = os.environ.get("SANDBOX_IDS", "")
+            sandbox_ids = [s.strip() for s in sandbox_ids_env.split(",") if s.strip()]
+            if len(sandbox_ids) > 1:
+                proxy_base = self._resolve_proxy_base()
+                gateway_pool_list = [
+                    f"{proxy_base}/sandboxes/{sid}/proxy/v1"
+                    for sid in sandbox_ids
+                ]
+                logger.info(
+                    "Auto-built gateway_pool from SANDBOX_IDS env: %d gateways",
+                    len(gateway_pool_list),
+                )
+        # Also allow single api_base to be treated as a pool of one.
+        if not gateway_pool_list and self._api_base:
+            gateway_pool_list = [self._api_base]
+        self._gateway_pool: deque[str] = deque(gateway_pool_list)
+        self._gateway_pool_lock = threading.Lock()
+
         # For retrieving agentic trajectory from sandbox
         self._rock_sandbox_url = config.get("rock_sandbox_url", "")
         self._sandbox_id = config.get("sandbox_id", "")
@@ -519,6 +560,15 @@ class OpenClawAgent(Agent):
         except Exception as e:
             logger.warning("Failed to create ROCK sandbox client: %s", e)
             return None
+
+    def _resolve_proxy_base(self) -> str:
+        """Resolve the ROCK proxy base URL for building gateway_pool URLs."""
+        if self._rock_sandbox_url:
+            return self._rock_sandbox_url.rstrip("/")
+        proxy_url = os.environ.get("ROCK_PROXY_URL", "")
+        if proxy_url:
+            return proxy_url.rstrip("/")
+        return resolve_rock_ports_from_env().proxy_api_url.rstrip("/")
 
     def _derive_admin_url(self) -> str:
         if not self._rock_sandbox_url:
@@ -727,11 +777,29 @@ class OpenClawAgent(Agent):
         if sandbox is not None:
             sandbox_id = str(getattr(sandbox, "sandbox_id", "") or sandbox_id)
 
+        # Resolve the api_base for this invocation.
+        # Priority:
+        #   1. Sandbox session has a proxy endpoint (dynamic bootstrap or pool session)
+        #   2. Round-robin from gateway_pool (multi-sandbox static mode)
+        #   3. Single static api_base
+        resolved_api_base = ""
+        if sandbox is not None and hasattr(sandbox, "proxy_v1_base"):
+            # Dynamic bootstrap: sandbox session provides its own proxy endpoint.
+            resolved_api_base = ""  # let ensure_ready() set it below
+        elif self._gateway_pool:
+            with self._gateway_pool_lock:
+                # Round-robin: rotate the deque so each concurrent call gets
+                # a different gateway when multiple are configured.
+                resolved_api_base = self._gateway_pool[0]
+                self._gateway_pool.rotate(-1)
+        else:
+            resolved_api_base = self._api_base
+
         # Dynamic bootstrap if api_base not set but runtime manager is configured
         runtime_info: dict[str, Any] = {
             "sandbox_id": sandbox_id,
-            "gateway_url": f"{self._api_base}/chat/completions" if self._api_base else "",
-            "api_base": self._api_base,
+            "gateway_url": f"{resolved_api_base}/chat/completions" if resolved_api_base else "",
+            "api_base": resolved_api_base,
         }
         artifact_data: dict[str, Any] = {
             "artifact_manifest": {},
@@ -744,8 +812,8 @@ class OpenClawAgent(Agent):
             runtime_info = self._runtime_manager.ensure_ready(sandbox)
         elif not runtime_info["api_base"]:
             raise RuntimeError(
-                "OpenClawAgent requires either agent.config.api_base or a live ROCK "
-                "sandbox plus rock_agent_config_path/openclaw_config_path."
+                "OpenClawAgent requires either agent.config.api_base (or gateway_pool) "
+                "or a live ROCK sandbox plus rock_agent_config_path/openclaw_config_path."
             )
         else:
             self._ensure_agent_md(sandbox)
@@ -915,6 +983,12 @@ class OpenClawAgent(Agent):
                         "reduce problem complexity. See: sandbox_config.proxy_timeout",
                         self._proxy_timeout,
                     )
+                if error_type == "internal_error":
+                    logger.error(
+                        "Gateway internal error detected (likely workspace-state.json "
+                        "contention under concurrency). Use gateway_pool with separate "
+                        "sandboxes to isolate concurrent requests.",
+                    )
                 last_error = OpenClawRequestError(
                     f"OpenClaw returned no assistant content on attempt {attempt}",
                     error_type=error_type,
@@ -960,6 +1034,12 @@ class OpenClawAgent(Agent):
                         "Increase sandbox_config.proxy_timeout (current: %ds) or "
                         "reduce problem complexity. See: sandbox_config.proxy_timeout",
                         self._proxy_timeout,
+                    )
+                if error_type == "internal_error":
+                    logger.error(
+                        "Gateway internal error detected (likely workspace-state.json "
+                        "contention under concurrency). Use gateway_pool with separate "
+                        "sandboxes to isolate concurrent requests.",
                     )
 
             if attempt < self._max_attempts:

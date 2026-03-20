@@ -90,8 +90,8 @@ class OpenClawRuntimeManager:
     def __init__(self, config: dict) -> None:
         self._gateway_token = config.get("gateway_token", "OPENCLAW")
         self._gateway_model = config.get("model", "openclaw")
-        self._rock_agent_config_path = config.get("rock_agent_config_path", "")
-        self._openclaw_config_path = config.get("openclaw_config_path", "")
+        self._rock_agent_config_path = str(Path(config.get("rock_agent_config_path", "")).resolve()) if config.get("rock_agent_config_path") else ""
+        self._openclaw_config_path = str(Path(config.get("openclaw_config_path", "")).resolve()) if config.get("openclaw_config_path") else ""
         self._gateway_startup_timeout = int(config.get("gateway_startup_timeout", 180))
         self._gateway_warmup_timeout = int(config.get("gateway_warmup_timeout", 180))
         self._gateway_warmup_initial_delay = float(config.get("gateway_warmup_initial_delay", 5.0))
