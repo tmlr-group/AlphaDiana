@@ -215,7 +215,7 @@ The default ROCK proxy timeout is too short. During complex evaluations (e.g. AI
    proxy_service:
      timeout: 600
    ```
-2. **Gateway agent timeout**: Already configured in `openclaw_deploy/openclaw.json` as `agents.defaults.timeoutSeconds: 86400`
+2. **Gateway agent timeout**: Already configured in `openclaw_deploy/openclaw.json` as `agents.defaults.timeoutSeconds: 3600`
 3. **Client request timeout**: Set via `agent.config.request_timeout` in the experiment YAML (default: 1800s)
 
 Verify the gateway before running benchmarks:

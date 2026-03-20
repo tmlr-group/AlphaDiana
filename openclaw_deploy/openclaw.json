@@ -2,7 +2,7 @@
   "agents": {
     "defaults": {
       "maxConcurrent": 4,
-      "timeoutSeconds": 86400,
+      "timeoutSeconds": 3600,
       "subagents": { "maxConcurrent": 8 },
       "compaction": { "mode": "safeguard" },
       "workspace": "/root/.openclaw/workspace",
