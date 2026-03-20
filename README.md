@@ -89,13 +89,15 @@ env:
   OPENCLAW_GATEWAY_TOKEN: "OPENCLAW"
 ```
 
-The deploy script now defaults to the prebuilt reasoning-enabled sandbox image:
+The deploy script currently uses the following default sandbox image:
 
 ```text
 ghcr.io/tsrigo/openclaw-reasoning:20260320
 ```
 
-This image already contains the patched OpenClaw gateway, including:
+This default comes from `openclaw_deploy/deploy.py` via `DEFAULT_SANDBOX_IMAGE` and can also be overridden with the `OPENCLAW_SANDBOX_IMAGE` environment variable or `--image`.
+
+The reasoning image already contains the patched OpenClaw gateway, including:
 - streaming `reasoning_content`
 - cleaned reasoning text without the earlier underscore formatting
 - `max_tokens` forwarding for `/v1/chat/completions`

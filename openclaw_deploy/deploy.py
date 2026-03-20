@@ -20,6 +20,10 @@ DEFAULT_PORTS = resolve_rock_ports_from_env()
 DEFAULT_BASE_URL = os.environ.get("ROCK_BASE_URL", DEFAULT_PORTS.base_url)
 DEFAULT_PROXY_URL = os.environ.get("ROCK_PROXY_URL", DEFAULT_PORTS.proxy_api_url)
 DEFAULT_REDIS_PORT = DEFAULT_PORTS.redis_port
+DEFAULT_SANDBOX_IMAGE = os.environ.get(
+    "OPENCLAW_SANDBOX_IMAGE",
+    "ghcr.io/tsrigo/openclaw-reasoning:20260320",
+)
 DEPLOY_DIR = Path(__file__).resolve().parent
 REPO_ROOT = DEPLOY_DIR.parent
 INVOKE_CWD = Path.cwd().resolve()
@@ -49,7 +53,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--image",
-        default="ghcr.io/tsrigo/openclaw-reasoning:20260320",
+        default=DEFAULT_SANDBOX_IMAGE,
         help="Sandbox image.",
     )
     parser.add_argument(
