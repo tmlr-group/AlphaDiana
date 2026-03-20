@@ -68,7 +68,11 @@ source dev/.rock_ports.env
 `dev/rock_env.sh` sets `PYTHONPATH`, `ROCK_CONFIG`, `ROCK_WORKER_ENV_TYPE`, proxy cleanup, and HuggingFace mirror configuration.
 
 ####  Deploy OpenClaw Agent
-Before deployment, make sure the following fields in `openclaw_deploy/rock_agent_config.yaml` and `openclaw_deploy/openclaw.json` are set correctly. If you are using `vLLM`, `OPENAI_BASE_URL` must be set to the model service address that is accessible inside the Docker container. `OPENAI_MODEL_NAME` remains user-configurable and is used as the default OpenClaw model ref.
+
+1. Edit `openclaw_deploy/rock_agent_config.yaml` and `openclaw_deploy/openclaw.json`.
+
+If you are using `vLLM`, `OPENAI_BASE_URL` must be set to the model service address that is accessible inside the Docker container. `OPENAI_MODEL_NAME` remains user-configurable and is used as the default OpenClaw model ref.
+
 ```yaml
 working_dir: "."
 
@@ -110,8 +114,9 @@ You can keep using your own upstream model by editing only these fields before d
   - `env.OPENAI_MODEL_NAME`
 - or pass a different sandbox image with `--image`
 
+2. Deploy OpenClaw to the ROCK sandbox.
+
 ```bash
-# Deploy to ROCK sandbox
 python openclaw_deploy/deploy.py \
   --agent-config openclaw_deploy/rock_agent_config.yaml
 # Note the SANDBOX_ID from output
@@ -140,10 +145,12 @@ curl -X POST \
 ```
 
 ####  Run Evaluation
-Before running the evaluation, make sure to fully complete the `configs/examples/openclaw_aime2024.yaml` file.
+
+3. Edit `configs/examples/openclaw_aime2024.yaml`.
+
+4. Run evaluation.
 
 ```bash
-# Validate & run
 alphadiana validate configs/examples/openclaw_aime2024.yaml
 alphadiana run configs/examples/openclaw_aime2024.yaml
 ```
@@ -151,6 +158,8 @@ alphadiana run configs/examples/openclaw_aime2024.yaml
 Results are written to `results/<run_id>.jsonl`.
 
 ####  View Results
+
+5. View results.
 
 ```bash
 alphadiana report results/
