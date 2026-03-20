@@ -488,8 +488,12 @@ class OpenClawAgent(Agent):
             except Exception:
                 pass  # Session may already exist
 
+            session_globs = " ".join(
+                f"{home}/agents/main/sessions/*.jsonl"
+                for home in self._OPENCLAW_HOME_CANDIDATES
+            )
             result = await sb.arun(
-                "ls -t /root/.openclaw/agents/main/sessions/*.jsonl 2>/dev/null | head -1",
+                f"ls -t {session_globs} 2>/dev/null | head -1",
                 session="trajectory",
             )
             session_file = result.output.strip()
@@ -529,10 +533,16 @@ class OpenClawAgent(Agent):
             logger.warning("Trajectory retrieval failed: %s", e)
             return []
 
-    # Paths that OpenClaw uses for system prompt components in the workspace.
+    # Paths that OpenClaw uses for state in the workspace.
+    _OPENCLAW_HOME_CANDIDATES = [
+        "/root/.openclaw",
+        "/tmp/oc_home/.openclaw",
+    ]
     _SYSTEM_PROMPT_PATHS = [
         "/root/.openclaw/workspace/SOUL.md",
         "/root/.openclaw/workspace/AGENTS.md",
+        "/tmp/oc_home/.openclaw/workspace/SOUL.md",
+        "/tmp/oc_home/.openclaw/workspace/AGENTS.md",
     ]
 
     def _retrieve_system_prompt_from_sandbox(self, sandbox: Any = None) -> str:
@@ -690,6 +700,7 @@ class OpenClawAgent(Agent):
         # Retry loop with exponential backoff
         response_json: dict = {}
         raw_output = ""
+        raw_reasoning = ""
         last_error: Exception | None = None
         retry_responses: list[dict[str, Any]] = []
         cumulative_token_usage: dict[str, int] = {
@@ -701,6 +712,7 @@ class OpenClawAgent(Agent):
             attempt_start = time.monotonic()
             try:
                 chunks: list[str] = []
+                reasoning_chunks: list[str] = []
                 status_code: int = 0
                 resp_headers: dict = {}
                 with httpx.Client(timeout=self._request_timeout, trust_env=False) as client:
@@ -726,8 +738,11 @@ class OpenClawAgent(Agent):
                                 if choices:
                                     msg = choices[0].get("message", {})
                                     assistant_content = msg.get("content", "")
+                                    reasoning_content = msg.get("reasoning_content", "")
                                     if assistant_content:
                                         chunks.append(_coerce_text_content(assistant_content))
+                                    elif reasoning_content:
+                                        reasoning_chunks.append(_coerce_text_content(reasoning_content))
                         else:
                             # SSE path (text/event-stream or unspecified Content-Type).
                             if status_code >= 400:
@@ -754,12 +769,40 @@ class OpenClawAgent(Agent):
                                     choices = chunk_json.get("choices") or []
                                     delta = choices[0].get("delta", {}) if choices else {}
                                     content = delta.get("content")
+                                    reasoning_content = delta.get("reasoning_content")
                                     if content:
                                         chunks.append(content)
+                                    if reasoning_content:
+                                        reasoning_chunks.append(_coerce_text_content(reasoning_content))
                                     if chunk_json.get("usage"):
                                         response_json = chunk_json
 
                 raw_output = "".join(chunks)
+                raw_reasoning = "".join(reasoning_chunks)
+                if raw_reasoning:
+                    if not response_json:
+                        response_json = {
+                            "choices": [
+                                {
+                                    "message": {
+                                        "role": "assistant",
+                                        "content": "",
+                                        "reasoning_content": raw_reasoning,
+                                    }
+                                }
+                            ]
+                        }
+                    else:
+                        choices = response_json.setdefault("choices", [{}])
+                        if not choices:
+                            choices.append({})
+                        message = choices[0].setdefault("message", {})
+                        if isinstance(message, dict):
+                            message.setdefault("role", "assistant")
+                            message.setdefault("content", raw_output if raw_output else "")
+                            message["reasoning_content"] = raw_reasoning
+                if not raw_output and raw_reasoning:
+                    raw_output = raw_reasoning
                 # Accumulate token usage across retries.
                 attempt_usage = (response_json or {}).get("usage")
                 if attempt_usage:
@@ -783,12 +826,13 @@ class OpenClawAgent(Agent):
                     "error_type": error_type,
                 })
                 logger.warning(
-                    "OpenClaw attempt %d/%d returned empty content: status=%s elapsed=%.2fs body=%r",
+                    "OpenClaw attempt %d/%d returned empty content: status=%s elapsed=%.2fs body=%r reasoning_chars=%d",
                     attempt,
                     self._max_attempts,
                     status_code,
                     elapsed,
                     response_body,
+                    len(raw_reasoning),
                 )
                 if error_type == "proxy_timeout":
                     logger.error(

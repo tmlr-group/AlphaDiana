@@ -160,7 +160,6 @@ def render_dynamic_rock_config(ports: RockPorts) -> str:
         "ray:\n"
         "    runtime_env:\n"
         "        working_dir: ./\n"
-        "        pip: ./requirements_sandbox_actor.txt\n"
         '    namespace: "rock-sandbox-local"\n'
         "\n"
         "warmup:\n"
