@@ -47,17 +47,37 @@ def _resolve_proxy_api_base() -> str:
     return resolve_rock_ports_from_env().proxy_api_url
 
 
-def _build_eval_config(template_path: Path, sandbox_id: str, author: str) -> dict:
+def _build_eval_config(
+    template_path: Path,
+    sandbox_id: str,
+    author: str,
+    sandbox_ids: list[str] | None = None,
+) -> dict:
     if not template_path.exists():
         raise FileNotFoundError(f"Eval template file not found: {template_path}")
     data = yaml.safe_load(template_path.read_text(encoding="utf-8"))
     proxy_api_base = _resolve_proxy_api_base()
-    data["agent"]["config"]["api_base"] = (
-        f"{proxy_api_base}/sandboxes/{sandbox_id}/proxy/v1"
-    )
+
+    if sandbox_ids and len(sandbox_ids) > 1:
+        # Multiple sandbox IDs: use gateway_pool for concurrent isolation.
+        # Each concurrent slot routes to a different pre-deployed gateway,
+        # preventing workspace-state.json.tmp contention.
+        data["agent"]["config"].pop("api_base", None)
+        data["agent"]["config"]["gateway_pool"] = [
+            f"{proxy_api_base}/sandboxes/{sid}/proxy/v1"
+            for sid in sandbox_ids
+        ]
+        data["max_concurrent"] = len(sandbox_ids)
+        data["run_id"] = f"openclaw-qwen-2.5-7b-instruct-openrouter-aime2024-concurrent{len(sandbox_ids)}"
+    else:
+        # Single sandbox ID: sequential mode, no contention possible.
+        data["agent"]["config"]["api_base"] = (
+            f"{proxy_api_base}/sandboxes/{sandbox_id}/proxy/v1"
+        )
+        data["run_id"] = "openclaw-qwen-2.5-7b-instruct-openrouter-aime2024"
+
     data.setdefault("metadata", {})
     data["metadata"]["author"] = author
-    data["run_id"] = "openclaw-qwen-2.5-7b-instruct-openrouter-aime2024"
     data["agent"]["version"] = "2026.3.7"
     return data
 
@@ -76,7 +96,16 @@ def main() -> int:
     parser.add_argument(
         "--sandbox-id",
         default=os.environ.get("OPENCLAW_SANDBOX_ID", ""),
-        help="ROCK sandbox id. Defaults to OPENCLAW_SANDBOX_ID.",
+        help="Single ROCK sandbox id (sequential mode). Defaults to OPENCLAW_SANDBOX_ID.",
+    )
+    parser.add_argument(
+        "--sandbox-ids",
+        default="",
+        help=(
+            "Comma-separated ROCK sandbox IDs for concurrent mode (e.g. id1,id2,id3). "
+            "Enables gateway_pool so each concurrent slot uses a separate workspace. "
+            "Deploy multiple sandboxes first, then pass all their IDs here."
+        ),
     )
     parser.add_argument(
         "--author",
@@ -108,15 +137,32 @@ def main() -> int:
         "Deploy command: "
         f"python openclaw_deploy/deploy.py --agent-config {deploy_path}"
     )
+
+    # Resolve sandbox IDs: --sandbox-ids takes precedence over --sandbox-id
+    sandbox_ids_raw = args.sandbox_ids.strip()
+    sandbox_ids: list[str] = [s.strip() for s in sandbox_ids_raw.split(",") if s.strip()] if sandbox_ids_raw else []
+    primary_sandbox_id = sandbox_ids[0] if sandbox_ids else args.sandbox_id
+
+    if sandbox_ids and len(sandbox_ids) > 1:
+        print(f"Concurrent mode: {len(sandbox_ids)} sandboxes → gateway_pool + max_concurrent={len(sandbox_ids)}")
+
     eval_path: Path | None = None
-    if args.sandbox_id:
-        eval_config = _build_eval_config(TEMPLATE_CONFIG, args.sandbox_id, args.author)
-        eval_path = GENERATED_DIR / "openclaw_qwen25_7b_openrouter_aime2024.resolved.yaml"
+    if primary_sandbox_id:
+        eval_config = _build_eval_config(
+            TEMPLATE_CONFIG, primary_sandbox_id, args.author,
+            sandbox_ids=sandbox_ids if len(sandbox_ids) > 1 else None,
+        )
+        suffix = f"_concurrent{len(sandbox_ids)}" if len(sandbox_ids) > 1 else ""
+        eval_path = GENERATED_DIR / f"openclaw_qwen25_7b_openrouter_aime2024{suffix}.resolved.yaml"
         _write_yaml(eval_path, eval_config)
         print(f"Generated eval config: {eval_path}")
         print(f"Run command: alphadiana run {eval_path}")
     else:
-        print("Eval config not generated yet. Re-run with --sandbox-id <SANDBOX_ID> after deployment.")
+        print(
+            "Eval config not generated yet. Re-run with:\n"
+            "  --sandbox-id <ID>               (sequential)\n"
+            "  --sandbox-ids <ID1,ID2,ID3>     (concurrent, 3 isolated gateways)"
+        )
 
     if not args.run:
         return 0

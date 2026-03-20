@@ -5,6 +5,29 @@
 #   timeout=self.proxy_config.timeout (ProxyServiceConfig 默认 180s)
 #   如需更大值，在 ROCK YAML 配置中设置 proxy_service.timeout: 600
 # max_tokens: recommend 65536+ for thinking models (kimi-k2.5 etc.)
+#
+# === Concurrent Execution Guide ===
+# WARNING: max_concurrent > 1 requires workspace isolation per concurrent slot.
+# Sharing one OpenClaw gateway across concurrent tasks causes workspace-state.json.tmp
+# contention, producing "internal error" responses and silent empty-reply failures.
+#
+# Pattern A — Dynamic bootstrap (recommended for concurrent runs):
+#   Set rock_agent_config_path + openclaw_config_path in agent.config.
+#   Leave sandbox: null. The runner auto-creates max_concurrent ROCK sandboxes,
+#   each with its own OpenClaw gateway and isolated workspace.
+#
+# Pattern B — Static gateway pool (pre-deployed sandboxes):
+#   Deploy max_concurrent sandboxes with openclaw_deploy/deploy.py, then list
+#   all their proxy URLs in agent.config.gateway_pool. The agent round-robins
+#   tasks across gateways so each concurrent slot uses a separate workspace.
+#   Example:
+#     gateway_pool:
+#       - "http://localhost:9001/apis/envs/sandbox/v1/sandboxes/<id1>/proxy/v1"
+#       - "http://localhost:9001/apis/envs/sandbox/v1/sandboxes/<id2>/proxy/v1"
+#       - "http://localhost:9001/apis/envs/sandbox/v1/sandboxes/<id3>/proxy/v1"
+#
+# Pattern C — Sequential (no isolation needed):
+#   max_concurrent: 1 with a single api_base. Safe, no contention.
 
 run_id: "openclaw-qwen3-8b-aime2024-001"
 
@@ -14,6 +37,7 @@ agent:
   config:
     # OpenClaw gateway endpoint (proxied via ROCK)
     # Supports environment variables: ${SANDBOX_ID}, ${ROCK_PORT}
+    # For max_concurrent > 1, use gateway_pool (Pattern B) or dynamic bootstrap (Pattern A).
     api_base: "http://localhost:9001/apis/envs/sandbox/v1/sandboxes/${SANDBOX_ID}/proxy/v1"
     model: openclaw
     gateway_token: "OPENCLAW"
