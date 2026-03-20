@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import random
 import re
 import threading
@@ -389,6 +390,21 @@ class OpenClawAgent(Agent):
         # multiple OpenClaw gateways and have each concurrent task use a different one.
         # This prevents workspace-state.json.tmp contention inside the gateway.
         gateway_pool_list: list[str] = config.get("gateway_pool", [])
+        # Auto-build gateway_pool from SANDBOX_IDS env var (comma-separated).
+        # Example: export SANDBOX_IDS=id1,id2,id3
+        if not gateway_pool_list:
+            sandbox_ids_env = os.environ.get("SANDBOX_IDS", "")
+            sandbox_ids = [s.strip() for s in sandbox_ids_env.split(",") if s.strip()]
+            if len(sandbox_ids) > 1:
+                proxy_base = self._resolve_proxy_base()
+                gateway_pool_list = [
+                    f"{proxy_base}/sandboxes/{sid}/proxy/v1"
+                    for sid in sandbox_ids
+                ]
+                logger.info(
+                    "Auto-built gateway_pool from SANDBOX_IDS env: %d gateways",
+                    len(gateway_pool_list),
+                )
         # Also allow single api_base to be treated as a pool of one.
         if not gateway_pool_list and self._api_base:
             gateway_pool_list = [self._api_base]
@@ -481,6 +497,15 @@ class OpenClawAgent(Agent):
         except Exception as e:
             logger.warning("Failed to create ROCK sandbox client: %s", e)
             return None
+
+    def _resolve_proxy_base(self) -> str:
+        """Resolve the ROCK proxy base URL for building gateway_pool URLs."""
+        if self._rock_sandbox_url:
+            return self._rock_sandbox_url.rstrip("/")
+        proxy_url = os.environ.get("ROCK_PROXY_URL", "")
+        if proxy_url:
+            return proxy_url.rstrip("/")
+        return resolve_rock_ports_from_env().proxy_api_url.rstrip("/")
 
     def _derive_admin_url(self) -> str:
         if not self._rock_sandbox_url:

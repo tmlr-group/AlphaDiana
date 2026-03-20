@@ -4,10 +4,8 @@ agent:
   name: openclaw
   version: "2026.3.7"
   config:
-    # Replace <PROXY_PORT> and <SANDBOX_ID> with your actual values:
-    #   - PROXY_PORT: your ROCK proxy port (see dev/.rock_ports.env)
-    #   - SANDBOX_ID: from `python -m openclaw_deploy.deploy` output
-    api_base: "http://localhost:<PROXY_PORT>/apis/envs/sandbox/v1/sandboxes/<SANDBOX_ID>/proxy/v1"
+    # Supports environment variables: source dev/rock_env.sh + export SANDBOX_ID=...
+    api_base: "http://localhost:${ROCK_PROXY_PORT:-9001}/apis/envs/sandbox/v1/sandboxes/${SANDBOX_ID}/proxy/v1"
     model: openclaw
     gateway_token: "OPENCLAW"
     system_prompt: |

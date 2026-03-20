@@ -5,8 +5,9 @@ agent:
   version: "2026.3.7"           # OpenClaw version 
   config:
     # OpenClaw gateway endpoint (proxied via ROCK)
-    # Supports environment variables: ${SANDBOX_ID}, ${ROCK_PORT}
-    api_base: "http://localhost:9001/apis/envs/sandbox/v1/sandboxes/${SANDBOX_ID}/proxy/v1" #The output of the deploy.py script
+    # Single sandbox:   export SANDBOX_ID=<id>
+    # Multi sandbox:    export SANDBOX_IDS=<id1>,<id2>,<id3>  (auto-builds gateway_pool, raises max_concurrent)
+    api_base: "http://localhost:${ROCK_PROXY_PORT:-9001}/apis/envs/sandbox/v1/sandboxes/${SANDBOX_ID}/proxy/v1"
     model: openclaw             # Model name as seen by the gateway (always "openclaw")
     gateway_token: "OPENCLAW"   # Must match OPENCLAW_GATEWAY_TOKEN in rock_agent_config.yaml
     max_tokens: 65536           # Maximum tokens per response
