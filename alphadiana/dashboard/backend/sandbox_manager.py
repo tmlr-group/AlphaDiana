@@ -497,7 +497,9 @@ class SandboxManager:
         _run_cmd = (
             "export PATH=${bin_dir}:$PATH && "
             "OPENCLAW_CONFIG_PATH=${working_dir}/openclaw.json "
-            "nohup openclaw gateway >> /root/gateway.log 2>&1 &"
+            "mkdir -p /tmp/empty-bundled /tmp/oc_home && "
+            "OPENCLAW_HOME=/tmp/oc_home OPENCLAW_BUNDLED_PLUGINS_DIR=/tmp/empty-bundled "
+            "nohup openclaw gateway >> /tmp/gateway.log 2>&1 &"
         )
 
         def _make_config(image: str) -> Path:

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# start_openclaw.sh — start Ray + ROCK services and deploy the OpenClaw prebuilt sandbox
+# start_openclaw.sh — start Ray + ROCK services and deploy the default OpenClaw reasoning sandbox
 # Usage:
 #   ./dev/start_openclaw.sh [deploy.py options]
 #   OPENAI_BASE_URL=... OPENAI_API_KEY=... OPENAI_MODEL_NAME=... ./dev/start_openclaw.sh
@@ -13,6 +13,8 @@
 # ports and stops any leftover sandbox containers before starting fresh.
 
 set -euo pipefail
+
+DEFAULT_IMAGE="${OPENCLAW_SANDBOX_IMAGE:-ghcr.io/tsrigo/openclaw-reasoning:20260320}"
 
 # Collect all CLI arguments to forward to deploy.py
 DEPLOY_EXTRA_ARGS=("$@")
@@ -75,7 +77,7 @@ for _port in "${ROCK_ADMIN_PORT}" "${ROCK_PROXY_PORT}"; do
         sleep 1
     fi
 done
-_old_containers=$(docker ps -q --filter "ancestor=ghcr.io/tsrigo/openclaw-sandbox:2026.3.7" 2>/dev/null || true)
+_old_containers=$(docker ps -q --filter "ancestor=${DEFAULT_IMAGE}" 2>/dev/null || true)
 if [ -n "${_old_containers}" ]; then
     echo "      Stopping leftover sandbox container(s)..."
     docker stop ${_old_containers} >/dev/null 2>&1 || true
@@ -269,14 +271,14 @@ while true; do
 done
 
 # ── 6. Deploy OpenClaw prebuilt image ────────────────────────────────────────
-echo "[6/6] Deploying OpenClaw prebuilt sandbox..."
-echo "      Image : ghcr.io/tsrigo/openclaw-sandbox:2026.3.7"
+echo "[6/6] Deploying OpenClaw sandbox..."
+echo "      Image : ${DEFAULT_IMAGE}"
 echo "      Admin : ${ROCK_BASE_URL}"
 echo "      Proxy : ${ROCK_PROXY_URL}"
 echo ""
 
 "${PYTHON}" -m openclaw_deploy.deploy \
-    --image ghcr.io/tsrigo/openclaw-sandbox:2026.3.7 \
+    --image "${DEFAULT_IMAGE}" \
     --startup-timeout 300 \
     "${DEPLOY_EXTRA_ARGS[@]}"
 

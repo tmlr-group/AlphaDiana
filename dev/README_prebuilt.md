@@ -1,6 +1,6 @@
 # Deploying OpenClaw with the Prebuilt Sandbox Image
 
-`dev/start_openclaw.sh` is a one-command script that starts Ray, ROCK admin/proxy, and deploys a live OpenClaw sandbox using the prebuilt Docker image `ghcr.io/tsrigo/openclaw-sandbox:2026.3.7`.
+`dev/start_openclaw.sh` is a one-command script that starts Ray, ROCK admin/proxy, and deploys a live OpenClaw sandbox using the default reasoning-enabled Docker image `ghcr.io/tsrigo/openclaw-reasoning:20260320`.
 
 ---
 
@@ -55,7 +55,7 @@ curl -s -X POST \
 | 3 | Kills any stale ROCK processes on ports 9050/9051; stops leftover sandbox containers |
 | 4 | Starts a Ray head node on `ROCK_RAY_PORT` (default 6385), or reuses one already listening |
 | 5 | Generates a runtime ROCK config with the explicit Ray GCS address; starts ROCK admin and proxy |
-| 6 | Runs `python -m openclaw_deploy.deploy` with the prebuilt image |
+| 6 | Runs `python -m openclaw_deploy.deploy` with the default reasoning image |
 
 The script is **idempotent** — safe to run multiple times.
 
@@ -82,7 +82,7 @@ If another user's process is already occupying one of these ports, update `dev/.
 Ray installs the sandbox actor runtime env (pip packages from `requirements_sandbox_actor.txt`) before the first sandbox actor can start. This is a one-time cost per Ray session — subsequent runs on the same session are instant.
 
 **Sandbox agent install (~10 seconds with prebuilt image)**
-The prebuilt image ships `openclaw 2026.3.7` pre-installed. The `custom_install_cmd` detects the existing installation and skips `npm install`, so the agent setup step takes only a few seconds.
+The reasoning image ships OpenClaw pre-installed. The `custom_install_cmd` detects the existing installation and skips `npm install`, so the agent setup step takes only a few seconds.
 
 If you use the default (non-prebuilt) image, `npm install` runs from scratch and takes **~7 minutes**.
 

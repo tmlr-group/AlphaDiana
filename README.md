@@ -97,7 +97,7 @@ If you are testing long reasoning runs, also watch for infrastructure-side failu
 Pull the image once (~2.6 GB):
 
 ```bash
-docker pull ghcr.io/tsrigo/openclaw-sandbox:2026.3.7
+docker pull ghcr.io/tsrigo/openclaw-reasoning:20260320
 ```
 
 Then start ROCK services and deploy:

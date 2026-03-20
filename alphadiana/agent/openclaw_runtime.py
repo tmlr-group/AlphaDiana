@@ -95,7 +95,7 @@ class OpenClawRuntimeManager:
         self._gateway_startup_timeout = int(config.get("gateway_startup_timeout", 180))
         self._gateway_warmup_timeout = int(config.get("gateway_warmup_timeout", 180))
         self._gateway_warmup_initial_delay = float(config.get("gateway_warmup_initial_delay", 5.0))
-        self._gateway_log_path = config.get("gateway_log_path", "/root/gateway.log")
+        self._gateway_log_path = config.get("gateway_log_path", "/tmp/gateway.log")
         self._workspace_path = config.get("workspace_path", "/root/.openclaw/workspace")
         self._remote_openclaw_config_path = config.get("remote_openclaw_config_path", "/tmp/openclaw.json")
         self._started_sandboxes: set[str] = set()

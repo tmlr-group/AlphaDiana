@@ -183,10 +183,11 @@ working_dir: "."
 run_cmd: >
   NPM_BIN_DIR=$(find /tmp/rock-runtime-envs/node -name 'npm' -type f ! -path '*/nodewin/*' ! -path '*/shims/*' 2>/dev/null | head -1 | xargs -r dirname) &&
   export PATH=${NPM_BIN_DIR:+${NPM_BIN_DIR}:}$PATH
+  mkdir -p /tmp/empty-bundled /tmp/oc_home &&
   OPENCLAW_CONFIG_PATH=${working_dir}/openclaw.json
   OPENCLAW_HOME=/tmp/oc_home
   OPENCLAW_BUNDLED_PLUGINS_DIR=/tmp/empty-bundled
-  nohup openclaw gateway >> /root/gateway.log 2>&1 &
+  nohup openclaw gateway >> /tmp/gateway.log 2>&1 &
 
 runtime_env_config:
   type: node
