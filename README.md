@@ -89,6 +89,24 @@ env:
   OPENCLAW_GATEWAY_TOKEN: "OPENCLAW"
 ```
 
+The deploy script now defaults to the prebuilt reasoning-enabled sandbox image:
+
+```text
+ghcr.io/tsrigo/openclaw-reasoning:20260320
+```
+
+This image already contains the patched OpenClaw gateway, including:
+- streaming `reasoning_content`
+- cleaned reasoning text without the earlier underscore formatting
+- `max_tokens` forwarding for `/v1/chat/completions`
+
+You can keep using your own upstream model by editing only these fields before deployment:
+- `openclaw_deploy/rock_agent_config.yaml`
+  - `env.OPENAI_BASE_URL`
+  - `env.OPENAI_API_KEY`
+  - `env.OPENAI_MODEL_NAME`
+- or pass a different sandbox image with `--image`
+
 ```bash
 # Deploy to ROCK sandbox
 python openclaw_deploy/deploy.py \
@@ -96,7 +114,7 @@ python openclaw_deploy/deploy.py \
 # Note the SANDBOX_ID from output
 ```
 
-The deploy script now defaults to `--image ghcr.io/tsrigo/openclaw-reasoning:20260320`. Override `--image` only if you want a different sandbox image.
+The deploy script defaults to `--image ghcr.io/tsrigo/openclaw-reasoning:20260320`. Override `--image` only if you want a different sandbox image.
 
 #### ROCK Proxy Timeout Configuration (Important)
 
