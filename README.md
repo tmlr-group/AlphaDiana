@@ -68,13 +68,14 @@ source dev/.rock_ports.env
 `dev/rock_env.sh` sets `PYTHONPATH`, `ROCK_CONFIG`, `ROCK_WORKER_ENV_TYPE`, proxy cleanup, and HuggingFace mirror configuration.
 
 ####  Deploy OpenClaw Agent
-Before deployment, make sure the following fields in `openclaw_deploy/rock_agent_config.yaml` and `openclaw_deploy/openclaw.json` are set correctly. If you are using `vLLM`, `OPENAI_BASE_URL` must be set to the model service address that is accessible inside the Docker container. `OPENAI_MODEL_NAME` is still user-configurable and is used as the default OpenClaw model ref.
+Before deployment, make sure the following fields in `openclaw_deploy/rock_agent_config.yaml` and `openclaw_deploy/openclaw.json` are set correctly. If you are using `vLLM`, `OPENAI_BASE_URL` must be set to the model service address that is accessible inside the Docker container. `OPENAI_MODEL_NAME` remains user-configurable and is used as the default OpenClaw model ref.
 ```yaml
 working_dir: "."
 
-run_cmd: NPM_BIN_DIR=$(find /tmp/rock-runtime-envs/node -name 'npm' -type f ! -path '*/nodewin/*' ! -path '*/shims/*' 2>/dev/null | head -1 | xargs -r dirname) &&
-  export PATH=${NPM_BIN_DIR:+${NPM_BIN_DIR}:}$PATH OPENCLAW_CONFIG_PATH=${working_dir}/openclaw.json OPENCLAW_HOME=/tmp/oc_home OPENCLAW_BUNDLED_PLUGINS_DIR=/tmp/empty-bundled &&
-  nohup openclaw gateway >> /root/gateway.log 2>&1 &
+run_cmd: export PATH=$(find /tmp/rock-runtime-envs/node -name 'npm' -type f ! -path '*/nodewin/*' ! -path '*/shims/*' 2>/dev/null | head -1 | xargs dirname):$PATH &&
+  mkdir -p /tmp/empty-bundled /tmp/oc_home &&
+  OPENCLAW_CONFIG_PATH=${working_dir}/openclaw.json OPENCLAW_HOME=/tmp/oc_home OPENCLAW_BUNDLED_PLUGINS_DIR=/tmp/empty-bundled
+  nohup openclaw gateway >> /tmp/gateway.log 2>&1 &
 
 runtime_env_config:
   type: node
@@ -89,15 +90,15 @@ env:
   OPENCLAW_GATEWAY_TOKEN: "OPENCLAW"
 ```
 
-The deploy script currently uses the following default sandbox image:
+The deploy script uses `DEFAULT_SANDBOX_IMAGE` in `openclaw_deploy/deploy.py`. The current default is:
 
 ```text
 ghcr.io/tsrigo/openclaw-reasoning:20260320
 ```
 
-This default comes from `openclaw_deploy/deploy.py` via `DEFAULT_SANDBOX_IMAGE` and can also be overridden with the `OPENCLAW_SANDBOX_IMAGE` environment variable or `--image`.
+This default can still be overridden with `OPENCLAW_SANDBOX_IMAGE` or `--image`.
 
-The reasoning image already contains the patched OpenClaw gateway, including:
+The reasoning image contains the patched OpenClaw gateway, including:
 - streaming `reasoning_content`
 - cleaned reasoning text without the earlier underscore formatting
 - `max_tokens` forwarding for `/v1/chat/completions`
@@ -115,8 +116,6 @@ python openclaw_deploy/deploy.py \
   --agent-config openclaw_deploy/rock_agent_config.yaml
 # Note the SANDBOX_ID from output
 ```
-
-The deploy script defaults to `--image ghcr.io/tsrigo/openclaw-reasoning:20260320`. Override `--image` only if you want a different sandbox image.
 
 #### ROCK Proxy Timeout Configuration (Important)
 
