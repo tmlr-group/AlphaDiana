@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import httpx
 
 from alphadiana.agent.registry import AgentRegistry
+from alphadiana.utils.rock_ports import resolve_rock_ports_from_env
 from alphadiana.benchmark.registry import BenchmarkRegistry
 from alphadiana.results.report import ReportGenerator, RunSummary
 from alphadiana.results.result_store import ResultStore
@@ -223,11 +224,11 @@ class Runner:
                     "admin_base_url": self.config.agent_config.get(
                         "admin_base_url",
                         self.config.agent_config.get("rock_admin_url", ""),
-                    ),
+                    ) or resolve_rock_ports_from_env().base_url,
                     "proxy_base_url": self.config.agent_config.get(
                         "proxy_base_url",
                         self.config.agent_config.get("rock_proxy_url", ""),
-                    ),
+                    ) or resolve_rock_ports_from_env().proxy_api_url,
                     "image": self.config.agent_config.get("rock_image", "python:3.11"),
                     # Lower resource profile to support multiple parallel sandboxes.
                     "memory": self.config.agent_config.get("rock_memory", "2g"),
