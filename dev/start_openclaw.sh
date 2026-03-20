@@ -1,18 +1,45 @@
 #!/usr/bin/env bash
 # start_openclaw.sh — start Ray + ROCK services and deploy the OpenClaw prebuilt sandbox
 # Usage:
-#   ./dev/start_openclaw.sh
+#   ./dev/start_openclaw.sh [deploy.py options]
 #   OPENAI_BASE_URL=... OPENAI_API_KEY=... OPENAI_MODEL_NAME=... ./dev/start_openclaw.sh
+#
+# Any unrecognised options are forwarded verbatim to openclaw_deploy.deploy.
+# Common examples:
+#   --model-base-url URL  --model-api-key KEY  --model-name NAME
+#   --memory 8g  --cpus 2  --auto-clear-seconds 28800
 #
 # The script is idempotent: it kills any stale ROCK processes on the configured
 # ports and stops any leftover sandbox containers before starting fresh.
 
 set -euo pipefail
 
+# Collect all CLI arguments to forward to deploy.py
+DEPLOY_EXTRA_ARGS=("$@")
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${SCRIPT_DIR%/dev}"
 ROCK_ROOT="${PROJECT_ROOT}/ref/ROCK"
 PYTHON="${PYTHON:-/data2/weikai/conda_envs/alphadiana/bin/python}"
+
+# ── 0. Preflight: verify rock editable install points to THIS project ────────
+# rock is installed via `pip install -e .` and its path is hardcoded in the
+# conda env. If you switch between project directories without re-running
+# `pip install -e .`, the container's rocklet will fail with:
+#   ModuleNotFoundError: No module named 'rock'
+_rock_installed=$("${PYTHON}" -c "import rock; print(rock.__file__)" 2>/dev/null || echo "")
+_rock_expected="${PROJECT_ROOT}/ref/ROCK/rock/__init__.py"
+if [ "${_rock_installed}" != "${_rock_expected}" ]; then
+    echo "ERROR: 'rock' editable install path does not match this project."
+    echo "  Currently: ${_rock_installed:-(not installed)}"
+    echo "  Expected:  ${_rock_expected}"
+    echo ""
+    echo "  Fix: re-install rock from this project, then re-run this script:"
+    echo "    ${PYTHON%/python}/pip install -e ${PROJECT_ROOT}/ref/ROCK -q"
+    echo ""
+    echo "  Tip: when switching between project directories, re-run the above each time."
+    exit 1
+fi
 
 # ── 1. Load environment ──────────────────────────────────────────────────────
 source "${SCRIPT_DIR}/rock_env.sh"
@@ -73,8 +100,60 @@ sys.exit(s.connect_ex(('127.0.0.1', $1))); s.close()
 }
 
 if _port_open "${ROCK_RAY_PORT}"; then
-    echo "      Ray GCS already listening on port ${ROCK_RAY_PORT} — reusing it"
-else
+    # Verify the existing cluster was started with the same Python version.
+    # ray.init itself raises RuntimeError with "Version mismatch" when they differ —
+    # we catch that specific error to extract the cluster's Python version.
+    _version_check=$("${PYTHON}" -c "
+import ray, sys, re, os, logging
+os.environ.setdefault('RAY_LOG_TO_STDERR', '0')
+logging.disable(logging.CRITICAL)
+try:
+    ray.init(address='192.0.2.13:${ROCK_RAY_PORT}', ignore_reinit_error=True, logging_level=50)
+    try: ray.shutdown()
+    except: pass
+    print('ok')
+except RuntimeError as e:
+    msg = str(e)
+    if 'Version mismatch' in msg:
+        m = re.search(r'Python: (\S+)', msg)
+        print('mismatch:' + (m.group(1) if m else 'unknown'))
+    else:
+        print('ok')
+except Exception:
+    print('ok')
+" 2>/dev/null)
+
+    if [[ "${_version_check}" == mismatch:* ]]; then
+        _cluster_py="${_version_check#mismatch:}"
+        _our_py=$("${PYTHON}" -c "import sys; print(sys.version.split()[0])")
+        _ray_bin="$(dirname "${PYTHON}")/ray"
+        # Check if this is our own Ray process (can we kill it?)
+        _ray_pid=$(lsof -ti ":${ROCK_RAY_PORT}" 2>/dev/null | head -1)
+        _ray_owner=$(ps -o user= -p "${_ray_pid}" 2>/dev/null || echo "unknown")
+        _our_user="$(id -un)"
+        echo ""
+        echo "  ERROR: Ray cluster Python version mismatch — cannot start ROCK admin."
+        echo "         Port ${ROCK_RAY_PORT}: cluster Python=${_cluster_py}, this script Python=${_our_py}"
+        echo ""
+        if [ "${_ray_owner}" = "${_our_user}" ]; then
+            echo "  The Ray cluster on port ${ROCK_RAY_PORT} belongs to YOU."
+            echo "  Stop it and re-run this script:"
+            echo ""
+            echo "    ${_ray_bin} stop --force && ./dev/start_openclaw.sh $*"
+        else
+            echo "  The Ray cluster on port ${ROCK_RAY_PORT} belongs to user '${_ray_owner}' — do NOT kill it."
+            echo "  Allocate fresh ports for yourself instead:"
+            echo ""
+            echo "    ${PYTHON} ${SCRIPT_DIR}/find_rock_ports.py --write-env ${SCRIPT_DIR}/.rock_ports.env"
+            echo "    ./dev/start_openclaw.sh $*"
+        fi
+        echo ""
+        exit 1
+    else
+        echo "      Ray GCS already listening on port ${ROCK_RAY_PORT} — reusing it"
+    fi
+fi
+if ! _port_open "${ROCK_RAY_PORT}"; then
     # Kill leftover processes that might hold the port
     pkill -u "$(id -un)" -f "gcs_server.*${ROCK_RAY_PORT}" 2>/dev/null || true
     sleep 2
@@ -138,7 +217,30 @@ while true; do
         break
     fi
     if [ "$(date +%s)" -ge "${_deadline}" ]; then
-        echo "ERROR: ROCK admin did not start within 90 s. Check ${LOG_DIR}/rock-admin.log"
+        echo "ERROR: ROCK admin did not start within 90 s."
+        echo ""
+        echo "── Last 20 lines of ${LOG_DIR}/rock-admin.log ──"
+        tail -20 "${LOG_DIR}/rock-admin.log" 2>/dev/null || echo "(log not found)"
+        echo "────────────────────────────────────────────────"
+        # Detect common failure causes and give targeted hints
+        if grep -q "Version mismatch" "${LOG_DIR}/rock-admin.log" 2>/dev/null; then
+            _cluster_ver=$(grep -oP "Ray: \K[^\n]+" "${LOG_DIR}/rock-admin.log" | head -1)
+            _cluster_pyv=$(grep -oP "Python: \K[^\n]+" "${LOG_DIR}/rock-admin.log" | head -1)
+            _our_pyv=$("${PYTHON}" -c "import sys; print(sys.version.split()[0])")
+            echo ""
+            echo "  HINT: Ray cluster Python version mismatch."
+            echo "        Cluster started with Python ${_cluster_pyv:-?}, this script uses Python ${_our_pyv}."
+            echo "        Fix: stop the stale cluster and re-run this script."
+            echo "        $ $(dirname "${PYTHON}")/ray stop --force && ./dev/start_openclaw.sh ..."
+        elif grep -q "Connection refused\|Cannot connect to" "${LOG_DIR}/rock-admin.log" 2>/dev/null; then
+            echo ""
+            echo "  HINT: ROCK admin could not connect to Ray at ${RAY_GCS_ADDRESS}."
+            echo "        Check that Ray is actually running: $(dirname "${PYTHON}")/ray status"
+        elif grep -q "redis\|Redis" "${LOG_DIR}/rock-admin.log" 2>/dev/null; then
+            echo ""
+            echo "  HINT: Redis connection issue detected."
+            echo "        Check Redis: redis-cli -p ${ROCK_REDIS_PORT} ping"
+        fi
         exit 1
     fi
     sleep 2
@@ -175,7 +277,8 @@ echo ""
 
 "${PYTHON}" -m openclaw_deploy.deploy \
     --image ghcr.io/tsrigo/openclaw-sandbox:2026.3.7 \
-    --startup-timeout 300
+    --startup-timeout 300 \
+    "${DEPLOY_EXTRA_ARGS[@]}"
 
 echo ""
 echo "Done. OpenClaw is ready."
