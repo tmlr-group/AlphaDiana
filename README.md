@@ -69,6 +69,27 @@ The reasoning image contains the patched OpenClaw gateway, including:
 - cleaned reasoning text without underscore formatting
 - `max_tokens` forwarding for `/v1/chat/completions`
 
+To verify that the reasoning-enabled path is active after deploy, call the ROCK proxy endpoint with `"stream": true` and check that SSE chunks contain `delta.reasoning_content`:
+
+```bash
+curl -N --location "http://localhost:<ROCK_PORT>/apis/envs/sandbox/v1/sandboxes/<SANDBOX_ID>/proxy/v1/chat/completions" \
+  --header "Authorization: bearer OPENCLAW" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "model": "openclaw",
+    "stream": true,
+    "max_tokens": 32768,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Reply with ok."
+      }
+    ]
+  }'
+```
+
+If you are testing long reasoning runs, also watch for infrastructure-side failures such as proxy timeout, `post proxy failed`, or sandbox actor disappearance before the request reaches `finish_reason=length`.
+
 #### Pre-built Image (Faster Deploy)
 
 `bash dev/quickstart.sh` sets up infrastructure but does not deploy OpenClaw — use `bash dev/start_openclaw.sh` for that (~1 min with the pre-built image vs ~15 min with npm install).
