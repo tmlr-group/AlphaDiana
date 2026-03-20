@@ -8,6 +8,8 @@ LOCAL_OPENCLAW_ROOT="${LOCAL_OPENCLAW_ROOT:-${PROJECT_ROOT}/../openclaw}"
 REPRO_ROOT="${PROJECT_ROOT}/repro/openclaw_reasoning"
 GENERATED_DIR="${REPRO_ROOT}/generated"
 PATCH_FILE="${REPRO_ROOT}/openclaw-stream-reasoning.patch"
+OPENCLAW_REPO_URL="${OPENCLAW_REPO_URL:-https://github.com/openclaw/openclaw.git}"
+OPENCLAW_BASE_COMMIT="${OPENCLAW_BASE_COMMIT:-f8eb23de1c4a8c5256be679c5cfd23ca1a031a06}"
 
 ARK_BASE_URL="${ARK_BASE_URL:-https://ark.cn-beijing.volces.com/api/coding/v3}"
 ARK_MODEL_NAME="${ARK_MODEL_NAME:-Kimi-K2.5}"
@@ -32,7 +34,6 @@ export TMPDIR="${PROJECT_ROOT}/.cache/tmp"
 export RAY_TMPDIR="/tmp/${USER:-user}-ray-openclaw-repro"
 export PYTHONPATH="${PROJECT_ROOT}/ref/ROCK:${PROJECT_ROOT}${PYTHONPATH:+:${PYTHONPATH}}"
 export HF_ENDPOINT="${HF_ENDPOINT:-https://hf-mirror.com}"
-unset ALL_PROXY HTTP_PROXY HTTPS_PROXY all_proxy http_proxy https_proxy
 
 mkdir -p "${GENERATED_DIR}" "${TMPDIR}" "${RAY_TMPDIR}"
 
@@ -41,9 +42,34 @@ if [[ -z "${ARK_API_KEY}" ]]; then
   exit 1
 fi
 
-if [[ ! -d "${LOCAL_OPENCLAW_ROOT}" ]]; then
-  echo "LOCAL_OPENCLAW_ROOT does not exist: ${LOCAL_OPENCLAW_ROOT}" >&2
-  exit 1
+if [[ ! -d "${LOCAL_OPENCLAW_ROOT}/.git" ]]; then
+  mkdir -p "${LOCAL_OPENCLAW_ROOT}"
+  git -C "${LOCAL_OPENCLAW_ROOT}" init
+  if git -C "${LOCAL_OPENCLAW_ROOT}" remote get-url origin >/dev/null 2>&1; then
+    git -C "${LOCAL_OPENCLAW_ROOT}" remote set-url origin "${OPENCLAW_REPO_URL}"
+  else
+    git -C "${LOCAL_OPENCLAW_ROOT}" remote add origin "${OPENCLAW_REPO_URL}"
+  fi
+  git -C "${LOCAL_OPENCLAW_ROOT}" fetch --depth 1 origin "${OPENCLAW_BASE_COMMIT}"
+  git -C "${LOCAL_OPENCLAW_ROOT}" checkout -B repro-base FETCH_HEAD
+else
+  CURRENT_HEAD="$(git -C "${LOCAL_OPENCLAW_ROOT}" rev-parse HEAD)"
+  if [[ "${CURRENT_HEAD}" != "${OPENCLAW_BASE_COMMIT}" ]]; then
+    if [[ -n "$(git -C "${LOCAL_OPENCLAW_ROOT}" status --short)" ]]; then
+      cat <<EOF >&2
+LOCAL_OPENCLAW_ROOT is dirty and not at the expected base commit.
+Path: ${LOCAL_OPENCLAW_ROOT}
+Current HEAD: ${CURRENT_HEAD}
+Expected HEAD: ${OPENCLAW_BASE_COMMIT}
+EOF
+      exit 1
+    fi
+    if ! git -C "${LOCAL_OPENCLAW_ROOT}" remote get-url origin >/dev/null 2>&1; then
+      git -C "${LOCAL_OPENCLAW_ROOT}" remote add origin "${OPENCLAW_REPO_URL}"
+    fi
+    git -C "${LOCAL_OPENCLAW_ROOT}" fetch --depth 1 origin "${OPENCLAW_BASE_COMMIT}"
+    git -C "${LOCAL_OPENCLAW_ROOT}" checkout -B repro-base FETCH_HEAD
+  fi
 fi
 
 cat > "${ROCK_DYNAMIC_CONFIG}" <<EOF
@@ -77,6 +103,8 @@ export ROCK_CONFIG=${ROCK_CONFIG}
 export TMPDIR=${TMPDIR}
 export RAY_TMPDIR=${RAY_TMPDIR}
 export LOCAL_OPENCLAW_ROOT=${LOCAL_OPENCLAW_ROOT}
+export OPENCLAW_REPO_URL=${OPENCLAW_REPO_URL}
+export OPENCLAW_BASE_COMMIT=${OPENCLAW_BASE_COMMIT}
 export ARK_BASE_URL=${ARK_BASE_URL}
 export ARK_MODEL_NAME=${ARK_MODEL_NAME}
 export OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN}
@@ -95,6 +123,8 @@ docker start "${ROCK_REDIS_CONTAINER}" 2>/dev/null \
   || docker run -d --name "${ROCK_REDIS_CONTAINER}" -p "${ROCK_REDIS_PORT}:6379" redis/redis-stack-server:latest
 
 ray stop --force >/dev/null 2>&1 || true
+pkill -f "rock.admin.main --env local-proxy --role admin --port ${ROCK_ADMIN_PORT}" >/dev/null 2>&1 || true
+pkill -f "rock.admin.main --env local-proxy --role proxy --port ${ROCK_PROXY_PORT}" >/dev/null 2>&1 || true
 (
   cd ref/ROCK
   ray start --head \
@@ -107,29 +137,30 @@ ray stop --force >/dev/null 2>&1 || true
 
 (
   cd ref/ROCK
-  nohup python -m rock.admin.main --env local-proxy --role admin --port "${ROCK_ADMIN_PORT}" \
-    > "${GENERATED_DIR}/admin.log" 2>&1 &
+  setsid python -m rock.admin.main --env local-proxy --role admin --port "${ROCK_ADMIN_PORT}" \
+    > "${GENERATED_DIR}/admin.log" 2>&1 < /dev/null &
   echo $! > "${GENERATED_DIR}/admin.pid"
 )
 (
   cd ref/ROCK
-  nohup python -m rock.admin.main --env local-proxy --role proxy --port "${ROCK_PROXY_PORT}" \
-    > "${GENERATED_DIR}/proxy.log" 2>&1 &
+  setsid python -m rock.admin.main --env local-proxy --role proxy --port "${ROCK_PROXY_PORT}" \
+    > "${GENERATED_DIR}/proxy.log" 2>&1 < /dev/null &
   echo $! > "${GENERATED_DIR}/proxy.pid"
 )
 
 for _ in $(seq 1 30); do
-  if curl -sf "${ROCK_BASE_URL}/" >/dev/null 2>&1 && curl -sf "${ROCK_PROXY_ROOT_URL}/" >/dev/null 2>&1; then
+  if curl --noproxy '*' -sf "${ROCK_BASE_URL}/openapi.json" >/dev/null 2>&1 \
+    && curl --noproxy '*' -sf "${ROCK_PROXY_ROOT_URL}/openapi.json" >/dev/null 2>&1; then
     break
   fi
   sleep 2
 done
 
-if ! curl -sf "${ROCK_BASE_URL}/" >/dev/null 2>&1; then
+if ! curl --noproxy '*' -sf "${ROCK_BASE_URL}/openapi.json" >/dev/null 2>&1; then
   echo "ROCK admin did not become healthy. See ${GENERATED_DIR}/admin.log" >&2
   exit 1
 fi
-if ! curl -sf "${ROCK_PROXY_ROOT_URL}/" >/dev/null 2>&1; then
+if ! curl --noproxy '*' -sf "${ROCK_PROXY_ROOT_URL}/openapi.json" >/dev/null 2>&1; then
   echo "ROCK proxy did not become healthy. See ${GENERATED_DIR}/proxy.log" >&2
   exit 1
 fi
@@ -143,10 +174,17 @@ else
   exit 1
 fi
 
+if [[ ! -d "${LOCAL_OPENCLAW_ROOT}/node_modules" ]]; then
+  corepack prepare pnpm@10.23.0 --activate
+  (cd "${LOCAL_OPENCLAW_ROOT}" && pnpm install --frozen-lockfile)
+fi
+
 TARBALL="$(
-  cd "${LOCAL_OPENCLAW_ROOT}" && npm pack | tail -n 1
+  cd "${LOCAL_OPENCLAW_ROOT}" && npm pack --silent | tail -n 1
 )"
 TARBALL_PATH="${LOCAL_OPENCLAW_ROOT}/${TARBALL}"
+
+unset ALL_PROXY HTTP_PROXY HTTPS_PROXY all_proxy http_proxy https_proxy
 
 conda run --no-capture-output -n "${ENV_NAME}" \
   python openclaw_deploy/deploy.py \

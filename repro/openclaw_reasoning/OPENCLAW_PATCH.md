@@ -7,6 +7,10 @@
 
 ## patch 做了什么
 
+这份 patch 是基于 OpenClaw commit：
+
+- `f8eb23de1c4a8c5256be679c5cfd23ca1a031a06`
+
 ### 1. 让 OpenAI 兼容网关暴露 `reasoning_content`
 
 涉及文件：

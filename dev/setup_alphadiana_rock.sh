@@ -37,13 +37,14 @@ env_has_required_python_stack() {
 from pathlib import Path
 import importlib.metadata as md
 import alphadiana, rock, ray, openai, httpx, requests, datasets, pytest, yaml
+from packaging.version import Version
 
 project_root = Path(r'''${PROJECT_ROOT}''').resolve()
 module_path = Path(alphadiana.__file__).resolve()
 
 assert project_root in module_path.parents
 assert md.version('alphadiana') == '0.1.0'
-assert md.version('rl-rock').startswith('1.3.')
+assert Version(md.version('rl-rock')) >= Version('1.3.0')
 assert md.version('nacos-sdk-python') == '2.0.9'
 "
 }
