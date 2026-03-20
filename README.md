@@ -1,9 +1,13 @@
-# AlphaDiana: A modular evaluation framework for agent systems
+# AlphaDiana: A System for Evaluating Agentic Reasoning
 
+**AlphaDiana** is a modular evaluation system for agentic reasoning with foundation models. It makes it easy to benchmark **reasoning agents** (e.g., OpenClaw) with **advanced models** (e.g., Qwen 3.5) on **frontier tasks** (e.g., AIME 2026) using pluggable benchmarks, sandbox backends, and scorers.
 
-## Overview
-AlphaDiana is a modular evaluation framework for foundation models and agent systems on frontier reasoning benchmarks. It offers a pluggable evaluation pipeline to evaluate LLM-based reasoning systems with support for multi-turn agentic workflows, sandboxed code execution, and symbolic math verification.
-![Logo](./assets/fig1.jpg)
+<p align="center">
+  <img src="./assets/fig1.jpg" width="100%">
+</p>
+<p align="center">
+  <em><strong>Figure 1.</strong> Why agentic reasoning requires system-level evaluation: foundation models are evaluated like engines, agents behave like cars shaped by tools and state, and AlphaDiana serves as the tournament organizer that standardizes evaluation and records canonical traces.</em>
+</p>
 
 ## Key Features
 
