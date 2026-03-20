@@ -2,8 +2,9 @@
 set -euo pipefail
 
 ENV_NAME="${1:-alphadiana}"
-PROJECT_ROOT="/home/user/projects/AlphaDiana"
-LOCAL_OPENCLAW_ROOT="${LOCAL_OPENCLAW_ROOT:-/home/user/projects/openclaw}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
+LOCAL_OPENCLAW_ROOT="${LOCAL_OPENCLAW_ROOT:-${PROJECT_ROOT}/../openclaw}"
 REPRO_ROOT="${PROJECT_ROOT}/repro/openclaw_reasoning"
 GENERATED_DIR="${REPRO_ROOT}/generated"
 PATCH_FILE="${REPRO_ROOT}/openclaw-stream-reasoning.patch"

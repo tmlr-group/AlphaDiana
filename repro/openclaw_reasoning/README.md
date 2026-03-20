@@ -14,8 +14,8 @@
 
 - 已安装 `docker`
 - 已安装 `conda`
-- 本仓库路径为 `/home/user/projects/AlphaDiana`
-- 本地 OpenClaw 仓库路径默认为 `/home/user/projects/openclaw`
+- 在 AlphaDiana 仓库根目录运行脚本
+- 本地 OpenClaw 仓库默认路径是 `../openclaw`
 - 运行前设置：
 
 ```bash

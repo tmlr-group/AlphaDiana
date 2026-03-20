@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_ROOT="/home/user/projects/AlphaDiana"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
 REPRO_ROOT="${PROJECT_ROOT}/repro/openclaw_reasoning"
 GENERATED_DIR="${REPRO_ROOT}/generated"
 
