@@ -127,6 +127,7 @@ export interface DeployAndRunRequest {
   scorer_name?: string;
   scorer_config?: Record<string, unknown>;
   max_concurrent?: number;
+  num_sandboxes?: number;
   redo_all?: boolean;
   num_samples?: number;
   metadata?: Record<string, unknown>;

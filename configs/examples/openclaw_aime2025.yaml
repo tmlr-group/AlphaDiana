@@ -2,7 +2,8 @@ run_id: "openclaw-aime2025-001"
 
 agent:
   name: openclaw
-  version: "2026.3.7"
+  max_tokens: 32768
+  version: "2026.3.20"
   config:
     # Supports environment variables: source dev/rock_env.sh + export SANDBOX_ID=...
     api_base: "http://localhost:${ROCK_PROXY_PORT:-9001}/apis/envs/sandbox/v1/sandboxes/${SANDBOX_ID}/proxy/v1"

@@ -108,6 +108,7 @@ class DeployAndRunRequest(BaseModel):
     model_api_key: str = ""
     model_name: str = ""
     auto_clear_seconds: int = 28800
+    num_sandboxes: int = 1  # number of sandboxes to deploy in parallel
 
     # Eval config (same as CreateJobRequest but without api_base)
     run_id: str = ""

@@ -841,6 +841,7 @@ class OpenClawAgent(Agent):
         }
         recovered_trajectory: list[dict] = []
         partial_reasoning_only = False
+        received_done: bool = False
         for attempt in range(1, self._max_attempts + 1):
             attempt_start = time.monotonic()
             try:
@@ -848,6 +849,7 @@ class OpenClawAgent(Agent):
                 reasoning_chunks: list[str] = []
                 status_code: int = 0
                 resp_headers: dict = {}
+                received_done: bool = False
                 with httpx.Client(timeout=self._request_timeout, trust_env=False) as client:
                     with client.stream("POST", url, headers=headers, json=request_payload) as response:
                         status_code = response.status_code
@@ -889,11 +891,13 @@ class OpenClawAgent(Agent):
                                 except json.JSONDecodeError:
                                     response_json = {}
                             else:
+                                received_done = False
                                 for line in response.iter_lines():
                                     if not line.startswith("data:"):
                                         continue
                                     data = line[len("data:"):].strip()
                                     if data == "[DONE]":
+                                        received_done = True
                                         break
                                     try:
                                         chunk_json = json.loads(data)
@@ -913,11 +917,13 @@ class OpenClawAgent(Agent):
                 raw_output = "".join(chunks)
                 raw_reasoning = "".join(reasoning_chunks)
                 recovered_trajectory = []
-                if not raw_output and not raw_reasoning:
+                if not raw_output:
                     recovered_trajectory = self._retrieve_trajectory_sync()
-                    _, recovered_reasoning = _recover_partial_output_from_trajectory(
+                    recovered_content, recovered_reasoning = _recover_partial_output_from_trajectory(
                         recovered_trajectory
                     )
+                    if recovered_content and not raw_output:
+                        raw_output = recovered_content
                     if recovered_reasoning and not raw_reasoning:
                         raw_reasoning = recovered_reasoning
                 if raw_reasoning:
@@ -952,6 +958,14 @@ class OpenClawAgent(Agent):
                     break
                 if raw_reasoning:
                     partial_reasoning_only = True
+                    logger.info(
+                        "Partial reasoning only: reasoning_chars=%d received_done=%s "
+                        "recovered_trajectory_len=%d elapsed=%.1fs",
+                        len(raw_reasoning),
+                        received_done,
+                        len(recovered_trajectory),
+                        time.monotonic() - attempt_start,
+                    )
                     break
                 elapsed = time.monotonic() - attempt_start
                 response_body = response_json or ""
@@ -1144,6 +1158,7 @@ class OpenClawAgent(Agent):
                 "token_usage_total": cumulative_token_usage,
                 "partial_reasoning_only": partial_reasoning_only and not raw_output,
                 "answer_source": answer_source,
+                "received_done": received_done,
             },
         )
 

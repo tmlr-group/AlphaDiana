@@ -205,8 +205,9 @@ class Runner:
         #   - agent is "openclaw" with dynamic bootstrap config
         #     (rock_agent_config_path + openclaw_config_path in agent config)
         #   - no sandbox_name was explicitly configured (sandbox: null)
-        # This ensures each concurrent slot gets its own Docker container with an
-        # isolated workspace, preventing workspace-state.json.tmp contention.
+        # Note: this creates a single sandbox for dynamic bootstrap.
+        # For concurrent execution, openclaw handles isolation internally via
+        # gateway_pool (multi-sandbox).  Do NOT use SandboxPool with openclaw.
         _auto_sandbox = None
         if (
             self.sandbox is None
@@ -261,8 +262,15 @@ class Runner:
                 _auto_sandbox = None
 
         # Set up sandbox pool for concurrent execution.
+        # Skip pool for openclaw: it handles concurrency internally via
+        # gateway_pool (multi-sandbox).  A SandboxPool would create N sessions
+        # inside a single container, causing workspace contention.
         pool = None
-        if self.sandbox is not None and self.config.max_concurrent > 1:
+        if (
+            self.sandbox is not None
+            and self.config.max_concurrent > 1
+            and self.config.agent_name != "openclaw"
+        ):
             from alphadiana.sandbox.pool import SandboxPool
             pool_size = self.config.max_concurrent
             logger.info("Creating SandboxPool with %d sessions", pool_size)

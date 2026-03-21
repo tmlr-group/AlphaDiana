@@ -188,6 +188,7 @@ class DeployJob:
         self.status: str = "pending"  # pending, deploying, completed, failed
         self.sandbox_id: str = ""
         self.api_base: str = ""
+        self.gateway_pool: list[str] = []  # api_bases for all sandboxes when num_sandboxes > 1
         self.error: str = ""
         self.created_at: str = datetime.now(timezone.utc).isoformat()
         self.logs: io.StringIO = io.StringIO()
@@ -200,6 +201,7 @@ class DeployJob:
             "status": self.status,
             "sandbox_id": self.sandbox_id,
             "api_base": self.api_base,
+            "gateway_pool": self.gateway_pool,
             "error": self.error,
             "created_at": self.created_at,
             "model_name": self.model_name,
@@ -416,6 +418,7 @@ class SandboxManager:
         model_api_key: str = "",
         model_name: str = "",
         auto_clear_seconds: int = 28800,
+        num_sandboxes: int = 1,
     ) -> DeployJob:
         """Start sandbox deployment in a background thread."""
         deploy_id = uuid.uuid4().hex[:12]
@@ -427,7 +430,7 @@ class SandboxManager:
 
         thread = threading.Thread(
             target=self._run_deploy,
-            args=(deploy_id, agent_config_path, model_api_base, model_api_key, model_name, auto_clear_seconds),
+            args=(deploy_id, agent_config_path, model_api_base, model_api_key, model_name, auto_clear_seconds, num_sandboxes),
             daemon=True,
         )
         thread.start()
@@ -441,6 +444,7 @@ class SandboxManager:
         model_api_key: str,
         model_name: str,
         auto_clear_seconds: int,
+        num_sandboxes: int = 1,
     ) -> None:
         """Execute deploy in background thread."""
         with self._lock:
@@ -457,7 +461,7 @@ class SandboxManager:
         try:
             asyncio.run(self._async_deploy(
                 deploy_id, agent_config_path, model_api_base, model_api_key,
-                model_name, auto_clear_seconds, log,
+                model_name, auto_clear_seconds, log, num_sandboxes,
             ))
         except Exception as exc:
             logger.exception("Deploy %s failed", deploy_id)
@@ -475,6 +479,7 @@ class SandboxManager:
         model_name: str,
         auto_clear_seconds: int,
         log,
+        num_sandboxes: int = 1,
     ) -> None:
         import sys
         import tempfile
@@ -494,10 +499,12 @@ class SandboxManager:
             job = self._deploy_jobs[deploy_id]
 
         # run_cmd: use ${bin_dir} placeholder so openclaw is on PATH in both image types.
+        # IMPORTANT: OPENCLAW_CONFIG_PATH must prefix the gateway command, not mkdir,
+        # so the env var is visible to the openclaw process.
         _run_cmd = (
             "export PATH=${bin_dir}:$PATH && "
-            "OPENCLAW_CONFIG_PATH=${working_dir}/openclaw.json "
             "mkdir -p /tmp/empty-bundled /tmp/oc_home && "
+            "OPENCLAW_CONFIG_PATH=${working_dir}/openclaw.json "
             "OPENCLAW_HOME=/tmp/oc_home OPENCLAW_BUNDLED_PLUGINS_DIR=/tmp/empty-bundled "
             "nohup openclaw gateway >> /tmp/gateway.log 2>&1 &"
         )
@@ -595,9 +602,17 @@ class SandboxManager:
             with _socket.create_connection(("127.0.0.1", redis_port), timeout=5):
                 log(f"  Redis OK (port {redis_port})")
         except OSError:
+            _conda_env = os.environ.get("CONDA_DEFAULT_ENV", "alphadiana")
+            _rock_env = PROJECT_ROOT / "dev" / "rock_env.sh"
+            _rock_ports = PROJECT_ROOT / "dev" / ".rock_ports.env"
             raise RuntimeError(
                 f"Redis is not reachable on port {redis_port}.\n"
-                f"Start Redis: docker start redis-stack"
+                f"Please ensure all ROCK services are running. In a terminal:\n"
+                f"\n"
+                f"  conda activate {_conda_env}\n"
+                f"  source {_rock_env}\n"
+                f"  source {_rock_ports}\n"
+                f"  bash dev/quickstart.sh   # if services are not started yet"
             )
 
         # Ensure ROCK .venv symlink
@@ -657,13 +672,13 @@ class SandboxManager:
                     )
                     _pb_sb = Sandbox(_pb_config)
                     await _pb_sb.start()
-                    _pb_sb.url = proxy_url
 
                     _pb_deadline = time.monotonic() + 180
                     while time.monotonic() < _pb_deadline:
                         try:
                             _pb_status = await _pb_sb.get_status()
                             if getattr(_pb_status, "is_alive", False):
+                                _pb_sb.url = proxy_url
                                 sandbox = _pb_sb
                                 active_image = PREBUILT_SANDBOX_IMAGE
                                 log(f"Prebuilt sandbox ready: {_pb_sb.sandbox_id}")
@@ -680,124 +695,167 @@ class SandboxManager:
                     log(f"Prebuilt image failed ({exc}), falling back to standard image ({DEFAULT_SANDBOX_IMAGE})...")
                     configure_rock_runtime_for_image(DEFAULT_SANDBOX_IMAGE)
         else:
-            configure_rock_runtime_for_image(DEFAULT_SANDBOX_IMAGE)
+            # DEFAULT_SANDBOX_IMAGE is itself a pre-built image (e.g. reasoning image).
+            # Require it to be present in the local Docker cache.
+            if (
+                DEFAULT_SANDBOX_IMAGE != PREBUILT_SANDBOX_IMAGE
+                and not _image_available_locally(DEFAULT_SANDBOX_IMAGE)
+            ):
+                raise RuntimeError(
+                    f"Required image '{DEFAULT_SANDBOX_IMAGE}' is not in the local Docker cache.\n"
+                    f"Pull it first:  docker pull {DEFAULT_SANDBOX_IMAGE}"
+                )
+            configure_rock_runtime_for_image(active_image)
 
-        if sandbox is None:
-            log(f"Creating sandbox ({DEFAULT_SANDBOX_IMAGE})...")
-            _std_config = SandboxConfig(
-                base_url=base_url,
-                image=DEFAULT_SANDBOX_IMAGE,
-                memory="4g",
-                cpus=1,
-                auto_clear_seconds=auto_clear_seconds,
-                startup_timeout=180,
-            )
-            sandbox = Sandbox(_std_config)
-            try:
-                await sandbox.start()
-            except Exception as exc:
-                raise RuntimeError(f"Failed to create sandbox: {exc}") from exc
-            sandbox.url = proxy_url
+        # ------------------------------------------------------------------
+        # Per-sandbox deploy helper: create, install, start gateway, wait ready.
+        # Run once for a single sandbox, or N times in parallel for multi-sandbox.
+        # ------------------------------------------------------------------
 
-            log("Waiting for sandbox to be ready...")
-            deadline = time.monotonic() + 180
-            while time.monotonic() < deadline:
-                try:
-                    status = await sandbox.get_status()
-                    if getattr(status, "is_alive", False):
-                        log(f"Sandbox is running (status={status.status})")
-                        break
-                    log(f"  Waiting... (status={status.status})")
-                except Exception as exc:
-                    log(f"  Status check: {exc}")
-                await asyncio.sleep(3)
+        # If num_sandboxes > 1 we always create fresh containers; the one sandbox
+        # already started via the prebuilt-image probe path is used as sandbox #0.
+        prebuilt_sandbox = sandbox  # may be None if prebuilt path was skipped
+
+        async def _deploy_one_sandbox(sb_idx: int) -> str:
+            """Deploy a single sandbox and return its api_base URL."""
+            prefix = f"[sandbox-{sb_idx + 1}/{num_sandboxes}] " if num_sandboxes > 1 else ""
+
+            if sb_idx == 0 and prebuilt_sandbox is not None:
+                # Reuse the sandbox already created via the prebuilt image path.
+                sb = prebuilt_sandbox
             else:
-                raise RuntimeError("Sandbox did not reach running state within 180s")
-
-        sandbox_id = sandbox.sandbox_id
-        with self._lock:
-            job.sandbox_id = sandbox_id
-
-        # Build agent config for the image that was actually used
-        config_file = _make_config(active_image)
-        log(f"Using agent config: {config_file} (image: {active_image})")
-
-        # Install agent
-        log("Installing OpenClaw agent...")
-        try:
-            await sandbox.agent.install(config=str(config_file))
-            log("Agent installed successfully")
-        except Exception as exc:
-            log(f"Install failed, retrying in 10s: {exc}")
-            await asyncio.sleep(10)
-            await sandbox.agent.install(config=str(config_file))
-            log("Agent installed on retry")
-
-        # Run gateway
-        log("Starting OpenClaw gateway...")
-        await sandbox.agent.run("")
-        log("OpenClaw gateway command sent")
-
-        api_base = f"{proxy_url}/sandboxes/{sandbox_id}/proxy/v1"
-
-        # Wait for OpenClaw gateway to be ready.
-        # Prebuilt images skip npm install so the gateway starts much faster.
-        gw_timeout = 300 if is_prebuilt_image(active_image) else 900
-        log(f"Waiting for OpenClaw gateway to be ready (timeout: {gw_timeout}s)...")
-        gw_deadline = time.monotonic() + gw_timeout
-        gateway_ready = False
-        last_log_time = 0.0
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            while time.monotonic() < gw_deadline:
+                log(f"{prefix}Creating sandbox ({active_image})...")
+                _cfg = SandboxConfig(
+                    base_url=base_url,
+                    image=active_image,
+                    memory="4g",
+                    cpus=1,
+                    auto_clear_seconds=auto_clear_seconds,
+                    startup_timeout=180,
+                )
+                sb = Sandbox(_cfg)
                 try:
-                    resp = await client.post(
-                        f"{api_base}/chat/completions",
-                        headers={
-                            "Authorization": "bearer OPENCLAW",
-                            "Content-Type": "application/json",
-                        },
-                        json={
-                            "model": "openclaw",
-                            "messages": [{"role": "user", "content": "ping"}],
-                            "max_tokens": 5,
-                        },
-                        timeout=30.0,
-                    )
-                    body = resp.json() if resp.status_code == 200 else {}
-                    # ROCK proxy returns 200 with status=Failed when gateway isn't ready
-                    if isinstance(body, dict) and body.get("status") == "Failed":
-                        err = body.get("error", "")
-                        now = time.monotonic()
-                        if now - last_log_time > 15:
-                            log(f"  Gateway not ready: {err}")
-                            last_log_time = now
-                    elif resp.status_code == 200 and body.get("choices"):
-                        log("OpenClaw gateway is ready!")
-                        gateway_ready = True
-                        break
-                    else:
-                        now = time.monotonic()
-                        if now - last_log_time > 15:
-                            log(f"  Gateway probe: status={resp.status_code}")
-                            last_log_time = now
+                    await sb.start()
                 except Exception as exc:
-                    now = time.monotonic()
-                    if now - last_log_time > 15:
-                        log(f"  Gateway probe: {exc}")
-                        last_log_time = now
-                await asyncio.sleep(10)
+                    raise RuntimeError(f"{prefix}Failed to create sandbox: {exc}") from exc
 
-        if not gateway_ready:
-            raise RuntimeError(
-                f"OpenClaw gateway did not become ready within {gw_timeout}s. "
-                "Check sandbox logs for npm install or gateway startup errors."
-            )
+                log(f"{prefix}Waiting for sandbox to be ready...")
+                _deadline = time.monotonic() + 180
+                while time.monotonic() < _deadline:
+                    try:
+                        _st = await sb.get_status()
+                        if getattr(_st, "is_alive", False):
+                            sb.url = proxy_url
+                            log(f"{prefix}Sandbox is running (status={_st.status})")
+                            break
+                        log(f"{prefix}  Waiting... (status={_st.status})")
+                    except Exception as exc:
+                        log(f"{prefix}  Status check: {exc}")
+                    await asyncio.sleep(3)
+                else:
+                    raise RuntimeError(f"{prefix}Sandbox did not reach running state within 180s")
 
-        log("Deploy complete!")
-        log(f"Sandbox ID: {sandbox_id}")
-        log(f"API base: {api_base}")
+            sb_id = sb.sandbox_id
+
+            # Build agent config for the image that was actually used
+            _config_file = _make_config(active_image)
+            log(f"{prefix}Using agent config: {_config_file} (image: {active_image})")
+
+            # Install agent
+            log(f"{prefix}Installing OpenClaw agent...")
+            _install_max_attempts = 5
+            _install_delay = 10
+            for _attempt in range(1, _install_max_attempts + 1):
+                try:
+                    await sb.agent.install(config=str(_config_file))
+                    log(f"{prefix}Agent installed successfully")
+                    break
+                except Exception as exc:
+                    if _attempt == _install_max_attempts:
+                        raise
+                    log(f"{prefix}  Sandbox session not ready yet, waiting {_install_delay}s... (attempt {_attempt}/{_install_max_attempts})")
+                    await asyncio.sleep(_install_delay)
+
+            # Start gateway
+            log(f"{prefix}Starting OpenClaw gateway...")
+            await sb.agent.run("")
+            log(f"{prefix}OpenClaw gateway command sent")
+
+            _api_base = f"{proxy_url}/sandboxes/{sb_id}/proxy/v1"
+
+            # Wait for gateway to be ready
+            await asyncio.sleep(10)
+            gw_timeout = 900
+            log(f"{prefix}Waiting for OpenClaw gateway to be ready (timeout: {gw_timeout}s)...")
+            gw_deadline = time.monotonic() + gw_timeout
+            gateway_ready = False
+            last_log_time = 0.0
+            async with httpx.AsyncClient(timeout=10.0) as _client:
+                while time.monotonic() < gw_deadline:
+                    try:
+                        resp = await _client.post(
+                            f"{_api_base}/chat/completions",
+                            headers={
+                                "Authorization": "bearer OPENCLAW",
+                                "Content-Type": "application/json",
+                            },
+                            json={
+                                "model": "openclaw",
+                                "messages": [{"role": "user", "content": "ping"}],
+                                "max_tokens": 5,
+                            },
+                            timeout=30.0,
+                        )
+                        body = resp.json() if resp.status_code == 200 else {}
+                        if isinstance(body, dict) and body.get("status") == "Failed":
+                            err = body.get("error", "")
+                            now = time.monotonic()
+                            if now - last_log_time > 15:
+                                log(f"{prefix}  Gateway not ready: {err}")
+                                last_log_time = now
+                        elif resp.status_code == 200 and body.get("choices"):
+                            log(f"{prefix}OpenClaw gateway is ready!")
+                            gateway_ready = True
+                            break
+                        else:
+                            now = time.monotonic()
+                            if now - last_log_time > 15:
+                                log(f"{prefix}  Gateway probe: status={resp.status_code}")
+                                last_log_time = now
+                    except Exception as exc:
+                        now = time.monotonic()
+                        if now - last_log_time > 15:
+                            log(f"{prefix}  Gateway probe: {exc}")
+                            last_log_time = now
+                    await asyncio.sleep(10)
+
+            if not gateway_ready:
+                raise RuntimeError(
+                    f"{prefix}OpenClaw gateway did not become ready within {gw_timeout}s. "
+                    "Check sandbox logs for npm install or gateway startup errors."
+                )
+
+            log(f"{prefix}Deploy complete! Sandbox ID: {sb_id}, API base: {_api_base}")
+            return sb_id, _api_base
+
+        # Deploy sandboxes (single or parallel)
+        n = max(1, num_sandboxes)
+        if n == 1:
+            first_sb_id, api_base = await _deploy_one_sandbox(0)
+            api_bases = [api_base]
+        else:
+            log(f"Deploying {n} sandboxes in parallel...")
+            results = list(await asyncio.gather(*[_deploy_one_sandbox(i) for i in range(n)]))
+            first_sb_id = results[0][0]
+            api_bases = [r[1] for r in results]
+            api_base = api_bases[0]
+            log(f"All {n} sandboxes ready.")
+
         log(f"Auto-clear: {auto_clear_seconds}s ({auto_clear_seconds // 60} min)")
 
         with self._lock:
             job.status = "completed"
+            job.sandbox_id = first_sb_id
             job.api_base = api_base
+            if n > 1:
+                job.gateway_pool = api_bases

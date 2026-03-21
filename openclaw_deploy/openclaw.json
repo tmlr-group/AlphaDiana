@@ -9,7 +9,7 @@
   "models": {
     "mode": "merge",
     "providers": {
-      "local": {
+      "openrouter": {
         "baseUrl": "${OPENAI_BASE_URL}",
         "apiKey": "${OPENAI_API_KEY}",
         "api": "openai-completions",
@@ -26,9 +26,15 @@
   "agents": {
     "defaults": {
       "model": {
-        "primary": "local/${OPENAI_MODEL_NAME}"
+        "primary": "openrouter/${OPENAI_MODEL_NAME}"
       },
-      "thinkingDefault": "high",
+      "models": {
+        "openrouter/${OPENAI_MODEL_NAME}": {
+          "params": {
+            "maxTokens": 32768
+          }
+        }
+      },
       "timeoutSeconds": 3600
     }
   },

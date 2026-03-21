@@ -185,18 +185,8 @@ def _stash_env_refs(req: CreateJobRequest) -> None:
 
 
 def _validate_openclaw_submission_mode(req: CreateJobRequest) -> None:
-    """Reject impossible OpenClaw submissions caused by stale or wrong UI paths."""
-    if req.agent_name != "openclaw":
-        return
-    metadata = req.metadata if isinstance(req.metadata, dict) else {}
-    if metadata.get("sandbox_mode") == "new":
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "OpenClaw is in 'Deploy New Sandbox' mode. "
-                "Use 'Deploy & Run Evaluation' or 'Deploy Only' first."
-            ),
-        )
+    """No-op: kept for API compatibility. OpenClaw now always uses deploy-and-run."""
+    pass
 
 
 @router.get("/env-keys")
@@ -226,7 +216,11 @@ def list_jobs():
     Excludes original_request from the response to keep the payload small.
     Use GET /jobs/{job_id} to get the full job details including original_request.
     """
-    jobs = _get_job_manager().list_jobs()
+    mgr = _get_job_manager()
+    for job in mgr.list_jobs():
+        if job.status in ("running", "pending"):
+            mgr.refresh_progress(job.job_id)
+    jobs = mgr.list_jobs()
     return [job.model_dump(exclude={"original_request"}) for job in jobs]
 
 
@@ -482,6 +476,7 @@ def deploy_and_run(req: DeployAndRunRequest):
         model_api_key=req.model_api_key,
         model_name=req.model_name,
         auto_clear_seconds=req.auto_clear_seconds,
+        num_sandboxes=max(1, req.num_sandboxes),
     )
 
     # Create eval job in pending state — it will wait for deploy to finish
