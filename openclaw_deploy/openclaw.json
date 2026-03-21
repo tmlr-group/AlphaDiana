@@ -1,54 +1,76 @@
 {
-  "agents": {
-    "defaults": {
-      "maxConcurrent": 4,
-      "timeoutSeconds": 3600,
-      "subagents": { "maxConcurrent": 8 },
-      "compaction": { "mode": "safeguard" },
-      "workspace": "/root/.openclaw/workspace",
-      "model": {
-        "primary": "custom_openai/${OPENAI_MODEL_NAME}"
-      }
-    }
+  "$schema": "https://openclaw.ai/config.json",
+  "env": {
+    "OPENAI_BASE_URL": "http://192.0.2.14:8000/v1",
+    "OPENAI_API_KEY": "EMPTY",
+    "OPENAI_MODEL_NAME": "/hd1/models/models--Qwen--Qwen3-8B/snapshots/b968826d9c46dd6066d109eabc6255188de91218",
+    "OPENCLAW_GATEWAY_TOKEN": "OPENCLAW"
   },
   "models": {
     "mode": "merge",
     "providers": {
-      "custom_openai": {
+      "local": {
         "baseUrl": "${OPENAI_BASE_URL}",
         "apiKey": "${OPENAI_API_KEY}",
         "api": "openai-completions",
         "models": [
           {
             "id": "${OPENAI_MODEL_NAME}",
-            "name": "${OPENAI_MODEL_NAME}"
+            "name": "${OPENAI_MODEL_NAME}",
+            "reasoning": true
           }
         ]
       }
     }
   },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "local/${OPENAI_MODEL_NAME}"
+      },
+      "models": {
+        "local/${OPENAI_MODEL_NAME}": {
+          "params": {
+            "maxTokens": 32768
+          }
+        }
+      },
+      "timeoutSeconds": 3600
+    }
+  },
+  "commands": {
+    "native": "auto",
+    "nativeSkills": "auto",
+    "restart": true,
+    "ownerDisplay": "raw"
+  },
   "gateway": {
+    "port": 8080,
     "mode": "local",
+    "bind": "custom",
+    "customBindHost": "0.0.0.0",
+    "controlUi": {
+      "enabled": false,
+      "allowedOrigins": [
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://0.0.0.0:8080"
+      ]
+    },
     "auth": {
       "mode": "token",
       "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
-    "port": 8080,
-    "bind": "lan",
-    "controlUi": {
-      "enabled": true,
-      "allowInsecureAuth": true
-    },
     "http": {
       "endpoints": {
-        "chatCompletions": { "enabled": true }
+        "chatCompletions": {
+          "enabled": true
+        }
       }
-    },
-    "trustedProxies": [
-      "127.0.0.1/32",
-      "172.17.0.0/16"
-    ]
+    }
   },
-  "plugins": { "entries": {} },
-  "messages": { "ackReactionScope": "group-mentions" }
+  "meta": {
+    "lastTouchedVersion": "2026.3.14",
+    "lastTouchedAt": "2026-03-20T10:52:49.332Z"
+  }
 }

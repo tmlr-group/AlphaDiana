@@ -1,0 +1,15 @@
+working_dir: "."
+
+run_cmd: mkdir -p /tmp/empty-bundled /tmp/oc_home && OPENCLAW_CONFIG_PATH=${working_dir}/openclaw.json OPENCLAW_HOME=/tmp/oc_home OPENCLAW_BUNDLED_PLUGINS_DIR=/tmp/empty-bundled nohup openclaw gateway >> /tmp/gateway.log 2>&1 &
+
+runtime_env_config:
+  type: node
+  npm_registry: https://registry.npmmirror.com
+  custom_install_cmd: openclaw --version
+  install_timeout: 60
+
+env:
+  OPENAI_BASE_URL: "${OPENAI_BASE_URL}"
+  OPENAI_API_KEY: "${OPENAI_API_KEY}"
+  OPENAI_MODEL_NAME: "${OPENAI_MODEL_NAME}"
+  OPENCLAW_GATEWAY_TOKEN: "OPENCLAW"

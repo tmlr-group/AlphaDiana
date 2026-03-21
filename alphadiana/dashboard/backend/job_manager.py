@@ -602,9 +602,12 @@ class JobManager:
                         return
 
                     if deploy_job.status == "completed":
-                        _log(f"Sandbox deployed! API base: {deploy_job.api_base}")
-                        # Inject api_base into agent config
-                        req.agent_config["api_base"] = deploy_job.api_base
+                        if deploy_job.gateway_pool:
+                            _log(f"Sandboxes deployed! Gateway pool: {len(deploy_job.gateway_pool)} sandboxes")
+                            req.agent_config["gateway_pool"] = deploy_job.gateway_pool
+                        else:
+                            _log(f"Sandbox deployed! API base: {deploy_job.api_base}")
+                            req.agent_config["api_base"] = deploy_job.api_base
                         req.agent_config.setdefault("model", "openclaw")
                         break
                     elif deploy_job.status == "failed":

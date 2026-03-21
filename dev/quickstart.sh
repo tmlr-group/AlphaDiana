@@ -257,7 +257,14 @@ In any new terminal, run:
   source dev/rock_env.sh
   source dev/.rock_ports.env
 
-To deploy OpenClaw:
-  python dev/run_openclaw_aime_openrouter.py
-  python openclaw_deploy/deploy.py --agent-config dev/generated/rock_agent_config.openrouter_qwen_2_5_7b.resolved.yaml
+Minimal OpenClaw smoke path:
+  docker pull ghcr.io/tsrigo/openclaw-reasoning:20260320
+  export OPENAI_BASE_URL=...
+  export OPENAI_API_KEY=...
+  export OPENAI_MODEL_NAME=...
+  alphadiana validate configs/examples/openclaw_aime2024_dynamic.yaml
+  alphadiana run configs/examples/openclaw_aime2024_dynamic.yaml
+
+Manual deploy path:
+  python openclaw_deploy/deploy.py --agent-config openclaw_deploy/rock_agent_config.prebuilt.yaml --image ghcr.io/tsrigo/openclaw-reasoning:20260320
 EOF

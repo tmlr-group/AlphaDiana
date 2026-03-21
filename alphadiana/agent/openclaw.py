@@ -24,9 +24,12 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import random
 import re
+import threading
 import time
+from collections import deque
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
@@ -63,6 +66,45 @@ def _extract_answer(text: str) -> str:
     return extract_answer_candidate(text)
 
 
+_PARTIAL_REASONING_ANSWER_RE = re.compile(
+    r"(?:\*{0,2})(?:the\s+)?(?:final\s+)?answer(?:\*{0,2})\s*(?:[:：]|is|=)\s*(.+)",
+    re.IGNORECASE,
+)
+
+
+def _extract_answer_from_partial_reasoning(text: str) -> str | None:
+    """Extract an answer conservatively from incomplete reasoning.
+
+    For partial reasoning, avoid treating arbitrary prose as the answer.
+    Only accept:
+      1. Explicit final-answer markers, e.g. ``the final answer is ...``
+      2. ``\\boxed{...}``
+      3. A short standalone math-like answer string (e.g. ``77``)
+    """
+    stripped = text.strip()
+    if not stripped:
+        return None
+
+    candidate = _extract_answer(stripped).strip().rstrip(".")
+    if not candidate:
+        return None
+
+    if r"\boxed{" in stripped:
+        return candidate
+
+    if _PARTIAL_REASONING_ANSWER_RE.search(stripped):
+        return candidate
+
+    if len(stripped) <= 50 and candidate == stripped and any(ch.isdigit() for ch in candidate):
+        # Accept short direct answers such as "77" or "$77$",
+        # but do not treat short prose snippets as answers.
+        math_like = re.fullmatch(r"[\s$\\(){}\[\]\d+\-*/^.,=%]+", candidate)
+        if math_like:
+            return candidate
+
+    return None
+
+
 def extract_system_prompt(trajectory: list[dict]) -> str:
     """Extract system prompt from a trajectory list."""
     for entry in trajectory:
@@ -94,8 +136,20 @@ def classify_error(
 
     if isinstance(response_json, dict):
         msg = response_json.get("message", "")
-        if "post proxy failed" in str(msg).lower():
+        msg_lower = str(msg).lower()
+        if "post proxy failed" in msg_lower:
             return "proxy_timeout"
+
+        # Detect "internal error" from gateway (workspace contention, etc.)
+        error_field = response_json.get("error")
+        error_text = ""
+        if isinstance(error_field, dict):
+            error_text = str(error_field.get("message", "")).lower()
+        elif isinstance(error_field, str):
+            error_text = error_field.lower()
+        if "internal error" in msg_lower or "internal error" in error_text:
+            return "internal_error"
+
         choices = response_json.get("choices", [])
         if isinstance(choices, list) and choices:
             message = choices[0].get("message", {})
@@ -211,6 +265,30 @@ def _extract_reasoning_trajectory_from_payload(payload: Any) -> list[dict]:
                 return [item for item in tool_calls if isinstance(item, dict)]
 
     return []
+
+
+def _recover_partial_output_from_trajectory(trajectory: list[dict]) -> tuple[str, str]:
+    """Recover partial assistant output and reasoning from session trajectory."""
+    if not isinstance(trajectory, list):
+        return "", ""
+
+    text_parts: list[str] = []
+    reasoning_parts: list[str] = []
+    for entry in trajectory:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("role") != "assistant":
+            continue
+        content = entry.get("content", "")
+        thinking = entry.get("thinking", "")
+        content_text = _coerce_text_content(content)
+        thinking_text = _coerce_text_content(thinking)
+        if content_text:
+            text_parts.append(content_text)
+        if thinking_text:
+            reasoning_parts.append(thinking_text)
+
+    return "\n".join(text_parts).strip(), "\n".join(reasoning_parts).strip()
 
 
 def _parse_openclaw_session(session_jsonl: str) -> list[dict]:
@@ -370,6 +448,32 @@ class OpenClawAgent(Agent):
         # Health check flag
         self._health_checked: bool = False
 
+        # Gateway pool for concurrent isolation (static multi-sandbox mode).
+        # Users can set gateway_pool: [url1, url2, url3] in agent config to pre-deploy
+        # multiple OpenClaw gateways and have each concurrent task use a different one.
+        # This prevents workspace-state.json.tmp contention inside the gateway.
+        gateway_pool_list: list[str] = config.get("gateway_pool", [])
+        # Auto-build gateway_pool from SANDBOX_IDS env var (comma-separated).
+        # Example: export SANDBOX_IDS=id1,id2,id3
+        if not gateway_pool_list:
+            sandbox_ids_env = os.environ.get("SANDBOX_IDS", "")
+            sandbox_ids = [s.strip() for s in sandbox_ids_env.split(",") if s.strip()]
+            if len(sandbox_ids) > 1:
+                proxy_base = self._resolve_proxy_base()
+                gateway_pool_list = [
+                    f"{proxy_base}/sandboxes/{sid}/proxy/v1"
+                    for sid in sandbox_ids
+                ]
+                logger.info(
+                    "Auto-built gateway_pool from SANDBOX_IDS env: %d gateways",
+                    len(gateway_pool_list),
+                )
+        # Also allow single api_base to be treated as a pool of one.
+        if not gateway_pool_list and self._api_base:
+            gateway_pool_list = [self._api_base]
+        self._gateway_pool: deque[str] = deque(gateway_pool_list)
+        self._gateway_pool_lock = threading.Lock()
+
         # For retrieving agentic trajectory from sandbox
         self._rock_sandbox_url = config.get("rock_sandbox_url", "")
         self._sandbox_id = config.get("sandbox_id", "")
@@ -457,6 +561,15 @@ class OpenClawAgent(Agent):
             logger.warning("Failed to create ROCK sandbox client: %s", e)
             return None
 
+    def _resolve_proxy_base(self) -> str:
+        """Resolve the ROCK proxy base URL for building gateway_pool URLs."""
+        if self._rock_sandbox_url:
+            return self._rock_sandbox_url.rstrip("/")
+        proxy_url = os.environ.get("ROCK_PROXY_URL", "")
+        if proxy_url:
+            return proxy_url.rstrip("/")
+        return resolve_rock_ports_from_env().proxy_api_url.rstrip("/")
+
     def _derive_admin_url(self) -> str:
         if not self._rock_sandbox_url:
             return resolve_rock_ports_from_env().base_url
@@ -488,8 +601,12 @@ class OpenClawAgent(Agent):
             except Exception:
                 pass  # Session may already exist
 
+            session_globs = " ".join(
+                f"{home}/agents/main/sessions/*.jsonl"
+                for home in self._OPENCLAW_HOME_CANDIDATES
+            )
             result = await sb.arun(
-                "ls -t /root/.openclaw/agents/main/sessions/*.jsonl 2>/dev/null | head -1",
+                f"ls -t {session_globs} 2>/dev/null | head -1",
                 session="trajectory",
             )
             session_file = result.output.strip()
@@ -529,10 +646,16 @@ class OpenClawAgent(Agent):
             logger.warning("Trajectory retrieval failed: %s", e)
             return []
 
-    # Paths that OpenClaw uses for system prompt components in the workspace.
+    # Paths that OpenClaw uses for state in the workspace.
+    _OPENCLAW_HOME_CANDIDATES = [
+        "/root/.openclaw",
+        "/tmp/oc_home/.openclaw",
+    ]
     _SYSTEM_PROMPT_PATHS = [
         "/root/.openclaw/workspace/SOUL.md",
         "/root/.openclaw/workspace/AGENTS.md",
+        "/tmp/oc_home/.openclaw/workspace/SOUL.md",
+        "/tmp/oc_home/.openclaw/workspace/AGENTS.md",
     ]
 
     def _retrieve_system_prompt_from_sandbox(self, sandbox: Any = None) -> str:
@@ -654,11 +777,29 @@ class OpenClawAgent(Agent):
         if sandbox is not None:
             sandbox_id = str(getattr(sandbox, "sandbox_id", "") or sandbox_id)
 
+        # Resolve the api_base for this invocation.
+        # Priority:
+        #   1. Sandbox session has a proxy endpoint (dynamic bootstrap or pool session)
+        #   2. Round-robin from gateway_pool (multi-sandbox static mode)
+        #   3. Single static api_base
+        resolved_api_base = ""
+        if sandbox is not None and hasattr(sandbox, "proxy_v1_base"):
+            # Dynamic bootstrap: sandbox session provides its own proxy endpoint.
+            resolved_api_base = ""  # let ensure_ready() set it below
+        elif self._gateway_pool:
+            with self._gateway_pool_lock:
+                # Round-robin: rotate the deque so each concurrent call gets
+                # a different gateway when multiple are configured.
+                resolved_api_base = self._gateway_pool[0]
+                self._gateway_pool.rotate(-1)
+        else:
+            resolved_api_base = self._api_base
+
         # Dynamic bootstrap if api_base not set but runtime manager is configured
         runtime_info: dict[str, Any] = {
             "sandbox_id": sandbox_id,
-            "gateway_url": f"{self._api_base}/chat/completions" if self._api_base else "",
-            "api_base": self._api_base,
+            "gateway_url": f"{resolved_api_base}/chat/completions" if resolved_api_base else "",
+            "api_base": resolved_api_base,
         }
         artifact_data: dict[str, Any] = {
             "artifact_manifest": {},
@@ -671,8 +812,8 @@ class OpenClawAgent(Agent):
             runtime_info = self._runtime_manager.ensure_ready(sandbox)
         elif not runtime_info["api_base"]:
             raise RuntimeError(
-                "OpenClawAgent requires either agent.config.api_base or a live ROCK "
-                "sandbox plus rock_agent_config_path/openclaw_config_path."
+                "OpenClawAgent requires either agent.config.api_base (or gateway_pool) "
+                "or a live ROCK sandbox plus rock_agent_config_path/openclaw_config_path."
             )
         else:
             self._ensure_agent_md(sandbox)
@@ -690,6 +831,7 @@ class OpenClawAgent(Agent):
         # Retry loop with exponential backoff
         response_json: dict = {}
         raw_output = ""
+        raw_reasoning = ""
         last_error: Exception | None = None
         retry_responses: list[dict[str, Any]] = []
         cumulative_token_usage: dict[str, int] = {
@@ -697,12 +839,17 @@ class OpenClawAgent(Agent):
             "completion_tokens": 0,
             "total_tokens": 0,
         }
+        recovered_trajectory: list[dict] = []
+        partial_reasoning_only = False
+        received_done: bool = False
         for attempt in range(1, self._max_attempts + 1):
             attempt_start = time.monotonic()
             try:
                 chunks: list[str] = []
+                reasoning_chunks: list[str] = []
                 status_code: int = 0
                 resp_headers: dict = {}
+                received_done: bool = False
                 with httpx.Client(timeout=self._request_timeout, trust_env=False) as client:
                     with client.stream("POST", url, headers=headers, json=request_payload) as response:
                         status_code = response.status_code
@@ -726,8 +873,11 @@ class OpenClawAgent(Agent):
                                 if choices:
                                     msg = choices[0].get("message", {})
                                     assistant_content = msg.get("content", "")
+                                    reasoning_content = msg.get("reasoning_content", "")
                                     if assistant_content:
                                         chunks.append(_coerce_text_content(assistant_content))
+                                    elif reasoning_content:
+                                        reasoning_chunks.append(_coerce_text_content(reasoning_content))
                         else:
                             # SSE path (text/event-stream or unspecified Content-Type).
                             if status_code >= 400:
@@ -741,11 +891,13 @@ class OpenClawAgent(Agent):
                                 except json.JSONDecodeError:
                                     response_json = {}
                             else:
+                                received_done = False
                                 for line in response.iter_lines():
                                     if not line.startswith("data:"):
                                         continue
                                     data = line[len("data:"):].strip()
                                     if data == "[DONE]":
+                                        received_done = True
                                         break
                                     try:
                                         chunk_json = json.loads(data)
@@ -754,12 +906,48 @@ class OpenClawAgent(Agent):
                                     choices = chunk_json.get("choices") or []
                                     delta = choices[0].get("delta", {}) if choices else {}
                                     content = delta.get("content")
+                                    reasoning_content = delta.get("reasoning_content")
                                     if content:
                                         chunks.append(content)
+                                    if reasoning_content:
+                                        reasoning_chunks.append(_coerce_text_content(reasoning_content))
                                     if chunk_json.get("usage"):
                                         response_json = chunk_json
 
                 raw_output = "".join(chunks)
+                raw_reasoning = "".join(reasoning_chunks)
+                recovered_trajectory = []
+                if not raw_output:
+                    recovered_trajectory = self._retrieve_trajectory_sync()
+                    recovered_content, recovered_reasoning = _recover_partial_output_from_trajectory(
+                        recovered_trajectory
+                    )
+                    if recovered_content and not raw_output:
+                        raw_output = recovered_content
+                    if recovered_reasoning and not raw_reasoning:
+                        raw_reasoning = recovered_reasoning
+                if raw_reasoning:
+                    if not response_json:
+                        response_json = {
+                            "choices": [
+                                {
+                                    "message": {
+                                        "role": "assistant",
+                                        "content": "",
+                                        "reasoning_content": raw_reasoning,
+                                    }
+                                }
+                            ]
+                        }
+                    else:
+                        choices = response_json.setdefault("choices", [{}])
+                        if not choices:
+                            choices.append({})
+                        message = choices[0].setdefault("message", {})
+                        if isinstance(message, dict):
+                            message.setdefault("role", "assistant")
+                            message.setdefault("content", raw_output if raw_output else "")
+                            message["reasoning_content"] = raw_reasoning
                 # Accumulate token usage across retries.
                 attempt_usage = (response_json or {}).get("usage")
                 if attempt_usage:
@@ -767,6 +955,17 @@ class OpenClawAgent(Agent):
                     cumulative_token_usage["completion_tokens"] += int(attempt_usage.get("completion_tokens", 0))
                     cumulative_token_usage["total_tokens"] += int(attempt_usage.get("total_tokens", 0))
                 if raw_output:
+                    break
+                if raw_reasoning:
+                    partial_reasoning_only = True
+                    logger.info(
+                        "Partial reasoning only: reasoning_chars=%d received_done=%s "
+                        "recovered_trajectory_len=%d elapsed=%.1fs",
+                        len(raw_reasoning),
+                        received_done,
+                        len(recovered_trajectory),
+                        time.monotonic() - attempt_start,
+                    )
                     break
                 elapsed = time.monotonic() - attempt_start
                 response_body = response_json or ""
@@ -783,12 +982,13 @@ class OpenClawAgent(Agent):
                     "error_type": error_type,
                 })
                 logger.warning(
-                    "OpenClaw attempt %d/%d returned empty content: status=%s elapsed=%.2fs body=%r",
+                    "OpenClaw attempt %d/%d returned empty content: status=%s elapsed=%.2fs body=%r reasoning_chars=%d",
                     attempt,
                     self._max_attempts,
                     status_code,
                     elapsed,
                     response_body,
+                    len(raw_reasoning),
                 )
                 if error_type == "proxy_timeout":
                     logger.error(
@@ -796,6 +996,12 @@ class OpenClawAgent(Agent):
                         "Increase sandbox_config.proxy_timeout (current: %ds) or "
                         "reduce problem complexity. See: sandbox_config.proxy_timeout",
                         self._proxy_timeout,
+                    )
+                if error_type == "internal_error":
+                    logger.error(
+                        "Gateway internal error detected (likely workspace-state.json "
+                        "contention under concurrency). Use gateway_pool with separate "
+                        "sandboxes to isolate concurrent requests.",
                     )
                 last_error = OpenClawRequestError(
                     f"OpenClaw returned no assistant content on attempt {attempt}",
@@ -843,6 +1049,12 @@ class OpenClawAgent(Agent):
                         "reduce problem complexity. See: sandbox_config.proxy_timeout",
                         self._proxy_timeout,
                     )
+                if error_type == "internal_error":
+                    logger.error(
+                        "Gateway internal error detected (likely workspace-state.json "
+                        "contention under concurrency). Use gateway_pool with separate "
+                        "sandboxes to isolate concurrent requests.",
+                    )
 
             if attempt < self._max_attempts:
                 # Distinguish "busy/empty" from real errors for retry delay.
@@ -856,7 +1068,7 @@ class OpenClawAgent(Agent):
                 logger.info("Retry delay: %.1fs (error_type=%s)", delay + jitter, last_error_type)
                 time.sleep(delay + jitter)
 
-        if not raw_output:
+        if not raw_output and not partial_reasoning_only:
             if isinstance(last_error, OpenClawRequestError):
                 raise last_error
             error_type = classify_error(
@@ -875,7 +1087,15 @@ class OpenClawAgent(Agent):
 
         wall_time = time.time() - start
 
-        answer = _extract_answer(raw_output)
+        answer = None
+        answer_source = ""
+        if raw_output:
+            answer = _extract_answer(raw_output)
+            answer_source = "raw_output"
+        elif raw_reasoning:
+            answer = _extract_answer_from_partial_reasoning(raw_reasoning)
+            if answer is not None:
+                answer_source = "reasoning_content"
 
         # Use cumulative token usage across all retry attempts.
         token_usage = cumulative_token_usage if any(cumulative_token_usage.values()) else {}
@@ -890,15 +1110,18 @@ class OpenClawAgent(Agent):
                 }
 
         # Try to retrieve the real agentic trajectory from the sandbox.
-        trajectory = self._retrieve_trajectory_sync()
+        trajectory = recovered_trajectory or self._retrieve_trajectory_sync()
         if not trajectory:
             # Also try extracting from response payload
             trajectory = _extract_reasoning_trajectory_from_payload(response_json)
         if not trajectory:
             # Fallback: record what we know from the API response
+            assistant_entry = {"role": "assistant", "content": raw_output}
+            if raw_reasoning:
+                assistant_entry["thinking"] = raw_reasoning
             trajectory = [
                 {"role": "user", "content": task.problem},
-                {"role": "assistant", "content": raw_output},
+                assistant_entry,
             ]
 
         # Collect artifacts from runtime manager if available
@@ -925,6 +1148,7 @@ class OpenClawAgent(Agent):
             workspace_file_contents=artifact_data.get("workspace_file_contents", {}),
             sandbox_metadata=artifact_data.get("sandbox_metadata", {}),
             system_prompt=extract_system_prompt(trajectory) or self._retrieve_system_prompt_from_sandbox(sandbox),
+            finish_reason="incomplete" if partial_reasoning_only and not raw_output else "",
             metadata={
                 "gateway_response_id": response_json.get("id", ""),
                 "sandbox_id": sandbox_id,
@@ -932,6 +1156,9 @@ class OpenClawAgent(Agent):
                 "retry_responses": retry_responses,
                 "retry_count": attempt,
                 "token_usage_total": cumulative_token_usage,
+                "partial_reasoning_only": partial_reasoning_only and not raw_output,
+                "answer_source": answer_source,
+                "received_done": received_done,
             },
         )
 

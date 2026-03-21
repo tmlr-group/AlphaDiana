@@ -1,17 +1,20 @@
-working_dir: "."
+working_dir: "."                # Working directory inside the sandbox container
 
 run_cmd: export PATH=$(find /tmp/rock-runtime-envs/node -name 'npm' -type f ! -path '*/nodewin/*'
-  ! -path '*/shims/*' 2>/dev/null | head -1 | xargs dirname):$PATH && OPENCLAW_CONFIG_PATH=${working_dir}/openclaw.json
-  nohup openclaw gateway >> /root/gateway.log 2>&1 &
+  ! -path '*/shims/*' 2>/dev/null | head -1 | xargs dirname):$PATH && mkdir -p /tmp/empty-bundled /tmp/oc_home
+  && OPENCLAW_CONFIG_PATH=${working_dir}/openclaw.json OPENCLAW_HOME=/tmp/oc_home OPENCLAW_BUNDLED_PLUGINS_DIR=/tmp/empty-bundled
+  nohup openclaw gateway >> /tmp/gateway.log 2>&1 &
+                                # Command to start the OpenClaw gateway inside the sandbox
 
 runtime_env_config:
-  type: node
-  npm_registry: https://registry.npmmirror.com
-  custom_install_cmd: git config --global url.'https://github.com/'.insteadOf 'ssh://git@github.com/' && npm install -g openclaw@2026.3.7 --registry https://registry.npmmirror.com
-  install_timeout: 1200
+  type: node                    # Runtime type: node (Node.js environment)
+  npm_registry: https://registry.npmmirror.com  # npm mirror registry 
+  custom_install_cmd: if command -v openclaw >/dev/null 2>&1; then echo "Using preinstalled OpenClaw from sandbox image"; else git config --global url.'https://github.com/'.insteadOf 'ssh://git@github.com/' && npm install -g openclaw@2026.3.7 --registry https://registry.npmmirror.com; fi
+                                # Custom install command for OpenClaw; change version as needed
+  install_timeout: 1200         # Timeout for installation in seconds
 
 env:
-  OPENAI_BASE_URL: "http://192.0.2.14:8000/v1"
-  OPENAI_API_KEY: "EMPTY"
-  OPENAI_MODEL_NAME: "/hd1/models/models--Qwen--Qwen3-8B/snapshots/b968826d9c46dd6066d109eabc6255188de91218"
-  OPENCLAW_GATEWAY_TOKEN: "OPENCLAW"
+  OPENAI_BASE_URL: ""           # Model API endpoint, e.g. "http://<your-vllm-host>:8000/v1"
+  OPENAI_API_KEY: "EMPTY"       # API key for the model service
+  OPENAI_MODEL_NAME: ""         # Model name or path, e.g. "Qwen/Qwen2.5-14B-Instruct"
+  OPENCLAW_GATEWAY_TOKEN: "OPENCLAW"  # Auth token for the OpenClaw gateway

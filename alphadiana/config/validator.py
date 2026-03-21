@@ -36,11 +36,17 @@ class ConfigValidator:
                 f"benchmark '{config.benchmark_name}' requires a sandbox "
                 "(set sandbox_name to 'rock' or 'local')"
             )
-        # Validate agent_config has api_base for agents that need it.
+        # Validate agent_config has api_base or dynamic bootstrap config.
         if config.agent_name in self.API_AGENTS:
-            if not config.agent_config.get("api_base"):
+            has_api_base = bool(config.agent_config.get("api_base"))
+            has_dynamic = bool(
+                config.agent_config.get("rock_agent_config_path")
+                and config.agent_config.get("openclaw_config_path")
+            )
+            if not has_api_base and not has_dynamic:
                 errors.append(
-                    f"agent '{config.agent_name}' requires 'api_base' in agent_config"
+                    f"agent '{config.agent_name}' requires 'api_base' or "
+                    "'rock_agent_config_path' + 'openclaw_config_path' in agent_config"
                 )
         # Validate num_samples and task_retries.
         num_samples = getattr(config, "num_samples", 1)

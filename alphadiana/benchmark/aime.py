@@ -53,6 +53,27 @@ class AIMEBenchmark(Benchmark):
                 f"Original error: {exc}"
             ) from exc
 
+        if len(dataset) == 0:
+            return []
+
+        sample = dataset[0]
+        if problem_field not in sample:
+            if "question" in sample:
+                problem_field = "question"
+            else:
+                available = ", ".join(sorted(sample.keys()))
+                raise KeyError(
+                    f"AIME dataset missing configured problem_field='{problem_field}'. "
+                    f"Available fields: {available}"
+                )
+
+        if answer_field not in sample:
+            available = ", ".join(sorted(sample.keys()))
+            raise KeyError(
+                f"AIME dataset missing configured answer_field='{answer_field}'. "
+                f"Available fields: {available}"
+            )
+
         max_tasks = config.get("max_tasks")
 
         tasks: list[BenchmarkTask] = []

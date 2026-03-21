@@ -163,17 +163,20 @@ def _build_summary(run_id: str, records: list[dict[str, Any]]) -> RunSummaryResp
     if records:
         agent = next((r.get("agent_name") for r in records if r.get("agent_name")), "")
         agent_version = next((r.get("agent_version") for r in records if r.get("agent_version")), "")
-        benchmark = next((r.get("benchmark_name") for r in records if r.get("benchmark_name")), "")
+        # Prefer task_metadata.source: it is the actual dataset used (e.g. MathArena/hmmt_feb_2026),
+        # which is more specific than benchmark_name (the registry plugin key, e.g. "aime").
+        benchmark = next(
+            (r.get("task_metadata", {}).get("source")
+             for r in records
+             if isinstance(r.get("task_metadata"), dict) and r.get("task_metadata", {}).get("source")),
+            None,
+        ) or next((r.get("benchmark_name") for r in records if r.get("benchmark_name")), "")
         # Legacy fallback: read from nested metadata/task_metadata.
         if not agent or not agent_version:
             meta = records[0].get("metadata", {})
             if isinstance(meta, dict):
                 agent = agent or meta.get("agent", "")
                 agent_version = agent_version or meta.get("agent_version", meta.get("model", ""))
-        if not benchmark:
-            task_meta = records[0].get("task_metadata", {})
-            if isinstance(task_meta, dict):
-                benchmark = task_meta.get("source", "")
 
     timestamp = ""
     if records:
@@ -255,7 +258,9 @@ class DataLoader:
                 summary.agent = agent_cfg.get("name", summary.agent)
                 summary.agent_version = agent_cfg.get("version", summary.agent_version)
                 bench_cfg = config.get("benchmark", {})
-                summary.benchmark = bench_cfg.get("name", summary.benchmark)
+                # Prefer benchmark.config.dataset (specific dataset) over benchmark.name (plugin key).
+                bench_dataset = bench_cfg.get("config", {}).get("dataset", "")
+                summary.benchmark = bench_dataset or bench_cfg.get("name", summary.benchmark)
             summaries.append(summary)
         return summaries
 

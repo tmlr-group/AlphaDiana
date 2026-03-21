@@ -132,6 +132,154 @@ class TestOpenClawEmptyResponseHandling:
         assert len(err.retry_responses) == 2
         assert err.request_payload["model"] == "test"
 
+    def test_streaming_reasoning_content_falls_back_when_final_content_missing(self):
+        """SSE reasoning deltas should be used when no assistant content is ever emitted."""
+        agent = self._setup_agent(max_attempts=1)
+        task = BenchmarkTask(task_id="t_reasoning", problem="Hard problem", ground_truth="42")
+
+        sse_lines = [
+            'data: {"choices":[{"delta":{"role":"assistant"}}]}',
+            'data: {"choices":[{"delta":{"reasoning_content":"Reasoning: step 1"}}]}',
+            'data: {"choices":[{"delta":{"reasoning_content":"; step 2"}}]}',
+            'data: [DONE]',
+        ]
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "text/event-stream"}
+        mock_response.iter_lines = MagicMock(return_value=sse_lines)
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        mock_client = MagicMock()
+        mock_client.stream = MagicMock(return_value=mock_response)
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+
+        with patch.object(agent, "_health_check", return_value=None):
+            with patch.object(agent, "_retrieve_trajectory_sync", return_value=[]):
+                with patch("httpx.Client", return_value=mock_client):
+                    result = agent.solve(task)
+
+        assert result.raw_output == ""
+        assert result.answer is None
+        assert result.finish_reason == "incomplete"
+        assert result.metadata["partial_reasoning_only"] is True
+        assert result.metadata["answer_source"] == ""
+        assert result.response_json["choices"][0]["message"]["reasoning_content"] == (
+            "Reasoning: step 1; step 2"
+        )
+
+    def test_non_stream_reasoning_content_falls_back_when_final_content_missing(self):
+        """Non-streaming reasoning_content should also prevent an empty-response error."""
+        agent = self._setup_agent(max_attempts=1)
+        task = BenchmarkTask(task_id="t_reasoning_json", problem="Hard problem", ground_truth="42")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "application/json"}
+        mock_response.text = json.dumps({
+            "choices": [{"message": {"content": "", "reasoning_content": "Reasoning only"}}],
+        })
+        mock_response.read = MagicMock()
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        mock_client = MagicMock()
+        mock_client.stream = MagicMock(return_value=mock_response)
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+
+        with patch.object(agent, "_health_check", return_value=None):
+            with patch.object(agent, "_retrieve_trajectory_sync", return_value=[]):
+                with patch("httpx.Client", return_value=mock_client):
+                    result = agent.solve(task)
+
+        assert result.raw_output == ""
+        assert result.answer is None
+        assert result.finish_reason == "incomplete"
+        assert result.metadata["partial_reasoning_only"] is True
+        assert result.metadata["answer_source"] == ""
+        assert result.response_json["choices"][0]["message"]["reasoning_content"] == "Reasoning only"
+
+    def test_session_transcript_reasoning_falls_back_when_stream_is_empty(self):
+        """If the HTTP stream is empty but the sandbox transcript has progress, keep it."""
+        agent = self._setup_agent(max_attempts=1)
+        task = BenchmarkTask(task_id="t_reasoning_session", problem="Hard problem", ground_truth="42")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "text/event-stream"}
+        mock_response.iter_lines = MagicMock(return_value=[])
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        mock_client = MagicMock()
+        mock_client.stream = MagicMock(return_value=mock_response)
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+
+        recovered_trajectory = [
+            {"role": "user", "content": "Hard problem"},
+            {
+                "role": "assistant",
+                "content": "",
+                "thinking": "partial reasoning from transcript",
+                "tool_calls": [{"id": "exec:0", "tool": "exec", "input": {"command": "print(42)"}}],
+            },
+            {"role": "toolResult", "content": "42"},
+        ]
+
+        with patch.object(agent, "_health_check", return_value=None):
+            with patch.object(agent, "_retrieve_trajectory_sync", return_value=recovered_trajectory):
+                with patch("httpx.Client", return_value=mock_client):
+                    result = agent.solve(task)
+
+        assert result.raw_output == ""
+        assert result.answer is None
+        assert result.finish_reason == "incomplete"
+        assert result.metadata["partial_reasoning_only"] is True
+        assert result.metadata["answer_source"] == ""
+        assert result.response_json["choices"][0]["message"]["reasoning_content"] == (
+            "partial reasoning from transcript"
+        )
+
+    def test_answer_can_be_extracted_from_reasoning_when_raw_output_is_empty(self):
+        """Predicted answer should still be derivable from reasoning_content."""
+        agent = self._setup_agent(max_attempts=1)
+        task = BenchmarkTask(task_id="t_reasoning_answer", problem="Hard problem", ground_truth="42")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "text/event-stream"}
+        mock_response.iter_lines = MagicMock(return_value=[])
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        mock_client = MagicMock()
+        mock_client.stream = MagicMock(return_value=mock_response)
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+
+        recovered_trajectory = [
+            {
+                "role": "assistant",
+                "content": "",
+                "thinking": "After checking all cases, the final answer is 42.",
+            },
+        ]
+
+        with patch.object(agent, "_health_check", return_value=None):
+            with patch.object(agent, "_retrieve_trajectory_sync", return_value=recovered_trajectory):
+                with patch("httpx.Client", return_value=mock_client):
+                    result = agent.solve(task)
+
+        assert result.raw_output == ""
+        assert result.answer == "42"
+        assert result.finish_reason == "incomplete"
+        assert result.metadata["partial_reasoning_only"] is True
+        assert result.metadata["answer_source"] == "reasoning_content"
+
 
 # ===================================================================
 # 2. Scorer handling of null answers — validate the issue and fix

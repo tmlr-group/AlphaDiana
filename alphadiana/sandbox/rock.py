@@ -21,6 +21,7 @@ from typing import Any
 
 from alphadiana.sandbox.base import ExecutionResult, Sandbox, SandboxSession
 from alphadiana.sandbox.registry import register_sandbox
+from alphadiana.utils.rock_runtime import DEFAULT_SANDBOX_IMAGE, configure_rock_runtime_for_image
 
 logger = logging.getLogger(__name__)
 _PROFILE_CACHE: dict[tuple[str, str], tuple[str, float]] = {}
@@ -634,7 +635,7 @@ class ROCKSandbox(Sandbox):
         self._config = {
             "admin_base_url": config["admin_base_url"],
             "proxy_base_url": config["proxy_base_url"],
-            "image": config.get("image", "python:3.11"),
+            "image": config.get("image", DEFAULT_SANDBOX_IMAGE),
             "memory": config.get("memory", "2g"),
             "cpus": float(config.get("cpus", 0.5)),
             "startup_timeout": int(config.get("startup_timeout", 300)),
@@ -644,6 +645,7 @@ class ROCKSandbox(Sandbox):
             "proxy_timeout": self._proxy_timeout,
             "network_mode": self._network_mode,
         }
+        configure_rock_runtime_for_image(self._config["image"])
 
     def create_session(self) -> ROCKSession:
         return ROCKSession(**self._config)

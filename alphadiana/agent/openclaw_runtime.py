@@ -8,6 +8,8 @@ workspace snapshots) after task execution.
 from __future__ import annotations
 
 import json
+import os
+import re
 import tempfile
 import time
 from copy import deepcopy
@@ -90,12 +92,12 @@ class OpenClawRuntimeManager:
     def __init__(self, config: dict) -> None:
         self._gateway_token = config.get("gateway_token", "OPENCLAW")
         self._gateway_model = config.get("model", "openclaw")
-        self._rock_agent_config_path = config.get("rock_agent_config_path", "")
-        self._openclaw_config_path = config.get("openclaw_config_path", "")
+        self._rock_agent_config_path = str(Path(config.get("rock_agent_config_path", "")).resolve()) if config.get("rock_agent_config_path") else ""
+        self._openclaw_config_path = str(Path(config.get("openclaw_config_path", "")).resolve()) if config.get("openclaw_config_path") else ""
         self._gateway_startup_timeout = int(config.get("gateway_startup_timeout", 180))
         self._gateway_warmup_timeout = int(config.get("gateway_warmup_timeout", 180))
         self._gateway_warmup_initial_delay = float(config.get("gateway_warmup_initial_delay", 5.0))
-        self._gateway_log_path = config.get("gateway_log_path", "/root/gateway.log")
+        self._gateway_log_path = config.get("gateway_log_path", "/tmp/gateway.log")
         self._workspace_path = config.get("workspace_path", "/root/.openclaw/workspace")
         self._remote_openclaw_config_path = config.get("remote_openclaw_config_path", "/tmp/openclaw.json")
         self._started_sandboxes: set[str] = set()
@@ -240,28 +242,30 @@ class OpenClawRuntimeManager:
         if not openclaw_config.exists():
             raise FileNotFoundError(f"openclaw_config_path not found: {openclaw_config}")
 
-        _progress(
-            f"uploading OpenClaw config {openclaw_config} to sandbox path {self._remote_openclaw_config_path}"
-        )
         base_openclaw_config = json.loads(openclaw_config.read_text(encoding="utf-8"))
         rendered_openclaw_config = self._build_openclaw_config(base_openclaw_config)
-        sandbox.upload(
-            self._remote_openclaw_config_path,
-            json.dumps(rendered_openclaw_config, indent=2).encode("utf-8"),
-        )
 
         generated_config = yaml.safe_load(rock_agent_config.read_text(encoding="utf-8"))
-        generated_config["working_dir"] = None
-        generated_config["use_deploy_working_dir_as_fallback"] = False
-        generated_config["project_path"] = self._workspace_path
-        generated_config["run_cmd"] = (
-            f"OPENCLAW_CONFIG_PATH={self._remote_openclaw_config_path} "
-            f"nohup openclaw gateway >> {self._gateway_log_path} 2>&1 &"
-        )
+        env_cfg = generated_config.setdefault("env", {})
+        for key in ("OPENAI_BASE_URL", "OPENAI_API_KEY", "OPENAI_MODEL_NAME"):
+            local_val = os.environ.get(key, "")
+            if local_val:
+                env_cfg[key] = local_val
+                continue
+            current_val = str(env_cfg.get(key, ""))
+            if not current_val or re.match(r"^\$\{.+\}$", current_val):
+                raise RuntimeError(
+                    f"Dynamic OpenClaw bootstrap requires {key} to be set in the local environment. "
+                    f"Export it before running alphadiana."
+                )
 
         td = tempfile.TemporaryDirectory(prefix="alphadiana-openclaw-")
         self._temp_dirs.append(td)
         config_dir = Path(td.name)
+        (config_dir / "openclaw.json").write_text(
+            json.dumps(rendered_openclaw_config, indent=2),
+            encoding="utf-8",
+        )
         generated_path = config_dir / "rock_agent_config.yaml"
         generated_path.write_text(
             yaml.safe_dump(generated_config, sort_keys=False),
