@@ -126,7 +126,7 @@ bash dev/start_openclaw.sh \
 On success the script prints `Sandbox ID` and `API base` — copy those into your evaluation YAML.
 
 Common failure modes:
-- `Failed to start sandbox within 60.0s` usually means the image is still the old `ghcr.io/tsrigo/openclaw-sandbox:2026.3.7`, or Docker/image pull is slow. Use `ghcr.io/tsrigo/openclaw-reasoning:20260320` and retry.
+- `Failed to start sandbox within 60.0s` usually means Docker is still pulling `ghcr.io/tsrigo/openclaw-reasoning:20260320`, or the local image cache is stale. Re-pull the reasoning image and retry.
 - `async start sandbox failed` with `Get timed out: some object(s) not ready.` usually points to ROCK/Ray startup issues or stale ports. Re-run `source dev/rock_env.sh && source dev/.rock_ports.env`, confirm `bash dev/quickstart.sh` completed cleanly, and make sure Docker, Ray, ROCK admin/proxy, and Redis are all alive.
 
 > For full usage details, see [`dev/README_prebuilt.md`](dev/README_prebuilt.md).

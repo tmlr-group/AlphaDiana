@@ -12,8 +12,8 @@ DEFAULT_SANDBOX_IMAGE: str = os.environ.get(
     os.environ.get("OPENCLAW_IMAGE", "ghcr.io/tsrigo/openclaw-reasoning:20260320"),
 )
 
-# Alternate pre-built image that ships with Node.js + openclaw already installed.
-PREBUILT_SANDBOX_IMAGE: str = "ghcr.io/tsrigo/openclaw-sandbox:2026.3.7"
+# Canonical pre-built image that ships with Node.js + openclaw already installed.
+PREBUILT_SANDBOX_IMAGE: str = "ghcr.io/tsrigo/openclaw-reasoning:20260320"
 
 # Full npm install command (used when running on a bare python:3.11 image).
 OPENCLAW_NPM_INSTALL_CMD = "npm install -g openclaw@2026.3.7 --omit=optional"
@@ -40,9 +40,7 @@ NODE_PREBUILT_INSTALL_CMD = "ln -sfn /opt/node runtime-env"
 # ---------------------------------------------------------------------------
 
 _PREBUILT_IMAGE_PREFIXES = (
-    "ghcr.io/tsrigo/openclaw-sandbox:",
     "ghcr.io/tsrigo/openclaw-reasoning:",
-    "openclaw-sandbox:",
     "openclaw-reasoning:",
 )
 
