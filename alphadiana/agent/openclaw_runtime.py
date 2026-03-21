@@ -8,6 +8,8 @@ workspace snapshots) after task execution.
 from __future__ import annotations
 
 import json
+import os
+import re
 import tempfile
 import time
 from copy import deepcopy
@@ -240,28 +242,30 @@ class OpenClawRuntimeManager:
         if not openclaw_config.exists():
             raise FileNotFoundError(f"openclaw_config_path not found: {openclaw_config}")
 
-        _progress(
-            f"uploading OpenClaw config {openclaw_config} to sandbox path {self._remote_openclaw_config_path}"
-        )
         base_openclaw_config = json.loads(openclaw_config.read_text(encoding="utf-8"))
         rendered_openclaw_config = self._build_openclaw_config(base_openclaw_config)
-        sandbox.upload(
-            self._remote_openclaw_config_path,
-            json.dumps(rendered_openclaw_config, indent=2).encode("utf-8"),
-        )
 
         generated_config = yaml.safe_load(rock_agent_config.read_text(encoding="utf-8"))
-        generated_config["working_dir"] = None
-        generated_config["use_deploy_working_dir_as_fallback"] = False
-        generated_config["project_path"] = self._workspace_path
-        generated_config["run_cmd"] = (
-            f"OPENCLAW_CONFIG_PATH={self._remote_openclaw_config_path} "
-            f"nohup openclaw gateway >> {self._gateway_log_path} 2>&1 &"
-        )
+        env_cfg = generated_config.setdefault("env", {})
+        for key in ("OPENAI_BASE_URL", "OPENAI_API_KEY", "OPENAI_MODEL_NAME"):
+            local_val = os.environ.get(key, "")
+            if local_val:
+                env_cfg[key] = local_val
+                continue
+            current_val = str(env_cfg.get(key, ""))
+            if not current_val or re.match(r"^\$\{.+\}$", current_val):
+                raise RuntimeError(
+                    f"Dynamic OpenClaw bootstrap requires {key} to be set in the local environment. "
+                    f"Export it before running alphadiana."
+                )
 
         td = tempfile.TemporaryDirectory(prefix="alphadiana-openclaw-")
         self._temp_dirs.append(td)
         config_dir = Path(td.name)
+        (config_dir / "openclaw.json").write_text(
+            json.dumps(rendered_openclaw_config, indent=2),
+            encoding="utf-8",
+        )
         generated_path = config_dir / "rock_agent_config.yaml"
         generated_path.write_text(
             yaml.safe_dump(generated_config, sort_keys=False),

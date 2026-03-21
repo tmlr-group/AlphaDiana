@@ -2,11 +2,14 @@ run_id: "openclaw-qwen3-8b-aime2024-dynamic"
 
 agent:
   name: openclaw
-  version: "2026.3.7"
+  version: "2026.3.20"
   config:
-    rock_image: "ghcr.io/tsrigo/openclaw-sandbox:2026.3.7"
+    rock_image: "ghcr.io/tsrigo/openclaw-reasoning:20260320"
     rock_agent_config_path: "openclaw_deploy/rock_agent_config.prebuilt.yaml"
     openclaw_config_path: "openclaw_deploy/openclaw.json"
+    rock_memory: "4g"
+    rock_cpus: 1
+    rock_startup_timeout: 600
     model: openclaw
     gateway_token: "OPENCLAW"
     max_tokens: 65536
@@ -34,9 +37,9 @@ scorer:
   config:
     tolerance: 1e-6
 
-max_concurrent: 4
+max_concurrent: 1
 output_dir: "./results"
 metadata:
   author: "zjk"
   gpu: "A800"
-  notes: "OpenClaw + Qwen3-8B on AIME 2024 (dynamic bootstrap, 4 concurrent)"
+  notes: "OpenClaw + Qwen3-8B on AIME 2024 (dynamic bootstrap, single sandbox)"

@@ -37,28 +37,38 @@ bash dev/quickstart.sh
 
 ### OpenClaw Agent
 
+Recommended minimal path: use the single-sandbox dynamic example first. It is the quickest way to verify that the full system can run end-to-end on a fresh machine.
+
 
 ```bash
 #1. Activate environment (required for every new terminal)
 
 conda activate alphadiana && source dev/rock_env.sh && source dev/.rock_ports.env
-#2. Edit config files - openclaw_deploy/rock_agent_config.yaml  — ROCK sandbox & model connection parameters
+#2. Pull the recommended reasoning image once
+docker pull ghcr.io/tsrigo/openclaw-reasoning:20260320
 
-#3. Deploy OpenClaw agent to ROCK sandbox
-python openclaw_deploy/deploy.py \
-  --agent-config openclaw_deploy/rock_agent_config.yaml
+#3. Export your model provider settings
+export OPENAI_BASE_URL=...
+export OPENAI_API_KEY=...
+export OPENAI_MODEL_NAME=...
 
-#4. Edit config files  - configs/examples/openclaw_aime2024.yaml — evaluation parameters
+#4. Run the single-sandbox dynamic example
+alphadiana validate configs/examples/openclaw_aime2024_dynamic.yaml
+alphadiana run configs/examples/openclaw_aime2024_dynamic.yaml
 
-#5. Run evaluation
-alphadiana validate configs/examples/openclaw_aime2024.yaml
-alphadiana run configs/examples/openclaw_aime2024.yaml
-
-#6. View results
+#5. View results
 alphadiana report results/
 ```
 
-> **Note:** Default configs are provided in `openclaw_deploy/`. At minimum, set `OPENAI_BASE_URL` and `OPENAI_MODEL_NAME` in `rock_agent_config.yaml` before deploying. For timeout tuning and other details, see [`configs/schema.yaml.md`](configs/schema.yaml.md).
+This example now defaults to a single sandbox, `4g` memory, `1` CPU, and `max_concurrent: 1` to maximize first-run success.
+
+For higher concurrency, you can still use the dashboard deploy-and-run flow or pre-deploy multiple sandboxes; we will keep improving the CLI high-concurrency path separately.
+
+If you prefer the manual deploy flow, use `openclaw_deploy/rock_agent_config.prebuilt.yaml` with the reasoning image. The static examples (`openclaw_aime2024.yaml`, `openclaw_aime2025.yaml`) assume you already deployed a sandbox and only need `SANDBOX_ID`.
+
+> **Important:** `openclaw_deploy/rock_agent_config.prebuilt.yaml` is the right config for the pre-built reasoning image. `openclaw_deploy/rock_agent_config.yaml` is the fallback path for a bare image that installs `openclaw@2026.3.7` at runtime, which is slower and not the recommended flow.
+
+> **Note:** Default configs are provided in `openclaw_deploy/`. At minimum, set `OPENAI_BASE_URL`, `OPENAI_API_KEY`, and `OPENAI_MODEL_NAME` before running OpenClaw. For timeout tuning and other details, see [`configs/schema.yaml.md`](configs/schema.yaml.md).
 
 The deploy flow uses `DEFAULT_SANDBOX_IMAGE` from `alphadiana/utils/rock_runtime.py`. The current default is:
 
@@ -96,7 +106,7 @@ If you are testing long reasoning runs, also watch for infrastructure-side failu
 
 #### Pre-built Image (Faster Deploy)
 
-`bash dev/quickstart.sh` sets up infrastructure but does not deploy OpenClaw — use `bash dev/start_openclaw.sh` for that (~1 min with the pre-built image vs ~15 min with npm install).
+`bash dev/quickstart.sh` sets up Python, Ray, ROCK admin/proxy, and Redis, but it does not deploy OpenClaw. To get a working sandbox, run `bash dev/start_openclaw.sh` or `python openclaw_deploy/deploy.py ...` afterward.
 
 Pull the image once (~2.6 GB):
 
@@ -114,6 +124,10 @@ bash dev/start_openclaw.sh \
 ```
 
 On success the script prints `Sandbox ID` and `API base` — copy those into your evaluation YAML.
+
+Common failure modes:
+- `Failed to start sandbox within 60.0s` usually means the image is still the old `ghcr.io/tsrigo/openclaw-sandbox:2026.3.7`, or Docker/image pull is slow. Use `ghcr.io/tsrigo/openclaw-reasoning:20260320` and retry.
+- `async start sandbox failed` with `Get timed out: some object(s) not ready.` usually points to ROCK/Ray startup issues or stale ports. Re-run `source dev/rock_env.sh && source dev/.rock_ports.env`, confirm `bash dev/quickstart.sh` completed cleanly, and make sure Docker, Ray, ROCK admin/proxy, and Redis are all alive.
 
 > For full usage details, see [`dev/README_prebuilt.md`](dev/README_prebuilt.md).
 

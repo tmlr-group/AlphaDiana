@@ -2,7 +2,7 @@ run_id: "openclaw-qwen3-8b-aime2024-001"  # Unique identifier for this evaluatio
 
 agent:
   name: openclaw                # Agent type: openclaw
-  version: "2026.3.7"           # OpenClaw version 
+  version: "2026.3.20"          # OpenClaw version 
   config:
     # OpenClaw gateway endpoint (proxied via ROCK)
     # Single sandbox:   export SANDBOX_ID=<id>
