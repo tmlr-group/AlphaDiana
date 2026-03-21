@@ -26,10 +26,10 @@
   "agents": {
     "defaults": {
       "model": {
-        "primary": "openrouter/${OPENAI_MODEL_NAME}"
+        "primary": "${OPENAI_MODEL_NAME}"
       },
       "models": {
-        "openrouter/${OPENAI_MODEL_NAME}": {
+        "${OPENAI_MODEL_NAME}": {
           "params": {
             "maxTokens": 32768
           }
