@@ -62,7 +62,13 @@ alphadiana report results/
 
 This example now defaults to a single sandbox, `4g` memory, `1` CPU, and `max_concurrent: 1` to maximize first-run success.
 
-For higher concurrency, you can still use the dashboard deploy-and-run flow or pre-deploy multiple sandboxes; we will keep improving the CLI high-concurrency path separately.
+For higher concurrency, use the multi-sandbox config which automatically pre-deploys one sandbox per concurrent task:
+
+```bash
+alphadiana run configs/examples/openclaw_aime2024_dynamic_multisandbox.yaml
+```
+
+To adjust concurrency, just change `max_concurrent` in the YAML — the CLI will create the matching number of sandboxes automatically.
 
 If you prefer the manual deploy flow, use `openclaw_deploy/rock_agent_config.prebuilt.yaml` with the reasoning image. The static examples (`openclaw_aime2024.yaml`, `openclaw_aime2025.yaml`) assume you already deployed a sandbox and only need `SANDBOX_ID`.
 

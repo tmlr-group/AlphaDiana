@@ -265,6 +265,9 @@ Minimal OpenClaw smoke path:
   alphadiana validate configs/examples/openclaw_aime2024_dynamic.yaml
   alphadiana run configs/examples/openclaw_aime2024_dynamic.yaml
 
+Multi-sandbox CLI path (adjust max_concurrent in the YAML to control concurrency):
+  alphadiana run configs/examples/openclaw_aime2024_dynamic_multisandbox.yaml
+
 Manual deploy path:
   python openclaw_deploy/deploy.py --agent-config openclaw_deploy/rock_agent_config.prebuilt.yaml --image ghcr.io/tsrigo/openclaw-reasoning:20260320
 EOF

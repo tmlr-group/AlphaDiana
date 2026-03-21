@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import socket
 from dataclasses import dataclass
+from pathlib import Path
 
 
 LOCALHOST = "127.0.0.1"
@@ -14,10 +15,49 @@ DEFAULT_RAY_CLIENT_SERVER_PORT = 30001
 DEFAULT_REDIS_PORT = 6379
 DEFAULT_ADMIN_PORT = 9000
 DEFAULT_PROXY_PORT = 9001
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+ROCK_PORTS_ENV_FILE = PROJECT_ROOT / "dev" / ".rock_ports.env"
 
 
 def _env_int(name: str, default: int) -> int:
     raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer, got {raw!r}") from exc
+    if not (1 <= value <= 65535):
+        raise ValueError(f"{name} must be between 1 and 65535, got {value}")
+    return value
+
+
+def _load_rock_ports_file() -> dict[str, str]:
+    """Load ROCK port exports from dev/.rock_ports.env if present."""
+    if not ROCK_PORTS_ENV_FILE.exists():
+        return {}
+    values: dict[str, str] = {}
+    for raw_line in ROCK_PORTS_ENV_FILE.read_text().splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:]
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip()
+        if not key or not value or "${" in value:
+            continue
+        if (value.startswith('"') and value.endswith('"')) or (
+            value.startswith("'") and value.endswith("'")
+        ):
+            value = value[1:-1]
+        values[key] = value
+    return values
+
+
+def _resolve_int(name: str, default: int, file_values: dict[str, str]) -> int:
+    raw = file_values.get(name, "").strip() or os.environ.get(name, "").strip()
     if not raw:
         return default
     try:
@@ -73,14 +113,17 @@ class RockPorts:
 
 
 def resolve_rock_ports_from_env() -> RockPorts:
-    """Resolve ROCK ports from environment variables with sane defaults."""
+    """Resolve ROCK ports from dev/.rock_ports.env first, then environment."""
+    file_values = _load_rock_ports_file()
     return RockPorts(
-        ray_port=_env_int("ROCK_RAY_PORT", DEFAULT_RAY_PORT),
-        ray_dashboard_port=_env_int("ROCK_RAY_DASHBOARD_PORT", DEFAULT_RAY_DASHBOARD_PORT),
-        ray_client_server_port=_env_int(
-            "ROCK_RAY_CLIENT_SERVER_PORT", DEFAULT_RAY_CLIENT_SERVER_PORT
+        ray_port=_resolve_int("ROCK_RAY_PORT", DEFAULT_RAY_PORT, file_values),
+        ray_dashboard_port=_resolve_int(
+            "ROCK_RAY_DASHBOARD_PORT", DEFAULT_RAY_DASHBOARD_PORT, file_values
         ),
-        redis_port=_env_int("ROCK_REDIS_PORT", DEFAULT_REDIS_PORT),
-        admin_port=_env_int("ROCK_ADMIN_PORT", DEFAULT_ADMIN_PORT),
-        proxy_port=_env_int("ROCK_PROXY_PORT", DEFAULT_PROXY_PORT),
+        ray_client_server_port=_resolve_int(
+            "ROCK_RAY_CLIENT_SERVER_PORT", DEFAULT_RAY_CLIENT_SERVER_PORT, file_values
+        ),
+        redis_port=_resolve_int("ROCK_REDIS_PORT", DEFAULT_REDIS_PORT, file_values),
+        admin_port=_resolve_int("ROCK_ADMIN_PORT", DEFAULT_ADMIN_PORT, file_values),
+        proxy_port=_resolve_int("ROCK_PROXY_PORT", DEFAULT_PROXY_PORT, file_values),
     )

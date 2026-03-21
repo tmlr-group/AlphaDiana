@@ -22,6 +22,7 @@ import yaml
 import logging as _logging
 
 _logger = _logging.getLogger(__name__)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 # Hint for slow npm installs in restricted networks.
 NPM_TIMEOUT_HINT = (
@@ -46,7 +47,7 @@ def _is_ready_probe_status(status_code: int) -> bool:
 
 
 def _extract_text_from_gateway_payload(payload: Any) -> str:
-    """Extract assistant text from a gateway warmup response."""
+    """Extract assistant text or reasoning from a gateway warmup response."""
     if not isinstance(payload, dict):
         return ""
 
@@ -60,6 +61,21 @@ def _extract_text_from_gateway_payload(payload: Any) -> str:
             if isinstance(content, list):
                 parts: list[str] = []
                 for item in content:
+                    if isinstance(item, str):
+                        parts.append(item)
+                    elif isinstance(item, dict):
+                        text = item.get("text") or item.get("content")
+                        if isinstance(text, str):
+                            parts.append(text)
+                joined = "".join(parts).strip()
+                if joined:
+                    return joined
+            reasoning_content = message.get("reasoning_content")
+            if isinstance(reasoning_content, str) and reasoning_content.strip():
+                return reasoning_content.strip()
+            if isinstance(reasoning_content, list):
+                parts = []
+                for item in reasoning_content:
                     if isinstance(item, str):
                         parts.append(item)
                     elif isinstance(item, dict):
@@ -92,8 +108,8 @@ class OpenClawRuntimeManager:
     def __init__(self, config: dict) -> None:
         self._gateway_token = config.get("gateway_token", "OPENCLAW")
         self._gateway_model = config.get("model", "openclaw")
-        self._rock_agent_config_path = str(Path(config.get("rock_agent_config_path", "")).resolve()) if config.get("rock_agent_config_path") else ""
-        self._openclaw_config_path = str(Path(config.get("openclaw_config_path", "")).resolve()) if config.get("openclaw_config_path") else ""
+        self._rock_agent_config_path = str(self._resolve_config_path(config.get("rock_agent_config_path", ""))) if config.get("rock_agent_config_path") else ""
+        self._openclaw_config_path = str(self._resolve_config_path(config.get("openclaw_config_path", ""))) if config.get("openclaw_config_path") else ""
         self._gateway_startup_timeout = int(config.get("gateway_startup_timeout", 180))
         self._gateway_warmup_timeout = int(config.get("gateway_warmup_timeout", 180))
         self._gateway_warmup_initial_delay = float(config.get("gateway_warmup_initial_delay", 5.0))
@@ -112,6 +128,19 @@ class OpenClawRuntimeManager:
         self._embedding_api_base = config.get("embedding_api_base", "")
         self._embedding_api_key = config.get("embedding_api_key", "")
         self._workspace = config.get("workspace", "")
+
+    def _resolve_config_path(self, path_str: str) -> Path:
+        """Resolve config paths stably, independent of the current working directory."""
+        path = Path(path_str).expanduser()
+        if path.is_absolute():
+            return path.resolve()
+        for candidate in [
+            (PROJECT_ROOT / path).resolve(),
+            path.resolve(),
+        ]:
+            if candidate.exists():
+                return candidate
+        return (PROJECT_ROOT / path).resolve()
 
     @property
     def is_configured(self) -> bool:
@@ -180,7 +209,11 @@ class OpenClawRuntimeManager:
         _progress("waiting for OpenClaw gateway readiness")
         self._wait_for_gateway(sandbox)
         _progress("warming up OpenClaw chat completions endpoint")
-        self._warmup_gateway(sandbox)
+        try:
+            self._warmup_gateway(sandbox)
+        except Exception as exc:
+            _logger.warning("OpenClaw gateway warmup did not fully succeed; continuing: %s", exc)
+            _progress(f"gateway warmup did not fully succeed; continuing: {exc}")
         self._started_sandboxes.add(sandbox_id)
         _progress(f"OpenClaw runtime ready for sandbox_id={sandbox_id}")
         return self.runtime_info(sandbox)
