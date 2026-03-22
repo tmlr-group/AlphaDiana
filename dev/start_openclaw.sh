@@ -50,6 +50,13 @@ fi
 # ── 1. Load environment ──────────────────────────────────────────────────────
 source "${SCRIPT_DIR}/rock_env.sh"
 
+# Recompute derived ROCK URLs from the active dynamic ports in this shell.
+# This prevents stale ROCK_BASE_URL/ROCK_PROXY_URL values from older sessions
+# from pointing deploy.py to the wrong admin/proxy ports.
+export ROCK_BASE_URL="http://${ROCK_HTTP_HOST}:${ROCK_ADMIN_PORT}"
+export ROCK_PROXY_ROOT_URL="http://${ROCK_HTTP_HOST}:${ROCK_PROXY_PORT}"
+export ROCK_PROXY_URL="${ROCK_PROXY_ROOT_URL}/apis/envs/sandbox/v1"
+
 echo "[1/6] Environment loaded"
 echo "      ROCK_ADMIN_PORT = ${ROCK_ADMIN_PORT}"
 echo "      ROCK_PROXY_PORT = ${ROCK_PROXY_PORT}"

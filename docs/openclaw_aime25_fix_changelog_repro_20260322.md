@@ -365,3 +365,78 @@ alphadiana run configs/examples/openclaw_aime2025_dynamic.yaml \
 2. 当负载升高时，估算器推荐 profile 会自动下调且任务可完成
 3. 运行链路不再依赖机器私有路径/IP
 4. push 前检查无真实 API key、私钥、用户敏感路径
+
+---
+
+## 9. 2026-03-22 晚间增量复盘（多 sandbox 长跑）
+
+本节记录最新一轮 20 题压力测试（`max_concurrent=2`）的变更、证据与结论。
+
+### 9.1 新增 changelog（本轮）
+
+- `alphadiana/runner/runner.py`
+  - 多 sandbox 预部署支持“部分成功继续”：当第 N 个 sandbox 失败时，不再整批回退；保留已成功 sandbox 继续运行。
+  - 自动按可用 sandbox 容量下调 `max_concurrent`，避免并发超过可用网关数。
+  - 增加预部署节流：`predeploy_stagger_seconds`（默认 `2.0`）。
+  - 增加同轮 profile 复用：后续 sandbox 优先复用前一个成功 sandbox 的 `memory/cpus`。
+  - 增加预部署 session 复用清理：每题后对命中 sandbox 执行 `reset()`（清空工作区/会话文件），不销毁容器。
+  - 增加跨运行 profile 持久化：成功 profile 写入 `.cache/openclaw_startup_profiles.json`，下次优先读取。
+
+- `dev/start_openclaw.sh`
+  - 启动时强制按当前端口重建 `ROCK_BASE_URL/ROCK_PROXY_URL`，避免旧环境变量导致端口错配。
+
+### 9.2 日志证据与事实判断
+
+关键结论：**“成功配置未复用”不成立；同轮复用已经生效。**
+
+证据：
+
+- 在第二个 sandbox 预部署时出现明确日志：
+  - `Predeploy sandbox 2/2 reusing startup profile memory=1536m cpus=0.75`
+
+对应解释：
+
+1. 第一个 sandbox 在 `2g/1.0` 多次超时后，最终在 `1536m/0.75` 成功。
+2. 第二个 sandbox 启动时已直接使用 `1536m/0.75`，说明复用命中。
+3. 第二个 sandbox 仍失败，原因是该 profile 在当时机器竞争下也不稳定，不是“没复用”。
+
+### 9.3 失败形态分析（为何仍会很慢）
+
+本轮慢的主要来源：第二个 sandbox 仍触发了完整降级链，单档位多次超时后再降级。
+
+表现为：
+
+- `1536m/0.75` 重试 3 次后失败
+- 继续降级到 `1g/0.5`、`768m/0.5`、`768m/0.25`，每档都要经历超时窗口
+
+因此即便“复用”生效，若复用到的档位在当前负载下仍不稳定，整体时长仍会被拉长。
+
+### 9.4 另一个独立问题（已识别）
+
+在 `dev/start_openclaw.sh` 的 deploy 预热阶段曾出现：
+
+- `session 'default' does not exist`
+
+该问题属于 deploy 预热时序问题，会触发 warning，但 oneclick 脚本会继续执行后续评测链路。它不是 profile 复用失效的根因。
+
+### 9.5 当前经验总结
+
+1. 同轮复用有效：能减少“每个 sandbox 从最大规格反复探测”的成本。
+2. 跨运行持久化已落地：后续 run 可直接命中历史成功 profile，进一步减少冷启动探测时间。
+3. 多 sandbox 慢点仍在“第二 sandbox 启动不稳定”本体，而不是复用机制缺失。
+4. 每题 `reset()` 复用容器是正确方向：能避免频繁销毁/重建容器带来的额外开销。
+
+### 9.6 建议的后续优化（按优先级）
+
+1. 为预部署增加“快速失败阈值”
+  - 当某档位连续超时达到阈值，提前降级，避免整档位 3 次完整超时。
+
+2. 将 profile 缓存拆分为“机器级稳定档位 + 当前负载档位”
+  - 机器级用于冷启动，负载级用于同机高竞争时段快速收敛。
+
+3. 为 `default session warmup` 增加更鲁棒自愈
+  - 明确在缺失 session 时先创建再探测，减少 deploy warning 噪音。
+
+4. 为并发压测增加标准观测指标落盘
+  - 记录每个 sandbox 的启动档位、重试次数、超时次数、最终状态，便于后续调参。
+

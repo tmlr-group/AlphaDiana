@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import math
 import logging
 import threading
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import httpx
@@ -28,6 +30,64 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 OPENCLAW_CONCURRENCY_PER_SANDBOX = 1
+_OPENCLAW_PROFILE_CACHE_PATH = Path(".cache/openclaw_startup_profiles.json")
+
+
+def _build_openclaw_profile_cache_key(config: "ExperimentConfig", admin_base_url: str) -> str:
+    dataset = str(config.benchmark_config.get("dataset", ""))
+    split = str(config.benchmark_config.get("split", ""))
+    image = str(config.agent_config.get("rock_image", ""))
+    model_name = str(config.agent_config.get("OPENAI_MODEL_NAME", config.agent_config.get("model", "")))
+    return "|".join([
+        config.agent_name,
+        config.benchmark_name,
+        image,
+        model_name,
+        dataset,
+        split,
+        admin_base_url,
+    ])
+
+
+def _load_cached_openclaw_profile(cache_key: str) -> tuple[str, float] | None:
+    try:
+        if not _OPENCLAW_PROFILE_CACHE_PATH.exists():
+            return None
+        payload = json.loads(_OPENCLAW_PROFILE_CACHE_PATH.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            return None
+        item = payload.get(cache_key)
+        if not isinstance(item, dict):
+            return None
+        memory = str(item.get("memory", "")).strip()
+        cpus = float(item.get("cpus", 0))
+        if not memory or cpus <= 0:
+            return None
+        return memory, cpus
+    except Exception:
+        logger.debug("Failed to load OpenClaw startup profile cache", exc_info=True)
+        return None
+
+
+def _save_cached_openclaw_profile(cache_key: str, memory: str, cpus: float) -> None:
+    try:
+        _OPENCLAW_PROFILE_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        payload: dict[str, dict[str, object]] = {}
+        if _OPENCLAW_PROFILE_CACHE_PATH.exists():
+            existing = json.loads(_OPENCLAW_PROFILE_CACHE_PATH.read_text(encoding="utf-8"))
+            if isinstance(existing, dict):
+                payload.update(existing)
+        payload[cache_key] = {
+            "memory": str(memory),
+            "cpus": float(cpus),
+            "updated_at": int(time.time()),
+        }
+        _OPENCLAW_PROFILE_CACHE_PATH.write_text(
+            json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+    except Exception:
+        logger.debug("Failed to save OpenClaw startup profile cache", exc_info=True)
 
 
 def _is_sandbox_disconnect(exc: Exception) -> bool:
@@ -208,6 +268,11 @@ class Runner:
         # create N sandboxes up front, start one gateway per sandbox, and let
         # OpenClaw round-robin across the resulting gateway_pool.
         predeployed_sessions = []
+        predeployed_session_by_sandbox_id: dict[str, object] = {}
+        predeployed_session_reset_lock = threading.Lock()
+        reset_predeployed_between_tasks = bool(
+            self.config.agent_config.get("reset_predeployed_between_tasks", True)
+        )
         if (
             self.sandbox is None
             and self.config.agent_name == "openclaw"
@@ -245,7 +310,24 @@ class Runner:
                         "proxy_timeout": int(self.config.agent_config.get("proxy_timeout", 1800)),
                         "network_mode": self.config.agent_config.get("network_mode", None),
                     }
+                    cache_key = _build_openclaw_profile_cache_key(
+                        self.config,
+                        str(auto_sandbox_config["admin_base_url"]),
+                    )
+                    cached_profile = _load_cached_openclaw_profile(cache_key)
+                    if cached_profile is not None:
+                        auto_sandbox_config["memory"] = cached_profile[0]
+                        auto_sandbox_config["cpus"] = cached_profile[1]
+                        logger.info(
+                            "Loaded persisted OpenClaw startup profile memory=%s cpus=%s",
+                            cached_profile[0],
+                            cached_profile[1],
+                        )
                     rock_cls = SandboxRegistry.get("rock")
+                    share_startup_profile = bool(
+                        self.config.agent_config.get("share_predeploy_startup_profile", True)
+                    )
+                    preferred_profile: tuple[str, float] | None = None
 
                     def _deploy_one_gateway(sb_idx: int):
                         max_attempts = 3
@@ -258,11 +340,25 @@ class Runner:
                                     sb_idx + 1, desired_num, attempt, max_attempts,
                                 )
                                 sandbox_backend = rock_cls()
-                                sandbox_backend.setup(auto_sandbox_config)
+                                sandbox_config = dict(auto_sandbox_config)
+                                if share_startup_profile and preferred_profile is not None:
+                                    sandbox_config["memory"] = preferred_profile[0]
+                                    sandbox_config["cpus"] = preferred_profile[1]
+                                    logger.info(
+                                        "Predeploy sandbox %d/%d reusing startup profile memory=%s cpus=%s",
+                                        sb_idx + 1,
+                                        desired_num,
+                                        preferred_profile[0],
+                                        preferred_profile[1],
+                                    )
+                                sandbox_backend.setup(sandbox_config)
                                 session = sandbox_backend.create_session()
                                 runtime_manager = OpenClawRuntimeManager(self.config.agent_config)
                                 info = runtime_manager.ensure_ready(session)
-                                return session, info
+                                md = session.metadata() if hasattr(session, "metadata") else {}
+                                profile_memory = str(md.get("memory", sandbox_config["memory"]))
+                                profile_cpus = float(md.get("cpus", sandbox_config["cpus"]))
+                                return session, info, (profile_memory, profile_cpus)
                             except Exception as exc:
                                 last_error = exc
                                 logger.warning(
@@ -287,19 +383,63 @@ class Runner:
                         self.config.max_concurrent,
                         OPENCLAW_CONCURRENCY_PER_SANDBOX,
                     )
-                    deployment_results = [
-                        _deploy_one_gateway(i)
-                        for i in range(desired_num)
-                    ]
+                    deployment_results = []
+                    stagger_sec = float(self.config.agent_config.get("predeploy_stagger_seconds", 2.0) or 0.0)
+                    for i in range(desired_num):
+                        try:
+                            deployed = _deploy_one_gateway(i)
+                            deployment_results.append(deployed)
+                            preferred_profile = deployed[2]
+                        except Exception as exc:
+                            if not deployment_results:
+                                raise
+                            logger.warning(
+                                "Predeploy stopped early at sandbox %d/%d: %s. "
+                                "Continuing with %d predeployed sandbox(es).",
+                                i + 1,
+                                desired_num,
+                                exc,
+                                len(deployment_results),
+                            )
+                            break
+                        if stagger_sec > 0 and i + 1 < desired_num:
+                            time.sleep(stagger_sec)
 
-                    predeployed_sessions = [session for session, _ in deployment_results]
-                    gateway_pool = [info["api_base"] for _, info in deployment_results]
+                    predeployed_sessions = [session for session, _, _ in deployment_results]
+                    gateway_pool = [info["api_base"] for _, info, _ in deployment_results]
+                    predeployed_session_by_sandbox_id = {
+                        str(getattr(session, "sandbox_id", "")): session
+                        for session in predeployed_sessions
+                        if str(getattr(session, "sandbox_id", ""))
+                    }
+                    effective_capacity = max(
+                        1,
+                        len(gateway_pool) * OPENCLAW_CONCURRENCY_PER_SANDBOX,
+                    )
+                    if self.config.max_concurrent > effective_capacity:
+                        logger.warning(
+                            "Lowering max_concurrent from %d to %d due to available sandbox capacity.",
+                            self.config.max_concurrent,
+                            effective_capacity,
+                        )
+                        self.config.max_concurrent = effective_capacity
                     self.config.agent_config["gateway_pool"] = gateway_pool
                     self.config.agent_config["api_base"] = gateway_pool[0]
                     self.config.agent_config["sandbox_id"] = predeployed_sessions[0].sandbox_id
                     self.config.agent_config["rock_sandbox_url"] = (
                         predeployed_sessions[0].metadata().get("proxy_base_url", "")
                     )
+                    if preferred_profile is not None:
+                        _save_cached_openclaw_profile(
+                            cache_key,
+                            preferred_profile[0],
+                            preferred_profile[1],
+                        )
+                        logger.info(
+                            "Persisted OpenClaw startup profile memory=%s cpus=%s",
+                            preferred_profile[0],
+                            preferred_profile[1],
+                        )
                     self.agent.setup(self.config.agent_config)
                     logger.info(
                         "OpenClaw gateway_pool ready with %d sandboxes: %s",
@@ -403,6 +543,25 @@ class Runner:
             logger.info("Creating shared sandbox session for sequential execution")
             shared_session = self.sandbox.create_session()
 
+        def _reset_predeployed_session(sandbox_id: str, task_id: str) -> None:
+            if not reset_predeployed_between_tasks or not sandbox_id:
+                return
+            session = predeployed_session_by_sandbox_id.get(sandbox_id)
+            if session is None:
+                return
+            with predeployed_session_reset_lock:
+                try:
+                    reset = getattr(session, "reset", None)
+                    if callable(reset):
+                        reset()
+                except Exception as exc:
+                    logger.warning(
+                        "Predeployed session reset failed for task %s sandbox_id=%s: %s",
+                        task_id,
+                        sandbox_id,
+                        exc,
+                    )
+
         # Create the solve function that wraps agent + sandbox + scorer.
         def solve_fn(work_item):
             nonlocal shared_session
@@ -415,6 +574,7 @@ class Runner:
                 used_pool = True
             elif shared_session is not None:
                 sandbox_session = shared_session
+            response_sandbox_id = ""
             start = time.monotonic()
             response = None
             try:
@@ -425,6 +585,7 @@ class Runner:
                     response.sandbox_metadata = sandbox_session.metadata()
                 if sandbox_session is not None and not response.sandbox_id:
                     response.sandbox_id = response.sandbox_metadata.get("sandbox_id", "")
+                response_sandbox_id = str(response.sandbox_id or "")
                 if self.sandbox is not None:
                     response.metadata.setdefault("sandbox_backend", self.sandbox.name)
                 # Score the result.
@@ -468,6 +629,7 @@ class Runner:
                         error_response.sandbox_metadata = sandbox_session.metadata()
                     if not error_response.sandbox_id:
                         error_response.sandbox_id = error_response.sandbox_metadata.get("sandbox_id", "")
+                    response_sandbox_id = str(error_response.sandbox_id or "")
                     runtime_manager = getattr(self.agent, "_runtime_manager", None)
                     if runtime_manager is not None and getattr(runtime_manager, "is_configured", False):
                         try:
@@ -483,6 +645,8 @@ class Runner:
                         error_response.gateway_url = f"{sandbox_session.proxy_v1_base()}/chat/completions"
                 if self.sandbox is not None:
                     error_response.metadata.setdefault("sandbox_backend", self.sandbox.name)
+                if not response_sandbox_id:
+                    response_sandbox_id = str(getattr(error_response, "sandbox_id", "") or "")
                 retry_responses = getattr(exc, "retry_responses", None)
                 if retry_responses and "retry_responses" not in error_response.metadata:
                     error_response.metadata["retry_responses"] = retry_responses
@@ -494,6 +658,8 @@ class Runner:
                 )
                 raise
             finally:
+                if predeployed_session_by_sandbox_id and response_sandbox_id:
+                    _reset_predeployed_session(response_sandbox_id, task.task_id)
                 if sandbox_session is not None:
                     try:
                         if used_pool:
