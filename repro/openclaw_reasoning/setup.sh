@@ -120,7 +120,7 @@ if ! python -c "import rock" >/dev/null 2>&1; then
 fi
 
 docker start "${ROCK_REDIS_CONTAINER}" 2>/dev/null \
-  || docker run -d --name "${ROCK_REDIS_CONTAINER}" -p "${ROCK_REDIS_PORT}:6379" redis/redis-stack-server:latest
+  || docker run -d --restart unless-stopped --name "${ROCK_REDIS_CONTAINER}" -p "${ROCK_REDIS_PORT}:6379" redis/redis-stack-server:latest
 
 ray stop --force >/dev/null 2>&1 || true
 pkill -f "rock.admin.main --env local-proxy --role admin --port ${ROCK_ADMIN_PORT}" >/dev/null 2>&1 || true

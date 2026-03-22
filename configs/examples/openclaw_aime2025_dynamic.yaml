@@ -12,7 +12,7 @@ agent:
     rock_startup_timeout: 600
     model: openclaw
     gateway_token: "OPENCLAW"
-    max_tokens: 65536
+    max_tokens: 32768
     request_timeout: 1800
     max_attempts: 5
     system_prompt: |

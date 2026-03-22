@@ -187,15 +187,33 @@ class OpenClawRuntimeManager:
 
         return config
 
+    def _probe_gateway_alive(self, sandbox: Any) -> bool:
+        """Quick liveness check — GET /v1/models with a short timeout."""
+        try:
+            import httpx
+            info = self.runtime_info(sandbox)
+            url = f"{info['api_base']}/models"
+            headers = {"Authorization": f"bearer {self._gateway_token}"}
+            resp = httpx.get(url, headers=headers, timeout=5, trust_env=False)
+            return _is_ready_probe_status(resp.status_code)
+        except Exception as exc:
+            _logger.warning("Gateway liveness probe failed for sandbox %s: %s",
+                            getattr(sandbox, "sandbox_id", "?"), exc)
+            return False
+
     def ensure_ready(self, sandbox: Any) -> dict:
         """Ensure OpenClaw gateway is running inside the sandbox.
 
         Idempotent: reuses if already started for this sandbox_id.
+        A liveness probe is performed before reuse to detect dead sandboxes.
         """
         sandbox_id = str(getattr(sandbox, "sandbox_id", ""))
         if sandbox_id in self._started_sandboxes:
-            _progress(f"reusing existing runtime for sandbox_id={sandbox_id}")
-            return self.runtime_info(sandbox)
+            if self._probe_gateway_alive(sandbox):
+                _progress(f"reusing existing runtime for sandbox_id={sandbox_id}")
+                return self.runtime_info(sandbox)
+            _logger.warning("Sandbox %s was cached but failed liveness probe; re-deploying", sandbox_id)
+            self._started_sandboxes.discard(sandbox_id)
 
         _progress(f"preparing runtime files for sandbox_id={sandbox_id}")
         config_dir = self._prepare_runtime_files(sandbox)

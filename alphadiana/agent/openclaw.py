@@ -138,6 +138,8 @@ def classify_error(
         msg = response_json.get("message", "")
         msg_lower = str(msg).lower()
         if "post proxy failed" in msg_lower:
+            if "not started" in msg_lower or "not alive" in msg_lower:
+                return "control_plane_unavailable"
             return "proxy_timeout"
 
         # Detect "internal error" from gateway (workspace contention, etc.)
@@ -997,6 +999,11 @@ class OpenClawAgent(Agent):
                         "reduce problem complexity. See: sandbox_config.proxy_timeout",
                         self._proxy_timeout,
                     )
+                if error_type == "control_plane_unavailable":
+                    logger.error(
+                        "ROCK control plane unavailable (sandbox marked 'not started' / "
+                        "'not alive'). Check Redis container health and connectivity.",
+                    )
                 if error_type == "internal_error":
                     logger.error(
                         "Gateway internal error detected (likely workspace-state.json "
@@ -1048,6 +1055,11 @@ class OpenClawAgent(Agent):
                         "Increase sandbox_config.proxy_timeout (current: %ds) or "
                         "reduce problem complexity. See: sandbox_config.proxy_timeout",
                         self._proxy_timeout,
+                    )
+                if error_type == "control_plane_unavailable":
+                    logger.error(
+                        "ROCK control plane unavailable (sandbox marked 'not started' / "
+                        "'not alive'). Check Redis container health and connectivity.",
                     )
                 if error_type == "internal_error":
                     logger.error(
