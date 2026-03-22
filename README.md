@@ -95,6 +95,26 @@ Directly evaluate any model without agent - useful for quick baseline
 alphadiana run configs/examples/direct_llm.yaml
 ```
 
+### Run a Custom Problem Set
+
+The `custom` benchmark lets you define problems directly in YAML — no dataset download required. Useful for spot-checking a specific problem or quick debugging.
+
+```yaml
+benchmark:
+  name: custom
+  config:
+    problems:
+      - id: "my_problem"
+        problem: "Find the number of ordered pairs (x,y) ..."
+        answer: "117"
+```
+
+```bash
+alphadiana run configs/examples/openclaw_custom.yaml
+```
+
+Any agent and scorer work with `custom` the same way as any other benchmark.
+
 ## Data Flow
 
 

@@ -8,7 +8,10 @@ Covers:
 
 from __future__ import annotations
 
+import asyncio
+import json
 from collections import deque
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -80,6 +83,129 @@ class TestGatewayPoolRoundRobin:
             "http://gw2/v1/chat/completions",
             "http://gw3/v1/chat/completions",
         ]
+
+
+class TestTrajectoryIsolation:
+    """Trajectory retrieval must follow the current gateway target."""
+
+    def _make_agent(self, config: dict):
+        from alphadiana.agent.openclaw import OpenClawAgent
+        agent = OpenClawAgent()
+        agent.version = "test"
+        agent.setup(config)
+        return agent
+
+    def _mock_http_client(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "application/json"}
+        mock_response.text = json.dumps({
+            "choices": [{"message": {"content": "42"}}],
+        })
+        mock_response.read = MagicMock()
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        mock_client = MagicMock()
+        mock_client.stream = MagicMock(return_value=mock_response)
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        return mock_client
+
+    def test_solve_uses_current_gateway_sandbox_for_trajectory_lookup(self):
+        """gateway_pool rotations must also rotate the sandbox used for transcript lookup."""
+        from alphadiana.benchmark.base import BenchmarkTask
+
+        agent = self._make_agent({
+            "gateway_pool": [
+                "http://localhost:9001/apis/envs/sandbox/v1/sandboxes/sid1/proxy/v1",
+                "http://localhost:9001/apis/envs/sandbox/v1/sandboxes/sid2/proxy/v1",
+            ],
+            "model": "openclaw",
+            "max_attempts": 1,
+        })
+        task1 = BenchmarkTask(task_id="t1", problem="Problem 1", ground_truth="42")
+        task2 = BenchmarkTask(task_id="t2", problem="Problem 2", ground_truth="42")
+
+        with patch.object(agent, "_health_check", return_value=None):
+            with patch.object(
+                agent,
+                "_retrieve_trajectory_sync",
+                return_value=[{"role": "user", "content": "Problem 1"}],
+            ) as mock_traj:
+                with patch("httpx.Client", return_value=self._mock_http_client()):
+                    agent.solve(task1)
+                    agent.solve(task2)
+
+        assert mock_traj.call_args_list[0].kwargs["sandbox_id"] == "sid1"
+        assert mock_traj.call_args_list[0].kwargs["expected_user_content"] == "Problem 1"
+        assert mock_traj.call_args_list[1].kwargs["sandbox_id"] == "sid2"
+        assert mock_traj.call_args_list[1].kwargs["expected_user_content"] == "Problem 2"
+
+    def test_retrieve_session_trajectory_matches_request_in_recent_sessions(self):
+        """If the latest session is stale, trajectory lookup should select the matching request."""
+        agent = self._make_agent({
+            "api_base": "http://localhost:9001/apis/envs/sandbox/v1/sandboxes/seed/proxy/v1",
+            "model": "openclaw",
+        })
+
+        wrong_session = "\n".join([
+            json.dumps({
+                "type": "message",
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "Wrong problem"}],
+                },
+            }),
+            json.dumps({
+                "type": "message",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "wrong answer"}],
+                },
+            }),
+        ])
+        correct_session = "\n".join([
+            json.dumps({
+                "type": "message",
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "Correct problem"}],
+                },
+            }),
+            json.dumps({
+                "type": "message",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "42"}],
+                },
+            }),
+        ])
+
+        class FakeSandboxClient:
+            async def create_session(self, _request):
+                return None
+
+            async def arun(self, command, session=None):
+                if command.startswith("ls -t "):
+                    return SimpleNamespace(output="/tmp/latest.jsonl\n/tmp/match.jsonl\n")
+                if "latest.jsonl" in command:
+                    return SimpleNamespace(output=wrong_session)
+                if "match.jsonl" in command:
+                    return SimpleNamespace(output=correct_session)
+                raise AssertionError(command)
+
+        with patch.object(agent, "_get_sandbox_client", return_value=FakeSandboxClient()):
+            trajectory = asyncio.run(
+                agent._retrieve_session_trajectory(
+                    sandbox_id="sid2",
+                    rock_sandbox_url="http://localhost:9001/apis/envs/sandbox/v1",
+                    expected_user_content="Correct problem",
+                )
+            )
+
+        assert trajectory[0]["role"] == "user"
+        assert trajectory[0]["content"] == "Correct problem"
 
 
 class TestAutoSandboxCreation:

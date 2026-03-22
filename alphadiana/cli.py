@@ -186,6 +186,7 @@ def list_benchmarks():
     """List all registered benchmarks."""
     # Import benchmark modules to trigger registration.
     import alphadiana.benchmark.aime  # noqa: F401
+    import alphadiana.benchmark.custom  # noqa: F401
 
     from alphadiana.benchmark.registry import BenchmarkRegistry
 

@@ -27,6 +27,7 @@ import logging
 import os
 import random
 import re
+import shlex
 import threading
 import time
 from collections import deque
@@ -293,6 +294,28 @@ def _recover_partial_output_from_trajectory(trajectory: list[dict]) -> tuple[str
     return "\n".join(text_parts).strip(), "\n".join(reasoning_parts).strip()
 
 
+def _normalize_request_content(content: str) -> str:
+    """Normalize request text for transcript matching."""
+    return content.replace("\r\n", "\n").strip()
+
+
+def _trajectory_matches_request(
+    trajectory: list[dict], expected_user_content: str,
+) -> bool:
+    """Return whether a transcript contains the current request message."""
+    expected = _normalize_request_content(expected_user_content)
+    if not expected:
+        return False
+
+    for entry in trajectory:
+        if not isinstance(entry, dict) or entry.get("role") != "user":
+            continue
+        candidate = _normalize_request_content(_coerce_text_content(entry.get("content", "")))
+        if candidate == expected:
+            return True
+    return False
+
+
 def _parse_openclaw_session(session_jsonl: str) -> list[dict]:
     """Parse an OpenClaw session JSONL file into a trajectory list.
 
@@ -493,7 +516,7 @@ class OpenClawAgent(Agent):
                 self._rock_sandbox_url = f"{match.group(1)}/apis/envs/sandbox/v1"
 
         # ROCK SDK client for reading session files (lazy init)
-        self._sandbox_client = None
+        self._sandbox_clients: dict[tuple[str, str], Any] = {}
 
         # Runtime manager for dynamic gateway bootstrap
         try:
@@ -540,24 +563,46 @@ class OpenClawAgent(Agent):
                 exc,
             )
 
-    def _get_sandbox_client(self):
-        """Lazily initialize the ROCK sandbox client for trajectory retrieval."""
-        if self._sandbox_client is not None:
-            return self._sandbox_client
+    def _extract_sandbox_target_from_api_base(self, api_base: str) -> tuple[str, str]:
+        """Extract sandbox_id and ROCK proxy base from a gateway api_base."""
+        if not api_base:
+            return "", ""
+        sandbox_id = ""
+        rock_sandbox_url = ""
+        match = re.search(r"/sandboxes/([A-Za-z0-9_-]+)/proxy", api_base)
+        if match:
+            sandbox_id = match.group(1)
+        match = re.search(r"(https?://[^/]+)/apis/envs/sandbox/v1", api_base)
+        if match:
+            rock_sandbox_url = f"{match.group(1)}/apis/envs/sandbox/v1"
+        return sandbox_id, rock_sandbox_url
 
-        if not self._sandbox_id or not self._rock_sandbox_url:
+    def _get_sandbox_client(
+        self,
+        *,
+        sandbox_id: str = "",
+        rock_sandbox_url: str = "",
+    ):
+        """Lazily initialize a ROCK sandbox client for the requested sandbox."""
+        sandbox_id = sandbox_id or self._sandbox_id
+        rock_sandbox_url = rock_sandbox_url or self._rock_sandbox_url
+        if not sandbox_id or not rock_sandbox_url:
             return None
+        cache_key = (rock_sandbox_url, sandbox_id)
+        cached = self._sandbox_clients.get(cache_key)
+        if cached is not None:
+            return cached
 
         try:
             from rock.sdk.sandbox.client import Sandbox
             from rock.sdk.sandbox.config import SandboxConfig
 
-            admin_url = self._derive_admin_url()
+            admin_url = self._derive_admin_url(rock_sandbox_url=rock_sandbox_url)
             config = SandboxConfig(base_url=admin_url, image="python:3.11")
             sb = Sandbox(config)
-            sb._sandbox_id = self._sandbox_id
-            sb.url = self._rock_sandbox_url
-            self._sandbox_client = sb
+            sb._sandbox_id = sandbox_id
+            sb.url = rock_sandbox_url
+            self._sandbox_clients[cache_key] = sb
             return sb
         except Exception as e:
             logger.warning("Failed to create ROCK sandbox client: %s", e)
@@ -572,11 +617,12 @@ class OpenClawAgent(Agent):
             return proxy_url.rstrip("/")
         return resolve_rock_ports_from_env().proxy_api_url.rstrip("/")
 
-    def _derive_admin_url(self) -> str:
-        if not self._rock_sandbox_url:
+    def _derive_admin_url(self, rock_sandbox_url: str | None = None) -> str:
+        rock_sandbox_url = rock_sandbox_url or self._rock_sandbox_url
+        if not rock_sandbox_url:
             return resolve_rock_ports_from_env().base_url
 
-        parsed = urlsplit(self._rock_sandbox_url)
+        parsed = urlsplit(rock_sandbox_url)
         env_ports = resolve_rock_ports_from_env()
         hostname = parsed.hostname or "127.0.0.1"
         netloc = f"{hostname}:{env_ports.admin_port}"
@@ -587,45 +633,79 @@ class OpenClawAgent(Agent):
             netloc = f"{auth}@{netloc}"
         return urlunsplit((parsed.scheme or "http", netloc, "", "", ""))
 
-    async def _retrieve_session_trajectory(self) -> list[dict]:
-        """Retrieve the latest session JSONL from the sandbox."""
-        sb = self._get_sandbox_client()
+    async def _retrieve_session_trajectory(
+        self,
+        *,
+        sandbox_id: str = "",
+        rock_sandbox_url: str = "",
+        expected_user_content: str = "",
+    ) -> list[dict]:
+        """Retrieve the matching session JSONL from the sandbox."""
+        sb = self._get_sandbox_client(
+            sandbox_id=sandbox_id,
+            rock_sandbox_url=rock_sandbox_url,
+        )
         if sb is None:
             return []
 
         try:
-            from rock.actions.sandbox.request import CreateBashSessionRequest
-
             try:
-                await sb.create_session(
-                    CreateBashSessionRequest(session="trajectory")
-                )
-            except Exception:
-                pass  # Session may already exist
+                from rock.actions.sandbox.request import CreateBashSessionRequest
+            except ImportError:
+                CreateBashSessionRequest = None
+
+            if CreateBashSessionRequest is not None:
+                try:
+                    await sb.create_session(
+                        CreateBashSessionRequest(session="trajectory")
+                    )
+                except Exception:
+                    pass  # Session may already exist
 
             session_globs = " ".join(
                 f"{home}/agents/main/sessions/*.jsonl"
                 for home in self._OPENCLAW_HOME_CANDIDATES
             )
             result = await sb.arun(
-                f"ls -t {session_globs} 2>/dev/null | head -1",
+                f"ls -t {session_globs} 2>/dev/null | head -20",
                 session="trajectory",
             )
-            session_file = result.output.strip()
-            if not session_file or not session_file.endswith(".jsonl"):
+            session_files = [
+                line.strip()
+                for line in result.output.strip().splitlines()
+                if line.strip().endswith(".jsonl")
+            ]
+            if not session_files:
                 return []
 
-            result = await sb.arun(
-                f"cat {session_file}",
-                session="trajectory",
-            )
-            return _parse_openclaw_session(result.output)
+            fallback_trajectory: list[dict] = []
+            for session_file in session_files:
+                result = await sb.arun(
+                    f"cat {shlex.quote(session_file)}",
+                    session="trajectory",
+                )
+                trajectory = _parse_openclaw_session(result.output)
+                if trajectory and not fallback_trajectory:
+                    fallback_trajectory = trajectory
+                if expected_user_content and _trajectory_matches_request(
+                    trajectory,
+                    expected_user_content,
+                ):
+                    return trajectory
+
+            return fallback_trajectory
 
         except Exception as e:
             logger.warning("Failed to retrieve session trajectory: %s", e)
             return []
 
-    def _retrieve_trajectory_sync(self) -> list[dict]:
+    def _retrieve_trajectory_sync(
+        self,
+        *,
+        sandbox_id: str = "",
+        rock_sandbox_url: str = "",
+        expected_user_content: str = "",
+    ) -> list[dict]:
         """Synchronous wrapper for trajectory retrieval."""
         import asyncio
 
@@ -639,11 +719,22 @@ class OpenClawAgent(Agent):
                 import concurrent.futures
                 with concurrent.futures.ThreadPoolExecutor() as pool:
                     future = pool.submit(
-                        asyncio.run, self._retrieve_session_trajectory()
+                        asyncio.run,
+                        self._retrieve_session_trajectory(
+                            sandbox_id=sandbox_id,
+                            rock_sandbox_url=rock_sandbox_url,
+                            expected_user_content=expected_user_content,
+                        ),
                     )
                     return future.result(timeout=30)
             else:
-                return asyncio.run(self._retrieve_session_trajectory())
+                return asyncio.run(
+                    self._retrieve_session_trajectory(
+                        sandbox_id=sandbox_id,
+                        rock_sandbox_url=rock_sandbox_url,
+                        expected_user_content=expected_user_content,
+                    )
+                )
         except Exception as e:
             logger.warning("Trajectory retrieval failed: %s", e)
             return []
@@ -821,6 +912,13 @@ class OpenClawAgent(Agent):
             self._ensure_agent_md(sandbox)
 
         url = f"{runtime_info['api_base'].rstrip('/')}/chat/completions"
+        actual_sandbox_id, actual_rock_sandbox_url = self._extract_sandbox_target_from_api_base(
+            runtime_info.get("api_base", "")
+        )
+        if actual_sandbox_id:
+            runtime_info["sandbox_id"] = actual_sandbox_id
+        if not actual_rock_sandbox_url:
+            actual_rock_sandbox_url = self._rock_sandbox_url
         headers = {
             "Authorization": f"bearer {self._gateway_token}",
             "Content-Type": "application/json",
@@ -920,7 +1018,11 @@ class OpenClawAgent(Agent):
                 raw_reasoning = "".join(reasoning_chunks)
                 recovered_trajectory = []
                 if not raw_output:
-                    recovered_trajectory = self._retrieve_trajectory_sync()
+                    recovered_trajectory = self._retrieve_trajectory_sync(
+                        sandbox_id=runtime_info.get("sandbox_id", ""),
+                        rock_sandbox_url=actual_rock_sandbox_url,
+                        expected_user_content=request_messages[0]["content"],
+                    )
                     recovered_content, recovered_reasoning = _recover_partial_output_from_trajectory(
                         recovered_trajectory
                     )
@@ -935,7 +1037,7 @@ class OpenClawAgent(Agent):
                                 {
                                     "message": {
                                         "role": "assistant",
-                                        "content": "",
+                                        "content": raw_output if raw_output else "",
                                         "reasoning_content": raw_reasoning,
                                     }
                                 }
@@ -948,7 +1050,7 @@ class OpenClawAgent(Agent):
                         message = choices[0].setdefault("message", {})
                         if isinstance(message, dict):
                             message.setdefault("role", "assistant")
-                            message.setdefault("content", raw_output if raw_output else "")
+                            message["content"] = raw_output if raw_output else ""
                             message["reasoning_content"] = raw_reasoning
                 # Accumulate token usage across retries.
                 attempt_usage = (response_json or {}).get("usage")
@@ -1122,7 +1224,11 @@ class OpenClawAgent(Agent):
                 }
 
         # Try to retrieve the real agentic trajectory from the sandbox.
-        trajectory = recovered_trajectory or self._retrieve_trajectory_sync()
+        trajectory = recovered_trajectory or self._retrieve_trajectory_sync(
+            sandbox_id=runtime_info.get("sandbox_id", ""),
+            rock_sandbox_url=actual_rock_sandbox_url,
+            expected_user_content=request_messages[0]["content"],
+        )
         if not trajectory:
             # Also try extracting from response payload
             trajectory = _extract_reasoning_trajectory_from_payload(response_json)
@@ -1163,7 +1269,7 @@ class OpenClawAgent(Agent):
             finish_reason="incomplete" if partial_reasoning_only and not raw_output else "",
             metadata={
                 "gateway_response_id": response_json.get("id", ""),
-                "sandbox_id": sandbox_id,
+                "sandbox_id": runtime_info.get("sandbox_id", "") or sandbox_id,
                 "model": self._model,
                 "retry_responses": retry_responses,
                 "retry_count": attempt,
@@ -1180,7 +1286,7 @@ class OpenClawAgent(Agent):
                 self._runtime_manager.teardown()
             except Exception as exc:
                 logger.warning("RuntimeManager teardown failed: %s", exc)
-        self._sandbox_client = None
+        self._sandbox_clients = {}
 
 
 AgentRegistry.register("openclaw", OpenClawAgent)

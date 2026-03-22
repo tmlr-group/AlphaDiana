@@ -308,7 +308,7 @@ export default function RunDetailPage() {
               )}
             </Card>
 
-            <Card size="small" title="Agent Trajectory">
+<Card size="small" title="Agent Trajectory">
               <TrajectoryViewer trajectory={drawerTask.trajectory} />
             </Card>
           </div>

@@ -42,6 +42,7 @@ class TaskResult(BaseModel):
     wall_time_sec: float = 0.0
     token_usage: dict[str, int] = {}
     trajectory: list[dict[str, Any]] = []
+    raw_output: str = ""
     timestamp: str = ""
     error: dict[str, Any] | None = None
     task_metadata: dict[str, Any] = {}

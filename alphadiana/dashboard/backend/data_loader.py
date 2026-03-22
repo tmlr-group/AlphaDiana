@@ -223,6 +223,7 @@ def _record_to_task_result(record: dict[str, Any]) -> TaskResult:
         wall_time_sec=record.get("wall_time_sec", 0.0),
         token_usage=record.get("token_usage", {}),
         trajectory=record.get("trajectory", []),
+        raw_output=record.get("raw_output", ""),
         timestamp=record.get("timestamp", ""),
         error=record.get("error"),
         task_metadata=record.get("task_metadata", {}),
