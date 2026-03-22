@@ -119,11 +119,25 @@ A web UI for managing and viewing evaluation tasks without manually editing YAML
 
 ![](./assets/fig2.png)
 
+### Install & Build
+
+```bash
+pip install -e '.[dashboard]'        # Install backend dependencies (fastapi, uvicorn, httpx)
+cd alphadiana/dashboard/frontend
+npm install && npm run build          # Build the frontend
+cd ../../..
+```
+
 ### Start the Dashboard
 
 ```bash
-uvicorn alphadiana.dashboard.backend.main:app --host 0.0.0.0 --port 8000 --reload
+source dev/rock_env.sh               # Load ROCK environment (required for sandbox features)
+source dev/.rock_ports.env            # Load dynamic ports
+
+cd alphadiana/dashboard
+./run.sh                              # Development mode (frontend hot reload at http://localhost:5173)
+./run.sh --prod                       # Production mode (single port at http://localhost:8000)
 ```
 
-Then open `http://<host>:8000` in your browser.
+If the default port is occupied, `run.sh` will automatically detect and switch to the next available port.
 
