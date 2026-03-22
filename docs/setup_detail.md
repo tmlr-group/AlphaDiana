@@ -1,38 +1,38 @@
 # AlphaDiana Setup Details
 
-详细的手动部署、ROCK 端口探测、Redis/Ray/admin/proxy 启动顺序、OpenClaw 部署与 FAQ 目前仍以仓库根目录的 `README.md` 为准。
+For detailed manual deployment, ROCK port detection, Redis/Ray/admin/proxy startup order, OpenClaw deployment, and FAQ, refer to the root `README.md`.
 
-快速入口：
+Quick entry:
 
 ```bash
 bash dev/quickstart.sh
 ```
 
-如果需要手动执行，请优先注意这几项：
+If you need to run manually, pay attention to the following:
 
-- 在仓库根目录执行 `source dev/rock_env.sh`
-- 运行 `python dev/find_rock_ports.py --write-env dev/.rock_ports.env` 前先执行 `unset TMPDIR`
-- `newgrp docker` 后必须重新 `conda activate`、`source dev/rock_env.sh`、`source dev/.rock_ports.env`
-- 启动 Ray 前先执行 `ray stop`
-- `RAY_TMPDIR` 默认使用 `/tmp/ray`
+- Run `source dev/rock_env.sh` from the repository root directory
+- Run `unset TMPDIR` before running `python dev/find_rock_ports.py --write-env dev/.rock_ports.env`
+- After `newgrp docker`, you must re-run `conda activate`, `source dev/rock_env.sh`, and `source dev/.rock_ports.env`
+- Run `ray stop` before starting Ray
+- `RAY_TMPDIR` defaults to `/tmp/ray`
 
-后续可以再把 `README.md` 里的手动步骤继续迁移到这里。
+Further manual steps from `README.md` can be migrated here over time.
 
-## ROCK Proxy 超时配置
+## ROCK Proxy Timeout Configuration
 
-ROCK proxy 的 `post_proxy` 超时已从硬编码 120s 改为读取 `ProxyServiceConfig.timeout`（默认 180s）。如需更大值（推荐 600s），在 ROCK YAML 配置中设置：
+The ROCK proxy `post_proxy` timeout has been changed from a hardcoded 120s to reading from `ProxyServiceConfig.timeout` (default 180s). To set a larger value (600s recommended), configure it in the ROCK YAML config:
 
 ```yaml
-# rock-config.yml（通过 ROCK_CONFIG 环境变量指定）
+# rock-config.yml (specified via the ROCK_CONFIG environment variable)
 proxy_service:
   timeout: 600
 ```
 
-如果使用的 ROCK 版本仍有 `timeout=120` 硬编码，需手动修改：
+If your ROCK version still has `timeout=120` hardcoded, you need to modify it manually:
 
-1. 打开 ROCK 安装目录下 `rock/sandbox/service/sandbox_proxy_service.py`
-2. 找到 `timeout=120`（约第 454 行）
-3. 改为 `timeout=self.proxy_config.timeout`
+1. Open `rock/sandbox/service/sandbox_proxy_service.py` in the ROCK installation directory
+2. Find `timeout=120` (around line 454)
+3. Change it to `timeout=self.proxy_config.timeout`
 
 ## FAQs
 
@@ -92,7 +92,7 @@ agent:
   name: openclaw                  # openclaw | direct_llm
   version: "2026.3.7"
   config:
-    # 支持环境变量: ${SANDBOX_ID}, ${ROCK_PORT}
+    # Supports environment variables: ${SANDBOX_ID}, ${ROCK_PORT}
     api_base: "http://127.0.0.1:9001/apis/envs/sandbox/v1/sandboxes/${SANDBOX_ID}/proxy/v1"
     model: openclaw
     gateway_token: "OPENCLAW"

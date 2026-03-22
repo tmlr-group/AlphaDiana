@@ -557,13 +557,13 @@ AgentRegistry.register("my_agent", MyAgent)
 ## FAQ
 
 **Q: OpenClaw times out and returns an empty response? **
-超时有多层，需逐层排查：
-1. **Gateway agent timeout**：`openclaw.json` → `agents.defaults.timeoutSeconds`（已配置 3600s）
-2. **ROCK proxy timeout**：ROCK 源码 `sandbox_proxy_service.py` 中 `post_proxy` 的 `timeout`（已改为读取 `proxy_config.timeout`，默认 180s，可通过 ROCK YAML 配置 `proxy_service.timeout: 600` 调大）
-3. **Client request timeout**：AlphaDiana YAML → `agent.config.request_timeout`（默认 1800s）
-4. **max_tokens**：建议 65536+，避免 thinking 模型耗尽 token 导致无输出
+Timeouts exist at multiple layers and should be checked one by one:
+1. **Gateway agent timeout**: `openclaw.json` → `agents.defaults.timeoutSeconds` (configured to 3600s)
+2. **ROCK proxy timeout**: `post_proxy` timeout in ROCK source `sandbox_proxy_service.py` (changed to read from `proxy_config.timeout`, default 180s; can be increased via ROCK YAML config `proxy_service.timeout: 600`)
+3. **Client request timeout**: AlphaDiana YAML → `agent.config.request_timeout` (default 1800s)
+4. **max_tokens**: Recommended 65536+, to prevent thinking models from exhausting tokens and producing no output
 
-AlphaDiana 对空回复会自动重试（默认 5 次），`empty_response` 类型的重试间隔从 60s 起步。
+AlphaDiana automatically retries on empty responses (default 5 attempts). The retry interval for `empty_response` type starts at 60s.
 
 **Q: vLLM reports 400 error "auto tool choice requires --enable-auto-tool-choice"? **
 OpenClaw uses tool calling, which requires adding `--enable-auto-tool-choice --tool-call-parser hermes` when vLLM is started.

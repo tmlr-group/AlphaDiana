@@ -20,10 +20,10 @@
 ## Quick Start
 
 ```bash
-git clone https://github.com/tmlr-group/AlphaDiana 
+git clone https://github.com/tmlr-group/AlphaDiana
 cd AlphaDiana
 ```
-For manual setup and troubleshooting, see [`docs/setup_detail.md`](docs/setup_detail.md).
+For a complete walkthrough (environment setup, vLLM, ROCK sandbox, OpenClaw deployment, and end-to-end evaluation), see [`docs/getting_started.md`](docs/getting_started.md). For manual setup and troubleshooting, see [`docs/setup_detail.md`](docs/setup_detail.md).
 
 ### Prerequisites
 
@@ -37,7 +37,7 @@ bash dev/quickstart.sh
 
 ### Run Agentic Reasoning with OpenClaw
 
-Recommended minimal path: use the single-sandbox dynamic example first. It is the quickest way to verify that the full system can run end-to-end on a fresh machine.
+Recommended minimal path: use the single-sandbox dynamic example first. It is the quickest way to verify that the full system can run end-to-end on a fresh machine. For a detailed step-by-step tutorial, see [`docs/tutorial_openclaw_aime2024.md`](docs/tutorial_openclaw_aime2024.md).
 
 
 ```bash
@@ -83,6 +83,8 @@ ghcr.io/tsrigo/openclaw-reasoning:20260320
 ```
 
 This default can still be overridden with `OPENCLAW_SANDBOX_IMAGE` or `--image`.
+
+For a full reproduction guide on validating the reasoning image on a new machine, see [`docs/openclaw_reasoning_image_repro.md`](docs/openclaw_reasoning_image_repro.md).
 
 The reasoning image contains the patched OpenClaw gateway, including:
 - streaming `reasoning_content`
@@ -166,7 +168,7 @@ YAML Config ----> Runner -----------> Benchmark (load tasks)
 
 ## Dashboard
 
-A web UI for managing and viewing evaluation tasks without manually editing YAML or reading JSONL files.
+A web UI for managing and viewing evaluation tasks without manually editing YAML or reading JSONL files. For full usage details (installation, page features, API key configuration, environment variables), see [`docs/dashboard.md`](docs/dashboard.md).
 
 ![](./assets/fig2.png)
 
@@ -182,4 +184,4 @@ Then open `http://<host>:8000` in your browser.
 
 ## FAQs
 
-For comprehensive troubleshooting (Docker permissions, Redis connection errors, Ray port conflicts, sandbox container issues, etc.), see the [`docs/setup_detail.md`](docs/setup_detail.md).
+For comprehensive troubleshooting (Docker permissions, Redis connection errors, Ray port conflicts, sandbox container issues, etc.), see [`docs/setup_detail.md`](docs/setup_detail.md).
