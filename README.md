@@ -38,6 +38,25 @@ bash dev/quickstart.sh
 
 Recommended minimal path: use the single-sandbox dynamic example first. It is the quickest way to verify that the full system can run end-to-end on a fresh machine.
 
+For OpenRouter + AIME2025 reproducibility, prefer the config-driven one-click entry:
+
+```bash
+#1. Activate environment (required for every new terminal)
+conda activate alphadiana && source dev/rock_env.sh && source dev/.rock_ports.env
+
+#2. Copy and edit your config once
+cp configs/examples/aime25_openrouter_oneclick.yaml /tmp/my_aime25.yaml
+# Fill provider.openai_base_url / provider.openai_api_key(or openai_api_key_env)
+# Fill provider.openai_model_name / benchmark.dataset / benchmark.split as needed
+
+#3. Run with one command
+bash dev/run_aime25_openrouter.bash --config /tmp/my_aime25.yaml
+```
+
+If the run fails, the script prints targeted warnings (auth, startup timeout, upstream/session connectivity, Ray/Redis hints) with follow-up guidance in [docs/openclaw_aime25_fix_changelog_repro_20260322.md](docs/openclaw_aime25_fix_changelog_repro_20260322.md).
+
+Manual baseline path (single-sandbox dynamic example):
+
 ```bash
 #1. Activate environment (required for every new terminal)
 conda activate alphadiana && source dev/rock_env.sh && source dev/.rock_ports.env

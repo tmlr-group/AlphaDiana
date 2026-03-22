@@ -170,7 +170,7 @@
 
 #### C2. 新增一键运行脚本
 
-文件：dev/generated/run_aime25_openrouter_oneclick.sh
+文件：dev/run_aime25_openrouter_oneclick.sh
 
 流程：
 
@@ -229,34 +229,59 @@
 - dev/generated/sandbox_resource_estimator.py
   - 新增：竞争感知资源估算 + 缓存
 
-- dev/generated/run_aime25_openrouter_oneclick.sh
-  - 新增：一键稳定复现脚本
+- dev/run_aime25_openrouter_oneclick.sh
+  - 新增：支持 `--config` 的一键稳定复现脚本
+
+- dev/run_aime25_openrouter.bash
+  - 新增：配置驱动入口（`bash dev/run_aime25_openrouter.bash --config ...`）
+
+- configs/examples/aime25_openrouter_oneclick.yaml
+  - 新增：首用即跑通的配置模板
 
 ---
 
 ## 5. 稳定复现命令
 
-## 5.1 一键方式（推荐）
+## 5.1 配置驱动一键方式（推荐）
 
 ```bash
-bash dev/run_aime25_openrouter_oneclick.sh
+bash dev/run_aime25_openrouter.bash --config configs/examples/aime25_openrouter_oneclick.yaml
 ```
 
-可选参数（环境变量）：
+首用流程（面向新用户）：
+
+1. 按 README 完成环境准备
+2. 复制并编辑 YAML（填写 API key、模型、API base、数据集）
+3. 运行一条命令完成动态探测与评测
 
 ```bash
-RUN_PREFIX=aime25-qwen235b \
-TASK_KEY=aime25-openrouter-qwen235b \
-MAX_TASKS=1 \
-STARTUP_TIMEOUT=300 \
-START_RETRIES=3 \
-bash dev/run_aime25_openrouter_oneclick.sh
+cp configs/examples/aime25_openrouter_oneclick.yaml /tmp/my_aime25.yaml
+# 编辑 /tmp/my_aime25.yaml
+bash dev/run_aime25_openrouter.bash --config /tmp/my_aime25.yaml
+```
+
+等价入口：
+
+```bash
+bash dev/run_aime25_openrouter_oneclick.sh --config configs/examples/aime25_openrouter_oneclick.yaml
 ```
 
 前置要求：
 
-- 已配置 OPENAI_API_KEY 或 OPENROUTER_API_KEY
+- 已在 config 指定 `provider.openai_api_key` 或 `provider.openai_api_key_env`
 - docker / ray / ROCK 依赖可用
+
+失败时 warning 提示（脚本内置）：
+
+- 鉴权失败（401/403）时提示检查 key/env 配置
+- `run in session failed` / `upstream not reachable` 时提示 transient 重试建议
+- `startup timeout` / `not ready` 时提示增大超时或调小 fallback profile
+- Ray 版本不匹配时提示清理 stale ray
+- Redis 连接失败时提示检查容器与端口
+
+warning 会附带修复文档路径：
+
+- `docs/openclaw_aime25_fix_changelog_repro_20260322.md`
 
 ---
 
