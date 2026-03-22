@@ -22,7 +22,11 @@ DEPLOY_EXTRA_ARGS=("$@")
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${SCRIPT_DIR%/dev}"
 ROCK_ROOT="${PROJECT_ROOT}/ref/ROCK"
-PYTHON="${PYTHON:-/data2/weikai/conda_envs/alphadiana/bin/python}"
+PYTHON="${PYTHON:-$(command -v python3 || command -v python)}"
+ROCK_BIND_HOST="${ROCK_BIND_HOST:-127.0.0.1}"
+ROCK_REDIS_HOST="${ROCK_REDIS_HOST:-${ROCK_BIND_HOST}}"
+ROCK_HTTP_HOST="${ROCK_HTTP_HOST:-${ROCK_BIND_HOST}}"
+ROCK_PORT_PROBE_HOST="${ROCK_PORT_PROBE_HOST:-${ROCK_BIND_HOST}}"
 
 # ── 0. Preflight: verify rock editable install points to THIS project ────────
 # rock is installed via `pip install -e .` and its path is hardcoded in the
@@ -60,10 +64,26 @@ print(cfg.get('redis', {}).get('port', 6379))
 " 2>/dev/null || echo "${ROCK_REDIS_PORT}")
 
 echo "[2/6] Checking Redis on port ${_redis_port}..."
-if ! redis-cli -p "${_redis_port}" ping >/dev/null 2>&1; then
-    echo "ERROR: Redis is not responding on port ${_redis_port}."
-    echo "       Start it with: docker run -d --name redis-weikai -p ${_redis_port}:6379 redis/redis-stack-server:latest"
-    exit 1
+if command -v redis-cli >/dev/null 2>&1; then
+    if ! redis-cli -p "${_redis_port}" ping >/dev/null 2>&1; then
+        echo "ERROR: Redis is not responding on port ${_redis_port}."
+        echo "       Start it with: docker run -d --name ${ROCK_REDIS_CONTAINER} -p ${_redis_port}:6379 redis/redis-stack-server:latest"
+        exit 1
+    fi
+else
+    if ! python3 - <<PYEOF >/dev/null 2>&1
+import socket
+sock = socket.socket()
+sock.settimeout(2)
+ok = sock.connect_ex(("${ROCK_REDIS_HOST}", int("${_redis_port}"))) == 0
+sock.close()
+raise SystemExit(0 if ok else 1)
+PYEOF
+    then
+        echo "ERROR: Redis TCP port ${_redis_port} is not reachable."
+        echo "       Start it with: docker run -d --name ${ROCK_REDIS_CONTAINER} -p ${_redis_port}:6379 redis/redis-stack-server:latest"
+        exit 1
+    fi
 fi
 echo "      Redis OK (PONG)"
 
@@ -97,7 +117,7 @@ _port_open() {
     python3 -c "
 import socket, sys
 s = socket.socket(); s.settimeout(1)
-sys.exit(s.connect_ex(('127.0.0.1', $1))); s.close()
+sys.exit(s.connect_ex(('${ROCK_PORT_PROBE_HOST}', $1))); s.close()
 " 2>/dev/null
 }
 
@@ -110,7 +130,7 @@ import ray, sys, re, os, logging
 os.environ.setdefault('RAY_LOG_TO_STDERR', '0')
 logging.disable(logging.CRITICAL)
 try:
-    ray.init(address='192.0.2.13:${ROCK_RAY_PORT}', ignore_reinit_error=True, logging_level=50)
+    ray.init(address='${ROCK_RAY_HOST:-${ROCK_BIND_HOST}}:${ROCK_RAY_PORT}', ignore_reinit_error=True, logging_level=50)
     try: ray.shutdown()
     except: pass
     print('ok')
@@ -160,7 +180,8 @@ if ! _port_open "${ROCK_RAY_PORT}"; then
     pkill -u "$(id -un)" -f "gcs_server.*${ROCK_RAY_PORT}" 2>/dev/null || true
     sleep 2
 
-    RAY_TMPDIR="${RAY_SESSION_DIR}" /data2/weikai/conda_envs/alphadiana/bin/ray start \
+    _ray_bin="$(dirname "${PYTHON}")/ray"
+    RAY_TMPDIR="${RAY_SESSION_DIR}" "${_ray_bin}" start \
         --head \
         --port="${ROCK_RAY_PORT}" \
         --dashboard-port="${ROCK_RAY_DASHBOARD_PORT}" \
@@ -179,7 +200,8 @@ if ! _port_open "${ROCK_RAY_PORT}"; then
         sleep 1
     done
 fi
-RAY_GCS_ADDRESS="192.0.2.13:${ROCK_RAY_PORT}"
+RAY_GCS_HOST="${ROCK_RAY_HOST:-${ROCK_BIND_HOST}}"
+RAY_GCS_ADDRESS="${RAY_GCS_HOST}:${ROCK_RAY_PORT}"
 echo "      Ray is up (GCS ${RAY_GCS_ADDRESS})"
 
 # ── 5. Start ROCK admin and proxy ────────────────────────────────────────────
@@ -214,7 +236,7 @@ echo "[5/6] Starting ROCK admin (port ${ROCK_ADMIN_PORT})..."
 echo "      Waiting for ROCK admin to become ready..."
 _deadline=$(( $(date +%s) + 90 ))
 while true; do
-    if curl -sf "http://127.0.0.1:${ROCK_ADMIN_PORT}/" >/dev/null 2>&1; then
+    if curl -sf "http://${ROCK_HTTP_HOST}:${ROCK_ADMIN_PORT}/" >/dev/null 2>&1; then
         echo "      ROCK admin is up"
         break
     fi
@@ -259,7 +281,7 @@ echo "      Starting ROCK proxy (port ${ROCK_PROXY_PORT})..."
 echo "      Waiting for ROCK proxy to become ready..."
 _deadline=$(( $(date +%s) + 30 ))
 while true; do
-    if curl -sf "http://127.0.0.1:${ROCK_PROXY_PORT}/" >/dev/null 2>&1; then
+    if curl -sf "http://${ROCK_HTTP_HOST}:${ROCK_PROXY_PORT}/" >/dev/null 2>&1; then
         echo "      ROCK proxy is up"
         break
     fi

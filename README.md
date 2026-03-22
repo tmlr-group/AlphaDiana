@@ -34,8 +34,9 @@ A Linux environment, Python >= 3.10, conda, Docker, Git, and optionally an API k
 bash dev/quickstart.sh
 ```
 
+### OpenClaw Agent
 
-### Run Agentic Reasoning with OpenClaw
+Recommended minimal path: use the single-sandbox dynamic example first. It is the quickest way to verify that the full system can run end-to-end on a fresh machine.
 
 ```bash
 #1. Activate environment (required for every new terminal)

@@ -144,7 +144,7 @@ def _ensure_rock_local_runtime() -> None:
         local_runtime_link.symlink_to(expected_target, target_is_directory=True)
 
 
-async def _check_redis(container: str, port: int) -> None:
+async def _check_redis(container: str, host: str, port: int) -> None:
     """Verify that Redis is reachable before proceeding with deployment."""
     import subprocess
 
@@ -162,13 +162,13 @@ async def _check_redis(container: str, port: int) -> None:
     # Fallback: try connecting via TCP
     import socket
     try:
-        with socket.create_connection(("127.0.0.1", port), timeout=5):
+        with socket.create_connection((host, port), timeout=5):
             return
     except OSError:
         pass
 
     raise RuntimeError(
-        f"Redis is not reachable (container={container}, port={port}).\n"
+        f"Redis is not reachable (container={container}, host={host}, port={port}).\n"
         "Start Redis first:\n"
         f"  docker start {container} || "
         f"docker run -d --name {container} -p {port}:6379 redis/redis-stack-server:latest\n"
@@ -182,8 +182,9 @@ async def _preflight(base_url: str, proxy_url: str, agent_config: Path) -> None:
     _ensure_rock_local_runtime()
 
     redis_container = os.environ.get("ROCK_REDIS_CONTAINER", "redis-stack")
+    redis_host = os.environ.get("ROCK_REDIS_HOST", os.environ.get("ROCK_BIND_HOST", "127.0.0.1"))
     redis_port = int(os.environ.get("ROCK_REDIS_PORT", str(DEFAULT_REDIS_PORT)))
-    await _check_redis(redis_container, redis_port)
+    await _check_redis(redis_container, redis_host, redis_port)
 
     await _check_endpoint("ROCK admin", base_url)
     proxy_root = proxy_url.removesuffix("/apis/envs/sandbox/v1")
@@ -228,6 +229,52 @@ async def _wait_for_running(sandbox: Sandbox, timeout: float = 60.0) -> None:
             print(f"  Status check failed: {exc}")
         await asyncio.sleep(3)
     raise RuntimeError(f"Sandbox did not reach running state within {timeout:.0f}s")
+
+
+async def _warmup_default_session(sandbox: Sandbox, timeout: float = 30.0) -> None:
+    """Probe the default session until command execution is reachable.
+
+    Some environments briefly report sandbox running while run-in-session calls
+    still return transient upstream-unreachable errors.
+    """
+    arun = getattr(sandbox, "arun", None)
+    if arun is None:
+        # Older SDK paths may not expose arun; skip warmup and rely on install retry.
+        return
+
+    create_session = getattr(sandbox, "create_session", None)
+    if create_session is not None:
+        try:
+            await create_session(session="default")
+        except Exception as exc:
+            # Ignore idempotent/session-exists cases and continue probing.
+            if "already" not in str(exc).lower() and "exists" not in str(exc).lower():
+                pass
+
+    deadline = time.monotonic() + timeout
+    last_error: Exception | None = None
+    while time.monotonic() < deadline:
+        try:
+            result = await arun("true", session="default")
+            if int(getattr(result, "exit_code", 0)) == 0:
+                return
+        except Exception as exc:
+            last_error = exc
+            msg = str(exc).lower()
+            if "session 'default' does not exist" in msg and create_session is not None:
+                try:
+                    await create_session(session="default")
+                    await asyncio.sleep(0.5)
+                    continue
+                except Exception:
+                    pass
+            if "upstream server is not reachable" not in msg and "run in session failed" not in msg:
+                raise
+        await asyncio.sleep(1.0)
+
+    if last_error is not None:
+        raise RuntimeError(f"Default session did not become ready: {last_error}") from last_error
+    raise RuntimeError("Default session did not become ready within timeout")
 
 
 async def _install_with_retry(
@@ -349,7 +396,7 @@ async def deploy(args: argparse.Namespace) -> None:
 
     print("Creating sandbox...")
     try:
-        await sandbox.start()
+        await asyncio.wait_for(sandbox.start(), timeout=float(args.startup_timeout) + 10.0)
     except Exception as exc:
         details = ""
         if getattr(sandbox, "sandbox_id", None):
@@ -372,6 +419,9 @@ async def deploy(args: argparse.Namespace) -> None:
     # Wait for sandbox to be fully running before proceeding.
     print("Waiting for sandbox readiness...")
     await _wait_for_running(sandbox, timeout=args.startup_timeout)
+
+    print("Warming up sandbox default session...")
+    await _warmup_default_session(sandbox, timeout=30.0)
 
     sandbox.url = args.proxy_url
 

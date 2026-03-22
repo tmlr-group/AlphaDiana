@@ -128,7 +128,11 @@ class _SandboxSessionRunner:
 
 def _is_session_upstream_error(exc: Exception) -> bool:
     message = str(exc).lower()
-    return "upstream server is not reachable" in message or "failed to run in session" in message
+    return (
+        "upstream server is not reachable" in message
+        or "failed to run in session" in message
+        or "run in session failed" in message
+    )
 
 
 async def _wait_for_session_ready(sandbox: Any, session_name: str, timeout: float = 20.0) -> None:
@@ -185,6 +189,42 @@ def _install_create_session_waiter(sandbox: Any) -> None:
 
     sandbox.create_session = _wrapped_create_session
     sandbox._alphadiana_create_session_waiter_installed = True
+
+
+def _install_run_in_session_retry(sandbox: Any) -> None:
+    if getattr(sandbox, "_alphadiana_run_in_session_retry_installed", False):
+        return
+
+    for method_name in ("run_in_session", "_run_in_session"):
+        original = getattr(sandbox, method_name, None)
+        if original is None:
+            continue
+
+        async def _wrapped_run_in_session(action: Any, _original=original, _name=method_name) -> Any:
+            max_attempts = 4
+            last_exc: Exception | None = None
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    return await _maybe_await(_original(action))
+                except Exception as exc:
+                    last_exc = exc
+                    if not _is_session_upstream_error(exc) or attempt >= max_attempts:
+                        raise
+                    logger.warning(
+                        "ROCK sandbox.%s transient upstream error attempt=%d/%d: %s",
+                        _name,
+                        attempt,
+                        max_attempts,
+                        exc,
+                    )
+                    await asyncio.sleep(min(0.5 * attempt, 2.0))
+
+            assert last_exc is not None
+            raise last_exc
+
+        setattr(sandbox, method_name, _wrapped_run_in_session)
+
+    sandbox._alphadiana_run_in_session_retry_installed = True
 
 
 async def _upload_file(sandbox: Any, remote_path: str, content: bytes) -> None:
@@ -310,6 +350,9 @@ def _resource_profiles(memory: str, cpus: float) -> list[tuple[str, float]]:
     requested_memory = _memory_to_bytes(memory)
     profiles: list[tuple[str, float]] = [(_canonical_memory(memory), float(cpus))]
     candidates = [
+        ("3g", 3 * 1000**3, min(cpus, 1.0)),
+        ("2g", 2 * 1000**3, min(cpus, 1.0)),
+        ("1536m", 1536 * 1000**2, min(cpus, 0.75)),
         ("1g", 1000**3, min(cpus, 0.5)),
         ("768m", 768 * 1000**2, min(cpus, 0.5)),
         ("768m", 768 * 1000**2, min(cpus, 0.25)),
@@ -362,6 +405,7 @@ class ROCKSession(SandboxSession):
         startup_timeout: int,
         auto_clear_seconds: int,
         start_retries: int = 1,
+        fallback_startup_timeout: int = 180,
         reset_between_tasks: bool = True,
         proxy_timeout: int = 1800,
         network_mode: str | None = None,
@@ -374,6 +418,7 @@ class ROCKSession(SandboxSession):
         self._memory = memory
         self._cpus = cpus
         self._startup_timeout = startup_timeout
+        self._fallback_startup_timeout = max(30, int(fallback_startup_timeout))
         self._auto_clear_seconds = auto_clear_seconds
         self._start_retries = max(1, start_retries)
         self._reset_between_tasks = reset_between_tasks
@@ -393,10 +438,19 @@ class ROCKSession(SandboxSession):
     def _start_sandbox(self) -> Any:
         """Start a ROCK sandbox, trying resource profiles with fallback."""
         last_error: Exception | None = None
-        attempt_timeout = min(self._startup_timeout, 60)
+        requested_profile = (_canonical_memory(self._memory), float(self._cpus))
         for memory, cpus in _ordered_resource_profiles(
             self._admin_base_url, self._image, self._memory, self._cpus,
         ):
+            is_requested_profile = (_canonical_memory(memory), float(cpus)) == requested_profile
+            # Give the requested profile the full configured startup timeout. Smaller
+            # fallback profiles usually need less than the requested profile but often
+            # still need more than 60s to initialize in a contended host.
+            attempt_timeout = (
+                self._startup_timeout
+                if is_requested_profile
+                else min(self._startup_timeout, self._fallback_startup_timeout)
+            )
             for attempt in range(1, self._start_retries + 1):
                 _progress(
                     f"starting sandbox profile memory={memory} cpus={cpus} "
@@ -423,10 +477,21 @@ class ROCKSession(SandboxSession):
                     except Exception:
                         logger.debug("Failed to apply proxy timeout to ROCK sandbox config", exc_info=True)
                 try:
-                    _run_async(sandbox.start())
+                    # Guard against SDK-level hangs where sandbox.start() does not
+                    # return even though startup_timeout is configured server-side.
+                    # A small grace window avoids false positives during teardown.
+                    _run_async(
+                        asyncio.wait_for(
+                            _maybe_await(sandbox.start()),
+                            timeout=float(attempt_timeout) + 10.0,
+                        )
+                    )
                     self._memory = memory
                     self._cpus = cpus
-                    _PROFILE_CACHE[(self._admin_base_url, self._image)] = (memory, cpus)
+                    # Only cache the requested profile. Caching fallback tiny
+                    # profiles can poison later sessions for the same image.
+                    if is_requested_profile:
+                        _PROFILE_CACHE[(self._admin_base_url, self._image)] = (memory, cpus)
                     sandbox.url = self._proxy_base_url
                     # When network_mode is "host", resolve the host IP so that
                     # sandbox-internal URLs can reach the host machine.
@@ -435,6 +500,7 @@ class ROCKSession(SandboxSession):
                         if host_ip:
                             _progress(f"network_mode=host, host_ip={host_ip}")
                     _install_create_session_waiter(sandbox)
+                    _install_run_in_session_retry(sandbox)
                     _progress(
                         f"sandbox started sandbox_id={getattr(sandbox, 'sandbox_id', '')} "
                         f"memory={memory} cpus={cpus}"
@@ -549,16 +615,48 @@ class ROCKSession(SandboxSession):
         method = getattr(agent, method_name, None)
         if method is None:
             raise RuntimeError(f"ROCK sandbox agent helper does not support '{method_name}'")
-        with _chdir_lock:
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            with _chdir_lock:
                 old_cwd = Path.cwd()
                 try:
                     if config_dir is not None:
                         Path(config_dir).mkdir(parents=True, exist_ok=True)
                         os.chdir(str(config_dir))
                     return _run_async(_maybe_await(method(*args)))
+                except Exception as exc:
+                    if not _is_session_upstream_error(exc) or attempt >= max_attempts:
+                        raise
+                    logger.warning(
+                        "ROCK agent.%s transient upstream error for sandbox_id=%s "
+                        "attempt=%d/%d: %s",
+                        method_name,
+                        self.sandbox_id,
+                        attempt,
+                        max_attempts,
+                        exc,
+                    )
                 finally:
                     if config_dir is not None:
                         os.chdir(old_cwd)
+
+            # Probe and wait for the default shell session to recover before retrying.
+            try:
+                _run_async(_wait_for_session_ready(self._sandbox, self._session_name, timeout=20.0))
+            except Exception as wait_exc:
+                logger.debug(
+                    "session readiness probe after agent.%s failure did not fully recover "
+                    "sandbox_id=%s: %s",
+                    method_name,
+                    self.sandbox_id,
+                    wait_exc,
+                    exc_info=True,
+                )
+            time.sleep(min(2 * attempt, 5))
+
+        raise RuntimeError(
+            f"ROCK agent helper exhausted retries for '{method_name}' on sandbox_id={self.sandbox_id}"
+        )
 
     def metadata(self) -> dict:
         info = ROCKSandboxMetadata(
@@ -639,6 +737,7 @@ class ROCKSandbox(Sandbox):
             "memory": config.get("memory", "2g"),
             "cpus": float(config.get("cpus", 0.5)),
             "startup_timeout": int(config.get("startup_timeout", 300)),
+            "fallback_startup_timeout": int(config.get("fallback_startup_timeout", 180)),
             "auto_clear_seconds": int(config.get("auto_clear_seconds", 3600)),
             "start_retries": int(config.get("start_retries", 1)),
             "reset_between_tasks": bool(self._reset_between_tasks),

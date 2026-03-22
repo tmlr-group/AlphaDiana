@@ -240,7 +240,7 @@ class Runner:
                         "cpus": float(self.config.agent_config.get("rock_cpus", 0.5)),
                         "startup_timeout": int(self.config.agent_config.get("rock_startup_timeout", 300)),
                         "auto_clear_seconds": int(self.config.agent_config.get("rock_auto_clear_seconds", 7200)),
-                        "start_retries": int(self.config.agent_config.get("rock_start_retries", 1)),
+                        "start_retries": int(self.config.agent_config.get("rock_start_retries", 3)),
                         "reset_between_tasks": False,
                         "proxy_timeout": int(self.config.agent_config.get("proxy_timeout", 1800)),
                         "network_mode": self.config.agent_config.get("network_mode", None),
@@ -356,7 +356,7 @@ class Runner:
                     "cpus": float(self.config.agent_config.get("rock_cpus", 0.5)),
                     "startup_timeout": int(self.config.agent_config.get("rock_startup_timeout", 300)),
                     "auto_clear_seconds": int(self.config.agent_config.get("rock_auto_clear_seconds", 7200)),
-                    "start_retries": int(self.config.agent_config.get("rock_start_retries", 1)),
+                    "start_retries": int(self.config.agent_config.get("rock_start_retries", 3)),
                     # Do NOT reset workspace between tasks: the OpenClaw gateway process
                     # keeps running in the container and owns the workspace lifecycle.
                     "reset_between_tasks": False,
