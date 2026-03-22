@@ -179,3 +179,74 @@ Without them:
 - `openclaw_deploy/openclaw.json`
 - `alphadiana/agent/openclaw.py`
 - `tests/test_fix_empty_response.py`
+
+
+If you prefer the manual deploy flow, use `openclaw_deploy/rock_agent_config.prebuilt.yaml` with the reasoning image. The static examples (`openclaw_aime2024.yaml`, `openclaw_aime2025.yaml`) assume you already deployed a sandbox and only need `SANDBOX_ID`.
+
+> **Important:** `openclaw_deploy/rock_agent_config.prebuilt.yaml` is the right config for the pre-built reasoning image. `openclaw_deploy/rock_agent_config.yaml` is the fallback path for a bare image that installs `openclaw@2026.3.7` at runtime, which is slower and not the recommended flow.
+
+> **Note:** Default configs are provided in `openclaw_deploy/`. At minimum, set `OPENAI_BASE_URL`, `OPENAI_API_KEY`, and `OPENAI_MODEL_NAME` before running OpenClaw. For timeout tuning and other details, see [`configs/schema.yaml.md`](configs/schema.yaml.md).
+
+The deploy flow uses `DEFAULT_SANDBOX_IMAGE` from `alphadiana/utils/rock_runtime.py`. The current default is:
+
+```text
+ghcr.io/tsrigo/openclaw-reasoning:20260320
+```
+
+This default can still be overridden with `OPENCLAW_SANDBOX_IMAGE` or `--image`.
+
+For a full reproduction guide on validating the reasoning image on a new machine, see [`docs/openclaw_reasoning_image_repro.md`](docs/openclaw_reasoning_image_repro.md).
+
+The reasoning image contains the patched OpenClaw gateway, including:
+- streaming `reasoning_content`
+- cleaned reasoning text without underscore formatting
+- `max_tokens` forwarding for `/v1/chat/completions`
+
+To verify that the reasoning-enabled path is active after deploy, call the ROCK proxy endpoint with `"stream": true` and check that SSE chunks contain `delta.reasoning_content`:
+
+```bash
+curl -N --location "http://localhost:<ROCK_PORT>/apis/envs/sandbox/v1/sandboxes/<SANDBOX_ID>/proxy/v1/chat/completions" \
+  --header "Authorization: bearer OPENCLAW" \
+  --header "Content-Type: application/json" \
+  --data '{
+    "model": "openclaw",
+    "stream": true,
+    "max_tokens": 32768,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Reply with ok."
+      }
+    ]
+  }'
+```
+
+If you are testing long reasoning runs, also watch for infrastructure-side failures such as proxy timeout, `post proxy failed`, or sandbox actor disappearance before the request reaches `finish_reason=length`.
+
+#### Pre-built Image (Faster Deploy)
+
+`bash dev/quickstart.sh` sets up Python, Ray, ROCK admin/proxy, and Redis, but it does not deploy OpenClaw. To get a working sandbox, run `bash dev/start_openclaw.sh` or `python openclaw_deploy/deploy.py ...` afterward.
+
+Pull the image once (~2.6 GB):
+
+```bash
+docker pull ghcr.io/tsrigo/openclaw-reasoning:20260320
+```
+
+Then start ROCK services and deploy:
+
+```bash
+bash dev/start_openclaw.sh \
+  --model-base-url https://openrouter.ai/api/v1 \
+  --model-api-key  sk-... \
+  --model-name     moonshotai/kimi-k2.5
+```
+
+On success the script prints `Sandbox ID` and `API base` — copy those into your evaluation YAML.
+
+Common failure modes:
+- `Failed to start sandbox within 60.0s` usually means Docker is still pulling `ghcr.io/tsrigo/openclaw-reasoning:20260320`, or the local image cache is stale. Re-pull the reasoning image and retry.
+- `async start sandbox failed` with `Get timed out: some object(s) not ready.` usually points to ROCK/Ray startup issues or stale ports. Re-run `source dev/rock_env.sh && source dev/.rock_ports.env`, confirm `bash dev/quickstart.sh` completed cleanly, and make sure Docker, Ray, ROCK admin/proxy, and Redis are all alive.
+
+> For full usage details, see [`dev/README_prebuilt.md`](dev/README_prebuilt.md).
+
