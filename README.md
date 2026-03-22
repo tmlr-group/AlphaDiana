@@ -20,14 +20,14 @@
 ## Quick Start
 
 ```bash
-git clone <repo-url> 
+git clone https://github.com/tmlr-group/AlphaDiana 
 cd AlphaDiana
 ```
 For manual setup and troubleshooting, see [`docs/setup_detail.md`](docs/setup_detail.md).
 
 ### Prerequisites
 
-A Linux environment, Python >= 3.10, conda, Docker, Git, and an OpenRouter (or another provider) API key
+A Linux environment, Python >= 3.10, conda, Docker, Git, and optionally an API key (required for remote providers like OpenRouter, but not for localhost deployments)
 
 ```bash
 # Install dependencies & set up environment
@@ -35,7 +35,7 @@ bash dev/quickstart.sh
 ```
 
 
-### OpenClaw Agent
+### Run Agentic Reasoning with OpenClaw
 
 Recommended minimal path: use the single-sandbox dynamic example first. It is the quickest way to verify that the full system can run end-to-end on a fresh machine.
 
@@ -137,7 +137,7 @@ Common failure modes:
 
 > For full usage details, see [`dev/README_prebuilt.md`](dev/README_prebuilt.md).
 
-### Direct LLM
+### Run Agent-free, Direct Reasoning with Foundation Models
 
 Directly evaluate any model without agent - useful for quick baseline
   benchmarking
@@ -167,6 +167,8 @@ YAML Config ----> Runner -----------> Benchmark (load tasks)
 ## Dashboard
 
 A web UI for managing and viewing evaluation tasks without manually editing YAML or reading JSONL files.
+
+![](./assets/fig2.png)
 
 ### Start the Dashboard
 
