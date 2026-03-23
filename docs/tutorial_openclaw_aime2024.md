@@ -246,7 +246,7 @@ curl -X POST \
 
 ## Step 6: Write evaluation configuration
 
-Create YAML configuration file `configs/examples/openclaw_aime2024.yaml`:
+Create YAML configuration file `configs/openclaw_aime2024.yaml`:
 
 
 ```yaml
@@ -306,10 +306,10 @@ metadata:
 
 ```bash
 # Validate the configuration first
-alphadiana validate configs/examples/openclaw_aime2024.yaml
+alphadiana validate configs/openclaw_aime2024.yaml
 
 Run assessment
-alphadiana run configs/examples/openclaw_aime2024.yaml
+alphadiana run configs/openclaw_aime2024.yaml
 ```
 
 
@@ -331,7 +331,7 @@ Run completed: openclaw-qwen3-8b-aime2024-001
 from alphadiana.config.experiment_config import ExperimentConfig
 from alphadiana.runner.runner import Runner
 
-config = ExperimentConfig.from_yaml("configs/examples/openclaw_aime2024.yaml")
+config = ExperimentConfig.from_yaml("configs/openclaw_aime2024.yaml")
 runner = Runner(config)
 
 runner.setup()
