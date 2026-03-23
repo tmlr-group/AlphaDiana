@@ -40,18 +40,16 @@ Typical questions AlphaDiana helps answer:
 - **Web dashboard** for launching, monitoring, and comparing runs  
 - **Dynamic sandbox management** with configurable concurrency
 
-
 ## Quick Start
 
 ### Prerequisites
 
-- Linux environment
-- Python >= 3.10, conda
-- Docker (current user in the `docker` group)
-- Git
+- Linux
+- Python >= 3.10, Conda
+- Docker (the current user should be in the `docker` group)
 - (Optional) An API key for remote model providers (e.g., OpenRouter); not needed for localhost deployments
 
-### Install
+### Installation
 
 ```bash
 git clone https://github.com/tmlr-group/AlphaDiana
@@ -60,16 +58,21 @@ cd AlphaDiana
 # One-click setup: conda env, ROCK, Redis, Ray, admin, proxy
 bash scripts/quickstart.sh
 
-# Pull the recommended reasoning image (pre-installed OpenClaw)
+# Pull the recommended reasoning image (with OpenClaw pre-installed)
 docker pull ghcr.io/tsrigo/openclaw-reasoning:20260320
+```
 
-# Set your model provider (or point to a local vLLM server)
+Set the model endpoint you want to evaluate:
+
+```bash
 export OPENAI_BASE_URL=...
 export OPENAI_API_KEY=...
 export OPENAI_MODEL_NAME=...
 ```
 
-`quickstart.sh` creates a conda environment, installs all dependencies, detects available ports, and starts Redis, Ray, ROCK admin, and ROCK proxy. After it finishes, source the environment in every new terminal:
+Here, `quickstart.sh` creates the conda environment, installs dependencies, detects available ports, and starts the required services, including Redis, Ray, ROCK admin, and ROCK proxy.
+
+After setup, activate the environment in each new terminal:
 
 ```bash
 conda activate alphadiana
@@ -77,27 +80,57 @@ source scripts/rock_env.sh
 source scripts/.rock_ports.env
 ```
 
-For a complete walkthrough, see [`docs/getting_started.md`](docs/getting_started.md). For manual setup and troubleshooting, see [`docs/setup_detail.md`](docs/setup_detail.md).
+For a full walkthrough, see [`docs/getting_started.md`](docs/getting_started.md).  
+For manual setup and troubleshooting, see [`docs/setup_detail.md`](docs/setup_detail.md).
 
-### Configure
+## Quick Example
 
-All service ports are automatically configured by `quickstart.sh`. The main things you need to set are the **model provider** (via environment variables above) and the **experiment config** (a YAML file). Here is an annotated example:
+### 1. Validate a config
+
+```bash
+alphadiana validate configs/examples/openclaw_aime2024_dynamic.yaml
+```
+
+### 2. Run an evaluation
+
+```bash
+alphadiana run configs/examples/openclaw_aime2024_dynamic.yaml
+```
+
+### 3. Generate a report
+
+```bash
+alphadiana report results/
+```
+
+This example runs an OpenClaw-based agent on AIME 2024 using a ROCK sandbox.
+
+## Configuration
+
+AlphaDiana is configured with a YAML file. At a high level, you specify:
+
+- the **agent**
+- the **benchmark**
+- the **scorer**
+- the **runtime settings** such as concurrency and output directory
+
+Example:
 
 ```yaml
 run_id: "openclaw-qwen3-8b-aime2024-dynamic"
 
 agent:
-  name: openclaw                    # "openclaw" or "direct_llm"
+  name: openclaw
   config:
     rock_image: "ghcr.io/tsrigo/openclaw-reasoning:20260320"
     rock_agent_config_path: "openclaw_deploy/rock_agent_config.prebuilt.yaml"
     openclaw_config_path: "openclaw_deploy/openclaw.json"
-    rock_memory: "4g"               # Memory per sandbox container
-    rock_cpus: 1                    # CPUs per sandbox container
+    rock_memory: "4g"
+    rock_cpus: 1
     system_prompt: You are an expert problem solver. ...
 
 benchmark:
-  name: aime                        # Benchmark loader (see alphadiana/benchmark/)
+  name: aime
   config:
     dataset: "HuggingFaceH4/aime_2024"
     split: "train"
@@ -107,50 +140,65 @@ scorer:
   config:
     tolerance: 1e-6
 
-max_concurrent: 1                   # Number of sandboxes to run in parallel
+max_concurrent: 1
 output_dir: "./results"
 ```
 
-Ready-made examples are in `configs/examples/`.
+Ready-to-run examples are provided in [`configs/examples/`](configs/examples/).
 
-### Run OpenClaw Agent
+## Running Evaluations
 
-The recommended starting point is the **dynamic single-sandbox** example. In this mode, AlphaDiana automatically creates a ROCK sandbox (with OpenClaw pre-installed from the Docker image), runs the evaluation, and tears it down afterward — no manual `deploy.py` step required.
+### Run an OpenClaw agent
+
+The recommended starting point is the **dynamic single-sandbox** configuration. In this mode, AlphaDiana automatically creates a ROCK sandbox, runs the evaluation, and removes the sandbox afterward.
 
 ```bash
-# Validate the config first
-alphadiana validate configs/examples/openclaw_aime2024_dynamic.yaml
-
-# Run the evaluation
 alphadiana run configs/examples/openclaw_aime2024_dynamic.yaml
-
-# View results
-alphadiana report results/
 ```
 
-This defaults to a single sandbox with `4g` memory and `1` CPU. To increase parallelism, change `max_concurrent` in the YAML — the CLI creates the matching number of sandboxes automatically. See `configs/examples/openclaw_aime2024_dynamic_multisandbox.yaml` for a multi-sandbox example.
+This configuration uses one sandbox by default with `4g` memory and `1` CPU.
 
-### Run Direct LLM (No Agent)
+To increase parallelism, update:
 
-Evaluate any OpenAI-compatible model directly — useful for quick baselines. No ROCK sandbox required.
+```yaml
+max_concurrent: 4
+```
+
+A multi-sandbox example is provided in:
+
+```text
+configs/examples/openclaw_aime2024_dynamic_multisandbox.yaml
+```
+
+### Run a direct LLM baseline
+
+You can also evaluate a model directly without agent orchestration:
 
 ```bash
 alphadiana run configs/examples/direct_llm.yaml
 ```
 
-Fill in the `model`, `api_base`, and `api_key` fields in the config. See [`docs/getting_started.md`](docs/getting_started.md) for a step-by-step Direct LLM tutorial.
+This is useful for establishing a clean baseline before measuring the effect of an agent framework.
 
-### Run a Custom Problem Set
+Fill in the model endpoint fields in the config, such as:
 
-The `custom` benchmark lets you define problems directly in YAML — no dataset download needed. Useful for spot-checking a specific problem or quick debugging.
+- `model`
+- `api_base`
+- `api_key`
+
+See [`docs/getting_started.md`](docs/getting_started.md) for a complete example.
+
+### Run a custom problem set
+
+The `custom` benchmark lets you define problems directly in YAML, which is useful for debugging, ablation studies, or spot checks.
 
 ```yaml
 run_id: "my-custom-run"
 
 agent:
-  name: openclaw  # or direct_llm
+  name: openclaw
   config:
-    # ... (same agent config as above)
+    # ... same agent config as above
 
 benchmark:
   name: custom
@@ -172,33 +220,44 @@ max_concurrent: 1
 output_dir: "./results"
 ```
 
-Any agent and scorer work with `custom` the same way as with any other benchmark.
+Any supported agent and scorer can be used with the `custom` benchmark.
 
 ## CLI Reference
 
 | Command | Description |
 |---|---|
-| `alphadiana run <config.yaml>` | Run an evaluation experiment |
+| `alphadiana run <config.yaml>` | Run an evaluation |
 | `alphadiana validate <config.yaml>` | Validate a config without running |
-| `alphadiana report <results_dir>` | Generate reports from result files |
-| `alphadiana batch <config1> <config2> ...` | Run multiple experiments (use `--parallel` for concurrent execution) |
+| `alphadiana report <results_dir>` | Generate reports from saved results |
+| `alphadiana batch <config1> <config2> ...` | Run multiple experiments |
 | `alphadiana list-benchmarks` | List all registered benchmarks |
 
 Use `-o key=value` to override config values from the command line (e.g., `-o max_concurrent=4`).
 
-## Data Flow
+## Evaluation Flow
 
-```
-YAML Config ──→ Runner ──→ Benchmark (load tasks)
-                  │              │
-                  │              ▼
-                  │         Agent (generate answers)
-                  │              │ ↔ Sandbox (code execution)
-                  │              ▼
-                  │         Scorer (verify answers)
-                  │              │
-                  ▼              ▼
-               results/<run_id>.jsonl ──→ Report / Dashboard
+```text
+YAML Config
+   │
+   ▼
+Runner
+   │
+   ├── Benchmark loader
+   │      └── loads tasks
+   │
+   ├── Agent
+   │      └── generates answers / tool calls
+   │
+   ├── Sandbox
+   │      └── executes agent-generated code
+   │
+   └── Scorer
+          └── verifies outputs
+
+results/<run_id>.jsonl
+   │
+   ├── report generation
+   └── dashboard visualization
 ```
 
 ## Project Structure
@@ -232,40 +291,69 @@ AlphaDiana/
 
 ## Dashboard
 
-A web UI for managing and viewing evaluation tasks without manually editing YAML or reading JSONL files.
+AlphaDiana includes a web dashboard for launching, monitoring, and comparing evaluation runs without manually editing YAML or inspecting raw JSONL files.
 
 ![](./assets/fig2.png)
 
-**Features:** browse run history, compare multiple runs side-by-side, launch evaluations via forms, monitor job progress with real-time logs, and manage ROCK sandboxes.
+### Dashboard features
 
-### Install & Build
+- browse run history
+- compare multiple runs side by side
+- launch evaluations through forms
+- monitor job progress with real-time logs
+- manage ROCK sandboxes
+
+### Install dashboard dependencies
 
 ```bash
-pip install -e '.[dashboard]'        # Backend dependencies (fastapi, uvicorn, httpx)
+pip install -e '.[dashboard]'
 cd alphadiana/dashboard/frontend
-npm install && npm run build          # Build the frontend
+npm install && npm run build
 cd ../../..
 ```
 
-### Start the Dashboard
+### Start the dashboard
 
 ```bash
-source scripts/rock_env.sh           # Load ROCK environment
-source scripts/.rock_ports.env       # Load dynamic ports
+source scripts/rock_env.sh
+source scripts/.rock_ports.env
 
 cd alphadiana/dashboard
-./run.sh                              # Dev mode (hot reload at localhost:5173)
-./run.sh --prod                       # Production mode (single port at localhost:8000)
+./run.sh
 ```
 
-If the default port is occupied, `run.sh` will automatically switch to the next available port.
+For production mode:
 
-For full usage details (page features, API key configuration, environment variables), see [`docs/dashboard.md`](docs/dashboard.md).
+```bash
+./run.sh --prod
+```
+
+If the default port is already in use, `run.sh` automatically switches to the next available port.
+
+For detailed instructions, see [`docs/dashboard.md`](docs/dashboard.md).
 
 ## Documentation
 
 | Document | Description |
 |---|---|
-| [`docs/getting_started.md`](docs/getting_started.md) | Complete step-by-step tutorial (Qwen3-8B + AIME 2024) |
+| [`docs/getting_started.md`](docs/getting_started.md) | End-to-end tutorial for a first evaluation run |
 | [`docs/setup_detail.md`](docs/setup_detail.md) | Manual setup and troubleshooting |
-| [`docs/dashboard.md`](docs/dashboard.md) | Dashboard user guide |
+| [`docs/dashboard.md`](docs/dashboard.md) | Dashboard usage guide |
+
+## Acknowledgements
+
+AlphaDiana is developed to support research on trustworthy agentic reasoning and reproducible evaluation of reasoning systems.
+
+We thank the contributors, collaborators, and open-source communities behind tools and systems that make this work possible, including [OpenClaw](https://github.com/openclaw/openclaw), [ROCK](https://github.com/alibaba/ROCK), and related infrastructure.
+
+## Citation
+
+If you use AlphaDiana in your research, please cite the project once the paper or technical report is available.
+
+```bibtex
+@misc{alphadiana,
+  title={AlphaDiana: A Framework for Evaluating Agentic Reasoning},
+  year={2026},
+  url={https://github.com/tmlr-group/AlphaDiana}
+}
+```
