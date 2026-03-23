@@ -209,9 +209,9 @@ class TestTrajectoryIsolation:
 
 
 class TestAutoSandboxCreation:
-    """Test that Runner auto-creates ROCK sandbox when auto-deploy is configured."""
+    """Test that Runner auto-creates ROCK sandbox when rock_agent_config_path is set."""
 
-    def test_auto_sandbox_triggers_when_auto_deploy_configured(self):
+    def test_auto_sandbox_triggers_when_dynamic_bootstrap_configured(self):
         """Runner should create ROCK sandbox when openclaw + rock_agent_config_path set."""
         from alphadiana.config.experiment_config import ExperimentConfig
 

@@ -16,7 +16,8 @@
         "models": [
           {
             "id": "${OPENAI_MODEL_NAME}",
-            "name": "${OPENAI_MODEL_NAME}"
+            "name": "${OPENAI_MODEL_NAME}",
+            "reasoning": true
           }
         ]
       }

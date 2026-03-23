@@ -13,9 +13,9 @@ request it does NOT just proxy to the LLM; instead it:
      /root/.openclaw/agents/main/sessions/<session_id>.jsonl
 
 This wrapper supports two modes:
-  - Direct gateway: ``api_base`` is pre-configured (gateway already running)
-  - Auto-deploy: ``rock_agent_config_path`` + ``openclaw_config_path`` provided,
-    the gateway is started inside a live ROCK sandbox automatically
+  - Static: ``api_base`` is pre-configured (gateway already running)
+  - Dynamic: ``rock_agent_config_path`` + ``openclaw_config_path`` provided,
+    gateway is bootstrapped inside a live ROCK sandbox automatically
 
 Deployment reference:
   https://github.com/alibaba/ROCK/blob/master/examples/agents/openclaw/REAMDE.md
@@ -442,8 +442,8 @@ class OpenClawAgent(Agent):
       - rock_sandbox_url: ROCK proxy base URL for retrieving session files
                           (e.g. "http://127.0.0.1:9001/apis/envs/sandbox/v1")
       - sandbox_id: ROCK sandbox ID (extracted from api_base if not set)
-      - rock_agent_config_path: Path to ROCK agent config YAML (for auto-deploy)
-      - openclaw_config_path: Path to OpenClaw gateway config JSON (for auto-deploy)
+      - rock_agent_config_path: Path to ROCK agent config YAML (for dynamic bootstrap)
+      - openclaw_config_path: Path to OpenClaw gateway config JSON (for dynamic bootstrap)
     """
 
     name = "openclaw"
@@ -518,7 +518,7 @@ class OpenClawAgent(Agent):
         # ROCK SDK client for reading session files (lazy init)
         self._sandbox_clients: dict[tuple[str, str], Any] = {}
 
-        # Runtime manager for auto-deploy gateway startup
+        # Runtime manager for dynamic gateway bootstrap
         try:
             from alphadiana.agent.openclaw_runtime import OpenClawRuntimeManager
             self._runtime_manager = OpenClawRuntimeManager(config)
@@ -872,12 +872,12 @@ class OpenClawAgent(Agent):
 
         # Resolve the api_base for this invocation.
         # Priority:
-        #   1. Sandbox session has a proxy endpoint (auto-deploy or pool session)
-        #   2. Round-robin from gateway_pool (predeployed multi-sandbox mode)
-        #   3. Single configured api_base
+        #   1. Sandbox session has a proxy endpoint (dynamic bootstrap or pool session)
+        #   2. Round-robin from gateway_pool (multi-sandbox static mode)
+        #   3. Single static api_base
         resolved_api_base = ""
         if sandbox is not None and hasattr(sandbox, "proxy_v1_base"):
-            # Auto-deploy: sandbox session provides its own proxy endpoint.
+            # Dynamic bootstrap: sandbox session provides its own proxy endpoint.
             resolved_api_base = ""  # let ensure_ready() set it below
         elif self._gateway_pool:
             with self._gateway_pool_lock:
@@ -888,7 +888,7 @@ class OpenClawAgent(Agent):
         else:
             resolved_api_base = self._api_base
 
-        # Auto-deploy if api_base not set but runtime manager is configured
+        # Dynamic bootstrap if api_base not set but runtime manager is configured
         runtime_info: dict[str, Any] = {
             "sandbox_id": sandbox_id,
             "gateway_url": f"{resolved_api_base}/chat/completions" if resolved_api_base else "",

@@ -1,4 +1,4 @@
-# Bug Analysis: OpenClaw AIME 2024 Smoke Run (2026-03-21)
+# Bug Analysis: OpenClaw AIME 2024 Dynamic Smoke Run (2026-03-21)
 
 ## Experiment Command
 
@@ -9,10 +9,10 @@ docker pull ghcr.io/tsrigo/openclaw-reasoning:20260320
 export OPENAI_BASE_URL=https://openrouter.ai/api/v1
 export OPENAI_API_KEY=<your-key>
 export OPENAI_MODEL_NAME=qwen/qwen3-235b-a22b-2507
-alphadiana validate configs/examples/openclaw_aime2024.yaml
-alphadiana run configs/examples/openclaw_aime2024.yaml \
+alphadiana validate configs/examples/openclaw_aime2024_dynamic.yaml
+alphadiana run configs/examples/openclaw_aime2024_dynamic.yaml \
   -o benchmark.config.max_tasks=1 \
-  -o run_id=openclaw-aime2024-smoke-log-20260321
+  -o run_id=openclaw-aime2024-dynamic-smoke-log-20260321
 ```
 
 ---
@@ -21,7 +21,7 @@ alphadiana run configs/examples/openclaw_aime2024.yaml \
 
 ### Bug 1 — Sandbox memory too low (primary failure cause)
 
-**File:** `configs/examples/openclaw_aime2024.yaml`
+**File:** `configs/examples/openclaw_aime2024_dynamic.yaml`
 
 **Symptom:** The ROCK sandbox starts but the OpenClaw Node.js gateway OOMs or becomes
 unresponsive. The `runner.py` auto-creates the sandbox using `rock_memory` from the agent
@@ -66,7 +66,7 @@ the template placeholders that the committed version uses:
 +  OPENAI_MODEL_NAME: "z-ai/glm-5"         # wrong model
 ```
 
-Note: for the `alphadiana run` path the default flow uses
+Note: for the `alphadiana run` path the dynamic bootstrap uses
 `openclaw_deploy/rock_agent_config.prebuilt.yaml` (not this file), and
 `openclaw_runtime._prepare_runtime_files` overwrites the env section with the locally
 exported env vars anyway. So this bug only directly breaks the **manual** deploy flow.
@@ -149,7 +149,7 @@ alphadiana run
 
 | File | Change |
 |------|--------|
-| `configs/examples/openclaw_aime2024.yaml` | `rock_memory: "765m"` → `"4g"`, `rock_cpus: 0.5` → `1` |
+| `configs/examples/openclaw_aime2024_dynamic.yaml` | `rock_memory: "765m"` → `"4g"`, `rock_cpus: 0.5` → `1` |
 | `openclaw_deploy/rock_agent_config.yaml` | Removed hardcoded credentials; restored `""` / `"EMPTY"` placeholders |
 | `alphadiana/agent/openclaw_runtime.py` | `_prepare_runtime_files`: also patch `openclaw.json`'s `env` section |
 
@@ -164,11 +164,11 @@ conda activate alphadiana && source dev/rock_env.sh && source dev/.rock_ports.en
 export OPENAI_BASE_URL=https://openrouter.ai/api/v1
 export OPENAI_API_KEY=<your-key>
 export OPENAI_MODEL_NAME=qwen/qwen3-235b-a22b-2507
-alphadiana validate configs/examples/openclaw_aime2024.yaml
-alphadiana run configs/examples/openclaw_aime2024.yaml \
+alphadiana validate configs/examples/openclaw_aime2024_dynamic.yaml
+alphadiana run configs/examples/openclaw_aime2024_dynamic.yaml \
   -o benchmark.config.max_tasks=1 \
-  -o run_id=openclaw-aime2024-smoke-log-20260321
+  -o run_id=openclaw-aime2024-dynamic-smoke-log-20260321
 ```
 
 Expected: the sandbox starts (≤600 s), the OpenClaw gateway warms up, the single AIME
-task completes, and a result appears in `results/openclaw-aime2024-smoke-log-20260321/`.
+task completes, and a result appears in `results/openclaw-aime2024-dynamic-smoke-log-20260321/`.

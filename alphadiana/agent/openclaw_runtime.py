@@ -306,7 +306,7 @@ class OpenClawRuntimeManager:
             current_val = str(env_cfg.get(key, ""))
             if not current_val or re.match(r"^\$\{.+\}$", current_val):
                 raise RuntimeError(
-                    f"OpenClaw auto-deploy requires {key} to be set in the local environment. "
+                    f"Dynamic OpenClaw bootstrap requires {key} to be set in the local environment. "
                     f"Export it before running alphadiana."
                 )
 

@@ -1,4 +1,4 @@
-run_id: "openclaw-qwen3-8b-aime2024-multisandbox"
+run_id: "openclaw-qwen3-8b-aime2024-dynamic"
 
 agent:
   name: openclaw
@@ -12,7 +12,7 @@ agent:
     rock_startup_timeout: 600
     model: openclaw
     gateway_token: "OPENCLAW"
-    max_tokens: 65536
+    max_tokens: 32768
     request_timeout: 1800
     max_attempts: 5
     system_prompt: |
@@ -37,7 +37,9 @@ scorer:
   config:
     tolerance: 1e-6
 
-max_concurrent: 2               # Run 2 sandboxes in parallel (each sandbox handles 1 task)
+max_concurrent: 1
 output_dir: "./results"
 metadata:
-  notes: "OpenClaw on AIME 2024 (multi-sandbox, 2 concurrent)"
+  author: "zjk"
+  gpu: "A800"
+  notes: "OpenClaw + Qwen3-8B on AIME 2024 (dynamic bootstrap, single sandbox)"
