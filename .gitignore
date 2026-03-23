@@ -58,3 +58,6 @@ dev/generated
 node_modules/
 
 .planning
+
+.openclaw
+.env

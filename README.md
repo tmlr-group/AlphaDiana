@@ -47,63 +47,79 @@ Typical questions AlphaDiana helps answer:
 - Linux
 - Python >= 3.10, Conda
 - Docker (the current user should be in the `docker` group)
-- (Optional) An API key for remote model providers (e.g., OpenRouter); not needed for localhost deployments
+- An API key for a model provider (e.g., [OpenRouter](https://openrouter.ai/))
 
-### Installation
+### 1. Install
 
 ```bash
 git clone https://github.com/tmlr-group/AlphaDiana
 cd AlphaDiana
 
-# One-click setup: conda env, ROCK, Redis, Ray, admin, proxy
+# One-click setup: creates conda env, installs all dependencies, starts services
 bash scripts/quickstart.sh
 
-# Pull the recommended reasoning image (with OpenClaw pre-installed)
+# Pull the reasoning image (OpenClaw pre-installed)
 docker pull ghcr.io/tsrigo/openclaw-reasoning:20260320
 ```
 
-Set the model endpoint you want to evaluate:
+### 2. Configure your model
+
+Create a `.env` file in the project root with your model endpoint:
 
 ```bash
-export OPENAI_BASE_URL=...
-export OPENAI_API_KEY=...
-export OPENAI_MODEL_NAME=...
+OPENAI_BASE_URL=https://openrouter.ai/api/v1
+OPENAI_API_KEY=<your-api-key>
+OPENAI_MODEL_NAME=qwen/qwen3-235b-a22b-2507
 ```
 
-Here, `quickstart.sh` creates the conda environment, installs dependencies, detects available ports, and starts the required services, including Redis, Ray, ROCK admin, and ROCK proxy.
+### 3. Activate the environment
 
-After setup, activate the environment in each new terminal:
+Run this **once per terminal** before using AlphaDiana. It handles conda activation, proxy cleanup, port loading, and API key loading automatically:
 
 ```bash
-conda activate alphadiana
-source scripts/rock_env.sh
-source scripts/.rock_ports.env
+source scripts/activate.sh
 ```
 
-For a full walkthrough, see [`docs/getting_started.md`](docs/getting_started.md).  
-For manual setup and troubleshooting, see [`docs/setup_detail.md`](docs/setup_detail.md).
-
-## Quick Example
-
-### 1. Validate a config
+### 4. Check that everything is working
 
 ```bash
-alphadiana validate configs/examples/openclaw_aime2024_dynamic.yaml
+alphadiana env
 ```
 
-### 2. Run an evaluation
+All four checks should pass:
+
+```
+  ✓ admin
+  ✓ proxy
+  ✓ redis
+  ✓ docker
+```
+
+### 5. Run your first evaluation
 
 ```bash
-alphadiana run configs/examples/openclaw_aime2024_dynamic.yaml
+alphadiana validate configs/test_openclaw_quick.yaml
+alphadiana run configs/test_openclaw_quick.yaml
 ```
 
-### 3. Generate a report
+Expected output:
+
+```
+Pre-flight passed: admin ✓  proxy ✓  redis ✓
+...
+Run completed: test-openclaw-quick
+  Accuracy:   1.0000
+  Tasks:      1/1 completed
+```
+
+### 6. Generate a report
 
 ```bash
 alphadiana report results/
 ```
 
-This example runs an OpenClaw-based agent on AIME 2024 using a ROCK sandbox.
+For a full walkthrough, see [`docs/getting_started.md`](docs/getting_started.md).
+For manual setup and troubleshooting, see [`docs/setup_detail.md`](docs/setup_detail.md).
 
 ## Configuration
 
@@ -226,6 +242,7 @@ Any supported agent and scorer can be used with the `custom` benchmark.
 
 | Command | Description |
 |---|---|
+| `alphadiana env` | Check service health before running |
 | `alphadiana run <config.yaml>` | Run an evaluation |
 | `alphadiana validate <config.yaml>` | Validate a config without running |
 | `alphadiana report <results_dir>` | Generate reports from saved results |

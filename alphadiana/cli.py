@@ -71,6 +71,22 @@ def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
         sys.exit(1)
 
     _warn_proxy()
+
+    # Pre-flight: verify ROCK services are reachable for openclaw runs.
+    if config.agent_name == "openclaw":
+        from alphadiana.utils.rock_ports import resolve_rock_ports_from_env, check_rock_services
+        ports = resolve_rock_ports_from_env()
+        click.echo(f"Pre-flight: checking ROCK services (admin={ports.admin_port}, proxy={ports.proxy_port}, redis={ports.redis_port})...")
+        results = check_rock_services(ports, timeout=5.0)
+        failures = {k: v for k, v in results.items() if v is not True and k != "docker"}
+        if failures:
+            click.echo("Pre-flight FAILED — ROCK services not reachable:", err=True)
+            for svc, err in failures.items():
+                click.echo(f"  ✗ {svc}: {err}", err=True)
+            click.echo("\nRun 'alphadiana env' to see full status and setup instructions.", err=True)
+            sys.exit(1)
+        click.echo("Pre-flight passed: admin ✓  proxy ✓  redis ✓")
+
     runner = Runner(config)
 
     try:
@@ -179,6 +195,69 @@ def batch(config_yamls: tuple[str, ...], parallel: bool, override: tuple[str, ..
             click.echo("  [FAILED]")
         else:
             click.echo(f"  {summary.run_id}: accuracy={summary.accuracy:.4f}")
+
+
+@main.command()
+def env():
+    """Check ROCK environment status and service connectivity.
+
+    Verifies that all required ROCK services (Redis, Ray, Admin, Proxy)
+    are reachable. Run this before 'alphadiana run' with OpenClaw configs
+    to catch connection issues early.
+
+    If services are not running, prints the commands needed to start them.
+    """
+    from alphadiana.utils.rock_ports import (
+        resolve_rock_ports_from_env,
+        check_rock_services,
+        _find_rock_ports_env_file,
+    )
+
+    ports = resolve_rock_ports_from_env()
+    ports_file = _find_rock_ports_env_file()
+
+    click.echo("ROCK Environment Status")
+    click.echo("=" * 50)
+    click.echo(f"  Ports file:  {ports_file or 'NOT FOUND'}")
+    click.echo(f"  Admin:       {ports.base_url}")
+    click.echo(f"  Proxy:       {ports.proxy_root_url}")
+    click.echo(f"  Redis:       {LOCALHOST}:{ports.redis_port}")
+    click.echo(f"  Ray:         {LOCALHOST}:{ports.ray_port}")
+    click.echo()
+
+    click.echo("Service Health Checks")
+    click.echo("-" * 50)
+    results = check_rock_services(ports)
+    all_ok = True
+    for service, status in results.items():
+        if status is True:
+            click.echo(f"  ✓ {service}")
+        else:
+            click.echo(f"  ✗ {service}: {status}")
+            all_ok = False
+
+    click.echo()
+    if all_ok:
+        click.echo("All services healthy. Ready for OpenClaw evaluation.")
+    else:
+        click.echo("Some services are unreachable.")
+        click.echo()
+        click.echo("To start services, run:")
+        click.echo("  bash scripts/quickstart.sh")
+        click.echo()
+        click.echo("Or start manually:")
+        click.echo(f"  # Redis")
+        click.echo(f"  docker run -d --name redis-stack -p {ports.redis_port}:6379 redis/redis-stack-server:latest")
+        click.echo(f"  # Ray")
+        click.echo(f"  cd ref/ROCK && ray start --head --port={ports.ray_port} --dashboard-port={ports.ray_dashboard_port} --disable-usage-stats")
+        click.echo(f"  # Admin")
+        click.echo(f"  cd ref/ROCK && python -m rock.admin.main --env local-proxy --role admin --port {ports.admin_port} &")
+        click.echo(f"  # Proxy")
+        click.echo(f"  cd ref/ROCK && python -m rock.admin.main --env local-proxy --role proxy --port {ports.proxy_port} &")
+        sys.exit(1)
+
+
+LOCALHOST = "127.0.0.1"
 
 
 @main.command("list-benchmarks")

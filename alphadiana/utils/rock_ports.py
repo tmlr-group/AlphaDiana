@@ -16,7 +16,23 @@ DEFAULT_REDIS_PORT = 6379
 DEFAULT_ADMIN_PORT = 9000
 DEFAULT_PROXY_PORT = 9001
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-ROCK_PORTS_ENV_FILE = PROJECT_ROOT / "dev" / ".rock_ports.env"
+# Search both scripts/ and dev/ for the ports file — the quickstart may write
+# to either location depending on how it was invoked.
+_PORTS_ENV_CANDIDATES = [
+    PROJECT_ROOT / "scripts" / ".rock_ports.env",
+    PROJECT_ROOT / "dev" / ".rock_ports.env",
+]
+
+
+def _find_rock_ports_env_file() -> Path | None:
+    """Return the first existing .rock_ports.env file, or None."""
+    for candidate in _PORTS_ENV_CANDIDATES:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+ROCK_PORTS_ENV_FILE = _find_rock_ports_env_file() or _PORTS_ENV_CANDIDATES[0]
 
 
 def _env_int(name: str, default: int) -> int:
@@ -33,11 +49,15 @@ def _env_int(name: str, default: int) -> int:
 
 
 def _load_rock_ports_file() -> dict[str, str]:
-    """Load ROCK port exports from dev/.rock_ports.env if present."""
-    if not ROCK_PORTS_ENV_FILE.exists():
+    """Load ROCK port exports from .rock_ports.env if present.
+
+    Searches scripts/.rock_ports.env first, then dev/.rock_ports.env.
+    """
+    ports_file = _find_rock_ports_env_file()
+    if ports_file is None:
         return {}
     values: dict[str, str] = {}
-    for raw_line in ROCK_PORTS_ENV_FILE.read_text().splitlines():
+    for raw_line in ports_file.read_text().splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
@@ -113,7 +133,7 @@ class RockPorts:
 
 
 def resolve_rock_ports_from_env() -> RockPorts:
-    """Resolve ROCK ports from dev/.rock_ports.env first, then environment."""
+    """Resolve ROCK ports from .rock_ports.env first, then environment."""
     file_values = _load_rock_ports_file()
     return RockPorts(
         ray_port=_resolve_int("ROCK_RAY_PORT", DEFAULT_RAY_PORT, file_values),
@@ -127,3 +147,60 @@ def resolve_rock_ports_from_env() -> RockPorts:
         admin_port=_resolve_int("ROCK_ADMIN_PORT", DEFAULT_ADMIN_PORT, file_values),
         proxy_port=_resolve_int("ROCK_PROXY_PORT", DEFAULT_PROXY_PORT, file_values),
     )
+
+
+def check_rock_services(ports: RockPorts | None = None, timeout: float = 5.0) -> dict[str, bool | str]:
+    """Check connectivity of ROCK services (admin, proxy, Redis).
+
+    Returns a dict with service names as keys and True/error-string as values.
+    """
+    import subprocess
+
+    if ports is None:
+        ports = resolve_rock_ports_from_env()
+
+    results: dict[str, bool | str] = {}
+
+    # Check ROCK Admin
+    try:
+        with socket.create_connection((LOCALHOST, ports.admin_port), timeout=timeout):
+            pass
+        import httpx
+        resp = httpx.get(ports.base_url + "/", timeout=timeout)
+        if resp.status_code == 200:
+            results["admin"] = True
+        else:
+            results["admin"] = f"HTTP {resp.status_code}"
+    except Exception as exc:
+        results["admin"] = f"unreachable on port {ports.admin_port}: {exc}"
+
+    # Check ROCK Proxy
+    try:
+        with socket.create_connection((LOCALHOST, ports.proxy_port), timeout=timeout):
+            pass
+        import httpx
+        resp = httpx.get(ports.proxy_root_url + "/", timeout=timeout)
+        if resp.status_code == 200:
+            results["proxy"] = True
+        else:
+            results["proxy"] = f"HTTP {resp.status_code}"
+    except Exception as exc:
+        results["proxy"] = f"unreachable on port {ports.proxy_port}: {exc}"
+
+    # Check Redis
+    try:
+        with socket.create_connection((LOCALHOST, ports.redis_port), timeout=timeout):
+            results["redis"] = True
+    except Exception as exc:
+        results["redis"] = f"unreachable on port {ports.redis_port}: {exc}"
+
+    # Check Docker availability
+    try:
+        result = subprocess.run(
+            ["docker", "ps"], capture_output=True, timeout=5, text=True,
+        )
+        results["docker"] = True if result.returncode == 0 else result.stderr.strip()
+    except Exception as exc:
+        results["docker"] = f"unavailable: {exc}"
+
+    return results
