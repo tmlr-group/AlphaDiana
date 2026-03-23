@@ -19,22 +19,32 @@
 
 ## Quick Start
 
-```bash
-git clone https://github.com/tmlr-group/AlphaDiana
-cd AlphaDiana
-```
-For a complete walkthrough, see [`docs/getting_started.md`](docs/getting_started.md). For manual setup and troubleshooting, see [`docs/setup_detail.md`](docs/setup_detail.md).
-
-### Prerequisites
-
+### Install
 A Linux environment, Python >= 3.10, conda, Docker, Git, and optionally an API key (required for remote providers like OpenRouter, but not for localhost deployments)
 
 ```bash
+git clone https://github.com/tmlr-group/AlphaDiana
+cd AlphaDiana
 # Install dependencies & set up environment
-bash dev/quickstart.sh
-```
+bash scripts/quickstart.sh
 
-### OpenClaw Agent
+# Pull the recommended reasoning image once
+docker pull ghcr.io/tsrigo/openclaw-reasoning:20260320
+
+# Export your model provider settings
+export OPENAI_BASE_URL=...
+export OPENAI_API_KEY=...
+export OPENAI_MODEL_NAME=...
+```
+For a complete walkthrough, see [`docs/getting_started.md`](docs/getting_started.md). For manual setup and troubleshooting, see [`docs/setup_detail.md`](docs/setup_detail.md).
+
+### Configure AlphaDiana
+- dataset
+- model: api, local run
+- max_concurrent
+- 
+
+### Run OpenClaw Agent
 
 Recommended minimal path: use the single-sandbox dynamic example first. It is the quickest way to verify that the full system can run end-to-end on a fresh machine.
 
@@ -42,7 +52,7 @@ For OpenRouter + AIME2025 reproducibility, prefer the config-driven one-click en
 
 ```bash
 #1. Activate environment (required for every new terminal)
-conda activate alphadiana && source dev/rock_env.sh && source dev/.rock_ports.env
+conda activate alphadiana && source scripts/rock_env.sh && source scripts/.rock_ports.env
 
 #2. Copy and edit your config once
 cp configs/examples/aime25_openrouter_oneclick.yaml /tmp/my_aime25.yaml
@@ -50,7 +60,7 @@ cp configs/examples/aime25_openrouter_oneclick.yaml /tmp/my_aime25.yaml
 # Fill provider.openai_model_name / benchmark.dataset / benchmark.split as needed
 
 #3. Run with one command
-bash dev/run_aime25_openrouter.bash --config /tmp/my_aime25.yaml
+bash scripts/run_aime25_openrouter.bash --config /tmp/my_aime25.yaml
 ```
 
 If the run fails, the script prints targeted warnings (auth, startup timeout, upstream/session connectivity, Ray/Redis hints) with follow-up guidance in [docs/openclaw_aime25_fix_changelog_repro_20260322.md](docs/openclaw_aime25_fix_changelog_repro_20260322.md).
@@ -58,42 +68,19 @@ If the run fails, the script prints targeted warnings (auth, startup timeout, up
 Manual baseline path (single-sandbox dynamic example):
 
 ```bash
-#1. Activate environment (required for every new terminal)
-conda activate alphadiana && source dev/rock_env.sh && source dev/.rock_ports.env
+# Activate environment (required for every new terminal)
+conda activate alphadiana && source scripts/rock_env.sh && source scripts/.rock_ports.env
 
-#2. Pull the recommended reasoning image once
-docker pull ghcr.io/tsrigo/openclaw-reasoning:20260320
-
-#3. Export your model provider settings
-export OPENAI_BASE_URL=...
-export OPENAI_API_KEY=...
-export OPENAI_MODEL_NAME=...
-
-#4. Run the single-sandbox dynamic example
+# Run example, TODO: what is dynamic???
 alphadiana validate configs/examples/openclaw_aime2024_dynamic.yaml
 alphadiana run configs/examples/openclaw_aime2024_dynamic.yaml
 
-#5. View results
+# View results
 alphadiana report results/
 ```
 
-This example now defaults to a single sandbox, `4g` memory, `1` CPU, and `max_concurrent: 1` to maximize first-run success. For higher concurrency, use the multi-sandbox config which automatically pre-deploys one sandbox per concurrent task:
+This example now defaults to a single sandbox, `4g` memory, `1` CPU, and `max_concurrent: 1`. For higher concurrency, just change `max_concurrent` in the YAML — the CLI will create the matching number of sandboxes automatically.
 
-```bash
-alphadiana run configs/examples/openclaw_aime2024_dynamic_multisandbox.yaml
-```
-
-To adjust concurrency, just change `max_concurrent` in the YAML — the CLI will create the matching number of sandboxes automatically.
-
-
-### Run Agent-free, Direct Reasoning with Foundation Models
-
-Directly evaluate any model without agent - useful for quick baseline
-  benchmarking
-```bash
-# run
-alphadiana run configs/examples/direct_llm.yaml
-```
 
 ### Run a Custom Problem Set
 
@@ -114,6 +101,16 @@ alphadiana run configs/examples/openclaw_custom.yaml
 ```
 
 Any agent and scorer work with `custom` the same way as any other benchmark.
+
+### Run Direct Reasoning with Foundation Models
+
+Directly evaluate any model without agent - useful for quick baseline
+  benchmarking
+```bash
+# run
+alphadiana run configs/examples/direct_llm.yaml
+```
+
 
 ## Data Flow
 
@@ -151,8 +148,8 @@ cd ../../..
 ### Start the Dashboard
 
 ```bash
-source dev/rock_env.sh               # Load ROCK environment (required for sandbox features)
-source dev/.rock_ports.env            # Load dynamic ports
+source scripts/rock_env.sh               # Load ROCK environment (required for sandbox features)
+source scripts/.rock_ports.env            # Load dynamic ports
 
 cd alphadiana/dashboard
 ./run.sh                              # Development mode (frontend hot reload at http://localhost:5173)
