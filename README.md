@@ -342,9 +342,7 @@ For detailed instructions, see [`docs/dashboard.md`](docs/dashboard.md).
 
 ## Acknowledgements
 
-AlphaDiana is developed to support research on trustworthy agentic reasoning and reproducible evaluation of reasoning systems.
-
-We thank the contributors, collaborators, and open-source communities behind tools and systems that make this work possible, including [OpenClaw](https://github.com/openclaw/openclaw), [ROCK](https://github.com/alibaba/ROCK), and related infrastructure.
+AlphaDiana is developed to support research on trustworthy agentic reasoning and reproducible evaluation of reasoning systems. We thank the contributors, collaborators, and open-source communities behind tools and systems that make this work possible, including [OpenClaw](https://github.com/openclaw/openclaw), [ROCK](https://github.com/alibaba/ROCK), and related infrastructure.
 
 ## Citation
 
