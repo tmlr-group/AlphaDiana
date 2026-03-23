@@ -1,8 +1,6 @@
-# AlphaDiana: Evaluation Framework for Agentic Reasoning with OpenClaw
+# AlphaDiana: A System for Evaluating Agentic Reasoning
 
-**AlphaDiana** is an open-source evaluation framework for benchmarking LLM agents on frontier reasoning tasks. It provides standardized, reproducible evaluation of agentic systems — such as [OpenClaw](https://github.com/openclaw/openclaw) — across mathematical reasoning benchmarks like AIME 2024/2025 and MATH, with sandboxed code execution, multi-turn tool use, and full trajectory recording.
-
-Use AlphaDiana to answer: *How well does your agent actually reason, compared to a bare model?*
+**AlphaDiana** is an open-source framework for **system-level evaluation of LLM-based reasoning agents**. It enables standardized, reproducible benchmarking of agentic systems—such as [OpenClaw](https://github.com/openclaw/openclaw)—on frontier reasoning tasks, with support for sandboxed code execution, multi-turn tool use, and full trajectory logging.
 
 <p align="center">
   <img src="./assets/fig1.jpg" width="100%">
@@ -11,14 +9,37 @@ Use AlphaDiana to answer: *How well does your agent actually reason, compared to
   <em><strong>Figure 1.</strong> Why agentic reasoning requires system-level evaluation: foundation models are evaluated like engines, agents behave like cars shaped by tools and state, and AlphaDiana serves as the tournament organizer that standardizes evaluation and records canonical traces.</em>
 </p>
 
+## Why AlphaDiana?
+
+Reasoning performance in agent systems depends on more than the base model alone. It is also shaped by the **agent framework, tool interface, execution environment, and evaluation protocol**.
+
+AlphaDiana is designed for **fair, reproducible, and transparent** evaluation of agentic reasoning systems.
+
+With AlphaDiana, you can:
+- evaluate **OpenClaw-style reasoning agents**
+- compare against a **direct LLM baseline**
+- run evaluations with **sandboxed execution**
+- benchmark on **AIME, MATH, and custom datasets**
+- record and inspect **full execution traces**
+- launch and compare runs through both **CLI and dashboard**
+
+Typical questions AlphaDiana helps answer:
+- How much does an agent improve over the base model?
+- How well does it perform on a target benchmark?
+- How much do tools and sandbox settings affect results?
+- What failure modes appear in execution traces?
+
 ## Key Features
 
-- **OpenClaw Agent Evaluation** — First-class integration with OpenClaw for multi-turn agentic reasoning with tool use, code execution, and chain-of-thought traces
-- **Sandboxed Execution via ROCK** — Run agent-generated code safely inside Docker-based ROCK sandboxes with full isolation and automatic lifecycle management
-- **Reasoning Benchmarks** — Built-in benchmark loaders for AIME 2024, AIME 2025, MATH, and user-defined custom problem sets
-- **Direct LLM Baseline** — Evaluate any OpenAI-compatible model (vLLM, OpenRouter, etc.) directly without agent orchestration, for apples-to-apples comparison
-- **Web Dashboard** — Visual UI for launching evaluations, browsing results, and comparing runs side-by-side
-- **Dynamic Sandbox Management** — Sandboxes are created and torn down automatically per run; just set `max_concurrent` and go
+- **Standardized evaluation** for reproducible benchmarking of agentic reasoning systems  
+- **OpenClaw support** for multi-turn reasoning with tool use and code execution  
+- **ROCK sandbox integration** for safe, isolated execution  
+- **Direct LLM baseline** for clean agent-vs-model comparison  
+- **Built-in benchmarks** including AIME, MATH, and custom tasks  
+- **Full trace logging** for debugging, inspection, and analysis  
+- **Web dashboard** for launching, monitoring, and comparing runs  
+- **Dynamic sandbox management** with configurable concurrency
+
 
 ## Quick Start
 
