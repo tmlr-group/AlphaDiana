@@ -13,8 +13,8 @@ agent:
     model: string
     api_base: string
     gateway_token: string           # OpenClaw gateway auth token (default: "OPENCLAW")
-    rock_agent_config_path: string  # Path to ROCK agent config YAML (for dynamic bootstrap)
-    openclaw_config_path: string    # Path to OpenClaw gateway config JSON (for dynamic bootstrap)
+    rock_agent_config_path: string  # Path to ROCK agent config YAML
+    openclaw_config_path: string    # Path to OpenClaw gateway config JSON
     api_key: string
     temperature: float
     max_tokens: integer

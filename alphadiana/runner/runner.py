@@ -264,7 +264,7 @@ class Runner:
         except Exception:
             logger.debug("Dashboard initialization skipped", exc_info=True)
 
-        # Optional multi-sandbox predeploy for OpenClaw dynamic bootstrap.
+        # Optional multi-sandbox predeploy for OpenClaw auto-deploy mode.
         # This is the CLI equivalent of the dashboard deploy-and-run flow:
         # create N sandboxes up front, start one gateway per sandbox, and let
         # OpenClaw round-robin across the resulting gateway_pool.
@@ -450,7 +450,7 @@ class Runner:
                 except Exception as exc:
                     logger.warning(
                         "Failed to predeploy %d OpenClaw sandboxes: %s. "
-                        "Falling back to single-sandbox dynamic bootstrap.",
+                        "Falling back to single-sandbox auto-deploy.",
                         desired_num,
                         exc,
                     )
@@ -462,10 +462,10 @@ class Runner:
                     predeployed_sessions = []
 
         # Auto-create a ROCK sandbox when:
-        #   - agent is "openclaw" with dynamic bootstrap config
+        #   - agent is "openclaw" with auto-deploy config
         #     (rock_agent_config_path + openclaw_config_path in agent config)
         #   - no sandbox_name was explicitly configured (sandbox: null)
-        # Note: this creates a single sandbox for dynamic bootstrap.
+        # Note: this creates a single sandbox for auto-deploy.
         # For concurrent execution, openclaw handles isolation internally via
         # gateway_pool (multi-sandbox).  Do NOT use SandboxPool with openclaw.
         _auto_sandbox = None

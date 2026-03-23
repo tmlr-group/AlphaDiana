@@ -181,7 +181,7 @@ Without them:
 - `tests/test_fix_empty_response.py`
 
 
-If you prefer the manual deploy flow, use `openclaw_deploy/rock_agent_config.prebuilt.yaml` with the reasoning image. The static examples (`openclaw_aime2024.yaml`, `openclaw_aime2025.yaml`) assume you already deployed a sandbox and only need `SANDBOX_ID`.
+If you prefer the manual deploy flow, use `openclaw_deploy/rock_agent_config.prebuilt.yaml` with the reasoning image, then create your own evaluation YAML that points `agent.config.api_base` at the deployed `SANDBOX_ID`.
 
 > **Important:** `openclaw_deploy/rock_agent_config.prebuilt.yaml` is the right config for the pre-built reasoning image. `openclaw_deploy/rock_agent_config.yaml` is the fallback path for a bare image that installs `openclaw@2026.3.7` at runtime, which is slower and not the recommended flow.
 
@@ -249,4 +249,3 @@ Common failure modes:
 - `async start sandbox failed` with `Get timed out: some object(s) not ready.` usually points to ROCK/Ray startup issues or stale ports. Re-run `source dev/rock_env.sh && source dev/.rock_ports.env`, confirm `bash dev/quickstart.sh` completed cleanly, and make sure Docker, Ray, ROCK admin/proxy, and Redis are all alive.
 
 > For full usage details, see [`dev/README_prebuilt.md`](dev/README_prebuilt.md).
-
