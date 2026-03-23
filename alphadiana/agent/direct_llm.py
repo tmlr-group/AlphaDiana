@@ -206,12 +206,17 @@ class DirectLLMAgent(Agent):
                 {"role": "assistant", "reasoning_content": raw_reasoning},
             ]
 
+        # Build trajectory; include "thinking" in assistant message to match openclaw format
+        assistant_msg: dict[str, str] = {"role": "assistant", "content": raw_output}
+        if raw_reasoning:
+            assistant_msg["thinking"] = raw_reasoning
+
         return AgentResponse(
             answer=answer,
             trajectory=[
                 {"role": "system", "content": self._system_prompt},
                 {"role": "user", "content": task.problem},
-                {"role": "assistant", "content": raw_output},
+                assistant_msg,
             ],
             raw_output=raw_output,
             token_usage=token_usage,
