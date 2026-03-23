@@ -28,14 +28,24 @@ Dashboard is AlphaDiana’s web management interface, providing the following ca
 
 Dashboard runs on top of the existing AlphaDiana environment. Please complete the Quick Start in the main README or install manually:
 
-
 ```bash
 conda activate alphadiana
-pip install -e '.[all]' # or pip install -e '.[all,dev]'
+pip install -e '.[all]'   # or pip install -e '.[all,dev]'
 ```
 
-
 Node.js >= 18 (for building the frontend).
+
+> **Important: after pulling new code or updating the Python package, always re-run the environment update steps before starting the dashboard:**
+>
+> ```bash
+> conda activate alphadiana
+> pip install -e '.[all]'           # pick up new Python dependencies
+> cd alphadiana/dashboard/frontend
+> npm install && npm run build       # rebuild frontend (if frontend files changed)
+> cd ../../..
+> ```
+>
+> In development mode (`./run.sh` without `--prod`), the frontend reloads automatically on save — `npm run build` is not needed. In production mode (`./run.sh --prod`), a build is required for changes to take effect.
 
 ---
 
@@ -156,10 +166,12 @@ Check 2 or more runs from the Runs list and click **Compare** to enter the compa
 
 View all created assessment tasks:
 
-- **Progress Bar**: Real-time display of completed/total number of tasks
+- **Progress Bar**: Real-time display of completed/total number of tasks. On resume, the bar shows only the delta for the new attempt (not counting previously completed tasks again).
 - **Real-time accuracy**: dynamically updated as tasks are completed
-- **Log Drawer**: Click on any task to expand and view real-time logs (logs do not interfere with each other when multiple tasks are concurrent)
+- **Log Drawer**: Click on any task to expand and view real-time logs (logs do not interfere with each other when multiple tasks are concurrent). On resume, old logs are preserved above a separator line.
 - **Cancel**: Click Cancel on a running task to mark it as canceled.
+- **Continue**: Resume an interrupted or failed job. For OpenClaw jobs, sandboxes are re-deployed automatically; completed tasks are always skipped.
+- **Delete**: Remove a job entry from the list (does not delete result data in `results/`).
 
 > Note: The task status is only saved in memory. The historical task records will be cleared after restarting the backend, but the JSONL file in `results/` will not be affected.
 
@@ -173,25 +185,37 @@ Good for quick baseline testing, no ROCK sandbox required.
 
 | Field | Description |
 |------|------|
-| Benchmark | Choose preset benchmark or customize (AIME 2024/2025, MATH, etc.) |
-| Model | OpenAI API-compatible model name (such as `Qwen3-8B`) |
-| API Base URL | Model service address (such as `http://localhost:8000/v1`) |
-| API Key | Paste directly, or enter `$VARIABLE_NAME` to reference the key in `.env` |
+| Benchmark | Choose preset benchmark or customize (AIME 2024/2025/2026, HMMT, SMT, CMIMC, BRUMO, etc.) |
+| Model | OpenAI API-compatible model name (such as `moonshotai/kimi-k2.5`) |
+| API Base URL | Model service address (such as `https://openrouter.ai/api/v1/`) |
+| API Key | Paste directly, or enter `$VARIABLE_NAME` to reference the key in `.env`. Quick-fill tags auto-suggest based on the API Base URL domain. |
+| Temperature | Sampling temperature (default 0.6) |
+| Top P | Nucleus sampling probability (leave empty to use model default) |
+| Max Tokens | Maximum tokens per response (default 32768) |
 | Max Concurrent | Number of concurrent tasks |
-| Num Samples | Number of samples for each question (automatically calculated when >1 pass@k/avg@k) |
+| Num Samples | Number of samples for each question (automatically calculates pass@k/avg@k when > 1) |
 
 #### OpenClaw (requires ROCK sandbox)
 
 Two operations are provided:
 
-**Use an existing sandbox**: Select the deployed OpenClaw instance from the Sandbox drop-down box to view the gateway status and loaded model information, and directly submit for evaluation.
-
-**Deploy & Run**: Fill in the model API configuration and evaluation configuration at the same time. After submission, the Dashboard will:
-1. Start sandbox deployment in the background (allow about 5-10 minutes, including `npm install`)
-2. Automatically detect the health status of the gateway
-3. Automatically start evaluation after deployment is complete
+**Deploy & Run**: Fill in the model API configuration and evaluation configuration. After submission, the Dashboard will:
+1. Deploy sandboxes in the background — one per concurrent task (allow ~5–10 minutes including `npm install`)
+2. Automatically probe gateway health
+3. Start evaluation automatically once all sandboxes are healthy
 
 The entire process can be monitored on the Jobs page.
+
+| Field | Description |
+|------|------|
+| Model API Base URL | API base for the model running inside the sandbox (e.g. `https://openrouter.ai/api/v1/`) |
+| Model Name | Model identifier forwarded to the gateway (e.g. `moonshotai/kimi-k2.5`) |
+| Model API Key | Key for the model API. Use `$ENV_VAR` to reference `.env` (auto-suggested by domain). |
+| Temperature / Top P / Max Tokens | Generation parameters forwarded to the sandbox gateway |
+| System Prompt | Instruction prepended to each task. Leave empty to use the built-in default (shown as grey placeholder). |
+| Concurrency | Number of parallel tasks = number of sandboxes deployed. Higher values use more resources. |
+
+> **Continue / Resume**: If a job is interrupted (e.g. server restart), click **Continue** on the Jobs page. For OpenClaw jobs, sandboxes will be re-deployed automatically. Completed tasks are always skipped unless "Redo All" was used.
 
 ---
 
@@ -245,6 +269,17 @@ Port variables are automatically handled by `run.sh` and usually do not need to 
 
 ---
 
+## Scorer Reference
+
+| Scorer | When to use | Notes |
+|--------|-------------|-------|
+| **Math Verify** (`math_verify`) | Math competition problems (AIME, HMMT, etc.) — **recommended default** | Uses math-verify/SymPy for symbolic equivalence. Handles LaTeX, fractions, equivalent expressions (√2/2 = 1/√2). Falls back to normalized string comparison when parsing fails. Requires `pip install math-verify`. |
+| **Numeric** (`numeric`) | Integer or decimal answers only | Compares numeric values with configurable tolerance (default 1e-6). Fails if the predicted answer cannot be parsed as a number. |
+| **Exact Match** (`exact_match`) | String answers where reformulation should not count | Math-aware string normalization then strict equality. Does not equate equivalent expressions (1/2 ≠ 0.5). |
+| **LLM Judge** (`llm_judge`) | Open-ended or descriptive answers | Uses an LLM API to judge correctness. Requires additional scorer config: `api_base`, `api_key`, `model` (not exposed in the UI form — set via YAML or API). |
+
+---
+
 ## FAQ
 
 **Q: Startup shows `ModuleNotFoundError: No module named 'fastapi'`**
@@ -277,3 +312,23 @@ The ROCK service is not running, or `dev/rock_env.sh` is not sourced. Sandbox-in
 **Q: The Config area of the Run Detail page is blank**
 
 Config is automatically saved to `configs/<run_id>.yaml` by Dashboard when creating a task. Tasks started through the command line `alphadiana run` will not automatically generate this file. You need to manually copy the configuration file to the `configs/` directory.
+
+**Q: Math Verify scorer shows "No symbolic match" on clearly correct answers**
+
+The `math-verify` library is not installed or failed to parse the expression. Install it:
+
+```bash
+pip install math-verify
+```
+
+If the error persists, the scorer will automatically fall back to normalized string comparison.
+
+**Q: After pulling new code, the dashboard UI doesn't reflect the changes**
+
+In production mode, you need to rebuild the frontend:
+
+```bash
+cd alphadiana/dashboard/frontend && npm install && npm run build && cd ../../..
+```
+
+Also run `pip install -e '.[all]'` to pick up any new Python dependencies.

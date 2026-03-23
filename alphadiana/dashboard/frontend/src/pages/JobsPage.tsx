@@ -238,7 +238,11 @@ export default function JobsPage() {
           {(job.status === 'interrupted' || job.status === 'failed') && (
             <Popconfirm
               title={job.status === 'interrupted' ? 'Resume this job?' : 'Retry this job?'}
-              description="A new job will be created with the same config. Completed tasks will be skipped."
+              description={
+                job.agent === 'openclaw'
+                  ? 'Sandboxes will be re-deployed automatically. Completed tasks will be skipped.'
+                  : 'A new job will be created with the same config. Completed tasks will be skipped.'
+              }
               onConfirm={() => handleResume(job.job_id)}
             >
               <Button size="small" type="primary" icon={<PlayCircleOutlined />}>

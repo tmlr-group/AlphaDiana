@@ -86,6 +86,11 @@ class JobManager:
         self._jobs: dict[str, JobStatus] = {}
         self._job_logs: dict[str, io.StringIO] = {}
         self._cancel_events: dict[str, threading.Event] = {}
+        # Baseline non-errored JSONL count at job start; used to compute
+        # delta progress so retries don't inherit old error records as progress.
+        self._job_progress_offsets: dict[str, int] = {}
+        # Optional log prefix (old run logs carried over from a resumed job).
+        self._job_log_prefixes: dict[str, str] = {}
         self._lock = threading.RLock()  # RLock: reentrant, same thread can acquire multiple times
         self._jobs_file = os.path.join(results_dir, ".jobs.json")
         self._logs_dir = os.path.join(results_dir, ".job_logs")
@@ -272,6 +277,8 @@ class JobManager:
         with self._lock:
             self._jobs.pop(job_id, None)
             self._job_logs.pop(job_id, None)
+            self._job_progress_offsets.pop(job_id, None)
+            self._job_log_prefixes.pop(job_id, None)
             self._persist_jobs()
         # Clean up persisted log file
         log_path = os.path.join(self._logs_dir, f"{job_id}.log")
@@ -392,13 +399,40 @@ class JobManager:
         with self._lock:
             return self._jobs.get(job_id)
 
-    def get_job_logs(self, job_id: str) -> str | None:
+    def get_raw_log_content(self, job_id: str) -> str:
+        """Return actual log content for a job (empty string if no logs exist).
+
+        Unlike get_job_logs, never returns hint messages — only real log text.
+        Used to carry logs forward when resuming a job.
+        """
         with self._lock:
             buf = self._job_logs.get(job_id)
             if buf is not None:
                 content = buf.getvalue()
                 if content:
                     return content
+        log_path = os.path.join(self._logs_dir, f"{job_id}.log")
+        if os.path.exists(log_path):
+            try:
+                with open(log_path, encoding="utf-8") as f:
+                    return f.read()
+            except Exception:
+                pass
+        return ""
+
+    def set_log_prefix(self, job_id: str, prefix: str) -> None:
+        """Prepend content to a job's log output (e.g. carried-over logs from previous run)."""
+        with self._lock:
+            self._job_log_prefixes[job_id] = prefix
+
+    def get_job_logs(self, job_id: str) -> str | None:
+        with self._lock:
+            prefix = self._job_log_prefixes.get(job_id, "")
+            buf = self._job_logs.get(job_id)
+            if buf is not None:
+                content = buf.getvalue()
+                if content:
+                    return prefix + content
             job = self._jobs.get(job_id)
 
         # Try loading from disk if not in memory
@@ -408,9 +442,12 @@ class JobManager:
                 with open(log_path, encoding="utf-8") as f:
                     content = f.read()
                 if content:
-                    return content
+                    return prefix + content
             except Exception:
                 pass
+
+        if prefix:
+            return prefix
 
         # Job exists but no logs available — return friendly hint
         if job is not None:
@@ -700,6 +737,16 @@ class JobManager:
 
         self._update_job(job_id, status="running")
 
+        # Record how many non-errored records are already in the JSONL.
+        # These tasks will be skipped (checkpoint) and must not inflate progress.
+        from pathlib import Path as _Path
+        _baseline_path = _Path(self._results_dir) / f"{run_id}.jsonl"
+        if _baseline_path.exists():
+            _bc, _, _be = self._count_jsonl(str(_baseline_path))
+            self._job_progress_offsets[job_id] = _bc - _be  # non-errored = will be skipped
+        else:
+            self._job_progress_offsets[job_id] = 0
+
         _log(f"Job {job_id} started (run_id={run_id})")
         _log(f"Agent: {req.agent_name}, Benchmark: {req.benchmark_name}")
         def _mask(k: str, v: object) -> object:
@@ -751,15 +798,19 @@ class JobManager:
                     _log("Job cancelled before execution")
                     return
 
-            # Pre-evaluation gateway health check for openclaw agents
-            api_base = req.agent_config.get("api_base", "")
-            if req.agent_name == "openclaw" and api_base:
-                _log(f"Probing OpenClaw gateway at {api_base} ...")
-                if not self._probe_gateway(api_base):
+            # Pre-evaluation gateway health check for openclaw agents.
+            # Use api_base if set (single sandbox), otherwise fall back to the
+            # first URL in gateway_pool (multi-sandbox deploy-and-run).
+            _api_base = req.agent_config.get("api_base", "") or ""
+            _gateway_pool = req.agent_config.get("gateway_pool") or []
+            probe_url = _api_base or (_gateway_pool[0] if _gateway_pool else "")
+            if req.agent_name == "openclaw" and probe_url:
+                _log(f"Probing OpenClaw gateway at {probe_url} ...")
+                if not self._probe_gateway(probe_url):
                     _log("[ERROR] OpenClaw gateway is not responding. Aborting job.")
                     self._update_job(
                         job_id, status="failed",
-                        error=f"OpenClaw gateway not ready at {api_base}. Please check sandbox status before starting evaluation.",
+                        error=f"OpenClaw gateway not ready at {probe_url}. Please check sandbox status before starting evaluation.",
                     )
                     return
                 _log("Gateway health check passed.")
@@ -929,16 +980,25 @@ class JobManager:
                         job.total_tasks = current_total
             return
 
-        count, correct, _error_count = self._count_jsonl(str(jsonl_path))
+        count, correct, error_count = self._count_jsonl(str(jsonl_path))
+
+        # Non-errored records are tasks that have been scored (correct or wrong).
+        # Subtract the baseline recorded at job start so retried jobs show delta
+        # progress (0 → N) instead of inheriting the old error count as progress.
+        non_error_count = count - error_count
+        offset = self._job_progress_offsets.get(job_id, 0)
+        displayed_progress = max(0, non_error_count - offset)
+        # Adjust total_tasks to reflect only the work for this run
+        adjusted_total = max(0, current_total - offset) if current_total > 0 else 0
 
         with self._lock:
             job = self._jobs.get(job_id)
             if job:
-                if current_total > 0 and job.total_tasks != current_total:
-                    job.total_tasks = current_total
-                changed = job.progress != count
-                job.progress = count
-                if count > 0:
-                    job.accuracy = correct / count
+                if adjusted_total > 0 and job.total_tasks != adjusted_total:
+                    job.total_tasks = adjusted_total
+                changed = job.progress != displayed_progress
+                job.progress = displayed_progress
+                if non_error_count > 0:
+                    job.accuracy = correct / non_error_count
                 if changed:
                     self._persist_jobs()

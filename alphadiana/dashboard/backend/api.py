@@ -320,9 +320,69 @@ def resume_job(job_id: str):
         if key in req.agent_config and isinstance(req.agent_config[key], str):
             req.agent_config[key] = resolve_env_ref(req.agent_config[key])
 
-    # Remove the old job entry FIRST to avoid any window of duplicate run_ids
-    mgr.remove_job(job_id)
-    new_job = mgr.create_job(req)
+    # Capture old logs before removing the job so they can be carried over
+    old_logs = mgr.get_raw_log_content(job_id)
+
+    # For OpenClaw deploy-and-run jobs, always re-deploy sandboxes.
+    # The original sandbox may no longer be alive after an interruption,
+    # and if interrupted during deploy (pending state), agent_config won't
+    # have api_base / gateway_pool at all — running create_job directly would fail.
+    meta = req.metadata if isinstance(req.metadata, dict) else {}
+    if req.agent_name == "openclaw" and meta.get("deploy_and_run"):
+        model_api_base = str(meta.get("model_api_base", ""))
+        model_name = str(meta.get("base_model", ""))
+        # 1 sandbox per task (CONCURRENCY_PER_SANDBOX = 1)
+        num_sandboxes = max(1, req.max_concurrent)
+
+        # Resolve the model API key from .env using the API base URL pattern
+        model_api_key = _resolve_key_from_api_base(model_api_base)
+        if not model_api_key:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Cannot resume: sandbox model API key not found in .env. "
+                    f"Add the appropriate key for '{model_api_base}' "
+                    "(e.g. ARK_API_KEY=...) and try again."
+                ),
+            )
+
+        # Strip stale gateway info — new sandboxes will be deployed
+        req.agent_config.pop("api_base", None)
+        req.agent_config.pop("gateway_pool", None)
+        # Remove old deploy_id; it will be replaced by the new deploy
+        req.metadata.pop("deploy_id", None)
+
+        sandbox_mgr = _get_sandbox_manager()
+        deploy_job = sandbox_mgr.deploy_sandbox(
+            model_api_base=model_api_base,
+            model_api_key=model_api_key,
+            model_name=model_name,
+            num_sandboxes=num_sandboxes,
+        )
+        req.metadata["deploy_id"] = deploy_job.deploy_id
+
+        mgr.remove_job(job_id)
+        new_job = mgr.create_job_after_deploy(
+            req=req,
+            sandbox_manager=sandbox_mgr,
+            deploy_id=deploy_job.deploy_id,
+        )
+    else:
+        # Remove the old job entry FIRST to avoid any window of duplicate run_ids
+        mgr.remove_job(job_id)
+        new_job = mgr.create_job(req)
+
+    # Carry over old logs with a separator so history is preserved
+    if old_logs:
+        from datetime import datetime as _dt
+        now_str = _dt.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+        separator = (
+            "\n" + "─" * 64 + "\n"
+            f"  Resumed at {now_str}\n"
+            + "─" * 64 + "\n\n"
+        )
+        mgr.set_log_prefix(new_job.job_id, old_logs + separator)
+
     return new_job
 
 

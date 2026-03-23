@@ -136,22 +136,28 @@ export default function RunsListPage() {
       dataIndex: 'accuracy',
       key: 'accuracy',
       sorter: (a, b) => a.accuracy - b.accuracy,
-      render: (acc: number, r: RunSummary) => (
-        <div>
-          <Progress
-            percent={Math.round(acc * 100)}
-            size="small"
-            status={acc >= 0.8 ? 'success' : acc >= 0.5 ? 'normal' : 'exception'}
-          />
-          {r.num_samples > 1 && (
-            <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 2 }}>
-              Pass@{r.num_samples}: {Math.round(r.pass_at_k * 100)}%
-              {' · '}
-              Avg@{r.num_samples}: {Math.round(r.avg_at_k * 100)}%
+      render: (acc: number, r: RunSummary) => {
+        const correct = Math.round(r.accuracy_total * r.total_tasks);
+        return (
+          <div>
+            <Progress
+              percent={Math.round(acc * 100)}
+              size="small"
+              status={acc >= 0.8 ? 'success' : acc >= 0.5 ? 'normal' : 'exception'}
+            />
+            <div style={{ fontSize: 11, color: '#595959', marginTop: 1 }}>
+              {correct}/{r.total_tasks}
             </div>
-          )}
-        </div>
-      ),
+            {r.num_samples > 1 && (
+              <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 1 }}>
+                Pass@{r.num_samples}: {Math.round(r.pass_at_k * 100)}%
+                {' · '}
+                Avg@{r.num_samples}: {Math.round(r.avg_at_k * 100)}%
+              </div>
+            )}
+          </div>
+        );
+      },
       width: 200,
     },
     {

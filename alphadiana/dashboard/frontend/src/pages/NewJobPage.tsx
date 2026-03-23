@@ -41,6 +41,7 @@ const AGENTS = [
       { name: 'api_base', label: 'API Base URL', required: true, placeholder: 'e.g. https://openrouter.ai/api/v1/' },
       { name: 'api_key', label: 'API Key', required: true, placeholder: 'API key', password: true },
       { name: 'temperature', label: 'Temperature', type: 'number' as const, default: 0.6 },
+      { name: 'top_p', label: 'Top P', type: 'number' as const },
       { name: 'max_tokens', label: 'Max Tokens', type: 'number' as const, default: 32768 },
     ],
   },
@@ -49,17 +50,28 @@ const AGENTS = [
     label: 'OpenClaw',
     description: 'Multi-turn agent with tool calling in ROCK sandbox',
     fields: [
-      // OpenClaw agent fields are handled by a custom sandbox selector UI
+      // Model config is handled by the sandbox selector UI above;
+      // these are generation parameters forwarded to the gateway.
       { name: 'temperature', label: 'Temperature', type: 'number' as const, default: 0.7 },
+      { name: 'top_p', label: 'Top P', type: 'number' as const },
       { name: 'max_tokens', label: 'Max Tokens', type: 'number' as const, default: 32768 },
-      { name: 'max_attempts', label: 'Max Retry Attempts', type: 'number' as const, default: 3 },
-      { name: 'request_timeout', label: 'Request Timeout (s)', type: 'number' as const, default: 1800 },
     ],
   },
 ];
 
-// Number of concurrent tasks each OpenClaw sandbox can handle
-const CONCURRENCY_PER_SANDBOX = 6;
+// One sandbox per concurrent task for OpenClaw (sandboxes are not shared between tasks)
+const CONCURRENCY_PER_SANDBOX = 1;
+
+// Default system prompt used by OpenClaw when none is specified
+const OPENCLAW_DEFAULT_SYSTEM_PROMPT =
+  'You are an expert problem solver. When given a problem, actively use your available tools ' +
+  'and skills throughout your reasoning process. Do not attempt to solve problems purely in ' +
+  'your head when tools can help. Use code execution, search, or any other available ' +
+  'capabilities to verify intermediate steps, explore approaches, and confirm your final answer.\n\n' +
+  'When you have reached your final answer, you MUST present it in the following format:\n\n' +
+  '$$\\boxed{your answer here}$$\n\n' +
+  'Do not skip the boxed format. The boxed answer must appear at the very end of your response ' +
+  'and contain only the final answer, not explanations.';
 
 // --- Benchmark presets: each preset = benchmark + dataset config bundled ---
 
@@ -79,7 +91,7 @@ const BENCHMARK_PRESETS: BenchmarkPreset[] = [
     label: 'AIME 2026',
     description: 'AIME 2026 Full (30 problems)',
     benchmarkName: 'aime',
-    defaultScorer: 'numeric',
+    defaultScorer: 'math_verify',
     benchmarkConfig: {
       dataset: 'MathArena/aime_2026',
       split: 'train',
@@ -92,7 +104,7 @@ const BENCHMARK_PRESETS: BenchmarkPreset[] = [
     label: 'AIME 2025',
     description: 'AIME 2025 Full (30 problems)',
     benchmarkName: 'aime',
-    defaultScorer: 'numeric',
+    defaultScorer: 'math_verify',
     benchmarkConfig: {
       dataset: 'MathArena/aime_2025',
       split: 'train',
@@ -105,7 +117,7 @@ const BENCHMARK_PRESETS: BenchmarkPreset[] = [
     label: 'AIME 2024',
     description: 'AIME 2024 Full (30 problems, I + II)',
     benchmarkName: 'aime',
-    defaultScorer: 'numeric',
+    defaultScorer: 'math_verify',
     benchmarkConfig: {
       dataset: 'HuggingFaceH4/aime_2024',
       split: 'train',
@@ -203,10 +215,26 @@ const BENCHMARK_PRESETS: BenchmarkPreset[] = [
 ];
 
 const SCORERS = [
-  { value: 'numeric', label: 'Numeric', description: 'Compare numeric values with tolerance' },
-  { value: 'math_verify', label: 'Math Verify', description: 'Symbolic equivalence via SymPy (handles LaTeX, fractions, expressions)' },
-  { value: 'exact_match', label: 'Exact Match', description: 'Math-aware string comparison' },
-  { value: 'llm_judge', label: 'LLM Judge', description: 'Use LLM to evaluate correctness' },
+  {
+    value: 'math_verify',
+    label: 'Math Verify',
+    description: 'Symbolic equivalence via math-verify/SymPy. Handles LaTeX, fractions, expressions (e.g. √2/2 = 1/√2). Recommended for math competitions.',
+  },
+  {
+    value: 'numeric',
+    label: 'Numeric',
+    description: 'Parses both answers as numbers and compares with tolerance (default 1e-6). Best for integer/decimal answers. Fails if answer is non-numeric.',
+  },
+  {
+    value: 'exact_match',
+    label: 'Exact Match',
+    description: 'Normalized string comparison after math-aware preprocessing. Strict: does not equate 1/2 with 0.5 or equivalent expressions.',
+  },
+  {
+    value: 'llm_judge',
+    label: 'LLM Judge',
+    description: 'Uses an LLM API to evaluate correctness. Flexible for open-ended answers. Requires scorer_config: {api_base, api_key, model}.',
+  },
 ];
 
 // Known API base URL -> env var name mappings
@@ -623,7 +651,7 @@ export default function NewJobPage() {
         initialValues={{
           agent_name: 'direct_llm',
           benchmark_preset: 'aime2025',
-          scorer_name: 'numeric',
+          scorer_name: 'math_verify',
           max_concurrent: 3,
           num_samples: 1,
           redo_all: false,
@@ -872,26 +900,19 @@ export default function NewJobPage() {
                 </Col>
               </Row>
 
-              <Divider style={{ margin: '12px 0' }}>Agent Parameters</Divider>
-              <Row gutter={16}>
-                <Col span={8}>
-                  <Form.Item name="agent_gateway_token" label="Gateway Token">
-                    <Input placeholder="default: OPENCLAW" />
-                  </Form.Item>
-                </Col>
-              </Row>
+              <Divider style={{ margin: '12px 0' }}>System Prompt</Divider>
               <Form.Item
                 name="agent_system_prompt"
                 label={
                   <Space size={4}>
                     <span>System Prompt</span>
-                    <Tooltip title="Optional instruction prepended to each task. Guides the agent's answer format (e.g. require \\boxed{answer} at the end).">
+                    <Tooltip title="Instruction prepended to each task. Leave empty to use the default prompt shown in grey. Customize to change how the agent formats its answer.">
                       <QuestionCircleOutlined style={{ color: '#8c8c8c' }} />
                     </Tooltip>
                   </Space>
                 }
               >
-                <Input.TextArea rows={4} placeholder="Optional — e.g. 'Present your final answer as $$\boxed{answer}$$'" />
+                <Input.TextArea rows={5} placeholder={OPENCLAW_DEFAULT_SYSTEM_PROMPT} />
               </Form.Item>
             </>
           )}
@@ -1001,18 +1022,42 @@ export default function NewJobPage() {
         {/* Scorer & Execution */}
         <Card title="Scorer & Execution" size="small" style={{ marginBottom: 16 }}>
           <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item name="scorer_name" label="Scorer">
+            <Col span={6}>
+              <Form.Item
+                name="scorer_name"
+                label={
+                  <Space size={4}>
+                    <span>Scorer</span>
+                    <Tooltip
+                      title={
+                        <div>
+                          {SCORERS.map((s) => (
+                            <div key={s.value} style={{ marginBottom: 6 }}>
+                              <strong>{s.label}</strong>
+                              <div style={{ fontSize: 11, opacity: 0.85 }}>{s.description}</div>
+                            </div>
+                          ))}
+                        </div>
+                      }
+                      overlayStyle={{ maxWidth: 380 }}
+                    >
+                      <QuestionCircleOutlined style={{ color: '#8c8c8c' }} />
+                    </Tooltip>
+                  </Space>
+                }
+              >
                 <Select
                   options={SCORERS.map((s) => ({
                     value: s.value,
                     label: (
-                      <span>
-                        <strong>{s.label}</strong>
-                        <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-                          {s.description}
-                        </Text>
-                      </span>
+                      <Tooltip title={s.description} placement="right" overlayStyle={{ maxWidth: 320 }}>
+                        <span style={{ display: 'block' }}>
+                          <strong>{s.label}</strong>
+                          <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                            {s.description}
+                          </Text>
+                        </span>
+                      </Tooltip>
                     ),
                   }))}
                 />
@@ -1024,7 +1069,7 @@ export default function NewJobPage() {
                 label={
                   <Space size={4}>
                     <span>Tolerance</span>
-                    <Tooltip title="Numeric scorer accepted absolute error. Example: 1e-6 means |pred - gt| <= 1e-6 is counted as correct.">
+                    <Tooltip title="Only applies to the Numeric scorer. Accepted error threshold (absolute or relative). Default 1e-6: |pred − gt| ≤ 1e-6, or |pred − gt| / max(|pred|, |gt|) ≤ 1e-6.">
                       <QuestionCircleOutlined style={{ color: '#8c8c8c' }} />
                     </Tooltip>
                   </Space>
@@ -1039,7 +1084,7 @@ export default function NewJobPage() {
                 label={
                   <Space size={4}>
                     <span>Concurrency</span>
-                    <Tooltip title={`How many benchmark tasks run in parallel. For direct_llm, higher values improve speed. For OpenClaw, sandboxes are automatically deployed: 1 sandbox per ${CONCURRENCY_PER_SANDBOX} concurrent tasks (e.g. concurrency 24 → 4 sandboxes).`}>
+                    <Tooltip title={`How many benchmark tasks run in parallel. For direct_llm, higher values improve speed. For OpenClaw, one sandbox is deployed per task: concurrency = number of sandboxes (e.g. concurrency 4 → 4 sandboxes).`}>
                       <QuestionCircleOutlined style={{ color: '#8c8c8c' }} />
                     </Tooltip>
                   </Space>
@@ -1063,11 +1108,11 @@ export default function NewJobPage() {
                 <InputNumber min={1} max={64} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
-            <Col span={4}>
+            <Col span={3}>
               <Form.Item
                 name="redo_all"
                 label={
-                  <Space size={4}>
+                  <Space size={4} style={{ whiteSpace: 'nowrap' }}>
                     <span>Redo All</span>
                     <Tooltip title="When OFF (default): resumes from checkpoint — skips already completed tasks and only evaluates remaining ones. When ON: deletes existing results and re-evaluates all tasks from scratch. This is irreversible.">
                       <QuestionCircleOutlined style={{ color: '#8c8c8c' }} />
@@ -1079,11 +1124,11 @@ export default function NewJobPage() {
                 <Switch />
               </Form.Item>
             </Col>
-            <Col span={4}>
+            <Col span={3}>
               <Form.Item
                 name="smoke_test"
                 label={
-                  <Space size={4}>
+                  <Space size={4} style={{ whiteSpace: 'nowrap' }}>
                     <span>Smoke Test</span>
                     <Tooltip title="Run a quick pipeline check with only 1 task (sets benchmark_config.max_tasks=1).">
                       <QuestionCircleOutlined style={{ color: '#8c8c8c' }} />
