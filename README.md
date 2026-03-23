@@ -352,7 +352,7 @@ If you use AlphaDiana in your research, please cite the project once the paper o
 
 ```bibtex
 @misc{alphadiana,
-  title={AlphaDiana: A Framework for Evaluating Agentic Reasoning},
+  title={AlphaDiana: A System for Evaluating Agentic Reasoning},
   year={2026},
   url={https://github.com/tmlr-group/AlphaDiana}
 }
