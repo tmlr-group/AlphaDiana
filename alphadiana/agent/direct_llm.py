@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import random
+import re
 import time
 from typing import Any
 
@@ -28,6 +29,39 @@ _DEFAULT_SYSTEM_PROMPT = (
 def _extract_answer(text: str) -> str:
     """Extract the answer from model output, preferring \\boxed{} content."""
     return extract_answer_candidate(text)
+
+
+_THINK_TAG_RE = re.compile(r"<think>(.*?)</think>", re.DOTALL)
+
+
+def _extract_reasoning_from_model_extra(obj: object) -> str:
+    """Extract reasoning content from an OpenAI SDK object's model_extra.
+
+    Different APIs use different field names:
+      - Volcengine Kimi: model_extra["reasoning_content"]
+      - OpenRouter Kimi: model_extra["reasoning"]
+    """
+    extra = getattr(obj, "model_extra", None)
+    if not extra or not isinstance(extra, dict):
+        return ""
+    for key in ("reasoning_content", "reasoning"):
+        val = extra.get(key)
+        if val and isinstance(val, str):
+            return val
+    return ""
+
+
+def _split_think_tags(content: str) -> tuple[str, str]:
+    """Split <think>...</think> tags from content (Qwen3/vLLM pattern).
+
+    Returns (reasoning, cleaned_content).
+    """
+    parts = _THINK_TAG_RE.findall(content)
+    if not parts:
+        return "", content
+    reasoning = "\n".join(parts)
+    cleaned = _THINK_TAG_RE.sub("", content).strip()
+    return reasoning, cleaned
 
 
 class DirectLLMAgent(Agent):
@@ -115,18 +149,19 @@ class DirectLLMAgent(Agent):
         # Retry loop with exponential backoff for transient errors.
         last_exc: Exception | None = None
         raw_output = ""
+        raw_reasoning = ""
         finish_reason = ""
         token_usage: dict = {}
 
         for attempt in range(self._max_retries + 1):
             try:
                 if self._stream:
-                    raw_output, finish_reason, token_usage = self._call_streaming(
-                        request_kwargs
+                    raw_output, finish_reason, token_usage, raw_reasoning = (
+                        self._call_streaming(request_kwargs)
                     )
                 else:
-                    raw_output, finish_reason, token_usage = self._call_non_streaming(
-                        request_kwargs
+                    raw_output, finish_reason, token_usage, raw_reasoning = (
+                        self._call_non_streaming(request_kwargs)
                     )
                 last_exc = None
                 break
@@ -146,7 +181,30 @@ class DirectLLMAgent(Agent):
             raise last_exc
 
         wall_time = time.time() - start
-        answer = _extract_answer(raw_output)
+
+        # Extract answer: try raw_output first, fall back to reasoning
+        answer = _extract_answer(raw_output) if raw_output else ""
+        if not answer and raw_reasoning:
+            answer = _extract_answer(raw_reasoning)
+
+        # Build response_json with reasoning_content if present
+        response_json: dict = {}
+        if raw_reasoning:
+            response_json = {
+                "choices": [{
+                    "message": {
+                        "role": "assistant",
+                        "content": raw_output,
+                        "reasoning_content": raw_reasoning,
+                    }
+                }]
+            }
+
+        reasoning_trajectory: list[dict] = []
+        if raw_reasoning:
+            reasoning_trajectory = [
+                {"role": "assistant", "reasoning_content": raw_reasoning},
+            ]
 
         return AgentResponse(
             answer=answer,
@@ -161,6 +219,8 @@ class DirectLLMAgent(Agent):
             system_prompt=self._system_prompt,
             request_messages=messages,
             finish_reason=finish_reason,
+            response_json=response_json,
+            reasoning_trajectory=reasoning_trajectory,
         )
 
     @staticmethod
@@ -179,8 +239,8 @@ class DirectLLMAgent(Agent):
 
     _stream_options_supported: bool = True
 
-    def _call_streaming(self, request_kwargs: dict) -> tuple[str, str, dict]:
-        """Call the API in streaming mode, returning (raw_output, finish_reason, token_usage)."""
+    def _call_streaming(self, request_kwargs: dict) -> tuple[str, str, dict, str]:
+        """Call the API in streaming mode, returning (raw_output, finish_reason, token_usage, raw_reasoning)."""
         kwargs = {**request_kwargs, "stream": True}
         if self._stream_options_supported:
             kwargs["stream_options"] = {"include_usage": True}
@@ -201,13 +261,19 @@ class DirectLLMAgent(Agent):
                 raise
 
         content_parts: list[str] = []
+        reasoning_parts: list[str] = []
         finish_reason = ""
         token_usage: dict = {}
         for chunk in stream:
             if chunk.choices:
                 delta = chunk.choices[0].delta
-                if delta and delta.content:
-                    content_parts.append(delta.content)
+                if delta:
+                    if delta.content:
+                        content_parts.append(delta.content)
+                    # Collect reasoning from model_extra (Kimi/OpenRouter/Volcengine)
+                    rc = _extract_reasoning_from_model_extra(delta)
+                    if rc:
+                        reasoning_parts.append(rc)
                 if chunk.choices[0].finish_reason:
                     finish_reason = chunk.choices[0].finish_reason
             if hasattr(chunk, "usage") and chunk.usage:
@@ -217,10 +283,19 @@ class DirectLLMAgent(Agent):
                     "total_tokens": chunk.usage.total_tokens or 0,
                 }
 
-        return "".join(content_parts), finish_reason, token_usage
+        raw_content = "".join(content_parts)
+        raw_reasoning = "".join(reasoning_parts)
 
-    def _call_non_streaming(self, request_kwargs: dict) -> tuple[str, str, dict]:
-        """Call the API in non-streaming mode, returning (raw_output, finish_reason, token_usage)."""
+        # Handle <think> tags embedded in content (Qwen3/vLLM pattern)
+        if not raw_reasoning and "<think>" in raw_content:
+            tag_reasoning, raw_content = _split_think_tags(raw_content)
+            if tag_reasoning:
+                raw_reasoning = tag_reasoning
+
+        return raw_content, finish_reason, token_usage, raw_reasoning
+
+    def _call_non_streaming(self, request_kwargs: dict) -> tuple[str, str, dict, str]:
+        """Call the API in non-streaming mode, returning (raw_output, finish_reason, token_usage, raw_reasoning)."""
         response = self._client.chat.completions.create(**request_kwargs)
         choice = response.choices[0]
         raw_output = choice.message.content or ""
@@ -232,7 +307,11 @@ class DirectLLMAgent(Agent):
                 "completion_tokens": response.usage.completion_tokens,
                 "total_tokens": response.usage.total_tokens,
             }
-        return raw_output, finish_reason, token_usage
+        raw_reasoning = _extract_reasoning_from_model_extra(choice.message)
+        # Handle <think> tags embedded in content (Qwen3/vLLM pattern)
+        if not raw_reasoning and "<think>" in raw_output:
+            raw_reasoning, raw_output = _split_think_tags(raw_output)
+        return raw_output, finish_reason, token_usage, raw_reasoning
 
     def teardown(self) -> None:
         pass
