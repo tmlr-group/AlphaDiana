@@ -100,19 +100,6 @@ const BENCHMARK_PRESETS: BenchmarkPreset[] = [
     },
   },
   {
-    value: 'aime2025',
-    label: 'AIME 2025',
-    description: 'AIME 2025 Full (30 problems)',
-    benchmarkName: 'aime',
-    defaultScorer: 'math_verify',
-    benchmarkConfig: {
-      dataset: 'MathArena/aime_2025',
-      split: 'train',
-      problem_field: 'problem',
-      answer_field: 'answer',
-    },
-  },
-  {
     value: 'aime2024',
     label: 'AIME 2024',
     description: 'AIME 2024 Full (30 problems, I + II)',
@@ -273,7 +260,7 @@ export default function NewJobPage() {
   const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<string>('direct_llm');
-  const [selectedPreset, setSelectedPreset] = useState<string>('aime2025');
+  const [selectedPreset, setSelectedPreset] = useState<string>('aime2024');
   const [redoAll, setRedoAll] = useState(false);
 
   // No sandbox state — OpenClaw always deploys fresh sandboxes automatically
@@ -650,7 +637,7 @@ export default function NewJobPage() {
         }}
         initialValues={{
           agent_name: 'direct_llm',
-          benchmark_preset: 'aime2025',
+          benchmark_preset: 'aime2024',
           scorer_name: 'math_verify',
           max_concurrent: 3,
           num_samples: 1,

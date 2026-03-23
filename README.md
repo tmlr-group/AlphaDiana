@@ -38,7 +38,7 @@ Typical questions AlphaDiana helps answer:
 - **Built-in benchmarks** including AIME, MATH, and custom tasks  
 - **Full trace logging** for debugging, inspection, and analysis  
 - **Web dashboard** for launching, monitoring, and comparing runs  
-- **Dynamic sandbox management** with configurable concurrency
+- **Automatic sandbox management** with configurable concurrency
 
 ## Quick Start
 
@@ -133,7 +133,7 @@ AlphaDiana is configured with a YAML file. At a high level, you specify:
 Example:
 
 ```yaml
-run_id: "openclaw-qwen3-8b-aime2024-dynamic"
+run_id: "openclaw-qwen3-8b-aime2024-001"
 
 agent:
   name: openclaw
@@ -166,10 +166,10 @@ Ready-to-run examples are provided in [`configs/examples/`](configs/examples/).
 
 ### Run an OpenClaw agent
 
-The recommended starting point is the **dynamic single-sandbox** configuration. In this mode, AlphaDiana automatically creates a ROCK sandbox, runs the evaluation, and removes the sandbox afterward.
+The recommended starting point is the **single-sandbox** configuration. In this mode, AlphaDiana automatically creates a ROCK sandbox, runs the evaluation, and removes the sandbox afterward.
 
 ```bash
-alphadiana run configs/examples/openclaw_aime2024_dynamic.yaml
+alphadiana run configs/examples/openclaw_aime2024.yaml
 ```
 
 This configuration uses one sandbox by default with `4g` memory and `1` CPU.
@@ -183,7 +183,7 @@ max_concurrent: 4
 A multi-sandbox example is provided in:
 
 ```text
-configs/examples/openclaw_aime2024_dynamic_multisandbox.yaml
+configs/examples/openclaw_aime2024_multisandbox.yaml
 ```
 
 ### Run a direct LLM baseline
