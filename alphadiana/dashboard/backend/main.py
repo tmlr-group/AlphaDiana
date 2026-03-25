@@ -34,9 +34,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Set HF mirror if not already configured (needed for China mainland)
-if not os.environ.get("HF_ENDPOINT"):
-    os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+# Set HF mirror only when explicitly opted in (e.g. China mainland deployments).
+# Enable by setting ALPHADIANA_USE_HF_MIRROR=1 (or "true"/"yes").
+if os.environ.get("ALPHADIANA_USE_HF_MIRROR", "").lower() in ("1", "true", "yes"):
+    if not os.environ.get("HF_ENDPOINT"):
+        os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 
 # Resolve paths relative to the project root
 PROJECT_ROOT = Path(__file__).resolve().parents[3]  # alphadiana/dashboard/backend -> project root

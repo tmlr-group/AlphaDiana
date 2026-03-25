@@ -193,8 +193,8 @@ if ! _port_open "${ROCK_RAY_PORT}"; then
         --port="${ROCK_RAY_PORT}" \
         --dashboard-port="${ROCK_RAY_DASHBOARD_PORT}" \
         --temp-dir="${RAY_SESSION_DIR}" \
-        --min-worker-port=20000 \
-        --max-worker-port=29999 \
+        --min-worker-port=${ROCK_RAY_MIN_WORKER_PORT:-20000} \
+        --max-worker-port=${ROCK_RAY_MAX_WORKER_PORT:-29999} \
         > "${LOG_DIR}/ray-start.log" 2>&1
 
     # Wait for GCS port to be open

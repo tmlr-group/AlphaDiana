@@ -4,7 +4,7 @@ run_cmd: mkdir -p /tmp/empty-bundled /tmp/oc_home && OPENCLAW_CONFIG_PATH=${work
 
 runtime_env_config:
   type: node
-  npm_registry: https://registry.npmmirror.com
+  npm_registry: https://registry.npmmirror.com  # default for npmmirror.com (China mainland); override if needed
   custom_install_cmd: openclaw --version
   install_timeout: 60
 

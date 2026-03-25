@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 
 from alphadiana.scorer.base import Scorer, ScoreResult
@@ -44,8 +45,8 @@ class LLMJudgeScorer(Scorer):
     completions endpoint."""
 
     def __init__(self) -> None:
-        self._judge_model: str = "gpt-4o"
-        self._api_base: str = "https://api.openai.com/v1"
+        self._judge_model: str = os.environ.get("JUDGE_MODEL", "gpt-4o")
+        self._api_base: str = os.environ.get("JUDGE_API_BASE", "https://api.openai.com/v1")
         self._api_key: str = ""
         self._timeout: int = 60
 

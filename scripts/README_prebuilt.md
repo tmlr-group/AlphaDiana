@@ -8,7 +8,7 @@
 
 | Requirement | Details |
 |-------------|---------|
-| Redis container | `redis-weikai` must be running on port 6391. Start it once with:<br>`docker run -d --name redis-weikai -p 6391:6379 redis/redis-stack-server:latest` |
+| Redis container | A Redis container must be running on the configured port. Start it once with:<br>`docker run -d --name ${ROCK_REDIS_CONTAINER:-redis-stack} -p ${ROCK_REDIS_PORT:-6379}:6379 redis/redis-stack-server:latest` |
 | Docker access | The current user must be able to run `docker run` |
 | ROCK checkout | `ref/ROCK/.venv` must symlink to the active conda environment |
 | Model env vars | `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL_NAME` must be set |
@@ -18,7 +18,7 @@
 ## Quick Start
 
 ```bash
-export OPENAI_BASE_URL=https://models.sjtu.edu.cn/api/v1
+export OPENAI_BASE_URL=https://your-openai-compatible-api/v1
 export OPENAI_API_KEY=sk-...
 export OPENAI_MODEL_NAME=deepseek-v3
 
@@ -70,7 +70,7 @@ All ports are read from `dev/.rock_ports.env`:
 | `ROCK_ADMIN_PORT` | 9050 | ROCK admin (sandbox lifecycle API) |
 | `ROCK_PROXY_PORT` | 9051 | ROCK proxy (gateway access) |
 | `ROCK_RAY_PORT` | 6385 | Ray GCS head node |
-| `ROCK_REDIS_PORT` | 6391 | Redis (used by ROCK, not the shared redis-stack) |
+| `ROCK_REDIS_PORT` | 6379 | Redis (used by ROCK, not the shared redis-stack) |
 
 If another user's process is already occupying one of these ports, update `dev/.rock_ports.env` and rerun the script.
 
@@ -94,8 +94,8 @@ If you use the default (non-prebuilt) image, `npm install` runs from scratch and
 Symptom: `Get timed out: some object(s) not ready` even after waiting.
 
 ```bash
-pkill -u weikaihuang -f "gcs_server.*6385"
-rm -rf /tmp/weikaihuang-ray/rock
+pkill -u "$(whoami)" -f "gcs_server.*6385"
+rm -rf /tmp/$(whoami)-ray/rock
 bash dev/start_openclaw.sh
 ```
 
@@ -114,15 +114,15 @@ Symptom: `Raylet could not connect to Runtime Env Agent`.
 Cause: the VPN client (`clash-lin`) may have occupied the ephemeral port that the Runtime Env Agent tried to bind to. The script avoids this by starting Ray with a dedicated session dir and limiting worker ports to 20000–29999. If it still occurs, restart Ray:
 
 ```bash
-pkill -u weikaihuang -f "gcs_server.*6385"
-rm -rf /tmp/weikaihuang-ray/rock
+pkill -u "$(whoami)" -f "gcs_server.*6385"
+rm -rf /tmp/$(whoami)-ray/rock
 bash dev/start_openclaw.sh
 ```
 
 ### Container process terminated
 Symptom: sandbox starts but `rocklet` exits immediately.
 
-Cause: `rocklet` uses a conda shebang (`#!/data2/weikai/conda_envs/alphadiana/bin/python3.11`) that must be resolvable inside the container. The ROCK runtime env is patched (`ref/ROCK/rock/deployments/runtime_env.py`) to mount the conda env at its original host path. If the path changes, update that patch.
+Cause: `rocklet` uses a conda shebang pointing to the Python interpreter from the active conda environment (e.g. `$(conda info --base)/envs/alphadiana/bin/python3.11`) that must be resolvable inside the container. The ROCK runtime env is patched (`ref/ROCK/rock/deployments/runtime_env.py`) to mount the conda env at its original host path. If the path changes, update that patch.
 
 ---
 
@@ -132,5 +132,5 @@ Cause: `rocklet` uses a conda shebang (`#!/data2/weikai/conda_envs/alphadiana/bi
 .cache/logs/rock-admin.log    # ROCK admin — Ray actor errors, sandbox lifecycle
 .cache/logs/rock-proxy.log    # ROCK proxy — gateway routing errors
 .cache/logs/ray-start.log     # Ray startup output
-/tmp/weikaihuang-ray/rock/session_latest/logs/runtime_env_agent.log
+/tmp/$(whoami)-ray/rock/session_latest/logs/runtime_env_agent.log
 ```
