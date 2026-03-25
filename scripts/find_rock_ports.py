@@ -143,9 +143,9 @@ def render_exports(ports: RockPorts) -> str:
         f"export ROCK_ADMIN_PORT={ports.admin_port}",
         f"export ROCK_PROXY_PORT={ports.proxy_port}",
         'export ROCK_BIND_HOST="${ROCK_BIND_HOST:-127.0.0.1}"',
-        'export ROCK_BASE_URL="${ROCK_BASE_URL:-http://${ROCK_BIND_HOST}:${ROCK_ADMIN_PORT}}"',
-        'export ROCK_PROXY_ROOT_URL="${ROCK_PROXY_ROOT_URL:-http://${ROCK_BIND_HOST}:${ROCK_PROXY_PORT}}"',
-        'export ROCK_PROXY_URL="${ROCK_PROXY_URL:-${ROCK_PROXY_ROOT_URL}/apis/envs/sandbox/v1}"',
+        'export ROCK_BASE_URL="http://${ROCK_BIND_HOST}:${ROCK_ADMIN_PORT}"',
+        'export ROCK_PROXY_ROOT_URL="http://${ROCK_BIND_HOST}:${ROCK_PROXY_PORT}"',
+        'export ROCK_PROXY_URL="${ROCK_PROXY_ROOT_URL}/apis/envs/sandbox/v1"',
     ]
     return "\n".join(lines) + "\n"
 
