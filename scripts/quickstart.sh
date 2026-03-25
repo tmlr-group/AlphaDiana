@@ -254,8 +254,8 @@ All services are running:
 
 In any new terminal, run:
   conda activate ${ENV_NAME}
-  source dev/rock_env.sh
-  source dev/.rock_ports.env
+  source scripts/rock_env.sh
+  source scripts/.rock_ports.env
 
 Minimal OpenClaw smoke path:
   docker pull ghcr.io/tsrigo/openclaw-reasoning:20260320

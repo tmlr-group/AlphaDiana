@@ -570,7 +570,7 @@ class TestFinallyProtection:
         # Look for pattern: finally: ... try: ... except
         finally_idx = content.find("finally:")
         assert finally_idx != -1
-        finally_block = content[finally_idx:finally_idx + 500]
+        finally_block = content[finally_idx:finally_idx + 800]
         assert "try:" in finally_block, (
             "finally block must wrap cleanup in try/except to avoid swallowing exceptions"
         )

@@ -29,14 +29,35 @@ EOF
 fi
 
 echo "[1/6] Bootstrapping local AlphaDiana + ROCK environment"
-bash dev/quickstart.sh alphadiana
+bash scripts/quickstart.sh alphadiana
 
 echo "[2/6] Loading ROCK environment"
 # shellcheck disable=SC1091
-source dev/rock_env.sh
+source scripts/rock_env.sh
 # shellcheck disable=SC1091
-source dev/.rock_ports.env
-source /home/user/miniconda3/etc/profile.d/conda.sh
+source scripts/.rock_ports.env
+
+# Detect and initialise conda from common installation paths
+_conda_sh=""
+for _candidate in \
+    "${CONDA_PREFIX:+${CONDA_PREFIX}/../../etc/profile.d/conda.sh}" \
+    "${HOME}/miniconda3/etc/profile.d/conda.sh" \
+    "${HOME}/anaconda3/etc/profile.d/conda.sh" \
+    "/opt/conda/etc/profile.d/conda.sh"; do
+  if [ -f "${_candidate}" ]; then
+    _conda_sh="${_candidate}"
+    break
+  fi
+done
+if [ -z "${_conda_sh}" ] && command -v conda >/dev/null 2>&1; then
+  _conda_sh="$(conda info --base 2>/dev/null)/etc/profile.d/conda.sh"
+fi
+if [ -z "${_conda_sh}" ] || [ ! -f "${_conda_sh}" ]; then
+  echo "Could not locate conda.sh. Ensure conda is installed and in PATH." >&2
+  exit 1
+fi
+# shellcheck disable=SC1090
+source "${_conda_sh}"
 conda activate alphadiana
 
 echo "[3/6] Ensuring reasoning image is available: ${OPENCLAW_IMAGE}"

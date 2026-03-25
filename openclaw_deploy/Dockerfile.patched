@@ -1,0 +1,51 @@
+FROM ghcr.io/tsrigo/openclaw-reasoning:20260320
+
+# --- Fix 1: Python sandbox environment ---
+# The base image has python3 but missing: python symlink, pip, sympy, numpy.
+# Agents that execute code in the sandbox expect "python" to work and need
+# common math/science packages available.
+
+# Base image runs as non-root user "node"; switch to root for system installs
+USER root
+
+# Link python -> python3 so "python" command works
+RUN ln -sf /usr/bin/python3 /usr/bin/python
+
+# Install pip (base image is Debian-slim with no pip)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install commonly needed Python packages for math/reasoning tasks
+RUN pip install --no-cache-dir --break-system-packages sympy numpy
+
+# Switch back to non-root user
+USER node
+
+# --- Fix 2: OpenAI SDK stream timeout (30-min) ---
+# Node.js v24 native fetch uses internal undici with bodyTimeout=300s default.
+# OpenClaw's ensureGlobalUndiciStreamTimeouts patches the npm undici package
+# but NOT globalThis.fetch's internal undici. When a streaming response takes
+# >300s, the stream is silently truncated.
+#
+# Fix: add timeout: 1800000 to the OpenAI constructor so the SDK manages its
+# own timeout via AbortController+setTimeout, bypassing undici bodyTimeout.
+
+RUN node -e " \
+const fs = require('fs'); \
+const paths = [ \
+  '/app/node_modules/@mariozechner/pi-ai/dist/providers/openai-completions.js', \
+  '/app/node_modules/openclaw/node_modules/@mariozechner/pi-ai/dist/providers/openai-completions.js', \
+]; \
+const OLD = '    return new OpenAI({\n        apiKey,\n        baseURL: model.baseUrl,\n        dangerouslyAllowBrowser: true,\n        defaultHeaders: headers,\n    });'; \
+const NEW = '    return new OpenAI({\n        apiKey,\n        baseURL: model.baseUrl,\n        dangerouslyAllowBrowser: true,\n        defaultHeaders: headers,\n        timeout: 1800000,\n    });'; \
+for (const p of paths) { \
+  if (!fs.existsSync(p)) { console.log('SKIP:', p); continue; } \
+  const src = fs.readFileSync(p, 'utf8'); \
+  if (src.includes('timeout: 1800000')) { console.log('ALREADY PATCHED:', p); continue; } \
+  if (!src.includes(OLD)) { console.error('PATTERN NOT FOUND:', p); process.exit(1); } \
+  fs.writeFileSync(p, src.replace(OLD, NEW), 'utf8'); \
+  console.log('PATCHED:', p); \
+} \
+console.log('All done.'); \
+"

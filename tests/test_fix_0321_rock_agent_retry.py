@@ -104,11 +104,13 @@ def test_runner_openclaw_start_retries_default_3():
 
 
 def test_rock_sandbox_fallback_startup_timeout_default_180():
+    from unittest.mock import patch
     sandbox = rock_module.ROCKSandbox()
-    sandbox.setup({
-        "admin_base_url": "http://127.0.0.1:9000",
-        "proxy_base_url": "http://127.0.0.1:9001",
-    })
+    with patch.object(rock_module, "_require_rock_sdk"):
+        sandbox.setup({
+            "admin_base_url": "http://127.0.0.1:9000",
+            "proxy_base_url": "http://127.0.0.1:9001",
+        })
     assert sandbox.metadata()["fallback_startup_timeout"] == 180
 
 

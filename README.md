@@ -62,6 +62,14 @@ bash scripts/quickstart.sh
 docker pull ghcr.io/tsrigo/openclaw-reasoning:20260320
 ```
 
+> **Note:** The base image `ghcr.io/tsrigo/openclaw-reasoning:20260320` does not include `python`/`pip`/`sympy`/`numpy`. A patched image is required for math/code tasks. Build it locally:
+>
+> ```bash
+> docker build -t openclaw-reasoning:patched -f openclaw_deploy/Dockerfile.patched .
+> ```
+>
+> Then reference `openclaw-reasoning:patched` in your config's `rock_image` field instead of the base image.
+
 ### 2. Configure your model
 
 Create a `.env` file in the project root with your model endpoint:

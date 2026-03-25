@@ -62,6 +62,27 @@ class OpenClawRequestError(RuntimeError):
         self.retry_responses = retry_responses or []
 
 
+class BackendDownError(OpenClawRequestError):
+    """Raised when the model backend is detected as down (circuit breaker open).
+
+    Triggered after ``backend_down_threshold`` consecutive empty-SSE-body
+    responses, where HTTP 200 is returned but no content arrives and the SSE
+    stream never sends ``[DONE]``.  This pattern strongly indicates the upstream
+    model service (e.g. vLLM) has crashed or become unresponsive.
+
+    Once raised, all subsequent ``solve()`` calls on this agent instance will
+    immediately raise this error without making any HTTP requests (fail-fast).
+    """
+
+    def __init__(self, message: str, *, consecutive_failures: int, url: str) -> None:
+        super().__init__(
+            message,
+            error_type="backend_down",
+        )
+        self.consecutive_failures = consecutive_failures
+        self.url = url
+
+
 def _extract_answer(text: str) -> str:
     r"""Extract the final answer from model output."""
     return extract_answer_candidate(text)
@@ -473,6 +494,16 @@ class OpenClawAgent(Agent):
         # Health check flag
         self._health_checked: bool = False
 
+        # Circuit breaker: detect when the model backend has crashed.
+        # After ``backend_down_threshold`` consecutive empty-body responses
+        # (HTTP 200 + empty SSE, never receives [DONE]), the circuit opens and
+        # all subsequent solve() calls fail immediately without making requests.
+        self._backend_down_threshold: int = max(1, int(config.get("backend_down_threshold", 5)))
+        self._consecutive_empty_sse: int = 0
+        self._circuit_open: bool = False
+        self._circuit_open_error: BackendDownError | None = None
+        self._circuit_lock = threading.Lock()
+
         # Gateway pool for concurrent isolation (static multi-sandbox mode).
         # Users can set gateway_pool: [url1, url2, url3] in agent config to pre-deploy
         # multiple OpenClaw gateways and have each concurrent task use a different one.
@@ -846,6 +877,11 @@ class OpenClawAgent(Agent):
         return payload
 
     def solve(self, task: BenchmarkTask, sandbox: Any = None) -> AgentResponse:
+        # Circuit breaker: fail immediately if backend was detected as down.
+        with self._circuit_lock:
+            if self._circuit_open and self._circuit_open_error is not None:
+                raise self._circuit_open_error
+
         try:
             import httpx
         except ImportError:
@@ -1059,8 +1095,14 @@ class OpenClawAgent(Agent):
                     cumulative_token_usage["completion_tokens"] += int(attempt_usage.get("completion_tokens", 0))
                     cumulative_token_usage["total_tokens"] += int(attempt_usage.get("total_tokens", 0))
                 if raw_output:
+                    # Successful response — reset the consecutive-empty counter.
+                    with self._circuit_lock:
+                        self._consecutive_empty_sse = 0
                     break
                 if raw_reasoning:
+                    # Partial reasoning counts as a success for the circuit breaker.
+                    with self._circuit_lock:
+                        self._consecutive_empty_sse = 0
                     partial_reasoning_only = True
                     logger.info(
                         "Partial reasoning only: reasoning_chars=%d received_done=%s "
@@ -1077,6 +1119,19 @@ class OpenClawAgent(Agent):
                     response_json=response_json,
                     status_code=status_code,
                 )
+                # Detect crashed backend: HTTP 200 + empty SSE (no chunks, no [DONE]).
+                # classify_error() returns "unknown" here because response_json is {}
+                # (no choices key).  Use a dedicated "empty_sse_body" type so the
+                # circuit breaker can count these separately from the "empty_response"
+                # case (agent returned properly-structured but empty content).
+                is_empty_sse_body = (
+                    status_code == 200
+                    and not chunks
+                    and not received_done
+                    and not response_json
+                )
+                if is_empty_sse_body and error_type == "unknown":
+                    error_type = "empty_sse_body"
                 retry_responses.append({
                     "attempt": attempt,
                     "status_code": status_code,
@@ -1112,6 +1167,48 @@ class OpenClawAgent(Agent):
                         "contention under concurrency). Use gateway_pool with separate "
                         "sandboxes to isolate concurrent requests.",
                     )
+                if error_type == "empty_sse_body":
+                    with self._circuit_lock:
+                        current_count = self._consecutive_empty_sse + 1  # peek before increment
+                    logger.warning(
+                        "Empty SSE body detected (HTTP 200, no content, no [DONE]) — "
+                        "possible model backend crash. consecutive_count=%d threshold=%d. "
+                        "Check if the model server at %s is still running.",
+                        current_count,
+                        self._backend_down_threshold,
+                        url,
+                    )
+                # Circuit breaker: track consecutive empty-SSE-body failures.
+                # "empty_sse_body" = HTTP 200 but absolutely no SSE content and no
+                # [DONE] — the signature of a crashed/unresponsive model backend.
+                if error_type == "empty_sse_body":
+                    with self._circuit_lock:
+                        self._consecutive_empty_sse += 1
+                        consecutive = self._consecutive_empty_sse
+                    if consecutive >= self._backend_down_threshold:
+                        backend_error = BackendDownError(
+                            f"Model backend appears to be down: {consecutive} consecutive "
+                            f"empty responses (HTTP 200 + empty SSE body, no [DONE] signal). "
+                            f"The upstream model service at {url} likely crashed or became "
+                            f"unresponsive. Aborting evaluation to avoid wasting time on "
+                            f"dead requests. Check if the vLLM/model server is still running. "
+                            f"Set agent.config.backend_down_threshold to adjust sensitivity "
+                            f"(current: {self._backend_down_threshold}).",
+                            consecutive_failures=consecutive,
+                            url=url,
+                        )
+                        logger.critical(
+                            "CIRCUIT BREAKER OPEN: %d consecutive empty-SSE responses. "
+                            "Model backend at %s appears down. All subsequent solve() "
+                            "calls will fail immediately. Error: %s",
+                            consecutive,
+                            url,
+                            backend_error,
+                        )
+                        with self._circuit_lock:
+                            self._circuit_open = True
+                            self._circuit_open_error = backend_error
+                        raise backend_error
                 last_error = OpenClawRequestError(
                     f"OpenClaw returned no assistant content on attempt {attempt}",
                     error_type=error_type,
@@ -1119,6 +1216,9 @@ class OpenClawAgent(Agent):
                     response_body=response_body,
                     retry_responses=retry_responses,
                 )
+            except BackendDownError:
+                # Circuit breaker fired — propagate immediately without retrying.
+                raise
             except Exception as exc:
                 elapsed = time.monotonic() - attempt_start
                 last_error = exc
@@ -1174,8 +1274,14 @@ class OpenClawAgent(Agent):
                 # Distinguish "busy/empty" from real errors for retry delay.
                 last_error_type = retry_responses[-1]["error_type"] if retry_responses else "unknown"
                 if last_error_type == "empty_response":
-                    # Agent likely still busy — wait much longer.
+                    # Agent returned a properly-structured but empty response —
+                    # it may still be processing.  Wait longer before retrying.
                     delay = min(60.0 * (2 ** (attempt - 1)), 300.0)
+                elif last_error_type == "empty_sse_body":
+                    # Crashed backend (HTTP 200 + no SSE content + no [DONE]).
+                    # The circuit breaker will open if this persists; use a short
+                    # delay so we detect the crash quickly without flooding logs.
+                    delay = min(5.0 * (2 ** (attempt - 1)), 30.0)
                 else:
                     delay = min(10.0 * (2 ** (attempt - 1)), 120.0)
                 jitter = random.uniform(0, delay * 0.3)

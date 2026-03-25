@@ -34,7 +34,8 @@
           }
         }
       },
-      "timeoutSeconds": 3600
+      "timeoutSeconds": 3600,
+      "workspace": "${HOME}/.openclaw/workspace"
     }
   },
   "commands": {

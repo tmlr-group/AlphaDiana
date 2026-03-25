@@ -5,14 +5,14 @@ For detailed manual deployment, ROCK port detection, Redis/Ray/admin/proxy start
 Quick entry:
 
 ```bash
-bash dev/quickstart.sh
+bash scripts/quickstart.sh
 ```
 
 If you need to run manually, pay attention to the following:
 
-- Run `source dev/rock_env.sh` from the repository root directory
-- Run `unset TMPDIR` before running `python dev/find_rock_ports.py --write-env dev/.rock_ports.env`
-- After `newgrp docker`, you must re-run `conda activate`, `source dev/rock_env.sh`, and `source dev/.rock_ports.env`
+- Run `source scripts/rock_env.sh` from the repository root directory
+- Run `unset TMPDIR` before running `python scripts/find_rock_ports.py --write-env scripts/.rock_ports.env`
+- After `newgrp docker`, you must re-run `conda activate`, `source scripts/rock_env.sh`, and `source scripts/.rock_ports.env`
 - Run `ray stop` before starting Ray
 - `RAY_TMPDIR` defaults to `/tmp/ray`
 
@@ -52,7 +52,7 @@ Common issues at a glance:
 On shared servers, you may need to clean up previously allocated ports:
 
 ```bash
-bash dev/cleanup_rock_ports.sh
+bash scripts/cleanup_rock_ports.sh
 ```
 
 This only terminates processes owned by the current user on ROCK-related ports.
@@ -83,7 +83,7 @@ alphadiana run config.yaml --redo-all
 
 ## Configuration
 
-Experiments are defined by a single YAML file. See [`configs/schema.yaml`](configs/schema.yaml) for the full schema.
+Experiments are defined by a single YAML file. See [`configs/schema.yaml`](../configs/schema.yaml) for the full schema.
 
 ```yaml
 run_id: "openclaw-qwen3-8b-aime2024-001"   # auto-generated if omitted

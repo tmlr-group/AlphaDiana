@@ -26,7 +26,7 @@ def _warn_proxy() -> bool:
         names = ", ".join(sorted(found))
         logger.warning(
             "Proxy variables detected: %s. This may cause network issues "
-            "inside ROCK sandboxes. Run 'source dev/rock_env.sh' to unset them.",
+            "inside ROCK sandboxes. Run 'source scripts/rock_env.sh' to unset them.",
             names,
         )
         return True
