@@ -318,7 +318,9 @@ AlphaDiana/
 
 AlphaDiana includes a web dashboard for launching, monitoring, and comparing evaluation runs without manually editing YAML or inspecting raw JSONL files.
 
-![](./assets/fig2.png)
+
+<img width="966" height="1421" alt="90bdedd3e9230038b8a0f0e2ff282a3a" src="https://github.com/user-attachments/assets/fc31d320-d82c-46ff-859e-16691959e957" />
+
 
 ### Dashboard features
 
