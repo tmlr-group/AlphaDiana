@@ -315,6 +315,22 @@ def _recover_partial_output_from_trajectory(trajectory: list[dict]) -> tuple[str
     return "\n".join(text_parts).strip(), "\n".join(reasoning_parts).strip()
 
 
+def _extract_trajectory_error(trajectory: list[dict]) -> str:
+    """Return the latest explicit assistant error recorded in a session trajectory."""
+    if not isinstance(trajectory, list):
+        return ""
+
+    for entry in reversed(trajectory):
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("role") != "assistant":
+            continue
+        error = _coerce_text_content(entry.get("error", "")).strip()
+        if error:
+            return error
+    return ""
+
+
 def _normalize_request_content(content: str) -> str:
     """Normalize request text for transcript matching."""
     return content.replace("\r\n", "\n").strip()
@@ -1053,12 +1069,14 @@ class OpenClawAgent(Agent):
                 raw_output = "".join(chunks)
                 raw_reasoning = "".join(reasoning_chunks)
                 recovered_trajectory = []
+                trajectory_error = ""
                 if not raw_output:
                     recovered_trajectory = self._retrieve_trajectory_sync(
                         sandbox_id=runtime_info.get("sandbox_id", ""),
                         rock_sandbox_url=actual_rock_sandbox_url,
                         expected_user_content=request_messages[0]["content"],
                     )
+                    trajectory_error = _extract_trajectory_error(recovered_trajectory)
                     recovered_content, recovered_reasoning = _recover_partial_output_from_trajectory(
                         recovered_trajectory
                     )
@@ -1139,16 +1157,23 @@ class OpenClawAgent(Agent):
                     "body": str(response_body),
                     "elapsed_sec": elapsed,
                     "error_type": error_type,
+                    "trajectory_error": trajectory_error,
                 })
                 logger.warning(
-                    "OpenClaw attempt %d/%d returned empty content: status=%s elapsed=%.2fs body=%r reasoning_chars=%d",
+                    "OpenClaw attempt %d/%d returned empty content: status=%s elapsed=%.2fs body=%r reasoning_chars=%d trajectory_error=%r",
                     attempt,
                     self._max_attempts,
                     status_code,
                     elapsed,
                     response_body,
                     len(raw_reasoning),
+                    trajectory_error,
                 )
+                if trajectory_error:
+                    logger.error(
+                        "OpenClaw session trajectory captured upstream error: %s",
+                        trajectory_error,
+                    )
                 if error_type == "proxy_timeout":
                     logger.error(
                         "Proxy timeout detected (likely ROCK proxy 120s default). "
@@ -1210,10 +1235,17 @@ class OpenClawAgent(Agent):
                             self._circuit_open_error = backend_error
                         raise backend_error
                 last_error = OpenClawRequestError(
-                    f"OpenClaw returned no assistant content on attempt {attempt}",
+                    (
+                        f"OpenClaw returned no assistant content on attempt {attempt}"
+                        if not trajectory_error
+                        else f"OpenClaw upstream error on attempt {attempt}: {trajectory_error}"
+                    ),
                     error_type=error_type,
                     request_payload=request_payload,
-                    response_body=response_body,
+                    response_body=response_body if not trajectory_error else {
+                        "response": response_body,
+                        "trajectory_error": trajectory_error,
+                    },
                     retry_responses=retry_responses,
                 )
             except BackendDownError:
