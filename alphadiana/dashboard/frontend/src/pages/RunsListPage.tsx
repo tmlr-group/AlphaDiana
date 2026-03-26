@@ -246,51 +246,66 @@ export default function RunsListPage() {
 
   return (
     <div>
-      <Row gutter={16} style={{ marginBottom: 24 }}>
+      <Row gutter={[20, 20]} style={{ marginBottom: 28 }}>
         <Col span={6}>
-          <Card>
-            <Statistic
-              title="Total Runs"
-              value={runs.length}
-              prefix={<ExperimentOutlined />}
-            />
+          <Card
+            style={{ borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}
+            styles={{ body: { padding: '20px 24px' } }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+              <span style={{ fontSize: 18, color: '#595959' }}><ExperimentOutlined /></span>
+              <span style={{ fontSize: 13, color: '#8c8c8c', fontWeight: 500, letterSpacing: '0.02em' }}>Total Runs</span>
+            </div>
+            <div style={{ fontSize: 32, fontWeight: 700, color: '#141414', lineHeight: 1 }}>{runs.length}</div>
           </Card>
         </Col>
         <Col span={6}>
-          <Card>
+          <Card
+            style={{ borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}
+            styles={{ body: { padding: '20px 24px' } }}
+          >
             <Tooltip title={runs.length < 2 ? 'Add more runs to compare' : `Best across ${runs.length} runs`}>
-              <Statistic
-                title="Best Accuracy"
-                value={Math.round(bestAccuracy * 100)}
-                suffix="%"
-                prefix={<CheckCircleOutlined />}
-                styles={{ content: { color: '#3f8600' } }}
-              />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+                <span style={{ fontSize: 18, color: bestAccuracy >= 0.8 ? '#3f8600' : '#595959' }}><CheckCircleOutlined /></span>
+                <span style={{ fontSize: 13, color: '#8c8c8c', fontWeight: 500, letterSpacing: '0.02em' }}>Best Accuracy</span>
+              </div>
+              <div style={{ fontSize: 32, fontWeight: 700, color: bestAccuracy >= 0.8 ? '#3f8600' : '#141414', lineHeight: 1 }}>
+                {Math.round(bestAccuracy * 100)}<span style={{ fontSize: 18, fontWeight: 600, marginLeft: 2 }}>%</span>
+              </div>
             </Tooltip>
           </Card>
         </Col>
         <Col span={6}>
-          <Card>
-            <Statistic
-              title="Total Tasks"
-              value={totalTasks}
-              prefix={<ThunderboltOutlined />}
-            />
+          <Card
+            style={{ borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}
+            styles={{ body: { padding: '20px 24px' } }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+              <span style={{ fontSize: 18, color: '#595959' }}><ThunderboltOutlined /></span>
+              <span style={{ fontSize: 13, color: '#8c8c8c', fontWeight: 500, letterSpacing: '0.02em' }}>Total Tasks</span>
+            </div>
+            <div style={{ fontSize: 32, fontWeight: 700, color: '#141414', lineHeight: 1 }}>{totalTasks}</div>
           </Card>
         </Col>
         <Col span={6}>
-          <Card>
-            <Statistic
-              title="Total Tokens"
-              value={totalTokens > 1000 ? `${(totalTokens / 1000).toFixed(0)}K` : totalTokens}
-              prefix={<DatabaseOutlined />}
-            />
+          <Card
+            style={{ borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}
+            styles={{ body: { padding: '20px 24px' } }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+              <span style={{ fontSize: 18, color: '#595959' }}><DatabaseOutlined /></span>
+              <span style={{ fontSize: 13, color: '#8c8c8c', fontWeight: 500, letterSpacing: '0.02em' }}>Total Tokens</span>
+            </div>
+            <div style={{ fontSize: 32, fontWeight: 700, color: '#141414', lineHeight: 1 }}>
+              {totalTokens > 1000 ? `${(totalTokens / 1000).toFixed(0)}K` : totalTokens}
+            </div>
           </Card>
         </Col>
       </Row>
 
       <Card
-        title="Evaluation Runs"
+        title={<span style={{ fontSize: 15, fontWeight: 600 }}>Evaluation Runs</span>}
+        style={{ borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}
         extra={
           <Space>
             <Input.Search

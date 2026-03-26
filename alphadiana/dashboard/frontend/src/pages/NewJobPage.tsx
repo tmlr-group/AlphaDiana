@@ -41,7 +41,6 @@ const AGENTS = [
       { name: 'api_base', label: 'API Base URL', required: true, placeholder: 'e.g. https://openrouter.ai/api/v1/' },
       { name: 'api_key', label: 'API Key', required: true, placeholder: 'API key', password: true },
       { name: 'temperature', label: 'Temperature', type: 'number' as const, default: 0.6 },
-      { name: 'top_p', label: 'Top P', type: 'number' as const },
       { name: 'max_tokens', label: 'Max Tokens', type: 'number' as const, default: 32768 },
     ],
   },
@@ -53,7 +52,6 @@ const AGENTS = [
       // Model config is handled by the sandbox selector UI above;
       // these are generation parameters forwarded to the gateway.
       { name: 'temperature', label: 'Temperature', type: 'number' as const, default: 0.7 },
-      { name: 'top_p', label: 'Top P', type: 'number' as const },
       { name: 'max_tokens', label: 'Max Tokens', type: 'number' as const, default: 32768 },
     ],
   },
