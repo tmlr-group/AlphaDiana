@@ -17,7 +17,10 @@ export default function ComparePage() {
   const runIds = (searchParams.get('runs') || '').split(',').filter(Boolean);
 
   useEffect(() => {
-    if (runIds.length < 2) return;
+    if (runIds.length < 2) {
+      setLoading(false);
+      return;
+    }
     compareRuns(runIds)
       .then(setEntries)
       .catch((e) => message.error(e.message))
@@ -35,7 +38,7 @@ export default function ComparePage() {
   // Summary comparison chart data
   const summaryData = entries.map((e) => ({
     run: e.run_id.length > 25 ? e.run_id.slice(0, 25) + '...' : e.run_id,
-    accuracy: Math.round(e.summary.accuracy * 100),
+    accuracy: Math.round(e.summary.accuracy_total * 100),
   }));
 
   // Build table columns: Task ID + one column per run
@@ -93,10 +96,10 @@ export default function ComparePage() {
                 <Col span={8}>
                   <Statistic
                     title="Accuracy"
-                    value={Math.round(e.summary.accuracy * 100)}
+                    value={Math.round(e.summary.accuracy_total * 100)}
                     suffix="%"
-                    valueStyle={{
-                      color: e.summary.accuracy >= 0.8 ? '#3f8600' : '#cf1322',
+                    styles={{
+                      content: { color: e.summary.accuracy_total >= 0.8 ? '#3f8600' : '#cf1322' },
                     }}
                   />
                 </Col>

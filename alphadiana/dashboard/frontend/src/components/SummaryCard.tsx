@@ -17,17 +17,18 @@ export default function SummaryCard({ summary }: { summary: RunSummary }) {
           </Tag>
           <Tag color="cyan">{summary.agent_version}</Tag>
           <Tag color="purple">{summary.benchmark}</Tag>
+          {summary.model && <Tag color="geekblue">{summary.model}</Tag>}
         </Col>
       </Row>
       <Row gutter={16} style={{ marginTop: 16 }}>
         <Col span={4}>
           <Statistic
             title="Accuracy"
-            value={Math.round(summary.accuracy * 100)}
+            value={Math.round(summary.accuracy_total * 100)}
             suffix="%"
             prefix={<CheckCircleOutlined />}
-            valueStyle={{
-              color: summary.accuracy >= 0.8 ? '#3f8600' : '#cf1322',
+            styles={{
+              content: { color: summary.accuracy_total >= 0.8 ? '#3f8600' : '#cf1322' },
             }}
           />
         </Col>
@@ -44,7 +45,7 @@ export default function SummaryCard({ summary }: { summary: RunSummary }) {
             title="Failed"
             value={summary.failed}
             prefix={<CloseCircleOutlined />}
-            valueStyle={{ color: summary.failed > 0 ? '#cf1322' : undefined }}
+            styles={{ content: { color: summary.failed > 0 ? '#cf1322' : undefined } }}
           />
         </Col>
         <Col span={4}>
@@ -85,8 +86,8 @@ export default function SummaryCard({ summary }: { summary: RunSummary }) {
               value={Math.round(summary.pass_at_k * 100)}
               suffix="%"
               prefix={<CheckCircleOutlined />}
-              valueStyle={{
-                color: summary.pass_at_k >= 0.8 ? '#3f8600' : '#cf1322',
+              styles={{
+                content: { color: summary.pass_at_k >= 0.8 ? '#3f8600' : '#cf1322' },
               }}
             />
           </Col>

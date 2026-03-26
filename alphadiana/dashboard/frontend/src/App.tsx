@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
-import { ConfigProvider, theme, Layout, Menu } from 'antd';
+import { ConfigProvider, theme, Layout, Menu, App as AntdApp } from 'antd';
 import {
   DashboardOutlined,
   ExperimentOutlined,
@@ -60,6 +60,7 @@ export default function App() {
         token: { colorPrimary: '#1677ff' },
       }}
     >
+      <AntdApp>
       <BrowserRouter>
         <Layout style={{ minHeight: '100vh' }}>
           <NavHeader />
@@ -74,6 +75,7 @@ export default function App() {
           </Content>
         </Layout>
       </BrowserRouter>
+      </AntdApp>
     </ConfigProvider>
   );
 }

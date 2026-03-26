@@ -302,7 +302,7 @@ export default function JobsPage() {
           dataSource={jobs}
           rowKey="job_id"
           loading={loading}
-          pagination={false}
+          pagination={{ pageSize: 20, hideOnSinglePage: true, showSizeChanger: true, pageSizeOptions: ['20', '50', '100'] }}
           locale={{ emptyText: 'No jobs yet. Click "New Evaluation" to get started.' }}
         />
       </Card>

@@ -12,6 +12,7 @@ import {
   Input,
   Space,
   Popconfirm,
+  Tooltip,
   message,
 } from 'antd';
 import {
@@ -85,7 +86,7 @@ export default function RunsListPage() {
   );
 
   const bestAccuracy = runs.length
-    ? Math.max(...runs.map((r) => r.accuracy))
+    ? Math.max(...runs.map((r) => r.accuracy_total))
     : 0;
   const totalTasks = runs.reduce((s, r) => s + r.total_tasks, 0);
   const totalTokens = runs.reduce(
@@ -122,6 +123,21 @@ export default function RunsListPage() {
       onFilter: (v, r) => r.agent === v,
     },
     {
+      title: 'Model',
+      dataIndex: 'model',
+      key: 'model',
+      render: (model: string) =>
+        model ? (
+          <Tooltip title={model}>
+            <span style={{ fontSize: 12, maxWidth: 160, display: 'inline-block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {model}
+            </span>
+          </Tooltip>
+        ) : (
+          <span style={{ color: '#bfbfbf' }}>—</span>
+        ),
+    },
+    {
       title: 'Benchmark',
       dataIndex: 'benchmark',
       key: 'benchmark',
@@ -136,14 +152,14 @@ export default function RunsListPage() {
       dataIndex: 'accuracy',
       key: 'accuracy',
       sorter: (a, b) => a.accuracy - b.accuracy,
-      render: (acc: number, r: RunSummary) => {
+      render: (_acc: number, r: RunSummary) => {
         const correct = Math.round(r.accuracy_total * r.total_tasks);
         return (
           <div>
             <Progress
-              percent={Math.round(acc * 100)}
+              percent={Math.round(r.accuracy_total * 100)}
               size="small"
-              status={acc >= 0.8 ? 'success' : acc >= 0.5 ? 'normal' : 'exception'}
+              status={r.accuracy_total >= 0.8 ? 'success' : r.accuracy_total >= 0.5 ? 'normal' : 'exception'}
             />
             <div style={{ fontSize: 11, color: '#595959', marginTop: 1 }}>
               {correct}/{r.total_tasks}
@@ -183,6 +199,7 @@ export default function RunsListPage() {
         const total =
           (r.total_tokens.prompt_tokens || 0) +
           (r.total_tokens.completion_tokens || 0);
+        if (total === 0) return '-';
         return total > 1000 ? `${(total / 1000).toFixed(1)}K` : total;
       },
     },
@@ -241,13 +258,15 @@ export default function RunsListPage() {
         </Col>
         <Col span={6}>
           <Card>
-            <Statistic
-              title="Best Accuracy"
-              value={Math.round(bestAccuracy * 100)}
-              suffix="%"
-              prefix={<CheckCircleOutlined />}
-              valueStyle={{ color: '#3f8600' }}
-            />
+            <Tooltip title={runs.length < 2 ? 'Add more runs to compare' : `Best across ${runs.length} runs`}>
+              <Statistic
+                title="Best Accuracy"
+                value={Math.round(bestAccuracy * 100)}
+                suffix="%"
+                prefix={<CheckCircleOutlined />}
+                styles={{ content: { color: '#3f8600' } }}
+              />
+            </Tooltip>
           </Card>
         </Col>
         <Col span={6}>

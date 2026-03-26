@@ -43,7 +43,21 @@ export default function RunDetailPage() {
   }, [runId]);
 
   if (loading) return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
-  if (!detail) return <Text>Run not found</Text>;
+  if (!detail) return (
+    <div>
+      <Button
+        icon={<ArrowLeftOutlined />}
+        type="text"
+        onClick={() => navigate('/')}
+        style={{ marginBottom: 16 }}
+      >
+        Back to Runs
+      </Button>
+      <div>
+        <Text type="secondary">Run not found</Text>
+      </div>
+    </div>
+  );
 
   const filteredResults = detail.results.filter((r) => {
     if (filter === 'correct') return r.correct === true;
@@ -85,7 +99,7 @@ export default function RunDetailPage() {
       key: 'problem',
       ellipsis: true,
       render: (text: string) => (
-        <Text style={{ fontSize: 12 }}>{text.slice(0, 120)}...</Text>
+        <Text style={{ fontSize: 12 }}>{text.length > 120 ? text.slice(0, 120) + '...' : text}</Text>
       ),
     },
     {
@@ -93,14 +107,14 @@ export default function RunDetailPage() {
       dataIndex: 'ground_truth',
       key: 'ground_truth',
       width: 100,
-      render: (v: unknown) => <Tag>{String(v)}</Tag>,
+      render: (v: unknown) => <Tag>{v != null ? String(v) : '-'}</Tag>,
     },
     {
       title: 'Predicted',
       dataIndex: 'predicted',
       key: 'predicted',
       width: 100,
-      render: (v: unknown) => <Tag>{String(v)}</Tag>,
+      render: (v: unknown) => <Tag>{v != null ? String(v) : '-'}</Tag>,
     },
     {
       title: 'Result',
@@ -143,10 +157,11 @@ export default function RunDetailPage() {
       key: 'tokens',
       width: 100,
       render: (_: unknown, r: TaskResult) => {
-        const total =
-          (r.token_usage?.prompt_tokens ?? 0) +
-          (r.token_usage?.completion_tokens ?? 0);
-        return total > 1000 ? `${(total / 1000).toFixed(1)}K` : total;
+        const prompt = r.token_usage?.prompt_tokens;
+        const completion = r.token_usage?.completion_tokens;
+        if (prompt == null && completion == null) return '-';
+        const total = (prompt ?? 0) + (completion ?? 0);
+        return total === 0 ? '-' : total > 1000 ? `${(total / 1000).toFixed(1)}K` : total;
       },
     },
   ];
@@ -262,7 +277,7 @@ export default function RunDetailPage() {
         }
         open={!!drawerTask}
         onClose={() => setDrawerTask(null)}
-        width={720}
+        styles={{ wrapper: { width: '720px' } }}
       >
         {drawerTask && (
           <div>
@@ -277,7 +292,7 @@ export default function RunDetailPage() {
                 <Text strong>Expected:</Text> {String(drawerTask.ground_truth)}
               </p>
               <p>
-                <Text strong>Predicted:</Text> {String(drawerTask.predicted)}
+                <Text strong>Predicted:</Text> {drawerTask.predicted != null ? String(drawerTask.predicted) : '-'}
               </p>
               <p>
                 <Text strong>Result:</Text>{' '}

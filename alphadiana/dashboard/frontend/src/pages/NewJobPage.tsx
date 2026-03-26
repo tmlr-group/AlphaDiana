@@ -674,7 +674,7 @@ export default function NewJobPage() {
               </Form.Item>
             </Col>
           </Row>
-          {existingRun && form.getFieldValue('run_id') && (
+          {existingRun && (
             <Alert
               message={`Run "${existingRun.run_id}" already exists (${existingRun.completed}/${existingRun.total_tasks} completed)`}
               description={
@@ -854,7 +854,7 @@ export default function NewJobPage() {
                     label={
                       <Space size={4}>
                         <span>Model API Key</span>
-                        <Tooltip title={API_KEY_TOOLTIP} overlayStyle={{ maxWidth: 360 }}>
+                        <Tooltip title={API_KEY_TOOLTIP} styles={{ body: { maxWidth: 360 } }}>
                           <QuestionCircleOutlined style={{ color: '#8c8c8c' }} />
                         </Tooltip>
                       </Space>
@@ -916,7 +916,7 @@ export default function NewJobPage() {
                       label={
                         <Space size={4}>
                           <span>{f.label}</span>
-                          <Tooltip title={API_KEY_TOOLTIP} overlayStyle={{ maxWidth: 360 }}>
+                          <Tooltip title={API_KEY_TOOLTIP} styles={{ body: { maxWidth: 360 } }}>
                             <QuestionCircleOutlined style={{ color: '#8c8c8c' }} />
                           </Tooltip>
                         </Space>
@@ -1026,7 +1026,7 @@ export default function NewJobPage() {
                           ))}
                         </div>
                       }
-                      overlayStyle={{ maxWidth: 380 }}
+                      styles={{ body: { maxWidth: 380 } }}
                     >
                       <QuestionCircleOutlined style={{ color: '#8c8c8c' }} />
                     </Tooltip>
@@ -1037,7 +1037,7 @@ export default function NewJobPage() {
                   options={SCORERS.map((s) => ({
                     value: s.value,
                     label: (
-                      <Tooltip title={s.description} placement="right" overlayStyle={{ maxWidth: 320 }}>
+                      <Tooltip title={s.description} placement="right" styles={{ body: { maxWidth: 320 } }}>
                         <span style={{ display: 'block' }}>
                           <strong>{s.label}</strong>
                           <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>

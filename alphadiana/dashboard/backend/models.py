@@ -22,6 +22,7 @@ class RunSummaryResponse(BaseModel):
     total_tokens: dict[str, int]
     per_category: dict[str, float]
     error_distribution: dict[str, int] = {}
+    model: str = ""
     num_samples: int = 1
     pass_at_k: float = 0.0
     avg_at_k: float = 0.0
