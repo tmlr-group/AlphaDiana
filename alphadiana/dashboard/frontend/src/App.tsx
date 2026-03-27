@@ -92,7 +92,7 @@ export default function App() {
       <BrowserRouter>
         <Layout style={{ minHeight: '100vh' }}>
           <NavHeader />
-          <Content style={{ padding: '28px 32px', background: '#f0f2f5' }}>
+          <Content style={{ padding: '20px 24px', background: '#f0f2f5' }}>
             <Routes>
               <Route path="/" element={<RunsListPage />} />
               <Route path="/runs/:runId" element={<RunDetailPage />} />

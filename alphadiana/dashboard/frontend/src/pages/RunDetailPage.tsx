@@ -42,7 +42,7 @@ export default function RunDetailPage() {
       .finally(() => setLoading(false));
   }, [runId]);
 
-  if (loading) return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
+  if (loading) return <Spin size="large" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 'calc(100vh - 96px)' }} />;
   if (!detail) return (
     <div>
       <Button
@@ -186,16 +186,22 @@ export default function RunDetailPage() {
             key: 'charts',
             label: 'Charts',
             children: (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <Card title="Score by Task" size="small">
                   <ScoreChart results={detail.results} />
                 </Card>
-                <Card title="Token Usage by Task" size="small">
-                  <TokenChart results={detail.results} />
-                </Card>
-                <Card title="Time by Task" size="small" style={{ gridColumn: '1 / -1' }}>
-                  <TimeChart results={detail.results} />
-                </Card>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: 16 }}>
+                  <Card title="Token Usage by Task" size="small" style={{ overflow: 'hidden', minWidth: 0 }}>
+                    <div style={{ overflow: 'hidden', minWidth: 0 }}>
+                      <TokenChart results={detail.results} />
+                    </div>
+                  </Card>
+                  <Card title="Time by Task" size="small" style={{ overflow: 'hidden', minWidth: 0 }}>
+                    <div style={{ overflow: 'hidden', minWidth: 0 }}>
+                      <TimeChart results={detail.results} />
+                    </div>
+                  </Card>
+                </div>
               </div>
             ),
           },
