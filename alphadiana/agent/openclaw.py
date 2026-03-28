@@ -141,6 +141,64 @@ def extract_system_prompt(trajectory: list[dict]) -> str:
     return ""
 
 
+# ---------------------------------------------------------------------------
+# Session pollution detection
+# ---------------------------------------------------------------------------
+
+# Common math words that appear in almost any reasoning — not useful for
+# distinguishing one problem from another.
+_COMMON_MATH_WORDS = frozenset({
+    "find", "each", "with", "where", "that", "this", "from", "have",
+    "such", "then", "when", "which", "what", "there", "given", "since",
+    "also", "define", "value", "values", "expressed", "possible", "least",
+    "most", "positive", "negative", "integers", "integer", "number",
+    "numbers", "prime", "primes", "square", "point", "points", "plane",
+    "divisible", "total", "equal", "equals", "answer",
+})
+
+# Extract distinctive tokens: uppercase multi-letter names (ABCDE, AB),
+# domain-specific words (≥5 chars, not common), numbers ≥3 digits.
+_DISTINCTIVE_TOKEN_RE = re.compile(
+    r"[A-Z]{2,}|\d{3,}|[a-zA-Z]{5,}"
+)
+
+
+def _detect_session_pollution(
+    problem: str,
+    raw_output: str,
+    raw_reasoning: str,
+) -> bool:
+    """Heuristic check: did the model actually work on the given problem?
+
+    Extracts distinctive tokens from *problem* — uppercase variable names
+    (ABCDE, AB), domain-specific words (pentagon, quadrant), and large
+    numbers — then checks how many appear in the model's reasoning/output.
+
+    Returns True if pollution is suspected, False otherwise.
+    """
+    model_text = f"{raw_reasoning} {raw_output}".lower()
+    if len(model_text.strip()) < 100:
+        # Too short to judge reliably.
+        return False
+
+    raw_tokens = set(_DISTINCTIVE_TOKEN_RE.findall(problem))
+    # Filter out common math words
+    tokens = {t for t in raw_tokens if t.lower() not in _COMMON_MATH_WORDS}
+    if len(tokens) < 3:
+        # Problem doesn't have enough distinctive features to fingerprint.
+        return False
+
+    # Use word-boundary matching to avoid false positives from substrings
+    # (e.g. "AB" matching "about", "DE" matching "determine").
+    hits = 0
+    for t in tokens:
+        pattern = r"\b" + re.escape(t.lower()) + r"\b"
+        if re.search(pattern, model_text):
+            hits += 1
+    ratio = hits / len(tokens)
+    return ratio < 0.35
+
+
 def classify_error(
     exc: Exception | None = None,
     *,
@@ -740,6 +798,19 @@ class OpenClawAgent(Agent):
                 ):
                     return trajectory
 
+            # Do NOT return an unmatched fallback trajectory: it likely belongs
+            # to a different task/run on the same sandbox and would cause the
+            # stored trajectory to show a completely different problem than the
+            # one actually sent to the model (see: problem-user-content-mismatch).
+            if fallback_trajectory and expected_user_content:
+                logger.warning(
+                    "Trajectory retrieval found %d session file(s) but none matched "
+                    "the expected user content (len=%d). Discarding stale fallback "
+                    "to avoid recording a mismatched trajectory.",
+                    len(session_files),
+                    len(expected_user_content),
+                )
+                return []
             return fallback_trajectory
 
         except Exception as e:
@@ -1380,6 +1451,19 @@ class OpenClawAgent(Agent):
                 assistant_entry,
             ]
 
+        # Detect gateway session pollution: the model may have received a
+        # different problem than what we sent due to stale session state.
+        session_tainted = _detect_session_pollution(
+            task.problem, raw_output, raw_reasoning,
+        )
+        if session_tainted:
+            logger.warning(
+                "Session pollution detected for task %s: model response does "
+                "not appear to address the given problem. The gateway may have "
+                "reused a stale session. Marking result as tainted.",
+                getattr(task, "task_id", "?"),
+            )
+
         # Collect artifacts from runtime manager if available
         if sandbox is not None and self._runtime_manager and self._runtime_manager.is_configured:
             try:
@@ -1415,6 +1499,7 @@ class OpenClawAgent(Agent):
                 "partial_reasoning_only": partial_reasoning_only and not raw_output,
                 "answer_source": answer_source,
                 "received_done": received_done,
+                "session_tainted": session_tainted,
             },
         )
 

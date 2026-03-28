@@ -21,5 +21,5 @@ scorer:
   config:
     tolerance: 1e-6
 
-max_concurrent: 
+max_concurrent: 1
 output_dir: "./results"

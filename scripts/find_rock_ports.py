@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -55,8 +56,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--redis-container",
-        default="redis-stack",
-        help="Redis container name to reuse if already created.",
+        default=f"redis-alphadiana-{os.environ.get('USER', 'default')}",
+        help="Redis container name to reuse if already created (default: redis-alphadiana-$USER).",
     )
     parser.add_argument(
         "--proxy-port",
@@ -78,7 +79,36 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _is_shared_redis(port: int) -> bool:
+    """Return True if the Redis instance on *port* has other connected clients.
+
+    A shared Redis (e.g. system-wide ``redis-stack``) will typically have
+    multiple client connections.  We consider it "shared" if there are more
+    than 2 connected clients (our own ``redis-cli`` plus one headroom).
+    """
+    try:
+        result = subprocess.run(
+            ["redis-cli", "-p", str(port), "client", "list"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            return False
+        # Each connected client produces one line in CLIENT LIST output.
+        client_count = sum(1 for line in result.stdout.splitlines() if line.strip())
+        return client_count > 2
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+
+
 def _detect_existing_redis_port(container_name: str) -> int | None:
+    """Detect a running Redis container's host port, but refuse shared instances.
+
+    If the container is detected but appears to be shared (other clients
+    connected), return ``None`` so that a fresh isolated port is allocated
+    instead.
+    """
     try:
         result = subprocess.run(
             ["docker", "port", container_name, "6379/tcp"],
@@ -89,11 +119,26 @@ def _detect_existing_redis_port(container_name: str) -> int | None:
     except (FileNotFoundError, subprocess.CalledProcessError):
         return None
 
+    port: int | None = None
     for line in result.stdout.splitlines():
         match = re.search(r":(\d+)\s*$", line.strip())
         if match:
-            return int(match.group(1))
-    return None
+            port = int(match.group(1))
+            break
+
+    if port is None:
+        return None
+
+    # Refuse to reuse a Redis instance that has other clients connected.
+    if _is_shared_redis(port):
+        print(
+            f"WARNING: Redis container '{container_name}' on port {port} appears "
+            f"shared (multiple clients connected). Allocating an isolated port instead.",
+            file=sys.stderr,
+        )
+        return None
+
+    return port
 
 
 def _detect_distinct_port(start_port: int, used: set[int], limit: int) -> int:
@@ -139,7 +184,7 @@ def render_exports(ports: RockPorts) -> str:
         f"export ROCK_RAY_DASHBOARD_PORT={ports.ray_dashboard_port}",
         f"export ROCK_RAY_CLIENT_SERVER_PORT={ports.ray_client_server_port}",
         f"export ROCK_REDIS_PORT={ports.redis_port}",
-        f'export ROCK_REDIS_CONTAINER="${{ROCK_REDIS_CONTAINER:-redis-stack}}"',
+        f'export ROCK_REDIS_CONTAINER="${{ROCK_REDIS_CONTAINER:-redis-alphadiana-${{USER:-default}}}}"',
         f"export ROCK_ADMIN_PORT={ports.admin_port}",
         f"export ROCK_PROXY_PORT={ports.proxy_port}",
         'export ROCK_BIND_HOST="${ROCK_BIND_HOST:-127.0.0.1}"',

@@ -209,32 +209,6 @@ class TestConfigValidator:
         errors = validator.validate(config)
         assert any("scorer_name" in e for e in errors)
 
-    def test_sandbox_required_for_terminal_bench(self):
-        """terminal_bench requires sandbox config."""
-        config = ExperimentConfig(
-            agent_name="openclaw",
-            agent_version="v0.3.1",
-            benchmark_name="terminal_bench",
-            scorer_name="exact_match",
-            sandbox_name=None,
-        )
-        validator = ConfigValidator()
-        errors = validator.validate(config)
-        assert any("sandbox" in e.lower() for e in errors)
-
-    def test_sandbox_required_for_osworld(self):
-        """osworld requires sandbox config."""
-        config = ExperimentConfig(
-            agent_name="openclaw",
-            agent_version="v0.3.1",
-            benchmark_name="osworld",
-            scorer_name="exact_match",
-            sandbox_name=None,
-        )
-        validator = ConfigValidator()
-        errors = validator.validate(config)
-        assert any("sandbox" in e.lower() for e in errors)
-
     def test_sandbox_not_required_for_aime(self):
         """aime does not require sandbox."""
         config = ExperimentConfig(

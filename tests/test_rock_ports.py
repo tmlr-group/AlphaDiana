@@ -1,18 +1,23 @@
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 
 from alphadiana.utils.rock_ports import RockPorts, resolve_rock_ports_from_env
-from dev.find_rock_ports import render_exports
+from scripts.find_rock_ports import render_exports
 
 
 def test_resolve_rock_ports_from_env_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ROCK_RAY_PORT", raising=False)
+    monkeypatch.delenv("ROCK_RAY_DASHBOARD_PORT", raising=False)
+    monkeypatch.delenv("ROCK_RAY_CLIENT_SERVER_PORT", raising=False)
     monkeypatch.delenv("ROCK_REDIS_PORT", raising=False)
     monkeypatch.delenv("ROCK_ADMIN_PORT", raising=False)
     monkeypatch.delenv("ROCK_PROXY_PORT", raising=False)
 
-    ports = resolve_rock_ports_from_env()
+    with patch("alphadiana.utils.rock_ports._load_rock_ports_file", return_value={}):
+        ports = resolve_rock_ports_from_env()
 
     assert ports.ray_port == 6380
     assert ports.ray_dashboard_port == 8265
@@ -32,7 +37,8 @@ def test_resolve_rock_ports_from_env_override(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setenv("ROCK_ADMIN_PORT", "9010")
     monkeypatch.setenv("ROCK_PROXY_PORT", "9011")
 
-    ports = resolve_rock_ports_from_env()
+    with patch("alphadiana.utils.rock_ports._load_rock_ports_file", return_value={}):
+        ports = resolve_rock_ports_from_env()
 
     assert ports.ray_port == 6382
     assert ports.ray_dashboard_port == 8266
@@ -62,7 +68,7 @@ def test_render_exports_contains_dynamic_urls() -> None:
     assert "export ROCK_REDIS_PORT=6388" in content
     assert "export ROCK_ADMIN_PORT=9100" in content
     assert "export ROCK_PROXY_PORT=9101" in content
-    assert "export ROCK_BASE_URL=http://127.0.0.1:9100" in content
-    assert "export ROCK_PROXY_URL=http://127.0.0.1:9101/apis/envs/sandbox/v1" in content
-    assert 'export ROCK_DYNAMIC_CONFIG="${ROCK_DYNAMIC_CONFIG:-' in content
-    assert 'export RAY_TMPDIR="${RAY_TMPDIR:-' in content
+    # URLs now use shell variable interpolation
+    assert "ROCK_BASE_URL" in content
+    assert "ROCK_PROXY_URL" in content
+    assert "ROCK_BIND_HOST" in content

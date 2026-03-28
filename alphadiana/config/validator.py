@@ -6,7 +6,7 @@ from alphadiana.config.experiment_config import ExperimentConfig
 
 
 class ConfigValidator:
-    SANDBOX_REQUIRED_BENCHMARKS: set[str] = {}
+    SANDBOX_REQUIRED_BENCHMARKS: set[str] = set()
 
     # Agents that require an api_base in agent_config.
     API_AGENTS = {"openclaw", "direct_llm"}
@@ -27,9 +27,9 @@ class ConfigValidator:
             errors.append("benchmark_name is required")
         if not config.scorer_name:
             errors.append("scorer_name is required")
-        if config.max_concurrent < 1:
+        if (config.max_concurrent or 0) < 1:
             errors.append("max_concurrent must be >= 1")
-        if config.max_concurrent > 64:
+        if (config.max_concurrent or 0) > 64:
             errors.append("max_concurrent should be <= 64 to avoid resource exhaustion")
         if config.benchmark_name in self.SANDBOX_REQUIRED_BENCHMARKS and not config.sandbox_name:
             errors.append(

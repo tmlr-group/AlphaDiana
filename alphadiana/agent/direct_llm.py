@@ -111,6 +111,7 @@ class DirectLLMAgent(Agent):
                 if data:
                     max_len = data[0].get("max_model_len")
                     if isinstance(max_len, int) and max_len > 0:
+                        self._max_model_len = max_len
                         self._resolved_max_tokens = max_len
                         return max_len
         except Exception:
@@ -118,6 +119,31 @@ class DirectLLMAgent(Agent):
 
         self._resolved_max_tokens = 65536
         return self._resolved_max_tokens
+
+    def _estimate_prompt_tokens(self, messages: list[dict]) -> int:
+        """Rough token estimate: ~4 chars per token (conservative)."""
+        total_chars = sum(len(m.get("content", "")) for m in messages)
+        return total_chars // 3  # slightly conservative to avoid overflow
+
+    def _cap_max_tokens(self, max_tokens: int, messages: list[dict]) -> int:
+        """Cap max_tokens so that prompt + output stays within model context.
+
+        This avoids vLLM ``VLLMValidationError`` when
+        ``prompt_tokens + max_tokens > max_model_len``.
+        """
+        max_model_len = getattr(self, "_max_model_len", None) or 0
+        if max_model_len <= 0:
+            return max_tokens
+        estimated_prompt = self._estimate_prompt_tokens(messages)
+        headroom = max_model_len - estimated_prompt
+        if headroom < max_tokens:
+            capped = max(headroom - 64, 1)  # 64-token safety margin
+            logger.info(
+                "Capping max_tokens from %d to %d (est. prompt=%d, model_len=%d)",
+                max_tokens, capped, estimated_prompt, max_model_len,
+            )
+            return capped
+        return max_tokens
 
     def solve(self, task: BenchmarkTask, sandbox: Any = None) -> AgentResponse:
         if self._client is None:
@@ -144,7 +170,8 @@ class DirectLLMAgent(Agent):
         if self._max_completion_tokens is not None:
             request_kwargs["max_completion_tokens"] = self._max_completion_tokens
         else:
-            request_kwargs["max_tokens"] = self._resolve_max_tokens()
+            raw_max = self._resolve_max_tokens()
+            request_kwargs["max_tokens"] = self._cap_max_tokens(raw_max, messages)
         if self._top_p is not None:
             request_kwargs["top_p"] = self._top_p
 
@@ -241,17 +268,50 @@ class DirectLLMAgent(Agent):
 
     @staticmethod
     def _is_retryable(exc: Exception) -> bool:
-        """Return True for transient errors worth retrying."""
+        """Return True for transient errors worth retrying.
+
+        Covers SDK-typed errors, HTTP 5xx, and streaming mid-flight
+        disconnections (e.g. ``Network connection lost``,
+        ``incomplete chunked read``).
+        """
         try:
-            from openai import RateLimitError, APITimeoutError, APIConnectionError, APIStatusError
+            from openai import RateLimitError, APITimeoutError, APIConnectionError, APIStatusError, APIError
             if isinstance(exc, (RateLimitError, APITimeoutError, APIConnectionError)):
                 return True
             if isinstance(exc, APIStatusError) and exc.status_code >= 500:
                 return True
+            # APIError covers generic failures like "Network connection lost"
+            # that happen during streaming reads.
+            if isinstance(exc, APIError):
+                return True
         except ImportError:
             pass
+
+        # httpx / httpcore transport errors (streaming disconnections).
+        try:
+            import httpx
+            if isinstance(exc, (httpx.RemoteProtocolError, httpx.ReadError,
+                                httpx.ReadTimeout, httpx.ConnectError,
+                                httpx.ConnectTimeout)):
+                return True
+        except ImportError:
+            pass
+
+        try:
+            import httpcore
+            if isinstance(exc, (httpcore.RemoteProtocolError, httpcore.ReadError)):
+                return True
+        except ImportError:
+            pass
+
         msg = str(exc).lower()
-        return "timeout" in msg or "rate" in msg or "429" in msg or "502" in msg or "503" in msg
+        _RETRYABLE_KEYWORDS = (
+            "timeout", "rate", "429", "502", "503",
+            "network connection lost", "incomplete chunked read",
+            "peer closed connection", "remoteprotocolerror",
+            "response payload is not completed",
+        )
+        return any(kw in msg for kw in _RETRYABLE_KEYWORDS)
 
     _stream_options_supported: bool = True
 

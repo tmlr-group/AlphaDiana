@@ -76,7 +76,7 @@ class ExperimentConfig:
     redo_all: bool = False
     sandbox_retries: int = 1
     num_samples: int = 1
-    task_retries: int = 0
+    task_retries: int = 1
     metadata: dict = field(default_factory=dict)
 
     def __post_init__(self):

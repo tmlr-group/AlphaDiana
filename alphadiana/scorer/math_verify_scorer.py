@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from alphadiana.scorer.base import Scorer, ScoreResult
 from alphadiana.scorer.registry import register_scorer
-from alphadiana.utils.math_answer import normalize_math_text
+from alphadiana.utils.math_answer import normalize_math_text, parse_numeric_answer
 
 
 def _wrap_boxed(text: str) -> str:
@@ -84,22 +84,42 @@ class MathVerifyScorer(Scorer):
                 metadata={"method": "math_verify"},
             )
 
-        # Fallback: normalized string comparison
+        # Fallback 1: normalized string comparison
         expected_norm = normalize_math_text(expected_raw)
         predicted_norm = normalize_math_text(predicted_raw)
-        match = expected_norm == predicted_norm
+        if expected_norm == predicted_norm:
+            return ScoreResult(
+                correct=True,
+                score=1.0,
+                expected=expected_raw,
+                predicted=predicted_raw,
+                rationale="Exact match after normalization (math-verify fallback).",
+                metadata={"method": "normalized_string"},
+            )
+
+        # Fallback 2: numeric comparison (handles leading zeros, e.g. "045" vs "45")
+        expected_num = parse_numeric_answer(expected_raw)
+        predicted_num = parse_numeric_answer(predicted_raw)
+        if expected_num is not None and predicted_num is not None:
+            numeric_match = abs(expected_num - predicted_num) < 1e-9
+            if numeric_match:
+                return ScoreResult(
+                    correct=True,
+                    score=1.0,
+                    expected=expected_raw,
+                    predicted=predicted_raw,
+                    rationale="Numeric match after parsing (math-verify fallback).",
+                    metadata={"method": "numeric"},
+                )
+
         return ScoreResult(
-            correct=match,
-            score=1.0 if match else 0.0,
+            correct=False,
+            score=0.0,
             expected=expected_raw,
             predicted=predicted_raw,
             rationale=(
-                "Exact match after normalization (math-verify fallback)."
-                if match
-                else (
-                    "No match after normalization (math-verify fallback): "
-                    f"expected={expected_norm!r}, predicted={predicted_norm!r}."
-                )
+                "No match after normalization (math-verify fallback): "
+                f"expected={expected_norm!r}, predicted={predicted_norm!r}."
             ),
             metadata={"method": "normalized_string"},
         )
