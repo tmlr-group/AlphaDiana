@@ -41,7 +41,6 @@ ENV/
 
 # Claude Code
 .claude/
-.planning/
 
 # Redis dump
 dump.rdb
@@ -56,8 +55,6 @@ dev/generated
 
 .cache
 node_modules/
-
-.planning
 
 .openclaw
 .env
