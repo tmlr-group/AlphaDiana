@@ -5,7 +5,7 @@ import {
   Table,
   Tag,
   Progress,
-  Statistic,
+
   Row,
   Col,
   Button,
