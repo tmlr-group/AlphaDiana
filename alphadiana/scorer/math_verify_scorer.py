@@ -31,7 +31,7 @@ def _math_verify_equal(expected: str, predicted: str) -> bool | None:
     """Return True/False via math-verify, or None if unavailable/parse failure."""
     try:
         from math_verify import verify, parse
-        from math_verify.parser import LatexExtractionConfig
+        from math_verify.parser import LatexExtractionConfig, ExprExtractionConfig
     except ImportError:
         return None
 
