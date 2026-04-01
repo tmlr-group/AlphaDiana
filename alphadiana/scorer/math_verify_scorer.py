@@ -35,7 +35,7 @@ def _math_verify_equal(expected: str, predicted: str) -> bool | None:
     except ImportError:
         return None
 
-    cfg = [LatexExtractionConfig()]
+    cfg = [LatexExtractionConfig(), ExprExtractionConfig()]
     try:
         gold = parse(_wrap_boxed(expected), extraction_config=cfg)
         pred = parse(_wrap_boxed(predicted), extraction_config=cfg)
