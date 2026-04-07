@@ -280,7 +280,7 @@ moltbench_artifacts_{agent}_{task}/
 | PyTorch | >= 2.4.0 (from `cu128` index) |
 | Triton | >= 3.3.0 |
 | AutoKernel | commit `7843582` |
-| OpenClaw | `ghcr.io/tsrigo/openclaw-reasoning:20260320` |
+| OpenClaw | `tmlrgroup/alphadiana:openclaw` |
 | OpenCode | `opencode-ai@1.3.2` |
 | Claude Code | `@anthropic-ai/claude-code@latest` |
 
