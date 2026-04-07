@@ -1,0 +1,46 @@
+# MoltBench evaluation config — OpenClaw agent
+#
+# Usage:
+#   alphadiana run configs/examples/moltbench_openclaw.yaml
+#
+# Prerequisites:
+#   1. Build Docker images:
+#      cd <repo_root>
+#      docker build -f docker/moltbench/Dockerfile.base -t moltbench/gpu-base .
+#      docker build -f docker/moltbench/Dockerfile.openclaw -t moltbench/openclaw .
+#   2. Set OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL_NAME in environment
+
+run_id: "moltbench-openclaw-L1-001"
+
+agent:
+  name: moltbench_docker
+  version: "1.0"
+  config:
+    agent_type: openclaw
+    image_prefix: moltbench
+    request_timeout: 3600
+    gpus: "all"
+    network_mode: "host"
+    output_dir: "./moltbench_artifacts"
+    env:
+      # Leave blank to auto-detect from host environment.
+      OPENAI_API_KEY: ""
+      OPENAI_BASE_URL: ""
+      OPENAI_MODEL_NAME: "deepseek-chat"
+
+benchmark:
+  name: moltbench
+  config:
+    levels: [1]
+    problems: "1-20"
+    max_rounds: 10
+    backend: triton
+
+scorer:
+  name: moltbench
+  config:
+    thresholds: [1.0, 1.5, 2.0, 3.0, 5.0]
+    score_mode: "final"
+
+max_concurrent: 1
+output_dir: "./results"

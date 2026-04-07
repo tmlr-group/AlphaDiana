@@ -1,0 +1,43 @@
+# MoltBench evaluation config — OpenClaw agent (single-task Codex smoke run)
+#
+# Usage:
+#   cd /data/users/weikaihuang/projects/MoltBench/AlphaDiana
+#   OPENAI_API_KEY=... OPENAI_BASE_URL=... OPENAI_MODEL_NAME=... \
+#     python3 -m alphadiana.cli run configs/examples/moltbench_openclaw_codex.yaml
+
+run_id: "moltbench-openclaw-codex-L1-P001"
+
+agent:
+  name: moltbench_docker
+  version: "1.0"
+  config:
+    agent_type: openclaw
+    image_prefix: moltbench
+    request_timeout: 3600
+    gpus: "device=0"
+    network_mode: "host"
+    output_dir: "./moltbench_artifacts_codex"
+    env:
+      # Leave blank to auto-detect from host environment.
+      OPENAI_API_KEY: ""
+      OPENAI_BASE_URL: ""
+      OPENAI_MODEL_NAME: "deepseek-chat"
+      OPENCLAW_AGENT_TIMEOUT_SEC: "180"
+      OPENCLAW_CHAT_MAX_TIME_SEC: "240"
+
+benchmark:
+  name: moltbench
+  config:
+    levels: [1]
+    problems: "1"
+    max_rounds: 2
+    backend: triton
+
+scorer:
+  name: moltbench
+  config:
+    thresholds: [1.0, 1.5, 2.0, 3.0, 5.0]
+    score_mode: "final"
+
+max_concurrent: 1
+output_dir: "./results_codex"

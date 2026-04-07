@@ -1,0 +1,46 @@
+# MoltBench evaluation config — Claude Code agent
+#
+# Usage:
+#   alphadiana run configs/examples/moltbench_claude_code.yaml
+#
+# Prerequisites:
+#   1. Build Docker images:
+#      cd <repo_root>
+#      docker build -f docker/moltbench/Dockerfile.base -t moltbench/gpu-base .
+#      docker build -f docker/moltbench/Dockerfile.claude-code -t moltbench/claude-code .
+#   2. Set ANTHROPIC_API_KEY in environment
+
+run_id: "moltbench-claude-code-L1-001"
+
+agent:
+  name: moltbench_docker
+  version: "1.0"
+  config:
+    agent_type: claude-code
+    image_prefix: moltbench
+    # image: moltbench/claude-code  # auto-derived from agent_type + image_prefix
+    request_timeout: 3600  # 1 hour per task
+    gpus: "all"
+    network_mode: "host"
+    output_dir: "./moltbench_artifacts"
+    env:
+      # ANTHROPIC_API_KEY: auto-detected from host environment
+      ANTHROPIC_MODEL: "claude-sonnet-4-6"
+
+benchmark:
+  name: moltbench
+  config:
+    levels: [1]
+    problems: "1-20"       # Quick tier: first 20 Level-1 problems
+    max_rounds: 10
+    backend: triton
+    # max_tasks: 5         # Uncomment to limit for testing
+
+scorer:
+  name: moltbench
+  config:
+    thresholds: [1.0, 1.5, 2.0, 3.0, 5.0]
+    score_mode: "final"
+
+max_concurrent: 1           # One GPU task at a time
+output_dir: "./results"
