@@ -1,8 +1,8 @@
 # MoltBench + Claude Code
 # Build (from AlphaDiana repo root):
-#   docker build -f moltbench/docker/Dockerfile.claude-code -t moltbench/claude-code .
+#   docker build -f moltbench/docker/Dockerfile.claude-code -t tmlrgroup/alphadiana:claude-code .
 
-FROM moltbench/gpu-base
+FROM tmlrgroup/alphadiana:gpu-base
 
 # Node.js (required by Claude Code)
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \

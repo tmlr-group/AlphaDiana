@@ -6,6 +6,7 @@
 #   set -a && source ../.env && set +a
 #   python3 -m alphadiana.cli run configs/examples/moltbench_opencode_L1_batch.yaml
 
+task: kernelbench
 run_id: "moltbench-opencode-L1-v1"
 
 agent:
@@ -13,7 +14,7 @@ agent:
   version: "1.0"
   config:
     agent_type: opencode
-    image_prefix: moltbench
+    image_prefix: tmlrgroup/alphadiana
     request_timeout: 900
     gpus: '"device=3"'
     network_mode: "host"

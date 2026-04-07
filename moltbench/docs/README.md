@@ -1,9 +1,10 @@
 # MoltBench — LLM Agent Evaluation for GPU Kernel Optimization
 
 MoltBench evaluates LLM coding agents on long-horizon, stateful GPU kernel
-optimization tasks. Agents are given a seed project inside an ephemeral Docker
-container and must iteratively edit code, benchmark, and keep or revert changes
-— all autonomously.
+optimization tasks. The current evaluation task is **KernelBench** (270
+problems across 4 difficulty levels). Agents are given a seed project inside
+an ephemeral Docker container and must iteratively edit code, benchmark, and
+keep or revert changes — all autonomously.
 
 ---
 
@@ -13,7 +14,7 @@ container and must iteratively edit code, benchmark, and keep or revert changes
 
 - Docker 28+ with [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
 - NVIDIA GPU with Driver 570+ (CUDA 12.8; RTX 5880 Ada 48 GB verified)
-- LLM API access (OpenAI-compatible endpoint for OpenClaw/OpenCode, or Anthropic API for Claude Code)
+- LLM API access — see [Supported Agents](#supported-agents) for which keys you need
 - Python 3.11+ on host (for AlphaDiana CLI)
 
 ### Step 1: Build Docker Images
@@ -22,41 +23,49 @@ container and must iteratively edit code, benchmark, and keep or revert changes
 cd /path/to/AlphaDiana
 
 # GPU base image — clones AutoKernel at build time (~15 min)
-docker build --network host -f moltbench/docker/Dockerfile.base -t moltbench/gpu-base .
+docker build --network host -f moltbench/docker/Dockerfile.base -t tmlrgroup/alphadiana:gpu-base .
 
 # Pick one or more agent layers:
-docker build --network host -f moltbench/docker/Dockerfile.openclaw    -t moltbench/openclaw .     # ~5 min
-docker build --network host -f moltbench/docker/Dockerfile.opencode    -t moltbench/opencode .     # ~2 min
-docker build --network host -f moltbench/docker/Dockerfile.claude-code -t moltbench/claude-code .  # ~2 min
+docker build --network host -f moltbench/docker/Dockerfile.openclaw    -t tmlrgroup/alphadiana:openclaw .     # ~5 min
+docker build --network host -f moltbench/docker/Dockerfile.opencode    -t tmlrgroup/alphadiana:opencode .     # ~2 min
+docker build --network host -f moltbench/docker/Dockerfile.claude-code -t tmlrgroup/alphadiana:claude-code .  # ~2 min
 ```
 
 ### Step 2: Configure API Keys
 
+Each agent requires different API credentials. You only need to configure
+the keys for the agent(s) you plan to use:
+
 ```bash
 cat > .env << 'EOF'
-# For OpenClaw / OpenCode (any OpenAI-compatible API)
+# ── OpenClaw / OpenCode (any OpenAI-compatible API) ──
 OPENAI_API_KEY=sk-...
 OPENAI_BASE_URL=https://api.example.com/v1/
 OPENAI_MODEL_NAME=deepseek-chat
 
-# For Claude Code (Anthropic API)
+# ── Claude Code (Anthropic API — only needed if using claude-code agent) ──
 ANTHROPIC_API_KEY=sk-ant-...
 EOF
 
 set -a && source .env && set +a
 ```
 
-### Step 3: Run a Smoke Test (Single Problem, ~5 min)
+### Step 3: Run a Smoke Test — KernelBench Single Problem (~5 min)
 
 ```bash
+# OpenClaw agent (requires OPENAI_* keys)
 python3 -m alphadiana.cli run configs/examples/moltbench_openclaw_smoke.yaml
+
+# Or use a different agent — just swap the config:
+# python3 -m alphadiana.cli run configs/examples/moltbench_openclaw_codex.yaml
+# python3 -m alphadiana.cli run configs/examples/moltbench_claude_code_codex.yaml
 ```
 
-This runs **L1 P001** (square matrix multiplication) with OpenClaw. Expected
+This runs **KernelBench L1 P001** (square matrix multiplication). Expected
 output: a `moltbench_artifacts_smoke/` directory containing `results.json`
 with `correctness` and `speedup` fields.
 
-### Step 4: Run a Full Batch (L1 P1-20, ~5 hours)
+### Step 4: Run a Full Batch — KernelBench L1 P1-20 (~5 hours)
 
 ```bash
 # OpenClaw — 20 problems, sequential, ~15 min each
@@ -72,6 +81,35 @@ patterns without requiring days of GPU time.
 
 ---
 
+## Supported Agents
+
+MoltBench supports three LLM coding agents. Each agent runs inside its own
+Docker image and requires different API credentials:
+
+| Agent | Docker Image | API Keys Required | LLM | Config Example |
+|-------|-------------|-------------------|-----|----------------|
+| **OpenClaw** | `tmlrgroup/alphadiana:openclaw` | `OPENAI_API_KEY` + `OPENAI_BASE_URL` + `OPENAI_MODEL_NAME` | Any OpenAI-compatible (e.g., DeepSeek-chat) | `moltbench_openclaw_smoke.yaml` |
+| **OpenCode** | `tmlrgroup/alphadiana:opencode` | `OPENAI_API_KEY` + `OPENAI_BASE_URL` + `OPENAI_MODEL_NAME` | Any OpenAI-compatible (e.g., DeepSeek-chat) | `moltbench_opencode_L1_batch.yaml` |
+| **Claude Code** | `tmlrgroup/alphadiana:claude-code` | `ANTHROPIC_API_KEY` | Claude (Anthropic) | `moltbench_claude_code.yaml` |
+
+**Switching agents** is done by choosing a different YAML config — no code
+changes needed. The `agent_type` field in the config selects the Docker image
+and the corresponding `launch_*()` function in `run_task.sh`:
+
+```yaml
+# configs/examples/moltbench_openclaw_smoke.yaml
+task: kernelbench                          # <-- evaluation task
+agent:
+  config:
+    agent_type: openclaw                   # <-- change this to switch agents
+    image_prefix: tmlrgroup/alphadiana     # image = image_prefix:agent_type
+```
+
+All three agents share the same `MoltBenchDockerAgent` class and `run_task.sh`
+entrypoint — the only difference is the thin Docker layer and the agent CLI.
+
+---
+
 ## Architecture
 
 ```
@@ -83,7 +121,7 @@ AlphaDiana CLI  (python3 -m alphadiana.cli run config.yaml)
   |     +-- 2. docker run -d --gpus ...
   |     |       -v task_dir:/workspace/task:ro
   |     |       -e MOLTBENCH_AGENT={agent_type}
-  |     |       moltbench/{agent_type}
+  |     |       tmlrgroup/alphadiana:{agent_type}
   |     +-- 3. docker wait (block until container exits)
   |     +-- 4. docker cp /workspace/artifacts/ -> host
   |     +-- 5. parse_results_json() + parse_trajectory()
@@ -106,20 +144,19 @@ run_task.sh (entrypoint)
   +-- collect_artifacts()  <- EXIT trap (always runs, even on crash/timeout)
 ```
 
-All three agents share one `MoltBenchDockerAgent` class and one `run_task.sh`
-entrypoint. The only differences are the Docker image (thin agent layer on top
-of `gpu-base`) and the `launch_*()` function in `run_task.sh`.
+See [Supported Agents](#supported-agents) for details on each agent's API
+requirements and how to switch between them.
 
 ### Image Layering
 
 ```
 nvidia/cuda:12.8.0-devel-ubuntu22.04
   |
-  +-- moltbench/gpu-base      ~24 GB  (PyTorch + Triton + AutoKernel)
+  +-- tmlrgroup/alphadiana:gpu-base      ~24 GB  (PyTorch + Triton + AutoKernel)
         |
-        +-- moltbench/claude-code   +0.3 GB  (Node.js + @anthropic-ai/claude-code)
-        +-- moltbench/openclaw      +2.5 GB  (Node.js + OpenClaw gateway)
-        +-- moltbench/opencode      +1.1 GB  (Node.js + opencode-ai)
+        +-- tmlrgroup/alphadiana:claude-code   +0.3 GB  (Node.js + @anthropic-ai/claude-code)
+        +-- tmlrgroup/alphadiana:openclaw      +2.5 GB  (Node.js + OpenClaw gateway)
+        +-- tmlrgroup/alphadiana:opencode      +1.1 GB  (Node.js + opencode-ai)
 ```
 
 ### Agent Alignment (Zero-Injection)
@@ -144,15 +181,24 @@ already in the AutoKernel repo) rather than `program.md` (the general-purpose
 pipeline), because MoltBench pre-sets each problem via `bridge.py setup` and
 only evaluates the optimization phase.
 
+## Evaluation Tasks
+
+### KernelBench (Active)
+
+The current evaluation task is **KernelBench** — 270 GPU kernel optimization
+problems across 4 difficulty levels (L1-L4), powered by the AutoKernel seed
+project. Each problem provides a PyTorch model; the agent must optimize
+`kernel.py` to produce a correct, faster implementation.
+
 ## Seed Projects
 
 Seed projects are external repositories used as evaluation targets. They are
 **not vendored** — instead, they are cloned at Docker build time from the
 commit pinned in `moltbench/seeds.yaml`.
 
-| Seed | Repo | Eval Target | Status |
-|------|------|-------------|--------|
-| **AutoKernel** | `RightNow-AI/autokernel` @ `7843582` | KernelBench L1-L4 (270 problems) — optimize `kernel.py` | Verified |
+| Seed | Repo | Task | Status |
+|------|------|------|--------|
+| **AutoKernel** | `RightNow-AI/autokernel` @ `7843582` | **KernelBench** L1-L4 (270 problems) — optimize `kernel.py` | Verified |
 | QJL | `amirzandieh/QJL` @ `648b364` | CUDA C++ kernels — minimize runtime | Planned |
 | Mini-SGLang | `sgl-project/mini-sglang` | Scheduler optimization — maximize throughput | Planned |
 
@@ -203,7 +249,7 @@ commit pinned in `moltbench/seeds.yaml`.
 
    ```bash
    docker build --network host -f moltbench/docker/Dockerfile.my-project-base \
-       -t moltbench/my-project-base .
+       -t tmlrgroup/alphadiana:my-project-base .
    # Then build agent layers on top and run a smoke test
    ```
 
@@ -259,7 +305,7 @@ moltbench_artifacts_{agent}_{task}/
 
 ### Verified Results
 
-**AutoKernel L1 P1-20, aligned prompts, DeepSeek-chat, 2026-04-06:**
+**KernelBench L1 P1-20 (via AutoKernel), aligned prompts, DeepSeek-chat, 2026-04-06:**
 
 | Metric | OpenClaw | OpenCode |
 |--------|----------|----------|

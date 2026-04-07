@@ -10,6 +10,7 @@
 #      docker build -f docker/moltbench/Dockerfile.claude-code -t moltbench/claude-code .
 #   2. Set ANTHROPIC_API_KEY in environment
 
+task: kernelbench
 run_id: "moltbench-claude-code-L1-001"
 
 agent:
@@ -17,8 +18,8 @@ agent:
   version: "1.0"
   config:
     agent_type: claude-code
-    image_prefix: moltbench
-    # image: moltbench/claude-code  # auto-derived from agent_type + image_prefix
+    image_prefix: tmlrgroup/alphadiana
+    # image: tmlrgroup/alphadiana:claude-code  # auto-derived from image_prefix:agent_type
     request_timeout: 3600  # 1 hour per task
     gpus: "all"
     network_mode: "host"

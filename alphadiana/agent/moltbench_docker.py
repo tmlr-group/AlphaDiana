@@ -47,7 +47,7 @@ class MoltBenchDockerAgent(Agent):
 
     Config keys:
         agent_type: str — "claude-code" or "openclaw" (determines Docker image)
-        image_prefix: str — Docker image prefix (default: "moltbench")
+        image_prefix: str — Docker image prefix (default: "tmlrgroup/alphadiana")
         image: str — full image name override (optional, overrides agent_type + image_prefix)
         request_timeout: int — max seconds to wait for container (default: 3600)
         gpus: str — GPU allocation (default: "all")
@@ -70,8 +70,8 @@ class MoltBenchDockerAgent(Agent):
 
     def setup(self, config: dict) -> None:
         self._agent_type = config.get("agent_type", "claude-code")
-        image_prefix = config.get("image_prefix", "moltbench")
-        self._image = config.get("image", f"{image_prefix}/{self._agent_type}")
+        image_prefix = config.get("image_prefix", "tmlrgroup/alphadiana")
+        self._image = config.get("image", f"{image_prefix}:{self._agent_type}")
         self._timeout = int(config.get("request_timeout", 3600))
         self._gpus = config.get("gpus", "all")
         self._network_mode = config.get("network_mode")

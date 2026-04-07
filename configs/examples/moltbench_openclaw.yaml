@@ -10,6 +10,7 @@
 #      docker build -f docker/moltbench/Dockerfile.openclaw -t moltbench/openclaw .
 #   2. Set OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL_NAME in environment
 
+task: kernelbench
 run_id: "moltbench-openclaw-L1-001"
 
 agent:
@@ -17,7 +18,7 @@ agent:
   version: "1.0"
   config:
     agent_type: openclaw
-    image_prefix: moltbench
+    image_prefix: tmlrgroup/alphadiana
     request_timeout: 3600
     gpus: "all"
     network_mode: "host"

@@ -5,7 +5,7 @@
 #   Stage 2: MoltBench GPU base + OpenClaw binaries
 #
 # Build (from AlphaDiana repo root):
-#   docker build -f moltbench/docker/Dockerfile.openclaw -t moltbench/openclaw .
+#   docker build -f moltbench/docker/Dockerfile.openclaw -t tmlrgroup/alphadiana:openclaw .
 #
 # The container runs OpenClaw in gateway mode:
 #   1. Starts `openclaw gateway` as background process (port 8080)
@@ -50,7 +50,7 @@ console.log('All done.'); \
 "
 
 # ─── Stage 2: MoltBench GPU base + OpenClaw ───
-FROM moltbench/gpu-base
+FROM tmlrgroup/alphadiana:gpu-base
 
 # Node.js runtime (required by OpenClaw)
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \

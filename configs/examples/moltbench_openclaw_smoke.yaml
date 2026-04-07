@@ -5,6 +5,7 @@
 #   OPENAI_BASE_URL=https://models.sjtu.edu.cn/api/v1/ \
 #     python3 -m alphadiana.cli run configs/examples/moltbench_openclaw_smoke.yaml
 
+task: kernelbench
 run_id: "moltbench-openclaw-smoke-L1-P001"
 
 agent:
@@ -12,7 +13,7 @@ agent:
   version: "1.0"
   config:
     agent_type: openclaw
-    image_prefix: moltbench
+    image_prefix: tmlrgroup/alphadiana
     request_timeout: 900
     gpus: '"device=3"'
     network_mode: "host"

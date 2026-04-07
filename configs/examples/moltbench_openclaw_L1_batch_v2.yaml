@@ -6,6 +6,7 @@
 #   set -a && source ../.env && set +a
 #   python3 -m alphadiana.cli run configs/examples/moltbench_openclaw_L1_batch_v2.yaml
 
+task: kernelbench
 run_id: "moltbench-openclaw-L1-v2"
 
 agent:
@@ -13,7 +14,7 @@ agent:
   version: "1.0"
   config:
     agent_type: openclaw
-    image_prefix: moltbench
+    image_prefix: tmlrgroup/alphadiana
     request_timeout: 900
     gpus: '"device=3"'
     network_mode: "host"

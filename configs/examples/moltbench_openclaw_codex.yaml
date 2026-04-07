@@ -5,6 +5,7 @@
 #   OPENAI_API_KEY=... OPENAI_BASE_URL=... OPENAI_MODEL_NAME=... \
 #     python3 -m alphadiana.cli run configs/examples/moltbench_openclaw_codex.yaml
 
+task: kernelbench
 run_id: "moltbench-openclaw-codex-L1-P001"
 
 agent:
@@ -12,7 +13,7 @@ agent:
   version: "1.0"
   config:
     agent_type: openclaw
-    image_prefix: moltbench
+    image_prefix: tmlrgroup/alphadiana
     request_timeout: 3600
     gpus: "device=0"
     network_mode: "host"

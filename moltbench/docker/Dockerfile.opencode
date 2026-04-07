@@ -4,12 +4,12 @@
 # in the workspace without a gateway server.
 #
 # Build (from AlphaDiana repo root):
-#   docker build -f moltbench/docker/Dockerfile.opencode -t moltbench/opencode .
+#   docker build -f moltbench/docker/Dockerfile.opencode -t tmlrgroup/alphadiana:opencode .
 #
 # Uses the same run_task.sh entrypoint; MOLTBENCH_AGENT=opencode selects
 # the launch_opencode() path.
 
-FROM moltbench/gpu-base
+FROM tmlrgroup/alphadiana:gpu-base
 
 # Node.js runtime (required by OpenCode)
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
