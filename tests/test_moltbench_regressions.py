@@ -131,6 +131,31 @@ def test_moltbench_docker_isolates_artifacts_per_execution(monkeypatch, tmp_path
     assert json.loads((path_b / "results.json").read_text(encoding="utf-8"))["speedup"] == 2.0
 
 
+def test_run_task_initializes_workdir_before_trap():
+    script = Path("moltbench/docker/run_task.sh").read_text(encoding="utf-8")
+    # WORKDIR must be initialized before the EXIT trap can fire
+    lines = script.splitlines()
+    workdir_init = next(i for i, l in enumerate(lines) if l.strip().startswith('WORKDIR="$DEFAULT_WORKDIR"'))
+    trap_line = next(i for i, l in enumerate(lines) if l.strip().startswith('trap collect_artifacts EXIT'))
+    assert workdir_init < trap_line, "WORKDIR must be initialized before EXIT trap is set"
+
+
+def test_run_task_setup_problem_calls_die_on_failure():
+    script = Path("moltbench/docker/run_task.sh").read_text(encoding="utf-8")
+    assert 'die "Setup command failed:' in script
+    assert 'die "KernelBench setup failed' in script
+
+
+def test_run_task_final_verification_uses_uv_run():
+    script = Path("moltbench/docker/run_task.sh").read_text(encoding="utf-8")
+    assert 'verify_cmd="uv run ${verify_cmd}"' in script
+
+
+def test_dockerfile_base_installs_python310_dev():
+    dockerfile = Path("moltbench/docker/Dockerfile.base").read_text(encoding="utf-8")
+    assert "python3.10-dev" in dockerfile
+
+
 def test_moltbench_benchmark_propagates_source_to_task_json(monkeypatch):
     monkeypatch.setattr(
         "alphadiana.benchmark.moltbench.load_kernelbench_problems",

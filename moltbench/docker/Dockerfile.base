@@ -13,7 +13,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # System packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        python3.11 python3.11-venv python3.11-dev python3-pip \
+        python3.11 python3.11-venv python3.11-dev \
+        python3.10 python3.10-dev \
+        python3-pip \
         curl git ca-certificates && \
     ln -sf /usr/bin/python3.11 /usr/bin/python3 && \
     ln -sf /usr/bin/python3.11 /usr/bin/python && \

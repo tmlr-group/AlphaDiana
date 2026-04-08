@@ -19,6 +19,7 @@ set -euo pipefail
 
 AUTOKERNEL_DIR="/workspace/autokernel"
 DEFAULT_WORKDIR="$AUTOKERNEL_DIR"
+WORKDIR="$DEFAULT_WORKDIR"
 ARTIFACTS_DIR="/workspace/artifacts"
 TASK_FILE="/workspace/task/task.json"
 RUN_INVALID=0
@@ -91,14 +92,18 @@ setup_problem() {
     cd "$WORKDIR"
     if [[ -n "$SETUP_CMD" ]]; then
         log "Running setup command for $BENCHMARK_ID..."
-        bash -lc "$SETUP_CMD"
+        if ! bash -lc "$SETUP_CMD"; then
+            die "Setup command failed: $SETUP_CMD"
+        fi
     else
         log "Setting up KernelBench L${LEVEL}_P${PROBLEM_ID}..."
-        python3 kernelbench/bridge.py setup \
+        if ! python3 kernelbench/bridge.py setup \
             --level "$LEVEL" \
             --problem "$PROBLEM_ID" \
             --backend "$BACKEND" \
-            --source "$SOURCE"
+            --source "$SOURCE"; then
+            die "KernelBench setup failed for L${LEVEL}_P${PROBLEM_ID}"
+        fi
     fi
     # Fix known super() bug: replace super(Model, self) with super()
     if [[ -f "$PRIMARY_EDIT_FILE" ]] && grep -q 'super(Model, self)' "$PRIMARY_EDIT_FILE" 2>/dev/null; then
@@ -232,6 +237,13 @@ run_final_verification() {
     fi
     if [[ -z "$verify_cmd" ]]; then
         verify_cmd="python3 kernelbench/bench_kb.py"
+    fi
+
+    # Use uv run so the bench executes in the project venv (Python 3.10)
+    # matching the agent's environment. System Python 3.11 can segfault
+    # when JIT-compiling complex Triton kernels.
+    if command -v uv &>/dev/null && [[ -f "$WORKDIR/pyproject.toml" ]]; then
+        verify_cmd="uv run ${verify_cmd}"
     fi
 
     if bash -lc "$verify_cmd" > "$ARTIFACTS_DIR/final_bench.log" 2>&1; then

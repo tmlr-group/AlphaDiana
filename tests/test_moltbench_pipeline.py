@@ -10,9 +10,10 @@ from types import SimpleNamespace
 
 import pytest
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+PROJECT_ROOT = Path(__file__).resolve().parents[1]  # AlphaDiana/
+MOLTBENCH_ROOT = Path(__file__).resolve().parents[2]  # MoltBench/ (parent)
+if str(MOLTBENCH_ROOT) not in sys.path:
+    sys.path.insert(0, str(MOLTBENCH_ROOT))
 
 from alphadiana.agent.base import AgentResponse
 from alphadiana.agent.moltbench_docker import MoltBenchDockerAgent
@@ -266,23 +267,23 @@ def test_build_task_json_exposes_generic_container_contract():
 
 
 def test_openclaw_leaf_image_overrides_run_task():
-    dockerfile = (PROJECT_ROOT / "docker" / "moltbench" / "Dockerfile.openclaw").read_text(encoding="utf-8")
-    assert "COPY docker/moltbench/run_task.sh /workspace/run_task.sh" in dockerfile
+    dockerfile = (PROJECT_ROOT / "moltbench" / "docker" / "Dockerfile.openclaw").read_text(encoding="utf-8")
+    assert "COPY moltbench/docker/run_task.sh /workspace/run_task.sh" in dockerfile
 
 
 def test_claude_leaf_image_overrides_run_task():
-    dockerfile = (PROJECT_ROOT / "docker" / "moltbench" / "Dockerfile.claude-code").read_text(encoding="utf-8")
-    assert "COPY docker/moltbench/run_task.sh /workspace/run_task.sh" in dockerfile
+    dockerfile = (PROJECT_ROOT / "moltbench" / "docker" / "Dockerfile.claude-code").read_text(encoding="utf-8")
+    assert "COPY moltbench/docker/run_task.sh /workspace/run_task.sh" in dockerfile
 
 
 def test_run_task_gateway_probe_accepts_http_responses():
-    script = (PROJECT_ROOT / "docker" / "moltbench" / "run_task.sh").read_text(encoding="utf-8")
+    script = (PROJECT_ROOT / "moltbench" / "docker" / "run_task.sh").read_text(encoding="utf-8")
     assert "probe_code=$(curl -sS -o /dev/null -w '%{http_code}'" in script
     assert 'if [[ "$probe_code" != "000" ]]; then' in script
 
 
 def test_run_task_openclaw_supports_explicit_timeouts():
-    script = (PROJECT_ROOT / "docker" / "moltbench" / "run_task.sh").read_text(encoding="utf-8")
+    script = (PROJECT_ROOT / "moltbench" / "docker" / "run_task.sh").read_text(encoding="utf-8")
     assert 'local agent_timeout_sec="${OPENCLAW_AGENT_TIMEOUT_SEC:-}"' in script
     assert 'local chat_timeout_sec="${OPENCLAW_CHAT_MAX_TIME_SEC:-}"' in script
     assert 'payload.setdefault("agents", {}).setdefault("defaults", {})["timeoutSeconds"] = int(agent_timeout)' in script
@@ -290,14 +291,14 @@ def test_run_task_openclaw_supports_explicit_timeouts():
 
 
 def test_run_task_openclaw_preserves_partial_artifacts_on_curl_failure():
-    script = (PROJECT_ROOT / "docker" / "moltbench" / "run_task.sh").read_text(encoding="utf-8")
+    script = (PROJECT_ROOT / "moltbench" / "docker" / "run_task.sh").read_text(encoding="utf-8")
     assert "set +e" in script
     assert "curl_status=$?" in script
     assert "set -e" in script
 
 
 def test_run_task_supports_manifest_driven_prompt_and_commands():
-    script = (PROJECT_ROOT / "docker" / "moltbench" / "run_task.sh").read_text(encoding="utf-8")
+    script = (PROJECT_ROOT / "moltbench" / "docker" / "run_task.sh").read_text(encoding="utf-8")
     assert 'SETUP_CMD=$(python3 - <<' in script
     assert 'VERIFY_CMD=$(python3 - <<' in script
     assert 'TASK_PROMPT=$(python3 - <<' in script
@@ -308,6 +309,6 @@ def test_run_task_supports_manifest_driven_prompt_and_commands():
 
 
 def test_run_task_avoids_dangerous_skip_permissions_under_root():
-    script = (PROJECT_ROOT / "docker" / "moltbench" / "run_task.sh").read_text(encoding="utf-8")
+    script = (PROJECT_ROOT / "moltbench" / "docker" / "run_task.sh").read_text(encoding="utf-8")
     assert 'if [[ "$(id -u)" != "0" ]]; then' in script
     assert 'claude_args+=(--dangerously-skip-permissions)' in script
