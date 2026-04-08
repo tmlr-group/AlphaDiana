@@ -43,27 +43,43 @@ OPENAI_API_KEY=sk-...
 OPENAI_BASE_URL=https://api.example.com/v1/
 OPENAI_MODEL_NAME=deepseek-chat
 
-# ── Claude Code (Anthropic API — only needed if using claude-code agent) ──
+# ── Claude Code (optional if host ~/.claude auth is already set up) ──
 ANTHROPIC_API_KEY=sk-ant-...
 EOF
 
 set -a && source .env && set +a
 ```
 
-### Step 3: Run a Smoke Test — KernelBench Single Problem (~5 min)
+If you already use Claude Code on the host, MoltBench can mount
+`~/.claude/` and `~/.claude.json` into the container, so an explicit
+`ANTHROPIC_API_KEY` is optional for the `claude-code` agent.
+
+### Step 3: Run a Smoke Test — KernelBench Single Problem (~5-20 min)
 
 ```bash
-# OpenClaw agent (requires OPENAI_* keys)
-python3 -m alphadiana.cli run configs/examples/moltbench_openclaw_smoke.yaml
+# Claude Code (works with host ~/.claude auth or ANTHROPIC_API_KEY)
+python3 -m alphadiana.cli run configs/examples/moltbench_claude_code_codex.yaml
 
-# Or use a different agent — just swap the config:
-# python3 -m alphadiana.cli run configs/examples/moltbench_openclaw_codex.yaml
-# python3 -m alphadiana.cli run configs/examples/moltbench_claude_code_codex.yaml
+# OpenClaw (requires OPENAI_* keys)
+python3 -m alphadiana.cli run configs/examples/moltbench_openclaw_smoke.local.yaml
+
+# OpenCode (requires OPENAI_* keys)
+python3 -m alphadiana.cli run configs/examples/moltbench_opencode_smoke.local.yaml
 ```
 
 This runs **KernelBench L1 P001** (square matrix multiplication). Expected
-output: a `moltbench_artifacts_smoke/` directory containing `results.json`
-with `correctness` and `speedup` fields.
+output: a per-execution artifact directory under
+`moltbench_artifacts_*/moltbench_L1_P001/sample_0/<execution_id>/`
+containing `results.json` with `correctness` and `speedup` fields.
+
+Verified on **2026-04-08**:
+
+- `claude-code` completed successfully using host Claude auth mounts, with no
+  explicit `ANTHROPIC_API_KEY`.
+- `openclaw` with `minimax-m2.5` needed roughly 10 minutes and passed with the
+  longer local-smoke timeout defaults.
+- `opencode` with `minimax-m2.5` needed roughly 17 minutes and passed with
+  `OPENCODE_TIMEOUT_SEC=1200`.
 
 ### Step 4: Run a Full Batch — KernelBench L1 P1-20 (~5 hours)
 
@@ -88,9 +104,9 @@ Docker image and requires different API credentials:
 
 | Agent | Docker Image | API Keys Required | LLM | Config Example |
 |-------|-------------|-------------------|-----|----------------|
-| **OpenClaw** | `tmlrgroup/alphadiana:openclaw` | `OPENAI_API_KEY` + `OPENAI_BASE_URL` + `OPENAI_MODEL_NAME` | Any OpenAI-compatible (e.g., DeepSeek-chat) | `moltbench_openclaw_smoke.yaml` |
-| **OpenCode** | `tmlrgroup/alphadiana:opencode` | `OPENAI_API_KEY` + `OPENAI_BASE_URL` + `OPENAI_MODEL_NAME` | Any OpenAI-compatible (e.g., DeepSeek-chat) | `moltbench_opencode_L1_batch.yaml` |
-| **Claude Code** | `tmlrgroup/alphadiana:claude-code` | `ANTHROPIC_API_KEY` | Claude (Anthropic) | `moltbench_claude_code.yaml` |
+| **OpenClaw** | `tmlrgroup/alphadiana:openclaw` | `OPENAI_API_KEY` + `OPENAI_BASE_URL` + `OPENAI_MODEL_NAME` | Any OpenAI-compatible (e.g., DeepSeek-chat) | `moltbench_openclaw_smoke.local.yaml` |
+| **OpenCode** | `tmlrgroup/alphadiana:opencode` | `OPENAI_API_KEY` + `OPENAI_BASE_URL` + `OPENAI_MODEL_NAME` | Any OpenAI-compatible (e.g., DeepSeek-chat) | `moltbench_opencode_smoke.local.yaml` |
+| **Claude Code** | `tmlrgroup/alphadiana:claude-code` | `ANTHROPIC_API_KEY` or host `~/.claude` auth | Claude (Anthropic) | `moltbench_claude_code_codex.yaml` |
 
 **Switching agents** is done by choosing a different YAML config — no code
 changes needed. The `agent_type` field in the config selects the Docker image
@@ -259,14 +275,24 @@ Each task produces:
 
 ```
 moltbench_artifacts_{agent}_{task}/
-  +-- results.json           # {correctness, speedup, kernel_time_ms, ...}
-  +-- kernel.py              # Final optimized kernel (best version)
-  +-- kernel_history/        # Per-round snapshots (round_01.py, ...)
-  +-- final_bench.log        # Last bench_kb.py full output
-  +-- trajectory.jsonl       # Agent tool call trace
-  +-- container_stdout.log   # Container stdout
-  +-- container_stderr.log   # Container stderr
+  +-- moltbench_L1_P001/
+        +-- sample_0/
+              +-- <execution_id>/
+                    +-- results.json                    # final scored result
+                    +-- final_verification_results.json # raw final bench result
+                    +-- kernel.py                       # Final optimized kernel
+                    +-- kernel_history/                # Per-round snapshots
+                    +-- final_bench.log                # Last bench_kb.py output
+                    +-- trajectory.jsonl               # Agent tool call trace
+                    +-- container_stdout.log
+                    +-- container_stderr.log
 ```
+
+Artifacts are isolated by `task_id/sample_index/execution_id`, so repeated
+runs, retries, and multi-sample evaluation do not overwrite each other. If an
+agent crashes or times out before producing a valid final result,
+`results.json` is written as `INVALID`, while
+`final_verification_results.json` is still preserved for debugging.
 
 ## Reproducing Results
 
@@ -290,7 +316,7 @@ moltbench_artifacts_{agent}_{task}/
 |-------|-----|-------------|-------|
 | OpenClaw | DeepSeek-chat | `OPENAI_BASE_URL` | Any OpenAI-compatible API |
 | OpenCode | DeepSeek-chat | `OPENAI_BASE_URL` | Any OpenAI-compatible API |
-| Claude Code | Claude (Anthropic) | `ANTHROPIC_API_KEY` | Requires Anthropic API access |
+| Claude Code | Claude (Anthropic) | `ANTHROPIC_API_KEY` or host `~/.claude` auth | Host auth mount is supported |
 
 ### Evaluation Parameters
 
@@ -299,7 +325,8 @@ moltbench_artifacts_{agent}_{task}/
 | `max_rounds` | 10 | Max bench_kb.py invocations per task |
 | `backend` | triton | Triton JIT (no nvcc needed) |
 | `request_timeout` | 900 s | Container-level timeout |
-| `OPENCODE_TIMEOUT_SEC` | 600 s | OpenCode agent-level timeout |
+| `OPENCLAW_AGENT_TIMEOUT_SEC` | 600 s | Safer default for slower providers |
+| `OPENCODE_TIMEOUT_SEC` | 1200 s | OpenCode may need 15-20 min for a single smoke run |
 | `gpus` | `"device=N"` | Single GPU allocation |
 | `network_mode` | host | Required for LLM API access |
 
@@ -331,6 +358,14 @@ Triton/torch.compile but crashes more often).
 
 All differences < 5%, confirming the Docker + pipeline layer does not
 introduce measurement bias.
+
+**Single-problem smoke validation (2026-04-08):**
+
+| Agent | Model / Auth | Outcome | Notes |
+|-------|--------------|---------|-------|
+| Claude Code | host `~/.claude` auth | PASS | No explicit `ANTHROPIC_API_KEY` required |
+| OpenClaw | `minimax-m2.5` via OpenAI-compatible API | PASS | Needed `OPENCLAW_AGENT_TIMEOUT_SEC=600` |
+| OpenCode | `minimax-m2.5` via OpenAI-compatible API | PASS | Needed `OPENCODE_TIMEOUT_SEC=1200` |
 
 ## File Layout
 
@@ -369,4 +404,5 @@ AlphaDiana/
 | `bridge.py super()` bug | `ModelNew` instantiation fails for problems using `super(Model, self).__init__()` | Fixed in `run_task.sh` (auto-sed) |
 | `profile.py` naming conflict | AutoKernel's `profile.py` shadows stdlib `profile` module, breaks `torch.compile` | Known upstream bug; affects P007 |
 | RTX 5880 Ada not in GPU database | Roofline estimates are approximated | Does not affect correctness or speedup |
-| Most problems timeout (600s) | Agent fails to optimize within time limit | DeepSeek-chat model capability limitation |
+| Slow providers may exceed short smoke defaults | Healthy runs can look like failures if agent timeouts are too short | Use the longer local-smoke defaults (OpenClaw 600 s, OpenCode 1200 s) |
+| Triton/CUDA-extension attempts may fail with missing `Python.h` | Some generated kernels cannot compile inside AutoKernel's Python 3.10 venv | Agents often need to fall back to pure PyTorch or JIT paths |

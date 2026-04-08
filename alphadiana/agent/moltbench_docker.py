@@ -19,6 +19,7 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Any, Optional
+from uuid import uuid4
 
 from alphadiana.agent.base import Agent, AgentResponse
 from alphadiana.agent.registry import register_agent
@@ -117,8 +118,15 @@ class MoltBenchDockerAgent(Agent):
         task_json_path.write_text(json.dumps(task_json, indent=2), encoding="utf-8")
 
         # Local artifacts directory
-        artifacts_local = Path(self._output_dir) / task.task_id
-        artifacts_local.mkdir(parents=True, exist_ok=True)
+        sample_index = self._sample_index(task)
+        execution_id = str(task.metadata.get("execution_id") or uuid4().hex)
+        artifacts_local = (
+            Path(self._output_dir)
+            / task.task_id
+            / f"sample_{sample_index}"
+            / execution_id
+        )
+        artifacts_local.mkdir(parents=True, exist_ok=False)
 
         container_id = ""
         try:
@@ -165,6 +173,8 @@ class MoltBenchDockerAgent(Agent):
                     "container_id": container_id,
                     "exit_code": exit_code,
                     "exit_benign": exit_benign,
+                    "sample_index": sample_index,
+                    "execution_id": execution_id,
                     "agent_type": self._agent_type,
                     "image": self._image,
                 },
@@ -187,6 +197,8 @@ class MoltBenchDockerAgent(Agent):
                     "artifacts_dir": str(artifacts_local),
                     "container_id": container_id,
                     "timeout": True,
+                    "sample_index": sample_index,
+                    "execution_id": execution_id,
                     "agent_type": self._agent_type,
                 },
             )
@@ -246,3 +258,12 @@ class MoltBenchDockerAgent(Agent):
         )
         if result.returncode != 0:
             logger.warning("docker cp failed: %s", result.stderr)
+
+    @staticmethod
+    def _sample_index(task: BenchmarkTask) -> int:
+        """Return the runtime sample index for this execution."""
+        raw_sample_index = task.metadata.get("sample_index", 0)
+        try:
+            return max(0, int(raw_sample_index))
+        except (TypeError, ValueError):
+            return 0

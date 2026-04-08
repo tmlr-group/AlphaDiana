@@ -2,7 +2,8 @@
 #
 # Usage:
 #   cd /data/users/weikaihuang/projects/MoltBench/AlphaDiana
-#   ANTHROPIC_API_KEY=... python3 -m alphadiana.cli run configs/examples/moltbench_claude_code_codex.yaml
+#   # Either export ANTHROPIC_API_KEY, or reuse host Claude auth from ~/.claude
+#   python3 -m alphadiana.cli run configs/examples/moltbench_claude_code_codex.yaml
 
 task: kernelbench
 run_id: "moltbench-claude-code-codex-L1-P001"
@@ -18,7 +19,8 @@ agent:
     network_mode: "host"
     output_dir: "./moltbench_artifacts_claude_codex"
     env:
-      # Leave blank to auto-detect from host environment.
+      # Leave blank to auto-detect from host env. If ~/.claude or ~/.claude.json
+      # exists on the host, MoltBench mounts them into the container.
       ANTHROPIC_API_KEY: ""
       ANTHROPIC_MODEL: "claude-sonnet-4-6"
 

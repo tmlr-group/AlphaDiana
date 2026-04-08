@@ -21,6 +21,8 @@ AUTOKERNEL_DIR="/workspace/autokernel"
 DEFAULT_WORKDIR="$AUTOKERNEL_DIR"
 ARTIFACTS_DIR="/workspace/artifacts"
 TASK_FILE="/workspace/task/task.json"
+RUN_INVALID=0
+RUN_INVALID_REASON=""
 
 # ──────────────────────────────────────────────
 # Helpers
@@ -28,7 +30,12 @@ TASK_FILE="/workspace/task/task.json"
 
 log() { echo "[MoltBench] $(date +%H:%M:%S) $*"; }
 
-die() { log "FATAL: $*"; collect_artifacts; exit 1; }
+die() {
+    RUN_INVALID=1
+    RUN_INVALID_REASON="$*"
+    log "FATAL: $*"
+    exit 1
+}
 
 # Parse task.json
 read_task() {
@@ -39,6 +46,7 @@ read_task() {
     LEVEL=$(python3 -c "import json; t=json.load(open('$TASK_FILE')); print(t.get('level', 0))")
     PROBLEM_ID=$(python3 -c "import json; t=json.load(open('$TASK_FILE')); print(t.get('problem_id', 0))")
     BACKEND=$(python3 -c "import json; t=json.load(open('$TASK_FILE')); print(t.get('backend','triton'))")
+    SOURCE=$(python3 -c "import json; t=json.load(open('$TASK_FILE')); print(t.get('source', 'hf'))")
     WORKDIR=$(python3 -c "import json; t=json.load(open('$TASK_FILE')); print(t.get('workdir', '$DEFAULT_WORKDIR'))")
     PRIMARY_EDIT_FILE=$(python3 -c "import json; t=json.load(open('$TASK_FILE')); print(t.get('primary_edit_file', 'kernel.py'))")
     BENCH_LOG_PATH=$(python3 -c "import json; t=json.load(open('$TASK_FILE')); print(t.get('bench_log_path', 'run.log'))")
@@ -75,7 +83,7 @@ PY
 )
     TASK_MAX_ROUNDS=$(python3 -c "import json; t=json.load(open('$TASK_FILE')); print(t.get('max_rounds', 10))")
     MAX_ROUNDS="${MAX_ROUNDS:-$TASK_MAX_ROUNDS}"
-    log "Task: benchmark=$BENCHMARK_ID level=$LEVEL problem=$PROBLEM_ID backend=$BACKEND max_rounds=$MAX_ROUNDS workdir=$WORKDIR"
+    log "Task: benchmark=$BENCHMARK_ID level=$LEVEL problem=$PROBLEM_ID backend=$BACKEND source=$SOURCE max_rounds=$MAX_ROUNDS workdir=$WORKDIR"
 }
 
 # Set up KernelBench problem
@@ -90,7 +98,7 @@ setup_problem() {
             --level "$LEVEL" \
             --problem "$PROBLEM_ID" \
             --backend "$BACKEND" \
-            --source hf
+            --source "$SOURCE"
     fi
     # Fix known super() bug: replace super(Model, self) with super()
     if [[ -f "$PRIMARY_EDIT_FILE" ]] && grep -q 'super(Model, self)' "$PRIMARY_EDIT_FILE" 2>/dev/null; then
@@ -216,6 +224,7 @@ run_final_verification() {
     log "Running final verification benchmark..."
     cd "$WORKDIR"
     local verify_cmd="$VERIFY_CMD"
+    local verification_results_path="$ARTIFACTS_DIR/final_verification_results.json"
     # Bypass the round guard wrapper for final verification.
     # If verify_cmd references bench_kb.py and the real impl exists, use it.
     if [[ -f "kernelbench/_bench_kb_impl.py" ]]; then
@@ -227,7 +236,7 @@ run_final_verification() {
 
     if bash -lc "$verify_cmd" > "$ARTIFACTS_DIR/final_bench.log" 2>&1; then
         if [[ -n "$RESULT_JSON_PATH" && -f "$RESULT_JSON_PATH" ]]; then
-            cp -f "$RESULT_JSON_PATH" "$ARTIFACTS_DIR/results.json"
+            cp -f "$RESULT_JSON_PATH" "$verification_results_path"
         elif [[ "$RESULT_PARSER" == "bench_kb" ]]; then
             # Parse results into structured JSON
             python3 -c "
@@ -264,18 +273,43 @@ results.setdefault('speedup', 0.0)
 if 'reference_time_ms' in results and 'pytorch_time_ms' not in results:
     results['pytorch_time_ms'] = results['reference_time_ms']
 
-with open('$ARTIFACTS_DIR/results.json', 'w') as f:
+with open('$verification_results_path', 'w') as f:
     json.dump(results, f, indent=2)
 print(json.dumps(results, indent=2))
 "
         else  # unknown result_parser
             log "WARNING: Unknown result parser '$RESULT_PARSER', defaulting to ERROR result"
-            echo '{"correctness": "ERROR", "speedup": 0.0}' > "$ARTIFACTS_DIR/results.json"
+            echo '{"correctness": "ERROR", "speedup": 0.0}' > "$verification_results_path"
         fi
         log "Final verification complete"
     else
         log "WARNING: Final verification failed (bench_kb.py error)"
-        echo '{"correctness": "ERROR", "speedup": 0.0}' > "$ARTIFACTS_DIR/results.json"
+        echo '{"correctness": "ERROR", "speedup": 0.0}' > "$verification_results_path"
+    fi
+
+    if [[ "$RUN_INVALID" -eq 1 ]]; then
+        INVALID_REASON_ENV="$RUN_INVALID_REASON" python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+
+results = {
+    "correctness": "INVALID",
+    "speedup": 0.0,
+}
+reason = os.environ.get("INVALID_REASON_ENV", "").strip()
+if reason:
+    results["invalid_reason"] = reason
+
+Path("/workspace/artifacts/results.json").write_text(
+    json.dumps(results, indent=2),
+    encoding="utf-8",
+)
+print(json.dumps(results, indent=2))
+PY
+        log "Recorded INVALID results.json due to agent failure"
+    elif [[ -f "$verification_results_path" ]]; then
+        cp -f "$verification_results_path" "$ARTIFACTS_DIR/results.json"
     fi
 }
 
@@ -439,7 +473,7 @@ PY
     curl_status=$?
     set -e
     if [[ $curl_status -ne 0 ]]; then
-        log "OpenClaw chat request ended with curl status $curl_status"
+        die "OpenClaw chat request failed with curl status $curl_status"
     fi
 
     # Parse SSE stream into readable output
@@ -482,6 +516,25 @@ with open('$ARTIFACTS_DIR/openclaw_response.txt', 'w') as f:
 
 print(f'Parsed {len(events)} SSE events, {len(final_content)} chars of content')
 " || log "WARNING: Failed to parse SSE output"
+
+    local openclaw_event_count
+    openclaw_event_count=$(ARTIFACTS_DIR_ENV="$ARTIFACTS_DIR" python3 - <<'PY'
+import os
+from pathlib import Path
+
+path = Path(os.environ["ARTIFACTS_DIR_ENV"]) / "openclaw_output.jsonl"
+if not path.exists():
+    print(0)
+else:
+    count = sum(1 for line in path.read_text(encoding="utf-8", errors="replace").splitlines() if line.strip())
+    print(count)
+PY
+)
+    if [[ "${openclaw_event_count:-0}" -eq 0 ]]; then
+        log "ERROR: OpenClaw produced no SSE events; likely provider/auth failure"
+        tail -20 "$ARTIFACTS_DIR/gateway.log" 2>/dev/null || true
+        die "OpenClaw agent produced no events"
+    fi
 
     # ── Collect OpenClaw session trajectory ──
     if [[ -d "$OPENCLAW_HOME" ]]; then
@@ -561,7 +614,42 @@ You have ${MAX_ROUNDS} optimization rounds. Backend: ${BACKEND}."
     set -e
 
     if [[ $opencode_status -ne 0 ]]; then
-        log "OpenCode exited with status $opencode_status"
+        die "OpenCode exited with status $opencode_status"
+    fi
+
+    local opencode_error_check_status=0
+    local opencode_error_msg=""
+    set +e
+    opencode_error_msg=$(ARTIFACTS_DIR_ENV="$ARTIFACTS_DIR" python3 - <<'PY' 2>&1
+import json
+import os
+from pathlib import Path
+
+path = Path(os.environ["ARTIFACTS_DIR_ENV"]) / "opencode_output.jsonl"
+if not path.exists():
+    print("OpenCode produced no output")
+    raise SystemExit(1)
+
+records = [json.loads(line) for line in path.read_text(encoding="utf-8", errors="replace").splitlines() if line.strip()]
+if not records:
+    print("OpenCode produced no JSON records")
+    raise SystemExit(1)
+
+for record in records:
+    if record.get("type") == "error":
+        error = record.get("error", {})
+        data = error.get("data", {}) if isinstance(error, dict) else {}
+        message = data.get("message") or error.get("name") or "unknown error"
+        print(message)
+        raise SystemExit(1)
+
+print("")
+PY
+)
+    opencode_error_check_status=$?
+    set -e
+    if [[ $opencode_error_check_status -ne 0 ]]; then
+        die "OpenCode agent error: ${opencode_error_msg:-unknown error}"
     fi
 
     # ── Collect OpenCode session files ──

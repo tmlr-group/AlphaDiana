@@ -40,6 +40,7 @@ class MoltBenchBenchmark(Benchmark):
         max_rounds = int(config.get("max_rounds", 10))
         max_tasks = config.get("max_tasks")
         backend = config.get("backend", "triton")
+        source = config.get("source", "hf")
 
         if isinstance(levels, int):
             levels = [levels]
@@ -71,6 +72,7 @@ class MoltBenchBenchmark(Benchmark):
                 problem_id=pid,
                 max_rounds=max_rounds,
                 backend=backend,
+                source=source,
                 prompt=prompt,
             )
 
@@ -81,6 +83,7 @@ class MoltBenchBenchmark(Benchmark):
                 metadata={
                     "max_rounds": max_rounds,
                     "backend": backend,
+                    "source": source,
                     "task_json": task_json,
                     "source_code": source_code,
                 },

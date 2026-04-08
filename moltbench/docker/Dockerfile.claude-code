@@ -12,6 +12,9 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
 # Claude Code CLI
 RUN npm install -g @anthropic-ai/claude-code
 
+# uv package manager (AutoKernel references `uv run` everywhere)
+RUN python3 -m pip install --no-cache-dir uv
+
 # Git config (required for kernel.py versioning)
 RUN git config --global user.email "moltbench@eval" && \
     git config --global user.name "MoltBench"

@@ -128,6 +128,7 @@ alphadiana report results/
 
 For a full walkthrough, see [`docs/getting_started.md`](docs/getting_started.md).
 For manual setup and troubleshooting, see [`docs/setup_detail.md`](docs/setup_detail.md).
+For MoltBench GPU-kernel benchmarking, see [`moltbench/docs/README.md`](moltbench/docs/README.md).
 
 ## Configuration
 

@@ -1,0 +1,41 @@
+# Local MoltBench smoke test — OpenCode on a single problem
+#
+# Notes:
+#   - Defaults below are sized for slower OpenAI-compatible providers.
+#   - OpenCode can legitimately take 15-20 minutes to finish a single smoke run.
+
+task: kernelbench
+run_id: "moltbench-opencode-smoke-local-L1-P001"
+
+agent:
+  name: moltbench_docker
+  version: "1.0"
+  config:
+    agent_type: opencode
+    image_prefix: tmlrgroup/alphadiana
+    request_timeout: 1500
+    gpus: "device=0"
+    network_mode: "host"
+    output_dir: "./moltbench_artifacts_opencode_smoke_local"
+    env:
+      OPENAI_API_KEY: ""
+      OPENAI_BASE_URL: ""
+      OPENAI_MODEL_NAME: "deepseek-chat"
+      OPENCODE_TIMEOUT_SEC: "1200"
+
+benchmark:
+  name: moltbench
+  config:
+    levels: [1]
+    problems: "1"
+    max_rounds: 2
+    backend: triton
+
+scorer:
+  name: moltbench
+  config:
+    thresholds: [1.0, 1.5, 2.0, 3.0, 5.0]
+    score_mode: "final"
+
+max_concurrent: 1
+output_dir: "./results_opencode_smoke_local"

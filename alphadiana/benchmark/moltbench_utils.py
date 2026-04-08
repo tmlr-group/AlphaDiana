@@ -135,6 +135,7 @@ def build_task_json(
     problem_id: int,
     max_rounds: int = 10,
     backend: str = "triton",
+    source: str = "hf",
     prompt: str | None = None,
 ) -> dict:
     """Build the task.json that gets mounted into the container."""
@@ -144,6 +145,7 @@ def build_task_json(
         "problem_id": problem_id,
         "max_rounds": max_rounds,
         "backend": backend,
+        "source": source,
         "workdir": "/workspace/autokernel",
         "setup_cmd": [
             "python3",
@@ -156,7 +158,7 @@ def build_task_json(
             "--backend",
             backend,
             "--source",
-            "hf",
+            source,
         ],
         "verify_cmd": ["python3", "kernelbench/bench_kb.py"],
         "result_parser": "bench_kb",
