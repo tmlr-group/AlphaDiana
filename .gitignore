@@ -41,7 +41,6 @@ ENV/
 
 # Claude Code
 .claude/
-.planning/
 
 # Redis dump
 dump.rdb
@@ -50,14 +49,18 @@ dump.rdb
 /results/
 !alphadiana/results/
 /configs/
+!configs/examples/
 /artifacts/
+
+# MoltBench runtime artifacts
+moltbench_artifacts_*/
+results_*/
+moltbench_pipeline_*/
 
 dev/generated
 
 .cache
 node_modules/
-
-.planning
 
 .openclaw
 .env

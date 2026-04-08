@@ -1,0 +1,40 @@
+# MoltBench evaluation config — Claude Code agent (single-task Codex smoke run)
+#
+# Usage:
+#   cd /data/users/weikaihuang/projects/MoltBench/AlphaDiana
+#   ANTHROPIC_API_KEY=... python3 -m alphadiana.cli run configs/examples/moltbench_claude_code_codex.yaml
+
+task: kernelbench
+run_id: "moltbench-claude-code-codex-L1-P001"
+
+agent:
+  name: moltbench_docker
+  version: "1.0"
+  config:
+    agent_type: claude-code
+    image_prefix: tmlrgroup/alphadiana
+    request_timeout: 3600
+    gpus: "device=0"
+    network_mode: "host"
+    output_dir: "./moltbench_artifacts_claude_codex"
+    env:
+      # Leave blank to auto-detect from host environment.
+      ANTHROPIC_API_KEY: ""
+      ANTHROPIC_MODEL: "claude-sonnet-4-6"
+
+benchmark:
+  name: moltbench
+  config:
+    levels: [1]
+    problems: "1"
+    max_rounds: 2
+    backend: triton
+
+scorer:
+  name: moltbench
+  config:
+    thresholds: [1.0, 1.5, 2.0, 3.0, 5.0]
+    score_mode: "final"
+
+max_concurrent: 1
+output_dir: "./results_claude_codex"
