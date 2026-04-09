@@ -204,7 +204,7 @@ env:
 
 
 **`openclaw_deploy/openclaw.json`** — OpenClaw gateway configuration, defining model provider and gateway authentication methods.
-The default image used by `deploy.py` is `ghcr.io/tsrigo/openclaw-reasoning:20260320`. The model stays configurable through `OPENAI_MODEL_NAME`.
+The default image used by `deploy.py` is `tmlrgroup/alphadiana:v1`. The model stays configurable through `OPENAI_MODEL_NAME`.
 
 ### 5.2 Create Sandbox and deploy
 

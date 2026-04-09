@@ -8,6 +8,7 @@ agentic orchestration (no tool calling, no multi-turn, no code execution).
 from __future__ import annotations
 
 import logging
+import os
 import random
 import re
 import time
@@ -74,9 +75,9 @@ class DirectLLMAgent(Agent):
     name = "direct_llm"
 
     def setup(self, config: dict) -> None:
-        self._model = config.get("model", "")
-        self._api_base = config.get("api_base", "")
-        self._api_key = config.get("api_key", "EMPTY")
+        self._model = self._resolve_setting(config, "model", "OPENAI_MODEL_NAME")
+        self._api_base = self._resolve_setting(config, "api_base", "OPENAI_BASE_URL")
+        self._api_key = self._resolve_setting(config, "api_key", "OPENAI_API_KEY", default="EMPTY")
         self._temperature = config.get("temperature", 0.7)
         self._top_p = config.get("top_p", None)
         self._max_tokens = config.get("max_tokens", None)
@@ -92,6 +93,26 @@ class DirectLLMAgent(Agent):
             self._client = OpenAI(base_url=self._api_base, api_key=self._api_key)
         except ImportError:
             self._client = None
+
+    @staticmethod
+    def _resolve_setting(
+        config: dict,
+        key: str,
+        env_var: str,
+        *,
+        default: str = "",
+    ) -> str:
+        value = config.get(key, default)
+        if value is None:
+            value = default
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped and stripped.upper() != "EMPTY":
+                return stripped
+        env_value = os.environ.get(env_var, "").strip()
+        if env_value:
+            return env_value
+        return value if isinstance(value, str) else default
 
     def _resolve_max_tokens(self) -> int:
         """Resolve max_tokens by querying the model endpoint or using a fallback."""

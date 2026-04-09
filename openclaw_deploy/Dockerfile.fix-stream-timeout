@@ -1,4 +1,4 @@
-FROM ghcr.io/tsrigo/openclaw-reasoning:20260320
+FROM tmlrgroup/alphadiana:v1
 
 # Fix: Node.js native fetch (used by OpenAI SDK v6.26.0) has an internal undici
 # dispatcher with default bodyTimeout=300s. When a GLM-5 streaming response via

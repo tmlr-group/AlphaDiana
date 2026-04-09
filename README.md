@@ -1,6 +1,6 @@
 # AlphaDiana: A System for Evaluating Agentic Reasoning
 
-**AlphaDiana** is an open-source framework for **system-level evaluation of LLM-based reasoning agents**. It enables standardized, reproducible benchmarking of agentic systems—such as [OpenClaw](https://github.com/openclaw/openclaw)—on frontier reasoning tasks, with support for sandboxed code execution, multi-turn tool use, and full trajectory logging.
+**AlphaDiana** is an open-source framework for **system-level evaluation of LLM-based reasoning agents**. It enables standardized, reproducible benchmarking of agentic systems—such as **[OpenClaw](https://github.com/openclaw/openclaw)**—on frontier reasoning tasks, with support for sandboxed code execution, multi-turn tool use, and full trajectory logging.
 
 <p align="center">
   <img src="./assets/fig1.jpg" width="100%">
@@ -58,26 +58,29 @@ cd AlphaDiana
 # One-click setup: creates conda env, installs all dependencies, starts services
 bash scripts/quickstart.sh
 
+# Note: If quickstart fails, or you want to reset the ports/RAY clusters, please run: bash scripts/cleanup_rock_ports.sh (USE WITH CAUTION!)
+
 # Pull the reasoning image (OpenClaw pre-installed)
-docker pull ghcr.io/tsrigo/openclaw-reasoning:20260320
+docker pull tmlrgroup/alphadiana:v1
 ```
 
-> **Note:** The base image `ghcr.io/tsrigo/openclaw-reasoning:20260320` does not include `python`/`pip`/`sympy`/`numpy`. A patched image is required for math/code tasks. Build it locally:
+> **Note:** You can also build it locally:
 >
 > ```bash
-> docker build -t openclaw-reasoning:patched -f openclaw_deploy/Dockerfile.patched .
+> docker build -t openclaw-reasoning:v1 -f openclaw_deploy/Dockerfile.patched .
 > ```
 >
-> Then reference `openclaw-reasoning:patched` in your config's `rock_image` field instead of the base image.
+> Then reference `openclaw-reasoning:v1` in your config's `rock_image` field instead of the base image.
 
 ### 2. Configure your model
 
-Create a `.env` file in the project root with your model endpoint:
+Create a `.env` file in the project root with your model endpoint and set your api key:
 
 ```bash
-OPENAI_BASE_URL=https://openrouter.ai/api/v1
-OPENAI_API_KEY=<your-api-key>
-OPENAI_MODEL_NAME=qwen/qwen3-235b-a22b-2507
+touch .env
+echo "OPENAI_BASE_URL=https://openrouter.ai/api/v1" >> .env
+echo "OPENAI_API_KEY=<your-api-key>" >> .env
+echo "OPENAI_MODEL_NAME=z-ai/glm-5" >> .env
 ```
 
 ### 3. Activate the environment
@@ -147,7 +150,7 @@ run_id: "openclaw-qwen3-8b-aime2024-001"
 agent:
   name: openclaw
   config:
-    rock_image: "ghcr.io/tsrigo/openclaw-reasoning:20260320"
+    rock_image: "tmlrgroup/alphadiana:v1"
     rock_agent_config_path: "openclaw_deploy/rock_agent_config.prebuilt.yaml"
     openclaw_config_path: "openclaw_deploy/openclaw.json"
     rock_memory: "4g"
@@ -205,11 +208,14 @@ alphadiana run configs/examples/direct_llm.yaml
 
 This is useful for establishing a clean baseline before measuring the effect of an agent framework.
 
-Fill in the model endpoint fields in the config, such as:
+The bundled example reuses the `.env` values loaded by `source scripts/activate.sh`:
 
-- `model`
-- `api_base`
-- `api_key`
+- `OPENAI_MODEL_NAME`
+- `OPENAI_BASE_URL`
+- `OPENAI_API_KEY`
+
+If you want a different endpoint just for this baseline, override `model`, `api_base`, and
+`api_key` directly in `configs/examples/direct_llm.yaml`.
 
 See [`docs/getting_started.md`](docs/getting_started.md) for a complete example.
 
@@ -285,6 +291,26 @@ results/<run_id>.jsonl
    ├── report generation
    └── dashboard visualization
 ```
+
+## Results
+
+We evaluate agentic reasoning on **AIME 2024, 2025, and 2026** using two backbone models: **Qwen2.5-14B-Instruct** and **GLM-5**. Each configuration is compared under a direct LLM baseline and the OpenClaw agent, with **avg@32** and **pass@32** as evaluation metrics (32 samples per problem).
+
+**Qwen2.5-14B-Instruct**
+
+| Benchmark | Avg@32 (Base) | Avg@32 (OpenClaw) | Pass@32 (Base) | Pass@32 (OpenClaw) |
+|-----------|--------------|-------------------|---------------|-------------------|
+| AIME 2024 | 0.1521 | 0.1271 | 0.4333 | 0.4000 |
+| AIME 2025 | 0.1229 | 0.1469 | 0.4000 | 0.4333 |
+| AIME 2026 | 0.1115 | 0.1250 | 0.4333 | 0.4333 |
+
+**GLM-5**
+
+| Benchmark | Avg@32 (Base) | Avg@32 (OpenClaw) | Pass@32 (Base) | Pass@32 (OpenClaw) |
+|-----------|--------------|-------------------|---------------|-------------------|
+| AIME 2024 | 0.9000 | 0.8300 | 0.9330 | 1.0000 |
+| AIME 2025 | 0.6300 | 0.7600 | 0.9300 | 1.0000 |
+| AIME 2026 | 0.5719 | 0.3896 | 0.9000 | 0.9667 |
 
 ## Project Structure
 

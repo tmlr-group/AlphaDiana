@@ -258,7 +258,7 @@ In any new terminal, run:
   source scripts/.rock_ports.env
 
 Minimal OpenClaw smoke path:
-  docker pull ghcr.io/tsrigo/openclaw-reasoning:20260320
+  docker pull tmlrgroup/alphadiana:v1
   export OPENAI_BASE_URL=...
   export OPENAI_API_KEY=...
   export OPENAI_MODEL_NAME=...
@@ -269,5 +269,5 @@ Multi-sandbox CLI path (adjust max_concurrent in the YAML to control concurrency
   alphadiana run configs/examples/openclaw_aime2024_multisandbox.yaml
 
 Manual deploy path:
-  python openclaw_deploy/deploy.py --agent-config openclaw_deploy/rock_agent_config.prebuilt.yaml --image ghcr.io/tsrigo/openclaw-reasoning:20260320
+  python openclaw_deploy/deploy.py --agent-config openclaw_deploy/rock_agent_config.prebuilt.yaml --image tmlrgroup/alphadiana:v1
 EOF

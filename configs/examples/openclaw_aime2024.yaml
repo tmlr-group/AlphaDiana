@@ -1,10 +1,10 @@
-run_id: "openclaw-qwen3-8b-aime2024-001"  # Unique identifier for this evaluation run
+run_id: "openclaw_${OPENAI_MODEL_NAME}_aime_2024"  # Unique identifier for this evaluation run
 
 agent:
   name: openclaw                # Agent type: openclaw
   version: "2026.3.20"          # OpenClaw version
   config:
-    rock_image: "ghcr.io/tsrigo/openclaw-reasoning:20260320"
+    rock_image: "tmlrgroup/alphadiana:v1"
     rock_agent_config_path: "openclaw_deploy/rock_agent_config.prebuilt.yaml"
     openclaw_config_path: "openclaw_deploy/openclaw.json"  # Exposed through the ROCK proxy
     rock_memory: "4g"           # Memory per sandbox container

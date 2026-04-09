@@ -14,7 +14,7 @@
 
 set -euo pipefail
 
-DEFAULT_IMAGE="${OPENCLAW_SANDBOX_IMAGE:-ghcr.io/tsrigo/openclaw-reasoning:20260320}"
+DEFAULT_IMAGE="${OPENCLAW_SANDBOX_IMAGE:-tmlrgroup/alphadiana:v1}"
 
 # Collect all CLI arguments to forward to deploy.py
 DEPLOY_EXTRA_ARGS=("$@")

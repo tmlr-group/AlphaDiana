@@ -1,4 +1,4 @@
-FROM ghcr.io/tsrigo/openclaw-reasoning:20260320
+FROM tmlrgroup/alphadiana:v1
 
 # --- Fix 1: Python sandbox environment ---
 # The base image has python3 but missing: python symlink, pip, sympy, numpy.

@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${SCRIPT_DIR%/repro}"
 cd "${PROJECT_ROOT}"
 
-OPENCLAW_IMAGE="${OPENCLAW_IMAGE:-ghcr.io/tsrigo/openclaw-reasoning:20260320}"
+OPENCLAW_IMAGE="${OPENCLAW_IMAGE:-tmlrgroup/alphadiana:v1}"
 OPENAI_BASE_URL="${OPENAI_BASE_URL:-}"
 OPENAI_API_KEY="${OPENAI_API_KEY:-}"
 OPENAI_MODEL_NAME="${OPENAI_MODEL_NAME:-}"

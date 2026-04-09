@@ -21,6 +21,36 @@ def _expand_env_vars(obj: Any) -> Any:
     return obj
 
 
+def _apply_agent_env_defaults(agent_name: str, agent_config: Any) -> dict:
+    """Populate agent config fields from environment when the YAML leaves them blank."""
+    if not isinstance(agent_config, dict):
+        return {}
+
+    resolved = copy.deepcopy(agent_config)
+
+    if agent_name == "direct_llm":
+        env_defaults = {
+            "model": "OPENAI_MODEL_NAME",
+            "api_base": "OPENAI_BASE_URL",
+            "api_key": "OPENAI_API_KEY",
+        }
+        for key, env_var in env_defaults.items():
+            current = resolved.get(key, "")
+            if current is None:
+                current = ""
+            if isinstance(current, str):
+                current = current.strip()
+                if current.upper() == "EMPTY":
+                    current = ""
+            if current:
+                continue
+            env_value = os.environ.get(env_var, "").strip()
+            if env_value:
+                resolved[key] = env_value
+
+    return resolved
+
+
 def deep_merge(base: dict, override: dict) -> dict:
     """Deep merge *override* into *base* (non-mutating)."""
     result = copy.deepcopy(base)
@@ -82,6 +112,7 @@ class ExperimentConfig:
     def __post_init__(self):
         if not self.run_id:
             self.run_id = uuid.uuid4().hex[:12]
+        self.run_id = self.run_id.replace("/", "_")
 
     @classmethod
     def from_yaml(
@@ -102,11 +133,14 @@ class ExperimentConfig:
         sandbox = data.get("sandbox")
         scorer = data.get("scorer", {})
 
+        agent_name = agent.get("name", "")
+        agent_config = _apply_agent_env_defaults(agent_name, agent.get("config", {}))
+
         return cls(
             run_id=data.get("run_id", ""),
-            agent_name=agent.get("name", ""),
+            agent_name=agent_name,
             agent_version=agent.get("version", ""),
-            agent_config=agent.get("config", {}),
+            agent_config=agent_config,
             benchmark_name=benchmark.get("name", ""),
             benchmark_config=benchmark.get("config", {}),
             sandbox_name=sandbox.get("name") if isinstance(sandbox, dict) else None,

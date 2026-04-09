@@ -1,6 +1,6 @@
 # Deploying OpenClaw with the Prebuilt Sandbox Image
 
-`dev/start_openclaw.sh` is a one-command script that starts Ray, ROCK admin/proxy, and deploys a live OpenClaw sandbox using the default reasoning-enabled Docker image `ghcr.io/tsrigo/openclaw-reasoning:20260320`.
+`dev/start_openclaw.sh` is a one-command script that starts Ray, ROCK admin/proxy, and deploys a live OpenClaw sandbox using the default reasoning-enabled Docker image `tmlrgroup/alphadiana:v1`.
 
 ---
 

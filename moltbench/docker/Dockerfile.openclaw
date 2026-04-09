@@ -14,7 +14,7 @@
 #   4. Agent edits kernel.py, runs bench_kb.py, keeps/reverts — all autonomously
 
 # ─── Stage 1: Patch the pre-built OpenClaw image ───
-FROM ghcr.io/tsrigo/openclaw-reasoning:20260320 AS openclaw-src
+FROM tmlrgroup/alphadiana:v1 AS openclaw-src
 
 USER root
 

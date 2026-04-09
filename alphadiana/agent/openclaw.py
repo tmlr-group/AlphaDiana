@@ -644,7 +644,11 @@ class OpenClawAgent(Agent):
             logger.warning("Failed to inject AGENTS.md customization: %s", exc)
 
     def _health_check(self, url: str, headers: dict) -> None:
-        """One-time connectivity check on first solve() call."""
+        """One-time connectivity check on first solve() call.
+
+        Some OpenClaw gateway configs intentionally do not expose ``/models``.
+        In that case ``404``/``405`` still means the proxy path is live.
+        """
         if self._health_checked:
             return
         self._health_checked = True
@@ -652,7 +656,7 @@ class OpenClawAgent(Agent):
         base = url.rsplit("/chat/completions", 1)[0]
         try:
             resp = httpx.get(f"{base}/models", headers=headers, timeout=10.0)
-            if resp.status_code >= 400:
+            if resp.status_code not in (200, 404, 405):
                 logger.warning(
                     "OpenClaw health check failed: GET %s/models returned %d. "
                     "The gateway may not be deployed correctly. Check: "
