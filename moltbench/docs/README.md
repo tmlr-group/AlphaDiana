@@ -23,6 +23,7 @@ keep or revert changes — all autonomously.
 cd /path/to/AlphaDiana
 
 # GPU base image — clones AutoKernel at build time (~15 min)
+# Includes Python 3.10 + 3.11 dev headers for Triton JIT compilation
 docker build --network host -f moltbench/docker/Dockerfile.base -t tmlrgroup/alphadiana:gpu-base .
 
 # Pick one or more agent layers:
@@ -324,9 +325,9 @@ agent crashes or times out before producing a valid final result,
 |-----------|-------|-------|
 | `max_rounds` | 10 | Max bench_kb.py invocations per task |
 | `backend` | triton | Triton JIT (no nvcc needed) |
-| `request_timeout` | 900 s | Container-level timeout |
+| `request_timeout` | 1500 s | Container-level timeout; must exceed agent timeout + verification time |
 | `OPENCLAW_AGENT_TIMEOUT_SEC` | 600 s | Safer default for slower providers |
-| `OPENCODE_TIMEOUT_SEC` | 1200 s | OpenCode may need 15-20 min for a single smoke run |
+| `OPENCODE_TIMEOUT_SEC` | 1200 s (default) | OpenCode may need 15-20 min for a single smoke run |
 | `gpus` | `"device=N"` | Single GPU allocation |
 | `network_mode` | host | Required for LLM API access |
 
@@ -404,5 +405,5 @@ AlphaDiana/
 | `bridge.py super()` bug | `ModelNew` instantiation fails for problems using `super(Model, self).__init__()` | Fixed in `run_task.sh` (auto-sed) |
 | `profile.py` naming conflict | AutoKernel's `profile.py` shadows stdlib `profile` module, breaks `torch.compile` | Known upstream bug; affects P007 |
 | RTX 5880 Ada not in GPU database | Roofline estimates are approximated | Does not affect correctness or speedup |
-| Slow providers may exceed short smoke defaults | Healthy runs can look like failures if agent timeouts are too short | Use the longer local-smoke defaults (OpenClaw 600 s, OpenCode 1200 s) |
-| Triton/CUDA-extension attempts may fail with missing `Python.h` | Some generated kernels cannot compile inside AutoKernel's Python 3.10 venv | Agents often need to fall back to pure PyTorch or JIT paths |
+| Slow providers may exceed short smoke defaults | Healthy runs can look like failures if agent timeouts are too short | Use the longer local-smoke defaults (OpenClaw 600 s, OpenCode 1200 s); `request_timeout` must exceed agent timeout |
+| ~~Missing `Python.h` for Python 3.10 venv~~ | ~~Triton kernels fail to compile~~ | **Fixed** — `Dockerfile.base` now installs `python3.10-dev`; `run_task.sh` uses `uv run` for final verification |

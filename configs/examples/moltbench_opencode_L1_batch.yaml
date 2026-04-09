@@ -15,7 +15,7 @@ agent:
   config:
     agent_type: opencode
     image_prefix: tmlrgroup/alphadiana
-    request_timeout: 900
+    request_timeout: 1500
     gpus: '"device=3"'
     network_mode: "host"
     output_dir: "./moltbench_artifacts_opencode_L1_v1"
@@ -23,7 +23,7 @@ agent:
       OPENAI_API_KEY: ""
       OPENAI_BASE_URL: ""
       OPENAI_MODEL_NAME: "deepseek-chat"
-      OPENCODE_TIMEOUT_SEC: "600"
+      OPENCODE_TIMEOUT_SEC: "1200"
 
 benchmark:
   name: moltbench

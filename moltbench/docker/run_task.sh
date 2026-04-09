@@ -575,7 +575,7 @@ launch_opencode() {
     export OPENAI_BASE_URL="${OPENAI_BASE_URL:?OPENAI_BASE_URL must be set}"
     export OPENAI_MODEL_NAME="${OPENAI_MODEL_NAME:-deepseek-chat}"
 
-    local opencode_timeout="${OPENCODE_TIMEOUT_SEC:-600}"
+    local opencode_timeout="${OPENCODE_TIMEOUT_SEC:-1200}"
 
     # Generate opencode.json from template
     python3 - <<'PY'
