@@ -39,3 +39,7 @@ scorer:
 
 max_concurrent: 1               # Number of tasks to run in parallel
 output_dir: "./results"         # Directory for output JSONL files
+metadata:
+  author: "zjk"                 # Author of this evaluation run
+  gpu: "A800"                   # GPU used for inference
+  notes: "OpenClaw + Qwen3-8B on AIME 2024"  # Free-form notes

@@ -4,6 +4,20 @@ AlphaDiana is an evaluation framework for Foundation Model and Agent systems, su
 
 This tutorial takes **Qwen3-8B + AIME 2024** as an example to start from scratch and build and run the evaluation step by step.
 
+## Directory
+
+- [0. Architecture Overview](#0-Architecture Overview)
+- [1. Environment preparation](#1-Environment preparation)
+- [2. Install AlphaDiana](#2-Install-alphadiana)
+- [3. Quick verification (Direct LLM baseline)] (#3-Quick verification direct-llm-baseline)
+- [4. Build a ROCK sandbox environment] (#4-Build-rock-sandbox environment)
+- [5. Deploy OpenClaw Agent](#5-deployment-openclaw-agent)
+- [6. Run OpenClaw-evaluation](#6-run-openclaw-evaluation)
+- [7. View and analyze results](#7-View and analyze results)
+- [8. Custom configuration](#8-Custom configuration)
+- [Appendix A: Project Structure](#Appendix-aProject Structure)
+- [Appendix B: Frequently Asked Questions](#Appendix-bFrequently Asked Questions)
+
 ---
 
 ## 0. Architecture Overview
@@ -161,7 +175,11 @@ Output:
 ```
 Registered benchmarks:
   - aime
-  - custom
+  - math
+  - hle
+  - frontier_math
+  - terminal_bench
+  - osworld
 ```
 
 
@@ -618,11 +636,11 @@ agent:
   config: {} # Agent-specific configuration (see below)
 
 benchmark:
-  name: string           # "aime" | "custom"
+  name: string           # "aime" | "math" | "hle" | "frontier_math" | "terminal_bench" | "osworld"
   config: {} # Benchmark specific configuration (see below)
 
-sandbox: null | {} # Sandbox configuration (optional)
-  name: string           # "local" | "rock"
+sandbox: null | {} # Sandbox configuration (required for terminal_bench and osworld, optional)
+  name: string           # "local" | "rock" | "boxlite"
   config: {}
 
 scorer:
@@ -682,14 +700,19 @@ benchmark:
     dataset: "HuggingFaceH4/aime_2024"
     split: "train"
 
-# Custom inline problems
+# MATH
 benchmark:
-  name: custom
+  name: math
   config:
-    problems:
-      - id: "problem_1"
-        problem: "What is 2 + 2?"
-        answer: "4"
+    dataset: "hendrycks/competition_math"
+    split: "test"
+    # subset: "algebra" # Optional, only run subsets
+
+# HLE (Humanity's Last Exam)
+benchmark:
+  name: hle
+  config:
+    split: "test"
 ```
 
 
@@ -736,29 +759,49 @@ scorer:
 
 
 ```
-AlphaDiana/
-├── alphadiana/                   # Core package
-│   ├── cli.py                    # CLI entry point (alphadiana run/validate/report)
-│   ├── agent/                    # Agent implementations
-│   │   ├── direct_llm.py         #   Direct LLM baseline (single-turn)
-│   │   └── openclaw.py           #   OpenClaw agent (multi-turn + tools)
-│   ├── benchmark/                # Benchmark loaders
-│   │   ├── aime.py               #   AIME competition math
-│   │   └── custom.py             #   User-defined inline problems
-│   ├── scorer/                   # Answer scorers
-│   │   ├── numeric.py            #   Numeric comparison
-│   │   ├── exact_match.py        #   Exact string match
-│   │   ├── math_verify_scorer.py #   Math-aware verification
-│   │   └── llm_judge.py          #   LLM-as-judge
-│   ├── runner/                   # Orchestration
-│   ├── sandbox/                  # Sandbox backends (ROCK, local)
-│   ├── results/                  # Result storage and reporting
-│   ├── config/                   # Config parsing and validation
-│   └── dashboard/                # Web UI (FastAPI + React)
-├── configs/examples/             # Ready-made experiment configs
-├── openclaw_deploy/              # OpenClaw deployment configs
-├── scripts/                      # Setup and utility scripts
-└── docs/                         # Documentation
+AlphaDiana-dev/
+├── alphadiana/# Core Code
+│   ├── cli.py # CLI entry (alphadiana run/validate/report)
+│   ├── agent/# Agent implementation
+│   │   ├── base.py # Agent Base Class + AgentResponse
+│   │   ├── registry.py # Agent Registry
+│   │   ├── direct_llm.py # Direct LLM: Direct LLM Baseline
+│   │   └── openclaw.py # OpenClaw: Agent System (Multiple Reasoning + Tool Calls)
+│   ├── benchmark/# Benchmark dataset
+│   │   ├── base.py # Benchmark Base Class + BenchmarkTask
+│   │   ├── registry.py # Benchmark Registry
+│   │   ├── aime.py # AIME Competition Math
+│   │   ├── math_bench.py          #   Hendrycks MATH
+│   │   ├── hle.py                 #   Humanity's Last Exam
+│   │   ├── frontier_math.py       #   FrontierMath
+│   │   ├── terminal_bench.py # Terminal operation (sandbox required)
+│   │   └── osworld.py # OS Interaction (requires sandbox)
+│   ├── scorer/# Scorer
+│   │   ├── base.py # Scorer Base Class + ScoreResult
+│   │   ├── numeric.py # Numeric Comparison
+│   │   ├── exact_match.py # Exact Match
+│   │   └── llm_judge.py # LLM Judge
+│   ├── runner/# Run Engine
+│   │   ├── runner.py # Runner: Main orchestrator
+│   │   └── task_dispatcher.py # TaskDispatcher: Parallel Scheduling
+│   ├── results/# Results Management
+│   │   ├── result_store.py # JSONL Result Storage
+│   │   └── report.py # Report Generation
+│   ├── sandbox/# sandbox implementation
+│   │   ├── local.py # Local subprocess
+│   │   ├── rock.py # rock remote sandbox
+│   │   └── boxlite.py # Boxlite Cloud Sandbox
+│   └── config/# Configure the system
+│       ├── experiment_config.py # ExperimentConfig data class
+│       └── validator.py # Configure Validator
+├── configs/examples/# Sample configuration
+├── openclaw_deploy/# OpenClaw deployment configuration
+│   ├── deploy.py # Deployment script
+│   ├── rock_agent_config.yaml # rock agent configuration
+│   └── openclaw.json # OpenClaw gateway configuration
+├── results/# Output directory of evaluation results
+├── tests/# testing (6 phases)
+└── docs/# Documentation
 ```
 
 
@@ -843,8 +886,8 @@ In `rock_agent_config.yaml`, this is the address within the Docker container to 
 
 ```bash
 hostname -I | awk '{print $1}'
-# Example: 172.20.114.81
-# then: http://172.20.114.81: 8000/v1
+# Example: 127.0.0.1
+# then: http://127.0.0.1: 8000/v1
 ```
 
 

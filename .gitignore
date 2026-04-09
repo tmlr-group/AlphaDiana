@@ -3,6 +3,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+ref/
+
 # Distribution / packaging
 .Python
 env/
@@ -12,9 +14,12 @@ dist/
 *.egg
 .eggs/
 *.log
-
+AlphaDiana-draft/
 # pyenv
 .python-version
+
+# dotenv
+.env
 
 # virtualenv
 .venv/
@@ -36,7 +41,6 @@ ENV/
 
 # Claude Code
 .claude/
-.planning/
 
 # Redis dump
 dump.rdb
@@ -45,13 +49,18 @@ dump.rdb
 /results/
 !alphadiana/results/
 /configs/
+!configs/examples/
 /artifacts/
+
+# external_benchmark runtime artifacts
+external_benchmark_artifacts_*/
+results_*/
+external_benchmark_pipeline_*/
+
+dev/generated
+
 .cache
 node_modules/
 
-# dotenv
+.openclaw
 .env
-
-ref/
-dev/
-scripts/.rock_ports.env

@@ -106,7 +106,7 @@ benchmark:
     dataset: "HuggingFaceH4/aime_2024"
     split: "train"
 
-sandbox: null                     # null | rock | local
+sandbox: null                     # null | rock | local | boxlite
 
 scorer:
   name: math_verify

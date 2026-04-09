@@ -7,12 +7,15 @@ import math
 import logging
 import threading
 import time
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 import httpx
 
 from alphadiana.agent.registry import AgentRegistry
+from alphadiana.benchmark.base import BenchmarkTask
 from alphadiana.utils.rock_ports import resolve_rock_ports_from_env
 from alphadiana.benchmark.registry import BenchmarkRegistry
 from alphadiana.results.report import ReportGenerator, RunSummary
@@ -114,6 +117,14 @@ def _build_error_info(exc: Exception) -> dict:
     }
 
 
+def _bind_runtime_task(task: BenchmarkTask, sample_index: int) -> BenchmarkTask:
+    """Return a per-execution task copy with runtime metadata attached."""
+    metadata = dict(task.metadata)
+    metadata["sample_index"] = sample_index
+    metadata["execution_id"] = uuid4().hex
+    return replace(task, metadata=metadata)
+
+
 class Runner:
     """Top-level orchestrator that loads config, initializes components,
     runs the evaluation loop, and writes results."""
@@ -133,10 +144,12 @@ class Runner:
         # Import all benchmark/agent/sandbox/scorer modules to trigger registration.
         import alphadiana.benchmark.aime  # noqa: F401
         import alphadiana.benchmark.custom  # noqa: F401
+        import alphadiana.benchmark.external_benchmark  # noqa: F401
 
         # Import agent modules to trigger registration.
         import alphadiana.agent.openclaw  # noqa: F401
         import alphadiana.agent.direct_llm  # noqa: F401
+        import alphadiana.agent.external_benchmark_docker  # noqa: F401
 
         # Import sandbox modules to trigger registration.
         import alphadiana.sandbox.local  # noqa: F401
@@ -147,6 +160,7 @@ class Runner:
         import alphadiana.scorer.numeric  # noqa: F401
         import alphadiana.scorer.llm_judge  # noqa: F401
         import alphadiana.scorer.math_verify_scorer  # noqa: F401
+        import alphadiana.scorer.external_benchmark  # noqa: F401
 
         # Resolve and instantiate benchmark.
         benchmark_cls = BenchmarkRegistry.get(self.config.benchmark_name)
@@ -567,6 +581,7 @@ class Runner:
         def solve_fn(work_item):
             nonlocal shared_session
             task, sample_index = work_item
+            runtime_task = _bind_runtime_task(task, sample_index)
             # Acquire sandbox session: from pool (concurrent) or shared (sequential).
             sandbox_session = None
             used_pool = False
@@ -580,7 +595,12 @@ class Runner:
             response = None
             try:
                 # Run the agent.
-                response = self.agent.solve(task, sandbox_session)
+                response = self.agent.solve(runtime_task, sandbox_session)
+                response.metadata.setdefault("sample_index", sample_index)
+                response.metadata.setdefault(
+                    "execution_id",
+                    runtime_task.metadata.get("execution_id", ""),
+                )
                 # Propagate sandbox metadata if not already set.
                 if sandbox_session is not None and not response.sandbox_metadata:
                     response.sandbox_metadata = sandbox_session.metadata()
@@ -590,9 +610,9 @@ class Runner:
                 if self.sandbox is not None:
                     response.metadata.setdefault("sandbox_backend", self.sandbox.name)
                 # Score the result.
-                score = self.scorer.score(task, response)
+                score = self.scorer.score(runtime_task, response)
                 # Store the result.
-                self.result_store.append(task, response, score, sample_index=sample_index)
+                self.result_store.append(runtime_task, response, score, sample_index=sample_index)
                 # Log predicted vs ground_truth comparison.
                 sample_tag = f" [sample {sample_index}]" if num_samples > 1 else ""
                 logger.info(
@@ -646,13 +666,18 @@ class Runner:
                         error_response.gateway_url = f"{sandbox_session.proxy_v1_base()}/chat/completions"
                 if self.sandbox is not None:
                     error_response.metadata.setdefault("sandbox_backend", self.sandbox.name)
+                error_response.metadata.setdefault("sample_index", sample_index)
+                error_response.metadata.setdefault(
+                    "execution_id",
+                    runtime_task.metadata.get("execution_id", ""),
+                )
                 if not response_sandbox_id:
                     response_sandbox_id = str(getattr(error_response, "sandbox_id", "") or "")
                 retry_responses = getattr(exc, "retry_responses", None)
                 if retry_responses and "retry_responses" not in error_response.metadata:
                     error_response.metadata["retry_responses"] = retry_responses
                 self.result_store.append_error(
-                    task,
+                    runtime_task,
                     error=_build_error_info(exc),
                     response=error_response,
                     sample_index=sample_index,

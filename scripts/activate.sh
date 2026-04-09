@@ -12,7 +12,7 @@
 #   5. Sets PYTHONPATH and ROCK config variables
 
 _activate_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_activate_project_root="$(cd "${_activate_script_dir}" && pwd)"
+_activate_project_root="$(cd "${_activate_script_dir}/.." && pwd)"
 _activate_rock_root="${_activate_project_root}/ref/ROCK"
 
 # ── 1. Conda ─────────────────────────────────────────────────────────────────
@@ -27,8 +27,8 @@ fi
 unset ALL_PROXY HTTP_PROXY HTTPS_PROXY all_proxy http_proxy https_proxy
 
 # ── 3. Load ROCK port configuration ──────────────────────────────────────────
-if [ -f "${_activate_script_dir}/scripts/.rock_ports.env" ]; then
-  source "${_activate_script_dir}/scripts/.rock_ports.env"
+if [ -f "${_activate_script_dir}/.rock_ports.env" ]; then
+  source "${_activate_script_dir}/.rock_ports.env"
 else
   echo "Warning: scripts/.rock_ports.env not found. Run 'bash scripts/quickstart.sh' first." >&2
 fi

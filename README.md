@@ -109,8 +109,18 @@ All four checks should pass:
 ### 5. Run your first evaluation
 
 ```bash
-alphadiana validate configs/examples/openclaw_aime2024.yaml
-alphadiana run configs/examples/openclaw_aime2024.yaml
+alphadiana validate configs/test_openclaw_quick.yaml
+alphadiana run configs/test_openclaw_quick.yaml
+```
+
+Expected output:
+
+```
+Pre-flight passed: admin ✓  proxy ✓  redis ✓
+...
+Run completed: test-openclaw-quick
+  Accuracy:   1.0000
+  Tasks:      1/1 completed
 ```
 
 ### 6. Generate a report
@@ -121,6 +131,7 @@ alphadiana report results/
 
 For a full walkthrough, see [`docs/getting_started.md`](docs/getting_started.md).
 For manual setup and troubleshooting, see [`docs/setup_detail.md`](docs/setup_detail.md).
+For external_benchmark GPU-kernel benchmarking, see [`external_benchmark/docs/README.md`](external_benchmark/docs/README.md).
 
 ## Configuration
 
@@ -134,12 +145,12 @@ AlphaDiana is configured with a YAML file. At a high level, you specify:
 Example:
 
 ```yaml
-run_id: "openclaw-glm-5-aime2024-001"
+run_id: "openclaw-qwen3-8b-aime2024-001"
 
 agent:
   name: openclaw
   config:
-    rock_image: "openclaw-reasoning:v1"
+    rock_image: "tmlrgroup/alphadiana:v1"
     rock_agent_config_path: "openclaw_deploy/rock_agent_config.prebuilt.yaml"
     openclaw_config_path: "openclaw_deploy/openclaw.json"
     rock_memory: "4g"
@@ -181,7 +192,11 @@ To increase parallelism, update:
 max_concurrent: 4
 ```
 
-To run multiple sandboxes in parallel, increase `max_concurrent` in the config.
+A multi-sandbox example is provided in:
+
+```text
+configs/examples/openclaw_aime2024_multisandbox.yaml
+```
 
 ### Run a direct LLM baseline
 
@@ -322,7 +337,8 @@ AlphaDiana/
 ├── configs/examples/             # Ready-made experiment configs
 ├── openclaw_deploy/              # OpenClaw deployment configs
 ├── scripts/                      # Setup and utility scripts
-└── docs/                         # Documentation
+├── docs/                         # Documentation
+└── tests/                        # Test suite
 ```
 
 ## Dashboard
@@ -379,7 +395,6 @@ For detailed instructions, see [`docs/dashboard.md`](docs/dashboard.md).
 | [`docs/getting_started.md`](docs/getting_started.md) | End-to-end tutorial for a first evaluation run |
 | [`docs/setup_detail.md`](docs/setup_detail.md) | Manual setup and troubleshooting |
 | [`docs/dashboard.md`](docs/dashboard.md) | Dashboard usage guide |
-| [`docs/push_docker_image.md`](docs/push_docker_image.md) | Docker image build, customize, and push guide |
 
 ## Acknowledgements
 

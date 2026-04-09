@@ -27,7 +27,7 @@ agent:
 
 # benchmark: (required) Benchmark configuration.
 benchmark:
-  name: string        # Benchmark name, e.g. "aime", "custom"
+  name: string        # Benchmark name, e.g. "aime", "math", "hle", "frontier_math", "terminal_bench", "osworld"
   config:             # Benchmark-specific params
     split: string
     year: string
@@ -36,7 +36,7 @@ benchmark:
 
 # sandbox: (optional) Execution environment. Set to null if not needed.
 sandbox:
-  name: string        # Sandbox name, e.g. "local", "rock"
+  name: string        # Sandbox name, e.g. "local", "rock", "boxlite"
   config:             # Sandbox-specific params
     # ROCK SDK config
     admin_base_url: string          # ROCK admin server URL (e.g. "http://localhost:9000")
