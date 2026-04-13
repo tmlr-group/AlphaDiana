@@ -1,0 +1,108 @@
+"""IMO-AnswerBench benchmark loader."""
+from __future__ import annotations
+
+import os
+
+from alphadiana.benchmark.base import Benchmark, BenchmarkTask, load_dataset_with_retry
+from alphadiana.benchmark.registry import BenchmarkRegistry
+
+
+class ImoAnswerBenchBenchmark(Benchmark):
+    """Loads IMO-AnswerBench competition problems from HuggingFace.
+
+    Config keys:
+        dataset: HuggingFace dataset path (required, e.g. "Hwilner/imo-answerbench")
+        data_config: Dataset config name for multi-config datasets (optional)
+        split: Dataset split (default: "train")
+        problem_field: Column name for problem text (default: "Problem")
+        answer_field: Column name for answer (default: "Short Answer")
+        category_field: Column name for category filtering (default: "category")
+        category: If set, only include rows where row[category_field] == category
+                  (e.g. "Algebra", "Combinatorics", "Geometry", "Number Theory")
+        max_tasks: Maximum number of tasks to load (optional)
+    """
+
+    name = "imo_answerbench"
+
+    def load_tasks(self, config: dict) -> list[BenchmarkTask]:
+        try:
+            from datasets import load_dataset
+        except ImportError:
+            raise RuntimeError(
+                "The 'datasets' library is required for IMO-AnswerBench benchmark. "
+                "Install with: pip install datasets"
+            )
+
+        dataset_path = config.get("dataset")
+        if not dataset_path:
+            raise ValueError(
+                "IMO-AnswerBench benchmark requires 'dataset' in config "
+                "(e.g. 'Hwilner/imo-answerbench')"
+            )
+
+        split = config.get("split", "train")
+        data_config = config.get("data_config")
+        problem_field = config.get("problem_field", "Problem")
+        answer_field = config.get("answer_field", "Short Answer")
+        category_field = config.get("category_field", "category")
+        category = config.get("category")
+        max_tasks = config.get("max_tasks")
+
+        try:
+            dataset = load_dataset_with_retry(dataset_path, data_config, split=split)
+        except Exception as exc:
+            hf_endpoint = os.environ.get("HF_ENDPOINT", "").strip()
+            raise RuntimeError(
+                "Failed to load IMO-AnswerBench dataset from Hugging Face. "
+                "If direct access is unavailable, set "
+                "`HF_ENDPOINT=https://hf-mirror.com` and retry. "
+                f"Current HF_ENDPOINT={hf_endpoint or '<unset>'}. "
+                f"Original error: {exc}"
+            ) from exc
+
+        if len(dataset) == 0:
+            return []
+
+        sample = dataset[0]
+
+        if problem_field not in sample:
+            available = ", ".join(sorted(sample.keys()))
+            raise KeyError(
+                f"IMO-AnswerBench dataset missing configured problem_field='{problem_field}'. "
+                f"Available fields: {available}"
+            )
+
+        if answer_field not in sample:
+            available = ", ".join(sorted(sample.keys()))
+            raise KeyError(
+                f"IMO-AnswerBench dataset missing configured answer_field='{answer_field}'. "
+                f"Available fields: {available}"
+            )
+
+        tasks: list[BenchmarkTask] = []
+        for idx, item in enumerate(dataset):
+            if category is not None and category_field in item:
+                if item[category_field] != category:
+                    continue
+
+            tasks.append(BenchmarkTask(
+                task_id=f"imo_answerbench_{idx}",
+                problem=item[problem_field],
+                ground_truth=str(item[answer_field]),
+                metadata={
+                    "source": dataset_path,
+                    "index": idx,
+                    "category": item.get(category_field, ""),
+                },
+            ))
+
+            if max_tasks is not None and len(tasks) >= max_tasks:
+                break
+
+        return tasks
+
+    def default_scorer(self) -> str:
+        return "math_verify"
+
+
+BenchmarkRegistry.register("imo_answerbench", ImoAnswerBenchBenchmark)

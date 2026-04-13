@@ -40,6 +40,7 @@ def _progress(message: str) -> None:
 try:
     from rock.actions import BashAction, Command, CreateBashSessionRequest
     from rock.actions.sandbox.request import WriteFileRequest
+    from rock.config import ProxyServiceConfig
     from rock.sdk.sandbox.client import Sandbox as ROCKClientSandbox
     from rock.sdk.sandbox.config import SandboxConfig
 except ImportError:
@@ -47,13 +48,9 @@ except ImportError:
     Command = None  # type: ignore[assignment]
     CreateBashSessionRequest = None  # type: ignore[assignment]
     WriteFileRequest = None  # type: ignore[assignment]
+    ProxyServiceConfig = None  # type: ignore[assignment]
     ROCKClientSandbox = None  # type: ignore[assignment]
     SandboxConfig = None  # type: ignore[assignment]
-
-try:
-    from rock.config import ProxyServiceConfig
-except ImportError:
-    ProxyServiceConfig = None  # type: ignore[assignment]
 
 
 def _require_rock_sdk() -> None:
@@ -551,26 +548,6 @@ class ROCKSession(SandboxSession):
     def execute(self, command: str) -> ExecutionResult:
         start = time.monotonic()
         result = _run_async(self._execute_command(command))
-        return self._record_execution_result(command, result, start)
-
-    def execute_long_running(
-        self,
-        command: str,
-        *,
-        wait_timeout: int | None = None,
-        wait_interval: int = 10,
-    ) -> ExecutionResult:
-        start = time.monotonic()
-        result = _run_async(
-            self._execute_long_running_command(
-                command,
-                wait_timeout=wait_timeout,
-                wait_interval=wait_interval,
-            )
-        )
-        return self._record_execution_result(command, result, start)
-
-    def _record_execution_result(self, command: str, result: Any, start: float) -> ExecutionResult:
         elapsed = time.monotonic() - start
         execution_result = ExecutionResult(
             exit_code=int(getattr(result, "exit_code", 0)),
@@ -608,28 +585,6 @@ class ROCKSession(SandboxSession):
                 return await _maybe_await(execute(shell_command))
 
         raise RuntimeError("ROCK sandbox does not expose an execute or run_in_session API")
-
-    async def _execute_long_running_command(
-        self,
-        command: str,
-        *,
-        wait_timeout: int | None = None,
-        wait_interval: int = 10,
-    ) -> Any:
-        arun = getattr(self._sandbox, "arun", None)
-        if arun is None:
-            return await self._execute_command(command)
-
-        effective_wait_timeout = int(wait_timeout or max(self._proxy_timeout, 300))
-        return await _maybe_await(
-            arun(
-                command,
-                session=self._session_name,
-                mode="nohup",
-                wait_timeout=effective_wait_timeout,
-                wait_interval=wait_interval,
-            )
-        )
 
     def upload(self, filename: str, content: bytes) -> None:
         _run_async(_upload_file(self._sandbox, filename, content))

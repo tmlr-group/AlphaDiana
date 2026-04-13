@@ -1,0 +1,55 @@
+# HLE (Humanity's Last Exam) — OpenClaw + Qwen3-27B
+#
+# PREREQUISITE: HF_TOKEN environment variable must be set.
+# The cais/hle dataset is gated — request access at:
+#   https://huggingface.co/datasets/cais/hle
+#
+# Token is stored in /Users/xxx/project/alphadiana-hjb/.env
+# Load with: source .env
+#
+# On A800, also set: export HF_ENDPOINT=https://hf-mirror.com
+
+run_id: "openclaw-qwen3-27b-hle-001"  # Unique identifier for this evaluation run
+
+agent:
+  name: openclaw                # Agent type: openclaw
+  version: "2026.3.20"          # OpenClaw version
+  config:
+    api_base: "http://localhost:${ROCK_PROXY_PORT}/apis/envs/sandbox/v1/sandboxes/${SANDBOX_ID}/proxy/v1"
+    model: openclaw             # Model name as seen by the gateway (always "openclaw")
+    gateway_token: "OPENCLAW"   # Must match OPENCLAW_GATEWAY_TOKEN in rock_agent_config.yaml
+    max_tokens: 65536           # Maximum tokens per response
+    request_timeout: 1800       # Request timeout in seconds
+    max_attempts: 5             # Max retry attempts per task on failure
+    system_prompt: |
+      You are an expert problem solver. When given a problem, actively use your available tools and skills throughout your reasoning process. Do not attempt to solve problems purely in your head when tools can help. Use code execution, search, or any other available capabilities to verify intermediate steps, explore approaches, and confirm your final answer.
+
+      When you have reached your final answer, you MUST present it in the following format:
+
+      $$\boxed{your answer here}$$
+
+      Do not skip the boxed format. The boxed answer must appear at the very end of your response and contain only the final answer, not explanations.
+
+benchmark:
+  name: hle                     # Benchmark name registered in BenchmarkRegistry
+  config:
+    dataset: "cais/hle"         # HuggingFace dataset identifier (gated — requires HF_TOKEN)
+    split: "test"               # Dataset split to evaluate on
+    max_tasks: 5                # Limit to 5 tasks for pipeline validation
+    answer_types:               # Only include deterministically-scoreable answer types
+      - "multipleChoice"
+    # category: "mathematics"   # Uncomment to filter by subject
+    # category_field: "subject" # Column name for category filter (default: "subject")
+
+sandbox: null                   # OpenClaw already runs inside ROCK; no extra sandbox needed
+
+scorer:
+  name: exact_match             # Scorer: exact string match (handles \boxed{A} -> "a")
+  config: {}
+
+max_concurrent: 1               # Number of tasks to run in parallel
+output_dir: "./results"         # Directory for output JSONL files
+metadata:
+  author: "alphadiana"
+  gpu: "A800"
+  notes: "OpenClaw + Qwen3-27B on HLE multipleChoice. Requires HF_TOKEN. Set HF_ENDPOINT=https://hf-mirror.com on A800."

@@ -7,7 +7,7 @@ run_id: string
 
 # agent: (required) Agent system configuration.
 agent:
-  name: string        # Agent name, e.g. "openclaw", "direct_llm", "zeroclaw"
+  name: string        # Agent name, e.g. "openclaw", "direct_llm"
   version: string     # Pinned version tag or "latest"
   config:             # Pass-through config for the agent (model settings, etc.)
     model: string
@@ -20,13 +20,10 @@ agent:
     max_tokens: integer
     max_attempts: integer           # Retry attempts for OpenClaw (default: 3)
     request_timeout: float          # HTTP request timeout in seconds (default: 600)
-    max_tool_iterations: integer    # ZeroClaw max tool iterations (default: 100)
-    max_actions_per_hour: integer   # ZeroClaw autonomy action budget (default: 200)
     agent_md_mode: string           # Agent.md customization: "none", "append", "override" (default: "none")
     agent_md_content: string        # Content for agent.md injection
     embedding_api_base: string      # Embedding model API base URL
     embedding_api_key: string       # Embedding model API key
-    install_command: string         # Optional CLI install command for sandbox/local runtime
 
 # benchmark: (required) Benchmark configuration.
 benchmark:
