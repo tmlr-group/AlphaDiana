@@ -67,6 +67,72 @@ def _extract_answer(text: str) -> str:
     return extract_answer_candidate(text)
 
 
+# ---------------------------------------------------------------------------
+# SWE-bench patch extraction
+# ---------------------------------------------------------------------------
+
+_BOXED_RE = re.compile(r"\\boxed\{", re.DOTALL)
+
+
+def _extract_boxed_content(text: str) -> str | None:
+    """Extract content from \\boxed{...} handling nested braces."""
+    m = _BOXED_RE.search(text)
+    if not m:
+        return None
+    start = m.end()
+    depth = 1
+    i = start
+    while i < len(text) and depth > 0:
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+        i += 1
+    if depth == 0:
+        return text[start : i - 1]
+    return None
+
+
+def _extract_patch(text: str) -> str:
+    """Extract a unified diff patch from raw agent output.
+
+    Tries several strategies in order:
+    1. Content inside ``\\boxed{...}`` (the prompt asks the agent to use this).
+    2. Literal ``diff --git ...`` blocks in the text.
+    3. Markdown fenced code blocks (````` diff`` or bare ```````) containing diffs.
+    4. Returns empty string if nothing found.
+    """
+    # Strategy 1: \\boxed{...}
+    boxed = _extract_boxed_content(text)
+    if boxed and ("diff " in boxed or "---" in boxed or "+++" in boxed):
+        return boxed.strip()
+
+    # Strategy 2: raw ``diff --git`` blocks
+    diff_git_pattern = re.compile(
+        r"^diff --git .+?(?=\n(?:diff --git |\Z))", re.MULTILINE | re.DOTALL
+    )
+    matches = diff_git_pattern.findall(text)
+    if matches:
+        return "\n".join(m.strip() for m in matches).strip()
+
+    # Strategy 3: fenced code blocks containing diffs
+    fenced_pattern = re.compile(
+        r"```(?:diff)?\s*\n(.*?)```", re.DOTALL
+    )
+    for m in fenced_pattern.finditer(text):
+        block = m.group(1).strip()
+        if "---" in block and "+++" in block:
+            return block
+
+    return ""
+
+
+def _is_swe_bench_task(task: "BenchmarkTask") -> bool:
+    """Return True if *task* originates from a SWE-bench dataset."""
+    meta = getattr(task, "metadata", None) or {}
+    return "instance_id" in meta or "repo" in meta
+
+
 _PARTIAL_REASONING_ANSWER_RE = re.compile(
     r"(?:\*{0,2})(?:the\s+)?(?:final\s+)?answer(?:\*{0,2})\s*(?:[:：]|is|=)\s*(.+)",
     re.IGNORECASE,
@@ -859,9 +925,25 @@ class OpenClawAgent(Agent):
         # OpenClaw's gateway builds its own system prompt internally.
         # We only send the user message, optionally prefixed with a custom system prompt.
         if self._user_system_prompt:
-            user_content = f"{self._user_system_prompt}\n\n{task.problem}"
+            text_content = f"{self._user_system_prompt}\n\n{task.problem}"
         else:
-            user_content = task.problem
+            text_content = task.problem
+
+        # Build multimodal content when attachments (images) are present.
+        if task.attachments:
+            import base64
+            content_parts: list[dict] = [{"type": "text", "text": text_content}]
+            for img_key in sorted(task.attachments.keys()):
+                img_bytes = task.attachments[img_key]
+                b64 = base64.b64encode(img_bytes).decode("ascii")
+                content_parts.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{b64}"},
+                })
+            user_content: Any = content_parts
+        else:
+            user_content = text_content
+
         request_messages = [
             {"role": "user", "content": user_content},
         ]
@@ -1204,7 +1286,10 @@ class OpenClawAgent(Agent):
         answer = None
         answer_source = ""
         if raw_output:
-            answer = _extract_answer(raw_output)
+            if _is_swe_bench_task(task):
+                answer = _extract_patch(raw_output)
+            else:
+                answer = _extract_answer(raw_output)
             answer_source = "raw_output"
         elif raw_reasoning:
             answer = _extract_answer_from_partial_reasoning(raw_reasoning)
