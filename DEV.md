@@ -1,1 +1,2 @@
-1. [for WK and ZZ]: put the PR 
+1. [for WK and ZZ]: put the PR comments in the context folder
+2. [for jinbo, shiyang, menghan]: review the comments and revise the code to sovle them. Tell the CC/Codex to read the AGENG.md for better understanding.
