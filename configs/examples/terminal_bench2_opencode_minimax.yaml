@@ -1,0 +1,34 @@
+# OpenCode relay smoke for terminal-bench-2.
+# Requires:
+#   export TERMINAL_BENCH2_DIR=/path/to/terminal-bench-2
+
+run_id: "terminal_bench2_opencode_minimax_smoke"
+
+benchmark:
+  name: terminal_bench2
+  config:
+    tasks_dir: ${TERMINAL_BENCH2_DIR}
+    categories: ["file-operations"]
+    max_tasks: 1
+
+agent:
+  name: terminal_bench2_opencode
+  version: "1.0"
+  config:
+    model: "custom/minimax-m2.5"
+    model_name: "minimax-m2.5"
+    api_base: ${OPENAI_BASE_URL}
+    api_key: ${OPENAI_API_KEY}
+    tool_call: false
+    streaming: false
+    solver_timeout_sec: 120
+    timeout_sec: 900
+    test_timeout_sec: 1200
+
+scorer:
+  name: terminal_bench2
+
+max_concurrent: 1
+output_dir: "./results/terminal_bench2_opencode_minimax_smoke"
+metadata:
+  notes: "OpenCode relay smoke for terminal-bench-2 via minimax-m2.5."

@@ -2,7 +2,13 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
+
+try:
+    import tomllib as tomli
+except ModuleNotFoundError:
+    import tomli
 
 from alphadiana.benchmark.base import Benchmark, BenchmarkTask
 from alphadiana.benchmark.registry import BenchmarkRegistry
@@ -17,8 +23,8 @@ class TerminalBench2Benchmark(Benchmark):
       - task.toml  : metadata (docker_image, category, difficulty, timeouts)
       - instruction.md : natural-language task description (used as LLM prompt)
 
-    tasks_dir should point to the repo root or a category subdirectory, e.g.:
-      $TERMINAL_BENCH2_DIR or $TERMINAL_BENCH2_DIR/file-operations
+    tasks_dir should point to a category subdirectory, e.g.:
+      /path/to/terminal-bench-2/file-operations
 
     Clone with sparse checkout to save disk space:
       git clone --depth=1 --filter=blob:none --sparse \\
@@ -36,12 +42,19 @@ class TerminalBench2Benchmark(Benchmark):
     name = "terminal_bench2"
 
     def load_tasks(self, config: dict) -> list[BenchmarkTask]:
-        tasks_dir_str = config.get("tasks_dir")
+        tasks_dir_str = str(config.get("tasks_dir", "") or "").strip()
+        if not tasks_dir_str:
+            tasks_dir_str = os.environ.get("TERMINAL_BENCH2_DIR", "").strip()
         if not tasks_dir_str:
             raise ValueError(
                 "TerminalBench2Benchmark requires 'tasks_dir' in config, "
-                "pointing to a local terminal-bench-2 clone directory "
-                "(e.g. $TERMINAL_BENCH2_DIR or /path/to/terminal-bench-2)"
+                "or TERMINAL_BENCH2_DIR in the environment, pointing to a local "
+                "terminal-bench-2 clone."
+            )
+        if "${" in tasks_dir_str:
+            raise ValueError(
+                "TerminalBench2Benchmark got an unresolved tasks_dir placeholder. "
+                "Export TERMINAL_BENCH2_DIR or set benchmark.config.tasks_dir explicitly."
             )
 
         tasks_dir = Path(tasks_dir_str)
@@ -71,7 +84,6 @@ class TerminalBench2Benchmark(Benchmark):
                 continue
 
             try:
-                import tomli
                 with open(toml_path, "rb") as f:
                     toml_data = tomli.load(f)
             except Exception as exc:

@@ -15,6 +15,30 @@ _activate_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _activate_project_root="$(cd "${_activate_script_dir}/.." && pwd)"
 _activate_rock_root="${_activate_project_root}/ref/ROCK"
 
+_activate_load_ports_if_unset() {
+  local ports_file="$1"
+  local line key value
+  [ -f "${ports_file}" ] || return 0
+
+  while IFS= read -r line || [ -n "${line}" ]; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    [ -z "${line}" ] && continue
+    case "${line}" in
+      \#*) continue ;;
+      export\ *) line="${line#export }" ;;
+    esac
+    key="${line%%=*}"
+    value="${line#*=}"
+    key="${key%%[[:space:]]*}"
+    [ -z "${key}" ] && continue
+    [ "${key}" = "${value}" ] && continue
+    if [ -n "${!key:-}" ]; then
+      continue
+    fi
+    eval "export ${key}=${value}"
+  done < "${ports_file}"
+}
+
 # ── 1. Conda ─────────────────────────────────────────────────────────────────
 eval "$(conda shell.bash hook)" 2>/dev/null
 conda activate alphadiana 2>/dev/null
@@ -28,7 +52,7 @@ unset ALL_PROXY HTTP_PROXY HTTPS_PROXY all_proxy http_proxy https_proxy
 
 # ── 3. Load ROCK port configuration ──────────────────────────────────────────
 if [ -f "${_activate_script_dir}/.rock_ports.env" ]; then
-  source "${_activate_script_dir}/.rock_ports.env"
+  _activate_load_ports_if_unset "${_activate_script_dir}/.rock_ports.env"
 else
   echo "Warning: scripts/.rock_ports.env not found. Run 'bash scripts/quickstart.sh' first." >&2
 fi
@@ -78,5 +102,6 @@ export HF_ENDPOINT="${HF_ENDPOINT:-https://hf-mirror.com}"
 # ── Cleanup temp vars ────────────────────────────────────────────────────────
 unset _activate_script_dir _activate_project_root _activate_rock_root
 unset _activate_user_name _activate_dynamic_config
+unset -f _activate_load_ports_if_unset
 
 echo "AlphaDiana environment ready."

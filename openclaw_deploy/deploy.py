@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Deploy OpenClaw gateway in a ROCK sandbox."""
 import argparse
 import asyncio
@@ -17,8 +19,6 @@ from alphadiana.utils.rock_runtime import (
     configure_rock_runtime_for_image,
     is_prebuilt_image,
 )
-from rock.sdk.sandbox.client import Sandbox
-from rock.sdk.sandbox.config import SandboxConfig
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,14 @@ ROCK_ROOT = REPO_ROOT / "ref/ROCK"
 # Retry constants for agent.install()
 INSTALL_RETRY_INTERVAL = 10
 INSTALL_MAX_RETRIES = 2
+
+
+def _import_rock_sdk():
+    from rock.actions.sandbox.request import CreateBashSessionRequest
+    from rock.sdk.sandbox.client import Sandbox
+    from rock.sdk.sandbox.config import SandboxConfig
+
+    return CreateBashSessionRequest, Sandbox, SandboxConfig
 
 
 def parse_args() -> argparse.Namespace:
@@ -244,8 +252,9 @@ async def _warmup_default_session(sandbox: Sandbox, timeout: float = 30.0) -> No
 
     create_session = getattr(sandbox, "create_session", None)
     if create_session is not None:
+        CreateBashSessionRequest, _, _ = _import_rock_sdk()
         try:
-            await create_session(session="default")
+            await create_session(CreateBashSessionRequest(session="default"))
         except Exception as exc:
             # Ignore idempotent/session-exists cases and continue probing.
             if "already" not in str(exc).lower() and "exists" not in str(exc).lower():
@@ -263,7 +272,7 @@ async def _warmup_default_session(sandbox: Sandbox, timeout: float = 30.0) -> No
             msg = str(exc).lower()
             if "session 'default' does not exist" in msg and create_session is not None:
                 try:
-                    await create_session(session="default")
+                    await create_session(CreateBashSessionRequest(session="default"))
                     await asyncio.sleep(0.5)
                     continue
                 except Exception:
@@ -378,6 +387,7 @@ async def deploy(args: argparse.Namespace) -> None:
     agent_config = _resolve_agent_config(args.agent_config)
     await _preflight(args.base_url, args.proxy_url, agent_config)
     agent_config = _apply_model_overrides(agent_config, args)
+    _, Sandbox, SandboxConfig = _import_rock_sdk()
 
     auto_clear = getattr(args, "auto_clear_seconds", 7200)
     # SandboxConfig.base_url must be the admin URL: the SDK appends

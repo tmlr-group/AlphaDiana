@@ -131,7 +131,7 @@ else
   # Reuse the active environment's build backend packages so repeat setup runs
   # do not fail in network-restricted shells while trying to create an isolated
   # build env for the local project.
-  with_nounset_disabled conda run -n "${ENV_NAME}" python -m pip install --no-build-isolation -e ".[all,dev]"
+  with_nounset_disabled conda run -n "${ENV_NAME}" python -m pip install --no-build-isolation -e ".[all,benchmarks,dev]"
   log_progress "Installing pinned nacos-sdk-python==2.0.9"
   with_nounset_disabled conda run -n "${ENV_NAME}" python -m pip install "nacos-sdk-python==2.0.9"
   log_progress "Dependency installation completed"

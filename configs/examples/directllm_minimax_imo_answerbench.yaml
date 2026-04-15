@@ -1,0 +1,35 @@
+run_id: "directllm_minimax_imo_smoke"
+
+agent:
+  name: direct_llm
+  version: "1.0"
+  config:
+    model: "minimax-m2.5"
+    api_base: ${OPENAI_BASE_URL}
+    api_key: ${OPENAI_API_KEY}
+    temperature: 0.2
+    max_tokens: 512
+    stream: false
+    system_prompt: |
+      You are an expert mathematician. Solve the problem carefully.
+
+      The final line must be:
+      $$\boxed{your answer here}$$
+
+benchmark:
+  name: imo_answerbench
+  config:
+    dataset: "Hwilner/imo-answerbench"
+    split: "train"
+    dataset_index: 367
+    max_tasks: 1
+
+scorer:
+  name: math_verify
+  config:
+    tolerance: 1e-6
+
+max_concurrent: 1
+output_dir: "./results/directllm_minimax_imo_smoke"
+metadata:
+  notes: "DirectLLM x IMO-AnswerBench smoke via minimax-m2.5."

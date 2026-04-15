@@ -89,10 +89,26 @@ class DirectLLMAgent(Agent):
         self._enable_thinking = config.get("enable_thinking", None)
         self._extra_body: dict[str, Any] | None = config.get("extra_body", None)
         try:
-            from openai import OpenAI
-            self._client = OpenAI(base_url=self._api_base, api_key=self._api_key)
+            self._client = self._build_client()
         except ImportError:
             self._client = None
+
+    def _build_client(self):
+        """Build an OpenAI client that ignores inherited proxy env vars.
+
+        The user environment may export SOCKS/HTTP proxy variables for other
+        tools. Direct LLM calls should not depend on those settings, because
+        `httpx` can fail to initialize proxy transports if optional extras like
+        `socksio` are unavailable.
+        """
+        import httpx
+        from openai import OpenAI
+
+        return OpenAI(
+            base_url=self._api_base,
+            api_key=self._api_key,
+            http_client=httpx.Client(trust_env=False),
+        )
 
     @staticmethod
     def _resolve_setting(
@@ -126,7 +142,7 @@ class DirectLLMAgent(Agent):
             import httpx
 
             api_base = self._api_base.rstrip("/")
-            response = httpx.get(f"{api_base}/models", timeout=5.0)
+            response = httpx.get(f"{api_base}/models", timeout=5.0, trust_env=False)
             if response.status_code == 200:
                 data = response.json().get("data", [])
                 if data:
@@ -169,8 +185,7 @@ class DirectLLMAgent(Agent):
     def solve(self, task: BenchmarkTask, sandbox: Any = None) -> AgentResponse:
         if self._client is None:
             try:
-                from openai import OpenAI
-                self._client = OpenAI(base_url=self._api_base, api_key=self._api_key)
+                self._client = self._build_client()
             except ImportError:
                 raise RuntimeError(
                     "The 'openai' package is required for DirectLLMAgent. "

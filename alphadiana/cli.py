@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 _PROXY_VARS = ("ALL_PROXY", "HTTP_PROXY", "HTTPS_PROXY",
                "all_proxy", "http_proxy", "https_proxy")
+_OPENCLAW_RUNTIME_AGENTS = {"openclaw", "terminal_bench2_openclaw"}
 
 
 def _warn_proxy() -> bool:
@@ -73,7 +74,7 @@ def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
     _warn_proxy()
 
     # Pre-flight: verify ROCK services are reachable for openclaw runs.
-    if config.agent_name == "openclaw":
+    if config.agent_name in _OPENCLAW_RUNTIME_AGENTS:
         from alphadiana.utils.rock_ports import resolve_rock_ports_from_env, check_rock_services
         ports = resolve_rock_ports_from_env()
         click.echo(f"Pre-flight: checking ROCK services (admin={ports.admin_port}, proxy={ports.proxy_port}, redis={ports.redis_port})...")

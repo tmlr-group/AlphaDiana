@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-benchmarks = ["datasets>=2.0", "tomli>=2.0"]
+benchmarks = ["datasets>=2.0", "tomli>=2.0; python_version<'3.11'"]
 agents = ["openai>=1.0", "httpx>=0.24"]
 sandbox = ["requests>=2.28"]
 rock = [
@@ -22,6 +22,7 @@ rock = [
 ]
 all = [
     "datasets>=2.0",
+    "tomli>=2.0; python_version<'3.11'",
     "openai>=1.0",
     "httpx>=0.24",
     "requests>=2.28",
