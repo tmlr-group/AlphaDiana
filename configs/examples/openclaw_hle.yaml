@@ -4,8 +4,8 @@
 # The cais/hle dataset is gated — request access at:
 #   https://huggingface.co/datasets/cais/hle
 #
-# Token is stored in /Users/xxx/project/alphadiana-hjb/.env
-# Load with: source .env
+# Load your HF_TOKEN from .env or export it directly:
+#   export HF_TOKEN=hf_...
 #
 # On A800, also set: export HF_ENDPOINT=https://hf-mirror.com
 

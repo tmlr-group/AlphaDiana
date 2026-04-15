@@ -4,8 +4,6 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-import tomli
-
 from alphadiana.benchmark.base import Benchmark, BenchmarkTask
 from alphadiana.benchmark.registry import BenchmarkRegistry
 
@@ -19,8 +17,8 @@ class TerminalBench2Benchmark(Benchmark):
       - task.toml  : metadata (docker_image, category, difficulty, timeouts)
       - instruction.md : natural-language task description (used as LLM prompt)
 
-    tasks_dir should point to a category subdirectory, e.g.:
-      /path/to/terminal-bench-2/file-operations
+    tasks_dir should point to the repo root or a category subdirectory, e.g.:
+      $TERMINAL_BENCH2_DIR or $TERMINAL_BENCH2_DIR/file-operations
 
     Clone with sparse checkout to save disk space:
       git clone --depth=1 --filter=blob:none --sparse \\
@@ -42,8 +40,8 @@ class TerminalBench2Benchmark(Benchmark):
         if not tasks_dir_str:
             raise ValueError(
                 "TerminalBench2Benchmark requires 'tasks_dir' in config, "
-                "pointing to a local terminal-bench-2 category directory "
-                "(e.g. /path/to/terminal-bench-2/file-operations)"
+                "pointing to a local terminal-bench-2 clone directory "
+                "(e.g. $TERMINAL_BENCH2_DIR or /path/to/terminal-bench-2)"
             )
 
         tasks_dir = Path(tasks_dir_str)
@@ -73,6 +71,7 @@ class TerminalBench2Benchmark(Benchmark):
                 continue
 
             try:
+                import tomli
                 with open(toml_path, "rb") as f:
                     toml_data = tomli.load(f)
             except Exception as exc:

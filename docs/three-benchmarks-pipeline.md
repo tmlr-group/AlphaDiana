@@ -33,8 +33,8 @@ export SANDBOX_ID=<from openclaw deploy>
 ### OpenClaw Deployment (for IMO-AnswerBench and HLE)
 
 ```bash
-cd /home/xxx/AlphaDiana-dev
-source dev/rock_env.sh
+cd /path/to/AlphaDiana-dev
+source scripts/rock_env.sh
 python openclaw_deploy/deploy.py \
   --agent-config openclaw_deploy/rock_agent_config.prebuilt.yaml \
   --image ghcr.io/tsrigo/openclaw-reasoning:20260320
@@ -46,6 +46,7 @@ python openclaw_deploy/deploy.py \
 ```bash
 # Clone the repo
 git clone --depth=1 https://github.com/harbor-framework/terminal-bench-2.git /path/to/terminal-bench-2
+export TERMINAL_BENCH2_DIR=/path/to/terminal-bench-2
 
 # Pull Docker images (use mirror if Docker Hub is blocked)
 for task in db-wal-recovery extract-elf extract-moves-from-video; do

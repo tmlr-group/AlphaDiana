@@ -1,16 +1,15 @@
 # TerminalBench-2 smoke-test config — runs 5 file-operations tasks
 # on A800 using DirectLLM (OpenAI-compatible) + Docker exec relay.
 #
-# Prerequisites on A800:
-#   1. Clone terminal-bench-2 (full shallow clone):
-#        git clone --depth=1 https://github.com/harbor-framework/terminal-bench-2.git \
-#            /path/to/terminal-bench-2
+# Prerequisites:
+#   1. Clone terminal-bench-2:
+#        git clone --depth=1 https://github.com/harbor-framework/terminal-bench-2.git /path/to/terminal-bench-2
+#        export TERMINAL_BENCH2_DIR=/path/to/terminal-bench-2
 #
 #   2. Pre-pull Docker images for file-operations tasks:
 #        for task in db-wal-recovery extract-elf extract-moves-from-video remove-pii-from-csv rename-log-files; do
 #          docker pull alexgshaw/${task}:20251031
 #        done
-#      (List all file-operations tasks: grep -l 'file-operations' /path/to/terminal-bench-2/*/task.toml | xargs dirname | xargs -I{} basename {})
 #
 #   3. Set environment variables (use OpenRouter or local vLLM):
 #        export OPENAI_BASE_URL=https://openrouter.ai/api/v1
@@ -20,12 +19,12 @@
 #   NOTE: tasks_dir points to repo root; categories filter selects file-operations tasks
 #         via task.toml metadata.category field.
 
-experiment_name: terminal_bench2_smoke
+run_id: terminal_bench2_smoke
 
 benchmark:
   name: terminal_bench2
   config:
-    tasks_dir: /path/to/terminal-bench-2
+    tasks_dir: ${TERMINAL_BENCH2_DIR}
     categories: ["file-operations"]
     max_tasks: 5
 
@@ -34,7 +33,7 @@ agent:
   version: "1.0"
   config:
     model: ${OPENAI_MODEL_NAME}
-    base_url: ${OPENAI_BASE_URL}
+    api_base: ${OPENAI_BASE_URL}
     api_key: ${OPENAI_API_KEY}
     max_rounds: 20
     max_tokens: 2048
