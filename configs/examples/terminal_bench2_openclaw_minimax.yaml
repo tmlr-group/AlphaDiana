@@ -1,0 +1,48 @@
+# OpenClaw relay smoke for terminal-bench-2.
+# Requires:
+#   source scripts/activate.sh
+#   export TERMINAL_BENCH2_DIR=/path/to/terminal-bench-2
+
+run_id: "terminal_bench2_openclaw_minimax_smoke"
+
+benchmark:
+  name: terminal_bench2
+  config:
+    tasks_dir: ${TERMINAL_BENCH2_DIR}
+    categories: ["file-operations"]
+    max_tasks: 1
+
+agent:
+  name: terminal_bench2_openclaw
+  version: "1.0"
+  config:
+    rock_image: "tmlrgroup/alphadiana:v1"
+    rock_agent_config_path: "openclaw_deploy/rock_agent_config.prebuilt.yaml"
+    openclaw_config_path: "openclaw_deploy/openclaw.json"
+    rock_memory: "4g"
+    rock_cpus: 1
+    rock_startup_timeout: 600
+    gateway_startup_timeout: 240
+    gateway_warmup_timeout: 240
+    OPENAI_BASE_URL: "${OPENAI_BASE_URL}"
+    OPENAI_API_KEY: "${OPENAI_API_KEY}"
+    OPENAI_MODEL_NAME: "minimax-m2.5"
+    model: openclaw
+    gateway_token: "OPENCLAW"
+    max_rounds: 6
+    max_tokens: 1024
+    request_timeout: 60
+    max_attempts: 1
+    continue_on_planner_error: true
+    timeout_sec: 900
+    test_timeout_sec: 1200
+
+sandbox: null
+
+scorer:
+  name: terminal_bench2
+
+max_concurrent: 1
+output_dir: "./results/terminal_bench2_openclaw_minimax_smoke"
+metadata:
+  notes: "OpenClaw relay smoke for terminal-bench-2 via minimax-m2.5."

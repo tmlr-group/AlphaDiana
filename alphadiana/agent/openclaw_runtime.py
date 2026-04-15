@@ -119,6 +119,11 @@ class OpenClawRuntimeManager:
         self._started_sandboxes: set[str] = set()
         self._agent_md_applied_sandboxes: set[str] = set()
         self._temp_dirs: list[tempfile.TemporaryDirectory] = []
+        self._provider_env = {
+            "OPENAI_BASE_URL": str(config.get("OPENAI_BASE_URL", "") or ""),
+            "OPENAI_API_KEY": str(config.get("OPENAI_API_KEY", "") or ""),
+            "OPENAI_MODEL_NAME": str(config.get("OPENAI_MODEL_NAME", "") or ""),
+        }
 
         # Agent.md customization
         self._agent_md_mode = config.get("agent_md_mode", "none")
@@ -299,15 +304,19 @@ class OpenClawRuntimeManager:
         generated_config = yaml.safe_load(rock_agent_config.read_text(encoding="utf-8"))
         env_cfg = generated_config.setdefault("env", {})
         for key in ("OPENAI_BASE_URL", "OPENAI_API_KEY", "OPENAI_MODEL_NAME"):
-            local_val = os.environ.get(key, "")
+            local_val = os.environ.get(key, "").strip()
             if local_val:
                 env_cfg[key] = local_val
+                continue
+            config_val = self._provider_env.get(key, "").strip()
+            if config_val and not re.match(r"^\$\{.+\}$", config_val):
+                env_cfg[key] = config_val
                 continue
             current_val = str(env_cfg.get(key, ""))
             if not current_val or re.match(r"^\$\{.+\}$", current_val):
                 raise RuntimeError(
-                    f"OpenClaw auto-deploy requires {key} to be set in the local environment. "
-                    f"Export it before running alphadiana."
+                    f"OpenClaw auto-deploy requires {key} to be set either in agent.config "
+                    f"or the local environment."
                 )
 
         td = tempfile.TemporaryDirectory(prefix="alphadiana-openclaw-")
@@ -384,7 +393,14 @@ class OpenClawRuntimeManager:
             attempt += 1
             try:
                 _progress(f"gateway warmup attempt={attempt} url={url}")
-                response = httpx.post(url, headers=headers, json=payload, timeout=120, trust_env=False)
+                remaining = max(1.0, deadline - time.monotonic())
+                response = httpx.post(
+                    url,
+                    headers=headers,
+                    json=payload,
+                    timeout=remaining,
+                    trust_env=False,
+                )
                 body: Any
                 try:
                     body = response.json()

@@ -16,9 +16,10 @@ class ImoAnswerBenchBenchmark(Benchmark):
         split: Dataset split (default: "train")
         problem_field: Column name for problem text (default: "Problem")
         answer_field: Column name for answer (default: "Short Answer")
-        category_field: Column name for category filtering (default: "category")
+        category_field: Column name for category filtering (default: "Category")
         category: If set, only include rows where row[category_field] == category
                   (e.g. "Algebra", "Combinatorics", "Geometry", "Number Theory")
+        dataset_index: If set, only load the raw dataset row at this index
         max_tasks: Maximum number of tasks to load (optional)
     """
 
@@ -44,8 +45,9 @@ class ImoAnswerBenchBenchmark(Benchmark):
         data_config = config.get("data_config")
         problem_field = config.get("problem_field", "Problem")
         answer_field = config.get("answer_field", "Short Answer")
-        category_field = config.get("category_field", "category")
+        category_field = config.get("category_field", "Category")
         category = config.get("category")
+        dataset_index = config.get("dataset_index")
         max_tasks = config.get("max_tasks")
 
         try:
@@ -79,10 +81,16 @@ class ImoAnswerBenchBenchmark(Benchmark):
                 f"Available fields: {available}"
             )
 
+        if dataset_index is not None:
+            dataset_index = int(dataset_index)
+            iterator = [(dataset_index, dataset[dataset_index])]
+        else:
+            iterator = enumerate(dataset)
+
         tasks: list[BenchmarkTask] = []
-        for idx, item in enumerate(dataset):
+        for idx, item in iterator:
             if category is not None and category_field in item:
-                if item[category_field] != category:
+                if str(item[category_field]).strip().lower() != str(category).strip().lower():
                     continue
 
             tasks.append(BenchmarkTask(

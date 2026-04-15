@@ -1,26 +1,25 @@
-# HLE (Humanity's Last Exam) — OpenClaw + Qwen3-27B
-#
-# PREREQUISITE: HF_TOKEN environment variable must be set.
-# The cais/hle dataset is gated — request access at:
-#   https://huggingface.co/datasets/cais/hle
-#
-# Load your HF_TOKEN from .env or export it directly:
-#   export HF_TOKEN=hf_...
-#
-# On A800, also set: export HF_ENDPOINT=https://hf-mirror.com
-
-run_id: "openclaw-qwen3-27b-hle-001"  # Unique identifier for this evaluation run
+run_id: "openclaw_hle_example"
 
 agent:
   name: openclaw                # Agent type: openclaw
   version: "2026.3.20"          # OpenClaw version
   config:
-    api_base: "http://localhost:${ROCK_PROXY_PORT}/apis/envs/sandbox/v1/sandboxes/${SANDBOX_ID}/proxy/v1"
-    model: openclaw             # Model name as seen by the gateway (always "openclaw")
-    gateway_token: "OPENCLAW"   # Must match OPENCLAW_GATEWAY_TOKEN in rock_agent_config.yaml
-    max_tokens: 65536           # Maximum tokens per response
-    request_timeout: 1800       # Request timeout in seconds
-    max_attempts: 5             # Max retry attempts per task on failure
+    rock_image: "tmlrgroup/alphadiana:v1"
+    rock_agent_config_path: "openclaw_deploy/rock_agent_config.prebuilt.yaml"
+    openclaw_config_path: "openclaw_deploy/openclaw.json"
+    rock_memory: "4g"
+    rock_cpus: 1
+    rock_startup_timeout: 600
+    gateway_startup_timeout: 240
+    gateway_warmup_timeout: 240
+    OPENAI_BASE_URL: "${OPENAI_BASE_URL}"
+    OPENAI_API_KEY: "${OPENAI_API_KEY}"
+    OPENAI_MODEL_NAME: "${OPENAI_MODEL_NAME}"
+    model: openclaw
+    gateway_token: "OPENCLAW"
+    max_tokens: 8192
+    request_timeout: 2400
+    max_attempts: 5
     system_prompt: |
       You are an expert problem solver. When given a problem, actively use your available tools and skills throughout your reasoning process. Do not attempt to solve problems purely in your head when tools can help. Use code execution, search, or any other available capabilities to verify intermediate steps, explore approaches, and confirm your final answer.
 
@@ -35,7 +34,7 @@ benchmark:
   config:
     dataset: "cais/hle"         # HuggingFace dataset identifier (gated — requires HF_TOKEN)
     split: "test"               # Dataset split to evaluate on
-    max_tasks: 5                # Limit to 5 tasks for pipeline validation
+    max_tasks: 1
     answer_types:               # Only include deterministically-scoreable answer types
       - "multipleChoice"
     # category: "mathematics"   # Uncomment to filter by subject
@@ -47,9 +46,7 @@ scorer:
   name: exact_match             # Scorer: exact string match (handles \boxed{A} -> "a")
   config: {}
 
-max_concurrent: 1               # Number of tasks to run in parallel
-output_dir: "./results"         # Directory for output JSONL files
+max_concurrent: 1
+output_dir: "./results/openclaw_hle"
 metadata:
-  author: "alphadiana"
-  gpu: "A800"
-  notes: "OpenClaw + Qwen3-27B on HLE multipleChoice. Requires HF_TOKEN. Set HF_ENDPOINT=https://hf-mirror.com on A800."
+  notes: "OpenClaw x HLE example using auto-deploy and provider env vars. Requires HF_TOKEN."

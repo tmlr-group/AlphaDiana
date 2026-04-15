@@ -1,0 +1,35 @@
+run_id: "directllm_minimax_hle_smoke"
+
+agent:
+  name: direct_llm
+  version: "1.0"
+  config:
+    model: "minimax-m2.5"
+    api_base: ${OPENAI_BASE_URL}
+    api_key: ${OPENAI_API_KEY}
+    temperature: 0.0
+    max_tokens: 512
+    stream: false
+    system_prompt: |
+      Solve the question carefully and keep the answer concise.
+      The final line must be:
+      $$\boxed{your answer here}$$
+
+benchmark:
+  name: hle
+  config:
+    dataset: "cais/hle"
+    split: "test"
+    dataset_index: 1
+    answer_types:
+      - "multipleChoice"
+    max_tasks: 1
+
+scorer:
+  name: exact_match
+  config: {}
+
+max_concurrent: 1
+output_dir: "./results/directllm_minimax_hle_smoke"
+metadata:
+  notes: "DirectLLM x HLE smoke via minimax-m2.5. Requires HF_TOKEN."
