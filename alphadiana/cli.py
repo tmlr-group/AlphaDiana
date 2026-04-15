@@ -266,6 +266,7 @@ def list_benchmarks():
     # Import benchmark modules to trigger registration.
     import alphadiana.benchmark.aime  # noqa: F401
     import alphadiana.benchmark.custom  # noqa: F401
+    import alphadiana.benchmark.moltbench  # noqa: F401
     import alphadiana.benchmark.imo_answerbench  # noqa: F401
     import alphadiana.benchmark.hle  # noqa: F401
     import alphadiana.benchmark.terminal_bench2  # noqa: F401

@@ -118,8 +118,18 @@ class TerminalBench2DockerAgent(Agent):
                 "Ensure TerminalBench2Benchmark populated task.metadata correctly."
             )
 
-        logs_dir = self._logs_base_dir / task.task_id
+        # Include sample_index/execution_id in log path to avoid collision across retries.
+        sample_index = task.metadata.get("sample_index", 0)
+        execution_id = task.metadata.get("execution_id", "")
+        log_suffix = f"{task.task_id}_s{sample_index}"
+        if execution_id:
+            log_suffix += f"_{execution_id[:8]}"
+        logs_dir = self._logs_base_dir / log_suffix
         logs_dir.mkdir(parents=True, exist_ok=True)
+
+        # Per-task timeout from task.toml overrides global config.
+        timeout_sec = int(task.metadata.get("timeout_sec", self._timeout_sec))
+        test_timeout_sec = self._test_timeout_sec
 
         container_id: str = ""
         reward_content: str = ""
@@ -161,7 +171,7 @@ class TerminalBench2DockerAgent(Agent):
                     # we must execute those commands so the task state is actually modified.
                     exec_outputs: list[str] = []
                     for cmd in commands:
-                        cmd_output = self._exec_command(container_id, cmd)
+                        cmd_output = self._exec_command(container_id, cmd, timeout_sec)
                         exec_outputs.append(f"$ {cmd}\n{cmd_output}")
 
                     turn_output = "\n".join(exec_outputs)
@@ -185,7 +195,7 @@ class TerminalBench2DockerAgent(Agent):
                     break
 
             logger.info("Task %s — running tests/test.sh", task.task_id)
-            self._run_tests(container_id)
+            self._run_tests(container_id, test_timeout_sec)
 
             reward_content = self._read_reward(logs_dir, task.task_id)
             logger.info("Task %s — reward.txt: %r", task.task_id, reward_content)
@@ -238,36 +248,38 @@ class TerminalBench2DockerAgent(Agent):
         )
         return container_id
 
-    def _exec_command(self, container_id: str, cmd: str) -> str:
+    def _exec_command(self, container_id: str, cmd: str, timeout_sec: int | None = None) -> str:
+        timeout = timeout_sec if timeout_sec is not None else self._timeout_sec
         exec_cmd = ["docker", "exec", container_id, "bash", "-c", cmd]
         try:
             result = subprocess.run(
-                exec_cmd, capture_output=True, text=True, timeout=self._timeout_sec,
+                exec_cmd, capture_output=True, text=True, timeout=timeout,
             )
             output = result.stdout
             if result.stderr:
                 output += result.stderr
             return output.strip()
         except subprocess.TimeoutExpired:
-            logger.warning("Command timed out after %ds: %s", self._timeout_sec, cmd[:100])
-            return f"[TIMEOUT after {self._timeout_sec}s]"
+            logger.warning("Command timed out after %ds: %s", timeout, cmd[:100])
+            return f"[TIMEOUT after {timeout}s]"
         except Exception as exc:
             logger.warning("Command exec error: %s", exc)
             return f"[ERROR: {exc}]"
 
-    def _run_tests(self, container_id: str) -> str:
+    def _run_tests(self, container_id: str, timeout_sec: int | None = None) -> str:
+        timeout = timeout_sec if timeout_sec is not None else self._test_timeout_sec
         exec_cmd = ["docker", "exec", container_id, "bash", "/tests/test.sh"]
         try:
             result = subprocess.run(
-                exec_cmd, capture_output=True, text=True, timeout=self._test_timeout_sec,
+                exec_cmd, capture_output=True, text=True, timeout=timeout,
             )
             output = result.stdout
             if result.stderr:
                 output += result.stderr
             return output.strip()
         except subprocess.TimeoutExpired:
-            logger.warning("tests/test.sh timed out after %ds", self._test_timeout_sec)
-            return f"[TIMEOUT after {self._test_timeout_sec}s]"
+            logger.warning("tests/test.sh timed out after %ds", timeout)
+            return f"[TIMEOUT after {timeout}s]"
         except Exception as exc:
             logger.warning("tests/test.sh exec error: %s", exc)
             return f"[ERROR: {exc}]"
