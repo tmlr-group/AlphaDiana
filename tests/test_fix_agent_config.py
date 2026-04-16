@@ -218,7 +218,7 @@ class TestDirectLLMMaxTokensAutoDetect:
             assert agent._resolve_max_tokens() == 12345
             assert agent._resolve_max_tokens() == 12345
 
-        get.assert_called_once_with("http://localhost/v1/models", timeout=5.0)
+        get.assert_called_once_with("http://localhost/v1/models", timeout=5.0, trust_env=False)
 
     def test_solve_uses_resolved_max_tokens(self):
         from alphadiana.benchmark.base import BenchmarkTask

@@ -77,7 +77,7 @@ def _load_rock_ports_file() -> dict[str, str]:
 
 
 def _resolve_int(name: str, default: int, file_values: dict[str, str]) -> int:
-    raw = file_values.get(name, "").strip() or os.environ.get(name, "").strip()
+    raw = os.environ.get(name, "").strip() or file_values.get(name, "").strip()
     if not raw:
         return default
     try:
@@ -166,7 +166,7 @@ def check_rock_services(ports: RockPorts | None = None, timeout: float = 5.0) ->
         with socket.create_connection((LOCALHOST, ports.admin_port), timeout=timeout):
             pass
         import httpx
-        resp = httpx.get(ports.base_url + "/", timeout=timeout)
+        resp = httpx.get(ports.base_url + "/", timeout=timeout, trust_env=False)
         if resp.status_code == 200:
             results["admin"] = True
         else:
@@ -179,7 +179,7 @@ def check_rock_services(ports: RockPorts | None = None, timeout: float = 5.0) ->
         with socket.create_connection((LOCALHOST, ports.proxy_port), timeout=timeout):
             pass
         import httpx
-        resp = httpx.get(ports.proxy_root_url + "/", timeout=timeout)
+        resp = httpx.get(ports.proxy_root_url + "/", timeout=timeout, trust_env=False)
         if resp.status_code == 200:
             results["proxy"] = True
         else:

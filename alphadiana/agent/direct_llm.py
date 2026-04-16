@@ -7,6 +7,7 @@ agentic orchestration (no tool calling, no multi-turn, no code execution).
 """
 from __future__ import annotations
 
+import base64
 import logging
 import os
 import random
@@ -89,10 +90,26 @@ class DirectLLMAgent(Agent):
         self._enable_thinking = config.get("enable_thinking", None)
         self._extra_body: dict[str, Any] | None = config.get("extra_body", None)
         try:
-            from openai import OpenAI
-            self._client = OpenAI(base_url=self._api_base, api_key=self._api_key)
+            self._client = self._build_client()
         except ImportError:
             self._client = None
+
+    def _build_client(self):
+        """Build an OpenAI client that ignores inherited proxy env vars.
+
+        The user environment may export SOCKS/HTTP proxy variables for other
+        tools. Direct LLM calls should not depend on those settings, because
+        `httpx` can fail to initialize proxy transports if optional extras like
+        `socksio` are unavailable.
+        """
+        import httpx
+        from openai import OpenAI
+
+        return OpenAI(
+            base_url=self._api_base,
+            api_key=self._api_key,
+            http_client=httpx.Client(trust_env=False),
+        )
 
     @staticmethod
     def _resolve_setting(
@@ -126,7 +143,7 @@ class DirectLLMAgent(Agent):
             import httpx
 
             api_base = self._api_base.rstrip("/")
-            response = httpx.get(f"{api_base}/models", timeout=5.0)
+            response = httpx.get(f"{api_base}/models", timeout=5.0, trust_env=False)
             if response.status_code == 200:
                 data = response.json().get("data", [])
                 if data:
@@ -141,10 +158,23 @@ class DirectLLMAgent(Agent):
         self._resolved_max_tokens = 65536
         return self._resolved_max_tokens
 
+    _IMAGE_TOKEN_ESTIMATE = 765
+
     def _estimate_prompt_tokens(self, messages: list[dict]) -> int:
-        """Rough token estimate: ~4 chars per token (conservative)."""
-        total_chars = sum(len(m.get("content", "")) for m in messages)
-        return total_chars // 3  # slightly conservative to avoid overflow
+        """Rough token estimate: ~4 chars per token for text, 765 per image."""
+        total_chars = 0
+        image_tokens = 0
+        for m in messages:
+            c = m.get("content", "")
+            if isinstance(c, str):
+                total_chars += len(c)
+            elif isinstance(c, list):
+                for part in c:
+                    if isinstance(part, dict) and part.get("type") == "text":
+                        total_chars += len(part.get("text", ""))
+                    elif isinstance(part, dict) and part.get("type") == "image_url":
+                        image_tokens += self._IMAGE_TOKEN_ESTIMATE
+        return total_chars // 3 + image_tokens
 
     def _cap_max_tokens(self, max_tokens: int, messages: list[dict]) -> int:
         """Cap max_tokens so that prompt + output stays within model context.
@@ -169,8 +199,7 @@ class DirectLLMAgent(Agent):
     def solve(self, task: BenchmarkTask, sandbox: Any = None) -> AgentResponse:
         if self._client is None:
             try:
-                from openai import OpenAI
-                self._client = OpenAI(base_url=self._api_base, api_key=self._api_key)
+                self._client = self._build_client()
             except ImportError:
                 raise RuntimeError(
                     "The 'openai' package is required for DirectLLMAgent. "
@@ -179,9 +208,24 @@ class DirectLLMAgent(Agent):
 
         start = time.time()
 
+        user_content: Any = task.problem
+        if task.attachments:
+            parts: list[dict[str, Any]] = [{"type": "text", "text": task.problem}]
+            img_keys = sorted(k for k in task.attachments if not k.endswith("_mime"))
+            for key in img_keys:
+                img_bytes = task.attachments[key]
+                mime_key = f"{key}_mime"
+                mime = task.attachments.get(mime_key, b"image/png").decode()
+                b64 = base64.b64encode(img_bytes).decode()
+                parts.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{mime};base64,{b64}"},
+                })
+            user_content = parts
+
         messages = [
             {"role": "system", "content": self._system_prompt},
-            {"role": "user", "content": task.problem},
+            {"role": "user", "content": user_content},
         ]
         request_kwargs: dict[str, Any] = {
             "model": self._model,
