@@ -27,9 +27,21 @@ If the dataset is already cached locally, the loader can run without forcing `HF
 
 | Mode | Status | Config |
 |---|---|---|
-| `direct_llm` | supported | `configs/examples/directllm_minimax_hle.yaml` |
-| `opencode` | supported | `configs/examples/opencode_minimax_hle.yaml` |
-| `openclaw` | supported | `configs/examples/openclaw_minimax_hle.yaml` |
+| `direct_llm` | supported | `configs/full_runs/p25_full_directllm_minimax_hle.yaml` |
+| `opencode` | supported | `configs/full_runs/p25_full_opencode_minimax_hle.yaml` |
+| `openclaw` | supported | `configs/full_runs/p25_full_openclaw_minimax_hle.yaml` |
+
+The full configs run the supported HLE `multipleChoice` subset. Other HLE answer types are not included in the current exact-match scoring path.
+
+The corresponding smoke configs remain under `configs/examples/` and pin `dataset_index: 1`, `max_tasks: 1`.
+
+## Full Runs
+
+```bash
+python -m alphadiana.cli run configs/full_runs/p25_full_directllm_minimax_hle.yaml --redo-all
+python -m alphadiana.cli run configs/full_runs/p25_full_opencode_minimax_hle.yaml --redo-all
+python -m alphadiana.cli run configs/full_runs/p25_full_openclaw_minimax_hle.yaml --redo-all
+```
 
 ## DirectLLM
 
@@ -65,3 +77,5 @@ The checked-in minimax smoke configs pin:
 - `max_tasks: 1`
 
 The scorer is `exact_match`, so the final answer should be one of the multiple-choice options.
+
+Use the `configs/full_runs/` files for full supported HLE multiple-choice evaluations.

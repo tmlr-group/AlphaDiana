@@ -1,10 +1,7 @@
-# SMOKE ONLY: deterministic 1-task config for path validation.
-# Full supported HLE multiple-choice config: configs/full_runs/p25_full_openclaw_minimax_hle.yaml.
-#
-# Recommended local smoke config for OpenClaw x HLE.
-# Requires HF_TOKEN for the gated `cais/hle` dataset.
+# FULL RUN: all supported HLE multiple-choice tasks.
+# For a 1-task liveness check, use configs/examples/openclaw_minimax_hle.yaml.
 
-run_id: "openclaw_minimax_hle_smoke"
+run_id: "p25_full_openclaw_minimax_hle"
 
 agent:
   name: openclaw
@@ -23,7 +20,7 @@ agent:
     OPENAI_MODEL_NAME: "minimax-m2.5"
     model: openclaw
     gateway_token: "OPENCLAW"
-    max_tokens: 512
+    max_tokens: 4096
     request_timeout: 2400
     max_attempts: 5
     system_prompt: |
@@ -36,10 +33,8 @@ benchmark:
   config:
     dataset: "cais/hle"
     split: "test"
-    dataset_index: 1
     answer_types:
       - "multipleChoice"
-    max_tasks: 1
 
 sandbox: null
 
@@ -48,6 +43,6 @@ scorer:
   config: {}
 
 max_concurrent: 1
-output_dir: "./results/openclaw_minimax_hle_smoke"
+output_dir: "./results/p25_full_openclaw_minimax_hle"
 metadata:
-  notes: "OpenClaw auto-deploy smoke on HLE via minimax-m2.5. Requires HF_TOKEN."
+  notes: "Full supported OpenClaw auto-deploy run on HLE multiple-choice via minimax-m2.5. Requires HF_TOKEN on fresh machines."

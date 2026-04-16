@@ -1,10 +1,7 @@
-# SMOKE ONLY: deterministic 1-task config for path validation.
-# Full supported HLE multiple-choice config: configs/full_runs/p25_full_openclaw_minimax_hle.yaml.
-#
-# Recommended local smoke config for OpenClaw x HLE.
-# Requires HF_TOKEN for the gated `cais/hle` dataset.
+# FULL RUN: all IMO-AnswerBench tasks in the configured split.
+# For a 1-task liveness check, use configs/examples/openclaw_minimax_imo_answerbench.yaml.
 
-run_id: "openclaw_minimax_hle_smoke"
+run_id: "p25_full_openclaw_minimax_imo_answerbench"
 
 agent:
   name: openclaw
@@ -23,31 +20,29 @@ agent:
     OPENAI_MODEL_NAME: "minimax-m2.5"
     model: openclaw
     gateway_token: "OPENCLAW"
-    max_tokens: 512
+    max_tokens: 4096
     request_timeout: 2400
     max_attempts: 5
     system_prompt: |
-      Solve carefully and keep the final answer concise.
+      You are an expert problem solver. Use available tools when they help.
+
       The final line must be:
       $$\boxed{your answer here}$$
 
 benchmark:
-  name: hle
+  name: imo_answerbench
   config:
-    dataset: "cais/hle"
-    split: "test"
-    dataset_index: 1
-    answer_types:
-      - "multipleChoice"
-    max_tasks: 1
+    dataset: "Hwilner/imo-answerbench"
+    split: "train"
 
 sandbox: null
 
 scorer:
-  name: exact_match
-  config: {}
+  name: math_verify
+  config:
+    tolerance: 1e-6
 
 max_concurrent: 1
-output_dir: "./results/openclaw_minimax_hle_smoke"
+output_dir: "./results/p25_full_openclaw_minimax_imo_answerbench"
 metadata:
-  notes: "OpenClaw auto-deploy smoke on HLE via minimax-m2.5. Requires HF_TOKEN."
+  notes: "Full OpenClaw auto-deploy run on IMO-AnswerBench via minimax-m2.5."

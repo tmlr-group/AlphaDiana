@@ -1,3 +1,6 @@
+# SMOKE ONLY: deterministic 1-task config for path validation.
+# Full benchmark config: configs/full_runs/p25_full_terminal_bench2_directllm_minimax.yaml.
+#
 # DirectLLM relay smoke for terminal-bench-2.
 # Requires:
 #   export TERMINAL_BENCH2_DIR=/path/to/terminal-bench-2

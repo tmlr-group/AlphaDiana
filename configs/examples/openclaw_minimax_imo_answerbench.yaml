@@ -1,3 +1,6 @@
+# SMOKE ONLY: deterministic 1-task config for path validation.
+# Full benchmark config: configs/full_runs/p25_full_openclaw_minimax_imo_answerbench.yaml.
+#
 # Recommended local smoke config for OpenClaw x IMO-AnswerBench.
 # Requires:
 #   source scripts/activate.sh

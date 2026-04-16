@@ -34,9 +34,20 @@ export TERMINAL_BENCH2_DIR=/tmp/terminal-bench-2-smoke-dbwal
 
 | Mode | Status | Config |
 |---|---|---|
-| `direct_llm` | supported | `configs/examples/terminal_bench2_directllm_minimax.yaml` |
-| `opencode` | supported | `configs/examples/terminal_bench2_opencode_minimax.yaml` |
+| `direct_llm` | supported | `configs/full_runs/p25_full_terminal_bench2_directllm_minimax.yaml` |
+| `opencode` | supported | `configs/full_runs/p25_full_terminal_bench2_opencode_minimax.yaml` |
 | `openclaw` | not supported as of 2026-04-16 | `configs/examples/terminal_bench2_openclaw_minimax.yaml` exists for debugging only |
+
+The full configs scan all task directories under `TERMINAL_BENCH2_DIR`. The corresponding smoke configs remain under `configs/examples/` and pin one staged task with `max_tasks: 1`.
+
+## Full Runs
+
+Pre-pull task Docker images first; see [configs/full_runs](../../configs/full_runs/README.md).
+
+```bash
+python -m alphadiana.cli run configs/full_runs/p25_full_terminal_bench2_directllm_minimax.yaml --redo-all
+python -m alphadiana.cli run configs/full_runs/p25_full_terminal_bench2_opencode_minimax.yaml --redo-all
+```
 
 ## DirectLLM
 
