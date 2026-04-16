@@ -315,6 +315,55 @@ def test_zeroclaw_gateway_mode_falls_back_to_direct_sandbox(monkeypatch):
     assert "http proxy failed" in response.metadata["gateway_fallback_reason"]
 
 
+def test_zeroclaw_gateway_mode_falls_back_to_direct_sandbox_on_transport_error(monkeypatch):
+    import httpx
+
+    task = BenchmarkTask(task_id="aime_5b", problem="What is 6*7?", ground_truth="42")
+    sandbox = _FakeProxySandbox()
+
+    agent = ZeroClawAgent()
+    agent.setup({
+        "model": "demo-model",
+        "api_base": "https://example.test/v1",
+        "api_key": "sk-test",
+        "use_gateway_in_sandbox": True,
+        "gateway_token": "ZEROCLAW",
+    })
+
+    class _FakeRuntimeManager:
+        is_configured = True
+
+        def ensure_ready(self, sandbox):
+            return {
+                "api_base": sandbox.proxy_v1_base(),
+                "gateway_url": f"{sandbox.proxy_v1_base()}/chat/completions",
+                "sandbox_id": sandbox.sandbox_id,
+            }
+
+        def collect_artifacts(self, sandbox):
+            return {
+                "artifact_manifest": {"files": {"bridge_log_source": "/tmp/zeroclaw-gateway.log"}},
+                "gateway_log_excerpt": "bridge started",
+                "workspace_snapshot_paths": [],
+                "workspace_file_contents": {},
+                "sandbox_metadata": sandbox.metadata(),
+            }
+
+    agent._runtime_manager = _FakeRuntimeManager()
+
+    def fake_post(url, headers, json, timeout, trust_env):
+        raise httpx.ConnectError("proxy unavailable", request=httpx.Request("POST", url))
+
+    monkeypatch.setattr("httpx.post", fake_post)
+
+    response = agent.solve(task, sandbox=sandbox)
+
+    assert response.answer == "42"
+    assert response.sandbox_id == "sandbox-123"
+    assert response.metadata["gateway_mode"] == "rock-proxy-fallback-to-cli"
+    assert "proxy unavailable" in response.metadata["gateway_fallback_reason"]
+
+
 def test_start_zeroclaw_script_checks_expected_routes():
     script = Path("scripts/start_zeroclaw.sh").read_text(encoding="utf-8")
     assert "/apis/envs/sandbox/v1/start_async" in script
@@ -332,6 +381,7 @@ def test_zeroclaw_gateway_pool_mode_round_robins_without_live_sandbox(monkeypatc
         "model": "demo-model",
         "api_base": "https://example.test/v1",
         "api_key": "sk-test",
+        "sandbox_id": "sandbox-a",
         "gateway_pool": [
             "http://proxy.test/apis/envs/sandbox/v1/sandboxes/sandbox-a/proxy/v1",
             "http://proxy.test/apis/envs/sandbox/v1/sandboxes/sandbox-b/proxy/v1",

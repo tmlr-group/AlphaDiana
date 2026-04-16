@@ -83,6 +83,12 @@ def _extract_gateway_text(payload: Any) -> str:
 
 
 def _should_fallback_from_gateway(exc: Exception) -> bool:
+    try:
+        import httpx
+    except ImportError:
+        httpx = None
+    if httpx is not None and isinstance(exc, httpx.TransportError):
+        return True
     message = str(exc).lower()
     return "http proxy failed" in message or "post proxy failed" in message
 
@@ -531,6 +537,9 @@ class ZeroClawAgent(Agent):
         request_messages = self._build_request_messages(task)
         resolved_runtime_info = dict(runtime_info or {})
         resolved_api_base = api_base.rstrip("/")
+        actual_sandbox_id, _ = self._extract_sandbox_target_from_api_base(resolved_api_base)
+        if actual_sandbox_id:
+            resolved_runtime_info["sandbox_id"] = actual_sandbox_id
         url = f"{resolved_api_base}/chat/completions"
         headers = {
             "Authorization": f"bearer {self._gateway_token}",
@@ -622,7 +631,7 @@ class ZeroClawAgent(Agent):
                 artifact_data=artifact_data,
                 gateway_mode="rock-proxy",
             )
-        except RuntimeError as exc:
+        except Exception as exc:
             if not _should_fallback_from_gateway(exc):
                 raise
             logger.warning(
