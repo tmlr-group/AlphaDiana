@@ -1,4 +1,4 @@
-# FULL RUN: all local terminal-bench-2 task directories under TERMINAL_BENCH2_DIR.
+# FULL RUN: all local terminal-bench task directories under TERMINAL_BENCH2_DIR.
 # For a 1-task liveness check, use configs/examples/terminal_bench2_opencode_minimax.yaml.
 
 run_id: "p25_full_terminal_bench2_opencode_minimax"
@@ -16,6 +16,8 @@ agent:
     model_name: "minimax-m2.5"
     api_base: ${OPENAI_BASE_URL}
     api_key: ${OPENAI_API_KEY}
+    controller_mode: "docker"
+    controller_image: "alphadiana/tb2-opencode-controller:latest"
     tool_call: false
     streaming: false
     solver_timeout_sec: 1800
@@ -28,4 +30,4 @@ scorer:
 max_concurrent: 2
 output_dir: "./results/p25_full_terminal_bench2_opencode_minimax"
 metadata:
-  notes: "Full OpenCode relay run for terminal-bench-2 via minimax-m2.5. Pre-pull task Docker images first."
+  notes: "Full OpenCode native-controller run for terminal-bench-2 via minimax-m2.5. Pre-pull task Docker images first."

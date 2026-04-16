@@ -1,10 +1,11 @@
+# Legacy generic example. Prefer configs/examples/terminal_bench2_directllm_minimax.yaml
+# for the current deterministic smoke path.
 run_id: "terminal_bench2_example"
 
 benchmark:
   name: terminal_bench2
   config:
-    tasks_dir: ${TERMINAL_BENCH2_DIR}
-    categories: ["file-operations"]
+    tasks_dir: ${TERMINAL_BENCH2_SMOKE_DIR}
     max_tasks: 1
 
 agent:

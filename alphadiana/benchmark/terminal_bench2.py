@@ -17,25 +17,21 @@ logger = logging.getLogger(__name__)
 
 
 class TerminalBench2Benchmark(Benchmark):
-    """Loads terminal-bench-2 tasks from a local directory clone.
+    """Loads terminal-bench tasks from a local directory tree.
 
     Each task lives in its own subdirectory containing:
-      - task.toml  : metadata (docker_image, category, difficulty, timeouts)
-      - instruction.md : natural-language task description (used as LLM prompt)
+      - task.toml
+      - instruction.md
 
-    tasks_dir should point to a category subdirectory, e.g.:
-      /path/to/terminal-bench-2/file-operations
+    tasks_dir should point to a directory whose immediate children are task
+    directories. Two common patterns are:
 
-    Clone with sparse checkout to save disk space:
-      git clone --depth=1 --filter=blob:none --sparse \\
-          https://github.com/harbor-framework/terminal-bench-2.git \\
-          /path/to/terminal-bench-2
-      cd /path/to/terminal-bench-2
-      git sparse-checkout set file-operations
+      - full task root, e.g. `/tmp/terminal-bench/tasks`
+      - staged smoke root containing one copied task directory
 
     Config keys:
-        tasks_dir   : Path to category subdirectory (required)
-        categories  : List of category names to include (optional metadata filter)
+        tasks_dir   : Path to local task root (required)
+        categories  : List of metadata category names to include (optional)
         max_tasks   : Maximum number of tasks to load (optional)
     """
 

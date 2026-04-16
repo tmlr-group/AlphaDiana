@@ -1,10 +1,22 @@
 # terminal-bench-2
 
-terminal-bench-2 evaluates agents on containerized terminal tasks. AlphaDiana loads local task directories and runs task-specific Docker images.
+This runbook describes the current AlphaDiana path for `terminal-bench-2`.
+
+Use it for local AlphaDiana evaluation and smoke validation. It is not a claim of strict Harbor-equivalent leaderboard execution.
+
+## Current Support
+
+| Mode | Smoke config | Full-run config |
+|---|---|---|
+| `direct_llm` | `configs/examples/terminal_bench2_directllm_minimax.yaml` | `configs/full_runs/p25_full_terminal_bench2_directllm_minimax.yaml` |
+| `opencode` | `configs/examples/terminal_bench2_opencode_minimax.yaml` | `configs/full_runs/p25_full_terminal_bench2_opencode_minimax.yaml` |
+| `openclaw` | `configs/examples/terminal_bench2_openclaw_minimax.yaml` | `configs/full_runs/p25_full_terminal_bench2_openclaw_minimax.yaml` |
+
+All three paths use the same local AlphaDiana `terminal_bench2` benchmark loader and scorer.
 
 ## Prerequisites
 
-Run from the repository root:
+Run from the repo root:
 
 ```bash
 source scripts/activate.sh
@@ -15,146 +27,168 @@ export OPENAI_API_KEY=sk-...
 export OPENAI_MODEL_NAME=minimax-m2.5
 ```
 
-Clone or stage terminal-bench-2 tasks locally:
+You also need:
+
+- Docker
+- a local `terminal-bench` task checkout
+- pre-pulled task images
+- controller images for `opencode` and `openclaw`
+
+## Prepare Tasks
+
+Clone a local task checkout:
 
 ```bash
-git clone --depth=1 https://github.com/harbor-framework/terminal-bench-2.git /tmp/terminal-bench-2
+git clone --depth=1 https://github.com/laude-institute/terminal-bench.git /tmp/terminal-bench
+```
 
-rm -rf /tmp/terminal-bench-2-smoke-dbwal
-mkdir -p /tmp/terminal-bench-2-smoke-dbwal
-cp -a /tmp/terminal-bench-2/db-wal-recovery /tmp/terminal-bench-2-smoke-dbwal/
+Set the full-run task root:
 
+```bash
+export TERMINAL_BENCH2_DIR=/tmp/terminal-bench/tasks
+```
+
+Prepare a deterministic smoke staging directory with one task:
+
+```bash
+rm -rf /tmp/terminal-bench-smoke-dbwal
+mkdir -p /tmp/terminal-bench-smoke-dbwal
+cp -a /tmp/terminal-bench/tasks/db-wal-recovery /tmp/terminal-bench-smoke-dbwal/
+
+export TERMINAL_BENCH2_SMOKE_DIR=/tmp/terminal-bench-smoke-dbwal
+```
+
+The smoke configs assume `TERMINAL_BENCH2_SMOKE_DIR` points at a directory whose immediate children are task directories. The full-run configs assume `TERMINAL_BENCH2_DIR` points at the full task root.
+
+## Pre-pull Task Images
+
+Before any smoke or full run:
+
+```bash
+python - <<'PY' | sort -u | xargs -r -n1 docker pull
+import os, tomllib
+from pathlib import Path
+
+for task_toml in Path(os.environ["TERMINAL_BENCH2_DIR"]).glob("*/task.toml"):
+    with task_toml.open("rb") as f:
+        data = tomllib.load(f)
+    image = data.get("environment", {}).get("docker_image")
+    if image:
+        print(image)
+PY
+```
+
+For the default smoke task specifically:
+
+```bash
 docker pull alexgshaw/db-wal-recovery:20251031
-export TERMINAL_BENCH2_DIR=/tmp/terminal-bench-2-smoke-dbwal
 ```
 
-`benchmark.config.tasks_dir` can also point at a full terminal-bench-2 checkout. The smoke configs use the single-task staging directory for reproducibility.
+## Build Controller Images
 
-## Supported Modes
+`direct_llm` does not need a controller image. `opencode` and `openclaw` do.
 
-| Mode | Status | Config |
-|---|---|---|
-| `direct_llm` | supported | `configs/full_runs/p25_full_terminal_bench2_directllm_minimax.yaml` |
-| `opencode` | supported | `configs/full_runs/p25_full_terminal_bench2_opencode_minimax.yaml` |
-| `openclaw` | native path implemented, live rerun pending | `configs/examples/terminal_bench2_openclaw_minimax.yaml` |
-
-The full configs scan all task directories under `TERMINAL_BENCH2_DIR`. The corresponding smoke configs remain under `configs/examples/` and pin one staged task with `max_tasks: 1`.
-
-## Full Runs
-
-Pre-pull task Docker images first; see [configs/full_runs](../../configs/full_runs/README.md).
-
-```bash
-python -m alphadiana.cli run configs/full_runs/p25_full_terminal_bench2_directllm_minimax.yaml --redo-all
-python -m alphadiana.cli run configs/full_runs/p25_full_terminal_bench2_opencode_minimax.yaml --redo-all
-```
-
-## Shared Runtime
-
-All terminal-bench-2 agents now run on the Docker-capable control side. AlphaDiana starts the task container, creates a local control workspace, and writes these helpers:
-
-- `tb2-exec`
-- `tb2-copy-from`
-- `tb2-copy-to`
-- `tb2-test`
-
-The task container remains the target environment only; agents do not install themselves into the task container.
-
-For CLI agents, the control side is expected to be a dedicated controller container with Docker socket access, not the host shell and not the task container itself.
-
-## DirectLLM
-
-The DirectLLM path uses `terminal_bench2_docker`. It still uses multi-turn chat completions and `$ cmd` output, but commands now run in the control workspace against the shared `tb2-*` helpers.
-
-```bash
-python -m alphadiana.cli run configs/examples/terminal_bench2_directllm_minimax.yaml \
-  -o run_id=tb2_directllm_smoke
-```
-
-## OpenCode
-
-The OpenCode path uses `terminal_bench2_opencode`. OpenCode runs natively on the control side and operates on the task container only through the shared `tb2-*` helpers.
-
-Build the controller image first:
+Build both once:
 
 ```bash
 docker build -f docker/terminal_bench2/Dockerfile.opencode-controller \
   -t alphadiana/tb2-opencode-controller:latest .
-```
 
-```bash
-python -m alphadiana.cli run configs/examples/terminal_bench2_opencode_minimax.yaml \
-  -o run_id=tb2_opencode_smoke
-```
-
-The smoke config uses `solver_timeout_sec: 1800`. A strict smoke should show visible model output and produce a scored JSONL result.
-
-## OpenClaw
-
-The OpenClaw path now uses `terminal_bench2_openclaw` as a control-side native runner. It no longer depends on the OpenClaw gateway planner or a ROCK sandbox for terminal-bench-2. Instead, AlphaDiana:
-
-- creates the shared control workspace and `tb2-*` helpers
-- runs `openclaw onboard --non-interactive` inside a controller container against the configured OpenAI-compatible provider
-- runs `openclaw agent --local --json` in that workspace
-- parses OpenClaw session JSONL from `OPENCLAW_HOME`
-
-Build the controller image first:
-
-```bash
 docker build -f docker/terminal_bench2/Dockerfile.openclaw-controller \
   -t alphadiana/tb2-openclaw-controller:latest .
 ```
 
-The checked-in example config assumes:
+## Runtime Model
 
-- a controller image contains `openclaw` and `docker`
-- `OPENAI_BASE_URL` / `OPENAI_API_KEY` are exported
-- `model_name` is set to the target provider model, for example `minimax-m2.5`
+AlphaDiana runs `terminal-bench-2` from the Docker-capable control side:
 
-This implementation replaces the older relay-only planner path. As of 2026-04-16, fresh strict smoke reruns on the current native controller code have passed for both `opencode` and `openclaw`.
+- AlphaDiana starts the task container.
+- AlphaDiana creates a local control workspace.
+- The workspace exposes `tb2-exec`, `tb2-copy-from`, `tb2-copy-to`, and `tb2-test`.
+- The task container remains the target environment only.
 
-## 2026-04-16 Controller Smoke Notes
+Mode-specific behavior:
 
-Single-task smoke runs against `db-wal-recovery` under `/tmp/terminal-bench-2-smoke-dbwal` now separate cleanly into runtime validation and task-quality validation.
+- `direct_llm`: multi-turn chat loop that emits `$ cmd` lines and `DONE`
+- `opencode`: native controller-container CLI runner
+- `openclaw`: native controller-container CLI runner
 
-Earlier controller checks showed that the control-side topology was viable but still had startup issues:
+For native agents, the workspace `tb2-test` helper is intentionally disabled and the outer harness runs the real verifier once at the end.
 
-- `direct_llm`: `tb2_directllm_controllercheck_20260416` completed end-to-end with `reward=0`.
-- `openclaw`: `tb2_openclaw_controllercheck3_20260416` reached scoring, but that run was still affected by an invalid CLI default (`verbose=normal`). After fixing controller defaults, `tb2_openclaw_controllercheck4_20260416` confirmed live controller-native execution with real `exec/read` tool calls; it was manually aborted before a final score was written.
-- `opencode`: `tb2_opencode_controllercheck3_20260416` confirmed controller-container execution, but the run was manually aborted after the agent kept looping on the disappearing `main.db-wal` file instead of converging on a fix. The earlier `tb2_opencode_controllercheck2_20260416` reached scoring and returned `reward=0`.
+## Smoke Runs
 
-Later on 2026-04-16, the native controller path was tightened further:
+Validate the smoke configs first:
 
-- `terminal_bench2_common` now snapshots `/app/main.db` and `/app/main.db-wal` into `./bootstrap/app/` plus untouched backups under `./bootstrap/original/` for `db-wal-recovery`.
-- Controller images now include `sqlite3`, `xxd`, and `file` so local diagnosis can happen without falling back to the task container.
-- Controller commands now run through `docker run --entrypoint /bin/bash -lc ...`, so the runtime no longer depends on whatever default entrypoint or command the controller image currently has.
-- `terminal_bench2_opencode` now launches the controller-side CLI via `node /usr/lib/node_modules/opencode-ai/bin/opencode`, which avoids the broken direct-exec path seen with the npm-installed wrapper in the controller container.
+```bash
+python -m alphadiana.cli validate configs/examples/terminal_bench2_directllm_minimax.yaml
+python -m alphadiana.cli validate configs/examples/terminal_bench2_opencode_minimax.yaml
+python -m alphadiana.cli validate configs/examples/terminal_bench2_openclaw_minimax.yaml
+```
 
-With those fixes in place, these later live proofs were observed:
+Run the three smoke configs:
 
-- `opencode`: `tb2_opencode_bootstrapcheck4_20260416` read `TASK.md` and `TASK_HINTS.md`, used the local `bootstrap/` snapshots, ran local `sqlite3`, noticed that opening `main.db` removed `bootstrap/app/main.db-wal`, restored the WAL from `bootstrap/original/`, and continued diagnosis. The run was manually aborted before verifier completion, so it does not count as a scored smoke result.
-- `openclaw`: `tb2_openclaw_bootstrapcheck5_20260416` completed local `onboard`, wrote a session JSONL under `.openclaw-home`, read `TASK.md` and `TASK_HINTS.md`, inspected both `bootstrap/app/` and `bootstrap/original/`, used local `sqlite3`, observed the WAL disappearing after database access, restored it from `bootstrap/original/`, and hex-inspected the WAL with `xxd`. The run was also manually aborted before verifier completion.
+```bash
+python -m alphadiana.cli run configs/examples/terminal_bench2_directllm_minimax.yaml --redo-all
+python -m alphadiana.cli run configs/examples/terminal_bench2_opencode_minimax.yaml --redo-all
+python -m alphadiana.cli run configs/examples/terminal_bench2_openclaw_minimax.yaml --redo-all
+```
 
-Those later runs answered the runtime question, but they were still manually aborted before scoring. The final 2026-04-16 strict reruns closed the loop:
+Smoke success means:
 
-- `tb2_opencode_scored6_20260416`: passed `1/1` with `reward=1`. `wall_time_sec=737.9s`.
-- `tb2_openclaw_scored6_20260416`: passed `1/1` with `reward=1`. `wall_time_sec=1200.7s`.
+- the task loads
+- the selected agent path runs
+- `/tests/test.sh` runs
+- a scored JSONL result is written
 
-Those final reruns also showed why earlier scored attempts had failed even after the agents solved the task:
+It does not mean the agent is competitive across the full benchmark.
 
-- Native agents kept calling `./tb2-test` themselves. Prompt guidance was not enough, so the native workspace helper is now replaced with a no-op stub and only the outer harness runs the real verifier.
-- `/tests/test.sh` itself can still print external-network errors from the upstream uv installer (`curl https://astral.sh/... | sh`), but the harness now pre-seeds a local `uvx` shim and `/root/.local/bin/env` in the task container, so the same `pytest` suite still executes and writes `reward.txt`.
+## Full Runs
 
-Those final reruns answer the runtime question:
+Validate the full-run configs first:
 
-- Runtime question: controller-side native execution is now working for both `opencode` and `openclaw` on the staged `db-wal-recovery` smoke task.
-- Task-quality question: for the current smoke task, both native agents now solve WAL recovery and pass the strict verifier. The remaining variability is verifier wall time, not agent startup or solver correctness.
+```bash
+python -m alphadiana.cli validate configs/full_runs/p25_full_terminal_bench2_directllm_minimax.yaml
+python -m alphadiana.cli validate configs/full_runs/p25_full_terminal_bench2_opencode_minimax.yaml
+python -m alphadiana.cli validate configs/full_runs/p25_full_terminal_bench2_openclaw_minimax.yaml
+```
+
+Run them:
+
+```bash
+python -m alphadiana.cli run configs/full_runs/p25_full_terminal_bench2_directllm_minimax.yaml --redo-all
+python -m alphadiana.cli run configs/full_runs/p25_full_terminal_bench2_opencode_minimax.yaml --redo-all
+python -m alphadiana.cli run configs/full_runs/p25_full_terminal_bench2_openclaw_minimax.yaml --redo-all
+```
+
+Recommended concurrency:
+
+- `direct_llm`: `max_concurrent: 4`
+- `opencode`: `max_concurrent: 2`
+- `openclaw`: `max_concurrent: 1`
+
+Adjust only if the local machine has enough Docker and API capacity.
 
 ## Result Interpretation
 
-terminal-bench-2 scoring is binary:
+The current AlphaDiana `terminal_bench2` scorer is binary:
 
-- `reward.txt == "1"` means the verifier passed.
-- Any other reward means the task failed.
+- `reward.txt == "1"` means pass
+- missing or non-`1` reward means fail
 
-For smoke testing, first confirm the pipeline writes a JSONL result with a populated score. Then inspect score quality separately.
+The JSONL `score` comes from that reward path.
+
+## Current Config Semantics
+
+Smoke configs:
+
+- live under `configs/examples/`
+- use `TERMINAL_BENCH2_SMOKE_DIR`
+- intentionally run one staged task
+
+Full-run configs:
+
+- live under `configs/full_runs/`
+- use `TERMINAL_BENCH2_DIR`
+- scan all task directories under that root
+
+For the current checked-in smoke setup, the canonical staged task is `db-wal-recovery`.
