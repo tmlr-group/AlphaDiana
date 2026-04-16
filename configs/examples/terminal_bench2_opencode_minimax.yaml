@@ -21,7 +21,7 @@ agent:
     api_key: ${OPENAI_API_KEY}
     tool_call: false
     streaming: false
-    solver_timeout_sec: 120
+    solver_timeout_sec: 1800
     timeout_sec: 900
     test_timeout_sec: 1200
 
