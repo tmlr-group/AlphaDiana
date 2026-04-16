@@ -30,6 +30,7 @@ docker build --network host -f moltbench/docker/Dockerfile.base -t tmlrgroup/alp
 docker build --network host -f moltbench/docker/Dockerfile.openclaw    -t tmlrgroup/alphadiana:openclaw .     # ~5 min
 docker build --network host -f moltbench/docker/Dockerfile.opencode    -t tmlrgroup/alphadiana:opencode .     # ~2 min
 docker build --network host -f moltbench/docker/Dockerfile.claude-code -t tmlrgroup/alphadiana:claude-code .  # ~2 min
+docker build --network host -f moltbench/docker/Dockerfile.zeroclaw   -t tmlrgroup/alphadiana:zeroclaw .    # ~5-10 min
 ```
 
 ### Step 2: Configure API Keys
@@ -66,12 +67,25 @@ python3 -m alphadiana.cli run configs/examples/moltbench_openclaw_smoke.local.ya
 
 # OpenCode (requires OPENAI_* keys)
 python3 -m alphadiana.cli run configs/examples/moltbench_opencode_smoke.local.yaml
+
+# ZeroClaw (requires OPENAI_* keys)
+python3 -m alphadiana.cli run configs/examples/moltbench_zeroclaw_smoke.local.yaml
 ```
 
 This runs **KernelBench L1 P001** (square matrix multiplication). Expected
 output: a per-execution artifact directory under
 `moltbench_artifacts_*/moltbench_L1_P001/sample_0/<execution_id>/`
 containing `results.json` with `correctness` and `speedup` fields.
+
+If you are specifically reproducing the ZeroClaw migration, use
+[`moltbench/docs/zeroclaw.md`](zeroclaw.md) instead of the root
+[`README.md`](../../README.md). The root README documents the general ROCK
+reasoning flow (for benchmarks such as AIME). The MoltBench ZeroClaw
+integration in this docs directory is still the Docker/task-runner path; the
+standard reasoning path now has its own example config at
+[`configs/examples/zeroclaw_aime2026.yaml`](../../configs/examples/zeroclaw_aime2026.yaml)
+and a dedicated tutorial at
+[`docs/tutorial_zeroclaw_aime2026.md`](../../docs/tutorial_zeroclaw_aime2026.md).
 
 Verified on **2026-04-08**:
 
@@ -100,13 +114,14 @@ patterns without requiring days of GPU time.
 
 ## Supported Agents
 
-MoltBench supports three LLM coding agents. Each agent runs inside its own
+MoltBench supports four LLM coding agents. Each agent runs inside its own
 Docker image and requires different API credentials:
 
 | Agent | Docker Image | API Keys Required | LLM | Config Example |
 |-------|-------------|-------------------|-----|----------------|
 | **OpenClaw** | `tmlrgroup/alphadiana:openclaw` | `OPENAI_API_KEY` + `OPENAI_BASE_URL` + `OPENAI_MODEL_NAME` | Any OpenAI-compatible (e.g., DeepSeek-chat) | `moltbench_openclaw_smoke.local.yaml` |
 | **OpenCode** | `tmlrgroup/alphadiana:opencode` | `OPENAI_API_KEY` + `OPENAI_BASE_URL` + `OPENAI_MODEL_NAME` | Any OpenAI-compatible (e.g., DeepSeek-chat) | `moltbench_opencode_smoke.local.yaml` |
+| **ZeroClaw** | `tmlrgroup/alphadiana:zeroclaw` | `OPENAI_API_KEY` + `OPENAI_BASE_URL` + `OPENAI_MODEL_NAME` | Any OpenAI-compatible (e.g., DeepSeek-chat) | `moltbench_zeroclaw_smoke.local.yaml` |
 | **Claude Code** | `tmlrgroup/alphadiana:claude-code` | `ANTHROPIC_API_KEY` or host `~/.claude` auth | Claude (Anthropic) | `moltbench_claude_code_codex.yaml` |
 
 **Switching agents** is done by choosing a different YAML config — no code
@@ -158,6 +173,7 @@ run_task.sh (entrypoint)
   |     claude-code)  claude --print --max-turns $N "$prompt"
   |     openclaw)     openclaw gateway -> curl SSE -> wait
   |     opencode)     opencode run --format json "$prompt"
+  |     zeroclaw)     zeroclaw agent -m "$prompt"
   +-- collect_artifacts()  <- EXIT trap (always runs, even on crash/timeout)
 ```
 
@@ -174,6 +190,7 @@ nvidia/cuda:12.8.0-devel-ubuntu22.04
         +-- tmlrgroup/alphadiana:claude-code   +0.3 GB  (Node.js + @anthropic-ai/claude-code)
         +-- tmlrgroup/alphadiana:openclaw      +2.5 GB  (Node.js + OpenClaw gateway)
         +-- tmlrgroup/alphadiana:opencode      +1.1 GB  (Node.js + opencode-ai)
+        +-- tmlrgroup/alphadiana:zeroclaw      +Rust-built ZeroClaw CLI layer
 ```
 
 ### Agent Alignment (Zero-Injection)

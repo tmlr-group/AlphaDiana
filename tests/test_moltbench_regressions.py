@@ -66,6 +66,18 @@ def test_run_task_opencode_fails_when_cli_outputs_error_record():
     assert 'if record.get("type") == "error":' in script
 
 
+def test_run_task_zeroclaw_uses_snake_case_config_keys():
+    script = Path("moltbench/docker/run_task.sh").read_text(encoding="utf-8")
+    assert "workspace_only = false" in script
+    assert "max_actions_per_hour = 200" in script
+    assert "max_tool_iterations = 100" in script
+    assert 'zeroclaw_provider="custom:${zeroclaw_api_base}"' in script
+    assert 'export ZEROCLAW_PROVIDER="${zeroclaw_provider}"' in script
+    assert "workspace-only" not in script
+    assert "max-actions-per-hour" not in script
+    assert "max-tool-iterations" not in script
+
+
 def test_bind_runtime_task_attaches_sample_and_unique_execution_id():
     task = BenchmarkTask(task_id="moltbench_L1_P007", problem="p", ground_truth={})
 
@@ -129,6 +141,64 @@ def test_moltbench_docker_isolates_artifacts_per_execution(monkeypatch, tmp_path
     assert copied_dirs == [path_a, path_b]
     assert json.loads((path_a / "results.json").read_text(encoding="utf-8"))["speedup"] == 2.0
     assert json.loads((path_b / "results.json").read_text(encoding="utf-8"))["speedup"] == 2.0
+
+
+def test_moltbench_docker_rewrites_kernelbench_setup_to_offline_file(monkeypatch, tmp_path):
+    captured: dict[str, str] = {}
+
+    def fake_run(cmd, timeout=None, **kwargs):
+        if cmd[:2] == ["docker", "logs"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="container logs\n", stderr="")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    def fake_docker_run(self, task_dir):
+        captured["task_json"] = Path(task_dir, "task.json").read_text(encoding="utf-8")
+        captured["problem_py"] = Path(task_dir, "problem.py").read_text(encoding="utf-8")
+        return "container123"
+
+    def fake_docker_cp(self, container_id, src, dst):
+        dst_path = Path(dst)
+        dst_path.mkdir(parents=True, exist_ok=True)
+        (dst_path / "results.json").write_text(
+            json.dumps({"correctness": "PASS", "speedup": 1.0}),
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr("alphadiana.agent.moltbench_docker._run", fake_run)
+    monkeypatch.setattr(MoltBenchDockerAgent, "_docker_run", fake_docker_run)
+    monkeypatch.setattr(MoltBenchDockerAgent, "_docker_wait", lambda self, container_id: 0)
+    monkeypatch.setattr(MoltBenchDockerAgent, "_docker_cp", fake_docker_cp)
+
+    agent = MoltBenchDockerAgent()
+    agent.setup({"agent_type": "zeroclaw", "output_dir": str(tmp_path)})
+
+    task = BenchmarkTask(
+        task_id="moltbench_L1_P001",
+        problem="optimize this kernel",
+        ground_truth={},
+        metadata={
+            "task_json": build_task_json(
+                level=1,
+                problem_id=1,
+                max_rounds=1,
+                backend="triton",
+                source="hf",
+                prompt="optimize this kernel",
+            ),
+            "source_code": "class Model:\n    pass\n",
+            "sample_index": 0,
+            "execution_id": "exec-offline",
+        },
+    )
+
+    response = agent.solve(task)
+    written = json.loads(captured["task_json"])
+
+    assert written["source"] == "file"
+    assert written["file_path"] == "/workspace/task/problem.py"
+    assert written["setup_cmd"][-4:] == ["--source", "file", "--file-path", "/workspace/task/problem.py"]
+    assert captured["problem_py"] == "class Model:\n    pass\n"
+    assert response.metadata["agent_type"] == "zeroclaw"
 
 
 def test_run_task_initializes_workdir_before_trap():
