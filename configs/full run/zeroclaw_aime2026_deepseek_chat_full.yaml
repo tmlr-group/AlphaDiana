@@ -1,0 +1,55 @@
+run_id: "zeroclaw_deepseek-chat_aime_2026_full_c30"
+
+agent:
+  name: zeroclaw
+  version: "0.6.9"
+  config:
+    model: "deepseek-chat"
+    api_base: "${OPENAI_BASE_URL}"
+    api_key: "${OPENAI_API_KEY}"
+    temperature: 0.0
+    rock_image: "zeroclaw-reasoning:0.6.9"
+    rock_memory: "4g"
+    rock_cpus: 1
+    rock_startup_timeout: 600
+    admin_base_url: "${ROCK_BASE_URL}"
+    proxy_base_url: "${ROCK_PROXY_URL}"
+    use_gateway_in_sandbox: false
+    request_timeout: 3600
+    max_tool_iterations: 30
+    max_actions_per_hour: 200
+    system_prompt: |
+      You are an expert problem solver. Use the available tools when they materially
+      reduce reasoning time or verify intermediate results.
+
+      Prefer the shortest path to a correct, checkable answer. For arithmetic,
+      counting, enumeration, or brute-force-friendly tasks, write a short Python
+      script early instead of doing long manual casework. Avoid repeated tool calls
+      that do not add new information.
+
+      When you have reached your final answer, you MUST present it in the
+      following format at the very end:
+
+      $$\boxed{your answer here}$$
+
+benchmark:
+  name: aime
+  config:
+    dataset: "MathArena/aime_2026"
+    split: "train"
+    max_tasks: 30
+
+sandbox: null
+
+task_retries: 6
+
+scorer:
+  name: math_verify
+  config:
+    tolerance: 1e-6
+
+max_concurrent: 1
+output_dir: "./results"
+metadata:
+  author: "alphadiana"
+  notes: "ZeroClaw full AIME 2026 run via ROCK sandbox CLI using deepseek-chat with rate-limit-safe sequential execution"

@@ -122,10 +122,25 @@ def test_zeroclaw_config_toml_uses_snake_case_fields():
     assert "workspace_only = false" in config_toml
     assert "max_actions_per_hour = 200" in config_toml
     assert "max_tool_iterations = 100" in config_toml
+    assert "default_temperature = 0.0" in config_toml
     assert 'default_provider = "custom:https://example.test/v1"' in config_toml
     assert "workspace-only" not in config_toml
     assert "max-actions-per-hour" not in config_toml
     assert "max-tool-iterations" not in config_toml
+
+
+def test_zeroclaw_config_toml_honors_explicit_temperature():
+    agent = ZeroClawAgent()
+    agent.setup({
+        "model": "demo-model",
+        "api_base": "https://example.test/v1",
+        "api_key": "sk-test",
+        "temperature": 0.2,
+    })
+
+    config_toml = agent._build_config_toml()
+
+    assert "default_temperature = 0.2" in config_toml
 
 
 def test_zeroclaw_local_solve_extracts_boxed_answer(monkeypatch):
@@ -227,6 +242,7 @@ def test_zeroclaw_gateway_mode_uses_rock_proxy(monkeypatch):
         "api_base": "https://example.test/v1",
         "api_key": "sk-test",
         "system_prompt": "Solve carefully.",
+        "temperature": 0.2,
         "use_gateway_in_sandbox": True,
         "gateway_token": "ZEROCLAW",
     })
@@ -256,6 +272,7 @@ def test_zeroclaw_gateway_mode_uses_rock_proxy(monkeypatch):
         assert url.endswith("/chat/completions")
         assert headers["Authorization"] == "bearer ZEROCLAW"
         assert json["messages"][0]["role"] == "system"
+        assert json["temperature"] == 0.2
         return SimpleNamespace(
             status_code=200,
             json=lambda: {
