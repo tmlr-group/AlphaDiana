@@ -133,6 +133,12 @@ class OpenClawRuntimeManager:
         self._embedding_api_base = config.get("embedding_api_base", "")
         self._embedding_api_key = config.get("embedding_api_key", "")
         self._workspace = config.get("workspace", "")
+        self._skip_bootstrap = config.get("skip_bootstrap")
+        self._context_injection = str(config.get("context_injection", "") or "").strip()
+        self._system_prompt_override = str(config.get("system_prompt_override", "") or "").strip()
+        self._tools_profile = str(config.get("tools_profile", "") or "").strip()
+        self._tools_allow = list(config.get("tools_allow", []) or [])
+        self._tools_deny = list(config.get("tools_deny", []) or [])
 
     def _resolve_config_path(self, path_str: str) -> Path:
         """Resolve config paths stably, independent of the current working directory."""
@@ -170,6 +176,8 @@ class OpenClawRuntimeManager:
     def _build_openclaw_config(self, base_config: dict | None = None) -> dict:
         """Build OpenClaw gateway config dict with optional embedding provider."""
         config: dict[str, Any] = deepcopy(base_config or {})
+        agents = config.setdefault("agents", {})
+        defaults = agents.setdefault("defaults", {})
         if self._embedding_api_base:
             models = config.setdefault("models", {})
             providers = models.setdefault("providers", {})
@@ -179,9 +187,22 @@ class OpenClawRuntimeManager:
                 "api": "openai",
             }
         if self._workspace:
-            agents = config.setdefault("agents", {})
-            defaults = agents.setdefault("defaults", {})
             defaults["workspace"] = self._workspace
+        if self._skip_bootstrap is not None:
+            defaults["skipBootstrap"] = bool(self._skip_bootstrap)
+        if self._context_injection:
+            defaults["contextInjection"] = self._context_injection
+        if self._system_prompt_override:
+            defaults["systemPromptOverride"] = self._system_prompt_override
+        if self._tools_profile:
+            tools = config.setdefault("tools", {})
+            tools["profile"] = self._tools_profile
+        if self._tools_allow:
+            tools = config.setdefault("tools", {})
+            tools["allow"] = list(self._tools_allow)
+        if self._tools_deny:
+            tools = config.setdefault("tools", {})
+            tools["deny"] = list(self._tools_deny)
 
         # Remove memory.enabled — incompatible with openclaw@2026.3.7
         memory = config.get("memory", {})
@@ -272,6 +293,10 @@ class OpenClawRuntimeManager:
                 workspace_file_contents[remote_path] = sandbox.read_text(remote_path)
             except Exception:
                 continue
+        artifact_collection_history = getattr(sandbox, "command_history", [])
+        sandbox_metadata = sandbox.metadata() if hasattr(sandbox, "metadata") else {}
+        if isinstance(sandbox_metadata, dict) and "command_history" in sandbox_metadata:
+            sandbox_metadata["artifact_collection_history"] = sandbox_metadata.pop("command_history")
 
         artifact_manifest = {
             "files": {
@@ -279,14 +304,15 @@ class OpenClawRuntimeManager:
                 "workspace_root": self._workspace_path,
             },
             "workspace_snapshot_paths": workspace_paths,
-            "command_history": getattr(sandbox, "command_history", []),
+            # These timings are for artifact-collection shell commands only.
+            "artifact_collection_history": artifact_collection_history,
         }
         return {
             "artifact_manifest": artifact_manifest,
             "gateway_log_excerpt": gateway_log,
             "workspace_snapshot_paths": workspace_paths,
             "workspace_file_contents": workspace_file_contents,
-            "sandbox_metadata": sandbox.metadata() if hasattr(sandbox, "metadata") else {},
+            "sandbox_metadata": sandbox_metadata,
         }
 
     def _prepare_runtime_files(self, sandbox: Any) -> Path:

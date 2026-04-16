@@ -1,9 +1,11 @@
 # SMOKE ONLY: deterministic 1-task config for path validation.
 # Full benchmark config: configs/full_runs/p25_full_terminal_bench2_opencode_minimax.yaml.
 #
-# OpenCode relay smoke for terminal-bench-2.
+# OpenCode native smoke for terminal-bench-2.
 # Requires:
 #   export TERMINAL_BENCH2_DIR=/path/to/terminal-bench-2
+#   docker build -f docker/terminal_bench2/Dockerfile.opencode-controller \
+#     -t alphadiana/tb2-opencode-controller:latest .
 
 run_id: "terminal_bench2_opencode_minimax_smoke"
 
@@ -22,6 +24,8 @@ agent:
     model_name: "minimax-m2.5"
     api_base: ${OPENAI_BASE_URL}
     api_key: ${OPENAI_API_KEY}
+    controller_mode: "docker"
+    controller_image: "alphadiana/tb2-opencode-controller:latest"
     tool_call: false
     streaming: false
     solver_timeout_sec: 1800
@@ -34,4 +38,4 @@ scorer:
 max_concurrent: 1
 output_dir: "./results/terminal_bench2_opencode_minimax_smoke"
 metadata:
-  notes: "OpenCode relay smoke for terminal-bench-2 via minimax-m2.5."
+  notes: "OpenCode native smoke for terminal-bench-2 via minimax-m2.5."

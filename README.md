@@ -130,6 +130,7 @@ alphadiana report results/
 ```
 
 For a full walkthrough, see [`docs/getting_started.md`](docs/getting_started.md).
+For the process and runbook index, see [`docs/README.md`](docs/README.md).
 For manual setup and troubleshooting, see [`docs/setup_detail.md`](docs/setup_detail.md).
 For external_benchmark GPU-kernel benchmarking, see [`external_benchmark/docs/README.md`](external_benchmark/docs/README.md).
 

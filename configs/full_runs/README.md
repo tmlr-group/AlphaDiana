@@ -10,9 +10,9 @@ The smoke configs under `configs/examples/` intentionally pin one task with `dat
 |---|---|---|---|
 | `direct_llm` | `p25_full_directllm_minimax_imo_answerbench.yaml` | `p25_full_directllm_minimax_hle.yaml` | `p25_full_terminal_bench2_directllm_minimax.yaml` |
 | `opencode` | `p25_full_opencode_minimax_imo_answerbench.yaml` | `p25_full_opencode_minimax_hle.yaml` | `p25_full_terminal_bench2_opencode_minimax.yaml` |
-| `openclaw` | `p25_full_openclaw_minimax_imo_answerbench.yaml` | `p25_full_openclaw_minimax_hle.yaml` | unsupported as of 2026-04-16 |
+| `openclaw` | `p25_full_openclaw_minimax_imo_answerbench.yaml` | `p25_full_openclaw_minimax_hle.yaml` | native path implemented, no full-run config yet |
 
-`openclaw` x `terminal-bench-2` is intentionally absent because the strict smoke run produced no visible planner output within `1800` seconds.
+`openclaw` x `terminal-bench-2` is still absent from `configs/full_runs/` because the older relay path failed strict smoke, and the newer native CLI path has not yet completed a fresh live rerun.
 
 ## Common Setup
 

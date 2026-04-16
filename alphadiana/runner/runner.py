@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 OPENCLAW_CONCURRENCY_PER_SANDBOX = 1
 _OPENCLAW_PROFILE_CACHE_PATH = Path(".cache/openclaw_startup_profiles.json")
-OPENCLAW_RUNTIME_AGENT_NAMES = {"openclaw", "terminal_bench2_openclaw"}
+OPENCLAW_RUNTIME_AGENT_NAMES = {"openclaw"}
 
 
 def _build_openclaw_profile_cache_key(config: "ExperimentConfig", admin_base_url: str) -> str:

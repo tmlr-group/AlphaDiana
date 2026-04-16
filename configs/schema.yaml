@@ -11,19 +11,42 @@ agent:
   version: string     # Pinned version tag or "latest"
   config:             # Pass-through config for the agent (model settings, etc.)
     model: string
+    model_name: string
     api_base: string
     gateway_token: string           # OpenClaw gateway auth token (default: "OPENCLAW")
     rock_agent_config_path: string  # Path to ROCK agent config YAML
     openclaw_config_path: string    # Path to OpenClaw gateway config JSON
+    openclaw_bin: string
+    opencode_bin: string
     api_key: string
     temperature: float
     max_tokens: integer
     max_attempts: integer           # Retry attempts for OpenClaw (default: 3)
     request_timeout: float          # HTTP request timeout in seconds (default: 600)
+    timeout_sec: integer
+    test_timeout_sec: integer
+    solver_timeout_sec: integer
+    onboard_timeout_sec: integer
+    logs_base_dir: string
+    controller_mode: string
+    controller_image: string
+    controller_network: string
+    controller_mount_docker_socket: boolean
     agent_md_mode: string           # Agent.md customization: "none", "append", "override" (default: "none")
     agent_md_content: string        # Content for agent.md injection
     embedding_api_base: string      # Embedding model API base URL
     embedding_api_key: string       # Embedding model API key
+    stream: boolean                 # Stream responses from the backend when supported
+    streaming: boolean              # CLI agents: provider streaming toggle
+    skip_bootstrap: boolean         # OpenClaw: skip workspace bootstrap injection
+    context_injection: string       # OpenClaw: workspace bootstrap injection policy
+    system_prompt_override: string  # OpenClaw: replace the gateway system prompt
+    tools_profile: string           # OpenClaw: gateway tool profile, e.g. "minimal"
+    tools_allow: [string]           # OpenClaw: explicit tool allowlist
+    tools_deny: [string]            # OpenClaw: explicit tool denylist
+    tool_call: boolean
+    thinking: string
+    verbose: string
 
 # benchmark: (required) Benchmark configuration.
 benchmark:

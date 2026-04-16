@@ -1,0 +1,19 @@
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        bash ca-certificates curl docker.io file git gnupg python3 python3-pip sqlite3 xxd \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get update && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN npm install -g openclaw@2026.3.7
+
+WORKDIR /workspace
+
+RUN openclaw --version || true
+
+CMD ["bash"]

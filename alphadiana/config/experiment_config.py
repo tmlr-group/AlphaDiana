@@ -28,7 +28,13 @@ def _apply_agent_env_defaults(agent_name: str, agent_config: Any) -> dict:
 
     resolved = copy.deepcopy(agent_config)
 
-    if agent_name in {"direct_llm", "opencode", "terminal_bench2_docker", "terminal_bench2_opencode"}:
+    if agent_name in {
+        "direct_llm",
+        "opencode",
+        "terminal_bench2_docker",
+        "terminal_bench2_opencode",
+        "terminal_bench2_openclaw",
+    }:
         env_defaults = {
             "model": "OPENAI_MODEL_NAME",
             "api_base": "OPENAI_BASE_URL",
@@ -47,7 +53,7 @@ def _apply_agent_env_defaults(agent_name: str, agent_config: Any) -> dict:
             env_value = os.environ.get(env_var, "").strip()
             if env_value:
                 resolved[key] = env_value
-        if agent_name in {"opencode", "terminal_bench2_opencode"}:
+        if agent_name in {"opencode", "terminal_bench2_opencode", "terminal_bench2_openclaw"}:
             model_name = str(resolved.get("model_name", "") or "").strip()
             if not model_name:
                 env_value = os.environ.get("OPENAI_MODEL_NAME", "").strip()
