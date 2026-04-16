@@ -1,6 +1,10 @@
 # AlphaDiana Evaluation Tutorial: ZeroClaw + AIME 2026
 
-This tutorial covers two execution modes for **ZeroClaw on AIME 2026**:
+This tutorial covers two execution modes for **ZeroClaw on AIME 2026**.
+
+If you only want the shortest working command sequence, start with
+[`zeroclaw_aime2026_runbook.md`](zeroclaw_aime2026_runbook.md) and come back to
+this tutorial for the longer explanation.
 
 | Mode | When to use | Requires |
 |------|-------------|----------|
