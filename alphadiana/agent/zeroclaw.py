@@ -118,6 +118,8 @@ class ZeroClawAgent(Agent):
             "OPENAI_API_KEY",
             default=str(config.get("api_key", "EMPTY")),
         )
+        raw_temperature = config.get("temperature", 0.0)
+        self._temperature = float(raw_temperature if raw_temperature not in ("", None) else 0.0)
         self._request_timeout = int(config.get("request_timeout", 1200))
         self._max_tool_iterations = int(config.get("max_tool_iterations", 100))
         self._max_actions_per_hour = int(config.get("max_actions_per_hour", 200))
@@ -207,7 +209,7 @@ class ZeroClawAgent(Agent):
         return (
             f"default_provider = {_quote_toml(self._provider)}\n"
             f"default_model = {_quote_toml(self._model)}\n\n"
-            "default_temperature = 0.7\n"
+            f"default_temperature = {self._temperature}\n"
             "model_routes = []\n"
             "embedding_routes = []\n\n"
             "[model_providers]\n\n"
@@ -556,7 +558,7 @@ class ZeroClawAgent(Agent):
         request_payload = {
             "model": self._model,
             "messages": request_messages,
-            "temperature": 0.0,
+            "temperature": self._temperature,
             "stream": False,
         }
 
