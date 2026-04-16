@@ -24,6 +24,7 @@ The benchmark loads from HuggingFace. If the default mirror is slow, set `HF_END
 | `direct_llm` | supported | `configs/full_runs/p25_full_directllm_minimax_imo_answerbench.yaml` |
 | `opencode` | supported | `configs/full_runs/p25_full_opencode_minimax_imo_answerbench.yaml` |
 | `openclaw` | supported | `configs/full_runs/p25_full_openclaw_minimax_imo_answerbench.yaml` |
+| `zeroclaw` | supported | `configs/full_runs/p25_full_zeroclaw_minimax_imo_answerbench.yaml` |
 
 The corresponding smoke configs remain under `configs/examples/` and pin `dataset_index: 367`, `max_tasks: 1`.
 
@@ -33,6 +34,7 @@ The corresponding smoke configs remain under `configs/examples/` and pin `datase
 python -m alphadiana.cli run configs/full_runs/p25_full_directllm_minimax_imo_answerbench.yaml --redo-all
 python -m alphadiana.cli run configs/full_runs/p25_full_opencode_minimax_imo_answerbench.yaml --redo-all
 python -m alphadiana.cli run configs/full_runs/p25_full_openclaw_minimax_imo_answerbench.yaml --redo-all
+python -m alphadiana.cli run configs/full_runs/p25_full_zeroclaw_minimax_imo_answerbench.yaml --redo-all
 ```
 
 ## DirectLLM
@@ -65,6 +67,15 @@ python -m alphadiana.cli run configs/examples/openclaw_minimax_imo_answerbench.y
 ```
 
 ROCK services must be healthy before this run. `scripts/activate.sh` loads the local ROCK port configuration.
+
+## ZeroClaw
+
+ZeroClaw uses the same ROCK auto-deploy path as the PR23 AIME integration.
+
+```bash
+python -m alphadiana.cli run configs/examples/zeroclaw_imo_answerbench.yaml \
+  -o run_id=imo_zeroclaw_smoke
+```
 
 ## Smoke Selection
 

@@ -12,10 +12,12 @@ class ConfigValidator:
     OPENCLAW_RUNTIME_AGENTS = {"openclaw"}
     API_AGENTS = OPENCLAW_RUNTIME_AGENTS | {
         "direct_llm",
+        "zeroclaw",
         "opencode",
         "terminal_bench2_docker",
         "terminal_bench2_opencode",
         "terminal_bench2_openclaw",
+        "terminal_bench2_zeroclaw",
     }
 
     def validate(self, config: ExperimentConfig) -> list[str]:
@@ -50,6 +52,7 @@ class ConfigValidator:
                 config.agent_config.get("rock_agent_config_path")
                 and config.agent_config.get("openclaw_config_path")
             )
+            has_zeroclaw_auto_deploy = bool(config.agent_config.get("rock_image"))
             if config.agent_name in self.OPENCLAW_RUNTIME_AGENTS:
                 if has_api_base or has_auto_deploy:
                     pass
@@ -58,6 +61,14 @@ class ConfigValidator:
                         f"agent '{config.agent_name}' requires 'api_base' or "
                         "'rock_agent_config_path' + 'openclaw_config_path' in agent_config "
                         "(auto-deploy mode)"
+                    )
+            elif config.agent_name == "zeroclaw":
+                if has_api_base or has_zeroclaw_auto_deploy:
+                    pass
+                else:
+                    errors.append(
+                        "agent 'zeroclaw' requires 'api_base' in agent_config or "
+                        "'rock_image' for ROCK auto-deploy mode"
                     )
             elif not has_api_base:
                 errors.append(

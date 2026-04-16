@@ -73,8 +73,12 @@ def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
 
     _warn_proxy()
 
-    # Pre-flight: verify ROCK services are reachable for openclaw runs.
-    if config.agent_name in _OPENCLAW_RUNTIME_AGENTS:
+    # Pre-flight: verify ROCK services are reachable for ROCK-backed runs.
+    # openclaw always needs ROCK; zeroclaw only needs it in auto-deploy mode (rock_image set).
+    _zeroclaw_needs_rock = (
+        config.agent_name == "zeroclaw" and bool(config.agent_config.get("rock_image"))
+    )
+    if config.sandbox_name == "rock" or config.agent_name == "openclaw" or _zeroclaw_needs_rock:
         from alphadiana.utils.rock_ports import resolve_rock_ports_from_env, check_rock_services
         ports = resolve_rock_ports_from_env()
         click.echo(f"Pre-flight: checking ROCK services (admin={ports.admin_port}, proxy={ports.proxy_port}, redis={ports.redis_port})...")

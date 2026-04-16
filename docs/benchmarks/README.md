@@ -2,7 +2,7 @@
 
 This directory contains user-facing runbooks for the PR25 benchmarks.
 
-Each benchmark document describes prerequisites, supported execution modes, example configs, and smoke-test commands:
+Each benchmark document describes prerequisites, supported execution modes, example configs, and smoke-test commands. PR23/PR25 integration now covers `zeroclaw` on all three runbooks as well:
 
 - [IMO-AnswerBench](imo-answerbench.md)
 - [HLE](hle.md)

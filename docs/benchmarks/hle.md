@@ -30,6 +30,7 @@ If the dataset is already cached locally, the loader can run without forcing `HF
 | `direct_llm` | supported | `configs/full_runs/p25_full_directllm_minimax_hle.yaml` |
 | `opencode` | supported | `configs/full_runs/p25_full_opencode_minimax_hle.yaml` |
 | `openclaw` | supported | `configs/full_runs/p25_full_openclaw_minimax_hle.yaml` |
+| `zeroclaw` | supported | `configs/full_runs/p25_full_zeroclaw_minimax_hle.yaml` |
 
 The full configs run the supported HLE `multipleChoice` subset. Other HLE answer types are not included in the current exact-match scoring path.
 
@@ -41,6 +42,7 @@ The corresponding smoke configs remain under `configs/examples/` and pin `datase
 python -m alphadiana.cli run configs/full_runs/p25_full_directllm_minimax_hle.yaml --redo-all
 python -m alphadiana.cli run configs/full_runs/p25_full_opencode_minimax_hle.yaml --redo-all
 python -m alphadiana.cli run configs/full_runs/p25_full_openclaw_minimax_hle.yaml --redo-all
+python -m alphadiana.cli run configs/full_runs/p25_full_zeroclaw_minimax_hle.yaml --redo-all
 ```
 
 ## DirectLLM
@@ -67,6 +69,16 @@ python -m alphadiana.cli run configs/examples/openclaw_minimax_hle.yaml \
 ```
 
 OpenClaw HLE responses can take several minutes after the gateway returns HTTP 200. Wait for artifact collection and result writing before classifying the run as stuck.
+
+## ZeroClaw
+
+ZeroClaw now consumes HLE attachments by writing them into the workspace under
+`attachments/` and mentioning them in the task prompt.
+
+```bash
+python -m alphadiana.cli run configs/examples/zeroclaw_hle.yaml \
+  -o run_id=hle_zeroclaw_smoke
+```
 
 ## Smoke Selection
 

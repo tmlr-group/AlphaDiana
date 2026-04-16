@@ -11,6 +11,7 @@ Use it for local AlphaDiana evaluation and smoke validation. It is not a claim o
 | `direct_llm` | `configs/examples/terminal_bench2_directllm_minimax.yaml` | `configs/full_runs/p25_full_terminal_bench2_directllm_minimax.yaml` |
 | `opencode` | `configs/examples/terminal_bench2_opencode_minimax.yaml` | `configs/full_runs/p25_full_terminal_bench2_opencode_minimax.yaml` |
 | `openclaw` | `configs/examples/terminal_bench2_openclaw_minimax.yaml` | `configs/full_runs/p25_full_terminal_bench2_openclaw_minimax.yaml` |
+| `zeroclaw` | `configs/examples/terminal_bench2_zeroclaw_minimax.yaml` | `configs/full_runs/p25_full_terminal_bench2_zeroclaw_minimax.yaml` |
 
 All three paths use the same local AlphaDiana `terminal_bench2` benchmark loader and scorer.
 
@@ -32,7 +33,7 @@ You also need:
 - Docker
 - a local `terminal-bench` task checkout
 - pre-pulled task images
-- controller images for `opencode` and `openclaw`
+- controller images for `opencode`, `openclaw`, and `zeroclaw`
 
 ## Prepare Tasks
 
@@ -96,6 +97,9 @@ docker build -f docker/terminal_bench2/Dockerfile.opencode-controller \
 
 docker build -f docker/terminal_bench2/Dockerfile.openclaw-controller \
   -t alphadiana/tb2-openclaw-controller:latest .
+
+docker build -f docker/terminal_bench2/Dockerfile.zeroclaw-controller \
+  -t alphadiana/tb2-zeroclaw-controller:latest .
 ```
 
 ## Runtime Model
@@ -112,6 +116,7 @@ Mode-specific behavior:
 - `direct_llm`: multi-turn chat loop that emits `$ cmd` lines and `DONE`
 - `opencode`: native controller-container CLI runner
 - `openclaw`: native controller-container CLI runner
+- `zeroclaw`: native controller-container CLI runner
 
 For native agents, the workspace `tb2-test` helper is intentionally disabled and the outer harness runs the real verifier once at the end.
 
@@ -123,6 +128,7 @@ Validate the smoke configs first:
 python -m alphadiana.cli validate configs/examples/terminal_bench2_directllm_minimax.yaml
 python -m alphadiana.cli validate configs/examples/terminal_bench2_opencode_minimax.yaml
 python -m alphadiana.cli validate configs/examples/terminal_bench2_openclaw_minimax.yaml
+python -m alphadiana.cli validate configs/examples/terminal_bench2_zeroclaw_minimax.yaml
 ```
 
 Run the three smoke configs:
@@ -131,6 +137,7 @@ Run the three smoke configs:
 python -m alphadiana.cli run configs/examples/terminal_bench2_directllm_minimax.yaml --redo-all
 python -m alphadiana.cli run configs/examples/terminal_bench2_opencode_minimax.yaml --redo-all
 python -m alphadiana.cli run configs/examples/terminal_bench2_openclaw_minimax.yaml --redo-all
+python -m alphadiana.cli run configs/examples/terminal_bench2_zeroclaw_minimax.yaml --redo-all
 ```
 
 Smoke success means:
@@ -150,6 +157,7 @@ Validate the full-run configs first:
 python -m alphadiana.cli validate configs/full_runs/p25_full_terminal_bench2_directllm_minimax.yaml
 python -m alphadiana.cli validate configs/full_runs/p25_full_terminal_bench2_opencode_minimax.yaml
 python -m alphadiana.cli validate configs/full_runs/p25_full_terminal_bench2_openclaw_minimax.yaml
+python -m alphadiana.cli validate configs/full_runs/p25_full_terminal_bench2_zeroclaw_minimax.yaml
 ```
 
 Run them:
@@ -158,6 +166,7 @@ Run them:
 python -m alphadiana.cli run configs/full_runs/p25_full_terminal_bench2_directllm_minimax.yaml --redo-all
 python -m alphadiana.cli run configs/full_runs/p25_full_terminal_bench2_opencode_minimax.yaml --redo-all
 python -m alphadiana.cli run configs/full_runs/p25_full_terminal_bench2_openclaw_minimax.yaml --redo-all
+python -m alphadiana.cli run configs/full_runs/p25_full_terminal_bench2_zeroclaw_minimax.yaml --redo-all
 ```
 
 Recommended concurrency:
@@ -165,6 +174,7 @@ Recommended concurrency:
 - `direct_llm`: `max_concurrent: 4`
 - `opencode`: `max_concurrent: 2`
 - `openclaw`: `max_concurrent: 1`
+- `zeroclaw`: `max_concurrent: 1`
 
 Adjust only if the local machine has enough Docker and API capacity.
 
