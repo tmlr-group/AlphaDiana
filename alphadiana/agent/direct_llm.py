@@ -7,6 +7,7 @@ agentic orchestration (no tool calling, no multi-turn, no code execution).
 """
 from __future__ import annotations
 
+import base64
 import logging
 import os
 import random
@@ -157,10 +158,23 @@ class DirectLLMAgent(Agent):
         self._resolved_max_tokens = 65536
         return self._resolved_max_tokens
 
+    _IMAGE_TOKEN_ESTIMATE = 765
+
     def _estimate_prompt_tokens(self, messages: list[dict]) -> int:
-        """Rough token estimate: ~4 chars per token (conservative)."""
-        total_chars = sum(len(m.get("content", "")) for m in messages)
-        return total_chars // 3  # slightly conservative to avoid overflow
+        """Rough token estimate: ~4 chars per token for text, 765 per image."""
+        total_chars = 0
+        image_tokens = 0
+        for m in messages:
+            c = m.get("content", "")
+            if isinstance(c, str):
+                total_chars += len(c)
+            elif isinstance(c, list):
+                for part in c:
+                    if isinstance(part, dict) and part.get("type") == "text":
+                        total_chars += len(part.get("text", ""))
+                    elif isinstance(part, dict) and part.get("type") == "image_url":
+                        image_tokens += self._IMAGE_TOKEN_ESTIMATE
+        return total_chars // 3 + image_tokens
 
     def _cap_max_tokens(self, max_tokens: int, messages: list[dict]) -> int:
         """Cap max_tokens so that prompt + output stays within model context.
@@ -194,9 +208,24 @@ class DirectLLMAgent(Agent):
 
         start = time.time()
 
+        user_content: Any = task.problem
+        if task.attachments:
+            parts: list[dict[str, Any]] = [{"type": "text", "text": task.problem}]
+            img_keys = sorted(k for k in task.attachments if not k.endswith("_mime"))
+            for key in img_keys:
+                img_bytes = task.attachments[key]
+                mime_key = f"{key}_mime"
+                mime = task.attachments.get(mime_key, b"image/png").decode()
+                b64 = base64.b64encode(img_bytes).decode()
+                parts.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{mime};base64,{b64}"},
+                })
+            user_content = parts
+
         messages = [
             {"role": "system", "content": self._system_prompt},
-            {"role": "user", "content": task.problem},
+            {"role": "user", "content": user_content},
         ]
         request_kwargs: dict[str, Any] = {
             "model": self._model,
