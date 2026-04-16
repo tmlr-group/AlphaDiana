@@ -15,6 +15,7 @@ class _FakeSandbox:
     def __init__(self, *, fail_read_prefixes: tuple[str, ...] = ()) -> None:
         self._files: dict[str, str] = {}
         self.commands: list[str] = []
+        self.long_running_commands: list[tuple[str, int | None, int]] = []
         self._fail_read_prefixes = fail_read_prefixes
 
     def execute(self, command: str):
@@ -37,6 +38,16 @@ class _FakeSandbox:
                 return type("Result", (), {"exit_code": 0, "stdout": self._files[filename], "stderr": ""})()
             return type("Result", (), {"exit_code": 1, "stdout": "", "stderr": "not found"})()
         return type("Result", (), {"exit_code": 0, "stdout": "", "stderr": ""})()
+
+    def execute_long_running(
+        self,
+        command: str,
+        *,
+        wait_timeout: int | None = None,
+        wait_interval: int = 10,
+    ):
+        self.long_running_commands.append((command, wait_timeout, wait_interval))
+        return self.execute(command)
 
     def upload(self, filename: str, content: bytes) -> None:
         self._files[filename] = content.decode("utf-8")
@@ -174,6 +185,11 @@ def test_zeroclaw_sandbox_solve_uses_uploaded_workspace_and_returns_answer():
     assert response.metadata["workspace_dir"].endswith("/workspace")
     assert 'level = "full"' in sandbox.read_text(config_path)
     assert "What is 40+2?" in sandbox.read_text(task_path)
+    assert len(sandbox.long_running_commands) == 1
+    long_running_command, wait_timeout, wait_interval = sandbox.long_running_commands[0]
+    assert "zeroclaw agent -m" in long_running_command
+    assert wait_timeout == agent._request_timeout + 60
+    assert wait_interval == 10
     assert any("zeroclaw agent -m" in command for command in sandbox.commands)
     assert any(f"cat {task_path}" in command for command in sandbox.commands)
     assert any("env " in command and "bash -lc" in command for command in sandbox.commands)
@@ -313,6 +329,7 @@ def test_zeroclaw_gateway_mode_falls_back_to_direct_sandbox(monkeypatch):
     assert response.answer == "42"
     assert response.metadata["gateway_mode"] == "rock-proxy-fallback-to-cli"
     assert "http proxy failed" in response.metadata["gateway_fallback_reason"]
+    assert sandbox.long_running_commands
 
 
 def test_zeroclaw_gateway_mode_falls_back_to_direct_sandbox_on_transport_error(monkeypatch):
