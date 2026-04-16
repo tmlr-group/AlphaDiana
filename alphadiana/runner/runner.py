@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import logging
+import queue
 import threading
 import time
 from dataclasses import replace
@@ -584,6 +585,11 @@ class Runner:
         if self.sandbox is not None and pool is None:
             logger.info("Creating shared sandbox session for sequential execution")
             shared_session = self.sandbox.create_session()
+        predeployed_session_queue = None
+        if predeployed_sessions:
+            predeployed_session_queue = queue.Queue()
+            for session in predeployed_sessions:
+                predeployed_session_queue.put(session)
 
         def _reset_predeployed_session(sandbox_id: str, task_id: str) -> None:
             if not reset_predeployed_between_tasks or not sandbox_id:
@@ -612,9 +618,13 @@ class Runner:
             # Acquire sandbox session: from pool (concurrent) or shared (sequential).
             sandbox_session = None
             used_pool = False
+            used_predeployed_pool = False
             if pool is not None:
                 sandbox_session = pool.acquire()
                 used_pool = True
+            elif predeployed_session_queue is not None:
+                sandbox_session = predeployed_session_queue.get()
+                used_predeployed_pool = True
             elif shared_session is not None:
                 sandbox_session = shared_session
             response_sandbox_id = ""
@@ -715,7 +725,9 @@ class Runner:
                     _reset_predeployed_session(response_sandbox_id, task.task_id)
                 if sandbox_session is not None:
                     try:
-                        if used_pool:
+                        if used_predeployed_pool:
+                            predeployed_session_queue.put(sandbox_session)
+                        elif used_pool:
                             pool.release(sandbox_session)
                         elif shared_session is not None:
                             # Shared session: reset for next task, don't close.

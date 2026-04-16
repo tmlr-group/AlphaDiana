@@ -466,7 +466,15 @@ class ZeroClawAgent(Agent):
         env = self._build_env(paths["home_dir"])
         version_output = self._ensure_sandbox_binary(sandbox, env)
         run_command = self._wrap_shell_command(self._build_run_command(paths), env)
-        result = sandbox.execute(run_command)
+        execute_long_running = getattr(sandbox, "execute_long_running", None)
+        if execute_long_running is not None:
+            result = execute_long_running(
+                run_command,
+                wait_timeout=self._request_timeout + 60,
+                wait_interval=10,
+            )
+        else:
+            result = sandbox.execute(run_command)
         raw_output = self._read_sandbox_file(sandbox, paths["stdout_path"]).strip()
         raw_stderr = self._read_sandbox_file(sandbox, paths["stderr_path"]).strip()
 
