@@ -224,7 +224,9 @@ alphadiana run configs/examples/zeroclaw_aime2026.yaml
 `source scripts/rock_env.sh` before `alphadiana run` so the example YAML
 resolves the local ROCK URLs correctly.
 
-For both modes, config details, and the validated smoke run, see
+For copy-paste commands, see
+[`docs/zeroclaw_aime2026_runbook.md`](docs/zeroclaw_aime2026_runbook.md).
+For config details, architecture notes, and the validated smoke run, see
 [`docs/tutorial_zeroclaw_aime2026.md`](docs/tutorial_zeroclaw_aime2026.md).
 
 ### Run a direct LLM baseline
