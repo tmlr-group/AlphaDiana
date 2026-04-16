@@ -28,7 +28,7 @@ def _apply_agent_env_defaults(agent_name: str, agent_config: Any) -> dict:
 
     resolved = copy.deepcopy(agent_config)
 
-    if agent_name == "direct_llm":
+    if agent_name in {"direct_llm", "zeroclaw"}:
         env_defaults = {
             "model": "OPENAI_MODEL_NAME",
             "api_base": "OPENAI_BASE_URL",
