@@ -38,6 +38,50 @@ def _run(cmd: list[str], timeout: int | None = None, **kwargs) -> subprocess.Com
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kwargs)
 
 
+def _prepare_task_payload(task: BenchmarkTask, task_dir: str) -> dict[str, Any]:
+    """Materialize task.json and optional offline source files for the container."""
+    task_json = dict(task.metadata.get("task_json", {}))
+    if task.problem and "prompt" not in task_json:
+        task_json["prompt"] = task.problem
+
+    source_code = task.metadata.get("source_code")
+    if source_code and _is_kernelbench_setup_cmd(task_json.get("setup_cmd")):
+        source_path = Path(task_dir) / "problem.py"
+        source_path.write_text(str(source_code), encoding="utf-8")
+
+        level = str(task_json.get("level", 0))
+        problem_id = str(task_json.get("problem_id", 0))
+        backend = str(task_json.get("backend", "triton"))
+        task_json["source"] = "file"
+        task_json["file_path"] = "/workspace/task/problem.py"
+        task_json["setup_cmd"] = [
+            "python3",
+            "kernelbench/bridge.py",
+            "setup",
+            "--level",
+            level,
+            "--problem",
+            problem_id,
+            "--backend",
+            backend,
+            "--source",
+            "file",
+            "--file-path",
+            "/workspace/task/problem.py",
+        ]
+
+    return task_json
+
+
+def _is_kernelbench_setup_cmd(cmd: Any) -> bool:
+    """Return True when setup_cmd is the standard bridge.py setup invocation."""
+    return (
+        isinstance(cmd, list)
+        and len(cmd) >= 3
+        and cmd[:3] == ["python3", "kernelbench/bridge.py", "setup"]
+    )
+
+
 @register_agent("moltbench_docker")
 class MoltBenchDockerAgent(Agent):
     """Agent that runs optimization inside a GPU Docker container.
@@ -111,9 +155,7 @@ class MoltBenchDockerAgent(Agent):
 
         # 1. Prepare task directory
         task_dir = tempfile.mkdtemp(prefix=f"moltbench_{task.task_id}_")
-        task_json = dict(task.metadata.get("task_json", {}))
-        if task.problem and "prompt" not in task_json:
-            task_json["prompt"] = task.problem
+        task_json = _prepare_task_payload(task, task_dir)
         task_json_path = Path(task_dir) / "task.json"
         task_json_path.write_text(json.dumps(task_json, indent=2), encoding="utf-8")
 

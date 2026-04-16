@@ -1,0 +1,51 @@
+# Local MoltBench smoke test — ZeroClaw on a single problem
+#
+# ZeroClaw is a Rust-based lightweight AI assistant (~5MB binary, <10ms startup).
+# It runs in single-shot agent CLI mode with tool calling.
+#
+# Notes:
+#   - Set OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL_NAME before running.
+#   - ZeroClaw can take 10-20 minutes per problem for complex kernels.
+#   - Adjust ZEROCLAW_TIMEOUT_SEC for slower providers.
+#
+# Build the Docker image first:
+#   docker build -f moltbench/docker/Dockerfile.zeroclaw -t tmlrgroup/alphadiana:zeroclaw .
+#
+# Run:
+#   alphadiana run configs/examples/moltbench_zeroclaw_smoke.local.yaml
+
+task: kernelbench
+run_id: "moltbench-zeroclaw-smoke-local-L1-P001"
+
+agent:
+  name: moltbench_docker
+  version: "1.0"
+  config:
+    agent_type: zeroclaw
+    image_prefix: tmlrgroup/alphadiana
+    request_timeout: 1500
+    gpus: "device=0"
+    network_mode: "host"
+    output_dir: "./moltbench_artifacts_zeroclaw_smoke_local"
+    env:
+      OPENAI_API_KEY: ""
+      OPENAI_BASE_URL: ""
+      OPENAI_MODEL_NAME: "deepseek-chat"
+      ZEROCLAW_TIMEOUT_SEC: "1200"
+
+benchmark:
+  name: moltbench
+  config:
+    levels: [1]
+    problems: "1"
+    max_rounds: 2
+    backend: triton
+
+scorer:
+  name: moltbench
+  config:
+    thresholds: [1.0, 1.5, 2.0, 3.0, 5.0]
+    score_mode: "final"
+
+max_concurrent: 1
+output_dir: "./results_zeroclaw_smoke_local"

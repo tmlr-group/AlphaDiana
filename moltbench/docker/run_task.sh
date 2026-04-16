@@ -6,10 +6,11 @@
 #     {"level": 1, "problem_id": 1, "max_rounds": 10, "backend": "triton"}
 #
 # Environment variables:
-#   MOLTBENCH_AGENT — which agent to launch: "claude-code" | "openclaw"
+#   MOLTBENCH_AGENT — which agent to launch: "claude-code" | "openclaw" | "opencode" | "zeroclaw"
 #   ANTHROPIC_API_KEY — for Claude Code
-#   OPENAI_API_KEY / OPENAI_BASE_URL / OPENAI_MODEL_NAME — for OpenClaw
+#   OPENAI_API_KEY / OPENAI_BASE_URL / OPENAI_MODEL_NAME — for OpenClaw / OpenCode / ZeroClaw
 #   OPENCLAW_GATEWAY_TOKEN — gateway auth token (default: MOLTBENCH)
+#   ZEROCLAW_TIMEOUT_SEC — max seconds for zeroclaw agent (default: 1200)
 #   MAX_ROUNDS — override max_rounds from task.json (optional)
 #
 # Produces:
@@ -214,6 +215,14 @@ collect_artifacts() {
     for oc_dir in /root/.openclaw /tmp/oc_home; do
         if [[ -d "$oc_dir" ]]; then
             find "$oc_dir" -name "*.jsonl" -exec cp {} "$ARTIFACTS_DIR/" \; 2>/dev/null || true
+        fi
+    done
+    # ZeroClaw session files
+    for zc_dir in "${HOME}/.zeroclaw"; do
+        if [[ -d "$zc_dir" ]]; then
+            find "$zc_dir" -name "*.jsonl" -exec cp {} "$ARTIFACTS_DIR/" \; 2>/dev/null || true
+            cp "$zc_dir/workspace/memory/brain.db" "$ARTIFACTS_DIR/zeroclaw_memory.db" 2>/dev/null || true
+            cp -r "$zc_dir/workspace/state" "$ARTIFACTS_DIR/zeroclaw_state" 2>/dev/null || true
         fi
     done
 
@@ -672,6 +681,111 @@ PY
     log "OpenCode agent finished"
 }
 
+launch_zeroclaw() {
+    log "Launching ZeroClaw agent (CLI mode)..."
+    cd "$WORKDIR"
+
+    install_round_guard
+    init_task_repo
+
+    # ── Configure ZeroClaw ──
+    export OPENAI_API_KEY="${OPENAI_API_KEY:?OPENAI_API_KEY must be set}"
+    export OPENAI_BASE_URL="${OPENAI_BASE_URL:?OPENAI_BASE_URL must be set}"
+    export OPENAI_MODEL_NAME="${OPENAI_MODEL_NAME:-deepseek-chat}"
+
+    local zeroclaw_timeout="${ZEROCLAW_TIMEOUT_SEC:-1200}"
+    local zeroclaw_provider="openai"
+    local zeroclaw_api_base="${OPENAI_BASE_URL%/}"
+    if [[ "${zeroclaw_api_base}" == *"openrouter"* ]]; then
+        zeroclaw_provider="openrouter"
+    elif [[ -n "${zeroclaw_api_base}" && "${zeroclaw_api_base}" != "https://api.openai.com" && "${zeroclaw_api_base}" != "https://api.openai.com/v1" ]]; then
+        zeroclaw_provider="custom:${zeroclaw_api_base}"
+    fi
+
+    # ZEROCLAW_API_KEY is highest-priority env var for custom: providers
+    export ZEROCLAW_API_KEY="${OPENAI_API_KEY}"
+    export OPENROUTER_API_KEY="${OPENAI_API_KEY}"
+    export ZEROCLAW_PROVIDER="${zeroclaw_provider}"
+    mkdir -p "${HOME}/.zeroclaw"
+
+    # ZeroClaw tools operate inside ~/.zeroclaw/workspace/.
+    # Symlink it to $WORKDIR so the agent can access task files
+    # (kernel.py, bench_kb.py, etc.)
+    ln -sfn "$WORKDIR" "${HOME}/.zeroclaw/workspace"
+
+    cat > "${HOME}/.zeroclaw/config.toml" << TOMLEOF
+default_provider = "${zeroclaw_provider}"
+default_model = "${OPENAI_MODEL_NAME}"
+default_temperature = 0.7
+model_routes = []
+embedding_routes = []
+
+[model_providers]
+
+[provider]
+
+[observability]
+backend = "none"
+runtime_trace_mode = "none"
+runtime_trace_path = "state/runtime-trace.jsonl"
+runtime_trace_max_entries = 200
+
+[autonomy]
+level = "full"
+workspace_only = false
+allowed_commands = ["git", "npm", "cargo", "ls", "cat", "grep", "find", "echo", "pwd", "wc", "head", "tail", "date", "python", "python3", "bash", "sh", "sed", "awk", "mkdir", "mv", "cp", "rm"]
+forbidden_paths = ["/etc", "/usr", "/bin", "/sbin", "/lib", "/opt", "/boot", "/dev", "/proc", "/sys"]
+max_actions_per_hour = 200
+max_cost_per_day_cents = 10000
+
+[agent]
+max_tool_iterations = 100
+TOMLEOF
+    chmod 600 "${HOME}/.zeroclaw/config.toml"
+
+    log "ZeroClaw config: model=${OPENAI_MODEL_NAME}, baseURL=${OPENAI_BASE_URL}, timeout=${zeroclaw_timeout}s"
+
+    # ── Build prompt ──
+    local prompt="$TASK_PROMPT"
+    if [[ -z "$prompt" ]]; then
+        prompt="Read kernelbench/program_kb.md for full optimization instructions.
+
+Then optimize KernelBench problem Level ${LEVEL}, Problem ${PROBLEM_ID}.
+The problem is already set up — kernel.py and workspace/kb_active/ are ready.
+You have ${MAX_ROUNDS} optimization rounds. Backend: ${BACKEND}."
+    fi
+
+    # ── Run ZeroClaw agent ──
+    log "Running zeroclaw agent..."
+    set +e
+    timeout "${zeroclaw_timeout}" zeroclaw agent \
+        -m "$prompt" \
+        > "$ARTIFACTS_DIR/zeroclaw_output.txt" 2>"$ARTIFACTS_DIR/zeroclaw_stderr.log"
+    local zeroclaw_status=$?
+    set -e
+
+    if [[ $zeroclaw_status -eq 124 ]]; then
+        die "ZeroClaw agent timed out after ${zeroclaw_timeout}s"
+    elif [[ $zeroclaw_status -ne 0 ]]; then
+        log "ZeroClaw exited with status $zeroclaw_status"
+        tail -20 "$ARTIFACTS_DIR/zeroclaw_stderr.log" 2>/dev/null || true
+        die "ZeroClaw agent failed with exit code $zeroclaw_status"
+    fi
+
+    # Check for error messages in stdout (ZeroClaw may exit 0 on some errors)
+    if grep -qi "^Error:" "$ARTIFACTS_DIR/zeroclaw_output.txt" 2>/dev/null; then
+        log "WARNING: ZeroClaw output contains error messages"
+        grep -i "^Error:" "$ARTIFACTS_DIR/zeroclaw_output.txt" | head -5
+    fi
+
+    if [[ ! -s "$ARTIFACTS_DIR/zeroclaw_output.txt" ]]; then
+        log "ERROR: ZeroClaw produced no output"
+        tail -20 "$ARTIFACTS_DIR/zeroclaw_stderr.log" 2>/dev/null || true
+        die "ZeroClaw agent produced no output"
+    fi
+
+    log "ZeroClaw agent finished ($(wc -c < "$ARTIFACTS_DIR/zeroclaw_output.txt") bytes output)"
+}
 # ──────────────────────────────────────────────
 # Main
 # ──────────────────────────────────────────────
@@ -694,6 +808,9 @@ case "$AGENT" in
         ;;
     opencode)
         launch_opencode
+        ;;
+    zeroclaw)
+        launch_zeroclaw
         ;;
     *)
         die "Unknown agent: $AGENT"
