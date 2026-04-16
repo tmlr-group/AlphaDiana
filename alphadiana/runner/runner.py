@@ -36,6 +36,29 @@ OPENCLAW_CONCURRENCY_PER_SANDBOX = 1
 _OPENCLAW_PROFILE_CACHE_PATH = Path(".cache/openclaw_startup_profiles.json")
 
 
+def _is_gateway_autodeploy_agent(config: "ExperimentConfig") -> bool:
+    if config.agent_name == "openclaw":
+        return bool(
+            config.agent_config.get("rock_agent_config_path")
+            and config.agent_config.get("openclaw_config_path")
+        )
+    if config.agent_name == "zeroclaw":
+        return bool(config.agent_config.get("rock_image"))
+    return False
+
+
+def _make_gateway_runtime_manager(config: "ExperimentConfig"):
+    if config.agent_name == "openclaw":
+        from alphadiana.agent.openclaw_runtime import OpenClawRuntimeManager
+
+        return OpenClawRuntimeManager(config.agent_config)
+    if config.agent_name == "zeroclaw":
+        from alphadiana.agent.zeroclaw_runtime import ZeroClawRuntimeManager
+
+        return ZeroClawRuntimeManager(config.agent_config)
+    raise RuntimeError(f"Unsupported gateway auto-deploy agent: {config.agent_name}")
+
+
 def _build_openclaw_profile_cache_key(config: "ExperimentConfig", admin_base_url: str) -> str:
     dataset = str(config.benchmark_config.get("dataset", ""))
     split = str(config.benchmark_config.get("split", ""))
@@ -149,6 +172,7 @@ class Runner:
         # Import agent modules to trigger registration.
         import alphadiana.agent.openclaw  # noqa: F401
         import alphadiana.agent.direct_llm  # noqa: F401
+        import alphadiana.agent.zeroclaw  # noqa: F401
         import alphadiana.agent.external_benchmark_docker  # noqa: F401
 
         # Import sandbox modules to trigger registration.
@@ -278,10 +302,12 @@ class Runner:
         except Exception:
             logger.debug("Dashboard initialization skipped", exc_info=True)
 
-        # Optional multi-sandbox predeploy for OpenClaw auto-deploy mode.
+        gateway_agent_label = self.config.agent_name
+
+        # Optional multi-sandbox predeploy for gateway auto-deploy mode.
         # This is the CLI equivalent of the dashboard deploy-and-run flow:
-        # create N sandboxes up front, start one gateway per sandbox, and let
-        # OpenClaw round-robin across the resulting gateway_pool.
+        # create N sandboxes up front, start one gateway/bridge per sandbox, and let
+        # the agent round-robin across the resulting gateway_pool.
         predeployed_sessions = []
         predeployed_session_by_sandbox_id: dict[str, object] = {}
         predeployed_session_reset_lock = threading.Lock()
@@ -290,9 +316,7 @@ class Runner:
         )
         if (
             self.sandbox is None
-            and self.config.agent_name == "openclaw"
-            and self.config.agent_config.get("rock_agent_config_path")
-            and self.config.agent_config.get("openclaw_config_path")
+            and _is_gateway_autodeploy_agent(self.config)
         ):
             explicit_num = int(self.config.agent_config.get("num_sandboxes", 0) or 0)
             auto_num = (
@@ -303,7 +327,6 @@ class Runner:
             if desired_num > 1:
                 try:
                     import alphadiana.sandbox.rock  # noqa: F401 — trigger registration
-                    from alphadiana.agent.openclaw_runtime import OpenClawRuntimeManager
                     from alphadiana.sandbox.registry import SandboxRegistry
 
                     auto_sandbox_config = {
@@ -365,10 +388,10 @@ class Runner:
                                         desired_num,
                                         preferred_profile[0],
                                         preferred_profile[1],
-                                    )
+                                )
                                 sandbox_backend.setup(sandbox_config)
                                 session = sandbox_backend.create_session()
-                                runtime_manager = OpenClawRuntimeManager(self.config.agent_config)
+                                runtime_manager = _make_gateway_runtime_manager(self.config)
                                 info = runtime_manager.ensure_ready(session)
                                 md = session.metadata() if hasattr(session, "metadata") else {}
                                 profile_memory = str(md.get("memory", sandbox_config["memory"]))
@@ -392,9 +415,10 @@ class Runner:
                         raise last_error
 
                     logger.info(
-                        "Predeploying %d OpenClaw sandboxes for CLI concurrency "
+                        "Predeploying %d %s sandboxes for CLI concurrency "
                         "(max_concurrent=%d, target=%d tasks/sandbox)",
                         desired_num,
+                        gateway_agent_label,
                         self.config.max_concurrent,
                         OPENCLAW_CONCURRENCY_PER_SANDBOX,
                     )
@@ -439,7 +463,10 @@ class Runner:
                         )
                         self.config.max_concurrent = effective_capacity
                     self.config.agent_config["gateway_pool"] = gateway_pool
-                    self.config.agent_config["api_base"] = gateway_pool[0]
+                    if self.config.agent_name == "openclaw":
+                        self.config.agent_config["api_base"] = gateway_pool[0]
+                    else:
+                        self.config.agent_config["gateway_api_base"] = gateway_pool[0]
                     self.config.agent_config["sandbox_id"] = predeployed_sessions[0].sandbox_id
                     self.config.agent_config["rock_sandbox_url"] = (
                         predeployed_sessions[0].metadata().get("proxy_base_url", "")
@@ -451,21 +478,24 @@ class Runner:
                             preferred_profile[1],
                         )
                         logger.info(
-                            "Persisted OpenClaw startup profile memory=%s cpus=%s",
+                            "Persisted %s startup profile memory=%s cpus=%s",
+                            gateway_agent_label,
                             preferred_profile[0],
                             preferred_profile[1],
                         )
                     self.agent.setup(self.config.agent_config)
                     logger.info(
-                        "OpenClaw gateway_pool ready with %d sandboxes: %s",
+                        "%s gateway_pool ready with %d sandboxes: %s",
+                        gateway_agent_label,
                         len(gateway_pool),
                         gateway_pool,
                     )
                 except Exception as exc:
                     logger.warning(
-                        "Failed to predeploy %d OpenClaw sandboxes: %s. "
+                        "Failed to predeploy %d %s sandboxes: %s. "
                         "Falling back to single-sandbox auto-deploy.",
                         desired_num,
+                        gateway_agent_label,
                         exc,
                     )
                     for session in predeployed_sessions:
@@ -476,26 +506,21 @@ class Runner:
                     predeployed_sessions = []
 
         # Auto-create a ROCK sandbox when:
-        #   - agent is "openclaw" with auto-deploy config
-        #     (rock_agent_config_path + openclaw_config_path in agent config)
+        #   - agent is a gateway auto-deploy agent
         #   - no sandbox_name was explicitly configured (sandbox: null)
         # Note: this creates a single sandbox for auto-deploy.
-        # For concurrent execution, openclaw handles isolation internally via
-        # gateway_pool (multi-sandbox).  Do NOT use SandboxPool with openclaw.
         _auto_sandbox = None
         if (
             self.sandbox is None
             and not predeployed_sessions
-            and self.config.agent_name == "openclaw"
-            and self.config.agent_config.get("rock_agent_config_path")
-            and self.config.agent_config.get("openclaw_config_path")
+            and _is_gateway_autodeploy_agent(self.config)
         ):
             try:
                 import alphadiana.sandbox.rock  # noqa: F401 — trigger registration
                 from alphadiana.sandbox.registry import SandboxRegistry
                 rock_cls = SandboxRegistry.get("rock")
                 _auto_sandbox = rock_cls()
-                # Build sandbox config from agent config, with openclaw-friendly defaults.
+                # Build sandbox config from agent config, with gateway-friendly defaults.
                 auto_sandbox_config = {
                     "admin_base_url": self.config.agent_config.get(
                         "admin_base_url",
@@ -512,7 +537,7 @@ class Runner:
                     "startup_timeout": int(self.config.agent_config.get("rock_startup_timeout", 300)),
                     "auto_clear_seconds": int(self.config.agent_config.get("rock_auto_clear_seconds", 7200)),
                     "start_retries": int(self.config.agent_config.get("rock_start_retries", 3)),
-                    # Do NOT reset workspace between tasks: the OpenClaw gateway process
+                    # Do NOT reset workspace between tasks: the in-sandbox gateway/bridge
                     # keeps running in the container and owns the workspace lifecycle.
                     "reset_between_tasks": False,
                     "proxy_timeout": int(self.config.agent_config.get("proxy_timeout", 1800)),
@@ -520,8 +545,9 @@ class Runner:
                 }
                 _auto_sandbox.setup(auto_sandbox_config)
                 logger.info(
-                    "Auto-created ROCK sandbox for openclaw concurrent isolation "
+                    "Auto-created ROCK sandbox for %s concurrent isolation "
                     "(max_concurrent=%d, memory=%s, cpus=%s)",
+                    gateway_agent_label,
                     self.config.max_concurrent,
                     auto_sandbox_config["memory"],
                     auto_sandbox_config["cpus"],
@@ -530,8 +556,9 @@ class Runner:
                 self.sandbox = _auto_sandbox
             except Exception as exc:
                 logger.warning(
-                    "Failed to auto-create ROCK sandbox for openclaw isolation: %s. "
+                    "Failed to auto-create ROCK sandbox for %s isolation: %s. "
                     "Falling back to shared gateway (may cause workspace contention at max_concurrent>1).",
+                    gateway_agent_label,
                     exc,
                 )
                 _auto_sandbox = None
