@@ -11,17 +11,17 @@ Use this with:
 
 ## Current Proven State
 
-PR25 now has a fully completed 3x3 smoke matrix on the local PR worktree.
+PR25 currently has `8/9` strict smoke cells passing on the local PR worktree.
 
-Latest full rerun: 2026-04-16, using API base `https://api.example.com/v1/` and model `minimax-m2.5`.
+Latest strict rerun: 2026-04-16, using API base `https://api.example.com/v1/` and model `minimax-m2.5`.
 
 | Mode | IMO-AnswerBench | HLE | terminal-bench-2 |
 |---|---|---|---|
 | `direct_llm` | `pr25_live2_20260416_directllm_imo` | `pr25_live2_20260416_directllm_hle` | `pr25_live2_20260416_directllm_tb2` |
-| `opencode` | `pr25_live2_20260416_opencode_imo` | `pr25_live2_20260416_opencode_hle` | `pr25_live2_20260416_opencode_tb2` |
-| `openclaw` | `pr25_live2_20260416_openclaw_imo` | `pr25_live2_20260416_openclaw_hle` | `pr25_live2_20260416_openclaw_tb2` |
+| `opencode` | `pr25_live3_20260416_opencode_imo` | `pr25_live3_20260416_opencode_hle` | `pr25_live3_20260416_opencode_tb2` |
+| `openclaw` | `pr25_live2_20260416_openclaw_imo` | `pr25_live2_20260416_openclaw_hle` | blocked: `pr25_live3_20260416_openclaw_tb2` |
 
-Every run above completed `1/1` tasks and wrote results.
+All passing cells above produced visible model output and wrote scored results. `openclaw` x `terminal_bench2` did not: with `request_timeout=1800`, the planner produced no visible model output and the run completed `0/1`.
 
 ## Operator Notes
 
@@ -30,8 +30,12 @@ Every run above completed `1/1` tasks and wrote results.
 - HLE smoke now uses `dataset_index=1`.
 - terminal-bench-2 smoke now uses a single staged task directory rooted at `/tmp/terminal-bench-2-smoke-dbwal`.
 - HLE can load from local cache without forcing `HF_TOKEN`; fresh machines still need `HF_TOKEN`.
-- terminal-bench-2 OpenClaw smoke uses `continue_on_planner_error: true` so a planner timeout still falls through to verifier execution and result writing.
+- terminal-bench-2 OpenClaw smoke uses `continue_on_planner_error: false`; planner timeout is now a failed smoke path, not a fallback success.
 - OpenClaw x HLE can take several minutes after the gateway `/chat/completions` request returns HTTP 200; wait for artifact collection before classifying it as stuck.
+
+## Current Blocker
+
+- `terminal_bench2_openclaw` with `minimax-m2.5` does not produce visible planner output within a 30-minute request window on `tb2_db-wal-recovery`; this should be treated as a PR25 integration issue.
 
 ## Regression Status Relative To Earlier PR25 Review
 

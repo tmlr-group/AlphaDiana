@@ -8,7 +8,7 @@ This document is the current operator-facing record for PR25 smoke validation ac
 - 3 modes: `openclaw`, `direct_llm`, `opencode`
 - 3 benchmarks: `imo_answerbench`, `hle`, `terminal_bench2`
 
-The goal here is execution evidence, not score quality. Every cell below completed a 1-task smoke run end-to-end and reached scoring.
+The goal here is execution evidence, not score quality. A cell counts as passing only if the model produces visible assistant output and the runner writes a scored result. Timeout-only fallback results are not counted as passing.
 
 The latest full rerun was completed on 2026-04-16 using:
 
@@ -52,14 +52,14 @@ HLE note:
 | `direct_llm` | `imo_answerbench` | `configs/examples/directllm_minimax_imo_answerbench.yaml` | `pr25_live2_20260416_directllm_imo` | completed `1/1` | bounded smoke via `dataset_index=367`, `max_tokens=512` |
 | `direct_llm` | `hle` | `configs/examples/directllm_minimax_hle.yaml` | `pr25_live2_20260416_directllm_hle` | completed `1/1` | uses cached HLE row `dataset_index=1` |
 | `direct_llm` | `terminal_bench2` | `configs/examples/terminal_bench2_directllm_minimax.yaml` | `pr25_live2_20260416_directllm_tb2` | completed `1/1` | `db-wal-recovery`, verifier reward `0` |
-| `opencode` | `imo_answerbench` | `configs/examples/opencode_minimax_imo_answerbench.yaml` | `pr25_live2_20260416_opencode_imo` | completed `1/1` | bounded by `timeout=120`, timeout is recorded as a scored failed sample |
-| `opencode` | `hle` | `configs/examples/opencode_minimax_hle.yaml` | `pr25_live2_20260416_opencode_hle` | completed `1/1` | bounded by `timeout=120`, cached HLE row |
-| `opencode` | `terminal_bench2` | `configs/examples/terminal_bench2_opencode_minimax.yaml` | `pr25_live2_20260416_opencode_tb2` | completed `1/1` | `db-wal-recovery`, `solver_timeout_sec=120`, verifier reward `0` |
+| `opencode` | `imo_answerbench` | `configs/examples/opencode_minimax_imo_answerbench.yaml` | `pr25_live3_20260416_opencode_imo` | completed `1/1` | `timeout=1800`; visible model output; score `1.0` |
+| `opencode` | `hle` | `configs/examples/opencode_minimax_hle.yaml` | `pr25_live3_20260416_opencode_hle` | completed `1/1` | `timeout=1800`; visible model output |
+| `opencode` | `terminal_bench2` | `configs/examples/terminal_bench2_opencode_minimax.yaml` | `pr25_live3_20260416_opencode_tb2` | completed `1/1` | `solver_timeout_sec=1800`; visible model output; verifier reward `1` |
 | `openclaw` | `imo_answerbench` | `configs/examples/openclaw_minimax_imo_answerbench.yaml` | `pr25_live2_20260416_openclaw_imo` | completed `1/1` | full ROCK auto-deploy path, bounded smoke via `dataset_index=367` |
 | `openclaw` | `hle` | `configs/examples/openclaw_minimax_hle.yaml` | `pr25_live2_20260416_openclaw_hle` | completed `1/1` | cached HLE row, full ROCK auto-deploy path; model response took several minutes |
-| `openclaw` | `terminal_bench2` | `configs/examples/terminal_bench2_openclaw_minimax.yaml` | `pr25_live2_20260416_openclaw_tb2` | completed `1/1` | `db-wal-recovery`, planner timed out once, verifier still ran and scored `0` |
+| `openclaw` | `terminal_bench2` | `configs/examples/terminal_bench2_openclaw_minimax.yaml` | `pr25_live3_20260416_openclaw_tb2` | blocked | `request_timeout=1800`; planner produced no visible model output and the run completed `0/1` |
 
-All nine cells above reached result writing. None of the smoke scores are being treated as quality claims.
+Current strict status: `8/9` cells pass. `openclaw` x `terminal_bench2` is a real issue under the "must see model output" criterion.
 
 ## Smoke Config Conventions
 
@@ -67,12 +67,12 @@ These configs are intentionally bounded for reproducibility:
 
 - IMO smoke configs pin `dataset_index=367`, a short number-theory problem.
 - HLE smoke configs pin `dataset_index=1`, which is locally cached and already proven to load.
-- OpenCode smoke configs use `timeout: 120` so the run completes even when the CLI does not converge.
+- OpenCode smoke configs use `timeout: 1800` so slow but valid model output is not misclassified as a timeout.
 - terminal-bench-2 DirectLLM smoke uses `max_rounds: 6`.
-- terminal-bench-2 OpenCode smoke uses `solver_timeout_sec: 120`.
-- terminal-bench-2 OpenClaw smoke uses `request_timeout: 60`, `max_attempts: 1`, and `continue_on_planner_error: true`.
+- terminal-bench-2 OpenCode smoke uses `solver_timeout_sec: 1800`.
+- terminal-bench-2 OpenClaw smoke uses `request_timeout: 1800`, `max_attempts: 1`, and `continue_on_planner_error: false`.
 
-The last setting is deliberate. For terminal-bench-2 smoke, if the OpenClaw planner does not answer within one bounded request window, the host-side relay now breaks out, runs the verifier, and records the attempt as reward `0` instead of leaving the whole run hung indefinitely.
+The last setting is deliberate. For terminal-bench-2 OpenClaw smoke, a planner timeout is now treated as a failed smoke path, not as a scored fallback sample.
 
 ## Merge-Readiness Notes
 
@@ -97,13 +97,13 @@ python -m alphadiana.cli run configs/examples/directllm_minimax_imo_answerbench.
   -o run_id=pr25_live2_20260416_directllm_imo
 
 python -m alphadiana.cli run configs/examples/opencode_minimax_hle.yaml \
-  -o run_id=pr25_live2_20260416_opencode_hle
+  -o run_id=pr25_live3_20260416_opencode_hle
 
 python -m alphadiana.cli run configs/examples/openclaw_minimax_hle.yaml \
   -o run_id=pr25_live2_20260416_openclaw_hle
 
 python -m alphadiana.cli run configs/examples/terminal_bench2_openclaw_minimax.yaml \
-  -o run_id=pr25_live2_20260416_openclaw_tb2
+  -o run_id=pr25_live3_20260416_openclaw_tb2
 ```
 
 Use the config defaults as checked in unless there is a deliberate review reason to change the smoke bounds.

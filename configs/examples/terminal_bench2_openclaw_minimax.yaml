@@ -31,9 +31,9 @@ agent:
     gateway_token: "OPENCLAW"
     max_rounds: 6
     max_tokens: 1024
-    request_timeout: 60
+    request_timeout: 1800
     max_attempts: 1
-    continue_on_planner_error: true
+    continue_on_planner_error: false
     timeout_sec: 900
     test_timeout_sec: 1200
 
