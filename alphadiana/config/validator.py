@@ -9,7 +9,7 @@ class ConfigValidator:
     SANDBOX_REQUIRED_BENCHMARKS: set[str] = set()
 
     # Agents that require an api_base in agent_config.
-    API_AGENTS = {"openclaw", "direct_llm"}
+    API_AGENTS = {"openclaw", "direct_llm", "zeroclaw"}
 
     def validate(self, config: ExperimentConfig) -> list[str]:
         errors: list[str] = []
