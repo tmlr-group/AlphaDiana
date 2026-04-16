@@ -48,9 +48,8 @@ dump.rdb
 # Results, configs, artifacts (generated at runtime)
 /results/
 !alphadiana/results/
-/configs/*
-!/configs/examples/
-!/configs/examples/*.yaml
+/configs/
+!configs/examples/
 /artifacts/
 
 # external_benchmark runtime artifacts
@@ -65,4 +64,3 @@ node_modules/
 
 .openclaw
 .env
-.codex

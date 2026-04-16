@@ -9,16 +9,7 @@ class ConfigValidator:
     SANDBOX_REQUIRED_BENCHMARKS: set[str] = set()
 
     # Agents that require an api_base in agent_config.
-    OPENCLAW_RUNTIME_AGENTS = {"openclaw"}
-    API_AGENTS = OPENCLAW_RUNTIME_AGENTS | {
-        "direct_llm",
-        "zeroclaw",
-        "opencode",
-        "terminal_bench2_docker",
-        "terminal_bench2_opencode",
-        "terminal_bench2_openclaw",
-        "terminal_bench2_zeroclaw",
-    }
+    API_AGENTS = {"openclaw", "direct_llm", "opencode"}
 
     def validate(self, config: ExperimentConfig) -> list[str]:
         errors: list[str] = []
@@ -45,32 +36,25 @@ class ConfigValidator:
                 f"benchmark '{config.benchmark_name}' requires a sandbox "
                 "(set sandbox_name to 'rock' or 'local')"
             )
-
+        # Validate agent_config has api_base or auto-deploy gateway config.
         if config.agent_name in self.API_AGENTS:
             has_api_base = bool(config.agent_config.get("api_base"))
-            has_auto_deploy = bool(
-                config.agent_config.get("rock_agent_config_path")
-                and config.agent_config.get("openclaw_config_path")
-            )
-            has_zeroclaw_auto_deploy = bool(config.agent_config.get("rock_image"))
-            if config.agent_name in self.OPENCLAW_RUNTIME_AGENTS:
+            if config.agent_name == "openclaw":
+                has_auto_deploy = bool(
+                    config.agent_config.get("rock_agent_config_path")
+                    and config.agent_config.get("openclaw_config_path")
+                )
                 if not has_api_base and not has_auto_deploy:
                     errors.append(
                         f"agent '{config.agent_name}' requires 'api_base' or "
                         "'rock_agent_config_path' + 'openclaw_config_path' in agent_config "
                         "(auto-deploy mode)"
                     )
-            elif config.agent_name == "zeroclaw":
-                if not has_api_base and not has_zeroclaw_auto_deploy:
-                    errors.append(
-                        "agent 'zeroclaw' requires 'api_base' in agent_config or "
-                        "'rock_image' for ROCK auto-deploy mode"
-                    )
             elif not has_api_base:
                 errors.append(
                     f"agent '{config.agent_name}' requires 'api_base' in agent_config"
                 )
-
+        # Validate num_samples and task_retries.
         num_samples = getattr(config, "num_samples", 1)
         if num_samples < 1:
             errors.append("num_samples must be >= 1")
