@@ -1,0 +1,34 @@
+# FULL RUN: all local terminal-bench task directories under TERMINAL_BENCH2_DIR.
+# For a 1-task liveness check, use configs/examples/terminal_bench2_openclaw_minimax.yaml.
+
+run_id: "p25_full_terminal_bench2_openclaw_minimax"
+
+benchmark:
+  name: terminal_bench2
+  config:
+    tasks_dir: ${TERMINAL_BENCH2_DIR}
+
+agent:
+  name: terminal_bench2_openclaw
+  version: "1.0"
+  config:
+    api_base: ${OPENAI_BASE_URL}
+    api_key: ${OPENAI_API_KEY}
+    model_name: "minimax-m2.5"
+    controller_mode: "docker"
+    controller_image: "alphadiana/tb2-openclaw-controller:latest"
+    openclaw_bin: "openclaw"
+    onboard_timeout_sec: 180
+    solver_timeout_sec: 1800
+    timeout_sec: 900
+    test_timeout_sec: 1200
+
+sandbox: null
+
+scorer:
+  name: terminal_bench2
+
+max_concurrent: 1
+output_dir: "./results/p25_full_terminal_bench2_openclaw_minimax"
+metadata:
+  notes: "Full OpenClaw native-controller run for terminal-bench-2 via minimax-m2.5. Pre-pull task Docker images first."

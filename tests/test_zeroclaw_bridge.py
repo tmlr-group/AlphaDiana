@@ -14,6 +14,8 @@ def _load_bridge_module(monkeypatch, **env):
     for key in [
         "ZEROCLAW_GATEWAY_TOKEN",
         "ZEROCLAW_TEMPERATURE",
+        "ZEROCLAW_ARTIFACT_ROOT",
+        "ZEROCLAW_PROVIDER",
         "OPENAI_MODEL_NAME",
         "OPENAI_BASE_URL",
         "OPENAI_API_KEY",
@@ -68,9 +70,10 @@ def test_zeroclaw_bridge_post_forwards_request_temperature(monkeypatch):
 
     seen: dict[str, object] = {}
 
-    def fake_run(prompt: str, *, temperature: float | None = None) -> str:
+    def fake_run(prompt: str, *, temperature: float | None = None, attachments=None) -> str:
         seen["prompt"] = prompt
         seen["temperature"] = temperature
+        seen["attachments"] = attachments
         return "analysis\n\n$$\\boxed{42}$$"
 
     monkeypatch.setattr(module, "_run_zeroclaw", fake_run)
@@ -79,6 +82,15 @@ def test_zeroclaw_bridge_post_forwards_request_temperature(monkeypatch):
         "model": "demo-model",
         "messages": [{"role": "user", "content": "What is 6*7?"}],
         "temperature": 0.25,
+        "attachments": [
+            {
+                "key": "image_1",
+                "filename": "image_1.png",
+                "path": "attachments/image_1.png",
+                "mime": "image/png",
+                "data_base64": "ZmFrZS1wbmc=",
+            }
+        ],
     }).encode("utf-8")
 
     handler = object.__new__(module.Handler)
@@ -100,7 +112,53 @@ def test_zeroclaw_bridge_post_forwards_request_temperature(monkeypatch):
 
     assert seen["prompt"] == "What is 6*7?"
     assert seen["temperature"] == 0.25
+    assert seen["attachments"][0]["path"] == "attachments/image_1.png"
     assert captured["status"] == 200
+
+
+def test_zeroclaw_bridge_persists_last_request_artifacts(monkeypatch, tmp_path):
+    module = _load_bridge_module(
+        monkeypatch,
+        ZEROCLAW_ARTIFACT_ROOT=str(tmp_path / "artifacts"),
+        OPENAI_MODEL_NAME="demo-model",
+        OPENAI_BASE_URL="https://example.test/v1",
+        OPENAI_API_KEY="sk-test",
+    )
+
+    def fake_run(command, shell, cwd, env, capture_output, text):
+        stdout_path = command.split("> ", 1)[1].split(" 2> ", 1)[0]
+        stderr_path = command.split(" 2> ", 1)[1]
+        Path(stdout_path).write_text("partial reasoning", encoding="utf-8")
+        Path(stderr_path).write_text("stderr text", encoding="utf-8")
+        (Path(cwd) / "state" / "runtime-trace.jsonl").write_text('{"event":"tool"}\n', encoding="utf-8")
+        return type("Proc", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+    output = module._run_zeroclaw(
+        "Inspect attachments.",
+        temperature=0.3,
+        attachments=[
+            {
+                "key": "image_1",
+                "filename": "image_1.png",
+                "path": "attachments/image_1.png",
+                "mime": "image/png",
+                "data": b"fake-png",
+            }
+        ],
+    )
+
+    last_request = tmp_path / "artifacts" / "last_request"
+    assert output == "partial reasoning"
+    assert (last_request / "task.txt").read_text(encoding="utf-8") == "Inspect attachments."
+    status = json.loads((last_request / "status.json").read_text(encoding="utf-8"))
+    assert status["temperature"] == 0.3
+    manifest = json.loads((last_request / "attachment_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["attachments"][0]["path"] == "attachments/image_1.png"
+    assert (last_request / "zeroclaw_output.txt").read_text(encoding="utf-8") == "partial reasoning"
+    assert (last_request / "zeroclaw_stderr.log").read_text(encoding="utf-8") == "stderr text"
+    assert '"event":"tool"' in (last_request / "runtime_trace.jsonl").read_text(encoding="utf-8")
 
 
 def test_readme_zeroclaw_autodeploy_mentions_sourcing_rock_env():

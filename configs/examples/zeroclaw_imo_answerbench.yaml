@@ -1,0 +1,43 @@
+run_id: "zeroclaw_${OPENAI_MODEL_NAME}_imo_answerbench_smoke"
+
+agent:
+  name: zeroclaw
+  version: "0.6.9"
+  config:
+    model: "${OPENAI_MODEL_NAME}"
+    api_base: "${OPENAI_BASE_URL}"
+    api_key: "${OPENAI_API_KEY}"
+    rock_image: "zeroclaw-reasoning:0.6.9"
+    rock_memory: "4g"
+    rock_cpus: 1
+    rock_startup_timeout: 600
+    admin_base_url: "${ROCK_BASE_URL}"
+    proxy_base_url: "${ROCK_PROXY_URL}"
+    request_timeout: 2400
+    max_tool_iterations: 100
+    max_actions_per_hour: 200
+    system_prompt: |
+      You are an expert competition-math solver. Use tools when they help verify
+      intermediate steps or symbolic manipulations.
+
+      When you have reached your final answer, you MUST present it at the very
+      end in the form:
+
+      $$\boxed{your answer here}$$
+
+benchmark:
+  name: imo_answerbench
+  config:
+    dataset: "Hwilner/imo-answerbench"
+    split: "train"
+    max_tasks: 1
+
+sandbox: null
+
+scorer:
+  name: imo_verify
+
+max_concurrent: 1
+output_dir: "./results/zeroclaw_imo_answerbench_smoke"
+metadata:
+  notes: "ZeroClaw smoke config for IMO-AnswerBench via ROCK auto-deploy."

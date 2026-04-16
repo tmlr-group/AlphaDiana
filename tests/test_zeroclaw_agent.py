@@ -4,6 +4,8 @@ import textwrap
 from types import SimpleNamespace
 from pathlib import Path
 
+import pytest
+
 from alphadiana.agent.registry import AgentRegistry
 from alphadiana.agent.zeroclaw import ZeroClawAgent
 from alphadiana.benchmark.base import BenchmarkTask
@@ -232,6 +234,38 @@ def test_zeroclaw_sandbox_solve_falls_back_to_cat_when_read_text_fails():
     assert any(command.startswith("cat /sandbox/work/.alphadiana_zeroclaw/exec-456/zeroclaw_output.txt") for command in sandbox.commands)
 
 
+def test_zeroclaw_sandbox_solve_uploads_workspace_attachments():
+    task = BenchmarkTask(
+        task_id="hle_0",
+        problem="What letter matches the image?",
+        ground_truth="A",
+        metadata={"execution_id": "exec-attachments"},
+        attachments={
+            "image_1": b"fake-png",
+            "image_1_mime": b"image/png",
+        },
+    )
+    sandbox = _FakeSandbox()
+
+    agent = ZeroClawAgent()
+    agent.setup({
+        "model": "demo-model",
+        "api_base": "https://example.test/v1",
+        "api_key": "sk-test",
+    })
+
+    response = agent.solve(task, sandbox=sandbox)
+
+    task_path = "/sandbox/work/.alphadiana_zeroclaw/exec-attachments/workspace/task.txt"
+    attachment_path = "/sandbox/work/.alphadiana_zeroclaw/exec-attachments/workspace/attachments/image_1.png"
+    task_text = sandbox.read_text(task_path)
+
+    assert response.answer == "42"
+    assert "Workspace Attachments" in task_text
+    assert "attachments/image_1.png (image/png)" in task_text
+    assert sandbox.read_text(attachment_path) == "fake-png"
+
+
 def test_zeroclaw_gateway_mode_uses_rock_proxy(monkeypatch):
     task = BenchmarkTask(task_id="aime_4", problem="What is 6*7?", ground_truth="42")
     sandbox = _FakeProxySandbox()
@@ -296,6 +330,70 @@ def test_zeroclaw_gateway_mode_uses_rock_proxy(monkeypatch):
     assert response.sandbox_id == "sandbox-123"
     assert response.gateway_log_excerpt == "bridge started"
     assert response.metadata["gateway_mode"] == "rock-proxy"
+
+
+def test_zeroclaw_gateway_mode_serializes_attachments(monkeypatch):
+    task = BenchmarkTask(
+        task_id="hle_attachments",
+        problem="Use the image in the workspace.",
+        ground_truth="A",
+        attachments={
+            "image_1": b"fake-png",
+            "image_1_mime": b"image/png",
+        },
+    )
+    sandbox = _FakeProxySandbox()
+
+    agent = ZeroClawAgent()
+    agent.setup({
+        "model": "demo-model",
+        "api_base": "https://example.test/v1",
+        "api_key": "sk-test",
+        "use_gateway_in_sandbox": True,
+        "gateway_token": "ZEROCLAW",
+    })
+
+    class _FakeRuntimeManager:
+        is_configured = True
+
+        def ensure_ready(self, sandbox):
+            return {
+                "api_base": sandbox.proxy_v1_base(),
+                "gateway_url": f"{sandbox.proxy_v1_base()}/chat/completions",
+                "sandbox_id": sandbox.sandbox_id,
+            }
+
+        def collect_artifacts(self, sandbox):
+            return {
+                "artifact_manifest": {},
+                "gateway_log_excerpt": "",
+                "workspace_snapshot_paths": [],
+                "workspace_file_contents": {},
+                "sandbox_metadata": sandbox.metadata(),
+            }
+
+    agent._runtime_manager = _FakeRuntimeManager()
+
+    def fake_post(url, headers, json, timeout, trust_env):
+        attachments = json["attachments"]
+        assert len(attachments) == 1
+        assert attachments[0]["path"] == "attachments/image_1.png"
+        assert attachments[0]["mime"] == "image/png"
+        assert json["messages"][0]["content"].startswith(agent._system_prompt)
+        assert "Workspace Attachments" in json["messages"][1]["content"]
+        return SimpleNamespace(
+            status_code=200,
+            json=lambda: {
+                "choices": [{"message": {"content": "analysis\n\n$$\\boxed{A}$$"}}],
+            },
+            text="",
+        )
+
+    monkeypatch.setattr("httpx.post", fake_post)
+
+    response = agent.solve(task, sandbox=sandbox)
+
+    assert response.answer == "A"
 
 
 def test_zeroclaw_gateway_mode_falls_back_to_direct_sandbox(monkeypatch):
@@ -458,3 +556,34 @@ def test_zeroclaw_gateway_pool_mode_round_robins_without_live_sandbox(monkeypatc
         "http://proxy.test/apis/envs/sandbox/v1/sandboxes/sandbox-a/proxy/v1/chat/completions",
         "http://proxy.test/apis/envs/sandbox/v1/sandboxes/sandbox-b/proxy/v1/chat/completions",
     ]
+
+
+def test_zeroclaw_local_timeout_raises_with_partial_response(monkeypatch):
+    task = BenchmarkTask(task_id="aime_timeout", problem="Compute 6*7.", ground_truth="42")
+
+    agent = ZeroClawAgent()
+    agent.setup({
+        "model": "demo-model",
+        "api_base": "https://example.test/v1",
+        "api_key": "sk-test",
+    })
+
+    monkeypatch.setattr(ZeroClawAgent, "_ensure_local_binary", lambda self, env, cwd: "zeroclaw 0.6.9")
+
+    def fake_run(command, shell, cwd, env, capture_output, text):
+        stdout_path = command.split("> ", 1)[1].split(" 2> ", 1)[0]
+        stderr_path = command.split(" 2> ", 1)[1]
+        Path(stdout_path).write_text("partial reasoning", encoding="utf-8")
+        Path(stderr_path).write_text("timeout stderr", encoding="utf-8")
+        return type("Proc", (), {"returncode": 124, "stdout": "", "stderr": ""})()
+
+    monkeypatch.setattr("alphadiana.agent.zeroclaw.subprocess.run", fake_run)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        agent.solve(task)
+
+    partial = getattr(excinfo.value, "partial_response", None)
+    assert partial is not None
+    assert partial.raw_output == "partial reasoning"
+    assert partial.workspace_file_contents["zeroclaw_stderr.log"] == "timeout stderr"
+    assert partial.request_messages[-1]["content"] == task.problem

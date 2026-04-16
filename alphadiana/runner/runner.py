@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 OPENCLAW_CONCURRENCY_PER_SANDBOX = 1
 _OPENCLAW_PROFILE_CACHE_PATH = Path(".cache/openclaw_startup_profiles.json")
+OPENCLAW_RUNTIME_AGENT_NAMES = {"openclaw"}
 
 
 def _is_gateway_autodeploy_agent(config: "ExperimentConfig") -> bool:
@@ -169,12 +170,20 @@ class Runner:
         import alphadiana.benchmark.aime  # noqa: F401
         import alphadiana.benchmark.custom  # noqa: F401
         import alphadiana.benchmark.moltbench  # noqa: F401
+        import alphadiana.benchmark.imo_answerbench  # noqa: F401
+        import alphadiana.benchmark.hle  # noqa: F401
+        import alphadiana.benchmark.terminal_bench2  # noqa: F401
 
         # Import agent modules to trigger registration.
         import alphadiana.agent.openclaw  # noqa: F401
         import alphadiana.agent.direct_llm  # noqa: F401
         import alphadiana.agent.zeroclaw  # noqa: F401
         import alphadiana.agent.moltbench_docker  # noqa: F401
+        import alphadiana.agent.terminal_bench2_docker  # noqa: F401
+        import alphadiana.agent.terminal_bench2_openclaw  # noqa: F401
+        import alphadiana.agent.terminal_bench2_opencode  # noqa: F401
+        import alphadiana.agent.terminal_bench2_zeroclaw  # noqa: F401
+        import alphadiana.agent.opencode  # noqa: F401
 
         # Import sandbox modules to trigger registration.
         import alphadiana.sandbox.local  # noqa: F401
@@ -186,6 +195,8 @@ class Runner:
         import alphadiana.scorer.llm_judge  # noqa: F401
         import alphadiana.scorer.math_verify_scorer  # noqa: F401
         import alphadiana.scorer.moltbench  # noqa: F401
+        import alphadiana.scorer.terminal_bench2_scorer  # noqa: F401
+        import alphadiana.scorer.imo_verify_scorer  # noqa: F401
 
         # Resolve and instantiate benchmark.
         benchmark_cls = BenchmarkRegistry.get(self.config.benchmark_name)
@@ -572,7 +583,7 @@ class Runner:
         if (
             self.sandbox is not None
             and self.config.max_concurrent > 1
-            and self.config.agent_name != "openclaw"
+            and self.config.agent_name not in OPENCLAW_RUNTIME_AGENT_NAMES
         ):
             from alphadiana.sandbox.pool import SandboxPool
             pool_size = self.config.max_concurrent
@@ -674,7 +685,7 @@ class Runner:
             except Exception as exc:
                 logger.error("Task %s failed: %s", task.task_id, exc)
                 # Build a partial response for error recording.
-                error_response = response
+                error_response = getattr(exc, "partial_response", None) or response
                 if error_response is None:
                     from alphadiana.agent.base import AgentResponse
                     error_response = AgentResponse(
@@ -692,11 +703,24 @@ class Runner:
                     if runtime_manager is not None and getattr(runtime_manager, "is_configured", False):
                         try:
                             artifact_data = runtime_manager.collect_artifacts(sandbox_session)
-                            error_response.artifact_manifest = artifact_data["artifact_manifest"]
-                            error_response.gateway_log_excerpt = artifact_data["gateway_log_excerpt"]
-                            error_response.workspace_snapshot_paths = artifact_data["workspace_snapshot_paths"]
-                            error_response.workspace_file_contents = artifact_data["workspace_file_contents"]
-                            error_response.sandbox_metadata = artifact_data["sandbox_metadata"]
+                            existing_manifest = dict(error_response.artifact_manifest or {})
+                            existing_files = dict(error_response.workspace_file_contents or {})
+                            error_response.artifact_manifest = {
+                                **existing_manifest,
+                                **artifact_data.get("artifact_manifest", {}),
+                            }
+                            if not error_response.gateway_log_excerpt:
+                                error_response.gateway_log_excerpt = artifact_data.get("gateway_log_excerpt", "")
+                            existing_paths = list(error_response.workspace_snapshot_paths or [])
+                            new_paths = list(artifact_data.get("workspace_snapshot_paths", []) or [])
+                            error_response.workspace_snapshot_paths = existing_paths + [
+                                path for path in new_paths if path not in existing_paths
+                            ]
+                            existing_files.update(artifact_data.get("workspace_file_contents", {}) or {})
+                            error_response.workspace_file_contents = existing_files
+                            sandbox_metadata = dict(error_response.sandbox_metadata or {})
+                            sandbox_metadata.update(artifact_data.get("sandbox_metadata", {}) or {})
+                            error_response.sandbox_metadata = sandbox_metadata
                         except Exception as artifact_exc:
                             logger.warning("Artifact collection failed for task %s: %s", task.task_id, artifact_exc)
                     if not error_response.gateway_url and hasattr(sandbox_session, "proxy_v1_base"):

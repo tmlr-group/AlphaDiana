@@ -3,10 +3,12 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import tempfile
 import time
@@ -28,6 +30,9 @@ MODEL_NAME = os.environ.get("OPENAI_MODEL_NAME", "zeroclaw")
 API_BASE = os.environ.get("OPENAI_BASE_URL", "")
 API_KEY = os.environ.get("OPENAI_API_KEY", "")
 DEFAULT_TEMPERATURE = float(os.environ.get("ZEROCLAW_TEMPERATURE", "0.0"))
+ARTIFACT_ROOT = Path(
+    os.environ.get("ZEROCLAW_ARTIFACT_ROOT", "/tmp/zeroclaw-bridge-artifacts")
+).expanduser()
 
 
 def _normalize_api_base(api_base: str) -> str:
@@ -141,17 +146,108 @@ def _coerce_temperature(value: Any) -> float | None:
     return float(value)
 
 
-def _run_zeroclaw(prompt: str, *, temperature: float | None = None) -> str:
+def _normalize_attachments(payload: Any) -> list[dict[str, Any]]:
+    if not isinstance(payload, list):
+        return []
+    items: list[dict[str, Any]] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        encoded = str(item.get("data_base64", "") or "").strip()
+        rel_path = str(item.get("path", "") or "").strip()
+        if not encoded or not rel_path:
+            continue
+        items.append({
+            "key": str(item.get("key", "") or "").strip(),
+            "filename": str(item.get("filename", "") or "").strip(),
+            "path": rel_path,
+            "mime": str(item.get("mime", "") or "").strip(),
+            "data": base64.b64decode(encoded),
+        })
+    return items
+
+
+def _write_attachments(workspace_dir: Path, attachments: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    manifest: list[dict[str, Any]] = []
+    for item in attachments:
+        rel_path = str(item["path"]).lstrip("/")
+        dest = workspace_dir / rel_path
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        data = bytes(item["data"])
+        dest.write_bytes(data)
+        manifest.append({
+            "key": item.get("key", ""),
+            "path": rel_path,
+            "filename": item.get("filename", "") or Path(rel_path).name,
+            "mime": item.get("mime", ""),
+            "size_bytes": len(data),
+        })
+    return manifest
+
+
+def _persist_last_request(
+    *,
+    execution_id: str,
+    prompt: str,
+    attachment_manifest: list[dict[str, Any]],
+    stdout_text: str,
+    stderr_text: str,
+    runtime_trace_text: str,
+    status_payload: dict[str, Any],
+) -> None:
+    last_request_dir = ARTIFACT_ROOT / "last_request"
+    last_request_dir.parent.mkdir(parents=True, exist_ok=True)
+    if last_request_dir.exists():
+        shutil.rmtree(last_request_dir)
+    last_request_dir.mkdir(parents=True, exist_ok=True)
+    (last_request_dir / "task.txt").write_text(prompt, encoding="utf-8")
+    (last_request_dir / "attachment_manifest.json").write_text(
+        json.dumps({"attachments": attachment_manifest}, ensure_ascii=False, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    (last_request_dir / "status.json").write_text(
+        json.dumps(
+            {
+                "execution_id": execution_id,
+                **status_payload,
+            },
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    if stdout_text:
+        (last_request_dir / "zeroclaw_output.txt").write_text(stdout_text, encoding="utf-8", errors="replace")
+    if stderr_text:
+        (last_request_dir / "zeroclaw_stderr.log").write_text(stderr_text, encoding="utf-8", errors="replace")
+    if runtime_trace_text:
+        (last_request_dir / "runtime_trace.jsonl").write_text(
+            runtime_trace_text,
+            encoding="utf-8",
+            errors="replace",
+        )
+
+
+def _run_zeroclaw(
+    prompt: str,
+    *,
+    temperature: float | None = None,
+    attachments: list[dict[str, Any]] | None = None,
+) -> str:
     execution_id = uuid.uuid4().hex
     with tempfile.TemporaryDirectory(prefix=f"zeroclaw_gateway_{execution_id}_") as td:
         base = Path(td)
         workspace_dir = base / "workspace"
         home_dir = base / "home"
         zc_home = home_dir / ".zeroclaw"
+        state_dir = workspace_dir / "state"
         stdout_path = base / "zeroclaw_output.txt"
         stderr_path = base / "zeroclaw_stderr.log"
+        runtime_trace_path = state_dir / "runtime-trace.jsonl"
         workspace_dir.mkdir(parents=True, exist_ok=True)
         zc_home.mkdir(parents=True, exist_ok=True)
+        state_dir.mkdir(parents=True, exist_ok=True)
         workspace_link = zc_home / "workspace"
         if workspace_link.exists() or workspace_link.is_symlink():
             workspace_link.unlink()
@@ -160,10 +256,13 @@ def _run_zeroclaw(prompt: str, *, temperature: float | None = None) -> str:
         config_path.write_text(_build_config_toml(temperature), encoding="utf-8")
         os.chmod(config_path, 0o600)
 
+        attachment_manifest = _write_attachments(workspace_dir, list(attachments or []))
+
         env = os.environ.copy()
         env.update({
             "HOME": str(home_dir),
             "ZEROCLAW_API_KEY": API_KEY,
+            "ZEROCLAW_PROVIDER": PROVIDER,
             "OPENAI_API_KEY": API_KEY,
             "OPENROUTER_API_KEY": API_KEY,
             "OPENAI_BASE_URL": API_BASE,
@@ -177,6 +276,7 @@ def _run_zeroclaw(prompt: str, *, temperature: float | None = None) -> str:
             f"> {shlex.quote(str(stdout_path))} "
             f"2> {shlex.quote(str(stderr_path))}"
         )
+
         result = subprocess.run(
             command,
             shell=True,
@@ -185,12 +285,49 @@ def _run_zeroclaw(prompt: str, *, temperature: float | None = None) -> str:
             capture_output=True,
             text=True,
         )
+
         raw_output = stdout_path.read_text(encoding="utf-8", errors="replace").strip() if stdout_path.exists() else ""
         raw_stderr = stderr_path.read_text(encoding="utf-8", errors="replace").strip() if stderr_path.exists() else ""
+        runtime_trace = (
+            runtime_trace_path.read_text(encoding="utf-8", errors="replace").strip()
+            if runtime_trace_path.exists()
+            else ""
+        )
+        status_payload = {
+            "created_at": int(time.time()),
+            "model": MODEL_NAME,
+            "provider": PROVIDER,
+            "api_base": API_BASE,
+            "temperature": DEFAULT_TEMPERATURE if temperature is None else float(temperature),
+            "returncode": result.returncode,
+            "timed_out": result.returncode == 124,
+            "error_message": "",
+        }
+        if result.returncode == 124:
+            status_payload["error_message"] = f"ZeroClaw timed out after {REQUEST_TIMEOUT}s"
+        elif result.returncode != 0:
+            status_payload["error_message"] = (
+                raw_stderr or raw_output or result.stderr.strip() or f"exit code {result.returncode}"
+            )
+        elif not raw_output:
+            status_payload["error_message"] = f"ZeroClaw produced no output. stderr={raw_stderr}"
+
+        _persist_last_request(
+            execution_id=execution_id,
+            prompt=prompt,
+            attachment_manifest=attachment_manifest,
+            stdout_text=raw_output,
+            stderr_text=raw_stderr,
+            runtime_trace_text=runtime_trace,
+            status_payload=status_payload,
+        )
+
         if result.returncode == 124:
             raise RuntimeError(f"ZeroClaw timed out after {REQUEST_TIMEOUT}s")
         if result.returncode != 0:
-            raise RuntimeError(raw_stderr or raw_output or result.stderr.strip() or f"exit code {result.returncode}")
+            raise RuntimeError(
+                raw_stderr or raw_output or result.stderr.strip() or f"exit code {result.returncode}"
+            )
         if not raw_output:
             raise RuntimeError(f"ZeroClaw produced no output. stderr={raw_stderr}")
         return _sanitize_output(raw_output) or raw_output
@@ -250,7 +387,8 @@ class Handler(BaseHTTPRequestHandler):
             if not prompt.strip():
                 raise ValueError("prompt is empty")
             temperature = _coerce_temperature(payload.get("temperature"))
-            raw_output = _run_zeroclaw(prompt, temperature=temperature)
+            attachments = _normalize_attachments(payload.get("attachments"))
+            raw_output = _run_zeroclaw(prompt, temperature=temperature, attachments=attachments)
             now = int(time.time())
             self._write_json(HTTPStatus.OK, {
                 "id": f"chatcmpl-{uuid.uuid4().hex}",

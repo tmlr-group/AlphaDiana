@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
+import mimetypes
 import os
 import re
 import shlex
@@ -93,6 +95,16 @@ def _should_fallback_from_gateway(exc: Exception) -> bool:
     return "http proxy failed" in message or "post proxy failed" in message
 
 
+_MIME_EXTENSION_MAP = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+    "application/pdf": ".pdf",
+    "text/plain": ".txt",
+}
+
+
 class ZeroClawAgent(Agent):
     """Run ZeroClaw against a benchmark problem.
 
@@ -120,6 +132,7 @@ class ZeroClawAgent(Agent):
         )
         raw_temperature = config.get("temperature", 0.0)
         self._temperature = float(raw_temperature if raw_temperature not in ("", None) else 0.0)
+        self._runtime_trace_mode = str(config.get("runtime_trace_mode", "none") or "none").strip()
         self._request_timeout = int(config.get("request_timeout", 1200))
         self._max_tool_iterations = int(config.get("max_tool_iterations", 100))
         self._max_actions_per_hour = int(config.get("max_actions_per_hour", 200))
@@ -193,16 +206,10 @@ class ZeroClawAgent(Agent):
         return value if isinstance(value, str) else default
 
     def _build_prompt(self, task: BenchmarkTask) -> str:
-        if self._system_prompt:
-            return f"{self._system_prompt}\n\nProblem:\n{task.problem}"
-        return task.problem
+        return str(self._build_task_context(task)["prompt"])
 
     def _build_request_messages(self, task: BenchmarkTask) -> list[dict[str, str]]:
-        messages: list[dict[str, str]] = []
-        if self._system_prompt:
-            messages.append({"role": "system", "content": self._system_prompt})
-        messages.append({"role": "user", "content": task.problem})
-        return messages
+        return list(self._build_task_context(task)["request_messages"])
 
     def _build_config_toml(self) -> str:
         workspace_only = "true" if self._workspace_only else "false"
@@ -216,7 +223,7 @@ class ZeroClawAgent(Agent):
             "[provider]\n\n"
             "[observability]\n"
             'backend = "none"\n'
-            'runtime_trace_mode = "none"\n'
+            f"runtime_trace_mode = {_quote_toml(self._runtime_trace_mode)}\n"
             'runtime_trace_path = "state/runtime-trace.jsonl"\n'
             "runtime_trace_max_entries = 200\n\n"
             "[autonomy]\n"
@@ -268,6 +275,224 @@ class ZeroClawAgent(Agent):
         if match:
             rock_sandbox_url = f"{match.group(1)}/apis/envs/sandbox/v1"
         return sandbox_id, rock_sandbox_url
+
+    @staticmethod
+    def _decode_attachment_mime(value: Any) -> str:
+        if isinstance(value, bytes):
+            return value.decode("utf-8", errors="ignore").strip()
+        if isinstance(value, str):
+            return value.strip()
+        return ""
+
+    @classmethod
+    def _attachment_filename(cls, key: str, mime: str) -> str:
+        candidate = Path(str(key)).name
+        if Path(candidate).suffix:
+            return candidate
+        ext = _MIME_EXTENSION_MAP.get(mime, "")
+        if not ext and mime:
+            ext = mimetypes.guess_extension(mime) or ""
+        safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", candidate).strip("._") or "attachment"
+        return f"{safe_stem}{ext}"
+
+    def _build_attachment_items(self, task: BenchmarkTask) -> list[dict[str, Any]]:
+        raw_attachments = getattr(task, "attachments", {}) or {}
+        if not isinstance(raw_attachments, dict):
+            return []
+
+        items: list[dict[str, Any]] = []
+        for key in sorted(raw_attachments):
+            if key.endswith("_mime"):
+                continue
+            value = raw_attachments.get(key)
+            if value is None:
+                continue
+            if isinstance(value, bytes):
+                data = value
+            elif isinstance(value, str):
+                data = value.encode("utf-8")
+            else:
+                continue
+            mime = self._decode_attachment_mime(raw_attachments.get(f"{key}_mime"))
+            filename = self._attachment_filename(key, mime)
+            rel_path = f"attachments/{filename}"
+            items.append({
+                "key": str(key),
+                "mime": mime,
+                "filename": filename,
+                "rel_path": rel_path,
+                "data": data,
+            })
+        return items
+
+    def _build_problem_text(self, task: BenchmarkTask, attachment_items: list[dict[str, Any]]) -> str:
+        problem_text = str(task.problem).rstrip()
+        if not attachment_items:
+            return problem_text
+        attachment_lines = [
+            f"- {item['rel_path']}" + (f" ({item['mime']})" if item["mime"] else "")
+            for item in attachment_items
+        ]
+        return (
+            f"{problem_text}\n\n"
+            "--- Workspace Attachments ---\n"
+            "The following files are available relative to the working directory:\n"
+            f"{chr(10).join(attachment_lines)}"
+        ).rstrip()
+
+    def _build_task_context(self, task: BenchmarkTask) -> dict[str, Any]:
+        attachment_items = self._build_attachment_items(task)
+        problem_text = self._build_problem_text(task, attachment_items)
+        if self._system_prompt:
+            prompt = f"{self._system_prompt}\n\nProblem:\n{problem_text}"
+        else:
+            prompt = problem_text
+
+        request_messages: list[dict[str, str]] = []
+        if self._system_prompt:
+            request_messages.append({"role": "system", "content": self._system_prompt})
+        request_messages.append({"role": "user", "content": problem_text})
+        return {
+            "prompt": prompt,
+            "problem_text": problem_text,
+            "request_messages": request_messages,
+            "attachments": attachment_items,
+        }
+
+    @staticmethod
+    def _attachment_manifest(attachment_items: list[dict[str, Any]]) -> dict[str, Any]:
+        return {
+            "attachments": [
+                {
+                    "key": item["key"],
+                    "path": item["rel_path"],
+                    "mime": item["mime"],
+                    "size_bytes": len(item["data"]),
+                }
+                for item in attachment_items
+            ]
+        }
+
+    @staticmethod
+    def _serialize_gateway_attachments(attachment_items: list[dict[str, Any]]) -> list[dict[str, str]]:
+        payload: list[dict[str, str]] = []
+        for item in attachment_items:
+            payload.append({
+                "key": item["key"],
+                "filename": item["filename"],
+                "path": item["rel_path"],
+                "mime": item["mime"],
+                "data_base64": base64.b64encode(item["data"]).decode("ascii"),
+            })
+        return payload
+
+    @staticmethod
+    def _merge_artifact_manifest(*manifests: dict[str, Any] | None) -> dict[str, Any]:
+        merged: dict[str, Any] = {}
+        for manifest in manifests:
+            if not isinstance(manifest, dict):
+                continue
+            for key, value in manifest.items():
+                if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                    merged[key] = {**merged[key], **value}
+                elif isinstance(value, list) and isinstance(merged.get(key), list):
+                    merged[key] = [*merged[key], *value]
+                else:
+                    merged[key] = value
+        return merged
+
+    @staticmethod
+    def _read_local_text(path_str: str) -> str:
+        path = Path(path_str)
+        if not path.exists() or path.is_dir():
+            return ""
+        return path.read_text(encoding="utf-8", errors="replace")
+
+    def _build_workspace_file_contents(
+        self,
+        *,
+        prompt: str,
+        raw_output: str,
+        raw_stderr: str,
+        runtime_trace: str,
+    ) -> dict[str, str]:
+        files = {"task.txt": prompt}
+        if raw_output:
+            files["zeroclaw_output.txt"] = raw_output
+        if raw_stderr:
+            files["zeroclaw_stderr.log"] = raw_stderr
+        if runtime_trace:
+            files["runtime_trace.jsonl"] = runtime_trace
+        return files
+
+    def _build_cli_response(
+        self,
+        *,
+        prompt: str,
+        raw_output: str,
+        raw_stderr: str,
+        runtime_trace: str,
+        attachment_items: list[dict[str, Any]],
+        metadata: dict[str, Any],
+        wall_time_sec: float,
+        system_prompt: str,
+        artifact_manifest: dict[str, Any] | None = None,
+        request_messages: list[dict[str, Any]] | None = None,
+    ) -> AgentResponse:
+        combined_output = raw_output or raw_stderr or runtime_trace
+        trajectory = [{"role": "user", "content": prompt}]
+        if combined_output:
+            trajectory.append({"role": "assistant", "content": combined_output})
+        manifest = self._merge_artifact_manifest(
+            artifact_manifest,
+            self._attachment_manifest(attachment_items),
+        )
+        return AgentResponse(
+            answer=_extract_answer(raw_output) if raw_output else None,
+            trajectory=trajectory,
+            raw_output=combined_output,
+            wall_time_sec=wall_time_sec,
+            workspace_file_contents=self._build_workspace_file_contents(
+                prompt=prompt,
+                raw_output=raw_output,
+                raw_stderr=raw_stderr,
+                runtime_trace=runtime_trace,
+            ),
+            artifact_manifest=manifest,
+            system_prompt=system_prompt,
+            metadata=metadata,
+            request_messages=list(request_messages or []),
+        )
+
+    @staticmethod
+    def _raise_with_partial_response(message: str, partial_response: AgentResponse) -> None:
+        exc = RuntimeError(message)
+        setattr(exc, "partial_response", partial_response)
+        raise exc
+
+    def _write_local_attachments(self, attachments_dir: str, attachment_items: list[dict[str, Any]]) -> None:
+        if not attachment_items:
+            return
+        Path(attachments_dir).mkdir(parents=True, exist_ok=True)
+        for item in attachment_items:
+            (Path(attachments_dir) / item["filename"]).write_bytes(item["data"])
+
+    def _upload_sandbox_attachments(
+        self,
+        sandbox: Any,
+        attachments_dir: str,
+        attachment_items: list[dict[str, Any]],
+    ) -> None:
+        if not attachment_items:
+            return
+        mkdir_result = sandbox.execute(f"mkdir -p {shlex.quote(attachments_dir)}")
+        if mkdir_result.exit_code != 0:
+            raise RuntimeError(
+                "Failed to prepare sandbox attachment directory: "
+                f"{mkdir_result.stderr.strip() or mkdir_result.stdout.strip()}"
+            )
+        for item in attachment_items:
+            sandbox.upload(str(Path(attachments_dir) / item["filename"]), item["data"])
 
     def _ensure_local_binary(self, env: dict[str, str], cwd: str) -> str:
         check = subprocess.run(
@@ -356,25 +581,31 @@ class ZeroClawAgent(Agent):
         workspace_dir = str(Path(base_dir) / "workspace")
         home_dir = str(Path(base_dir) / "home")
         zc_home_dir = str(Path(home_dir) / ".zeroclaw")
+        state_dir = str(Path(workspace_dir) / "state")
+        attachments_dir = str(Path(workspace_dir) / "attachments")
         return {
             "base_dir": base_dir,
             "workspace_dir": workspace_dir,
             "home_dir": home_dir,
             "zc_home_dir": zc_home_dir,
+            "state_dir": state_dir,
+            "attachments_dir": attachments_dir,
             "config_path": str(Path(zc_home_dir) / "config.toml"),
             "task_path": str(Path(workspace_dir) / "task.txt"),
             "stdout_path": str(Path(base_dir) / "zeroclaw_output.txt"),
             "stderr_path": str(Path(base_dir) / "zeroclaw_stderr.log"),
+            "runtime_trace_path": str(Path(state_dir) / "runtime-trace.jsonl"),
         }
 
     def _prepare_sandbox_workspace(
         self,
         sandbox: Any,
         paths: dict[str, str],
-        prompt: str,
+        task_context: dict[str, Any],
     ) -> None:
         prep_command = (
             f"mkdir -p {shlex.quote(paths['workspace_dir'])} {shlex.quote(paths['zc_home_dir'])} "
+            f"{shlex.quote(paths['state_dir'])} {shlex.quote(paths['attachments_dir'])} "
             f"&& ln -sfn {shlex.quote(paths['workspace_dir'])} {shlex.quote(str(Path(paths['zc_home_dir']) / 'workspace'))}"
         )
         prep_result = sandbox.execute(prep_command)
@@ -384,7 +615,12 @@ class ZeroClawAgent(Agent):
                 f"{prep_result.stderr.strip() or prep_result.stdout.strip()}"
             )
         sandbox.upload(paths["config_path"], self._build_config_toml().encode("utf-8"))
-        sandbox.upload(paths["task_path"], prompt.encode("utf-8"))
+        sandbox.upload(paths["task_path"], str(task_context["prompt"]).encode("utf-8"))
+        self._upload_sandbox_attachments(
+            sandbox,
+            paths["attachments_dir"],
+            list(task_context["attachments"]),
+        )
         chmod_result = sandbox.execute(f"chmod 600 {shlex.quote(paths['config_path'])}")
         if chmod_result.exit_code != 0:
             raise RuntimeError(
@@ -435,8 +671,50 @@ class ZeroClawAgent(Agent):
             f"printf '\\n--- stdout ---\\n' && "
             f"sed -n '1,80p' {shlex.quote(paths['stdout_path'])} && "
             f"printf '\\n--- stderr ---\\n' && "
-            f"sed -n '1,80p' {shlex.quote(paths['stderr_path'])}"
+            f"sed -n '1,80p' {shlex.quote(paths['stderr_path'])} && "
+            f"test -f {shlex.quote(paths['runtime_trace_path'])} && "
+            f"printf '\\n--- runtime_trace ---\\n' && "
+            f"sed -n '1,80p' {shlex.quote(paths['runtime_trace_path'])} || true"
         )
+
+    def _build_gateway_partial_response(
+        self,
+        *,
+        task_context: dict[str, Any],
+        artifact_data: dict[str, Any] | None,
+        metadata: dict[str, Any],
+        wall_time_sec: float,
+        sandbox_id: str,
+        gateway_url: str,
+        response_json: dict[str, Any] | None = None,
+    ) -> AgentResponse:
+        artifact_payload = dict(artifact_data or {})
+        workspace_files = dict(artifact_payload.get("workspace_file_contents", {}) or {})
+        raw_output = workspace_files.get("zeroclaw_output.txt", "")
+        raw_stderr = workspace_files.get("zeroclaw_stderr.log", "")
+        runtime_trace = workspace_files.get("runtime_trace.jsonl", "")
+        partial_response = self._build_cli_response(
+            prompt=str(task_context["prompt"]),
+            raw_output=raw_output,
+            raw_stderr=raw_stderr,
+            runtime_trace=runtime_trace,
+            attachment_items=list(task_context["attachments"]),
+            metadata=metadata,
+            wall_time_sec=wall_time_sec,
+            system_prompt=self._system_prompt,
+            artifact_manifest=artifact_payload.get("artifact_manifest", {}),
+            request_messages=list(task_context["request_messages"]),
+        )
+        partial_response.response_json = dict(response_json or {})
+        partial_response.gateway_log_excerpt = str(artifact_payload.get("gateway_log_excerpt", "") or "")
+        partial_response.workspace_snapshot_paths = list(
+            artifact_payload.get("workspace_snapshot_paths", []) or []
+        )
+        partial_response.workspace_file_contents.update(workspace_files)
+        partial_response.sandbox_metadata = dict(artifact_payload.get("sandbox_metadata", {}) or {})
+        partial_response.gateway_url = gateway_url
+        partial_response.sandbox_id = sandbox_id
+        return partial_response
 
     def _collect_sandbox_diagnostics(
         self,
@@ -453,7 +731,9 @@ class ZeroClawAgent(Agent):
 
     def _run_in_sandbox(self, task: BenchmarkTask, sandbox: Any) -> AgentResponse:
         start = time.time()
-        prompt = self._build_prompt(task)
+        task_context = self._build_task_context(task)
+        prompt = str(task_context["prompt"])
+        attachment_items = list(task_context["attachments"])
         cwd_result = sandbox.execute("pwd")
         if cwd_result.exit_code != 0:
             raise RuntimeError(
@@ -463,7 +743,7 @@ class ZeroClawAgent(Agent):
         root_dir = cwd_result.stdout.strip().splitlines()[-1]
         execution_id = str(task.metadata.get("execution_id") or f"task_{int(start)}")
         paths = self._prepare_paths(root_dir, execution_id)
-        self._prepare_sandbox_workspace(sandbox, paths, prompt)
+        self._prepare_sandbox_workspace(sandbox, paths, task_context)
 
         env = self._build_env(paths["home_dir"])
         version_output = self._ensure_sandbox_binary(sandbox, env)
@@ -479,57 +759,66 @@ class ZeroClawAgent(Agent):
             result = sandbox.execute(run_command)
         raw_output = self._read_sandbox_file(sandbox, paths["stdout_path"]).strip()
         raw_stderr = self._read_sandbox_file(sandbox, paths["stderr_path"]).strip()
+        runtime_trace = self._read_sandbox_file(sandbox, paths["runtime_trace_path"]).strip()
+        metadata = {
+            "model": self._model,
+            "provider_api_base": self._provider_api_base,
+            "execution_id": execution_id,
+            "workspace_dir": paths["workspace_dir"],
+            "home_dir": paths["home_dir"],
+            "zeroclaw_version": version_output,
+            "sandbox_backend": getattr(sandbox, "name", ""),
+        }
+        partial_response = self._build_cli_response(
+            prompt=prompt,
+            raw_output=raw_output,
+            raw_stderr=raw_stderr,
+            runtime_trace=runtime_trace,
+            attachment_items=attachment_items,
+            metadata=metadata,
+            wall_time_sec=time.time() - start,
+            system_prompt=self._system_prompt,
+            artifact_manifest={
+                "files": {
+                    "stdout_source": paths["stdout_path"],
+                    "stderr_source": paths["stderr_path"],
+                    "runtime_trace_source": paths["runtime_trace_path"],
+                }
+            },
+            request_messages=list(task_context["request_messages"]),
+        )
 
         if result.exit_code == 124:
-            raise RuntimeError(f"ZeroClaw agent timed out after {self._request_timeout}s")
+            self._raise_with_partial_response(
+                f"ZeroClaw agent timed out after {self._request_timeout}s",
+                partial_response,
+            )
         if result.exit_code != 0:
             diagnostics = self._collect_sandbox_diagnostics(sandbox, paths, env)
-            raise RuntimeError(
+            self._raise_with_partial_response(
                 "ZeroClaw agent failed in sandbox: "
                 f"{raw_stderr or raw_output or result.stderr.strip() or f'exit code {result.exit_code}'}\n"
-                f"diagnostics:\n{diagnostics}"
+                f"diagnostics:\n{diagnostics}",
+                partial_response,
             )
         if raw_output.lower().startswith("error:"):
-            raise RuntimeError(raw_output.splitlines()[0])
+            self._raise_with_partial_response(raw_output.splitlines()[0], partial_response)
         if not raw_output:
             diagnostics = self._collect_sandbox_diagnostics(sandbox, paths, env)
-            raise RuntimeError(
+            self._raise_with_partial_response(
                 f"ZeroClaw agent produced no output. stderr={raw_stderr}\n"
-                f"diagnostics:\n{diagnostics}"
+                f"diagnostics:\n{diagnostics}",
+                partial_response,
             )
 
-        wall_time = time.time() - start
-        answer = _extract_answer(raw_output)
-        trajectory = [
-            {"role": "user", "content": prompt},
-            {"role": "assistant", "content": raw_output},
-        ]
-        return AgentResponse(
-            answer=answer,
-            trajectory=trajectory,
-            raw_output=raw_output,
-            wall_time_sec=wall_time,
-            workspace_file_contents={
-                "task.txt": prompt,
-                "zeroclaw_stderr.log": raw_stderr,
-            },
-            system_prompt=self._system_prompt,
-            metadata={
-                "model": self._model,
-                "provider_api_base": self._provider_api_base,
-                "execution_id": execution_id,
-                "workspace_dir": paths["workspace_dir"],
-                "home_dir": paths["home_dir"],
-                "zeroclaw_version": version_output,
-                "sandbox_backend": getattr(sandbox, "name", ""),
-            },
-        )
+        return partial_response
 
     def _run_via_gateway_api_base(
         self,
         task: BenchmarkTask,
         api_base: str,
         *,
+        task_context: dict[str, Any] | None = None,
         sandbox: Any = None,
         runtime_info: dict[str, Any] | None = None,
         artifact_data: dict[str, Any] | None = None,
@@ -544,7 +833,9 @@ class ZeroClawAgent(Agent):
             ) from exc
 
         start = time.time()
-        request_messages = self._build_request_messages(task)
+        resolved_task_context = task_context or self._build_task_context(task)
+        request_messages = list(resolved_task_context["request_messages"])
+        attachment_items = list(resolved_task_context["attachments"])
         resolved_runtime_info = dict(runtime_info or {})
         resolved_api_base = api_base.rstrip("/")
         actual_sandbox_id, _ = self._extract_sandbox_target_from_api_base(resolved_api_base)
@@ -561,6 +852,8 @@ class ZeroClawAgent(Agent):
             "temperature": self._temperature,
             "stream": False,
         }
+        if attachment_items:
+            request_payload["attachments"] = self._serialize_gateway_attachments(attachment_items)
 
         response = httpx.post(
             url,
@@ -593,6 +886,8 @@ class ZeroClawAgent(Agent):
             "workspace_file_contents": {},
             "sandbox_metadata": {},
         }
+        workspace_files = dict(resolved_artifact_data.get("workspace_file_contents", {}) or {})
+        workspace_files.setdefault("task.txt", str(resolved_task_context["prompt"]))
         resolved_sandbox_id = str(
             resolved_runtime_info.get("sandbox_id")
             or getattr(sandbox, "sandbox_id", "")
@@ -603,7 +898,7 @@ class ZeroClawAgent(Agent):
         return AgentResponse(
             answer=answer,
             trajectory=[
-                {"role": "user", "content": task.problem},
+                {"role": "user", "content": resolved_task_context["problem_text"]},
                 {"role": "assistant", "content": raw_output},
             ],
             raw_output=raw_output,
@@ -612,10 +907,13 @@ class ZeroClawAgent(Agent):
             wall_time_sec=wall_time,
             gateway_url=resolved_runtime_info.get("gateway_url", url),
             sandbox_id=resolved_sandbox_id,
-            artifact_manifest=resolved_artifact_data.get("artifact_manifest", {}),
+            artifact_manifest=self._merge_artifact_manifest(
+                resolved_artifact_data.get("artifact_manifest", {}),
+                self._attachment_manifest(attachment_items),
+            ),
             gateway_log_excerpt=resolved_artifact_data.get("gateway_log_excerpt", ""),
             workspace_snapshot_paths=resolved_artifact_data.get("workspace_snapshot_paths", []),
-            workspace_file_contents=resolved_artifact_data.get("workspace_file_contents", {}),
+            workspace_file_contents=workspace_files,
             sandbox_metadata=resolved_artifact_data.get("sandbox_metadata", {}),
             system_prompt=self._system_prompt,
             metadata={
@@ -631,31 +929,64 @@ class ZeroClawAgent(Agent):
         if self._runtime_manager is None:
             raise RuntimeError("ZeroClaw gateway mode is not configured.")
         runtime_info = self._runtime_manager.ensure_ready(sandbox)
-        artifact_data = self._runtime_manager.collect_artifacts(sandbox)
+        task_context = self._build_task_context(task)
+        gateway_url = str(runtime_info.get("gateway_url") or f"{runtime_info['api_base']}/chat/completions")
+        sandbox_id = str(
+            runtime_info.get("sandbox_id")
+            or getattr(sandbox, "sandbox_id", "")
+            or ""
+        )
         try:
-            return self._run_via_gateway_api_base(
+            response = self._run_via_gateway_api_base(
                 task,
                 runtime_info["api_base"],
+                task_context=task_context,
                 sandbox=sandbox,
                 runtime_info=runtime_info,
-                artifact_data=artifact_data,
                 gateway_mode="rock-proxy",
             )
+            artifact_data = self._runtime_manager.collect_artifacts(sandbox)
+            response.artifact_manifest = self._merge_artifact_manifest(
+                response.artifact_manifest,
+                artifact_data.get("artifact_manifest", {}),
+            )
+            response.gateway_log_excerpt = artifact_data.get("gateway_log_excerpt", "")
+            response.workspace_snapshot_paths = artifact_data.get("workspace_snapshot_paths", [])
+            response.workspace_file_contents.update(
+                artifact_data.get("workspace_file_contents", {})
+            )
+            response.sandbox_metadata = artifact_data.get("sandbox_metadata", {})
+            return response
         except Exception as exc:
+            artifact_data = self._runtime_manager.collect_artifacts(sandbox)
             if not _should_fallback_from_gateway(exc):
-                raise
+                partial_response = self._build_gateway_partial_response(
+                    task_context=task_context,
+                    artifact_data=artifact_data,
+                    metadata={
+                        "model": self._model,
+                        "provider_api_base": self._provider_api_base,
+                        "gateway_api_base": runtime_info["api_base"],
+                        "gateway_mode": "rock-proxy",
+                        "sandbox_backend": getattr(sandbox, "name", ""),
+                    },
+                    wall_time_sec=0.0,
+                    sandbox_id=sandbox_id,
+                    gateway_url=gateway_url,
+                )
+                self._raise_with_partial_response(str(exc), partial_response)
             logger.warning(
                 "ZeroClaw ROCK proxy failed for sandbox_id=%s; falling back to direct sandbox CLI: %s",
                 runtime_info.get("sandbox_id") or getattr(sandbox, "sandbox_id", ""),
                 exc,
             )
             response = self._run_in_sandbox(task, sandbox)
-            response.gateway_url = runtime_info.get("gateway_url", "")
-            response.sandbox_id = str(
-                runtime_info.get("sandbox_id")
-                or getattr(sandbox, "sandbox_id", "")
+            response.gateway_url = gateway_url
+            response.sandbox_id = sandbox_id
+            response.artifact_manifest = self._merge_artifact_manifest(
+                response.artifact_manifest,
+                artifact_data.get("artifact_manifest", {}),
             )
-            response.artifact_manifest = artifact_data.get("artifact_manifest", {})
             response.gateway_log_excerpt = artifact_data.get("gateway_log_excerpt", "")
             response.workspace_snapshot_paths = artifact_data.get("workspace_snapshot_paths", [])
             response.workspace_file_contents.update(
@@ -667,6 +998,7 @@ class ZeroClawAgent(Agent):
             return response
 
     def _run_via_predeployed_gateway(self, task: BenchmarkTask) -> AgentResponse:
+        task_context = self._build_task_context(task)
         resolved_api_base = ""
         used_pool = False
         if self._gateway_pool:
@@ -681,32 +1013,54 @@ class ZeroClawAgent(Agent):
                 "ZeroClaw gateway mode requires agent.config.gateway_api_base (or gateway_pool) "
                 "when no live sandbox is provided."
             )
-        return self._run_via_gateway_api_base(
-            task,
-            resolved_api_base,
-            runtime_info={
-                "sandbox_id": self._sandbox_id,
-                "gateway_url": f"{resolved_api_base}/chat/completions",
-                "api_base": resolved_api_base,
-            },
-            gateway_mode="gateway-pool" if used_pool else "gateway-api-base",
-        )
+        runtime_info = {
+            "sandbox_id": self._sandbox_id,
+            "gateway_url": f"{resolved_api_base}/chat/completions",
+            "api_base": resolved_api_base,
+        }
+        try:
+            return self._run_via_gateway_api_base(
+                task,
+                resolved_api_base,
+                task_context=task_context,
+                runtime_info=runtime_info,
+                gateway_mode="gateway-pool" if used_pool else "gateway-api-base",
+            )
+        except Exception as exc:
+            partial_response = self._build_gateway_partial_response(
+                task_context=task_context,
+                artifact_data=None,
+                metadata={
+                    "model": self._model,
+                    "provider_api_base": self._provider_api_base,
+                    "gateway_api_base": resolved_api_base,
+                    "gateway_mode": "gateway-pool" if used_pool else "gateway-api-base",
+                },
+                wall_time_sec=0.0,
+                sandbox_id=str(runtime_info.get("sandbox_id", "")),
+                gateway_url=str(runtime_info.get("gateway_url", "")),
+            )
+            self._raise_with_partial_response(str(exc), partial_response)
 
     def _run_locally(self, task: BenchmarkTask) -> AgentResponse:
         start = time.time()
-        prompt = self._build_prompt(task)
+        task_context = self._build_task_context(task)
+        prompt = str(task_context["prompt"])
+        attachment_items = list(task_context["attachments"])
         execution_id = str(task.metadata.get("execution_id") or f"task_{int(start)}")
 
         with tempfile.TemporaryDirectory(prefix=f"alphadiana_zeroclaw_{execution_id}_") as td:
             paths = self._prepare_paths(td, execution_id)
             Path(paths["workspace_dir"]).mkdir(parents=True, exist_ok=True)
             Path(paths["zc_home_dir"]).mkdir(parents=True, exist_ok=True)
+            Path(paths["state_dir"]).mkdir(parents=True, exist_ok=True)
             workspace_link = Path(paths["zc_home_dir"]) / "workspace"
             if workspace_link.exists() or workspace_link.is_symlink():
                 workspace_link.unlink()
             workspace_link.symlink_to(Path(paths["workspace_dir"]))
             Path(paths["config_path"]).write_text(self._build_config_toml(), encoding="utf-8")
             Path(paths["task_path"]).write_text(prompt, encoding="utf-8")
+            self._write_local_attachments(paths["attachments_dir"], attachment_items)
 
             env = os.environ.copy()
             env.update(self._build_env(paths["home_dir"]))
@@ -724,45 +1078,52 @@ class ZeroClawAgent(Agent):
 
             raw_output = Path(paths["stdout_path"]).read_text(encoding="utf-8", errors="replace").strip() if Path(paths["stdout_path"]).exists() else ""
             raw_stderr = Path(paths["stderr_path"]).read_text(encoding="utf-8", errors="replace").strip() if Path(paths["stderr_path"]).exists() else ""
+            runtime_trace = self._read_local_text(paths["runtime_trace_path"]).strip()
+            metadata = {
+                "model": self._model,
+                "provider_api_base": self._provider_api_base,
+                "execution_id": execution_id,
+                "workspace_dir": paths["workspace_dir"],
+                "home_dir": paths["home_dir"],
+                "zeroclaw_version": version_output,
+                "sandbox_backend": "local-process",
+            }
+            partial_response = self._build_cli_response(
+                prompt=prompt,
+                raw_output=raw_output,
+                raw_stderr=raw_stderr,
+                runtime_trace=runtime_trace,
+                attachment_items=attachment_items,
+                metadata=metadata,
+                wall_time_sec=time.time() - start,
+                system_prompt=self._system_prompt,
+                artifact_manifest={
+                    "files": {
+                        "runtime_trace_source": paths["runtime_trace_path"],
+                    }
+                },
+                request_messages=list(task_context["request_messages"]),
+            )
 
             if result.returncode == 124:
-                raise RuntimeError(f"ZeroClaw agent timed out after {self._request_timeout}s")
+                self._raise_with_partial_response(
+                    f"ZeroClaw agent timed out after {self._request_timeout}s",
+                    partial_response,
+                )
             if result.returncode != 0:
-                raise RuntimeError(
+                self._raise_with_partial_response(
                     "ZeroClaw agent failed locally: "
-                    f"{raw_stderr or raw_output or result.stderr.strip() or f'exit code {result.returncode}'}"
+                    f"{raw_stderr or raw_output or result.stderr.strip() or f'exit code {result.returncode}'}",
+                    partial_response,
                 )
             if raw_output.lower().startswith("error:"):
-                raise RuntimeError(raw_output.splitlines()[0])
+                self._raise_with_partial_response(raw_output.splitlines()[0], partial_response)
             if not raw_output:
-                raise RuntimeError(f"ZeroClaw agent produced no output. stderr={raw_stderr}")
-
-            wall_time = time.time() - start
-            answer = _extract_answer(raw_output)
-            trajectory = [
-                {"role": "user", "content": prompt},
-                {"role": "assistant", "content": raw_output},
-            ]
-            return AgentResponse(
-                answer=answer,
-                trajectory=trajectory,
-                raw_output=raw_output,
-                wall_time_sec=wall_time,
-                workspace_file_contents={
-                    "task.txt": prompt,
-                    "zeroclaw_stderr.log": raw_stderr,
-                },
-                system_prompt=self._system_prompt,
-                metadata={
-                    "model": self._model,
-                    "provider_api_base": self._provider_api_base,
-                    "execution_id": execution_id,
-                    "workspace_dir": paths["workspace_dir"],
-                    "home_dir": paths["home_dir"],
-                    "zeroclaw_version": version_output,
-                    "sandbox_backend": "local-process",
-                },
-            )
+                self._raise_with_partial_response(
+                    f"ZeroClaw agent produced no output. stderr={raw_stderr}",
+                    partial_response,
+                )
+            return partial_response
 
     def solve(self, task: BenchmarkTask, sandbox: Any = None) -> AgentResponse:
         if not self._model:

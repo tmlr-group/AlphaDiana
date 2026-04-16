@@ -62,6 +62,7 @@ class ZeroClawRuntimeManager:
         self._gateway_warmup_initial_delay = float(config.get("gateway_warmup_initial_delay", 2.0))
         self._bridge_log_path = config.get("bridge_log_path", "/tmp/zeroclaw-gateway.log")
         self._remote_bridge_path = config.get("remote_bridge_path", "/tmp/zeroclaw_bridge.py")
+        self._artifact_root = str(config.get("artifact_root", "/tmp/zeroclaw-bridge-artifacts") or "/tmp/zeroclaw-bridge-artifacts").strip()
         self._request_timeout = int(config.get("request_timeout", 1200))
         raw_temperature = config.get("temperature", 0.0)
         self._temperature = float(raw_temperature if raw_temperature not in ("", None) else 0.0)
@@ -106,6 +107,7 @@ class ZeroClawRuntimeManager:
             "OPENROUTER_API_KEY": self._model_api_key or os.environ.get("OPENROUTER_API_KEY", ""),
             "ZEROCLAW_GATEWAY_TOKEN": self._gateway_token,
             "ZEROCLAW_PROVIDER": self._provider,
+            "ZEROCLAW_ARTIFACT_ROOT": self._artifact_root,
             "ZEROCLAW_TEMPERATURE": str(self._temperature),
             "ZEROCLAW_REQUEST_TIMEOUT": str(self._request_timeout),
             "ZEROCLAW_MAX_TOOL_ITERATIONS": str(self._max_tool_iterations),
@@ -248,20 +250,47 @@ class ZeroClawRuntimeManager:
         raise RuntimeError("ZeroClaw bridge warmup did not succeed before timeout")
 
     def collect_artifacts(self, sandbox: Any) -> dict:
+        def _read_text(path: str, *, limit_lines: int | None = None) -> str:
+            cat_cmd = f"cat {shlex.quote(path)}"
+            if limit_lines is not None:
+                cat_cmd = f"sed -n '1,{limit_lines}p' {shlex.quote(path)}"
+            result = sandbox.execute(f"bash -lc {shlex.quote(f'test -f {shlex.quote(path)} && {cat_cmd}')}")
+            if result.exit_code == 0:
+                return result.stdout
+            return ""
+
         bridge_log = ""
         bridge_log_result = sandbox.execute(f"sed -n '1,300p' {self._bridge_log_path}")
         if bridge_log_result.exit_code == 0:
             bridge_log = bridge_log_result.stdout
+        last_request_dir = f"{self._artifact_root.rstrip('/')}/last_request"
+        workspace_file_contents = {}
+        snapshot_paths: list[str] = []
+        for relative_name in [
+            "task.txt",
+            "zeroclaw_output.txt",
+            "zeroclaw_stderr.log",
+            "runtime_trace.jsonl",
+            "attachment_manifest.json",
+            "status.json",
+        ]:
+            remote_path = f"{last_request_dir}/{relative_name}"
+            text = _read_text(remote_path)
+            if not text:
+                continue
+            workspace_file_contents[relative_name] = text
+            snapshot_paths.append(remote_path)
         return {
             "artifact_manifest": {
                 "files": {
                     "bridge_log_source": self._bridge_log_path,
+                    "artifact_root": self._artifact_root,
                 },
                 "command_history": getattr(sandbox, "command_history", []),
             },
             "gateway_log_excerpt": bridge_log,
-            "workspace_snapshot_paths": [],
-            "workspace_file_contents": {},
+            "workspace_snapshot_paths": snapshot_paths,
+            "workspace_file_contents": workspace_file_contents,
             "sandbox_metadata": sandbox.metadata() if hasattr(sandbox, "metadata") else {},
         }
 

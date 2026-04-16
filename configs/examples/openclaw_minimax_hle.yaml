@@ -1,0 +1,53 @@
+# SMOKE ONLY: deterministic 1-task config for path validation.
+# Full supported HLE multiple-choice config: configs/full_runs/p25_full_openclaw_minimax_hle.yaml.
+#
+# Recommended local smoke config for OpenClaw x HLE.
+# Requires HF_TOKEN for the gated `cais/hle` dataset.
+
+run_id: "openclaw_minimax_hle_smoke"
+
+agent:
+  name: openclaw
+  version: "2026.3.20"
+  config:
+    rock_image: "tmlrgroup/alphadiana:v1"
+    rock_agent_config_path: "openclaw_deploy/rock_agent_config.prebuilt.yaml"
+    openclaw_config_path: "openclaw_deploy/openclaw.json"
+    rock_memory: "4g"
+    rock_cpus: 1
+    rock_startup_timeout: 600
+    gateway_startup_timeout: 240
+    gateway_warmup_timeout: 240
+    OPENAI_BASE_URL: "${OPENAI_BASE_URL}"
+    OPENAI_API_KEY: "${OPENAI_API_KEY}"
+    OPENAI_MODEL_NAME: "minimax-m2.5"
+    model: openclaw
+    gateway_token: "OPENCLAW"
+    max_tokens: 512
+    request_timeout: 2400
+    max_attempts: 5
+    system_prompt: |
+      Solve carefully and keep the final answer concise.
+      The final line must be:
+      $$\boxed{your answer here}$$
+
+benchmark:
+  name: hle
+  config:
+    dataset: "cais/hle"
+    split: "test"
+    dataset_index: 1
+    answer_types:
+      - "multipleChoice"
+    max_tasks: 1
+
+sandbox: null
+
+scorer:
+  name: exact_match
+  config: {}
+
+max_concurrent: 1
+output_dir: "./results/openclaw_minimax_hle_smoke"
+metadata:
+  notes: "OpenClaw auto-deploy smoke on HLE via minimax-m2.5. Requires HF_TOKEN."
