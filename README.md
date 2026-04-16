@@ -215,8 +215,14 @@ example, but starts a lightweight ZeroClaw bridge inside the sandbox:
 
 ```bash
 bash scripts/start_zeroclaw.sh
+source scripts/rock_env.sh
 alphadiana run configs/examples/zeroclaw_aime2026.yaml
 ```
+
+`start_zeroclaw.sh` starts the local ROCK services, but it cannot export
+`ROCK_BASE_URL` and `ROCK_PROXY_URL` back into your current shell. Run
+`source scripts/rock_env.sh` before `alphadiana run` so the example YAML
+resolves the local ROCK URLs correctly.
 
 For both modes, config details, and the validated smoke run, see
 [`docs/tutorial_zeroclaw_aime2026.md`](docs/tutorial_zeroclaw_aime2026.md).
