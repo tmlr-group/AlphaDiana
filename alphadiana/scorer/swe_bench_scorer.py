@@ -8,6 +8,7 @@ from pathlib import Path
 
 from alphadiana.scorer.base import Scorer, ScoreResult
 from alphadiana.scorer.registry import register_scorer
+from alphadiana.utils.swebench import build_swebench_instance, infer_instance_id
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +68,7 @@ class SWEBenchScorer(Scorer):
         from swebench.harness.test_spec.test_spec import make_test_spec
         from swebench.harness.run_evaluation import run_instance
 
-        instance_id = task.metadata.get("instance_id", task.task_id)
+        instance_id = infer_instance_id(task)
         model_patch = str(response.answer) if response.answer is not None else ""
 
         if not model_patch.strip():
@@ -81,22 +82,7 @@ class SWEBenchScorer(Scorer):
             )
 
         # Reconstruct the SWE-bench instance dict from task metadata.
-        instance = {
-            "instance_id": instance_id,
-            "repo": task.metadata.get("repo", ""),
-            "base_commit": task.metadata.get("base_commit", ""),
-            "patch": str(task.ground_truth),
-            "test_patch": task.metadata.get("test_patch", ""),
-            "problem_statement": task.problem,
-            "hints_text": "",
-            "created_at": "",
-            "version": task.metadata.get("version", ""),
-            "FAIL_TO_PASS": task.metadata.get("FAIL_TO_PASS", "[]"),
-            "PASS_TO_PASS": task.metadata.get("PASS_TO_PASS", "[]"),
-            "environment_setup_commit": task.metadata.get(
-                "environment_setup_commit", ""
-            ),
-        }
+        instance = build_swebench_instance(task)
 
         # Build the prediction dict expected by run_instance.
         pred = {

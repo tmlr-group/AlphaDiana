@@ -133,6 +133,7 @@ class Runner:
         # Import all benchmark/agent/sandbox/scorer modules to trigger registration.
         import alphadiana.benchmark.aime  # noqa: F401
         import alphadiana.benchmark.custom  # noqa: F401
+        import alphadiana.benchmark.swe_bench  # noqa: F401
 
         # Import agent modules to trigger registration.
         import alphadiana.agent.openclaw  # noqa: F401
@@ -141,6 +142,7 @@ class Runner:
         # Import sandbox modules to trigger registration.
         import alphadiana.sandbox.local  # noqa: F401
         import alphadiana.sandbox.rock  # noqa: F401
+        import alphadiana.sandbox.swebench_container  # noqa: F401
 
         # Import scorer modules to trigger registration.
         import alphadiana.scorer.exact_match  # noqa: F401
@@ -278,6 +280,7 @@ class Runner:
         if (
             self.sandbox is None
             and self.config.agent_name == "openclaw"
+            and self.config.agent_config.get("runtime") != "swebench_container"
             and self.config.agent_config.get("rock_agent_config_path")
             and self.config.agent_config.get("openclaw_config_path")
         ):
@@ -474,6 +477,7 @@ class Runner:
             self.sandbox is None
             and not predeployed_sessions
             and self.config.agent_name == "openclaw"
+            and self.config.agent_config.get("runtime") != "swebench_container"
             and self.config.agent_config.get("rock_agent_config_path")
             and self.config.agent_config.get("openclaw_config_path")
         ):
@@ -531,6 +535,7 @@ class Runner:
         if (
             self.sandbox is not None
             and self.config.max_concurrent > 1
+            and self.sandbox.supports_pooling()
             and self.config.agent_name != "openclaw"
         ):
             from alphadiana.sandbox.pool import SandboxPool
@@ -541,7 +546,7 @@ class Runner:
         # For sequential mode, create a single shared session to reuse across
         # all tasks instead of creating (and tearing down) one per task.
         shared_session = None
-        if self.sandbox is not None and pool is None:
+        if self.sandbox is not None and pool is None and self.sandbox.supports_shared_session():
             logger.info("Creating shared sandbox session for sequential execution")
             shared_session = self.sandbox.create_session()
 
@@ -576,6 +581,8 @@ class Runner:
                 used_pool = True
             elif shared_session is not None:
                 sandbox_session = shared_session
+            elif self.sandbox is not None:
+                sandbox_session = self.sandbox.create_session(task=task)
             response_sandbox_id = ""
             start = time.monotonic()
             response = None
@@ -645,6 +652,8 @@ class Runner:
                             logger.warning("Artifact collection failed for task %s: %s", task.task_id, artifact_exc)
                     if not error_response.gateway_url and hasattr(sandbox_session, "proxy_v1_base"):
                         error_response.gateway_url = f"{sandbox_session.proxy_v1_base()}/chat/completions"
+                    elif not error_response.gateway_url and hasattr(sandbox_session, "gateway_api_base"):
+                        error_response.gateway_url = f"{sandbox_session.gateway_api_base()}/chat/completions"
                 if self.sandbox is not None:
                     error_response.metadata.setdefault("sandbox_backend", self.sandbox.name)
                 if not response_sandbox_id:
