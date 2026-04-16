@@ -165,11 +165,17 @@ OpenClaw. Use it for multi-sandbox concurrent runs or paper-quality evaluations.
 
 ```bash
 bash scripts/start_zeroclaw.sh
+source scripts/rock_env.sh
 ```
 
 The script starts Redis, Ray, ROCK admin (`9002`), and ROCK proxy (`9017`),
 verifies the routes, checks that the ZeroClaw image exists, and validates the
 example config.
+
+Because `bash scripts/start_zeroclaw.sh` runs in a subprocess, it does not
+export `ROCK_BASE_URL` / `ROCK_PROXY_URL` back to your current shell. Source
+`scripts/rock_env.sh` before launching the benchmark so
+`configs/examples/zeroclaw_aime2026.yaml` picks up the active local ROCK URLs.
 
 #### A2. Build the ZeroClaw reasoning image
 

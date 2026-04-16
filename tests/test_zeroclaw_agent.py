@@ -403,6 +403,7 @@ def test_start_zeroclaw_script_checks_expected_routes():
     assert "/apis/envs/sandbox/v1/start_async" in script
     assert "/apis/envs/sandbox/v1/sandboxes" in script
     assert "zeroclaw-reasoning:0.6.9" in script
+    assert "source scripts/rock_env.sh" in script
     assert "alphadiana.cli validate" in script
 
 

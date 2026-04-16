@@ -98,6 +98,63 @@ class TestExperimentConfigFromYAML:
         assert config.sandbox_name == "rock"
         assert config.sandbox_config["image"] == "python:3.11"
 
+    def test_unresolved_rock_placeholders_fall_back_to_empty(self, tmp_path, monkeypatch):
+        """Unexpanded ROCK placeholders should not block runtime port fallback."""
+        monkeypatch.delenv("ROCK_BASE_URL", raising=False)
+        monkeypatch.delenv("ROCK_PROXY_URL", raising=False)
+
+        config_content = textwrap.dedent("""\
+            agent:
+              name: zeroclaw
+              version: "0.6.9"
+              config:
+                admin_base_url: "${ROCK_BASE_URL}"
+                proxy_base_url: "${ROCK_PROXY_URL}"
+            benchmark:
+              name: aime
+            scorer:
+              name: math_verify
+        """)
+        yaml_path = tmp_path / "zeroclaw-rock.yaml"
+        yaml_path.write_text(config_content)
+
+        config = ExperimentConfig.from_yaml(str(yaml_path))
+
+        assert config.agent_config["admin_base_url"] == ""
+        assert config.agent_config["proxy_base_url"] == ""
+
+    def test_overrides_clear_unresolved_env_placeholders(self, tmp_path, monkeypatch):
+        """Overrides with unresolved env placeholders should also collapse to empty."""
+        monkeypatch.delenv("ROCK_BASE_URL", raising=False)
+        monkeypatch.delenv("ROCK_PROXY_URL", raising=False)
+
+        config_content = textwrap.dedent("""\
+            agent:
+              name: zeroclaw
+              version: "0.6.9"
+            benchmark:
+              name: aime
+            scorer:
+              name: math_verify
+        """)
+        yaml_path = tmp_path / "zeroclaw-overrides.yaml"
+        yaml_path.write_text(config_content)
+
+        config = ExperimentConfig.from_yaml(
+            str(yaml_path),
+            overrides={
+                "agent": {
+                    "config": {
+                        "admin_base_url": "${ROCK_BASE_URL}",
+                        "proxy_base_url": "${ROCK_PROXY_URL}",
+                    }
+                }
+            },
+        )
+
+        assert config.agent_config["admin_base_url"] == ""
+        assert config.agent_config["proxy_base_url"] == ""
+
 
 class TestExperimentConfigDefaults:
     """Verify ExperimentConfig default values."""

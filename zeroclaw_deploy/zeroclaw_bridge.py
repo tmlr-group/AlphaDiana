@@ -27,6 +27,7 @@ WORKSPACE_ONLY = os.environ.get("ZEROCLAW_WORKSPACE_ONLY", "false").strip().lowe
 MODEL_NAME = os.environ.get("OPENAI_MODEL_NAME", "zeroclaw")
 API_BASE = os.environ.get("OPENAI_BASE_URL", "")
 API_KEY = os.environ.get("OPENAI_API_KEY", "")
+DEFAULT_TEMPERATURE = float(os.environ.get("ZEROCLAW_TEMPERATURE", "0.0"))
 
 
 def _normalize_api_base(api_base: str) -> str:
@@ -57,12 +58,13 @@ def _quote_toml(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def _build_config_toml() -> str:
+def _build_config_toml(temperature: float | None = None) -> str:
     workspace_only = "true" if WORKSPACE_ONLY else "false"
+    effective_temperature = DEFAULT_TEMPERATURE if temperature is None else float(temperature)
     return (
         f"default_provider = {_quote_toml(PROVIDER)}\n"
         f"default_model = {_quote_toml(MODEL_NAME)}\n\n"
-        "default_temperature = 0.7\n"
+        f"default_temperature = {effective_temperature}\n"
         "model_routes = []\n"
         "embedding_routes = []\n\n"
         "[model_providers]\n\n"
@@ -133,7 +135,13 @@ def _sanitize_output(raw_output: str) -> str:
     return "\n".join(cleaned_lines).strip()
 
 
-def _run_zeroclaw(prompt: str) -> str:
+def _coerce_temperature(value: Any) -> float | None:
+    if value in (None, ""):
+        return None
+    return float(value)
+
+
+def _run_zeroclaw(prompt: str, *, temperature: float | None = None) -> str:
     execution_id = uuid.uuid4().hex
     with tempfile.TemporaryDirectory(prefix=f"zeroclaw_gateway_{execution_id}_") as td:
         base = Path(td)
@@ -149,7 +157,7 @@ def _run_zeroclaw(prompt: str) -> str:
             workspace_link.unlink()
         workspace_link.symlink_to(workspace_dir)
         config_path = zc_home / "config.toml"
-        config_path.write_text(_build_config_toml(), encoding="utf-8")
+        config_path.write_text(_build_config_toml(temperature), encoding="utf-8")
         os.chmod(config_path, 0o600)
 
         env = os.environ.copy()
@@ -241,7 +249,8 @@ class Handler(BaseHTTPRequestHandler):
             prompt = _build_prompt(messages)
             if not prompt.strip():
                 raise ValueError("prompt is empty")
-            raw_output = _run_zeroclaw(prompt)
+            temperature = _coerce_temperature(payload.get("temperature"))
+            raw_output = _run_zeroclaw(prompt, temperature=temperature)
             now = int(time.time())
             self._write_json(HTTPStatus.OK, {
                 "id": f"chatcmpl-{uuid.uuid4().hex}",

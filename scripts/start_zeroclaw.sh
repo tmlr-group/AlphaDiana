@@ -258,4 +258,5 @@ if [ "${#_missing_env[@]}" -gt 0 ]; then
 fi
 echo "Next step:"
 echo "  source scripts/activate.sh"
+echo "  source scripts/rock_env.sh"
 echo "  alphadiana run ${ZEROCLAW_CONFIG}"

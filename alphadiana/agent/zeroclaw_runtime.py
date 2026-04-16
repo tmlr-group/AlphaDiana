@@ -63,6 +63,8 @@ class ZeroClawRuntimeManager:
         self._bridge_log_path = config.get("bridge_log_path", "/tmp/zeroclaw-gateway.log")
         self._remote_bridge_path = config.get("remote_bridge_path", "/tmp/zeroclaw_bridge.py")
         self._request_timeout = int(config.get("request_timeout", 1200))
+        raw_temperature = config.get("temperature", 0.0)
+        self._temperature = float(raw_temperature if raw_temperature not in ("", None) else 0.0)
         self._max_tool_iterations = int(config.get("max_tool_iterations", 100))
         self._max_actions_per_hour = int(config.get("max_actions_per_hour", 200))
         self._workspace_only = bool(config.get("workspace_only", False))
@@ -104,6 +106,7 @@ class ZeroClawRuntimeManager:
             "OPENROUTER_API_KEY": self._model_api_key or os.environ.get("OPENROUTER_API_KEY", ""),
             "ZEROCLAW_GATEWAY_TOKEN": self._gateway_token,
             "ZEROCLAW_PROVIDER": self._provider,
+            "ZEROCLAW_TEMPERATURE": str(self._temperature),
             "ZEROCLAW_REQUEST_TIMEOUT": str(self._request_timeout),
             "ZEROCLAW_MAX_TOOL_ITERATIONS": str(self._max_tool_iterations),
             "ZEROCLAW_MAX_ACTIONS_PER_HOUR": str(self._max_actions_per_hour),
