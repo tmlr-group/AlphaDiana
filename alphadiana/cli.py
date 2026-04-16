@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 _PROXY_VARS = ("ALL_PROXY", "HTTP_PROXY", "HTTPS_PROXY",
                "all_proxy", "http_proxy", "https_proxy")
-_OPENCLAW_RUNTIME_AGENTS = {"openclaw", "terminal_bench2_openclaw"}
+_OPENCLAW_RUNTIME_AGENTS = {"openclaw"}
 
 
 def _warn_proxy() -> bool:

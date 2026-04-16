@@ -65,3 +65,20 @@ def test_openclaw_runtime_rejects_unresolved_placeholder_provider_env(tmp_path: 
 
     assert "OPENAI_BASE_URL" in message
     assert "agent.config or the local environment" in message
+
+
+def test_openclaw_runtime_applies_planner_only_overrides(tmp_path: Path) -> None:
+    rock_cfg, openclaw_cfg = _write_runtime_templates(tmp_path)
+    mgr = OpenClawRuntimeManager({
+        "rock_agent_config_path": str(rock_cfg),
+        "openclaw_config_path": str(openclaw_cfg),
+        "tools_profile": "minimal",
+        "skip_bootstrap": True,
+        "system_prompt_override": "Return shell commands only.",
+    })
+
+    cfg = mgr._build_openclaw_config()
+
+    assert cfg["tools"]["profile"] == "minimal"
+    assert cfg["agents"]["defaults"]["skipBootstrap"] is True
+    assert cfg["agents"]["defaults"]["systemPromptOverride"] == "Return shell commands only."

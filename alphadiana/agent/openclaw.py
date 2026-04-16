@@ -550,6 +550,7 @@ class OpenClawAgent(Agent):
         self._temperature = config.get("temperature", 0.7)
         self._top_p = config.get("top_p", None)
         self._max_tokens = config.get("max_tokens", None)
+        self._stream = bool(config.get("stream", True))
         self._max_attempts = max(1, int(config.get("max_attempts", 5)))
         self._request_timeout = float(config.get("request_timeout", 1800))
         self._proxy_timeout = int(config.get("proxy_timeout", 600))
@@ -958,7 +959,7 @@ class OpenClawAgent(Agent):
             "model": self._model,
             "messages": messages,
             "temperature": self._temperature,
-            "stream": True,
+            "stream": self._stream,
         }
         resolved = self._resolve_max_tokens()
         if resolved is not None:

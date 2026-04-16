@@ -1,4 +1,4 @@
-"""TerminalBench-2 Docker agent — per-task container with multi-turn LLM loop."""
+"""TerminalBench-2 DirectLLM agent with a shared control-side harness."""
 from __future__ import annotations
 
 import logging
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class TerminalBench2DockerAgent(TerminalBench2ContainerMixin, Agent):
-    """Per-task Docker container agent for terminal-bench-2 evaluation."""
+    """DirectLLM terminal-bench-2 agent using local helper scripts."""
 
     name = "terminal_bench2_docker"
     version = "1.0"
@@ -58,33 +58,28 @@ class TerminalBench2DockerAgent(TerminalBench2ContainerMixin, Agent):
     def solve(self, task: BenchmarkTask, sandbox: Optional[Any] = None) -> AgentResponse:
         t_start = time.time()
         client = self._get_client()
-
-        docker_image = task.metadata.get("docker_image", "")
-        if not docker_image:
-            raise ValueError(
-                f"Task {task.task_id} missing 'docker_image' in metadata. "
-                "Ensure TerminalBench2Benchmark populated task.metadata correctly."
-            )
-
-        logs_dir = self._logs_dir_for_task(task)
-        timeout_sec = int(task.metadata.get("timeout_sec", self._timeout_sec))
-        test_timeout_sec = self._test_timeout_sec
-
-        container_id: str = ""
         reward_content: str = ""
         trajectory: list[dict] = []
         raw_output_parts: list[str] = []
+        last_response_json: dict[str, Any] = {}
+        test_output = ""
+        runtime = self._prepare_runtime(task, temp_prefix="tb2-directllm-")
+        timeout_sec = int(task.metadata.get("timeout_sec", self._timeout_sec))
 
         try:
-            container_id = self._start_container(docker_image, logs_dir, task)
-
             messages: list[dict] = [
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": task.problem},
+                {
+                    "role": "user",
+                    "content": (
+                        "Solve this terminal-bench-2 task from the local control workspace.\n\n"
+                        f"Task:\n{task.problem}\n"
+                    ),
+                },
             ]
             trajectory.extend([
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": task.problem},
+                messages[1],
             ])
 
             for round_num in range(self._max_rounds):
@@ -96,6 +91,7 @@ class TerminalBench2DockerAgent(TerminalBench2ContainerMixin, Agent):
                     max_tokens=self._max_tokens,
                     temperature=self._temperature,
                 )
+                last_response_json = response.model_dump(mode="json") if hasattr(response, "model_dump") else {}
                 llm_text = response.choices[0].message.content or ""
                 raw_output_parts.append(llm_text)
                 messages.append({"role": "assistant", "content": llm_text})
@@ -110,7 +106,7 @@ class TerminalBench2DockerAgent(TerminalBench2ContainerMixin, Agent):
                     # we must execute those commands so the task state is actually modified.
                     exec_outputs: list[str] = []
                     for cmd in commands:
-                        cmd_output = self._exec_command(container_id, cmd, timeout_sec)
+                        cmd_output = self._exec_local_command(runtime.workdir, cmd, timeout_sec)
                         exec_outputs.append(f"$ {cmd}\n{cmd_output}")
 
                     turn_output = "\n".join(exec_outputs)
@@ -134,27 +130,34 @@ class TerminalBench2DockerAgent(TerminalBench2ContainerMixin, Agent):
                     break
 
             logger.info("Task %s — running tests/test.sh", task.task_id)
-            self._run_tests(container_id, test_timeout_sec)
-
-            reward_content = self._read_reward(logs_dir, task.task_id)
+            test_output, reward_content = self._run_verifier_and_read_reward(
+                runtime,
+                timeout_sec=self._test_timeout_sec,
+            )
             logger.info("Task %s — reward.txt: %r", task.task_id, reward_content)
 
         finally:
-            if container_id:
-                self._stop_container(container_id, task.task_id)
-            self._cleanup_logs_dir(logs_dir)
+            artifact_files = self._collect_text_artifacts({
+                "/terminal_bench2/direct_llm/TASK.md": runtime.helper_paths["task"],
+                "/terminal_bench2/direct_llm/AGENTS.md": runtime.helper_paths["agents"],
+            })
+            self._cleanup_runtime(runtime)
 
         return AgentResponse(
             answer=reward_content,
             trajectory=trajectory,
             raw_output="\n---\n".join(raw_output_parts),
             wall_time_sec=time.time() - t_start,
-            metadata={
-                "docker_image": docker_image,
-                "category": task.metadata.get("category", ""),
-                "difficulty": task.metadata.get("difficulty", ""),
-                "rounds_used": len([m for m in trajectory if m["role"] == "assistant"]),
-            },
+            metadata=self._build_metadata(
+                runtime,
+                reward=reward_content,
+                rounds_used=len([m for m in trajectory if m["role"] == "assistant"]),
+                runner="direct_llm",
+                extra={"test_output": test_output},
+            ),
+            request_messages=messages,
+            response_json=last_response_json,
+            workspace_file_contents=artifact_files,
             system_prompt=SYSTEM_PROMPT,
         )
 

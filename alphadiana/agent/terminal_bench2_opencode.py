@@ -1,4 +1,4 @@
-"""Terminal-bench-2 relay agent backed by OpenCode."""
+"""Terminal-bench-2 native agent backed by OpenCode."""
 
 from __future__ import annotations
 
@@ -6,9 +6,6 @@ import json
 import logging
 import os
 import shlex
-import signal
-import subprocess
-import tempfile
 import time
 from pathlib import Path
 from typing import Any, Optional
@@ -16,32 +13,27 @@ from typing import Any, Optional
 from alphadiana.agent.base import Agent, AgentResponse
 from alphadiana.agent.opencode import _extract_event_texts
 from alphadiana.agent.registry import AgentRegistry
-from alphadiana.agent.terminal_bench2_common import TerminalBench2ContainerMixin
+from alphadiana.agent.terminal_bench2_common import NATIVE_AGENT_PROMPT, TerminalBench2ContainerMixin
 from alphadiana.benchmark.base import BenchmarkTask
 
 logger = logging.getLogger(__name__)
 
-_TERMINAL_BENCH_OPENCODE_PROMPT = """You are solving a terminal-bench-2 task against a running Docker container.
-
-Use only the helper scripts in the current directory:
-- `./tb2-exec 'cmd'` runs `cmd` inside the target container via `docker exec`.
-- `./tb2-copy-from <remote_path> <local_path>` copies a file from the container.
-- `./tb2-copy-to <local_path> <remote_path>` copies a file into the container.
-- `./tb2-test` runs the benchmark verifier.
-
-Do not stop or replace the target container. Work through these helpers only.
-Inspect `TASK.md` for the benchmark instruction.
-"""
-
 
 class TerminalBench2OpenCodeAgent(TerminalBench2ContainerMixin, Agent):
-    """Host-side terminal-bench relay that lets OpenCode operate on the container."""
+    """Control-side OpenCode runner for terminal-bench-2."""
 
     name = "terminal_bench2_opencode"
     version = "1.0"
+    _DEFAULT_CONTROLLER_IMAGE = "alphadiana/tb2-opencode-controller:latest"
+    _DEFAULT_DOCKER_ENTRYPOINT = "/usr/lib/node_modules/opencode-ai/bin/opencode"
 
     def setup(self, config: dict) -> None:
         self._setup_container_config(config)
+        self._setup_controller_config(
+            config,
+            default_mode="docker",
+            default_image=self._DEFAULT_CONTROLLER_IMAGE,
+        )
         self._api_base = self._resolve_setting(config, "api_base", "OPENAI_BASE_URL")
         self._api_key = self._resolve_setting(config, "api_key", "OPENAI_API_KEY")
         self._model_name = self._resolve_setting(config, "model_name", "OPENAI_MODEL_NAME")
@@ -53,7 +45,11 @@ class TerminalBench2OpenCodeAgent(TerminalBench2ContainerMixin, Agent):
         self._variant = str(config.get("variant", "")).strip()
         self._print_logs = bool(config.get("print_logs", False))
         self._log_level = str(config.get("log_level", "")).strip()
-        self._opencode_bin = config.get("opencode_bin", "opencode")
+        self._opencode_bin = str(config.get("opencode_bin", "opencode") or "opencode").strip()
+        self._docker_opencode_entrypoint = str(
+            config.get("docker_opencode_entrypoint", self._DEFAULT_DOCKER_ENTRYPOINT)
+            or self._DEFAULT_DOCKER_ENTRYPOINT
+        ).strip()
         self._streaming = config.get("streaming") if "streaming" in config else None
 
     @staticmethod
@@ -62,48 +58,6 @@ class TerminalBench2OpenCodeAgent(TerminalBench2ContainerMixin, Agent):
         if value and value.upper() != "EMPTY":
             return value
         return os.environ.get(env_var, "").strip()
-
-    def _write_helper_scripts(self, workdir: Path, container_id: str, task: BenchmarkTask) -> None:
-        quoted_container = shlex.quote(container_id)
-        (workdir / "TASK.md").write_text(task.problem, encoding="utf-8")
-        (workdir / "tb2-exec").write_text(
-            "\n".join([
-                "#!/usr/bin/env bash",
-                "set -euo pipefail",
-                f"docker exec {quoted_container} bash -lc \"$*\"",
-            ]),
-            encoding="utf-8",
-        )
-        (workdir / "tb2-copy-from").write_text(
-            "\n".join([
-                "#!/usr/bin/env bash",
-                "set -euo pipefail",
-                f"docker cp {quoted_container}:\"$1\" \"$2\"",
-            ]),
-            encoding="utf-8",
-        )
-        (workdir / "tb2-copy-to").write_text(
-            "\n".join([
-                "#!/usr/bin/env bash",
-                "set -euo pipefail",
-                f"docker cp \"$1\" {quoted_container}:\"$2\"",
-            ]),
-            encoding="utf-8",
-        )
-        (workdir / "tb2-test").write_text(
-            "\n".join([
-                "#!/usr/bin/env bash",
-                "set -euo pipefail",
-                f"docker exec {quoted_container} bash /tests/test.sh",
-            ]),
-            encoding="utf-8",
-        )
-        for helper in ("tb2-exec", "tb2-copy-from", "tb2-copy-to", "tb2-test"):
-            os.chmod(workdir / helper, 0o755)
-        (workdir / "PROMPT.txt").write_text(
-            f"{_TERMINAL_BENCH_OPENCODE_PROMPT}\n\n--- Task ---\n{task.problem}\n",
-            encoding="utf-8",
-        )
 
     def _run_opencode(self, workdir: Path, task_id: str) -> tuple[str, str, int]:
         config_root = workdir / "xdg-config"
@@ -148,7 +102,7 @@ class TerminalBench2OpenCodeAgent(TerminalBench2ContainerMixin, Agent):
 
         prompt = (workdir / "PROMPT.txt").read_text(encoding="utf-8")
         cmd = [
-            self._opencode_bin,
+            *self._opencode_command_prefix(),
             "run",
             "--format",
             "json",
@@ -167,69 +121,66 @@ class TerminalBench2OpenCodeAgent(TerminalBench2ContainerMixin, Agent):
         if self._log_level:
             cmd.extend(["--log-level", self._log_level])
 
-        process: subprocess.Popen[str] | None = None
-        try:
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                stdin=subprocess.DEVNULL,
-                text=True,
-                env=env,
-                cwd=workdir,
-                start_new_session=True,
-            )
-            raw_output, stderr = process.communicate(timeout=self._solver_timeout_sec)
-            return raw_output, stderr, int(process.returncode or 0)
-        except subprocess.TimeoutExpired:
-            raw_output = ""
-            stderr = f"Timeout after {self._solver_timeout_sec}s"
-            if process is not None:
-                try:
-                    os.killpg(process.pid, signal.SIGTERM)
-                    raw_output, timed_out_stderr = process.communicate(timeout=5)
-                    stderr = timed_out_stderr or stderr
-                except subprocess.TimeoutExpired:
-                    os.killpg(process.pid, signal.SIGKILL)
-                    raw_output, timed_out_stderr = process.communicate()
-                    stderr = timed_out_stderr or stderr
-                except ProcessLookupError:
-                    raw_output, timed_out_stderr = process.communicate()
-                    stderr = timed_out_stderr or stderr
-            return raw_output, stderr, -1
+        result = self._run_controller_process(
+            cmd,
+            cwd=workdir,
+            env=env,
+            timeout_sec=self._solver_timeout_sec,
+        )
+        return result.stdout, result.stderr, result.returncode
+
+    def _opencode_command_prefix(self) -> list[str]:
+        if self._controller_mode == "docker" and self._opencode_bin == "opencode":
+            return ["node", self._docker_opencode_entrypoint]
+        parts = shlex.split(self._opencode_bin)
+        return parts or ["opencode"]
 
     def solve(self, task: BenchmarkTask, sandbox: Optional[Any] = None) -> AgentResponse:
         t_start = time.time()
-        docker_image = task.metadata.get("docker_image", "")
-        if not docker_image:
-            raise ValueError(
-                f"Task {task.task_id} missing 'docker_image' in metadata. "
-                "Ensure TerminalBench2Benchmark populated task.metadata correctly."
-            )
-
-        logs_dir = self._logs_dir_for_task(task)
-        test_timeout_sec = self._test_timeout_sec
-        container_id = ""
         reward_content = ""
         stderr = ""
         returncode = 0
         raw_output = ""
         session_id = ""
         events: list[dict[str, Any]] = []
+        test_output = ""
+        task_note = self._task_runtime_note(task)
+        task_text = task.problem if not task_note else f"{task.problem.rstrip()}\n\n{task_note}\n"
+        prompt_text = f"{NATIVE_AGENT_PROMPT}\n\n--- Task ---\n{task_text}\n"
+        runtime = self._prepare_runtime(
+            task,
+            temp_prefix="tb2-opencode-",
+            prompt_text=prompt_text,
+        )
+        self._disable_test_helper(runtime.helper_paths)
 
         try:
-            container_id = self._start_container(docker_image, logs_dir, task)
-            with tempfile.TemporaryDirectory(prefix="tb2-opencode-") as tempdir:
-                workdir = Path(tempdir)
-                self._write_helper_scripts(workdir, container_id, task)
-                raw_output, stderr, returncode = self._run_opencode(workdir, task.task_id)
-
-            self._run_tests(container_id, test_timeout_sec)
-            reward_content = self._read_reward(logs_dir, task.task_id)
+            raw_output, stderr, returncode = self._run_opencode(runtime.workdir, task.task_id)
+            (runtime.workdir / "opencode_stdout.log").write_text(
+                raw_output,
+                encoding="utf-8",
+                errors="replace",
+            )
+            (runtime.workdir / "opencode_stderr.log").write_text(
+                stderr,
+                encoding="utf-8",
+                errors="replace",
+            )
+            test_output, reward_content = self._run_verifier_and_read_reward(
+                runtime,
+                timeout_sec=self._test_timeout_sec,
+            )
         finally:
-            if container_id:
-                self._stop_container(container_id, task.task_id)
-            self._cleanup_logs_dir(logs_dir)
+            artifact_files = self._collect_text_artifacts({
+                "/terminal_bench2/opencode/TASK.md": runtime.helper_paths["task"],
+                "/terminal_bench2/opencode/TASK_HINTS.md": runtime.helper_paths["task_hints"],
+                "/terminal_bench2/opencode/AGENTS.md": runtime.helper_paths["agents"],
+                "/terminal_bench2/opencode/PROMPT.txt": runtime.helper_paths["prompt"],
+                "/terminal_bench2/opencode/opencode_stdout.log": runtime.workdir / "opencode_stdout.log",
+                "/terminal_bench2/opencode/opencode_stderr.log": runtime.workdir / "opencode_stderr.log",
+                "/terminal_bench2/opencode/xdg-config/opencode/opencode.json": runtime.workdir / "xdg-config" / "opencode" / "opencode.json",
+            })
+            self._cleanup_runtime(runtime)
 
         content_parts: list[str] = []
         for line in raw_output.splitlines():
@@ -256,16 +207,23 @@ class TerminalBench2OpenCodeAgent(TerminalBench2ContainerMixin, Agent):
             ],
             raw_output=full_content,
             wall_time_sec=time.time() - t_start,
-            metadata={
-                "docker_image": docker_image,
-                "category": task.metadata.get("category", ""),
-                "difficulty": task.metadata.get("difficulty", ""),
-                "returncode": returncode,
-                "stderr": stderr[:2000] if stderr else "",
-                "num_events": len(events),
-                "session_id": session_id,
-            },
-            system_prompt=_TERMINAL_BENCH_OPENCODE_PROMPT,
+            metadata=self._build_metadata(
+                runtime,
+                reward=reward_content,
+                rounds_used=1,
+                runner="opencode",
+                extra={
+                    "returncode": returncode,
+                    "stderr": stderr[:2000] if stderr else "",
+                    "num_events": len(events),
+                    "session_id": session_id,
+                    "test_output": test_output,
+                },
+            ),
+            request_messages=[{"role": "user", "content": prompt_text}],
+            response_json={"events": events} if events else {},
+            workspace_file_contents=artifact_files,
+            system_prompt=NATIVE_AGENT_PROMPT,
         )
 
     def teardown(self) -> None:
