@@ -1,6 +1,8 @@
 """HLE (Humanity's Last Exam) benchmark loader."""
 from __future__ import annotations
 
+import base64
+import io
 import os
 
 from alphadiana.benchmark.base import Benchmark, BenchmarkTask, load_dataset_with_retry
@@ -112,6 +114,25 @@ class HLEBenchmark(Benchmark):
                 if item[category_field] != category:
                     continue
 
+            attachments: dict[str, bytes] = {}
+            img = item.get("image")
+            if img is not None:
+                if isinstance(img, str) and img.startswith("data:image") and "," in img:
+                    header, b64data = img.split(",", 1)
+                    mime = header.replace("data:", "").replace(";base64", "")
+                    attachments["image_1"] = base64.b64decode(b64data)
+                    attachments["image_1_mime"] = mime.encode()
+                else:
+                    try:
+                        from PIL import Image as PILImage
+                        if isinstance(img, PILImage.Image):
+                            buf = io.BytesIO()
+                            img.save(buf, format="PNG")
+                            attachments["image_1"] = buf.getvalue()
+                            attachments["image_1_mime"] = b"image/png"
+                    except ImportError:
+                        pass
+
             tasks.append(BenchmarkTask(
                 task_id=f"hle_{idx}",
                 problem=item[problem_field],
@@ -122,6 +143,7 @@ class HLEBenchmark(Benchmark):
                     "answer_type": item.get("answer_type", ""),
                     "category": item.get(category_field, ""),
                 },
+                attachments=attachments,
             ))
 
             if max_tasks is not None and len(tasks) >= max_tasks:

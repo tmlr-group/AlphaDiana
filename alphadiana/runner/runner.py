@@ -170,6 +170,7 @@ class Runner:
         import alphadiana.scorer.math_verify_scorer  # noqa: F401
         import alphadiana.scorer.external_benchmark  # noqa: F401
         import alphadiana.scorer.terminal_bench2_scorer  # noqa: F401
+        import alphadiana.scorer.imo_verify_scorer  # noqa: F401
 
         # Resolve and instantiate benchmark.
         benchmark_cls = BenchmarkRegistry.get(self.config.benchmark_name)

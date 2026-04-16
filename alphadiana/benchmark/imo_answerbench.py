@@ -110,7 +110,7 @@ class ImoAnswerBenchBenchmark(Benchmark):
         return tasks
 
     def default_scorer(self) -> str:
-        return "math_verify"
+        return "imo_verify"
 
 
 BenchmarkRegistry.register("imo_answerbench", ImoAnswerBenchBenchmark)
