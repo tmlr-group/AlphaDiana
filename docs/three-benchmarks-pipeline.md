@@ -10,6 +10,12 @@ This document is the current operator-facing record for PR25 smoke validation ac
 
 The goal here is execution evidence, not score quality. Every cell below completed a 1-task smoke run end-to-end and reached scoring.
 
+The latest full rerun was completed on 2026-04-16 using:
+
+- API base: `https://api.example.com/v1/`
+- Model: `minimax-m2.5`
+- API key: supplied in the operator shell only; do not persist it in repo files.
+
 ## Recommended Environment
 
 Run from the repo root:
@@ -18,7 +24,7 @@ Run from the repo root:
 source scripts/activate.sh
 export PYTHONPATH=$PWD
 
-export OPENAI_BASE_URL=https://api.example.com/v1
+export OPENAI_BASE_URL=https://api.example.com/v1/
 export OPENAI_API_KEY=sk-...
 export OPENAI_MODEL_NAME=minimax-m2.5
 ```
@@ -43,15 +49,15 @@ HLE note:
 
 | Mode | Benchmark | Config | Run ID | Result | Notes |
 |---|---|---|---|---|---|
-| `direct_llm` | `imo_answerbench` | `configs/examples/directllm_minimax_imo_answerbench.yaml` | `directllm_minimax_imo_smoke_20260415_d` | completed `1/1` | bounded smoke via `dataset_index=367`, `max_tokens=512` |
-| `direct_llm` | `hle` | `configs/examples/directllm_minimax_hle.yaml` | `directllm_minimax_hle_smoke_20260415` | completed `1/1` | uses cached HLE row `dataset_index=1` |
-| `direct_llm` | `terminal_bench2` | `configs/examples/terminal_bench2_directllm_minimax.yaml` | `terminal_bench2_directllm_minimax_smoke_20260415` | completed `1/1` | `db-wal-recovery`, reward `0` |
-| `opencode` | `imo_answerbench` | `configs/examples/opencode_minimax_imo_answerbench.yaml` | `opencode_minimax_imo_smoke_20260415` | completed `1/1` | bounded by `timeout=120`, reward path reaches scorer |
-| `opencode` | `hle` | `configs/examples/opencode_minimax_hle.yaml` | `opencode_minimax_hle_smoke_20260415_c` | completed `1/1` | bounded by `timeout=120`, cached HLE row |
-| `opencode` | `terminal_bench2` | `configs/examples/terminal_bench2_opencode_minimax.yaml` | `terminal_bench2_opencode_minimax_smoke_20260415` | completed `1/1` | `db-wal-recovery`, `solver_timeout_sec=120`, reward `0` |
-| `openclaw` | `imo_answerbench` | `configs/examples/openclaw_minimax_imo_answerbench.yaml` | `openclaw_minimax_imo_smoke_20260415` | completed `1/1` | bounded smoke via `dataset_index=367`, `max_tokens=512` |
-| `openclaw` | `hle` | `configs/examples/openclaw_minimax_hle.yaml` | `openclaw_minimax_hle_smoke_20260415` | completed `1/1` | cached HLE row, full ROCK auto-deploy path |
-| `openclaw` | `terminal_bench2` | `configs/examples/terminal_bench2_openclaw_minimax.yaml` | `terminal_bench2_openclaw_minimax_smoke_20260415_b` | completed `1/1` | `db-wal-recovery`, planner timed out once, verifier still ran and scored `0` |
+| `direct_llm` | `imo_answerbench` | `configs/examples/directllm_minimax_imo_answerbench.yaml` | `pr25_live2_20260416_directllm_imo` | completed `1/1` | bounded smoke via `dataset_index=367`, `max_tokens=512` |
+| `direct_llm` | `hle` | `configs/examples/directllm_minimax_hle.yaml` | `pr25_live2_20260416_directllm_hle` | completed `1/1` | uses cached HLE row `dataset_index=1` |
+| `direct_llm` | `terminal_bench2` | `configs/examples/terminal_bench2_directllm_minimax.yaml` | `pr25_live2_20260416_directllm_tb2` | completed `1/1` | `db-wal-recovery`, verifier reward `0` |
+| `opencode` | `imo_answerbench` | `configs/examples/opencode_minimax_imo_answerbench.yaml` | `pr25_live2_20260416_opencode_imo` | completed `1/1` | bounded by `timeout=120`, timeout is recorded as a scored failed sample |
+| `opencode` | `hle` | `configs/examples/opencode_minimax_hle.yaml` | `pr25_live2_20260416_opencode_hle` | completed `1/1` | bounded by `timeout=120`, cached HLE row |
+| `opencode` | `terminal_bench2` | `configs/examples/terminal_bench2_opencode_minimax.yaml` | `pr25_live2_20260416_opencode_tb2` | completed `1/1` | `db-wal-recovery`, `solver_timeout_sec=120`, verifier reward `0` |
+| `openclaw` | `imo_answerbench` | `configs/examples/openclaw_minimax_imo_answerbench.yaml` | `pr25_live2_20260416_openclaw_imo` | completed `1/1` | full ROCK auto-deploy path, bounded smoke via `dataset_index=367` |
+| `openclaw` | `hle` | `configs/examples/openclaw_minimax_hle.yaml` | `pr25_live2_20260416_openclaw_hle` | completed `1/1` | cached HLE row, full ROCK auto-deploy path; model response took several minutes |
+| `openclaw` | `terminal_bench2` | `configs/examples/terminal_bench2_openclaw_minimax.yaml` | `pr25_live2_20260416_openclaw_tb2` | completed `1/1` | `db-wal-recovery`, planner timed out once, verifier still ran and scored `0` |
 
 All nine cells above reached result writing. None of the smoke scores are being treated as quality claims.
 
@@ -88,16 +94,16 @@ Representative commands:
 
 ```bash
 python -m alphadiana.cli run configs/examples/directllm_minimax_imo_answerbench.yaml \
-  -o run_id=directllm_minimax_imo_smoke_20260415_d
+  -o run_id=pr25_live2_20260416_directllm_imo
 
 python -m alphadiana.cli run configs/examples/opencode_minimax_hle.yaml \
-  -o run_id=opencode_minimax_hle_smoke_20260415_c
+  -o run_id=pr25_live2_20260416_opencode_hle
 
 python -m alphadiana.cli run configs/examples/openclaw_minimax_hle.yaml \
-  -o run_id=openclaw_minimax_hle_smoke_20260415
+  -o run_id=pr25_live2_20260416_openclaw_hle
 
 python -m alphadiana.cli run configs/examples/terminal_bench2_openclaw_minimax.yaml \
-  -o run_id=terminal_bench2_openclaw_minimax_smoke_20260415_b
+  -o run_id=pr25_live2_20260416_openclaw_tb2
 ```
 
 Use the config defaults as checked in unless there is a deliberate review reason to change the smoke bounds.

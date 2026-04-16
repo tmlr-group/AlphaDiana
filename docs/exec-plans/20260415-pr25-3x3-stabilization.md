@@ -40,6 +40,7 @@ Make PR25 merge-ready on the local `pr-25-head` worktree by:
 - 2026-04-15 23:45 Added deterministic smoke selectors for IMO/HLE via `dataset_index`.
 - 2026-04-16 00:06 Completed the 3x3 matrix and recorded all run IDs.
 - 2026-04-16 00:08 Re-ran the targeted regression suite; it passed after fixing lazy imports in `openclaw_deploy/deploy.py`.
+- 2026-04-16 08:55 Re-ran the full 3x3 matrix with the current operator-provided OpenAI-compatible API key/base and `minimax-m2.5`; all nine cells completed `1/1` and wrote JSONL results under `pr25_live2_20260416_*` run IDs.
 
 ## Decision Log
 
@@ -52,7 +53,7 @@ Make PR25 merge-ready on the local `pr-25-head` worktree by:
 - Final status: completed
 - What changed:
   - PR25 blocker fixes were applied on the local PR worktree.
-  - The full 3x3 matrix now has committed config/examples and local smoke evidence.
+  - The full 3x3 matrix now has committed config/examples and local smoke evidence from the latest `pr25_live2_20260416_*` rerun.
   - Durable docs were updated with exact run IDs and bounded smoke conventions.
 - Follow-up:
   - Another agent can now review PR25 from the updated docs and local branch state.
