@@ -21,9 +21,19 @@ The benchmark loads from HuggingFace. If the default mirror is slow, set `HF_END
 
 | Mode | Status | Config |
 |---|---|---|
-| `direct_llm` | supported | `configs/examples/directllm_minimax_imo_answerbench.yaml` |
-| `opencode` | supported | `configs/examples/opencode_minimax_imo_answerbench.yaml` |
-| `openclaw` | supported | `configs/examples/openclaw_minimax_imo_answerbench.yaml` |
+| `direct_llm` | supported | `configs/full_runs/p25_full_directllm_minimax_imo_answerbench.yaml` |
+| `opencode` | supported | `configs/full_runs/p25_full_opencode_minimax_imo_answerbench.yaml` |
+| `openclaw` | supported | `configs/full_runs/p25_full_openclaw_minimax_imo_answerbench.yaml` |
+
+The corresponding smoke configs remain under `configs/examples/` and pin `dataset_index: 367`, `max_tasks: 1`.
+
+## Full Runs
+
+```bash
+python -m alphadiana.cli run configs/full_runs/p25_full_directllm_minimax_imo_answerbench.yaml --redo-all
+python -m alphadiana.cli run configs/full_runs/p25_full_opencode_minimax_imo_answerbench.yaml --redo-all
+python -m alphadiana.cli run configs/full_runs/p25_full_openclaw_minimax_imo_answerbench.yaml --redo-all
+```
 
 ## DirectLLM
 
@@ -60,4 +70,4 @@ ROCK services must be healthy before this run. `scripts/activate.sh` loads the l
 
 The checked-in minimax smoke configs pin `dataset_index: 367` and `max_tasks: 1` so the run stays deterministic and bounded.
 
-Use `benchmark.config.max_tasks` or remove `dataset_index` for larger evaluations.
+Use the `configs/full_runs/` files for full evaluations.

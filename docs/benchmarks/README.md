@@ -8,6 +8,10 @@ Each benchmark document describes prerequisites, supported execution modes, exam
 - [HLE](hle.md)
 - [terminal-bench-2](terminal-bench-2.md)
 
+Ready-to-run full benchmark configs live in [configs/full_runs](../../configs/full_runs/README.md). Use those for full evaluations.
+
+The configs under `configs/examples/` are smoke/debug configs. They intentionally pin one task with `dataset_index` or `max_tasks` and should not be used for full benchmark runs.
+
 Common setup for all examples:
 
 ```bash

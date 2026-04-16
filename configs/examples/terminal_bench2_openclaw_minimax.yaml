@@ -3,6 +3,9 @@
 #   source scripts/activate.sh
 #   export TERMINAL_BENCH2_DIR=/path/to/terminal-bench-2
 
+# DEBUG ONLY: OpenClaw x terminal-bench-2 is not a supported full-run path as of 2026-04-16.
+# Strict smoke with request_timeout=1800 produced no visible planner/model output.
+
 run_id: "terminal_bench2_openclaw_minimax_smoke"
 
 benchmark:
