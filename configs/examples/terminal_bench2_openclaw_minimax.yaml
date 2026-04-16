@@ -1,7 +1,7 @@
 # OpenClaw native smoke for terminal-bench-2.
 # Requires:
 #   source scripts/activate.sh
-#   export TERMINAL_BENCH2_DIR=/path/to/terminal-bench-2
+#   export TERMINAL_BENCH2_SMOKE_DIR=/path/to/staged-terminal-bench-smoke-root
 #   docker build -f docker/terminal_bench2/Dockerfile.openclaw-controller \
 #     -t alphadiana/tb2-openclaw-controller:latest .
 
@@ -10,8 +10,7 @@ run_id: "terminal_bench2_openclaw_minimax_smoke"
 benchmark:
   name: terminal_bench2
   config:
-    tasks_dir: ${TERMINAL_BENCH2_DIR}
-    categories: ["file-operations"]
+    tasks_dir: ${TERMINAL_BENCH2_SMOKE_DIR}
     max_tasks: 1
 
 agent:
@@ -37,4 +36,4 @@ scorer:
 max_concurrent: 1
 output_dir: "./results/terminal_bench2_openclaw_minimax_smoke"
 metadata:
-  notes: "OpenClaw native smoke for terminal-bench-2 via minimax-m2.5."
+  notes: "OpenClaw native smoke for terminal-bench-2 on a staged single-task root via minimax-m2.5."

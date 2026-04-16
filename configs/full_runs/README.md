@@ -1,6 +1,6 @@
 # PR25 Full Benchmark Configs
 
-These configs are the ready-to-run full benchmark entry points for the eight PR25 combinations that passed strict smoke validation.
+These configs are the ready-to-run full benchmark entry points for the nine PR25 combinations that passed strict smoke validation.
 
 The smoke configs under `configs/examples/` intentionally pin one task with `dataset_index` or `max_tasks`. Do not use those files for full benchmark runs.
 
@@ -10,9 +10,7 @@ The smoke configs under `configs/examples/` intentionally pin one task with `dat
 |---|---|---|---|
 | `direct_llm` | `p25_full_directllm_minimax_imo_answerbench.yaml` | `p25_full_directllm_minimax_hle.yaml` | `p25_full_terminal_bench2_directllm_minimax.yaml` |
 | `opencode` | `p25_full_opencode_minimax_imo_answerbench.yaml` | `p25_full_opencode_minimax_hle.yaml` | `p25_full_terminal_bench2_opencode_minimax.yaml` |
-| `openclaw` | `p25_full_openclaw_minimax_imo_answerbench.yaml` | `p25_full_openclaw_minimax_hle.yaml` | native path implemented, no full-run config yet |
-
-`openclaw` x `terminal-bench-2` is still absent from `configs/full_runs/` because the older relay path failed strict smoke, and the newer native CLI path has not yet completed a fresh live rerun.
+| `openclaw` | `p25_full_openclaw_minimax_imo_answerbench.yaml` | `p25_full_openclaw_minimax_hle.yaml` | `p25_full_terminal_bench2_openclaw_minimax.yaml` |
 
 ## Common Setup
 
@@ -36,8 +34,8 @@ export HF_TOKEN=hf_...
 terminal-bench-2 needs a local task checkout:
 
 ```bash
-git clone --depth=1 https://github.com/harbor-framework/terminal-bench-2.git /tmp/terminal-bench-2
-export TERMINAL_BENCH2_DIR=/tmp/terminal-bench-2
+git clone --depth=1 https://github.com/laude-institute/terminal-bench.git /tmp/terminal-bench
+export TERMINAL_BENCH2_DIR=/tmp/terminal-bench/tasks
 ```
 
 Pre-pull terminal-bench-2 task images before full runs:
@@ -55,6 +53,16 @@ for task_toml in root.glob("*/task.toml"):
     if image:
         print(image)
 PY
+```
+
+Build the controller images before terminal-bench-2 full runs for `opencode` and `openclaw`:
+
+```bash
+docker build -f docker/terminal_bench2/Dockerfile.opencode-controller \
+  -t alphadiana/tb2-opencode-controller:latest .
+
+docker build -f docker/terminal_bench2/Dockerfile.openclaw-controller \
+  -t alphadiana/tb2-openclaw-controller:latest .
 ```
 
 ## Run Commands
@@ -80,6 +88,7 @@ python -m alphadiana.cli run configs/full_runs/p25_full_openclaw_minimax_hle.yam
 
 python -m alphadiana.cli run configs/full_runs/p25_full_terminal_bench2_directllm_minimax.yaml --redo-all
 python -m alphadiana.cli run configs/full_runs/p25_full_terminal_bench2_opencode_minimax.yaml --redo-all
+python -m alphadiana.cli run configs/full_runs/p25_full_terminal_bench2_openclaw_minimax.yaml --redo-all
 ```
 
 ## Scope Notes
@@ -89,4 +98,4 @@ python -m alphadiana.cli run configs/full_runs/p25_full_terminal_bench2_opencode
 - terminal-bench-2 configs scan all local task directories under `TERMINAL_BENCH2_DIR`.
 - DirectLLM configs default to `max_concurrent: 20`.
 - OpenCode configs default to `max_concurrent: 20` for IMO/HLE, and `2` for terminal-bench-2 because it also starts Docker containers.
-- OpenClaw configs default to `max_concurrent: 1`; use a pre-deployed gateway pool before increasing concurrency.
+- OpenClaw configs default to `max_concurrent: 1`.
