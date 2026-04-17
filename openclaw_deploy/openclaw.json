@@ -37,27 +37,6 @@
       "timeoutSeconds": 3600
     }
   },
-  "tools": {
-    "allow": ["group:fs", "group:runtime", "group:web"],
-    "web": {
-      "fetch": {
-        "enabled": true,
-        "maxChars": 50000,
-        "timeoutSeconds": 30
-      }
-    },
-    "media": {
-      "image": {
-        "enabled": true,
-        "models": [
-          {
-            "provider": "local",
-            "model": "${OPENAI_MODEL_NAME}"
-          }
-        ]
-      }
-    }
-  },
   "commands": {
     "native": "auto",
     "nativeSkills": "auto",
