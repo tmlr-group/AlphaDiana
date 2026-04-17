@@ -50,7 +50,7 @@ dump.rdb
 !alphadiana/results/
 /configs/*
 !/configs/examples/
-!/configs/examples/*.yaml
+!/configs/examples/**
 /artifacts/
 
 # MoltBench runtime artifacts

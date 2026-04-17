@@ -2,7 +2,7 @@
 # Zero-injection aligned prompts, see docs/moltbench_agent_alignment.md
 #
 # Usage:
-#   cd /data/users/weikaihuang/projects/MoltBench/AlphaDiana
+#   cd /path/to/AlphaDiana
 #   set -a && source ../.env && set +a
 #   python3 -m alphadiana.cli run configs/examples/moltbench_opencode_L1_batch.yaml
 

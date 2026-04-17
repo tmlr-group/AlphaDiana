@@ -1,7 +1,7 @@
 # MoltBench evaluation config — OpenClaw agent (single-task Codex smoke run)
 #
 # Usage:
-#   cd /data/users/weikaihuang/projects/MoltBench/AlphaDiana
+#   cd /path/to/AlphaDiana
 #   OPENAI_API_KEY=... OPENAI_BASE_URL=... OPENAI_MODEL_NAME=... \
 #     python3 -m alphadiana.cli run configs/examples/moltbench_openclaw_codex.yaml
 

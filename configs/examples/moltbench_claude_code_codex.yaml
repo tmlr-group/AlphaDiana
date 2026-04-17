@@ -1,7 +1,7 @@
 # MoltBench evaluation config — Claude Code agent (single-task Codex smoke run)
 #
 # Usage:
-#   cd /data/users/weikaihuang/projects/MoltBench/AlphaDiana
+#   cd /path/to/AlphaDiana
 #   # Either export ANTHROPIC_API_KEY, or reuse host Claude auth from ~/.claude
 #   python3 -m alphadiana.cli run configs/examples/moltbench_claude_code_codex.yaml
 

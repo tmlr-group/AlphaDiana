@@ -1,7 +1,7 @@
 # MoltBench smoke test — OpenClaw + DeepSeek on single problem
 #
 # Usage:
-#   cd /data/users/weikaihuang/projects/MoltBench/AlphaDiana
+#   cd /path/to/AlphaDiana
 #   OPENAI_BASE_URL=https://models.sjtu.edu.cn/api/v1/ \
 #     python3 -m alphadiana.cli run configs/examples/moltbench_openclaw_smoke.yaml
 
