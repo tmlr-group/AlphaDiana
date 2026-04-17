@@ -16,7 +16,11 @@
         "models": [
           {
             "id": "${OPENAI_MODEL_NAME}",
-            "name": "${OPENAI_MODEL_NAME}"
+            "name": "${OPENAI_MODEL_NAME}",
+            "input": [
+              "text",
+              "image"
+            ]
           }
         ]
       }

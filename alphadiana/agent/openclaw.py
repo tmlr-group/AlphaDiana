@@ -37,6 +37,7 @@ from urllib.parse import urlsplit, urlunsplit
 from alphadiana.agent.base import Agent, AgentResponse
 from alphadiana.agent.registry import AgentRegistry
 from alphadiana.benchmark.base import BenchmarkTask
+from alphadiana.utils.attachments import build_openai_multimodal_user_content
 from alphadiana.utils.math_answer import extract_answer_candidate
 from alphadiana.utils.rock_ports import resolve_rock_ports_from_env
 
@@ -389,9 +390,9 @@ def _extract_trajectory_error(trajectory: list[dict]) -> str:
     return ""
 
 
-def _normalize_request_content(content: str) -> str:
+def _normalize_request_content(content: Any) -> str:
     """Normalize request text for transcript matching."""
-    return content.replace("\r\n", "\n").strip()
+    return _coerce_text_content(content).replace("\r\n", "\n").strip()
 
 
 def _trajectory_matches_request(
@@ -550,7 +551,6 @@ class OpenClawAgent(Agent):
         self._temperature = config.get("temperature", 0.7)
         self._top_p = config.get("top_p", None)
         self._max_tokens = config.get("max_tokens", None)
-        self._stream = bool(config.get("stream", True))
         self._max_attempts = max(1, int(config.get("max_attempts", 5)))
         self._request_timeout = float(config.get("request_timeout", 1800))
         self._proxy_timeout = int(config.get("proxy_timeout", 600))
@@ -959,7 +959,7 @@ class OpenClawAgent(Agent):
             "model": self._model,
             "messages": messages,
             "temperature": self._temperature,
-            "stream": self._stream,
+            "stream": True,
         }
         resolved = self._resolve_max_tokens()
         if resolved is not None:
@@ -987,9 +987,10 @@ class OpenClawAgent(Agent):
         # OpenClaw's gateway builds its own system prompt internally.
         # We only send the user message, optionally prefixed with a custom system prompt.
         if self._user_system_prompt:
-            user_content = f"{self._user_system_prompt}\n\n{task.problem}"
+            user_text = f"{self._user_system_prompt}\n\n{task.problem}"
         else:
-            user_content = task.problem
+            user_text = task.problem
+        user_content = build_openai_multimodal_user_content(user_text, task.attachments)
         request_messages = [
             {"role": "user", "content": user_content},
         ]

@@ -293,6 +293,61 @@ class TestTopPSupport:
         )
         assert payload.get("top_p") == 0.9
 
+    def test_openclaw_multimodal_request_includes_hle_images(self):
+        """OpenClaw should forward task image attachments as multimodal user content."""
+        from alphadiana.agent.openclaw import OpenClawAgent
+
+        agent = OpenClawAgent()
+        agent.setup({"api_base": "http://localhost/v1", "request_timeout": 5, "max_attempts": 1})
+        task = BenchmarkTask(
+            task_id="hle_0",
+            problem="Pick the correct answer.",
+            ground_truth="A",
+            attachments={
+                "image_1": b"\x89PNG\r\n",
+                "image_1_mime": b"image/png",
+            },
+        )
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "application/json"}
+        mock_response.text = json.dumps({
+            "choices": [{"message": {"content": "\\boxed{A}"}}],
+        })
+        mock_response.read = MagicMock()
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        mock_client = MagicMock()
+        mock_client.stream = MagicMock(return_value=mock_response)
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+
+        with patch.object(agent, "_health_check", return_value=None):
+            with patch.object(agent, "_retrieve_trajectory_sync", return_value=[]):
+                with patch.object(agent, "_resolve_max_tokens", return_value=256):
+                    with patch("httpx.Client", return_value=mock_client):
+                        agent.solve(task)
+
+        request_payload = mock_client.stream.call_args.kwargs["json"]
+        content = request_payload["messages"][0]["content"]
+        assert isinstance(content, list)
+        assert content[0]["type"] == "text"
+        assert content[1]["type"] == "image_url"
+        assert content[1]["image_url"]["url"].startswith("data:image/png;base64,")
+
+    def test_openclaw_multimodal_request_content_normalizes_to_text(self):
+        """Trajectory matching should handle multimodal list content without crashing."""
+        from alphadiana.agent.openclaw import _normalize_request_content
+
+        normalized = _normalize_request_content([
+            {"type": "text", "text": "Pick the correct answer.\r\nA or B?"},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAA"}},
+        ])
+
+        assert normalized == "Pick the correct answer.\nA or B?"
+
 
 # ===================================================================
 # 5.3 Granular output (per-task JSON)

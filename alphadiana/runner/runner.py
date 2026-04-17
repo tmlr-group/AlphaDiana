@@ -35,7 +35,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 OPENCLAW_CONCURRENCY_PER_SANDBOX = 1
 _OPENCLAW_PROFILE_CACHE_PATH = Path(".cache/openclaw_startup_profiles.json")
-OPENCLAW_RUNTIME_AGENT_NAMES = {"openclaw"}
 
 
 def _has_openclaw_direct_gateway(config: "ExperimentConfig") -> bool:
@@ -188,13 +187,13 @@ class Runner:
         # Import agent modules to trigger registration.
         import alphadiana.agent.openclaw  # noqa: F401
         import alphadiana.agent.direct_llm  # noqa: F401
+        import alphadiana.agent.opencode  # noqa: F401
         import alphadiana.agent.zeroclaw  # noqa: F401
         import alphadiana.agent.moltbench_docker  # noqa: F401
         import alphadiana.agent.terminal_bench2_docker  # noqa: F401
         import alphadiana.agent.terminal_bench2_openclaw  # noqa: F401
         import alphadiana.agent.terminal_bench2_opencode  # noqa: F401
         import alphadiana.agent.terminal_bench2_zeroclaw  # noqa: F401
-        import alphadiana.agent.opencode  # noqa: F401
 
         # Import sandbox modules to trigger registration.
         import alphadiana.sandbox.local  # noqa: F401
@@ -204,10 +203,10 @@ class Runner:
         import alphadiana.scorer.exact_match  # noqa: F401
         import alphadiana.scorer.numeric  # noqa: F401
         import alphadiana.scorer.llm_judge  # noqa: F401
+        import alphadiana.scorer.imo_verify_scorer  # noqa: F401
         import alphadiana.scorer.math_verify_scorer  # noqa: F401
         import alphadiana.scorer.moltbench  # noqa: F401
         import alphadiana.scorer.terminal_bench2_scorer  # noqa: F401
-        import alphadiana.scorer.imo_verify_scorer  # noqa: F401
 
         # Resolve and instantiate benchmark.
         benchmark_cls = BenchmarkRegistry.get(self.config.benchmark_name)
@@ -594,7 +593,7 @@ class Runner:
         if (
             self.sandbox is not None
             and self.config.max_concurrent > 1
-            and self.config.agent_name not in OPENCLAW_RUNTIME_AGENT_NAMES
+            and self.config.agent_name != "openclaw"
         ):
             from alphadiana.sandbox.pool import SandboxPool
             pool_size = self.config.max_concurrent
