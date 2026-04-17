@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import copy
 import os
+import re
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+_FULL_ENV_VAR_PATTERN = re.compile(r"^\s*(\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$[A-Za-z_][A-Za-z0-9_]*)\s*$")
 
 
 def _expand_env_vars(obj: Any) -> Any:
@@ -21,6 +24,17 @@ def _expand_env_vars(obj: Any) -> Any:
     return obj
 
 
+def _clear_unresolved_env_placeholders(obj: Any) -> Any:
+    """Treat fully unresolved env-var placeholders as empty strings."""
+    if isinstance(obj, str):
+        return "" if _FULL_ENV_VAR_PATTERN.fullmatch(obj) else obj
+    if isinstance(obj, dict):
+        return {k: _clear_unresolved_env_placeholders(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_clear_unresolved_env_placeholders(item) for item in obj]
+    return obj
+
+
 def _apply_agent_env_defaults(agent_name: str, agent_config: Any) -> dict:
     """Populate agent config fields from environment when the YAML leaves them blank."""
     if not isinstance(agent_config, dict):
@@ -28,14 +42,32 @@ def _apply_agent_env_defaults(agent_name: str, agent_config: Any) -> dict:
 
     resolved = copy.deepcopy(agent_config)
 
-    if agent_name in {"direct_llm", "opencode"}:
+    if agent_name in {
+        "direct_llm",
+        "zeroclaw",
+        "opencode",
+        "terminal_bench2_docker",
+        "terminal_bench2_opencode",
+        "terminal_bench2_openclaw",
+        "terminal_bench2_zeroclaw",
+    }:
         env_defaults = {
             "api_base": "OPENAI_BASE_URL",
             "api_key": "OPENAI_API_KEY",
         }
-        if agent_name == "direct_llm":
+        if agent_name in {
+            "direct_llm",
+            "zeroclaw",
+            "terminal_bench2_docker",
+            "terminal_bench2_zeroclaw",
+        }:
             env_defaults["model"] = "OPENAI_MODEL_NAME"
-        else:
+        if agent_name in {
+            "opencode",
+            "terminal_bench2_opencode",
+            "terminal_bench2_openclaw",
+            "terminal_bench2_zeroclaw",
+        }:
             env_defaults["model_name"] = "OPENAI_MODEL_NAME"
         for key, env_var in env_defaults.items():
             current = resolved.get(key, "")
@@ -130,6 +162,8 @@ class ExperimentConfig:
 
         if overrides:
             data = deep_merge(data, overrides)
+
+        data = _clear_unresolved_env_placeholders(data)
 
         agent = data.get("agent", {})
         benchmark = data.get("benchmark", {})
