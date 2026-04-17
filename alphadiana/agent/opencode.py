@@ -212,6 +212,7 @@ class OpenCodeAgent(Agent):
         self._top_p = config.get("top_p", None)
         self._max_completion_tokens = config.get("max_completion_tokens", None)
         self._max_retries = int(config.get("max_retries", 3))
+        self._multimodal_via_proxy = bool(config.get("multimodal_via_proxy", True))
         self._client = None
 
         if not self._agent_name:
@@ -271,8 +272,38 @@ class OpenCodeAgent(Agent):
 
     def solve(self, task: BenchmarkTask, sandbox: Any = None) -> AgentResponse:
         if _has_image_attachments(task.attachments):
+            if self._multimodal_via_proxy:
+                return self._solve_cli_with_vision_proxy(task)
             return self._solve_multimodal(task)
         return self._solve_cli(task)
+
+    def _solve_cli_with_vision_proxy(self, task: BenchmarkTask) -> AgentResponse:
+        """Run opencode CLI with a local vision proxy that injects images.
+
+        Preserves the agent loop (tools, multi-turn) while making images
+        available on every internal LLM call.
+        """
+        from alphadiana.utils.vision_proxy import VisionProxy
+
+        original_api_base = self._api_base
+        try:
+            with VisionProxy(
+                upstream_base=original_api_base,
+                upstream_api_key=self._api_key,
+                attachments=task.attachments,
+                target_text=task.problem,
+                upstream_model=self._api_model or self._model_name,
+            ) as proxy:
+                self._api_base = proxy.url
+                response = self._solve_cli(task)
+                response.metadata = {
+                    **(response.metadata or {}),
+                    "transport": "opencode_cli_vision_proxy",
+                    "vision_proxy_injections": proxy.injection_count,
+                }
+                return response
+        finally:
+            self._api_base = original_api_base
 
     def _solve_multimodal(self, task: BenchmarkTask) -> AgentResponse:
         """Use a direct multimodal API call for image-backed tasks."""
