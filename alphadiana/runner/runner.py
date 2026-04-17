@@ -38,9 +38,20 @@ _OPENCLAW_PROFILE_CACHE_PATH = Path(".cache/openclaw_startup_profiles.json")
 OPENCLAW_RUNTIME_AGENT_NAMES = {"openclaw"}
 
 
+def _has_openclaw_direct_gateway(config: "ExperimentConfig") -> bool:
+    """Return whether OpenClaw should use an already-running gateway."""
+    if config.agent_name != "openclaw":
+        return False
+    api_base = str(config.agent_config.get("api_base", "") or "").strip()
+    gateway_pool = config.agent_config.get("gateway_pool", []) or []
+    return bool(api_base or gateway_pool)
+
+
 def _is_gateway_autodeploy_agent(config: "ExperimentConfig") -> bool:
     if config.agent_name == "openclaw":
         return bool(
+            not _has_openclaw_direct_gateway(config)
+            and
             config.agent_config.get("rock_agent_config_path")
             and config.agent_config.get("openclaw_config_path")
         )

@@ -254,15 +254,27 @@ class ZeroClawRuntimeManager:
             cat_cmd = f"cat {shlex.quote(path)}"
             if limit_lines is not None:
                 cat_cmd = f"sed -n '1,{limit_lines}p' {shlex.quote(path)}"
-            result = sandbox.execute(f"bash -lc {shlex.quote(f'test -f {shlex.quote(path)} && {cat_cmd}')}")
-            if result.exit_code == 0:
-                return result.stdout
+            probe = f"test -f {shlex.quote(path)} && {cat_cmd} || true"
+            try:
+                result = sandbox.execute(f"bash -lc {shlex.quote(probe)}")
+            except Exception:
+                return ""
+            if getattr(result, "exit_code", 0) == 0:
+                return getattr(result, "stdout", "")
             return ""
 
         bridge_log = ""
-        bridge_log_result = sandbox.execute(f"sed -n '1,300p' {self._bridge_log_path}")
-        if bridge_log_result.exit_code == 0:
-            bridge_log = bridge_log_result.stdout
+        bridge_log_probe = (
+            f"test -f {shlex.quote(self._bridge_log_path)} "
+            f"&& sed -n '1,300p' {shlex.quote(self._bridge_log_path)} || true"
+        )
+        bridge_log_cmd = f"bash -lc {shlex.quote(bridge_log_probe)}"
+        try:
+            bridge_log_result = sandbox.execute(bridge_log_cmd)
+        except Exception:
+            bridge_log_result = None
+        if bridge_log_result is not None and getattr(bridge_log_result, "exit_code", 0) == 0:
+            bridge_log = getattr(bridge_log_result, "stdout", "")
         last_request_dir = f"{self._artifact_root.rstrip('/')}/last_request"
         workspace_file_contents = {}
         snapshot_paths: list[str] = []

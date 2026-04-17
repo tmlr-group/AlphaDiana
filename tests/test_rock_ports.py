@@ -1,74 +1,52 @@
 from __future__ import annotations
 
-from unittest.mock import patch
+from types import SimpleNamespace
 
-import pytest
-
-from alphadiana.utils.rock_ports import RockPorts, resolve_rock_ports_from_env
-from scripts.find_rock_ports import render_exports
+from alphadiana.utils.rock_ports import RockPorts, check_rock_services
 
 
-def test_resolve_rock_ports_from_env_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("ROCK_RAY_PORT", raising=False)
-    monkeypatch.delenv("ROCK_RAY_DASHBOARD_PORT", raising=False)
-    monkeypatch.delenv("ROCK_RAY_CLIENT_SERVER_PORT", raising=False)
-    monkeypatch.delenv("ROCK_REDIS_PORT", raising=False)
-    monkeypatch.delenv("ROCK_ADMIN_PORT", raising=False)
-    monkeypatch.delenv("ROCK_PROXY_PORT", raising=False)
+class _DummySocket:
+    def __enter__(self):
+        return self
 
-    with patch("alphadiana.utils.rock_ports._load_rock_ports_file", return_value={}):
-        ports = resolve_rock_ports_from_env()
-
-    assert ports.ray_port == 6380
-    assert ports.ray_dashboard_port == 8265
-    assert ports.ray_client_server_port == 30001
-    assert ports.redis_port == 6379
-    assert ports.admin_port == 9000
-    assert ports.proxy_port == 9001
-    assert ports.base_url == "http://127.0.0.1:9000"
-    assert ports.proxy_api_url == "http://127.0.0.1:9001/apis/envs/sandbox/v1"
+    def __exit__(self, exc_type, exc, tb):
+        return False
 
 
-def test_resolve_rock_ports_from_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ROCK_RAY_PORT", "6382")
-    monkeypatch.setenv("ROCK_RAY_DASHBOARD_PORT", "8266")
-    monkeypatch.setenv("ROCK_RAY_CLIENT_SERVER_PORT", "30002")
-    monkeypatch.setenv("ROCK_REDIS_PORT", "6383")
-    monkeypatch.setenv("ROCK_ADMIN_PORT", "9010")
-    monkeypatch.setenv("ROCK_PROXY_PORT", "9011")
+def test_check_rock_services_uses_openapi_probes(monkeypatch) -> None:
+    requested_urls: list[str] = []
 
-    with patch("alphadiana.utils.rock_ports._load_rock_ports_file", return_value={}):
-        ports = resolve_rock_ports_from_env()
+    def _fake_connect(address, timeout=0):
+        return _DummySocket()
 
-    assert ports.ray_port == 6382
-    assert ports.ray_dashboard_port == 8266
-    assert ports.ray_client_server_port == 30002
-    assert ports.redis_port == 6383
-    assert ports.admin_port == 9010
-    assert ports.proxy_port == 9011
-    assert ports.base_url == "http://127.0.0.1:9010"
-    assert ports.proxy_root_url == "http://127.0.0.1:9011"
+    def _fake_get(url, timeout=0, trust_env=False):
+        requested_urls.append(url)
+        if url.endswith(":9120/openapi.json"):
+            return SimpleNamespace(status_code=200, text="/apis/envs/sandbox/v1/start_async")
+        if url.endswith(":9121/openapi.json"):
+            return SimpleNamespace(status_code=200, text="/apis/envs/sandbox/v1/sandboxes")
+        raise AssertionError(f"unexpected url: {url}")
 
-
-def test_render_exports_contains_dynamic_urls() -> None:
-    content = render_exports(
-        RockPorts(
-            ray_port=7000,
-            ray_dashboard_port=8268,
-            ray_client_server_port=30010,
-            redis_port=6388,
-            admin_port=9100,
-            proxy_port=9101,
-        )
+    monkeypatch.setattr("socket.create_connection", _fake_connect)
+    monkeypatch.setattr("httpx.get", _fake_get)
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stderr="", stdout=""),
     )
 
-    assert "export ROCK_RAY_PORT=7000" in content
-    assert "export ROCK_RAY_DASHBOARD_PORT=8268" in content
-    assert "export ROCK_RAY_CLIENT_SERVER_PORT=30010" in content
-    assert "export ROCK_REDIS_PORT=6388" in content
-    assert "export ROCK_ADMIN_PORT=9100" in content
-    assert "export ROCK_PROXY_PORT=9101" in content
-    # URLs now use shell variable interpolation
-    assert "ROCK_BASE_URL" in content
-    assert "ROCK_PROXY_URL" in content
-    assert "ROCK_BIND_HOST" in content
+    ports = RockPorts(
+        ray_port=6480,
+        ray_dashboard_port=8365,
+        ray_client_server_port=30100,
+        redis_port=6390,
+        admin_port=9120,
+        proxy_port=9121,
+    )
+    results = check_rock_services(ports, timeout=1.0)
+
+    assert results["admin"] is True
+    assert results["proxy"] is True
+    assert requested_urls == [
+        "http://127.0.0.1:9120/openapi.json",
+        "http://127.0.0.1:9121/openapi.json",
+    ]

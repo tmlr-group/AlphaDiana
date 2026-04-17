@@ -7,7 +7,7 @@ import pytest
 from alphadiana.agent.base import AgentResponse
 from alphadiana.benchmark.base import BenchmarkTask
 from alphadiana.config.experiment_config import ExperimentConfig
-from alphadiana.runner.runner import Runner
+from alphadiana.runner.runner import Runner, _is_gateway_autodeploy_agent
 from alphadiana.runner.task_dispatcher import TaskDispatcher
 
 
@@ -129,6 +129,38 @@ class TestTaskDispatcherErrorIsolation:
         assert dispatcher.max_concurrent == 1
         dispatcher2 = TaskDispatcher(max_concurrent=-1)
         assert dispatcher2.max_concurrent == 1
+
+
+def test_openclaw_direct_api_base_disables_gateway_autodeploy() -> None:
+    config = ExperimentConfig(
+        agent_name="openclaw",
+        agent_version="2026.3.20",
+        agent_config={
+            "api_base": "http://127.0.0.1:18083/v1",
+            "rock_agent_config_path": "openclaw_deploy/rock_agent_config.prebuilt.yaml",
+            "openclaw_config_path": "openclaw_deploy/openclaw.json",
+        },
+        benchmark_name="imo_answerbench",
+        scorer_name="math_verify",
+    )
+
+    assert _is_gateway_autodeploy_agent(config) is False
+
+
+def test_openclaw_gateway_pool_disables_gateway_autodeploy() -> None:
+    config = ExperimentConfig(
+        agent_name="openclaw",
+        agent_version="2026.3.20",
+        agent_config={
+            "gateway_pool": ["http://127.0.0.1:18083/v1", "http://127.0.0.1:18084/v1"],
+            "rock_agent_config_path": "openclaw_deploy/rock_agent_config.prebuilt.yaml",
+            "openclaw_config_path": "openclaw_deploy/openclaw.json",
+        },
+        benchmark_name="imo_answerbench",
+        scorer_name="math_verify",
+    )
+
+    assert _is_gateway_autodeploy_agent(config) is False
 
 
 def test_runner_uses_live_predeployed_sessions_for_gateway_pool(monkeypatch, tmp_path):

@@ -8,6 +8,7 @@ import pytest
 
 from alphadiana.agent.registry import AgentRegistry
 from alphadiana.agent.zeroclaw import ZeroClawAgent
+from alphadiana.agent.zeroclaw_runtime import ZeroClawRuntimeManager
 from alphadiana.benchmark.base import BenchmarkTask
 from alphadiana.config.experiment_config import ExperimentConfig
 from alphadiana.config.validator import ConfigValidator
@@ -39,6 +40,12 @@ class _FakeSandbox:
             if filename in self._files:
                 return type("Result", (), {"exit_code": 0, "stdout": self._files[filename], "stderr": ""})()
             return type("Result", (), {"exit_code": 1, "stdout": "", "stderr": "not found"})()
+        if command.startswith("bash -lc ") and " && cat " in command:
+            inner = command[len("bash -lc "):].strip().strip("'")
+            filename = inner.split(" && cat ", 1)[1].split(" || true", 1)[0]
+            if filename in self._files:
+                return type("Result", (), {"exit_code": 0, "stdout": self._files[filename], "stderr": ""})()
+            return type("Result", (), {"exit_code": 0, "stdout": "", "stderr": ""})()
         return type("Result", (), {"exit_code": 0, "stdout": "", "stderr": ""})()
 
     def execute_long_running(
@@ -69,6 +76,17 @@ class _FakeProxySandbox(_FakeSandbox):
 
     def metadata(self) -> dict:
         return {"sandbox_id": self.sandbox_id, "proxy_base_url": self.proxy_v1_base()}
+
+
+class _FakeRockLikeSandbox(_FakeSandbox):
+    def execute(self, command: str):
+        if command.startswith("cat "):
+            filename = command[4:]
+            if filename not in self._files:
+                raise RuntimeError("missing file")
+        if command.startswith("bash -lc 'test -f ") and "|| true'" in command:
+            return type("Result", (), {"exit_code": 0, "stdout": "", "stderr": ""})()
+        return super().execute(command)
 
 
 def test_zeroclaw_agent_is_registered():
@@ -231,7 +249,20 @@ def test_zeroclaw_sandbox_solve_falls_back_to_cat_when_read_text_fails():
     response = agent.solve(task, sandbox=sandbox)
 
     assert response.answer == "42"
-    assert any(command.startswith("cat /sandbox/work/.alphadiana_zeroclaw/exec-456/zeroclaw_output.txt") for command in sandbox.commands)
+    assert any("/sandbox/work/.alphadiana_zeroclaw/exec-456/zeroclaw_output.txt" in command for command in sandbox.commands)
+
+
+def test_zeroclaw_read_sandbox_file_ignores_missing_files_on_rock_like_backend():
+    agent = ZeroClawAgent()
+    agent.setup({
+        "model": "demo-model",
+        "api_base": "https://example.test/v1",
+        "api_key": "sk-test",
+    })
+
+    sandbox = _FakeRockLikeSandbox()
+
+    assert agent._read_sandbox_file(sandbox, "/sandbox/work/missing.txt") == ""
 
 
 def test_zeroclaw_sandbox_solve_uploads_workspace_attachments():
@@ -494,6 +525,72 @@ def test_zeroclaw_gateway_mode_falls_back_to_direct_sandbox_on_transport_error(m
     assert response.sandbox_id == "sandbox-123"
     assert response.metadata["gateway_mode"] == "rock-proxy-fallback-to-cli"
     assert "proxy unavailable" in response.metadata["gateway_fallback_reason"]
+
+
+def test_zeroclaw_gateway_fallback_survives_artifact_collection_failure(monkeypatch):
+    task = BenchmarkTask(task_id="aime_5c", problem="What is 6*7?", ground_truth="42")
+    sandbox = _FakeProxySandbox()
+
+    agent = ZeroClawAgent()
+    agent.setup({
+        "model": "demo-model",
+        "api_base": "https://example.test/v1",
+        "api_key": "sk-test",
+        "use_gateway_in_sandbox": True,
+        "gateway_token": "ZEROCLAW",
+    })
+
+    class _FakeRuntimeManager:
+        is_configured = True
+
+        def ensure_ready(self, sandbox):
+            return {
+                "api_base": sandbox.proxy_v1_base(),
+                "gateway_url": f"{sandbox.proxy_v1_base()}/chat/completions",
+                "sandbox_id": sandbox.sandbox_id,
+            }
+
+        def collect_artifacts(self, sandbox):
+            raise RuntimeError("artifact dir missing")
+
+    agent._runtime_manager = _FakeRuntimeManager()
+
+    def fake_post(url, headers, json, timeout, trust_env):
+        return SimpleNamespace(
+            status_code=200,
+            json=lambda: {"status": "Failed", "message": "http proxy failed", "error": "", "result": None},
+            text="",
+        )
+
+    monkeypatch.setattr("httpx.post", fake_post)
+
+    response = agent.solve(task, sandbox=sandbox)
+
+    assert response.answer == "42"
+    assert response.metadata["gateway_mode"] == "rock-proxy-fallback-to-cli"
+    assert "http proxy failed" in response.metadata["gateway_fallback_reason"]
+
+
+def test_zeroclaw_runtime_collect_artifacts_ignores_missing_files():
+    manager = ZeroClawRuntimeManager({
+        "model": "demo-model",
+        "api_base": "https://example.test/v1",
+        "api_key": "sk-test",
+    })
+
+    class _FailingArtifactSandbox:
+        def execute(self, command: str):
+            raise RuntimeError("missing file")
+
+        def metadata(self) -> dict:
+            return {"sandbox_id": "sandbox-123"}
+
+    artifacts = manager.collect_artifacts(_FailingArtifactSandbox())
+
+    assert artifacts["gateway_log_excerpt"] == ""
+    assert artifacts["workspace_snapshot_paths"] == []
+    assert artifacts["workspace_file_contents"] == {}
+    assert artifacts["sandbox_metadata"] == {"sandbox_id": "sandbox-123"}
 
 
 def test_start_zeroclaw_script_checks_expected_routes():

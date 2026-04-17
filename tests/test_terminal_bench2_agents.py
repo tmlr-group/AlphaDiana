@@ -296,10 +296,12 @@ def test_terminal_bench2_zeroclaw_writes_native_prompt_and_config(tmp_path: Path
     env, paths = agent._prepare_zeroclaw_home(tmp_path, f"{NATIVE_AGENT_PROMPT}\n\n--- Task ---\ndemo\n")
 
     config_text = (tmp_path / ".zeroclaw-home" / ".zeroclaw" / "config.toml").read_text(encoding="utf-8")
+    config_mode = (tmp_path / ".zeroclaw-home" / ".zeroclaw" / "config.toml").stat().st_mode & 0o777
     assert env["OPENAI_BASE_URL"] == "http://localhost/v1"
     assert env["OPENAI_MODEL_NAME"] == "minimax-m2.5"
     assert 'default_model = "minimax-m2.5"' in config_text
     assert 'default_provider = "custom:http://localhost/v1"' in config_text
+    assert config_mode == 0o600
     assert Path(paths["prompt_path"]).read_text(encoding="utf-8").endswith("--- Task ---\ndemo\n")
 
 
@@ -372,6 +374,47 @@ def test_terminal_bench2_controller_process_wraps_command_in_docker_run(tmp_path
     assert "--entrypoint" in docker_cmd and "/bin/bash" in docker_cmd
     assert "alphadiana/tb2-opencode-controller:latest" in docker_cmd
     assert docker_cmd[-2:] == ["-lc", "opencode run demo"]
+
+
+def test_terminal_bench2_controller_process_preserves_explicit_home_and_tmpdir(tmp_path: Path) -> None:
+    harness = _MixinHarness()
+    harness._setup_controller_config(
+        {
+            "controller_mode": "docker",
+            "controller_image": "alphadiana/tb2-zeroclaw-controller:latest",
+        },
+        default_mode="docker",
+        default_image="alphadiana/tb2-zeroclaw-controller:latest",
+    )
+
+    explicit_home = tmp_path / ".zeroclaw-home"
+    explicit_tmp = tmp_path / ".zeroclaw-tmp"
+    explicit_cache = tmp_path / ".zeroclaw-cache"
+
+    with patch.object(
+        harness,
+        "_run_local_process",
+        return_value=LocalCommandResult(stdout="", stderr="", returncode=0),
+    ) as mock_run:
+        harness._run_controller_process(
+            ["zeroclaw", "agent", "-m", "demo"],
+            cwd=tmp_path,
+            env={
+                "HOME": str(explicit_home),
+                "TMPDIR": str(explicit_tmp),
+                "XDG_CACHE_HOME": str(explicit_cache),
+                "OPENAI_API_KEY": "secret",
+            },
+            timeout_sec=30,
+        )
+
+    docker_cmd = mock_run.call_args.args[0]
+    assert "-e" in docker_cmd
+    assert f"HOME={explicit_home}" in docker_cmd
+    assert f"TMPDIR={explicit_tmp}" in docker_cmd
+    assert f"TMP={explicit_tmp}" in docker_cmd
+    assert f"TEMP={explicit_tmp}" in docker_cmd
+    assert f"XDG_CACHE_HOME={explicit_cache}" in docker_cmd
 
 
 def test_terminal_bench2_verifier_reuses_existing_reward(tmp_path: Path) -> None:

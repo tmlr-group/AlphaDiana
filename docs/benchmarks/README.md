@@ -24,3 +24,12 @@ export OPENAI_MODEL_NAME=minimax-m2.5
 ```
 
 Smoke-test success means the evaluation path loads tasks, invokes the selected agent mode, and writes scored results. It does not mean the model answered correctly.
+
+## ZeroClaw Note
+
+For the benchmark runbooks in this folder, ZeroClaw smoke validation is documented only for sandboxed execution:
+
+- `IMO-AnswerBench` and `HLE`: ROCK sandbox with in-sandbox ZeroClaw CLI
+- `terminal-bench-2`: Docker task container plus Docker controller image
+
+The host-local `_run_locally()` path is useful for debugging, but it is not counted as the formal benchmark smoke path in these runbooks.

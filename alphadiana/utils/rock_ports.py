@@ -161,31 +161,40 @@ def check_rock_services(ports: RockPorts | None = None, timeout: float = 5.0) ->
 
     results: dict[str, bool | str] = {}
 
-    # Check ROCK Admin
-    try:
-        with socket.create_connection((LOCALHOST, ports.admin_port), timeout=timeout):
-            pass
-        import httpx
-        resp = httpx.get(ports.base_url + "/", timeout=timeout, trust_env=False)
-        if resp.status_code == 200:
-            results["admin"] = True
-        else:
-            results["admin"] = f"HTTP {resp.status_code}"
-    except Exception as exc:
-        results["admin"] = f"unreachable on port {ports.admin_port}: {exc}"
+    def _check_http_probe(port: int, path: str, needle: str) -> bool | str:
+        try:
+            with socket.create_connection((LOCALHOST, port), timeout=timeout):
+                pass
+            import httpx
 
-    # Check ROCK Proxy
-    try:
-        with socket.create_connection((LOCALHOST, ports.proxy_port), timeout=timeout):
-            pass
-        import httpx
-        resp = httpx.get(ports.proxy_root_url + "/", timeout=timeout, trust_env=False)
-        if resp.status_code == 200:
-            results["proxy"] = True
-        else:
-            results["proxy"] = f"HTTP {resp.status_code}"
-    except Exception as exc:
-        results["proxy"] = f"unreachable on port {ports.proxy_port}: {exc}"
+            resp = httpx.get(
+                f"http://{LOCALHOST}:{port}{path}",
+                timeout=timeout,
+                trust_env=False,
+            )
+            if resp.status_code != 200:
+                return f"HTTP {resp.status_code}"
+            if needle and needle not in resp.text:
+                return f"probe missing expected marker {needle!r}"
+            return True
+        except Exception as exc:
+            return f"unreachable on port {port}: {exc}"
+
+    # Check ROCK Admin.
+    # Note: the admin root route may block under local-proxy even when the
+    # service is healthy, so probe the documented OpenAPI schema instead.
+    results["admin"] = _check_http_probe(
+        ports.admin_port,
+        "/openapi.json",
+        "/apis/envs/sandbox/v1/start_async",
+    )
+
+    # Check ROCK Proxy.
+    results["proxy"] = _check_http_probe(
+        ports.proxy_port,
+        "/openapi.json",
+        "/apis/envs/sandbox/v1/sandboxes",
+    )
 
     # Check Redis
     try:
