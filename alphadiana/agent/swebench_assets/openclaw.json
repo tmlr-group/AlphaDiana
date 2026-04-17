@@ -1,0 +1,76 @@
+{
+  "$schema": "https://openclaw.ai/config.json",
+  "env": {
+    "OPENAI_BASE_URL": "",
+    "OPENAI_API_KEY": "EMPTY",
+    "OPENAI_MODEL_NAME": "",
+    "OPENCLAW_GATEWAY_TOKEN": "OPENCLAW",
+    "OPENCLAW_TOOLS_PROFILE": "coding",
+    "OPENCLAW_AGENT_ID": "main",
+    "OPENCLAW_REQUIRE_PATCH": "1",
+    "OPENCLAW_MAX_TOOL_CALLS_WITHOUT_EDIT": "20",
+    "OPENCLAW_MAX_NO_EDIT_SECONDS": "300",
+    "ALPHADIANA_REPO_ROOT": ""
+  },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "local": {
+        "baseUrl": "${OPENAI_BASE_URL}",
+        "apiKey": "${OPENAI_API_KEY}",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "${OPENAI_MODEL_NAME}",
+            "name": "${OPENAI_MODEL_NAME}"
+          }
+        ]
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "local/${OPENAI_MODEL_NAME}"
+      },
+      "models": {
+        "local/${OPENAI_MODEL_NAME}": {
+          "params": {
+            "maxTokens": 32768
+          }
+        }
+      },
+      "timeoutSeconds": 3600,
+      "workspace": "${ALPHADIANA_REPO_ROOT}"
+    }
+  },
+  "tools": {
+    "profile": "${OPENCLAW_TOOLS_PROFILE}"
+  },
+  "commands": {
+    "native": "auto",
+    "nativeSkills": "auto",
+    "restart": true,
+    "ownerDisplay": "raw"
+  },
+  "gateway": {
+    "port": 8080,
+    "mode": "local",
+    "bind": "custom",
+    "customBindHost": "127.0.0.1",
+    "controlUi": {
+      "enabled": false
+    },
+    "auth": {
+      "mode": "token",
+      "token": "${OPENCLAW_GATEWAY_TOKEN}"
+    },
+    "http": {
+      "endpoints": {
+        "chatCompletions": {
+          "enabled": true
+        }
+      }
+    }
+  }
+}

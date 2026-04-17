@@ -433,13 +433,13 @@ class TerminalBench2ContainerMixin:
         controller_home.mkdir(parents=True, exist_ok=True)
         controller_cache.mkdir(parents=True, exist_ok=True)
         controller_tmp.mkdir(parents=True, exist_ok=True)
-        controller_env.setdefault("HOME", str(container_home))
-        controller_env.setdefault("USER", controller_username)
-        controller_env.setdefault("LOGNAME", controller_username)
-        controller_env.setdefault("XDG_CACHE_HOME", str(controller_cache))
-        controller_env.setdefault("TMPDIR", str(controller_tmp))
-        controller_env.setdefault("TMP", controller_env["TMPDIR"])
-        controller_env.setdefault("TEMP", controller_env["TMPDIR"])
+        controller_env["HOME"] = str(container_home)
+        controller_env["USER"] = controller_username
+        controller_env["LOGNAME"] = controller_username
+        controller_env["XDG_CACHE_HOME"] = str(controller_cache)
+        controller_env["TMPDIR"] = str(controller_tmp)
+        controller_env["TMP"] = str(controller_tmp)
+        controller_env["TEMP"] = str(controller_tmp)
 
         docker_cmd = ["docker", "run", "--rm", "--init"]
         docker_cmd.extend(["--user", f"{os.getuid()}:{os.getgid()}"])

@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 
 _PROXY_VARS = ("ALL_PROXY", "HTTP_PROXY", "HTTPS_PROXY",
                "all_proxy", "http_proxy", "https_proxy")
-_OPENCLAW_RUNTIME_AGENTS = {"openclaw"}
 
 
 def _warn_proxy() -> bool:
@@ -51,7 +50,7 @@ def main():
 def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
     """Run an evaluation experiment from a YAML config file."""
     from alphadiana.config.experiment_config import ExperimentConfig, deep_merge, parse_override
-    from alphadiana.runner.runner import Runner, _is_gateway_autodeploy_agent
+    from alphadiana.runner.runner import Runner
 
     overrides: dict = {}
     for ov in override:
@@ -73,14 +72,8 @@ def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
 
     _warn_proxy()
 
-    # Pre-flight: verify ROCK services are reachable for ROCK-backed runs.
-    # openclaw needs ROCK only in auto-deploy mode; direct api_base/gateway_pool
-    # should bypass ROCK checks and run against the configured gateway directly.
-    _zeroclaw_needs_rock = (
-        config.agent_name == "zeroclaw" and bool(config.agent_config.get("rock_image"))
-    )
-    _gateway_autodeploy_needs_rock = _is_gateway_autodeploy_agent(config)
-    if config.sandbox_name == "rock" or _gateway_autodeploy_needs_rock or _zeroclaw_needs_rock:
+    # Pre-flight: verify ROCK services are reachable for openclaw runs.
+    if config.agent_name == "openclaw":
         from alphadiana.utils.rock_ports import resolve_rock_ports_from_env, check_rock_services
         ports = resolve_rock_ports_from_env()
         click.echo(f"Pre-flight: checking ROCK services (admin={ports.admin_port}, proxy={ports.proxy_port}, redis={ports.redis_port})...")
@@ -273,10 +266,7 @@ def list_benchmarks():
     # Import benchmark modules to trigger registration.
     import alphadiana.benchmark.aime  # noqa: F401
     import alphadiana.benchmark.custom  # noqa: F401
-    import alphadiana.benchmark.external_benchmark  # noqa: F401
-    import alphadiana.benchmark.imo_answerbench  # noqa: F401
-    import alphadiana.benchmark.hle  # noqa: F401
-    import alphadiana.benchmark.terminal_bench2  # noqa: F401
+    import alphadiana.benchmark.swebench_pro  # noqa: F401
 
     from alphadiana.benchmark.registry import BenchmarkRegistry
 
