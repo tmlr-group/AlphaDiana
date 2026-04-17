@@ -34,7 +34,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 OPENCLAW_CONCURRENCY_PER_SANDBOX = 1
 _OPENCLAW_PROFILE_CACHE_PATH = Path(".cache/openclaw_startup_profiles.json")
-OPENCLAW_RUNTIME_AGENT_NAMES = {"openclaw"}
 
 
 def _build_openclaw_profile_cache_key(config: "ExperimentConfig", admin_base_url: str) -> str:
@@ -153,11 +152,9 @@ class Runner:
         # Import agent modules to trigger registration.
         import alphadiana.agent.openclaw  # noqa: F401
         import alphadiana.agent.direct_llm  # noqa: F401
+        import alphadiana.agent.opencode  # noqa: F401
         import alphadiana.agent.moltbench_docker  # noqa: F401
         import alphadiana.agent.terminal_bench2_docker  # noqa: F401
-        import alphadiana.agent.terminal_bench2_openclaw  # noqa: F401
-        import alphadiana.agent.terminal_bench2_opencode  # noqa: F401
-        import alphadiana.agent.opencode  # noqa: F401
 
         # Import sandbox modules to trigger registration.
         import alphadiana.sandbox.local  # noqa: F401
@@ -170,7 +167,6 @@ class Runner:
         import alphadiana.scorer.math_verify_scorer  # noqa: F401
         import alphadiana.scorer.moltbench  # noqa: F401
         import alphadiana.scorer.terminal_bench2_scorer  # noqa: F401
-        import alphadiana.scorer.imo_verify_scorer  # noqa: F401
 
         # Resolve and instantiate benchmark.
         benchmark_cls = BenchmarkRegistry.get(self.config.benchmark_name)
@@ -496,7 +492,7 @@ class Runner:
         if (
             self.sandbox is None
             and not predeployed_sessions
-            and self.config.agent_name in OPENCLAW_RUNTIME_AGENT_NAMES
+            and self.config.agent_name == "openclaw"
             and self.config.agent_config.get("rock_agent_config_path")
             and self.config.agent_config.get("openclaw_config_path")
         ):
@@ -530,9 +526,8 @@ class Runner:
                 }
                 _auto_sandbox.setup(auto_sandbox_config)
                 logger.info(
-                    "Auto-created ROCK sandbox for %s concurrent isolation "
+                    "Auto-created ROCK sandbox for openclaw concurrent isolation "
                     "(max_concurrent=%d, memory=%s, cpus=%s)",
-                    self.config.agent_name,
                     self.config.max_concurrent,
                     auto_sandbox_config["memory"],
                     auto_sandbox_config["cpus"],
@@ -541,9 +536,8 @@ class Runner:
                 self.sandbox = _auto_sandbox
             except Exception as exc:
                 logger.warning(
-                    "Failed to auto-create ROCK sandbox for %s isolation: %s. "
+                    "Failed to auto-create ROCK sandbox for openclaw isolation: %s. "
                     "Falling back to shared gateway (may cause workspace contention at max_concurrent>1).",
-                    self.config.agent_name,
                     exc,
                 )
                 _auto_sandbox = None
@@ -556,7 +550,7 @@ class Runner:
         if (
             self.sandbox is not None
             and self.config.max_concurrent > 1
-            and self.config.agent_name not in OPENCLAW_RUNTIME_AGENT_NAMES
+            and self.config.agent_name != "openclaw"
         ):
             from alphadiana.sandbox.pool import SandboxPool
             pool_size = self.config.max_concurrent

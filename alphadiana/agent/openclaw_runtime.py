@@ -211,7 +211,55 @@ class OpenClawRuntimeManager:
             if not memory:
                 config.pop("memory", None)
 
+        self._ensure_image_capability_metadata(config)
         return config
+
+    def _ensure_image_capability_metadata(self, config: dict[str, Any]) -> None:
+        """Mark the configured OpenAI-compatible model as vision-capable.
+
+        OpenClaw only preserves prompt images when the resolved model metadata
+        advertises ``input`` including ``"image"``. Our runtime config only
+        provided ``id``/``name``, so image-backed tasks were silently downgraded
+        to text-only prompts inside the OpenClaw runtime.
+
+        Declaring image support here makes the runtime retain forwarded images
+        and surface backend errors if a chosen model is not actually multimodal.
+        """
+        target_names = {"${OPENAI_MODEL_NAME}"}
+        configured_name = self._provider_env.get("OPENAI_MODEL_NAME", "").strip()
+        if configured_name:
+            target_names.add(configured_name)
+
+        def _merge_input_caps(entry: dict[str, Any]) -> None:
+            raw_caps = entry.get("input")
+            caps: list[str] = []
+            if isinstance(raw_caps, list):
+                for value in raw_caps:
+                    if isinstance(value, str):
+                        normalized = value.strip()
+                        if normalized and normalized not in caps:
+                            caps.append(normalized)
+            if "text" not in caps:
+                caps.insert(0, "text")
+            if "image" not in caps:
+                caps.append("image")
+            entry["input"] = caps
+
+        models = config.setdefault("models", {})
+        providers = models.setdefault("providers", {})
+        for provider_cfg in providers.values():
+            if not isinstance(provider_cfg, dict):
+                continue
+            provider_models = provider_cfg.get("models")
+            if not isinstance(provider_models, list):
+                continue
+            for model_entry in provider_models:
+                if not isinstance(model_entry, dict):
+                    continue
+                entry_id = str(model_entry.get("id", "") or "").strip()
+                entry_name = str(model_entry.get("name", "") or "").strip()
+                if entry_id in target_names or entry_name in target_names:
+                    _merge_input_caps(model_entry)
 
     def _probe_gateway_alive(self, sandbox: Any) -> bool:
         """Quick liveness check — GET /v1/models with a short timeout."""

@@ -82,3 +82,83 @@ def test_openclaw_runtime_applies_planner_only_overrides(tmp_path: Path) -> None
     assert cfg["tools"]["profile"] == "minimal"
     assert cfg["agents"]["defaults"]["skipBootstrap"] is True
     assert cfg["agents"]["defaults"]["systemPromptOverride"] == "Return shell commands only."
+
+
+def test_openclaw_runtime_marks_configured_model_as_image_capable(tmp_path: Path) -> None:
+    rock_cfg, openclaw_cfg = _write_runtime_templates(tmp_path)
+    openclaw_cfg.write_text(json.dumps({
+        "models": {
+            "providers": {
+                "local": {
+                    "models": [
+                        {
+                            "id": "${OPENAI_MODEL_NAME}",
+                            "name": "${OPENAI_MODEL_NAME}",
+                        }
+                    ]
+                }
+            }
+        },
+        "agents": {
+            "defaults": {
+                "model": {"primary": "local/${OPENAI_MODEL_NAME}"},
+                "models": {
+                    "local/${OPENAI_MODEL_NAME}": {
+                        "params": {"maxTokens": 32768},
+                    }
+                },
+            }
+        },
+    }), encoding="utf-8")
+    mgr = OpenClawRuntimeManager({
+        "rock_agent_config_path": str(rock_cfg),
+        "openclaw_config_path": str(openclaw_cfg),
+        "OPENAI_MODEL_NAME": "Qwen/Qwen3.5-27B",
+    })
+
+    cfg = mgr._build_openclaw_config(json.loads(openclaw_cfg.read_text(encoding="utf-8")))
+
+    provider_model = cfg["models"]["providers"]["local"]["models"][0]
+    assert provider_model["input"] == ["text", "image"]
+    resolved_model = cfg["agents"]["defaults"]["models"]["local/${OPENAI_MODEL_NAME}"]
+    assert resolved_model["params"]["maxTokens"] == 32768
+
+
+def test_openclaw_runtime_preserves_existing_input_capabilities_without_duplicates(tmp_path: Path) -> None:
+    rock_cfg, openclaw_cfg = _write_runtime_templates(tmp_path)
+    mgr = OpenClawRuntimeManager({
+        "rock_agent_config_path": str(rock_cfg),
+        "openclaw_config_path": str(openclaw_cfg),
+        "OPENAI_MODEL_NAME": "Qwen/Qwen3.5-27B",
+    })
+
+    cfg = mgr._build_openclaw_config({
+        "models": {
+            "providers": {
+                "local": {
+                    "models": [
+                        {
+                            "id": "Qwen/Qwen3.5-27B",
+                            "name": "Qwen/Qwen3.5-27B",
+                            "input": ["text", "image", "image"],
+                        }
+                    ]
+                }
+            }
+        },
+        "agents": {
+            "defaults": {
+                "model": {"primary": "local/Qwen/Qwen3.5-27B"},
+                "models": {
+                    "local/Qwen/Qwen3.5-27B": {
+                        "params": {"maxTokens": 1024},
+                    }
+                },
+            }
+        },
+    })
+
+    provider_model = cfg["models"]["providers"]["local"]["models"][0]
+    assert provider_model["input"] == ["text", "image"]
+    resolved_model = cfg["agents"]["defaults"]["models"]["local/Qwen/Qwen3.5-27B"]
+    assert resolved_model == {"params": {"maxTokens": 1024}}
