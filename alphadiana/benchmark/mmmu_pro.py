@@ -49,6 +49,7 @@ class MMMUProBenchmark(Benchmark):
         data_config = config.get("data_config", "standard (4 options)")
         split = config.get("split", "test")
         max_tasks = config.get("max_tasks")
+        include_attachments = str(data_config).strip().lower() == "vision"
 
         try:
             dataset = load_dataset_with_retry(dataset_path, data_config, split=split)
@@ -83,19 +84,24 @@ class MMMUProBenchmark(Benchmark):
             problem = f"{question_text}\n\n{_format_options(raw_options)}"
             answer = str(item.get("answer", "")).strip().upper()
 
-            # Collect images as PNG bytes stored in attachments
             attachments: dict[str, bytes] = {}
-            for img_key in [f"image_{i}" for i in range(1, 8)]:
-                img = item.get(img_key)
-                if img is None:
-                    continue
-                try:
-                    import io
-                    buf = io.BytesIO()
-                    img.save(buf, format="PNG")
-                    attachments[img_key] = buf.getvalue()
-                except Exception:
-                    pass
+            if include_attachments:
+                # Only the vision split should carry image payloads. The
+                # standard 4/10-option configs are documented and used as
+                # text-only variants, so exposing attachments there would force
+                # unnecessary multimodal model calls.
+                for img_key in [f"image_{i}" for i in range(1, 8)]:
+                    img = item.get(img_key)
+                    if img is None:
+                        continue
+                    try:
+                        import io
+                        buf = io.BytesIO()
+                        img.save(buf, format="PNG")
+                        attachments[img_key] = buf.getvalue()
+                        attachments[f"{img_key}_mime"] = b"image/png"
+                    except Exception:
+                        pass
 
             tasks.append(BenchmarkTask(
                 task_id=f"mmmu_pro_{task_id}",
