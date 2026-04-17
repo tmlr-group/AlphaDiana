@@ -7,7 +7,7 @@ run_id: string
 
 # agent: (required) Agent system configuration.
 agent:
-  name: string        # Agent name, e.g. "openclaw", "direct_llm", "zeroclaw"
+  name: string        # Agent name, e.g. "openclaw", "direct_llm"
   version: string     # Pinned version tag or "latest"
   config:             # Pass-through config for the agent (model settings, etc.)
     model: string
@@ -18,15 +18,11 @@ agent:
     openclaw_config_path: string    # Path to OpenClaw gateway config JSON
     openclaw_bin: string
     opencode_bin: string
-    zeroclaw_bin: string
     api_key: string
     temperature: float
     max_tokens: integer
     max_attempts: integer           # Retry attempts for OpenClaw (default: 3)
     request_timeout: float          # HTTP request timeout in seconds (default: 600)
-    runtime_trace_mode: string      # ZeroClaw trace mode (default: "none")
-    max_tool_iterations: integer    # ZeroClaw max tool iterations (default: 100)
-    max_actions_per_hour: integer   # ZeroClaw autonomy action budget (default: 200)
     timeout_sec: integer
     test_timeout_sec: integer
     solver_timeout_sec: integer
@@ -40,7 +36,6 @@ agent:
     agent_md_content: string        # Content for agent.md injection
     embedding_api_base: string      # Embedding model API base URL
     embedding_api_key: string       # Embedding model API key
-    install_command: string         # Optional CLI install command for sandbox/local runtime
     stream: boolean                 # Stream responses from the backend when supported
     streaming: boolean              # CLI agents: provider streaming toggle
     skip_bootstrap: boolean         # OpenClaw: skip workspace bootstrap injection

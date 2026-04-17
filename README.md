@@ -132,7 +132,6 @@ alphadiana report results/
 For a full walkthrough, see [`docs/getting_started.md`](docs/getting_started.md).
 For the process and runbook index, see [`docs/README.md`](docs/README.md).
 For manual setup and troubleshooting, see [`docs/setup_detail.md`](docs/setup_detail.md).
-For ZeroClaw on the standard AIME path, see [`docs/tutorial_zeroclaw_aime2026.md`](docs/tutorial_zeroclaw_aime2026.md).
 For external_benchmark GPU-kernel benchmarking, see [`external_benchmark/docs/README.md`](external_benchmark/docs/README.md).
 
 ## Configuration
@@ -199,36 +198,6 @@ A multi-sandbox example is provided in:
 ```text
 configs/examples/openclaw_aime2024_multisandbox.yaml
 ```
-
-### Run a ZeroClaw agent
-
-**Quick start (local mode, no ROCK required)** — requires `zeroclaw` binary in PATH:
-
-```bash
-export OPENAI_BASE_URL=https://your-endpoint/v1
-export OPENAI_API_KEY=sk-...
-export OPENAI_MODEL_NAME=your-model
-alphadiana run configs/examples/zeroclaw_aime2026_local_smoke.yaml
-```
-
-**ROCK auto-deploy mode** follows the same pattern as the bundled OpenClaw
-example, but starts a lightweight ZeroClaw bridge inside the sandbox:
-
-```bash
-bash scripts/start_zeroclaw.sh
-source scripts/rock_env.sh
-alphadiana run configs/examples/zeroclaw_aime2026.yaml
-```
-
-`start_zeroclaw.sh` starts the local ROCK services, but it cannot export
-`ROCK_BASE_URL` and `ROCK_PROXY_URL` back into your current shell. Run
-`source scripts/rock_env.sh` before `alphadiana run` so the example YAML
-resolves the local ROCK URLs correctly.
-
-For copy-paste commands, see
-[`docs/zeroclaw_aime2026_runbook.md`](docs/zeroclaw_aime2026_runbook.md).
-For config details, architecture notes, and the validated smoke run, see
-[`docs/tutorial_zeroclaw_aime2026.md`](docs/tutorial_zeroclaw_aime2026.md).
 
 ### Run a direct LLM baseline
 
