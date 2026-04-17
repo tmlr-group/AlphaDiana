@@ -1,0 +1,49 @@
+run_id: "openclaw-qwen3-vl-mmmu-pro-001"  # Unique identifier for this evaluation run
+
+agent:
+  name: openclaw                # Agent type: openclaw
+  version: "2026.3.20"          # OpenClaw version
+  config:
+    rock_image: "tmlrgroup/alphadiana:v1"
+    rock_agent_config_path: "openclaw_deploy/rock_agent_config.prebuilt.yaml"
+    openclaw_config_path: "openclaw_deploy/openclaw.json"
+    rock_memory: "4g"           # Memory per sandbox container
+    rock_cpus: 1                # CPUs per sandbox container
+    rock_startup_timeout: 600   # Sandbox startup timeout in seconds
+    gateway_startup_timeout: 240
+    gateway_warmup_timeout: 240
+    OPENAI_BASE_URL: "${OPENAI_BASE_URL}"
+    OPENAI_API_KEY: "${OPENAI_API_KEY}"
+    OPENAI_MODEL_NAME: "${OPENAI_MODEL_NAME}"
+    model: openclaw             # Model name as seen by the gateway (always "openclaw")
+    gateway_token: "OPENCLAW"   # Must match OPENCLAW_GATEWAY_TOKEN in rock_agent_config.yaml
+    max_tokens: 4096            # Maximum tokens per response
+    request_timeout: 2400       # Request timeout in seconds
+    max_attempts: 5             # Max retry attempts per task on failure
+    include_attachments: true   # Enable image attachments for multimodal tasks
+    system_prompt: |
+      You are an expert at multimodal multiple-choice reasoning.
+      Carefully analyze any provided images along with the question text and options.
+      Think through the problem step by step before selecting your answer.
+      Respond with the final answer on the last line as:
+      $$\boxed{X}$$
+      where X is the single correct option letter.
+
+benchmark:
+  name: mmmu_pro
+  config:
+    dataset: "MMMU/MMMU_Pro"
+    data_config: "standard (4 options)"  # Options: "standard (4 options)" or "vision"
+    split: "test"
+    # max_tasks: 100              # Uncomment to limit number of tasks
+
+sandbox: null                   # OpenClaw already runs inside ROCK; no extra sandbox needed
+
+scorer:
+  name: exact_match
+  config: {}
+
+max_concurrent: 1               # Number of tasks to run in parallel
+output_dir: "./results/openclaw_mmmu_pro"
+metadata:
+  notes: "OpenClaw x MMMU-Pro standard split with multimodal support"

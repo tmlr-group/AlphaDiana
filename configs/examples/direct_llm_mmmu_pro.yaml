@@ -1,0 +1,26 @@
+run_id: ""
+
+agent:
+  name: direct_llm
+  version: "1.0"
+  config:
+    model: "${OPENAI_MODEL}"
+    api_base: "${OPENAI_API_BASE}"
+    api_key: "${OPENAI_API_KEY}"
+    temperature: 0.0
+    max_tokens: 1024
+
+benchmark:
+  name: mmmu_pro
+  config:
+    dataset: "MMMU/MMMU_Pro"
+    data_config: "standard (4 options)"  # Options: "standard (4 options)" or "vision"
+    split: "test"
+    # max_tasks: 100              # Uncomment to limit number of tasks
+
+scorer:
+  name: exact_match
+  config: {}
+
+max_concurrent: 4
+output_dir: "./results"
