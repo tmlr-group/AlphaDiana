@@ -137,6 +137,7 @@ class Runner:
 
         # Import agent modules to trigger registration.
         import alphadiana.agent.openclaw  # noqa: F401
+        import alphadiana.agent.opencode  # noqa: F401
         import alphadiana.agent.direct_llm  # noqa: F401
 
         # Import sandbox modules to trigger registration.

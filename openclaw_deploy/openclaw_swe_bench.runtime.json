@@ -1,0 +1,66 @@
+{
+  "$schema": "https://openclaw.ai/config.json",
+  "env": {
+    "OPENAI_BASE_URL": "",
+    "OPENAI_API_KEY": "EMPTY",
+    "OPENAI_MODEL_NAME": "",
+    "OPENCLAW_GATEWAY_TOKEN": "OPENCLAW"
+  },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "local": {
+        "baseUrl": "${OPENAI_BASE_URL}",
+        "apiKey": "${OPENAI_API_KEY}",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "${OPENAI_MODEL_NAME}",
+            "name": "${OPENAI_MODEL_NAME}"
+          }
+        ]
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "local/${OPENAI_MODEL_NAME}"
+      },
+      "models": {
+        "local/${OPENAI_MODEL_NAME}": {
+          "params": {
+            "maxTokens": 32768
+          }
+        }
+      },
+      "timeoutSeconds": 3600
+    }
+  },
+  "tools": {
+    "allow": ["group:fs", "group:runtime", "group:web"]
+  },
+  "commands": {
+    "native": "auto",
+    "nativeSkills": "auto",
+    "restart": true,
+    "ownerDisplay": "raw"
+  },
+  "gateway": {
+    "port": 8080,
+    "mode": "local",
+    "bind": "custom",
+    "customBindHost": "0.0.0.0",
+    "auth": {
+      "mode": "token",
+      "token": "${OPENCLAW_GATEWAY_TOKEN}"
+    },
+    "http": {
+      "endpoints": {
+        "chatCompletions": {
+          "enabled": true
+        }
+      }
+    }
+  }
+}

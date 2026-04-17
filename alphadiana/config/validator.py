@@ -62,6 +62,16 @@ class ConfigValidator:
                         "'rock_agent_config_path' + 'openclaw_config_path' in agent_config "
                         "(auto-deploy mode)"
                     )
+        # opencode with swebench_container runtime needs a matching sandbox
+        if (
+            config.agent_name == "opencode"
+            and str(config.agent_config.get("runtime", "")).strip() == "swebench_container"
+            and config.sandbox_name != "swebench_container"
+        ):
+            errors.append(
+                "agent 'opencode' with runtime='swebench_container' requires "
+                "sandbox.name == 'swebench_container'"
+            )
         # Validate num_samples and task_retries.
         num_samples = getattr(config, "num_samples", 1)
         if num_samples < 1:
