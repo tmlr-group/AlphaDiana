@@ -137,6 +137,8 @@ class ZeroClawAgent(Agent):
         self._max_tool_iterations = int(config.get("max_tool_iterations", 100))
         self._max_actions_per_hour = int(config.get("max_actions_per_hour", 200))
         self._workspace_only = bool(config.get("workspace_only", False))
+        self._multimodal_via_proxy = bool(config.get("multimodal_via_proxy", True))
+        self._provider_base_url_override: str | None = None
         configured_provider = str(config.get("provider", "")).strip().lower()
         self._provider = _resolve_zeroclaw_provider(configured_provider, self._provider_api_base)
         self._system_prompt = str(config.get("system_prompt", _DEFAULT_SYSTEM_PROMPT)).strip()
@@ -213,13 +215,20 @@ class ZeroClawAgent(Agent):
 
     def _build_config_toml(self) -> str:
         workspace_only = "true" if self._workspace_only else "false"
+        provider_override = ""
+        if getattr(self, "_provider_base_url_override", None):
+            provider_override = (
+                f"[model_providers.{self._provider}]\n"
+                f"name = {_quote_toml(self._provider)}\n"
+                f"base_url = {_quote_toml(self._provider_base_url_override)}\n\n"
+            )
         return (
             f"default_provider = {_quote_toml(self._provider)}\n"
             f"default_model = {_quote_toml(self._model)}\n\n"
             f"default_temperature = {self._temperature}\n"
             "model_routes = []\n"
             "embedding_routes = []\n\n"
-            "[model_providers]\n\n"
+            f"{provider_override or '[model_providers]'}\n\n"
             "[provider]\n\n"
             "[observability]\n"
             'backend = "none"\n'
@@ -1142,6 +1151,11 @@ class ZeroClawAgent(Agent):
         if not self._model:
             raise RuntimeError("ZeroClawAgent requires agent.config.model or OPENAI_MODEL_NAME.")
 
+        if self._multimodal_via_proxy and self._has_image_attachments(task):
+            return self._solve_with_vision_proxy(task, sandbox)
+        return self._solve_inner(task, sandbox)
+
+    def _solve_inner(self, task: BenchmarkTask, sandbox: Any = None) -> AgentResponse:
         if sandbox is not None:
             if (
                 self._runtime_manager is not None
@@ -1155,6 +1169,56 @@ class ZeroClawAgent(Agent):
             return self._run_via_predeployed_gateway(task)
         self._ensure_provider_credentials("local execution")
         return self._run_locally(task)
+
+    @staticmethod
+    def _has_image_attachments(task: BenchmarkTask) -> bool:
+        attachments = getattr(task, "attachments", None) or {}
+        if not isinstance(attachments, dict):
+            return False
+        for key, value in attachments.items():
+            if key.endswith("_mime") or not isinstance(value, (bytes, bytearray)):
+                continue
+            mime_value = attachments.get(f"{key}_mime", b"")
+            mime = (
+                mime_value.decode(errors="ignore") if isinstance(mime_value, (bytes, bytearray))
+                else str(mime_value)
+            ).lower().strip()
+            if mime.startswith("image/"):
+                return True
+        return False
+
+    def _solve_with_vision_proxy(self, task: BenchmarkTask, sandbox: Any) -> AgentResponse:
+        """Run ZeroClaw behind a local vision proxy so image attachments reach the LLM.
+
+        ZeroClaw CLI cannot natively send image_url content blocks; the proxy
+        intercepts every chat/completions request and injects the image bytes
+        as multimodal content into the matching user message.
+        """
+        from alphadiana.utils.vision_proxy import VisionProxy
+
+        original_api_base = self._provider_api_base
+        try:
+            with VisionProxy(
+                upstream_base=original_api_base,
+                upstream_api_key=self._provider_api_key,
+                attachments=task.attachments,
+                target_text=task.problem,
+                upstream_model=self._model,
+            ) as proxy:
+                self._provider_api_base = proxy.url
+                self._provider_base_url_override = proxy.url
+                try:
+                    response = self._solve_inner(task, sandbox)
+                finally:
+                    self._provider_base_url_override = None
+                response.metadata = {
+                    **(response.metadata or {}),
+                    "transport": "zeroclaw_vision_proxy",
+                    "vision_proxy_injections": proxy.injection_count,
+                }
+                return response
+        finally:
+            self._provider_api_base = original_api_base
 
     def teardown(self) -> None:
         if self._runtime_manager is not None:
