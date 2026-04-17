@@ -145,16 +145,13 @@ class Runner:
         import alphadiana.benchmark.aime  # noqa: F401
         import alphadiana.benchmark.custom  # noqa: F401
         import alphadiana.benchmark.moltbench  # noqa: F401
-        import alphadiana.benchmark.imo_answerbench  # noqa: F401
-        import alphadiana.benchmark.hle  # noqa: F401
-        import alphadiana.benchmark.terminal_bench2  # noqa: F401
+        import alphadiana.benchmark.swebench_pro  # noqa: F401
 
         # Import agent modules to trigger registration.
         import alphadiana.agent.openclaw  # noqa: F401
         import alphadiana.agent.direct_llm  # noqa: F401
-        import alphadiana.agent.opencode  # noqa: F401
         import alphadiana.agent.moltbench_docker  # noqa: F401
-        import alphadiana.agent.terminal_bench2_docker  # noqa: F401
+        import alphadiana.agent.swebench_docker  # noqa: F401
 
         # Import sandbox modules to trigger registration.
         import alphadiana.sandbox.local  # noqa: F401
@@ -166,7 +163,7 @@ class Runner:
         import alphadiana.scorer.llm_judge  # noqa: F401
         import alphadiana.scorer.math_verify_scorer  # noqa: F401
         import alphadiana.scorer.moltbench  # noqa: F401
-        import alphadiana.scorer.terminal_bench2_scorer  # noqa: F401
+        import alphadiana.scorer.swebench_pro  # noqa: F401
 
         # Resolve and instantiate benchmark.
         benchmark_cls = BenchmarkRegistry.get(self.config.benchmark_name)

@@ -80,6 +80,7 @@ class ResultStore:
                 "correct": score.correct,
                 "score": score.score,
                 "rationale": score.rationale,
+                "score_metadata": score.metadata,
                 "trajectory": response.trajectory,
                 "reasoning_trajectory": response.reasoning_trajectory,
                 "raw_output": response.raw_output,
