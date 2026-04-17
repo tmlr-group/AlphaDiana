@@ -51,7 +51,7 @@ def main():
 def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
     """Run an evaluation experiment from a YAML config file."""
     from alphadiana.config.experiment_config import ExperimentConfig, deep_merge, parse_override
-    from alphadiana.runner.runner import Runner
+    from alphadiana.runner.runner import Runner, _is_gateway_autodeploy_agent
 
     overrides: dict = {}
     for ov in override:
@@ -73,8 +73,14 @@ def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
 
     _warn_proxy()
 
-    # Pre-flight: verify ROCK services are reachable for openclaw runs.
-    if config.agent_name in _OPENCLAW_RUNTIME_AGENTS:
+    # Pre-flight: verify ROCK services are reachable for ROCK-backed runs.
+    # openclaw needs ROCK only in auto-deploy mode; direct api_base/gateway_pool
+    # should bypass ROCK checks and run against the configured gateway directly.
+    _zeroclaw_needs_rock = (
+        config.agent_name == "zeroclaw" and bool(config.agent_config.get("rock_image"))
+    )
+    _gateway_autodeploy_needs_rock = _is_gateway_autodeploy_agent(config)
+    if config.sandbox_name == "rock" or _gateway_autodeploy_needs_rock or _zeroclaw_needs_rock:
         from alphadiana.utils.rock_ports import resolve_rock_ports_from_env, check_rock_services
         ports = resolve_rock_ports_from_env()
         click.echo(f"Pre-flight: checking ROCK services (admin={ports.admin_port}, proxy={ports.proxy_port}, redis={ports.redis_port})...")
