@@ -76,7 +76,9 @@ class TerminalBench2ZeroClawAgent(TerminalBench2ContainerMixin, ZeroClawAgent):
         if workspace_link.exists() or workspace_link.is_symlink():
             workspace_link.unlink()
         workspace_link.symlink_to(workdir)
-        (zc_home / "config.toml").write_text(self._build_config_toml(), encoding="utf-8")
+        config_path = zc_home / "config.toml"
+        config_path.write_text(self._build_config_toml(), encoding="utf-8")
+        os.chmod(config_path, 0o600)
         prompt_path = workdir / "PROMPT.txt"
         prompt_path.write_text(prompt_text, encoding="utf-8")
 
@@ -86,7 +88,7 @@ class TerminalBench2ZeroClawAgent(TerminalBench2ContainerMixin, ZeroClawAgent):
             env.pop(var, None)
         return env, {
             "home_dir": str(home_dir),
-            "config_path": str(zc_home / "config.toml"),
+            "config_path": str(config_path),
             "prompt_path": str(prompt_path),
             "stdout_path": str(stdout_path),
             "stderr_path": str(stderr_path),

@@ -635,7 +635,11 @@ class ZeroClawAgent(Agent):
                 return text
         except Exception:
             pass
-        cat_result = sandbox.execute(f"cat {shlex.quote(filename)}")
+        probe = f"test -f {shlex.quote(filename)} && cat {shlex.quote(filename)} || true"
+        try:
+            cat_result = sandbox.execute(f"bash -lc {shlex.quote(probe)}")
+        except Exception:
+            return ""
         if cat_result.exit_code == 0:
             return cat_result.stdout
         return ""
@@ -715,6 +719,15 @@ class ZeroClawAgent(Agent):
         partial_response.gateway_url = gateway_url
         partial_response.sandbox_id = sandbox_id
         return partial_response
+
+    def _collect_gateway_artifacts_safe(self, sandbox: Any) -> dict[str, Any]:
+        if self._runtime_manager is None:
+            return {}
+        try:
+            return self._runtime_manager.collect_artifacts(sandbox)
+        except Exception as exc:
+            logger.warning("ZeroClaw gateway artifact collection failed: %s", exc)
+            return {}
 
     def _collect_sandbox_diagnostics(
         self,
@@ -945,7 +958,7 @@ class ZeroClawAgent(Agent):
                 runtime_info=runtime_info,
                 gateway_mode="rock-proxy",
             )
-            artifact_data = self._runtime_manager.collect_artifacts(sandbox)
+            artifact_data = self._collect_gateway_artifacts_safe(sandbox)
             response.artifact_manifest = self._merge_artifact_manifest(
                 response.artifact_manifest,
                 artifact_data.get("artifact_manifest", {}),
@@ -958,7 +971,7 @@ class ZeroClawAgent(Agent):
             response.sandbox_metadata = artifact_data.get("sandbox_metadata", {})
             return response
         except Exception as exc:
-            artifact_data = self._runtime_manager.collect_artifacts(sandbox)
+            artifact_data = self._collect_gateway_artifacts_safe(sandbox)
             if not _should_fallback_from_gateway(exc):
                 partial_response = self._build_gateway_partial_response(
                     task_context=task_context,

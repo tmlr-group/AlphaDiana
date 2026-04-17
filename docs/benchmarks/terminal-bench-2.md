@@ -102,6 +102,13 @@ docker build -f docker/terminal_bench2/Dockerfile.zeroclaw-controller \
   -t alphadiana/tb2-zeroclaw-controller:latest .
 ```
 
+For ZeroClaw, prefer putting large temporary files on a data disk before running:
+
+```bash
+export TMPDIR=/path/to/$USER/tmp/alphadiana-tb2
+mkdir -p "$TMPDIR"
+```
+
 ## Runtime Model
 
 AlphaDiana runs `terminal-bench-2` from the Docker-capable control side:
@@ -202,3 +209,53 @@ Full-run configs:
 - scan all task directories under that root
 
 For the current checked-in smoke setup, the canonical staged task is `db-wal-recovery`.
+
+## ZeroClaw Reproduction Notes
+
+`terminal-bench-2` does not use ROCK. The formal ZeroClaw smoke path here is still sandboxed:
+
+- the task itself runs in the benchmark Docker container
+- the ZeroClaw controller runs in a separate Docker controller image
+
+This is different from the main `README.md` AIME quickstart, which focuses on ROCK auto-deploy.
+
+### Reproduce The 2026-04-17 Formal Docker Smoke
+
+Prepare the staged smoke task and controller image first:
+
+```bash
+export OPENAI_BASE_URL=https://api.example.com/v1/
+export OPENAI_API_KEY=sk-...
+export PYTHONPATH=$PWD
+export TERMINAL_BENCH2_SMOKE_DIR=/path/to/terminal-bench-smoke-dbwal
+export TMPDIR=/path/to/$USER/tmp/alphadiana-tb2
+mkdir -p "$TMPDIR"
+
+docker pull alexgshaw/db-wal-recovery:20251031
+docker build -f docker/terminal_bench2/Dockerfile.zeroclaw-controller \
+  -t alphadiana/tb2-zeroclaw-controller:latest .
+```
+
+Run the smoke:
+
+```bash
+python -m alphadiana.cli run configs/examples/terminal_bench2_zeroclaw_minimax.yaml \
+  -o run_id=pr26_formal_smoke_tb2_zeroclaw_minimax_docker_20260417_v2 \
+  -o agent.config.logs_base_dir=/path/to/$USER/tmp/alphadiana-tb2/tb2_logs
+```
+
+Expected result:
+
+- dashboard: `X`
+- task file exists under `results/terminal_bench2_zeroclaw_minimax_smoke/<run_id>/tasks/`
+- task JSON has no `error`
+- the recorded task is `tb2_db-wal-recovery`
+
+Observed local verification on 2026-04-17:
+
+- run_id: `pr26_formal_smoke_tb2_zeroclaw_minimax_docker_20260417_v2`
+- result: dashboard `X`, `predicted=0`, no `error`
+- execution mode: Docker task container + Docker ZeroClaw controller
+- the artifact shows ZeroClaw loaded `model=\"minimax-m2.5\"`
+
+On this local smoke, the provider hit `429 Too Many Requests`, so the verifier failed because `/app/recovered.json` was never created. That still counts as a smoke pass under the execution playbook because the benchmark path completed, the task JSON was written, and the dashboard reached `X`.
