@@ -83,9 +83,7 @@ cd ../../..
 
 
 ```bash
-conda activate alphadiana
-source dev/rock_env.sh # Load the ROCK environment (required for sandbox features)
-source dev/.rock_ports.env # Load dynamic ports
+source scripts/activate.sh
 
 cd alphadiana/dashboard
 ./run.sh # Development mode: frontend hot reload + backend auto reload
@@ -106,8 +104,7 @@ If you need to control the front and back ends separately:
 
 ```bash
 # Terminal 1: Launch Backend
-conda activate alphadiana
-source dev/rock_env.sh
+source scripts/activate.sh
 uvicorn alphadiana.dashboard.backend.main:app --reload --port 8000
 
 # Terminal 2: Launch Frontend (Dev Mode)

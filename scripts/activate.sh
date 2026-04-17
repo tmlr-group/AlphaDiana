@@ -7,37 +7,12 @@
 # What it does:
 #   1. Activates the conda environment
 #   2. Clears proxy variables that interfere with local ROCK services
-#   3. Loads ROCK port configuration
-#   4. Loads API keys from .env
-#   5. Sets PYTHONPATH and ROCK config variables
+#   3. Loads API keys from .env
+#   4. Reuses scripts/rock_env.sh for ROCK ports, PYTHONPATH, and ROCK_CONFIG
 
 _activate_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _activate_project_root="$(cd "${_activate_script_dir}/.." && pwd)"
 _activate_rock_root="${_activate_project_root}/ref/ROCK"
-
-_activate_load_ports_if_unset() {
-  local ports_file="$1"
-  local line key value
-  [ -f "${ports_file}" ] || return 0
-
-  while IFS= read -r line || [ -n "${line}" ]; do
-    line="${line#"${line%%[![:space:]]*}"}"
-    [ -z "${line}" ] && continue
-    case "${line}" in
-      \#*) continue ;;
-      export\ *) line="${line#export }" ;;
-    esac
-    key="${line%%=*}"
-    value="${line#*=}"
-    key="${key%%[[:space:]]*}"
-    [ -z "${key}" ] && continue
-    [ "${key}" = "${value}" ] && continue
-    if [ -n "${!key:-}" ]; then
-      continue
-    fi
-    eval "export ${key}=${value}"
-  done < "${ports_file}"
-}
 
 # ── 1. Conda ─────────────────────────────────────────────────────────────────
 eval "$(conda shell.bash hook)" 2>/dev/null
@@ -50,14 +25,7 @@ fi
 # ── 2. Clear proxy variables ─────────────────────────────────────────────────
 unset ALL_PROXY HTTP_PROXY HTTPS_PROXY all_proxy http_proxy https_proxy
 
-# ── 3. Load ROCK port configuration ──────────────────────────────────────────
-if [ -f "${_activate_script_dir}/.rock_ports.env" ]; then
-  _activate_load_ports_if_unset "${_activate_script_dir}/.rock_ports.env"
-else
-  echo "Warning: scripts/.rock_ports.env not found. Run 'bash scripts/quickstart.sh' first." >&2
-fi
-
-# ── 4. Load .env (API keys) ──────────────────────────────────────────────────
+# ── 3. Load .env (API keys) ──────────────────────────────────────────────────
 if [ -f "${_activate_project_root}/.env" ]; then
   set -a
   source "${_activate_project_root}/.env"
@@ -66,42 +34,20 @@ else
   echo "Warning: .env not found. Create it with OPENAI_BASE_URL, OPENAI_API_KEY, OPENAI_MODEL_NAME." >&2
 fi
 
-# ── 5. ROCK environment variables ────────────────────────────────────────────
-export ROCK_RAY_PORT="${ROCK_RAY_PORT:-6380}"
-export ROCK_RAY_DASHBOARD_PORT="${ROCK_RAY_DASHBOARD_PORT:-8265}"
-export ROCK_RAY_CLIENT_SERVER_PORT="${ROCK_RAY_CLIENT_SERVER_PORT:-30001}"
-export ROCK_REDIS_PORT="${ROCK_REDIS_PORT:-6379}"
-export ROCK_REDIS_CONTAINER="${ROCK_REDIS_CONTAINER:-redis-stack}"
-export ROCK_ADMIN_PORT="${ROCK_ADMIN_PORT:-9000}"
-export ROCK_PROXY_PORT="${ROCK_PROXY_PORT:-9001}"
-export ROCK_BIND_HOST="${ROCK_BIND_HOST:-127.0.0.1}"
-export ROCK_BASE_URL="${ROCK_BASE_URL:-http://${ROCK_BIND_HOST}:${ROCK_ADMIN_PORT}}"
-export ROCK_PROXY_ROOT_URL="${ROCK_PROXY_ROOT_URL:-http://${ROCK_BIND_HOST}:${ROCK_PROXY_PORT}}"
-export ROCK_PROXY_URL="${ROCK_PROXY_URL:-${ROCK_PROXY_ROOT_URL}/apis/envs/sandbox/v1}"
-
-_activate_user_name="${USER:-$(id -un 2>/dev/null || echo user)}"
-export TMPDIR="${TMPDIR:-${_activate_project_root}/.cache/tmp}"
-export RAY_TMPDIR="${RAY_TMPDIR:-/tmp/${_activate_user_name}-ray}"
-mkdir -p "${TMPDIR}" 2>/dev/null
-mkdir -p "${RAY_TMPDIR}" 2>/dev/null
-
+# ── 4. ROCK environment variables ────────────────────────────────────────────
 if [ -d "${_activate_rock_root}" ]; then
-  export PYTHONPATH="${_activate_rock_root}:${_activate_project_root}${PYTHONPATH:+:${PYTHONPATH}}"
-  _activate_dynamic_config="${_activate_project_root}/scripts/generated/rock-local-proxy.dynamic.yml"
-  if [ -f "${_activate_dynamic_config}" ]; then
-    export ROCK_CONFIG="${_activate_dynamic_config}"
-  else
-    export ROCK_CONFIG="${_activate_rock_root}/rock-conf/rock-local-proxy.yml"
+  if [ ! -f "${_activate_script_dir}/.rock_ports.env" ]; then
+    echo "Warning: scripts/.rock_ports.env not found. Run 'bash scripts/quickstart.sh' first." >&2
   fi
-  export ROCK_WORKER_ENV_TYPE="local"
-  export ROCK_PROJECT_ROOT="${_activate_rock_root}"
+  # Reuse the shared ROCK helper so activate.sh and quickstart agree on the
+  # dynamic config location and default local ports.
+  # shellcheck disable=SC1091
+  source "${_activate_script_dir}/rock_env.sh"
+else
+  echo "Warning: ROCK repository not found at ${_activate_rock_root}." >&2
 fi
-
-export HF_ENDPOINT="${HF_ENDPOINT:-https://hf-mirror.com}"
 
 # ── Cleanup temp vars ────────────────────────────────────────────────────────
 unset _activate_script_dir _activate_project_root _activate_rock_root
-unset _activate_user_name _activate_dynamic_config
-unset -f _activate_load_ports_if_unset
 
 echo "AlphaDiana environment ready."

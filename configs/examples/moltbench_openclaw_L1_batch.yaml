@@ -1,7 +1,7 @@
 # MoltBench batch evaluation — OpenClaw + DeepSeek, L1 P001-P020
 #
 # Usage:
-#   cd /data/users/weikaihuang/projects/MoltBench/AlphaDiana
+#   cd /path/to/AlphaDiana
 #   set -a && source ../.env && set +a
 #   python3 -m alphadiana.cli run configs/examples/moltbench_openclaw_L1_batch.yaml
 
