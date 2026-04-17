@@ -48,8 +48,9 @@ dump.rdb
 # Results, configs, artifacts (generated at runtime)
 /results/
 !alphadiana/results/
-/configs/
-!configs/examples/
+/configs/*
+!/configs/examples/
+!/configs/examples/**
 /artifacts/
 
 # external_benchmark runtime artifacts

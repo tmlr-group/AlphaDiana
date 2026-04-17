@@ -12,7 +12,7 @@ Validate two things on top of main:
 
 ## Environment
 
-- Worktree: `/path/to/users/xxx/projects/AlphaDiana-dev`
+- Worktree: local `AlphaDiana-dev` checkout
 - Local main ROCK ports:
   - admin `9027`
   - proxy `9080`
@@ -87,9 +87,7 @@ Command shape:
 
 ```bash
 source scripts/activate.sh
-export PYTHONPATH=$PWD
 export HF_TOKEN=...
-export ROCK_CONFIG="$PWD/ref/ROCK/rock-conf/rock-local-proxy.yml"
 python -m alphadiana.cli run configs/examples/openclaw_minimax_hle.yaml \
   -o agent.config.OPENAI_BASE_URL=https://api-inference.modelscope.cn/v1 \
   -o agent.config.OPENAI_API_KEY=... \
@@ -131,8 +129,6 @@ The related targeted tests passed during this work:
 
 ```bash
 source scripts/activate.sh
-export PYTHONPATH=/path/to/users/xxx/projects/AlphaDiana-dev/ref/ROCK:$PWD
-export ROCK_CONFIG=/path/to/users/xxx/projects/AlphaDiana-dev/ref/ROCK/rock-conf/rock-local-proxy.yml
 pytest -q tests/test_hle_benchmark.py tests/test_opencode_agent.py tests/test_fix_0312_features.py tests/test_openclaw_runtime.py
 ```
 

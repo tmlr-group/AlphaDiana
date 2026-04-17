@@ -60,7 +60,7 @@ docker start redis-stack 2>/dev/null \
 cd ref/ROCK
 nohup python -m rock.admin.main \
   --env local-proxy --role admin --port 9016 \
-  > ../../scripts/generated/admin.log 2>&1 &
+  > ../../dev/generated/admin.log 2>&1 &
 cd -
 ```
 
@@ -70,7 +70,7 @@ cd -
 cd ref/ROCK
 nohup python -m rock.admin.main \
   --env local-proxy --role proxy --port 9027 \
-  > ../../scripts/generated/proxy.log 2>&1 &
+  > ../../dev/generated/proxy.log 2>&1 &
 cd -
 ```
 

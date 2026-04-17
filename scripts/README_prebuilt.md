@@ -63,7 +63,7 @@ The script is **idempotent** — safe to run multiple times.
 
 ## Port Configuration
 
-All ports are read from `dev/.rock_ports.env`:
+All ports are read from `scripts/.rock_ports.env`:
 
 | Variable | Default | Service |
 |----------|---------|---------|
@@ -72,7 +72,7 @@ All ports are read from `dev/.rock_ports.env`:
 | `ROCK_RAY_PORT` | 6385 | Ray GCS head node |
 | `ROCK_REDIS_PORT` | 6379 | Redis (used by ROCK, not the shared redis-stack) |
 
-If another user's process is already occupying one of these ports, update `dev/.rock_ports.env` and rerun the script.
+If another user's process is already occupying one of these ports, update `scripts/.rock_ports.env` and rerun the script.
 
 ---
 
