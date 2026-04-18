@@ -188,7 +188,9 @@ OpenClaw 模式不是“在 Python 里实现 agent loop”，而是：
    - 读取 `openclaw_deploy/openclaw_swe_bench.runtime.json`
    - 用环境变量填充 `OPENAI_BASE_URL`、`OPENAI_API_KEY`、`OPENAI_MODEL_NAME`
    - 把渲染后的 JSON 上传到容器内
+   - 在宿主机预热 `libsignal-node` bare mirror，并上传到任务容器
    - 如有需要，在容器内安装 Node.js 与 `openclaw`
+   - 用 `git url.insteadOf` 把该 GitHub 依赖重写到本地 `file://` mirror
    - 启动 `openclaw gateway`
    - 轮询 `/v1/models` 等待 gateway ready
    - 做一次 warmup 请求
@@ -226,6 +228,8 @@ OpenClaw 模式不是“在 Python 里实现 agent loop”，而是：
 - 调整 gateway 配置
 - 允许 `exec` 工具直接在容器里执行命令
 - 在容器里按需安装 Node.js 和 `openclaw`
+- 在宿主机准备并缓存 `libsignal-node` bare mirror
+- 把 bare mirror 上传到任务容器，并用 `git url.insteadOf` 重写 GitHub 依赖
 - 启动 `openclaw gateway`
 - 探测 gateway 是否 ready
 - 收集以下 artifacts：
@@ -234,6 +238,14 @@ OpenClaw 模式不是“在 Python 里实现 agent loop”，而是：
   - 部分 workspace 文件内容
   - session JSONL 路径
   - sandbox metadata
+
+这里要特别区分它和 `main` 分支的 SWE-bench Pro 路径：
+
+- `main` 的 Pro smoke 走 `agent.name: swebench_docker`
+- 它通过预装 runtime image 和 `swebench_assets/run_openclaw.sh` 注入运行时
+- 当前分支的 Verified 路径才是这个文件负责的“task container 内现装 OpenClaw”
+
+所以，`openclaw_container_runtime.py` 是当前分支新增路径的 runtime manager，不是 `main` 那条 prebuilt-image 执行链的核心组件。
 
 ## 5.5 `alphadiana/agent/openclaw.py` 的职责
 
@@ -347,29 +359,36 @@ OpenCode 模式更接近传统 CLI coding agent：
 - OpenClaw：更适合看内部轨迹、session 文件、gateway 日志
 - OpenCode：更适合看最终改了哪些文件、diff 是什么
 
-## 8. 当前缺失的环节：`swe_bench` scorer
+## 8. 当前已补齐的环节：`swe_bench` scorer
 
-虽然 benchmark 名称是 `swe_bench`，但评分逻辑不是 benchmark 文件自己完成的，而是交给 scorer。
+当前仓库已经补齐了 `alphadiana/scorer/swe_bench.py` 这条评测闭环。
 
-当前仓库里已注册的 scorer 只有：
+它的职责是：
 
-- `exact_match`
-- `llm_judge`
-- `math_verify`
-- `numeric`
+- 接收 agent 产出的 patch
+- 调用官方 `swebench` harness 做 patch 应用和测试执行
+- 回收 `report.json`、`run_instance.log`、`test_output.txt`
+- 把 `correct`、`score` 和错误信息落到 AlphaDiana 的 task JSON
 
-所以现状是：
+因此当前链路不是“只有 agent 能跑、没有正式评分”，而是：
 
-- benchmark 已经有了
-- sandbox 已经有了
-- openclaw agent 已经有了
-- opencode agent 已经有了
-- 但用于对 SWE-bench patch 做正式评测的 scorer 还没有注册进来
+- benchmark 负责把数据集样本转成 `BenchmarkTask`
+- sandbox 负责拉起官方任务容器
+- agent 负责在任务容器里生成 patch
+- scorer 负责复用官方 harness 做最终验收
 
-这意味着这两个配置目前更像是：
+按 smoke 标准，最终要看的还是：
 
-- agent 侧链路已经打通
-- 评测闭环还差最后一块
+- `results/<run_id>/tasks/<task_id>.json` 是否存在
+- task JSON 里是否没有 `error`
+- dashboard 是否显示 `O` 或 `X`
+
+其中：
+
+- `O` 表示链路跑通且题目解对
+- `X` 表示链路跑通但 patch 没解对
+
+两者都属于执行成功，不是基础设施失败。
 
 ## 9. 建议你以后从哪些文件入手排查
 
@@ -405,7 +424,22 @@ OpenCode 模式更接近传统 CLI coding agent：
 - `alphadiana/runner/runner.py`
 - `alphadiana/scorer/`
 
-## 10. 一句话总结
+## 10. 和 main 分支的 SWE-bench Pro 路径如何对齐理解
+
+如果只看架构思路，可以把两条路径这样对应：
+
+- `main` 的 SWE-bench Pro：优先使用 prebuilt runtime image，把运行时准备前移到镜像构建阶段
+- 当前分支的 SWE-bench Verified：优先使用 task-local runtime manager，把运行时准备放到每个 task container 启动阶段
+
+当前分支为了稳住 OpenClaw 依赖安装，额外加入了 host-side bare mirror 这层保护。但这仍然是 runtime install 的稳态修复，不等于已经达到 `main` 那条 prebuilt-image 路径的复现稳定性。
+
+如果后续要继续收敛实现，推荐方向是：
+
+- 保留当前 runtime install 作为 fallback
+- 同时补一条 prebuilt-image 优先路径
+- 让 Verified 和 Pro 在 OpenClaw 运行时模型上尽量收敛
+
+## 11. 一句话总结
 
 这两个 SWE-bench 配置共用同一个 benchmark 和同一个任务容器后端，但求解方式不同：
 

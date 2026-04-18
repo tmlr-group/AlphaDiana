@@ -286,11 +286,63 @@ python -m alphadiana.cli run configs/examples/opencode_swe_bench.yaml \
 - 任务记录里没有 `error`
 - dashboard 显示 `O` 或 `X`，而不是 `-`
 
-## 6. OpenClaw 和 OpenCode 的实际区别
+## 6. 和 main 分支的 SWE-bench Pro 路径有什么不同
+
+你之前用的“预装镜像”路径，和当前分支这条 Verified 路径不是同一套 runtime。
+
+`main` 分支里已经验证过的 OpenClaw SWE-bench Pro smoke，走的是：
+
+- `agent.name: swebench_docker`
+- `agent.config.agent_type: openclaw`
+- 通过 `alphadiana/agent/swebench_assets/run_openclaw.sh` 把 runner 和配置注入任务镜像
+- 默认 runtime image 来自 `PREBUILT_SANDBOX_IMAGE`
+
+也就是说，`main` 的 SWE-bench Pro 路径本质上是“预装 runtime image + 注入 runner/assets”。
+
+当前分支里的 `configs/examples/openclaw_swe_bench.yaml` 则不同：
+
+- `agent.name: openclaw`
+- `agent.config.runtime: swebench_container`
+- 每个 SWE-bench task container 都由 `alphadiana/agent/openclaw_container_runtime.py` 在容器内准备 Node.js、OpenClaw 和 gateway
+
+因此，两条链虽然都能跑 OpenClaw，但工程取舍不同：
+
+- `main` 的 SWE-bench Pro 路径更接近长期最佳实践，优点是复现更稳、网络依赖更少、单任务启动更快
+- 当前分支的 Verified 路径更灵活，但运行时依赖更多，尤其对容器内网络更敏感
+
+如果目标是长期维护和多机复现，建议优先向 `main` 的 prebuilt-image 路径对齐；当前分支的 runtime install 方案更适合作为过渡或 fallback。
+
+## 7. 当前 OpenClaw 的网络稳态策略
+
+当前分支里的 OpenClaw 容器链路已经做了一个显式稳态修复，用来处理 `openclaw@2026.3.7` 依赖树里最容易卡住的 GitHub 依赖 `libsignal-node`。
+
+默认行为现在是：
+
+- OpenClaw 仍然在 task container 里执行 `npm install -g openclaw@2026.3.7`
+- 但在安装前，宿主机会先准备 `libsignal-node` 的 bare git mirror
+- runtime 会把这个 mirror 作为 tar 包上传到 task container
+- 容器内通过 `git url.insteadOf` 把 `https://github.com/whiskeysockets/libsignal-node.git` 重写到本地 `file://` mirror
+
+这样做的目的不是“完全取消容器内安装”，而是：
+
+- 避免容器在安装 OpenClaw 时直接访问 GitHub
+- 避免把宿主机的 loopback 代理地址直接传进容器后失效
+
+同时，`swebench_container` 现在会跳过把 `127.0.0.1` / `localhost` / `::1` 这类 loopback proxy 环境变量透传进 task container。因为 bridge 网络下的容器无法直接使用宿主机 loopback 代理。
+
+要注意，这只是当前路径的稳态修复，不是长期最佳实践。它仍然依赖：
+
+- npm registry
+- Node tarball 下载
+- 宿主机至少能在预热 bare mirror 时访问 GitHub，或者本地已经有缓存 mirror
+
+长期建议仍然是预装 runtime image，把 OpenClaw 和关键依赖直接烘进镜像。
+
+## 8. OpenClaw 和 OpenCode 的实际区别
 
 可以把两者理解成两条不同的“任务求解路径”。
 
-### 6.1 OpenClaw
+### 8.1 OpenClaw
 
 特点：
 
@@ -305,7 +357,7 @@ python -m alphadiana.cli run configs/examples/opencode_swe_bench.yaml \
 - 希望保留 OpenClaw 的内部编排能力
 - 希望统一走 OpenAI 兼容 API 接口
 
-### 6.2 OpenCode
+### 8.2 OpenCode
 
 特点：
 
@@ -320,7 +372,7 @@ python -m alphadiana.cli run configs/examples/opencode_swe_bench.yaml \
 - 想减少 gateway 启动和 HTTP 调用这一层
 - 希望更贴近“命令行 coding agent 直接改仓库”的执行方式
 
-## 7. 建议的排查顺序
+## 9. 建议的排查顺序
 
 如果后面运行有问题，推荐按这个顺序检查：
 
@@ -331,7 +383,7 @@ python -m alphadiana.cli run configs/examples/opencode_swe_bench.yaml \
 5. 当前是否已经补齐 `swe_bench` scorer 注册
 6. `logs/swebench_container` 和 `swe_bench_logs` 里是否有构建或执行日志
 
-## 8. 你现在最该关注的文件
+## 10. 你现在最该关注的文件
 
 配置入口：
 
