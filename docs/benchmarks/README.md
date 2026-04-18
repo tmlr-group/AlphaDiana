@@ -1,8 +1,10 @@
 # Benchmark Runbooks
 
-This directory contains user-facing runbooks for the benchmark evaluation paths.
+This directory contains user-facing runbooks for benchmark evaluation paths.
 
-Each benchmark document describes prerequisites, supported execution modes, example configs, and smoke-test commands. PR23/PR25 integration now covers `zeroclaw` on all three runbooks as well:
+Each benchmark document describes prerequisites, supported execution modes,
+example configs, and smoke-test commands. The current ZeroClaw coverage in
+this folder is:
 
 - [IMO-AnswerBench](imo-answerbench.md)
 - [HLE](hle.md)
@@ -10,7 +12,9 @@ Each benchmark document describes prerequisites, supported execution modes, exam
 - [MMMU-Pro](mmmu-pro.md)
 - [terminal-bench-2](terminal-bench-2.md)
 
-Ready-to-run full benchmark configs live in [configs/full_runs](../../configs/full_runs/README.md). Use those for full evaluations.
+Ready-to-run full benchmark configs live in
+[configs/full_runs](../../configs/full_runs/README.md) where available. Use
+those for full evaluations.
 
 The configs under `configs/examples/` are smoke/debug configs. They intentionally pin one task with `dataset_index` or `max_tasks` and should not be used for full benchmark runs.
 
@@ -28,11 +32,12 @@ When running from a local checkout, prefer `python -m alphadiana.cli ...` so the
 current workspace code is used.
 
 For GPQA-Diamond and MMMU-Pro, dedicated smoke/debug example configs now exist
-for all three modes:
+for all four modes:
 
 - `direct_llm`
 - `openclaw`
 - `opencode`
+- `zeroclaw`
 
 Current limitation: on `main`, `opencode` text-only benchmark tasks still run
 through the local CLI path rather than a benchmark-managed sandbox. That is fine
@@ -48,3 +53,6 @@ For the benchmark runbooks in this folder, ZeroClaw smoke validation is document
 - `terminal-bench-2`: Docker task container plus Docker controller image
 
 The host-local `_run_locally()` path is useful for debugging, but it is not counted as the formal benchmark smoke path in these runbooks.
+
+For PR-scoped local evidence from the latest ZeroClaw benchmark smokes, see
+[`contexts/pr23/zeroclaw/README.md`](../../contexts/pr23/zeroclaw/README.md).
