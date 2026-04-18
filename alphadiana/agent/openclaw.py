@@ -1,7 +1,7 @@
 """OpenClaw agent wrapper.
 
 OpenClaw is an agentic framework that performs multi-round reasoning with
-tool calling inside a ROCK sandbox.  When it receives a chat/completions
+tool calling inside a sandbox/container runtime. When it receives a chat/completions
 request it does NOT just proxy to the LLM; instead it:
 
   1. Builds a rich system prompt (~8K tokens) with agent instructions,
@@ -14,8 +14,8 @@ request it does NOT just proxy to the LLM; instead it:
 
 This wrapper supports two modes:
   - Direct gateway: ``api_base`` is pre-configured (gateway already running)
-  - Auto-deploy: ``rock_agent_config_path`` + ``openclaw_config_path`` provided,
-    the gateway is started inside a live ROCK sandbox automatically
+  - Runtime-backed sandbox: runtime-specific config is provided and the
+    gateway is started inside the active sandbox/container automatically
 
 Deployment reference:
   https://github.com/alibaba/ROCK/blob/master/examples/agents/openclaw/REAMDE.md
@@ -519,7 +519,7 @@ def _parse_openclaw_session(session_jsonl: str) -> list[dict]:
 class OpenClawAgent(Agent):
     """Agent that talks to an OpenClaw gateway via OpenAI-compatible API.
 
-    OpenClaw is deployed inside a ROCK sandbox and performs agentic
+    OpenClaw is deployed inside a sandbox/container and performs agentic
     orchestration internally (multi-turn LLM calls, tool use, context
     compaction).  This wrapper:
 
@@ -538,13 +538,15 @@ class OpenClawAgent(Agent):
       - rock_sandbox_url: ROCK proxy base URL for retrieving session files
                           (e.g. "http://127.0.0.1:9001/apis/envs/sandbox/v1")
       - sandbox_id: ROCK sandbox ID (extracted from api_base if not set)
-      - rock_agent_config_path: Path to ROCK agent config YAML (for auto-deploy)
-      - openclaw_config_path: Path to OpenClaw gateway config JSON (for auto-deploy)
+      - runtime: Optional runtime selector (e.g. "swebench_container")
+      - rock_agent_config_path: Path to ROCK agent config YAML (ROCK runtime)
+      - openclaw_config_path: Path to OpenClaw gateway config JSON (runtime-backed)
     """
 
     name = "openclaw"
 
     def setup(self, config: dict) -> None:
+        self._runtime = str(config.get("runtime", "")).strip()
         self._api_base = config.get("api_base", "")
         self._model = config.get("model", "openclaw")
         self._gateway_token = config.get("gateway_token", "OPENCLAW")
@@ -553,6 +555,10 @@ class OpenClawAgent(Agent):
         self._max_tokens = config.get("max_tokens", None)
         self._max_attempts = max(1, int(config.get("max_attempts", 5)))
         self._request_timeout = float(config.get("request_timeout", 1800))
+        self._stream_idle_timeout = max(
+            1.0,
+            float(config.get("stream_idle_timeout", min(self._request_timeout, 180.0))),
+        )
         self._proxy_timeout = int(config.get("proxy_timeout", 600))
         self._config = config
 
@@ -624,10 +630,17 @@ class OpenClawAgent(Agent):
         # ROCK SDK client for reading session files (lazy init)
         self._sandbox_clients: dict[tuple[str, str], Any] = {}
 
-        # Runtime manager for auto-deploy gateway startup
+        # Runtime manager for sandbox-backed gateway startup.
+        self._runtime_manager = None
         try:
-            from alphadiana.agent.openclaw_runtime import OpenClawRuntimeManager
-            self._runtime_manager = OpenClawRuntimeManager(config)
+            if self._runtime == "swebench_container":
+                from alphadiana.agent.openclaw_container_runtime import OpenClawContainerRuntimeManager
+
+                self._runtime_manager = OpenClawContainerRuntimeManager(config)
+            else:
+                from alphadiana.agent.openclaw_runtime import OpenClawRuntimeManager
+
+                self._runtime_manager = OpenClawRuntimeManager(config)
         except ImportError:
             self._runtime_manager = None
 
@@ -656,22 +669,35 @@ class OpenClawAgent(Agent):
         import httpx
         base = url.rsplit("/chat/completions", 1)[0]
         try:
-            resp = httpx.get(f"{base}/models", headers=headers, timeout=10.0)
+            resp = httpx.get(f"{base}/models", headers=headers, timeout=10.0, trust_env=False)
             if resp.status_code not in (200, 404, 405):
                 logger.warning(
                     "OpenClaw health check failed: GET %s/models returned %d. "
                     "The gateway may not be deployed correctly. Check: "
-                    "1) sandbox is running, 2) openclaw deploy succeeded, "
-                    "3) proxy port is correct.",
+                    "1) sandbox/container is running, 2) OpenClaw started successfully, "
+                    "3) the published/proxy port is correct.",
                     base, resp.status_code,
                 )
         except Exception as exc:
             logger.warning(
                 "OpenClaw health check failed: %s. "
-                "Possible causes: sandbox not running, proxy port wrong, "
-                "or OpenClaw gateway not deployed. Continuing anyway...",
+                "Possible causes: sandbox/container not running, published/proxy port wrong, "
+                "or OpenClaw gateway not started. Continuing anyway...",
                 exc,
             )
+
+    def _build_httpx_timeout(self):
+        """Use a shorter read timeout for streaming stalls than the total request budget."""
+        import httpx
+
+        phase_timeout = max(1.0, min(self._request_timeout, 30.0))
+        read_timeout = max(1.0, min(self._request_timeout, self._stream_idle_timeout))
+        return httpx.Timeout(
+            connect=phase_timeout,
+            read=read_timeout,
+            write=phase_timeout,
+            pool=phase_timeout,
+        )
 
     def _extract_sandbox_target_from_api_base(self, api_base: str) -> tuple[str, str]:
         """Extract sandbox_id and ROCK proxy base from a gateway api_base."""
@@ -825,6 +851,7 @@ class OpenClawAgent(Agent):
     def _retrieve_trajectory_sync(
         self,
         *,
+        sandbox: Any = None,
         sandbox_id: str = "",
         rock_sandbox_url: str = "",
         expected_user_content: str = "",
@@ -833,6 +860,14 @@ class OpenClawAgent(Agent):
         import asyncio
 
         try:
+            if sandbox is not None:
+                trajectory = self._retrieve_trajectory_from_sandbox_session(
+                    sandbox=sandbox,
+                    expected_user_content=expected_user_content,
+                )
+                if trajectory:
+                    return trajectory
+
             try:
                 loop = asyncio.get_running_loop()
             except RuntimeError:
@@ -860,6 +895,56 @@ class OpenClawAgent(Agent):
                 )
         except Exception as e:
             logger.warning("Trajectory retrieval failed: %s", e)
+            return []
+
+    def _retrieve_trajectory_from_sandbox_session(
+        self,
+        *,
+        sandbox: Any,
+        expected_user_content: str = "",
+    ) -> list[dict]:
+        """Read OpenClaw session JSONL files directly from the active sandbox session."""
+        if sandbox is None or not hasattr(sandbox, "execute"):
+            return []
+
+        try:
+            session_globs = " ".join(
+                f"{home}/agents/main/sessions/*.jsonl"
+                for home in self._OPENCLAW_HOME_CANDIDATES
+            )
+            result = sandbox.execute(f"ls -t {session_globs} 2>/dev/null | head -20")
+            session_files = [
+                line.strip()
+                for line in result.stdout.strip().splitlines()
+                if line.strip().endswith(".jsonl")
+            ]
+            if not session_files:
+                return []
+
+            fallback_trajectory: list[dict] = []
+            for session_file in session_files:
+                session_text = ""
+                try:
+                    session_text = sandbox.read_text(session_file)
+                except Exception:
+                    result = sandbox.execute(f"cat {shlex.quote(session_file)}")
+                    if result.exit_code == 0:
+                        session_text = result.stdout
+                if not session_text.strip():
+                    continue
+
+                trajectory = _parse_openclaw_session(session_text)
+                if trajectory and not fallback_trajectory:
+                    fallback_trajectory = trajectory
+                if expected_user_content and _trajectory_matches_request(
+                    trajectory,
+                    expected_user_content,
+                ):
+                    return trajectory
+
+            return fallback_trajectory
+        except Exception as exc:
+            logger.debug("Sandbox-session trajectory retrieval failed: %s", exc)
             return []
 
     # Paths that OpenClaw uses for state in the workspace.
@@ -1035,7 +1120,7 @@ class OpenClawAgent(Agent):
         elif not runtime_info["api_base"]:
             raise RuntimeError(
                 "OpenClawAgent requires either agent.config.api_base (or gateway_pool) "
-                "or a live ROCK sandbox plus rock_agent_config_path/openclaw_config_path."
+                "or a live sandbox plus the runtime-specific OpenClaw configuration."
             )
         else:
             self._ensure_agent_md(sandbox)
@@ -1079,11 +1164,26 @@ class OpenClawAgent(Agent):
                 status_code: int = 0
                 resp_headers: dict = {}
                 received_done: bool = False
-                with httpx.Client(timeout=self._request_timeout, trust_env=False) as client:
+                logger.info(
+                    "OpenClaw attempt %d/%d starting request: timeout=%.1fs stream_idle_timeout=%.1fs url=%s",
+                    attempt,
+                    self._max_attempts,
+                    self._request_timeout,
+                    min(self._request_timeout, self._stream_idle_timeout),
+                    url,
+                )
+                with httpx.Client(timeout=self._build_httpx_timeout(), trust_env=False) as client:
                     with client.stream("POST", url, headers=headers, json=request_payload) as response:
                         status_code = response.status_code
                         resp_headers = dict(response.headers)
                         content_type = response.headers.get("content-type", "")
+                        logger.info(
+                            "OpenClaw attempt %d/%d response headers received: status=%s content_type=%s",
+                            attempt,
+                            self._max_attempts,
+                            status_code,
+                            content_type or "<empty>",
+                        )
 
                         if "application/json" in content_type:
                             # Non-SSE JSON response (error or non-streaming reply).
@@ -1120,6 +1220,11 @@ class OpenClawAgent(Agent):
                                 except json.JSONDecodeError:
                                     response_json = {}
                             else:
+                                logger.info(
+                                    "OpenClaw attempt %d/%d streaming response established; waiting for SSE chunks",
+                                    attempt,
+                                    self._max_attempts,
+                                )
                                 received_done = False
                                 for line in response.iter_lines():
                                     if not line.startswith("data:"):
@@ -1145,10 +1250,20 @@ class OpenClawAgent(Agent):
 
                 raw_output = "".join(chunks)
                 raw_reasoning = "".join(reasoning_chunks)
+                logger.info(
+                    "OpenClaw attempt %d/%d completed stream: output_chars=%d reasoning_chars=%d received_done=%s elapsed=%.2fs",
+                    attempt,
+                    self._max_attempts,
+                    len(raw_output),
+                    len(raw_reasoning),
+                    received_done,
+                    time.monotonic() - attempt_start,
+                )
                 recovered_trajectory = []
                 trajectory_error = ""
                 if not raw_output:
                     recovered_trajectory = self._retrieve_trajectory_sync(
+                        sandbox=sandbox,
                         sandbox_id=runtime_info.get("sandbox_id", ""),
                         rock_sandbox_url=actual_rock_sandbox_url,
                         expected_user_content=request_messages[0]["content"],
@@ -1341,6 +1456,25 @@ class OpenClawAgent(Agent):
                     except Exception:
                         pass
                 error_type = classify_error(exc, response_json=response_json or None, status_code=exc_status)
+                if error_type == "timeout":
+                    recovered_trajectory = self._retrieve_trajectory_sync(
+                        sandbox=sandbox,
+                        sandbox_id=runtime_info.get("sandbox_id", ""),
+                        rock_sandbox_url=actual_rock_sandbox_url,
+                        expected_user_content=request_messages[0]["content"],
+                    )
+                    recovered_content, recovered_reasoning = _recover_partial_output_from_trajectory(
+                        recovered_trajectory
+                    )
+                    if recovered_content and not raw_output:
+                        raw_output = recovered_content
+                    if recovered_reasoning and not raw_reasoning:
+                        raw_reasoning = recovered_reasoning
+                    if raw_output:
+                        break
+                    if raw_reasoning:
+                        partial_reasoning_only = True
+                        break
                 retry_responses.append(
                     {
                         "attempt": attempt,
@@ -1349,15 +1483,18 @@ class OpenClawAgent(Agent):
                         "body": exc_body,
                         "elapsed_sec": elapsed,
                         "error_type": error_type,
+                        "recovered_trajectory_len": len(recovered_trajectory),
                     }
                 )
                 logger.warning(
-                    "OpenClaw attempt %d/%d failed: error_type=%s timeout=%.1fs elapsed=%.2fs error=%s",
+                    "OpenClaw attempt %d/%d failed: error_type=%s timeout=%.1fs stream_idle_timeout=%.1fs elapsed=%.2fs recovered_trajectory_len=%d error=%s",
                     attempt,
                     self._max_attempts,
                     error_type,
                     self._request_timeout,
+                    min(self._request_timeout, self._stream_idle_timeout),
                     elapsed,
+                    len(recovered_trajectory),
                     exc,
                 )
                 if error_type == "proxy_timeout":
@@ -1440,6 +1577,7 @@ class OpenClawAgent(Agent):
 
         # Try to retrieve the real agentic trajectory from the sandbox.
         trajectory = recovered_trajectory or self._retrieve_trajectory_sync(
+            sandbox=sandbox,
             sandbox_id=runtime_info.get("sandbox_id", ""),
             rock_sandbox_url=actual_rock_sandbox_url,
             expected_user_content=request_messages[0]["content"],

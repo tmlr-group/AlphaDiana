@@ -1,0 +1,20 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "custom": {
+      "api": "openai",
+      "name": "AlphaDiana Custom Provider",
+      "options": {
+        "apiKey": "",
+        "baseURL": ""
+      },
+      "models": {
+        "": {
+          "name": "",
+          "tool_call": true
+        }
+      }
+    }
+  },
+  "model": ""
+}

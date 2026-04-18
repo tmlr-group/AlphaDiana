@@ -1,0 +1,554 @@
+"""OpenClaw runtime manager for task-local SWE-bench containers."""
+
+from __future__ import annotations
+
+import io
+import json
+import os
+import shlex
+import shutil
+import subprocess
+import tarfile
+import time
+from copy import deepcopy
+from pathlib import Path
+from typing import Any
+
+import logging as _logging
+
+_logger = _logging.getLogger(__name__)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+NODE_RUNTIME_ROOT = "/tmp/openclaw-node"
+NODE_RUNTIME_BIN = f"{NODE_RUNTIME_ROOT}/bin"
+NODE_TARBALL = "node-v22.18.0-linux-x64.tar.xz"
+NODE_DOWNLOAD_URL = f"https://npmmirror.com/mirrors/node/v22.18.0/{NODE_TARBALL}"
+NODE_SHA256 = "c1bfeecf1d7404fa74728f9db72e697decbd8119ccc6f5a294d795756dfcfca7"
+OPENCLAW_VERSION = "2026.3.7"
+NPM_REGISTRY = "https://registry.npmjs.org"
+LIBSIGNAL_GIT_URL = "https://github.com/whiskeysockets/libsignal-node.git"
+LIBSIGNAL_MIRROR_DIR_NAME = "libsignal-node-bare"
+LIBSIGNAL_MIRROR_CACHE_DIR = PROJECT_ROOT / ".cache" / "openclaw" / LIBSIGNAL_MIRROR_DIR_NAME
+LIBSIGNAL_MIRROR_REMOTE_ARCHIVE = f"/tmp/{LIBSIGNAL_MIRROR_DIR_NAME}.tar"
+LIBSIGNAL_MIRROR_REMOTE_DIR = f"/tmp/{LIBSIGNAL_MIRROR_DIR_NAME}"
+TESTBED_PYTHON_BIN_CANDIDATES = (
+    "/opt/miniconda3/envs/testbed/bin",
+    "/opt/conda/envs/testbed/bin",
+    "/root/miniconda3/envs/testbed/bin",
+)
+OPENCLAW_EXEC_PATH_PREPEND = TESTBED_PYTHON_BIN_CANDIDATES[0]
+TESTBED_PATH_SEGMENTS = (
+    *TESTBED_PYTHON_BIN_CANDIDATES,
+    "/opt/miniconda3/bin",
+    "/opt/conda/bin",
+    "/root/miniconda3/bin",
+    "/usr/local/sbin",
+    "/usr/local/bin",
+    "/usr/sbin",
+    "/usr/bin",
+    "/sbin",
+    "/bin",
+)
+TESTBED_TOOL_PATH = ":".join(dict.fromkeys(TESTBED_PATH_SEGMENTS))
+
+DEFAULT_INSTALL_OPENCLAW_COMMAND = "\n".join(
+    [
+        "set -e",
+        "if ! command -v wget >/dev/null 2>&1 || ! command -v xz >/dev/null 2>&1 || ! command -v git >/dev/null 2>&1; then",
+        "  apt-get update",
+        "  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends wget ca-certificates git xz-utils",
+        "  rm -rf /var/lib/apt/lists/*",
+        "fi",
+        f"if [ ! -x {NODE_RUNTIME_BIN}/node ] || ! {NODE_RUNTIME_BIN}/node -e \"process.exit(Number(process.versions.node.split('.')[0]) >= 20 ? 0 : 1)\"; then",
+        f"  rm -rf {NODE_RUNTIME_ROOT} /tmp/{NODE_TARBALL}",
+        f"  wget -q -O /tmp/{NODE_TARBALL} {NODE_DOWNLOAD_URL}",
+        f"  echo \"{NODE_SHA256}  /tmp/{NODE_TARBALL}\" | sha256sum -c -",
+        "  mkdir -p /tmp",
+        f"  tar -xf /tmp/{NODE_TARBALL} -C /tmp",
+        f"  mv /tmp/node-v22.18.0-linux-x64 {NODE_RUNTIME_ROOT}",
+        f"  rm -f /tmp/{NODE_TARBALL}",
+        "fi",
+        f"export PATH=\"{NODE_RUNTIME_BIN}:$PATH\"",
+        "git config --global --unset-all url.'https://github.com/'.insteadOf || true",
+        "git config --global --add url.'https://github.com/'.insteadOf 'ssh://git@github.com/'",
+        "git config --global --add url.'https://github.com/'.insteadOf 'git@github.com:'",
+        "git config --global --add url.'https://github.com/'.insteadOf 'git+ssh://git@github.com/'",
+        "git config --global http.version HTTP/1.1",
+        "git config --global http.lowSpeedLimit 0",
+        "git config --global http.lowSpeedTime 999999",
+        f"if [ -f {LIBSIGNAL_MIRROR_REMOTE_ARCHIVE} ]; then",
+        f"  rm -rf {LIBSIGNAL_MIRROR_REMOTE_DIR}",
+        "  mkdir -p /tmp",
+        f"  tar -xf {LIBSIGNAL_MIRROR_REMOTE_ARCHIVE} -C /tmp",
+        f"  git config --global --add safe.directory {LIBSIGNAL_MIRROR_REMOTE_DIR}",
+        f"  git config --global --add url.'file://{LIBSIGNAL_MIRROR_REMOTE_DIR}'.insteadOf '{LIBSIGNAL_GIT_URL}'",
+        f"  git config --global --add url.'file://{LIBSIGNAL_MIRROR_REMOTE_DIR}'.insteadOf 'git+{LIBSIGNAL_GIT_URL}'",
+        "fi",
+        f"npm config set registry {NPM_REGISTRY}",
+        f"npm install -g openclaw@{OPENCLAW_VERSION} --omit=optional",
+        "npm cache clean --force || true",
+    ]
+)
+
+
+def _progress(message: str) -> None:
+    print(f"[OpenClawContainer] {message}", flush=True)
+
+
+def _is_ready_probe_status(status_code: int) -> bool:
+    return status_code in (200, 404, 405)
+
+
+def _make_directory_archive(source_dir: Path, arcname: str) -> bytes:
+    payload = io.BytesIO()
+    with tarfile.open(fileobj=payload, mode="w") as tar:
+        tar.add(source_dir, arcname=arcname)
+    return payload.getvalue()
+
+
+def _ensure_bare_git_mirror(source_url: str, cache_dir: Path) -> Path | None:
+    if (cache_dir / "HEAD").exists():
+        return cache_dir
+
+    cache_dir.parent.mkdir(parents=True, exist_ok=True)
+    tmp_dir = cache_dir.with_name(f"{cache_dir.name}.tmp")
+    shutil.rmtree(tmp_dir, ignore_errors=True)
+    try:
+        subprocess.run(
+            ["git", "clone", "--bare", "--depth", "1", source_url, str(tmp_dir)],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        tmp_dir.replace(cache_dir)
+        return cache_dir
+    except Exception as exc:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        if (cache_dir / "HEAD").exists():
+            return cache_dir
+        _logger.warning("Failed to prepare git mirror for %s: %s", source_url, exc)
+        return None
+
+
+class OpenClawContainerRuntimeManager:
+    """Bootstraps the OpenClaw gateway inside a SWE-bench task container."""
+
+    def __init__(self, config: dict) -> None:
+        self._config = dict(config)
+        self._gateway_token = config.get("gateway_token", "OPENCLAW")
+        self._gateway_model = config.get("model", "openclaw")
+        self._openclaw_config_path = str(self._resolve_config_path(config.get("openclaw_config_path", ""))) if config.get("openclaw_config_path") else ""
+        self._gateway_startup_timeout = int(config.get("gateway_startup_timeout", 180))
+        self._gateway_warmup_timeout = int(config.get("gateway_warmup_timeout", 180))
+        self._gateway_warmup_initial_delay = float(config.get("gateway_warmup_initial_delay", 3.0))
+        self._gateway_log_path = config.get("gateway_log_path", "/tmp/openclaw-gateway.log")
+        self._workspace_path = config.get("workspace_path", "/tmp/oc_home/.openclaw/workspace")
+        self._openclaw_home = config.get("openclaw_home", "/tmp/oc_home")
+        self._remote_openclaw_config_path = config.get("remote_openclaw_config_path", "/tmp/openclaw.json")
+        self._install_openclaw_command = config.get(
+            "install_openclaw_command",
+            DEFAULT_INSTALL_OPENCLAW_COMMAND,
+        )
+        self._gateway_port = int(config.get("container_gateway_port", config.get("gateway_port", 8080)))
+        self._gateway_host = config.get("container_gateway_host", "127.0.0.1")
+        self._started_sandboxes: set[str] = set()
+        self._agent_md_applied_sandboxes: set[str] = set()
+        self._git_mirror_uploaded_sandboxes: set[str] = set()
+
+        self._agent_md_mode = config.get("agent_md_mode", "none")
+        self._agent_md_content = config.get("agent_md_content", "")
+        self._workspace = config.get("workspace", "")
+
+        self._embedding_api_base = config.get("embedding_api_base", "")
+        self._embedding_api_key = config.get("embedding_api_key", "")
+
+    def _resolve_config_path(self, path_str: str) -> Path:
+        path = Path(path_str).expanduser()
+        if path.is_absolute():
+            return path.resolve()
+        for candidate in ((PROJECT_ROOT / path).resolve(), path.resolve()):
+            if candidate.exists():
+                return candidate
+        return (PROJECT_ROOT / path).resolve()
+
+    @property
+    def is_configured(self) -> bool:
+        return bool(self._openclaw_config_path)
+
+    def _resolve_env_value(self, env_key: str, config_key: str) -> str:
+        value = str(self._config.get(config_key, "")).strip()
+        if value:
+            return value
+        return os.environ.get(env_key, "").strip()
+
+    def _sandbox_metadata(self, sandbox: Any) -> dict[str, Any]:
+        if hasattr(sandbox, "metadata"):
+            try:
+                metadata = sandbox.metadata()
+                if isinstance(metadata, dict):
+                    return metadata
+            except Exception:
+                _logger.debug("Failed to read sandbox metadata", exc_info=True)
+        return {}
+
+    def _resolve_workspace_root(self, sandbox: Any | None = None) -> str:
+        if self._workspace:
+            return self._workspace
+        if sandbox is not None:
+            repo_workdir = str(self._sandbox_metadata(sandbox).get("repo_workdir", "")).strip()
+            if repo_workdir:
+                return repo_workdir
+        return self._workspace_path
+
+    def _build_openclaw_config(self, base_config: dict | None = None, *, workspace_root: str | None = None) -> dict:
+        config: dict[str, Any] = deepcopy(base_config or {})
+        env_cfg = config.setdefault("env", {})
+        upstream = {
+            "OPENAI_BASE_URL": self._resolve_env_value("OPENAI_BASE_URL", "openai_base_url"),
+            "OPENAI_API_KEY": self._resolve_env_value("OPENAI_API_KEY", "openai_api_key"),
+            "OPENAI_MODEL_NAME": self._resolve_env_value("OPENAI_MODEL_NAME", "openai_model_name"),
+            "OPENCLAW_GATEWAY_TOKEN": self._gateway_token,
+        }
+        missing = [key for key in ("OPENAI_BASE_URL", "OPENAI_API_KEY", "OPENAI_MODEL_NAME") if not upstream[key]]
+        if missing:
+            raise RuntimeError(
+                "OpenClaw container runtime requires the upstream model settings to be available "
+                f"via environment or agent config: {', '.join(missing)}"
+            )
+        env_cfg.update(upstream)
+        configured_path = str(env_cfg.get("PATH", "")).strip()
+        env_cfg["PATH"] = (
+            f"{TESTBED_TOOL_PATH}:{configured_path}"
+            if configured_path
+            else TESTBED_TOOL_PATH
+        )
+
+        if self._embedding_api_base:
+            models = config.setdefault("models", {})
+            providers = models.setdefault("providers", {})
+            providers["embedding"] = {
+                "baseUrl": self._embedding_api_base,
+                "apiKey": self._embedding_api_key or "EMPTY",
+                "api": "openai",
+            }
+
+        agents = config.setdefault("agents", {})
+        defaults = agents.setdefault("defaults", {})
+        defaults["workspace"] = workspace_root or self._workspace_path
+
+        gateway = config.setdefault("gateway", {})
+        gateway["port"] = self._gateway_port
+        gateway["mode"] = "local"
+        gateway["bind"] = "custom"
+        gateway["customBindHost"] = "0.0.0.0"
+        auth = gateway.setdefault("auth", {})
+        auth["mode"] = "token"
+        auth["token"] = "${OPENCLAW_GATEWAY_TOKEN}"
+
+        tools = config.setdefault("tools", {})
+        exec_cfg = tools.setdefault("exec", {})
+        exec_cfg["ask"] = "off"
+        exec_cfg["host"] = "gateway"
+        exec_cfg["pathPrepend"] = [OPENCLAW_EXEC_PATH_PREPEND]
+        exec_cfg["security"] = "full"
+
+        memory = config.get("memory", {})
+        if isinstance(memory, dict):
+            memory.pop("enabled", None)
+            if not memory:
+                config.pop("memory", None)
+
+        return config
+
+    def inject_agent_md(self, sandbox: Any) -> None:
+        sandbox_id = str(getattr(sandbox, "sandbox_id", ""))
+        if sandbox_id and sandbox_id in self._agent_md_applied_sandboxes:
+            return
+        if self._agent_md_mode == "none":
+            return
+
+        agent_md_path = f"{self._resolve_workspace_root(sandbox)}/AGENTS.md"
+        existing = ""
+        try:
+            existing = sandbox.read_text(agent_md_path)
+        except Exception:
+            existing = ""
+
+        if self._agent_md_mode == "append":
+            new_content = existing + self._agent_md_content
+        else:
+            new_content = self._agent_md_content
+        sandbox.upload(agent_md_path, new_content.encode("utf-8"))
+
+        if sandbox_id:
+            self._agent_md_applied_sandboxes.add(sandbox_id)
+
+    def runtime_info(self, sandbox: Any) -> dict:
+        if hasattr(sandbox, "gateway_api_base"):
+            api_base = sandbox.gateway_api_base()
+        else:
+            metadata = self._sandbox_metadata(sandbox)
+            host = metadata.get("gateway_host", self._gateway_host)
+            port = metadata.get("gateway_host_port")
+            if not port:
+                raise RuntimeError("Sandbox metadata does not include a published gateway port")
+            api_base = f"http://{host}:{port}/v1"
+        return {
+            "sandbox_id": str(getattr(sandbox, "sandbox_id", "")),
+            "gateway_url": f"{api_base}/chat/completions",
+            "api_base": api_base,
+            "gateway_token": self._gateway_token,
+        }
+
+    def _probe_gateway_alive(self, sandbox: Any) -> bool:
+        try:
+            import httpx
+
+            info = self.runtime_info(sandbox)
+            response = httpx.get(
+                f"{info['api_base']}/models",
+                headers={"Authorization": f"bearer {self._gateway_token}"},
+                timeout=5,
+                trust_env=False,
+            )
+            return _is_ready_probe_status(response.status_code)
+        except Exception:
+            return False
+
+    def _with_node_runtime_path(self, command: str) -> str:
+        return "\n".join(
+            [
+                "set -e",
+                f"if [ -d {NODE_RUNTIME_BIN} ]; then export PATH=\"{NODE_RUNTIME_BIN}:$PATH\"; fi",
+                command,
+            ]
+        )
+
+    def _build_git_dependency_mirror_archive(self) -> tuple[str, bytes] | None:
+        mirror_dir = _ensure_bare_git_mirror(LIBSIGNAL_GIT_URL, LIBSIGNAL_MIRROR_CACHE_DIR)
+        if mirror_dir is None:
+            return None
+        return (
+            LIBSIGNAL_MIRROR_REMOTE_ARCHIVE,
+            _make_directory_archive(mirror_dir, arcname=LIBSIGNAL_MIRROR_DIR_NAME),
+        )
+
+    def _upload_git_dependency_mirrors(self, sandbox: Any) -> None:
+        sandbox_id = str(getattr(sandbox, "sandbox_id", ""))
+        if sandbox_id and sandbox_id in self._git_mirror_uploaded_sandboxes:
+            return
+        archive = self._build_git_dependency_mirror_archive()
+        if archive is None:
+            return
+        remote_path, payload = archive
+        sandbox.upload(remote_path, payload)
+        if sandbox_id:
+            self._git_mirror_uploaded_sandboxes.add(sandbox_id)
+
+    def _install_openclaw_if_needed(self, sandbox: Any) -> None:
+        check = sandbox.execute(
+            self._with_node_runtime_path("command -v openclaw >/dev/null 2>&1 && openclaw --version")
+        )
+        if check.exit_code == 0:
+            return
+        if not self._install_openclaw_command:
+            raise RuntimeError("OpenClaw is not installed in the container and no install command was configured")
+        _progress("installing OpenClaw inside task container")
+        result = sandbox.execute(self._with_node_runtime_path(self._install_openclaw_command))
+        if result.exit_code != 0:
+            raise RuntimeError(
+                "Failed to install OpenClaw inside the task container:\n"
+                f"stdout:\n{result.stdout}\n\nstderr:\n{result.stderr}"
+            )
+
+    def _prepare_runtime_files(self, sandbox: Any) -> None:
+        openclaw_config = Path(self._openclaw_config_path)
+        if not openclaw_config.exists():
+            raise FileNotFoundError(f"openclaw_config_path not found: {openclaw_config}")
+        workspace_root = self._resolve_workspace_root(sandbox)
+        rendered = self._build_openclaw_config(
+            json.loads(openclaw_config.read_text(encoding="utf-8")),
+            workspace_root=workspace_root,
+        )
+        sandbox.upload(
+            self._remote_openclaw_config_path,
+            json.dumps(rendered, indent=2).encode("utf-8"),
+        )
+
+    def _build_start_gateway_command(self, sandbox: Any | None = None) -> str:
+        workspace_root = self._resolve_workspace_root(sandbox)
+        return "\n".join(
+            [
+                "set -e",
+                "mkdir -p /tmp/empty-bundled",
+                f"mkdir -p {shlex.quote(self._openclaw_home)}",
+                f"mkdir -p {shlex.quote(workspace_root)}",
+                f"cd {shlex.quote(workspace_root)}",
+                "pkill -x openclaw >/dev/null 2>&1 || true",
+                f"export PATH=\"{TESTBED_TOOL_PATH}:$PATH\"",
+                f"if [ -d {NODE_RUNTIME_BIN} ]; then export PATH=\"{NODE_RUNTIME_BIN}:$PATH\"; fi",
+                f"export OPENCLAW_CONFIG_PATH={self._remote_openclaw_config_path}",
+                f"export OPENCLAW_HOME={self._openclaw_home}",
+                "export OPENCLAW_BUNDLED_PLUGINS_DIR=/tmp/empty-bundled",
+                f"export OPENCLAW_GATEWAY_TOKEN={self._gateway_token}",
+                f"nohup openclaw gateway > {self._gateway_log_path} 2>&1 &",
+            ]
+        )
+
+    def _start_gateway(self, sandbox: Any) -> None:
+        command = self._build_start_gateway_command(sandbox)
+        result = sandbox.execute(command)
+        if result.exit_code != 0:
+            raise RuntimeError(
+                "Failed to start OpenClaw gateway inside the task container:\n"
+                f"stdout:\n{result.stdout}\n\nstderr:\n{result.stderr}"
+            )
+
+    def _list_workspace_paths(self, sandbox: Any, workspace_root: str) -> list[str]:
+        metadata = self._sandbox_metadata(sandbox)
+        repo_workdir = str(metadata.get("repo_workdir", "")).strip()
+        if repo_workdir and workspace_root == repo_workdir:
+            candidates = [
+                f"{workspace_root}/AGENTS.md",
+                f"{workspace_root}/SOUL.md",
+                f"{workspace_root}/BOOTSTRAP.md",
+                f"{workspace_root}/HEARTBEAT.md",
+                f"{workspace_root}/IDENTITY.md",
+                f"{workspace_root}/TOOLS.md",
+                f"{workspace_root}/USER.md",
+                f"{workspace_root}/.openclaw/workspace-state.json",
+            ]
+            existing: list[str] = []
+            for path in candidates:
+                try:
+                    sandbox.read_text(path)
+                except Exception:
+                    continue
+                existing.append(path)
+            return existing
+
+        workspace_listing = sandbox.execute(
+            f"find {shlex.quote(workspace_root)} -maxdepth 4 -type f | sort"
+        )
+        return [
+            line.strip()
+            for line in workspace_listing.stdout.splitlines()
+            if line.strip()
+        ]
+
+    def _wait_for_gateway(self, sandbox: Any) -> None:
+        import httpx
+
+        info = self.runtime_info(sandbox)
+        url = f"{info['api_base']}/models"
+        headers = {"Authorization": f"bearer {self._gateway_token}"}
+        deadline = time.monotonic() + self._gateway_startup_timeout
+        last_error: Exception | None = None
+        while time.monotonic() < deadline:
+            try:
+                response = httpx.get(url, headers=headers, timeout=10, trust_env=False)
+                if _is_ready_probe_status(response.status_code):
+                    return
+            except Exception as exc:
+                last_error = exc
+            time.sleep(2)
+        if last_error is not None:
+            raise RuntimeError(f"OpenClaw gateway did not become ready: {last_error}") from last_error
+        raise RuntimeError("OpenClaw gateway did not become ready before timeout")
+
+    def _warmup_gateway(self, sandbox: Any) -> None:
+        import httpx
+
+        info = self.runtime_info(sandbox)
+        url = f"{info['api_base']}/chat/completions"
+        headers = {
+            "Authorization": f"bearer {self._gateway_token}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": self._gateway_model,
+            "messages": [
+                {"role": "system", "content": "Reply briefly."},
+                {"role": "user", "content": "Say READY."},
+            ],
+            "temperature": 0.0,
+            "max_tokens": 32,
+            "stream": False,
+        }
+        if self._gateway_warmup_initial_delay > 0:
+            time.sleep(self._gateway_warmup_initial_delay)
+        deadline = time.monotonic() + self._gateway_warmup_timeout
+        last_error: Exception | None = None
+        while time.monotonic() < deadline:
+            try:
+                response = httpx.post(url, headers=headers, json=payload, timeout=30, trust_env=False)
+                response.raise_for_status()
+                return
+            except Exception as exc:
+                last_error = exc
+                time.sleep(2)
+        if last_error is not None:
+            raise RuntimeError(f"OpenClaw warmup failed: {last_error}") from last_error
+
+    def ensure_ready(self, sandbox: Any) -> dict:
+        sandbox_id = str(getattr(sandbox, "sandbox_id", ""))
+        if sandbox_id in self._started_sandboxes and self._probe_gateway_alive(sandbox):
+            return self.runtime_info(sandbox)
+
+        _progress(f"preparing OpenClaw runtime for sandbox_id={sandbox_id}")
+        self._prepare_runtime_files(sandbox)
+        self.inject_agent_md(sandbox)
+        self._upload_git_dependency_mirrors(sandbox)
+        self._install_openclaw_if_needed(sandbox)
+        self._start_gateway(sandbox)
+        self._wait_for_gateway(sandbox)
+        try:
+            self._warmup_gateway(sandbox)
+        except Exception as exc:
+            _logger.warning("OpenClaw container warmup did not fully succeed: %s", exc)
+        self._started_sandboxes.add(sandbox_id)
+        return self.runtime_info(sandbox)
+
+    def collect_artifacts(self, sandbox: Any) -> dict:
+        gateway_log = ""
+        try:
+            gateway_log = sandbox.read_text(self._gateway_log_path)
+        except Exception:
+            gateway_log = ""
+
+        workspace_root = self._resolve_workspace_root(sandbox)
+        workspace_paths = self._list_workspace_paths(sandbox, workspace_root)
+
+        session_listing = sandbox.execute(
+            "ls -t /tmp/oc_home/.openclaw/agents/main/sessions/*.jsonl "
+            "/root/.openclaw/agents/main/sessions/*.jsonl 2>/dev/null | head -10"
+        )
+        session_paths = [
+            line.strip()
+            for line in session_listing.stdout.splitlines()
+            if line.strip().endswith(".jsonl")
+        ]
+
+        workspace_file_contents: dict[str, str] = {}
+        for path in [f"{workspace_root}/AGENTS.md", f"{workspace_root}/SOUL.md", *session_paths[:3]]:
+            try:
+                workspace_file_contents[path] = sandbox.read_text(path)
+            except Exception:
+                continue
+
+        artifact_manifest = {
+            "gateway_log_path": self._gateway_log_path,
+            "workspace_path": workspace_root,
+            "session_paths": session_paths,
+            "openclaw_config_path": self._remote_openclaw_config_path,
+        }
+        return {
+            "artifact_manifest": artifact_manifest,
+            "gateway_log_excerpt": gateway_log[-20000:] if gateway_log else "",
+            "workspace_snapshot_paths": workspace_paths,
+            "workspace_file_contents": workspace_file_contents,
+            "sandbox_metadata": self._sandbox_metadata(sandbox),
+        }
+
+    def teardown(self) -> None:
+        return None

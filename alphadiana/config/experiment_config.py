@@ -5,12 +5,13 @@ import os
 import re
 import uuid
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 import yaml
 
-_FULL_ENV_VAR_PATTERN = re.compile(r"^\s*(\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$[A-Za-z_][A-Za-z0-9_]*)\s*$")
+_ENV_PLACEHOLDER_RE = re.compile(
+    r"^\s*(?:\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$[A-Za-z_][A-Za-z0-9_]*)\s*$"
+)
 
 
 def _expand_env_vars(obj: Any) -> Any:
@@ -27,12 +28,26 @@ def _expand_env_vars(obj: Any) -> Any:
 def _clear_unresolved_env_placeholders(obj: Any) -> Any:
     """Treat fully unresolved env-var placeholders as empty strings."""
     if isinstance(obj, str):
-        return "" if _FULL_ENV_VAR_PATTERN.fullmatch(obj) else obj
+        return "" if _ENV_PLACEHOLDER_RE.fullmatch(obj) else obj
     if isinstance(obj, dict):
         return {k: _clear_unresolved_env_placeholders(v) for k, v in obj.items()}
     if isinstance(obj, list):
         return [_clear_unresolved_env_placeholders(item) for item in obj]
     return obj
+
+
+def _is_blank_config_value(value: Any) -> bool:
+    """Return True when a config field is blank or still an unresolved env placeholder."""
+    if value is None:
+        return True
+    if isinstance(value, str):
+        stripped = value.strip()
+        return (
+            not stripped
+            or stripped.upper() == "EMPTY"
+            or bool(_ENV_PLACEHOLDER_RE.fullmatch(stripped))
+        )
+    return False
 
 
 def _apply_agent_env_defaults(agent_name: str, agent_config: Any) -> dict:
@@ -69,19 +84,45 @@ def _apply_agent_env_defaults(agent_name: str, agent_config: Any) -> dict:
             "terminal_bench2_zeroclaw",
         }:
             env_defaults["model_name"] = "OPENAI_MODEL_NAME"
+
         for key, env_var in env_defaults.items():
-            current = resolved.get(key, "")
-            if current is None:
-                current = ""
-            if isinstance(current, str):
-                current = current.strip()
-                if current.upper() == "EMPTY":
-                    current = ""
-            if current:
+            if not _is_blank_config_value(resolved.get(key, "")):
                 continue
             env_value = os.environ.get(env_var, "").strip()
             if env_value:
                 resolved[key] = env_value
+
+    if agent_name == "swebench_docker":
+        agent_type = str(resolved.get("agent_type", "direct_llm")).strip() or "direct_llm"
+        if agent_type == "direct_llm":
+            env_defaults = {
+                "model": "OPENAI_MODEL_NAME",
+                "api_base": "OPENAI_BASE_URL",
+                "api_key": "OPENAI_API_KEY",
+            }
+            for key, env_var in env_defaults.items():
+                if not _is_blank_config_value(resolved.get(key, "")):
+                    continue
+                env_value = os.environ.get(env_var, "").strip()
+                if env_value:
+                    resolved[key] = env_value
+        elif agent_type in {"openclaw", "opencode"}:
+            env_defaults = {
+                "OPENAI_MODEL_NAME": "OPENAI_MODEL_NAME",
+                "OPENAI_BASE_URL": "OPENAI_BASE_URL",
+                "OPENAI_API_KEY": "OPENAI_API_KEY",
+            }
+            nested_env = resolved.get("env", {})
+            if not isinstance(nested_env, dict):
+                nested_env = {}
+            nested_env = copy.deepcopy(nested_env)
+            for key, env_var in env_defaults.items():
+                if not _is_blank_config_value(nested_env.get(key, "")):
+                    continue
+                env_value = os.environ.get(env_var, "").strip()
+                if env_value:
+                    nested_env[key] = env_value
+            resolved["env"] = nested_env
 
     return resolved
 
@@ -103,7 +144,6 @@ def parse_override(s: str) -> dict:
         raise ValueError(f"Invalid override (missing '='): {s}")
     key_path, raw_value = s.split("=", 1)
     value: Any = raw_value
-    # Try to coerce to int/float/bool
     if raw_value.lower() in ("true", "false"):
         value = raw_value.lower() == "true"
     else:

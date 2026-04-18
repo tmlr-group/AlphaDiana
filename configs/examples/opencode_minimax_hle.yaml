@@ -7,8 +7,8 @@ agent:
   name: opencode
   version: "1.3.2"
   config:
-    model: "custom/minimax-m2.5"
-    model_name: "minimax-m2.5"
+    model: ${OPENAI_MODEL_NAME}
+    model_name: ${OPENAI_MODEL_NAME}
     api_base: ${OPENAI_BASE_URL}
     api_key: ${OPENAI_API_KEY}
     timeout: 1800

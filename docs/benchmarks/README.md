@@ -10,6 +10,7 @@ this folder is:
 - [HLE](hle.md)
 - [GPQA-Diamond](gpqa-diamond.md)
 - [MMMU-Pro](mmmu-pro.md)
+- [SWE-bench Pro](swebench-pro.md)
 - [terminal-bench-2](terminal-bench-2.md)
 - [ZeroClaw MiniMax Smoke Matrix (2026-04-18)](zeroclaw-minimax-smoke-20260418.md)
 
