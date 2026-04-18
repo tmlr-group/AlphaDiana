@@ -390,8 +390,10 @@ class ROCKSandboxMetadata:
     image: str
     memory: str
     cpus: float
+    limit_cpus: float | None
     startup_timeout: int
     auto_clear_seconds: int
+    use_kata_runtime: bool
 
 
 class ROCKSession(SandboxSession):
@@ -412,6 +414,8 @@ class ROCKSession(SandboxSession):
         reset_between_tasks: bool = True,
         proxy_timeout: int = 1800,
         network_mode: str | None = None,
+        limit_cpus: float | None = None,
+        use_kata_runtime: bool = False,
     ) -> None:
         _require_rock_sdk()
         self._id = str(uuid.uuid4())
@@ -427,6 +431,8 @@ class ROCKSession(SandboxSession):
         self._reset_between_tasks = reset_between_tasks
         self._proxy_timeout = proxy_timeout
         self._network_mode = network_mode
+        self._limit_cpus = limit_cpus
+        self._use_kata_runtime = bool(use_kata_runtime)
         self._command_history: list[dict[str, Any]] = []
         _progress(
             f"create_session requested image={self._image} memory={self._memory} "
@@ -464,8 +470,10 @@ class ROCKSession(SandboxSession):
                     image=self._image,
                     memory=memory,
                     cpus=cpus,
+                    limit_cpus=self._limit_cpus,
                     auto_clear_seconds=self._auto_clear_seconds,
                     startup_timeout=float(attempt_timeout),
+                    use_kata_runtime=self._use_kata_runtime,
                 )
                 sandbox = ROCKClientSandbox(config)
                 if ProxyServiceConfig is not None and hasattr(sandbox, "config"):
@@ -713,6 +721,8 @@ class ROCKSession(SandboxSession):
             cpus=self._cpus,
             startup_timeout=self._startup_timeout,
             auto_clear_seconds=self._auto_clear_seconds,
+            limit_cpus=self._limit_cpus,
+            use_kata_runtime=self._use_kata_runtime,
         )
         return {
             **info.__dict__,
@@ -781,6 +791,11 @@ class ROCKSandbox(Sandbox):
             "image": config.get("image", DEFAULT_SANDBOX_IMAGE),
             "memory": config.get("memory", "2g"),
             "cpus": float(config.get("cpus", 0.5)),
+            "limit_cpus": (
+                float(config["limit_cpus"])
+                if config.get("limit_cpus") is not None
+                else None
+            ),
             "startup_timeout": int(config.get("startup_timeout", 300)),
             "fallback_startup_timeout": int(config.get("fallback_startup_timeout", 180)),
             "auto_clear_seconds": int(config.get("auto_clear_seconds", 3600)),
@@ -788,6 +803,7 @@ class ROCKSandbox(Sandbox):
             "reset_between_tasks": bool(self._reset_between_tasks),
             "proxy_timeout": self._proxy_timeout,
             "network_mode": self._network_mode,
+            "use_kata_runtime": bool(config.get("use_kata_runtime", False)),
         }
         configure_rock_runtime_for_image(self._config["image"])
 
