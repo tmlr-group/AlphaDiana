@@ -2,6 +2,11 @@
 
 本文从执行时序角度说明当前仓库里 OpenClaw 和 OpenCode 两种 SWE-bench 方案是怎么工作的，并解释各个关键文件分别负责什么。
 
+这份文档只讲设计和实现，不记录本地真实 smoke 证据。具体 run id、dashboard、task JSON 和 review 结论见：
+
+- `context/pr26-swebench-verified/smoke-validation.md`
+- `context/problems.md`
+
 ## 1. 整体架构
 
 不论是 OpenClaw 还是 OpenCode，外层总流程都是同一套 AlphaDiana 运行框架：
@@ -243,9 +248,9 @@ OpenClaw 模式不是“在 Python 里实现 agent loop”，而是：
 
 - `main` 的 Pro smoke 走 `agent.name: swebench_docker`
 - 它通过预装 runtime image 和 `swebench_assets/run_openclaw.sh` 注入运行时
-- 当前分支的 Verified 路径才是这个文件负责的“task container 内现装 OpenClaw”
+- 当前仓库的 Verified 路径才是这个文件负责的“task container 内现装 OpenClaw”
 
-所以，`openclaw_container_runtime.py` 是当前分支新增路径的 runtime manager，不是 `main` 那条 prebuilt-image 执行链的核心组件。
+所以，`openclaw_container_runtime.py` 是当前仓库这条 Verified 路径的 runtime manager，不是 `main` 那条 prebuilt-image 执行链的核心组件。
 
 ## 5.5 `alphadiana/agent/openclaw.py` 的职责
 
@@ -429,9 +434,9 @@ OpenCode 模式更接近传统 CLI coding agent：
 如果只看架构思路，可以把两条路径这样对应：
 
 - `main` 的 SWE-bench Pro：优先使用 prebuilt runtime image，把运行时准备前移到镜像构建阶段
-- 当前分支的 SWE-bench Verified：优先使用 task-local runtime manager，把运行时准备放到每个 task container 启动阶段
+- 当前仓库的 SWE-bench Verified：优先使用 task-local runtime manager，把运行时准备放到每个 task container 启动阶段
 
-当前分支为了稳住 OpenClaw 依赖安装，额外加入了 host-side bare mirror 这层保护。但这仍然是 runtime install 的稳态修复，不等于已经达到 `main` 那条 prebuilt-image 路径的复现稳定性。
+当前仓库为了稳住 OpenClaw 依赖安装，额外加入了 host-side bare mirror 这层保护。但这仍然是 runtime install 的稳态修复，不等于已经达到 `main` 那条 prebuilt-image 路径的复现稳定性。
 
 如果后续要继续收敛实现，推荐方向是：
 
@@ -445,7 +450,7 @@ OpenCode 模式更接近传统 CLI coding agent：
 - 真正占大头的仍然是 agent 在仓库内阅读、编辑、测试和生成 patch 的时间
 - 因此 prebuilt-image 的主要价值是减少运行时安装带来的网络和依赖波动，而不是把单题耗时降一个量级
 
-这意味着当前分支没有必要为了 merge 立刻切到 overlay 方案，但后续如果要跑 pilot 或 full run，这会是合理的下一步收敛方向。
+这意味着当前仓库没有必要为了 merge 立刻切到 overlay 方案，但后续如果要跑 pilot 或 full run，这会是合理的下一步收敛方向。
 
 ## 11. 一句话总结
 

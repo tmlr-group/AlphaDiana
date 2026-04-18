@@ -1,6 +1,12 @@
 # SWE-bench: OpenClaw 与 OpenCode 的配置与运行说明
 
-本文说明当前仓库里两个 SWE-bench 配置文件的用途、差异、环境准备方式，以及它们各自的实际运行链路。
+本文面向想要复现当前仓库 SWE-bench Verified 实验结果的用户，说明两个配置文件的用途、差异、环境准备方式、烟测命令和预期结果。
+
+文档分层如下：
+
+- `docs/swe_bench.md`：复现入口、配置说明、烟测命令、预期结果
+- `docs/swe_bench_principle.md`：实现原理、执行时序、关键文件职责
+- `context/pr26-swebench-verified/`：本地真实 smoke 结果、run id、review 证据和开发 handoff
 
 涉及的两个配置文件：
 
@@ -75,6 +81,19 @@ export OPENAI_BASE_URL=http://host.docker.internal:8080/v1
 ```
 
 `opencode_swe_bench.yaml` 里已经在注释里明确写了这一点。OpenClaw 模式本质上也一样，因为最终发起请求的也是任务容器里的 OpenClaw gateway。
+
+如果你要复现本次通过的真实 smoke，可以直接按下面这组兼容 OpenAI 接口的环境变量来写：
+
+```bash
+export OPENAI_BASE_URL="https://api.example.com/v1/"
+export OPENAI_API_KEY="<your-api-key>"
+export OPENAI_MODEL_NAME="minimax-m2.5"
+```
+
+说明：
+
+- `minimax` 和 `minimax-m2.5` 都可作为调用名，但本地真实 smoke 使用的是 `minimax-m2.5`
+- 本次验证使用的最大并发约束是 `max_concurrent <= 10`
 
 ### 2.4 可能还需要 Hugging Face 镜像
 
@@ -271,6 +290,13 @@ python -m alphadiana.cli run configs/examples/opencode_swe_bench.yaml \
   -o benchmark.config.max_tasks=1
 ```
 
+如果你想直接复现“1 个 task、2 个 agent、MiniMax M2.5 后端”的本次 smoke，建议保持：
+
+```bash
+-o benchmark.config.max_tasks=1
+-o max_concurrent=1
+```
+
 ## 5.3 运行前要注意什么
 
 这里真正容易卡住的点已经从“scorer 未注册”变成了下面几类：
@@ -286,9 +312,18 @@ python -m alphadiana.cli run configs/examples/opencode_swe_bench.yaml \
 - 任务记录里没有 `error`
 - dashboard 显示 `O` 或 `X`，而不是 `-`
 
+对当前这两个 example config，更具体的预期结果是：
+
+- `openclaw_swe_bench.yaml`：应当拿到 task JSON、dashboard `O/X`，并且 artifacts 中能看到 OpenClaw session / gateway 相关产物
+- `opencode_swe_bench.yaml`：应当拿到 task JSON、dashboard `O/X`，并且 patch 优先来自 `git diff HEAD`
+
+本地真实 smoke 证据见：
+
+- `context/pr26-swebench-verified/smoke-validation.md`
+
 ## 6. 和 main 分支的 SWE-bench Pro 路径有什么不同
 
-你之前用的“预装镜像”路径，和当前分支这条 Verified 路径不是同一套 runtime。
+你之前用的“预装镜像”路径，和当前仓库这条 Verified 路径不是同一套 runtime。
 
 `main` 分支里已经验证过的 OpenClaw SWE-bench Pro smoke，走的是：
 
@@ -299,7 +334,7 @@ python -m alphadiana.cli run configs/examples/opencode_swe_bench.yaml \
 
 也就是说，`main` 的 SWE-bench Pro 路径本质上是“预装 runtime image + 注入 runner/assets”。
 
-当前分支里的 `configs/examples/openclaw_swe_bench.yaml` 则不同：
+当前仓库里的 `configs/examples/openclaw_swe_bench.yaml` 则不同：
 
 - `agent.name: openclaw`
 - `agent.config.runtime: swebench_container`
@@ -308,13 +343,13 @@ python -m alphadiana.cli run configs/examples/opencode_swe_bench.yaml \
 因此，两条链虽然都能跑 OpenClaw，但工程取舍不同：
 
 - `main` 的 SWE-bench Pro 路径更接近长期最佳实践，优点是复现更稳、网络依赖更少、单任务启动更快
-- 当前分支的 Verified 路径更灵活，但运行时依赖更多，尤其对容器内网络更敏感
+- 当前仓库的 Verified 路径更灵活，但运行时依赖更多，尤其对容器内网络更敏感
 
-如果目标是长期维护和多机复现，建议优先向 `main` 的 prebuilt-image 路径对齐；当前分支的 runtime install 方案更适合作为过渡或 fallback。
+如果目标是长期维护和多机复现，建议优先向 `main` 的 prebuilt-image 路径对齐；当前仓库的 runtime install 方案更适合作为过渡或 fallback。
 
 ## 7. 当前 OpenClaw 的网络稳态策略
 
-当前分支里的 OpenClaw 容器链路已经做了一个显式稳态修复，用来处理 `openclaw@2026.3.7` 依赖树里最容易卡住的 GitHub 依赖 `libsignal-node`。
+当前仓库里的 OpenClaw 容器链路已经做了一个显式稳态修复，用来处理 `openclaw@2026.3.7` 依赖树里最容易卡住的 GitHub 依赖 `libsignal-node`。
 
 默认行为现在是：
 
@@ -338,16 +373,15 @@ python -m alphadiana.cli run configs/examples/opencode_swe_bench.yaml \
 
 长期建议仍然是预装 runtime image，把 OpenClaw 和关键依赖直接烘进镜像。
 
-### 7.1 真实 smoke 的时间量级
+### 7.1 单题耗时该怎么理解
 
-基于 `2026-04-18` 的真实 OpenClaw smoke，可以把当前路径的耗时粗略拆成两段：
+本地真实 smoke 的具体耗时记录放在 `context/pr26-swebench-verified/smoke-validation.md`。
 
-- 单任务总耗时约 `275s`
-- 其中 OpenClaw 真正进入任务求解到给出 patch，大约 `219s`
-- 剩余约 `55s` 主要是 runtime 准备、gateway 启动和收尾
-- gateway 本身从启动到 `READY` 大约 `7s`
+对使用者而言，真正要记住的是：
 
-因此，对单个 smoke 来说，prebuilt overlay 能省下的时间通常只是几十秒，不是数量级差异。
+- 当前 Verified 路径可以稳定跑通真实 smoke
+- 单题优化收益通常不是数量级差异
+- prebuilt overlay 更大的价值在于减少运行时安装带来的网络波动，而不是把单题时间砍到很小
 
 ### 7.2 什么时候值得做 prebuilt overlay
 
