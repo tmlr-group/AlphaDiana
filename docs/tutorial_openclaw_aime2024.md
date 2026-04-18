@@ -1,5 +1,10 @@
 # AlphaDiana Evaluation Tutorial: OpenClaw + Qwen3-8B + AIME 2024
 
+This is a historical tutorial kept for reference.
+
+For the current onboarding path, use `README.md`, `docs/README.md`, and
+`docs/getting_started.md`.
+
 This tutorial takes **OpenClaw agent + Qwen3-8B model + AIME 2024 data set** as an example to demonstrate how to use the AlphaDiana evaluation framework to complete a complete end-to-end evaluation.
 
 ## Architecture Overview

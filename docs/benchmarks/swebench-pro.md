@@ -1,5 +1,12 @@
 # SWE-bench Pro Reproduction Guide
 
+Related references kept outside this folder:
+
+- legacy SWE-bench Verified/container reproduction note:
+  `docs/benchmarks/swebench-verified.md`
+- older Verified/container internal note:
+  `context/pr26-swebench-verified/implementation-notes.md`
+
 This guide covers the AlphaDiana paths that were actually exercised for SWE-bench Pro smoke reproduction in this repo:
 
 - `openclaw` via `swebench_docker`

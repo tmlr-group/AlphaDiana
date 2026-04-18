@@ -2,6 +2,14 @@
 
 HLE evaluates multiple-choice Humanity's Last Exam tasks from `cais/hle`.
 
+Related references:
+
+- current status summary: `context/current_eval_status.md`
+- historical multimodal validation note:
+  `context/P25-three-benchmarks/openclaw_opencode_hle_multimodal_validation_20260417.md`
+- reviewer-facing debug trail:
+  `context/P25-three-benchmarks/openclaw-hle-multimodal-fix-20260417.md`
+
 ## Prerequisites
 
 Run from the repository root:
