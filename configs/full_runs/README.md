@@ -12,7 +12,6 @@ These are the PR29 full-run configs for the Diana-backed SWE-bench Pro paths:
 |---|---|
 | `openclaw` | `p29_full_openclaw_swebench_pro.yaml` |
 | `opencode` | `p29_full_opencode_swebench_pro.yaml` |
-| `zeroclaw` | `p29_full_zeroclaw_swebench_pro.yaml` |
 
 `directLLM` is intentionally not included here. For the direct-LLM SWE-bench Pro baseline, use the official repository `scaleapi/SWE-bench_Pro-os`, not Diana.
 
@@ -56,17 +55,6 @@ export OPENCODE_IDLE_POLL_SEC=15
 export OPENCODE_MAX_ACTIVE_NO_EDIT_SEC=300
 export OPENCODE_MAX_TOOL_CALLS_WITHOUT_EDIT=24
 export OPENCODE_ACTIVITY_HEARTBEAT_SEC=30
-
-export ZEROCLAW_FULL_MODEL_NAME=minimax-m2.5
-export ZEROCLAW_FULL_MODEL_CANDIDATES=minimax-m2.5,minimax
-export ZEROCLAW_TIMEOUT_SEC=1800
-export ZEROCLAW_REQUIRE_PATCH=0
-export ZEROCLAW_PROMPT_PROFILE=edit_first
-export ZEROCLAW_PROBLEM_STATEMENT_MAX_CHARS=12000
-export ZEROCLAW_WORKSPACE_ONLY=0
-export ZEROCLAW_MAX_TOOL_ITERATIONS=100
-export ZEROCLAW_MAX_ACTIONS_PER_HOUR=200
-export ZEROCLAW_RUNTIME_TRACE_MODE=none
 ```
 
 Validate before running:
@@ -74,7 +62,6 @@ Validate before running:
 ```bash
 python -m alphadiana.cli validate configs/full_runs/p29_full_openclaw_swebench_pro.yaml
 python -m alphadiana.cli validate configs/full_runs/p29_full_opencode_swebench_pro.yaml
-python -m alphadiana.cli validate configs/full_runs/p29_full_zeroclaw_swebench_pro.yaml
 ```
 
 Run commands:
@@ -82,17 +69,14 @@ Run commands:
 ```bash
 python -m alphadiana.cli run configs/full_runs/p29_full_openclaw_swebench_pro.yaml --redo-all
 python -m alphadiana.cli run configs/full_runs/p29_full_opencode_swebench_pro.yaml --redo-all
-python -m alphadiana.cli run configs/full_runs/p29_full_zeroclaw_swebench_pro.yaml --redo-all
 ```
 
 Scope notes:
 
-- All three configs use `benchmark.name: swebench_pro_os`, `split: test`, `subset: all`.
+- Both configs use `benchmark.name: swebench_pro_os`, `split: test`, `subset: all`.
 - `openclaw` full runs keep `OPENCLAW_REQUIRE_PATCH=1` because that path already returned non-empty smoke patches in local validation.
 - `opencode` full runs default to `OPENCODE_REQUIRE_PATCH=0`, matching the smoke playbook contract where execution success is determined by task JSON and dashboard state rather than forcing a patch on every task.
-- `zeroclaw` full runs default to `ZEROCLAW_REQUIRE_PATCH=0` for the same reason: task JSON and dashboard state remain the primary full-run completion signal.
 - If Docker Hub cannot serve `tmlrgroup/alphadiana:opencode`, set `SWEBENCH_OPENCODE_RUNTIME_IMAGE` before the OpenCode run.
-- If the default ZeroClaw runtime image is unavailable locally, set `SWEBENCH_ZEROCLAW_RUNTIME_IMAGE` before the ZeroClaw run.
 
 ## Legacy PR25 Matrix
 

@@ -50,7 +50,7 @@ def main():
 def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
     """Run an evaluation experiment from a YAML config file."""
     from alphadiana.config.experiment_config import ExperimentConfig, deep_merge, parse_override
-    from alphadiana.runner.runner import Runner, _is_gateway_autodeploy_agent
+    from alphadiana.runner.runner import Runner
 
     overrides: dict = {}
     for ov in override:
@@ -72,10 +72,14 @@ def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
 
     _warn_proxy()
 
-    # Pre-flight: verify ROCK services only for ROCK-backed runs.
+    # Pre-flight: verify ROCK services only for ROCK-backed OpenClaw runs.
     uses_rock_runtime = (
-        config.sandbox_name == "rock"
-        or _is_gateway_autodeploy_agent(config)
+        config.agent_name == "openclaw"
+        and config.agent_config.get("runtime") != "swebench_container"
+        and (
+            config.sandbox_name == "rock"
+            or bool(config.agent_config.get("rock_agent_config_path"))
+        )
     )
     if uses_rock_runtime:
         from alphadiana.utils.rock_ports import resolve_rock_ports_from_env, check_rock_services

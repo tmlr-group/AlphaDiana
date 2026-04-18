@@ -1,5 +1,9 @@
 # AlphaDiana Quickstart Commands
 
+This file is an environment-specific local ops note, not the canonical setup
+guide. Prefer `README.md`, `docs/README.md`, and `docs/setup_detail.md` for the
+current user-facing setup path.
+
 Tested on 2026-03-23. All commands assume you are in the project root (`/path/to/xxx/AlphaDiana-dev`).
 
 ## Prerequisites

@@ -1,0 +1,39 @@
+run_id: "pilot_20260418_qwen35_27b_imo_answerbench_directllm_t3"
+
+agent:
+  name: direct_llm
+  version: "1.0"
+  config:
+    model: "${OPENAI_MODEL_NAME}"
+    api_base: "${OPENAI_BASE_URL}"
+    api_key: "${OPENAI_API_KEY}"
+    temperature: 0.6
+    top_p: 0.95
+    max_tokens: 32768
+    max_retries: 3
+    stream: true
+    extra_body:
+      include_reasoning: true
+    system_prompt: |
+      You are an expert mathematician. Solve the problem carefully.
+
+      The final line must be:
+      $$\boxed{your answer here}$$
+
+benchmark:
+  name: imo_answerbench
+  config:
+    dataset: "Hwilner/imo-answerbench"
+    split: "train"
+    max_tasks: 3
+
+scorer:
+  name: math_verify
+  config:
+    tolerance: 1e-6
+
+max_concurrent: 3
+num_samples: 1
+output_dir: "./results/pilot_20260418_qwen35_27b_imo_answerbench_directllm_t3"
+metadata:
+  notes: "Qwen/Qwen3.5-27B x OpenRouter x IMO-AnswerBench 3-task pilot via direct_llm."
