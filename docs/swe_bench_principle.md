@@ -439,6 +439,14 @@ OpenCode 模式更接近传统 CLI coding agent：
 - 同时补一条 prebuilt-image 优先路径
 - 让 Verified 和 Pro 在 OpenClaw 运行时模型上尽量收敛
 
+从真实 smoke 的投入产出比看，这个优化应当排在“批量运行稳定性”语境下理解：
+
+- 单个 OpenClaw smoke 的总耗时里，runtime 准备部分通常只是几十秒
+- 真正占大头的仍然是 agent 在仓库内阅读、编辑、测试和生成 patch 的时间
+- 因此 prebuilt-image 的主要价值是减少运行时安装带来的网络和依赖波动，而不是把单题耗时降一个量级
+
+这意味着当前分支没有必要为了 merge 立刻切到 overlay 方案，但后续如果要跑 pilot 或 full run，这会是合理的下一步收敛方向。
+
 ## 11. 一句话总结
 
 这两个 SWE-bench 配置共用同一个 benchmark 和同一个任务容器后端，但求解方式不同：

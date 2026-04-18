@@ -338,6 +338,30 @@ python -m alphadiana.cli run configs/examples/opencode_swe_bench.yaml \
 
 长期建议仍然是预装 runtime image，把 OpenClaw 和关键依赖直接烘进镜像。
 
+### 7.1 真实 smoke 的时间量级
+
+基于 `2026-04-18` 的真实 OpenClaw smoke，可以把当前路径的耗时粗略拆成两段：
+
+- 单任务总耗时约 `275s`
+- 其中 OpenClaw 真正进入任务求解到给出 patch，大约 `219s`
+- 剩余约 `55s` 主要是 runtime 准备、gateway 启动和收尾
+- gateway 本身从启动到 `READY` 大约 `7s`
+
+因此，对单个 smoke 来说，prebuilt overlay 能省下的时间通常只是几十秒，不是数量级差异。
+
+### 7.2 什么时候值得做 prebuilt overlay
+
+从投入产出比看，这件事更偏向“稳定性优化”，而不只是“单题提速”：
+
+- 如果只是做少量 smoke 或人工调试，当前 runtime install 路径已经够用
+- 如果后面要跑较多 task、pilot 或 full run，prebuilt overlay 会更值得
+- 更大的收益通常不是单题更快，而是少掉容器内 `npm install` 带来的 GitHub / npm 网络波动
+
+所以当前建议是：
+
+- 先保留现有可用路径作为默认 fallback
+- 等后续进入批量运行阶段，再把 prebuilt overlay 作为单独优化项推进
+
 ## 8. OpenClaw 和 OpenCode 的实际区别
 
 可以把两者理解成两条不同的“任务求解路径”。
