@@ -11,6 +11,7 @@ this folder is:
 - [GPQA-Diamond](gpqa-diamond.md)
 - [MMMU-Pro](mmmu-pro.md)
 - [terminal-bench-2](terminal-bench-2.md)
+- [ZeroClaw MiniMax Smoke Matrix (2026-04-18)](zeroclaw-minimax-smoke-20260418.md)
 
 Ready-to-run full benchmark configs live in
 [configs/full_runs](../../configs/full_runs/README.md) where available. Use
@@ -55,4 +56,4 @@ For the benchmark runbooks in this folder, ZeroClaw smoke validation is document
 The host-local `_run_locally()` path is useful for debugging, but it is not counted as the formal benchmark smoke path in these runbooks.
 
 For PR-scoped local evidence from the latest ZeroClaw benchmark smokes, see
-[`contexts/pr23/zeroclaw/README.md`](../../contexts/pr23/zeroclaw/README.md).
+[`context/pr23-zeroclaw-smoke-20260418/README.md`](../../context/pr23-zeroclaw-smoke-20260418/README.md).
