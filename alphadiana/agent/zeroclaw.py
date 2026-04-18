@@ -1151,7 +1151,13 @@ class ZeroClawAgent(Agent):
         if not self._model:
             raise RuntimeError("ZeroClawAgent requires agent.config.model or OPENAI_MODEL_NAME.")
 
-        if self._multimodal_via_proxy and self._has_image_attachments(task):
+        if (
+            self._multimodal_via_proxy
+            and self._has_image_attachments(task)
+            and sandbox is None
+            and not self._gateway_pool
+            and not self._gateway_api_base
+        ):
             return self._solve_with_vision_proxy(task, sandbox)
         return self._solve_inner(task, sandbox)
 
