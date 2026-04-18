@@ -342,6 +342,61 @@ AlphaDiana/
 └── tests/                        # Test suite
 ```
 
+## Security Guard
+
+AlphaDiana ships with a security daemon (`scripts/security_guard.py`) that prevents misconfigured services from starting and continuously monitors for active attacks at runtime.
+
+### What it checks
+
+| Category | Checks |
+|---|---|
+| **Redis** | No password, `protected-mode` off, bound to `0.0.0.0`, active SLAVEOF/Rogue-Master attack |
+| **Docker containers** | Any Redis container with ports exposed to the public network |
+| **OpenClaw gateway** | Default weak token (`"OPENCLAW"`), token in config files |
+| **ROCK Admin / Proxy** | Listening on a public interface instead of `127.0.0.1` |
+| **Sandbox containers** | OpenClaw sandbox ports mapped directly to the host |
+| **Dashboard backend** | FastAPI running with `--host 0.0.0.0` without authentication |
+
+### Usage
+
+**Pre-flight check** — blocks startup if critical issues are found:
+
+```bash
+python3 scripts/security_guard.py --check
+```
+
+This is already integrated into `scripts/start_openclaw.sh` and runs automatically before services start.
+
+**Continuous monitoring daemon** — checks every 10 seconds and auto-remediates SLAVEOF attacks:
+
+```bash
+python3 scripts/security_guard.py --daemon
+```
+
+When a Redis SLAVEOF attack is detected, the daemon automatically runs `SLAVEOF NO ONE` to restore master mode and logs the event.
+
+**Both at once** — check then enter daemon mode:
+
+```bash
+python3 scripts/security_guard.py --check --daemon
+```
+
+**Override** (not recommended) — skip blocking checks to start anyway:
+
+```bash
+SECURITY_GUARD_BYPASS=1 python3 scripts/security_guard.py --check
+```
+
+### Common issues and fixes
+
+| Issue | Fix |
+|---|---|
+| Redis has no password | `redis-cli -p <port> CONFIG SET requirepass 'strong-password'` |
+| `protected-mode` off | `redis-cli -p <port> CONFIG SET protected-mode yes` |
+| Redis bound to `0.0.0.0` | Restart container with `-p 127.0.0.1:<port>:6379` |
+| Weak OpenClaw token | Edit `OPENCLAW_GATEWAY_TOKEN` in `openclaw_deploy/rock_agent_config.yaml` |
+| ROCK services on public interface | Set `ROCK_BIND_HOST=127.0.0.1` before starting |
+
 ## Dashboard
 
 AlphaDiana includes a web dashboard for launching, monitoring, and comparing evaluation runs without manually editing YAML or inspecting raw JSONL files.
