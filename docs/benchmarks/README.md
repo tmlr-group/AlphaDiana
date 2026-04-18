@@ -8,6 +8,7 @@ Each benchmark document describes prerequisites, supported execution modes, exam
 - [HLE](hle.md)
 - [GPQA-Diamond](gpqa-diamond.md)
 - [MMMU-Pro](mmmu-pro.md)
+- [SWE-bench Pro](swebench-pro.md)
 - [terminal-bench-2](terminal-bench-2.md)
 
 Ready-to-run full benchmark configs live in [configs/full_runs](../../configs/full_runs/README.md). Use those for full evaluations.
