@@ -50,6 +50,15 @@ fi
 # ── 1. Load environment ──────────────────────────────────────────────────────
 source "${SCRIPT_DIR}/rock_env.sh"
 
+# ── 1.5. Security preflight check ───────────────────────────────────────────
+echo "[0/6] Running security preflight check..."
+if ! "${PYTHON}" "${SCRIPT_DIR}/security_guard.py" --check; then
+    echo ""
+    echo "ERROR: Security preflight check failed. Start aborted."
+    echo "       Fix the issues above, or set SECURITY_GUARD_BYPASS=1 to override."
+    exit 1
+fi
+
 # Recompute derived ROCK URLs from the active dynamic ports in this shell.
 # This prevents stale ROCK_BASE_URL/ROCK_PROXY_URL values from older sessions
 # from pointing deploy.py to the wrong admin/proxy ports.
