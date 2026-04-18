@@ -41,6 +41,41 @@ bash scripts/start_zeroclaw.sh
 
 Then run the smoke commands.
 
+## Switching This Runbook To Another Model
+
+This runbook records the MiniMax evidence for `2026-04-18`, but the same
+benchmark commands can be reused with another OpenAI-compatible backend.
+
+For `IMO-AnswerBench`, `HLE`, `GPQA-Diamond`, and `MMMU-Pro`, switch the three
+provider env vars first:
+
+```bash
+export OPENAI_BASE_URL='https://api-inference.modelscope.cn/v1'
+export OPENAI_API_KEY='ms-...'
+export OPENAI_MODEL_NAME='Qwen/Qwen3.5-27B'
+```
+
+Then rerun the same `python -m alphadiana.cli run ...` commands with a new
+`run_id`.
+
+`terminal-bench-2` is the exception in this worktree. Its example config
+`configs/examples/terminal_bench2_zeroclaw_minimax.yaml` pins
+`agent.config.model: "minimax-m2.5"`, so changing only `OPENAI_MODEL_NAME` is
+not sufficient. Use CLI overrides:
+
+```bash
+TERMINAL_BENCH2_SMOKE_DIR=/tmp/terminal-bench-2-smoke-dbwal \
+TMPDIR=/tmp/alphadiana-tb2-qwen \
+python -m alphadiana.cli run configs/examples/terminal_bench2_zeroclaw_minimax.yaml \
+  -o run_id=pr23_zeroclaw_tb2_qwen35b_s1_r2_20260418 \
+  -o output_dir=./results/pr23_zeroclaw_matrix_20260418 \
+  -o num_samples=1 \
+  -o agent.config.model='Qwen/Qwen3.5-27B' \
+  -o agent.config.api_base='https://api-inference.modelscope.cn/v1' \
+  -o agent.config.api_key='ms-...' \
+  -o agent.config.logs_base_dir=/tmp/alphadiana-tb2-qwen/tb2_logs
+```
+
 Base smoke commands:
 
 ```bash
@@ -161,6 +196,13 @@ Primary per-task artifacts:
 - The first wave used a different API key and hit provider-side rate limits
   under multi-benchmark overlap. Those results are still valuable for smoke
   completion, but many trajectories retain rate-limit evidence.
+- Switching to a different provider/model is straightforward for the
+  env-driven ZeroClaw example configs, but `terminal-bench-2` currently needs
+  explicit `agent.config.*` CLI overrides because its example YAML pins the
+  MiniMax model.
+- The model-switch instructions in this document were spot-checked locally with
+  `Qwen/Qwen3.5-27B` under serial single-sample reruns. The detailed evidence
+  is archived in `../../context/pr23-zeroclaw-smoke-20260418/README.md`.
 - HLE is the only benchmark whose final matrix entry comes from a stabilized
   rerun with a different setup parameter.
 - The detailed local execution trail is archived in
