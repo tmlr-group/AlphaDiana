@@ -371,7 +371,12 @@ class OpenCodeAgent(Agent):
             config_dir.mkdir(parents=True, exist_ok=True)
 
             provider_model_name = self._model_name or self._api_model
-            cli_model = self._cli_model or f"custom/{provider_model_name}"
+            # model_key is the opencode-internal ID (no slashes): used as the
+            # dict key in the custom provider's models map and in the CLI path
+            # (custom/<model_key>).  provider_model_name keeps the full API
+            # model name (e.g. "qwen/qwen3.6-plus") sent to the endpoint.
+            model_key = provider_model_name.split("/")[-1] if "/" in provider_model_name else provider_model_name
+            cli_model = f"custom/{model_key}"
             model_spec: dict[str, Any] = {
                 "name": provider_model_name,
                 "tool_call": self._tool_call,
@@ -401,7 +406,7 @@ class OpenCodeAgent(Agent):
                                 else {}
                             ),
                         },
-                        "models": {provider_model_name: model_spec},
+                        "models": {model_key: model_spec},
                     }
                 },
                 "model": cli_model,
@@ -428,7 +433,8 @@ class OpenCodeAgent(Agent):
             env["OPENAI_API_KEY"] = self._api_key
             env["OPENAI_BASE_URL"] = self._api_base
             env["XDG_CONFIG_HOME"] = str(config_root)
-            for var in ("ALL_PROXY", "HTTP_PROXY", "HTTPS_PROXY", "all_proxy", "http_proxy", "https_proxy"):
+            for var in ("ALL_PROXY", "HTTP_PROXY", "HTTPS_PROXY", "all_proxy", "http_proxy", "https_proxy",
+                        "OPENAI_MODEL_NAME"):
                 env.pop(var, None)
 
             cmd = [
