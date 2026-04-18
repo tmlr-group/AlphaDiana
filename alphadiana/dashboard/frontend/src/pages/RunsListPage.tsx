@@ -12,6 +12,7 @@ import {
   Input,
   Space,
   Popconfirm,
+  Tooltip,
   message,
 } from 'antd';
 import {
@@ -85,7 +86,7 @@ export default function RunsListPage() {
   );
 
   const bestAccuracy = runs.length
-    ? Math.max(...runs.map((r) => r.accuracy))
+    ? Math.max(...runs.map((r) => r.accuracy_total))
     : 0;
   const totalTasks = runs.reduce((s, r) => s + r.total_tasks, 0);
   const totalTokens = runs.reduce(
@@ -122,6 +123,21 @@ export default function RunsListPage() {
       onFilter: (v, r) => r.agent === v,
     },
     {
+      title: 'Model',
+      dataIndex: 'model',
+      key: 'model',
+      render: (model: string) =>
+        model ? (
+          <Tooltip title={model}>
+            <span style={{ fontSize: 12, maxWidth: 160, display: 'inline-block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {model}
+            </span>
+          </Tooltip>
+        ) : (
+          <span style={{ color: '#bfbfbf' }}>—</span>
+        ),
+    },
+    {
       title: 'Benchmark',
       dataIndex: 'benchmark',
       key: 'benchmark',
@@ -136,14 +152,14 @@ export default function RunsListPage() {
       dataIndex: 'accuracy',
       key: 'accuracy',
       sorter: (a, b) => a.accuracy - b.accuracy,
-      render: (acc: number, r: RunSummary) => {
+      render: (_acc: number, r: RunSummary) => {
         const correct = Math.round(r.accuracy_total * r.total_tasks);
         return (
           <div>
             <Progress
-              percent={Math.round(acc * 100)}
+              percent={Math.round(r.accuracy_total * 100)}
               size="small"
-              status={acc >= 0.8 ? 'success' : acc >= 0.5 ? 'normal' : 'exception'}
+              status={r.accuracy_total >= 0.8 ? 'success' : r.accuracy_total >= 0.5 ? 'normal' : 'exception'}
             />
             <div style={{ fontSize: 11, color: '#595959', marginTop: 1 }}>
               {correct}/{r.total_tasks}
@@ -183,6 +199,7 @@ export default function RunsListPage() {
         const total =
           (r.total_tokens.prompt_tokens || 0) +
           (r.total_tokens.completion_tokens || 0);
+        if (total === 0) return '-';
         return total > 1000 ? `${(total / 1000).toFixed(1)}K` : total;
       },
     },
@@ -229,49 +246,66 @@ export default function RunsListPage() {
 
   return (
     <div>
-      <Row gutter={16} style={{ marginBottom: 24 }}>
+      <Row gutter={[20, 20]} style={{ marginBottom: 28 }}>
         <Col span={6}>
-          <Card>
-            <Statistic
-              title="Total Runs"
-              value={runs.length}
-              prefix={<ExperimentOutlined />}
-            />
+          <Card
+            style={{ borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}
+            styles={{ body: { padding: '20px 24px' } }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+              <span style={{ fontSize: 18, color: '#595959' }}><ExperimentOutlined /></span>
+              <span style={{ fontSize: 13, color: '#8c8c8c', fontWeight: 500, letterSpacing: '0.02em' }}>Total Runs</span>
+            </div>
+            <div style={{ fontSize: 32, fontWeight: 700, color: '#141414', lineHeight: 1 }}>{runs.length}</div>
           </Card>
         </Col>
         <Col span={6}>
-          <Card>
-            <Statistic
-              title="Best Accuracy"
-              value={Math.round(bestAccuracy * 100)}
-              suffix="%"
-              prefix={<CheckCircleOutlined />}
-              valueStyle={{ color: '#3f8600' }}
-            />
+          <Card
+            style={{ borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}
+            styles={{ body: { padding: '20px 24px' } }}
+          >
+            <Tooltip title={runs.length < 2 ? 'Add more runs to compare' : `Best across ${runs.length} runs`}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+                <span style={{ fontSize: 18, color: bestAccuracy >= 0.8 ? '#3f8600' : '#595959' }}><CheckCircleOutlined /></span>
+                <span style={{ fontSize: 13, color: '#8c8c8c', fontWeight: 500, letterSpacing: '0.02em' }}>Best Accuracy</span>
+              </div>
+              <div style={{ fontSize: 32, fontWeight: 700, color: bestAccuracy >= 0.8 ? '#3f8600' : '#141414', lineHeight: 1 }}>
+                {Math.round(bestAccuracy * 100)}<span style={{ fontSize: 18, fontWeight: 600, marginLeft: 2 }}>%</span>
+              </div>
+            </Tooltip>
           </Card>
         </Col>
         <Col span={6}>
-          <Card>
-            <Statistic
-              title="Total Tasks"
-              value={totalTasks}
-              prefix={<ThunderboltOutlined />}
-            />
+          <Card
+            style={{ borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}
+            styles={{ body: { padding: '20px 24px' } }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+              <span style={{ fontSize: 18, color: '#595959' }}><ThunderboltOutlined /></span>
+              <span style={{ fontSize: 13, color: '#8c8c8c', fontWeight: 500, letterSpacing: '0.02em' }}>Total Tasks</span>
+            </div>
+            <div style={{ fontSize: 32, fontWeight: 700, color: '#141414', lineHeight: 1 }}>{totalTasks}</div>
           </Card>
         </Col>
         <Col span={6}>
-          <Card>
-            <Statistic
-              title="Total Tokens"
-              value={totalTokens > 1000 ? `${(totalTokens / 1000).toFixed(0)}K` : totalTokens}
-              prefix={<DatabaseOutlined />}
-            />
+          <Card
+            style={{ borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}
+            styles={{ body: { padding: '20px 24px' } }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+              <span style={{ fontSize: 18, color: '#595959' }}><DatabaseOutlined /></span>
+              <span style={{ fontSize: 13, color: '#8c8c8c', fontWeight: 500, letterSpacing: '0.02em' }}>Total Tokens</span>
+            </div>
+            <div style={{ fontSize: 32, fontWeight: 700, color: '#141414', lineHeight: 1 }}>
+              {totalTokens > 1000 ? `${(totalTokens / 1000).toFixed(0)}K` : totalTokens}
+            </div>
           </Card>
         </Col>
       </Row>
 
       <Card
-        title="Evaluation Runs"
+        title={<span style={{ fontSize: 15, fontWeight: 600 }}>Evaluation Runs</span>}
+        style={{ borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}
         extra={
           <Space>
             <Input.Search

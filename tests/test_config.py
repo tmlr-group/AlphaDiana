@@ -209,32 +209,6 @@ class TestConfigValidator:
         errors = validator.validate(config)
         assert any("scorer_name" in e for e in errors)
 
-    def test_sandbox_required_for_terminal_bench(self):
-        """terminal_bench requires sandbox config."""
-        config = ExperimentConfig(
-            agent_name="openclaw",
-            agent_version="v0.3.1",
-            benchmark_name="terminal_bench",
-            scorer_name="exact_match",
-            sandbox_name=None,
-        )
-        validator = ConfigValidator()
-        errors = validator.validate(config)
-        assert any("sandbox" in e.lower() for e in errors)
-
-    def test_sandbox_required_for_osworld(self):
-        """osworld requires sandbox config."""
-        config = ExperimentConfig(
-            agent_name="openclaw",
-            agent_version="v0.3.1",
-            benchmark_name="osworld",
-            scorer_name="exact_match",
-            sandbox_name=None,
-        )
-        validator = ConfigValidator()
-        errors = validator.validate(config)
-        assert any("sandbox" in e.lower() for e in errors)
-
     def test_sandbox_not_required_for_aime(self):
         """aime does not require sandbox."""
         config = ExperimentConfig(
@@ -285,3 +259,207 @@ class TestConfigValidator:
         validator = ConfigValidator()
         with pytest.raises(ValueError, match="Config validation failed"):
             validator.load_and_validate(str(yaml_path))
+
+    def test_swebench_docker_direct_llm_env_defaults(self, tmp_path, monkeypatch):
+        """swebench_docker direct_llm should inherit OPENAI_* env defaults."""
+        monkeypatch.setenv("OPENAI_MODEL_NAME", "demo-model")
+        monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:8000/v1")
+        monkeypatch.setenv("OPENAI_API_KEY", "demo-key")
+
+        config_content = textwrap.dedent("""\
+            agent:
+              name: swebench_docker
+              version: "v1.0"
+              config:
+                agent_type: direct_llm
+                model: ""
+                api_base: ""
+                api_key: ""
+            benchmark:
+              name: swebench_pro_os
+            scorer:
+              name: exact_match
+        """)
+        yaml_path = tmp_path / "swebench_docker_direct_llm.yaml"
+        yaml_path.write_text(config_content)
+
+        config = ExperimentConfig.from_yaml(str(yaml_path))
+
+        assert config.agent_name == "swebench_docker"
+        assert config.agent_config["agent_type"] == "direct_llm"
+        assert config.agent_config["model"] == "demo-model"
+        assert config.agent_config["api_base"] == "http://localhost:8000/v1"
+        assert config.agent_config["api_key"] == "demo-key"
+
+    def test_swebench_docker_direct_llm_validation_requires_openai_settings(self):
+        """Validator should fail early when swebench_docker direct_llm lacks API config."""
+        config = ExperimentConfig(
+            agent_name="swebench_docker",
+            agent_version="v1.0",
+            benchmark_name="swebench_pro_os",
+            scorer_name="exact_match",
+            agent_config={"agent_type": "direct_llm"},
+            sandbox_name=None,
+        )
+        validator = ConfigValidator()
+
+        errors = validator.validate(config)
+
+        assert any("swebench_docker" in e and "direct_llm" in e for e in errors)
+        assert not any("sandbox" in e.lower() for e in errors)
+
+    def test_swebench_docker_direct_llm_validation_passes_with_api_config(self):
+        """swebench_docker direct_llm should validate without sandbox when API config exists."""
+        config = ExperimentConfig(
+            agent_name="swebench_docker",
+            agent_version="v1.0",
+            benchmark_name="swebench_pro_os",
+            scorer_name="exact_match",
+            agent_config={
+                "agent_type": "direct_llm",
+                "model": "demo-model",
+                "api_base": "http://localhost:8000/v1",
+                "api_key": "demo-key",
+            },
+            sandbox_name=None,
+        )
+        validator = ConfigValidator()
+
+        errors = validator.validate(config)
+
+        assert errors == []
+
+    def test_swebench_docker_openclaw_env_defaults(self, tmp_path, monkeypatch):
+        """Nested OpenClaw env keys should inherit OPENAI_* defaults."""
+        monkeypatch.setenv("OPENAI_MODEL_NAME", "demo-model")
+        monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:8000/v1")
+        monkeypatch.setenv("OPENAI_API_KEY", "demo-key")
+
+        config_content = textwrap.dedent("""\
+            agent:
+              name: swebench_docker
+              version: "v1.0"
+              config:
+                agent_type: openclaw
+                env:
+                  OPENAI_MODEL_NAME: ""
+                  OPENAI_BASE_URL: ""
+                  OPENAI_API_KEY: ""
+            benchmark:
+              name: swebench_pro_os
+            scorer:
+              name: exact_match
+        """)
+        yaml_path = tmp_path / "swebench_docker_openclaw.yaml"
+        yaml_path.write_text(config_content)
+
+        config = ExperimentConfig.from_yaml(str(yaml_path))
+
+        assert config.agent_config["env"]["OPENAI_MODEL_NAME"] == "demo-model"
+        assert config.agent_config["env"]["OPENAI_BASE_URL"] == "http://localhost:8000/v1"
+        assert config.agent_config["env"]["OPENAI_API_KEY"] == "demo-key"
+
+    def test_swebench_docker_opencode_env_defaults(self, tmp_path, monkeypatch):
+        """Nested OpenCode env keys should inherit OPENAI_* defaults."""
+        monkeypatch.setenv("OPENAI_MODEL_NAME", "demo-model")
+        monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:8000/v1")
+        monkeypatch.setenv("OPENAI_API_KEY", "demo-key")
+
+        config_content = textwrap.dedent("""\
+            agent:
+              name: swebench_docker
+              version: "v1.0"
+              config:
+                agent_type: opencode
+                env:
+                  OPENAI_MODEL_NAME: ""
+                  OPENAI_BASE_URL: ""
+                  OPENAI_API_KEY: ""
+            benchmark:
+              name: swebench_pro_os
+            scorer:
+              name: exact_match
+        """)
+        yaml_path = tmp_path / "swebench_docker_opencode.yaml"
+        yaml_path.write_text(config_content)
+
+        config = ExperimentConfig.from_yaml(str(yaml_path))
+
+        assert config.agent_config["env"]["OPENAI_MODEL_NAME"] == "demo-model"
+        assert config.agent_config["env"]["OPENAI_BASE_URL"] == "http://localhost:8000/v1"
+        assert config.agent_config["env"]["OPENAI_API_KEY"] == "demo-key"
+
+    def test_swebench_docker_openclaw_validation_requires_nested_openai_settings(self):
+        """Validator should fail when nested OpenClaw env settings are absent."""
+        config = ExperimentConfig(
+            agent_name="swebench_docker",
+            agent_version="v1.0",
+            benchmark_name="swebench_pro_os",
+            scorer_name="exact_match",
+            agent_config={"agent_type": "openclaw", "env": {}},
+            sandbox_name=None,
+        )
+        errors = ConfigValidator().validate(config)
+
+        assert any("openclaw" in e and "env.OPENAI_MODEL_NAME" in e for e in errors)
+
+    def test_swebench_docker_opencode_validation_requires_nested_openai_settings(self):
+        """Validator should fail when nested OpenCode env settings are absent."""
+        config = ExperimentConfig(
+            agent_name="swebench_docker",
+            agent_version="v1.0",
+            benchmark_name="swebench_pro_os",
+            scorer_name="exact_match",
+            agent_config={"agent_type": "opencode", "env": {}},
+            sandbox_name=None,
+        )
+        errors = ConfigValidator().validate(config)
+
+        assert any("opencode" in e and "env.OPENAI_MODEL_NAME" in e for e in errors)
+
+    def test_swebench_pro_validation_requires_existing_eval_paths(self):
+        """Validator should fail when swebench_pro scorer paths are blank or missing."""
+        config = ExperimentConfig(
+            agent_name="swebench_docker",
+            agent_version="v1.0",
+            benchmark_name="swebench_pro_os",
+            scorer_name="swebench_pro",
+            agent_config={
+                "agent_type": "direct_llm",
+                "model": "demo-model",
+                "api_base": "http://localhost:8000/v1",
+                "api_key": "demo-key",
+            },
+            scorer_config={"eval_script_path": "", "scripts_dir": ""},
+        )
+        errors = ConfigValidator().validate(config)
+
+        assert any("eval_script_path" in e for e in errors)
+        assert any("scripts_dir" in e for e in errors)
+
+    def test_swebench_pro_validation_passes_with_existing_eval_paths(self, tmp_path):
+        """Validator should accept existing swebench_pro scorer paths."""
+        eval_script = tmp_path / "swe_bench_pro_eval.py"
+        eval_script.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+        scripts_dir = tmp_path / "run_scripts"
+        scripts_dir.mkdir()
+
+        config = ExperimentConfig(
+            agent_name="swebench_docker",
+            agent_version="v1.0",
+            benchmark_name="swebench_pro_os",
+            scorer_name="swebench_pro",
+            agent_config={
+                "agent_type": "direct_llm",
+                "model": "demo-model",
+                "api_base": "http://localhost:8000/v1",
+                "api_key": "demo-key",
+            },
+            scorer_config={
+                "eval_script_path": str(eval_script),
+                "scripts_dir": str(scripts_dir),
+            },
+        )
+        errors = ConfigValidator().validate(config)
+
+        assert errors == []

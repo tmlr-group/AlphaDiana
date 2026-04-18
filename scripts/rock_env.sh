@@ -2,7 +2,7 @@
 
 # This file can be sourced from any working directory.
 _rock_env_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_rock_env_project_root="${_rock_env_script_dir%/dev}"
+_rock_env_project_root="$(cd "${_rock_env_script_dir}/.." && pwd)"
 _rock_env_rock_root="${_rock_env_project_root}/ref/ROCK"
 _rock_env_ports_file="${_rock_env_script_dir}/.rock_ports.env"
 _rock_env_dynamic_config_default="${_rock_env_project_root}/dev/generated/rock-local-proxy.dynamic.yml"

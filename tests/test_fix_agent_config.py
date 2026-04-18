@@ -218,7 +218,7 @@ class TestDirectLLMMaxTokensAutoDetect:
             assert agent._resolve_max_tokens() == 12345
             assert agent._resolve_max_tokens() == 12345
 
-        get.assert_called_once_with("http://localhost/v1/models", timeout=5.0)
+        get.assert_called_once_with("http://localhost/v1/models", timeout=5.0, trust_env=False)
 
     def test_solve_uses_resolved_max_tokens(self):
         from alphadiana.benchmark.base import BenchmarkTask
@@ -338,10 +338,15 @@ class TestEmbeddingConfig:
         })
         sb = MagicMock()
 
-        mgr._prepare_runtime_files(sb)
+        env_override = {
+            "OPENAI_BASE_URL": "http://localhost:8000/v1",
+            "OPENAI_API_KEY": "test-key",
+            "OPENAI_MODEL_NAME": "test-model",
+        }
+        with patch.dict("os.environ", env_override):
+            config_dir = mgr._prepare_runtime_files(sb)
 
-        uploaded = sb.upload.call_args.args[1].decode("utf-8")
-        payload = json.loads(uploaded)
+        payload = json.loads((config_dir / "openclaw.json").read_text(encoding="utf-8"))
         assert payload["models"]["providers"]["custom_openai"]["baseUrl"] == "http://llm"
         assert payload["models"]["providers"]["embedding"]["baseUrl"] == "http://embed/v1"
 
@@ -360,10 +365,15 @@ class TestEmbeddingConfig:
         })
         sb = MagicMock()
 
-        mgr._prepare_runtime_files(sb)
+        env_override = {
+            "OPENAI_BASE_URL": "http://localhost:8000/v1",
+            "OPENAI_API_KEY": "test-key",
+            "OPENAI_MODEL_NAME": "test-model",
+        }
+        with patch.dict("os.environ", env_override):
+            config_dir = mgr._prepare_runtime_files(sb)
 
-        uploaded = sb.upload.call_args.args[1].decode("utf-8")
-        payload = json.loads(uploaded)
+        payload = json.loads((config_dir / "openclaw.json").read_text(encoding="utf-8"))
         # memory.enabled is incompatible with openclaw@2026.3.7 — should be removed
         assert "memory" not in payload or "enabled" not in payload.get("memory", {})
 

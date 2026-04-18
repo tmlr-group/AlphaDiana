@@ -13,6 +13,7 @@ export interface RunSummary {
   total_tokens: { prompt_tokens: number; completion_tokens: number };
   per_category: Record<string, number>;
   error_distribution: Record<string, number>;
+  model: string;
   num_samples: number;
   pass_at_k: number;
   avg_at_k: number;

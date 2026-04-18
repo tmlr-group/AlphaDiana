@@ -2,7 +2,7 @@
 # One-click quickstart for AlphaDiana + ROCK local environment.
 #
 # Usage:
-#   bash dev/quickstart.sh [ENV_NAME]
+#   bash scripts/quickstart.sh [ENV_NAME]
 #
 # This script:
 #   1. Checks prerequisites (conda, docker, git)
@@ -12,7 +12,7 @@
 #   5. Starts Redis, Ray, admin, proxy (all in background)
 #   6. Runs health checks
 #
-# After completion, source dev/rock_env.sh and dev/.rock_ports.env in any new terminal.
+# After completion, source scripts/rock_env.sh and scripts/.rock_ports.env in any new terminal.
 
 set -euo pipefail
 
@@ -137,7 +137,7 @@ unset ROCK_DYNAMIC_CONFIG RAY_TMPDIR ROCK_CONFIG TMPDIR
 python "${SCRIPT_DIR}/find_rock_ports.py" --write-env "${SCRIPT_DIR}/.rock_ports.env"
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/rock_env.sh"
-log_ok "Ports written to dev/.rock_ports.env"
+log_ok "Ports written to scripts/.rock_ports.env"
 
 # ── 6. Start services ───────────────────────────────────────────────────────
 
@@ -254,11 +254,11 @@ All services are running:
 
 In any new terminal, run:
   conda activate ${ENV_NAME}
-  source dev/rock_env.sh
-  source dev/.rock_ports.env
+  source scripts/rock_env.sh
+  source scripts/.rock_ports.env
 
 Minimal OpenClaw smoke path:
-  docker pull ghcr.io/tsrigo/openclaw-reasoning:20260320
+  docker pull tmlrgroup/alphadiana:v1
   export OPENAI_BASE_URL=...
   export OPENAI_API_KEY=...
   export OPENAI_MODEL_NAME=...
@@ -269,5 +269,5 @@ Multi-sandbox CLI path (adjust max_concurrent in the YAML to control concurrency
   alphadiana run configs/examples/openclaw_aime2024_multisandbox.yaml
 
 Manual deploy path:
-  python openclaw_deploy/deploy.py --agent-config openclaw_deploy/rock_agent_config.prebuilt.yaml --image ghcr.io/tsrigo/openclaw-reasoning:20260320
+  python openclaw_deploy/deploy.py --agent-config openclaw_deploy/rock_agent_config.prebuilt.yaml --image tmlrgroup/alphadiana:v1
 EOF

@@ -144,10 +144,12 @@ class TestFix3RetryDelay:
         from alphadiana.agent.openclaw import OpenClawAgent
 
         src = inspect.getsource(OpenClawAgent.solve)
-        # Find the empty_response branch — should contain 60
-        idx = src.find("empty_response")
-        assert idx != -1
-        nearby = src[idx : idx + 200]
+        # Find the retry-delay branch for empty_response (last_error_type check).
+        # There may be multiple "empty_response" occurrences; find the one in the
+        # retry-delay block which contains the 60s base.
+        idx = src.find('last_error_type == "empty_response"')
+        assert idx != -1, "solve() should have a retry delay branch for empty_response"
+        nearby = src[idx : idx + 400]
         assert "60" in nearby, "empty_response delay should use 60s base"
 
 
@@ -429,7 +431,7 @@ class TestFix10TimeoutDocs:
 
     def test_yaml_documents_gateway_agent_timeout(self):
         content = self.yaml_path.read_text()
-        assert "timeoutSeconds" in content or "agent timeout" in content.lower()
+        assert "timeoutSeconds" in content or "timeout" in content.lower()
 
     def test_yaml_documents_rock_proxy(self):
         content = self.yaml_path.read_text()

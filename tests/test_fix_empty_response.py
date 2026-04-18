@@ -775,3 +775,190 @@ class TestOpenClawProxyTimeoutDiagnostic:
         assert "proxy_timeout" in source and "sandbox_config" in source.lower() or "increase" in source.lower(), (
             "proxy_timeout diagnostics should suggest increasing the relevant configuration"
         )
+
+
+# ===================================================================
+# 14. Backend-crash circuit breaker — new feature for empty-response model crash
+# ===================================================================
+
+
+class TestBackendCrashCircuitBreaker:
+    """Circuit breaker should detect and fail-fast on model backend crashes.
+
+    When the model service (e.g. vLLM) crashes, requests return HTTP 200 with
+    an empty SSE body and never send [DONE].  The circuit breaker should count
+    these, open after a threshold, and raise BackendDownError for all subsequent
+    calls without making any HTTP requests.
+    """
+
+    def _setup_agent(self, threshold: int = 3, **extra):
+        from alphadiana.agent.openclaw import OpenClawAgent
+        agent = OpenClawAgent()
+        agent.setup({
+            "api_base": "http://localhost:9999/v1",
+            "max_attempts": 1,
+            "request_timeout": 5,
+            "backend_down_threshold": threshold,
+            **extra,
+        })
+        return agent
+
+    def _make_empty_sse_mock(self):
+        """Return a mock httpx response with HTTP 200 + empty SSE body (no content, no [DONE])."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "text/event-stream"}
+        mock_response.iter_lines = MagicMock(return_value=[])  # empty body
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        mock_client = MagicMock()
+        mock_client.stream = MagicMock(return_value=mock_response)
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        return mock_client
+
+    def test_backend_down_error_class_exists(self):
+        """BackendDownError should be importable from openclaw."""
+        from alphadiana.agent.openclaw import BackendDownError, OpenClawRequestError
+        # It should be a subclass of OpenClawRequestError for compatibility.
+        assert issubclass(BackendDownError, OpenClawRequestError)
+
+    def test_empty_sse_classified_as_empty_sse_body(self):
+        """HTTP 200 + empty SSE body should classify as 'empty_sse_body', not 'unknown'."""
+        from alphadiana.agent.openclaw import OpenClawAgent, OpenClawRequestError, BackendDownError
+        agent = self._setup_agent(threshold=10)  # high threshold so circuit doesn't open
+        task = BenchmarkTask(task_id="t_sse", problem="1+1?", ground_truth="2")
+        mock_client = self._make_empty_sse_mock()
+
+        with patch.object(agent, "_health_check", return_value=None):
+            with patch.object(agent, "_retrieve_trajectory_sync", return_value=[]):
+                with patch("httpx.Client", return_value=mock_client):
+                    with pytest.raises(OpenClawRequestError) as exc_info:
+                        agent.solve(task)
+
+        err = exc_info.value
+        assert err.error_type == "empty_sse_body", (
+            f"Expected error_type='empty_sse_body', got '{err.error_type}'"
+        )
+
+    def test_circuit_opens_after_threshold(self):
+        """After backend_down_threshold consecutive empty-SSE responses, BackendDownError is raised."""
+        from alphadiana.agent.openclaw import OpenClawAgent, BackendDownError
+        agent = self._setup_agent(threshold=3)
+        task = BenchmarkTask(task_id="t_dead", problem="1+1?", ground_truth="2")
+        mock_client = self._make_empty_sse_mock()
+
+        with patch.object(agent, "_health_check", return_value=None):
+            with patch.object(agent, "_retrieve_trajectory_sync", return_value=[]):
+                with patch("httpx.Client", return_value=mock_client):
+                    # First two calls raise OpenClawRequestError (circuit not yet open).
+                    for _ in range(2):
+                        with pytest.raises(Exception):
+                            agent.solve(task)
+                    # Third call should open the circuit and raise BackendDownError.
+                    with pytest.raises(BackendDownError) as exc_info:
+                        agent.solve(task)
+
+        err = exc_info.value
+        assert err.error_type == "backend_down"
+        assert err.consecutive_failures >= 3
+
+    def test_circuit_open_fails_fast_without_http_request(self):
+        """Once circuit is open, solve() raises BackendDownError immediately (no HTTP call)."""
+        from alphadiana.agent.openclaw import OpenClawAgent, BackendDownError
+        agent = self._setup_agent(threshold=2)
+        task = BenchmarkTask(task_id="t_fast", problem="1+1?", ground_truth="2")
+        mock_client = self._make_empty_sse_mock()
+
+        # Open the circuit by hitting the threshold.
+        with patch.object(agent, "_health_check", return_value=None):
+            with patch.object(agent, "_retrieve_trajectory_sync", return_value=[]):
+                with patch("httpx.Client", return_value=mock_client):
+                    for _ in range(2):
+                        with pytest.raises(Exception):
+                            agent.solve(task)
+                    with pytest.raises(BackendDownError):
+                        agent.solve(task)
+
+        # Now the circuit is open. Further calls should raise BackendDownError
+        # without making any HTTP requests.
+        with patch("httpx.Client") as mock_httpx:
+            with pytest.raises(BackendDownError):
+                agent.solve(task)
+        # httpx.Client should NOT have been called (fail-fast).
+        mock_httpx.assert_not_called()
+
+    def test_circuit_breaker_resets_on_success(self):
+        """A successful response should reset the consecutive-empty counter."""
+        from alphadiana.agent.openclaw import OpenClawAgent, OpenClawRequestError
+        agent = self._setup_agent(threshold=5)
+        task = BenchmarkTask(task_id="t_recover", problem="1+1?", ground_truth="2")
+
+        # Simulate 3 empty SSE responses.
+        empty_client = self._make_empty_sse_mock()
+        with patch.object(agent, "_health_check", return_value=None):
+            with patch.object(agent, "_retrieve_trajectory_sync", return_value=[]):
+                with patch("httpx.Client", return_value=empty_client):
+                    for _ in range(3):
+                        with pytest.raises(Exception):
+                            agent.solve(task)
+
+        # Now verify the counter is at 3.
+        with agent._circuit_lock:
+            assert agent._consecutive_empty_sse == 3
+
+        # Simulate a successful response.
+        success_lines = [
+            'data: {"choices":[{"delta":{"content":"The answer is 2."}}]}',
+            'data: [DONE]',
+        ]
+        success_mock = MagicMock()
+        success_mock.status_code = 200
+        success_mock.headers = {"content-type": "text/event-stream"}
+        success_mock.iter_lines = MagicMock(return_value=success_lines)
+        success_mock.__enter__ = MagicMock(return_value=success_mock)
+        success_mock.__exit__ = MagicMock(return_value=False)
+        success_client = MagicMock()
+        success_client.stream = MagicMock(return_value=success_mock)
+        success_client.__enter__ = MagicMock(return_value=success_client)
+        success_client.__exit__ = MagicMock(return_value=False)
+
+        with patch.object(agent, "_health_check", return_value=None):
+            with patch.object(agent, "_retrieve_trajectory_sync", return_value=[]):
+                with patch("httpx.Client", return_value=success_client):
+                    result = agent.solve(task)
+
+        # Counter should be reset to 0 after a successful response.
+        with agent._circuit_lock:
+            assert agent._consecutive_empty_sse == 0
+        assert result.raw_output == "The answer is 2."
+
+    def test_backend_down_threshold_configurable(self):
+        """backend_down_threshold should be configurable from agent config."""
+        from alphadiana.agent.openclaw import OpenClawAgent
+        agent = OpenClawAgent()
+        agent.setup({
+            "api_base": "http://localhost:9999/v1",
+            "backend_down_threshold": 10,
+        })
+        assert agent._backend_down_threshold == 10
+
+    def test_backend_down_threshold_default_is_5(self):
+        """Default backend_down_threshold should be 5."""
+        from alphadiana.agent.openclaw import OpenClawAgent
+        agent = OpenClawAgent()
+        agent.setup({"api_base": "http://localhost:9999/v1"})
+        assert agent._backend_down_threshold == 5
+
+    def test_empty_sse_uses_short_retry_delay(self):
+        """empty_sse_body should use a shorter retry delay than empty_response."""
+        import inspect
+        from alphadiana.agent.openclaw import OpenClawAgent
+        src = inspect.getsource(OpenClawAgent.solve)
+        # The empty_sse_body branch should use a short delay (5s base).
+        idx = src.find('last_error_type == "empty_sse_body"')
+        assert idx != -1, "solve() should have a retry delay branch for empty_sse_body"
+        nearby = src[idx : idx + 500]
+        # Should have a delay that's less than the 60s used for empty_response.
+        assert "5" in nearby, "empty_sse_body should use 5s base delay for fast crash detection"

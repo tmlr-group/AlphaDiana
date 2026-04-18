@@ -1,20 +1,11 @@
-"""OpenCode agent wrapper - runs opencode CLI in non-interactive mode.
+"""OpenCode agent wrapper with multimodal fallback and SWE-bench container mode."""
 
-OpenCode is a CLI-based coding agent (similar to Claude Code) that can
-use tools like code execution to solve problems. This wrapper invokes
-`opencode run` with the problem text and collects the output.
-
-Two operating modes are supported:
-  - Local (default): run ``opencode run`` on the host machine in a temp dir.
-  - SWE-bench container (runtime="swebench_container"): install opencode inside
-    the task container, run it against the repo, and extract the patch via
-    ``git diff HEAD``.
-"""
 from __future__ import annotations
 
 import json
 import logging
 import os
+import random
 import re
 import signal
 import subprocess
@@ -26,7 +17,17 @@ from typing import Any
 from alphadiana.agent.base import Agent, AgentResponse
 from alphadiana.agent.registry import AgentRegistry
 from alphadiana.benchmark.base import BenchmarkTask
+from alphadiana.utils.attachments import (
+    build_openai_multimodal_user_content,
+    iter_binary_attachments,
+    write_attachments,
+)
 from alphadiana.utils.math_answer import extract_answer_candidate, extract_boxed
+
+try:
+    from openai import OpenAI
+except ImportError:  # pragma: no cover - handled at runtime
+    OpenAI = None
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,8 @@ _EXPLICIT_ANSWER_RE = re.compile(
     r"(?:\*{0,2})(?:the\s+)?(?:final\s+)?answer(?:\*{0,2})\s*(?:[:：]|is|=)\s*(.+)",
     re.IGNORECASE,
 )
+_THINK_TAG_RE = re.compile(r"<think>(.*?)</think>", re.DOTALL)
+_BOXED_RE = re.compile(r"\\boxed\{", re.DOTALL)
 
 _DEFAULT_SYSTEM_PROMPT = (
     "You are an expert problem solver. When given a problem, actively use "
@@ -57,54 +60,43 @@ _SWE_BENCH_SYSTEM_PROMPT = (
     "- You do not need to run the full test suite; just fix the issue described."
 )
 
-# ---------------------------------------------------------------------------
-# Patch extraction helpers (for SWE-bench text-based fallback)
-# ---------------------------------------------------------------------------
-
-_BOXED_RE = re.compile(r"\\boxed\{", re.DOTALL)
-
 
 def _extract_boxed_content(text: str) -> str | None:
     """Extract content from \\boxed{...} handling nested braces."""
-    m = _BOXED_RE.search(text)
-    if not m:
+    match = _BOXED_RE.search(text)
+    if not match:
         return None
-    start = m.end()
+    start = match.end()
     depth = 1
-    i = start
-    while i < len(text) and depth > 0:
-        if text[i] == "{":
+    index = start
+    while index < len(text) and depth > 0:
+        if text[index] == "{":
             depth += 1
-        elif text[i] == "}":
+        elif text[index] == "}":
             depth -= 1
-        i += 1
+        index += 1
     if depth == 0:
-        return text[start: i - 1]
+        return text[start:index - 1]
     return None
 
 
 def _extract_patch_from_text(text: str) -> str:
-    """Extract a unified diff patch from raw agent output (text-based fallback).
-
-    Tries in order:
-    1. Content inside ``\\boxed{...}``.
-    2. Literal ``diff --git ...`` blocks.
-    3. Markdown fenced code blocks containing diffs.
-    """
+    """Extract a unified diff patch from raw agent output."""
     boxed = _extract_boxed_content(text)
     if boxed and ("diff " in boxed or "---" in boxed or "+++" in boxed):
         return boxed.strip()
 
     diff_git_re = re.compile(
-        r"^diff --git .+?(?=\n(?:diff --git |\Z))", re.MULTILINE | re.DOTALL
+        r"^diff --git .+?(?=\n(?:diff --git |\Z))",
+        re.MULTILINE | re.DOTALL,
     )
     matches = diff_git_re.findall(text)
     if matches:
-        return "\n".join(m.strip() for m in matches).strip()
+        return "\n".join(match.strip() for match in matches).strip()
 
     fenced_re = re.compile(r"```(?:diff)?\s*\n(.*?)```", re.DOTALL)
-    for m in fenced_re.finditer(text):
-        block = m.group(1).strip()
+    for match in fenced_re.finditer(text):
+        block = match.group(1).strip()
         if "---" in block and "+++" in block:
             return block
 
@@ -112,14 +104,10 @@ def _extract_patch_from_text(text: str) -> str:
 
 
 def _is_swe_bench_task(task: BenchmarkTask) -> bool:
-    """Return True if *task* originates from a SWE-bench dataset."""
-    meta = getattr(task, "metadata", None) or {}
-    return "instance_id" in meta or "repo" in meta
+    """Return whether *task* comes from a SWE-bench-style dataset."""
+    metadata = getattr(task, "metadata", None) or {}
+    return "instance_id" in metadata or "repo" in metadata
 
-
-# ---------------------------------------------------------------------------
-# Output parsing helpers
-# ---------------------------------------------------------------------------
 
 def _extract_event_texts(obj: dict[str, Any]) -> list[str]:
     """Extract user-visible assistant text from OpenCode JSON events."""
@@ -166,15 +154,97 @@ def _extract_strict_answer(text: str) -> str:
     return ""
 
 
-def _parse_opencode_output(raw_output: str) -> tuple[str, list[dict], str]:
-    """Parse JSON-lines opencode output.
+def _build_prompt(problem: str, system_prompt: str, attachment_paths: list[Path] | None = None) -> str:
+    """Build the OpenCode prompt text for a benchmark task."""
+    prompt = problem
+    if system_prompt.strip():
+        prompt = f"{system_prompt}\n\n--- Problem ---\n{problem}"
 
-    Returns:
-      (assistant_text, events, session_id)
-    """
+    if attachment_paths:
+        attachment_lines = "\n".join(f"- {path.name}" for path in attachment_paths)
+        prompt = (
+            f"{prompt}\n\n--- Attachments ---\n"
+            "Use the attached files as part of the problem context before answering.\n"
+            f"{attachment_lines}"
+        )
+
+    return prompt
+
+
+def _extract_reasoning_from_model_extra(obj: object) -> str:
+    """Extract reasoning content from an OpenAI SDK object's model_extra."""
+    extra = getattr(obj, "model_extra", None)
+    if not extra or not isinstance(extra, dict):
+        return ""
+    for key in ("reasoning_content", "reasoning"):
+        value = extra.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return ""
+
+
+def _split_think_tags(content: str) -> tuple[str, str]:
+    """Split <think>...</think> tags from content."""
+    parts = _THINK_TAG_RE.findall(content)
+    if not parts:
+        return "", content
+    reasoning = "\n".join(parts)
+    cleaned = _THINK_TAG_RE.sub("", content).strip()
+    return reasoning, cleaned
+
+
+def _derive_api_model(cli_model: str, model_name: str) -> str:
+    """Derive the provider model name for direct OpenAI API calls."""
+    if model_name:
+        return model_name
+    if "/" in cli_model:
+        return cli_model.split("/", 1)[1]
+    return cli_model
+
+
+def _sanitize_request_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Redact inline data URLs before persisting request messages."""
+    sanitized: list[dict[str, Any]] = []
+    for message in messages:
+        content = message.get("content")
+        if not isinstance(content, list):
+            sanitized.append(dict(message))
+            continue
+
+        redacted_items: list[Any] = []
+        for item in content:
+            if not isinstance(item, dict):
+                redacted_items.append(item)
+                continue
+            if item.get("type") == "image_url":
+                redacted_items.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": "<redacted-data-url>"},
+                    }
+                )
+            else:
+                redacted_items.append(dict(item))
+        redacted_message = dict(message)
+        redacted_message["content"] = redacted_items
+        sanitized.append(redacted_message)
+    return sanitized
+
+
+def _has_image_attachments(attachments: dict[str, Any]) -> bool:
+    """Return whether a task carries image attachments."""
+    for _, _, mime in iter_binary_attachments(attachments):
+        if mime.lower().startswith("image/"):
+            return True
+    return False
+
+
+def _parse_opencode_output(raw_output: str) -> tuple[str, list[dict[str, Any]], str]:
+    """Parse JSON-lines OpenCode output into text, events, and session id."""
     content_parts: list[str] = []
-    events: list[dict] = []
+    events: list[dict[str, Any]] = []
     session_id = ""
+
     for line in raw_output.splitlines():
         line = line.strip()
         if not line:
@@ -190,42 +260,18 @@ def _parse_opencode_output(raw_output: str) -> tuple[str, list[dict], str]:
         except (json.JSONDecodeError, ValueError):
             content_parts.append(line)
 
-    assistant_text = "\n".join(p for p in content_parts if p).strip()
+    assistant_text = "\n".join(part for part in content_parts if part).strip()
     return assistant_text, events, session_id
 
 
-# ---------------------------------------------------------------------------
-# Agent class
-# ---------------------------------------------------------------------------
-
 class OpenCodeAgent(Agent):
-    """Agent that runs OpenCode CLI to solve tasks.
-
-    Config keys (local mode):
-        model: Model in provider/model format (e.g. "custom/deepseek-chat")
-        api_base: OpenAI-compatible API base URL
-        api_key: API key
-        model_name: Model name for the provider
-        tool_call: Whether the model supports tool calling (default: True)
-        timeout: Timeout in seconds for opencode run (default: 1200)
-        variant: Optional provider-specific reasoning effort
-        agent: Optional opencode agent name
-        print_logs: Whether to print opencode logs to stderr
-        log_level: Optional opencode log level
-        system_prompt: Custom system prompt (optional)
-
-    Additional config keys (swebench_container mode):
-        runtime: Set to "swebench_container" to run opencode inside a
-                 SWE-bench Docker container (requires a sandbox to be provided).
-        install_opencode_command: Shell script to install opencode in the
-                                  container (optional, uses a built-in default).
-    """
+    """Agent that runs OpenCode CLI and supports task-container execution."""
 
     name = "opencode"
 
     def setup(self, config: dict) -> None:
         self._runtime = str(config.get("runtime", "")).strip()
-        self._model = self._resolve_setting(config, "model", "OPENAI_MODEL_NAME")
+        self._cli_model = self._resolve_setting(config, "model", "OPENAI_MODEL_NAME")
         self._api_base = self._resolve_setting(config, "api_base", "OPENAI_BASE_URL")
         self._api_key = self._resolve_setting(
             config,
@@ -234,8 +280,12 @@ class OpenCodeAgent(Agent):
             default="EMPTY",
         )
         self._model_name = self._resolve_setting(config, "model_name", "OPENAI_MODEL_NAME")
-        if not self._model and self._model_name:
-            self._model = f"custom/{self._model_name}"
+        if not self._cli_model and self._model_name:
+            self._cli_model = f"custom/{self._model_name}"
+        self._api_model = str(config.get("api_model", "")).strip() or _derive_api_model(
+            self._cli_model,
+            self._model_name,
+        )
         self._tool_call = bool(config.get("tool_call", True))
         self._timeout = int(config.get("timeout", 1200))
         self._variant = str(config.get("variant", "")).strip()
@@ -247,7 +297,14 @@ class OpenCodeAgent(Agent):
         self._system_prompt = config.get("system_prompt", _DEFAULT_SYSTEM_PROMPT)
         self._opencode_bin = config.get("opencode_bin", "opencode")
         self._streaming = config.get("streaming") if "streaming" in config else None
-        self._config = config
+        self._temperature = config.get("temperature", 0.0)
+        self._top_p = config.get("top_p", None)
+        self._max_completion_tokens = config.get("max_completion_tokens", None)
+        self._max_retries = int(config.get("max_retries", 3))
+        self._multimodal_via_proxy = bool(config.get("multimodal_via_proxy", False))
+        self._client = None
+        self._config = dict(config)
+        self._runtime_manager = None
 
         if not self._agent_name:
             if self._agent_md_path:
@@ -255,12 +312,9 @@ class OpenCodeAgent(Agent):
             elif self._agent_md_content:
                 self._agent_name = "custom-agent"
 
-        # Initialize container runtime manager for swebench_container mode
-        self._runtime_manager = None
         if self._runtime == "swebench_container":
-            from alphadiana.agent.opencode_container_runtime import (
-                OpenCodeContainerRuntimeManager,
-            )
+            from alphadiana.agent.opencode_container_runtime import OpenCodeContainerRuntimeManager
+
             self._runtime_manager = OpenCodeContainerRuntimeManager(config)
 
     @staticmethod
@@ -283,25 +337,61 @@ class OpenCodeAgent(Agent):
             return env_value
         return value if isinstance(value, str) else default
 
-    # ------------------------------------------------------------------
-    # swebench_container mode
-    # ------------------------------------------------------------------
+    def _ensure_client(self):
+        if self._client is not None:
+            return self._client
+        if OpenAI is None:
+            raise RuntimeError(
+                "The 'openai' package is required for OpenCode multimodal support. "
+                "Install with: pip install openai"
+            )
+        self._client = OpenAI(base_url=self._api_base, api_key=self._api_key)
+        return self._client
 
-    def _solve_in_container(
-        self, task: BenchmarkTask, sandbox: Any
-    ) -> AgentResponse:
-        """Run opencode inside the SWE-bench task container and extract the patch."""
+    @staticmethod
+    def _is_retryable(exc: Exception) -> bool:
+        """Return True for transient API failures worth retrying."""
+        try:
+            from openai import APIConnectionError, APIError, APIStatusError, APITimeoutError, RateLimitError
+
+            if isinstance(exc, (RateLimitError, APITimeoutError, APIConnectionError)):
+                return True
+            if isinstance(exc, APIStatusError):
+                return exc.status_code == 429 or exc.status_code >= 500
+            if isinstance(exc, APIError):
+                return True
+        except ImportError:
+            pass
+
+        message = str(exc).lower()
+        return any(token in message for token in ("timeout", "rate", "429", "500", "502", "503"))
+
+    def solve(self, task: BenchmarkTask, sandbox: Any = None) -> AgentResponse:
+        if self._runtime == "swebench_container":
+            if sandbox is None:
+                raise RuntimeError(
+                    "OpenCode runtime='swebench_container' requires a sandbox session"
+                )
+            return self._solve_in_container(task, sandbox)
+
+        if _has_image_attachments(task.attachments):
+            if self._multimodal_via_proxy:
+                return self._solve_cli_with_vision_proxy(task)
+            return self._solve_multimodal(task)
+        return self._solve_cli(task)
+
+    def _solve_in_container(self, task: BenchmarkTask, sandbox: Any) -> AgentResponse:
+        """Run OpenCode inside the SWE-bench task container and extract a patch."""
         assert self._runtime_manager is not None
 
-        # Determine model name for the container config
-        model_name = self._model_name or self._resolve_setting(
-            self._config, "model_name", "OPENAI_MODEL_NAME"
-        )
-        if not model_name and self._model and self._model.startswith("custom/"):
-            model_name = self._model[len("custom/"):]
+        model_name = self._model_name or self._api_model
+        if not model_name:
+            if "/" in self._cli_model:
+                model_name = self._cli_model.split("/", 1)[1]
+            else:
+                model_name = self._cli_model
 
-        # Use a SWE-bench-specific system prompt if not overridden
-        system_prompt = self._config.get("system_prompt", _SWE_BENCH_SYSTEM_PROMPT)
+        system_prompt = str(self._config.get("system_prompt", _SWE_BENCH_SYSTEM_PROMPT))
         if system_prompt.strip():
             problem = f"{system_prompt}\n\n--- Issue ---\n{task.problem}"
         else:
@@ -318,16 +408,12 @@ class OpenCodeAgent(Agent):
 
         raw_stdout = result.get("stdout", "")
         stderr = result.get("stderr", "")
-        exit_code = result.get("exit_code", -1)
-        patch_from_git = result.get("patch", "")
+        exit_code = int(result.get("exit_code", -1))
+        patch_from_git = str(result.get("patch", "") or "")
 
-        # Parse JSON output for trajectory / session info
         assistant_text, events, session_id = _parse_opencode_output(raw_stdout)
         full_content = assistant_text or raw_stdout
 
-        # Determine the answer (patch):
-        # 1. Use git diff (most reliable for coding agents that modify files)
-        # 2. Fall back to text extraction from assistant output
         if patch_from_git:
             answer = patch_from_git
         else:
@@ -340,16 +426,17 @@ class OpenCodeAgent(Agent):
 
         if exit_code not in (0, 124) and not answer:
             logger.warning(
-                "opencode exited with code %d for task %s. stderr: %s",
-                exit_code, task.task_id, stderr[:500],
+                "OpenCode exited with code %d for task %s. stderr: %s",
+                exit_code,
+                task.task_id,
+                stderr[:500],
             )
 
-        # Collect artifacts (best-effort)
         artifacts: dict[str, Any] = {}
         try:
             artifacts = self._runtime_manager.collect_artifacts(sandbox)
         except Exception as exc:
-            logger.debug("Failed to collect opencode container artifacts: %s", exc)
+            logger.debug("Failed to collect OpenCode container artifacts: %s", exc)
 
         return AgentResponse(
             answer=answer,
@@ -361,64 +448,204 @@ class OpenCodeAgent(Agent):
             wall_time_sec=wall_time,
             metadata={
                 "runtime": "swebench_container",
+                "returncode": exit_code,
                 "exit_code": exit_code,
                 "stderr": stderr[:2000] if stderr else "",
                 "num_events": len(events),
                 "session_id": session_id,
                 "patch_source": "git_diff" if patch_from_git else "text_extraction",
+                "transport": "opencode_cli_container",
                 **artifacts,
             },
+            system_prompt=system_prompt,
         )
 
-    # ------------------------------------------------------------------
-    # Local mode
-    # ------------------------------------------------------------------
+    def _solve_cli_with_vision_proxy(self, task: BenchmarkTask) -> AgentResponse:
+        """Run OpenCode CLI with a local vision proxy that injects images."""
+        from alphadiana.utils.vision_proxy import VisionProxy
 
-    def solve(self, task: BenchmarkTask, sandbox: Any = None) -> AgentResponse:
-        # Delegate to container runtime when configured
-        if self._runtime == "swebench_container" and sandbox is not None:
-            return self._solve_in_container(task, sandbox)
+        original_api_base = self._api_base
+        try:
+            with VisionProxy(
+                upstream_base=original_api_base,
+                upstream_api_key=self._api_key,
+                attachments=task.attachments,
+                target_text=task.problem,
+                upstream_model=self._api_model or self._model_name,
+            ) as proxy:
+                self._api_base = proxy.url
+                response = self._solve_cli(task)
+                response.metadata = {
+                    **(response.metadata or {}),
+                    "transport": "opencode_cli_vision_proxy",
+                    "vision_proxy_injections": proxy.injection_count,
+                }
+                return response
+        finally:
+            self._api_base = original_api_base
 
+    def _solve_multimodal(self, task: BenchmarkTask) -> AgentResponse:
+        """Use a direct multimodal API call for image-backed tasks."""
+        client = self._ensure_client()
         start = time.time()
 
-        # Build the prompt with system instructions + problem
-        prompt = task.problem
-        if self._system_prompt.strip():
-            prompt = f"{self._system_prompt}\n\n--- Problem ---\n{task.problem}"
+        messages: list[dict[str, Any]] = []
+        if self._system_prompt:
+            messages.append({"role": "system", "content": self._system_prompt})
+        messages.append(
+            {
+                "role": "user",
+                "content": build_openai_multimodal_user_content(task.problem, task.attachments),
+            }
+        )
 
-        # Create a temporary working directory for opencode
+        request_kwargs: dict[str, Any] = {
+            "model": self._api_model,
+            "messages": messages,
+            "temperature": self._temperature,
+        }
+        if self._top_p is not None:
+            request_kwargs["top_p"] = self._top_p
+        if self._max_completion_tokens is not None:
+            request_kwargs["max_completion_tokens"] = self._max_completion_tokens
+
+        last_exc: Exception | None = None
+        response = None
+        for attempt in range(self._max_retries + 1):
+            try:
+                response = client.chat.completions.create(**request_kwargs)
+                last_exc = None
+                break
+            except Exception as exc:  # pragma: no cover - exercised via tests on success path
+                last_exc = exc
+                if attempt == self._max_retries or not self._is_retryable(exc):
+                    break
+                delay = min(2.0 * (2 ** attempt), 30.0)
+                jitter = random.uniform(0, delay * 0.3)
+                logger.warning(
+                    "OpenCode multimodal attempt %d/%d failed: %s. Retrying in %.1fs",
+                    attempt + 1,
+                    self._max_retries + 1,
+                    exc,
+                    delay + jitter,
+                )
+                time.sleep(delay + jitter)
+
+        if last_exc is not None:
+            if "not a multimodal model" in str(last_exc).lower():
+                raise RuntimeError(
+                    f"Configured model '{self._api_model}' does not accept image input on this "
+                    "OpenAI-compatible endpoint. Use a vision-capable model for image-backed tasks."
+                ) from last_exc
+            raise last_exc
+        assert response is not None
+
+        choice = response.choices[0]
+        raw_output = choice.message.content or ""
+        finish_reason = choice.finish_reason or ""
+        raw_reasoning = _extract_reasoning_from_model_extra(choice.message)
+        if not raw_reasoning and "<think>" in raw_output:
+            raw_reasoning, raw_output = _split_think_tags(raw_output)
+
+        token_usage: dict[str, int] = {}
+        if getattr(response, "usage", None):
+            token_usage = {
+                "prompt_tokens": getattr(response.usage, "prompt_tokens", 0) or 0,
+                "completion_tokens": getattr(response.usage, "completion_tokens", 0) or 0,
+                "total_tokens": getattr(response.usage, "total_tokens", 0) or 0,
+            }
+
+        answer = extract_answer_candidate(raw_output) if raw_output else ""
+        if not answer and raw_reasoning:
+            answer = extract_answer_candidate(raw_reasoning)
+
+        wall_time = time.time() - start
+        assistant_msg: dict[str, Any] = {"role": "assistant", "content": raw_output}
+        if raw_reasoning:
+            assistant_msg["thinking"] = raw_reasoning
+
+        response_json: dict[str, Any] = {}
+        if raw_reasoning:
+            response_json = {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": raw_output,
+                            "reasoning_content": raw_reasoning,
+                        }
+                    }
+                ]
+            }
+
+        reasoning_trajectory = []
+        if raw_reasoning:
+            reasoning_trajectory = [{"role": "assistant", "reasoning_content": raw_reasoning}]
+
+        attachment_names = [key for key, _, _ in iter_binary_attachments(task.attachments)]
+        return AgentResponse(
+            answer=answer,
+            trajectory=[
+                {"role": "system", "content": self._system_prompt},
+                {"role": "user", "content": task.problem, "attachments": attachment_names},
+                assistant_msg,
+            ],
+            raw_output=raw_output,
+            token_usage=token_usage,
+            wall_time_sec=wall_time,
+            metadata={
+                "returncode": 0,
+                "transport": "openai_multimodal",
+                "num_attachments": len(attachment_names),
+                "model": self._api_model,
+            },
+            system_prompt=self._system_prompt,
+            request_messages=_sanitize_request_messages(messages),
+            finish_reason=finish_reason,
+            response_json=response_json,
+            reasoning_trajectory=reasoning_trajectory,
+        )
+
+    def _solve_cli(self, task: BenchmarkTask) -> AgentResponse:
+        """Run text-only tasks through the OpenCode CLI."""
+        start = time.time()
+
         with tempfile.TemporaryDirectory(prefix="opencode-task-") as workdir:
-            # Write opencode config
-            config_root = Path(workdir) / "xdg-config"
+            workdir_path = Path(workdir)
+            config_root = workdir_path / "xdg-config"
             config_dir = config_root / "opencode"
             config_dir.mkdir(parents=True, exist_ok=True)
-            provider_options: dict[str, Any] = {
-                "apiKey": self._api_key,
-                "baseURL": self._api_base,
-                "timeout": self._timeout * 1000,
-            }
-            if self._streaming is not None:
-                provider_options["streaming"] = bool(self._streaming)
+
+            provider_model_name = self._model_name or self._api_model
+            cli_model = self._cli_model or f"custom/{provider_model_name}"
             provider_config = {
                 "$schema": "https://opencode.ai/config.json",
                 "provider": {
                     "custom": {
                         "api": "openai",
                         "name": "Custom Provider",
-                        "options": provider_options,
+                        "options": {
+                            "apiKey": self._api_key,
+                            "baseURL": self._api_base,
+                            "timeout": self._timeout * 1000,
+                            **(
+                                {"streaming": bool(self._streaming)}
+                                if self._streaming is not None
+                                else {}
+                            ),
+                        },
                         "models": {
-                            self._model_name: {
-                                "name": self._model_name,
+                            provider_model_name: {
+                                "name": provider_model_name,
                                 "tool_call": self._tool_call,
                             }
                         },
                     }
                 },
-                "model": f"custom/{self._model_name}",
-                "small_model": f"custom/{self._model_name}",
+                "model": cli_model,
+                "small_model": cli_model,
             }
-            config_path = config_dir / "opencode.json"
-            config_path.write_text(json.dumps(provider_config, indent=2))
+            (config_dir / "opencode.json").write_text(json.dumps(provider_config, indent=2))
 
             if self._agent_name and (self._agent_md_path or self._agent_md_content):
                 agent_dir = config_dir / "agent"
@@ -432,25 +659,28 @@ class OpenCodeAgent(Agent):
                     agent_text = self._agent_md_content
                 (agent_dir / f"{self._agent_name}.md").write_text(agent_text)
 
-            # Run opencode
+            attachment_paths = write_attachments(workdir_path / "attachments", task.attachments)
+            prompt = _build_prompt(task.problem, self._system_prompt, attachment_paths)
+
             env = os.environ.copy()
             env["OPENAI_API_KEY"] = self._api_key
             env["OPENAI_BASE_URL"] = self._api_base
             env["XDG_CONFIG_HOME"] = str(config_root)
-            # Clear proxy vars that can interfere
-            for var in ("ALL_PROXY", "HTTP_PROXY", "HTTPS_PROXY",
-                        "all_proxy", "http_proxy", "https_proxy"):
+            for var in ("ALL_PROXY", "HTTP_PROXY", "HTTPS_PROXY", "all_proxy", "http_proxy", "https_proxy"):
                 env.pop(var, None)
 
             cmd = [
-                self._opencode_bin, "run",
-                "--format", "json",
-                "--dir", workdir,
-                "--title", task.task_id,
-                prompt,
+                self._opencode_bin,
+                "run",
+                "--format",
+                "json",
+                "--dir",
+                workdir,
+                "--title",
+                task.task_id,
             ]
-            if self._model:
-                cmd.extend(["--model", self._model])
+            if cli_model:
+                cmd.extend(["--model", cli_model])
             if self._variant:
                 cmd.extend(["--variant", self._variant])
             if self._agent_name:
@@ -459,13 +689,14 @@ class OpenCodeAgent(Agent):
                 cmd.append("--print-logs")
             if self._log_level:
                 cmd.extend(["--log-level", self._log_level])
+            for attachment_path in attachment_paths:
+                cmd.extend(["--file", str(attachment_path)])
+            cmd.append("--")
+            cmd.append(prompt)
 
             logger.info("Running opencode for task %s (timeout=%ds)", task.task_id, self._timeout)
 
             process: subprocess.Popen[str] | None = None
-            raw_output = ""
-            stderr = ""
-            returncode = -1
             try:
                 process = subprocess.Popen(
                     cmd,
@@ -498,11 +729,9 @@ class OpenCodeAgent(Agent):
                         stderr = timed_out_stderr or stderr
 
         wall_time = time.time() - start
-
         assistant_text, events, session_id = _parse_opencode_output(raw_output)
         full_content = assistant_text or raw_output
 
-        # Extract answer
         if _is_swe_bench_task(task):
             answer = _extract_patch_from_text(full_content)
         elif returncode == -1:
@@ -513,7 +742,9 @@ class OpenCodeAgent(Agent):
         if returncode != 0 and not answer:
             logger.warning(
                 "OpenCode returned non-zero exit code %d for task %s. stderr: %s",
-                returncode, task.task_id, stderr[:500],
+                returncode,
+                task.task_id,
+                stderr[:500],
             )
 
         return AgentResponse(
@@ -529,6 +760,8 @@ class OpenCodeAgent(Agent):
                 "stderr": stderr[:2000] if stderr else "",
                 "num_events": len(events),
                 "session_id": session_id,
+                "num_attachments": len(attachment_paths),
+                "transport": "opencode_cli",
             },
         )
 

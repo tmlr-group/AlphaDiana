@@ -108,12 +108,12 @@ def _build_summary(run_id: str, records: list[dict[str, Any]]) -> RunSummaryResp
     for r in records:
         by_task[r.get("task_id", "")].append(r)
 
-    # Prefer num_samples from record data; fall back to max samples per task.
+    # Compute actual max samples per task from data — this is the ground truth.
+    actual_max_samples = max((len(samples) for samples in by_task.values()), default=1)
+    # Stored num_samples can be wrong (e.g. set to 1 in records that actually have 32 samples).
+    # Always take the larger of stored value vs observed data.
     num_samples_raw = next((r.get("num_samples") for r in records if r.get("num_samples") is not None), None)
-    if num_samples_raw is not None:
-        num_samples = int(num_samples_raw)
-    else:
-        num_samples = max((len(samples) for samples in by_task.values()), default=1)
+    num_samples = max(int(num_samples_raw), actual_max_samples) if num_samples_raw is not None else actual_max_samples
 
     # Pass@K: fraction of unique tasks where at least 1 sample is correct.
     num_unique_tasks = len(by_task)
@@ -178,6 +178,24 @@ def _build_summary(run_id: str, records: list[dict[str, Any]]) -> RunSummaryResp
                 agent = agent or meta.get("agent", "")
                 agent_version = agent_version or meta.get("agent_version", meta.get("model", ""))
 
+    # Extract model name from record-level fields.
+    model = ""
+    if records:
+        # Try response_json.model (present in direct_llm runs)
+        for r in records:
+            resp = r.get("response_json", {})
+            if isinstance(resp, dict) and resp.get("model"):
+                model = resp["model"]
+                break
+        # Try metadata.model_name
+        if not model:
+            model = next(
+                (r.get("metadata", {}).get("model_name", "")
+                 for r in records
+                 if isinstance(r.get("metadata"), dict) and r.get("metadata", {}).get("model_name")),
+                "",
+            )
+
     timestamp = ""
     if records:
         timestamp = records[-1].get("timestamp", "")
@@ -200,6 +218,7 @@ def _build_summary(run_id: str, records: list[dict[str, Any]]) -> RunSummaryResp
         },
         per_category=per_category,
         error_distribution=error_dist,
+        model=model,
         num_samples=num_samples,
         pass_at_k=pass_at_k,
         avg_at_k=avg_at_k,
@@ -262,6 +281,12 @@ class DataLoader:
                 # Prefer benchmark.config.dataset (specific dataset) over benchmark.name (plugin key).
                 bench_dataset = bench_cfg.get("config", {}).get("dataset", "")
                 summary.benchmark = bench_dataset or bench_cfg.get("name", summary.benchmark)
+                # Model: agent.config.model (direct_llm) or sandbox.config.model_name (openclaw)
+                if not summary.model:
+                    summary.model = (
+                        agent_cfg.get("config", {}).get("model", "")
+                        or config.get("sandbox", {}).get("config", {}).get("model_name", "")
+                    )
             summaries.append(summary)
         return summaries
 
@@ -286,6 +311,11 @@ class DataLoader:
             summary.agent_version = agent_cfg.get("version", summary.agent_version)
             bench_cfg = config.get("benchmark", {})
             summary.benchmark = bench_cfg.get("name", summary.benchmark)
+            if not summary.model:
+                summary.model = (
+                    agent_cfg.get("config", {}).get("model", "")
+                    or config.get("sandbox", {}).get("config", {}).get("model_name", "")
+                )
         results = [_record_to_task_result(r) for r in records]
         return RunDetailResponse(summary=summary, config=config, results=results)
 

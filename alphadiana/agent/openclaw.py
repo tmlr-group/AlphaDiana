@@ -37,6 +37,7 @@ from urllib.parse import urlsplit, urlunsplit
 from alphadiana.agent.base import Agent, AgentResponse
 from alphadiana.agent.registry import AgentRegistry
 from alphadiana.benchmark.base import BenchmarkTask
+from alphadiana.utils.attachments import build_openai_multimodal_user_content
 from alphadiana.utils.math_answer import extract_answer_candidate
 from alphadiana.utils.rock_ports import resolve_rock_ports_from_env
 
@@ -60,6 +61,27 @@ class OpenClawRequestError(RuntimeError):
         self.request_payload = request_payload
         self.response_body = response_body
         self.retry_responses = retry_responses or []
+
+
+class BackendDownError(OpenClawRequestError):
+    """Raised when the model backend is detected as down (circuit breaker open).
+
+    Triggered after ``backend_down_threshold`` consecutive empty-SSE-body
+    responses, where HTTP 200 is returned but no content arrives and the SSE
+    stream never sends ``[DONE]``.  This pattern strongly indicates the upstream
+    model service (e.g. vLLM) has crashed or become unresponsive.
+
+    Once raised, all subsequent ``solve()`` calls on this agent instance will
+    immediately raise this error without making any HTTP requests (fail-fast).
+    """
+
+    def __init__(self, message: str, *, consecutive_failures: int, url: str) -> None:
+        super().__init__(
+            message,
+            error_type="backend_down",
+        )
+        self.consecutive_failures = consecutive_failures
+        self.url = url
 
 
 def _extract_answer(text: str) -> str:
@@ -118,6 +140,64 @@ def extract_system_prompt(trajectory: list[dict]) -> str:
             if "You are" in content:
                 return content
     return ""
+
+
+# ---------------------------------------------------------------------------
+# Session pollution detection
+# ---------------------------------------------------------------------------
+
+# Common math words that appear in almost any reasoning — not useful for
+# distinguishing one problem from another.
+_COMMON_MATH_WORDS = frozenset({
+    "find", "each", "with", "where", "that", "this", "from", "have",
+    "such", "then", "when", "which", "what", "there", "given", "since",
+    "also", "define", "value", "values", "expressed", "possible", "least",
+    "most", "positive", "negative", "integers", "integer", "number",
+    "numbers", "prime", "primes", "square", "point", "points", "plane",
+    "divisible", "total", "equal", "equals", "answer",
+})
+
+# Extract distinctive tokens: uppercase multi-letter names (ABCDE, AB),
+# domain-specific words (≥5 chars, not common), numbers ≥3 digits.
+_DISTINCTIVE_TOKEN_RE = re.compile(
+    r"[A-Z]{2,}|\d{3,}|[a-zA-Z]{5,}"
+)
+
+
+def _detect_session_pollution(
+    problem: str,
+    raw_output: str,
+    raw_reasoning: str,
+) -> bool:
+    """Heuristic check: did the model actually work on the given problem?
+
+    Extracts distinctive tokens from *problem* — uppercase variable names
+    (ABCDE, AB), domain-specific words (pentagon, quadrant), and large
+    numbers — then checks how many appear in the model's reasoning/output.
+
+    Returns True if pollution is suspected, False otherwise.
+    """
+    model_text = f"{raw_reasoning} {raw_output}".lower()
+    if len(model_text.strip()) < 100:
+        # Too short to judge reliably.
+        return False
+
+    raw_tokens = set(_DISTINCTIVE_TOKEN_RE.findall(problem))
+    # Filter out common math words
+    tokens = {t for t in raw_tokens if t.lower() not in _COMMON_MATH_WORDS}
+    if len(tokens) < 3:
+        # Problem doesn't have enough distinctive features to fingerprint.
+        return False
+
+    # Use word-boundary matching to avoid false positives from substrings
+    # (e.g. "AB" matching "about", "DE" matching "determine").
+    hits = 0
+    for t in tokens:
+        pattern = r"\b" + re.escape(t.lower()) + r"\b"
+        if re.search(pattern, model_text):
+            hits += 1
+    ratio = hits / len(tokens)
+    return ratio < 0.35
 
 
 def classify_error(
@@ -294,9 +374,25 @@ def _recover_partial_output_from_trajectory(trajectory: list[dict]) -> tuple[str
     return "\n".join(text_parts).strip(), "\n".join(reasoning_parts).strip()
 
 
-def _normalize_request_content(content: str) -> str:
+def _extract_trajectory_error(trajectory: list[dict]) -> str:
+    """Return the latest explicit assistant error recorded in a session trajectory."""
+    if not isinstance(trajectory, list):
+        return ""
+
+    for entry in reversed(trajectory):
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("role") != "assistant":
+            continue
+        error = _coerce_text_content(entry.get("error", "")).strip()
+        if error:
+            return error
+    return ""
+
+
+def _normalize_request_content(content: Any) -> str:
     """Normalize request text for transcript matching."""
-    return content.replace("\r\n", "\n").strip()
+    return _coerce_text_content(content).replace("\r\n", "\n").strip()
 
 
 def _trajectory_matches_request(
@@ -479,6 +575,16 @@ class OpenClawAgent(Agent):
         # Health check flag
         self._health_checked: bool = False
 
+        # Circuit breaker: detect when the model backend has crashed.
+        # After ``backend_down_threshold`` consecutive empty-body responses
+        # (HTTP 200 + empty SSE, never receives [DONE]), the circuit opens and
+        # all subsequent solve() calls fail immediately without making requests.
+        self._backend_down_threshold: int = max(1, int(config.get("backend_down_threshold", 5)))
+        self._consecutive_empty_sse: int = 0
+        self._circuit_open: bool = False
+        self._circuit_open_error: BackendDownError | None = None
+        self._circuit_lock = threading.Lock()
+
         # Gateway pool for concurrent isolation (static multi-sandbox mode).
         # Users can set gateway_pool: [url1, url2, url3] in agent config to pre-deploy
         # multiple OpenClaw gateways and have each concurrent task use a different one.
@@ -552,7 +658,11 @@ class OpenClawAgent(Agent):
             logger.warning("Failed to inject AGENTS.md customization: %s", exc)
 
     def _health_check(self, url: str, headers: dict) -> None:
-        """One-time connectivity check on first solve() call."""
+        """One-time connectivity check on first solve() call.
+
+        Some OpenClaw gateway configs intentionally do not expose ``/models``.
+        In that case ``404``/``405`` still means the proxy path is live.
+        """
         if self._health_checked:
             return
         self._health_checked = True
@@ -560,18 +670,18 @@ class OpenClawAgent(Agent):
         base = url.rsplit("/chat/completions", 1)[0]
         try:
             resp = httpx.get(f"{base}/models", headers=headers, timeout=10.0, trust_env=False)
-            if resp.status_code >= 400:
+            if resp.status_code not in (200, 404, 405):
                 logger.warning(
                     "OpenClaw health check failed: GET %s/models returned %d. "
                     "The gateway may not be deployed correctly. Check: "
                     "1) sandbox/container is running, 2) OpenClaw started successfully, "
-                    "3) the published gateway port is correct.",
+                    "3) the published/proxy port is correct.",
                     base, resp.status_code,
                 )
         except Exception as exc:
             logger.warning(
                 "OpenClaw health check failed: %s. "
-                "Possible causes: sandbox/container not running, published port wrong, "
+                "Possible causes: sandbox/container not running, published/proxy port wrong, "
                 "or OpenClaw gateway not started. Continuing anyway...",
                 exc,
             )
@@ -719,6 +829,19 @@ class OpenClawAgent(Agent):
                 ):
                     return trajectory
 
+            # Do NOT return an unmatched fallback trajectory: it likely belongs
+            # to a different task/run on the same sandbox and would cause the
+            # stored trajectory to show a completely different problem than the
+            # one actually sent to the model (see: problem-user-content-mismatch).
+            if fallback_trajectory and expected_user_content:
+                logger.warning(
+                    "Trajectory retrieval found %d session file(s) but none matched "
+                    "the expected user content (len=%d). Discarding stale fallback "
+                    "to avoid recording a mismatched trajectory.",
+                    len(session_files),
+                    len(expected_user_content),
+                )
+                return []
             return fallback_trajectory
 
         except Exception as e:
@@ -931,6 +1054,11 @@ class OpenClawAgent(Agent):
         return payload
 
     def solve(self, task: BenchmarkTask, sandbox: Any = None) -> AgentResponse:
+        # Circuit breaker: fail immediately if backend was detected as down.
+        with self._circuit_lock:
+            if self._circuit_open and self._circuit_open_error is not None:
+                raise self._circuit_open_error
+
         try:
             import httpx
         except ImportError:
@@ -944,9 +1072,10 @@ class OpenClawAgent(Agent):
         # OpenClaw's gateway builds its own system prompt internally.
         # We only send the user message, optionally prefixed with a custom system prompt.
         if self._user_system_prompt:
-            user_content = f"{self._user_system_prompt}\n\n{task.problem}"
+            user_text = f"{self._user_system_prompt}\n\n{task.problem}"
         else:
-            user_content = task.problem
+            user_text = task.problem
+        user_content = build_openai_multimodal_user_content(user_text, task.attachments)
         request_messages = [
             {"role": "user", "content": user_content},
         ]
@@ -1131,6 +1260,7 @@ class OpenClawAgent(Agent):
                     time.monotonic() - attempt_start,
                 )
                 recovered_trajectory = []
+                trajectory_error = ""
                 if not raw_output:
                     recovered_trajectory = self._retrieve_trajectory_sync(
                         sandbox=sandbox,
@@ -1138,6 +1268,7 @@ class OpenClawAgent(Agent):
                         rock_sandbox_url=actual_rock_sandbox_url,
                         expected_user_content=request_messages[0]["content"],
                     )
+                    trajectory_error = _extract_trajectory_error(recovered_trajectory)
                     recovered_content, recovered_reasoning = _recover_partial_output_from_trajectory(
                         recovered_trajectory
                     )
@@ -1174,8 +1305,14 @@ class OpenClawAgent(Agent):
                     cumulative_token_usage["completion_tokens"] += int(attempt_usage.get("completion_tokens", 0))
                     cumulative_token_usage["total_tokens"] += int(attempt_usage.get("total_tokens", 0))
                 if raw_output:
+                    # Successful response — reset the consecutive-empty counter.
+                    with self._circuit_lock:
+                        self._consecutive_empty_sse = 0
                     break
                 if raw_reasoning:
+                    # Partial reasoning counts as a success for the circuit breaker.
+                    with self._circuit_lock:
+                        self._consecutive_empty_sse = 0
                     partial_reasoning_only = True
                     logger.info(
                         "Partial reasoning only: reasoning_chars=%d received_done=%s "
@@ -1192,6 +1329,19 @@ class OpenClawAgent(Agent):
                     response_json=response_json,
                     status_code=status_code,
                 )
+                # Detect crashed backend: HTTP 200 + empty SSE (no chunks, no [DONE]).
+                # classify_error() returns "unknown" here because response_json is {}
+                # (no choices key).  Use a dedicated "empty_sse_body" type so the
+                # circuit breaker can count these separately from the "empty_response"
+                # case (agent returned properly-structured but empty content).
+                is_empty_sse_body = (
+                    status_code == 200
+                    and not chunks
+                    and not received_done
+                    and not response_json
+                )
+                if is_empty_sse_body and error_type == "unknown":
+                    error_type = "empty_sse_body"
                 retry_responses.append({
                     "attempt": attempt,
                     "status_code": status_code,
@@ -1199,16 +1349,23 @@ class OpenClawAgent(Agent):
                     "body": str(response_body),
                     "elapsed_sec": elapsed,
                     "error_type": error_type,
+                    "trajectory_error": trajectory_error,
                 })
                 logger.warning(
-                    "OpenClaw attempt %d/%d returned empty content: status=%s elapsed=%.2fs body=%r reasoning_chars=%d",
+                    "OpenClaw attempt %d/%d returned empty content: status=%s elapsed=%.2fs body=%r reasoning_chars=%d trajectory_error=%r",
                     attempt,
                     self._max_attempts,
                     status_code,
                     elapsed,
                     response_body,
                     len(raw_reasoning),
+                    trajectory_error,
                 )
+                if trajectory_error:
+                    logger.error(
+                        "OpenClaw session trajectory captured upstream error: %s",
+                        trajectory_error,
+                    )
                 if error_type == "proxy_timeout":
                     logger.error(
                         "Proxy timeout detected (likely ROCK proxy 120s default). "
@@ -1227,13 +1384,65 @@ class OpenClawAgent(Agent):
                         "contention under concurrency). Use gateway_pool with separate "
                         "sandboxes to isolate concurrent requests.",
                     )
+                if error_type == "empty_sse_body":
+                    with self._circuit_lock:
+                        current_count = self._consecutive_empty_sse + 1  # peek before increment
+                    logger.warning(
+                        "Empty SSE body detected (HTTP 200, no content, no [DONE]) — "
+                        "possible model backend crash. consecutive_count=%d threshold=%d. "
+                        "Check if the model server at %s is still running.",
+                        current_count,
+                        self._backend_down_threshold,
+                        url,
+                    )
+                # Circuit breaker: track consecutive empty-SSE-body failures.
+                # "empty_sse_body" = HTTP 200 but absolutely no SSE content and no
+                # [DONE] — the signature of a crashed/unresponsive model backend.
+                if error_type == "empty_sse_body":
+                    with self._circuit_lock:
+                        self._consecutive_empty_sse += 1
+                        consecutive = self._consecutive_empty_sse
+                    if consecutive >= self._backend_down_threshold:
+                        backend_error = BackendDownError(
+                            f"Model backend appears to be down: {consecutive} consecutive "
+                            f"empty responses (HTTP 200 + empty SSE body, no [DONE] signal). "
+                            f"The upstream model service at {url} likely crashed or became "
+                            f"unresponsive. Aborting evaluation to avoid wasting time on "
+                            f"dead requests. Check if the vLLM/model server is still running. "
+                            f"Set agent.config.backend_down_threshold to adjust sensitivity "
+                            f"(current: {self._backend_down_threshold}).",
+                            consecutive_failures=consecutive,
+                            url=url,
+                        )
+                        logger.critical(
+                            "CIRCUIT BREAKER OPEN: %d consecutive empty-SSE responses. "
+                            "Model backend at %s appears down. All subsequent solve() "
+                            "calls will fail immediately. Error: %s",
+                            consecutive,
+                            url,
+                            backend_error,
+                        )
+                        with self._circuit_lock:
+                            self._circuit_open = True
+                            self._circuit_open_error = backend_error
+                        raise backend_error
                 last_error = OpenClawRequestError(
-                    f"OpenClaw returned no assistant content on attempt {attempt}",
+                    (
+                        f"OpenClaw returned no assistant content on attempt {attempt}"
+                        if not trajectory_error
+                        else f"OpenClaw upstream error on attempt {attempt}: {trajectory_error}"
+                    ),
                     error_type=error_type,
                     request_payload=request_payload,
-                    response_body=response_body,
+                    response_body=response_body if not trajectory_error else {
+                        "response": response_body,
+                        "trajectory_error": trajectory_error,
+                    },
                     retry_responses=retry_responses,
                 )
+            except BackendDownError:
+                # Circuit breaker fired — propagate immediately without retrying.
+                raise
             except Exception as exc:
                 elapsed = time.monotonic() - attempt_start
                 last_error = exc
@@ -1311,8 +1520,14 @@ class OpenClawAgent(Agent):
                 # Distinguish "busy/empty" from real errors for retry delay.
                 last_error_type = retry_responses[-1]["error_type"] if retry_responses else "unknown"
                 if last_error_type == "empty_response":
-                    # Agent likely still busy — wait much longer.
+                    # Agent returned a properly-structured but empty response —
+                    # it may still be processing.  Wait longer before retrying.
                     delay = min(60.0 * (2 ** (attempt - 1)), 300.0)
+                elif last_error_type == "empty_sse_body":
+                    # Crashed backend (HTTP 200 + no SSE content + no [DONE]).
+                    # The circuit breaker will open if this persists; use a short
+                    # delay so we detect the crash quickly without flooding logs.
+                    delay = min(5.0 * (2 ** (attempt - 1)), 30.0)
                 else:
                     delay = min(10.0 * (2 ** (attempt - 1)), 120.0)
                 jitter = random.uniform(0, delay * 0.3)
@@ -1380,6 +1595,19 @@ class OpenClawAgent(Agent):
                 assistant_entry,
             ]
 
+        # Detect gateway session pollution: the model may have received a
+        # different problem than what we sent due to stale session state.
+        session_tainted = _detect_session_pollution(
+            task.problem, raw_output, raw_reasoning,
+        )
+        if session_tainted:
+            logger.warning(
+                "Session pollution detected for task %s: model response does "
+                "not appear to address the given problem. The gateway may have "
+                "reused a stale session. Marking result as tainted.",
+                getattr(task, "task_id", "?"),
+            )
+
         # Collect artifacts from runtime manager if available
         if sandbox is not None and self._runtime_manager and self._runtime_manager.is_configured:
             try:
@@ -1415,6 +1643,7 @@ class OpenClawAgent(Agent):
                 "partial_reasoning_only": partial_reasoning_only and not raw_output,
                 "answer_source": answer_source,
                 "received_done": received_done,
+                "session_tainted": session_tainted,
             },
         )
 

@@ -9,11 +9,14 @@ import os
 # ---------------------------------------------------------------------------
 DEFAULT_SANDBOX_IMAGE: str = os.environ.get(
     "OPENCLAW_SANDBOX_IMAGE",
-    os.environ.get("OPENCLAW_IMAGE", "ghcr.io/tsrigo/openclaw-reasoning:20260320"),
+    os.environ.get("OPENCLAW_IMAGE", "tmlrgroup/alphadiana:v1"),
 )
 
 # Canonical pre-built image that ships with Node.js + openclaw already installed.
-PREBUILT_SANDBOX_IMAGE: str = "ghcr.io/tsrigo/openclaw-reasoning:20260320"
+# Override via OPENCLAW_PREBUILT_IMAGE env var if needed.
+PREBUILT_SANDBOX_IMAGE: str = os.environ.get(
+    "OPENCLAW_PREBUILT_IMAGE", "tmlrgroup/alphadiana:v1"
+)
 
 # Full npm install command (used when running on a bare python:3.11 image).
 OPENCLAW_NPM_INSTALL_CMD = "npm install -g openclaw@2026.3.7 --omit=optional"
@@ -21,12 +24,18 @@ OPENCLAW_NPM_INSTALL_CMD = "npm install -g openclaw@2026.3.7 --omit=optional"
 # ---------------------------------------------------------------------------
 # Node.js download commands
 # ---------------------------------------------------------------------------
+_NODE_MIRROR = os.environ.get("NPM_REGISTRY", "https://registry.npmmirror.com")
+# Derive the Node.js binary mirror from the registry host (npmmirror.com -> npmmirror.com/mirrors/node).
+# For custom registries, set NODE_MIRROR env var directly.
+_NODE_MIRROR_BASE = os.environ.get(
+    "NODE_MIRROR", "https://npmmirror.com/mirrors/node"
+)
 NODE_RUNTIME_MIRROR_INSTALL_CMD = (
     "[ -f node.tar.xz ] && rm node.tar.xz; "
     "[ -d runtime-env ] && rm -rf runtime-env; "
     "[ -d node-v22.18.0-linux-x64 ] && rm -rf node-v22.18.0-linux-x64; "
-    "wget -q -O node.tar.xz --tries=10 --waitretry=2 "
-    "https://npmmirror.com/mirrors/node/v22.18.0/node-v22.18.0-linux-x64.tar.xz "
+    f"wget -q -O node.tar.xz --tries=10 --waitretry=2 "
+    f"{_NODE_MIRROR_BASE}/v22.18.0/node-v22.18.0-linux-x64.tar.xz "
     "&& tar -xf node.tar.xz && mv node-v22.18.0-linux-x64 runtime-env"
 )
 
@@ -40,7 +49,7 @@ NODE_PREBUILT_INSTALL_CMD = "ln -sfn /opt/node runtime-env"
 # ---------------------------------------------------------------------------
 
 _PREBUILT_IMAGE_PREFIXES = (
-    "ghcr.io/tsrigo/openclaw-reasoning:",
+    "tmlrgroup/alphadiana:",
     "openclaw-reasoning:",
 )
 

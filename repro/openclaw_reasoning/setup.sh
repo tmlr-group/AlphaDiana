@@ -11,7 +11,7 @@ PATCH_FILE="${REPRO_ROOT}/openclaw-stream-reasoning.patch"
 OPENCLAW_REPO_URL="${OPENCLAW_REPO_URL:-https://github.com/openclaw/openclaw.git}"
 OPENCLAW_BASE_COMMIT="${OPENCLAW_BASE_COMMIT:-f8eb23de1c4a8c5256be679c5cfd23ca1a031a06}"
 
-ARK_BASE_URL="${ARK_BASE_URL:-https://ark.cn-beijing.volces.com/api/coding/v3}"
+ARK_BASE_URL="${ARK_BASE_URL:?Error: ARK_BASE_URL must be set}"
 ARK_MODEL_NAME="${ARK_MODEL_NAME:-Kimi-K2.5}"
 ARK_API_KEY="${ARK_API_KEY:-}"
 OPENCLAW_GATEWAY_TOKEN="${OPENCLAW_GATEWAY_TOKEN:-OPENCLAW}"
@@ -250,12 +250,12 @@ docker exec "${SID}" bash -lc "
     \"ownerDisplay\": \"raw\"
   },
   \"gateway\": {
-    \"port\": 8080,
+    \"port\": ${OPENCLAW_GATEWAY_PORT:-8080},
     \"mode\": \"local\",
     \"bind\": \"lan\",
     \"controlUi\": {
       \"enabled\": true,
-      \"allowedOrigins\": [\"http://localhost:8080\", \"http://127.0.0.1:8080\"],
+      \"allowedOrigins\": [\"http://localhost:${OPENCLAW_GATEWAY_PORT:-8080}\", \"http://127.0.0.1:${OPENCLAW_GATEWAY_PORT:-8080}\"],
       \"allowInsecureAuth\": true
     },
     \"auth\": { \"mode\": \"token\", \"token\": \"\${OPENCLAW_GATEWAY_TOKEN}\" },

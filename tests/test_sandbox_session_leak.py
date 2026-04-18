@@ -235,10 +235,10 @@ class TestOpenClawTeardown:
         assert "teardown" in source
 
     def test_teardown_cleans_sandbox_client(self):
-        """agent.teardown() should set _sandbox_client to None."""
+        """agent.teardown() should clear sandbox clients (set to None or empty dict)."""
         from alphadiana.agent.openclaw import OpenClawAgent
         source = inspect.getsource(OpenClawAgent.teardown)
-        assert "_sandbox_client = None" in source
+        assert "_sandbox_client = None" in source or "_sandbox_clients = {}" in source
 
 
 # ===================================================================

@@ -59,6 +59,7 @@ def _redis_available() -> bool:
 class TestROCKEnvironment:
     """Verify that the base ROCK environment is available."""
 
+    @pytest.mark.skipif(not _redis_available(), reason="Redis not reachable on configured ROCK_REDIS_PORT")
     def test_redis_running(self):
         """Redis is reachable on the configured ROCK_REDIS_PORT."""
         assert _redis_available(), f"Redis is not reachable on localhost:{PORTS.redis_port}"

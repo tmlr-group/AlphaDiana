@@ -42,8 +42,22 @@ export default function RunDetailPage() {
       .finally(() => setLoading(false));
   }, [runId]);
 
-  if (loading) return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
-  if (!detail) return <Text>Run not found</Text>;
+  if (loading) return <Spin size="large" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 'calc(100vh - 96px)' }} />;
+  if (!detail) return (
+    <div>
+      <Button
+        icon={<ArrowLeftOutlined />}
+        type="text"
+        onClick={() => navigate('/')}
+        style={{ marginBottom: 16 }}
+      >
+        Back to Runs
+      </Button>
+      <div>
+        <Text type="secondary">Run not found</Text>
+      </div>
+    </div>
+  );
 
   const filteredResults = detail.results.filter((r) => {
     if (filter === 'correct') return r.correct === true;
@@ -85,7 +99,7 @@ export default function RunDetailPage() {
       key: 'problem',
       ellipsis: true,
       render: (text: string) => (
-        <Text style={{ fontSize: 12 }}>{text.slice(0, 120)}...</Text>
+        <Text style={{ fontSize: 12 }}>{text.length > 120 ? text.slice(0, 120) + '...' : text}</Text>
       ),
     },
     {
@@ -93,14 +107,14 @@ export default function RunDetailPage() {
       dataIndex: 'ground_truth',
       key: 'ground_truth',
       width: 100,
-      render: (v: unknown) => <Tag>{String(v)}</Tag>,
+      render: (v: unknown) => <Tag>{v != null ? String(v) : '-'}</Tag>,
     },
     {
       title: 'Predicted',
       dataIndex: 'predicted',
       key: 'predicted',
       width: 100,
-      render: (v: unknown) => <Tag>{String(v)}</Tag>,
+      render: (v: unknown) => <Tag>{v != null ? String(v) : '-'}</Tag>,
     },
     {
       title: 'Result',
@@ -143,10 +157,11 @@ export default function RunDetailPage() {
       key: 'tokens',
       width: 100,
       render: (_: unknown, r: TaskResult) => {
-        const total =
-          (r.token_usage?.prompt_tokens ?? 0) +
-          (r.token_usage?.completion_tokens ?? 0);
-        return total > 1000 ? `${(total / 1000).toFixed(1)}K` : total;
+        const prompt = r.token_usage?.prompt_tokens;
+        const completion = r.token_usage?.completion_tokens;
+        if (prompt == null && completion == null) return '-';
+        const total = (prompt ?? 0) + (completion ?? 0);
+        return total === 0 ? '-' : total > 1000 ? `${(total / 1000).toFixed(1)}K` : total;
       },
     },
   ];
@@ -171,16 +186,22 @@ export default function RunDetailPage() {
             key: 'charts',
             label: 'Charts',
             children: (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <Card title="Score by Task" size="small">
                   <ScoreChart results={detail.results} />
                 </Card>
-                <Card title="Token Usage by Task" size="small">
-                  <TokenChart results={detail.results} />
-                </Card>
-                <Card title="Time by Task" size="small" style={{ gridColumn: '1 / -1' }}>
-                  <TimeChart results={detail.results} />
-                </Card>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: 16 }}>
+                  <Card title="Token Usage by Task" size="small" style={{ overflow: 'hidden', minWidth: 0 }}>
+                    <div style={{ overflow: 'hidden', minWidth: 0 }}>
+                      <TokenChart results={detail.results} />
+                    </div>
+                  </Card>
+                  <Card title="Time by Task" size="small" style={{ overflow: 'hidden', minWidth: 0 }}>
+                    <div style={{ overflow: 'hidden', minWidth: 0 }}>
+                      <TimeChart results={detail.results} />
+                    </div>
+                  </Card>
+                </div>
               </div>
             ),
           },
@@ -262,7 +283,7 @@ export default function RunDetailPage() {
         }
         open={!!drawerTask}
         onClose={() => setDrawerTask(null)}
-        width={720}
+        styles={{ wrapper: { width: '720px' } }}
       >
         {drawerTask && (
           <div>
@@ -277,7 +298,7 @@ export default function RunDetailPage() {
                 <Text strong>Expected:</Text> {String(drawerTask.ground_truth)}
               </p>
               <p>
-                <Text strong>Predicted:</Text> {String(drawerTask.predicted)}
+                <Text strong>Predicted:</Text> {drawerTask.predicted != null ? String(drawerTask.predicted) : '-'}
               </p>
               <p>
                 <Text strong>Result:</Text>{' '}

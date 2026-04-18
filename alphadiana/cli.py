@@ -26,7 +26,7 @@ def _warn_proxy() -> bool:
         names = ", ".join(sorted(found))
         logger.warning(
             "Proxy variables detected: %s. This may cause network issues "
-            "inside ROCK sandboxes. Run 'source dev/rock_env.sh' to unset them.",
+            "inside ROCK sandboxes. Run 'source scripts/rock_env.sh' to unset them.",
             names,
         )
         return True
@@ -275,6 +275,9 @@ def list_benchmarks():
     import alphadiana.benchmark.aime  # noqa: F401
     import alphadiana.benchmark.custom  # noqa: F401
     import alphadiana.benchmark.swe_bench  # noqa: F401
+    import alphadiana.benchmark.moltbench  # noqa: F401
+    import alphadiana.benchmark.swebench_pro  # noqa: F401
+    import alphadiana.benchmark.terminal_bench2  # noqa: F401
 
     from alphadiana.benchmark.registry import BenchmarkRegistry
 

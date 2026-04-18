@@ -23,7 +23,7 @@ export default function TrajectoryViewer({
     <div style={{ maxHeight: 600, overflowY: 'auto' }}>
       {trajectory.map((step, i) => (
         <Card
-          key={i}
+          key={`${step.role}_${i}`}
           size="small"
           style={{ marginBottom: 8 }}
           title={

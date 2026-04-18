@@ -81,10 +81,10 @@ init_conda_shell() {
 
 ENV_NAME="${1:-alphadiana}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="${SCRIPT_DIR%/dev}"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 PROJECT_NAME="$(basename "${PROJECT_ROOT}")"
 ROCK_REL="ref/ROCK"
-ENV_REL="dev/rock_env.sh"
+ENV_REL="scripts/rock_env.sh"
 ROCK_REPO_URL="${ROCK_REPO_URL:-https://github.com/alibaba/ROCK.git}"
 LOCAL_TMPDIR="${PROJECT_ROOT}/.cache/tmp"
 
@@ -131,7 +131,7 @@ else
   # Reuse the active environment's build backend packages so repeat setup runs
   # do not fail in network-restricted shells while trying to create an isolated
   # build env for the local project.
-  with_nounset_disabled conda run -n "${ENV_NAME}" python -m pip install --no-build-isolation -e ".[all,dev]"
+  with_nounset_disabled conda run -n "${ENV_NAME}" python -m pip install --no-build-isolation -e ".[all,benchmarks,dev]"
   log_progress "Installing pinned nacos-sdk-python==2.0.9"
   with_nounset_disabled conda run -n "${ENV_NAME}" python -m pip install "nacos-sdk-python==2.0.9"
   log_progress "Dependency installation completed"
@@ -149,7 +149,7 @@ cat > "${ENV_REL}" <<'EOF'
 
 # This file can be sourced from any working directory.
 _rock_env_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_rock_env_project_root="${_rock_env_script_dir%/dev}"
+_rock_env_project_root="$(cd "${_rock_env_script_dir}/.." && pwd)"
 _rock_env_rock_root="${_rock_env_project_root}/ref/ROCK"
 _rock_env_ports_file="${_rock_env_script_dir}/.rock_ports.env"
 _rock_env_dynamic_config_default="${_rock_env_project_root}/dev/generated/rock-local-proxy.dynamic.yml"
@@ -203,12 +203,12 @@ cat > "${ROCK_REL}/dev/rock_env.sh" <<'EOF'
 
 _rock_wrapper_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
-source "${_rock_wrapper_dir}/../../../dev/rock_env.sh"
+source "${_rock_wrapper_dir}/../../../scripts/rock_env.sh"
 EOF
 chmod +x "${ROCK_REL}/dev/rock_env.sh"
 cat > "${ROCK_REL}/dev/.rock_ports.env" <<'EOF'
 # shellcheck disable=SC1091
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../dev/.rock_ports.env"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/.rock_ports.env"
 EOF
 log_progress "Environment helper is ready"
 log_progress "The helper exports absolute ROCK paths and clears inherited proxy variables"
@@ -231,9 +231,9 @@ If you are already inside ${ROCK_REL}, use:
 
 The helper exports absolute ROCK paths after it is loaded.
 It also clears HTTP/HTTPS/ALL proxy variables to avoid local ROCK services inheriting host proxy settings.
-If dev/.rock_ports.env exists, it will also load dynamically detected ROCK ports.
+If scripts/.rock_ports.env exists, it will also load dynamically detected ROCK ports.
 If dev/generated/rock-local-proxy.dynamic.yml exists, ROCK_CONFIG will point to that generated config.
-Before running python dev/find_rock_ports.py manually, unset TMPDIR to avoid carrying an old long socket path:
+Before running python scripts/find_rock_ports.py manually, unset TMPDIR to avoid carrying an old long socket path:
   unset TMPDIR
 
 Start services in separate terminals:

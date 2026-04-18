@@ -1,0 +1,24 @@
+# MoltBench + Claude Code
+# Build (from AlphaDiana repo root):
+#   docker build -f moltbench/docker/Dockerfile.claude-code -t tmlrgroup/alphadiana:claude-code .
+
+FROM tmlrgroup/alphadiana:gpu-base
+
+# Node.js (required by Claude Code)
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+# Claude Code CLI
+RUN npm install -g @anthropic-ai/claude-code
+
+# uv package manager (AutoKernel references `uv run` everywhere)
+RUN python3 -m pip install --no-cache-dir uv
+
+# Git config (required for kernel.py versioning)
+RUN git config --global user.email "moltbench@eval" && \
+    git config --global user.name "MoltBench"
+
+# Keep the task runner fresh without forcing a gpu-base rebuild.
+COPY moltbench/docker/run_task.sh /workspace/run_task.sh
+RUN chmod +x /workspace/run_task.sh

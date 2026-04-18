@@ -7,8 +7,11 @@ agentic orchestration (no tool calling, no multi-turn, no code execution).
 """
 from __future__ import annotations
 
+import base64
 import logging
+import os
 import random
+import re
 import time
 from typing import Any
 
@@ -30,6 +33,39 @@ def _extract_answer(text: str) -> str:
     return extract_answer_candidate(text)
 
 
+_THINK_TAG_RE = re.compile(r"<think>(.*?)</think>", re.DOTALL)
+
+
+def _extract_reasoning_from_model_extra(obj: object) -> str:
+    """Extract reasoning content from an OpenAI SDK object's model_extra.
+
+    Different APIs use different field names:
+      - Volcengine Kimi: model_extra["reasoning_content"]
+      - OpenRouter Kimi: model_extra["reasoning"]
+    """
+    extra = getattr(obj, "model_extra", None)
+    if not extra or not isinstance(extra, dict):
+        return ""
+    for key in ("reasoning_content", "reasoning"):
+        val = extra.get(key)
+        if val and isinstance(val, str):
+            return val
+    return ""
+
+
+def _split_think_tags(content: str) -> tuple[str, str]:
+    """Split <think>...</think> tags from content (Qwen3/vLLM pattern).
+
+    Returns (reasoning, cleaned_content).
+    """
+    parts = _THINK_TAG_RE.findall(content)
+    if not parts:
+        return "", content
+    reasoning = "\n".join(parts)
+    cleaned = _THINK_TAG_RE.sub("", content).strip()
+    return reasoning, cleaned
+
+
 class DirectLLMAgent(Agent):
     """Baseline agent that directly calls an OpenAI-compatible LLM API.
 
@@ -40,9 +76,9 @@ class DirectLLMAgent(Agent):
     name = "direct_llm"
 
     def setup(self, config: dict) -> None:
-        self._model = config.get("model", "")
-        self._api_base = config.get("api_base", "")
-        self._api_key = config.get("api_key", "EMPTY")
+        self._model = self._resolve_setting(config, "model", "OPENAI_MODEL_NAME")
+        self._api_base = self._resolve_setting(config, "api_base", "OPENAI_BASE_URL")
+        self._api_key = self._resolve_setting(config, "api_key", "OPENAI_API_KEY", default="EMPTY")
         self._temperature = config.get("temperature", 0.7)
         self._top_p = config.get("top_p", None)
         self._max_tokens = config.get("max_tokens", None)
@@ -51,11 +87,49 @@ class DirectLLMAgent(Agent):
         self._stream = config.get("stream", True)
         self._resolved_max_tokens: int | None = None
         self._system_prompt = config.get("system_prompt", _DEFAULT_SYSTEM_PROMPT)
+        self._enable_thinking = config.get("enable_thinking", None)
+        self._extra_body: dict[str, Any] | None = config.get("extra_body", None)
         try:
-            from openai import OpenAI
-            self._client = OpenAI(base_url=self._api_base, api_key=self._api_key)
+            self._client = self._build_client()
         except ImportError:
             self._client = None
+
+    def _build_client(self):
+        """Build an OpenAI client that ignores inherited proxy env vars.
+
+        The user environment may export SOCKS/HTTP proxy variables for other
+        tools. Direct LLM calls should not depend on those settings, because
+        `httpx` can fail to initialize proxy transports if optional extras like
+        `socksio` are unavailable.
+        """
+        import httpx
+        from openai import OpenAI
+
+        return OpenAI(
+            base_url=self._api_base,
+            api_key=self._api_key,
+            http_client=httpx.Client(trust_env=False),
+        )
+
+    @staticmethod
+    def _resolve_setting(
+        config: dict,
+        key: str,
+        env_var: str,
+        *,
+        default: str = "",
+    ) -> str:
+        value = config.get(key, default)
+        if value is None:
+            value = default
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped and stripped.upper() != "EMPTY":
+                return stripped
+        env_value = os.environ.get(env_var, "").strip()
+        if env_value:
+            return env_value
+        return value if isinstance(value, str) else default
 
     def _resolve_max_tokens(self) -> int:
         """Resolve max_tokens by querying the model endpoint or using a fallback."""
@@ -69,12 +143,13 @@ class DirectLLMAgent(Agent):
             import httpx
 
             api_base = self._api_base.rstrip("/")
-            response = httpx.get(f"{api_base}/models", timeout=5.0)
+            response = httpx.get(f"{api_base}/models", timeout=5.0, trust_env=False)
             if response.status_code == 200:
                 data = response.json().get("data", [])
                 if data:
                     max_len = data[0].get("max_model_len")
                     if isinstance(max_len, int) and max_len > 0:
+                        self._max_model_len = max_len
                         self._resolved_max_tokens = max_len
                         return max_len
         except Exception:
@@ -83,11 +158,48 @@ class DirectLLMAgent(Agent):
         self._resolved_max_tokens = 65536
         return self._resolved_max_tokens
 
+    _IMAGE_TOKEN_ESTIMATE = 765
+
+    def _estimate_prompt_tokens(self, messages: list[dict]) -> int:
+        """Rough token estimate: ~4 chars per token for text, 765 per image."""
+        total_chars = 0
+        image_tokens = 0
+        for m in messages:
+            c = m.get("content", "")
+            if isinstance(c, str):
+                total_chars += len(c)
+            elif isinstance(c, list):
+                for part in c:
+                    if isinstance(part, dict) and part.get("type") == "text":
+                        total_chars += len(part.get("text", ""))
+                    elif isinstance(part, dict) and part.get("type") == "image_url":
+                        image_tokens += self._IMAGE_TOKEN_ESTIMATE
+        return total_chars // 3 + image_tokens
+
+    def _cap_max_tokens(self, max_tokens: int, messages: list[dict]) -> int:
+        """Cap max_tokens so that prompt + output stays within model context.
+
+        This avoids vLLM ``VLLMValidationError`` when
+        ``prompt_tokens + max_tokens > max_model_len``.
+        """
+        max_model_len = getattr(self, "_max_model_len", None) or 0
+        if max_model_len <= 0:
+            return max_tokens
+        estimated_prompt = self._estimate_prompt_tokens(messages)
+        headroom = max_model_len - estimated_prompt
+        if headroom < max_tokens:
+            capped = max(headroom - 64, 1)  # 64-token safety margin
+            logger.info(
+                "Capping max_tokens from %d to %d (est. prompt=%d, model_len=%d)",
+                max_tokens, capped, estimated_prompt, max_model_len,
+            )
+            return capped
+        return max_tokens
+
     def solve(self, task: BenchmarkTask, sandbox: Any = None) -> AgentResponse:
         if self._client is None:
             try:
-                from openai import OpenAI
-                self._client = OpenAI(base_url=self._api_base, api_key=self._api_key)
+                self._client = self._build_client()
             except ImportError:
                 raise RuntimeError(
                     "The 'openai' package is required for DirectLLMAgent. "
@@ -96,9 +208,24 @@ class DirectLLMAgent(Agent):
 
         start = time.time()
 
+        user_content: Any = task.problem
+        if task.attachments:
+            parts: list[dict[str, Any]] = [{"type": "text", "text": task.problem}]
+            img_keys = sorted(k for k in task.attachments if not k.endswith("_mime"))
+            for key in img_keys:
+                img_bytes = task.attachments[key]
+                mime_key = f"{key}_mime"
+                mime = task.attachments.get(mime_key, b"image/png").decode()
+                b64 = base64.b64encode(img_bytes).decode()
+                parts.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{mime};base64,{b64}"},
+                })
+            user_content = parts
+
         messages = [
             {"role": "system", "content": self._system_prompt},
-            {"role": "user", "content": task.problem},
+            {"role": "user", "content": user_content},
         ]
         request_kwargs: dict[str, Any] = {
             "model": self._model,
@@ -108,25 +235,36 @@ class DirectLLMAgent(Agent):
         if self._max_completion_tokens is not None:
             request_kwargs["max_completion_tokens"] = self._max_completion_tokens
         else:
-            request_kwargs["max_tokens"] = self._resolve_max_tokens()
+            raw_max = self._resolve_max_tokens()
+            request_kwargs["max_tokens"] = self._cap_max_tokens(raw_max, messages)
         if self._top_p is not None:
             request_kwargs["top_p"] = self._top_p
+
+        # Build extra_body for provider-specific params (e.g. enable_thinking for z-ai/GLM).
+        extra_body: dict[str, Any] = {}
+        if self._enable_thinking is not None:
+            extra_body["enable_thinking"] = bool(self._enable_thinking)
+        if self._extra_body and isinstance(self._extra_body, dict):
+            extra_body.update(self._extra_body)
+        if extra_body:
+            request_kwargs["extra_body"] = extra_body
 
         # Retry loop with exponential backoff for transient errors.
         last_exc: Exception | None = None
         raw_output = ""
+        raw_reasoning = ""
         finish_reason = ""
         token_usage: dict = {}
 
         for attempt in range(self._max_retries + 1):
             try:
                 if self._stream:
-                    raw_output, finish_reason, token_usage = self._call_streaming(
-                        request_kwargs
+                    raw_output, finish_reason, token_usage, raw_reasoning = (
+                        self._call_streaming(request_kwargs)
                     )
                 else:
-                    raw_output, finish_reason, token_usage = self._call_non_streaming(
-                        request_kwargs
+                    raw_output, finish_reason, token_usage, raw_reasoning = (
+                        self._call_non_streaming(request_kwargs)
                     )
                 last_exc = None
                 break
@@ -146,14 +284,42 @@ class DirectLLMAgent(Agent):
             raise last_exc
 
         wall_time = time.time() - start
-        answer = _extract_answer(raw_output)
+
+        # Extract answer: try raw_output first, fall back to reasoning
+        answer = _extract_answer(raw_output) if raw_output else ""
+        if not answer and raw_reasoning:
+            answer = _extract_answer(raw_reasoning)
+
+        # Build response_json with reasoning_content if present
+        response_json: dict = {}
+        if raw_reasoning:
+            response_json = {
+                "choices": [{
+                    "message": {
+                        "role": "assistant",
+                        "content": raw_output,
+                        "reasoning_content": raw_reasoning,
+                    }
+                }]
+            }
+
+        reasoning_trajectory: list[dict] = []
+        if raw_reasoning:
+            reasoning_trajectory = [
+                {"role": "assistant", "reasoning_content": raw_reasoning},
+            ]
+
+        # Build trajectory; include "thinking" in assistant message to match openclaw format
+        assistant_msg: dict[str, str] = {"role": "assistant", "content": raw_output}
+        if raw_reasoning:
+            assistant_msg["thinking"] = raw_reasoning
 
         return AgentResponse(
             answer=answer,
             trajectory=[
                 {"role": "system", "content": self._system_prompt},
                 {"role": "user", "content": task.problem},
-                {"role": "assistant", "content": raw_output},
+                assistant_msg,
             ],
             raw_output=raw_output,
             token_usage=token_usage,
@@ -161,26 +327,61 @@ class DirectLLMAgent(Agent):
             system_prompt=self._system_prompt,
             request_messages=messages,
             finish_reason=finish_reason,
+            response_json=response_json,
+            reasoning_trajectory=reasoning_trajectory,
         )
 
     @staticmethod
     def _is_retryable(exc: Exception) -> bool:
-        """Return True for transient errors worth retrying."""
+        """Return True for transient errors worth retrying.
+
+        Covers SDK-typed errors, HTTP 5xx, and streaming mid-flight
+        disconnections (e.g. ``Network connection lost``,
+        ``incomplete chunked read``).
+        """
         try:
-            from openai import RateLimitError, APITimeoutError, APIConnectionError, APIStatusError
+            from openai import RateLimitError, APITimeoutError, APIConnectionError, APIStatusError, APIError
             if isinstance(exc, (RateLimitError, APITimeoutError, APIConnectionError)):
                 return True
             if isinstance(exc, APIStatusError) and exc.status_code >= 500:
                 return True
+            # APIError covers generic failures like "Network connection lost"
+            # that happen during streaming reads.
+            if isinstance(exc, APIError):
+                return True
         except ImportError:
             pass
+
+        # httpx / httpcore transport errors (streaming disconnections).
+        try:
+            import httpx
+            if isinstance(exc, (httpx.RemoteProtocolError, httpx.ReadError,
+                                httpx.ReadTimeout, httpx.ConnectError,
+                                httpx.ConnectTimeout)):
+                return True
+        except ImportError:
+            pass
+
+        try:
+            import httpcore
+            if isinstance(exc, (httpcore.RemoteProtocolError, httpcore.ReadError)):
+                return True
+        except ImportError:
+            pass
+
         msg = str(exc).lower()
-        return "timeout" in msg or "rate" in msg or "429" in msg or "502" in msg or "503" in msg
+        _RETRYABLE_KEYWORDS = (
+            "timeout", "rate", "429", "502", "503",
+            "network connection lost", "incomplete chunked read",
+            "peer closed connection", "remoteprotocolerror",
+            "response payload is not completed",
+        )
+        return any(kw in msg for kw in _RETRYABLE_KEYWORDS)
 
     _stream_options_supported: bool = True
 
-    def _call_streaming(self, request_kwargs: dict) -> tuple[str, str, dict]:
-        """Call the API in streaming mode, returning (raw_output, finish_reason, token_usage)."""
+    def _call_streaming(self, request_kwargs: dict) -> tuple[str, str, dict, str]:
+        """Call the API in streaming mode, returning (raw_output, finish_reason, token_usage, raw_reasoning)."""
         kwargs = {**request_kwargs, "stream": True}
         if self._stream_options_supported:
             kwargs["stream_options"] = {"include_usage": True}
@@ -201,13 +402,19 @@ class DirectLLMAgent(Agent):
                 raise
 
         content_parts: list[str] = []
+        reasoning_parts: list[str] = []
         finish_reason = ""
         token_usage: dict = {}
         for chunk in stream:
             if chunk.choices:
                 delta = chunk.choices[0].delta
-                if delta and delta.content:
-                    content_parts.append(delta.content)
+                if delta:
+                    if delta.content:
+                        content_parts.append(delta.content)
+                    # Collect reasoning from model_extra (Kimi/OpenRouter/Volcengine)
+                    rc = _extract_reasoning_from_model_extra(delta)
+                    if rc:
+                        reasoning_parts.append(rc)
                 if chunk.choices[0].finish_reason:
                     finish_reason = chunk.choices[0].finish_reason
             if hasattr(chunk, "usage") and chunk.usage:
@@ -217,10 +424,19 @@ class DirectLLMAgent(Agent):
                     "total_tokens": chunk.usage.total_tokens or 0,
                 }
 
-        return "".join(content_parts), finish_reason, token_usage
+        raw_content = "".join(content_parts)
+        raw_reasoning = "".join(reasoning_parts)
 
-    def _call_non_streaming(self, request_kwargs: dict) -> tuple[str, str, dict]:
-        """Call the API in non-streaming mode, returning (raw_output, finish_reason, token_usage)."""
+        # Handle <think> tags embedded in content (Qwen3/vLLM pattern)
+        if not raw_reasoning and "<think>" in raw_content:
+            tag_reasoning, raw_content = _split_think_tags(raw_content)
+            if tag_reasoning:
+                raw_reasoning = tag_reasoning
+
+        return raw_content, finish_reason, token_usage, raw_reasoning
+
+    def _call_non_streaming(self, request_kwargs: dict) -> tuple[str, str, dict, str]:
+        """Call the API in non-streaming mode, returning (raw_output, finish_reason, token_usage, raw_reasoning)."""
         response = self._client.chat.completions.create(**request_kwargs)
         choice = response.choices[0]
         raw_output = choice.message.content or ""
@@ -232,7 +448,11 @@ class DirectLLMAgent(Agent):
                 "completion_tokens": response.usage.completion_tokens,
                 "total_tokens": response.usage.total_tokens,
             }
-        return raw_output, finish_reason, token_usage
+        raw_reasoning = _extract_reasoning_from_model_extra(choice.message)
+        # Handle <think> tags embedded in content (Qwen3/vLLM pattern)
+        if not raw_reasoning and "<think>" in raw_output:
+            raw_reasoning, raw_output = _split_think_tags(raw_output)
+        return raw_output, finish_reason, token_usage, raw_reasoning
 
     def teardown(self) -> None:
         pass

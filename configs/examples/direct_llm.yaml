@@ -4,9 +4,10 @@ agent:
   name: direct_llm
   version: "1.0"
   config:
-    model: ""          
-    api_base: ""  
-    api_key: "EMPTY"
+    # Leave these blank to reuse OPENAI_* from .env via scripts/activate.sh.
+    model: ""
+    api_base: ""
+    api_key: ""
     temperature: 0.6
     max_tokens: 
 
@@ -21,5 +22,5 @@ scorer:
   config:
     tolerance: 1e-6
 
-max_concurrent: 
+max_concurrent: 1
 output_dir: "./results"

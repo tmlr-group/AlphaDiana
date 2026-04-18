@@ -1,0 +1,34 @@
+FROM tmlrgroup/alphadiana:v1
+
+# Fix: Node.js native fetch (used by OpenAI SDK v6.26.0) has an internal undici
+# dispatcher with default bodyTimeout=300s. When a GLM-5 streaming response via
+# OpenRouter takes >300s to complete (reasoning only, no content yet), the native
+# fetch bodyTimeout fires and truncates the stream mid-reasoning, leaving content empty.
+#
+# setGlobalDispatcher (called by openclaw's ensureGlobalUndiciStreamTimeouts) only
+# patches the undici npm package's dispatcher, not globalThis.fetch which is Node.js's
+# built-in fetch using the Node.js binary's own internal undici dispatcher.
+#
+# Fix: pass timeout: 1800000 to the OpenAI client constructor so the OpenAI SDK
+# manages its own timeout via AbortController+setTimeout, bypassing undici bodyTimeout.
+#
+# Patches both copies of openai-completions.js in the image.
+
+RUN node -e " \
+const fs = require('fs'); \
+const paths = [ \
+  '/app/node_modules/@mariozechner/pi-ai/dist/providers/openai-completions.js', \
+  '/app/node_modules/openclaw/node_modules/@mariozechner/pi-ai/dist/providers/openai-completions.js', \
+]; \
+const OLD = '    return new OpenAI({\n        apiKey,\n        baseURL: model.baseUrl,\n        dangerouslyAllowBrowser: true,\n        defaultHeaders: headers,\n    });'; \
+const NEW = '    return new OpenAI({\n        apiKey,\n        baseURL: model.baseUrl,\n        dangerouslyAllowBrowser: true,\n        defaultHeaders: headers,\n        timeout: 1800000,\n    });'; \
+for (const p of paths) { \
+  if (!fs.existsSync(p)) { console.log('SKIP:', p); continue; } \
+  const src = fs.readFileSync(p, 'utf8'); \
+  if (src.includes('timeout: 1800000')) { console.log('ALREADY PATCHED:', p); continue; } \
+  if (!src.includes(OLD)) { console.error('PATTERN NOT FOUND:', p); process.exit(1); } \
+  fs.writeFileSync(p, src.replace(OLD, NEW), 'utf8'); \
+  console.log('PATCHED:', p); \
+} \
+console.log('All done.'); \
+"

@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import copy
 import os
+import re
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+_ENV_PLACEHOLDER_RE = re.compile(
+    r"^\$(?:\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)$"
+)
 
 
 def _expand_env_vars(obj: Any) -> Any:
@@ -19,6 +24,70 @@ def _expand_env_vars(obj: Any) -> Any:
     if isinstance(obj, list):
         return [_expand_env_vars(item) for item in obj]
     return obj
+
+
+def _is_blank_config_value(value: Any) -> bool:
+    """Return True when a config field is blank or still an unresolved env placeholder."""
+    if value is None:
+        return True
+    if isinstance(value, str):
+        stripped = value.strip()
+        return (
+            not stripped
+            or stripped.upper() == "EMPTY"
+            or bool(_ENV_PLACEHOLDER_RE.fullmatch(stripped))
+        )
+    return False
+
+
+def _apply_agent_env_defaults(agent_name: str, agent_config: Any) -> dict:
+    """Populate agent config fields from environment when the YAML leaves them blank."""
+    if not isinstance(agent_config, dict):
+        return {}
+
+    resolved = copy.deepcopy(agent_config)
+
+    is_direct_llm_mode = agent_name == "direct_llm" or (
+        agent_name == "swebench_docker"
+        and str(resolved.get("agent_type", "direct_llm")).strip() == "direct_llm"
+    )
+    is_swebench_container_api_mode = (
+        agent_name == "swebench_docker"
+        and str(resolved.get("agent_type", "direct_llm")).strip() in {"openclaw", "opencode"}
+    )
+
+    if is_direct_llm_mode:
+        env_defaults = {
+            "model": "OPENAI_MODEL_NAME",
+            "api_base": "OPENAI_BASE_URL",
+            "api_key": "OPENAI_API_KEY",
+        }
+        for key, env_var in env_defaults.items():
+            if not _is_blank_config_value(resolved.get(key, "")):
+                continue
+            env_value = os.environ.get(env_var, "").strip()
+            if env_value:
+                resolved[key] = env_value
+
+    if is_swebench_container_api_mode:
+        env_defaults = {
+            "OPENAI_MODEL_NAME": "OPENAI_MODEL_NAME",
+            "OPENAI_BASE_URL": "OPENAI_BASE_URL",
+            "OPENAI_API_KEY": "OPENAI_API_KEY",
+        }
+        nested_env = resolved.get("env", {})
+        if not isinstance(nested_env, dict):
+            nested_env = {}
+        nested_env = copy.deepcopy(nested_env)
+        for key, env_var in env_defaults.items():
+            if not _is_blank_config_value(nested_env.get(key, "")):
+                continue
+            env_value = os.environ.get(env_var, "").strip()
+            if env_value:
+                nested_env[key] = env_value
+        resolved["env"] = nested_env
+
+    return resolved
 
 
 def deep_merge(base: dict, override: dict) -> dict:
@@ -76,12 +145,13 @@ class ExperimentConfig:
     redo_all: bool = False
     sandbox_retries: int = 1
     num_samples: int = 1
-    task_retries: int = 0
+    task_retries: int = 1
     metadata: dict = field(default_factory=dict)
 
     def __post_init__(self):
         if not self.run_id:
             self.run_id = uuid.uuid4().hex[:12]
+        self.run_id = self.run_id.replace("/", "_")
 
     @classmethod
     def from_yaml(
@@ -102,11 +172,14 @@ class ExperimentConfig:
         sandbox = data.get("sandbox")
         scorer = data.get("scorer", {})
 
+        agent_name = agent.get("name", "")
+        agent_config = _apply_agent_env_defaults(agent_name, agent.get("config", {}))
+
         return cls(
             run_id=data.get("run_id", ""),
-            agent_name=agent.get("name", ""),
+            agent_name=agent_name,
             agent_version=agent.get("version", ""),
-            agent_config=agent.get("config", {}),
+            agent_config=agent_config,
             benchmark_name=benchmark.get("name", ""),
             benchmark_config=benchmark.get("config", {}),
             sandbox_name=sandbox.get("name") if isinstance(sandbox, dict) else None,

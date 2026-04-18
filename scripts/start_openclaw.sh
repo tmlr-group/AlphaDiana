@@ -14,7 +14,7 @@
 
 set -euo pipefail
 
-DEFAULT_IMAGE="${OPENCLAW_SANDBOX_IMAGE:-ghcr.io/tsrigo/openclaw-reasoning:20260320}"
+DEFAULT_IMAGE="${OPENCLAW_SANDBOX_IMAGE:-tmlrgroup/alphadiana:v1}"
 
 # Collect all CLI arguments to forward to deploy.py
 DEPLOY_EXTRA_ARGS=("$@")
@@ -49,6 +49,15 @@ fi
 
 # ── 1. Load environment ──────────────────────────────────────────────────────
 source "${SCRIPT_DIR}/rock_env.sh"
+
+# ── 1.5. Security preflight check ───────────────────────────────────────────
+echo "[0/6] Running security preflight check..."
+if ! "${PYTHON}" "${SCRIPT_DIR}/security_guard.py" --check; then
+    echo ""
+    echo "ERROR: Security preflight check failed. Start aborted."
+    echo "       Fix the issues above, or set SECURITY_GUARD_BYPASS=1 to override."
+    exit 1
+fi
 
 # Recompute derived ROCK URLs from the active dynamic ports in this shell.
 # This prevents stale ROCK_BASE_URL/ROCK_PROXY_URL values from older sessions
@@ -193,8 +202,8 @@ if ! _port_open "${ROCK_RAY_PORT}"; then
         --port="${ROCK_RAY_PORT}" \
         --dashboard-port="${ROCK_RAY_DASHBOARD_PORT}" \
         --temp-dir="${RAY_SESSION_DIR}" \
-        --min-worker-port=20000 \
-        --max-worker-port=29999 \
+        --min-worker-port=${ROCK_RAY_MIN_WORKER_PORT:-20000} \
+        --max-worker-port=${ROCK_RAY_MAX_WORKER_PORT:-29999} \
         > "${LOG_DIR}/ray-start.log" 2>&1
 
     # Wait for GCS port to be open

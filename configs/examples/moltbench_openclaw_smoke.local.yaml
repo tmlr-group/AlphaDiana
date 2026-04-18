@@ -1,0 +1,42 @@
+# Local MoltBench smoke test — OpenClaw on a single problem
+#
+# Notes:
+#   - Defaults below are sized for slower OpenAI-compatible providers.
+#   - If your model is fast, you can reduce the timeout values.
+
+task: kernelbench
+run_id: "moltbench-openclaw-smoke-local-L1-P001"
+
+agent:
+  name: moltbench_docker
+  version: "1.0"
+  config:
+    agent_type: openclaw
+    image_prefix: tmlrgroup/alphadiana
+    request_timeout: 900
+    gpus: "device=0"
+    network_mode: "host"
+    output_dir: "./moltbench_artifacts_openclaw_smoke_local"
+    env:
+      OPENAI_API_KEY: ""
+      OPENAI_BASE_URL: ""
+      OPENAI_MODEL_NAME: "deepseek-chat"
+      OPENCLAW_AGENT_TIMEOUT_SEC: "600"
+      OPENCLAW_CHAT_MAX_TIME_SEC: "660"
+
+benchmark:
+  name: moltbench
+  config:
+    levels: [1]
+    problems: "1"
+    max_rounds: 2
+    backend: triton
+
+scorer:
+  name: moltbench
+  config:
+    thresholds: [1.0, 1.5, 2.0, 3.0, 5.0]
+    score_mode: "final"
+
+max_concurrent: 1
+output_dir: "./results_openclaw_smoke_local"

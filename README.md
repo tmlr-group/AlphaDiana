@@ -1,6 +1,6 @@
 # AlphaDiana: A System for Evaluating Agentic Reasoning
 
-**AlphaDiana** is an open-source framework for **system-level evaluation of LLM-based reasoning agents**. It enables standardized, reproducible benchmarking of agentic systems—such as [OpenClaw](https://github.com/openclaw/openclaw)—on frontier reasoning tasks, with support for sandboxed code execution, multi-turn tool use, and full trajectory logging.
+**AlphaDiana** is an open-source framework for **system-level evaluation of LLM-based reasoning agents**. It enables standardized, reproducible benchmarking of agentic systems—such as **[OpenClaw](https://github.com/openclaw/openclaw)**—on frontier reasoning tasks, with support for sandboxed code execution, multi-turn tool use, and full trajectory logging.
 
 <p align="center">
   <img src="./assets/fig1.jpg" width="100%">
@@ -58,18 +58,29 @@ cd AlphaDiana
 # One-click setup: creates conda env, installs all dependencies, starts services
 bash scripts/quickstart.sh
 
+# Note: If quickstart fails, or you want to reset the ports/RAY clusters, please run: bash scripts/cleanup_rock_ports.sh (USE WITH CAUTION!)
+
 # Pull the reasoning image (OpenClaw pre-installed)
-docker pull ghcr.io/tsrigo/openclaw-reasoning:20260320
+docker pull tmlrgroup/alphadiana:v1
 ```
+
+> **Note:** You can also build it locally:
+>
+> ```bash
+> docker build -t openclaw-reasoning:v1 -f openclaw_deploy/Dockerfile.patched .
+> ```
+>
+> Then reference `openclaw-reasoning:v1` in your config's `rock_image` field instead of the base image.
 
 ### 2. Configure your model
 
-Create a `.env` file in the project root with your model endpoint:
+Create a `.env` file in the project root with your model endpoint and set your api key:
 
 ```bash
-OPENAI_BASE_URL=https://openrouter.ai/api/v1
-OPENAI_API_KEY=<your-api-key>
-OPENAI_MODEL_NAME=qwen/qwen3-235b-a22b-2507
+touch .env
+echo "OPENAI_BASE_URL=https://openrouter.ai/api/v1" >> .env
+echo "OPENAI_API_KEY=<your-api-key>" >> .env
+echo "OPENAI_MODEL_NAME=z-ai/glm-5" >> .env
 ```
 
 ### 3. Activate the environment
@@ -119,7 +130,9 @@ alphadiana report results/
 ```
 
 For a full walkthrough, see [`docs/getting_started.md`](docs/getting_started.md).
+For the process and runbook index, see [`docs/README.md`](docs/README.md).
 For manual setup and troubleshooting, see [`docs/setup_detail.md`](docs/setup_detail.md).
+For MoltBench GPU-kernel benchmarking, see [`moltbench/docs/README.md`](moltbench/docs/README.md).
 
 ## Configuration
 
@@ -138,7 +151,7 @@ run_id: "openclaw-qwen3-8b-aime2024-001"
 agent:
   name: openclaw
   config:
-    rock_image: "ghcr.io/tsrigo/openclaw-reasoning:20260320"
+    rock_image: "tmlrgroup/alphadiana:v1"
     rock_agent_config_path: "openclaw_deploy/rock_agent_config.prebuilt.yaml"
     openclaw_config_path: "openclaw_deploy/openclaw.json"
     rock_memory: "4g"
@@ -196,11 +209,14 @@ alphadiana run configs/examples/direct_llm.yaml
 
 This is useful for establishing a clean baseline before measuring the effect of an agent framework.
 
-Fill in the model endpoint fields in the config, such as:
+The bundled example reuses the `.env` values loaded by `source scripts/activate.sh`:
 
-- `model`
-- `api_base`
-- `api_key`
+- `OPENAI_MODEL_NAME`
+- `OPENAI_BASE_URL`
+- `OPENAI_API_KEY`
+
+If you want a different endpoint just for this baseline, override `model`, `api_base`, and
+`api_key` directly in `configs/examples/direct_llm.yaml`.
 
 See [`docs/getting_started.md`](docs/getting_started.md) for a complete example.
 
@@ -277,6 +293,26 @@ results/<run_id>.jsonl
    └── dashboard visualization
 ```
 
+## Results
+
+We evaluate agentic reasoning on **AIME 2024, 2025, and 2026** using two backbone models: **Qwen2.5-14B-Instruct** and **GLM-5**. Each configuration is compared under a direct LLM baseline and the OpenClaw agent, with **avg@32** and **pass@32** as evaluation metrics (32 samples per problem).
+
+**Qwen2.5-14B-Instruct**
+
+| Benchmark | Avg@32 (Base) | Avg@32 (OpenClaw) | Pass@32 (Base) | Pass@32 (OpenClaw) |
+|-----------|--------------|-------------------|---------------|-------------------|
+| AIME 2024 | 0.1521 | 0.1271 | 0.4333 | 0.4000 |
+| AIME 2025 | 0.1229 | 0.1469 | 0.4000 | 0.4333 |
+| AIME 2026 | 0.1115 | 0.1250 | 0.4333 | 0.4333 |
+
+**GLM-5**
+
+| Benchmark | Avg@32 (Base) | Avg@32 (OpenClaw) | Pass@32 (Base) | Pass@32 (OpenClaw) |
+|-----------|--------------|-------------------|---------------|-------------------|
+| AIME 2024 | 0.9000 | 0.8300 | 0.9330 | 1.0000 |
+| AIME 2025 | 0.6300 | 0.7600 | 0.9300 | 1.0000 |
+| AIME 2026 | 0.5719 | 0.3896 | 0.9000 | 0.9667 |
+
 ## Project Structure
 
 ```
@@ -306,11 +342,70 @@ AlphaDiana/
 └── tests/                        # Test suite
 ```
 
+## Security Guard
+
+AlphaDiana ships with a security daemon (`scripts/security_guard.py`) that prevents misconfigured services from starting and continuously monitors for active attacks at runtime.
+
+### What it checks
+
+| Category | Checks |
+|---|---|
+| **Redis** | No password, `protected-mode` off, bound to `0.0.0.0`, active SLAVEOF/Rogue-Master attack |
+| **Docker containers** | Any Redis container with ports exposed to the public network |
+| **OpenClaw gateway** | Default weak token (`"OPENCLAW"`), token in config files |
+| **ROCK Admin / Proxy** | Listening on a public interface instead of `127.0.0.1` |
+| **Sandbox containers** | OpenClaw sandbox ports mapped directly to the host |
+| **Dashboard backend** | FastAPI running with `--host 0.0.0.0` without authentication |
+
+### Usage
+
+**Pre-flight check** — blocks startup if critical issues are found:
+
+```bash
+python3 scripts/security_guard.py --check
+```
+
+This is already integrated into `scripts/start_openclaw.sh` and runs automatically before services start.
+
+**Continuous monitoring daemon** — checks every 10 seconds and auto-remediates SLAVEOF attacks:
+
+```bash
+python3 scripts/security_guard.py --daemon
+```
+
+When a Redis SLAVEOF attack is detected, the daemon automatically runs `SLAVEOF NO ONE` to restore master mode and logs the event.
+
+**Both at once** — check then enter daemon mode:
+
+```bash
+python3 scripts/security_guard.py --check --daemon
+```
+
+**Override** (not recommended) — skip blocking checks to start anyway:
+
+```bash
+SECURITY_GUARD_BYPASS=1 python3 scripts/security_guard.py --check
+```
+
+### Common issues and fixes
+
+| Issue | Fix |
+|---|---|
+| Redis has no password | `redis-cli -p <port> CONFIG SET requirepass 'strong-password'` |
+| `protected-mode` off | `redis-cli -p <port> CONFIG SET protected-mode yes` |
+| Redis bound to `0.0.0.0` | Restart container with `-p 127.0.0.1:<port>:6379` |
+| Weak OpenClaw token | Edit `OPENCLAW_GATEWAY_TOKEN` in `openclaw_deploy/rock_agent_config.yaml` |
+| ROCK services on public interface | Set `ROCK_BIND_HOST=127.0.0.1` before starting |
+
 ## Dashboard
 
 AlphaDiana includes a web dashboard for launching, monitoring, and comparing evaluation runs without manually editing YAML or inspecting raw JSONL files.
 
-![](./assets/fig2.png)
+<img width="1268" height="1029" alt="1c8e4a71d97731bd30285665e4725fbd" src="https://github.com/user-attachments/assets/d1b53945-ddbc-43a9-a79b-2a8f51524360" />
+
+<img width="2536" height="2844" alt="image" src="https://github.com/user-attachments/assets/fadd6496-5c5b-40fb-be0b-2309c321f791" />
+
+
 
 ### Dashboard features
 

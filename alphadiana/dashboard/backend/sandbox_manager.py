@@ -123,7 +123,10 @@ def _get_rock_urls() -> tuple[str, str]:
     _add_pair(ports.base_url, ports.proxy_api_url)
 
     # Priority 3: common port pairs (admin, proxy=admin+1)
-    for admin_port in [9020, 9010, 9000]:
+    # Honour ROCK_ADMIN_PORT from env if set (prepend it so it takes precedence).
+    _env_admin_port = os.environ.get("ROCK_ADMIN_PORT")
+    _fallback_ports = [int(_env_admin_port)] + [9020, 9010, 9000] if _env_admin_port else [9020, 9010, 9000]
+    for admin_port in _fallback_ports:
         _add_pair(
             f"http://127.0.0.1:{admin_port}",
             f"http://127.0.0.1:{admin_port + 1}/apis/envs/sandbox/v1",
