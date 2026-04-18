@@ -5,18 +5,22 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 import re
 import shlex
 import shutil
+import socket
 import subprocess
 import tempfile
+import threading
 import time
 import uuid
 from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.request import Request, urlopen
 
 
 HOST = "0.0.0.0"
@@ -33,6 +37,198 @@ DEFAULT_TEMPERATURE = float(os.environ.get("ZEROCLAW_TEMPERATURE", "0.0"))
 ARTIFACT_ROOT = Path(
     os.environ.get("ZEROCLAW_ARTIFACT_ROOT", "/tmp/zeroclaw-bridge-artifacts")
 ).expanduser()
+
+
+_bridge_logger = logging.getLogger("zeroclaw_bridge.vision_proxy")
+
+
+def _find_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def _attachments_have_image(attachments: list[dict[str, Any]]) -> bool:
+    for item in attachments:
+        mime = str(item.get("mime", "") or "").lower()
+        if mime.startswith("image/") and item.get("data"):
+            return True
+    return False
+
+
+def _vision_inject_messages(
+    messages: list[dict[str, Any]],
+    image_items: list[dict[str, Any]],
+    target_text: str,
+) -> tuple[list[dict[str, Any]], bool]:
+    """Inject image_url content blocks into the first matching user message."""
+    target_norm = (target_text or "").strip()
+    new_messages: list[dict[str, Any]] = []
+    injected = False
+    for msg in messages:
+        if injected or msg.get("role") != "user":
+            new_messages.append(msg)
+            continue
+        content = msg.get("content")
+        if isinstance(content, list):
+            text_parts = [p.get("text", "") for p in content if isinstance(p, dict) and p.get("type") == "text"]
+            text = "\n".join(text_parts)
+        else:
+            text = str(content or "")
+        if target_norm and target_norm not in text:
+            new_messages.append(msg)
+            continue
+        parts: list[dict[str, Any]] = [{"type": "text", "text": text}]
+        for item in image_items:
+            data = item.get("data")
+            mime = str(item.get("mime") or "image/png")
+            if not data:
+                continue
+            b64 = base64.b64encode(data).decode("ascii")
+            parts.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:{mime};base64,{b64}"},
+            })
+        new_msg = dict(msg)
+        new_msg["content"] = parts
+        new_messages.append(new_msg)
+        injected = True
+    return new_messages, injected
+
+
+class _BridgeVisionProxyState:
+    def __init__(self, upstream_base: str, upstream_api_key: str,
+                 image_items: list[dict[str, Any]], target_text: str,
+                 upstream_model: str | None) -> None:
+        self.upstream_base = upstream_base.rstrip("/")
+        self.upstream_api_key = upstream_api_key
+        self.image_items = image_items
+        self.target_text = target_text
+        self.upstream_model = upstream_model
+        self.request_count = 0
+        self.injection_count = 0
+
+
+def _make_vision_proxy_handler(state: _BridgeVisionProxyState):
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, fmt: str, *args: Any) -> None:
+            _bridge_logger.debug("[vision-proxy] " + fmt, *args)
+
+        def _forward(self, body: bytes) -> None:
+            forward_path = self.path
+            if forward_path.startswith("/v1") and state.upstream_base.endswith("/v1"):
+                forward_path = forward_path[len("/v1"):] or "/"
+            url = f"{state.upstream_base}{forward_path}"
+            headers = {
+                k: v for k, v in self.headers.items()
+                if k.lower() not in {"host", "content-length", "authorization"}
+            }
+            if state.upstream_api_key:
+                headers["Authorization"] = f"Bearer {state.upstream_api_key}"
+            req = Request(url, data=body, headers=headers, method=self.command)
+            try:
+                with urlopen(req, timeout=600) as resp:
+                    payload = resp.read()
+                    self.send_response(resp.status)
+                    for hk, hv in resp.headers.items():
+                        if hk.lower() in {"transfer-encoding", "connection", "content-length"}:
+                            continue
+                        self.send_header(hk, hv)
+                    self.send_header("Content-Length", str(len(payload)))
+                    self.end_headers()
+                    self.wfile.write(payload)
+            except Exception as exc:
+                err = json.dumps({"error": {"message": str(exc), "type": "proxy_error"}}).encode()
+                self.send_response(502)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(err)))
+                self.end_headers()
+                self.wfile.write(err)
+
+        def do_GET(self) -> None:  # noqa: N802
+            self._forward(b"")
+
+        def do_POST(self) -> None:  # noqa: N802
+            length = int(self.headers.get("Content-Length", "0") or "0")
+            body = self.rfile.read(length) if length > 0 else b""
+            state.request_count += 1
+            is_chat = self.path.endswith("/chat/completions")
+            has_images = bool(state.image_items)
+            if is_chat and (has_images or state.upstream_model):
+                try:
+                    payload = json.loads(body.decode("utf-8"))
+                    if state.upstream_model:
+                        payload["model"] = state.upstream_model
+                    messages = payload.get("messages")
+                    if has_images and isinstance(messages, list):
+                        new_messages, injected = _vision_inject_messages(
+                            messages, state.image_items, state.target_text,
+                        )
+                        if injected:
+                            payload["messages"] = new_messages
+                            state.injection_count += 1
+                            print(
+                                f"[ZeroClawBridge] [vision-proxy] injected {len(state.image_items)} "
+                                f"images into request #{state.request_count}",
+                                flush=True,
+                            )
+                    body = json.dumps(payload).encode("utf-8")
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    pass
+            self._forward(body)
+
+    return Handler
+
+
+class _BridgeVisionProxy:
+    """In-bridge HTTP proxy that injects images into chat completions requests."""
+
+    def __init__(self, upstream_base: str, upstream_api_key: str,
+                 image_items: list[dict[str, Any]], target_text: str,
+                 upstream_model: str | None = None) -> None:
+        self._state = _BridgeVisionProxyState(
+            upstream_base, upstream_api_key, image_items, target_text, upstream_model,
+        )
+        self._port: int | None = None
+        self._server: HTTPServer | None = None
+        self._thread: threading.Thread | None = None
+
+    def __enter__(self) -> "_BridgeVisionProxy":
+        port = _find_free_port()
+        self._server = HTTPServer(("127.0.0.1", port), _make_vision_proxy_handler(self._state))
+        self._port = port
+        self._thread = threading.Thread(
+            target=self._server.serve_forever,
+            name=f"zeroclaw-bridge-vproxy-{port}",
+            daemon=True,
+        )
+        self._thread.start()
+        print(
+            f"[ZeroClawBridge] [vision-proxy] listening on {self.url} upstream={self._state.upstream_base}",
+            flush=True,
+        )
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        if self._server is not None:
+            self._server.shutdown()
+            self._server.server_close()
+        if self._thread is not None:
+            self._thread.join(timeout=5)
+        print(
+            f"[ZeroClawBridge] [vision-proxy] shutdown: "
+            f"{self._state.request_count} requests, {self._state.injection_count} injections",
+            flush=True,
+        )
+
+    @property
+    def url(self) -> str:
+        return f"http://127.0.0.1:{self._port}/v1"
+
+    @property
+    def injection_count(self) -> int:
+        return self._state.injection_count
 
 
 def _normalize_api_base(api_base: str) -> str:
@@ -63,16 +259,26 @@ def _quote_toml(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def _build_config_toml(temperature: float | None = None) -> str:
+def _build_config_toml(
+    temperature: float | None = None,
+    provider_base_url_override: str | None = None,
+) -> str:
     workspace_only = "true" if WORKSPACE_ONLY else "false"
     effective_temperature = DEFAULT_TEMPERATURE if temperature is None else float(temperature)
+    provider_section = "[model_providers]\n\n"
+    if provider_base_url_override:
+        provider_section = (
+            f"[model_providers.{PROVIDER}]\n"
+            f"name = {_quote_toml(PROVIDER)}\n"
+            f"base_url = {_quote_toml(provider_base_url_override)}\n\n"
+        )
     return (
         f"default_provider = {_quote_toml(PROVIDER)}\n"
         f"default_model = {_quote_toml(MODEL_NAME)}\n\n"
         f"default_temperature = {effective_temperature}\n"
         "model_routes = []\n"
         "embedding_routes = []\n\n"
-        "[model_providers]\n\n"
+        f"{provider_section}"
         "[provider]\n\n"
         "[observability]\n"
         'backend = "none"\n'
@@ -236,6 +442,22 @@ def _run_zeroclaw(
     attachments: list[dict[str, Any]] | None = None,
 ) -> str:
     execution_id = uuid.uuid4().hex
+    attachments_list = list(attachments or [])
+    image_items = [item for item in attachments_list
+                   if str(item.get("mime", "") or "").lower().startswith("image/")
+                   and item.get("data")]
+    vision_proxy_ctx = (
+        _BridgeVisionProxy(
+            upstream_base=API_BASE,
+            upstream_api_key=API_KEY,
+            image_items=image_items,
+            target_text=prompt,
+            upstream_model=MODEL_NAME,
+        )
+        if image_items
+        else None
+    )
+
     with tempfile.TemporaryDirectory(prefix=f"zeroclaw_gateway_{execution_id}_") as td:
         base = Path(td)
         workspace_dir = base / "workspace"
@@ -253,10 +475,8 @@ def _run_zeroclaw(
             workspace_link.unlink()
         workspace_link.symlink_to(workspace_dir)
         config_path = zc_home / "config.toml"
-        config_path.write_text(_build_config_toml(temperature), encoding="utf-8")
-        os.chmod(config_path, 0o600)
 
-        attachment_manifest = _write_attachments(workspace_dir, list(attachments or []))
+        attachment_manifest = _write_attachments(workspace_dir, attachments_list)
 
         env = os.environ.copy()
         env.update({
@@ -277,14 +497,24 @@ def _run_zeroclaw(
             f"2> {shlex.quote(str(stderr_path))}"
         )
 
-        result = subprocess.run(
-            command,
-            shell=True,
-            cwd=str(workspace_dir),
-            env=env,
-            capture_output=True,
-            text=True,
-        )
+        if vision_proxy_ctx is not None:
+            with vision_proxy_ctx as proxy:
+                config_path.write_text(
+                    _build_config_toml(temperature, provider_base_url_override=proxy.url),
+                    encoding="utf-8",
+                )
+                os.chmod(config_path, 0o600)
+                result = subprocess.run(
+                    command, shell=True, cwd=str(workspace_dir), env=env,
+                    capture_output=True, text=True,
+                )
+        else:
+            config_path.write_text(_build_config_toml(temperature), encoding="utf-8")
+            os.chmod(config_path, 0o600)
+            result = subprocess.run(
+                command, shell=True, cwd=str(workspace_dir), env=env,
+                capture_output=True, text=True,
+            )
 
         raw_output = stdout_path.read_text(encoding="utf-8", errors="replace").strip() if stdout_path.exists() else ""
         raw_stderr = stderr_path.read_text(encoding="utf-8", errors="replace").strip() if stderr_path.exists() else ""
