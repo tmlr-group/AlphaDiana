@@ -17,6 +17,9 @@ agent:
     # api_key: "EMPTY"
     # model_name: "your-model-name"
     tool_call: true
+    permission:
+      edit: "deny"
+      bash: "allow"
     timeout: 1800
     system_prompt: |
       You are an expert software engineer. You will be given a GitHub issue description
@@ -25,6 +28,8 @@ agent:
 
       Guidelines:
       - Use your file reading and editing tools to inspect and modify the repository.
+      - Prefer using bash or short Python commands to modify files in place.
+      - Avoid the edit tool for file changes; use bash-based edits instead.
       - Make the smallest correct change needed; avoid unrelated refactoring.
       - Do not modify test files.
       - After making your changes, ensure the code is syntactically correct.

@@ -293,7 +293,7 @@ OpenCode 模式更接近传统 CLI coding agent：
 它负责容器内的 CLI 运行环境准备与执行，主要包括：
 
 - 在容器里安装 Node.js
-- 安装 `opencode-ai` 或 `opencode`
+- 安装 `opencode-ai`（其平台二进制通过 `optionalDependencies` 下发，不能加 `--omit=optional`）
 - 生成 XDG 配置目录
 - 写入 opencode provider JSON
 - 执行 `opencode run`
@@ -399,8 +399,9 @@ OpenCode 模式更接近传统 CLI coding agent：
 - `alphadiana/agent/opencode_container_runtime.py`
 - `alphadiana/agent/opencode.py`
 
-如果问题出现在“run 一开始就报 scorer 未注册”，先看：
+如果问题出现在“评测阶段报错 / report 没生成 / 只有 patch diff 没有最终分数”，先看：
 
+- `alphadiana/scorer/swe_bench.py`
 - `alphadiana/runner/runner.py`
 - `alphadiana/scorer/`
 
@@ -411,4 +412,8 @@ OpenCode 模式更接近传统 CLI coding agent：
 - OpenClaw 是“容器内启动 gateway，再通过 HTTP 驱动 agent”
 - OpenCode 是“容器内直接跑 coding agent CLI，再从 git diff 抽补丁”
 
-当前仓库的主要缺口不在这两个 agent，而在 `swe_bench` scorer 这一块尚未注册完成。
+当前仓库的主要风险点不在 scorer 是否注册，而在三处是否协同正常：
+
+- agent 是否稳定产出 patch
+- `swebench_container` 是否稳定拉起官方任务容器
+- `swe_bench` scorer 是否稳定把 patch 送入官方 harness 并落盘评测结果

@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import shlex
+import shutil
+import subprocess
+import tarfile
 import time
 from copy import deepcopy
 from pathlib import Path
@@ -20,7 +24,12 @@ NODE_TARBALL = "node-v22.18.0-linux-x64.tar.xz"
 NODE_DOWNLOAD_URL = f"https://npmmirror.com/mirrors/node/v22.18.0/{NODE_TARBALL}"
 NODE_SHA256 = "c1bfeecf1d7404fa74728f9db72e697decbd8119ccc6f5a294d795756dfcfca7"
 OPENCLAW_VERSION = "2026.3.7"
-NPM_REGISTRY = "https://registry.npmmirror.com"
+NPM_REGISTRY = "https://registry.npmjs.org"
+LIBSIGNAL_GIT_URL = "https://github.com/whiskeysockets/libsignal-node.git"
+LIBSIGNAL_MIRROR_DIR_NAME = "libsignal-node-bare"
+LIBSIGNAL_MIRROR_CACHE_DIR = PROJECT_ROOT / ".cache" / "openclaw" / LIBSIGNAL_MIRROR_DIR_NAME
+LIBSIGNAL_MIRROR_REMOTE_ARCHIVE = f"/tmp/{LIBSIGNAL_MIRROR_DIR_NAME}.tar"
+LIBSIGNAL_MIRROR_REMOTE_DIR = f"/tmp/{LIBSIGNAL_MIRROR_DIR_NAME}"
 TESTBED_PYTHON_BIN_CANDIDATES = (
     "/opt/miniconda3/envs/testbed/bin",
     "/opt/conda/envs/testbed/bin",
@@ -44,9 +53,9 @@ TESTBED_TOOL_PATH = ":".join(dict.fromkeys(TESTBED_PATH_SEGMENTS))
 DEFAULT_INSTALL_OPENCLAW_COMMAND = "\n".join(
     [
         "set -e",
-        "if ! command -v wget >/dev/null 2>&1 || ! command -v xz >/dev/null 2>&1; then",
+        "if ! command -v wget >/dev/null 2>&1 || ! command -v xz >/dev/null 2>&1 || ! command -v git >/dev/null 2>&1; then",
         "  apt-get update",
-        "  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends wget ca-certificates xz-utils",
+        "  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends wget ca-certificates git xz-utils",
         "  rm -rf /var/lib/apt/lists/*",
         "fi",
         f"if [ ! -x {NODE_RUNTIME_BIN}/node ] || ! {NODE_RUNTIME_BIN}/node -e \"process.exit(Number(process.versions.node.split('.')[0]) >= 20 ? 0 : 1)\"; then",
@@ -63,6 +72,17 @@ DEFAULT_INSTALL_OPENCLAW_COMMAND = "\n".join(
         "git config --global --add url.'https://github.com/'.insteadOf 'ssh://git@github.com/'",
         "git config --global --add url.'https://github.com/'.insteadOf 'git@github.com:'",
         "git config --global --add url.'https://github.com/'.insteadOf 'git+ssh://git@github.com/'",
+        "git config --global http.version HTTP/1.1",
+        "git config --global http.lowSpeedLimit 0",
+        "git config --global http.lowSpeedTime 999999",
+        f"if [ -f {LIBSIGNAL_MIRROR_REMOTE_ARCHIVE} ]; then",
+        f"  rm -rf {LIBSIGNAL_MIRROR_REMOTE_DIR}",
+        "  mkdir -p /tmp",
+        f"  tar -xf {LIBSIGNAL_MIRROR_REMOTE_ARCHIVE} -C /tmp",
+        f"  git config --global --add safe.directory {LIBSIGNAL_MIRROR_REMOTE_DIR}",
+        f"  git config --global --add url.'file://{LIBSIGNAL_MIRROR_REMOTE_DIR}'.insteadOf '{LIBSIGNAL_GIT_URL}'",
+        f"  git config --global --add url.'file://{LIBSIGNAL_MIRROR_REMOTE_DIR}'.insteadOf 'git+{LIBSIGNAL_GIT_URL}'",
+        "fi",
         f"npm config set registry {NPM_REGISTRY}",
         f"npm install -g openclaw@{OPENCLAW_VERSION} --omit=optional",
         "npm cache clean --force || true",
@@ -76,6 +96,38 @@ def _progress(message: str) -> None:
 
 def _is_ready_probe_status(status_code: int) -> bool:
     return status_code in (200, 404, 405)
+
+
+def _make_directory_archive(source_dir: Path, arcname: str) -> bytes:
+    payload = io.BytesIO()
+    with tarfile.open(fileobj=payload, mode="w") as tar:
+        tar.add(source_dir, arcname=arcname)
+    return payload.getvalue()
+
+
+def _ensure_bare_git_mirror(source_url: str, cache_dir: Path) -> Path | None:
+    if (cache_dir / "HEAD").exists():
+        return cache_dir
+
+    cache_dir.parent.mkdir(parents=True, exist_ok=True)
+    tmp_dir = cache_dir.with_name(f"{cache_dir.name}.tmp")
+    shutil.rmtree(tmp_dir, ignore_errors=True)
+    try:
+        subprocess.run(
+            ["git", "clone", "--bare", "--depth", "1", source_url, str(tmp_dir)],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        tmp_dir.replace(cache_dir)
+        return cache_dir
+    except Exception as exc:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        if (cache_dir / "HEAD").exists():
+            return cache_dir
+        _logger.warning("Failed to prepare git mirror for %s: %s", source_url, exc)
+        return None
 
 
 class OpenClawContainerRuntimeManager:
@@ -101,6 +153,7 @@ class OpenClawContainerRuntimeManager:
         self._gateway_host = config.get("container_gateway_host", "127.0.0.1")
         self._started_sandboxes: set[str] = set()
         self._agent_md_applied_sandboxes: set[str] = set()
+        self._git_mirror_uploaded_sandboxes: set[str] = set()
 
         self._agent_md_mode = config.get("agent_md_mode", "none")
         self._agent_md_content = config.get("agent_md_content", "")
@@ -271,6 +324,27 @@ class OpenClawContainerRuntimeManager:
             ]
         )
 
+    def _build_git_dependency_mirror_archive(self) -> tuple[str, bytes] | None:
+        mirror_dir = _ensure_bare_git_mirror(LIBSIGNAL_GIT_URL, LIBSIGNAL_MIRROR_CACHE_DIR)
+        if mirror_dir is None:
+            return None
+        return (
+            LIBSIGNAL_MIRROR_REMOTE_ARCHIVE,
+            _make_directory_archive(mirror_dir, arcname=LIBSIGNAL_MIRROR_DIR_NAME),
+        )
+
+    def _upload_git_dependency_mirrors(self, sandbox: Any) -> None:
+        sandbox_id = str(getattr(sandbox, "sandbox_id", ""))
+        if sandbox_id and sandbox_id in self._git_mirror_uploaded_sandboxes:
+            return
+        archive = self._build_git_dependency_mirror_archive()
+        if archive is None:
+            return
+        remote_path, payload = archive
+        sandbox.upload(remote_path, payload)
+        if sandbox_id:
+            self._git_mirror_uploaded_sandboxes.add(sandbox_id)
+
     def _install_openclaw_if_needed(self, sandbox: Any) -> None:
         check = sandbox.execute(
             self._with_node_runtime_path("command -v openclaw >/dev/null 2>&1 && openclaw --version")
@@ -424,6 +498,7 @@ class OpenClawContainerRuntimeManager:
         _progress(f"preparing OpenClaw runtime for sandbox_id={sandbox_id}")
         self._prepare_runtime_files(sandbox)
         self.inject_agent_md(sandbox)
+        self._upload_git_dependency_mirrors(sandbox)
         self._install_openclaw_if_needed(sandbox)
         self._start_gateway(sandbox)
         self._wait_for_gateway(sandbox)

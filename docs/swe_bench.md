@@ -9,7 +9,7 @@
 
 ## 1. 先说当前仓库状态
 
-这两个 YAML 当前都可以通过 `validate`：
+这两个 YAML 当前都可以通过 `validate`，并且 `run` 已经能走到真实的 SWE-bench 评测链路：
 
 ```bash
 source scripts/activate.sh
@@ -22,19 +22,17 @@ python -m alphadiana.cli validate configs/examples/opencode_swe_bench.yaml \
   -o benchmark.config.max_tasks=1
 ```
 
-但按当前代码直接进入 `Runner.setup()` 时，还会遇到一个运行时问题：
+当前仓库里已经注册了 `swe_bench` scorer。它会复用官方 `swebench` harness：
 
-```text
-KeyError: "Scorer 'swe_bench' is not registered. Available: exact_match, llm_judge, math_verify, numeric"
-```
+- 先根据 task metadata 构建 / 复用官方评测镜像
+- 再把 agent 产出的 patch 送进官方评测容器
+- 最后把 `report.json`、`run_instance.log`、`test_output.txt` 挂到 AlphaDiana 的结果 artifacts
 
-也就是说：
+因此：
 
-- 当前这两个配置的结构是合法的。
-- 但当前仓库里还没有真正注册一个名为 `swe_bench` 的 scorer。
-- 所以如果不补这个 scorer，或者不把配置改成一个已存在的 scorer，`run` 在 setup 阶段就会失败。
-
-这点和 agent 本身的 OpenClaw / OpenCode 配置无关，而是评分器注册表当前缺了一环。
+- `validate` 只检查配置结构。
+- `run` 才会真正触发 Docker、数据集加载、任务容器启动、agent 执行和官方评测。
+- 如果 dashboard 显示 `X`，那表示链路跑通但 patch 没解题；这是模型结果，不是执行失败。
 
 ## 2. 运行前环境准备
 
@@ -233,9 +231,7 @@ scorer:
     log_dir: "./swe_bench_logs"
 ```
 
-从配置意图看，这显然是想使用一个专门的 SWE-bench scorer。
-
-但就当前仓库代码而言，这个 scorer 还没有被注册，所以这里是现在的实际阻塞点。
+这里用的是仓库内置的 `swe_bench` scorer。它会调用官方 `swebench` harness 来做 patch 应用与测试执行，而不是走 `exact_match` 之类的通用打分器。
 
 ## 5. 怎么跑 smoke test
 
@@ -275,26 +271,20 @@ python -m alphadiana.cli run configs/examples/opencode_swe_bench.yaml \
   -o benchmark.config.max_tasks=1
 ```
 
-## 5.3 按当前仓库状态，运行前要注意什么
+## 5.3 运行前要注意什么
 
-如果你保持当前 YAML 不变，`run` 进入 `Runner.setup()` 时会因为 scorer 未注册而失败。
+这里真正容易卡住的点已经从“scorer 未注册”变成了下面几类：
 
-因此当前有两种处理方向：
+1. 本地依赖没装齐：至少要有 `pip install -e '.[agents,benchmarks,swebench]'`
+2. Docker 不可用：官方任务容器和官方评测容器都依赖 Docker
+3. 上游模型配置不通：`OPENAI_BASE_URL` / `OPENAI_API_KEY` / `OPENAI_MODEL_NAME`
+4. Hugging Face 数据集拉取异常：必要时设置 `HF_ENDPOINT=https://hf-mirror.com`
 
-### 方向 A：补一个真正的 `swe_bench` scorer
+按 smoke 标准，成功与否要看三件事：
 
-这也是最符合配置意图的方式。这样 OpenClaw 和 OpenCode 产出的 patch 才能按 SWE-bench 预期去评估。
-
-### 方向 B：临时改成现有 scorer 做链路 smoke
-
-如果你只是想先验证 agent 和容器链路是否能跑通，可以临时换成一个当前已注册 scorer：
-
-- `exact_match`
-- `llm_judge`
-- `math_verify`
-- `numeric`
-
-但要注意，这样只能验证框架链路，不等于真的完成 SWE-bench 的官方评测逻辑。
+- `results/<run_id>/tasks/<task_id>.json` 已经写出
+- 任务记录里没有 `error`
+- dashboard 显示 `O` 或 `X`，而不是 `-`
 
 ## 6. OpenClaw 和 OpenCode 的实际区别
 

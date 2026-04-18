@@ -5,16 +5,23 @@ from __future__ import annotations
 import io
 import json
 import logging
+import os
 import tarfile
 import tempfile
 import time
 import uuid
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 
 from alphadiana.sandbox.base import ExecutionResult, Sandbox, SandboxSession
 from alphadiana.sandbox.registry import register_sandbox
-from alphadiana.utils.swebench import build_swebench_instance, infer_instance_id
+from alphadiana.utils.swebench import (
+    build_swebench_instance,
+    ensure_swebench_build_network_mode,
+    harden_test_spec_repo_clone,
+    infer_instance_id,
+)
 
 if TYPE_CHECKING:
     from alphadiana.benchmark.base import BenchmarkTask
@@ -26,6 +33,17 @@ TESTBED_PYTHON_BIN_CANDIDATES = (
     "/opt/conda/envs/testbed/bin",
     "/root/miniconda3/envs/testbed/bin",
 )
+FORWARDED_CONTAINER_ENV_KEYS = (
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "NO_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+    "no_proxy",
+)
+LOOPBACK_PROXY_HOSTS = {"127.0.0.1", "localhost", "::1", "0.0.0.0"}
 
 
 def _load_swebench_runtime() -> dict[str, Any]:
@@ -116,6 +134,35 @@ def _with_testbed_python_path(command: str) -> str:
             command,
         ]
     )
+
+
+def _collect_forwarded_container_environment(config: dict[str, Any]) -> dict[str, str]:
+    """Forward host network env vars needed by task-local installs.
+
+    SWE-bench task containers are started from the harness images directly, so
+    they do not inherit the host shell environment unless we pass it explicitly.
+    For agents that install extra tooling inside the task container, missing
+    proxy env vars can make host-vs-container network behavior diverge badly.
+    """
+    environment: dict[str, str] = {}
+    for key in FORWARDED_CONTAINER_ENV_KEYS:
+        value = os.environ.get(key, "").strip()
+        if value:
+            # Host-local proxies are not reachable from bridge-networked task containers.
+            if key.lower().endswith("_proxy"):
+                host = urlparse(value).hostname
+                if host in LOOPBACK_PROXY_HOSTS:
+                    continue
+            environment[key] = value
+
+    extra_env = config.get("environment", {})
+    if isinstance(extra_env, dict):
+        for raw_key, raw_value in extra_env.items():
+            key = str(raw_key).strip()
+            value = str(raw_value).strip()
+            if key and value:
+                environment[key] = value
+    return environment
 
 
 class SWEBenchContainerSession(SandboxSession):
@@ -278,6 +325,7 @@ class SWEBenchContainerSandbox(Sandbox):
     def _runtime_api(self) -> dict[str, Any]:
         if self._runtime is None:
             self._runtime = _load_swebench_runtime()
+        ensure_swebench_build_network_mode(self._config.get("docker_build_network", "host"))
         return self._runtime
 
     def _build_test_spec(self, task: "BenchmarkTask") -> tuple[dict[str, Any], Any]:
@@ -289,6 +337,11 @@ class SWEBenchContainerSandbox(Sandbox):
             env_image_tag=self._config.get("env_image_tag", "latest"),
             instance_image_tag=self._config.get("instance_image_tag", "latest"),
             arch=self._config.get("arch", "x86_64"),
+        )
+        harden_test_spec_repo_clone(
+            test_spec,
+            clone_retries=int(self._config.get("git_clone_retries", 3)),
+            retry_sleep_sec=int(self._config.get("git_clone_retry_sleep_sec", 5)),
         )
         return instance, test_spec
 
@@ -365,6 +418,7 @@ class SWEBenchContainerSandbox(Sandbox):
             "alphadiana.task_id": task.task_id,
             "alphadiana.repo": str(instance.get("repo", "")),
         }
+        environment = _collect_forwarded_container_environment(self._config)
 
         try:
             container = client.containers.run(
@@ -378,6 +432,7 @@ class SWEBenchContainerSandbox(Sandbox):
                 user=user,
                 ports={f"{container_port}/tcp": None},
                 labels=labels,
+                environment=environment or None,
             )
         except Exception as exc:
             raise RuntimeError(
@@ -400,6 +455,7 @@ class SWEBenchContainerSandbox(Sandbox):
             "gateway_host": gateway_host,
             "gateway_container_port": container_port,
             "gateway_host_port": host_port,
+            "forwarded_env_keys": sorted(environment),
         }
         return SWEBenchContainerSession(
             client=client,

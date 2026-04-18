@@ -83,9 +83,10 @@ DEFAULT_INSTALL_OPENCODE_COMMAND = "\n".join([
     "fi",
     f"export PATH=\"{NODE_RUNTIME_BIN}:$PATH\"",
     f"npm config set registry {NPM_REGISTRY}",
-    # opencode-ai is the npm package that installs the `opencode` binary
-    f"npm install -g opencode-ai@{OPENCODE_VERSION} --omit=optional 2>&1 || "
-    f"npm install -g opencode@{OPENCODE_VERSION} --omit=optional",
+    # opencode-ai ships the platform binary via optionalDependencies.
+    # `--omit=optional` breaks installation because the wrapper package
+    # cannot find `opencode-linux-x64` (or the matching platform package).
+    f"npm install -g opencode-ai@{OPENCODE_VERSION}",
     "npm cache clean --force || true",
 ])
 
@@ -216,6 +217,9 @@ class OpenCodeContainerRuntimeManager:
             "model": f"custom/{model_name}",
             "small_model": f"custom/{model_name}",
         }
+        permission_cfg = self._config.get("permission")
+        if isinstance(permission_cfg, dict) and permission_cfg:
+            cfg["permission"] = permission_cfg
         sandbox.upload(OPENCODE_CONFIG_PATH, json.dumps(cfg, indent=2).encode("utf-8"))
 
     # ------------------------------------------------------------------
