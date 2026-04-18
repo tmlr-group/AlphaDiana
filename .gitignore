@@ -51,13 +51,10 @@ dump.rdb
 /configs/*
 !/configs/examples/
 !/configs/examples/**
-!/configs/full_runs/
-!/configs/full_runs/**
 /artifacts/
 
 # external_benchmark runtime artifacts
 external_benchmark_artifacts_*/
-swebench_artifacts_*/
 results_*/
 external_benchmark_pipeline_*/
 
@@ -68,4 +65,3 @@ node_modules/
 
 .openclaw
 .env
-.codex

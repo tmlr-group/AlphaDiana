@@ -1,4 +1,4 @@
-"""OpenCode agent wrapper with native multimodal support and SWE-bench container mode."""
+"""OpenCode agent wrapper with native multimodal (modalities) and SWE-bench container mode."""
 
 from __future__ import annotations
 
@@ -25,6 +25,7 @@ _EXPLICIT_ANSWER_RE = re.compile(
     r"(?:\*{0,2})(?:the\s+)?(?:final\s+)?answer(?:\*{0,2})\s*(?:[:：]|is|=)\s*(.+)",
     re.IGNORECASE,
 )
+_THINK_TAG_RE = re.compile(r"<think>(.*?)</think>", re.DOTALL)
 _BOXED_RE = re.compile(r"\\boxed\{", re.DOTALL)
 
 _DEFAULT_SYSTEM_PROMPT = (
@@ -161,7 +162,7 @@ def _build_prompt(problem: str, system_prompt: str, attachment_paths: list[Path]
 
 
 def _derive_api_model(cli_model: str, model_name: str) -> str:
-    """Derive the provider model name when the config does not set api_model."""
+    """Derive the provider model name for direct OpenAI API calls."""
     if model_name:
         return model_name
     if "/" in cli_model:
@@ -203,12 +204,28 @@ def _parse_opencode_output(raw_output: str) -> tuple[str, list[dict[str, Any]], 
 
 
 class OpenCodeAgent(Agent):
-    """Agent that runs OpenCode CLI and supports task-container execution."""
+    """Agent that runs OpenCode CLI and supports task-container execution.
+
+    Docker isolation: set ``controller_mode: docker`` to run the opencode CLI
+    inside a container instead of directly on the host.  Requires the controller
+    image (default ``alphadiana/tb2-opencode-controller:latest``).
+
+    Build with::
+
+        docker build --network host \\
+          -f docker/terminal_bench2/Dockerfile.opencode-controller \\
+          -t alphadiana/tb2-opencode-controller:latest .
+    """
 
     name = "opencode"
 
     def setup(self, config: dict) -> None:
         self._runtime = str(config.get("runtime", "")).strip()
+        self._controller_mode = str(config.get("controller_mode", "host") or "host").strip()
+        self._controller_image = str(
+            config.get("controller_image", "alphadiana/tb2-opencode-controller:latest") or ""
+        ).strip()
+        self._controller_network = str(config.get("controller_network", "host") or "host").strip()
         self._cli_model = self._resolve_setting(config, "model", "OPENAI_MODEL_NAME")
         self._api_base = self._resolve_setting(config, "api_base", "OPENAI_BASE_URL")
         self._api_key = self._resolve_setting(
@@ -276,6 +293,7 @@ class OpenCodeAgent(Agent):
                     "OpenCode runtime='swebench_container' requires a sandbox session"
                 )
             return self._solve_in_container(task, sandbox)
+        # Images are handled natively by the CLI via modalities+attachment in opencode.json.
         return self._solve_cli(task)
 
     def _solve_in_container(self, task: BenchmarkTask, sandbox: Any) -> AgentResponse:
@@ -358,8 +376,66 @@ class OpenCodeAgent(Agent):
             system_prompt=system_prompt,
         )
 
+    def _run_in_docker(
+        self,
+        cmd: list[str],
+        workdir: str,
+        env: dict[str, str],
+    ) -> tuple[str, str, int]:
+        """Run opencode inside a Docker container for host isolation."""
+        uid = os.getuid()
+        gid = os.getgid()
+        container_home = Path(workdir) / ".controller-home"
+        container_home.mkdir(parents=True, exist_ok=True)
+        docker_cmd = [
+            "docker", "run", "--rm",
+            f"--network={self._controller_network}",
+            f"--user={uid}:{gid}",
+            "-v", f"{workdir}:{workdir}",
+            "-w", workdir,
+            "-e", f"HOME={container_home}",
+        ]
+        for key in ("OPENAI_API_KEY", "OPENAI_BASE_URL", "XDG_CONFIG_HOME"):
+            if key in env:
+                docker_cmd.extend(["-e", f"{key}={env[key]}"])
+        docker_cmd.append(self._controller_image)
+        # Replace host opencode binary with container entrypoint
+        docker_cmd.extend(["node", "/usr/lib/node_modules/opencode-ai/bin/opencode"])
+        docker_cmd.extend(cmd[1:])  # skip the host 'opencode' binary
+
+        logger.info("Running opencode in Docker: %s", self._controller_image)
+        process: subprocess.Popen[str] | None = None
+        try:
+            process = subprocess.Popen(
+                docker_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                stdin=subprocess.DEVNULL,
+                text=True,
+                start_new_session=True,
+            )
+            raw_output, stderr = process.communicate(timeout=self._timeout)
+            return raw_output, stderr, process.returncode
+        except subprocess.TimeoutExpired:
+            logger.warning("OpenCode Docker timed out after %ds", self._timeout)
+            raw_output = ""
+            stderr = f"Timeout after {self._timeout}s"
+            if process is not None:
+                try:
+                    os.killpg(process.pid, signal.SIGTERM)
+                    raw_output, timed_out_stderr = process.communicate(timeout=5)
+                    stderr = timed_out_stderr or stderr
+                except subprocess.TimeoutExpired:
+                    os.killpg(process.pid, signal.SIGKILL)
+                    raw_output, timed_out_stderr = process.communicate()
+                    stderr = timed_out_stderr or stderr
+                except ProcessLookupError:
+                    raw_output, timed_out_stderr = process.communicate()
+                    stderr = timed_out_stderr or stderr
+            return raw_output, stderr, -1
+
     def _solve_cli(self, task: BenchmarkTask) -> AgentResponse:
-        """Run the task through the OpenCode CLI (native multimodal via modalities)."""
+        """Run tasks through the OpenCode CLI (host or Docker mode)."""
         start = time.time()
 
         with tempfile.TemporaryDirectory(prefix="opencode-task-") as workdir:
@@ -369,16 +445,19 @@ class OpenCodeAgent(Agent):
             config_dir.mkdir(parents=True, exist_ok=True)
 
             provider_model_name = self._model_name or self._api_model
-            model_key = (
-                provider_model_name.split("/")[-1]
-                if "/" in provider_model_name
-                else provider_model_name
-            )
+            # model_key is the opencode-internal ID (no slashes): used as the
+            # dict key in the custom provider's models map and in the CLI path
+            # (custom/<model_key>).  provider_model_name keeps the full API
+            # model name (e.g. "qwen/qwen3.6-plus") sent to the endpoint.
+            model_key = provider_model_name.split("/")[-1] if "/" in provider_model_name else provider_model_name
             cli_model = f"custom/{model_key}"
             model_spec: dict[str, Any] = {
                 "name": provider_model_name,
                 "tool_call": self._tool_call,
             }
+            # Enable native multimodal when the task carries image attachments.
+            # opencode CLI refuses image input for custom providers unless these
+            # are declared; see https://github.com/anomalyco/opencode/issues/9897.
             if _has_image_attachments(task.attachments):
                 model_spec["attachment"] = True
                 model_spec["modalities"] = {
@@ -428,15 +507,8 @@ class OpenCodeAgent(Agent):
             env["OPENAI_API_KEY"] = self._api_key
             env["OPENAI_BASE_URL"] = self._api_base
             env["XDG_CONFIG_HOME"] = str(config_root)
-            for var in (
-                "ALL_PROXY",
-                "HTTP_PROXY",
-                "HTTPS_PROXY",
-                "all_proxy",
-                "http_proxy",
-                "https_proxy",
-                "OPENAI_MODEL_NAME",
-            ):
+            for var in ("ALL_PROXY", "HTTP_PROXY", "HTTPS_PROXY", "all_proxy", "http_proxy", "https_proxy",
+                        "OPENAI_MODEL_NAME"):
                 env.pop(var, None)
 
             cmd = [
@@ -464,39 +536,43 @@ class OpenCodeAgent(Agent):
             cmd.append("--")
             cmd.append(prompt)
 
-            logger.info("Running opencode for task %s (timeout=%ds)", task.task_id, self._timeout)
+            logger.info("Running opencode for task %s (timeout=%ds, mode=%s)",
+                        task.task_id, self._timeout, self._controller_mode)
 
-            process: subprocess.Popen[str] | None = None
-            try:
-                process = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    stdin=subprocess.DEVNULL,
-                    text=True,
-                    env=env,
-                    cwd=workdir,
-                    start_new_session=True,
-                )
-                raw_output, stderr = process.communicate(timeout=self._timeout)
-                returncode = process.returncode
-            except subprocess.TimeoutExpired:
-                logger.warning("OpenCode timed out for task %s after %ds", task.task_id, self._timeout)
-                raw_output = ""
-                stderr = f"Timeout after {self._timeout}s"
-                returncode = -1
-                if process is not None:
-                    try:
-                        os.killpg(process.pid, signal.SIGTERM)
-                        raw_output, timed_out_stderr = process.communicate(timeout=5)
-                        stderr = timed_out_stderr or stderr
-                    except subprocess.TimeoutExpired:
-                        os.killpg(process.pid, signal.SIGKILL)
-                        raw_output, timed_out_stderr = process.communicate()
-                        stderr = timed_out_stderr or stderr
-                    except ProcessLookupError:
-                        raw_output, timed_out_stderr = process.communicate()
-                        stderr = timed_out_stderr or stderr
+            if self._controller_mode == "docker":
+                raw_output, stderr, returncode = self._run_in_docker(cmd, workdir, env)
+            else:
+                process: subprocess.Popen[str] | None = None
+                try:
+                    process = subprocess.Popen(
+                        cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        stdin=subprocess.DEVNULL,
+                        text=True,
+                        env=env,
+                        cwd=workdir,
+                        start_new_session=True,
+                    )
+                    raw_output, stderr = process.communicate(timeout=self._timeout)
+                    returncode = process.returncode
+                except subprocess.TimeoutExpired:
+                    logger.warning("OpenCode timed out for task %s after %ds", task.task_id, self._timeout)
+                    raw_output = ""
+                    stderr = f"Timeout after {self._timeout}s"
+                    returncode = -1
+                    if process is not None:
+                        try:
+                            os.killpg(process.pid, signal.SIGTERM)
+                            raw_output, timed_out_stderr = process.communicate(timeout=5)
+                            stderr = timed_out_stderr or stderr
+                        except subprocess.TimeoutExpired:
+                            os.killpg(process.pid, signal.SIGKILL)
+                            raw_output, timed_out_stderr = process.communicate()
+                            stderr = timed_out_stderr or stderr
+                        except ProcessLookupError:
+                            raw_output, timed_out_stderr = process.communicate()
+                            stderr = timed_out_stderr or stderr
 
         wall_time = time.time() - start
         assistant_text, events, session_id = _parse_opencode_output(raw_output)
@@ -531,6 +607,7 @@ class OpenCodeAgent(Agent):
                 "num_events": len(events),
                 "session_id": session_id,
                 "num_attachments": len(attachment_paths),
+                "controller_mode": self._controller_mode,
                 "transport": "opencode_cli",
             },
         )

@@ -7,73 +7,42 @@ run_id: string
 
 # agent: (required) Agent system configuration.
 agent:
-  name: string        # Agent name, e.g. "openclaw", "direct_llm", "zeroclaw", "swebench_docker"
+  name: string        # Agent name, e.g. "openclaw", "direct_llm"
   version: string     # Pinned version tag or "latest"
   config:             # Pass-through config for the agent (model settings, etc.)
     runtime: string                  # Optional runtime selector, e.g. "swebench_container"
-    agent_type: string               # `swebench_docker` mode: "direct_llm" | "openclaw" | "opencode" | "zeroclaw"
+    agent_type: string               # `swebench_docker` mode: "direct_llm" | "openclaw" | "opencode"
     model: string
-    model_name: string
     api_base: string
-    gateway_token: string            # OpenClaw gateway auth token (default: "OPENCLAW")
-    rock_agent_config_path: string   # Path to ROCK agent config YAML
-    openclaw_config_path: string     # Path to OpenClaw gateway config JSON
-    rock_use_kata_runtime: boolean   # Auto-deployed ROCK sandboxes: enable Kata runtime instead of --privileged
-    rock_limit_cpus: float           # Auto-deployed ROCK sandboxes: optional hard CPU cap
-    container_gateway_host: string   # Published host for task-local OpenClaw gateway
-    container_gateway_port: integer  # Gateway port inside the task container
+    gateway_token: string           # OpenClaw gateway auth token (default: "OPENCLAW")
+    rock_agent_config_path: string  # Path to ROCK agent config YAML
+    openclaw_config_path: string    # Path to OpenClaw gateway config JSON
+    container_gateway_host: string  # Published host for task-local OpenClaw gateway
+    container_gateway_port: integer # Gateway port inside the task container
     install_openclaw_command: string
-    openclaw_bin: string
-    opencode_bin: string
-    zeroclaw_bin: string
     api_key: string
-    dockerhub_repo: string           # `swebench_docker` image repo prefix (default: "jefzda/sweap-images")
-    image: string                    # Explicit SWE-bench image override
-    output_dir: string               # Local artifact directory for Docker-backed agents
+    dockerhub_repo: string          # `swebench_docker` image repo prefix (default: "jefzda/sweap-images")
+    image: string                   # Explicit SWE-bench image override
+    output_dir: string              # Local artifact directory for Docker-backed agents
     temperature: float
     max_tokens: integer
-    max_attempts: integer            # Retry attempts for OpenClaw (default: 3)
-    request_timeout: float           # HTTP request timeout in seconds (default: 600)
-    runtime_trace_mode: string       # ZeroClaw trace mode (default: "none")
-    max_tool_iterations: integer     # ZeroClaw max tool iterations (default: 100)
-    max_actions_per_hour: integer    # ZeroClaw autonomy action budget (default: 200)
-    timeout_sec: integer
-    test_timeout_sec: integer
-    solver_timeout_sec: integer
-    onboard_timeout_sec: integer
-    logs_base_dir: string
-    controller_mode: string
-    controller_image: string
-    controller_network: string
-    controller_mount_docker_socket: boolean
-    agent_md_mode: string            # Agent.md customization: "none", "append", "override" (default: "none")
-    agent_md_content: string         # Content for agent.md injection
-    embedding_api_base: string       # Embedding model API base URL
-    embedding_api_key: string        # Embedding model API key
-    install_command: string          # Optional CLI install command for sandbox/local runtime
-    stream: boolean                  # Stream responses from the backend when supported
-    streaming: boolean               # CLI agents: provider streaming toggle
-    skip_bootstrap: boolean          # OpenClaw: skip workspace bootstrap injection
-    context_injection: string        # OpenClaw: workspace bootstrap injection policy
-    system_prompt_override: string   # OpenClaw: replace the gateway system prompt
-    tools_profile: string            # OpenClaw: gateway tool profile, e.g. "minimal"
-    tools_allow: [string]            # OpenClaw: explicit tool allowlist
-    tools_deny: [string]             # OpenClaw: explicit tool denylist
-    tool_call: boolean
-    thinking: string
-    verbose: string
-    env:                             # Nested env contract for `swebench_docker` OpenClaw/OpenCode/ZeroClaw modes
-      OPENAI_MODEL_NAME: string      # Required for `agent_type: openclaw|opencode|zeroclaw`
-      OPENAI_BASE_URL: string        # Required for `agent_type: openclaw|opencode|zeroclaw`
-      OPENAI_API_KEY: string         # Required for `agent_type: openclaw|opencode|zeroclaw`
+    max_attempts: integer           # Retry attempts for OpenClaw (default: 3)
+    request_timeout: float          # HTTP request timeout in seconds (default: 600)
+    agent_md_mode: string           # Agent.md customization: "none", "append", "override" (default: "none")
+    agent_md_content: string        # Content for agent.md injection
+    embedding_api_base: string      # Embedding model API base URL
+    embedding_api_key: string       # Embedding model API key
+    env:                            # Nested env contract for `swebench_docker` OpenClaw/OpenCode modes
+      OPENAI_MODEL_NAME: string     # Required for `agent_type: openclaw|opencode`
+      OPENAI_BASE_URL: string       # Required for `agent_type: openclaw|opencode`
+      OPENAI_API_KEY: string        # Required for `agent_type: openclaw|opencode`
       OPENCLAW_GATEWAY_TOKEN: string
       OPENCLAW_AGENT_TIMEOUT_SEC: string
       OPENCLAW_CHAT_MAX_TIME_SEC: string
       OPENCODE_TIMEOUT_SEC: string
-      ZEROCLAW_TIMEOUT_SEC: string
     # For `swebench_docker`:
     #   - `agent_type: direct_llm` uses top-level `model/api_base/api_key`
-    #   - `agent_type: openclaw|opencode|zeroclaw` uses nested `config.env.OPENAI_*`
+    #   - `agent_type: openclaw|opencode` uses nested `config.env.OPENAI_*`
 
 # benchmark: (required) Benchmark configuration.
 benchmark:
@@ -94,13 +63,11 @@ sandbox:
     image: string                   # Docker image (default: "python:3.11")
     memory: string                  # Memory limit, e.g. "2g", "512m" (default: "2g")
     cpus: float                     # CPU limit (default: 0.5)
-    limit_cpus: float               # Optional hard CPU cap passed through to ROCK
     startup_timeout: integer        # Sandbox startup timeout in seconds (default: 300)
     auto_clear_seconds: integer     # Auto-cleanup timeout in seconds (default: 3600)
     start_retries: integer          # Number of startup retries (default: 1)
     reset_between_tasks: boolean    # Reset workspace between tasks (default: true)
     proxy_timeout: integer          # Proxy timeout in seconds (default: 600)
-    use_kata_runtime: boolean       # Enable Kata runtime instead of ROCK's default privileged Docker mode
     # SWE-bench official container backend
     namespace: string               # swebench image namespace (default: "swebench")
     force_rebuild: boolean          # Force rebuilding the official instance image

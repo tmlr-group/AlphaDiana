@@ -16,7 +16,6 @@ below and in `context/qwen-openrouter-pilots/pilot-validation.md`.
 | `direct_llm` | `configs/examples/terminal_bench2_directllm_minimax.yaml` | `configs/full_runs/p25_full_terminal_bench2_directllm_minimax.yaml` |
 | `opencode` | `configs/examples/terminal_bench2_opencode_minimax.yaml` | `configs/full_runs/p25_full_terminal_bench2_opencode_minimax.yaml` |
 | `openclaw` | `configs/examples/terminal_bench2_openclaw_minimax.yaml` | `configs/full_runs/p25_full_terminal_bench2_openclaw_minimax.yaml` |
-| `zeroclaw` | `configs/examples/terminal_bench2_zeroclaw_minimax.yaml` | `configs/full_runs/p25_full_terminal_bench2_zeroclaw_minimax.yaml` |
 
 All three paths use the same local AlphaDiana `terminal_bench2` benchmark loader and scorer.
 
@@ -54,7 +53,7 @@ You also need:
 - Docker
 - a local `terminal-bench` task checkout
 - pre-pulled task images
-- controller images for `opencode`, `openclaw`, and `zeroclaw`
+- controller images for `opencode` and `openclaw`
 
 ## Official DirectLLM Baseline
 
@@ -176,16 +175,6 @@ docker build -f docker/terminal_bench2/Dockerfile.opencode-controller \
 
 docker build -f docker/terminal_bench2/Dockerfile.openclaw-controller \
   -t alphadiana/tb2-openclaw-controller:latest .
-
-docker build -f docker/terminal_bench2/Dockerfile.zeroclaw-controller \
-  -t alphadiana/tb2-zeroclaw-controller:latest .
-```
-
-For ZeroClaw, prefer putting large temporary files on a data disk before running:
-
-```bash
-export TMPDIR=/path/to/$USER/tmp/alphadiana-tb2
-mkdir -p "$TMPDIR"
 ```
 
 ## Runtime Model
@@ -202,7 +191,6 @@ Mode-specific behavior:
 - `direct_llm`: multi-turn chat loop that emits `$ cmd` lines and `DONE`
 - `opencode`: native controller-container CLI runner
 - `openclaw`: native controller-container CLI runner
-- `zeroclaw`: native controller-container CLI runner
 
 For native agents, the workspace `tb2-test` helper is intentionally disabled and the outer harness runs the real verifier once at the end.
 
@@ -214,7 +202,6 @@ Validate the smoke configs first:
 python -m alphadiana.cli validate configs/examples/terminal_bench2_directllm_minimax.yaml
 python -m alphadiana.cli validate configs/examples/terminal_bench2_opencode_minimax.yaml
 python -m alphadiana.cli validate configs/examples/terminal_bench2_openclaw_minimax.yaml
-python -m alphadiana.cli validate configs/examples/terminal_bench2_zeroclaw_minimax.yaml
 ```
 
 Run the three smoke configs:
@@ -223,7 +210,6 @@ Run the three smoke configs:
 python -m alphadiana.cli run configs/examples/terminal_bench2_directllm_minimax.yaml --redo-all
 python -m alphadiana.cli run configs/examples/terminal_bench2_opencode_minimax.yaml --redo-all
 python -m alphadiana.cli run configs/examples/terminal_bench2_openclaw_minimax.yaml --redo-all
-python -m alphadiana.cli run configs/examples/terminal_bench2_zeroclaw_minimax.yaml --redo-all
 ```
 
 April 19 OpenRouter/Qwen 3-task pilot commands:
@@ -296,7 +282,6 @@ Validate the full-run configs first:
 python -m alphadiana.cli validate configs/full_runs/p25_full_terminal_bench2_directllm_minimax.yaml
 python -m alphadiana.cli validate configs/full_runs/p25_full_terminal_bench2_opencode_minimax.yaml
 python -m alphadiana.cli validate configs/full_runs/p25_full_terminal_bench2_openclaw_minimax.yaml
-python -m alphadiana.cli validate configs/full_runs/p25_full_terminal_bench2_zeroclaw_minimax.yaml
 ```
 
 Run them:
@@ -305,7 +290,6 @@ Run them:
 python -m alphadiana.cli run configs/full_runs/p25_full_terminal_bench2_directllm_minimax.yaml --redo-all
 python -m alphadiana.cli run configs/full_runs/p25_full_terminal_bench2_opencode_minimax.yaml --redo-all
 python -m alphadiana.cli run configs/full_runs/p25_full_terminal_bench2_openclaw_minimax.yaml --redo-all
-python -m alphadiana.cli run configs/full_runs/p25_full_terminal_bench2_zeroclaw_minimax.yaml --redo-all
 ```
 
 Recommended concurrency:
@@ -313,7 +297,6 @@ Recommended concurrency:
 - `direct_llm`: `max_concurrent: 4`
 - `opencode`: `max_concurrent: 2`
 - `openclaw`: `max_concurrent: 1`
-- `zeroclaw`: `max_concurrent: 1`
 
 Adjust only if the local machine has enough Docker and API capacity.
 
@@ -340,57 +323,9 @@ Full-run configs:
 - use `TERMINAL_BENCH2_DIR`
 - scan all task directories under that root
 
-For the current checked-in smoke setup, the canonical staged task is `db-wal-recovery`.
+For the current checked-in smoke setup, the canonical staged task is
+`db-wal-recovery`.
 
-The April 19 OpenRouter/Qwen pilot used the approved trio `db-wal-recovery`,
-`fix-git`, and `break-filter-js-from-html` instead of a single staged task.
-
-## ZeroClaw Reproduction Notes
-
-`terminal-bench-2` does not use ROCK. The formal ZeroClaw smoke path here is still sandboxed:
-
-- the task itself runs in the benchmark Docker container
-- the ZeroClaw controller runs in a separate Docker controller image
-
-This is different from the main `README.md` AIME quickstart, which focuses on ROCK auto-deploy.
-
-### Reproduce The 2026-04-17 Formal Docker Smoke
-
-Prepare the staged smoke task and controller image first:
-
-```bash
-export OPENAI_BASE_URL=https://api.example.com/v1/
-export OPENAI_API_KEY=sk-...
-export PYTHONPATH=$PWD
-export TERMINAL_BENCH2_SMOKE_DIR=/path/to/terminal-bench-smoke-dbwal
-export TMPDIR=/path/to/$USER/tmp/alphadiana-tb2
-mkdir -p "$TMPDIR"
-
-docker pull alexgshaw/db-wal-recovery:20251031
-docker build -f docker/terminal_bench2/Dockerfile.zeroclaw-controller \
-  -t alphadiana/tb2-zeroclaw-controller:latest .
-```
-
-Run the smoke:
-
-```bash
-python -m alphadiana.cli run configs/examples/terminal_bench2_zeroclaw_minimax.yaml \
-  -o run_id=pr26_formal_smoke_tb2_zeroclaw_minimax_docker_20260417_v2 \
-  -o agent.config.logs_base_dir=/path/to/$USER/tmp/alphadiana-tb2/tb2_logs
-```
-
-Expected result:
-
-- dashboard: `X`
-- task file exists under `results/terminal_bench2_zeroclaw_minimax_smoke/<run_id>/tasks/`
-- task JSON has no `error`
-- the recorded task is `tb2_db-wal-recovery`
-
-Observed local verification on 2026-04-17:
-
-- run_id: `pr26_formal_smoke_tb2_zeroclaw_minimax_docker_20260417_v2`
-- result: dashboard `X`, `predicted=0`, no `error`
-- execution mode: Docker task container + Docker ZeroClaw controller
-- the artifact shows ZeroClaw loaded `model=\"minimax-m2.5\"`
-
-On this local smoke, the provider hit `429 Too Many Requests`, so the verifier failed because `/app/recovered.json` was never created. That still counts as a smoke pass under the execution playbook because the benchmark path completed, the task JSON was written, and the dashboard reached `X`.
+The April 19 OpenRouter/Qwen pilot used the approved trio
+`db-wal-recovery`, `fix-git`, and `break-filter-js-from-html` instead of a
+single staged task.
