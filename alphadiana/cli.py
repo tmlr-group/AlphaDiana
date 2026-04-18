@@ -72,8 +72,16 @@ def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
 
     _warn_proxy()
 
-    # Pre-flight: verify ROCK services are reachable for openclaw runs.
-    if config.agent_name == "openclaw":
+    # Pre-flight: verify ROCK services only for ROCK-backed OpenClaw runs.
+    uses_rock_runtime = (
+        config.agent_name == "openclaw"
+        and config.agent_config.get("runtime") != "swebench_container"
+        and (
+            config.sandbox_name == "rock"
+            or bool(config.agent_config.get("rock_agent_config_path"))
+        )
+    )
+    if uses_rock_runtime:
         from alphadiana.utils.rock_ports import resolve_rock_ports_from_env, check_rock_services
         ports = resolve_rock_ports_from_env()
         click.echo(f"Pre-flight: checking ROCK services (admin={ports.admin_port}, proxy={ports.proxy_port}, redis={ports.redis_port})...")
@@ -266,7 +274,10 @@ def list_benchmarks():
     # Import benchmark modules to trigger registration.
     import alphadiana.benchmark.aime  # noqa: F401
     import alphadiana.benchmark.custom  # noqa: F401
+    import alphadiana.benchmark.swe_bench  # noqa: F401
+    import alphadiana.benchmark.external_benchmark  # noqa: F401
     import alphadiana.benchmark.swebench_pro  # noqa: F401
+    import alphadiana.benchmark.terminal_bench2  # noqa: F401
 
     from alphadiana.benchmark.registry import BenchmarkRegistry
 

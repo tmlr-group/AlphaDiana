@@ -16,6 +16,10 @@ dependencies = [
 benchmarks = ["datasets>=2.0", "tomli>=2.0; python_version<'3.11'"]
 agents = ["openai>=1.0", "httpx>=0.24"]
 sandbox = ["requests>=2.28"]
+swebench = [
+    "docker>=7.0.0",
+    "swebench>=4.0.0",
+]
 rock = [
     "rl-rock[admin,sandbox-actor]>=1.3.0,<2",
     "nacos-sdk-python==2.0.9",
@@ -26,6 +30,8 @@ all = [
     "openai>=1.0",
     "httpx>=0.24",
     "requests>=2.28",
+    "docker>=7.0.0",
+    "swebench>=4.0.0",
     "rl-rock[admin,sandbox-actor]>=1.3.0,<2",
     "nacos-sdk-python==2.0.9",
 ]

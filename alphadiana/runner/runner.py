@@ -144,26 +144,40 @@ class Runner:
         # Import all benchmark/agent/sandbox/scorer modules to trigger registration.
         import alphadiana.benchmark.aime  # noqa: F401
         import alphadiana.benchmark.custom  # noqa: F401
+        import alphadiana.benchmark.swe_bench  # noqa: F401
+        import alphadiana.benchmark.gpqa  # noqa: F401
+        import alphadiana.benchmark.hle  # noqa: F401
+        import alphadiana.benchmark.imo_answerbench  # noqa: F401
+        import alphadiana.benchmark.mmmu_pro  # noqa: F401
         import alphadiana.benchmark.external_benchmark  # noqa: F401
         import alphadiana.benchmark.swebench_pro  # noqa: F401
+        import alphadiana.benchmark.terminal_bench2  # noqa: F401
 
         # Import agent modules to trigger registration.
-        import alphadiana.agent.openclaw  # noqa: F401
         import alphadiana.agent.direct_llm  # noqa: F401
         import alphadiana.agent.external_benchmark_docker  # noqa: F401
+        import alphadiana.agent.openclaw  # noqa: F401
+        import alphadiana.agent.opencode  # noqa: F401
         import alphadiana.agent.swebench_docker  # noqa: F401
+        import alphadiana.agent.terminal_bench2_docker  # noqa: F401
+        import alphadiana.agent.terminal_bench2_openclaw  # noqa: F401
+        import alphadiana.agent.terminal_bench2_opencode  # noqa: F401
 
         # Import sandbox modules to trigger registration.
         import alphadiana.sandbox.local  # noqa: F401
         import alphadiana.sandbox.rock  # noqa: F401
+        import alphadiana.sandbox.swebench_container  # noqa: F401
 
         # Import scorer modules to trigger registration.
         import alphadiana.scorer.exact_match  # noqa: F401
-        import alphadiana.scorer.numeric  # noqa: F401
+        import alphadiana.scorer.imo_verify_scorer  # noqa: F401
         import alphadiana.scorer.llm_judge  # noqa: F401
         import alphadiana.scorer.math_verify_scorer  # noqa: F401
         import alphadiana.scorer.external_benchmark  # noqa: F401
+        import alphadiana.scorer.numeric  # noqa: F401
+        import alphadiana.scorer.swe_bench  # noqa: F401
         import alphadiana.scorer.swebench_pro  # noqa: F401
+        import alphadiana.scorer.terminal_bench2_scorer  # noqa: F401
 
         # Resolve and instantiate benchmark.
         benchmark_cls = BenchmarkRegistry.get(self.config.benchmark_name)
@@ -294,6 +308,7 @@ class Runner:
         if (
             self.sandbox is None
             and self.config.agent_name == "openclaw"
+            and self.config.agent_config.get("runtime") != "swebench_container"
             and self.config.agent_config.get("rock_agent_config_path")
             and self.config.agent_config.get("openclaw_config_path")
         ):
@@ -490,6 +505,7 @@ class Runner:
             self.sandbox is None
             and not predeployed_sessions
             and self.config.agent_name == "openclaw"
+            and self.config.agent_config.get("runtime") != "swebench_container"
             and self.config.agent_config.get("rock_agent_config_path")
             and self.config.agent_config.get("openclaw_config_path")
         ):
@@ -544,9 +560,16 @@ class Runner:
         # gateway_pool (multi-sandbox).  A SandboxPool would create N sessions
         # inside a single container, causing workspace contention.
         pool = None
+        sandbox_supports_pooling = True
+        if self.sandbox is not None:
+            supports_pooling = getattr(self.sandbox, "supports_pooling", None)
+            if callable(supports_pooling):
+                sandbox_supports_pooling = bool(supports_pooling())
+
         if (
             self.sandbox is not None
             and self.config.max_concurrent > 1
+            and sandbox_supports_pooling
             and self.config.agent_name != "openclaw"
         ):
             from alphadiana.sandbox.pool import SandboxPool
@@ -557,7 +580,12 @@ class Runner:
         # For sequential mode, create a single shared session to reuse across
         # all tasks instead of creating (and tearing down) one per task.
         shared_session = None
-        if self.sandbox is not None and pool is None:
+        sandbox_supports_shared_session = True
+        if self.sandbox is not None:
+            supports_shared_session = getattr(self.sandbox, "supports_shared_session", None)
+            if callable(supports_shared_session):
+                sandbox_supports_shared_session = bool(supports_shared_session())
+        if self.sandbox is not None and pool is None and sandbox_supports_shared_session:
             logger.info("Creating shared sandbox session for sequential execution")
             shared_session = self.sandbox.create_session()
 
@@ -593,6 +621,11 @@ class Runner:
                 used_pool = True
             elif shared_session is not None:
                 sandbox_session = shared_session
+            elif self.sandbox is not None:
+                if self.config.sandbox_name == "swebench_container":
+                    sandbox_session = self.sandbox.create_session(task=runtime_task)
+                else:
+                    sandbox_session = self.sandbox.create_session()
             response_sandbox_id = ""
             start = time.monotonic()
             response = None
@@ -667,6 +700,8 @@ class Runner:
                             logger.warning("Artifact collection failed for task %s: %s", task.task_id, artifact_exc)
                     if not error_response.gateway_url and hasattr(sandbox_session, "proxy_v1_base"):
                         error_response.gateway_url = f"{sandbox_session.proxy_v1_base()}/chat/completions"
+                    elif not error_response.gateway_url and hasattr(sandbox_session, "gateway_api_base"):
+                        error_response.gateway_url = f"{sandbox_session.gateway_api_base()}/chat/completions"
                 if self.sandbox is not None:
                     error_response.metadata.setdefault("sandbox_backend", self.sandbox.name)
                 error_response.metadata.setdefault("sample_index", sample_index)

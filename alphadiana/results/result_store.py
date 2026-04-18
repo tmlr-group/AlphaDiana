@@ -129,6 +129,7 @@ class ResultStore:
                 "correct": None,
                 "score": None,
                 "rationale": error.get("error", ""),
+                "score_metadata": {},
                 "trajectory": response.trajectory,
                 "reasoning_trajectory": response.reasoning_trajectory,
                 "raw_output": response.raw_output,
