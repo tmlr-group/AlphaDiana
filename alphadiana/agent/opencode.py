@@ -1,11 +1,10 @@
-"""OpenCode agent wrapper with multimodal fallback and SWE-bench container mode."""
+"""OpenCode agent wrapper with native multimodal (modalities) and SWE-bench container mode."""
 
 from __future__ import annotations
 
 import json
 import logging
 import os
-import random
 import re
 import signal
 import subprocess
@@ -17,17 +16,8 @@ from typing import Any
 from alphadiana.agent.base import Agent, AgentResponse
 from alphadiana.agent.registry import AgentRegistry
 from alphadiana.benchmark.base import BenchmarkTask
-from alphadiana.utils.attachments import (
-    build_openai_multimodal_user_content,
-    iter_binary_attachments,
-    write_attachments,
-)
+from alphadiana.utils.attachments import iter_binary_attachments, write_attachments
 from alphadiana.utils.math_answer import extract_answer_candidate, extract_boxed
-
-try:
-    from openai import OpenAI
-except ImportError:  # pragma: no cover - handled at runtime
-    OpenAI = None
 
 logger = logging.getLogger(__name__)
 
@@ -171,28 +161,6 @@ def _build_prompt(problem: str, system_prompt: str, attachment_paths: list[Path]
     return prompt
 
 
-def _extract_reasoning_from_model_extra(obj: object) -> str:
-    """Extract reasoning content from an OpenAI SDK object's model_extra."""
-    extra = getattr(obj, "model_extra", None)
-    if not extra or not isinstance(extra, dict):
-        return ""
-    for key in ("reasoning_content", "reasoning"):
-        value = extra.get(key)
-        if isinstance(value, str) and value:
-            return value
-    return ""
-
-
-def _split_think_tags(content: str) -> tuple[str, str]:
-    """Split <think>...</think> tags from content."""
-    parts = _THINK_TAG_RE.findall(content)
-    if not parts:
-        return "", content
-    reasoning = "\n".join(parts)
-    cleaned = _THINK_TAG_RE.sub("", content).strip()
-    return reasoning, cleaned
-
-
 def _derive_api_model(cli_model: str, model_name: str) -> str:
     """Derive the provider model name for direct OpenAI API calls."""
     if model_name:
@@ -200,35 +168,6 @@ def _derive_api_model(cli_model: str, model_name: str) -> str:
     if "/" in cli_model:
         return cli_model.split("/", 1)[1]
     return cli_model
-
-
-def _sanitize_request_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Redact inline data URLs before persisting request messages."""
-    sanitized: list[dict[str, Any]] = []
-    for message in messages:
-        content = message.get("content")
-        if not isinstance(content, list):
-            sanitized.append(dict(message))
-            continue
-
-        redacted_items: list[Any] = []
-        for item in content:
-            if not isinstance(item, dict):
-                redacted_items.append(item)
-                continue
-            if item.get("type") == "image_url":
-                redacted_items.append(
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": "<redacted-data-url>"},
-                    }
-                )
-            else:
-                redacted_items.append(dict(item))
-        redacted_message = dict(message)
-        redacted_message["content"] = redacted_items
-        sanitized.append(redacted_message)
-    return sanitized
 
 
 def _has_image_attachments(attachments: dict[str, Any]) -> bool:
@@ -297,12 +236,6 @@ class OpenCodeAgent(Agent):
         self._system_prompt = config.get("system_prompt", _DEFAULT_SYSTEM_PROMPT)
         self._opencode_bin = config.get("opencode_bin", "opencode")
         self._streaming = config.get("streaming") if "streaming" in config else None
-        self._temperature = config.get("temperature", 0.0)
-        self._top_p = config.get("top_p", None)
-        self._max_completion_tokens = config.get("max_completion_tokens", None)
-        self._max_retries = int(config.get("max_retries", 3))
-        self._multimodal_via_proxy = bool(config.get("multimodal_via_proxy", False))
-        self._client = None
         self._config = dict(config)
         self._runtime_manager = None
 
@@ -337,35 +270,6 @@ class OpenCodeAgent(Agent):
             return env_value
         return value if isinstance(value, str) else default
 
-    def _ensure_client(self):
-        if self._client is not None:
-            return self._client
-        if OpenAI is None:
-            raise RuntimeError(
-                "The 'openai' package is required for OpenCode multimodal support. "
-                "Install with: pip install openai"
-            )
-        self._client = OpenAI(base_url=self._api_base, api_key=self._api_key)
-        return self._client
-
-    @staticmethod
-    def _is_retryable(exc: Exception) -> bool:
-        """Return True for transient API failures worth retrying."""
-        try:
-            from openai import APIConnectionError, APIError, APIStatusError, APITimeoutError, RateLimitError
-
-            if isinstance(exc, (RateLimitError, APITimeoutError, APIConnectionError)):
-                return True
-            if isinstance(exc, APIStatusError):
-                return exc.status_code == 429 or exc.status_code >= 500
-            if isinstance(exc, APIError):
-                return True
-        except ImportError:
-            pass
-
-        message = str(exc).lower()
-        return any(token in message for token in ("timeout", "rate", "429", "500", "502", "503"))
-
     def solve(self, task: BenchmarkTask, sandbox: Any = None) -> AgentResponse:
         if self._runtime == "swebench_container":
             if sandbox is None:
@@ -373,11 +277,7 @@ class OpenCodeAgent(Agent):
                     "OpenCode runtime='swebench_container' requires a sandbox session"
                 )
             return self._solve_in_container(task, sandbox)
-
-        if _has_image_attachments(task.attachments):
-            if self._multimodal_via_proxy:
-                return self._solve_cli_with_vision_proxy(task)
-            return self._solve_multimodal(task)
+        # Images are handled natively by the CLI via modalities+attachment in opencode.json.
         return self._solve_cli(task)
 
     def _solve_in_container(self, task: BenchmarkTask, sandbox: Any) -> AgentResponse:
@@ -460,152 +360,6 @@ class OpenCodeAgent(Agent):
             system_prompt=system_prompt,
         )
 
-    def _solve_cli_with_vision_proxy(self, task: BenchmarkTask) -> AgentResponse:
-        """Run OpenCode CLI with a local vision proxy that injects images."""
-        from alphadiana.utils.vision_proxy import VisionProxy
-
-        original_api_base = self._api_base
-        try:
-            with VisionProxy(
-                upstream_base=original_api_base,
-                upstream_api_key=self._api_key,
-                attachments=task.attachments,
-                target_text=task.problem,
-                upstream_model=self._api_model or self._model_name,
-            ) as proxy:
-                self._api_base = proxy.url
-                response = self._solve_cli(task)
-                response.metadata = {
-                    **(response.metadata or {}),
-                    "transport": "opencode_cli_vision_proxy",
-                    "vision_proxy_injections": proxy.injection_count,
-                }
-                return response
-        finally:
-            self._api_base = original_api_base
-
-    def _solve_multimodal(self, task: BenchmarkTask) -> AgentResponse:
-        """Use a direct multimodal API call for image-backed tasks."""
-        client = self._ensure_client()
-        start = time.time()
-
-        messages: list[dict[str, Any]] = []
-        if self._system_prompt:
-            messages.append({"role": "system", "content": self._system_prompt})
-        messages.append(
-            {
-                "role": "user",
-                "content": build_openai_multimodal_user_content(task.problem, task.attachments),
-            }
-        )
-
-        request_kwargs: dict[str, Any] = {
-            "model": self._api_model,
-            "messages": messages,
-            "temperature": self._temperature,
-        }
-        if self._top_p is not None:
-            request_kwargs["top_p"] = self._top_p
-        if self._max_completion_tokens is not None:
-            request_kwargs["max_completion_tokens"] = self._max_completion_tokens
-
-        last_exc: Exception | None = None
-        response = None
-        for attempt in range(self._max_retries + 1):
-            try:
-                response = client.chat.completions.create(**request_kwargs)
-                last_exc = None
-                break
-            except Exception as exc:  # pragma: no cover - exercised via tests on success path
-                last_exc = exc
-                if attempt == self._max_retries or not self._is_retryable(exc):
-                    break
-                delay = min(2.0 * (2 ** attempt), 30.0)
-                jitter = random.uniform(0, delay * 0.3)
-                logger.warning(
-                    "OpenCode multimodal attempt %d/%d failed: %s. Retrying in %.1fs",
-                    attempt + 1,
-                    self._max_retries + 1,
-                    exc,
-                    delay + jitter,
-                )
-                time.sleep(delay + jitter)
-
-        if last_exc is not None:
-            if "not a multimodal model" in str(last_exc).lower():
-                raise RuntimeError(
-                    f"Configured model '{self._api_model}' does not accept image input on this "
-                    "OpenAI-compatible endpoint. Use a vision-capable model for image-backed tasks."
-                ) from last_exc
-            raise last_exc
-        assert response is not None
-
-        choice = response.choices[0]
-        raw_output = choice.message.content or ""
-        finish_reason = choice.finish_reason or ""
-        raw_reasoning = _extract_reasoning_from_model_extra(choice.message)
-        if not raw_reasoning and "<think>" in raw_output:
-            raw_reasoning, raw_output = _split_think_tags(raw_output)
-
-        token_usage: dict[str, int] = {}
-        if getattr(response, "usage", None):
-            token_usage = {
-                "prompt_tokens": getattr(response.usage, "prompt_tokens", 0) or 0,
-                "completion_tokens": getattr(response.usage, "completion_tokens", 0) or 0,
-                "total_tokens": getattr(response.usage, "total_tokens", 0) or 0,
-            }
-
-        answer = extract_answer_candidate(raw_output) if raw_output else ""
-        if not answer and raw_reasoning:
-            answer = extract_answer_candidate(raw_reasoning)
-
-        wall_time = time.time() - start
-        assistant_msg: dict[str, Any] = {"role": "assistant", "content": raw_output}
-        if raw_reasoning:
-            assistant_msg["thinking"] = raw_reasoning
-
-        response_json: dict[str, Any] = {}
-        if raw_reasoning:
-            response_json = {
-                "choices": [
-                    {
-                        "message": {
-                            "role": "assistant",
-                            "content": raw_output,
-                            "reasoning_content": raw_reasoning,
-                        }
-                    }
-                ]
-            }
-
-        reasoning_trajectory = []
-        if raw_reasoning:
-            reasoning_trajectory = [{"role": "assistant", "reasoning_content": raw_reasoning}]
-
-        attachment_names = [key for key, _, _ in iter_binary_attachments(task.attachments)]
-        return AgentResponse(
-            answer=answer,
-            trajectory=[
-                {"role": "system", "content": self._system_prompt},
-                {"role": "user", "content": task.problem, "attachments": attachment_names},
-                assistant_msg,
-            ],
-            raw_output=raw_output,
-            token_usage=token_usage,
-            wall_time_sec=wall_time,
-            metadata={
-                "returncode": 0,
-                "transport": "openai_multimodal",
-                "num_attachments": len(attachment_names),
-                "model": self._api_model,
-            },
-            system_prompt=self._system_prompt,
-            request_messages=_sanitize_request_messages(messages),
-            finish_reason=finish_reason,
-            response_json=response_json,
-            reasoning_trajectory=reasoning_trajectory,
-        )
-
     def _solve_cli(self, task: BenchmarkTask) -> AgentResponse:
         """Run text-only tasks through the OpenCode CLI."""
         start = time.time()
@@ -618,6 +372,19 @@ class OpenCodeAgent(Agent):
 
             provider_model_name = self._model_name or self._api_model
             cli_model = self._cli_model or f"custom/{provider_model_name}"
+            model_spec: dict[str, Any] = {
+                "name": provider_model_name,
+                "tool_call": self._tool_call,
+            }
+            # Enable native multimodal when the task carries image attachments.
+            # opencode CLI refuses image input for custom providers unless these
+            # are declared; see https://github.com/anomalyco/opencode/issues/9897.
+            if _has_image_attachments(task.attachments):
+                model_spec["attachment"] = True
+                model_spec["modalities"] = {
+                    "input": ["text", "image"],
+                    "output": ["text"],
+                }
             provider_config = {
                 "$schema": "https://opencode.ai/config.json",
                 "provider": {
@@ -634,12 +401,7 @@ class OpenCodeAgent(Agent):
                                 else {}
                             ),
                         },
-                        "models": {
-                            provider_model_name: {
-                                "name": provider_model_name,
-                                "tool_call": self._tool_call,
-                            }
-                        },
+                        "models": {provider_model_name: model_spec},
                     }
                 },
                 "model": cli_model,
