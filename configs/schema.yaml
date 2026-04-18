@@ -18,6 +18,8 @@ agent:
     gateway_token: string            # OpenClaw gateway auth token (default: "OPENCLAW")
     rock_agent_config_path: string   # Path to ROCK agent config YAML
     openclaw_config_path: string     # Path to OpenClaw gateway config JSON
+    rock_use_kata_runtime: boolean   # Auto-deployed ROCK sandboxes: enable Kata runtime instead of --privileged
+    rock_limit_cpus: float           # Auto-deployed ROCK sandboxes: optional hard CPU cap
     container_gateway_host: string   # Published host for task-local OpenClaw gateway
     container_gateway_port: integer  # Gateway port inside the task container
     install_openclaw_command: string
@@ -91,11 +93,13 @@ sandbox:
     image: string                   # Docker image (default: "python:3.11")
     memory: string                  # Memory limit, e.g. "2g", "512m" (default: "2g")
     cpus: float                     # CPU limit (default: 0.5)
+    limit_cpus: float               # Optional hard CPU cap passed through to ROCK
     startup_timeout: integer        # Sandbox startup timeout in seconds (default: 300)
     auto_clear_seconds: integer     # Auto-cleanup timeout in seconds (default: 3600)
     start_retries: integer          # Number of startup retries (default: 1)
     reset_between_tasks: boolean    # Reset workspace between tasks (default: true)
     proxy_timeout: integer          # Proxy timeout in seconds (default: 600)
+    use_kata_runtime: boolean       # Enable Kata runtime instead of ROCK's default privileged Docker mode
     # SWE-bench official container backend
     namespace: string               # swebench image namespace (default: "swebench")
     force_rebuild: boolean          # Force rebuilding the official instance image

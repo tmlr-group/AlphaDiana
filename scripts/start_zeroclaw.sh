@@ -50,7 +50,28 @@ if ! "${PYTHON}" -c "import rock" >/dev/null 2>&1; then
     exit 1
 fi
 
+_rock_installed=$("${PYTHON}" -c "import rock; print(rock.__file__)" 2>/dev/null || echo "")
+_rock_expected="${PROJECT_ROOT}/ref/ROCK/rock/__init__.py"
+if [ "${_rock_installed}" != "${_rock_expected}" ]; then
+    echo "ERROR: 'rock' editable install path does not match this project."
+    echo "  Currently: ${_rock_installed:-(not installed)}"
+    echo "  Expected:  ${_rock_expected}"
+    echo ""
+    echo "  Fix: re-install rock from this project, then re-run this script:"
+    echo "    ${PYTHON%/python}/pip install -e ${PROJECT_ROOT}/ref/ROCK -q"
+    exit 1
+fi
+
 source "${SCRIPT_DIR}/rock_env.sh"
+
+# Mirror OpenClaw's control-plane hardening on the ZeroClaw path too.
+echo "[0/6] Running security preflight check..."
+if ! "${PYTHON}" "${SCRIPT_DIR}/security_guard.py" --check; then
+    echo ""
+    echo "ERROR: Security preflight check failed. Start aborted."
+    echo "       Fix the issues above, or set SECURITY_GUARD_BYPASS=1 to override."
+    exit 1
+fi
 
 # Recompute derived URLs from the active dynamic ports.
 export ROCK_BASE_URL="http://${ROCK_HTTP_HOST}:${ROCK_ADMIN_PORT}"
@@ -103,6 +124,12 @@ echo "      ROCK_ADMIN_PORT = ${ROCK_ADMIN_PORT}"
 echo "      ROCK_PROXY_PORT = ${ROCK_PROXY_PORT}"
 echo "      ROCK_RAY_PORT   = ${ROCK_RAY_PORT}"
 echo "      ROCK_REDIS_PORT = ${ROCK_REDIS_PORT}"
+echo "      ROCK_WORKER_ENV_TYPE = ${ROCK_WORKER_ENV_TYPE:-local}"
+if [ "${ROCK_WORKER_ENV_TYPE:-local}" = "local" ]; then
+    echo "      WARN: local worker env mounts host project files into ROCK sandboxes."
+    echo "            For stronger isolation, prefer ROCK_WORKER_ENV_TYPE=pip or uv"
+    echo "            and set agent.config.rock_use_kata_runtime=true in the run config."
+fi
 
 echo "[2/6] Ensuring Redis is available..."
 _redis_port=$("${PYTHON}" - <<PYEOF 2>/dev/null || echo "${ROCK_REDIS_PORT}"
@@ -117,7 +144,7 @@ if ! _port_open "${_redis_port}"; then
     docker rm -f "${ROCK_REDIS_CONTAINER}" >/dev/null 2>&1 || true
     docker run -d --restart unless-stopped \
         --name "${ROCK_REDIS_CONTAINER}" \
-        -p "${_redis_port}:6379" \
+        -p "127.0.0.1:${_redis_port}:6379" \
         redis/redis-stack-server:latest >/dev/null
 fi
 if ! _wait_for_port "${_redis_port}" 15; then

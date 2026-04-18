@@ -371,12 +371,31 @@ class Runner:
                         "image": self.config.agent_config.get("rock_image", "python:3.11"),
                         "memory": self.config.agent_config.get("rock_memory", "2g"),
                         "cpus": float(self.config.agent_config.get("rock_cpus", 0.5)),
+                        "limit_cpus": (
+                            float(
+                                self.config.agent_config.get(
+                                    "rock_limit_cpus",
+                                    self.config.agent_config.get("limit_cpus"),
+                                )
+                            )
+                            if self.config.agent_config.get(
+                                "rock_limit_cpus",
+                                self.config.agent_config.get("limit_cpus"),
+                            ) is not None
+                            else None
+                        ),
                         "startup_timeout": int(self.config.agent_config.get("rock_startup_timeout", 300)),
                         "auto_clear_seconds": int(self.config.agent_config.get("rock_auto_clear_seconds", 7200)),
                         "start_retries": int(self.config.agent_config.get("rock_start_retries", 3)),
                         "reset_between_tasks": False,
                         "proxy_timeout": int(self.config.agent_config.get("proxy_timeout", 1800)),
                         "network_mode": self.config.agent_config.get("network_mode", None),
+                        "use_kata_runtime": bool(
+                            self.config.agent_config.get(
+                                "rock_use_kata_runtime",
+                                self.config.agent_config.get("use_kata_runtime", False),
+                            )
+                        ),
                     }
                     cache_key = _build_openclaw_profile_cache_key(
                         self.config,
@@ -564,6 +583,19 @@ class Runner:
                     # Lower resource profile to support multiple parallel sandboxes.
                     "memory": self.config.agent_config.get("rock_memory", "2g"),
                     "cpus": float(self.config.agent_config.get("rock_cpus", 0.5)),
+                    "limit_cpus": (
+                        float(
+                            self.config.agent_config.get(
+                                "rock_limit_cpus",
+                                self.config.agent_config.get("limit_cpus"),
+                            )
+                        )
+                        if self.config.agent_config.get(
+                            "rock_limit_cpus",
+                            self.config.agent_config.get("limit_cpus"),
+                        ) is not None
+                        else None
+                    ),
                     "startup_timeout": int(self.config.agent_config.get("rock_startup_timeout", 300)),
                     "auto_clear_seconds": int(self.config.agent_config.get("rock_auto_clear_seconds", 7200)),
                     "start_retries": int(self.config.agent_config.get("rock_start_retries", 3)),
@@ -572,6 +604,12 @@ class Runner:
                     "reset_between_tasks": False,
                     "proxy_timeout": int(self.config.agent_config.get("proxy_timeout", 1800)),
                     "network_mode": self.config.agent_config.get("network_mode", None),
+                    "use_kata_runtime": bool(
+                        self.config.agent_config.get(
+                            "rock_use_kata_runtime",
+                            self.config.agent_config.get("use_kata_runtime", False),
+                        )
+                    ),
                 }
                 _auto_sandbox.setup(auto_sandbox_config)
                 logger.info(

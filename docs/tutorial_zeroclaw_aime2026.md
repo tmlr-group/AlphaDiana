@@ -181,6 +181,13 @@ export `ROCK_BASE_URL` / `ROCK_PROXY_URL` back to your current shell. Source
 `scripts/rock_env.sh` before launching the benchmark so
 `configs/examples/zeroclaw_aime2026.yaml` picks up the active local ROCK URLs.
 
+For a stronger host-isolation posture, use both of these knobs together:
+
+- export `ROCK_WORKER_ENV_TYPE=pip` (or `uv`) before starting ROCK, so the worker
+  does not mount the host project tree and `.venv` into the sandbox.
+- set `agent.config.rock_use_kata_runtime: true` in the run config, so ROCK uses
+  Kata instead of the default privileged Docker mode.
+
 #### A2. Build the ZeroClaw reasoning image
 
 ```bash
