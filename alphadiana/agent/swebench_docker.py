@@ -342,7 +342,12 @@ class SWEBenchDockerAgent(Agent):
 
     def _docker_stop(self, container_id: str) -> None:
         """Best-effort stop for an existing container."""
-        result = _run(["docker", "stop", "-t", "10", container_id], timeout=30)
+        try:
+            result = _run(["docker", "stop", "-t", "10", container_id], timeout=30)
+        except subprocess.TimeoutExpired:
+            logger.warning("docker stop timed out for %s; falling back to docker rm -f", container_id)
+            self._docker_rm(container_id)
+            return
         if result.returncode != 0:
             logger.warning("docker stop failed for %s: %s", container_id, result.stderr.strip())
 

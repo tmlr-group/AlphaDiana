@@ -49,6 +49,12 @@ export OPENAI_MODEL_NAME=qwen/qwen3.5-27b
 That slug is the OpenRouter model ID for the logical target
 `Qwen/Qwen3.5-27B`.
 
+Dedicated 3-task OpenRouter pilot YAMLs currently exist only for
+`GPQA-Diamond` and `IMO-AnswerBench`. The April 19, 2026
+`terminal-bench-2` and `SWE-bench Pro` Qwen pilots reused the checked-in
+minimax smoke YAMLs with CLI overrides instead of adding new example configs.
+See the benchmark-specific runbooks for the exact override commands.
+
 When running from a local checkout, prefer `python -m alphadiana.cli ...` so the
 current workspace code is used.
 
@@ -65,6 +71,13 @@ Dedicated 3-task OpenRouter pilot configs also exist for:
 - `IMO-AnswerBench x openclaw`
 - `GPQA-Diamond x direct_llm`
 - `GPQA-Diamond x openclaw`
+
+OpenRouter/Qwen pilot coverage on April 19 also includes:
+
+- `terminal-bench-2 x opencode`
+- `terminal-bench-2 x openclaw`
+- `SWE-bench Pro x opencode`
+- `SWE-bench Pro x openclaw`
 
 Current limitation: on `main`, `opencode` text-only benchmark tasks still run
 through the local CLI path rather than a benchmark-managed sandbox. That is fine
