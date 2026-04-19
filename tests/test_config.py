@@ -446,6 +446,36 @@ class TestConfigValidator:
         assert config.agent_config["env"]["OPENAI_BASE_URL"] == "http://localhost:8000/v1"
         assert config.agent_config["env"]["OPENAI_API_KEY"] == "demo-key"
 
+    def test_swebench_docker_zeroclaw_env_defaults(self, tmp_path, monkeypatch):
+        """Nested ZeroClaw env keys should inherit OPENAI_* defaults."""
+        monkeypatch.setenv("OPENAI_MODEL_NAME", "demo-model")
+        monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:8000/v1")
+        monkeypatch.setenv("OPENAI_API_KEY", "demo-key")
+
+        config_content = textwrap.dedent("""\
+            agent:
+              name: swebench_docker
+              version: "v1.0"
+              config:
+                agent_type: zeroclaw
+                env:
+                  OPENAI_MODEL_NAME: ""
+                  OPENAI_BASE_URL: ""
+                  OPENAI_API_KEY: ""
+            benchmark:
+              name: swebench_pro_os
+            scorer:
+              name: exact_match
+        """)
+        yaml_path = tmp_path / "swebench_docker_zeroclaw.yaml"
+        yaml_path.write_text(config_content)
+
+        config = ExperimentConfig.from_yaml(str(yaml_path))
+
+        assert config.agent_config["env"]["OPENAI_MODEL_NAME"] == "demo-model"
+        assert config.agent_config["env"]["OPENAI_BASE_URL"] == "http://localhost:8000/v1"
+        assert config.agent_config["env"]["OPENAI_API_KEY"] == "demo-key"
+
     def test_swebench_docker_openclaw_validation_requires_nested_openai_settings(self):
         """Validator should fail when nested OpenClaw env settings are absent."""
         config = ExperimentConfig(
@@ -473,6 +503,20 @@ class TestConfigValidator:
         errors = ConfigValidator().validate(config)
 
         assert any("opencode" in e and "env.OPENAI_MODEL_NAME" in e for e in errors)
+
+    def test_swebench_docker_zeroclaw_validation_requires_nested_openai_settings(self):
+        """Validator should fail when nested ZeroClaw env settings are absent."""
+        config = ExperimentConfig(
+            agent_name="swebench_docker",
+            agent_version="v1.0",
+            benchmark_name="swebench_pro_os",
+            scorer_name="exact_match",
+            agent_config={"agent_type": "zeroclaw", "env": {}},
+            sandbox_name=None,
+        )
+        errors = ConfigValidator().validate(config)
+
+        assert any("zeroclaw" in e and "env.OPENAI_MODEL_NAME" in e for e in errors)
 
     def test_swebench_pro_validation_requires_existing_eval_paths(self):
         """Validator should fail when swebench_pro scorer paths are blank or missing."""

@@ -111,6 +111,30 @@ class TestSWEBenchDockerRegistry:
         assert "OpenCode provider preflight" in script
         assert "OpenCode startup diagnostics" in script
 
+    def test_zeroclaw_runner_script_includes_patch_and_attempt_artifacts(self):
+        script = Path("alphadiana/agent/swebench_assets/run_zeroclaw.sh").read_text(
+            encoding="utf-8"
+        )
+        assert "ZEROCLAW_SMOKE_MODEL_NAME" in script
+        assert "ZEROCLAW_SMOKE_MODEL_CANDIDATES" in script
+        assert "ZEROCLAW_TIMEOUT_SEC" in script
+        assert "ZEROCLAW_REQUIRE_PATCH" in script
+        assert "ZEROCLAW_PROMPT_PROFILE" in script
+        assert "ZEROCLAW_PROBLEM_STATEMENT_MAX_CHARS" in script
+        assert "ZEROCLAW_WORKSPACE_ONLY" in script
+        assert "ZEROCLAW_MAX_TOOL_ITERATIONS" in script
+        assert "ZEROCLAW_MAX_ACTIONS_PER_HOUR" in script
+        assert "ZEROCLAW_RUNTIME_TRACE_MODE" in script
+        assert "zeroclaw_candidate_models.txt" in script
+        assert "zeroclaw_prompt_contract.txt" in script
+        assert "zeroclaw_prompt_profile.txt" in script
+        assert "zeroclaw_no_edit_reason.txt" in script
+        assert "zeroclaw_attempt_matrix.json" in script
+        assert "zeroclaw_selected_attempt.json" in script
+        assert 'git -C "$REPO_ROOT" diff --binary >"$ZEROCLAW_PATCH_PATH"' in script
+        assert "active_session_no_patch" in script
+        assert "untracked_only_changes" in script
+
 
 class TestSWEBenchDockerImageResolution:
     def test_resolve_image_uses_dockerhub_tag(self):
@@ -347,6 +371,37 @@ class TestSWEBenchDockerInContainerModes:
         }
         assert "COPY --from=runtime /usr/bin/node /usr/bin/node" in builds[0][1]
         assert "COPY --from=runtime /usr/lib/node_modules/opencode-ai /usr/lib/node_modules/opencode-ai" in builds[0][1]
+
+    def test_prepare_runtime_image_builds_zeroclaw_overlay_from_official_source(self, monkeypatch):
+        agent = SWEBenchDockerAgent()
+        agent.setup({"agent_type": "zeroclaw", "request_timeout": 120})
+        pulls: list[str] = []
+        builds: list[tuple[str, str, dict[str, str] | None]] = []
+
+        monkeypatch.setattr(agent, "_docker_image_exists", lambda image: False)
+        monkeypatch.setattr(agent, "_docker_pull", lambda image: pulls.append(image))
+        monkeypatch.setattr(
+            agent,
+            "_docker_build_image",
+            lambda image, dockerfile, *, build_args=None: builds.append(
+                (image, dockerfile, build_args)
+            ),
+        )
+
+        runtime_image, metadata = agent._prepare_runtime_image("jefzda/sweap-images:tag-123")
+
+        assert runtime_image.startswith("alphadiana-swebench-runtime:zeroclaw-")
+        assert pulls == ["jefzda/sweap-images:tag-123", "zeroclaw-reasoning:0.6.9"]
+        assert metadata["runtime_source_image"] == "zeroclaw-reasoning:0.6.9"
+        assert metadata["runtime_injected"] is True
+        assert metadata["runtime_image_built"] is True
+        assert len(builds) == 1
+        assert builds[0][2] == {
+            "BASE_IMAGE": "jefzda/sweap-images:tag-123",
+            "RUNTIME_IMAGE": "zeroclaw-reasoning:0.6.9",
+        }
+        assert "COPY --from=runtime /usr/local/bin/zeroclaw /usr/local/bin/zeroclaw" in builds[0][1]
+        assert "libssl3" not in builds[0][1]
 
     def test_openclaw_mode_stages_assets_and_returns_patch(self, monkeypatch, tmp_path):
         staged_paths: list[str] = []
@@ -1014,6 +1069,466 @@ class TestSWEBenchDockerInContainerModes:
         assert "/swebench_agent/opencode/opencode_session.jsonl" in response.workspace_file_contents
         assert "/swebench_agent/opencode/git_status_before.txt" in response.workspace_file_contents
         assert "/swebench_agent/opencode/git_status_after.txt" in response.workspace_file_contents
+
+    def test_zeroclaw_mode_returns_patch_and_artifact_metadata(self, monkeypatch, tmp_path):
+        staged_paths: list[str] = []
+        docker_exec_calls: list[list[str]] = []
+        exec_envs: list[dict[str, str]] = []
+
+        agent = SWEBenchDockerAgent()
+        agent.setup({
+            "agent_type": "zeroclaw",
+            "output_dir": str(tmp_path),
+            "env": {
+                "OPENAI_MODEL_NAME": "demo-model",
+                "ZEROCLAW_SMOKE_MODEL_CANDIDATES": "demo-model,fallback-model",
+                "ZEROCLAW_TIMEOUT_SEC": "1500",
+                "ZEROCLAW_REQUIRE_PATCH": "1",
+                "ZEROCLAW_PROMPT_PROFILE": "edit_first",
+                "ZEROCLAW_PROBLEM_STATEMENT_MAX_CHARS": "12000",
+                "ZEROCLAW_WORKSPACE_ONLY": "0",
+                "ZEROCLAW_MAX_TOOL_ITERATIONS": "100",
+                "ZEROCLAW_MAX_ACTIONS_PER_HOUR": "200",
+                "ZEROCLAW_RUNTIME_TRACE_MODE": "none",
+                "OPENAI_BASE_URL": "http://localhost:8000/v1",
+                "OPENAI_API_KEY": "demo-key",
+            },
+        })
+
+        monkeypatch.setattr(agent, "_docker_pull", lambda image: None)
+        monkeypatch.setattr(agent, "_docker_create", lambda image: "container123")
+        monkeypatch.setattr(agent, "_docker_start", lambda container_id: None)
+        monkeypatch.setattr(agent, "_docker_stop", lambda container_id: None)
+        monkeypatch.setattr(agent, "_docker_rm", lambda container_id: None)
+        monkeypatch.setattr(agent, "_detect_repo_root", lambda container_id: "/workspace/repo")
+        monkeypatch.setattr(
+            agent,
+            "_prepare_runtime_image",
+            lambda image: (
+                "alphadiana-swebench-runtime:zeroclaw-test",
+                {
+                    "runtime_injected": True,
+                    "runtime_image_built": False,
+                    "runtime_source_image": "zeroclaw-reasoning:0.6.9",
+                },
+            ),
+        )
+
+        def fake_stage(container_id, *, local_path, remote_path):
+            staged_paths.append(remote_path)
+
+        def fake_exec(
+            container_id,
+            args,
+            *,
+            timeout=None,
+            check=True,
+            env=None,
+            workdir=None,
+        ):
+            docker_exec_calls.append(args)
+            if env is not None:
+                exec_envs.append(dict(env))
+            return subprocess.CompletedProcess(args, 0, stdout="runner ok\n", stderr="")
+
+        def fake_cp_from(container_id, src, dst):
+            _write_artifacts(
+                dst,
+                {
+                    "patch.diff": "diff --git a/app.py b/app.py\n--- a/app.py\n+++ b/app.py\n@@ -1 +1 @@\n-old\n+new\n",
+                    "zeroclaw_output.txt": "Applied fix\n",
+                    "zeroclaw_stderr.log": "",
+                    "runtime_trace.jsonl": json.dumps({"type": "tool", "name": "bash"}) + "\n",
+                    "zeroclaw_no_edit_reason.txt": "",
+                    "zeroclaw_candidate_models.txt": "demo-model\nfallback-model\n",
+                    "zeroclaw_prompt_profile.txt": (
+                        "prompt_profile: edit_first\n"
+                        "problem_statement_max_chars: 12000\n"
+                        "require_patch: true\n"
+                        "workspace_only: false\n"
+                        "resolved_model_alias: demo-model\n"
+                    ),
+                    "zeroclaw_prompt_contract.txt": (
+                        "ZeroClaw execution contract:\n"
+                        "- Leave a non-empty git diff in the repository before stopping.\n"
+                    ),
+                    "zeroclaw_attempt_matrix.json": json.dumps(
+                        {
+                            "attempts": [
+                                {
+                                    "attempt_index": 1,
+                                    "resolved_model_alias": "demo-model",
+                                    "classification": "patch_created",
+                                }
+                            ],
+                            "selected_attempt_index": 1,
+                            "tried_aliases": ["demo-model", "fallback-model"],
+                        }
+                    ),
+                    "zeroclaw_selected_attempt.json": json.dumps(
+                        {
+                            "attempt_index": 1,
+                            "resolved_model_alias": "demo-model",
+                            "prompt_profile": "edit_first",
+                            "classification": "patch_created",
+                            "patch_size_bytes": 72,
+                            "tracked_repo_change_count": 1,
+                            "untracked_repo_change_count": 0,
+                            "reason": "patch.diff is non-empty",
+                            "returncode": 0,
+                        }
+                    ),
+                    "git_status_before.txt": "",
+                    "git_status_after.txt": " M app.py\n",
+                    "repo_root.txt": "/workspace/repo\n",
+                },
+            )
+
+        monkeypatch.setattr(agent, "_stage_file_into_container", fake_stage)
+        monkeypatch.setattr(agent, "_docker_exec", fake_exec)
+        monkeypatch.setattr(agent, "_docker_cp_from", fake_cp_from)
+
+        response = agent.solve(_task())
+
+        assert response.answer.startswith("diff --git")
+        assert response.metadata["agent_type"] == "zeroclaw"
+        assert response.metadata["runtime_injected"] is True
+        assert response.metadata["runtime_source_image"] == "zeroclaw-reasoning:0.6.9"
+        assert response.metadata["bootstrap_needed"] is False
+        assert response.metadata["repo_root"] == "/workspace/repo"
+        assert response.metadata["zeroclaw_output_path"].endswith("zeroclaw_output.txt")
+        assert response.metadata["zeroclaw_stderr_path"].endswith("zeroclaw_stderr.log")
+        assert response.metadata["zeroclaw_runtime_trace_path"].endswith("runtime_trace.jsonl")
+        assert response.metadata["zeroclaw_no_edit_reason_path"].endswith(
+            "zeroclaw_no_edit_reason.txt"
+        )
+        assert response.metadata["zeroclaw_prompt_contract_path"].endswith(
+            "zeroclaw_prompt_contract.txt"
+        )
+        assert response.metadata["zeroclaw_prompt_profile_path"].endswith(
+            "zeroclaw_prompt_profile.txt"
+        )
+        assert response.metadata["zeroclaw_candidate_models_path"].endswith(
+            "zeroclaw_candidate_models.txt"
+        )
+        assert response.metadata["zeroclaw_attempt_matrix_path"].endswith(
+            "zeroclaw_attempt_matrix.json"
+        )
+        assert response.metadata["zeroclaw_selected_attempt_path"].endswith(
+            "zeroclaw_selected_attempt.json"
+        )
+        assert response.metadata["zeroclaw_selected_model_alias"] == "demo-model"
+        assert response.metadata["zeroclaw_selected_classification"] == "patch_created"
+        assert response.metadata["zeroclaw_selected_reason"] == "patch.diff is non-empty"
+        assert response.metadata["zeroclaw_require_patch"] is True
+        assert response.response_json["runtime_trace_present"] is True
+        assert any(path.endswith("/run_zeroclaw.sh") for path in staged_paths)
+        assert any(path.endswith("/zeroclaw.toml.template") for path in staged_paths)
+        assert any("run_zeroclaw.sh" in " ".join(call) for call in docker_exec_calls)
+        assert any(env.get("ZEROCLAW_SMOKE_MODEL_NAME") == "demo-model" for env in exec_envs)
+        assert any(env.get("ZEROCLAW_TIMEOUT_SEC") == "1500" for env in exec_envs)
+        assert "/swebench_agent/zeroclaw/patch.diff" in response.workspace_file_contents
+        assert "/swebench_agent/zeroclaw/zeroclaw_output.txt" in response.workspace_file_contents
+        assert "/swebench_agent/zeroclaw/zeroclaw_stderr.log" in response.workspace_file_contents
+        assert "/swebench_agent/zeroclaw/runtime_trace.jsonl" in response.workspace_file_contents
+        assert "/swebench_agent/zeroclaw/zeroclaw_prompt_contract.txt" in response.workspace_file_contents
+        assert "/swebench_agent/zeroclaw/zeroclaw_prompt_profile.txt" in response.workspace_file_contents
+        assert "/swebench_agent/zeroclaw/zeroclaw_candidate_models.txt" in response.workspace_file_contents
+        assert "/swebench_agent/zeroclaw/zeroclaw_attempt_matrix.json" in response.workspace_file_contents
+        assert "/swebench_agent/zeroclaw/zeroclaw_selected_attempt.json" in response.workspace_file_contents
+
+    def test_zeroclaw_mode_returns_auditable_response_for_active_session_no_patch(
+        self, monkeypatch, tmp_path
+    ):
+        agent = SWEBenchDockerAgent()
+        agent.setup({
+            "agent_type": "zeroclaw",
+            "output_dir": str(tmp_path),
+            "env": {
+                "OPENAI_MODEL_NAME": "demo-model",
+                "OPENAI_BASE_URL": "http://localhost:8000/v1",
+                "OPENAI_API_KEY": "demo-key",
+            },
+        })
+
+        monkeypatch.setattr(agent, "_docker_pull", lambda image: None)
+        monkeypatch.setattr(agent, "_docker_create", lambda image: "container123")
+        monkeypatch.setattr(agent, "_docker_start", lambda container_id: None)
+        monkeypatch.setattr(agent, "_docker_stop", lambda container_id: None)
+        monkeypatch.setattr(agent, "_docker_rm", lambda container_id: None)
+        monkeypatch.setattr(agent, "_detect_repo_root", lambda container_id: "/workspace/repo")
+        monkeypatch.setattr(
+            agent,
+            "_prepare_runtime_image",
+            lambda image: (
+                "alphadiana-swebench-runtime:zeroclaw-test",
+                {
+                    "runtime_injected": True,
+                    "runtime_image_built": False,
+                    "runtime_source_image": "zeroclaw-reasoning:0.6.9",
+                },
+            ),
+        )
+        monkeypatch.setattr(agent, "_stage_file_into_container", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            agent,
+            "_docker_exec",
+            lambda *args, **kwargs: subprocess.CompletedProcess(
+                kwargs.get("args", []), 1, stdout="runner failed\n", stderr="timeout\n"
+            ),
+        )
+
+        def fake_cp_from(container_id, src, dst):
+            _write_artifacts(
+                dst,
+                {
+                    "zeroclaw_output.txt": "I inspected the repository and ran commands.\n",
+                    "zeroclaw_stderr.log": "timeout\n",
+                    "zeroclaw_no_edit_reason.txt": (
+                        "ZeroClaw finished without tracked repository edits\n"
+                    ),
+                    "zeroclaw_selected_attempt.json": json.dumps(
+                        {
+                            "attempt_index": 1,
+                            "resolved_model_alias": "demo-model",
+                            "prompt_profile": "edit_first",
+                            "classification": "active_session_no_patch",
+                            "patch_size_bytes": 0,
+                            "tracked_repo_change_count": 0,
+                            "untracked_repo_change_count": 0,
+                            "reason": "ZeroClaw finished without tracked repository edits",
+                            "returncode": 1,
+                        }
+                    ),
+                    "zeroclaw_attempt_matrix.json": json.dumps({"attempts": []}),
+                },
+            )
+
+        monkeypatch.setattr(agent, "_docker_cp_from", fake_cp_from)
+
+        response = agent.solve(_task())
+
+        assert response.answer == ""
+        assert len(response.trajectory) == 2
+        assert response.metadata["zeroclaw_selected_classification"] == "active_session_no_patch"
+        assert response.metadata["zeroclaw_selected_returncode"] == 1
+        assert response.metadata["zeroclaw_preserved_failure"] is True
+        assert (
+            response.metadata["zeroclaw_selected_reason"]
+            == "ZeroClaw finished without tracked repository edits"
+        )
+        assert response.finish_reason == "preserved_failure"
+        assert response.raw_output == "I inspected the repository and ran commands."
+
+    def test_zeroclaw_mode_returns_auditable_response_for_untracked_only_changes(
+        self, monkeypatch, tmp_path
+    ):
+        agent = SWEBenchDockerAgent()
+        agent.setup({
+            "agent_type": "zeroclaw",
+            "output_dir": str(tmp_path),
+            "env": {
+                "OPENAI_MODEL_NAME": "demo-model",
+                "OPENAI_BASE_URL": "http://localhost:8000/v1",
+                "OPENAI_API_KEY": "demo-key",
+            },
+        })
+
+        monkeypatch.setattr(agent, "_docker_pull", lambda image: None)
+        monkeypatch.setattr(agent, "_docker_create", lambda image: "container123")
+        monkeypatch.setattr(agent, "_docker_start", lambda container_id: None)
+        monkeypatch.setattr(agent, "_docker_stop", lambda container_id: None)
+        monkeypatch.setattr(agent, "_docker_rm", lambda container_id: None)
+        monkeypatch.setattr(agent, "_detect_repo_root", lambda container_id: "/workspace/repo")
+        monkeypatch.setattr(
+            agent,
+            "_prepare_runtime_image",
+            lambda image: (
+                "alphadiana-swebench-runtime:zeroclaw-test",
+                {
+                    "runtime_injected": True,
+                    "runtime_image_built": False,
+                    "runtime_source_image": "zeroclaw-reasoning:0.6.9",
+                },
+            ),
+        )
+        monkeypatch.setattr(agent, "_stage_file_into_container", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            agent,
+            "_docker_exec",
+            lambda *args, **kwargs: subprocess.CompletedProcess(
+                kwargs.get("args", []), 1, stdout="runner failed\n", stderr=""
+            ),
+        )
+
+        def fake_cp_from(container_id, src, dst):
+            _write_artifacts(
+                dst,
+                {
+                    "zeroclaw_output.txt": "Added scratch notes\n",
+                    "zeroclaw_no_edit_reason.txt": (
+                        "Only untracked files changed; git diff --binary remained empty\n"
+                    ),
+                    "zeroclaw_selected_attempt.json": json.dumps(
+                        {
+                            "attempt_index": 1,
+                            "resolved_model_alias": "demo-model",
+                            "prompt_profile": "edit_first",
+                            "classification": "untracked_only_changes",
+                            "patch_size_bytes": 0,
+                            "tracked_repo_change_count": 0,
+                            "untracked_repo_change_count": 1,
+                            "reason": "Only untracked files changed; git diff --binary remained empty",
+                            "returncode": 1,
+                        }
+                    ),
+                    "zeroclaw_attempt_matrix.json": json.dumps({"attempts": []}),
+                    "git_status_after.txt": "?? notes.txt\n",
+                },
+            )
+
+        monkeypatch.setattr(agent, "_docker_cp_from", fake_cp_from)
+
+        response = agent.solve(_task())
+
+        assert response.answer == ""
+        assert len(response.trajectory) == 2
+        assert response.metadata["zeroclaw_selected_classification"] == "untracked_only_changes"
+        assert response.metadata["zeroclaw_selected_returncode"] == 1
+        assert response.metadata["zeroclaw_preserved_failure"] is True
+        assert (
+            response.metadata["zeroclaw_selected_reason"]
+            == "Only untracked files changed; git diff --binary remained empty"
+        )
+        assert response.finish_reason == "preserved_failure"
+        assert response.raw_output == "Added scratch notes"
+
+    def test_zeroclaw_mode_returns_runner_logs_when_output_file_is_missing(self, monkeypatch, tmp_path):
+        agent = SWEBenchDockerAgent()
+        agent.setup({
+            "agent_type": "zeroclaw",
+            "output_dir": str(tmp_path),
+            "env": {
+                "OPENAI_MODEL_NAME": "demo-model",
+                "OPENAI_BASE_URL": "http://localhost:8000/v1",
+                "OPENAI_API_KEY": "demo-key",
+            },
+        })
+
+        monkeypatch.setattr(agent, "_docker_pull", lambda image: None)
+        monkeypatch.setattr(agent, "_docker_create", lambda image: "container123")
+        monkeypatch.setattr(agent, "_docker_start", lambda container_id: None)
+        monkeypatch.setattr(agent, "_docker_stop", lambda container_id: None)
+        monkeypatch.setattr(agent, "_docker_rm", lambda container_id: None)
+        monkeypatch.setattr(agent, "_detect_repo_root", lambda container_id: "/workspace/repo")
+        monkeypatch.setattr(
+            agent,
+            "_prepare_runtime_image",
+            lambda image: (
+                "alphadiana-swebench-runtime:zeroclaw-test",
+                {
+                    "runtime_injected": True,
+                    "runtime_image_built": False,
+                    "runtime_source_image": "zeroclaw-reasoning:0.6.9",
+                },
+            ),
+        )
+        monkeypatch.setattr(agent, "_stage_file_into_container", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            agent,
+            "_docker_exec",
+            lambda *args, **kwargs: subprocess.CompletedProcess(
+                kwargs.get("args", []), 0, stdout="runner ok\n", stderr=""
+            ),
+        )
+        monkeypatch.setattr(
+            agent,
+            "_docker_cp_from",
+            lambda container_id, src, dst: _write_artifacts(dst, {"zeroclaw_stderr.log": ""}),
+        )
+
+        response = agent.solve(_task())
+
+        assert response.answer == ""
+        assert response.raw_output == "runner ok"
+        assert response.response_json["runner_stdout_text"] == "runner ok"
+        assert response.metadata["zeroclaw_preserved_failure"] is True
+
+    def test_zeroclaw_mode_returns_auditable_response_for_cli_error(self, monkeypatch, tmp_path):
+        agent = SWEBenchDockerAgent()
+        agent.setup({
+            "agent_type": "zeroclaw",
+            "output_dir": str(tmp_path),
+            "env": {
+                "OPENAI_MODEL_NAME": "demo-model",
+                "OPENAI_BASE_URL": "http://localhost:8000/v1",
+                "OPENAI_API_KEY": "demo-key",
+            },
+        })
+
+        monkeypatch.setattr(agent, "_docker_pull", lambda image: None)
+        monkeypatch.setattr(agent, "_docker_create", lambda image: "container123")
+        monkeypatch.setattr(agent, "_docker_start", lambda container_id: None)
+        monkeypatch.setattr(agent, "_docker_stop", lambda container_id: None)
+        monkeypatch.setattr(agent, "_docker_rm", lambda container_id: None)
+        monkeypatch.setattr(agent, "_detect_repo_root", lambda container_id: "/workspace/repo")
+        monkeypatch.setattr(
+            agent,
+            "_prepare_runtime_image",
+            lambda image: (
+                "alphadiana-swebench-runtime:zeroclaw-test",
+                {
+                    "runtime_injected": True,
+                    "runtime_image_built": False,
+                    "runtime_source_image": "zeroclaw-reasoning:0.6.9",
+                },
+            ),
+        )
+        monkeypatch.setattr(agent, "_stage_file_into_container", lambda *args, **kwargs: None)
+        monkeypatch.setattr(
+            agent,
+            "_docker_exec",
+            lambda *args, **kwargs: subprocess.CompletedProcess(
+                kwargs.get("args", []), 17, stdout="runner failed\n", stderr="TLS handshake failed\n"
+            ),
+        )
+
+        def fake_cp_from(container_id, src, dst):
+            _write_artifacts(
+                dst,
+                {
+                    "zeroclaw_output.txt": "partial output\n",
+                    "zeroclaw_stderr.log": "TLS handshake failed\n",
+                    "zeroclaw_no_edit_reason.txt": "TLS handshake failed\n",
+                    "zeroclaw_selected_attempt.json": json.dumps(
+                        {
+                            "attempt_index": 1,
+                            "resolved_model_alias": "demo-model",
+                            "prompt_profile": "edit_first",
+                            "classification": "cli_error",
+                            "patch_size_bytes": 0,
+                            "tracked_repo_change_count": 0,
+                            "untracked_repo_change_count": 0,
+                            "reason": "TLS handshake failed",
+                            "returncode": 17,
+                        }
+                    ),
+                    "zeroclaw_attempt_matrix.json": json.dumps({"attempts": []}),
+                },
+            )
+
+        monkeypatch.setattr(agent, "_docker_cp_from", fake_cp_from)
+
+        response = agent.solve(_task())
+
+        assert response.answer == ""
+        assert len(response.trajectory) == 2
+        assert response.metadata["zeroclaw_selected_classification"] == "cli_error"
+        assert response.metadata["zeroclaw_selected_returncode"] == 17
+        assert response.metadata["zeroclaw_selected_reason"] == "TLS handshake failed"
+        assert response.metadata["zeroclaw_preserved_failure"] is True
+        assert response.response_json["runner_stderr_text"] == "TLS handshake failed"
+        assert response.finish_reason == "preserved_failure"
 
     def test_opencode_mode_auto_derives_target_hints_for_guided_strategy(
         self, monkeypatch, tmp_path

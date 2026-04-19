@@ -107,7 +107,7 @@ class ConfigValidator:
 
         if config.agent_name == "swebench_docker":
             agent_type = str(config.agent_config.get("agent_type", "direct_llm")).strip() or "direct_llm"
-            if agent_type in {"openclaw", "opencode"}:
+            if agent_type in {"openclaw", "opencode", "zeroclaw"}:
                 nested_env = config.agent_config.get("env", {})
                 if not isinstance(nested_env, dict):
                     nested_env = {}

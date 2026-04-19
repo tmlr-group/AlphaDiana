@@ -11,10 +11,12 @@ EXAMPLE_CONFIGS = [
     Path("configs/examples/swebench_pro_direct_llm_smoke.local.yaml"),
     Path("configs/examples/swebench_pro_openclaw_smoke.local.yaml"),
     Path("configs/examples/swebench_pro_opencode_smoke.local.yaml"),
+    Path("configs/examples/swebench_pro_zeroclaw_smoke.local.yaml"),
 ]
 FULL_RUN_CONFIGS = [
     Path("configs/full_runs/p29_full_openclaw_swebench_pro.yaml"),
     Path("configs/full_runs/p29_full_opencode_swebench_pro.yaml"),
+    Path("configs/full_runs/p29_full_zeroclaw_swebench_pro.yaml"),
 ]
 
 
@@ -53,6 +55,18 @@ def _set_swebench_pro_env(monkeypatch, eval_script: Path, scripts_dir: Path) -> 
     monkeypatch.setenv("OPENCODE_ACTIVITY_HEARTBEAT_SEC", "30")
     monkeypatch.setenv("OPENCODE_FULL_MODEL_NAME", "demo-opencode-model")
     monkeypatch.setenv("OPENCODE_FULL_MODEL_CANDIDATES", "demo-opencode-model,demo-opencode-fallback")
+    monkeypatch.setenv("ZEROCLAW_SMOKE_MODEL_NAME", "demo-zeroclaw-model")
+    monkeypatch.setenv("ZEROCLAW_SMOKE_MODEL_CANDIDATES", "demo-zeroclaw-model,demo-zeroclaw-fallback")
+    monkeypatch.setenv("ZEROCLAW_TIMEOUT_SEC", "1500")
+    monkeypatch.setenv("ZEROCLAW_REQUIRE_PATCH", "1")
+    monkeypatch.setenv("ZEROCLAW_PROMPT_PROFILE", "edit_first")
+    monkeypatch.setenv("ZEROCLAW_PROBLEM_STATEMENT_MAX_CHARS", "12000")
+    monkeypatch.setenv("ZEROCLAW_WORKSPACE_ONLY", "0")
+    monkeypatch.setenv("ZEROCLAW_MAX_TOOL_ITERATIONS", "100")
+    monkeypatch.setenv("ZEROCLAW_MAX_ACTIONS_PER_HOUR", "200")
+    monkeypatch.setenv("ZEROCLAW_RUNTIME_TRACE_MODE", "none")
+    monkeypatch.setenv("ZEROCLAW_FULL_MODEL_NAME", "demo-zeroclaw-model")
+    monkeypatch.setenv("ZEROCLAW_FULL_MODEL_CANDIDATES", "demo-zeroclaw-model,demo-zeroclaw-fallback")
     monkeypatch.setenv("SWE_BENCH_PRO_EVAL_SCRIPT", str(eval_script))
     monkeypatch.setenv("SWE_BENCH_PRO_SCRIPTS_DIR", str(scripts_dir))
 
@@ -129,6 +143,17 @@ def test_example_configs_keep_env_expansion_and_do_not_embed_secrets(config_path
         assert "${OPENCODE_MAX_ACTIVE_NO_EDIT_SEC}" in text
         assert "${OPENCODE_MAX_TOOL_CALLS_WITHOUT_EDIT}" in text
         assert "${OPENCODE_ACTIVITY_HEARTBEAT_SEC}" in text
+    elif "zeroclaw" in config_path.name:
+        assert "${ZEROCLAW_SMOKE_MODEL_NAME}" in text
+        assert "${ZEROCLAW_SMOKE_MODEL_CANDIDATES}" in text
+        assert "${ZEROCLAW_TIMEOUT_SEC}" in text
+        assert "${ZEROCLAW_REQUIRE_PATCH}" in text
+        assert "${ZEROCLAW_PROMPT_PROFILE}" in text
+        assert "${ZEROCLAW_PROBLEM_STATEMENT_MAX_CHARS}" in text
+        assert "${ZEROCLAW_WORKSPACE_ONLY}" in text
+        assert "${ZEROCLAW_MAX_TOOL_ITERATIONS}" in text
+        assert "${ZEROCLAW_MAX_ACTIONS_PER_HOUR}" in text
+        assert "${ZEROCLAW_RUNTIME_TRACE_MODE}" in text
     else:
         assert "${OPENAI_MODEL_NAME}" in text
     assert "demo-key" not in text
@@ -151,12 +176,18 @@ def test_full_run_configs_keep_env_expansion_and_do_not_embed_secrets(config_pat
         assert "${OPENCLAW_REQUIRE_PATCH}" in text
         assert "${OPENCLAW_CONTEXT_WINDOW}" in text
         assert "${OPENCLAW_COMPLETION_MAX_TOKENS}" in text
-    else:
+    elif "opencode" in config_path.name:
         assert "${OPENCODE_FULL_MODEL_NAME}" in text
         assert "${OPENCODE_FULL_MODEL_CANDIDATES}" in text
         assert "${OPENCODE_STRATEGY_SEQUENCE}" in text
         assert "${OPENCODE_REQUIRE_PATCH}" in text
         assert "${OPENCODE_TARGET_FILE_HINTS}" in text
         assert "${OPENCODE_PRIMARY_TARGET_FILE}" in text
+    else:
+        assert "${ZEROCLAW_FULL_MODEL_NAME}" in text
+        assert "${ZEROCLAW_FULL_MODEL_CANDIDATES}" in text
+        assert "${ZEROCLAW_TIMEOUT_SEC}" in text
+        assert "${ZEROCLAW_REQUIRE_PATCH}" in text
+        assert "${ZEROCLAW_PROMPT_PROFILE}" in text
     assert "demo-key" not in text
     assert "sk-" not in text

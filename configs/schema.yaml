@@ -11,7 +11,7 @@ agent:
   version: string     # Pinned version tag or "latest"
   config:             # Pass-through config for the agent (model settings, etc.)
     runtime: string                  # Optional runtime selector, e.g. "swebench_container"
-    agent_type: string               # `swebench_docker` mode: "direct_llm" | "openclaw" | "opencode"
+    agent_type: string               # `swebench_docker` mode: "direct_llm" | "openclaw" | "opencode" | "zeroclaw"
     model: string
     model_name: string
     api_base: string
@@ -62,17 +62,18 @@ agent:
     tool_call: boolean
     thinking: string
     verbose: string
-    env:                             # Nested env contract for `swebench_docker` OpenClaw/OpenCode modes
-      OPENAI_MODEL_NAME: string      # Required for `agent_type: openclaw|opencode`
-      OPENAI_BASE_URL: string        # Required for `agent_type: openclaw|opencode`
-      OPENAI_API_KEY: string         # Required for `agent_type: openclaw|opencode`
+    env:                             # Nested env contract for `swebench_docker` OpenClaw/OpenCode/ZeroClaw modes
+      OPENAI_MODEL_NAME: string      # Required for `agent_type: openclaw|opencode|zeroclaw`
+      OPENAI_BASE_URL: string        # Required for `agent_type: openclaw|opencode|zeroclaw`
+      OPENAI_API_KEY: string         # Required for `agent_type: openclaw|opencode|zeroclaw`
       OPENCLAW_GATEWAY_TOKEN: string
       OPENCLAW_AGENT_TIMEOUT_SEC: string
       OPENCLAW_CHAT_MAX_TIME_SEC: string
       OPENCODE_TIMEOUT_SEC: string
+      ZEROCLAW_TIMEOUT_SEC: string
     # For `swebench_docker`:
     #   - `agent_type: direct_llm` uses top-level `model/api_base/api_key`
-    #   - `agent_type: openclaw|opencode` uses nested `config.env.OPENAI_*`
+    #   - `agent_type: openclaw|opencode|zeroclaw` uses nested `config.env.OPENAI_*`
 
 # benchmark: (required) Benchmark configuration.
 benchmark:

@@ -330,6 +330,101 @@ def test_terminal_bench2_zeroclaw_agent_command_uses_local_prompt_file(tmp_path:
     assert "zeroclaw_output.txt" in cmd[2]
 
 
+def test_terminal_bench2_zeroclaw_solve_preserves_nonzero_solver_result(tmp_path: Path) -> None:
+    agent = TerminalBench2ZeroClawAgent()
+    agent.setup({
+        "api_base": "http://localhost/v1",
+        "api_key": "secret",
+        "model": "minimax-m2.5",
+    })
+
+    task = BenchmarkTask(
+        task_id="tb2_demo",
+        problem="demo task",
+        ground_truth="1",
+        metadata={"task_dir": str(tmp_path)},
+    )
+    tempdir = tempfile.TemporaryDirectory(prefix="tb2-zeroclaw-solve-")
+    runtime = TerminalBench2RuntimeContext(
+        task=task,
+        docker_image="demo:latest",
+        container_id="demo-container",
+        logs_dir=tmp_path / "logs",
+        workdir=Path(tempdir.name),
+        helper_paths={
+            "task": tmp_path / "TASK.md",
+            "task_hints": tmp_path / "TASK_HINTS.md",
+            "agents": tmp_path / "AGENTS.md",
+            "prompt": tmp_path / "PROMPT.txt",
+            "test": tmp_path / "tb2-test",
+        },
+        _tempdir=tempdir,
+    )
+    for path in runtime.helper_paths.values():
+        path.write_text("", encoding="utf-8")
+
+    def fake_prepare_home(workdir: Path, prompt_text: str) -> tuple[dict[str, str], dict[str, str]]:
+        stdout_path = workdir / "zeroclaw_output.txt"
+        stderr_path = workdir / "zeroclaw_stderr.log"
+        runtime_trace_path = workdir / "state" / "runtime-trace.jsonl"
+        controller_stdout_path = workdir / "controller_stdout.log"
+        controller_stderr_path = workdir / "controller_stderr.log"
+        runtime_trace_path.parent.mkdir(parents=True, exist_ok=True)
+        stdout_path.write_text("Loop detector summary\n", encoding="utf-8")
+        stderr_path.write_text(
+            "Error: Agent loop aborted by loop detector\n",
+            encoding="utf-8",
+        )
+        runtime_trace_path.write_text("", encoding="utf-8")
+        return (
+            {"OPENAI_API_KEY": "secret"},
+            {
+                "prompt_path": str(workdir / "PROMPT.txt"),
+                "stdout_path": str(stdout_path),
+                "stderr_path": str(stderr_path),
+                "runtime_trace_path": str(runtime_trace_path),
+                "controller_stdout_path": str(controller_stdout_path),
+                "controller_stderr_path": str(controller_stderr_path),
+            },
+        )
+
+    try:
+        with patch.object(agent, "_prepare_runtime", return_value=runtime), patch.object(
+            agent,
+            "_disable_test_helper",
+            return_value=None,
+        ), patch.object(
+            agent,
+            "_prepare_zeroclaw_home",
+            side_effect=fake_prepare_home,
+        ), patch.object(
+            agent,
+            "_run_zeroclaw",
+            return_value=("controller stdout", "controller stderr", 1),
+        ), patch.object(
+            agent,
+            "_run_verifier_and_read_reward",
+            return_value=("verifier output", "0"),
+        ), patch.object(
+            agent,
+            "_collect_text_artifacts",
+            return_value={"/terminal_bench2/zeroclaw/zeroclaw_output.txt": "Loop detector summary\n"},
+        ), patch.object(
+            agent,
+            "_cleanup_runtime",
+            return_value=None,
+        ):
+            response = agent.solve(task)
+    finally:
+        runtime.cleanup()
+
+    assert response.answer == "0"
+    assert len(response.trajectory) == 2
+    assert response.raw_output == "Loop detector summary"
+    assert response.metadata["returncode"] == 1
+    assert response.metadata["solver_error"] == "Error: Agent loop aborted by loop detector"
+
+
 def test_terminal_bench2_opencode_host_mode_keeps_configured_binary() -> None:
     agent = TerminalBench2OpenCodeAgent()
     agent.setup({
