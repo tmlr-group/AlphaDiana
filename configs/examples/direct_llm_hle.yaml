@@ -7,11 +7,11 @@ agent:
   name: direct_llm
   version: "1.0"
   config:
-    model: "minimax-m2.5"
+    model: "${OPENAI_MODEL_NAME}"
     api_base: ${OPENAI_BASE_URL}
     api_key: ${OPENAI_API_KEY}
     temperature: 0.0
-    max_tokens: 512
+    max_tokens: 1024
     stream: false
     system_prompt: |
       Solve the question carefully and keep the answer concise.

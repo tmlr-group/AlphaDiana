@@ -28,6 +28,14 @@ The benchmark loads from HuggingFace. If the default mirror is slow, set `HF_END
 
 The corresponding smoke configs remain under `configs/examples/` and pin `dataset_index: 367`, `max_tasks: 1`.
 
+Additional April 18, 2026 pilot configs are also checked in:
+
+- `configs/examples/directllm_qwen35_27b_imo_answerbench_pilot.yaml`
+- `configs/examples/openclaw_qwen35_27b_imo_answerbench_pilot.yaml`
+
+These pilot configs use `max_tasks: 3` and the OpenRouter slug
+`qwen/qwen3.5-27b` for the logical model target `Qwen/Qwen3.5-27B`.
+
 ## Full Runs
 
 ```bash
@@ -122,3 +130,37 @@ Observed local verification on 2026-04-17:
 The checked-in minimax smoke configs pin `dataset_index: 367` and `max_tasks: 1` so the run stays deterministic and bounded.
 
 Use the `configs/full_runs/` files for full evaluations.
+
+## Qwen/OpenRouter 3-Task Pilot
+
+Environment:
+
+```bash
+source scripts/activate.sh
+export PYTHONPATH=$PWD
+export HF_ENDPOINT=https://hf-mirror.com
+export OPENAI_BASE_URL=https://openrouter.ai/api/v1
+export OPENAI_MODEL_NAME=qwen/qwen3.5-27b
+export OPENAI_API_KEY=sk-...
+```
+
+Commands:
+
+```bash
+python -m alphadiana.cli run configs/examples/directllm_qwen35_27b_imo_answerbench_pilot.yaml
+python -m alphadiana.cli run configs/examples/openclaw_qwen35_27b_imo_answerbench_pilot.yaml
+```
+
+Observed on April 18, 2026:
+
+- `direct_llm`: `3/3` task records written, all `score=1`
+- `openclaw`: not rollout-ready yet
+  - `imo_answerbench_0`: `score=1`
+  - `imo_answerbench_1`: task completed on the April 19 checkpoint rerun, but
+    the current scorer marked a symbolic mismatch as `score=1`
+  - `imo_answerbench_2`: `score=0` with `partial_reasoning_only=true`; the
+    partial reasoning trace was preserved and is treated as a normal sample
+  - the path remains blocked on scorer correctness, not on benchmark completion
+
+Reviewer-facing evidence for this pilot lives in
+`context/qwen-openrouter-pilots/`.

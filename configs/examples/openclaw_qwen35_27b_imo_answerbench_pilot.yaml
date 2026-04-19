@@ -1,0 +1,49 @@
+run_id: "pilot_20260418_qwen35_27b_imo_answerbench_openclaw_t3"
+
+agent:
+  name: openclaw
+  version: "2026.3.20"
+  config:
+    rock_image: "tmlrgroup/alphadiana:v1"
+    rock_agent_config_path: "openclaw_deploy/rock_agent_config.prebuilt.yaml"
+    openclaw_config_path: "openclaw_deploy/openclaw.json"
+    rock_memory: "4g"
+    rock_cpus: 1
+    rock_startup_timeout: 600
+    gateway_startup_timeout: 240
+    gateway_warmup_timeout: 240
+    OPENAI_BASE_URL: "${OPENAI_BASE_URL}"
+    OPENAI_API_KEY: "${OPENAI_API_KEY}"
+    OPENAI_MODEL_NAME: "${OPENAI_MODEL_NAME}"
+    model: openclaw
+    gateway_token: "OPENCLAW"
+    temperature: 0.6
+    top_p: 0.95
+    max_tokens: 32768
+    request_timeout: 3600
+    max_attempts: 5
+    system_prompt: |
+      You are an expert problem solver. Use available tools when they help.
+
+      The final line must be:
+      $$\boxed{your answer here}$$
+
+benchmark:
+  name: imo_answerbench
+  config:
+    dataset: "Hwilner/imo-answerbench"
+    split: "train"
+    max_tasks: 3
+
+sandbox: null
+
+scorer:
+  name: math_verify
+  config:
+    tolerance: 1e-6
+
+max_concurrent: 3
+num_samples: 1
+output_dir: "./results/pilot_20260418_qwen35_27b_imo_answerbench_openclaw_t3"
+metadata:
+  notes: "Qwen/Qwen3.5-27B x OpenRouter x IMO-AnswerBench 3-task pilot via OpenClaw."

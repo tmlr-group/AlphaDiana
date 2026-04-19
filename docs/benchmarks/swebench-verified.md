@@ -1,11 +1,18 @@
 # SWE-bench: OpenClaw 与 OpenCode 的配置与运行说明
 
+说明：
+
+- 这是当前仓库中面向用户的 `SWE-bench Verified` / container 路径 runbook。
+- `SWE-bench Pro` 是另一条独立路径，见 `docs/benchmarks/swebench-pro.md`。
+- 这条 Verified 路径的内部设计说明见 `context/pr26-swebench-verified/implementation-notes.md`。
+- 本地验证证据见 `context/pr26-swebench-verified/`。
+
 本文面向想要复现当前仓库 SWE-bench Verified 实验结果的用户，说明两个配置文件的用途、差异、环境准备方式、烟测命令和预期结果。
 
 文档分层如下：
 
-- `docs/swe_bench.md`：复现入口、配置说明、烟测命令、预期结果
-- `docs/swe_bench_principle.md`：实现原理、执行时序、关键文件职责
+- `docs/benchmarks/swebench-verified.md`：复现入口、配置说明、烟测命令、预期结果
+- `context/pr26-swebench-verified/implementation-notes.md`：实现原理、执行时序、关键文件职责
 - `context/pr26-swebench-verified/`：本地真实 smoke 结果、run id、review 证据和开发 handoff
 
 涉及的两个配置文件：
@@ -467,4 +474,5 @@ SWE-bench 数据与容器：
 - `alphadiana/agent/opencode.py`
 - `alphadiana/agent/opencode_container_runtime.py`
 
-如果你想看“原理、时序、每个文件分别干什么”，请继续看 `docs/swe_bench_principle.md`。
+如果你想看“原理、时序、每个文件分别干什么”，请继续看
+`context/pr26-swebench-verified/implementation-notes.md`。
