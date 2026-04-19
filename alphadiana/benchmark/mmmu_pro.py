@@ -19,6 +19,36 @@ def _format_options(options: list[str]) -> str:
     return "\n".join(lines)
 
 
+def _collect_dataset_images(item: dict) -> list[object]:
+    """Return dataset image payloads in a normalized order.
+
+    The current Hugging Face MMMU-Pro `vision` config exposes a single `image`
+    field, while older/local variants may still provide numbered `image_1` ..
+    `image_7` keys. Prefer explicit numbered fields when present, otherwise
+    fall back to `images` / `image`.
+    """
+    numbered_images = [item.get(f"image_{i}") for i in range(1, 8)]
+    numbered_images = [img for img in numbered_images if img is not None]
+    if numbered_images:
+        return numbered_images
+
+    images_field = item.get("images")
+    if isinstance(images_field, (list, tuple)):
+        images = [img for img in images_field if img is not None]
+        if images:
+            return images
+    elif images_field is not None:
+        return [images_field]
+
+    image_field = item.get("image")
+    if isinstance(image_field, (list, tuple)):
+        return [img for img in image_field if img is not None]
+    if image_field is not None:
+        return [image_field]
+
+    return []
+
+
 class MMMUProBenchmark(Benchmark):
     """Loads MMMU-Pro multimodal multiple-choice tasks.
 
@@ -90,10 +120,8 @@ class MMMUProBenchmark(Benchmark):
                 # standard 4/10-option configs are documented and used as
                 # text-only variants, so exposing attachments there would force
                 # unnecessary multimodal model calls.
-                for img_key in [f"image_{i}" for i in range(1, 8)]:
-                    img = item.get(img_key)
-                    if img is None:
-                        continue
+                for img_index, img in enumerate(_collect_dataset_images(item), start=1):
+                    img_key = f"image_{img_index}"
                     try:
                         import io
                         buf = io.BytesIO()

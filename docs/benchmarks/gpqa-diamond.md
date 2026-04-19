@@ -3,10 +3,11 @@
 GPQA-Diamond evaluates expert-level science multiple-choice questions from
 `fingertap/GPQA-Diamond`.
 
-2026-04-18 增加了两份 OpenRouter/Qwen 三题 pilot 配置：
+2026-04-18/19 增加了三份 OpenRouter/Qwen 三题 pilot 配置：
 
 - `configs/examples/directllm_qwen35_27b_gpqa_diamond_pilot.yaml`
 - `configs/examples/openclaw_qwen35_27b_gpqa_diamond_pilot.yaml`
+- `configs/examples/opencode_qwen35_27b_gpqa_diamond_pilot.yaml`
 
 这两份 pilot 配置统一使用 `OPENAI_BASE_URL`、`OPENAI_MODEL_NAME`、
 `OPENAI_API_KEY`，其中 OpenRouter 对应的实际模型 slug 为
@@ -156,12 +157,18 @@ export OPENAI_API_KEY=sk-...
 ```bash
 python -m alphadiana.cli run configs/examples/directllm_qwen35_27b_gpqa_diamond_pilot.yaml
 python -m alphadiana.cli run configs/examples/openclaw_qwen35_27b_gpqa_diamond_pilot.yaml
+python -m alphadiana.cli run configs/examples/opencode_qwen35_27b_gpqa_diamond_pilot.yaml
 ```
 
-2026-04-18 本地真实 pilot 结果：
+2026-04-18/19 本地真实 pilot 结果：
 
 - `direct_llm`: `3/3` task records，全部 `score=1`
 - `openclaw`: `3/3` task records，全部 `score=1`
+- `opencode`: `3/3` task records，全部 `score=1`
+  - canonical run id:
+    `pilot_20260419_qwen35_27b_gpqa_diamond_opencode_t3`
+  - 三条轨迹人工审计均正常，已上传到
+    `T-MARS/alphadiana-benchmark-results`
 
 Reviewer-facing evidence:
 

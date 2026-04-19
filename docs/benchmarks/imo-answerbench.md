@@ -28,13 +28,16 @@ The benchmark loads from HuggingFace. If the default mirror is slow, set `HF_END
 
 The corresponding smoke configs remain under `configs/examples/` and pin `dataset_index: 367`, `max_tasks: 1`.
 
-Additional April 18, 2026 pilot configs are also checked in:
+Additional April 18/19, 2026 pilot configs are also checked in:
 
 - `configs/examples/directllm_qwen35_27b_imo_answerbench_pilot.yaml`
 - `configs/examples/openclaw_qwen35_27b_imo_answerbench_pilot.yaml`
+- `configs/examples/opencode_qwen35_27b_imo_answerbench_pilot.yaml`
 
 These pilot configs use `max_tasks: 3` and the OpenRouter slug
 `qwen/qwen3.5-27b` for the logical model target `Qwen/Qwen3.5-27B`.
+The dedicated `opencode` pilot config intentionally omits the smoke
+`dataset_index: 367` pin so it can load three distinct tasks.
 
 ## Full Runs
 
@@ -160,9 +163,10 @@ Commands:
 ```bash
 python -m alphadiana.cli run configs/examples/directllm_qwen35_27b_imo_answerbench_pilot.yaml
 python -m alphadiana.cli run configs/examples/openclaw_qwen35_27b_imo_answerbench_pilot.yaml
+python -m alphadiana.cli run configs/examples/opencode_qwen35_27b_imo_answerbench_pilot.yaml
 ```
 
-Observed on April 18, 2026:
+Observed on April 18/19, 2026:
 
 - `direct_llm`: `3/3` task records written, all `score=1`
 - `openclaw`: not rollout-ready yet
@@ -172,6 +176,11 @@ Observed on April 18, 2026:
   - `imo_answerbench_2`: `score=0` with `partial_reasoning_only=true`; the
     partial reasoning trace was preserved and is treated as a normal sample
   - the path remains blocked on scorer correctness, not on benchmark completion
+- `opencode`: `3/3` task records written, all `score=1`
+  - canonical run id:
+    `pilot_20260419_qwen35_27b_imo_answerbench_opencode_t3`
+  - 三条轨迹人工审计均正常，已上传到
+    `T-MARS/alphadiana-benchmark-results`
 
 Reviewer-facing evidence for this pilot lives in
 `context/qwen-openrouter-pilots/`.
