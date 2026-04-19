@@ -106,7 +106,7 @@ def _apply_agent_env_defaults(agent_name: str, agent_config: Any) -> dict:
                 env_value = os.environ.get(env_var, "").strip()
                 if env_value:
                     resolved[key] = env_value
-        elif agent_type in {"openclaw", "opencode"}:
+        elif agent_type in {"openclaw", "opencode", "zeroclaw"}:
             env_defaults = {
                 "OPENAI_MODEL_NAME": "OPENAI_MODEL_NAME",
                 "OPENAI_BASE_URL": "OPENAI_BASE_URL",
