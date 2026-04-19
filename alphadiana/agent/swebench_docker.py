@@ -39,12 +39,14 @@ _ENV_PLACEHOLDER_RE = re.compile(
     r"^\$(?:\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)$"
 )
 _ASSET_ROOT = Path(__file__).resolve().parent / "swebench_assets"
-_IN_CONTAINER_AGENT_TYPES = {"openclaw", "opencode"}
+_IN_CONTAINER_AGENT_TYPES = {"openclaw", "opencode", "zeroclaw"}
 _REMOTE_AGENT_ROOT = "/tmp/alphadiana-swebench"
 _OPENCLAW_RUNNER = _ASSET_ROOT / "run_openclaw.sh"
 _OPENCLAW_CONFIG_TEMPLATE = _ASSET_ROOT / "openclaw.json"
 _OPENCODE_RUNNER = _ASSET_ROOT / "run_opencode.sh"
 _OPENCODE_CONFIG_TEMPLATE = _ASSET_ROOT / "opencode.json.template"
+_ZEROCLAW_RUNNER = _ASSET_ROOT / "run_zeroclaw.sh"
+_ZEROCLAW_CONFIG_TEMPLATE = _ASSET_ROOT / "zeroclaw.toml.template"
 _OPENCLAW_RUNTIME_IMAGE = os.environ.get(
     "SWEBENCH_OPENCLAW_RUNTIME_IMAGE",
     PREBUILT_SANDBOX_IMAGE,
@@ -52,6 +54,10 @@ _OPENCLAW_RUNTIME_IMAGE = os.environ.get(
 _OPENCODE_RUNTIME_IMAGE = os.environ.get(
     "SWEBENCH_OPENCODE_RUNTIME_IMAGE",
     "tmlrgroup/alphadiana:opencode",
+)
+_ZEROCLAW_RUNTIME_IMAGE = os.environ.get(
+    "SWEBENCH_ZEROCLAW_RUNTIME_IMAGE",
+    "zeroclaw-reasoning:0.6.9",
 )
 _RUNTIME_IMAGE_REPO = os.environ.get(
     "SWEBENCH_RUNTIME_IMAGE_REPO",
@@ -223,6 +229,15 @@ class SWEBenchDockerAgent(Agent):
                 )
             if self._agent_type == "opencode":
                 return self._solve_opencode(
+                    task,
+                    base_image,
+                    image,
+                    container_id,
+                    start_time,
+                    runtime_metadata,
+                )
+            if self._agent_type == "zeroclaw":
+                return self._solve_zeroclaw(
                     task,
                     base_image,
                     image,
@@ -484,6 +499,8 @@ exit 1
             runtime_source_image = _OPENCLAW_RUNTIME_IMAGE
         elif self._agent_type == "opencode":
             runtime_source_image = _OPENCODE_RUNTIME_IMAGE
+        elif self._agent_type == "zeroclaw":
+            runtime_source_image = _ZEROCLAW_RUNTIME_IMAGE
         else:
             raise RuntimeError(
                 f"Runtime image preparation is not supported for agent_type {self._agent_type!r}"
@@ -549,6 +566,15 @@ USER root
 COPY --from=runtime /usr/bin/node /usr/bin/node
 COPY --from=runtime /usr/lib/node_modules/opencode-ai /usr/lib/node_modules/opencode-ai
 RUN ln -sfn /usr/lib/node_modules/opencode-ai/bin/opencode /usr/bin/opencode
+""".strip()
+        if self._agent_type == "zeroclaw":
+            return """
+ARG RUNTIME_IMAGE
+ARG BASE_IMAGE
+FROM ${RUNTIME_IMAGE} AS runtime
+FROM ${BASE_IMAGE}
+USER root
+COPY --from=runtime /usr/local/bin/zeroclaw /usr/local/bin/zeroclaw
 """.strip()
         raise RuntimeError(
             f"Runtime overlay Dockerfile is not defined for agent_type {self._agent_type!r}"
@@ -965,6 +991,54 @@ RUN ln -sfn /usr/lib/node_modules/opencode-ai/bin/opencode /usr/bin/opencode
             "target_file_hints": list(target_file_hints or []),
             "primary_target_file": str(primary_target_file).strip(),
             "target_file_hints_source": target_file_hints_source,
+        }
+
+    def _prepare_zeroclaw_prompt(
+        self,
+        task: BenchmarkTask,
+        repo_root: str,
+        mode_env: dict[str, str],
+    ) -> tuple[str, dict[str, Any]]:
+        """Prepare a ZeroClaw prompt with the same SWE-bench edit contract."""
+        parts = self._build_container_prompt_parts(task, repo_root)
+        prompt_profile = (
+            str(mode_env.get("ZEROCLAW_PROMPT_PROFILE", "edit_first")).strip()
+            or "edit_first"
+        )
+        issue_char_limit = self._parse_positive_int(
+            mode_env.get("ZEROCLAW_PROBLEM_STATEMENT_MAX_CHARS")
+        )
+        compactions_applied: list[str] = []
+
+        if prompt_profile == "edit_first":
+            if parts.get("pass_to_pass"):
+                parts["pass_to_pass"] = []
+                compactions_applied.append("edit_first_removed_pass_to_pass")
+            relevant_tests = list(parts.get("relevant_tests", []))
+            fail_to_pass = list(parts.get("fail_to_pass", []))
+            capped_relevant = relevant_tests[:_EDIT_FIRST_LIST_SECTION_LIMIT]
+            capped_fail = fail_to_pass[:_EDIT_FIRST_LIST_SECTION_LIMIT]
+            if capped_relevant != relevant_tests:
+                parts["relevant_tests"] = capped_relevant
+                compactions_applied.append("edit_first_capped_relevant_tests_to_10")
+            if capped_fail != fail_to_pass:
+                parts["fail_to_pass"] = capped_fail
+                compactions_applied.append("edit_first_capped_fail_to_pass_to_10")
+
+        if issue_char_limit is not None:
+            issue_description = str(parts.get("issue_description", "")).strip()
+            if len(issue_description) > issue_char_limit:
+                parts["issue_description"] = (
+                    issue_description[:issue_char_limit].rstrip() + _TRUNCATION_MARKER
+                )
+                compactions_applied.append(
+                    f"capped_issue_description_chars:{issue_char_limit}"
+                )
+
+        return self._render_container_prompt(parts), {
+            "prompt_profile": prompt_profile,
+            "problem_statement_max_chars": issue_char_limit,
+            "compactions_applied": compactions_applied,
         }
 
     def _read_text_if_exists(self, path: Path) -> str:
@@ -2295,6 +2369,374 @@ RUN ln -sfn /usr/lib/node_modules/opencode-ai/bin/opencode /usr/bin/opencode
             artifact_manifest=artifact_manifest,
             gateway_log_excerpt=opencode_stderr,
             workspace_file_contents=workspace_file_contents,
+        )
+
+    def _solve_zeroclaw(
+        self,
+        task: BenchmarkTask,
+        base_image: str,
+        image: str,
+        container_id: str,
+        start_time: float,
+        runtime_metadata: dict[str, Any],
+    ) -> AgentResponse:
+        """Run ZeroClaw inside the SWE-bench container and return the resulting patch."""
+        if not _ZEROCLAW_RUNNER.exists() or not _ZEROCLAW_CONFIG_TEMPLATE.exists():
+            raise FileNotFoundError(
+                "Missing ZeroClaw SWE-bench assets. Expected "
+                f"{_ZEROCLAW_RUNNER} and {_ZEROCLAW_CONFIG_TEMPLATE}."
+            )
+
+        repo_root = self._detect_repo_root(container_id)
+        mode_env = self._build_mode_env()
+        if _is_blank_env_value(mode_env.get("ZEROCLAW_SMOKE_MODEL_NAME", "")):
+            mode_env["ZEROCLAW_SMOKE_MODEL_NAME"] = str(
+                mode_env.get("OPENAI_MODEL_NAME", "")
+            ).strip()
+        for key, value in {
+            "ZEROCLAW_REQUIRE_PATCH": "1",
+            "ZEROCLAW_PROMPT_PROFILE": "edit_first",
+            "ZEROCLAW_PROBLEM_STATEMENT_MAX_CHARS": "12000",
+            "ZEROCLAW_TIMEOUT_SEC": str(max(self._timeout - 60, 60)),
+            "ZEROCLAW_WORKSPACE_ONLY": "false",
+            "ZEROCLAW_MAX_TOOL_ITERATIONS": "100",
+            "ZEROCLAW_MAX_ACTIONS_PER_HOUR": "200",
+            "ZEROCLAW_RUNTIME_TRACE_MODE": "none",
+        }.items():
+            if _is_blank_env_value(mode_env.get(key, "")):
+                mode_env[key] = value
+        zeroclaw_require_patch = (
+            str(mode_env.get("ZEROCLAW_REQUIRE_PATCH", "1")).strip().lower()
+            not in {"0", "false", "no", "off"}
+        )
+        candidate_aliases = self._resolve_candidate_aliases(
+            mode_env,
+            candidates_env_key="ZEROCLAW_SMOKE_MODEL_CANDIDATES",
+            primary_env_keys=("ZEROCLAW_SMOKE_MODEL_NAME", "OPENAI_MODEL_NAME"),
+        )
+        if not candidate_aliases:
+            raise RuntimeError(
+                "ZeroClaw requires at least one model alias. Set ZEROCLAW_SMOKE_MODEL_NAME "
+                "or ZEROCLAW_SMOKE_MODEL_CANDIDATES."
+            )
+        mode_env["ZEROCLAW_SMOKE_MODEL_CANDIDATES"] = ",".join(candidate_aliases)
+        mode_env["ZEROCLAW_SMOKE_MODEL_NAME"] = candidate_aliases[0]
+        mode_env["OPENAI_MODEL_NAME"] = candidate_aliases[0]
+        local_artifacts, sample_index, execution_id = self._prepare_local_artifacts_dir(task)
+        prompt_path = local_artifacts / "prompt.txt"
+        zeroclaw_attempts_dir = local_artifacts / "zeroclaw_attempts"
+        zeroclaw_attempts_dir.mkdir(parents=True, exist_ok=True)
+        attempt_records: list[dict[str, Any]] = []
+        selected_attempt_dir: Path | None = None
+        selected_attempt_record: dict[str, Any] | None = None
+        selected_returncode = 1
+        selected_prompt = ""
+        selected_prompt_metadata: dict[str, Any] = {
+            "prompt_profile": mode_env.get("ZEROCLAW_PROMPT_PROFILE", "edit_first"),
+            "problem_statement_max_chars": self._parse_positive_int(
+                mode_env.get("ZEROCLAW_PROBLEM_STATEMENT_MAX_CHARS")
+            ),
+            "compactions_applied": [],
+        }
+
+        for index, alias in enumerate(candidate_aliases, start=1):
+            attempt_name = f"{index:02d}_{_safe_artifact_fragment(alias)}"
+            attempt_local_artifacts = zeroclaw_attempts_dir / attempt_name
+            attempt_local_artifacts.mkdir(parents=True, exist_ok=True)
+            attempt_prompt, attempt_prompt_metadata = self._prepare_zeroclaw_prompt(
+                task,
+                repo_root,
+                {
+                    **mode_env,
+                    "OPENAI_MODEL_NAME": alias,
+                    "ZEROCLAW_SMOKE_MODEL_NAME": alias,
+                },
+            )
+            attempt_prompt_path = attempt_local_artifacts / "prompt.txt"
+            attempt_prompt_path.write_text(attempt_prompt, encoding="utf-8")
+            attempt_execution_id = f"{execution_id}-zeroclaw-{attempt_name}"
+            remote_root = self._build_remote_workdir(task, attempt_execution_id)
+            remote_artifacts_dir = f"{remote_root}/artifacts"
+            remote_prompt_path = f"{remote_root}/prompt.txt"
+            remote_script_path = f"{remote_root}/run_zeroclaw.sh"
+            remote_config_template = f"{remote_root}/zeroclaw.toml.template"
+
+            self._stage_file_into_container(
+                container_id,
+                local_path=attempt_prompt_path,
+                remote_path=remote_prompt_path,
+            )
+            self._stage_file_into_container(
+                container_id,
+                local_path=_ZEROCLAW_RUNNER,
+                remote_path=remote_script_path,
+            )
+            self._stage_file_into_container(
+                container_id,
+                local_path=_ZEROCLAW_CONFIG_TEMPLATE,
+                remote_path=remote_config_template,
+            )
+            self._docker_exec(
+                container_id,
+                ["bash", "-lc", f"mkdir -p {shlex.quote(remote_artifacts_dir)}"],
+                timeout=30,
+            )
+
+            exec_env = {
+                **mode_env,
+                "OPENAI_MODEL_NAME": alias,
+                "ZEROCLAW_SMOKE_MODEL_NAME": alias,
+                "ALPHADIANA_ARTIFACTS_DIR": remote_artifacts_dir,
+                "ALPHADIANA_PROMPT_FILE": remote_prompt_path,
+                "ALPHADIANA_CONFIG_TEMPLATE": remote_config_template,
+            }
+            exec_result = self._docker_exec(
+                container_id,
+                [
+                    "bash",
+                    "-lc",
+                    f"chmod +x {shlex.quote(remote_script_path)} && {shlex.quote(remote_script_path)}",
+                ],
+                env=exec_env,
+                timeout=self._timeout,
+                check=False,
+            )
+
+            self._docker_cp_from(
+                container_id,
+                f"{remote_artifacts_dir}/.",
+                str(attempt_local_artifacts),
+            )
+            (attempt_local_artifacts / "zeroclaw_runner_stdout.log").write_text(
+                exec_result.stdout,
+                encoding="utf-8",
+                errors="replace",
+            )
+            (attempt_local_artifacts / "zeroclaw_runner_stderr.log").write_text(
+                exec_result.stderr,
+                encoding="utf-8",
+                errors="replace",
+            )
+
+            attempt_patch_path = attempt_local_artifacts / "patch.diff"
+            attempt_patch = self._read_text_if_exists(attempt_patch_path).strip()
+            attempt_selected = (
+                self._read_json_if_exists(attempt_local_artifacts / "zeroclaw_selected_attempt.json")
+                or {}
+            )
+            attempt_no_edit_reason = self._read_text_if_exists(
+                attempt_local_artifacts / "zeroclaw_no_edit_reason.txt"
+            ).strip()
+            attempt_reason = str(
+                attempt_selected.get("reason")
+                or attempt_no_edit_reason
+                or self._read_text_if_exists(
+                    attempt_local_artifacts / "zeroclaw_stderr.log"
+                ).strip()
+                or exec_result.stderr.strip()
+                or exec_result.stdout.strip()
+                or "unknown ZeroClaw outcome"
+            ).strip()
+            attempt_record = {
+                "attempt_index": index,
+                "resolved_model_alias": alias,
+                "prompt_profile": attempt_prompt_metadata["prompt_profile"],
+                "classification": str(
+                    attempt_selected.get("classification")
+                    or ("patch_created" if attempt_patch else "cli_error")
+                ).strip(),
+                "patch_size_bytes": attempt_patch_path.stat().st_size
+                if attempt_patch_path.exists()
+                else 0,
+                "tracked_repo_change_count": int(
+                    attempt_selected.get("tracked_repo_change_count") or 0
+                ),
+                "untracked_repo_change_count": int(
+                    attempt_selected.get("untracked_repo_change_count") or 0
+                ),
+                "reason": attempt_reason,
+                "returncode": exec_result.returncode,
+                "artifacts_dir": str(attempt_local_artifacts),
+            }
+            attempt_records.append(attempt_record)
+            selected_attempt_dir = attempt_local_artifacts
+            selected_attempt_record = attempt_record
+            selected_returncode = exec_result.returncode
+            selected_prompt = attempt_prompt
+            selected_prompt_metadata = attempt_prompt_metadata
+            if attempt_patch and exec_result.returncode == 0:
+                break
+
+        if selected_attempt_dir is None or selected_attempt_record is None:
+            raise RuntimeError("ZeroClaw attempts did not produce any artifacts")
+        prompt_path.write_text(selected_prompt, encoding="utf-8")
+
+        zeroclaw_attempt_matrix_path = local_artifacts / "zeroclaw_attempt_matrix.json"
+        zeroclaw_selected_attempt_path = local_artifacts / "zeroclaw_selected_attempt.json"
+        zeroclaw_attempt_matrix_path.write_text(
+            json.dumps(
+                {
+                    "attempts": attempt_records,
+                    "selected_attempt_index": selected_attempt_record["attempt_index"],
+                    "tried_aliases": candidate_aliases,
+                },
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        zeroclaw_selected_attempt_path.write_text(
+            json.dumps(selected_attempt_record, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        self._copy_attempt_files(
+            selected_attempt_dir,
+            local_artifacts,
+            exclude_names={
+                "zeroclaw_attempt_matrix.json",
+                "zeroclaw_selected_attempt.json",
+            },
+        )
+
+        zeroclaw_output = self._read_text_if_exists(local_artifacts / "zeroclaw_output.txt")
+        zeroclaw_stderr = self._read_text_if_exists(local_artifacts / "zeroclaw_stderr.log")
+        zeroclaw_runtime_trace = self._read_text_if_exists(
+            local_artifacts / "runtime_trace.jsonl"
+        )
+        zeroclaw_runner_stdout = self._read_text_if_exists(
+            local_artifacts / "zeroclaw_runner_stdout.log"
+        )
+        zeroclaw_runner_stderr = self._read_text_if_exists(
+            local_artifacts / "zeroclaw_runner_stderr.log"
+        )
+        zeroclaw_no_edit_reason_path = local_artifacts / "zeroclaw_no_edit_reason.txt"
+        zeroclaw_no_edit_reason = self._read_text_if_exists(zeroclaw_no_edit_reason_path).strip()
+        selected_classification = str(
+            selected_attempt_record.get("classification", "")
+        ).strip()
+        selected_reason = str(selected_attempt_record.get("reason", "")).strip()
+        patch = self._read_text_if_exists(local_artifacts / "patch.diff").strip()
+        resolved_repo_root = (
+            self._read_text_if_exists(local_artifacts / "repo_root.txt").strip() or repo_root
+        )
+        workspace_file_contents = self._collect_workspace_files(
+            local_artifacts,
+            mode="zeroclaw",
+            names=(
+                "patch.diff",
+                "zeroclaw_output.txt",
+                "zeroclaw_stderr.log",
+                "runtime_trace.jsonl",
+                "zeroclaw_no_edit_reason.txt",
+                "zeroclaw_prompt_contract.txt",
+                "zeroclaw_prompt_profile.txt",
+                "zeroclaw_candidate_models.txt",
+                "zeroclaw_attempt_matrix.json",
+                "zeroclaw_selected_attempt.json",
+                "zeroclaw_runner_stdout.log",
+                "zeroclaw_runner_stderr.log",
+                "prompt.txt",
+                "git_status_before.txt",
+                "git_status_after.txt",
+                "repo_root.txt",
+            ),
+        )
+        artifact_manifest = {"files": {}}
+        for remote_name in workspace_file_contents:
+            artifact_manifest["files"].setdefault("workspace_files", []).append(remote_name)
+
+        wall_time = time.monotonic() - start_time
+        assistant_text = (
+            zeroclaw_output.strip()
+            or patch
+            or zeroclaw_no_edit_reason
+            or zeroclaw_stderr.strip()
+            or zeroclaw_runner_stderr.strip()
+            or zeroclaw_runner_stdout.strip()
+            or selected_reason
+            or "ZeroClaw completed without producing a patch."
+        )
+        zeroclaw_failure_detail = (
+            zeroclaw_stderr.strip()
+            or zeroclaw_no_edit_reason
+            or zeroclaw_runner_stderr.strip()
+            or zeroclaw_runner_stdout.strip()
+            or selected_reason
+        )
+        zeroclaw_preserved_failure = bool(
+            selected_returncode != 0 or not patch or selected_classification != "patch_created"
+        )
+        return AgentResponse(
+            answer=patch,
+            trajectory=[
+                {"role": "user", "content": selected_prompt},
+                {"role": "assistant", "content": assistant_text},
+            ],
+            raw_output=assistant_text,
+            wall_time_sec=wall_time,
+            metadata={
+                "container_id": container_id,
+                "image": image,
+                "base_image": base_image,
+                "dockerhub_tag": str(task.metadata.get("dockerhub_tag", "")),
+                "agent_type": self._agent_type,
+                "patch_format": _detect_patch_format(patch),
+                "container_started": True,
+                "repo_root": resolved_repo_root,
+                "artifacts_dir": str(local_artifacts),
+                "sample_index": sample_index,
+                "execution_id": execution_id,
+                "zeroclaw_prompt_profile": selected_prompt_metadata["prompt_profile"],
+                "zeroclaw_prompt_compactions_applied": selected_prompt_metadata[
+                    "compactions_applied"
+                ],
+                "zeroclaw_output_path": str(local_artifacts / "zeroclaw_output.txt"),
+                "zeroclaw_stderr_path": str(local_artifacts / "zeroclaw_stderr.log"),
+                "zeroclaw_runtime_trace_path": str(local_artifacts / "runtime_trace.jsonl"),
+                "zeroclaw_no_edit_reason_path": str(zeroclaw_no_edit_reason_path),
+                "zeroclaw_prompt_contract_path": str(
+                    local_artifacts / "zeroclaw_prompt_contract.txt"
+                ),
+                "zeroclaw_prompt_profile_path": str(
+                    local_artifacts / "zeroclaw_prompt_profile.txt"
+                ),
+                "zeroclaw_candidate_models_path": str(
+                    local_artifacts / "zeroclaw_candidate_models.txt"
+                ),
+                "zeroclaw_attempt_matrix_path": str(zeroclaw_attempt_matrix_path),
+                "zeroclaw_selected_attempt_path": str(zeroclaw_selected_attempt_path),
+                "git_status_before_path": str(local_artifacts / "git_status_before.txt"),
+                "git_status_after_path": str(local_artifacts / "git_status_after.txt"),
+                "zeroclaw_candidate_aliases": candidate_aliases,
+                "zeroclaw_require_patch": zeroclaw_require_patch,
+                "zeroclaw_selected_model_alias": str(
+                    selected_attempt_record.get("resolved_model_alias", "")
+                ),
+                "zeroclaw_selected_returncode": selected_returncode,
+                "zeroclaw_selected_classification": selected_classification,
+                "zeroclaw_selected_reason": selected_reason,
+                "zeroclaw_preserved_failure": zeroclaw_preserved_failure,
+                "bootstrap_needed": bool(runtime_metadata.get("runtime_image_built", False)),
+                **runtime_metadata,
+            },
+            request_messages=[{"role": "user", "content": selected_prompt}],
+            response_json={
+                "output_text": zeroclaw_output.strip(),
+                "stderr_text": zeroclaw_stderr.strip(),
+                "runtime_trace_present": bool(zeroclaw_runtime_trace.strip()),
+                "runner_stdout_text": zeroclaw_runner_stdout.strip(),
+                "runner_stderr_text": zeroclaw_runner_stderr.strip(),
+                "selected_returncode": selected_returncode,
+                "selected_classification": selected_classification,
+            },
+            artifact_manifest=artifact_manifest,
+            gateway_log_excerpt=zeroclaw_stderr,
+            workspace_file_contents=workspace_file_contents,
+            finish_reason=(
+                "completed"
+                if not zeroclaw_preserved_failure
+                else "preserved_failure"
+            ),
         )
 
     def _solve_direct_llm(

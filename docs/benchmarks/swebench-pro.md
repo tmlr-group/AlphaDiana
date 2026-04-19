@@ -11,6 +11,7 @@ This guide covers the AlphaDiana paths that were actually exercised for SWE-benc
 
 - `openclaw` via `swebench_docker`
 - `opencode` via `swebench_docker`
+- `zeroclaw` via `swebench_docker`
 
 `directLLM` is intentionally not documented here as a Diana execution path. For
 the direct-LLM baseline on SWE-bench Pro, use the official repository instead:
@@ -35,12 +36,14 @@ Shipped configs:
 
 - `configs/examples/swebench_pro_openclaw_smoke.local.yaml`
 - `configs/examples/swebench_pro_opencode_smoke.local.yaml`
+- `configs/examples/swebench_pro_zeroclaw_smoke.local.yaml`
 - `configs/examples/swebench_pro_direct_llm_smoke.local.yaml`
 - `configs/full_runs/p29_full_openclaw_swebench_pro.yaml`
 - `configs/full_runs/p29_full_opencode_swebench_pro.yaml`
+- `configs/full_runs/p29_full_zeroclaw_swebench_pro.yaml`
 
-Only the first two are part of the AlphaDiana reproduction path documented here.
-The two `configs/full_runs/` files are the full benchmark entry points for the Diana-backed paths.
+Only the first three are part of the AlphaDiana reproduction path documented here.
+The three `configs/full_runs/` files are the full benchmark entry points for the Diana-backed paths.
 
 OpenRouter/Qwen pilot status on April 19, 2026:
 
@@ -63,12 +66,13 @@ OpenRouter/Qwen pilot status on April 19, 2026:
 
 Compared with the root `README.md`, the SWE-bench Pro path differs in a few important ways:
 
-- It does not use `agent.name: openclaw` plus ROCK deployment. It uses `agent.name: swebench_docker` with `agent.config.agent_type: openclaw|opencode`.
+- It does not use `agent.name: openclaw` or `agent.name: zeroclaw` plus ROCK deployment. It uses `agent.name: swebench_docker` with `agent.config.agent_type: openclaw|opencode|zeroclaw`.
 - It requires upstream SWE-bench Pro evaluator assets via `SWE_BENCH_PRO_EVAL_SCRIPT` and `SWE_BENCH_PRO_SCRIPTS_DIR`.
 - It runs on the official SWE-bench Pro task image from `jefzda/sweap-images:*`.
 - It is a smoke subset run: `subset: smoke` and `max_tasks: 1`.
 - The smoke configs ship with `max_concurrent: 1`, but the reproduction commands below override `max_concurrent=10` to match the local validation setup. With `max_tasks: 1`, effective task parallelism is still `1`.
 - `OpenCode` may need an explicit runtime-image override when Docker Hub cannot serve `tmlrgroup/alphadiana:opencode`. The code already supports `SWEBENCH_OPENCODE_RUNTIME_IMAGE`.
+- `ZeroClaw` may need an explicit runtime-image override when the default runtime image is unavailable. The code supports `SWEBENCH_ZEROCLAW_RUNTIME_IMAGE`.
 
 ## Prerequisites
 
@@ -266,6 +270,41 @@ python -m alphadiana.cli validate configs/examples/swebench_pro_opencode_smoke.l
 
 This is the playbook-aligned smoke contract. If you want a stricter patch-convergence debugging path, set `OPENCODE_REQUIRE_PATCH=1` and widen the alias/strategy matrix, but that is not required for a smoke pass.
 
+### ZeroClaw
+
+Default runtime source image:
+
+- `zeroclaw-reasoning:0.6.9`
+
+If you need to override it locally, set:
+
+```bash
+export SWEBENCH_ZEROCLAW_RUNTIME_IMAGE=zeroclaw-reasoning:0.6.9
+```
+
+The current ZeroClaw overlay only injects the `zeroclaw` binary into the
+official SWE task image. It does not `apt-get install` extra system packages,
+which keeps the smoke path compatible with focal-based task images such as the
+official `ansible` smoke sample.
+
+Validation command:
+
+```bash
+ZEROCLAW_SMOKE_MODEL_NAME=minimax-m2.5 \
+ZEROCLAW_SMOKE_MODEL_CANDIDATES=minimax-m2.5,minimax \
+ZEROCLAW_TIMEOUT_SEC=1500 \
+ZEROCLAW_REQUIRE_PATCH=1 \
+ZEROCLAW_PROMPT_PROFILE=edit_first \
+ZEROCLAW_PROBLEM_STATEMENT_MAX_CHARS=12000 \
+ZEROCLAW_WORKSPACE_ONLY=0 \
+ZEROCLAW_MAX_TOOL_ITERATIONS=100 \
+ZEROCLAW_MAX_ACTIONS_PER_HOUR=200 \
+ZEROCLAW_RUNTIME_TRACE_MODE=none \
+python -m alphadiana.cli validate configs/examples/swebench_pro_zeroclaw_smoke.local.yaml \
+  -o run_id=swebench-pro-zeroclaw-smoke-local \
+  -o max_concurrent=10
+```
+
 ## April 19 OpenRouter/Qwen 3-Task Pilot
 
 The April 19 pilot reused the checked-in smoke YAMLs and overrode the task
@@ -435,7 +474,6 @@ Observed result:
   repository edits
 - `ansible` and `qutebrowser` both produced non-empty `patch.diff` artifacts but
   still scored `0`
-
 ## Run The Smoke Tests
 
 ### OpenClaw smoke
@@ -484,6 +522,24 @@ python -m alphadiana.cli run configs/examples/swebench_pro_opencode_smoke.local.
   -o max_concurrent=10
 ```
 
+### ZeroClaw smoke
+
+```bash
+ZEROCLAW_SMOKE_MODEL_NAME=minimax-m2.5 \
+ZEROCLAW_SMOKE_MODEL_CANDIDATES=minimax-m2.5,minimax \
+ZEROCLAW_TIMEOUT_SEC=1500 \
+ZEROCLAW_REQUIRE_PATCH=1 \
+ZEROCLAW_PROMPT_PROFILE=edit_first \
+ZEROCLAW_PROBLEM_STATEMENT_MAX_CHARS=12000 \
+ZEROCLAW_WORKSPACE_ONLY=0 \
+ZEROCLAW_MAX_TOOL_ITERATIONS=100 \
+ZEROCLAW_MAX_ACTIONS_PER_HOUR=200 \
+ZEROCLAW_RUNTIME_TRACE_MODE=none \
+python -m alphadiana.cli run configs/examples/swebench_pro_zeroclaw_smoke.local.yaml \
+  -o run_id=swebench-pro-zeroclaw-smoke-local \
+  -o max_concurrent=10
+```
+
 ## Expected Results
 
 Use the following smoke pass criteria:
@@ -495,13 +551,18 @@ Use the following smoke pass criteria:
 For SWE-bench Pro smoke in AlphaDiana, also inspect the root agent artifact directory:
 
 - `patch.diff` should be non-empty if the agent produced a repository edit
-- `*_attempt_matrix.json` should preserve alias/strategy evidence when retries happen
+- `*_attempt_matrix.json` should preserve alias evidence when retries happen
 
 Interpretation:
 
 - `X` means execution succeeded but the patch did not solve the benchmark task
 - that is still a valid smoke pass for infrastructure reproduction
 - for `opencode`, an empty patch is acceptable in smoke mode when `OPENCODE_REQUIRE_PATCH=0`; the task JSON should then show `error: null` and a rationale like `Empty patch produced; skipping SWE-bench evaluation.`
+- for `zeroclaw`, `ZEROCLAW_REQUIRE_PATCH=1` still keeps patchless attempts
+  strict for scoring, but loop-detector, no-edit, and CLI-abort outcomes are
+  preserved as auditable task results when artifacts exist; expect
+  `error: null`, a non-empty trajectory, and `finish_reason=preserved_failure`
+  instead of a task-level hard error
 
 ## Local Verified Outcomes
 
@@ -509,6 +570,10 @@ These are the outcomes actually observed during local validation on `2026-04-17`
 
 - `openclaw`: `minimax-m2.5`, dashboard `X`, task JSON `error=None`, root `patch.diff` size `4485` bytes
 - `opencode`: `minimax` with `guided_edit_first`, dashboard `X`, task JSON `error=None`, root `patch.diff` absent, selected attempt classified as `active_session_no_patch`
+- `zeroclaw`: `Qwen/Qwen3.5-27B` via OpenRouter repair pilot on `2026-04-19`,
+  repaired run `pr23_qwen_openrouter_zeroclaw_swebench_pro_t3_repair_20260419`
+  finished `X/X/X` with all three task JSONs written, no top-level `error`,
+  and `runtime_image_built=true` on every task
 - reviewer-facing summary: `context/pr29-add-swebench-pro/smoke-validation.md`
 - compact matrix: `context/pr29-add-swebench-pro/status-matrix.md`
 
@@ -545,12 +610,14 @@ For full benchmark runs, use:
 
 - `configs/full_runs/p29_full_openclaw_swebench_pro.yaml`
 - `configs/full_runs/p29_full_opencode_swebench_pro.yaml`
+- `configs/full_runs/p29_full_zeroclaw_swebench_pro.yaml`
 
 Validate first:
 
 ```bash
 python -m alphadiana.cli validate configs/full_runs/p29_full_openclaw_swebench_pro.yaml
 python -m alphadiana.cli validate configs/full_runs/p29_full_opencode_swebench_pro.yaml
+python -m alphadiana.cli validate configs/full_runs/p29_full_zeroclaw_swebench_pro.yaml
 ```
 
 Then run:
@@ -558,6 +625,7 @@ Then run:
 ```bash
 python -m alphadiana.cli run configs/full_runs/p29_full_openclaw_swebench_pro.yaml --redo-all
 python -m alphadiana.cli run configs/full_runs/p29_full_opencode_swebench_pro.yaml --redo-all
+python -m alphadiana.cli run configs/full_runs/p29_full_zeroclaw_swebench_pro.yaml --redo-all
 ```
 
 `directLLM` full runs remain outside Diana. Use the official `scaleapi/SWE-bench_Pro-os` repository for that path.
