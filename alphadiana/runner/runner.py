@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import logging
+import queue
 import threading
 import time
 from dataclasses import replace
@@ -34,6 +35,40 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 OPENCLAW_CONCURRENCY_PER_SANDBOX = 1
 _OPENCLAW_PROFILE_CACHE_PATH = Path(".cache/openclaw_startup_profiles.json")
+
+
+def _has_openclaw_direct_gateway(config: "ExperimentConfig") -> bool:
+    """Return whether OpenClaw should use an already-running gateway."""
+    if config.agent_name != "openclaw":
+        return False
+    api_base = str(config.agent_config.get("api_base", "") or "").strip()
+    gateway_pool = config.agent_config.get("gateway_pool", []) or []
+    return bool(api_base or gateway_pool)
+
+
+def _is_gateway_autodeploy_agent(config: "ExperimentConfig") -> bool:
+    if config.agent_name == "openclaw":
+        return bool(
+            not _has_openclaw_direct_gateway(config)
+            and
+            config.agent_config.get("rock_agent_config_path")
+            and config.agent_config.get("openclaw_config_path")
+        )
+    if config.agent_name == "zeroclaw":
+        return bool(config.agent_config.get("rock_image"))
+    return False
+
+
+def _make_gateway_runtime_manager(config: "ExperimentConfig"):
+    if config.agent_name == "openclaw":
+        from alphadiana.agent.openclaw_runtime import OpenClawRuntimeManager
+
+        return OpenClawRuntimeManager(config.agent_config)
+    if config.agent_name == "zeroclaw":
+        from alphadiana.agent.zeroclaw_runtime import ZeroClawRuntimeManager
+
+        return ZeroClawRuntimeManager(config.agent_config)
+    raise RuntimeError(f"Unsupported gateway auto-deploy agent: {config.agent_name}")
 
 
 def _build_openclaw_profile_cache_key(config: "ExperimentConfig", admin_base_url: str) -> str:
@@ -162,6 +197,8 @@ class Runner:
         import alphadiana.agent.terminal_bench2_docker  # noqa: F401
         import alphadiana.agent.terminal_bench2_openclaw  # noqa: F401
         import alphadiana.agent.terminal_bench2_opencode  # noqa: F401
+        import alphadiana.agent.terminal_bench2_zeroclaw  # noqa: F401
+        import alphadiana.agent.zeroclaw  # noqa: F401
 
         # Import sandbox modules to trigger registration.
         import alphadiana.sandbox.local  # noqa: F401
@@ -295,10 +332,12 @@ class Runner:
         except Exception:
             logger.debug("Dashboard initialization skipped", exc_info=True)
 
-        # Optional multi-sandbox predeploy for OpenClaw auto-deploy mode.
+        gateway_agent_label = self.config.agent_name
+
+        # Optional multi-sandbox predeploy for gateway auto-deploy mode.
         # This is the CLI equivalent of the dashboard deploy-and-run flow:
-        # create N sandboxes up front, start one gateway per sandbox, and let
-        # OpenClaw round-robin across the resulting gateway_pool.
+        # create N sandboxes up front, start one gateway/bridge per sandbox, and let
+        # the agent round-robin across the resulting gateway_pool.
         predeployed_sessions = []
         predeployed_session_by_sandbox_id: dict[str, object] = {}
         predeployed_session_reset_lock = threading.Lock()
@@ -307,10 +346,7 @@ class Runner:
         )
         if (
             self.sandbox is None
-            and self.config.agent_name == "openclaw"
-            and self.config.agent_config.get("runtime") != "swebench_container"
-            and self.config.agent_config.get("rock_agent_config_path")
-            and self.config.agent_config.get("openclaw_config_path")
+            and _is_gateway_autodeploy_agent(self.config)
         ):
             explicit_num = int(self.config.agent_config.get("num_sandboxes", 0) or 0)
             auto_num = (
@@ -321,7 +357,6 @@ class Runner:
             if desired_num > 1:
                 try:
                     import alphadiana.sandbox.rock  # noqa: F401 — trigger registration
-                    from alphadiana.agent.openclaw_runtime import OpenClawRuntimeManager
                     from alphadiana.sandbox.registry import SandboxRegistry
 
                     auto_sandbox_config = {
@@ -336,12 +371,31 @@ class Runner:
                         "image": self.config.agent_config.get("rock_image", "python:3.11"),
                         "memory": self.config.agent_config.get("rock_memory", "2g"),
                         "cpus": float(self.config.agent_config.get("rock_cpus", 0.5)),
+                        "limit_cpus": (
+                            float(
+                                self.config.agent_config.get(
+                                    "rock_limit_cpus",
+                                    self.config.agent_config.get("limit_cpus"),
+                                )
+                            )
+                            if self.config.agent_config.get(
+                                "rock_limit_cpus",
+                                self.config.agent_config.get("limit_cpus"),
+                            ) is not None
+                            else None
+                        ),
                         "startup_timeout": int(self.config.agent_config.get("rock_startup_timeout", 300)),
                         "auto_clear_seconds": int(self.config.agent_config.get("rock_auto_clear_seconds", 7200)),
                         "start_retries": int(self.config.agent_config.get("rock_start_retries", 3)),
                         "reset_between_tasks": False,
                         "proxy_timeout": int(self.config.agent_config.get("proxy_timeout", 1800)),
                         "network_mode": self.config.agent_config.get("network_mode", None),
+                        "use_kata_runtime": bool(
+                            self.config.agent_config.get(
+                                "rock_use_kata_runtime",
+                                self.config.agent_config.get("use_kata_runtime", False),
+                            )
+                        ),
                     }
                     cache_key = _build_openclaw_profile_cache_key(
                         self.config,
@@ -386,7 +440,7 @@ class Runner:
                                     )
                                 sandbox_backend.setup(sandbox_config)
                                 session = sandbox_backend.create_session()
-                                runtime_manager = OpenClawRuntimeManager(self.config.agent_config)
+                                runtime_manager = _make_gateway_runtime_manager(self.config)
                                 info = runtime_manager.ensure_ready(session)
                                 md = session.metadata() if hasattr(session, "metadata") else {}
                                 profile_memory = str(md.get("memory", sandbox_config["memory"]))
@@ -410,9 +464,10 @@ class Runner:
                         raise last_error
 
                     logger.info(
-                        "Predeploying %d OpenClaw sandboxes for CLI concurrency "
+                        "Predeploying %d %s sandboxes for CLI concurrency "
                         "(max_concurrent=%d, target=%d tasks/sandbox)",
                         desired_num,
+                        gateway_agent_label,
                         self.config.max_concurrent,
                         OPENCLAW_CONCURRENCY_PER_SANDBOX,
                     )
@@ -457,7 +512,10 @@ class Runner:
                         )
                         self.config.max_concurrent = effective_capacity
                     self.config.agent_config["gateway_pool"] = gateway_pool
-                    self.config.agent_config["api_base"] = gateway_pool[0]
+                    if self.config.agent_name == "openclaw":
+                        self.config.agent_config["api_base"] = gateway_pool[0]
+                    else:
+                        self.config.agent_config["gateway_api_base"] = gateway_pool[0]
                     self.config.agent_config["sandbox_id"] = predeployed_sessions[0].sandbox_id
                     self.config.agent_config["rock_sandbox_url"] = (
                         predeployed_sessions[0].metadata().get("proxy_base_url", "")
@@ -469,21 +527,24 @@ class Runner:
                             preferred_profile[1],
                         )
                         logger.info(
-                            "Persisted OpenClaw startup profile memory=%s cpus=%s",
+                            "Persisted %s startup profile memory=%s cpus=%s",
+                            gateway_agent_label,
                             preferred_profile[0],
                             preferred_profile[1],
                         )
                     self.agent.setup(self.config.agent_config)
                     logger.info(
-                        "OpenClaw gateway_pool ready with %d sandboxes: %s",
+                        "%s gateway_pool ready with %d sandboxes: %s",
+                        gateway_agent_label,
                         len(gateway_pool),
                         gateway_pool,
                     )
                 except Exception as exc:
                     logger.warning(
-                        "Failed to predeploy %d OpenClaw sandboxes: %s. "
+                        "Failed to predeploy %d %s sandboxes: %s. "
                         "Falling back to single-sandbox auto-deploy.",
                         desired_num,
+                        gateway_agent_label,
                         exc,
                     )
                     for session in predeployed_sessions:
@@ -494,27 +555,21 @@ class Runner:
                     predeployed_sessions = []
 
         # Auto-create a ROCK sandbox when:
-        #   - agent is "openclaw" with auto-deploy config
-        #     (rock_agent_config_path + openclaw_config_path in agent config)
+        #   - agent is a gateway auto-deploy agent
         #   - no sandbox_name was explicitly configured (sandbox: null)
         # Note: this creates a single sandbox for auto-deploy.
-        # For concurrent execution, openclaw handles isolation internally via
-        # gateway_pool (multi-sandbox).  Do NOT use SandboxPool with openclaw.
         _auto_sandbox = None
         if (
             self.sandbox is None
             and not predeployed_sessions
-            and self.config.agent_name == "openclaw"
-            and self.config.agent_config.get("runtime") != "swebench_container"
-            and self.config.agent_config.get("rock_agent_config_path")
-            and self.config.agent_config.get("openclaw_config_path")
+            and _is_gateway_autodeploy_agent(self.config)
         ):
             try:
                 import alphadiana.sandbox.rock  # noqa: F401 — trigger registration
                 from alphadiana.sandbox.registry import SandboxRegistry
                 rock_cls = SandboxRegistry.get("rock")
                 _auto_sandbox = rock_cls()
-                # Build sandbox config from agent config, with openclaw-friendly defaults.
+                # Build sandbox config from agent config, with gateway-friendly defaults.
                 auto_sandbox_config = {
                     "admin_base_url": self.config.agent_config.get(
                         "admin_base_url",
@@ -528,19 +583,39 @@ class Runner:
                     # Lower resource profile to support multiple parallel sandboxes.
                     "memory": self.config.agent_config.get("rock_memory", "2g"),
                     "cpus": float(self.config.agent_config.get("rock_cpus", 0.5)),
+                    "limit_cpus": (
+                        float(
+                            self.config.agent_config.get(
+                                "rock_limit_cpus",
+                                self.config.agent_config.get("limit_cpus"),
+                            )
+                        )
+                        if self.config.agent_config.get(
+                            "rock_limit_cpus",
+                            self.config.agent_config.get("limit_cpus"),
+                        ) is not None
+                        else None
+                    ),
                     "startup_timeout": int(self.config.agent_config.get("rock_startup_timeout", 300)),
                     "auto_clear_seconds": int(self.config.agent_config.get("rock_auto_clear_seconds", 7200)),
                     "start_retries": int(self.config.agent_config.get("rock_start_retries", 3)),
-                    # Do NOT reset workspace between tasks: the OpenClaw gateway process
+                    # Do NOT reset workspace between tasks: the in-sandbox gateway/bridge
                     # keeps running in the container and owns the workspace lifecycle.
                     "reset_between_tasks": False,
                     "proxy_timeout": int(self.config.agent_config.get("proxy_timeout", 1800)),
                     "network_mode": self.config.agent_config.get("network_mode", None),
+                    "use_kata_runtime": bool(
+                        self.config.agent_config.get(
+                            "rock_use_kata_runtime",
+                            self.config.agent_config.get("use_kata_runtime", False),
+                        )
+                    ),
                 }
                 _auto_sandbox.setup(auto_sandbox_config)
                 logger.info(
-                    "Auto-created ROCK sandbox for openclaw concurrent isolation "
+                    "Auto-created ROCK sandbox for %s concurrent isolation "
                     "(max_concurrent=%d, memory=%s, cpus=%s)",
+                    gateway_agent_label,
                     self.config.max_concurrent,
                     auto_sandbox_config["memory"],
                     auto_sandbox_config["cpus"],
@@ -549,8 +624,9 @@ class Runner:
                 self.sandbox = _auto_sandbox
             except Exception as exc:
                 logger.warning(
-                    "Failed to auto-create ROCK sandbox for openclaw isolation: %s. "
+                    "Failed to auto-create ROCK sandbox for %s isolation: %s. "
                     "Falling back to shared gateway (may cause workspace contention at max_concurrent>1).",
+                    gateway_agent_label,
                     exc,
                 )
                 _auto_sandbox = None
@@ -588,6 +664,11 @@ class Runner:
         if self.sandbox is not None and pool is None and sandbox_supports_shared_session:
             logger.info("Creating shared sandbox session for sequential execution")
             shared_session = self.sandbox.create_session()
+        predeployed_session_queue = None
+        if predeployed_sessions:
+            predeployed_session_queue = queue.Queue()
+            for session in predeployed_sessions:
+                predeployed_session_queue.put(session)
 
         def _reset_predeployed_session(sandbox_id: str, task_id: str) -> None:
             if not reset_predeployed_between_tasks or not sandbox_id:
@@ -616,9 +697,13 @@ class Runner:
             # Acquire sandbox session: from pool (concurrent) or shared (sequential).
             sandbox_session = None
             used_pool = False
+            used_predeployed_pool = False
             if pool is not None:
                 sandbox_session = pool.acquire()
                 used_pool = True
+            elif predeployed_session_queue is not None:
+                sandbox_session = predeployed_session_queue.get()
+                used_predeployed_pool = True
             elif shared_session is not None:
                 sandbox_session = shared_session
             elif self.sandbox is not None:
@@ -644,7 +729,8 @@ class Runner:
                     response.sandbox_id = response.sandbox_metadata.get("sandbox_id", "")
                 response_sandbox_id = str(response.sandbox_id or "")
                 if self.sandbox is not None:
-                    response.metadata.setdefault("sandbox_backend", self.sandbox.name)
+                    sandbox_backend_name = getattr(self.sandbox, "name", type(self.sandbox).__name__)
+                    response.metadata.setdefault("sandbox_backend", sandbox_backend_name)
                 # Score the result.
                 score = self.scorer.score(runtime_task, response)
                 # Store the result.
@@ -673,7 +759,7 @@ class Runner:
             except Exception as exc:
                 logger.error("Task %s failed: %s", task.task_id, exc)
                 # Build a partial response for error recording.
-                error_response = response
+                error_response = getattr(exc, "partial_response", None) or response
                 if error_response is None:
                     from alphadiana.agent.base import AgentResponse
                     error_response = AgentResponse(
@@ -691,11 +777,24 @@ class Runner:
                     if runtime_manager is not None and getattr(runtime_manager, "is_configured", False):
                         try:
                             artifact_data = runtime_manager.collect_artifacts(sandbox_session)
-                            error_response.artifact_manifest = artifact_data["artifact_manifest"]
-                            error_response.gateway_log_excerpt = artifact_data["gateway_log_excerpt"]
-                            error_response.workspace_snapshot_paths = artifact_data["workspace_snapshot_paths"]
-                            error_response.workspace_file_contents = artifact_data["workspace_file_contents"]
-                            error_response.sandbox_metadata = artifact_data["sandbox_metadata"]
+                            existing_manifest = dict(error_response.artifact_manifest or {})
+                            existing_files = dict(error_response.workspace_file_contents or {})
+                            error_response.artifact_manifest = {
+                                **existing_manifest,
+                                **artifact_data.get("artifact_manifest", {}),
+                            }
+                            if not error_response.gateway_log_excerpt:
+                                error_response.gateway_log_excerpt = artifact_data.get("gateway_log_excerpt", "")
+                            existing_paths = list(error_response.workspace_snapshot_paths or [])
+                            new_paths = list(artifact_data.get("workspace_snapshot_paths", []) or [])
+                            error_response.workspace_snapshot_paths = existing_paths + [
+                                path for path in new_paths if path not in existing_paths
+                            ]
+                            existing_files.update(artifact_data.get("workspace_file_contents", {}) or {})
+                            error_response.workspace_file_contents = existing_files
+                            sandbox_metadata = dict(error_response.sandbox_metadata or {})
+                            sandbox_metadata.update(artifact_data.get("sandbox_metadata", {}) or {})
+                            error_response.sandbox_metadata = sandbox_metadata
                         except Exception as artifact_exc:
                             logger.warning("Artifact collection failed for task %s: %s", task.task_id, artifact_exc)
                     if not error_response.gateway_url and hasattr(sandbox_session, "proxy_v1_base"):
@@ -703,7 +802,8 @@ class Runner:
                     elif not error_response.gateway_url and hasattr(sandbox_session, "gateway_api_base"):
                         error_response.gateway_url = f"{sandbox_session.gateway_api_base()}/chat/completions"
                 if self.sandbox is not None:
-                    error_response.metadata.setdefault("sandbox_backend", self.sandbox.name)
+                    sandbox_backend_name = getattr(self.sandbox, "name", type(self.sandbox).__name__)
+                    error_response.metadata.setdefault("sandbox_backend", sandbox_backend_name)
                 error_response.metadata.setdefault("sample_index", sample_index)
                 error_response.metadata.setdefault(
                     "execution_id",
@@ -726,7 +826,9 @@ class Runner:
                     _reset_predeployed_session(response_sandbox_id, task.task_id)
                 if sandbox_session is not None:
                     try:
-                        if used_pool:
+                        if used_predeployed_pool:
+                            predeployed_session_queue.put(sandbox_session)
+                        elif used_pool:
                             pool.release(sandbox_session)
                         elif shared_session is not None:
                             # Shared session: reset for next task, don't close.

@@ -9,8 +9,16 @@ from alphadiana.config.experiment_config import ExperimentConfig
 class ConfigValidator:
     SANDBOX_REQUIRED_BENCHMARKS: set[str] = {"terminal_bench", "osworld"}
 
-    # Agents that require an api_base in agent_config.
-    API_AGENTS = {"openclaw", "direct_llm"}
+    OPENCLAW_RUNTIME_AGENTS = {"openclaw"}
+    API_AGENTS = OPENCLAW_RUNTIME_AGENTS | {
+        "direct_llm",
+        "zeroclaw",
+        "opencode",
+        "terminal_bench2_docker",
+        "terminal_bench2_opencode",
+        "terminal_bench2_openclaw",
+        "terminal_bench2_zeroclaw",
+    }
 
     def validate(self, config: ExperimentConfig) -> list[str]:
         errors: list[str] = []
@@ -40,6 +48,13 @@ class ConfigValidator:
 
         if config.agent_name in self.API_AGENTS:
             runtime = str(config.agent_config.get("runtime", "")).strip()
+            has_api_base = self._has_nonempty_value(config.agent_config.get("api_base"))
+            has_auto_deploy = bool(
+                config.agent_config.get("rock_agent_config_path")
+                and config.agent_config.get("openclaw_config_path")
+            )
+            has_zeroclaw_auto_deploy = bool(config.agent_config.get("rock_image"))
+
             if config.agent_name == "openclaw" and runtime == "swebench_container":
                 if config.sandbox_name != "swebench_container":
                     errors.append(
@@ -51,28 +66,29 @@ class ConfigValidator:
                         "agent 'openclaw' with runtime='swebench_container' requires "
                         "'openclaw_config_path' in agent_config"
                     )
-            else:
-                has_api_base = bool(config.agent_config.get("api_base"))
-                has_auto_deploy = bool(
-                    config.agent_config.get("rock_agent_config_path")
-                    and config.agent_config.get("openclaw_config_path")
-                )
+            elif config.agent_name == "opencode" and runtime == "swebench_container":
+                if config.sandbox_name != "swebench_container":
+                    errors.append(
+                        "agent 'opencode' with runtime='swebench_container' requires "
+                        "sandbox.name == 'swebench_container'"
+                    )
+            elif config.agent_name in self.OPENCLAW_RUNTIME_AGENTS:
                 if not has_api_base and not has_auto_deploy:
                     errors.append(
                         f"agent '{config.agent_name}' requires 'api_base' or "
                         "'rock_agent_config_path' + 'openclaw_config_path' in agent_config "
                         "(auto-deploy mode)"
                     )
-
-        if (
-            config.agent_name == "opencode"
-            and str(config.agent_config.get("runtime", "")).strip() == "swebench_container"
-            and config.sandbox_name != "swebench_container"
-        ):
-            errors.append(
-                "agent 'opencode' with runtime='swebench_container' requires "
-                "sandbox.name == 'swebench_container'"
-            )
+            elif config.agent_name == "zeroclaw":
+                if not has_api_base and not has_zeroclaw_auto_deploy:
+                    errors.append(
+                        "agent 'zeroclaw' requires 'api_base' in agent_config or "
+                        "'rock_image' for ROCK auto-deploy mode"
+                    )
+            elif not has_api_base:
+                errors.append(
+                    f"agent '{config.agent_name}' requires 'api_base' in agent_config"
+                )
 
         if (
             config.agent_name == "swebench_docker"
@@ -91,7 +107,7 @@ class ConfigValidator:
 
         if config.agent_name == "swebench_docker":
             agent_type = str(config.agent_config.get("agent_type", "direct_llm")).strip() or "direct_llm"
-            if agent_type in {"openclaw", "opencode"}:
+            if agent_type in {"openclaw", "opencode", "zeroclaw"}:
                 nested_env = config.agent_config.get("env", {})
                 if not isinstance(nested_env, dict):
                     nested_env = {}
@@ -111,6 +127,7 @@ class ConfigValidator:
             "terminal_bench2_docker",
             "terminal_bench2_openclaw",
             "terminal_bench2_opencode",
+            "terminal_bench2_zeroclaw",
         } and not self._has_nonempty_value(config.agent_config.get("api_base")):
             errors.append(
                 f"agent '{config.agent_name}' requires 'api_base' in agent_config "

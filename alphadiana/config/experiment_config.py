@@ -5,13 +5,12 @@ import os
 import re
 import uuid
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 import yaml
 
 _ENV_PLACEHOLDER_RE = re.compile(
-    r"^\$(?:\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)$"
+    r"^\s*(?:\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$[A-Za-z_][A-Za-z0-9_]*)\s*$"
 )
 
 
@@ -23,6 +22,17 @@ def _expand_env_vars(obj: Any) -> Any:
         return {k: _expand_env_vars(v) for k, v in obj.items()}
     if isinstance(obj, list):
         return [_expand_env_vars(item) for item in obj]
+    return obj
+
+
+def _clear_unresolved_env_placeholders(obj: Any) -> Any:
+    """Treat fully unresolved env-var placeholders as empty strings."""
+    if isinstance(obj, str):
+        return "" if _ENV_PLACEHOLDER_RE.fullmatch(obj) else obj
+    if isinstance(obj, dict):
+        return {k: _clear_unresolved_env_placeholders(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_clear_unresolved_env_placeholders(item) for item in obj]
     return obj
 
 
@@ -47,21 +57,34 @@ def _apply_agent_env_defaults(agent_name: str, agent_config: Any) -> dict:
 
     resolved = copy.deepcopy(agent_config)
 
-    is_direct_llm_mode = agent_name == "direct_llm" or (
-        agent_name == "swebench_docker"
-        and str(resolved.get("agent_type", "direct_llm")).strip() == "direct_llm"
-    )
-    is_swebench_container_api_mode = (
-        agent_name == "swebench_docker"
-        and str(resolved.get("agent_type", "direct_llm")).strip() in {"openclaw", "opencode"}
-    )
-
-    if is_direct_llm_mode:
+    if agent_name in {
+        "direct_llm",
+        "zeroclaw",
+        "opencode",
+        "terminal_bench2_docker",
+        "terminal_bench2_opencode",
+        "terminal_bench2_openclaw",
+        "terminal_bench2_zeroclaw",
+    }:
         env_defaults = {
-            "model": "OPENAI_MODEL_NAME",
             "api_base": "OPENAI_BASE_URL",
             "api_key": "OPENAI_API_KEY",
         }
+        if agent_name in {
+            "direct_llm",
+            "zeroclaw",
+            "terminal_bench2_docker",
+            "terminal_bench2_zeroclaw",
+        }:
+            env_defaults["model"] = "OPENAI_MODEL_NAME"
+        if agent_name in {
+            "opencode",
+            "terminal_bench2_opencode",
+            "terminal_bench2_openclaw",
+            "terminal_bench2_zeroclaw",
+        }:
+            env_defaults["model_name"] = "OPENAI_MODEL_NAME"
+
         for key, env_var in env_defaults.items():
             if not _is_blank_config_value(resolved.get(key, "")):
                 continue
@@ -69,23 +92,37 @@ def _apply_agent_env_defaults(agent_name: str, agent_config: Any) -> dict:
             if env_value:
                 resolved[key] = env_value
 
-    if is_swebench_container_api_mode:
-        env_defaults = {
-            "OPENAI_MODEL_NAME": "OPENAI_MODEL_NAME",
-            "OPENAI_BASE_URL": "OPENAI_BASE_URL",
-            "OPENAI_API_KEY": "OPENAI_API_KEY",
-        }
-        nested_env = resolved.get("env", {})
-        if not isinstance(nested_env, dict):
-            nested_env = {}
-        nested_env = copy.deepcopy(nested_env)
-        for key, env_var in env_defaults.items():
-            if not _is_blank_config_value(nested_env.get(key, "")):
-                continue
-            env_value = os.environ.get(env_var, "").strip()
-            if env_value:
-                nested_env[key] = env_value
-        resolved["env"] = nested_env
+    if agent_name == "swebench_docker":
+        agent_type = str(resolved.get("agent_type", "direct_llm")).strip() or "direct_llm"
+        if agent_type == "direct_llm":
+            env_defaults = {
+                "model": "OPENAI_MODEL_NAME",
+                "api_base": "OPENAI_BASE_URL",
+                "api_key": "OPENAI_API_KEY",
+            }
+            for key, env_var in env_defaults.items():
+                if not _is_blank_config_value(resolved.get(key, "")):
+                    continue
+                env_value = os.environ.get(env_var, "").strip()
+                if env_value:
+                    resolved[key] = env_value
+        elif agent_type in {"openclaw", "opencode", "zeroclaw"}:
+            env_defaults = {
+                "OPENAI_MODEL_NAME": "OPENAI_MODEL_NAME",
+                "OPENAI_BASE_URL": "OPENAI_BASE_URL",
+                "OPENAI_API_KEY": "OPENAI_API_KEY",
+            }
+            nested_env = resolved.get("env", {})
+            if not isinstance(nested_env, dict):
+                nested_env = {}
+            nested_env = copy.deepcopy(nested_env)
+            for key, env_var in env_defaults.items():
+                if not _is_blank_config_value(nested_env.get(key, "")):
+                    continue
+                env_value = os.environ.get(env_var, "").strip()
+                if env_value:
+                    nested_env[key] = env_value
+            resolved["env"] = nested_env
 
     return resolved
 
@@ -107,7 +144,6 @@ def parse_override(s: str) -> dict:
         raise ValueError(f"Invalid override (missing '='): {s}")
     key_path, raw_value = s.split("=", 1)
     value: Any = raw_value
-    # Try to coerce to int/float/bool
     if raw_value.lower() in ("true", "false"):
         value = raw_value.lower() == "true"
     else:
@@ -166,6 +202,8 @@ class ExperimentConfig:
 
         if overrides:
             data = deep_merge(data, overrides)
+
+        data = _clear_unresolved_env_placeholders(data)
 
         agent = data.get("agent", {})
         benchmark = data.get("benchmark", {})

@@ -1,7 +1,7 @@
 # GPQA-Diamond
 
-本文档说明如何在 `GPQA-Diamond` 上运行 `direct_llm`、`openclaw` 和
-`opencode` 三种模式。
+GPQA-Diamond evaluates expert-level science multiple-choice questions from
+`fingertap/GPQA-Diamond`.
 
 2026-04-18 增加了两份 OpenRouter/Qwen 三题 pilot 配置：
 
@@ -12,35 +12,44 @@
 `OPENAI_API_KEY`，其中 OpenRouter 对应的实际模型 slug 为
 `qwen/qwen3.5-27b`，逻辑目标模型是 `Qwen/Qwen3.5-27B`。
 
-## 运行前准备
+## Prerequisites
 
-在项目根目录执行：
+Run from the repository root:
 
 ```bash
 source scripts/activate.sh
+
+export OPENAI_BASE_URL=https://api.example.com/v1/
+export OPENAI_API_KEY=sk-...
+export OPENAI_MODEL_NAME=minimax-m2.5
 ```
 
-从当前 checkout 运行时，优先使用模块入口：
+When running from a local checkout, prefer the module entrypoint:
 
 ```bash
 python -m alphadiana.cli env
 ```
 
-如果使用 `openclaw`，先确认上面的环境检查里 admin/proxy/redis 都是可用的。
+`HF_TOKEN` is optional for this dataset, but setting it avoids anonymous Hub
+rate limits.
 
-## Direct LLM
+## Supported Modes
 
-配置文件：[configs/examples/direct_llm_gpqa_diamond.yaml](../../configs/examples/direct_llm_gpqa_diamond.yaml)
+| Mode | Status | Config |
+|---|---|---|
+| `direct_llm` | smoke/debug supported | `configs/examples/direct_llm_gpqa_diamond.yaml` |
+| `openclaw` | smoke/debug supported | `configs/examples/openclaw_gpqa_diamond.yaml` |
+| `opencode` | smoke/debug supported | `configs/examples/opencode_gpqa_diamond.yaml` |
+| `zeroclaw` | smoke/debug supported | `configs/examples/zeroclaw_gpqa_diamond.yaml` |
 
-先设置环境变量：
+There is no checked-in ZeroClaw full-run config for GPQA-Diamond yet. The
+current documented path is the 1-task smoke/debug config under
+`configs/examples/`.
 
-```bash
-export OPENAI_MODEL=minimax-m2.5
-export OPENAI_API_BASE=https://api.example.com/v1/
-export OPENAI_API_KEY=...
-```
+## DirectLLM
 
-校验并运行：
+Config:
+[configs/examples/direct_llm_gpqa_diamond.yaml](../../configs/examples/direct_llm_gpqa_diamond.yaml)
 
 ```bash
 python -m alphadiana.cli validate configs/examples/direct_llm_gpqa_diamond.yaml
@@ -49,17 +58,8 @@ python -m alphadiana.cli run configs/examples/direct_llm_gpqa_diamond.yaml
 
 ## OpenClaw
 
-配置文件：[configs/examples/openclaw_gpqa_diamond.yaml](../../configs/examples/openclaw_gpqa_diamond.yaml)
-
-先设置环境变量：
-
-```bash
-export OPENAI_BASE_URL=https://api.example.com/v1/
-export OPENAI_API_KEY=...
-export OPENAI_MODEL_NAME=minimax-m2.5
-```
-
-校验并运行：
+Config:
+[configs/examples/openclaw_gpqa_diamond.yaml](../../configs/examples/openclaw_gpqa_diamond.yaml)
 
 ```bash
 python -m alphadiana.cli validate configs/examples/openclaw_gpqa_diamond.yaml
@@ -68,31 +68,75 @@ python -m alphadiana.cli run configs/examples/openclaw_gpqa_diamond.yaml
 
 ## OpenCode
 
-配置文件：[configs/examples/opencode_gpqa_diamond.yaml](../../configs/examples/opencode_gpqa_diamond.yaml)
-
-先设置环境变量：
-
-```bash
-export OPENAI_BASE_URL=https://api.example.com/v1/
-export OPENAI_API_KEY=...
-```
-
-校验并运行：
+Config:
+[configs/examples/opencode_gpqa_diamond.yaml](../../configs/examples/opencode_gpqa_diamond.yaml)
 
 ```bash
 python -m alphadiana.cli validate configs/examples/opencode_gpqa_diamond.yaml
 python -m alphadiana.cli run configs/examples/opencode_gpqa_diamond.yaml
 ```
 
-说明：当前 `main` 上，`opencode` 的文本题路径是本地 CLI 执行路径，不会像
-`openclaw` 一样进入 benchmark sandbox。这条链路仍然可以做 smoke/debug，
-但它验证的是 `opencode` 求解路径，不是 sandbox 隔离。
+Current limitation: on `main`, `opencode` text-only benchmark tasks still run
+through the local CLI path rather than a benchmark-managed sandbox. That is
+fine for smoke/debug usage, but it is not equivalent to the OpenClaw or
+ZeroClaw sandbox path.
 
-## 结果位置
+## ZeroClaw
+
+Config:
+[configs/examples/zeroclaw_gpqa_diamond.yaml](../../configs/examples/zeroclaw_gpqa_diamond.yaml)
+
+ZeroClaw benchmark smoke is documented only for sandboxed execution:
+
+- ROCK sandbox
+- in-sandbox ZeroClaw CLI
+- `max_tasks: 1`
+
+Start ROCK first:
+
+```bash
+bash scripts/start_zeroclaw.sh
+source scripts/rock_env.sh
+```
+
+Then validate and run:
+
+```bash
+python -m alphadiana.cli validate configs/examples/zeroclaw_gpqa_diamond.yaml
+python -m alphadiana.cli run configs/examples/zeroclaw_gpqa_diamond.yaml \
+  -o run_id=gpqa_zeroclaw_smoke
+```
+
+### Reproduce The 2026-04-18 Sandbox Smoke
+
+This smoke run intentionally returns a fixed option letter so the benchmark path
+finishes quickly. Under the smoke playbook, dashboard `X` is still a pass for
+the execution path.
+
+```bash
+export OPENAI_BASE_URL=https://api.example.com/v1/
+export OPENAI_API_KEY=sk-...
+export OPENAI_MODEL_NAME=minimax-m2.5
+
+python -m alphadiana.cli run configs/examples/zeroclaw_gpqa_diamond.yaml \
+  -o run_id=pr23_smoke_zeroclaw_gpqa_minimaxm25_boxA_20260418 \
+  -o output_dir=./results/pr23_zeroclaw_smokes \
+  -o agent.config.use_gateway_in_sandbox=false \
+  -o agent.config.system_prompt='Smoke test mode: ignore the question. Do not use tools. Output exactly $$\\boxed{A}$$ and nothing else.'
+```
+
+Observed local verification on 2026-04-18:
+
+- run_id: `pr23_smoke_zeroclaw_gpqa_minimaxm25_boxA_20260418`
+- result: dashboard `X`, `predicted=A`, `ground_truth=D`, no `error`
+- execution mode: ROCK sandbox + in-sandbox ZeroClaw CLI
+
+## Result Locations
 
 - `direct_llm`: `./results/`
 - `openclaw`: `./results/openclaw_gpqa_diamond/`
 - `opencode`: `./results/opencode_gpqa_diamond/`
+- `zeroclaw`: `./results/zeroclaw_gpqa_diamond_smoke/`
 
 ## Qwen/OpenRouter 3-Task Pilot
 
