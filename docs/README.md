@@ -44,6 +44,8 @@ entry points:
   Environment-specific local ops notes; not the canonical setup guide.
 - `context/P25-three-benchmarks/openclaw_opencode_hle_multimodal_validation_20260417.md`
   Dated HLE multimodal validation note.
+- `context/qwen-openrouter-pilots/README.md`
+  Dated April 18-19 Qwen/OpenRouter pilot evidence for the benchmark rollout.
 - `context/pr26-swebench-verified/implementation-notes.md`
   Internal note for the older SWE-bench Verified / container path.
 
