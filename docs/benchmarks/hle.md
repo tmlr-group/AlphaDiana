@@ -44,6 +44,13 @@ The full configs run the supported HLE `multipleChoice` subset. Other HLE answer
 
 The corresponding smoke configs remain under `configs/examples/` and pin `dataset_index: 1`, `max_tasks: 1`.
 
+Additional April 19, 2026 pilot config:
+
+- `configs/examples/opencode_qwen35_27b_hle_pilot.yaml`
+
+That pilot config drops the smoke `dataset_index: 1` pin so it can load three
+distinct `multipleChoice` tasks.
+
 ## Full Runs
 
 ```bash
@@ -151,3 +158,35 @@ The checked-in minimax smoke configs pin:
 The scorer is `exact_match`, so the final answer should be one of the multiple-choice options.
 
 Use the `configs/full_runs/` files for full supported HLE multiple-choice evaluations.
+
+## Qwen/OpenRouter 3-Task Pilot
+
+Environment:
+
+```bash
+source scripts/activate.sh
+export PYTHONPATH=$PWD
+export HF_ENDPOINT=https://hf-mirror.com
+export HF_TOKEN=hf_...
+export OPENAI_BASE_URL=https://openrouter.ai/api/v1
+export OPENAI_MODEL_NAME=qwen/qwen3.5-27b
+export OPENAI_API_KEY=sk-...
+```
+
+Command:
+
+```bash
+python -m alphadiana.cli run configs/examples/opencode_qwen35_27b_hle_pilot.yaml
+```
+
+Observed on April 19, 2026:
+
+- `opencode`: `3/3` task records written on `hle_1`, `hle_11`, and `hle_13`
+  - scores: `0/0/1`
+  - all three trajectories were manually audited as normal
+  - uploaded to `T-MARS/alphadiana-benchmark-results`
+
+Reviewer-facing evidence:
+
+- `context/qwen-openrouter-pilots/pilot-validation.md`
+- `context/qwen-openrouter-pilots/status-matrix.md`

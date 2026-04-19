@@ -45,6 +45,10 @@ vision
 The ZeroClaw smoke config uses `vision` so the benchmark path exercises image
 attachment handling inside the sandbox workspace.
 
+Current dataset note: the Hugging Face `vision` subset now exposes a singular
+`image` field. AlphaDiana normalizes that payload into `image_1` task
+attachments before handing the task to the agent.
+
 ## DirectLLM
 
 Config:
@@ -79,6 +83,36 @@ Current limitation: on `main`, `opencode` text-only benchmark tasks still run
 through the local CLI path rather than a benchmark-managed sandbox. That is
 fine for smoke/debug usage, but it is not equivalent to the OpenClaw or
 ZeroClaw sandbox path.
+
+### Qwen/OpenRouter Vision Pilot (2026-04-19)
+
+Accepted local pilot:
+
+- run_id: `pilot_20260419_qwen35_27b_mmmu_pro_opencode_t3_vision_docker`
+- result: `3/3` normal trajectories in Docker isolation, one task scored `0`
+  but no abnormal behavior
+
+Historical non-canonical run:
+
+- `pilot_20260419_qwen35_27b_mmmu_pro_opencode_t3_vision`
+  wrote `3/3` normal task records, but it used `controller_mode=host` and does
+  not satisfy the current sandbox-only policy for OpenCode benchmark pilots
+
+Command:
+
+```bash
+export OPENAI_BASE_URL=https://openrouter.ai/api/v1
+export OPENAI_API_KEY=sk-...
+export OPENAI_MODEL_NAME=qwen/qwen3.5-27b
+
+python -m alphadiana.cli run configs/examples/opencode_mmmu_pro.yaml \
+  -o run_id=pilot_20260419_qwen35_27b_mmmu_pro_opencode_t3_vision_docker \
+  -o benchmark.config.data_config=vision \
+  -o benchmark.config.max_tasks=3 \
+  -o max_concurrent=3 \
+  -o agent.config.model_name=qwen/qwen3.5-27b \
+  -o agent.config.controller_mode=docker
+```
 
 ## ZeroClaw
 
@@ -130,6 +164,42 @@ Observed local verification on 2026-04-18:
 - run_id: `pr23_smoke_zeroclaw_mmmupro_minimaxm25_boxA_20260418`
 - result: dashboard `X`, `predicted=A`, `ground_truth=B`, no `error`
 - execution mode: ROCK sandbox + in-sandbox ZeroClaw CLI
+
+### Qwen/OpenRouter Vision Pilot (2026-04-19)
+
+Accepted local pilot:
+
+- run_id: `pilot_20260419_qwen35_27b_mmmu_pro_zeroclaw_t3_vision_r3`
+- result: `3/3` normal trajectories with `use_gateway_in_sandbox=false`,
+  preserved `attachments/image_1.png`, no provider warning, and no
+  `command_history` pollution in successful task metadata
+
+Rejected earlier attempts from the same day:
+
+- `pilot_20260419_qwen35_27b_mmmu_pro_zeroclaw_t3_vision`
+  one task failed after a ROCK proxy `http proxy failed` fallback hit a binary
+  upload decode bug
+- `pilot_20260419_qwen35_27b_mmmu_pro_zeroclaw_t3_vision_r1`
+  the binary upload decode bug was fixed, but the first fallback implementation
+  still hit `/bin/sh` argument-length limits on a large image attachment
+- `pilot_20260419_qwen35_27b_mmmu_pro_zeroclaw_t3_vision_r2`
+  wrote `3/3` normal task records, but it still emitted a ZeroClaw config
+  warning and preserved noisy sandbox `command_history`, so it is retained as
+  historical evidence only
+
+Current recommended OpenRouter/Qwen command:
+
+```bash
+export OPENAI_BASE_URL=https://openrouter.ai/api/v1
+export OPENAI_API_KEY=sk-...
+export OPENAI_MODEL_NAME=qwen/qwen3.5-27b
+
+python -m alphadiana.cli run configs/examples/zeroclaw_mmmu_pro.yaml \
+  -o run_id=pilot_20260419_qwen35_27b_mmmu_pro_zeroclaw_t3_vision_r3 \
+  -o benchmark.config.max_tasks=3 \
+  -o max_concurrent=1 \
+  -o agent.config.use_gateway_in_sandbox=false
+```
 
 ## Result Locations
 

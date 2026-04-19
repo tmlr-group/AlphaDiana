@@ -229,7 +229,6 @@ class ZeroClawAgent(Agent):
             "model_routes = []\n"
             "embedding_routes = []\n\n"
             f"{provider_override or '[model_providers]'}\n\n"
-            "[provider]\n\n"
             "[observability]\n"
             'backend = "none"\n'
             f"runtime_trace_mode = {_quote_toml(self._runtime_trace_mode)}\n"

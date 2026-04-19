@@ -589,6 +589,11 @@ class OpenCodeAgent(Agent):
         wall_time = time.time() - start
         assistant_text, events, session_id = _parse_opencode_output(raw_output)
         full_content = assistant_text or raw_output
+        transport = (
+            "opencode_cli_container"
+            if self._controller_mode == "docker"
+            else "opencode_cli"
+        )
 
         if _is_swe_bench_task(task):
             answer = _extract_patch_from_text(full_content)
@@ -620,7 +625,7 @@ class OpenCodeAgent(Agent):
                 "session_id": session_id,
                 "num_attachments": len(attachment_paths),
                 "controller_mode": self._controller_mode,
-                "transport": "opencode_cli",
+                "transport": transport,
             },
         )
 
