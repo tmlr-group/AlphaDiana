@@ -32,6 +32,7 @@ Skip `docs/archive/` and `context/archive/` unless the task is explicitly histor
 - If unsure about repo/runtime behavior such as checkpointing, retries, or scoring semantics, verify it by reading the relevant code and, when cheap, by a minimal real run before assuming.
 - When that verification yields a reusable repo fact, record it in `AGENTS.md` if it is broadly useful; otherwise record it in the relevant `context/*` note so it can be found later.
 - `python -m alphadiana.cli run` resumes from checkpoint by default. Without `--redo-all`, completed task JSONs are skipped and only remaining tasks are evaluated.
+- In `openclaw`, `agent.config.request_timeout` does not widen the streaming read timeout by itself. Unless `agent.config.stream_idle_timeout` is also set, the client still uses a 180s default stream-idle timeout.
 - Make sure preserving intermediate artifacts for integrating new agents.
 - Make sure agent running in the container runtime for integrating new agents.
 - Never commit secrets or absolute local paths.
