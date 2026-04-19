@@ -518,6 +518,25 @@ class TestConfigValidator:
 
         assert any("zeroclaw" in e and "env.OPENAI_MODEL_NAME" in e for e in errors)
 
+    def test_opencode_validation_rejects_unknown_controller_mode(self):
+        """Validator should fail closed for unsupported OpenCode controller modes."""
+        config = ExperimentConfig(
+            agent_name="opencode",
+            agent_version="v1.3.2",
+            benchmark_name="hle",
+            scorer_name="exact_match",
+            agent_config={
+                "api_base": "http://localhost:8000/v1",
+                "api_key": "demo-key",
+                "model_name": "demo-model",
+                "controller_mode": "doccker",
+            },
+        )
+
+        errors = ConfigValidator().validate(config)
+
+        assert any("controller_mode must be one of" in e for e in errors)
+
     def test_swebench_pro_validation_requires_existing_eval_paths(self):
         """Validator should fail when swebench_pro scorer paths are blank or missing."""
         config = ExperimentConfig(

@@ -8,6 +8,7 @@ from alphadiana.config.experiment_config import ExperimentConfig
 
 class ConfigValidator:
     SANDBOX_REQUIRED_BENCHMARKS: set[str] = {"terminal_bench", "osworld"}
+    OPENCODE_CONTROLLER_MODES: set[str] = {"host", "docker"}
 
     OPENCLAW_RUNTIME_AGENTS = {"openclaw"}
     API_AGENTS = OPENCLAW_RUNTIME_AGENTS | {
@@ -88,6 +89,16 @@ class ConfigValidator:
             elif not has_api_base:
                 errors.append(
                     f"agent '{config.agent_name}' requires 'api_base' in agent_config"
+                )
+        if config.agent_name == "opencode":
+            controller_mode = (
+                str(config.agent_config.get("controller_mode", "host") or "host").strip().lower()
+            )
+            if controller_mode not in self.OPENCODE_CONTROLLER_MODES:
+                supported = ", ".join(sorted(self.OPENCODE_CONTROLLER_MODES))
+                errors.append(
+                    "agent 'opencode' controller_mode must be one of "
+                    f"{supported}; got '{controller_mode}'"
                 )
 
         if (

@@ -1,5 +1,8 @@
+import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from alphadiana.agent.opencode import OpenCodeAgent, _build_prompt, _extract_event_texts, _extract_strict_answer
 from alphadiana.benchmark.base import BenchmarkTask
@@ -49,7 +52,7 @@ def test_write_attachments_uses_image_suffixes(tmp_path):
     assert paths[0].read_bytes() == b"\x89PNG\r\n"
 
 
-def test_solve_uses_multimodal_api_for_image_tasks():
+def test_solve_uses_cli_with_image_attachments():
     agent = OpenCodeAgent()
     agent.setup({
         "model_name": "test-model",
@@ -58,13 +61,13 @@ def test_solve_uses_multimodal_api_for_image_tasks():
         "timeout": 5,
     })
 
-    usage = MagicMock(prompt_tokens=11, completion_tokens=7, total_tokens=18)
-    message = MagicMock(content="Done.\\boxed{A}")
-    message.model_extra = {}
-    choice = MagicMock(message=message, finish_reason="stop")
-    response = MagicMock(choices=[choice], usage=usage)
-    client = MagicMock()
-    client.chat.completions.create = MagicMock(return_value=response)
+    process = MagicMock()
+    process.communicate.return_value = (
+        '{"type":"assistant","message":{"content":"Done.\\\\boxed{A}"}}\n',
+        "",
+    )
+    process.returncode = 0
+    seen: dict[str, object] = {}
 
     task = BenchmarkTask(
         task_id="hle_0",
@@ -76,20 +79,30 @@ def test_solve_uses_multimodal_api_for_image_tasks():
         },
     )
 
-    with patch("alphadiana.agent.opencode.OpenAI", return_value=client):
-        with patch("subprocess.Popen") as popen:
-            result = agent.solve(task)
+    def fake_popen(cmd, **kwargs):
+        seen["cmd"] = cmd
+        seen["cwd"] = kwargs["cwd"]
+        seen["env"] = kwargs["env"]
+        config_path = Path(kwargs["env"]["XDG_CONFIG_HOME"]) / "opencode" / "opencode.json"
+        seen["provider_config"] = json.loads(config_path.read_text(encoding="utf-8"))
+        return process
 
-    popen.assert_not_called()
-    call_kwargs = client.chat.completions.create.call_args.kwargs
-    assert call_kwargs["model"] == "test-model"
-    content = call_kwargs["messages"][1]["content"]
-    assert isinstance(content, list)
-    assert content[0]["type"] == "text"
-    assert content[1]["type"] == "image_url"
-    assert content[1]["image_url"]["url"].startswith("data:image/png;base64,")
+    with patch("subprocess.Popen", side_effect=fake_popen) as popen:
+        result = agent.solve(task)
+
+    popen.assert_called_once()
+    cmd = seen["cmd"]
+    assert isinstance(cmd, list)
+    assert "--file" in cmd
+    attachment_path = Path(cmd[cmd.index("--file") + 1])
+    assert attachment_path.name == "image_1.png"
+    provider_config = seen["provider_config"]
+    assert provider_config["model"] == "custom/test-model"
+    model_spec = provider_config["provider"]["custom"]["models"]["test-model"]
+    assert model_spec["attachment"] is True
+    assert model_spec["modalities"]["input"] == ["text", "image"]
     assert result.answer == "A"
-    assert result.metadata["transport"] == "openai_multimodal"
+    assert result.metadata["transport"] == "opencode_cli"
     assert result.metadata["num_attachments"] == 1
 
 
@@ -124,3 +137,45 @@ def test_solve_text_only_uses_opencode_cli():
     assert "Which option is correct?" in cmd[-1]
     assert result.answer == "A"
     assert result.metadata["transport"] == "opencode_cli"
+
+
+def test_setup_rejects_unknown_controller_mode():
+    agent = OpenCodeAgent()
+
+    with pytest.raises(ValueError, match="Unsupported opencode controller_mode"):
+        agent.setup({
+            "model_name": "test-model",
+            "api_base": "http://localhost:9001/v1",
+            "api_key": "test-key",
+            "controller_mode": "doccker",
+        })
+
+
+def test_solve_text_only_uses_docker_runner_when_configured():
+    agent = OpenCodeAgent()
+    agent.setup({
+        "model_name": "test-model",
+        "api_base": "http://localhost:9001/v1",
+        "api_key": "test-key",
+        "timeout": 5,
+        "controller_mode": "docker",
+    })
+
+    task = BenchmarkTask(
+        task_id="text_0",
+        problem="Which option is correct?",
+        ground_truth="A",
+    )
+
+    with patch.object(
+        agent,
+        "_run_in_docker",
+        return_value=('{"type":"assistant","message":{"content":"Done.\\\\boxed{A}"}}\n', "", 0),
+    ) as run_in_docker:
+        with patch("subprocess.Popen") as popen:
+            result = agent.solve(task)
+
+    run_in_docker.assert_called_once()
+    popen.assert_not_called()
+    assert result.answer == "A"
+    assert result.metadata["controller_mode"] == "docker"
