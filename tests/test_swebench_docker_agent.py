@@ -75,7 +75,8 @@ class TestSWEBenchDockerRegistry:
         assert "openclaw_prompt_profile.txt" in script
         assert "toolful_no_edit" in script
         assert "openclaw_session.jsonl" in script
-        assert '--data-binary "@${REQUEST_BODY_FILE}"' in script
+        assert "urllib.request.Request(" in script
+        assert 'Path(os.environ["REQUEST_BODY_FILE"]).read_bytes()' in script
 
     def test_opencode_runner_script_includes_preflight_and_startup_diagnostics(self):
         script = Path("alphadiana/agent/swebench_assets/run_opencode.sh").read_text(

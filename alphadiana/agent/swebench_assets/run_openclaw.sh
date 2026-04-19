@@ -226,6 +226,7 @@ if [[ -z "$CHAT_TIMEOUT" && -n "${OPENCLAW_AGENT_TIMEOUT_SEC:-}" ]]; then
   CHAT_TIMEOUT="$((OPENCLAW_AGENT_TIMEOUT_SEC + 60))"
 fi
 CHAT_TIMEOUT="${CHAT_TIMEOUT:-3600}"
+export CHAT_TIMEOUT
 GATEWAY_URL="http://127.0.0.1:${OPENCLAW_GATEWAY_PORT}"
 export GATEWAY_URL
 
@@ -238,7 +239,27 @@ GATEWAY_PID="$!"
 waited=0
 max_wait=60
 while true; do
-  probe_code="$(curl -sS -o /dev/null -w '%{http_code}' "${GATEWAY_URL}/v1/models" -H "Authorization: bearer ${OPENCLAW_GATEWAY_TOKEN}" || true)"
+  probe_code="$(
+    python3 - "$GATEWAY_URL" "$OPENCLAW_GATEWAY_TOKEN" <<'PY'
+import sys
+import urllib.error
+import urllib.request
+
+url = f"{sys.argv[1]}/v1/models"
+token = sys.argv[2]
+request = urllib.request.Request(
+    url,
+    headers={"Authorization": f"bearer {token}"},
+)
+try:
+    with urllib.request.urlopen(request, timeout=5) as response:
+        print(response.getcode())
+except urllib.error.HTTPError as exc:
+    print(exc.code)
+except Exception:
+    print("000")
+PY
+  )"
   if [[ "$probe_code" != "000" ]]; then
     break
   fi
@@ -360,24 +381,88 @@ Path(os.environ["REQUEST_BODY_FILE"]).write_text(
 )
 PY
 
-CURL_ARGS=(
-  -sS
-  --no-buffer
-  --max-time "$CHAT_TIMEOUT"
-  "${GATEWAY_URL}/v1/chat/completions"
-  -H "Authorization: bearer ${OPENCLAW_GATEWAY_TOKEN}"
-  -H "Content-Type: application/json"
-  -H "x-openclaw-agent-id: ${OPENCLAW_AGENT_ID}"
-)
-if [[ -n "${OPENCLAW_SESSION_KEY:-}" ]]; then
-  CURL_ARGS+=(-H "x-openclaw-session-key: ${OPENCLAW_SESSION_KEY}")
-fi
-
 export OPENCLAW_RUN_START_TS="$(date +%s)"
 set +e
-curl "${CURL_ARGS[@]}" \
-  --data-binary "@${REQUEST_BODY_FILE}" \
-  >"$ARTIFACTS_DIR/openclaw_sse_raw.jsonl"
+python3 - <<'PY'
+import http.client
+import os
+import signal
+import sys
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+
+def _timeout_handler(signum, frame):
+    raise TimeoutError(f"request exceeded {os.environ['CHAT_TIMEOUT']}s")
+
+
+artifacts_dir = Path(os.environ["ARTIFACTS_DIR"])
+body = Path(os.environ["REQUEST_BODY_FILE"]).read_bytes()
+chat_timeout = max(1, int(float(os.environ["CHAT_TIMEOUT"])))
+stream_idle_timeout_raw = os.environ.get("OPENCLAW_STREAM_IDLE_TIMEOUT_SEC", "").strip()
+if stream_idle_timeout_raw:
+    stream_idle_timeout = max(1.0, min(chat_timeout, float(stream_idle_timeout_raw)))
+else:
+    stream_idle_timeout = max(1.0, min(chat_timeout, 180.0))
+headers = {
+    "Authorization": f"bearer {os.environ['OPENCLAW_GATEWAY_TOKEN']}",
+    "Content-Type": "application/json",
+    "x-openclaw-agent-id": os.environ["OPENCLAW_AGENT_ID"],
+}
+session_key = os.environ.get("OPENCLAW_SESSION_KEY", "").strip()
+if session_key:
+    headers["x-openclaw-session-key"] = session_key
+
+request = urllib.request.Request(
+    f"{os.environ['GATEWAY_URL']}/v1/chat/completions",
+    data=body,
+    headers=headers,
+    method="POST",
+)
+output_path = artifacts_dir / "openclaw_sse_raw.jsonl"
+stream_warning_path = artifacts_dir / "openclaw_stream_warning.txt"
+truncated_reason = ""
+signal.signal(signal.SIGALRM, _timeout_handler)
+signal.alarm(chat_timeout)
+try:
+    with urllib.request.urlopen(request, timeout=stream_idle_timeout) as response, output_path.open("wb") as out:
+        while True:
+            try:
+                chunk = response.read(65536)
+            except http.client.IncompleteRead as exc:
+                partial = exc.partial or b""
+                if partial:
+                    out.write(partial)
+                    out.flush()
+                truncated_reason = f"IncompleteRead({len(partial)} bytes read)"
+                break
+            if not chunk:
+                break
+            out.write(chunk)
+            out.flush()
+except urllib.error.HTTPError as exc:
+    output_path.write_bytes(exc.read())
+    print(f"HTTPError: {exc.code}", file=sys.stderr)
+    sys.exit(22)
+except TimeoutError as exc:
+    if output_path.exists() and output_path.stat().st_size > 0:
+        truncated_reason = str(exc)
+    else:
+        print(str(exc), file=sys.stderr)
+        sys.exit(1)
+except Exception as exc:
+    if output_path.exists() and output_path.stat().st_size > 0:
+        truncated_reason = str(exc)
+    else:
+        print(str(exc), file=sys.stderr)
+        sys.exit(1)
+finally:
+    signal.alarm(0)
+if truncated_reason:
+    stream_warning_path.write_text(truncated_reason + "\n", encoding="utf-8")
+    print(f"stream warning: {truncated_reason}", file=sys.stderr)
+PY
 CURL_STATUS=$?
 set -e
 if [[ $CURL_STATUS -ne 0 ]]; then
