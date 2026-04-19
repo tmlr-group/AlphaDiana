@@ -63,6 +63,17 @@ python -m alphadiana.cli run configs/examples/opencode_minimax_imo_answerbench.y
 
 The smoke config uses `timeout: 1800` because shorter bounds can kill valid slow model output before it reaches scoring.
 
+To run the same path with controller isolation, add:
+
+```bash
+python -m alphadiana.cli run configs/examples/opencode_minimax_imo_answerbench.yaml \
+  -o run_id=imo_opencode_docker_smoke \
+  -o agent.config.controller_mode=docker
+```
+
+`controller_mode` must be exactly `host` or `docker`. The full Docker setup and
+reproduction guide live in `docs/opencode-docker-isolation.md`.
+
 ## OpenClaw
 
 OpenClaw uses ROCK auto-deploy and the gateway config in `openclaw_deploy/`.

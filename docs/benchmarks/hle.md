@@ -67,6 +67,17 @@ python -m alphadiana.cli run configs/examples/opencode_minimax_hle.yaml \
 
 The smoke config uses `timeout: 1800` to allow visible model output before scoring.
 
+To run the same path with controller isolation, add:
+
+```bash
+python -m alphadiana.cli run configs/examples/opencode_minimax_hle.yaml \
+  -o run_id=hle_opencode_docker_smoke \
+  -o agent.config.controller_mode=docker
+```
+
+`controller_mode` must be exactly `host` or `docker`. The controller image
+build and caveats are documented in `docs/opencode-docker-isolation.md`.
+
 ## OpenClaw
 
 ```bash

@@ -21,6 +21,8 @@ from alphadiana.utils.math_answer import extract_answer_candidate, extract_boxed
 
 logger = logging.getLogger(__name__)
 
+_SUPPORTED_CONTROLLER_MODES = {"host", "docker"}
+
 _EXPLICIT_ANSWER_RE = re.compile(
     r"(?:\*{0,2})(?:the\s+)?(?:final\s+)?answer(?:\*{0,2})\s*(?:[:：]|is|=)\s*(.+)",
     re.IGNORECASE,
@@ -221,9 +223,17 @@ class OpenCodeAgent(Agent):
 
     def setup(self, config: dict) -> None:
         self._runtime = str(config.get("runtime", "")).strip()
-        self._controller_mode = str(config.get("controller_mode", "host") or "host").strip()
+        controller_mode = str(config.get("controller_mode", "host") or "host").strip().lower()
+        if controller_mode not in _SUPPORTED_CONTROLLER_MODES:
+            supported = ", ".join(sorted(_SUPPORTED_CONTROLLER_MODES))
+            raise ValueError(
+                f"Unsupported opencode controller_mode '{controller_mode}'. "
+                f"Expected one of: {supported}."
+            )
+        self._controller_mode = controller_mode
         self._controller_image = str(
-            config.get("controller_image", "alphadiana/tb2-opencode-controller:latest") or ""
+            config.get("controller_image", "alphadiana/tb2-opencode-controller:latest")
+            or "alphadiana/tb2-opencode-controller:latest"
         ).strip()
         self._controller_network = str(config.get("controller_network", "host") or "host").strip()
         self._cli_model = self._resolve_setting(config, "model", "OPENAI_MODEL_NAME")

@@ -11,7 +11,7 @@ docker build --network host \
   -t alphadiana/tb2-opencode-controller:latest .
 
 # 2. Run any opencode config with Docker isolation
-alphadiana run configs/examples/opencode_minimax_imo_answerbench.yaml \
+python -m alphadiana.cli run configs/examples/opencode_minimax_imo_answerbench.yaml \
   -o agent.config.controller_mode=docker
 ```
 
@@ -65,7 +65,7 @@ agent:
 
 | Config Key | Default | Description |
 |------------|---------|-------------|
-| `controller_mode` | `"host"` | `"host"` = direct subprocess, `"docker"` = container isolation |
+| `controller_mode` | `"host"` | Exact value: `"host"` = direct subprocess, `"docker"` = container isolation |
 | `controller_image` | `alphadiana/tb2-opencode-controller:latest` | Docker image containing opencode CLI |
 | `controller_network` | `"host"` | Docker network mode |
 
@@ -117,7 +117,7 @@ docker build --network host \
   -t alphadiana/tb2-opencode-controller:latest .
 
 # Run with Docker isolation
-alphadiana run configs/examples/opencode_minimax_imo_answerbench.yaml \
+python -m alphadiana.cli run configs/examples/opencode_minimax_imo_answerbench.yaml \
   -o run_id=imo_opencode_docker_test \
   -o agent.config.controller_mode=docker \
   --redo-all
@@ -138,7 +138,7 @@ for f in glob.glob('results/*/imo_opencode_docker_test/tasks/*.json'):
 ```bash
 export HF_TOKEN=hf_...  # Required for gated dataset
 
-alphadiana run configs/examples/opencode_minimax_hle.yaml \
+python -m alphadiana.cli run configs/examples/opencode_minimax_hle.yaml \
   -o run_id=hle_opencode_docker_test \
   -o agent.config.controller_mode=docker \
   --redo-all
@@ -170,6 +170,16 @@ This works in both host and Docker mode. Docker mode mounts the workdir, so imag
 |-----------|-----------|-------------|-------|
 | IMO-AnswerBench | score=1.0, wall=163s | score=1.0, wall=168s | Both correct |
 | HLE | score=0.0, wall=329s | score=1.0, wall=691s | Both complete, no errors |
+
+### OpenRouter Qwen3.5-27B Smoke Recheck
+
+- Local recheck on April 19, 2026 against `https://openrouter.ai/api/v1`
+  with `qwen/qwen3.5-27b` also completed cleanly in Docker mode.
+- Evidence:
+  - `pr32_review_imo_opencode_docker_qwen35_20260419` -> `score=1.0`
+  - `pr32_review_hle_opencode_docker_qwen35_20260419` -> `score=1.0`
+- Reviewer-facing commands and task-level evidence are recorded in
+  `context/qwen-openrouter-pilots/pilot-validation.md`.
 
 ### Multimodal (VL Model + Image)
 
