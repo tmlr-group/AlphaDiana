@@ -45,9 +45,15 @@ The two `configs/full_runs/` files are the full benchmark entry points for the D
 OpenRouter/Qwen pilot status on April 19, 2026:
 
 - `directLLM` official SWE-agent follow-up:
-  two single-instance runs reached the agent loop but autosubmitted
-  `model_patch=null` after API-call limit `20`; the Python 3.9 NodeBB image
-  still failed in the official standalone-Python bootstrap path
+  the repaired official-checkout archive
+  `pilot_20260419_qwen35_27b_swebench_pro_directllm_t3_repair_r1`
+  now has `3/3` accepted normal trajectories on the selected smoke subset,
+  assembled from
+  `pilot_20260419_qwen35_27b_swebench_pro_directllm_nodebb_emailstatus_r5`,
+  `pilot_20260419_qwen35_27b_swebench_pro_directllm_nodebb_webfinger_r5`, and
+  `pilot_20260419_qwen35_27b_swebench_pro_directllm_qutebrowser_qtlog_r6`.
+  Treat this as repaired trajectory-health evidence, not a correctness claim
+  or a stock upstream invocation.
 - `opencode`: `3/3` normal task records written on the smoke subset, all
   `score=0`
 - `openclaw`: smoke-valid on the canonical `r4` rerun with `3/3` normal task
@@ -130,12 +136,12 @@ export OPENAI_API_KEY=...
 
 sweagent run-batch \
   --config config/tool_use.yaml \
-  --output_dir ../sweagent_results/pilot_20260419_qwen35_27b_swebench_pro_directllm_nodebb_emailstatus_r2 \
+  --output_dir ../sweagent_results/<run_id> \
   --num_workers 1 \
   --random_delay_multiplier 0 \
   --instances.type expert_file \
-  --instances.path ../pilot_data/pilot_20260419_qwen35_27b_swebench_pro_directllm_t3.expert_r2.yaml \
-  --instances.filter '^instance_NodeBB__NodeBB-04998908ba6721d64eba79ae3b65a351dcfbc5b5-vnan$' \
+  --instances.path ../pilot_data/<expert_instances_file>.yaml \
+  --instances.filter '^<instance_id>$' \
   --instances.deployment.type docker \
   --instances.deployment.startup_timeout 1800 \
   --agent.model.name openrouter/qwen/qwen3.5-27b \
@@ -149,40 +155,56 @@ sweagent run-batch \
   --progress_bar False
 ```
 
-The same command shape was reused for:
+The repaired OpenRouter/Qwen follow-up ultimately used three single-instance
+source runs:
 
-- `pilot_20260419_qwen35_27b_swebench_pro_directllm_qutebrowser_qtlog_r2`
-- `pilot_20260419_qwen35_27b_swebench_pro_directllm_nodebb_webfinger_r2`
+- `pilot_20260419_qwen35_27b_swebench_pro_directllm_nodebb_emailstatus_r5`
+- `pilot_20260419_qwen35_27b_swebench_pro_directllm_nodebb_webfinger_r5`
+- `pilot_20260419_qwen35_27b_swebench_pro_directllm_qutebrowser_qtlog_r6`
 
-Additional local fixes required inside the official checkout before the `r2`
-reruns:
+The accepted archive combining the manually audited normal trajectories is:
+
+- `pilot_20260419_qwen35_27b_swebench_pro_directllm_t3_repair_r1`
+
+Additional local fixes required inside the official checkout before the repaired
+`r5/r6` reruns:
 
 - apply the shipped `SWE-agent/swerex_patches/patch.py --yes`
 - patch installed `.venv/.../swerex/deployment/docker.py` to use `/bin/bash`
   entrypoint, `pip --target /tmp/swerex-site swe-rex==1.4.0` on Python 3.11
   images, and the official standalone-Python build path only for the Python 3.9
   NodeBB image
+- patch `SWE-agent/sweagent/tools/tools.py` for OpenRouter/Qwen tool-call
+  compatibility
+- patch `SWE-agent/sweagent/agent/models.py` to suppress cost-accounting noise
+  from missing usage fields
 - add `SWE-agent/tools/registry/lib/registry.py`, because the default
   `edit_anthropic` bundle imported `registry` but the official checkout did not
   ship the Python module
+- install `socksio` into the official `.venv`
+- set `git config --global core.pager cat` in the runtime to avoid pager hangs
 
-Observed outcome on the official direct-LLM follow-up:
+Observed outcome on the repaired official direct-LLM follow-up:
 
-- `instance_NodeBB...04998908...`:
-  runtime started normally, then exited on API-call limit `21 > 20` with
-  `model_patch=null`
-- `instance_qutebrowser...`:
-  runtime started normally and the repaired editor bundle worked, but the
-  default agent spent `21` API calls on repository archaeology and still
-  autosubmitted `model_patch=null`
-- `instance_NodeBB...51d8f3...`:
-  the official standalone-Python Docker build failed at
-  `RUN /root/python3.11/bin/python3 --version` before the agent loop started
-- no non-empty patch predictions were produced, so the official evaluator was
-  intentionally not run on this follow-up
+- all three source runs autosubmitted cleanly and preserved trajectories
+- `pilot_20260419_qwen35_27b_swebench_pro_directllm_nodebb_emailstatus_r5`:
+  normal trajectory; observed `ECONNREFUSED` only inside agent debugging/test
+  attempts
+- `pilot_20260419_qwen35_27b_swebench_pro_directllm_nodebb_webfinger_r5`:
+  normal trajectory; no framework-level formatting, cost, or runtime anomalies
+- `pilot_20260419_qwen35_27b_swebench_pro_directllm_qutebrowser_qtlog_r6`:
+  normal trajectory; one traceback came from an agent-authored validation
+  script, not from the harness
+- the accepted archive
+  `pilot_20260419_qwen35_27b_swebench_pro_directllm_t3_repair_r1`
+  was uploaded to `T-MARS/alphadiana-benchmark-results` under
+  `pilot_run/pilot_20260419_qwen35_27b_swebench_pro_directllm_t3_repair_r1/`
+- the accepted gate for this repaired follow-up was trajectory health, not task
+  correctness
 
-Treat this official direct-LLM path as experimental on OpenRouter/Qwen. It is
-useful smoke evidence, but it is not rollout-ready.
+Treat this official direct-LLM path as smoke-valid for trajectory integrity on
+OpenRouter/Qwen after the local official-checkout fixes. It is still not a
+correctness claim and should not be treated as a stock upstream invocation.
 
 ## Validate The Configs
 
@@ -492,6 +514,9 @@ These are the outcomes actually observed during local validation on `2026-04-17`
 
 Additional Qwen/OpenRouter outcomes observed on `2026-04-19`:
 
+- `directLLM` official repaired follow-up:
+  `pilot_20260419_qwen35_27b_swebench_pro_directllm_t3_repair_r1`,
+  `3/3` accepted normal trajectories after local official-checkout fixes
 - `opencode`: `pilot_20260419_qwen35_27b_swebench_pro_opencode_t3`,
   `3/3` task records, all `score=0`, all `error=None`
 - `openclaw` initial run:

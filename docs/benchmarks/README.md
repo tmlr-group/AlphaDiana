@@ -74,16 +74,20 @@ Dedicated 3-task OpenRouter pilot configs also exist for:
 
 OpenRouter/Qwen pilot coverage on April 19 also includes:
 
+- `terminal-bench-2 x direct_llm` via the official Harbor `terminus-2` path
 - `terminal-bench-2 x opencode`
 - `terminal-bench-2 x openclaw`
+- `SWE-bench Pro x direct_llm` via the official `SWE-agent` path
 - `SWE-bench Pro x opencode`
 - `SWE-bench Pro x openclaw`
+
+The two official `direct_llm` follow-ups were repaired and re-audited inside
+the upstream benchmark checkouts rather than through AlphaDiana YAMLs. See the
+benchmark-specific runbooks for the exact caveats and accepted archive IDs.
 
 Current limitation: on `main`, `opencode` text-only benchmark tasks still run
 through the local CLI path rather than a benchmark-managed sandbox. That is fine
 for smoke/debug usage, but it is not equivalent to the OpenClaw sandbox path.
-This branch also adds an optional Docker-isolated controller mode for benchmark
-`opencode`; see [`docs/opencode-docker-isolation.md`](../opencode-docker-isolation.md).
 
 Smoke-test success means the evaluation path loads tasks, invokes the selected agent mode, and writes scored results. It does not mean the model answered correctly.
 

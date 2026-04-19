@@ -22,8 +22,12 @@ All three paths use the same local AlphaDiana `terminal_bench2` benchmark loader
 OpenRouter/Qwen pilot status on April 19, 2026:
 
 - `direct_llm` official Harbor baseline:
-  approved 3-task pilot completed `3/3`, but all verifier rewards were `0`;
-  one task ended with `AgentTimeoutError`
+  the initial batch `pilot_20260419_qwen35_27b_terminal_bench2_directllm_t3`
+  failed (`0/3` verifier rewards, one `AgentTimeoutError`), but the repaired
+  follow-up archive
+  `pilot_20260419_qwen35_27b_terminal_bench2_directllm_t3_repair_r1`
+  is now `3/3` normal trajectories with `3/3 reward=1` on the approved trio.
+  This is repaired official-checkout evidence, not a stock upstream invocation.
 - `opencode`: approved 3-task pilot passed `3/3`
 - `openclaw`: `3/3` task records were written, but only `1/3` passed and the
   first two tasks needed manual watchdog interruption to advance
@@ -84,14 +88,43 @@ Local April 19 OpenRouter/Qwen pilot specifics:
   `reasoning_effort=high`
 - output root:
   `jobs/pilot_20260419_qwen35_27b_terminal_bench2_directllm_t3`
+- accepted repaired archive:
+  `pilot_20260419_qwen35_27b_terminal_bench2_directllm_t3_repair_r1`
 
-Observed outcome on that official baseline:
+Observed outcome on the initial official baseline:
 
 - Harbor completed `3/3` trials and preserved all trial artifacts
 - all verifier rewards were `0`
 - `adaptive-rejection-sampler` ended with `AgentTimeoutError`
 - `bn-fit-modify` and `break-filter-js-from-html` both reached the verifier and
   still scored `0`
+
+Local repair follow-up in the same official checkout:
+
+- verifier entrypoints for
+  `adaptive-rejection-sampler`, `bn-fit-modify`, and
+  `break-filter-js-from-html` were normalized to a stable
+  `python venv + pip + pytest` flow
+- Harbor's local JSON parser was patched to ignore benign pre-JSON prefix text
+  instead of surfacing a parser warning
+- `adaptive-rejection-sampler` was rerun after tightening the task contract to
+  the required `ars(density_fn, domain, n = ...)` interface and switching the
+  task image to a lightweight local R image
+- accepted repaired task runs:
+  - `bn-fit-modify` from `pilot_20260419_qwen35_27b_terminal_bench2_directllm_t3_r2`:
+    normal trajectory, `reward=1`, `exception_type=null`
+  - `break-filter-js-from-html` from
+    `pilot_20260419_qwen35_27b_terminal_bench2_directllm_break_filter_js_from_html_r4`:
+    normal trajectory, `reward=1`, `exception_type=null`
+  - `adaptive-rejection-sampler` from
+    `pilot_20260419_qwen35_27b_terminal_bench2_directllm_adaptive_rejection_sampler_r6`:
+    normal trajectory, `reward=1`, `exception_type=null`, verifier `9/9 passed`
+- the accepted repaired bundle was uploaded to
+  `T-MARS/alphadiana-benchmark-results` under
+  `pilot_run/pilot_20260419_qwen35_27b_terminal_bench2_directllm_t3_repair_r1/`
+
+Treat that repaired bundle as the current local smoke-valid signal for the
+official `direct_llm` path on OpenRouter/Qwen.
 
 ## Prepare Tasks
 
