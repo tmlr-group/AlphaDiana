@@ -1,0 +1,46 @@
+run_id: "zeroclaw_${OPENAI_MODEL_NAME}_aime_2026"  # Unique identifier for this evaluation run
+
+agent:
+  name: zeroclaw
+  version: "0.6.9"
+  config:
+    model: "${OPENAI_MODEL_NAME}"         # Underlying provider model used by ZeroClaw
+    api_base: "${OPENAI_BASE_URL}"        # OpenAI-compatible provider endpoint
+    api_key: "${OPENAI_API_KEY}"          # Provider API key
+    rock_image: "zeroclaw-reasoning:0.6.9"  # Sandbox image with zeroclaw preinstalled
+    rock_memory: "4g"                     # Memory per sandbox container
+    rock_cpus: 1                          # CPUs per sandbox container
+    rock_startup_timeout: 600             # Sandbox startup timeout in seconds
+    admin_base_url: "${ROCK_BASE_URL}"    # ROCK admin base URL
+    proxy_base_url: "${ROCK_PROXY_URL}"   # ROCK proxy API base URL
+    request_timeout: 1200                 # End-to-end ZeroClaw request timeout in seconds
+    max_tool_iterations: 100              # ZeroClaw autonomy limit
+    max_actions_per_hour: 200             # ZeroClaw autonomy limit
+    system_prompt: |
+      You are an expert problem solver. Use the available tools when they help
+      you verify steps or compute intermediate results.
+
+      When you have reached your final answer, you MUST present it in the
+      following format at the very end:
+
+      $$\boxed{your answer here}$$
+
+benchmark:
+  name: aime
+  config:
+    dataset: "MathArena/aime_2026"        # HuggingFace dataset identifier
+    split: "train"                        # Dataset split to evaluate on
+    max_tasks: 1                          # Smoke-run default; remove for the full benchmark
+
+sandbox: null
+
+scorer:
+  name: math_verify
+  config:
+    tolerance: 1e-6                       # Numerical tolerance for math answer comparison
+
+max_concurrent: 1                        # Number of tasks to run in parallel
+output_dir: "./results"                  # Directory for output JSONL files
+metadata:
+  author: "alphadiana"
+  notes: "ZeroClaw on AIME 2026 via OpenClaw-style ROCK auto-deploy"
