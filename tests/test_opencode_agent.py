@@ -1,6 +1,8 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from alphadiana.agent.opencode import OpenCodeAgent, _build_prompt, _extract_event_texts, _extract_strict_answer
 from alphadiana.benchmark.base import BenchmarkTask
 from alphadiana.utils.attachments import write_attachments
@@ -124,3 +126,45 @@ def test_solve_text_only_uses_opencode_cli():
     assert "Which option is correct?" in cmd[-1]
     assert result.answer == "A"
     assert result.metadata["transport"] == "opencode_cli"
+
+
+def test_setup_rejects_unknown_controller_mode():
+    agent = OpenCodeAgent()
+
+    with pytest.raises(ValueError, match="Unsupported opencode controller_mode"):
+        agent.setup({
+            "model_name": "test-model",
+            "api_base": "http://localhost:9001/v1",
+            "api_key": "test-key",
+            "controller_mode": "doccker",
+        })
+
+
+def test_solve_text_only_uses_docker_runner_when_configured():
+    agent = OpenCodeAgent()
+    agent.setup({
+        "model_name": "test-model",
+        "api_base": "http://localhost:9001/v1",
+        "api_key": "test-key",
+        "timeout": 5,
+        "controller_mode": "docker",
+    })
+
+    task = BenchmarkTask(
+        task_id="text_0",
+        problem="Which option is correct?",
+        ground_truth="A",
+    )
+
+    with patch.object(
+        agent,
+        "_run_in_docker",
+        return_value=('{"type":"assistant","message":{"content":"Done.\\\\boxed{A}"}}\n', "", 0),
+    ) as run_in_docker:
+        with patch("subprocess.Popen") as popen:
+            result = agent.solve(task)
+
+    run_in_docker.assert_called_once()
+    popen.assert_not_called()
+    assert result.answer == "A"
+    assert result.metadata["controller_mode"] == "docker"

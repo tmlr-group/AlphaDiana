@@ -82,6 +82,8 @@ OpenRouter/Qwen pilot coverage on April 19 also includes:
 Current limitation: on `main`, `opencode` text-only benchmark tasks still run
 through the local CLI path rather than a benchmark-managed sandbox. That is fine
 for smoke/debug usage, but it is not equivalent to the OpenClaw sandbox path.
+This branch also adds an optional Docker-isolated controller mode for benchmark
+`opencode`; see [`docs/opencode-docker-isolation.md`](../opencode-docker-isolation.md).
 
 Smoke-test success means the evaluation path loads tasks, invokes the selected agent mode, and writes scored results. It does not mean the model answered correctly.
 
