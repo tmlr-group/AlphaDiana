@@ -1,11 +1,11 @@
-run_id: ""
+run_id: "mmmu_pro"
 
 agent:
   name: direct_llm
   version: "1.0"
   config:
-    model: "${OPENAI_MODEL}"
-    api_base: "${OPENAI_API_BASE}"
+    model: "${OPENAI_MODEL_NAME}"
+    api_base: "${OPENAI_BASE_URL}"
     api_key: "${OPENAI_API_KEY}"
     temperature: 0.0
     max_tokens: 1024
@@ -22,5 +22,5 @@ scorer:
   name: exact_match
   config: {}
 
-max_concurrent: 4
+max_concurrent: 1
 output_dir: "./results"
