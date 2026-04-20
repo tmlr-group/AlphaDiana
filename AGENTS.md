@@ -45,6 +45,14 @@ Skip `docs/archive/` and `context/archive/` unless the task is explicitly histor
 - Make sure agent running in the container runtime for integrating new agents.
 - Never commit secrets or absolute local paths.
 
+## Execution style
+
+- State assumptions and ambiguities before implementing. If multiple plausible interpretations exist, surface them instead of choosing silently.
+- If relevant context still leaves the task unclear, ask instead of guessing.
+- Prefer the simplest solution that fully solves the request. Avoid speculative abstractions, unused configurability, and impossible-scenario handling.
+- Make surgical changes only. Match local style, do not refactor adjacent code, and only remove unused code that your change created.
+- Turn non-trivial tasks into verifiable goals with a brief plan and explicit checks. For fixes or behavior changes, prefer a reproducer or test before and after when practical.
+
 ## Reporting
 
 - Task status: `error`, `score=1`, `score=0`
