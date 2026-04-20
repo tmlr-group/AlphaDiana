@@ -18,6 +18,9 @@ Use this directory as a user-facing entry point. The canonical split is:
   Dashboard usage and deployment.
 - [Benchmark Runbooks](benchmarks/README.md)
   User-facing runbooks for supported benchmark paths.
+- [Benchmark Isolation Notes](benchmark-isolation.md)
+  Paper-safe summary of which benchmark paths are task-scoped sandboxes or
+  containers today.
 - [Full Local-vLLM Rollout (2026-04-19)](benchmarks/full-rollout-local-vllm-20260419.md)
   Staged `72`-run rollout manifest, preflight flow, and command generator for the local-vLLM campaign.
 

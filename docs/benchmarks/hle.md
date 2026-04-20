@@ -44,6 +44,13 @@ The full configs run the supported HLE `multipleChoice` subset. Other HLE answer
 
 The corresponding smoke configs remain under `configs/examples/` and pin `dataset_index: 1`, `max_tasks: 1`.
 
+Additional April 19, 2026 pilot config:
+
+- `configs/examples/opencode_qwen35_27b_hle_pilot.yaml`
+
+That pilot config drops the smoke `dataset_index: 1` pin so it can load three
+distinct `multipleChoice` tasks.
+
 ## Full Runs
 
 ```bash
@@ -62,23 +69,26 @@ python -m alphadiana.cli run configs/examples/directllm_minimax_hle.yaml \
 
 ## OpenCode
 
+Build the controller image once before using the checked-in OpenCode configs:
+
+```bash
+docker build --network host \
+  -f docker/terminal_bench2/Dockerfile.opencode-controller \
+  -t alphadiana/tb2-opencode-controller:latest .
+```
+
 ```bash
 python -m alphadiana.cli run configs/examples/opencode_minimax_hle.yaml \
   -o run_id=hle_opencode_smoke
 ```
 
-The smoke config uses `timeout: 1800` to allow visible model output before scoring.
+The checked-in OpenCode benchmark configs now use Docker controller isolation
+by default. If you need the old host-process path for debugging, override
+`-o agent.config.controller_mode=host`.
 
-To run the same path with controller isolation, add:
-
-```bash
-python -m alphadiana.cli run configs/examples/opencode_minimax_hle.yaml \
-  -o run_id=hle_opencode_docker_smoke \
-  -o agent.config.controller_mode=docker
-```
-
-`controller_mode` must be exactly `host` or `docker`. The controller image
-build and caveats are documented in `docs/opencode-docker-isolation.md`.
+The smoke config keeps `timeout: 1800` to allow visible model output before
+scoring. The controller image build and caveats are documented in
+`docs/opencode-docker-isolation.md`.
 
 ## OpenClaw
 
@@ -151,3 +161,42 @@ The checked-in minimax smoke configs pin:
 The scorer is `exact_match`, so the final answer should be one of the multiple-choice options.
 
 Use the `configs/full_runs/` files for full supported HLE multiple-choice evaluations.
+
+## Qwen/OpenRouter 3-Task Pilot
+
+Environment:
+
+```bash
+source scripts/activate.sh
+export PYTHONPATH=$PWD
+export HF_ENDPOINT=https://hf-mirror.com
+export HF_TOKEN=hf_...
+export OPENAI_BASE_URL=https://openrouter.ai/api/v1
+export OPENAI_MODEL_NAME=qwen/qwen3.5-27b
+export OPENAI_API_KEY=sk-...
+```
+
+Command:
+
+```bash
+python -m alphadiana.cli run configs/examples/opencode_qwen35_27b_hle_pilot.yaml
+```
+
+Observed on April 19/20, 2026:
+
+- `opencode`:
+  - April 19 uploaded host-mode pilot:
+    `pilot_20260419_qwen35_27b_hle_opencode_t3`
+    wrote `3/3` normal task records on `hle_1`, `hle_11`, and `hle_13`
+    with scores `0/0/1`
+  - April 20 default-Docker confirmation rerun:
+    `pilot_20260420_qwen35_27b_hle_opencode_t3_docker_default`
+    wrote `3/3` normal task records on the same task trio with scores `1/0/0`
+  - April 20 rerun中三条 task JSON 都记录了
+    `metadata.controller_mode=docker` 和
+    `metadata.transport=opencode_cli_container`
+
+Reviewer-facing evidence:
+
+- `context/qwen-openrouter-pilots/pilot-validation.md`
+- `context/qwen-openrouter-pilots/status-matrix.md`

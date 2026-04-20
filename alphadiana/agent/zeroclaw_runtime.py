@@ -341,7 +341,6 @@ class ZeroClawRuntimeManager:
                     "bridge_log_source": self._bridge_log_path,
                     "artifact_root": self._artifact_root,
                 },
-                "command_history": getattr(sandbox, "command_history", []),
             },
             "gateway_log_excerpt": bridge_log,
             "workspace_snapshot_paths": snapshot_paths,

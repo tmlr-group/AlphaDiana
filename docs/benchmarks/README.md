@@ -6,6 +6,11 @@ Start from [`context/current_eval_status.md`](../../context/current_eval_status.
 for the current cross-benchmark support snapshot, then open the matching
 runbook here.
 
+For paper-facing wording about whether a benchmark path is sandboxed or
+containerized, also read
+[`docs/benchmark-isolation.md`](../benchmark-isolation.md). That note keeps the
+claim intentionally weaker than a formal security guarantee.
+
 These files should answer:
 
 - how to run a benchmark path
@@ -101,11 +106,12 @@ export OPENAI_MODEL_NAME=qwen/qwen3.5-27b
 That slug is the OpenRouter model ID for the logical target
 `Qwen/Qwen3.5-27B`.
 
-Dedicated 3-task OpenRouter pilot YAMLs currently exist only for
-`GPQA-Diamond` and `IMO-AnswerBench`. The April 19, 2026
-`terminal-bench-2` and `SWE-bench Pro` Qwen pilots reused the checked-in
-minimax smoke YAMLs with CLI overrides instead of adding new example configs.
-See the benchmark-specific runbooks for the exact override commands.
+Dedicated 3-task OpenRouter pilot YAMLs now exist for `GPQA-Diamond`,
+`IMO-AnswerBench`, and `HLE`. The April 19, 2026 `terminal-bench-2` and
+`SWE-bench Pro` Qwen pilots reused the checked-in minimax smoke YAMLs with CLI
+overrides instead of adding new example configs. The latest `MMMU-Pro` sandbox
+follow-up also reused the checked-in smoke YAMLs plus explicit CLI overrides.
+See the benchmark-specific runbooks for the exact commands.
 
 When running from a local checkout, prefer `python -m alphadiana.cli ...` so the
 current workspace code is used.
@@ -122,11 +128,18 @@ Dedicated 3-task OpenRouter pilot configs also exist for:
 
 - `IMO-AnswerBench x direct_llm`
 - `IMO-AnswerBench x openclaw`
+- `IMO-AnswerBench x opencode`
 - `GPQA-Diamond x direct_llm`
 - `GPQA-Diamond x openclaw`
+- `GPQA-Diamond x opencode`
+- `HLE x opencode`
 
 OpenRouter/Qwen pilot coverage on April 19 also includes:
 
+- `GPQA-Diamond x opencode`
+- `IMO-AnswerBench x opencode`
+- `HLE x opencode`
+- `MMMU-Pro x opencode`
 - `terminal-bench-2 x direct_llm` via the official Harbor `terminus-2` path
 - `terminal-bench-2 x opencode`
 - `terminal-bench-2 x openclaw`
@@ -138,9 +151,12 @@ The two official `direct_llm` follow-ups were repaired and re-audited inside
 the upstream benchmark checkouts rather than through AlphaDiana YAMLs. See the
 benchmark-specific runbooks for the exact caveats and accepted archive IDs.
 
-Current limitation: on `main`, `opencode` text-only benchmark tasks still run
-through the local CLI path rather than a benchmark-managed sandbox. That is fine
-for smoke/debug usage, but it is not equivalent to the OpenClaw sandbox path.
+The checked-in plain-benchmark `opencode` configs for `GPQA-Diamond`,
+`IMO-AnswerBench`, `HLE`, and the default `MMMU-Pro` smoke path now set
+`controller_mode: docker` by default. Build
+`alphadiana/tb2-opencode-controller:latest` before using those configs. The
+host-process path is still available for debugging via
+`-o agent.config.controller_mode=host`.
 
 Smoke-test success means the evaluation path loads tasks, invokes the selected agent mode, and writes scored results. It does not mean the model answered correctly.
 
