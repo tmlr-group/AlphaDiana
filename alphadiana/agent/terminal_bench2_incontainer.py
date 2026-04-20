@@ -27,7 +27,8 @@ IN_CONTAINER_AGENT_PROMPT = """You are solving a terminal-bench-2 task from insi
 
 Work directly on the live filesystem visible in the current shell.
 Do not call `docker` directly. Do not stop, replace, or recreate the container.
-Read `TASK.md` for the task details and `TASK_HINTS.md` too if it exists.
+The full task instruction is included below in this prompt.
+If companion files such as `TASK.md` or `TASK_HINTS.md` are present, you may read them, but do not assume they exist under `/app`.
 When your changes are complete, stop. The harness will run `/tests/test.sh` for you.
 """
 

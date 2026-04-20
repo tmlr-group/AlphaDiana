@@ -355,6 +355,8 @@ def test_terminal_bench2_opencode_writes_native_prompt_and_provider_config(tmp_p
     assert task_text == "demo"
     assert prompt_text.startswith(IN_CONTAINER_AGENT_PROMPT)
     assert "tb2-exec" not in prompt_text
+    assert "do not assume they exist under `/app`" in prompt_text
+    assert "Read `TASK.md` for the task details" not in prompt_text
     assert agent._opencode_command_prefix() == ["opencode"]
     run_cmd = agent._build_run_command(task_id="tb2_demo", container_workdir="/app")
 
@@ -401,6 +403,8 @@ def test_terminal_bench2_zeroclaw_writes_native_prompt_and_config(tmp_path: Path
     assert '"./tb2-copy-to"' not in config_text
     assert prompt_text.endswith("--- Task ---\ndemo\n")
     assert "You are solving a terminal-bench-2 task from inside the task container." in prompt_text
+    assert "do not assume they exist under `/app`" in prompt_text
+    assert "Read `TASK.md` for the task details" not in prompt_text
     assert "You are already inside the target task container." in _ZEROCLAW_SYSTEM_PROMPT
     assert "You are NOT inside the target task container." not in prompt_text
 
