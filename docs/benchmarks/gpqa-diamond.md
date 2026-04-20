@@ -77,10 +77,10 @@ python -m alphadiana.cli validate configs/examples/opencode_gpqa_diamond.yaml
 python -m alphadiana.cli run configs/examples/opencode_gpqa_diamond.yaml
 ```
 
-Current limitation: on `main`, `opencode` text-only benchmark tasks still run
-through the local CLI path rather than a benchmark-managed sandbox. That is
-fine for smoke/debug usage, but it is not equivalent to the OpenClaw or
-ZeroClaw sandbox path.
+The checked-in OpenCode benchmark config now uses Docker controller isolation by
+default. Build `alphadiana/tb2-opencode-controller:latest` first if it is not
+already present. If you need the old host-process path for debugging, override
+`-o agent.config.controller_mode=host`.
 
 ## ZeroClaw
 
@@ -160,15 +160,18 @@ python -m alphadiana.cli run configs/examples/openclaw_qwen35_27b_gpqa_diamond_p
 python -m alphadiana.cli run configs/examples/opencode_qwen35_27b_gpqa_diamond_pilot.yaml
 ```
 
-2026-04-18/19 本地真实 pilot 结果：
+2026-04-18/19/20 本地真实 pilot 结果：
 
 - `direct_llm`: `3/3` task records，全部 `score=1`
 - `openclaw`: `3/3` task records，全部 `score=1`
 - `opencode`: `3/3` task records，全部 `score=1`
-  - canonical run id:
+  - April 19 uploaded quality pilot:
     `pilot_20260419_qwen35_27b_gpqa_diamond_opencode_t3`
-  - 三条轨迹人工审计均正常，已上传到
-    `T-MARS/alphadiana-benchmark-results`
+  - April 20 default-Docker confirmation rerun:
+    `pilot_20260420_qwen35_27b_gpqa_diamond_opencode_t3_docker_default`
+  - April 20 rerun中三条 task JSON 都记录了
+    `metadata.controller_mode=docker` 和
+    `metadata.transport=opencode_cli_container`
 
 Reviewer-facing evidence:
 

@@ -18,6 +18,9 @@ Use this directory as a user-facing entry point. The canonical split is:
   Dashboard usage and deployment.
 - [Benchmark Runbooks](benchmarks/README.md)
   User-facing runbooks for supported benchmark paths.
+- [Benchmark Isolation Notes](benchmark-isolation.md)
+  Paper-safe summary of which benchmark paths are task-scoped sandboxes or
+  containers today.
 
 ## Canonical Benchmark Docs
 
