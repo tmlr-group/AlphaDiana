@@ -24,6 +24,16 @@ Use this directory as a user-facing entry point. The canonical split is:
 - [Full Local-vLLM Rollout (2026-04-19)](benchmarks/full-rollout-local-vllm-20260419.md)
   Staged `72`-run rollout manifest, preflight flow, and command generator for the local-vLLM campaign.
 
+## Specialized Guides
+
+- [ZeroClaw AIME 2026 Runbook](zeroclaw_aime2026_runbook.md)
+  Short, command-first runbook for the ZeroClaw AIME 2026 path.
+- [ZeroClaw AIME 2026 Tutorial](tutorial_zeroclaw_aime2026.md)
+  More detailed ZeroClaw tutorial with setup and background.
+- [OpenCode Docker Isolation](opencode-docker-isolation.md)
+  Focused note on the Docker-controller isolation posture for the checked-in
+  OpenCode benchmark paths.
+
 ## Canonical Benchmark Docs
 
 - [IMO-AnswerBench](benchmarks/imo-answerbench.md)
@@ -48,12 +58,17 @@ entry points:
   `docs/getting_started.md`.
 - [quickstart_commands.md](quickstart_commands.md)
   Environment-specific local ops notes; not the canonical setup guide.
-- `context/P25-three-benchmarks/openclaw_opencode_hle_multimodal_validation_20260417.md`
+- [context/P25-three-benchmarks/README.md](../context/P25-three-benchmarks/README.md)
+  Archived PR25 three-benchmark evidence bundle. Use only when you need the
+  older workstream-specific review trail.
+- [context/P25-three-benchmarks/openclaw_opencode_hle_multimodal_validation_20260417.md](../context/P25-three-benchmarks/openclaw_opencode_hle_multimodal_validation_20260417.md)
   Dated HLE multimodal validation note.
-- `context/qwen-openrouter-pilots/README.md`
-  Dated April 18-19 Qwen/OpenRouter pilot evidence for the benchmark rollout.
-- `context/pr26-swebench-verified/implementation-notes.md`
-  Internal note for the older SWE-bench Verified / container path.
+- [context/qwen-openrouter-pilots/README.md](../context/qwen-openrouter-pilots/README.md)
+  Dated April 18-20 Qwen/OpenRouter pilot evidence for the benchmark rollout.
+- [context/pr26-swebench-verified/README.md](../context/pr26-swebench-verified/README.md)
+  Entry point for the PR26 SWE-bench Verified evidence bundle.
+- [context/pr29-add-swebench-pro/README.md](../context/pr29-add-swebench-pro/README.md)
+  Entry point for the PR29 SWE-bench Pro reproduction context.
 
 Archived one-off notes live under [archive/](archive/).
 
