@@ -34,6 +34,51 @@ example configs, and smoke-test commands:
 - [ZeroClaw MiniMax Smoke Matrix (2026-04-18)](zeroclaw-minimax-smoke-20260418.md)
 - [ZeroClaw Qwen OpenRouter Pilot Matrix (2026-04-19)](zeroclaw-qwen-openrouter-pilot-20260419.md)
 
+## Find The Right Runbook
+
+If you know the benchmark already:
+
+- `IMO-AnswerBench`:
+  [imo-answerbench.md](imo-answerbench.md) covers `direct_llm`,
+  `openclaw`, `opencode`, and `zeroclaw`.
+- `HLE`:
+  [hle.md](hle.md) covers `direct_llm`, `openclaw`, `opencode`, and
+  `zeroclaw`.
+- `GPQA-Diamond`:
+  [gpqa-diamond.md](gpqa-diamond.md) covers `direct_llm`, `openclaw`,
+  `opencode`, and `zeroclaw`.
+- `MMMU-Pro`:
+  [mmmu-pro.md](mmmu-pro.md) covers `direct_llm`, `openclaw`, `opencode`,
+  and `zeroclaw`.
+- `terminal-bench-2`:
+  [terminal-bench-2.md](terminal-bench-2.md) covers the Diana-native
+  `openclaw`, `opencode`, and `zeroclaw` paths, and also points to the
+  official external `direct_llm` Harbor path.
+- `SWE-bench Pro`:
+  [swebench-pro.md](swebench-pro.md) covers the Diana-native `openclaw`,
+  `opencode`, and `zeroclaw` paths, and also points to the official external
+  `direct_llm` SWE-agent path.
+
+If you know the harness first:
+
+- `direct_llm`:
+  use the benchmark runbook directly for `IMO-AnswerBench`, `HLE`,
+  `GPQA-Diamond`, and `MMMU-Pro`; for `terminal-bench-2` and
+  `SWE-bench Pro`, the runbooks route you to the official external repos.
+- `openclaw`:
+  use the matching benchmark runbook for all six benchmarks.
+- `opencode`:
+  use the matching benchmark runbook for all six benchmarks.
+- `zeroclaw`:
+  use the matching benchmark runbook for all six benchmarks.
+
+If you are searching for a real Qwen/OpenRouter pilot or a ZeroClaw-specific
+smoke recipe rather than the general runbook, start from:
+
+- [zeroclaw-minimax-smoke-20260418.md](zeroclaw-minimax-smoke-20260418.md)
+- [zeroclaw-qwen-openrouter-pilot-20260419.md](zeroclaw-qwen-openrouter-pilot-20260419.md)
+- [full-rollout-local-vllm-20260419.md](full-rollout-local-vllm-20260419.md)
+
 Ready-to-run full benchmark configs live in
 [configs/full_runs](../../configs/full_runs/README.md) where available. Use
 those for full evaluations.
@@ -184,7 +229,11 @@ items lives at
 
 Related non-runbook references kept outside this folder:
 
+- Main April 18-20 Qwen/OpenRouter benchmark pilot context:
+  [`context/qwen-openrouter-pilots/README.md`](../../context/qwen-openrouter-pilots/README.md)
 - HLE multimodal deep-dive note:
   [`context/P25-three-benchmarks/openclaw_opencode_hle_multimodal_validation_20260417.md`](../../context/P25-three-benchmarks/openclaw_opencode_hle_multimodal_validation_20260417.md)
-- Older SWE-bench Verified/container internal note:
-  [`context/pr26-swebench-verified/implementation-notes.md`](../../context/pr26-swebench-verified/implementation-notes.md)
+- SWE-bench Verified PR26 evidence bundle:
+  [`context/pr26-swebench-verified/README.md`](../../context/pr26-swebench-verified/README.md)
+- SWE-bench Pro PR29 reproduction context:
+  [`context/pr29-add-swebench-pro/README.md`](../../context/pr29-add-swebench-pro/README.md)
