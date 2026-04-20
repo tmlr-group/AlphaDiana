@@ -46,6 +46,8 @@ The corresponding smoke configs remain under `configs/examples/` and pin `datase
 
 Additional April 19, 2026 pilot config:
 
+- `configs/examples/directllm_qwen35_27b_hle_pilot.yaml`
+- `configs/examples/openclaw_qwen35_27b_hle_pilot.yaml`
 - `configs/examples/opencode_qwen35_27b_hle_pilot.yaml`
 
 That pilot config drops the smoke `dataset_index: 1` pin so it can load three
@@ -179,10 +181,43 @@ export OPENAI_API_KEY=sk-...
 Command:
 
 ```bash
+python -m alphadiana.cli run configs/examples/directllm_qwen35_27b_hle_pilot.yaml
+python -m alphadiana.cli run configs/examples/openclaw_qwen35_27b_hle_pilot.yaml
 python -m alphadiana.cli run configs/examples/opencode_qwen35_27b_hle_pilot.yaml
 ```
 
+Config note:
+
+- The legacy `HLE x opencode` pilot used the first three scoreable
+  `multipleChoice` rows: `hle_1`, `hle_11`, and `hle_13`.
+- In the current `cais/hle` snapshot those three rows expose `image: ""`, so
+  they are not valid image-backed probes even though the benchmark is
+  multimodal in general.
+- The dedicated `direct_llm` and `openclaw` pilot configs therefore pin
+  `dataset_indices: [53, 98, 111]`, which do carry real image payloads and
+  preserve `task.attachments.image_1`.
+
 Observed on April 19/20, 2026:
+
+- `direct_llm`:
+  - April 20 image-backed pilot:
+    `pilot_20260420_qwen35_27b_hle_directllm_t3_multimodal_r1`
+    wrote `3/3` normal task records on `hle_53`, `hle_98`, and `hle_111`
+    with scores `0/0/1`
+  - all three task artifacts preserved `error=None`
+  - every task `request_messages.json` contained one text block plus one
+    `image_url` block
+
+- `openclaw`:
+  - April 20 image-backed pilot:
+    `pilot_20260420_qwen35_27b_hle_openclaw_t3_multimodal_r1`
+    wrote `3/3` normal task records on `hle_53`, `hle_98`, and `hle_111`
+    with scores `0/0/0`
+  - all three task artifacts preserved `error=None`
+  - every task `request_messages.json` contained one text block plus one
+    `image_url` block
+  - the run log recorded normal SSE completion on all three OpenClaw requests
+    before artifact collection
 
 - `opencode`:
   - April 19 uploaded host-mode pilot:
