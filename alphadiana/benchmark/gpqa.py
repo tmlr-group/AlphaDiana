@@ -36,7 +36,7 @@ class GPQADiamondBenchmark(Benchmark):
 
     Config keys:
         dataset:    HuggingFace dataset path (default: "fingertap/GPQA-Diamond")
-        split:      Dataset split (default: "test")
+        split:      Dataset split (default: "train")
         max_tasks:  Limit the number of tasks loaded (optional)
         seed:       Base random seed for option shuffling (default: 42)
     """
@@ -56,8 +56,6 @@ class GPQADiamondBenchmark(Benchmark):
         split = config.get("split", "test")
         max_tasks = config.get("max_tasks")
         base_seed = int(config.get("seed", 42))
-        if max_tasks == 0:
-            return []
 
         try:
             dataset = load_dataset_with_retry(dataset_path, None, split=split)
@@ -81,8 +79,6 @@ class GPQADiamondBenchmark(Benchmark):
                 # fingertap/GPQA-Diamond: question already contains formatted options
                 problem = item.get("question", "")
                 correct_label = item.get("answer", "A")
-                if not problem or not str(correct_label).strip():
-                    raise ValueError(f"GPQA row {idx}: empty or malformed answers")
                 correct_answer_text = ""
             else:
                 question = item.get("Question", "")
@@ -92,8 +88,6 @@ class GPQADiamondBenchmark(Benchmark):
                     item.get("Incorrect Answer 2", ""),
                     item.get("Incorrect Answer 3", ""),
                 ]
-                if not str(correct_answer_text).strip() or not all(str(answer).strip() for answer in incorrects):
-                    raise ValueError(f"GPQA row {idx}: empty or malformed answers")
                 problem, correct_label = _build_mcq(
                     question, correct_answer_text, incorrects, seed=base_seed + idx
                 )

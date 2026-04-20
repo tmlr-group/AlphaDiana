@@ -4,23 +4,12 @@ from __future__ import annotations
 
 import logging
 import random
-import re
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
-import datasets as _datasets
-
 logger = logging.getLogger(__name__)
-
-NON_RETRYABLE_DATASET_ERRORS = (PermissionError, FileNotFoundError, ValueError, OSError)
-READ_ONLY_CACHE_RE = re.compile(r"read.?only|permission denied|erofs", re.IGNORECASE)
-
-
-def load_dataset(*args: Any, **kwargs: Any) -> Any:
-    """Thin wrapper kept patchable by tests and loader modules."""
-    return _datasets.load_dataset(*args, **kwargs)
 
 
 @dataclass
@@ -48,31 +37,12 @@ def load_dataset_with_retry(
 
     Handles transient network errors and HF hub rate limits gracefully.
     """
+    from datasets import load_dataset
+
     last_exc: Exception | None = None
     for attempt in range(max_retries + 1):
         try:
             return load_dataset(dataset_path, config_name, split=split, **kwargs)
-        except (ConnectionError, TimeoutError) as exc:
-            last_exc = exc
-            if attempt < max_retries:
-                delay = min(base_delay * (2 ** attempt), max_delay)
-                jitter = random.uniform(0, delay * 0.3)
-                logger.warning(
-                    "Dataset load attempt %d/%d failed for %s: %s. Retrying in %.1fs",
-                    attempt + 1, max_retries + 1, dataset_path, exc, delay + jitter,
-                )
-                time.sleep(delay + jitter)
-            else:
-                raise
-        except OSError as exc:
-            if READ_ONLY_CACHE_RE.search(str(exc)):
-                raise RuntimeError(
-                    "HF cache appears read-only. Set HF_DATASETS_CACHE to a writable "
-                    f"directory. Underlying error: {exc}"
-                ) from exc
-            raise
-        except NON_RETRYABLE_DATASET_ERRORS:
-            raise
         except Exception as exc:
             last_exc = exc
             if attempt < max_retries:

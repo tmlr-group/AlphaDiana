@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
@@ -28,14 +28,13 @@ class RunSummary:
     mean_score: float
     mean_wall_time_sec: float
     total_tokens: dict
-    per_category: dict[str, dict[str, float | int]]
+    per_category: dict[str, float]
     error_distribution: dict[str, int] = field(default_factory=dict)
     num_samples: int = 1
     pass_at_k: float = 0.0
     avg_at_k: float = 0.0
     per_category_pass_at_k: dict[str, float] = field(default_factory=dict)
     per_category_avg_at_k: dict[str, float] = field(default_factory=dict)
-    total_samples: int = 0
     timestamp: str = ""
 
 
@@ -48,30 +47,6 @@ def _get_category(r: dict) -> str:
     if isinstance(resp_meta, dict) and resp_meta.get("category"):
         return resp_meta["category"]
     return "default"
-
-
-def _sample_index(record: dict) -> int:
-    value = record.get("sample_index", 0)
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return 0
-
-
-def _unique_task_ids(results: list[dict]) -> set[str]:
-    return {str(r["task_id"]) for r in results if "task_id" in r}
-
-
-def _unique_task_records(results: list[dict]) -> list[dict]:
-    """Return one record per unique task_id, keeping the latest sample_index."""
-    by_task: dict[str, dict] = {}
-    for record in results:
-        if "task_id" not in record:
-            continue
-        task_id = str(record["task_id"])
-        if task_id not in by_task or _sample_index(record) >= _sample_index(by_task[task_id]):
-            by_task[task_id] = record
-    return list(by_task.values())
 
 
 class ReportGenerator:
@@ -98,8 +73,7 @@ class ReportGenerator:
         files that lack these fields.
         """
         results = result_store.load()
-        total_samples = len(results)
-        total_tasks = len(_unique_task_ids(results))
+        total = len(results)
 
         # Infer run-level metadata from data; fall back to config.
         _cfg = config  # may be None
@@ -128,11 +102,11 @@ class ReportGenerator:
         # Only count tasks that were scored (excludes infrastructure errors).
         completed_results = [r for r in results if r.get("score") is not None]
         completed = len(completed_results)
-        failed = total_samples - completed
+        failed = total - completed
 
         correct_count = sum(1 for r in completed_results if r.get("correct", False))
         accuracy = correct_count / completed if completed > 0 else 0.0
-        accuracy_total = correct_count / total_samples if total_samples > 0 else 0.0
+        accuracy_total = correct_count / total if total > 0 else 0.0
 
         scores = [r.get("score", 0.0) for r in completed_results]
         mean_score = sum(scores) / len(scores) if scores else 0.0
@@ -160,23 +134,14 @@ class ReportGenerator:
         # Per-category accuracy (based on task metadata "category" field).
         category_correct: dict[str, int] = {}
         category_total: dict[str, int] = {}
-        category_sample_totals: dict[str, int] = {}
-        for r in results:
-            cat = _get_category(r)
-            category_sample_totals[cat] = category_sample_totals.get(cat, 0) + 1
-        for r in _unique_task_records(completed_results):
+        for r in completed_results:
             cat = _get_category(r)
             category_total[cat] = category_total.get(cat, 0) + 1
             if r.get("correct", False):
                 category_correct[cat] = category_correct.get(cat, 0) + 1
 
         per_category = {
-            cat: {
-                "pass_rate": category_correct.get(cat, 0) / category_total[cat],
-                "numerator": category_correct.get(cat, 0),
-                "denominator": category_total[cat],
-                "total_samples": category_sample_totals.get(cat, 0),
-            }
+            cat: category_correct.get(cat, 0) / category_total[cat]
             for cat in category_total
         }
 
@@ -237,7 +202,7 @@ class ReportGenerator:
             agent=agent_name,
             agent_version=agent_version,
             benchmark=benchmark_name,
-            total_tasks=total_tasks,
+            total_tasks=total,
             completed=completed,
             failed=failed,
             accuracy=accuracy,
@@ -252,7 +217,6 @@ class ReportGenerator:
             avg_at_k=avg_at_k,
             per_category_pass_at_k=per_category_pass_at_k,
             per_category_avg_at_k=per_category_avg_at_k,
-            total_samples=total_samples,
             timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
@@ -275,7 +239,6 @@ class ReportGenerator:
             f"| Agent Version | {summary.agent_version} |",
             f"| Benchmark | {summary.benchmark} |",
             f"| Total Tasks | {summary.total_tasks} |",
-            f"| Total Samples | {summary.total_samples} |",
             f"| Completed | {summary.completed} |",
             f"| Failed | {summary.failed} |",
             f"| Num Samples (k) | {summary.num_samples} |",
@@ -302,8 +265,8 @@ class ReportGenerator:
                 "| Category | Accuracy |",
                 "|----------|----------|",
             ])
-            for cat, stats in sorted(summary.per_category.items()):
-                lines.append(f"| {cat} | {float(stats['pass_rate']):.4f} |")
+            for cat, acc in sorted(summary.per_category.items()):
+                lines.append(f"| {cat} | {acc:.4f} |")
             lines.append("")
 
         if summary.num_samples > 1 and summary.per_category_pass_at_k:

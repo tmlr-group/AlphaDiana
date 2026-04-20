@@ -5,7 +5,6 @@ from __future__ import annotations
 import io
 import json
 import os
-import re
 import shlex
 import shutil
 import subprocess
@@ -136,16 +135,13 @@ class OpenClawContainerRuntimeManager:
 
     def __init__(self, config: dict) -> None:
         self._config = dict(config)
-        self._gateway_token = str(config.get("gateway_token", "OPENCLAW"))
-        if self._gateway_token and not re.fullmatch(r"[A-Za-z0-9_\-]+", self._gateway_token):
-            raise ValueError("Invalid gateway token charset; allowed [A-Za-z0-9_-]")
+        self._gateway_token = config.get("gateway_token", "OPENCLAW")
         self._gateway_model = config.get("model", "openclaw")
         self._openclaw_config_path = str(self._resolve_config_path(config.get("openclaw_config_path", ""))) if config.get("openclaw_config_path") else ""
         self._gateway_startup_timeout = int(config.get("gateway_startup_timeout", 180))
         self._gateway_warmup_timeout = int(config.get("gateway_warmup_timeout", 180))
         self._gateway_warmup_initial_delay = float(config.get("gateway_warmup_initial_delay", 3.0))
         self._gateway_log_path = config.get("gateway_log_path", "/tmp/openclaw-gateway.log")
-        self._gateway_pidfile = config.get("gateway_pidfile", "/tmp/openclaw-gateway.pid")
         self._workspace_path = config.get("workspace_path", "/tmp/oc_home/.openclaw/workspace")
         self._openclaw_home = config.get("openclaw_home", "/tmp/oc_home")
         self._remote_openclaw_config_path = config.get("remote_openclaw_config_path", "/tmp/openclaw.json")
@@ -155,11 +151,7 @@ class OpenClawContainerRuntimeManager:
         )
         self._gateway_port = int(config.get("container_gateway_port", config.get("gateway_port", 8080)))
         self._gateway_host = config.get("container_gateway_host", "127.0.0.1")
-        self._gateway_bind_host = str(
-            config.get("container_gateway_bind_host", config.get("gateway_bind_host", "127.0.0.1"))
-        ).strip() or "127.0.0.1"
         self._started_sandboxes: set[str] = set()
-        self._managed_sandboxes: dict[str, Any] = {}
         self._agent_md_applied_sandboxes: set[str] = set()
         self._git_mirror_uploaded_sandboxes: set[str] = set()
 
@@ -248,9 +240,7 @@ class OpenClawContainerRuntimeManager:
         gateway["port"] = self._gateway_port
         gateway["mode"] = "local"
         gateway["bind"] = "custom"
-        gateway["customBindHost"] = "127.0.0.1"
-        if self._gateway_bind_host != "127.0.0.1":
-            gateway["customBindHost"] = self._gateway_bind_host
+        gateway["customBindHost"] = "0.0.0.0"
         auth = gateway.setdefault("auth", {})
         auth["mode"] = "token"
         auth["token"] = "${OPENCLAW_GATEWAY_TOKEN}"
@@ -397,12 +387,11 @@ class OpenClawContainerRuntimeManager:
                 "pkill -x openclaw >/dev/null 2>&1 || true",
                 f"export PATH=\"{TESTBED_TOOL_PATH}:$PATH\"",
                 f"if [ -d {NODE_RUNTIME_BIN} ]; then export PATH=\"{NODE_RUNTIME_BIN}:$PATH\"; fi",
-                f"export OPENCLAW_CONFIG_PATH={shlex.quote(self._remote_openclaw_config_path)}",
-                f"export OPENCLAW_HOME={shlex.quote(self._openclaw_home)}",
+                f"export OPENCLAW_CONFIG_PATH={self._remote_openclaw_config_path}",
+                f"export OPENCLAW_HOME={self._openclaw_home}",
                 "export OPENCLAW_BUNDLED_PLUGINS_DIR=/tmp/empty-bundled",
-                f"export OPENCLAW_GATEWAY_TOKEN={shlex.quote(self._gateway_token)}",
-                f"nohup openclaw gateway > {shlex.quote(self._gateway_log_path)} 2>&1 &",
-                f"echo $! > {shlex.quote(self._gateway_pidfile)}",
+                f"export OPENCLAW_GATEWAY_TOKEN={self._gateway_token}",
+                f"nohup openclaw gateway > {self._gateway_log_path} 2>&1 &",
             ]
         )
 
@@ -518,8 +507,6 @@ class OpenClawContainerRuntimeManager:
         except Exception as exc:
             _logger.warning("OpenClaw container warmup did not fully succeed: %s", exc)
         self._started_sandboxes.add(sandbox_id)
-        if sandbox_id:
-            self._managed_sandboxes[sandbox_id] = sandbox
         return self.runtime_info(sandbox)
 
     def collect_artifacts(self, sandbox: Any) -> dict:
@@ -564,16 +551,4 @@ class OpenClawContainerRuntimeManager:
         }
 
     def teardown(self) -> None:
-        stop_command = (
-            f"if [ -f {shlex.quote(self._gateway_pidfile)} ]; then "
-            f"kill $(cat {shlex.quote(self._gateway_pidfile)}) >/dev/null 2>&1 || true; "
-            f"rm -f {shlex.quote(self._gateway_pidfile)}; "
-            "else pkill -x openclaw >/dev/null 2>&1 || true; fi"
-        )
-        for sandbox in list(self._managed_sandboxes.values()):
-            try:
-                sandbox.execute(stop_command)
-            except Exception:
-                _logger.debug("Failed to stop OpenClaw gateway during teardown", exc_info=True)
-        self._managed_sandboxes.clear()
-        self._started_sandboxes.clear()
+        return None

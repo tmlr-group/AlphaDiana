@@ -152,7 +152,7 @@ fi
 # Redis
 echo "  Starting Redis..."
 docker start "${ROCK_REDIS_CONTAINER}" 2>/dev/null \
-  || docker run -d --restart unless-stopped --name "${ROCK_REDIS_CONTAINER}" -p "127.0.0.1:${ROCK_REDIS_PORT}:6379" redis/redis-stack-server:latest
+  || docker run -d --restart unless-stopped --name "${ROCK_REDIS_CONTAINER}" -p "${ROCK_REDIS_PORT}:6379" redis/redis-stack-server:latest
 sleep 2
 ACTUAL_REDIS_PORT="$(detect_container_host_port "${ROCK_REDIS_CONTAINER}" 6379/tcp || true)"
 if [ -n "${ACTUAL_REDIS_PORT}" ] && [ "${ACTUAL_REDIS_PORT}" != "${ROCK_REDIS_PORT}" ]; then

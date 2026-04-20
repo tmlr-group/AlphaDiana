@@ -1,13 +1,10 @@
 """IMO-AnswerBench benchmark loader."""
 from __future__ import annotations
 
-import logging
 import os
 
 from alphadiana.benchmark.base import Benchmark, BenchmarkTask, load_dataset_with_retry
 from alphadiana.benchmark.registry import BenchmarkRegistry
-
-logger = logging.getLogger(__name__)
 
 
 class ImoAnswerBenchBenchmark(Benchmark):
@@ -53,9 +50,6 @@ class ImoAnswerBenchBenchmark(Benchmark):
         dataset_index = config.get("dataset_index")
         max_tasks = config.get("max_tasks")
 
-        if max_tasks == 0:
-            return []
-
         try:
             dataset = load_dataset_with_retry(dataset_path, data_config, split=split)
         except Exception as exc:
@@ -87,56 +81,27 @@ class ImoAnswerBenchBenchmark(Benchmark):
                 f"Available fields: {available}"
             )
 
-        if category is not None and category_field not in sample:
-            available = ", ".join(sorted(sample.keys()))
-            raise ValueError(
-                f"IMO-AnswerBench: category_field={category_field!r} not present on dataset rows. "
-                f"Available fields: {available}"
-            )
-
         if dataset_index is not None:
             dataset_index = int(dataset_index)
-            if dataset_index < 0 or dataset_index >= len(dataset):
-                raise IndexError(
-                    f"dataset_index={dataset_index} out of range [0, {len(dataset)})"
-                )
             iterator = [(dataset_index, dataset[dataset_index])]
         else:
             iterator = enumerate(dataset)
 
         tasks: list[BenchmarkTask] = []
         for idx, item in iterator:
-            if category is not None:
-                if category_field not in item:
-                    available = ", ".join(sorted(item.keys()))
-                    raise ValueError(
-                        f"IMO-AnswerBench: category_field={category_field!r} not present on dataset rows. "
-                        f"Available fields: {available}"
-                    )
+            if category is not None and category_field in item:
                 if str(item[category_field]).strip().lower() != str(category).strip().lower():
                     continue
 
-            problem_id = item.get("Problem ID")
-            if problem_id is None or str(problem_id).strip() == "":
-                task_id = f"imo_{idx}"
-                logger.warning("IMO-AnswerBench row %s missing Problem ID; using %s", idx, task_id)
-            else:
-                task_id = str(problem_id)
-
-            metadata = {
-                "source": dataset_path,
-                "index": idx,
-                "category": item.get(category_field, ""),
-            }
-            for key in ("Subcategory", "Source", "Problem ID"):
-                if key in item:
-                    metadata[key] = item[key]
-
             tasks.append(BenchmarkTask(
-                task_id=task_id,
+                task_id=f"imo_answerbench_{idx}",
                 problem=item[problem_field],
                 ground_truth=str(item[answer_field]),
-                metadata=metadata,
+                metadata={
+                    "source": dataset_path,
+                    "index": idx,
+                    "category": item.get(category_field, ""),
+                },
             ))
 
             if max_tasks is not None and len(tasks) >= max_tasks:

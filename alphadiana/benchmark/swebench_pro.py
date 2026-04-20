@@ -46,23 +46,6 @@ def _select_rows_by_ids(rows: list[dict[str, Any]], wanted_ids: list[str]) -> li
     return [by_id[instance_id] for instance_id in wanted_ids if instance_id in by_id]
 
 
-def _select_requested_rows_by_ids(
-    rows: list[dict[str, Any]], wanted_ids: list[str], *, label: str
-) -> list[dict[str, Any]]:
-    """Return requested rows in order and fail if explicit IDs are absent."""
-    if not wanted_ids:
-        return rows
-    by_id = {str(row.get("instance_id", "")): row for row in rows}
-    missing = set(wanted_ids) - set(by_id)
-    if missing:
-        preview = sorted(missing)[:10]
-        suffix = "..." if len(missing) > 10 else ""
-        raise LookupError(
-            f"SWE-bench Pro: requested {label} instance_ids not in dataset: {preview}{suffix}"
-        )
-    return [by_id[instance_id] for instance_id in wanted_ids]
-
-
 class SWEBenchProBenchmark(Benchmark):
     """Loads SWE-bench Pro issue instances from Hugging Face.
 
@@ -77,9 +60,6 @@ class SWEBenchProBenchmark(Benchmark):
     """
 
     name = "swebench_pro_os"
-
-    def default_scorer(self) -> str:
-        return "swebench_pro"
 
     def load_tasks(self, config: dict) -> list[BenchmarkTask]:
         try:
@@ -103,8 +83,6 @@ class SWEBenchProBenchmark(Benchmark):
         instance_ids = _normalize_str_list(config.get("instance_ids"))
         smoke_instance_ids = _normalize_str_list(config.get("smoke_instance_ids"))
         max_tasks = config.get("max_tasks")
-        if max_tasks == 0:
-            return []
 
         try:
             dataset = load_dataset_with_retry(dataset_path, split=split)
@@ -135,14 +113,12 @@ class SWEBenchProBenchmark(Benchmark):
             rows = [row for row in rows if str(row.get("repo", "")) in repos]
 
         if instance_ids:
-            rows = _select_requested_rows_by_ids(rows, instance_ids, label="explicit")
+            filtered_rows = [row for row in rows if str(row.get("instance_id", "")) in set(instance_ids)]
+            rows = _select_rows_by_ids(filtered_rows, instance_ids)
 
         if subset == "smoke":
             active_smoke_ids = smoke_instance_ids or DEFAULT_SMOKE_INSTANCE_IDS
-            if smoke_instance_ids:
-                rows = _select_requested_rows_by_ids(rows, active_smoke_ids, label="smoke")
-            else:
-                rows = _select_rows_by_ids(rows, active_smoke_ids)
+            rows = _select_rows_by_ids(rows, active_smoke_ids)
 
         if max_tasks is not None:
             rows = rows[: int(max_tasks)]

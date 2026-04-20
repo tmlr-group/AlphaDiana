@@ -107,7 +107,6 @@ class JobManager:
         "failed": 2,
         "cancelled": 1,
     }
-    _ACTIVE_STATUSES = {"pending", "running"}
 
     def _load_persisted_jobs(self) -> None:
         """Restore job history from disk on startup.
@@ -148,12 +147,6 @@ class JobManager:
             )
         except Exception:
             logger.warning("Failed to load persisted jobs", exc_info=True)
-
-    def _ensure_run_id_not_active(self, run_id: str) -> None:
-        """Reject a new job when the same run_id is already active."""
-        for job in self._jobs.values():
-            if job.run_id == run_id and job.status in self._ACTIVE_STATUSES:
-                raise ValueError(f"run {run_id} already active")
 
     @staticmethod
     def _parse_total_from_log(log_text: str) -> int:
@@ -488,17 +481,6 @@ class JobManager:
             "benchmark": req.benchmark_name,
             "agent_config": filtered_agent_config,
             "benchmark_config": req.benchmark_config,
-            "scorer": {
-                "name": req.scorer_name,
-                "config": req.scorer_config,
-            },
-            "sampling": {
-                "num_samples": req.num_samples,
-                "temperature": filtered_agent_config.get("temperature"),
-                "top_p": filtered_agent_config.get("top_p"),
-                "top_k": filtered_agent_config.get("top_k"),
-                "max_tokens": filtered_agent_config.get("max_tokens"),
-            },
         }
 
         metadata = req.metadata if isinstance(req.metadata, dict) else {}
@@ -555,7 +537,6 @@ class JobManager:
             original_request=persisted_req,
         )
         with self._lock:
-            self._ensure_run_id_not_active(run_id)
             self._jobs[job_id] = status
             log_path = os.path.join(self._logs_dir, f"{job_id}.log")
             self._job_logs[job_id] = _DualWriter(log_path)
@@ -614,7 +595,6 @@ class JobManager:
             original_request=persisted_req,
         )
         with self._lock:
-            self._ensure_run_id_not_active(run_id)
             self._jobs[job_id] = status
             log_path = os.path.join(self._logs_dir, f"{job_id}.log")
             self._job_logs[job_id] = _DualWriter(log_path)
@@ -806,7 +786,6 @@ class JobManager:
                 if jsonl_path.exists():
                     _log(f"redo_all: clearing existing results ({jsonl_path.name})")
                     jsonl_path.unlink()
-                self._job_progress_offsets[job_id] = 0
 
             _log("Setting up runner...")
             runner = Runner(config, cancel_event=cancel_event)

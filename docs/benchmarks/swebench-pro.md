@@ -25,7 +25,7 @@ official path, not for a Diana-managed execution mode.
 
 ## Scope
 
-AlphaDiana does not use the ROCK/AIME flow from the root [README.md](/path/to/users/xxx/projects/diana/AlphaDiana-dev/README.md) for SWE-bench Pro smoke. Instead, it:
+AlphaDiana does not use the ROCK/AIME flow from the root [README.md](../../README.md) for SWE-bench Pro smoke. Instead, it:
 
 - runs `benchmark.name: swebench_pro_os`
 - uses `agent.name: swebench_docker`
@@ -91,14 +91,15 @@ AlphaDiana expects the official SWE-bench Pro evaluator entrypoint and run scrip
 Example local checkout:
 
 ```bash
-git clone https://github.com/scaleapi/SWE-bench_Pro-os /tmp/phase11-swebench-pro-os-full
+export SWE_BENCH_PRO_ROOT=/path/to/SWE-bench_Pro-os
+git clone https://github.com/scaleapi/SWE-bench_Pro-os "$SWE_BENCH_PRO_ROOT"
 ```
 
 Required exports:
 
 ```bash
-export SWE_BENCH_PRO_EVAL_SCRIPT=/tmp/phase11-swebench-pro-os-full/swe_bench_pro_eval.py
-export SWE_BENCH_PRO_SCRIPTS_DIR=/tmp/phase11-swebench-pro-os-full/run_scripts
+export SWE_BENCH_PRO_EVAL_SCRIPT="$SWE_BENCH_PRO_ROOT/swe_bench_pro_eval.py"
+export SWE_BENCH_PRO_SCRIPTS_DIR="$SWE_BENCH_PRO_ROOT/run_scripts"
 ```
 
 ### 3. Model endpoint

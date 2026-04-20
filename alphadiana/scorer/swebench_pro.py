@@ -137,7 +137,7 @@ class SWEBenchProScorer(Scorer):
                     "Check swebench_eval_stdout / swebench_eval_stderr."
                 )
 
-            eval_results = self._load_eval_results(output_dir, task.task_id)
+            eval_results = self._load_eval_results(output_dir)
             output_payload = self._load_instance_output(output_dir, task.task_id)
             self._persist_workspace_artifacts(
                 response=response,
@@ -275,13 +275,10 @@ class SWEBenchProScorer(Scorer):
             argv.append("--redo")
         return argv
 
-    def _load_eval_results(self, output_dir: Path, task_id: str) -> dict[str, Any]:
+    def _load_eval_results(self, output_dir: Path) -> dict[str, bool]:
         eval_results_path = output_dir / "eval_results.json"
         if not eval_results_path.exists():
-            logger.warning(
-                "eval_results.json absent for %s; using parsed-output fallback",
-                task_id,
-            )
+            logger.warning("SWE-bench evaluator did not create %s", eval_results_path)
             return {}
         try:
             data = _load_json_file(eval_results_path)
@@ -349,13 +346,11 @@ class SWEBenchProScorer(Scorer):
         self,
         task,
         output_payload: dict[str, Any],
-        eval_results: dict[str, Any],
+        eval_results: dict[str, bool],
     ) -> dict[str, Any]:
         metadata = dict(getattr(task, "metadata", {}) or {})
         fail_to_pass_expected = sorted(_normalize_string_list(metadata.get("fail_to_pass", [])))
         pass_to_pass_expected = sorted(_normalize_string_list(metadata.get("pass_to_pass", [])))
-        if not fail_to_pass_expected and not pass_to_pass_expected:
-            raise ValueError("fail_to_pass and pass_to_pass are both empty; cannot score")
         selected_test_files_to_run = sorted(
             _normalize_string_list(metadata.get("selected_test_files_to_run", []))
         )
@@ -369,8 +364,7 @@ class SWEBenchProScorer(Scorer):
         pass_to_pass_missing = sorted(
             test for test in pass_to_pass_expected if test not in passed_test_set
         )
-        parsed_resolved = not fail_to_pass_missing and not pass_to_pass_missing
-        resolved = self._resolve_upstream_result(task.task_id, eval_results, parsed_resolved)
+        resolved = not fail_to_pass_missing and not pass_to_pass_missing
 
         return {
             "fail_to_pass_expected": fail_to_pass_expected,
@@ -382,21 +376,8 @@ class SWEBenchProScorer(Scorer):
             "selected_test_files_to_run": selected_test_files_to_run,
             "passed_tests": passed_tests,
             "resolved": resolved,
-            "upstream_eval_result": resolved,
+            "upstream_eval_result": bool(eval_results.get(task.task_id, resolved)),
         }
-
-    def _resolve_upstream_result(
-        self,
-        task_id: str,
-        eval_results: dict[str, Any],
-        parsed_resolved: bool,
-    ) -> bool:
-        resolved_ids = eval_results.get("resolved_ids")
-        if isinstance(resolved_ids, list):
-            return task_id in {str(item) for item in resolved_ids}
-        if task_id in eval_results:
-            return bool(eval_results[task_id])
-        return parsed_resolved
 
     def _extract_passed_tests(self, output_payload: dict[str, Any]) -> set[str]:
         passed_tests: set[str] = set()

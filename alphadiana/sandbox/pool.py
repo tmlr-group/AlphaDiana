@@ -85,7 +85,9 @@ class SandboxPool:
                     self._all_sessions.append(session)
             except Exception:
                 logger.error("Failed to create replacement session", exc_info=True)
-                logger.error("session replacement failed; waiters will continue to wait")
+                # Even if replacement fails, unblock waiting threads.
+                with self._lock:
+                    self._event.set()
                 return
         with self._lock:
             self._available.append(session)

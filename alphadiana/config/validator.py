@@ -21,16 +21,6 @@ class ConfigValidator:
         "terminal_bench2_zeroclaw",
     }
 
-    @staticmethod
-    def _validate_int_field(errors: list[str], field_name: str, value: object) -> int | None:
-        if isinstance(value, bool):
-            errors.append(f"{field_name} must be an integer, got boolean")
-            return None
-        if isinstance(value, int):
-            return value
-        errors.append(f"{field_name} must be an integer, got {type(value).__name__}")
-        return None
-
     def validate(self, config: ExperimentConfig) -> list[str]:
         errors: list[str] = []
 
@@ -47,12 +37,10 @@ class ConfigValidator:
             errors.append("benchmark_name is required")
         if not config.scorer_name:
             errors.append("scorer_name is required")
-        max_concurrent = self._validate_int_field(errors, "max_concurrent", config.max_concurrent)
-        if max_concurrent is not None:
-            if max_concurrent < 1:
-                errors.append("max_concurrent must be >= 1")
-            if max_concurrent > 64:
-                errors.append("max_concurrent should be <= 64 to avoid resource exhaustion")
+        if (config.max_concurrent or 0) < 1:
+            errors.append("max_concurrent must be >= 1")
+        if (config.max_concurrent or 0) > 64:
+            errors.append("max_concurrent should be <= 64 to avoid resource exhaustion")
         if config.benchmark_name in self.SANDBOX_REQUIRED_BENCHMARKS and not config.sandbox_name:
             errors.append(
                 f"benchmark '{config.benchmark_name}' requires a sandbox "
@@ -102,10 +90,6 @@ class ConfigValidator:
                 errors.append(
                     f"agent '{config.agent_name}' requires 'api_base' in agent_config"
                 )
-            if config.agent_name == "direct_llm" and not self._has_nonempty_value(
-                config.agent_config.get("model")
-            ):
-                errors.append("agent 'direct_llm' requires non-empty 'model' in agent_config")
         if config.agent_name == "opencode":
             controller_mode = (
                 str(config.agent_config.get("controller_mode", "host") or "host").strip().lower()
@@ -177,11 +161,11 @@ class ConfigValidator:
                 expect_dir=True,
             )
 
-        num_samples = self._validate_int_field(errors, "num_samples", getattr(config, "num_samples", 1))
-        if num_samples is not None and num_samples < 1:
+        num_samples = getattr(config, "num_samples", 1)
+        if num_samples < 1:
             errors.append("num_samples must be >= 1")
-        task_retries = self._validate_int_field(errors, "task_retries", getattr(config, "task_retries", 0))
-        if task_retries is not None and task_retries < 0:
+        task_retries = getattr(config, "task_retries", 0)
+        if task_retries < 0:
             errors.append("task_retries must be >= 0")
 
         return errors

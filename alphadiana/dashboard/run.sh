@@ -217,7 +217,7 @@ if [ "$MODE" = "prod" ]; then
 
     echo "==> Starting production server at http://localhost:${BACKEND_PORT}"
     cd "$PROJECT_ROOT"
-    "${PYTHON}" -m uvicorn alphadiana.dashboard.backend.main:app --host 127.0.0.1 --port "$BACKEND_PORT"
+    "${PYTHON}" -m uvicorn alphadiana.dashboard.backend.main:app --host 0.0.0.0 --port "$BACKEND_PORT"
 else
     BACKEND_PORT="$(pick_port_with_notice "$DEFAULT_BACKEND_PORT" "Backend")"
     FRONTEND_PORT="$(pick_port_with_notice "$DEFAULT_FRONTEND_PORT" "Frontend")"
@@ -230,7 +230,7 @@ else
 
     # Start backend in background
     cd "$PROJECT_ROOT"
-    "${PYTHON}" -m uvicorn alphadiana.dashboard.backend.main:app --host 127.0.0.1 --reload "${RELOAD_ARGS[@]}" --port "$BACKEND_PORT" &
+    "${PYTHON}" -m uvicorn alphadiana.dashboard.backend.main:app --reload "${RELOAD_ARGS[@]}" --port "$BACKEND_PORT" &
     BACKEND_PID=$!
 
     # Start frontend

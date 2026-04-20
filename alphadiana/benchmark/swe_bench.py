@@ -36,8 +36,6 @@ class SWEBenchBenchmark(Benchmark):
         split = config.get("split", "test")
         include_hints = config.get("include_hints", False)
         max_tasks = config.get("max_tasks")
-        if max_tasks == 0:
-            return []
 
         try:
             dataset = load_dataset_with_retry(dataset_path, None, split=split)
@@ -52,13 +50,7 @@ class SWEBenchBenchmark(Benchmark):
             ) from exc
 
         tasks: list[BenchmarkTask] = []
-        required = ["instance_id", "repo", "base_commit", "problem_statement"]
         for idx, item in enumerate(dataset):
-            missing_req = [key for key in required if key not in item or item[key] is None]
-            if missing_req:
-                row_id = item.get("instance_id", "?")
-                raise ValueError(f"SWE-bench row {row_id!r} missing: {missing_req}")
-
             instance_id = item.get("instance_id", str(idx))
             problem = item.get("problem_statement", "")
             if include_hints:
