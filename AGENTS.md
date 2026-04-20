@@ -23,14 +23,6 @@ Skip `docs/archive/` and `context/archive/` unless the task is explicitly histor
 - `configs/examples/` = smoke / debug configs
 - `configs/full_runs/` = full-run entry points
 
-## Context rules
-
-- `context/current_eval_status.md` is the repo-level support truth source. Treat similarly named files inside `context/<workstream>/` as local historical or workstream-scoped status unless the repo-level snapshot explicitly points to them.
-- Add any new long-lived top-level `context/` entry point to `context/README.md`. If a note is only useful for one workstream or PR, keep it inside that workstream folder instead of adding another top-level snapshot.
-- Put new material under `context/`, not `contexts/`.
-- In committed `docs/*` and `context/*`, prefer repo-relative paths, run IDs, and filenames. Do not commit absolute local worktree paths as durable references.
-- When answering whether a path is "ready" or "supported", separate current repo-level status from historical evidence, and say when the referenced result artifacts are no longer present in the current checkout.
-
 ## Hard rules
 
 - Prove support with real runs, not config inspection.

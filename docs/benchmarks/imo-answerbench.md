@@ -28,16 +28,13 @@ The benchmark loads from HuggingFace. If the default mirror is slow, set `HF_END
 
 The corresponding smoke configs remain under `configs/examples/` and pin `dataset_index: 367`, `max_tasks: 1`.
 
-Additional April 18/19, 2026 pilot configs are also checked in:
+Additional April 18, 2026 pilot configs are also checked in:
 
 - `configs/examples/directllm_qwen35_27b_imo_answerbench_pilot.yaml`
 - `configs/examples/openclaw_qwen35_27b_imo_answerbench_pilot.yaml`
-- `configs/examples/opencode_qwen35_27b_imo_answerbench_pilot.yaml`
 
 These pilot configs use `max_tasks: 3` and the OpenRouter slug
 `qwen/qwen3.5-27b` for the logical model target `Qwen/Qwen3.5-27B`.
-The dedicated `opencode` pilot config intentionally omits the smoke
-`dataset_index: 367` pin so it can load three distinct tasks.
 
 ## Full Runs
 
@@ -61,25 +58,22 @@ python -m alphadiana.cli run configs/examples/directllm_minimax_imo_answerbench.
 
 OpenCode runs the `opencode` CLI and uses the prompt file at `context/opencode_lean_math.md` for the IMO smoke config.
 
-Build the controller image once before using the checked-in OpenCode configs:
-
-```bash
-docker build --network host \
-  -f docker/terminal_bench2/Dockerfile.opencode-controller \
-  -t alphadiana/tb2-opencode-controller:latest .
-```
-
 ```bash
 python -m alphadiana.cli run configs/examples/opencode_minimax_imo_answerbench.yaml \
   -o run_id=imo_opencode_smoke
 ```
 
-The checked-in OpenCode benchmark configs now use Docker controller isolation
-by default. If you need the old host-process path for debugging, override
-`-o agent.config.controller_mode=host`.
+The smoke config uses `timeout: 1800` because shorter bounds can kill valid slow model output before it reaches scoring.
 
-The smoke config uses `timeout: 1800` because shorter bounds can kill valid
-slow model output before it reaches scoring. The full Docker setup and
+To run the same path with controller isolation, add:
+
+```bash
+python -m alphadiana.cli run configs/examples/opencode_minimax_imo_answerbench.yaml \
+  -o run_id=imo_opencode_docker_smoke \
+  -o agent.config.controller_mode=docker
+```
+
+`controller_mode` must be exactly `host` or `docker`. The full Docker setup and
 reproduction guide live in `docs/opencode-docker-isolation.md`.
 
 ## OpenClaw
@@ -166,10 +160,9 @@ Commands:
 ```bash
 python -m alphadiana.cli run configs/examples/directllm_qwen35_27b_imo_answerbench_pilot.yaml
 python -m alphadiana.cli run configs/examples/openclaw_qwen35_27b_imo_answerbench_pilot.yaml
-python -m alphadiana.cli run configs/examples/opencode_qwen35_27b_imo_answerbench_pilot.yaml
 ```
 
-Observed on April 18/19/20, 2026:
+Observed on April 18, 2026:
 
 - `direct_llm`: `3/3` task records written, all `score=1`
 - `openclaw`: not rollout-ready yet
@@ -179,16 +172,33 @@ Observed on April 18/19/20, 2026:
   - `imo_answerbench_2`: `score=0` with `partial_reasoning_only=true`; the
     partial reasoning trace was preserved and is treated as a normal sample
   - the path remains blocked on scorer correctness, not on benchmark completion
-- `opencode`:
-  - April 19 uploaded quality pilot:
-    `pilot_20260419_qwen35_27b_imo_answerbench_opencode_t3`
-    wrote `3/3` task records, all `score=1`
-  - April 20 default-Docker confirmation rerun:
-    `pilot_20260420_qwen35_27b_imo_answerbench_opencode_t3_docker_default`
-    wrote `3/3` normal task records with scores `1/0/0`
-  - April 20 rerun中三条 task JSON 都记录了
-    `metadata.controller_mode=docker` 和
-    `metadata.transport=opencode_cli_container`
+
+Local follow-up on April 19, 2026:
+
+- `rerun_20260419_qwen35_27b_imo_answerbench_openclaw_idx2_r2`
+  completed with `score=1`; the task JSON kept a non-empty top-level
+  `reasoning_trajectory` plus `metadata.raw_reasoning`
+- `rerun_20260419_qwen35_27b_imo_answerbench_zeroclaw_idx0_r3`
+  failed cleanly with provider transport errors and `predicted=None`; the
+  previous startup-log pollution no longer leaked into a fake parsed answer
+
+Local follow-up on April 20, 2026:
+
+- root cause for the ZeroClaw/OpenRouter failure was a config gap, not the
+  benchmark itself: AlphaDiana was not writing ZeroClaw
+  `provider_timeout_secs`, so the CLI fell back to its internal `120s`
+  provider timeout and aborted long streamed math responses
+- the fix keeps `stream=true` and writes
+  `provider_timeout_secs = request_timeout` by default unless explicitly
+  overridden
+- validation smoke:
+  `debug_20260420_qwen35_27b_imo_answerbench_zeroclaw_idx0_provider_timeout_r1`
+  completed `1/1` on the previously failing first task
+- repaired 3-task pilot:
+  `pilot_20260420_qwen35_27b_imo_answerbench_zeroclaw_t3_repair_r3`
+  completed `3/3`, all task JSONs now have non-null predictions and no
+  task-level `error`, and the archive was uploaded to
+  `pilot_run/pilot_20260420_qwen35_27b_imo_answerbench_zeroclaw_t3_repair_r3/`
 
 Reviewer-facing evidence for this pilot lives in
 `context/qwen-openrouter-pilots/`.

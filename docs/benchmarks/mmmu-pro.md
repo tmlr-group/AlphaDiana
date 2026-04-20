@@ -22,15 +22,16 @@ python -m alphadiana.cli env
 
 ## Supported Modes
 
-| Mode | Status | Config |
-|---|---|---|
-| `direct_llm` | smoke/debug supported | `configs/examples/direct_llm_mmmu_pro.yaml` |
-| `openclaw` | smoke/debug supported | `configs/examples/openclaw_mmmu_pro.yaml` |
-| `opencode` | smoke/debug supported | `configs/examples/opencode_mmmu_pro.yaml` |
-| `zeroclaw` | smoke/debug supported | `configs/examples/zeroclaw_mmmu_pro.yaml` |
+| Mode | Status | Smoke / Debug Config | Full-run Config |
+|---|---|---|---|
+| `direct_llm` | smoke/debug supported | `configs/examples/direct_llm_mmmu_pro.yaml` | `configs/full_runs/rollout_full_directllm_mmmu_pro_vision.yaml` |
+| `openclaw` | smoke/debug supported | `configs/examples/openclaw_mmmu_pro.yaml` | `configs/full_runs/rollout_full_openclaw_mmmu_pro_vision.yaml` |
+| `opencode` | smoke/debug supported | `configs/examples/opencode_mmmu_pro.yaml` | `configs/full_runs/rollout_full_opencode_mmmu_pro_vision.yaml` |
+| `zeroclaw` | smoke/debug supported | `configs/examples/zeroclaw_mmmu_pro.yaml` | `configs/full_runs/rollout_full_zeroclaw_mmmu_pro_vision.yaml` |
 
-There is no checked-in ZeroClaw full-run config for MMMU-Pro yet. The current
-documented path is the example smoke/debug config.
+For the staged `72`-run local-vLLM campaign, use
+[full-rollout-local-vllm-20260419.md](full-rollout-local-vllm-20260419.md)
+instead of launching the four full configs manually.
 
 ## Data Configs
 
@@ -45,9 +46,19 @@ vision
 The ZeroClaw smoke config uses `vision` so the benchmark path exercises image
 attachment handling inside the sandbox workspace.
 
-Current dataset note: the Hugging Face `vision` subset now exposes a singular
-`image` field. AlphaDiana normalizes that payload into `image_1` task
-attachments before handing the task to the agent.
+The checked-in full configs also use `data_config: "vision"` so the full run
+matches the image-backed path rather than a text-only variant.
+
+## Full Run
+
+Validate the four full configs directly:
+
+```bash
+python -m alphadiana.cli validate configs/full_runs/rollout_full_directllm_mmmu_pro_vision.yaml
+python -m alphadiana.cli validate configs/full_runs/rollout_full_openclaw_mmmu_pro_vision.yaml
+python -m alphadiana.cli validate configs/full_runs/rollout_full_opencode_mmmu_pro_vision.yaml
+python -m alphadiana.cli validate configs/full_runs/rollout_full_zeroclaw_mmmu_pro_vision.yaml
+```
 
 ## DirectLLM
 
@@ -79,45 +90,10 @@ python -m alphadiana.cli validate configs/examples/opencode_mmmu_pro.yaml
 python -m alphadiana.cli run configs/examples/opencode_mmmu_pro.yaml
 ```
 
-The checked-in OpenCode benchmark config now uses Docker controller isolation by
-default. Build `alphadiana/tb2-opencode-controller:latest` first if it is not
-already present. If you need the old host-process path for debugging, override
-`-o agent.config.controller_mode=host`.
-
-### Qwen/OpenRouter Vision Pilot (2026-04-19/20)
-
-Accepted local pilot:
-
-- run_id: `pilot_20260419_qwen35_27b_mmmu_pro_opencode_t3_vision_docker`
-- result: `3/3` normal trajectories in Docker isolation, one task scored `0`
-  but no abnormal behavior
-- run_id:
-  `pilot_20260420_qwen35_27b_mmmu_pro_opencode_t3_vision_docker_default`
-- result: `3/3` normal Docker-default trajectories with scores `0/1/1`, and
-  every task recorded `num_attachments=1`
-
-Historical non-canonical run:
-
-- `pilot_20260419_qwen35_27b_mmmu_pro_opencode_t3_vision`
-  wrote `3/3` normal task records, but it used `controller_mode=host` before
-  the checked-in config default switched to Docker isolation, so it is kept as
-  historical evidence only
-
-Command:
-
-```bash
-export OPENAI_BASE_URL=https://openrouter.ai/api/v1
-export OPENAI_API_KEY=sk-...
-export OPENAI_MODEL_NAME=qwen/qwen3.5-27b
-
-python -m alphadiana.cli run configs/examples/opencode_mmmu_pro.yaml \
-  -o run_id=pilot_20260420_qwen35_27b_mmmu_pro_opencode_t3_vision_docker_default \
-  -o benchmark.config.data_config=vision \
-  -o benchmark.config.max_tasks=3 \
-  -o max_concurrent=3 \
-  -o agent.config.model_name=qwen/qwen3.5-27b \
-  -o agent.config.model=custom/qwen/qwen3.5-27b
-```
+Current limitation: on `main`, `opencode` text-only benchmark tasks still run
+through the local CLI path rather than a benchmark-managed sandbox. That is
+fine for smoke/debug usage, but it is not equivalent to the OpenClaw or
+ZeroClaw sandbox path.
 
 ## ZeroClaw
 
@@ -169,42 +145,6 @@ Observed local verification on 2026-04-18:
 - run_id: `pr23_smoke_zeroclaw_mmmupro_minimaxm25_boxA_20260418`
 - result: dashboard `X`, `predicted=A`, `ground_truth=B`, no `error`
 - execution mode: ROCK sandbox + in-sandbox ZeroClaw CLI
-
-### Qwen/OpenRouter Vision Pilot (2026-04-19)
-
-Accepted local pilot:
-
-- run_id: `pilot_20260419_qwen35_27b_mmmu_pro_zeroclaw_t3_vision_r3`
-- result: `3/3` normal trajectories with `use_gateway_in_sandbox=false`,
-  preserved `attachments/image_1.png`, no provider warning, and no
-  `command_history` pollution in successful task metadata
-
-Rejected earlier attempts from the same day:
-
-- `pilot_20260419_qwen35_27b_mmmu_pro_zeroclaw_t3_vision`
-  one task failed after a ROCK proxy `http proxy failed` fallback hit a binary
-  upload decode bug
-- `pilot_20260419_qwen35_27b_mmmu_pro_zeroclaw_t3_vision_r1`
-  the binary upload decode bug was fixed, but the first fallback implementation
-  still hit `/bin/sh` argument-length limits on a large image attachment
-- `pilot_20260419_qwen35_27b_mmmu_pro_zeroclaw_t3_vision_r2`
-  wrote `3/3` normal task records, but it still emitted a ZeroClaw config
-  warning and preserved noisy sandbox `command_history`, so it is retained as
-  historical evidence only
-
-Current recommended OpenRouter/Qwen command:
-
-```bash
-export OPENAI_BASE_URL=https://openrouter.ai/api/v1
-export OPENAI_API_KEY=sk-...
-export OPENAI_MODEL_NAME=qwen/qwen3.5-27b
-
-python -m alphadiana.cli run configs/examples/zeroclaw_mmmu_pro.yaml \
-  -o run_id=pilot_20260419_qwen35_27b_mmmu_pro_zeroclaw_t3_vision_r3 \
-  -o benchmark.config.max_tasks=3 \
-  -o max_concurrent=1 \
-  -o agent.config.use_gateway_in_sandbox=false
-```
 
 ## Result Locations
 

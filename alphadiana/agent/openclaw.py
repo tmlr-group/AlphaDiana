@@ -1226,17 +1226,39 @@ class OpenClawAgent(Agent):
                                     self._max_attempts,
                                 )
                                 received_done = False
+                                stream_idle_limit = min(
+                                    self._request_timeout,
+                                    self._stream_idle_timeout,
+                                )
+                                last_sse_progress_at = time.monotonic()
                                 for line in response.iter_lines():
+                                    now = time.monotonic()
                                     if not line.startswith("data:"):
+                                        if now - last_sse_progress_at > stream_idle_limit:
+                                            raise httpx.ReadTimeout(
+                                                "OpenClaw stream idle timeout while waiting for SSE data",
+                                            )
                                         continue
                                     data = line[len("data:"):].strip()
                                     if data == "[DONE]":
                                         received_done = True
+                                        last_sse_progress_at = now
                                         break
+                                    if not data:
+                                        if now - last_sse_progress_at > stream_idle_limit:
+                                            raise httpx.ReadTimeout(
+                                                "OpenClaw stream idle timeout while waiting for SSE data",
+                                            )
+                                        continue
                                     try:
                                         chunk_json = json.loads(data)
                                     except json.JSONDecodeError:
+                                        if now - last_sse_progress_at > stream_idle_limit:
+                                            raise httpx.ReadTimeout(
+                                                "OpenClaw stream idle timeout while waiting for SSE data",
+                                            )
                                         continue
+                                    last_sse_progress_at = now
                                     choices = chunk_json.get("choices") or []
                                     delta = choices[0].get("delta", {}) if choices else {}
                                     content = delta.get("content")
@@ -1594,6 +1616,15 @@ class OpenClawAgent(Agent):
                 {"role": "user", "content": task.problem},
                 assistant_entry,
             ]
+        reasoning_trajectory = _extract_reasoning_trajectory_from_payload(response_json)
+        if not reasoning_trajectory and raw_reasoning:
+            reasoning_trajectory = [
+                {
+                    "role": "assistant",
+                    "type": "reasoning",
+                    "content": raw_reasoning,
+                }
+            ]
 
         # Detect gateway session pollution: the model may have received a
         # different problem than what we sent due to stale session state.
@@ -1618,7 +1649,7 @@ class OpenClawAgent(Agent):
         return AgentResponse(
             answer=answer,
             trajectory=trajectory,
-            reasoning_trajectory=_extract_reasoning_trajectory_from_payload(response_json),
+            reasoning_trajectory=reasoning_trajectory,
             raw_output=raw_output,
             token_usage=token_usage,
             wall_time_sec=wall_time,
@@ -1644,6 +1675,7 @@ class OpenClawAgent(Agent):
                 "answer_source": answer_source,
                 "received_done": received_done,
                 "session_tainted": session_tainted,
+                "raw_reasoning": raw_reasoning,
             },
         )
 

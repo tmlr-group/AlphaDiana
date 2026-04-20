@@ -3,11 +3,10 @@
 GPQA-Diamond evaluates expert-level science multiple-choice questions from
 `fingertap/GPQA-Diamond`.
 
-2026-04-18/19 增加了三份 OpenRouter/Qwen 三题 pilot 配置：
+2026-04-18 增加了两份 OpenRouter/Qwen 三题 pilot 配置：
 
 - `configs/examples/directllm_qwen35_27b_gpqa_diamond_pilot.yaml`
 - `configs/examples/openclaw_qwen35_27b_gpqa_diamond_pilot.yaml`
-- `configs/examples/opencode_qwen35_27b_gpqa_diamond_pilot.yaml`
 
 这两份 pilot 配置统一使用 `OPENAI_BASE_URL`、`OPENAI_MODEL_NAME`、
 `OPENAI_API_KEY`，其中 OpenRouter 对应的实际模型 slug 为
@@ -36,16 +35,30 @@ rate limits.
 
 ## Supported Modes
 
-| Mode | Status | Config |
-|---|---|---|
-| `direct_llm` | smoke/debug supported | `configs/examples/direct_llm_gpqa_diamond.yaml` |
-| `openclaw` | smoke/debug supported | `configs/examples/openclaw_gpqa_diamond.yaml` |
-| `opencode` | smoke/debug supported | `configs/examples/opencode_gpqa_diamond.yaml` |
-| `zeroclaw` | smoke/debug supported | `configs/examples/zeroclaw_gpqa_diamond.yaml` |
+| Mode | Status | Smoke / Debug Config | Full-run Config |
+|---|---|---|---|
+| `direct_llm` | smoke/debug supported | `configs/examples/direct_llm_gpqa_diamond.yaml` | `configs/full_runs/rollout_full_directllm_gpqa_diamond.yaml` |
+| `openclaw` | smoke/debug supported | `configs/examples/openclaw_gpqa_diamond.yaml` | `configs/full_runs/rollout_full_openclaw_gpqa_diamond.yaml` |
+| `opencode` | smoke/debug supported | `configs/examples/opencode_gpqa_diamond.yaml` | `configs/full_runs/rollout_full_opencode_gpqa_diamond.yaml` |
+| `zeroclaw` | smoke/debug supported | `configs/examples/zeroclaw_gpqa_diamond.yaml` | `configs/full_runs/rollout_full_zeroclaw_gpqa_diamond.yaml` |
 
-There is no checked-in ZeroClaw full-run config for GPQA-Diamond yet. The
-current documented path is the 1-task smoke/debug config under
-`configs/examples/`.
+For the staged `72`-run local-vLLM campaign, use
+[full-rollout-local-vllm-20260419.md](full-rollout-local-vllm-20260419.md)
+instead of launching the four full configs manually.
+
+## Full Run
+
+Checked-in full configs now exist for all four harnesses and target the full
+`test` split.
+
+Validate them directly:
+
+```bash
+python -m alphadiana.cli validate configs/full_runs/rollout_full_directllm_gpqa_diamond.yaml
+python -m alphadiana.cli validate configs/full_runs/rollout_full_openclaw_gpqa_diamond.yaml
+python -m alphadiana.cli validate configs/full_runs/rollout_full_opencode_gpqa_diamond.yaml
+python -m alphadiana.cli validate configs/full_runs/rollout_full_zeroclaw_gpqa_diamond.yaml
+```
 
 ## DirectLLM
 
@@ -77,10 +90,10 @@ python -m alphadiana.cli validate configs/examples/opencode_gpqa_diamond.yaml
 python -m alphadiana.cli run configs/examples/opencode_gpqa_diamond.yaml
 ```
 
-The checked-in OpenCode benchmark config now uses Docker controller isolation by
-default. Build `alphadiana/tb2-opencode-controller:latest` first if it is not
-already present. If you need the old host-process path for debugging, override
-`-o agent.config.controller_mode=host`.
+Current limitation: on `main`, `opencode` text-only benchmark tasks still run
+through the local CLI path rather than a benchmark-managed sandbox. That is
+fine for smoke/debug usage, but it is not equivalent to the OpenClaw or
+ZeroClaw sandbox path.
 
 ## ZeroClaw
 
@@ -157,21 +170,12 @@ export OPENAI_API_KEY=sk-...
 ```bash
 python -m alphadiana.cli run configs/examples/directllm_qwen35_27b_gpqa_diamond_pilot.yaml
 python -m alphadiana.cli run configs/examples/openclaw_qwen35_27b_gpqa_diamond_pilot.yaml
-python -m alphadiana.cli run configs/examples/opencode_qwen35_27b_gpqa_diamond_pilot.yaml
 ```
 
-2026-04-18/19/20 本地真实 pilot 结果：
+2026-04-18 本地真实 pilot 结果：
 
 - `direct_llm`: `3/3` task records，全部 `score=1`
 - `openclaw`: `3/3` task records，全部 `score=1`
-- `opencode`: `3/3` task records，全部 `score=1`
-  - April 19 uploaded quality pilot:
-    `pilot_20260419_qwen35_27b_gpqa_diamond_opencode_t3`
-  - April 20 default-Docker confirmation rerun:
-    `pilot_20260420_qwen35_27b_gpqa_diamond_opencode_t3_docker_default`
-  - April 20 rerun中三条 task JSON 都记录了
-    `metadata.controller_mode=docker` 和
-    `metadata.transport=opencode_cli_container`
 
 Reviewer-facing evidence:
 

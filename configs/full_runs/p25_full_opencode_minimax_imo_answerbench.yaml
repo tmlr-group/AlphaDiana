@@ -11,8 +11,6 @@ agent:
     model_name: "minimax-m2.5"
     api_base: ${OPENAI_BASE_URL}
     api_key: ${OPENAI_API_KEY}
-    controller_mode: "docker"
-    controller_image: "alphadiana/tb2-opencode-controller:latest"
     timeout: 1800
     streaming: false
     tool_call: false
@@ -36,4 +34,4 @@ scorer:
 max_concurrent: 20
 output_dir: "./results/p25_full_opencode_minimax_imo_answerbench"
 metadata:
-  notes: "Full OpenCode x IMO-AnswerBench run via minimax-m2.5 with Docker controller isolation."
+  notes: "Full OpenCode x IMO-AnswerBench run via minimax-m2.5."

@@ -37,17 +37,6 @@ OPENCLAW_CONCURRENCY_PER_SANDBOX = 1
 _OPENCLAW_PROFILE_CACHE_PATH = Path(".cache/openclaw_startup_profiles.json")
 
 
-def _sanitize_success_sandbox_metadata(metadata: dict | None) -> dict:
-    """Strip noisy debug-only fields from normal successful task results."""
-    if not isinstance(metadata, dict):
-        return {}
-    sanitized = dict(metadata)
-    sanitized.pop("command_history", None)
-    if not sanitized.get("artifact_collection_history"):
-        sanitized.pop("artifact_collection_history", None)
-    return sanitized
-
-
 def _has_openclaw_direct_gateway(config: "ExperimentConfig") -> bool:
     """Return whether OpenClaw should use an already-running gateway."""
     if config.agent_name != "openclaw":
@@ -735,13 +724,7 @@ class Runner:
                 )
                 # Propagate sandbox metadata if not already set.
                 if sandbox_session is not None and not response.sandbox_metadata:
-                    response.sandbox_metadata = _sanitize_success_sandbox_metadata(
-                        sandbox_session.metadata()
-                    )
-                elif response.sandbox_metadata:
-                    response.sandbox_metadata = _sanitize_success_sandbox_metadata(
-                        response.sandbox_metadata
-                    )
+                    response.sandbox_metadata = sandbox_session.metadata()
                 if sandbox_session is not None and not response.sandbox_id:
                     response.sandbox_id = response.sandbox_metadata.get("sandbox_id", "")
                 response_sandbox_id = str(response.sandbox_id or "")

@@ -4,8 +4,7 @@
 # OpenCode native smoke for terminal-bench-2.
 # Requires:
 #   export TERMINAL_BENCH2_SMOKE_DIR=/path/to/staged-terminal-bench-smoke-root
-#   docker build -f docker/terminal_bench2/Dockerfile.opencode-controller \
-#     -t alphadiana/tb2-opencode-controller:latest .
+#   docker image inspect alphadiana/tb2-opencode-controller:latest >/dev/null
 
 run_id: "terminal_bench2_opencode_minimax_smoke"
 
@@ -19,12 +18,11 @@ agent:
   name: terminal_bench2_opencode
   version: "1.0"
   config:
-    model: "custom/minimax-m2.5"
-    model_name: "minimax-m2.5"
+    model: "custom/${OPENAI_MODEL_NAME}"
+    model_name: ${OPENAI_MODEL_NAME}
     api_base: ${OPENAI_BASE_URL}
     api_key: ${OPENAI_API_KEY}
-    controller_mode: "docker"
-    controller_image: "alphadiana/tb2-opencode-controller:latest"
+    runtime_source_image: "alphadiana/tb2-opencode-controller:latest"
     tool_call: false
     streaming: false
     solver_timeout_sec: 1800
@@ -37,4 +35,4 @@ scorer:
 max_concurrent: 1
 output_dir: "./results/terminal_bench2_opencode_minimax_smoke"
 metadata:
-  notes: "OpenCode native smoke for terminal-bench-2 on a staged single-task root via minimax-m2.5."
+  notes: "OpenCode in-container smoke for terminal-bench-2 on a staged single-task root via OPENAI_MODEL_NAME."

@@ -92,6 +92,21 @@ def _is_blank_env_value(value: Any) -> bool:
     return False
 
 
+def _parse_optional_bool(value: Any) -> bool | None:
+    if value in ("", None):
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"Invalid boolean value: {value!r}")
+
+
 def _split_candidate_aliases(value: Any) -> list[str]:
     """Normalize comma/newline separated model aliases while preserving order."""
     if value is None:
@@ -153,6 +168,8 @@ class SWEBenchDockerAgent(Agent):
         self._max_completion_tokens: int | None = None
         self._max_retries: int = 3
         self._stream: bool = True
+        self._reasoning_enabled: bool | None = None
+        self._reasoning_effort: str | None = None
         self._resolved_max_tokens: int | None = None
         self._max_model_len: int | None = None
         self._model_context_windows: dict[str, int] = {}
@@ -184,6 +201,12 @@ class SWEBenchDockerAgent(Agent):
         self._max_completion_tokens = config.get("max_completion_tokens", None)
         self._max_retries = int(config.get("max_retries", 3))
         self._stream = bool(config.get("stream", True))
+        self._reasoning_enabled = _parse_optional_bool(config.get("reasoning_enabled", None))
+        raw_reasoning_effort = config.get("reasoning_effort", None)
+        if raw_reasoning_effort in ("", None):
+            self._reasoning_effort = None
+        else:
+            self._reasoning_effort = str(raw_reasoning_effort).strip()
         self._system_prompt = str(
             config.get("system_prompt", _DEFAULT_SYSTEM_PROMPT)
         ).strip() or _DEFAULT_SYSTEM_PROMPT
@@ -574,7 +597,18 @@ ARG BASE_IMAGE
 FROM ${RUNTIME_IMAGE} AS runtime
 FROM ${BASE_IMAGE}
 USER root
-COPY --from=runtime /usr/local/bin/zeroclaw /usr/local/bin/zeroclaw
+RUN mkdir -p /opt/zeroclaw-runtime/bin /opt/zeroclaw-runtime/lib /opt/zeroclaw-runtime/lib64
+COPY --from=runtime /usr/local/bin/zeroclaw /opt/zeroclaw-runtime/bin/zeroclaw
+COPY --from=runtime /lib/x86_64-linux-gnu /opt/zeroclaw-runtime/lib/x86_64-linux-gnu
+COPY --from=runtime /lib64 /opt/zeroclaw-runtime/lib64
+RUN cat <<'EOF' >/usr/local/bin/zeroclaw
+#!/usr/bin/env bash
+set -euo pipefail
+LIB64=/opt/zeroclaw-runtime/lib64
+LIBDIR=/opt/zeroclaw-runtime/lib/x86_64-linux-gnu
+exec "$LIB64/ld-linux-x86-64.so.2" --library-path "$LIBDIR:$LIB64" /opt/zeroclaw-runtime/bin/zeroclaw "$@"
+EOF
+RUN chmod +x /usr/local/bin/zeroclaw
 """.strip()
         raise RuntimeError(
             f"Runtime overlay Dockerfile is not defined for agent_type {self._agent_type!r}"
@@ -2397,7 +2431,7 @@ COPY --from=runtime /usr/local/bin/zeroclaw /usr/local/bin/zeroclaw
             "ZEROCLAW_REQUIRE_PATCH": "1",
             "ZEROCLAW_PROMPT_PROFILE": "edit_first",
             "ZEROCLAW_PROBLEM_STATEMENT_MAX_CHARS": "12000",
-            "ZEROCLAW_TIMEOUT_SEC": str(max(self._timeout - 60, 60)),
+            "ZEROCLAW_TIMEOUT_SEC": str(max(self._timeout, 60)),
             "ZEROCLAW_WORKSPACE_ONLY": "false",
             "ZEROCLAW_MAX_TOOL_ITERATIONS": "100",
             "ZEROCLAW_MAX_ACTIONS_PER_HOUR": "200",
@@ -2405,6 +2439,25 @@ COPY --from=runtime /usr/local/bin/zeroclaw /usr/local/bin/zeroclaw
         }.items():
             if _is_blank_env_value(mode_env.get(key, "")):
                 mode_env[key] = value
+        if _is_blank_env_value(mode_env.get("ZEROCLAW_TEMPERATURE", "")):
+            mode_env["ZEROCLAW_TEMPERATURE"] = str(self._temperature)
+        if _is_blank_env_value(mode_env.get("ZEROCLAW_PROVIDER_TIMEOUT_SECS", "")):
+            mode_env["ZEROCLAW_PROVIDER_TIMEOUT_SECS"] = str(mode_env["ZEROCLAW_TIMEOUT_SEC"])
+        if (
+            _is_blank_env_value(mode_env.get("ZEROCLAW_PROVIDER_MAX_TOKENS", ""))
+            and self._max_tokens is not None
+        ):
+            mode_env["ZEROCLAW_PROVIDER_MAX_TOKENS"] = str(int(self._max_tokens))
+        if (
+            _is_blank_env_value(mode_env.get("ZEROCLAW_REASONING_ENABLED", ""))
+            and self._reasoning_enabled is not None
+        ):
+            mode_env["ZEROCLAW_REASONING_ENABLED"] = str(self._reasoning_enabled).lower()
+        if (
+            _is_blank_env_value(mode_env.get("ZEROCLAW_REASONING_EFFORT", ""))
+            and self._reasoning_effort
+        ):
+            mode_env["ZEROCLAW_REASONING_EFFORT"] = self._reasoning_effort
         zeroclaw_require_patch = (
             str(mode_env.get("ZEROCLAW_REQUIRE_PATCH", "1")).strip().lower()
             not in {"0", "false", "no", "off"}
@@ -2490,6 +2543,8 @@ COPY --from=runtime /usr/local/bin/zeroclaw /usr/local/bin/zeroclaw
                 "ALPHADIANA_PROMPT_FILE": remote_prompt_path,
                 "ALPHADIANA_CONFIG_TEMPLATE": remote_config_template,
             }
+            zeroclaw_timeout_sec = self._parse_positive_int(exec_env.get("ZEROCLAW_TIMEOUT_SEC"))
+            exec_timeout = max(self._timeout, zeroclaw_timeout_sec or self._timeout) + 60
             exec_result = self._docker_exec(
                 container_id,
                 [
@@ -2498,7 +2553,7 @@ COPY --from=runtime /usr/local/bin/zeroclaw /usr/local/bin/zeroclaw
                     f"chmod +x {shlex.quote(remote_script_path)} && {shlex.quote(remote_script_path)}",
                 ],
                 env=exec_env,
-                timeout=self._timeout,
+                timeout=exec_timeout,
                 check=False,
             )
 

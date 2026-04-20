@@ -8,12 +8,10 @@ with automatic fallback to smaller profiles.
 from __future__ import annotations
 
 import asyncio
-import base64
 import inspect
 import logging
 import os
 import re
-import shlex
 import threading
 import time
 import uuid
@@ -233,54 +231,23 @@ def _install_run_in_session_retry(sandbox: Any) -> None:
 
 
 async def _upload_file(sandbox: Any, remote_path: str, content: bytes) -> None:
-    binary_content = content if isinstance(content, bytes) else bytes(content)
-    text_content: str | None
-    try:
-        text_content = binary_content.decode("utf-8")
-    except UnicodeDecodeError:
-        text_content = None
+    text_content = content.decode("utf-8")
 
-    if text_content is not None:
-        write_file_by_path = getattr(sandbox, "write_file_by_path", None)
-        if write_file_by_path is not None:
-            response = await _maybe_await(write_file_by_path(text_content, remote_path))
-            if getattr(response, "success", True):
-                return
+    write_file_by_path = getattr(sandbox, "write_file_by_path", None)
+    if write_file_by_path is not None:
+        response = await _maybe_await(write_file_by_path(text_content, remote_path))
+        if getattr(response, "success", True):
+            return
 
-        write_file = getattr(sandbox, "write_file", None)
-        if write_file is not None:
-            response = await _maybe_await(write_file(WriteFileRequest(content=text_content, path=remote_path)))
-            if getattr(response, "success", True):
-                return
+    write_file = getattr(sandbox, "write_file", None)
+    if write_file is not None:
+        response = await _maybe_await(write_file(WriteFileRequest(content=text_content, path=remote_path)))
+        if getattr(response, "success", True):
+            return
 
     session = await _resolve_runtime_session(sandbox)
-    encoded_content = base64.b64encode(binary_content).decode("ascii")
-    temp_base64_path = f"{remote_path}.alphadiana.b64"
-    prepare_command = (
-        f"mkdir -p {shlex.quote(str(Path(remote_path).parent))} "
-        f"&& : > {shlex.quote(temp_base64_path)}"
-    )
-    await _call_session_execute(session, prepare_command)
-
-    chunk_size = 16384
-    for start in range(0, len(encoded_content), chunk_size):
-        chunk = encoded_content[start:start + chunk_size]
-        append_command = (
-            f"printf '%s' {shlex.quote(chunk)} >> {shlex.quote(temp_base64_path)}"
-        )
-        await _call_session_execute(session, append_command)
-
-    decode_command = (
-        "python3 - <<'PY'\n"
-        "import base64\n"
-        "from pathlib import Path\n"
-        f"dst = Path({remote_path!r})\n"
-        f"src = Path({temp_base64_path!r})\n"
-        "dst.write_bytes(base64.b64decode(src.read_text(encoding='ascii')))\n"
-        "src.unlink(missing_ok=True)\n"
-        "PY"
-    )
-    await _call_session_execute(session, decode_command)
+    execute = f"python3 - <<'PY'\nfrom pathlib import Path\nPath({remote_path!r}).parent.mkdir(parents=True, exist_ok=True)\nPath({remote_path!r}).write_bytes({content!r})\nPY"
+    await _call_session_execute(session, execute)
 
 
 async def _read_file(sandbox: Any, remote_path: str) -> str:

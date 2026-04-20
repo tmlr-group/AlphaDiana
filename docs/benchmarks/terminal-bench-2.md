@@ -33,6 +33,15 @@ OpenRouter/Qwen pilot status on April 19, 2026:
 - `openclaw`: `3/3` task records were written, but only `1/3` passed and the
   first two tasks needed manual watchdog interruption to advance
 
+Local follow-up on April 19, 2026:
+
+- `rerun_20260419_qwen35_27b_terminal_bench2_openclaw_timeoutcheck_r2`
+  completed unattended on the timeout-check sample and no longer reported the
+  old inner `ctx=16000` mismatch
+- `rerun_20260419_qwen35_27b_terminal_bench2_zeroclaw_fixgit_r1`
+  no longer reproduced the old missing-repo / missing-site workspace mismatch;
+  the preserved failure moved to the loop detector
+
 ## Prerequisites
 
 Run from the repo root:
@@ -58,7 +67,10 @@ You also need:
 - Docker
 - a local `terminal-bench` task checkout
 - pre-pulled task images
-- controller images for `opencode`, `openclaw`, and `zeroclaw`
+- runtime source images for the native in-container agents:
+  `tmlrgroup/alphadiana:v1` for `openclaw`,
+  `alphadiana/tb2-opencode-controller:latest` for `opencode`,
+  and `zeroclaw-reasoning:0.6.9` for `zeroclaw`
 
 ## Official DirectLLM Baseline
 
@@ -197,22 +209,23 @@ For the default smoke task specifically:
 docker pull alexgshaw/db-wal-recovery:20251031
 ```
 
-## Build Controller Images
+## Prepare Runtime Source Images
 
-`direct_llm` does not need a controller image. `opencode` and `openclaw` do.
+`direct_llm` still uses the helper-workspace controller path. The native agents
+`opencode`, `openclaw`, and `zeroclaw` now run inside a derived task image, so
+they need runtime source images instead of controller containers.
 
-Build both once:
+Prepare the checked-in sources once:
 
 ```bash
-docker build -f docker/terminal_bench2/Dockerfile.opencode-controller \
-  -t alphadiana/tb2-opencode-controller:latest .
-
-docker build -f docker/terminal_bench2/Dockerfile.openclaw-controller \
-  -t alphadiana/tb2-openclaw-controller:latest .
-
-docker build -f docker/terminal_bench2/Dockerfile.zeroclaw-controller \
-  -t alphadiana/tb2-zeroclaw-controller:latest .
+docker pull tmlrgroup/alphadiana:v1
+docker image inspect alphadiana/tb2-opencode-controller:latest >/dev/null
+docker pull zeroclaw-reasoning:0.6.9
 ```
+
+The first native-agent smoke/full run automatically builds a derived
+`alphadiana-tb2-runtime:<agent>-<fingerprint>` image from the task image plus
+the selected runtime source image.
 
 For ZeroClaw, prefer putting large temporary files on a data disk before running:
 
@@ -223,21 +236,20 @@ mkdir -p "$TMPDIR"
 
 ## Runtime Model
 
-AlphaDiana runs `terminal-bench-2` from the Docker-capable control side:
+AlphaDiana now uses two different TB2 execution contracts:
 
-- AlphaDiana starts the task container.
-- AlphaDiana creates a local control workspace.
-- The workspace exposes `tb2-exec`, `tb2-copy-from`, `tb2-copy-to`, and `tb2-test`.
-- The task container remains the target environment only.
+- `direct_llm`: helper-workspace controller mode.
+  The model sees `tb2-exec`, `tb2-copy-from`, `tb2-copy-to`, and `tb2-test`.
+- `opencode`, `openclaw`, `zeroclaw`: native in-container mode.
+  AlphaDiana derives a runtime image from the task image, starts that task
+  container directly, and runs the agent CLI inside it.
 
-Mode-specific behavior:
+For the native agents:
 
-- `direct_llm`: multi-turn chat loop that emits `$ cmd` lines and `DONE`
-- `opencode`: native controller-container CLI runner
-- `openclaw`: native controller-container CLI runner
-- `zeroclaw`: native controller-container CLI runner
-
-For native agents, the workspace `tb2-test` helper is intentionally disabled and the outer harness runs the real verifier once at the end.
+- the model sees the live task filesystem directly
+- `tb2-exec` / `tb2-copy-*` are not exposed to the model
+- `/tests/test.sh` and `reward.txt` stay unchanged
+- the outer harness still runs verification once at the end
 
 ## Smoke Runs
 
@@ -311,6 +323,26 @@ Observed results for that pilot:
   `low context window: ... ctx=16000` on all three tasks and needed manual
   watchdog interruption on the first two tasks. Treat that path as experimental
   on OpenRouter/Qwen.
+- the initial strict ZeroClaw smoke-plan alignment attempt
+  `smoke_20260420_qwen35_27b_terminal_bench2_zeroclaw_align_r1` was abnormal
+  because AlphaDiana still let ZeroClaw auto-enable its own internal Docker
+  sandbox inside the TB2 controller image, which hid the mounted control
+  workspace and broke the `./tb2-exec` contract
+- after forcing `security_sandbox_enabled=false` on
+  `terminal_bench2_zeroclaw`, the repaired
+  `smoke_20260420_qwen35_27b_terminal_bench2_zeroclaw_align_r2` completed
+  normally as a reward-0 task record, and the replacement rerun
+  `pilot_20260420_qwen35_27b_terminal_bench2_zeroclaw_t3_repair_r3` completed
+  `3/3` with normal task JSONs (`2` reward-0 failures, `1` reward-1 pass)
+- the April 20 in-container migration smokes supersede the native-agent
+  controller-specific caveats:
+  `smoke_20260420_qwen35_27b_tb2_openclaw_incontainer_r2` completed `1/1` on
+  `break-filter-js-from-html` with `score=1`,
+  `smoke_20260420_qwen35_27b_tb2_opencode_incontainer_r2` completed `1/1` on
+  `break-filter-js-from-html` with a normal reward-0 trajectory,
+  and `smoke_20260420_qwen35_27b_tb2_zeroclaw_incontainer_r2` completed `1/1`
+  on `db-wal-recovery` with a normal reward-0 trajectory after sanitizing
+  runtime logs out of the top-level assistant text
 
 Smoke success means:
 
@@ -380,50 +412,43 @@ The April 19 OpenRouter/Qwen pilot used the approved trio `db-wal-recovery`,
 
 ## ZeroClaw Reproduction Notes
 
-`terminal-bench-2` does not use ROCK. The formal ZeroClaw smoke path here is still sandboxed:
+`terminal-bench-2` does not use ROCK. The formal ZeroClaw smoke path is now
+the TB2 native in-container path:
 
-- the task itself runs in the benchmark Docker container
-- the ZeroClaw controller runs in a separate Docker controller image
+- AlphaDiana starts a derived TB2 runtime image for the selected task
+- ZeroClaw runs directly inside that task container
+- the task JSON is normal as long as the run writes a scored record, even if
+  the verifier reward is `0`
 
-This is different from the main `README.md` AIME quickstart, which focuses on ROCK auto-deploy.
+### Reproduce The 2026-04-20 In-Container Smoke
 
-### Reproduce The 2026-04-17 Formal Docker Smoke
-
-Prepare the staged smoke task and controller image first:
+Prepare the staged smoke task and runtime source image first:
 
 ```bash
-export OPENAI_BASE_URL=https://api.example.com/v1/
+export OPENAI_BASE_URL=https://openrouter.ai/api/v1/
 export OPENAI_API_KEY=sk-...
+export OPENAI_MODEL_NAME=Qwen/Qwen3.5-27B
 export PYTHONPATH=$PWD
 export TERMINAL_BENCH2_SMOKE_DIR=/path/to/terminal-bench-smoke-dbwal
 export TMPDIR=/path/to/$USER/tmp/alphadiana-tb2
 mkdir -p "$TMPDIR"
 
 docker pull alexgshaw/db-wal-recovery:20251031
-docker build -f docker/terminal_bench2/Dockerfile.zeroclaw-controller \
-  -t alphadiana/tb2-zeroclaw-controller:latest .
+docker pull zeroclaw-reasoning:0.6.9
 ```
 
 Run the smoke:
 
 ```bash
 python -m alphadiana.cli run configs/examples/terminal_bench2_zeroclaw_minimax.yaml \
-  -o run_id=pr26_formal_smoke_tb2_zeroclaw_minimax_docker_20260417_v2 \
-  -o agent.config.logs_base_dir=/path/to/$USER/tmp/alphadiana-tb2/tb2_logs
+  -o run_id=smoke_20260420_qwen35_27b_tb2_zeroclaw_incontainer_r2 \
+  -o output_dir=./results/smoke_20260420_qwen35_27b_tb2_zeroclaw_incontainer_r2
 ```
 
-Expected result:
+Observed local verification on 2026-04-20:
 
-- dashboard: `X`
-- task file exists under `results/terminal_bench2_zeroclaw_minimax_smoke/<run_id>/tasks/`
-- task JSON has no `error`
-- the recorded task is `tb2_db-wal-recovery`
-
-Observed local verification on 2026-04-17:
-
-- run_id: `pr26_formal_smoke_tb2_zeroclaw_minimax_docker_20260417_v2`
-- result: dashboard `X`, `predicted=0`, no `error`
-- execution mode: Docker task container + Docker ZeroClaw controller
-- the artifact shows ZeroClaw loaded `model=\"minimax-m2.5\"`
-
-On this local smoke, the provider hit `429 Too Many Requests`, so the verifier failed because `/app/recovered.json` was never created. That still counts as a smoke pass under the execution playbook because the benchmark path completed, the task JSON was written, and the dashboard reached `X`.
+- run_id: `smoke_20260420_qwen35_27b_tb2_zeroclaw_incontainer_r2`
+- result: `1/1` completed, `predicted=0`, no `error`
+- execution mode: derived in-container TB2 runtime image
+- the assistant trajectory contains normal task reasoning after runtime-log
+  sanitization; it no longer exposes `tb2-exec`/`tb2-copy-*`

@@ -66,12 +66,16 @@ Observed local preflight on `2026-04-19`:
 
 Current harness-gap note for this worktree:
 
-- the standard benchmark `zeroclaw` wrapper exposes `temperature`, but does not
-  currently forward an explicit `top_p`, `max_tokens`, or `stream` knob through
-  the checked-in YAML interface
-- the `swebench_docker` wrapper supports more OpenAI-style request controls,
-  but the inner `run_zeroclaw.sh` path still only has an explicit temperature
-  passthrough in the checked-in ZeroClaw template
+- the standard benchmark `zeroclaw` wrapper now forwards `temperature`,
+  `provider_timeout_secs`, `provider_max_tokens`, `reasoning_enabled`, and
+  `reasoning_effort`
+- the `swebench_docker` ZeroClaw path now forwards the same controls through
+  the inner `run_zeroclaw.sh` template
+- explicit `top_p` and an explicit `stream=true` knob are still unsupported on
+  the checked-in ZeroClaw path
+- ZeroClaw `0.6.9` still prints a false warning
+  `Unknown config key ignored: "provider_max_tokens"` even when the value is
+  accepted by the schema and visible in `props list`
 
 Per the rollout plan, these unsupported frozen semantics should be recorded as
 pilot evidence instead of assumed covered.
@@ -352,6 +356,81 @@ rerun:
 Remote archival commit after the final upload:
 
 - `785bd139c300bb74a56fd1172111bca20309b6ea`
+
+## 2026-04-20 Pending-Item Recheck
+
+The three `zeroclaw` items that were still pending in the later benchmark
+table were rerun on `2026-04-20` with the real OpenRouter API. The accepted
+v2-style rerun suffix used for this follow-up is `repair_r2`.
+
+- `terminal-bench-2` rerun:
+  `pilot_20260420_qwen35_27b_terminal_bench2_zeroclaw_t3_repair_r2`
+  completed with `3/3` normal trajectories and was uploaded to
+  `pilot_run/pilot_20260420_qwen35_27b_terminal_bench2_zeroclaw_t3_repair_r2/`
+  but this archive was later superseded when a controller-path integration bug
+  was identified and repaired
+- `SWE-bench Pro` rerun:
+  `pilot_20260420_qwen35_27b_swebench_pro_zeroclaw_t3_repair_r2`
+  completed with `3/3` normal trajectories and was uploaded to
+  `pilot_run/pilot_20260420_qwen35_27b_swebench_pro_zeroclaw_t3_repair_r2/`
+- `IMO-AnswerBench` rerun:
+  `pilot_20260420_qwen35_27b_imo_answerbench_zeroclaw_t3_repair_r2`
+  initially remained abnormal because AlphaDiana was not writing ZeroClaw
+  `provider_timeout_secs`, so the CLI fell back to its internal `120s`
+  provider timeout and aborted long OpenRouter streams
+- `IMO-AnswerBench` repaired rerun:
+  `pilot_20260420_qwen35_27b_imo_answerbench_zeroclaw_t3_repair_r3`
+  completed with `3/3` normal trajectories and was uploaded to
+  `pilot_run/pilot_20260420_qwen35_27b_imo_answerbench_zeroclaw_t3_repair_r3/`
+
+This follow-up reused healthy ROCK services already recorded in
+`scripts/.rock_ports.env` because `scripts/start_zeroclaw.sh` could not start a
+fresh stack in this worktree while `ref/ROCK` was absent.
+
+Full reviewer-facing evidence, exact commands, and local log paths for the
+rerun live in
+[`../../context/pr23-zeroclaw-openrouter-qwen-pilot-20260419/rerun_20260420_pending_recheck.md`](../../context/pr23-zeroclaw-openrouter-qwen-pilot-20260419/rerun_20260420_pending_recheck.md).
+
+## 2026-04-20 Smoke-Plan Alignment Probe
+
+A same-day follow-up smoke rerun checked how closely the repaired ZeroClaw path
+now matches the frozen rollout semantics
+(`temperature=0.6`, `provider_max_tokens=32768`, `thinking=true`,
+`timeout=1800s`).
+
+- `IMO-AnswerBench`:
+  `smoke_20260420_qwen35_27b_imo_answerbench_zeroclaw_align_r1`
+  completed normally in ROCK with `1/1` task JSON written, `predicted='3'`,
+  and `score=1.0`
+- `SWE-bench Pro`:
+  `smoke_20260420_qwen35_27b_swebench_pro_zeroclaw_align_r1`
+  completed normally with a preserved-failure task record
+  (`finish_reason=preserved_failure`, `error=null`)
+- `terminal-bench-2`:
+  `smoke_20260420_qwen35_27b_terminal_bench2_zeroclaw_align_r1`
+  remained abnormal. The controller-side ZeroClaw run wrote only runtime logs
+  plus one assistant line misidentifying the control workspace as the target
+  environment, created `out.html` in the local controller workspace, and then
+  hung without producing any scored task JSON
+
+That initial TB2 alignment failure turned out to be an AlphaDiana integration
+bug rather than model behavior: the TB2 controller path was still allowing
+ZeroClaw to auto-enable its own internal Docker sandbox, which hid the mounted
+controller workspace and broke the `./tb2-exec` contract. After AlphaDiana
+started forcing `security_sandbox_enabled=false` for
+`terminal_bench2_zeroclaw`, the repaired
+`smoke_20260420_qwen35_27b_terminal_bench2_zeroclaw_align_r2` completed
+normally as a reward-0 task record, and the replacement rerun
+`pilot_20260420_qwen35_27b_terminal_bench2_zeroclaw_t3_repair_r3` completed
+`3/3` with normal task JSONs (`tb2_break-filter-js-from-html -> score=0`,
+`tb2_db-wal-recovery -> score=0`,
+`tb2_fix-git -> score=1`) and was uploaded to
+`pilot_run/pilot_20260420_qwen35_27b_terminal_bench2_zeroclaw_t3_repair_r3/`.
+
+This means the repaired Qwen/OpenRouter ZeroClaw path is now close enough to
+the frozen smoke plan for all three rechecked benchmarks, subject to the
+remaining frozen-semantic gaps noted above (`top_p` and an explicit
+`stream=true` knob are still not surfaced by the checked-in ZeroClaw path).
 
 Reviewer-facing evidence for this matrix lives in
 [`../../context/pr23-zeroclaw-openrouter-qwen-pilot-20260419/README.md`](../../context/pr23-zeroclaw-openrouter-qwen-pilot-20260419/README.md).

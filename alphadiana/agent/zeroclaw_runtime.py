@@ -31,6 +31,21 @@ def _normalize_api_base(api_base: str) -> str:
     return api_base.strip().rstrip("/")
 
 
+def _parse_optional_bool(value: Any) -> bool | None:
+    if value in ("", None):
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"Invalid boolean value: {value!r}")
+
+
 def _resolve_zeroclaw_provider(provider: str, api_base: str) -> str:
     normalized_provider = provider.strip().lower()
     normalized_api_base = _normalize_api_base(api_base)
@@ -64,6 +79,22 @@ class ZeroClawRuntimeManager:
         self._remote_bridge_path = config.get("remote_bridge_path", "/tmp/zeroclaw_bridge.py")
         self._artifact_root = str(config.get("artifact_root", "/tmp/zeroclaw-bridge-artifacts") or "/tmp/zeroclaw-bridge-artifacts").strip()
         self._request_timeout = int(config.get("request_timeout", 1200))
+        raw_provider_timeout = config.get("provider_timeout_secs", None)
+        if raw_provider_timeout in ("", None):
+            self._provider_timeout_secs = self._request_timeout
+        else:
+            self._provider_timeout_secs = int(raw_provider_timeout)
+        raw_provider_max_tokens = config.get("provider_max_tokens", None)
+        if raw_provider_max_tokens in ("", None):
+            self._provider_max_tokens: int | None = None
+        else:
+            self._provider_max_tokens = int(raw_provider_max_tokens)
+        self._reasoning_enabled = _parse_optional_bool(config.get("reasoning_enabled", None))
+        raw_reasoning_effort = config.get("reasoning_effort", None)
+        if raw_reasoning_effort in ("", None):
+            self._reasoning_effort: str | None = None
+        else:
+            self._reasoning_effort = str(raw_reasoning_effort).strip()
         raw_temperature = config.get("temperature", 0.0)
         self._temperature = float(raw_temperature if raw_temperature not in ("", None) else 0.0)
         self._max_tool_iterations = int(config.get("max_tool_iterations", 100))
@@ -109,6 +140,18 @@ class ZeroClawRuntimeManager:
             "ZEROCLAW_PROVIDER": self._provider,
             "ZEROCLAW_ARTIFACT_ROOT": self._artifact_root,
             "ZEROCLAW_TEMPERATURE": str(self._temperature),
+            "ZEROCLAW_PROVIDER_TIMEOUT_SECS": str(self._provider_timeout_secs),
+            "ZEROCLAW_PROVIDER_MAX_TOKENS": (
+                str(self._provider_max_tokens)
+                if self._provider_max_tokens is not None
+                else ""
+            ),
+            "ZEROCLAW_REASONING_ENABLED": (
+                str(self._reasoning_enabled).lower()
+                if self._reasoning_enabled is not None
+                else ""
+            ),
+            "ZEROCLAW_REASONING_EFFORT": self._reasoning_effort or "",
             "ZEROCLAW_REQUEST_TIMEOUT": str(self._request_timeout),
             "ZEROCLAW_MAX_TOOL_ITERATIONS": str(self._max_tool_iterations),
             "ZEROCLAW_MAX_ACTIONS_PER_HOUR": str(self._max_actions_per_hour),
@@ -298,6 +341,7 @@ class ZeroClawRuntimeManager:
                     "bridge_log_source": self._bridge_log_path,
                     "artifact_root": self._artifact_root,
                 },
+                "command_history": getattr(sandbox, "command_history", []),
             },
             "gateway_log_excerpt": bridge_log,
             "workspace_snapshot_paths": snapshot_paths,

@@ -367,6 +367,8 @@ class TerminalBench2ContainerMixin:
         cwd: Path,
         env: dict[str, str],
         timeout_sec: int,
+        progress_paths: list[Path] | None = None,
+        idle_timeout_sec: int | None = None,
     ) -> LocalCommandResult:
         process: subprocess.Popen[str] | None = None
         try:
@@ -380,15 +382,49 @@ class TerminalBench2ContainerMixin:
                 cwd=cwd,
                 start_new_session=True,
             )
-            stdout, stderr = process.communicate(timeout=timeout_sec)
-            return LocalCommandResult(
-                stdout=stdout,
-                stderr=stderr,
-                returncode=int(process.returncode or 0),
-            )
+            if not progress_paths or idle_timeout_sec is None or idle_timeout_sec <= 0:
+                stdout, stderr = process.communicate(timeout=timeout_sec)
+                return LocalCommandResult(
+                    stdout=stdout,
+                    stderr=stderr,
+                    returncode=int(process.returncode or 0),
+                )
+            start_time = time.monotonic()
+            last_progress = start_time
+            last_progress_mtime = self._latest_progress_mtime(progress_paths)
+            while True:
+                if process.poll() is not None:
+                    stdout, stderr = process.communicate()
+                    return LocalCommandResult(
+                        stdout=stdout,
+                        stderr=stderr,
+                        returncode=int(process.returncode or 0),
+                    )
+                now = time.monotonic()
+                if now - start_time > timeout_sec:
+                    raise subprocess.TimeoutExpired(cmd, timeout_sec)
+                current_progress_mtime = self._latest_progress_mtime(progress_paths)
+                if (
+                    current_progress_mtime is not None
+                    and (
+                        last_progress_mtime is None
+                        or current_progress_mtime > last_progress_mtime + 1e-6
+                    )
+                ):
+                    last_progress = now
+                    last_progress_mtime = current_progress_mtime
+                if now - last_progress > idle_timeout_sec:
+                    raise subprocess.TimeoutExpired(
+                        cmd,
+                        timeout=idle_timeout_sec,
+                    )
+                time.sleep(1)
         except subprocess.TimeoutExpired:
             stdout = ""
-            stderr = f"Timeout after {timeout_sec}s"
+            timeout_label = timeout_sec
+            if idle_timeout_sec is not None and idle_timeout_sec > 0:
+                timeout_label = idle_timeout_sec
+            stderr = f"Timeout after {timeout_label}s"
             if process is not None:
                 try:
                     os.killpg(process.pid, signal.SIGTERM)
@@ -405,6 +441,26 @@ class TerminalBench2ContainerMixin:
         except OSError as exc:
             return LocalCommandResult(stdout="", stderr=str(exc), returncode=127)
 
+    @staticmethod
+    def _latest_progress_mtime(paths: list[Path]) -> float | None:
+        latest: float | None = None
+        for path in paths:
+            if not path.exists():
+                continue
+            candidates: list[Path] = []
+            if path.is_file():
+                candidates.append(path)
+            else:
+                candidates.extend(p for p in path.rglob("*") if p.is_file())
+            for candidate in candidates:
+                try:
+                    candidate_mtime = candidate.stat().st_mtime
+                except OSError:
+                    continue
+                if latest is None or candidate_mtime > latest:
+                    latest = candidate_mtime
+        return latest
+
     def _run_controller_process(
         self,
         cmd: list[str],
@@ -412,9 +468,18 @@ class TerminalBench2ContainerMixin:
         cwd: Path,
         env: dict[str, str],
         timeout_sec: int,
+        progress_paths: list[Path] | None = None,
+        idle_timeout_sec: int | None = None,
     ) -> LocalCommandResult:
         if getattr(self, "_controller_mode", "host") != "docker":
-            return self._run_local_process(cmd, cwd=cwd, env=env, timeout_sec=timeout_sec)
+            return self._run_local_process(
+                cmd,
+                cwd=cwd,
+                env=env,
+                timeout_sec=timeout_sec,
+                progress_paths=progress_paths,
+                idle_timeout_sec=idle_timeout_sec,
+            )
 
         image = str(getattr(self, "_controller_image", "") or "").strip()
         if not image:
@@ -465,6 +530,8 @@ class TerminalBench2ContainerMixin:
             cwd=cwd,
             env=host_env,
             timeout_sec=timeout_sec,
+            progress_paths=progress_paths,
+            idle_timeout_sec=idle_timeout_sec,
         )
 
     def _exec_local_command(

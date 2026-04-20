@@ -1,13 +1,6 @@
 # OpenCode Agent: Docker Isolation
 
-Run the `opencode` CLI inside a Docker container instead of directly on the
-host, providing a practical process and filesystem boundary for benchmark
-execution on supported paths.
-
-This is not a formal security sandbox claim. It is a weaker, paper-safe
-containment story: the benchmark controller runs inside a disposable container
-instead of as a host process, while the benchmark still keeps normal network
-access and Docker-level limitations.
+Run the `opencode` CLI inside a Docker container instead of directly on the host, providing process and filesystem isolation for IMO-AnswerBench, HLE, and other benchmarks.
 
 ## Quick Start
 
@@ -24,7 +17,7 @@ python -m alphadiana.cli run configs/examples/opencode_minimax_imo_answerbench.y
 
 ## How It Works
 
-### Host Mode
+### Host Mode (default)
 
 ```
 AlphaDiana Runner
@@ -46,15 +39,14 @@ AlphaDiana Runner
        alphadiana/tb2-opencode-controller:latest
        node /usr/lib/node_modules/opencode-ai/bin/opencode
          run --format json ...
-  -> opencode runs inside a disposable controller container
+  -> opencode runs inside container, isolated from host
 ```
 
 Key properties:
 - `--user=UID:GID` matches the host user, preventing root-owned files on cleanup
 - `HOME` is set to a writable directory inside the mounted workdir (prevents Bun `mkdir /.local` errors)
 - `--network=host` allows the container to reach the LLM API endpoint
-- Only the temporary workdir is mounted by default; arbitrary host paths are
-  not exposed to the controller container
+- Only the temporary workdir is mounted; the host filesystem is not accessible
 
 ## YAML Config
 
@@ -73,14 +65,9 @@ agent:
 
 | Config Key | Default | Description |
 |------------|---------|-------------|
-| `controller_mode` | `"host"` if omitted in a custom config | Exact value: `"host"` = direct subprocess, `"docker"` = container isolation |
+| `controller_mode` | `"host"` | Exact value: `"host"` = direct subprocess, `"docker"` = container isolation |
 | `controller_image` | `alphadiana/tb2-opencode-controller:latest` | Docker image containing opencode CLI |
 | `controller_network` | `"host"` | Docker network mode |
-
-The checked-in benchmark configs in this repo now explicitly set
-`controller_mode: docker` for the plain OpenCode benchmark paths. The agent
-still supports `controller_mode: host` when you need the older local CLI path
-for debugging.
 
 ## Prerequisites
 
@@ -192,24 +179,6 @@ This works in both host and Docker mode. Docker mode mounts the workdir, so imag
   - `pr32_review_imo_opencode_docker_qwen35_20260419` -> `score=1.0`
   - `pr32_review_hle_opencode_docker_qwen35_20260419` -> `score=1.0`
 - Reviewer-facing commands and task-level evidence are recorded in
-  `context/qwen-openrouter-pilots/pilot-validation.md`.
-
-### OpenRouter Qwen3.5-27B Benchmark Confirmation (2026-04-20)
-
-- `pilot_20260420_qwen35_27b_gpqa_diamond_opencode_t3_docker_default`:
-  `3/3` task records, all `score=1`, every task recorded
-  `controller_mode=docker` and `transport=opencode_cli_container`
-- `pilot_20260420_qwen35_27b_imo_answerbench_opencode_t3_docker_default`:
-  `3/3` normal task records, scores `1/0/0`, every task recorded
-  `controller_mode=docker` and `transport=opencode_cli_container`
-- `pilot_20260420_qwen35_27b_hle_opencode_t3_docker_default`:
-  `3/3` normal task records, scores `1/0/0`, every task recorded
-  `controller_mode=docker` and `transport=opencode_cli_container`
-- `pilot_20260420_qwen35_27b_mmmu_pro_opencode_t3_vision_docker_default`:
-  `3/3` normal task records, scores `0/1/1`, every task recorded
-  `controller_mode=docker`, `transport=opencode_cli_container`, and
-  `num_attachments=1`
-- Reviewer-facing commands, logs, and task-level evidence are recorded in
   `context/qwen-openrouter-pilots/pilot-validation.md`.
 
 ### Multimodal (VL Model + Image)

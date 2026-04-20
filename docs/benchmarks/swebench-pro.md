@@ -282,10 +282,20 @@ If you need to override it locally, set:
 export SWEBENCH_ZEROCLAW_RUNTIME_IMAGE=zeroclaw-reasoning:0.6.9
 ```
 
-The current ZeroClaw overlay only injects the `zeroclaw` binary into the
-official SWE task image. It does not `apt-get install` extra system packages,
-which keeps the smoke path compatible with focal-based task images such as the
+The current ZeroClaw overlay copies the `zeroclaw` binary together with the
+bundled runtime loader/libs into the official SWE task image and launches it
+through a wrapper script. This avoids the older `GLIBC_2.34 not found` failure
+without relying on `apt-get install` inside focal-based task images such as the
 official `ansible` smoke sample.
+
+Local follow-up on April 19, 2026:
+
+- `rerun_20260419_qwen35_27b_swebench_pro_zeroclaw_ansible_r2`
+  built the runtime overlay successfully
+- that rerun no longer hit either `GLIBC_2.34 not found` or the intermediate
+  overlay Dockerfile parse error
+- the sample still scored `0`, so this follow-up should be read as runtime
+  compatibility evidence, not as a correctness claim
 
 Validation command:
 

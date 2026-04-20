@@ -2,6 +2,8 @@ default_provider = __ZEROCLAW_DEFAULT_PROVIDER__
 default_model = __ZEROCLAW_DEFAULT_MODEL__
 
 default_temperature = __ZEROCLAW_DEFAULT_TEMPERATURE__
+provider_timeout_secs = __ZEROCLAW_PROVIDER_TIMEOUT_SECS__
+__ZEROCLAW_PROVIDER_MAX_TOKENS_LINE__
 model_routes = []
 embedding_routes = []
 
@@ -9,6 +11,7 @@ embedding_routes = []
 
 [provider]
 
+__ZEROCLAW_RUNTIME_SECTION__
 [observability]
 backend = "none"
 runtime_trace_mode = __ZEROCLAW_RUNTIME_TRACE_MODE__

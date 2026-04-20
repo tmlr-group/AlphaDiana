@@ -59,12 +59,16 @@ if [[ -z "$ZEROCLAW_MODEL_NAME" ]]; then
 fi
 export ZEROCLAW_MODEL_NAME
 ZEROCLAW_TIMEOUT="${ZEROCLAW_TIMEOUT_SEC:-1200}"
+ZEROCLAW_PROVIDER_TIMEOUT_SECS="${ZEROCLAW_PROVIDER_TIMEOUT_SECS:-${ZEROCLAW_TIMEOUT}}"
+ZEROCLAW_PROVIDER_MAX_TOKENS="${ZEROCLAW_PROVIDER_MAX_TOKENS:-}"
 ZEROCLAW_PROMPT_PROFILE="${ZEROCLAW_PROMPT_PROFILE:-edit_first}"
 ZEROCLAW_REQUIRE_PATCH_RAW="${ZEROCLAW_REQUIRE_PATCH:-1}"
 ZEROCLAW_WORKSPACE_ONLY_RAW="${ZEROCLAW_WORKSPACE_ONLY:-false}"
 ZEROCLAW_MAX_TOOL_ITERATIONS="${ZEROCLAW_MAX_TOOL_ITERATIONS:-100}"
 ZEROCLAW_MAX_ACTIONS_PER_HOUR="${ZEROCLAW_MAX_ACTIONS_PER_HOUR:-200}"
 ZEROCLAW_RUNTIME_TRACE_MODE="${ZEROCLAW_RUNTIME_TRACE_MODE:-none}"
+ZEROCLAW_REASONING_ENABLED="${ZEROCLAW_REASONING_ENABLED:-}"
+ZEROCLAW_REASONING_EFFORT="${ZEROCLAW_REASONING_EFFORT:-}"
 ZEROCLAW_PROBLEM_STATEMENT_MAX_CHARS="${ZEROCLAW_PROBLEM_STATEMENT_MAX_CHARS:-12000}"
 ZEROCLAW_SMOKE_MODEL_CANDIDATES="${ZEROCLAW_SMOKE_MODEL_CANDIDATES:-${ZEROCLAW_MODEL_NAME}}"
 ZEROCLAW_RUNTIME_TRACE_PATH="$ARTIFACTS_DIR/runtime_trace.jsonl"
@@ -276,12 +280,33 @@ replacements = {
     "__ZEROCLAW_DEFAULT_PROVIDER__": json.dumps(os.environ["ZEROCLAW_PROVIDER"]),
     "__ZEROCLAW_DEFAULT_MODEL__": json.dumps(os.environ["ZEROCLAW_MODEL_NAME"]),
     "__ZEROCLAW_DEFAULT_TEMPERATURE__": str(float(os.environ.get("ZEROCLAW_TEMPERATURE", "0.2"))),
+    "__ZEROCLAW_PROVIDER_TIMEOUT_SECS__": str(int(os.environ.get("ZEROCLAW_PROVIDER_TIMEOUT_SECS", "1200"))),
     "__ZEROCLAW_RUNTIME_TRACE_MODE__": json.dumps(os.environ.get("ZEROCLAW_RUNTIME_TRACE_MODE", "none")),
     "__ZEROCLAW_RUNTIME_TRACE_PATH__": json.dumps(os.environ["ZEROCLAW_RUNTIME_TRACE_PATH"]),
     "__ZEROCLAW_WORKSPACE_ONLY__": "true" if _is_truthy(os.environ.get("ZEROCLAW_WORKSPACE_ONLY", "false")) else "false",
     "__ZEROCLAW_MAX_ACTIONS_PER_HOUR__": str(int(os.environ.get("ZEROCLAW_MAX_ACTIONS_PER_HOUR", "200"))),
     "__ZEROCLAW_MAX_TOOL_ITERATIONS__": str(int(os.environ.get("ZEROCLAW_MAX_TOOL_ITERATIONS", "100"))),
 }
+provider_max_tokens = os.environ.get("ZEROCLAW_PROVIDER_MAX_TOKENS", "").strip()
+replacements["__ZEROCLAW_PROVIDER_MAX_TOKENS_LINE__"] = (
+    f"provider_max_tokens = {int(provider_max_tokens)}\n"
+    if provider_max_tokens
+    else ""
+)
+runtime_lines = []
+reasoning_enabled = os.environ.get("ZEROCLAW_REASONING_ENABLED", "").strip()
+if reasoning_enabled:
+    runtime_lines.append(
+        f"reasoning_enabled = {str(_is_truthy(reasoning_enabled)).lower()}"
+    )
+reasoning_effort = os.environ.get("ZEROCLAW_REASONING_EFFORT", "").strip()
+if reasoning_effort:
+    runtime_lines.append(f"reasoning_effort = {json.dumps(reasoning_effort)}")
+replacements["__ZEROCLAW_RUNTIME_SECTION__"] = (
+    "[runtime]\n" + "\n".join(runtime_lines) + "\n\n"
+    if runtime_lines
+    else ""
+)
 for key, value in replacements.items():
     template = template.replace(key, value)
 config_path = Path(os.environ["HOME"]) / ".zeroclaw" / "config.toml"
