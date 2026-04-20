@@ -29,9 +29,19 @@ OpenRouter/Qwen pilot status on April 19, 2026:
   `pilot_20260419_qwen35_27b_terminal_bench2_directllm_t3_repair_r1`
   is now `3/3` normal trajectories with `3/3 reward=1` on the approved trio.
   This is repaired official-checkout evidence, not a stock upstream invocation.
-- `opencode`: approved 3-task pilot passed `3/3`
-- `openclaw`: `3/3` task records were written, but only `1/3` passed and the
-  first two tasks needed manual watchdog interruption to advance
+- `opencode` native in-container pilot:
+  `pilot_20260420_qwen35_27b_terminal_bench2_opencode_t3_r2` completed `3/3`
+  normal task records (`score=0,0,1`) and was uploaded to
+  `pilot_run/pilot_20260420_qwen35_27b_terminal_bench2_opencode_t3_r2/`
+- `openclaw` native in-container pilot:
+  after removing the bad `/app/TASK.md` prompt assumption, the rerun
+  `pilot_20260420_qwen35_27b_terminal_bench2_openclaw_t3_r4` completed `3/3`
+  normal task records with `3/3 score=1` and was uploaded to
+  `pilot_run/pilot_20260420_qwen35_27b_terminal_bench2_openclaw_t3_r4/`
+- `zeroclaw` native in-container pilot:
+  `pilot_20260420_qwen35_27b_terminal_bench2_zeroclaw_t3_repair_r5`
+  completed `3/3` normal task records (`score=0,1,1`) and was uploaded to
+  `pilot_run/pilot_20260420_qwen35_27b_terminal_bench2_zeroclaw_t3_repair_r5/`
 
 Local follow-up on April 19, 2026:
 
@@ -343,6 +353,15 @@ Observed results for that pilot:
   and `smoke_20260420_qwen35_27b_tb2_zeroclaw_incontainer_r2` completed `1/1`
   on `db-wal-recovery` with a normal reward-0 trajectory after sanitizing
   runtime logs out of the top-level assistant text
+- the full April 20 native TB2 reruns are now the accepted pilot evidence:
+  `pilot_20260420_qwen35_27b_terminal_bench2_opencode_t3_r2` wrote `3/3`
+  normal task JSONs and was uploaded,
+  `pilot_20260420_qwen35_27b_terminal_bench2_openclaw_t3_r4` wrote `3/3`
+  normal task JSONs after fixing the in-container prompt contract to stop
+  assuming `/app/TASK.md`,
+  and `pilot_20260420_qwen35_27b_terminal_bench2_zeroclaw_t3_repair_r5`
+  wrote `3/3` normal task JSONs and supersedes the older controller-mode
+  `repair_r3` archive
 
 Smoke success means:
 
