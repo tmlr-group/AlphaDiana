@@ -35,16 +35,30 @@ rate limits.
 
 ## Supported Modes
 
-| Mode | Status | Config |
-|---|---|---|
-| `direct_llm` | smoke/debug supported | `configs/examples/direct_llm_gpqa_diamond.yaml` |
-| `openclaw` | smoke/debug supported | `configs/examples/openclaw_gpqa_diamond.yaml` |
-| `opencode` | smoke/debug supported | `configs/examples/opencode_gpqa_diamond.yaml` |
-| `zeroclaw` | smoke/debug supported | `configs/examples/zeroclaw_gpqa_diamond.yaml` |
+| Mode | Status | Smoke / Debug Config | Full-run Config |
+|---|---|---|---|
+| `direct_llm` | smoke/debug supported | `configs/examples/direct_llm_gpqa_diamond.yaml` | `configs/full_runs/rollout_full_directllm_gpqa_diamond.yaml` |
+| `openclaw` | smoke/debug supported | `configs/examples/openclaw_gpqa_diamond.yaml` | `configs/full_runs/rollout_full_openclaw_gpqa_diamond.yaml` |
+| `opencode` | smoke/debug supported | `configs/examples/opencode_gpqa_diamond.yaml` | `configs/full_runs/rollout_full_opencode_gpqa_diamond.yaml` |
+| `zeroclaw` | smoke/debug supported | `configs/examples/zeroclaw_gpqa_diamond.yaml` | `configs/full_runs/rollout_full_zeroclaw_gpqa_diamond.yaml` |
 
-There is no checked-in ZeroClaw full-run config for GPQA-Diamond yet. The
-current documented path is the 1-task smoke/debug config under
-`configs/examples/`.
+For the staged `72`-run local-vLLM campaign, use
+[full-rollout-local-vllm-20260419.md](full-rollout-local-vllm-20260419.md)
+instead of launching the four full configs manually.
+
+## Full Run
+
+Checked-in full configs now exist for all four harnesses and target the full
+`test` split.
+
+Validate them directly:
+
+```bash
+python -m alphadiana.cli validate configs/full_runs/rollout_full_directllm_gpqa_diamond.yaml
+python -m alphadiana.cli validate configs/full_runs/rollout_full_openclaw_gpqa_diamond.yaml
+python -m alphadiana.cli validate configs/full_runs/rollout_full_opencode_gpqa_diamond.yaml
+python -m alphadiana.cli validate configs/full_runs/rollout_full_zeroclaw_gpqa_diamond.yaml
+```
 
 ## DirectLLM
 

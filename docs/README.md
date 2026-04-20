@@ -18,6 +18,8 @@ Use this directory as a user-facing entry point. The canonical split is:
   Dashboard usage and deployment.
 - [Benchmark Runbooks](benchmarks/README.md)
   User-facing runbooks for supported benchmark paths.
+- [Full Local-vLLM Rollout (2026-04-19)](benchmarks/full-rollout-local-vllm-20260419.md)
+  Staged `72`-run rollout manifest, preflight flow, and command generator for the local-vLLM campaign.
 
 ## Canonical Benchmark Docs
 
@@ -28,6 +30,7 @@ Use this directory as a user-facing entry point. The canonical split is:
 - [SWE-bench Pro](benchmarks/swebench-pro.md)
 - [SWE-bench Verified](benchmarks/swebench-verified.md)
 - [terminal-bench-2](benchmarks/terminal-bench-2.md)
+- [Full Local-vLLM Rollout (2026-04-19)](benchmarks/full-rollout-local-vllm-20260419.md)
 
 If you are trying to run a benchmark, start from `context/current_eval_status.md`
 and then the matching file in `docs/benchmarks/`.

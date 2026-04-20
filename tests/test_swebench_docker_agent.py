@@ -126,6 +126,11 @@ class TestSWEBenchDockerRegistry:
         assert "ZEROCLAW_MAX_TOOL_ITERATIONS" in script
         assert "ZEROCLAW_MAX_ACTIONS_PER_HOUR" in script
         assert "ZEROCLAW_RUNTIME_TRACE_MODE" in script
+        assert "ZEROCLAW_TEMPERATURE" in script
+        assert "ZEROCLAW_PROVIDER_TIMEOUT_SECS" in script
+        assert "ZEROCLAW_PROVIDER_MAX_TOKENS" in script
+        assert "ZEROCLAW_REASONING_ENABLED" in script
+        assert "ZEROCLAW_REASONING_EFFORT" in script
         assert "zeroclaw_candidate_models.txt" in script
         assert "zeroclaw_prompt_contract.txt" in script
         assert "zeroclaw_prompt_profile.txt" in script
@@ -401,7 +406,9 @@ class TestSWEBenchDockerInContainerModes:
             "BASE_IMAGE": "jefzda/sweap-images:tag-123",
             "RUNTIME_IMAGE": "zeroclaw-reasoning:0.6.9",
         }
-        assert "COPY --from=runtime /usr/local/bin/zeroclaw /usr/local/bin/zeroclaw" in builds[0][1]
+        assert "COPY --from=runtime /usr/local/bin/zeroclaw /opt/zeroclaw-runtime/bin/zeroclaw" in builds[0][1]
+        assert "COPY --from=runtime /lib/x86_64-linux-gnu /opt/zeroclaw-runtime/lib/x86_64-linux-gnu" in builds[0][1]
+        assert 'exec "$LIB64/ld-linux-x86-64.so.2"' in builds[0][1]
         assert "libssl3" not in builds[0][1]
 
     def test_openclaw_mode_stages_assets_and_returns_patch(self, monkeypatch, tmp_path):
@@ -1080,10 +1087,13 @@ class TestSWEBenchDockerInContainerModes:
         agent.setup({
             "agent_type": "zeroclaw",
             "output_dir": str(tmp_path),
+            "temperature": 0.6,
+            "max_tokens": 32768,
+            "reasoning_enabled": True,
+            "reasoning_effort": "high",
             "env": {
                 "OPENAI_MODEL_NAME": "demo-model",
                 "ZEROCLAW_SMOKE_MODEL_CANDIDATES": "demo-model,fallback-model",
-                "ZEROCLAW_TIMEOUT_SEC": "1500",
                 "ZEROCLAW_REQUIRE_PATCH": "1",
                 "ZEROCLAW_PROMPT_PROFILE": "edit_first",
                 "ZEROCLAW_PROBLEM_STATEMENT_MAX_CHARS": "12000",
@@ -1227,7 +1237,12 @@ class TestSWEBenchDockerInContainerModes:
         assert any(path.endswith("/zeroclaw.toml.template") for path in staged_paths)
         assert any("run_zeroclaw.sh" in " ".join(call) for call in docker_exec_calls)
         assert any(env.get("ZEROCLAW_SMOKE_MODEL_NAME") == "demo-model" for env in exec_envs)
-        assert any(env.get("ZEROCLAW_TIMEOUT_SEC") == "1500" for env in exec_envs)
+        assert any(env.get("ZEROCLAW_TIMEOUT_SEC") == "1800" for env in exec_envs)
+        assert any(env.get("ZEROCLAW_TEMPERATURE") == "0.6" for env in exec_envs)
+        assert any(env.get("ZEROCLAW_PROVIDER_TIMEOUT_SECS") == "1800" for env in exec_envs)
+        assert any(env.get("ZEROCLAW_PROVIDER_MAX_TOKENS") == "32768" for env in exec_envs)
+        assert any(env.get("ZEROCLAW_REASONING_ENABLED") == "true" for env in exec_envs)
+        assert any(env.get("ZEROCLAW_REASONING_EFFORT") == "high" for env in exec_envs)
         assert "/swebench_agent/zeroclaw/patch.diff" in response.workspace_file_contents
         assert "/swebench_agent/zeroclaw/zeroclaw_output.txt" in response.workspace_file_contents
         assert "/swebench_agent/zeroclaw/zeroclaw_stderr.log" in response.workspace_file_contents

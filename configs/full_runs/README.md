@@ -4,6 +4,69 @@ This directory stores ready-to-run full benchmark entry points.
 
 The smoke configs under `configs/examples/` intentionally pin one task with `dataset_index` or `max_tasks`. Do not use those files for full benchmark runs.
 
+## Local-vLLM Campaign
+
+The staged April 19, 2026 full-rollout assets for the requested
+`6 benchmarks x 4 harnesses x 3 models` matrix live here:
+
+- manifest:
+  `configs/full_runs/rollout_local_vllm_campaign_20260419.yaml`
+- env template:
+  `configs/full_runs/rollout_local_vllm_campaign_20260419.env.example`
+- new full configs for `GPQA-Diamond`:
+  `rollout_full_{directllm,openclaw,opencode,zeroclaw}_gpqa_diamond.yaml`
+- new full configs for `MMMU-Pro`:
+  `rollout_full_{directllm,openclaw,opencode,zeroclaw}_mmmu_pro_vision.yaml`
+
+Use the rollout helper instead of hand-expanding commands:
+
+```bash
+python scripts/benchmark_rollout.py summary
+python scripts/benchmark_rollout.py preflight --check-docker --check-rock --probe-vllm
+python scripts/benchmark_rollout.py commands --wave wave_a_mainline
+python scripts/benchmark_rollout.py materialize --wave wave_a_mainline
+```
+
+For the internal cross-machine bring-up plan and official-checkout readiness
+notes, see:
+
+- `context/benchmark-rollout-full-plan-20260419.md`
+
+Required environment contract for the campaign:
+
+```bash
+source scripts/activate.sh
+export PYTHONPATH=$PWD
+
+export QWEN_VLLM_API_BASE=http://127.0.0.1:8001/v1
+export QWEN_VLLM_API_KEY=EMPTY
+export GEMMA4_VLLM_API_BASE=http://127.0.0.1:8002/v1
+export GEMMA4_VLLM_API_KEY=EMPTY
+export NEMOTRON_VLLM_API_BASE=http://127.0.0.1:8003/v1
+export NEMOTRON_VLLM_API_KEY=EMPTY
+
+export DIRECTLLM_ROOT=/path/to/directllm
+export TERMINAL_BENCH2_DIR=/path/to/terminal-bench/tasks
+export SWE_BENCH_PRO_EVAL_SCRIPT=/path/to/SWE-bench_Pro-os/swe_bench_pro_eval.py
+export SWE_BENCH_PRO_SCRIPTS_DIR=/path/to/SWE-bench_Pro-os/run_scripts
+export HF_TOKEN=hf_...
+```
+
+Campaign rules:
+
+- The helper expands `72` concrete runs and keeps official `direct_llm` paths in the manifest.
+- Official `terminal-bench-2` and `SWE-bench Pro` direct-LLM commands are executed from the official checkout via `DIRECTLLM_ROOT` or the benchmark-specific override envs.
+- Generated run commands do not add `--redo-all`; AlphaDiana resumes from checkpoint by default.
+- Raw shell logs stay under this repo's `logs/` even for official-checkout runs.
+- `MMMU-Pro` full configs intentionally use `data_config: "vision"`.
+
+Wave summary from the checked-in manifest:
+
+- `wave_a_mainline`: `47`
+- `wave_b_official`: `5`
+- `wave_c_high_risk`: `11`
+- `wave_d_blocked`: `9`
+
 ## SWE-bench Pro
 
 These are the PR29 full-run configs for the Diana-backed SWE-bench Pro paths:
@@ -149,14 +212,12 @@ for task_toml in root.glob("*/task.toml"):
 PY
 ```
 
-Build the controller images before terminal-bench-2 full runs for `opencode` and `openclaw`:
+Prepare the native-agent runtime source images before terminal-bench-2 full runs:
 
 ```bash
-docker build -f docker/terminal_bench2/Dockerfile.opencode-controller \
-  -t alphadiana/tb2-opencode-controller:latest .
-
-docker build -f docker/terminal_bench2/Dockerfile.openclaw-controller \
-  -t alphadiana/tb2-openclaw-controller:latest .
+docker pull tmlrgroup/alphadiana:v1
+docker image inspect alphadiana/tb2-opencode-controller:latest >/dev/null
+docker pull zeroclaw-reasoning:0.6.9
 ```
 
 ## Run Commands

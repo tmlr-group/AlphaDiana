@@ -34,6 +34,17 @@ MODEL_NAME = os.environ.get("OPENAI_MODEL_NAME", "zeroclaw")
 API_BASE = os.environ.get("OPENAI_BASE_URL", "")
 API_KEY = os.environ.get("OPENAI_API_KEY", "")
 DEFAULT_TEMPERATURE = float(os.environ.get("ZEROCLAW_TEMPERATURE", "0.0"))
+PROVIDER_TIMEOUT_SECS = int(os.environ.get("ZEROCLAW_PROVIDER_TIMEOUT_SECS", "120"))
+PROVIDER_MAX_TOKENS_RAW = os.environ.get("ZEROCLAW_PROVIDER_MAX_TOKENS", "").strip()
+PROVIDER_MAX_TOKENS = int(PROVIDER_MAX_TOKENS_RAW) if PROVIDER_MAX_TOKENS_RAW else None
+REASONING_ENABLED_RAW = os.environ.get("ZEROCLAW_REASONING_ENABLED", "").strip().lower()
+if REASONING_ENABLED_RAW in {"1", "true", "yes", "on"}:
+    REASONING_ENABLED = True
+elif REASONING_ENABLED_RAW in {"0", "false", "no", "off"}:
+    REASONING_ENABLED = False
+else:
+    REASONING_ENABLED = None
+REASONING_EFFORT = os.environ.get("ZEROCLAW_REASONING_EFFORT", "").strip() or None
 ARTIFACT_ROOT = Path(
     os.environ.get("ZEROCLAW_ARTIFACT_ROOT", "/tmp/zeroclaw-bridge-artifacts")
 ).expanduser()
@@ -253,6 +264,53 @@ def _resolve_provider(provider: str, api_base: str) -> str:
 PROVIDER = _resolve_provider(os.environ.get("ZEROCLAW_PROVIDER", ""), API_BASE)
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 LOG_LINE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T[0-9:.]+Z\s+(INFO|WARN|ERROR)\b")
+_RUNTIME_LOG_PREFIXES = (
+    "[ZeroClawBridge]",
+    "OpenRouter transport error while reading response body",
+    "OpenRouter transport error",
+    "transport error while reading response body",
+    "provider retry exhausted",
+    "retrying request in ",
+)
+_RUNTIME_LOG_SUBSTRINGS = (
+    " zeroclaw::",
+    "openrouter transport error while reading response body",
+    "provider retry exhausted",
+    "retrying request in ",
+    "retry attempt ",
+)
+
+
+def _is_runtime_log_line(line: str) -> bool:
+    if not line:
+        return False
+    if LOG_LINE_RE.match(line):
+        return True
+    lowered = line.lower()
+    if any(line.startswith(prefix) for prefix in _RUNTIME_LOG_PREFIXES):
+        return True
+    if any(fragment in lowered for fragment in _RUNTIME_LOG_SUBSTRINGS):
+        return True
+    return False
+
+
+def _extract_runtime_failure(raw_output: str, raw_stderr: str) -> str:
+    candidates = []
+    for text in (raw_stderr, raw_output):
+        for raw_line in text.splitlines():
+            line = ANSI_RE.sub("", raw_line).strip()
+            if not line:
+                continue
+            lowered = line.lower()
+            if "transport error while reading response body" in lowered:
+                candidates.append(line)
+            elif "provider retry exhausted" in lowered:
+                candidates.append(line)
+            elif "retrying request in " in lowered:
+                candidates.append(line)
+    if not candidates:
+        return ""
+    return candidates[-1]
 
 
 def _quote_toml(value: str) -> str:
@@ -265,6 +323,19 @@ def _build_config_toml(
 ) -> str:
     workspace_only = "true" if WORKSPACE_ONLY else "false"
     effective_temperature = DEFAULT_TEMPERATURE if temperature is None else float(temperature)
+    provider_max_tokens_line = (
+        f"provider_max_tokens = {PROVIDER_MAX_TOKENS}\n"
+        if PROVIDER_MAX_TOKENS is not None
+        else ""
+    )
+    runtime_section = ""
+    if REASONING_ENABLED is not None or REASONING_EFFORT is not None:
+        runtime_lines = ["[runtime]"]
+        if REASONING_ENABLED is not None:
+            runtime_lines.append(f"reasoning_enabled = {str(REASONING_ENABLED).lower()}")
+        if REASONING_EFFORT is not None:
+            runtime_lines.append(f"reasoning_effort = {_quote_toml(REASONING_EFFORT)}")
+        runtime_section = "\n".join(runtime_lines) + "\n\n"
     provider_section = "[model_providers]\n\n"
     if provider_base_url_override:
         provider_section = (
@@ -276,9 +347,12 @@ def _build_config_toml(
         f"default_provider = {_quote_toml(PROVIDER)}\n"
         f"default_model = {_quote_toml(MODEL_NAME)}\n\n"
         f"default_temperature = {effective_temperature}\n"
+        f"provider_timeout_secs = {PROVIDER_TIMEOUT_SECS}\n"
+        f"{provider_max_tokens_line}"
         "model_routes = []\n"
         "embedding_routes = []\n\n"
         f"{provider_section}"
+        f"{runtime_section}"
         "[provider]\n\n"
         "[observability]\n"
         'backend = "none"\n'
@@ -336,14 +410,16 @@ def _build_prompt(messages: list[dict[str, Any]]) -> str:
     return "\n\n".join(system_parts)
 
 
-def _sanitize_output(raw_output: str) -> str:
+def _sanitize_output(raw_output: str) -> tuple[str, list[str]]:
     cleaned_lines: list[str] = []
+    dropped_runtime_logs: list[str] = []
     for raw_line in raw_output.splitlines():
         line = ANSI_RE.sub("", raw_line).rstrip()
-        if LOG_LINE_RE.match(line) and "zeroclaw::" in line:
+        if _is_runtime_log_line(line):
+            dropped_runtime_logs.append(line)
             continue
         cleaned_lines.append(line)
-    return "\n".join(cleaned_lines).strip()
+    return "\n".join(cleaned_lines).strip(), dropped_runtime_logs
 
 
 def _coerce_temperature(value: Any) -> float | None:
@@ -533,6 +609,8 @@ def _run_zeroclaw(
             "timed_out": result.returncode == 124,
             "error_message": "",
         }
+        sanitized_output, dropped_runtime_logs = _sanitize_output(raw_output)
+        runtime_failure = _extract_runtime_failure(raw_output, raw_stderr)
         if result.returncode == 124:
             status_payload["error_message"] = f"ZeroClaw timed out after {REQUEST_TIMEOUT}s"
         elif result.returncode != 0:
@@ -541,6 +619,10 @@ def _run_zeroclaw(
             )
         elif not raw_output:
             status_payload["error_message"] = f"ZeroClaw produced no output. stderr={raw_stderr}"
+        elif not sanitized_output and dropped_runtime_logs:
+            status_payload["error_message"] = runtime_failure or (
+                "ZeroClaw stdout contained only runtime/provider logs, not assistant output."
+            )
 
         _persist_last_request(
             execution_id=execution_id,
@@ -560,7 +642,15 @@ def _run_zeroclaw(
             )
         if not raw_output:
             raise RuntimeError(f"ZeroClaw produced no output. stderr={raw_stderr}")
-        return _sanitize_output(raw_output) or raw_output
+        if not sanitized_output:
+            if runtime_failure:
+                raise RuntimeError(runtime_failure)
+            if dropped_runtime_logs:
+                raise RuntimeError(
+                    "ZeroClaw produced no assistant output; stdout contained only runtime/provider logs."
+                )
+            raise RuntimeError(f"ZeroClaw produced no assistant output. stderr={raw_stderr}")
+        return sanitized_output
 
 
 class Handler(BaseHTTPRequestHandler):

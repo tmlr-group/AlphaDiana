@@ -10,15 +10,27 @@ from alphadiana.agent.terminal_bench2_common import (
     TerminalBench2ContainerMixin,
     TerminalBench2RuntimeContext,
 )
+from alphadiana.agent.terminal_bench2_incontainer import (
+    IN_CONTAINER_AGENT_PROMPT,
+    TerminalBench2InContainerMixin,
+)
 from alphadiana.agent.terminal_bench2_opencode import TerminalBench2OpenCodeAgent
 from alphadiana.agent.terminal_bench2_openclaw import TerminalBench2OpenClawAgent
-from alphadiana.agent.terminal_bench2_zeroclaw import TerminalBench2ZeroClawAgent
+from alphadiana.agent.terminal_bench2_zeroclaw import (
+    TerminalBench2ZeroClawAgent,
+    _ZEROCLAW_SYSTEM_PROMPT,
+)
 from alphadiana.benchmark.base import BenchmarkTask
 from alphadiana.config.experiment_config import ExperimentConfig
 from alphadiana.config.validator import ConfigValidator
+from alphadiana.utils.rock_runtime import PREBUILT_SANDBOX_IMAGE
 
 
 class _MixinHarness(TerminalBench2ContainerMixin):
+    pass
+
+
+class _InContainerHarness(TerminalBench2InContainerMixin):
     pass
 
 
@@ -109,6 +121,43 @@ def test_terminal_bench2_native_agents_disable_manual_test_helper(tmp_path: Path
     assert "harness will run verification" in helper_text
 
 
+def test_terminal_bench2_incontainer_db_wal_task_note_mentions_live_paths() -> None:
+    harness = _InContainerHarness()
+    task = BenchmarkTask(
+        task_id="tb2_db-wal-recovery",
+        problem="recover sqlite wal",
+        ground_truth="1",
+        metadata={"task_dir": "/tmp/terminal-bench-2/db-wal-recovery"},
+    )
+
+    note = harness._build_incontainer_task_note(task)
+
+    assert "/app/main.db" in note
+    assert "/app/main.db-wal" in note
+    assert "/app/recovered.json" in note
+    assert "bootstrap" not in note
+
+
+def test_terminal_bench2_incontainer_workspace_detection_prefers_app_from_root() -> None:
+    harness = _InContainerHarness()
+
+    with patch.object(
+        harness,
+        "_docker_exec_capture",
+        return_value=LocalCommandResult(stdout="/\n", stderr="", returncode=0),
+    ), patch.object(harness, "_docker_path_exists", return_value=True):
+        workspace = harness._detect_container_workspace("demo-container")
+
+    assert workspace == "/app"
+
+
+def test_terminal_bench2_incontainer_zeroclaw_overlay_uses_direct_binary_copy() -> None:
+    dockerfile = _InContainerHarness._build_runtime_overlay_dockerfile("zeroclaw")
+
+    assert "COPY --from=runtime /usr/local/bin/zeroclaw /usr/local/bin/zeroclaw" in dockerfile
+    assert "ld-linux-x86-64.so.2" not in dockerfile
+
+
 def test_terminal_bench2_openclaw_validation_requires_api_base() -> None:
     config = ExperimentConfig(
         run_id="tb2-openclaw",
@@ -174,7 +223,7 @@ scorer:
     assert config.agent_config["api_key"] == "secret"
 
 
-def test_terminal_bench2_openclaw_builds_local_cli_env(tmp_path: Path) -> None:
+def test_terminal_bench2_openclaw_builds_local_cli_env() -> None:
     agent = TerminalBench2OpenClawAgent()
     agent.setup({
         "api_base": "http://localhost/v1",
@@ -182,20 +231,21 @@ def test_terminal_bench2_openclaw_builds_local_cli_env(tmp_path: Path) -> None:
         "model_name": "minimax-m2.5",
     })
 
-    assert agent._controller_mode == "docker"
-    assert agent._controller_image == "alphadiana/tb2-openclaw-controller:latest"
+    assert agent._runtime_source_image == PREBUILT_SANDBOX_IMAGE
     assert agent._verbose == "on"
+    assert agent._min_context_window == 32768
 
-    env, openclaw_home = agent._build_env(tmp_path)
+    env = agent._build_env("/tmp/openclaw-home", "/tmp/openclaw-plugins")
 
-    assert env["OPENCLAW_HOME"] == str(openclaw_home)
-    assert env["OPENCLAW_BUNDLED_PLUGINS_DIR"].startswith(str(tmp_path))
+    assert env["HOME"] == "/tmp/openclaw-home"
+    assert env["OPENCLAW_HOME"] == "/tmp/openclaw-home"
+    assert env["OPENCLAW_BUNDLED_PLUGINS_DIR"] == "/tmp/openclaw-plugins"
     assert env["OPENAI_BASE_URL"] == "http://localhost/v1"
     assert env["OPENAI_MODEL_NAME"] == "minimax-m2.5"
     assert env["CUSTOM_API_KEY"] == "secret"
 
 
-def test_terminal_bench2_openclaw_onboard_uses_noninteractive_local_mode(tmp_path: Path) -> None:
+def test_terminal_bench2_openclaw_onboard_uses_noninteractive_local_mode() -> None:
     agent = TerminalBench2OpenClawAgent()
     agent.setup({
         "api_base": "http://localhost/v1",
@@ -204,17 +254,10 @@ def test_terminal_bench2_openclaw_onboard_uses_noninteractive_local_mode(tmp_pat
         "openclaw_bin": "openclaw",
     })
 
-    with patch.object(
-        agent,
-        "_run_controller_process",
-        return_value=LocalCommandResult(stdout="{}", stderr="", returncode=0),
-    ) as mock_run:
-        agent._run_onboard(tmp_path, {"OPENAI_API_KEY": "secret"})
-
-    cmd = mock_run.call_args.args[0]
+    cmd = agent._build_onboard_command("/app")
     assert cmd[:4] == ["openclaw", "onboard", "--non-interactive", "--flow"]
     assert "--mode" in cmd and "local" in cmd
-    assert "--workspace" in cmd and str(tmp_path) in cmd
+    assert "--workspace" in cmd and "/app" in cmd
     assert "--custom-base-url" in cmd and "http://localhost/v1" in cmd
     assert "--custom-model-id" in cmd and "minimax-m2.5" in cmd
     assert "--skip-health" in cmd
@@ -232,21 +275,69 @@ def test_terminal_bench2_openclaw_agent_command_uses_local_json_mode(tmp_path: P
         "solver_timeout_sec": 321,
     })
 
-    with patch.object(
-        agent,
-        "_run_controller_process",
-        return_value=LocalCommandResult(stdout='{"ok":true}', stderr="", returncode=0),
-    ) as mock_run:
-        agent._run_openclaw_agent(tmp_path, {"OPENAI_API_KEY": "secret"}, "demo prompt")
-
-    cmd = mock_run.call_args.args[0]
+    cmd = agent._build_agent_command()
     assert cmd[:2] == ["openclaw", "agent"]
     assert "--local" in cmd
     assert "--json" in cmd
-    assert "--message" in cmd and "demo prompt" in cmd
+    assert "--message" in cmd and '$(cat "$ALPHADIANA_PROMPT_FILE")' in cmd
     assert "--timeout" in cmd and "321" in cmd
     assert "--thinking" in cmd and "high" in cmd
     assert "--verbose" in cmd and "full" in cmd
+    assert cmd[-2:] == ["--message", '$(cat "$ALPHADIANA_PROMPT_FILE")']
+
+
+def test_terminal_bench2_openclaw_finds_latest_session_under_runtime_home() -> None:
+    agent = TerminalBench2OpenClawAgent()
+    agent.setup({
+        "api_base": "http://localhost/v1",
+        "api_key": "secret",
+        "model_name": "minimax-m2.5",
+    })
+
+    with patch.object(
+        agent,
+        "_docker_exec_capture",
+        return_value=LocalCommandResult(
+            stdout="/tmp/openclaw/home/.openclaw/agents/main/sessions/newer.jsonl\n",
+            stderr="",
+            returncode=0,
+        ),
+    ) as mock_exec:
+        session = agent._find_latest_remote_session_file(
+            "demo-container",
+            "/tmp/openclaw/home/.openclaw/agents",
+        )
+
+    assert session.endswith("newer.jsonl")
+    assert "-printf '%T@ %p\\n'" in mock_exec.call_args.args[1]
+    assert "tail -n 1" in mock_exec.call_args.args[1]
+
+
+def test_terminal_bench2_openclaw_context_preflight_rejects_small_window(tmp_path: Path) -> None:
+    agent = TerminalBench2OpenClawAgent()
+    agent.setup({
+        "api_base": "http://localhost/v1",
+        "api_key": "secret",
+        "model_name": "qwen/qwen3.5-27b",
+        "min_context_window": 32768,
+        "fail_on_small_context_window": True,
+    })
+
+    with patch.object(
+        agent,
+        "_resolve_context_window",
+        return_value=(16000, "models_endpoint"),
+    ):
+        try:
+            agent._write_context_preflight(tmp_path)
+        except RuntimeError as exc:
+            message = str(exc)
+        else:
+            raise AssertionError("Expected low context window preflight to fail")
+
+    assert "resolved=16000" in message
+    preflight = (tmp_path / "openclaw_context_preflight.json").read_text(encoding="utf-8")
+    assert '"resolved_context_window": 16000' in preflight
 
 
 def test_terminal_bench2_opencode_writes_native_prompt_and_provider_config(tmp_path: Path) -> None:
@@ -258,27 +349,26 @@ def test_terminal_bench2_opencode_writes_native_prompt_and_provider_config(tmp_p
         "model": "custom/minimax-m2.5",
         "opencode_bin": "opencode",
     })
-    assert agent._controller_mode == "docker"
-    assert agent._controller_image == "alphadiana/tb2-opencode-controller:latest"
-    (tmp_path / "PROMPT.txt").write_text(f"{NATIVE_AGENT_PROMPT}\n\n--- Task ---\ndemo\n", encoding="utf-8")
-
-    with patch.object(
-        agent,
-        "_run_controller_process",
-        return_value=LocalCommandResult(stdout="", stderr="", returncode=0),
-    ) as mock_run:
-        agent._run_opencode(tmp_path, "tb2_demo")
+    assert agent._runtime_source_image == "tmlrgroup/alphadiana:opencode"
+    task = BenchmarkTask(task_id="tb2_demo", problem="demo", ground_truth="1")
+    task_text, prompt_text = agent._build_incontainer_prompt(task)
+    assert task_text == "demo"
+    assert prompt_text.startswith(IN_CONTAINER_AGENT_PROMPT)
+    assert "tb2-exec" not in prompt_text
+    assert agent._opencode_command_prefix() == ["opencode"]
+    run_cmd = agent._build_run_command(task_id="tb2_demo", container_workdir="/app")
 
     config_path = tmp_path / "xdg-config" / "opencode" / "opencode.json"
+    agent._write_provider_config(config_path)
     payload = config_path.read_text(encoding="utf-8")
-    cmd = mock_run.call_args.args[0]
-    env = mock_run.call_args.kwargs["env"]
 
     assert '"tool_call": true' in payload
     assert '"baseURL": "http://localhost/v1"' in payload
-    assert cmd[:5] == ["node", "/usr/lib/node_modules/opencode-ai/bin/opencode", "run", "--format", "json"]
-    assert "--title" in cmd and "tb2_demo" in cmd
-    assert env["XDG_CONFIG_HOME"] == str(tmp_path / "xdg-config")
+    assert '"timeout": 1800000' in payload
+    assert '"model": "custom/minimax-m2.5"' in payload
+    assert run_cmd[-1] == '$(cat "$ALPHADIANA_PROMPT_FILE")'
+    assert run_cmd[0:4] == ["opencode", "run", "--format", "json"]
+    assert "--model" in run_cmd and "custom/minimax-m2.5" in run_cmd
 
 
 def test_terminal_bench2_zeroclaw_writes_native_prompt_and_config(tmp_path: Path) -> None:
@@ -289,20 +379,30 @@ def test_terminal_bench2_zeroclaw_writes_native_prompt_and_config(tmp_path: Path
         "model": "minimax-m2.5",
     })
 
-    assert agent._controller_mode == "docker"
-    assert agent._controller_image == "alphadiana/tb2-zeroclaw-controller:latest"
-    assert agent._system_prompt == NATIVE_AGENT_PROMPT.strip()
+    assert agent._runtime_source_image == "zeroclaw-reasoning:0.6.9"
+    assert agent._system_prompt == _ZEROCLAW_SYSTEM_PROMPT.strip()
+    assert agent._workspace_only is False
+    assert agent._security_sandbox_enabled is False
 
-    env, paths = agent._prepare_zeroclaw_home(tmp_path, f"{NATIVE_AGENT_PROMPT}\n\n--- Task ---\ndemo\n")
+    task = BenchmarkTask(task_id="tb2_demo", problem="demo", ground_truth="1")
+    _, prompt_text = agent._build_runtime_prompt(task)
+    env = agent._build_env("/tmp/zeroclaw-home")
+    config_text = agent._build_config_toml()
 
-    config_text = (tmp_path / ".zeroclaw-home" / ".zeroclaw" / "config.toml").read_text(encoding="utf-8")
-    config_mode = (tmp_path / ".zeroclaw-home" / ".zeroclaw" / "config.toml").stat().st_mode & 0o777
     assert env["OPENAI_BASE_URL"] == "http://localhost/v1"
     assert env["OPENAI_MODEL_NAME"] == "minimax-m2.5"
     assert 'default_model = "minimax-m2.5"' in config_text
     assert 'default_provider = "custom:http://localhost/v1"' in config_text
-    assert config_mode == 0o600
-    assert Path(paths["prompt_path"]).read_text(encoding="utf-8").endswith("--- Task ---\ndemo\n")
+    assert "[security.sandbox]" in config_text
+    assert "enabled = false" in config_text
+    assert "workspace_only = false" in config_text
+    assert '"./tb2-exec"' not in config_text
+    assert '"./tb2-copy-from"' not in config_text
+    assert '"./tb2-copy-to"' not in config_text
+    assert prompt_text.endswith("--- Task ---\ndemo\n")
+    assert "You are solving a terminal-bench-2 task from inside the task container." in prompt_text
+    assert "You are already inside the target task container." in _ZEROCLAW_SYSTEM_PROMPT
+    assert "You are NOT inside the target task container." not in prompt_text
 
 
 def test_terminal_bench2_zeroclaw_agent_command_uses_local_prompt_file(tmp_path: Path) -> None:
@@ -314,20 +414,17 @@ def test_terminal_bench2_zeroclaw_agent_command_uses_local_prompt_file(tmp_path:
         "zeroclaw_bin": "zeroclaw",
         "solver_timeout_sec": 321,
     })
-    env, paths = agent._prepare_zeroclaw_home(tmp_path, "demo prompt")
+    cmd = agent._build_run_command({
+        "workspace_dir": "/app",
+        "task_path": str(tmp_path / "task.txt"),
+        "stdout_path": str(tmp_path / "zeroclaw_output.txt"),
+        "stderr_path": str(tmp_path / "zeroclaw_stderr.log"),
+    })
 
-    with patch.object(
-        agent,
-        "_run_controller_process",
-        return_value=LocalCommandResult(stdout="", stderr="", returncode=0),
-    ) as mock_run:
-        agent._run_zeroclaw(tmp_path, env, paths)
-
-    cmd = mock_run.call_args.args[0]
-    assert cmd[:2] == ["bash", "-lc"]
-    assert "prompt=$(cat " in cmd[2]
-    assert "zeroclaw agent -m" in cmd[2]
-    assert "zeroclaw_output.txt" in cmd[2]
+    assert "cd /app" in cmd
+    assert f"prompt=$(cat {tmp_path / 'task.txt'})" in cmd
+    assert 'timeout 321 zeroclaw agent -m "$prompt"' in cmd
+    assert str(tmp_path / "zeroclaw_output.txt") in cmd
 
 
 def test_terminal_bench2_zeroclaw_solve_preserves_nonzero_solver_result(tmp_path: Path) -> None:
@@ -363,52 +460,43 @@ def test_terminal_bench2_zeroclaw_solve_preserves_nonzero_solver_result(tmp_path
     for path in runtime.helper_paths.values():
         path.write_text("", encoding="utf-8")
 
-    def fake_prepare_home(workdir: Path, prompt_text: str) -> tuple[dict[str, str], dict[str, str]]:
-        stdout_path = workdir / "zeroclaw_output.txt"
-        stderr_path = workdir / "zeroclaw_stderr.log"
-        runtime_trace_path = workdir / "state" / "runtime-trace.jsonl"
-        controller_stdout_path = workdir / "controller_stdout.log"
-        controller_stderr_path = workdir / "controller_stderr.log"
-        runtime_trace_path.parent.mkdir(parents=True, exist_ok=True)
-        stdout_path.write_text("Loop detector summary\n", encoding="utf-8")
-        stderr_path.write_text(
-            "Error: Agent loop aborted by loop detector\n",
-            encoding="utf-8",
-        )
-        runtime_trace_path.write_text("", encoding="utf-8")
-        return (
-            {"OPENAI_API_KEY": "secret"},
-            {
-                "prompt_path": str(workdir / "PROMPT.txt"),
-                "stdout_path": str(stdout_path),
-                "stderr_path": str(stderr_path),
-                "runtime_trace_path": str(runtime_trace_path),
-                "controller_stdout_path": str(controller_stdout_path),
-                "controller_stderr_path": str(controller_stderr_path),
-            },
-        )
-
     try:
-        with patch.object(agent, "_prepare_runtime", return_value=runtime), patch.object(
+        with patch.object(
             agent,
-            "_disable_test_helper",
+            "_prepare_incontainer_runtime",
+            return_value=(runtime, {"runtime_injected": True}),
+        ), patch.object(
+            agent,
+            "_detect_container_workspace",
+            return_value="/app",
+        ), patch.object(
+            agent,
+            "_stage_file_into_container",
             return_value=None,
         ), patch.object(
             agent,
-            "_prepare_zeroclaw_home",
-            side_effect=fake_prepare_home,
+            "_docker_exec_capture",
+            side_effect=[
+                LocalCommandResult(stdout="", stderr="", returncode=0),
+                LocalCommandResult(stdout="", stderr="controller stderr", returncode=1),
+            ],
         ), patch.object(
             agent,
-            "_run_zeroclaw",
-            return_value=("controller stdout", "controller stderr", 1),
+            "_read_container_text",
+            side_effect=lambda _container_id, remote_path, **_kwargs: (
+                "2026-04-20T06:17:59.498566Z  INFO zeroclaw::config::schema: Config loaded\n"
+                "Loop detector summary\n"
+                if remote_path.endswith("zeroclaw_output.txt")
+                else (
+                    "Error: Agent loop aborted by loop detector\n"
+                    if remote_path.endswith("zeroclaw_stderr.log")
+                    else ""
+                )
+            ),
         ), patch.object(
             agent,
             "_run_verifier_and_read_reward",
             return_value=("verifier output", "0"),
-        ), patch.object(
-            agent,
-            "_collect_text_artifacts",
-            return_value={"/terminal_bench2/zeroclaw/zeroclaw_output.txt": "Loop detector summary\n"},
         ), patch.object(
             agent,
             "_cleanup_runtime",
@@ -421,8 +509,11 @@ def test_terminal_bench2_zeroclaw_solve_preserves_nonzero_solver_result(tmp_path
     assert response.answer == "0"
     assert len(response.trajectory) == 2
     assert response.raw_output == "Loop detector summary"
+    assert response.metadata["raw_output_sanitized"] is True
+    assert response.metadata["runtime_logs_dropped_from_output"]
     assert response.metadata["returncode"] == 1
     assert response.metadata["solver_error"] == "Error: Agent loop aborted by loop detector"
+    assert response.metadata["container_workdir"] == "/app"
 
 
 def test_terminal_bench2_opencode_host_mode_keeps_configured_binary() -> None:

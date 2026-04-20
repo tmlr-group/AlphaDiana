@@ -12,12 +12,11 @@ agent:
   name: terminal_bench2_opencode
   version: "1.0"
   config:
-    model: "custom/minimax-m2.5"
-    model_name: "minimax-m2.5"
+    model: "custom/${OPENAI_MODEL_NAME}"
+    model_name: ${OPENAI_MODEL_NAME}
     api_base: ${OPENAI_BASE_URL}
     api_key: ${OPENAI_API_KEY}
-    controller_mode: "docker"
-    controller_image: "alphadiana/tb2-opencode-controller:latest"
+    runtime_source_image: "alphadiana/tb2-opencode-controller:latest"
     tool_call: false
     streaming: false
     solver_timeout_sec: 1800
@@ -30,4 +29,4 @@ scorer:
 max_concurrent: 2
 output_dir: "./results/p25_full_terminal_bench2_opencode_minimax"
 metadata:
-  notes: "Full OpenCode native-controller run for terminal-bench-2 via minimax-m2.5. Pre-pull task Docker images first."
+  notes: "Full OpenCode in-container run for terminal-bench-2 via OPENAI_MODEL_NAME. Pre-pull task Docker images first."

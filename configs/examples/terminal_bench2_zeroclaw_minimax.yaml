@@ -2,8 +2,7 @@
 # Requires:
 #   source scripts/activate.sh
 #   export TERMINAL_BENCH2_SMOKE_DIR=/path/to/staged-terminal-bench-smoke-root
-#   docker build -f docker/terminal_bench2/Dockerfile.zeroclaw-controller \
-#     -t alphadiana/tb2-zeroclaw-controller:latest .
+#   docker pull zeroclaw-reasoning:0.6.9
 
 run_id: "terminal_bench2_zeroclaw_minimax_smoke"
 
@@ -17,11 +16,10 @@ agent:
   name: terminal_bench2_zeroclaw
   version: "0.6.9"
   config:
-    model: "minimax-m2.5"
+    model: ${OPENAI_MODEL_NAME}
     api_base: ${OPENAI_BASE_URL}
     api_key: ${OPENAI_API_KEY}
-    controller_mode: "docker"
-    controller_image: "alphadiana/tb2-zeroclaw-controller:latest"
+    runtime_source_image: "zeroclaw-reasoning:0.6.9"
     zeroclaw_bin: "zeroclaw"
     solver_timeout_sec: 1800
     timeout_sec: 900
@@ -35,4 +33,4 @@ scorer:
 max_concurrent: 1
 output_dir: "./results/terminal_bench2_zeroclaw_minimax_smoke"
 metadata:
-  notes: "ZeroClaw native smoke for terminal-bench-2 on a staged single-task root via minimax-m2.5."
+  notes: "ZeroClaw in-container smoke for terminal-bench-2 on a staged single-task root via OPENAI_MODEL_NAME."

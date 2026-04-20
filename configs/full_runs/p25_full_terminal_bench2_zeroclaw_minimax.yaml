@@ -12,11 +12,10 @@ agent:
   name: terminal_bench2_zeroclaw
   version: "0.6.9"
   config:
-    model: "minimax-m2.5"
+    model: ${OPENAI_MODEL_NAME}
     api_base: ${OPENAI_BASE_URL}
     api_key: ${OPENAI_API_KEY}
-    controller_mode: "docker"
-    controller_image: "alphadiana/tb2-zeroclaw-controller:latest"
+    runtime_source_image: "zeroclaw-reasoning:0.6.9"
     zeroclaw_bin: "zeroclaw"
     solver_timeout_sec: 1800
     timeout_sec: 900
@@ -30,4 +29,4 @@ scorer:
 max_concurrent: 1
 output_dir: "./results/p25_full_terminal_bench2_zeroclaw_minimax"
 metadata:
-  notes: "Full ZeroClaw native-controller run for terminal-bench-2 via minimax-m2.5. Pre-pull task Docker images first."
+  notes: "Full ZeroClaw in-container run for terminal-bench-2 via OPENAI_MODEL_NAME. Pre-pull task Docker images first."

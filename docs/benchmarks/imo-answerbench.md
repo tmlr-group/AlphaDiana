@@ -173,5 +173,32 @@ Observed on April 18, 2026:
     partial reasoning trace was preserved and is treated as a normal sample
   - the path remains blocked on scorer correctness, not on benchmark completion
 
+Local follow-up on April 19, 2026:
+
+- `rerun_20260419_qwen35_27b_imo_answerbench_openclaw_idx2_r2`
+  completed with `score=1`; the task JSON kept a non-empty top-level
+  `reasoning_trajectory` plus `metadata.raw_reasoning`
+- `rerun_20260419_qwen35_27b_imo_answerbench_zeroclaw_idx0_r3`
+  failed cleanly with provider transport errors and `predicted=None`; the
+  previous startup-log pollution no longer leaked into a fake parsed answer
+
+Local follow-up on April 20, 2026:
+
+- root cause for the ZeroClaw/OpenRouter failure was a config gap, not the
+  benchmark itself: AlphaDiana was not writing ZeroClaw
+  `provider_timeout_secs`, so the CLI fell back to its internal `120s`
+  provider timeout and aborted long streamed math responses
+- the fix keeps `stream=true` and writes
+  `provider_timeout_secs = request_timeout` by default unless explicitly
+  overridden
+- validation smoke:
+  `debug_20260420_qwen35_27b_imo_answerbench_zeroclaw_idx0_provider_timeout_r1`
+  completed `1/1` on the previously failing first task
+- repaired 3-task pilot:
+  `pilot_20260420_qwen35_27b_imo_answerbench_zeroclaw_t3_repair_r3`
+  completed `3/3`, all task JSONs now have non-null predictions and no
+  task-level `error`, and the archive was uploaded to
+  `pilot_run/pilot_20260420_qwen35_27b_imo_answerbench_zeroclaw_t3_repair_r3/`
+
 Reviewer-facing evidence for this pilot lives in
 `context/qwen-openrouter-pilots/`.

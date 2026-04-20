@@ -22,15 +22,16 @@ python -m alphadiana.cli env
 
 ## Supported Modes
 
-| Mode | Status | Config |
-|---|---|---|
-| `direct_llm` | smoke/debug supported | `configs/examples/direct_llm_mmmu_pro.yaml` |
-| `openclaw` | smoke/debug supported | `configs/examples/openclaw_mmmu_pro.yaml` |
-| `opencode` | smoke/debug supported | `configs/examples/opencode_mmmu_pro.yaml` |
-| `zeroclaw` | smoke/debug supported | `configs/examples/zeroclaw_mmmu_pro.yaml` |
+| Mode | Status | Smoke / Debug Config | Full-run Config |
+|---|---|---|---|
+| `direct_llm` | smoke/debug supported | `configs/examples/direct_llm_mmmu_pro.yaml` | `configs/full_runs/rollout_full_directllm_mmmu_pro_vision.yaml` |
+| `openclaw` | smoke/debug supported | `configs/examples/openclaw_mmmu_pro.yaml` | `configs/full_runs/rollout_full_openclaw_mmmu_pro_vision.yaml` |
+| `opencode` | smoke/debug supported | `configs/examples/opencode_mmmu_pro.yaml` | `configs/full_runs/rollout_full_opencode_mmmu_pro_vision.yaml` |
+| `zeroclaw` | smoke/debug supported | `configs/examples/zeroclaw_mmmu_pro.yaml` | `configs/full_runs/rollout_full_zeroclaw_mmmu_pro_vision.yaml` |
 
-There is no checked-in ZeroClaw full-run config for MMMU-Pro yet. The current
-documented path is the example smoke/debug config.
+For the staged `72`-run local-vLLM campaign, use
+[full-rollout-local-vllm-20260419.md](full-rollout-local-vllm-20260419.md)
+instead of launching the four full configs manually.
 
 ## Data Configs
 
@@ -44,6 +45,20 @@ vision
 
 The ZeroClaw smoke config uses `vision` so the benchmark path exercises image
 attachment handling inside the sandbox workspace.
+
+The checked-in full configs also use `data_config: "vision"` so the full run
+matches the image-backed path rather than a text-only variant.
+
+## Full Run
+
+Validate the four full configs directly:
+
+```bash
+python -m alphadiana.cli validate configs/full_runs/rollout_full_directllm_mmmu_pro_vision.yaml
+python -m alphadiana.cli validate configs/full_runs/rollout_full_openclaw_mmmu_pro_vision.yaml
+python -m alphadiana.cli validate configs/full_runs/rollout_full_opencode_mmmu_pro_vision.yaml
+python -m alphadiana.cli validate configs/full_runs/rollout_full_zeroclaw_mmmu_pro_vision.yaml
+```
 
 ## DirectLLM
 
