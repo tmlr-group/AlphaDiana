@@ -61,6 +61,7 @@ class HLEBenchmark(Benchmark):
         category = config.get("category")
         answer_types = config.get("answer_types", ["multipleChoice"])
         dataset_index = config.get("dataset_index")
+        dataset_indices = config.get("dataset_indices")
         max_tasks = config.get("max_tasks")
 
         try:
@@ -97,7 +98,18 @@ class HLEBenchmark(Benchmark):
                 f"Available fields: {available}"
             )
 
-        if dataset_index is not None:
+        if dataset_index is not None and dataset_indices is not None:
+            raise ValueError(
+                "HLE benchmark config may set only one of 'dataset_index' or "
+                "'dataset_indices'."
+            )
+
+        if dataset_indices is not None:
+            iterator = [
+                (int(idx), dataset[int(idx)])
+                for idx in dataset_indices
+            ]
+        elif dataset_index is not None:
             dataset_index = int(dataset_index)
             iterator = [(dataset_index, dataset[dataset_index])]
         else:

@@ -107,7 +107,7 @@ That slug is the OpenRouter model ID for the logical target
 `Qwen/Qwen3.5-27B`.
 
 Dedicated 3-task OpenRouter pilot YAMLs now exist for `GPQA-Diamond`,
-`IMO-AnswerBench`, and `HLE`. The April 19, 2026 `terminal-bench-2` and
+`IMO-AnswerBench`, and `HLE`. The April 19/20, 2026 `terminal-bench-2` and
 `SWE-bench Pro` Qwen pilots reused the checked-in minimax smoke YAMLs with CLI
 overrides instead of adding new example configs. The latest `MMMU-Pro` sandbox
 follow-up also reused the checked-in smoke YAMLs plus explicit CLI overrides.
@@ -132,12 +132,16 @@ Dedicated 3-task OpenRouter pilot configs also exist for:
 - `GPQA-Diamond x direct_llm`
 - `GPQA-Diamond x openclaw`
 - `GPQA-Diamond x opencode`
+- `HLE x direct_llm`
+- `HLE x openclaw`
 - `HLE x opencode`
 
 OpenRouter/Qwen pilot coverage on April 19 also includes:
 
 - `GPQA-Diamond x opencode`
 - `IMO-AnswerBench x opencode`
+- `HLE x direct_llm`
+- `HLE x openclaw`
 - `HLE x opencode`
 - `MMMU-Pro x opencode`
 - `terminal-bench-2 x direct_llm` via the official Harbor `terminus-2` path
