@@ -6,6 +6,11 @@ Start from [`context/current_eval_status.md`](../../context/current_eval_status.
 for the current cross-benchmark support snapshot, then open the matching
 runbook here.
 
+For paper-facing wording about whether a benchmark path is sandboxed or
+containerized, also read
+[`docs/benchmark-isolation.md`](../benchmark-isolation.md). That note keeps the
+claim intentionally weaker than a formal security guarantee.
+
 These files should answer:
 
 - how to run a benchmark path
@@ -141,9 +146,12 @@ The two official `direct_llm` follow-ups were repaired and re-audited inside
 the upstream benchmark checkouts rather than through AlphaDiana YAMLs. See the
 benchmark-specific runbooks for the exact caveats and accepted archive IDs.
 
-Current limitation: on `main`, `opencode` text-only benchmark tasks still run
-through the local CLI path rather than a benchmark-managed sandbox. That is fine
-for smoke/debug usage, but it is not equivalent to the OpenClaw sandbox path.
+The checked-in plain-benchmark `opencode` configs for `GPQA-Diamond`,
+`IMO-AnswerBench`, `HLE`, and the default `MMMU-Pro` smoke path now set
+`controller_mode: docker` by default. Build
+`alphadiana/tb2-opencode-controller:latest` before using those configs. The
+host-process path is still available for debugging via
+`-o agent.config.controller_mode=host`.
 
 Smoke-test success means the evaluation path loads tasks, invokes the selected agent mode, and writes scored results. It does not mean the model answered correctly.
 

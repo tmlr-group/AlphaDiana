@@ -79,24 +79,29 @@ python -m alphadiana.cli validate configs/examples/opencode_mmmu_pro.yaml
 python -m alphadiana.cli run configs/examples/opencode_mmmu_pro.yaml
 ```
 
-Current limitation: on `main`, `opencode` text-only benchmark tasks still run
-through the local CLI path rather than a benchmark-managed sandbox. That is
-fine for smoke/debug usage, but it is not equivalent to the OpenClaw or
-ZeroClaw sandbox path.
+The checked-in OpenCode benchmark config now uses Docker controller isolation by
+default. Build `alphadiana/tb2-opencode-controller:latest` first if it is not
+already present. If you need the old host-process path for debugging, override
+`-o agent.config.controller_mode=host`.
 
-### Qwen/OpenRouter Vision Pilot (2026-04-19)
+### Qwen/OpenRouter Vision Pilot (2026-04-19/20)
 
 Accepted local pilot:
 
 - run_id: `pilot_20260419_qwen35_27b_mmmu_pro_opencode_t3_vision_docker`
 - result: `3/3` normal trajectories in Docker isolation, one task scored `0`
   but no abnormal behavior
+- run_id:
+  `pilot_20260420_qwen35_27b_mmmu_pro_opencode_t3_vision_docker_default`
+- result: `3/3` normal Docker-default trajectories with scores `0/1/1`, and
+  every task recorded `num_attachments=1`
 
 Historical non-canonical run:
 
 - `pilot_20260419_qwen35_27b_mmmu_pro_opencode_t3_vision`
-  wrote `3/3` normal task records, but it used `controller_mode=host` and does
-  not satisfy the current sandbox-only policy for OpenCode benchmark pilots
+  wrote `3/3` normal task records, but it used `controller_mode=host` before
+  the checked-in config default switched to Docker isolation, so it is kept as
+  historical evidence only
 
 Command:
 
@@ -106,12 +111,12 @@ export OPENAI_API_KEY=sk-...
 export OPENAI_MODEL_NAME=qwen/qwen3.5-27b
 
 python -m alphadiana.cli run configs/examples/opencode_mmmu_pro.yaml \
-  -o run_id=pilot_20260419_qwen35_27b_mmmu_pro_opencode_t3_vision_docker \
+  -o run_id=pilot_20260420_qwen35_27b_mmmu_pro_opencode_t3_vision_docker_default \
   -o benchmark.config.data_config=vision \
   -o benchmark.config.max_tasks=3 \
   -o max_concurrent=3 \
   -o agent.config.model_name=qwen/qwen3.5-27b \
-  -o agent.config.controller_mode=docker
+  -o agent.config.model=custom/qwen/qwen3.5-27b
 ```
 
 ## ZeroClaw

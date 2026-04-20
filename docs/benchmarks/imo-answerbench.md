@@ -61,22 +61,25 @@ python -m alphadiana.cli run configs/examples/directllm_minimax_imo_answerbench.
 
 OpenCode runs the `opencode` CLI and uses the prompt file at `context/opencode_lean_math.md` for the IMO smoke config.
 
+Build the controller image once before using the checked-in OpenCode configs:
+
+```bash
+docker build --network host \
+  -f docker/terminal_bench2/Dockerfile.opencode-controller \
+  -t alphadiana/tb2-opencode-controller:latest .
+```
+
 ```bash
 python -m alphadiana.cli run configs/examples/opencode_minimax_imo_answerbench.yaml \
   -o run_id=imo_opencode_smoke
 ```
 
-The smoke config uses `timeout: 1800` because shorter bounds can kill valid slow model output before it reaches scoring.
+The checked-in OpenCode benchmark configs now use Docker controller isolation
+by default. If you need the old host-process path for debugging, override
+`-o agent.config.controller_mode=host`.
 
-To run the same path with controller isolation, add:
-
-```bash
-python -m alphadiana.cli run configs/examples/opencode_minimax_imo_answerbench.yaml \
-  -o run_id=imo_opencode_docker_smoke \
-  -o agent.config.controller_mode=docker
-```
-
-`controller_mode` must be exactly `host` or `docker`. The full Docker setup and
+The smoke config uses `timeout: 1800` because shorter bounds can kill valid
+slow model output before it reaches scoring. The full Docker setup and
 reproduction guide live in `docs/opencode-docker-isolation.md`.
 
 ## OpenClaw
@@ -166,7 +169,7 @@ python -m alphadiana.cli run configs/examples/openclaw_qwen35_27b_imo_answerbenc
 python -m alphadiana.cli run configs/examples/opencode_qwen35_27b_imo_answerbench_pilot.yaml
 ```
 
-Observed on April 18/19, 2026:
+Observed on April 18/19/20, 2026:
 
 - `direct_llm`: `3/3` task records written, all `score=1`
 - `openclaw`: not rollout-ready yet
@@ -176,11 +179,16 @@ Observed on April 18/19, 2026:
   - `imo_answerbench_2`: `score=0` with `partial_reasoning_only=true`; the
     partial reasoning trace was preserved and is treated as a normal sample
   - the path remains blocked on scorer correctness, not on benchmark completion
-- `opencode`: `3/3` task records written, all `score=1`
-  - canonical run id:
+- `opencode`:
+  - April 19 uploaded quality pilot:
     `pilot_20260419_qwen35_27b_imo_answerbench_opencode_t3`
-  - 三条轨迹人工审计均正常，已上传到
-    `T-MARS/alphadiana-benchmark-results`
+    wrote `3/3` task records, all `score=1`
+  - April 20 default-Docker confirmation rerun:
+    `pilot_20260420_qwen35_27b_imo_answerbench_opencode_t3_docker_default`
+    wrote `3/3` normal task records with scores `1/0/0`
+  - April 20 rerun中三条 task JSON 都记录了
+    `metadata.controller_mode=docker` 和
+    `metadata.transport=opencode_cli_container`
 
 Reviewer-facing evidence for this pilot lives in
 `context/qwen-openrouter-pilots/`.
