@@ -166,9 +166,50 @@ class TestOpenClawEmptyResponseHandling:
         assert result.finish_reason == "incomplete"
         assert result.metadata["partial_reasoning_only"] is True
         assert result.metadata["answer_source"] == ""
+        assert result.metadata["raw_reasoning"] == "Reasoning: step 1; step 2"
+        assert result.reasoning_trajectory == [
+            {
+                "role": "assistant",
+                "type": "reasoning",
+                "content": "Reasoning: step 1; step 2",
+            }
+        ]
         assert result.response_json["choices"][0]["message"]["reasoning_content"] == (
             "Reasoning: step 1; step 2"
         )
+
+    def test_sse_keepalives_trigger_idle_timeout_without_data_chunks(self):
+        """Heartbeat/comment lines must not keep a stalled SSE stream alive forever."""
+        from alphadiana.agent.openclaw import OpenClawRequestError
+
+        agent = self._setup_agent(max_attempts=1, stream_idle_timeout=3)
+        task = BenchmarkTask(task_id="t_keepalive", problem="Hard problem", ground_truth="42")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "text/event-stream"}
+        mock_response.iter_lines = MagicMock(return_value=[": keepalive", "", ": keepalive"])
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        mock_client = MagicMock()
+        mock_client.stream = MagicMock(return_value=mock_response)
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+
+        monotonic_values = iter([0.0, 0.0, 1.0, 4.2, 4.2, 4.2, 4.2, 4.2])
+
+        with patch.object(agent, "_health_check", return_value=None):
+            with patch.object(agent, "_retrieve_trajectory_sync", return_value=[]):
+                with patch("httpx.Client", return_value=mock_client):
+                    with patch(
+                        "alphadiana.agent.openclaw.time.monotonic",
+                        side_effect=lambda: next(monotonic_values, 4.2),
+                    ):
+                        with pytest.raises(OpenClawRequestError) as exc_info:
+                            agent.solve(task)
+
+        assert exc_info.value.error_type == "timeout"
 
     def test_non_stream_reasoning_content_falls_back_when_final_content_missing(self):
         """Non-streaming reasoning_content should also prevent an empty-response error."""
@@ -200,6 +241,14 @@ class TestOpenClawEmptyResponseHandling:
         assert result.finish_reason == "incomplete"
         assert result.metadata["partial_reasoning_only"] is True
         assert result.metadata["answer_source"] == ""
+        assert result.metadata["raw_reasoning"] == "Reasoning only"
+        assert result.reasoning_trajectory == [
+            {
+                "role": "assistant",
+                "type": "reasoning",
+                "content": "Reasoning only",
+            }
+        ]
         assert result.response_json["choices"][0]["message"]["reasoning_content"] == "Reasoning only"
 
     def test_session_transcript_reasoning_falls_back_when_stream_is_empty(self):
@@ -240,6 +289,14 @@ class TestOpenClawEmptyResponseHandling:
         assert result.finish_reason == "incomplete"
         assert result.metadata["partial_reasoning_only"] is True
         assert result.metadata["answer_source"] == ""
+        assert result.metadata["raw_reasoning"] == "partial reasoning from transcript"
+        assert result.reasoning_trajectory == [
+            {
+                "role": "assistant",
+                "type": "reasoning",
+                "content": "partial reasoning from transcript",
+            }
+        ]
         assert result.response_json["choices"][0]["message"]["reasoning_content"] == (
             "partial reasoning from transcript"
         )

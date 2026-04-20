@@ -1,4 +1,4 @@
-"""Terminal-bench-2 native agent backed by OpenCode."""
+"""Terminal-bench-2 native agent backed by OpenCode inside the task container."""
 
 from __future__ import annotations
 
@@ -13,27 +13,23 @@ from typing import Any, Optional
 from alphadiana.agent.base import Agent, AgentResponse
 from alphadiana.agent.opencode import _extract_event_texts
 from alphadiana.agent.registry import AgentRegistry
-from alphadiana.agent.terminal_bench2_common import NATIVE_AGENT_PROMPT, TerminalBench2ContainerMixin
+from alphadiana.agent.terminal_bench2_incontainer import (
+    IN_CONTAINER_AGENT_PROMPT,
+    TerminalBench2InContainerMixin,
+)
 from alphadiana.benchmark.base import BenchmarkTask
 
 logger = logging.getLogger(__name__)
 
 
-class TerminalBench2OpenCodeAgent(TerminalBench2ContainerMixin, Agent):
-    """Control-side OpenCode runner for terminal-bench-2."""
+class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
+    """In-container OpenCode runner for terminal-bench-2."""
 
     name = "terminal_bench2_opencode"
     version = "1.0"
-    _DEFAULT_CONTROLLER_IMAGE = "alphadiana/tb2-opencode-controller:latest"
-    _DEFAULT_DOCKER_ENTRYPOINT = "/usr/lib/node_modules/opencode-ai/bin/opencode"
 
     def setup(self, config: dict) -> None:
         self._setup_container_config(config)
-        self._setup_controller_config(
-            config,
-            default_mode="docker",
-            default_image=self._DEFAULT_CONTROLLER_IMAGE,
-        )
         self._api_base = self._resolve_setting(config, "api_base", "OPENAI_BASE_URL")
         self._api_key = self._resolve_setting(config, "api_key", "OPENAI_API_KEY")
         self._model_name = self._resolve_setting(config, "model_name", "OPENAI_MODEL_NAME")
@@ -46,11 +42,11 @@ class TerminalBench2OpenCodeAgent(TerminalBench2ContainerMixin, Agent):
         self._print_logs = bool(config.get("print_logs", False))
         self._log_level = str(config.get("log_level", "")).strip()
         self._opencode_bin = str(config.get("opencode_bin", "opencode") or "opencode").strip()
-        self._docker_opencode_entrypoint = str(
-            config.get("docker_opencode_entrypoint", self._DEFAULT_DOCKER_ENTRYPOINT)
-            or self._DEFAULT_DOCKER_ENTRYPOINT
-        ).strip()
         self._streaming = config.get("streaming") if "streaming" in config else None
+        self._runtime_source_image = self._resolve_runtime_source_image(
+            config,
+            agent_type="opencode",
+        )
 
     @staticmethod
     def _resolve_setting(config: dict, key: str, env_var: str) -> str:
@@ -59,10 +55,12 @@ class TerminalBench2OpenCodeAgent(TerminalBench2ContainerMixin, Agent):
             return value
         return os.environ.get(env_var, "").strip()
 
-    def _run_opencode(self, workdir: Path, task_id: str) -> tuple[str, str, int]:
-        config_root = workdir / "xdg-config"
-        config_dir = config_root / "opencode"
-        config_dir.mkdir(parents=True, exist_ok=True)
+    def _opencode_command_prefix(self) -> list[str]:
+        parts = shlex.split(self._opencode_bin)
+        return parts or ["opencode"]
+
+    def _write_provider_config(self, config_path: Path) -> None:
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         provider_options: dict[str, Any] = {
             "apiKey": self._api_key,
             "baseURL": self._api_base,
@@ -88,29 +86,26 @@ class TerminalBench2OpenCodeAgent(TerminalBench2ContainerMixin, Agent):
             "model": self._model,
             "small_model": self._model,
         }
-        (config_dir / "opencode.json").write_text(
+        config_path.write_text(
             json.dumps(provider_config, indent=2),
             encoding="utf-8",
         )
 
-        env = os.environ.copy()
-        env["OPENAI_API_KEY"] = self._api_key
-        env["OPENAI_BASE_URL"] = self._api_base
-        env["XDG_CONFIG_HOME"] = str(config_root)
-        for var in ("ALL_PROXY", "HTTP_PROXY", "HTTPS_PROXY", "all_proxy", "http_proxy", "https_proxy"):
-            env.pop(var, None)
-
-        prompt = (workdir / "PROMPT.txt").read_text(encoding="utf-8")
+    def _build_run_command(
+        self,
+        *,
+        task_id: str,
+        container_workdir: str,
+    ) -> list[str]:
         cmd = [
             *self._opencode_command_prefix(),
             "run",
             "--format",
             "json",
             "--dir",
-            str(workdir),
+            container_workdir,
             "--title",
             task_id,
-            prompt,
         ]
         if self._model:
             cmd.extend(["--model", self._model])
@@ -120,22 +115,11 @@ class TerminalBench2OpenCodeAgent(TerminalBench2ContainerMixin, Agent):
             cmd.append("--print-logs")
         if self._log_level:
             cmd.extend(["--log-level", self._log_level])
-
-        result = self._run_controller_process(
-            cmd,
-            cwd=workdir,
-            env=env,
-            timeout_sec=self._solver_timeout_sec,
-        )
-        return result.stdout, result.stderr, result.returncode
-
-    def _opencode_command_prefix(self) -> list[str]:
-        if self._controller_mode == "docker" and self._opencode_bin == "opencode":
-            return ["node", self._docker_opencode_entrypoint]
-        parts = shlex.split(self._opencode_bin)
-        return parts or ["opencode"]
+        cmd.append('$(cat "$ALPHADIANA_PROMPT_FILE")')
+        return cmd
 
     def solve(self, task: BenchmarkTask, sandbox: Optional[Any] = None) -> AgentResponse:
+        del sandbox
         t_start = time.time()
         reward_content = ""
         stderr = ""
@@ -144,18 +128,62 @@ class TerminalBench2OpenCodeAgent(TerminalBench2ContainerMixin, Agent):
         session_id = ""
         events: list[dict[str, Any]] = []
         test_output = ""
-        task_note = self._task_runtime_note(task)
-        task_text = task.problem if not task_note else f"{task.problem.rstrip()}\n\n{task_note}\n"
-        prompt_text = f"{NATIVE_AGENT_PROMPT}\n\n--- Task ---\n{task_text}\n"
-        runtime = self._prepare_runtime(
+        task_text, prompt_text = self._build_incontainer_prompt(task)
+        runtime, runtime_metadata = self._prepare_incontainer_runtime(
             task,
+            agent_type="opencode",
+            runtime_source_image=self._runtime_source_image,
             temp_prefix="tb2-opencode-",
-            prompt_text=prompt_text,
         )
-        self._disable_test_helper(runtime.helper_paths)
+        remote_root = self._build_remote_root(task, agent_name="opencode")
+        remote_prompt_path = f"{remote_root}/prompt.txt"
+        remote_config_path = f"{remote_root}/xdg-config/opencode/opencode.json"
+        remote_home = f"{remote_root}/home"
+        prompt_path = runtime.workdir / "PROMPT.txt"
+        prompt_path.write_text(prompt_text, encoding="utf-8")
+        (runtime.workdir / "TASK.md").write_text(task_text, encoding="utf-8")
+        container_workdir = "/"
 
         try:
-            raw_output, stderr, returncode = self._run_opencode(runtime.workdir, task.task_id)
+            container_workdir = self._detect_container_workspace(runtime.container_id)
+            config_path = runtime.workdir / "xdg-config" / "opencode" / "opencode.json"
+            self._write_provider_config(config_path)
+            self._stage_file_into_container(
+                runtime.container_id,
+                local_path=prompt_path,
+                remote_path=remote_prompt_path,
+            )
+            self._stage_file_into_container(
+                runtime.container_id,
+                local_path=config_path,
+                remote_path=remote_config_path,
+            )
+            env = {
+                "HOME": remote_home,
+                "XDG_CONFIG_HOME": f"{remote_root}/xdg-config",
+                "OPENAI_API_KEY": self._api_key,
+                "OPENAI_BASE_URL": self._api_base,
+            }
+            cmd = self._build_run_command(
+                task_id=task.task_id,
+                container_workdir=container_workdir,
+            )
+            exec_result = self._docker_exec_capture(
+                runtime.container_id,
+                (
+                    f"mkdir -p {shlex.quote(remote_home)}\n"
+                    "unset ALL_PROXY HTTP_PROXY HTTPS_PROXY all_proxy http_proxy https_proxy 2>/dev/null || true\n"
+                    f"export ALPHADIANA_PROMPT_FILE={shlex.quote(remote_prompt_path)}\n"
+                    f"prompt=$(cat {shlex.quote(remote_prompt_path)})\n"
+                    f"{shlex.join(cmd[:-1])} \"$prompt\""
+                ),
+                env=env,
+                cwd=container_workdir,
+                timeout_sec=self._solver_timeout_sec,
+            )
+            raw_output = exec_result.stdout
+            stderr = exec_result.stderr
+            returncode = exec_result.returncode
             (runtime.workdir / "opencode_stdout.log").write_text(
                 raw_output,
                 encoding="utf-8",
@@ -172,10 +200,8 @@ class TerminalBench2OpenCodeAgent(TerminalBench2ContainerMixin, Agent):
             )
         finally:
             artifact_files = self._collect_text_artifacts({
-                "/terminal_bench2/opencode/TASK.md": runtime.helper_paths["task"],
-                "/terminal_bench2/opencode/TASK_HINTS.md": runtime.helper_paths["task_hints"],
-                "/terminal_bench2/opencode/AGENTS.md": runtime.helper_paths["agents"],
-                "/terminal_bench2/opencode/PROMPT.txt": runtime.helper_paths["prompt"],
+                "/terminal_bench2/opencode/TASK.md": runtime.workdir / "TASK.md",
+                "/terminal_bench2/opencode/PROMPT.txt": runtime.workdir / "PROMPT.txt",
                 "/terminal_bench2/opencode/opencode_stdout.log": runtime.workdir / "opencode_stdout.log",
                 "/terminal_bench2/opencode/opencode_stderr.log": runtime.workdir / "opencode_stderr.log",
                 "/terminal_bench2/opencode/xdg-config/opencode/opencode.json": runtime.workdir / "xdg-config" / "opencode" / "opencode.json",
@@ -202,7 +228,7 @@ class TerminalBench2OpenCodeAgent(TerminalBench2ContainerMixin, Agent):
         return AgentResponse(
             answer=reward_content,
             trajectory=[
-                {"role": "user", "content": task.problem},
+                {"role": "user", "content": prompt_text},
                 {"role": "assistant", "content": full_content},
             ],
             raw_output=full_content,
@@ -218,12 +244,14 @@ class TerminalBench2OpenCodeAgent(TerminalBench2ContainerMixin, Agent):
                     "num_events": len(events),
                     "session_id": session_id,
                     "test_output": test_output,
+                    "container_workdir": container_workdir,
+                    **runtime_metadata,
                 },
             ),
             request_messages=[{"role": "user", "content": prompt_text}],
             response_json={"events": events} if events else {},
             workspace_file_contents=artifact_files,
-            system_prompt=NATIVE_AGENT_PROMPT,
+            system_prompt=IN_CONTAINER_AGENT_PROMPT,
         )
 
     def teardown(self) -> None:

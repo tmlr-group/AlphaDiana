@@ -36,13 +36,97 @@ _DEFAULT_SYSTEM_PROMPT = (
     "$$\\boxed{your answer here}$$."
 )
 
+_DEFAULT_ALLOWED_COMMANDS = [
+    "git",
+    "npm",
+    "cargo",
+    "ls",
+    "cat",
+    "grep",
+    "find",
+    "echo",
+    "pwd",
+    "wc",
+    "head",
+    "tail",
+    "date",
+    "python",
+    "python3",
+    "bash",
+    "sh",
+    "sed",
+    "awk",
+    "mkdir",
+    "mv",
+    "cp",
+    "rm",
+]
+
+ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+LOG_LINE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T[0-9:.]+Z\s+(INFO|WARN|ERROR)\b")
+_RUNTIME_LOG_PREFIXES = (
+    "[ZeroClawBridge]",
+    "OpenRouter transport error while reading response body",
+    "OpenRouter transport error",
+    "transport error while reading response body",
+    "provider retry exhausted",
+    "retrying request in ",
+)
+_RUNTIME_LOG_SUBSTRINGS = (
+    " zeroclaw::",
+    "openrouter transport error while reading response body",
+    "provider retry exhausted",
+    "retrying request in ",
+    "retry attempt ",
+)
+
 
 def _extract_answer(text: str) -> str:
     return extract_answer_candidate(text)
 
 
+def _is_runtime_log_line(line: str) -> bool:
+    if not line:
+        return False
+    if LOG_LINE_RE.match(line):
+        return True
+    lowered = line.lower()
+    if any(line.startswith(prefix) for prefix in _RUNTIME_LOG_PREFIXES):
+        return True
+    if any(fragment in lowered for fragment in _RUNTIME_LOG_SUBSTRINGS):
+        return True
+    return False
+
+
+def _sanitize_cli_output(raw_output: str) -> tuple[str, list[str]]:
+    cleaned_lines: list[str] = []
+    dropped_runtime_logs: list[str] = []
+    for raw_line in raw_output.splitlines():
+        line = ANSI_RE.sub("", raw_line).rstrip()
+        if _is_runtime_log_line(line):
+            dropped_runtime_logs.append(line)
+            continue
+        cleaned_lines.append(line)
+    return "\n".join(cleaned_lines).strip(), dropped_runtime_logs
+
+
 def _quote_toml(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
+
+
+def _parse_optional_bool(value: Any) -> bool | None:
+    if value in ("", None):
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"Invalid boolean value: {value!r}")
 
 
 def _coerce_text_content(content: Any) -> str:
@@ -134,9 +218,39 @@ class ZeroClawAgent(Agent):
         self._temperature = float(raw_temperature if raw_temperature not in ("", None) else 0.0)
         self._runtime_trace_mode = str(config.get("runtime_trace_mode", "none") or "none").strip()
         self._request_timeout = int(config.get("request_timeout", 1200))
+        raw_provider_timeout = config.get("provider_timeout_secs", None)
+        if raw_provider_timeout in ("", None):
+            self._provider_timeout_secs = self._request_timeout
+        else:
+            self._provider_timeout_secs = int(raw_provider_timeout)
+        raw_provider_max_tokens = config.get("provider_max_tokens", None)
+        if raw_provider_max_tokens in ("", None):
+            self._provider_max_tokens: int | None = None
+        else:
+            self._provider_max_tokens = int(raw_provider_max_tokens)
+        self._reasoning_enabled = _parse_optional_bool(config.get("reasoning_enabled", None))
+        raw_reasoning_effort = config.get("reasoning_effort", None)
+        if raw_reasoning_effort in ("", None):
+            self._reasoning_effort: str | None = None
+        else:
+            self._reasoning_effort = str(raw_reasoning_effort).strip()
+        self._security_sandbox_enabled = _parse_optional_bool(
+            config.get("security_sandbox_enabled", None)
+        )
+        raw_security_sandbox_backend = config.get("security_sandbox_backend", None)
+        if raw_security_sandbox_backend in ("", None):
+            self._security_sandbox_backend: str | None = None
+        else:
+            self._security_sandbox_backend = str(raw_security_sandbox_backend).strip()
         self._max_tool_iterations = int(config.get("max_tool_iterations", 100))
         self._max_actions_per_hour = int(config.get("max_actions_per_hour", 200))
         self._workspace_only = bool(config.get("workspace_only", False))
+        configured_allowed_commands = config.get("allowed_commands")
+        configured_extra_allowed_commands = config.get("extra_allowed_commands")
+        self._allowed_commands = self._resolve_allowed_commands(
+            configured_allowed_commands,
+            configured_extra_allowed_commands,
+        )
         self._multimodal_via_proxy = bool(config.get("multimodal_via_proxy", True))
         self._provider_base_url_override: str | None = None
         configured_provider = str(config.get("provider", "")).strip().lower()
@@ -188,6 +302,32 @@ class ZeroClawAgent(Agent):
         )
 
     @staticmethod
+    def _resolve_allowed_commands(
+        allowed_commands: Any,
+        extra_allowed_commands: Any,
+    ) -> list[str]:
+        commands: list[str] = []
+
+        def _extend(raw: Any) -> None:
+            if raw is None:
+                return
+            if isinstance(raw, (list, tuple, set)):
+                items = raw
+            else:
+                items = str(raw).replace("\n", ",").split(",")
+            for item in items:
+                text = str(item).strip()
+                if text and text not in commands:
+                    commands.append(text)
+
+        if allowed_commands is None:
+            _extend(_DEFAULT_ALLOWED_COMMANDS)
+        else:
+            _extend(allowed_commands)
+        _extend(extra_allowed_commands)
+        return commands
+
+    @staticmethod
     def _resolve_setting(
         config: dict,
         key: str,
@@ -215,6 +355,7 @@ class ZeroClawAgent(Agent):
 
     def _build_config_toml(self) -> str:
         workspace_only = "true" if self._workspace_only else "false"
+        allowed_commands = json.dumps(self._allowed_commands, ensure_ascii=False)
         provider_override = ""
         if getattr(self, "_provider_base_url_override", None):
             provider_override = (
@@ -222,13 +363,47 @@ class ZeroClawAgent(Agent):
                 f"name = {_quote_toml(self._provider)}\n"
                 f"base_url = {_quote_toml(self._provider_base_url_override)}\n\n"
             )
+        provider_max_tokens = ""
+        if self._provider_max_tokens is not None:
+            provider_max_tokens = f"provider_max_tokens = {self._provider_max_tokens}\n"
+        runtime_section = ""
+        if self._reasoning_enabled is not None or self._reasoning_effort is not None:
+            runtime_lines = ["[runtime]"]
+            if self._reasoning_enabled is not None:
+                runtime_lines.append(
+                    f"reasoning_enabled = {str(self._reasoning_enabled).lower()}"
+                )
+            if self._reasoning_effort:
+                runtime_lines.append(
+                    f"reasoning_effort = {_quote_toml(self._reasoning_effort)}"
+                )
+            runtime_section = "\n".join(runtime_lines) + "\n\n"
+        security_section = ""
+        if (
+            self._security_sandbox_enabled is not None
+            or self._security_sandbox_backend is not None
+        ):
+            security_lines = ["[security.sandbox]"]
+            if self._security_sandbox_enabled is not None:
+                security_lines.append(
+                    f"enabled = {str(self._security_sandbox_enabled).lower()}"
+                )
+            if self._security_sandbox_backend:
+                security_lines.append(
+                    f"backend = {_quote_toml(self._security_sandbox_backend)}"
+                )
+            security_section = "\n".join(security_lines) + "\n\n"
         return (
             f"default_provider = {_quote_toml(self._provider)}\n"
             f"default_model = {_quote_toml(self._model)}\n\n"
             f"default_temperature = {self._temperature}\n"
+            f"provider_timeout_secs = {self._provider_timeout_secs}\n"
+            f"{provider_max_tokens}"
             "model_routes = []\n"
             "embedding_routes = []\n\n"
             f"{provider_override or '[model_providers]'}\n\n"
+            f"{runtime_section}"
+            f"{security_section}"
             "[observability]\n"
             'backend = "none"\n'
             f"runtime_trace_mode = {_quote_toml(self._runtime_trace_mode)}\n"
@@ -237,7 +412,7 @@ class ZeroClawAgent(Agent):
             "[autonomy]\n"
             'level = "full"\n'
             f"workspace_only = {workspace_only}\n"
-            'allowed_commands = ["git", "npm", "cargo", "ls", "cat", "grep", "find", "echo", "pwd", "wc", "head", "tail", "date", "python", "python3", "bash", "sh", "sed", "awk", "mkdir", "mv", "cp", "rm"]\n'
+            f"allowed_commands = {allowed_commands}\n"
             'forbidden_paths = ["/etc", "/usr", "/bin", "/sbin", "/lib", "/opt", "/boot", "/dev", "/proc", "/sys"]\n'
             f"max_actions_per_hour = {self._max_actions_per_hour}\n\n"
             "max_cost_per_day_cents = 10000\n\n"
@@ -447,7 +622,8 @@ class ZeroClawAgent(Agent):
         artifact_manifest: dict[str, Any] | None = None,
         request_messages: list[dict[str, Any]] | None = None,
     ) -> AgentResponse:
-        combined_output = raw_output or raw_stderr or runtime_trace
+        sanitized_output, dropped_runtime_logs = _sanitize_cli_output(raw_output)
+        combined_output = sanitized_output or raw_stderr or runtime_trace
         trajectory = [{"role": "user", "content": prompt}]
         if combined_output:
             trajectory.append({"role": "assistant", "content": combined_output})
@@ -455,8 +631,13 @@ class ZeroClawAgent(Agent):
             artifact_manifest,
             self._attachment_manifest(attachment_items),
         )
+        response_metadata = dict(metadata)
+        if dropped_runtime_logs:
+            response_metadata["runtime_logs_dropped_from_output"] = dropped_runtime_logs
+        if sanitized_output != raw_output:
+            response_metadata["raw_output_sanitized"] = True
         return AgentResponse(
-            answer=_extract_answer(raw_output) if raw_output else None,
+            answer=_extract_answer(sanitized_output) if sanitized_output else None,
             trajectory=trajectory,
             raw_output=combined_output,
             wall_time_sec=wall_time_sec,
@@ -468,7 +649,7 @@ class ZeroClawAgent(Agent):
             ),
             artifact_manifest=manifest,
             system_prompt=system_prompt,
-            metadata=metadata,
+            metadata=response_metadata,
             request_messages=list(request_messages or []),
         )
 
@@ -781,6 +962,7 @@ class ZeroClawAgent(Agent):
         raw_output = self._read_sandbox_file(sandbox, paths["stdout_path"]).strip()
         raw_stderr = self._read_sandbox_file(sandbox, paths["stderr_path"]).strip()
         runtime_trace = self._read_sandbox_file(sandbox, paths["runtime_trace_path"]).strip()
+        sanitized_output, dropped_runtime_logs = _sanitize_cli_output(raw_output)
         metadata = {
             "model": self._model,
             "provider_api_base": self._provider_api_base,
@@ -790,6 +972,8 @@ class ZeroClawAgent(Agent):
             "zeroclaw_version": version_output,
             "sandbox_backend": getattr(sandbox, "name", ""),
         }
+        if dropped_runtime_logs:
+            metadata["runtime_logs_dropped_from_output"] = dropped_runtime_logs
         partial_response = self._build_cli_response(
             prompt=prompt,
             raw_output=raw_output,
@@ -818,13 +1002,20 @@ class ZeroClawAgent(Agent):
             diagnostics = self._collect_sandbox_diagnostics(sandbox, paths, env)
             self._raise_with_partial_response(
                 "ZeroClaw agent failed in sandbox: "
-                f"{raw_stderr or raw_output or result.stderr.strip() or f'exit code {result.exit_code}'}\n"
+                f"{raw_stderr or sanitized_output or raw_output or result.stderr.strip() or f'exit code {result.exit_code}'}\n"
                 f"diagnostics:\n{diagnostics}",
                 partial_response,
             )
-        if raw_output.lower().startswith("error:"):
-            self._raise_with_partial_response(raw_output.splitlines()[0], partial_response)
-        if not raw_output:
+        if sanitized_output.lower().startswith("error:"):
+            self._raise_with_partial_response(sanitized_output.splitlines()[0], partial_response)
+        if raw_output and not sanitized_output and dropped_runtime_logs:
+            diagnostics = self._collect_sandbox_diagnostics(sandbox, paths, env)
+            self._raise_with_partial_response(
+                "ZeroClaw produced no assistant output; stdout contained only runtime/provider logs.\n"
+                f"diagnostics:\n{diagnostics}",
+                partial_response,
+            )
+        if not sanitized_output:
             diagnostics = self._collect_sandbox_diagnostics(sandbox, paths, env)
             self._raise_with_partial_response(
                 f"ZeroClaw agent produced no output. stderr={raw_stderr}\n"
@@ -1100,6 +1291,7 @@ class ZeroClawAgent(Agent):
             raw_output = Path(paths["stdout_path"]).read_text(encoding="utf-8", errors="replace").strip() if Path(paths["stdout_path"]).exists() else ""
             raw_stderr = Path(paths["stderr_path"]).read_text(encoding="utf-8", errors="replace").strip() if Path(paths["stderr_path"]).exists() else ""
             runtime_trace = self._read_local_text(paths["runtime_trace_path"]).strip()
+            sanitized_output, dropped_runtime_logs = _sanitize_cli_output(raw_output)
             metadata = {
                 "model": self._model,
                 "provider_api_base": self._provider_api_base,
@@ -1109,6 +1301,8 @@ class ZeroClawAgent(Agent):
                 "zeroclaw_version": version_output,
                 "sandbox_backend": "local-process",
             }
+            if dropped_runtime_logs:
+                metadata["runtime_logs_dropped_from_output"] = dropped_runtime_logs
             partial_response = self._build_cli_response(
                 prompt=prompt,
                 raw_output=raw_output,
@@ -1134,12 +1328,17 @@ class ZeroClawAgent(Agent):
             if result.returncode != 0:
                 self._raise_with_partial_response(
                     "ZeroClaw agent failed locally: "
-                    f"{raw_stderr or raw_output or result.stderr.strip() or f'exit code {result.returncode}'}",
+                    f"{raw_stderr or sanitized_output or raw_output or result.stderr.strip() or f'exit code {result.returncode}'}",
                     partial_response,
                 )
-            if raw_output.lower().startswith("error:"):
-                self._raise_with_partial_response(raw_output.splitlines()[0], partial_response)
-            if not raw_output:
+            if sanitized_output.lower().startswith("error:"):
+                self._raise_with_partial_response(sanitized_output.splitlines()[0], partial_response)
+            if raw_output and not sanitized_output and dropped_runtime_logs:
+                self._raise_with_partial_response(
+                    "ZeroClaw produced no assistant output; stdout contained only runtime/provider logs.",
+                    partial_response,
+                )
+            if not sanitized_output:
                 self._raise_with_partial_response(
                     f"ZeroClaw agent produced no output. stderr={raw_stderr}",
                     partial_response,

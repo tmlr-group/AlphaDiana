@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from alphadiana.agent.base import AgentResponse
 from alphadiana.benchmark.base import BenchmarkTask
 from alphadiana.results.report import ReportGenerator
@@ -18,6 +20,7 @@ from alphadiana.scorer.swebench_pro import SWEBenchProScorer
 def _fake_paths(tmp_path: Path, task_id: str = "instance_demo") -> tuple[Path, Path]:
     eval_script_path = tmp_path / "swe_bench_pro_eval.py"
     eval_script_path.write_text("print('fake evaluator')\n", encoding="utf-8")
+    (tmp_path / "dockerfiles" / "base_dockerfile").mkdir(parents=True)
 
     scripts_dir = tmp_path / "run_scripts" / task_id
     scripts_dir.mkdir(parents=True)
@@ -91,11 +94,12 @@ def test_swebench_subprocess_builds_expected_argv_and_raw_sample_strings(tmp_pat
     response = AgentResponse(answer="diff --git a/demo.py b/demo.py")
     seen: dict[str, object] = {}
 
-    def fake_run(argv, capture_output, text, check):
+    def fake_run(argv, capture_output, text, check, cwd):
         assert capture_output is True
         assert text is True
         assert check is False
         seen["argv"] = list(argv)
+        seen["cwd"] = cwd
 
         raw_sample_path = Path(_arg_value(argv, "--raw_sample_path"))
         patch_path = Path(_arg_value(argv, "--patch_path"))
@@ -128,6 +132,7 @@ def test_swebench_subprocess_builds_expected_argv_and_raw_sample_strings(tmp_pat
     assert "--scripts_dir" in argv
     assert "--dockerhub_username" in argv
     assert "--use_local_docker" in argv
+    assert response.metadata["swebench_eval_cwd"] == str(tmp_path)
 
     raw_sample = seen["raw_sample"]
     assert raw_sample["fail_to_pass"] == "['tests/test_demo.py::test_fix']"
@@ -147,6 +152,56 @@ def test_swebench_subprocess_builds_expected_argv_and_raw_sample_strings(tmp_pat
     ]
     assert result.correct is True
     assert result.score == 1.0
+
+
+def test_swebench_subprocess_runs_from_eval_repo_root(tmp_path, monkeypatch):
+    scorer = _make_scorer(tmp_path)
+    task = _make_task()
+    response = AgentResponse(answer="diff --git a/demo.py b/demo.py")
+    seen: dict[str, object] = {}
+
+    def fake_run(argv, capture_output, text, check, cwd):
+        seen["cwd"] = cwd
+        output_dir = Path(_arg_value(argv, "--output_dir"))
+        _write_fake_evaluator_outputs(
+            output_dir,
+            task.task_id,
+            passed_tests=[
+                "tests/test_demo.py::test_fix",
+                "tests/test_demo.py::test_regression",
+            ],
+            eval_result=True,
+        )
+        return subprocess.CompletedProcess(argv, 0, stdout="ok\n", stderr="")
+
+    monkeypatch.setattr("alphadiana.scorer.swebench_pro.subprocess.run", fake_run)
+
+    scorer.score(task, response)
+
+    assert seen["cwd"] == tmp_path
+
+
+def test_swebench_missing_docker_assets_raise_infrastructure_error(tmp_path):
+    eval_script_path = tmp_path / "swe_bench_pro_eval.py"
+    eval_script_path.write_text("print('fake evaluator')\n", encoding="utf-8")
+    scripts_dir = tmp_path / "run_scripts"
+    scripts_dir.mkdir()
+
+    scorer = SWEBenchProScorer()
+    scorer.setup(
+        {
+            "eval_script_path": str(eval_script_path),
+            "scripts_dir": str(scripts_dir),
+            "dockerhub_username": "demo-user",
+            "python_bin": sys.executable,
+            "use_local_docker": True,
+            "num_workers": 1,
+            "redo": True,
+        }
+    )
+
+    with pytest.raises(RuntimeError, match="dockerfiles/base_dockerfile"):
+        scorer.score(_make_task(), AgentResponse(answer="diff --git a/demo.py b/demo.py"))
 
 
 def test_swebench_empty_patch_skips_subprocess(tmp_path, monkeypatch):
@@ -177,7 +232,7 @@ def test_swebench_parse_outputs_populates_workspace_file_contents_and_score_meta
     task = _make_task()
     response = AgentResponse(answer="diff --git a/demo.py b/demo.py")
 
-    def fake_run(argv, capture_output, text, check):
+    def fake_run(argv, capture_output, text, check, cwd):
         output_dir = Path(_arg_value(argv, "--output_dir"))
         _write_fake_evaluator_outputs(
             output_dir,

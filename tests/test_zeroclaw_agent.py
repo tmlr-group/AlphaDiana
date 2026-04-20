@@ -143,7 +143,9 @@ def test_zeroclaw_config_toml_uses_snake_case_fields():
     assert "max_actions_per_hour = 200" in config_toml
     assert "max_tool_iterations = 100" in config_toml
     assert "default_temperature = 0.0" in config_toml
+    assert "provider_timeout_secs = 1200" in config_toml
     assert 'default_provider = "custom:https://example.test/v1"' in config_toml
+    assert "[provider]" not in config_toml
     assert "workspace-only" not in config_toml
     assert "max-actions-per-hour" not in config_toml
     assert "max-tool-iterations" not in config_toml
@@ -161,6 +163,56 @@ def test_zeroclaw_config_toml_honors_explicit_temperature():
     config_toml = agent._build_config_toml()
 
     assert "default_temperature = 0.2" in config_toml
+
+
+def test_zeroclaw_config_toml_honors_explicit_provider_timeout():
+    agent = ZeroClawAgent()
+    agent.setup({
+        "model": "demo-model",
+        "api_base": "https://example.test/v1",
+        "api_key": "sk-test",
+        "provider_timeout_secs": 600,
+    })
+
+    config_toml = agent._build_config_toml()
+
+    assert "provider_timeout_secs = 600" in config_toml
+
+
+def test_zeroclaw_config_toml_honors_request_controls():
+    agent = ZeroClawAgent()
+    agent.setup({
+        "model": "demo-model",
+        "api_base": "https://example.test/v1",
+        "api_key": "sk-test",
+        "provider_max_tokens": 32768,
+        "reasoning_enabled": True,
+        "reasoning_effort": "high",
+    })
+
+    config_toml = agent._build_config_toml()
+
+    assert "provider_max_tokens = 32768" in config_toml
+    assert "[runtime]" in config_toml
+    assert "reasoning_enabled = true" in config_toml
+    assert 'reasoning_effort = "high"' in config_toml
+
+
+def test_zeroclaw_config_toml_honors_security_sandbox_controls():
+    agent = ZeroClawAgent()
+    agent.setup({
+        "model": "demo-model",
+        "api_base": "https://example.test/v1",
+        "api_key": "sk-test",
+        "security_sandbox_enabled": False,
+        "security_sandbox_backend": "auto",
+    })
+
+    config_toml = agent._build_config_toml()
+
+    assert "[security.sandbox]" in config_toml
+    assert "enabled = false" in config_toml
+    assert 'backend = "auto"' in config_toml
 
 
 def test_zeroclaw_local_solve_extracts_boxed_answer(monkeypatch):
@@ -191,6 +243,48 @@ def test_zeroclaw_local_solve_extracts_boxed_answer(monkeypatch):
     assert response.raw_output.endswith("$$\\boxed{42}$$")
     assert response.metadata["model"] == "demo-model"
     assert response.metadata["zeroclaw_version"] == "zeroclaw 0.6.9"
+
+
+def test_zeroclaw_local_solve_strips_runtime_logs_from_top_level_output(monkeypatch):
+    task = BenchmarkTask(task_id="aime_logs", problem="Compute 6*7.", ground_truth="42")
+
+    agent = ZeroClawAgent()
+    agent.setup({
+        "model": "demo-model",
+        "api_base": "https://example.test/v1",
+        "api_key": "sk-test",
+        "system_prompt": "Solve carefully.",
+    })
+
+    monkeypatch.setattr(ZeroClawAgent, "_ensure_local_binary", lambda self, env, cwd: "zeroclaw 0.6.9")
+
+    def fake_run(command, shell, cwd, env, capture_output, text):
+        stdout_path = command.split("> ", 1)[1].split(" 2> ", 1)[0]
+        stderr_path = command.split(" 2> ", 1)[1]
+        Path(stdout_path).write_text(
+            "\n".join(
+                [
+                    '2026-04-19T14:23:34.007139Z  WARN zeroclaw::config::schema: Unknown config key ignored: "provider".',
+                    "2026-04-19T14:23:34.089414Z  INFO zeroclaw::agent::loop_: Memory initialized backend=\"sqlite\"",
+                    "analysis",
+                    "",
+                    "$$\\boxed{42}$$",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        Path(stderr_path).write_text("", encoding="utf-8")
+        return type("Proc", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+    monkeypatch.setattr("alphadiana.agent.zeroclaw.subprocess.run", fake_run)
+
+    response = agent.solve(task)
+
+    assert response.answer == "42"
+    assert response.raw_output == "analysis\n\n$$\\boxed{42}$$"
+    assert response.metadata["raw_output_sanitized"] is True
+    assert response.metadata["runtime_logs_dropped_from_output"]
+    assert "zeroclaw::config::schema" in response.workspace_file_contents["zeroclaw_output.txt"]
 
 
 def test_zeroclaw_sandbox_solve_uses_uploaded_workspace_and_returns_answer():

@@ -14,9 +14,8 @@ agent:
   config:
     api_base: ${OPENAI_BASE_URL}
     api_key: ${OPENAI_API_KEY}
-    model_name: "minimax-m2.5"
-    controller_mode: "docker"
-    controller_image: "alphadiana/tb2-openclaw-controller:latest"
+    model_name: ${OPENAI_MODEL_NAME}
+    runtime_source_image: "tmlrgroup/alphadiana:v1"
     openclaw_bin: "openclaw"
     onboard_timeout_sec: 180
     solver_timeout_sec: 1800
@@ -31,4 +30,4 @@ scorer:
 max_concurrent: 1
 output_dir: "./results/p25_full_terminal_bench2_openclaw_minimax"
 metadata:
-  notes: "Full OpenClaw native-controller run for terminal-bench-2 via minimax-m2.5. Pre-pull task Docker images first."
+  notes: "Full OpenClaw in-container run for terminal-bench-2 via OPENAI_MODEL_NAME. Pre-pull task Docker images first."

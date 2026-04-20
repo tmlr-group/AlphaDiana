@@ -100,6 +100,9 @@ class SWEBenchProScorer(Scorer):
                 metadata={"resolved": False},
             )
 
+        eval_root = self._eval_root()
+        self._validate_eval_assets(eval_root)
+
         with tempfile.TemporaryDirectory(prefix="swebench_eval_") as temp_dir:
             workspace_dir = Path(temp_dir)
             raw_sample_path = workspace_dir / "raw_sample.jsonl"
@@ -110,15 +113,29 @@ class SWEBenchProScorer(Scorer):
             self._write_raw_sample(task, raw_sample_path)
             self._write_patches(task, patch, patch_path)
             argv = self._build_eval_argv(raw_sample_path, patch_path, output_dir)
-            proc = subprocess.run(argv, capture_output=True, text=True, check=False)
+            proc = subprocess.run(
+                argv,
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=eval_root,
+            )
 
             response.metadata["swebench_eval_argv"] = argv
             response.metadata["swebench_eval_stdout"] = proc.stdout
             response.metadata["swebench_eval_stderr"] = proc.stderr
             response.metadata["swebench_eval_returncode"] = proc.returncode
+            response.metadata["swebench_eval_cwd"] = str(eval_root)
             response.metadata["swebench_eval_output_dir"] = str(output_dir)
             response.metadata["swebench_eval_raw_sample_path"] = str(raw_sample_path)
             response.metadata["swebench_eval_patch_path"] = str(patch_path)
+
+            if self._looks_like_missing_asset_failure(proc):
+                raise RuntimeError(
+                    "Official SWE-bench evaluator assets are missing or were resolved "
+                    "from the wrong working directory. "
+                    "Check swebench_eval_stdout / swebench_eval_stderr."
+                )
 
             eval_results = self._load_eval_results(output_dir)
             output_payload = self._load_instance_output(output_dir, task.task_id)
@@ -154,6 +171,30 @@ class SWEBenchProScorer(Scorer):
                 rationale=self._build_rationale(score_metadata),
                 metadata=score_metadata,
             )
+
+    def _eval_root(self) -> Path:
+        assert self._eval_script_path is not None
+        return self._eval_script_path.parent
+
+    def _validate_eval_assets(self, eval_root: Path) -> None:
+        expected_dir = eval_root / "dockerfiles" / "base_dockerfile"
+        if expected_dir.exists():
+            return
+        raise RuntimeError(
+            "SWE-bench evaluator assets missing: expected "
+            f"{expected_dir}. Use the official SWE-bench Pro repo root for "
+            "SWE_BENCH_PRO_EVAL_SCRIPT and run the scorer from that checkout."
+        )
+
+    @staticmethod
+    def _looks_like_missing_asset_failure(process: subprocess.CompletedProcess[str]) -> bool:
+        combined = "\n".join(
+            part for part in (process.stdout, process.stderr) if part
+        ).lower()
+        return (
+            "dockerfiles/base_dockerfile" in combined
+            and "no such file or directory" in combined
+        )
 
     def _require_existing_path(self, key: str, value: Any, *, expect_dir: bool) -> Path:
         raw = str(value).strip()
