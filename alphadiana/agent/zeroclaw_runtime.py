@@ -77,6 +77,7 @@ class ZeroClawRuntimeManager:
         self._gateway_warmup_initial_delay = float(config.get("gateway_warmup_initial_delay", 2.0))
         self._bridge_log_path = config.get("bridge_log_path", "/tmp/zeroclaw-gateway.log")
         self._remote_bridge_path = config.get("remote_bridge_path", "/tmp/zeroclaw_bridge.py")
+        self._bridge_pidfile = config.get("bridge_pidfile", "/tmp/zeroclaw-bridge.pid")
         self._artifact_root = str(config.get("artifact_root", "/tmp/zeroclaw-bridge-artifacts") or "/tmp/zeroclaw-bridge-artifacts").strip()
         self._request_timeout = int(config.get("request_timeout", 1200))
         raw_provider_timeout = config.get("provider_timeout_secs", None)
@@ -214,8 +215,9 @@ class ZeroClawRuntimeManager:
 
         env_prefix = self._env_prefix(self._runtime_env())
         start_command = (
-            f"pkill -f {self._remote_bridge_path} >/dev/null 2>&1 || true && "
-            f"{env_prefix} nohup python {self._remote_bridge_path} >> {self._bridge_log_path} 2>&1 &"
+            f"pkill -f {shlex.quote(self._remote_bridge_path)} >/dev/null 2>&1 || true && "
+            f"{env_prefix} nohup python {shlex.quote(self._remote_bridge_path)} >> {shlex.quote(self._bridge_log_path)} 2>&1 & "
+            f"echo $! > {shlex.quote(self._bridge_pidfile)}"
         ).strip()
         result = sandbox.execute(f"bash -lc {shlex.quote(start_command)}")
         if result.exit_code != 0:
