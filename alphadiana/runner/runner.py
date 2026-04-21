@@ -300,6 +300,26 @@ class Runner:
         logger.info("Loaded %d tasks from benchmark '%s'", len(tasks), self.config.benchmark_name)
 
         num_samples = getattr(self.config, "num_samples", 1)
+        self.result_store.save_manifest({
+            "run_id": self.config.run_id,
+            "benchmark_name": self.config.benchmark_name,
+            "agent_name": self.config.agent_name,
+            "agent_version": self.config.agent_version,
+            "scorer_name": self.config.scorer_name,
+            "num_samples": num_samples,
+            "expected_task_count": len(tasks),
+            "expected_sample_count": len(tasks) * num_samples,
+            "expected_task_ids": [task.task_id for task in tasks],
+            "task_metadata_by_id": {
+                task.task_id: task.metadata
+                for task in tasks
+            },
+            "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "config_metadata": {
+                "benchmark_config": self.config.benchmark_config,
+                "metadata": self.config.metadata,
+            },
+        })
 
         # Expand tasks into (task, sample_index) work items.
         work_items = [
@@ -322,7 +342,9 @@ class Runner:
                     )
 
             if num_samples > 1:
-                completed_samples = self.result_store.completed_sample_ids()
+                completed_samples = self.result_store.completed_sample_ids(
+                    scorer_name=self.config.scorer_name,
+                )
                 if completed_samples:
                     before = len(work_items)
                     work_items = [
@@ -335,7 +357,9 @@ class Runner:
                         len(work_items),
                     )
             else:
-                completed = self.result_store.completed_task_ids()
+                completed = self.result_store.completed_task_ids(
+                    scorer_name=self.config.scorer_name,
+                )
                 if completed:
                     before = len(work_items)
                     work_items = [(t, si) for t, si in work_items if t.task_id not in completed]
@@ -369,6 +393,8 @@ class Runner:
         predeployed_sessions = []
         predeployed_session_by_sandbox_id: dict[str, object] = {}
         predeployed_session_reset_lock = threading.Lock()
+        predeploy_partial = False
+        desired_num = 1
         reset_predeployed_between_tasks = bool(
             self.config.agent_config.get("reset_predeployed_between_tasks", True)
         )
@@ -383,6 +409,7 @@ class Runner:
             )
             desired_num = max(1, explicit_num or auto_num)
             if desired_num > 1:
+                deployment_results = []
                 try:
                     import alphadiana.sandbox.rock  # noqa: F401 — trigger registration
                     from alphadiana.sandbox.registry import SandboxRegistry
@@ -499,7 +526,6 @@ class Runner:
                         self.config.max_concurrent,
                         OPENCLAW_CONCURRENCY_PER_SANDBOX,
                     )
-                    deployment_results = []
                     stagger_sec = float(self.config.agent_config.get("predeploy_stagger_seconds", 2.0) or 0.0)
                     for i in range(desired_num):
                         try:
@@ -509,6 +535,11 @@ class Runner:
                         except Exception as exc:
                             if not deployment_results:
                                 raise
+                            if self.config.strict_isolation:
+                                raise RuntimeError(
+                                    "strict_isolation=true: predeploy stopped early after "
+                                    f"{len(deployment_results)}/{desired_num} sandbox(es): {exc}"
+                                ) from exc
                             logger.warning(
                                 "Predeploy stopped early at sandbox %d/%d: %s. "
                                 "Continuing with %d predeployed sandbox(es).",
@@ -517,6 +548,7 @@ class Runner:
                                 exc,
                                 len(deployment_results),
                             )
+                            predeploy_partial = True
                             break
                         if stagger_sec > 0 and i + 1 < desired_num:
                             time.sleep(stagger_sec)
@@ -568,6 +600,16 @@ class Runner:
                         gateway_pool,
                     )
                 except Exception as exc:
+                    for session, _, _ in deployment_results:
+                        try:
+                            session.close()
+                        except Exception:
+                            pass
+                    if self.config.strict_isolation:
+                        raise RuntimeError(
+                            "strict_isolation=true: failed to predeploy "
+                            f"{desired_num} {gateway_agent_label} sandbox(es): {exc}"
+                        ) from exc
                     logger.warning(
                         "Failed to predeploy %d %s sandboxes: %s. "
                         "Falling back to single-sandbox auto-deploy.",
@@ -651,6 +693,11 @@ class Runner:
                 # Treat _auto_sandbox as the sandbox for pool creation below.
                 self.sandbox = _auto_sandbox
             except Exception as exc:
+                if self.config.strict_isolation:
+                    raise RuntimeError(
+                        "strict_isolation=true: failed to auto-create ROCK sandbox; "
+                        "refusing shared-gateway fallback"
+                    ) from exc
                 logger.warning(
                     "Failed to auto-create ROCK sandbox for %s isolation: %s. "
                     "Falling back to shared gateway (may cause workspace contention at max_concurrent>1).",
@@ -658,6 +705,21 @@ class Runner:
                     exc,
                 )
                 _auto_sandbox = None
+
+        isolation_mode = "shared_gateway"
+        if predeployed_sessions:
+            isolation_mode = "partial_predeploy" if predeploy_partial else "predeployed_pool"
+        elif _auto_sandbox is not None:
+            isolation_mode = "auto_single_sandbox"
+        elif self.sandbox is not None:
+            isolation_mode = "explicit_sandbox"
+        self.result_store._run_metadata["strict_isolation"] = self.config.strict_isolation
+        self.result_store._run_metadata["isolation_mode"] = isolation_mode
+        manifest = self.result_store.load_manifest()
+        if manifest:
+            manifest["strict_isolation"] = self.config.strict_isolation
+            manifest["isolation_mode"] = isolation_mode
+            self.result_store.save_manifest(manifest)
 
         # Set up sandbox pool for concurrent execution.
         # Skip pool for openclaw: it handles concurrency internally via

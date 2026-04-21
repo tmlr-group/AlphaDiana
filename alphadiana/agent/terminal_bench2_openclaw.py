@@ -498,10 +498,12 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
             if not assistant_text:
                 assistant_text = agent_stdout.strip()
 
-            test_output, reward_content = self._run_verifier_and_read_reward(
+            verifier_result = self._run_verifier_and_read_reward(
                 runtime,
                 timeout_sec=self._test_timeout_sec,
             )
+            test_output = verifier_result.test_output
+            reward_content = verifier_result.reward
         finally:
             artifact_paths = {
                 "/terminal_bench2/openclaw/TASK.md": runtime.workdir / "TASK.md",
@@ -580,6 +582,7 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
                     "session_id": session_id,
                     "trajectory_error": trajectory_error,
                     "test_output": test_output,
+                    "verifier_status": verifier_result.status,
                     "context_window": context_preflight.get("resolved_context_window"),
                     "context_window_source": context_preflight.get("source", ""),
                     "context_window_required": context_preflight.get(

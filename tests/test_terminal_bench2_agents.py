@@ -10,6 +10,7 @@ from alphadiana.agent.terminal_bench2_common import (
     NATIVE_AGENT_PROMPT,
     TerminalBench2ContainerMixin,
     TerminalBench2RuntimeContext,
+    VerifierResult,
 )
 from alphadiana.agent.terminal_bench2_incontainer import (
     IN_CONTAINER_AGENT_PROMPT,
@@ -24,6 +25,7 @@ from alphadiana.agent.terminal_bench2_zeroclaw import (
 from alphadiana.benchmark.base import BenchmarkTask
 from alphadiana.config.experiment_config import ExperimentConfig
 from alphadiana.config.validator import ConfigValidator
+from alphadiana.results.status import infer_score_status, is_valid_completed_record
 from alphadiana.utils.rock_runtime import PREBUILT_SANDBOX_IMAGE
 
 
@@ -512,15 +514,21 @@ def test_terminal_bench2_zeroclaw_solve_preserves_nonzero_solver_result(tmp_path
                     )
                 )
             ),
-        ), patch.object(
-            agent,
-            "_run_verifier_and_read_reward",
-            return_value=("verifier output", "0"),
-        ), patch.object(
-            agent,
-            "_cleanup_runtime",
-            return_value=None,
-        ):
+            ), patch.object(
+                agent,
+                "_run_verifier_and_read_reward",
+                return_value=VerifierResult(
+                    test_output="verifier output",
+                    reward="0",
+                    status="ok",
+                    reward_path="/tmp/reward.txt",
+                    verifier_output_path="/tmp/verifier",
+                ),
+            ), patch.object(
+                agent,
+                "_cleanup_runtime",
+                return_value=None,
+            ):
             response = agent.solve(task)
     finally:
         runtime.cleanup()
@@ -637,15 +645,21 @@ def test_terminal_bench2_openclaw_solve_preserves_session_trace_and_summary(tmp_
                     returncode=0,
                 ),
             ],
-        ), patch.object(
-            agent,
-            "_run_verifier_and_read_reward",
-            return_value=("verifier output", "1"),
-        ), patch.object(
-            agent,
-            "_cleanup_runtime",
-            return_value=None,
-        ):
+            ), patch.object(
+                agent,
+                "_run_verifier_and_read_reward",
+                return_value=VerifierResult(
+                    test_output="verifier output",
+                    reward="1",
+                    status="ok",
+                    reward_path="/tmp/reward.txt",
+                    verifier_output_path="/tmp/verifier",
+                ),
+            ), patch.object(
+                agent,
+                "_cleanup_runtime",
+                return_value=None,
+            ):
             response = agent.solve(task)
     finally:
         runtime.cleanup()
@@ -715,15 +729,21 @@ def test_terminal_bench2_opencode_solve_preserves_stream_and_session_trace(tmp_p
                 stderr="stderr line",
                 returncode=0,
             ),
-        ), patch.object(
-            agent,
-            "_run_verifier_and_read_reward",
-            return_value=("verifier output", "0"),
-        ), patch.object(
-            agent,
-            "_cleanup_runtime",
-            return_value=None,
-        ):
+            ), patch.object(
+                agent,
+                "_run_verifier_and_read_reward",
+                return_value=VerifierResult(
+                    test_output="verifier output",
+                    reward="0",
+                    status="ok",
+                    reward_path="/tmp/reward.txt",
+                    verifier_output_path="/tmp/verifier",
+                ),
+            ), patch.object(
+                agent,
+                "_cleanup_runtime",
+                return_value=None,
+            ):
             response = agent.solve(task)
     finally:
         runtime.cleanup()
@@ -840,12 +860,13 @@ def test_terminal_bench2_verifier_reuses_existing_reward(tmp_path: Path) -> None
     )
     try:
         with patch.object(harness, "_run_tests") as mock_run:
-            test_output, reward = harness._run_verifier_and_read_reward(runtime, timeout_sec=30)
+            verifier_result = harness._run_verifier_and_read_reward(runtime, timeout_sec=30)
     finally:
         runtime.cleanup()
 
-    assert reward == "1"
-    assert "reused existing verifier reward.txt" in test_output
+    assert verifier_result.reward == "1"
+    assert verifier_result.status == "ok"
+    assert "reused existing verifier reward.txt" in verifier_result.test_output
     mock_run.assert_not_called()
 
 
@@ -870,20 +891,73 @@ def test_terminal_bench2_verifier_waits_for_existing_run_to_finish(tmp_path: Pat
         reward_path.write_text("1", encoding="utf-8")
 
     try:
-        with patch.object(harness, "_has_running_verifier", return_value=True), patch.object(
+        with patch.object(harness, "_probe_running_verifier", return_value=(True, "ok")), patch.object(
             harness,
             "_run_tests",
         ) as mock_run, patch(
             "alphadiana.agent.terminal_bench2_common.time.sleep",
             side_effect=_write_reward_after_wait,
         ):
-            test_output, reward = harness._run_verifier_and_read_reward(runtime, timeout_sec=5)
+            verifier_result = harness._run_verifier_and_read_reward(runtime, timeout_sec=5)
     finally:
         runtime.cleanup()
 
-    assert reward == "1"
-    assert "existing verifier" in test_output
+    assert verifier_result.reward == "1"
+    assert verifier_result.status == "ok"
+    assert "existing verifier" in verifier_result.test_output
     mock_run.assert_not_called()
+
+
+def test_terminal_bench2_missing_reward_is_verifier_error_not_valid_scored() -> None:
+    record = {
+        "task_id": "tb2_demo",
+        "benchmark_name": "terminal_bench2",
+        "scorer_name": "terminal_bench2",
+        "score": 0.0,
+        "correct": False,
+        "metadata": {
+            "verifier_status": "missing_reward",
+            "reward": "0",
+        },
+    }
+
+    assert infer_score_status(record) == "verifier_error"
+    assert is_valid_completed_record(record, scorer_name="terminal_bench2") is False
+
+
+def test_terminal_bench2_reward_zero_with_verifier_ok_is_valid_scored() -> None:
+    record = {
+        "task_id": "tb2_demo",
+        "benchmark_name": "terminal_bench2",
+        "scorer_name": "terminal_bench2",
+        "score": 0.0,
+        "correct": False,
+        "metadata": {
+            "verifier_status": "ok",
+            "reward": "0",
+        },
+    }
+
+    assert infer_score_status(record) == "valid_scored"
+    assert is_valid_completed_record(record, scorer_name="terminal_bench2") is True
+
+
+def test_terminal_bench2_trajectory_error_does_not_invalidate_verifier_ok_result() -> None:
+    record = {
+        "task_id": "tb2_demo",
+        "benchmark_name": "terminal_bench2",
+        "scorer_name": "terminal_bench2",
+        "score": 0.0,
+        "correct": False,
+        "metadata": {
+            "verifier_status": "ok",
+            "reward": "0",
+            "trajectory_error": "Request was aborted",
+        },
+    }
+
+    assert infer_score_status(record) == "valid_scored"
+    assert is_valid_completed_record(record, scorer_name="terminal_bench2") is True
 
 
 def test_terminal_bench2_verifier_probe_skips_its_own_shell() -> None:

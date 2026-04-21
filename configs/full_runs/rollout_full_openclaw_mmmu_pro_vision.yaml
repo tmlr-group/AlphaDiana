@@ -51,5 +51,7 @@ scorer:
 max_concurrent: 1
 num_samples: 1
 output_dir: "./results/rollout_full_openclaw_mmmu_pro_vision"
+strict_report: true
+strict_isolation: true
 metadata:
   notes: "Full OpenClaw x MMMU-Pro vision config for the local-vLLM rollout matrix."

@@ -41,9 +41,7 @@ benchmark:
 sandbox: null                   # OpenClaw already runs inside ROCK; no extra sandbox needed
 
 scorer:
-  name: math_verify             # Scorer type for math answer verification (symbolic equivalence)
-  config:
-    tolerance: 1e-6             # Numerical tolerance for math answer comparison
+  name: imo_verify              # IMO-specific symbolic + multi-value verifier
 
 max_concurrent: 1
 output_dir: "./results/openclaw_imo_answerbench"

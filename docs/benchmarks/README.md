@@ -85,7 +85,7 @@ those for full evaluations.
 
 For the staged April 19 local-vLLM full campaign, start from
 [Full Local-vLLM Rollout (2026-04-19)](full-rollout-local-vllm-20260419.md)
-instead of expanding the `72` paths by hand.
+instead of expanding the current `60` active paths by hand.
 
 The configs under `configs/examples/` are smoke/debug configs. They intentionally pin one task with `dataset_index` or `max_tasks` and should not be used for full benchmark runs.
 

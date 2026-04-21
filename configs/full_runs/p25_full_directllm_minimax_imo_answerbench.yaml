@@ -26,11 +26,11 @@ benchmark:
     split: "train"
 
 scorer:
-  name: math_verify
-  config:
-    tolerance: 1e-6
+  name: imo_verify
 
 max_concurrent: 20
 output_dir: "./results/p25_full_directllm_minimax_imo_answerbench"
+strict_report: true
+strict_isolation: true
 metadata:
   notes: "Full DirectLLM x IMO-AnswerBench run via minimax-m2.5."

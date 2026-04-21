@@ -46,5 +46,7 @@ scorer:
 max_concurrent: 10
 num_samples: 1
 output_dir: "./results/p29_full_openclaw_swebench_pro"
+strict_report: true
+strict_isolation: true
 metadata:
   notes: "Full SWE-bench Pro OpenClaw run through swebench_docker. Requires official SWE-bench Pro evaluator assets and Docker access."

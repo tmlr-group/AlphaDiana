@@ -50,7 +50,20 @@ python -m alphadiana.cli run configs/full_runs/p25_full_zeroclaw_minimax_imo_ans
 
 ## DirectLLM
 
-DirectLLM calls the OpenAI-compatible endpoint directly and scores the returned answer with `math_verify`.
+DirectLLM calls the OpenAI-compatible endpoint directly and scores the returned answer with `imo_verify`.
+Checked-in IMO configs now enforce `scorer.name: imo_verify`, and config validation rejects
+`benchmark.name: imo_answerbench` with any other scorer. Historical IMO runs scored with
+`math_verify` should be treated as non-canonical audit artifacts, not current support evidence.
+`imo_verify` is still a repo-local heuristic scorer, not an external official
+verifier. The current implementation is intentionally conservative: it blocks
+the old symbolic-to-numeric false positives, but it can still over-split some
+comma-heavy answer forms and therefore still carries false-negative risk.
+For short OpenRouter canaries on `Qwen/Qwen3.5-27B`, set
+`agent.config.extra_body.reasoning.enabled=false` when you want terse outputs.
+The provider otherwise emits hidden reasoning tokens even for tiny prompts,
+which can dominate latency without changing the visible boxed answer. This is a
+canary-only override; benchmark defaults still keep reasoning enabled unless
+you explicitly change them.
 
 ```bash
 python -m alphadiana.cli run configs/examples/directllm_minimax_imo_answerbench.yaml \

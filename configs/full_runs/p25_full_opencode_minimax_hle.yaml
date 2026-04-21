@@ -34,5 +34,7 @@ scorer:
 
 max_concurrent: 20
 output_dir: "./results/p25_full_opencode_minimax_hle"
+strict_report: true
+strict_isolation: true
 metadata:
   notes: "Full supported OpenCode x HLE multiple-choice run via minimax-m2.5 with Docker controller isolation. Requires HF_TOKEN on fresh machines and the opencode controller image."

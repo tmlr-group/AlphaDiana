@@ -37,6 +37,15 @@ def _warn_proxy() -> bool:
     return False
 
 
+def _preflight_terminal_bench2(config) -> None:
+    if getattr(config, "benchmark_name", "") != "terminal_bench2":
+        return
+    from alphadiana.benchmark.terminal_bench2 import TerminalBench2Benchmark
+
+    tasks = TerminalBench2Benchmark().load_tasks(config.benchmark_config)
+    click.echo(f"Terminal-Bench-2 tasks loaded: {len(tasks)}")
+
+
 @click.group()
 def main():
     """AlphaDiana - Evaluation system for foundation models and agent systems."""
@@ -72,6 +81,11 @@ def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
         click.echo("Config validation failed:", err=True)
         for error in errors:
             click.echo(f"  - {error}", err=True)
+        sys.exit(1)
+    try:
+        _preflight_terminal_bench2(config)
+    except Exception as exc:
+        click.echo(f"Terminal-Bench-2 preflight failed: {exc}", err=True)
         sys.exit(1)
 
     _warn_proxy()
@@ -123,6 +137,12 @@ def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
         click.echo(f"  Pass@{summary.num_samples}:    {summary.pass_at_k:.4f}")
         click.echo(f"  Avg@{summary.num_samples}:     {summary.avg_at_k:.4f}")
         click.echo(f"  Tasks:      {summary.completed}/{summary.total_tasks} completed")
+        if config.strict_report and summary.strict_report_failed:
+            click.echo(
+                "Strict report failed: " + ", ".join(summary.strict_report_issues),
+                err=True,
+            )
+            sys.exit(1)
     except Exception as exc:
         logger.exception("Run failed")
         click.echo(f"Error: {exc}", err=True)
@@ -156,8 +176,12 @@ def validate(config_yaml: str, override: tuple[str, ...]):
         for error in errors:
             click.echo(f"  - {error}")
         sys.exit(1)
-    else:
-        click.echo("Config is valid.")
+    try:
+        _preflight_terminal_bench2(config)
+    except Exception as exc:
+        click.echo(f"Terminal-Bench-2 preflight failed: {exc}")
+        sys.exit(1)
+    click.echo("Config is valid.")
 
 
 @main.command()
@@ -187,6 +211,10 @@ def report(results_dir: str):
         summary = report_gen.generate(store)
         markdown = report_gen.to_markdown(summary)
         click.echo(markdown)
+        if summary.strict_report_failed:
+            click.echo(
+                "WARNING: " + ", ".join(summary.strict_report_issues)
+            )
         click.echo("")
 
 

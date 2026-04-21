@@ -28,5 +28,7 @@ scorer:
 
 max_concurrent: 2
 output_dir: "./results/p25_full_terminal_bench2_opencode_minimax"
+strict_report: true
+strict_isolation: true
 metadata:
   notes: "Full OpenCode in-container run for terminal-bench-2 via OPENAI_MODEL_NAME. Pre-pull task Docker images first."

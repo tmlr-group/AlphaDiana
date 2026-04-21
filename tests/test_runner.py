@@ -1,5 +1,6 @@
 """Tests for TaskDispatcher and Runner."""
 
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -512,3 +513,250 @@ def test_runner_sequential_session_reuse_depends_on_agent_name(
     else:
         assert [session.reset_calls for session in runner.sandbox.created_sessions] == [2]
         assert [session.close_calls for session in runner.sandbox.created_sessions] == [1]
+
+
+def test_runner_checkpoint_ignores_completed_records_from_other_scorer(monkeypatch, tmp_path):
+    class _FakeBenchmark:
+        def load_tasks(self, config):
+            return [
+                BenchmarkTask(task_id="t1", problem="Q1", ground_truth="42"),
+                BenchmarkTask(task_id="t2", problem="Q2", ground_truth="42"),
+            ]
+
+    class _FakeAgent:
+        def setup(self, config) -> None:
+            self.config = dict(config)
+            self.solved_task_ids: list[str] = []
+
+        def solve(self, task, sandbox=None):
+            self.solved_task_ids.append(task.task_id)
+            return AgentResponse(answer="42", metadata={})
+
+        def teardown(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        "alphadiana.runner.runner.BenchmarkRegistry.get",
+        lambda name: _FakeBenchmark,
+    )
+    monkeypatch.setattr(
+        "alphadiana.runner.runner.AgentRegistry.get",
+        lambda name: _FakeAgent,
+    )
+
+    config = ExperimentConfig(
+        run_id="runner-scorer-mismatch",
+        agent_name="direct_llm",
+        agent_version="1.0",
+        agent_config={
+            "model": "demo-model",
+            "api_base": "https://example.test/v1",
+            "api_key": "sk-test",
+        },
+        benchmark_name="aime",
+        benchmark_config={},
+        scorer_name="numeric",
+        scorer_config={},
+        output_dir=str(tmp_path),
+    )
+
+    jsonl_path = tmp_path / "runner-scorer-mismatch.jsonl"
+    jsonl_path.write_text(
+        json.dumps({
+            "task_id": "t1",
+            "sample_index": 0,
+            "scorer_name": "math_verify",
+            "score": 1.0,
+            "correct": True,
+        }) + "\n",
+        encoding="utf-8",
+    )
+
+    runner = Runner(config)
+    runner.setup()
+    try:
+        summary = runner.run()
+    finally:
+        runner.teardown()
+
+    assert summary.completed == 2
+    assert runner.agent.solved_task_ids == ["t1", "t2"]
+
+
+def test_strict_isolation_rejects_shared_gateway_fallback(monkeypatch, tmp_path):
+    class _FakeBenchmark:
+        def load_tasks(self, config):
+            return [BenchmarkTask(task_id="t1", problem="Q1", ground_truth="42")]
+
+    class _FakeAgent:
+        def setup(self, config) -> None:
+            self.config = dict(config)
+
+        def solve(self, task, sandbox=None):
+            return AgentResponse(answer="42", metadata={})
+
+        def teardown(self) -> None:
+            pass
+
+    class _BrokenRockSandbox:
+        def setup(self, config) -> None:
+            raise RuntimeError("rock bootstrap failed")
+
+    monkeypatch.setattr("alphadiana.runner.runner.BenchmarkRegistry.get", lambda name: _FakeBenchmark)
+    monkeypatch.setattr("alphadiana.runner.runner.AgentRegistry.get", lambda name: _FakeAgent)
+    monkeypatch.setattr("alphadiana.runner.runner.SandboxRegistry.get", lambda name: _BrokenRockSandbox)
+
+    config = ExperimentConfig(
+        run_id="runner-strict-shared-gateway",
+        agent_name="zeroclaw",
+        agent_version="0.6.9",
+        agent_config={
+            "model": "demo-model",
+            "api_base": "https://example.test/v1",
+            "api_key": "sk-test",
+            "rock_image": "zeroclaw-reasoning:0.6.9",
+        },
+        benchmark_name="aime",
+        benchmark_config={},
+        scorer_name="numeric",
+        strict_isolation=True,
+        output_dir=str(tmp_path),
+    )
+
+    runner = Runner(config)
+    runner.setup()
+    try:
+        with pytest.raises(RuntimeError, match="strict_isolation=true: failed to auto-create ROCK sandbox"):
+            runner.run()
+    finally:
+        runner.teardown()
+
+
+def test_strict_isolation_rejects_partial_predeploy(monkeypatch, tmp_path):
+    class _FakeBenchmark:
+        def load_tasks(self, config):
+            return [BenchmarkTask(task_id="t1", problem="Q1", ground_truth="42")]
+
+    class _FakeSession:
+        def __init__(self, sandbox_id: str):
+            self.sandbox_id = sandbox_id
+
+        def metadata(self) -> dict:
+            return {"sandbox_id": self.sandbox_id, "proxy_base_url": "http://proxy.test"}
+
+        def close(self) -> None:
+            pass
+
+    class _FakeRockSandboxBackend:
+        create_calls = 0
+
+        def setup(self, config) -> None:
+            self.config = dict(config)
+
+        def create_session(self):
+            self.__class__.create_calls += 1
+            return _FakeSession(f"sandbox-{self.__class__.create_calls}")
+
+    class _FakeRuntimeManager:
+        ensure_calls = 0
+
+        def ensure_ready(self, session):
+            self.__class__.ensure_calls += 1
+            if self.__class__.ensure_calls == 1:
+                return {"api_base": "http://proxy.test/v1"}
+            raise RuntimeError("second gateway failed")
+
+    class _FakeAgent:
+        def setup(self, config) -> None:
+            self.config = dict(config)
+
+        def solve(self, task, sandbox=None):
+            return AgentResponse(answer="42", metadata={})
+
+        def teardown(self) -> None:
+            pass
+
+    monkeypatch.setattr("alphadiana.runner.runner.BenchmarkRegistry.get", lambda name: _FakeBenchmark)
+    monkeypatch.setattr("alphadiana.runner.runner.AgentRegistry.get", lambda name: _FakeAgent)
+    monkeypatch.setattr("alphadiana.runner.runner.SandboxRegistry.get", lambda name: _FakeRockSandboxBackend)
+    monkeypatch.setattr(
+        "alphadiana.runner.runner._make_gateway_runtime_manager",
+        lambda config: _FakeRuntimeManager(),
+    )
+
+    config = ExperimentConfig(
+        run_id="runner-strict-predeploy",
+        agent_name="zeroclaw",
+        agent_version="0.6.9",
+        agent_config={
+            "model": "demo-model",
+            "api_base": "https://example.test/v1",
+            "api_key": "sk-test",
+            "rock_image": "zeroclaw-reasoning:0.6.9",
+            "num_sandboxes": 2,
+        },
+        benchmark_name="aime",
+        benchmark_config={},
+        scorer_name="numeric",
+        strict_isolation=True,
+        max_concurrent=2,
+        output_dir=str(tmp_path),
+    )
+
+    runner = Runner(config)
+    runner.setup()
+    try:
+        with pytest.raises(RuntimeError, match="strict_isolation=true: failed to predeploy"):
+            runner.run()
+    finally:
+        runner.teardown()
+
+
+def test_non_strict_keeps_old_fallback_behavior(monkeypatch, tmp_path):
+    class _FakeBenchmark:
+        def load_tasks(self, config):
+            return [BenchmarkTask(task_id="t1", problem="Q1", ground_truth="42")]
+
+    class _FakeAgent:
+        def setup(self, config) -> None:
+            self.config = dict(config)
+
+        def solve(self, task, sandbox=None):
+            return AgentResponse(answer="42", metadata={})
+
+        def teardown(self) -> None:
+            pass
+
+    class _BrokenRockSandbox:
+        def setup(self, config) -> None:
+            raise RuntimeError("rock bootstrap failed")
+
+    monkeypatch.setattr("alphadiana.runner.runner.BenchmarkRegistry.get", lambda name: _FakeBenchmark)
+    monkeypatch.setattr("alphadiana.runner.runner.AgentRegistry.get", lambda name: _FakeAgent)
+    monkeypatch.setattr("alphadiana.runner.runner.SandboxRegistry.get", lambda name: _BrokenRockSandbox)
+
+    config = ExperimentConfig(
+        run_id="runner-nonstrict-shared-gateway",
+        agent_name="zeroclaw",
+        agent_version="0.6.9",
+        agent_config={
+            "model": "demo-model",
+            "api_base": "https://example.test/v1",
+            "api_key": "sk-test",
+            "rock_image": "zeroclaw-reasoning:0.6.9",
+        },
+        benchmark_name="aime",
+        benchmark_config={},
+        scorer_name="numeric",
+        strict_isolation=False,
+        output_dir=str(tmp_path),
+    )
+
+    runner = Runner(config)
+    runner.setup()
+    try:
+        summary = runner.run()
+    finally:
+        runner.teardown()
+
+    assert summary.completed == 1

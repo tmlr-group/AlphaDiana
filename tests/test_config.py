@@ -1,6 +1,7 @@
 """Tests for experiment configuration and validation."""
 
 import textwrap
+from pathlib import Path
 
 import pytest
 import yaml
@@ -583,3 +584,89 @@ class TestConfigValidator:
         errors = ConfigValidator().validate(config)
 
         assert errors == []
+
+    def test_imo_answerbench_rejects_math_verify(self):
+        config = ExperimentConfig(
+            agent_name="direct_llm",
+            agent_version="v1.0",
+            benchmark_name="imo_answerbench",
+            scorer_name="math_verify",
+            agent_config={
+                "model": "demo-model",
+                "api_base": "http://localhost:8000/v1",
+                "api_key": "demo-key",
+            },
+        )
+
+        errors = ConfigValidator().validate(config)
+
+        assert any("imo_answerbench" in e and "imo_verify" in e for e in errors)
+
+    def test_all_imo_configs_use_imo_verify(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        config_paths = sorted(
+            list(repo_root.glob("configs/full_runs/*imo_answerbench*.yaml"))
+            + list(repo_root.glob("configs/examples/*imo*answerbench*.yaml"))
+        )
+
+        assert config_paths, "expected checked-in IMO configs"
+        for config_path in config_paths:
+            config = ExperimentConfig.from_yaml(str(config_path))
+            assert config.benchmark_name == "imo_answerbench"
+            assert config.scorer_name == "imo_verify", config_path.name
+
+    def test_terminal_bench2_requires_existing_tasks_dir(self, tmp_path):
+        config = ExperimentConfig(
+            agent_name="terminal_bench2_docker",
+            agent_version="1.0",
+            benchmark_name="terminal_bench2",
+            benchmark_config={"tasks_dir": str(tmp_path / "missing")},
+            scorer_name="terminal_bench2",
+            agent_config={"api_base": "http://localhost:8000/v1"},
+        )
+
+        errors = ConfigValidator().validate(config)
+
+        assert any("tasks_dir does not exist" in e for e in errors)
+
+    def test_opencode_docker_controller_image_must_exist(self, monkeypatch):
+        class _Result:
+            returncode = 1
+            stderr = "No such image"
+
+        monkeypatch.setattr("subprocess.run", lambda *args, **kwargs: _Result())
+        config = ExperimentConfig(
+            agent_name="opencode",
+            agent_version="v1.3.2",
+            benchmark_name="hle",
+            scorer_name="exact_match",
+            agent_config={
+                "api_base": "http://localhost:8000/v1",
+                "api_key": "demo-key",
+                "model_name": "demo-model",
+                "controller_mode": "docker",
+                "controller_image": "missing:image",
+            },
+        )
+
+        errors = ConfigValidator().validate(config)
+
+        assert any("controller_image not present locally" in e for e in errors)
+
+    def test_hle_rejects_supports_multimodal_false(self):
+        config = ExperimentConfig(
+            agent_name="direct_llm",
+            agent_version="v1.0",
+            benchmark_name="hle",
+            scorer_name="exact_match",
+            agent_config={
+                "model": "demo-model",
+                "api_base": "http://localhost:8000/v1",
+                "api_key": "demo-key",
+            },
+            metadata={"supports_multimodal": False},
+        )
+
+        errors = ConfigValidator().validate(config)
+
+        assert any("multimodal-capable" in e for e in errors)
