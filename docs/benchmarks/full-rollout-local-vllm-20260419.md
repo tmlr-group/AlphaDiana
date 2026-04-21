@@ -2,11 +2,11 @@
 
 This runbook prepares the requested staged full rollout for:
 
-- `6` benchmarks
+- `5` benchmarks
 - `4` harnesses
 - `3` local vLLM models
 
-That expands to `72` concrete runs.
+That expands to `60` concrete runs.
 
 This runbook is about execution prep and command generation. It does not, by
 itself, change support claims in `context/current_eval_status.md`.
@@ -20,7 +20,6 @@ Benchmarks:
 - `hle`
 - `mmmu_pro`
 - `terminal_bench2`
-- `swebench_pro`
 
 Harnesses:
 
@@ -61,16 +60,15 @@ export NEMOTRON_VLLM_API_KEY=EMPTY
 
 export DIRECTLLM_ROOT=/path/to/directllm
 export TERMINAL_BENCH2_DIR=/path/to/terminal-bench/tasks
-export SWE_BENCH_PRO_EVAL_SCRIPT=/path/to/SWE-bench_Pro-os/swe_bench_pro_eval.py
-export SWE_BENCH_PRO_SCRIPTS_DIR=/path/to/SWE-bench_Pro-os/run_scripts
 export HF_TOKEN=hf_...
 ```
 
 Notes:
 
 - `QWEN_VLLM_API_KEY`, `GEMMA4_VLLM_API_KEY`, and `NEMOTRON_VLLM_API_KEY` may stay unset for local unauthenticated vLLM; generated official commands default them to `EMPTY`.
-- Override the official checkout roots with `DIRECTLLM_TB2_ROOT` or `DIRECTLLM_SWEBENCH_ROOT` when you do not want to rely on `DIRECTLLM_ROOT`.
+- Override the official terminal-bench checkout root with `DIRECTLLM_TB2_ROOT` when you do not want to rely on `DIRECTLLM_ROOT`.
 - `MMMU-Pro` full configs use `data_config: "vision"`.
+- Checked-in full-run configs set `strict_report: true`; AlphaDiana-backed full configs also set `strict_isolation: true`.
 
 ## Preflight
 
@@ -99,21 +97,20 @@ That verifies:
 
 ## Waves
 
-The checked-in manifest splits the `72` runs into four waves:
+The checked-in manifest splits the `60` runs into four waves:
 
 | Wave | Runs | Meaning |
 |---|---:|---|
-| `wave_a_mainline` | `47` | Pilot-ready or smoke-valid paths without an active blocker |
-| `wave_b_official` | `5` | Official direct-LLM runs launched from the benchmark checkouts |
-| `wave_c_high_risk` | `11` | Paths kept in scope but isolated for modality/coding-risk reasons |
-| `wave_d_blocked` | `9` | Known-problem paths that stay requested but must not contaminate the mainline claim |
+| `wave_a_mainline` | `46` | Pilot-ready or smoke-valid paths without an active blocker |
+| `wave_b_official` | `3` | Official direct-LLM terminal-bench runs launched from the benchmark checkout |
+| `wave_c_high_risk` | `8` | Paths kept in scope but isolated for modality/coding-risk reasons |
+| `wave_d_blocked` | `3` | Known-problem paths that stay requested but must not contaminate the mainline claim |
 
 Current special handling:
 
-- `imo_answerbench x openclaw` stays blocked because of the known `math_verify` anomaly.
 - `terminal_bench2 x openclaw` stays blocked because the April 19 pilot was still experimental.
-- `swebench_pro x openclaw` stays blocked for rollout even though the smoke subset became path-valid.
-- `nemotron-3-nano-30b-a3b` is isolated as high risk on `hle`, `mmmu_pro`, and `swebench_pro`.
+- `nemotron-3-nano-30b-a3b` is isolated as high risk on `hle` and `mmmu_pro`.
+- `SWE-bench Pro` is excluded from the current rollout scope while its scorer / evaluator health is fixed separately.
 
 ## Commands
 
@@ -149,9 +146,7 @@ from checkpoint by default.
   though the work executes from the official benchmark checkouts.
 - Result trees remain benchmark-native:
   `results/<run_id>/...` for AlphaDiana,
-  `jobs/...` for Harbor,
-  `sweagent_results/...` and `swebench_eval/...` for the official SWE-agent
-  path.
+  `jobs/...` for Harbor.
 
 Reviewer-facing rollout state lives in:
 

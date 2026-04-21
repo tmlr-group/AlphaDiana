@@ -13,6 +13,7 @@ from typing import Any
 from alphadiana.agent.base import AgentResponse
 from alphadiana.benchmark.base import BenchmarkTask
 from alphadiana.scorer.base import ScoreResult
+from alphadiana.results.status import infer_score_status, is_valid_completed_record
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ class ResultStore:
         self.output_dir = Path(output_dir)
         self.run_id = run_id
         self.path = str(self.output_dir / f"{run_id}.jsonl")
+        self.manifest_path = self.output_dir / run_id / "run_manifest.json"
         self.artifacts_dir = self.output_dir / run_id / "artifacts"
         self._dirs_created = False
         self._write_lock = threading.Lock()
@@ -109,6 +111,7 @@ class ResultStore:
                 "metadata": response.metadata,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
+            record["score_status"] = infer_score_status(record)
             with self._write_lock:
                 with open(self.path, "a", encoding="utf-8") as f:
                     f.write(json.dumps(record) + "\n")
@@ -159,6 +162,7 @@ class ResultStore:
                 "error": error,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
+            record["score_status"] = infer_score_status(record)
             with self._write_lock:
                 with open(self.path, "a", encoding="utf-8") as f:
                     f.write(json.dumps(record) + "\n")
@@ -300,25 +304,24 @@ class ResultStore:
                 existing.append(record)
             path.write_text(json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8")
 
-    def completed_task_ids(self) -> set[str]:
+    def completed_task_ids(self, scorer_name: str | None = None) -> set[str]:
         """Return task_ids of records that should NOT be retried.
 
-        A record is considered done if it has no error dict — this covers both
-        scored results (correct=True/False) and old scorer records (correct=None,
-        error=None).  Only records with a real error dict (agent crash, timeout,
-        etc.) are eligible for retry when redo_all is False.
+        Only valid scored records count as completed. Legacy scored records
+        without score_status remain valid when they have score/correct and no
+        disqualifying failure metadata.
         """
         completed: set[str] = set()
         for record in self.load():
-            if record.get("error") is None:
+            if is_valid_completed_record(record, scorer_name=scorer_name):
                 completed.add(record["task_id"])
         return completed
 
-    def completed_sample_ids(self) -> set[tuple[str, int]]:
+    def completed_sample_ids(self, scorer_name: str | None = None) -> set[tuple[str, int]]:
         """Return (task_id, sample_index) pairs that have been completed."""
         completed: set[tuple[str, int]] = set()
         for record in self.load():
-            if record.get("error") is None:
+            if is_valid_completed_record(record, scorer_name=scorer_name):
                 completed.add((record["task_id"], record.get("sample_index", 0)))
         return completed
 
@@ -346,3 +349,20 @@ class ResultStore:
                 key = (record["task_id"], record.get("sample_index", 0))
                 records[key] = record
         return list(records.values())
+
+    def save_manifest(self, manifest: dict[str, Any]) -> None:
+        self.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        self.manifest_path.write_text(
+            json.dumps(manifest, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+    def load_manifest(self) -> dict[str, Any]:
+        if not self.manifest_path.exists():
+            return {}
+        try:
+            payload = json.loads(self.manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            logger.warning("Failed to read run manifest: %s", self.manifest_path)
+            return {}
+        return payload if isinstance(payload, dict) else {}

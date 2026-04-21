@@ -40,5 +40,7 @@ scorer:
 
 max_concurrent: 1
 output_dir: "./results/p25_full_zeroclaw_minimax_hle"
+strict_report: true
+strict_isolation: true
 metadata:
   notes: "Full ZeroClaw auto-deploy run on HLE multiple-choice via minimax-m2.5. Requires HF_TOKEN on fresh machines."

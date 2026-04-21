@@ -1,5 +1,5 @@
 campaign_id: "rollout_local_vllm_20260419"
-title: "Full 6-benchmark x 4-harness x 3-model local-vLLM rollout"
+title: "Full 5-benchmark x 4-harness x 3-model local-vLLM rollout"
 defaults:
   run_id_prefix: "full_20260419"
   logs_dir: "logs"
@@ -11,6 +11,9 @@ defaults:
     streaming: true
     timeout_sec: 1800
     thinking: true
+excluded_benchmarks:
+  - benchmark: "swebench_pro"
+    reason: "SWE-bench Pro scorer/evaluator health is out of scope for the current rollout"
 
 models:
   - id: "qwen35_27b"
@@ -61,10 +64,9 @@ path_templates:
     backend: "alphadiana"
     config_path: "configs/full_runs/p25_full_openclaw_minimax_imo_answerbench.yaml"
     max_concurrent: 1
-    base_wave: "wave_d_blocked"
-    base_risk: "blocked_but_requested"
+    base_wave: "wave_a_mainline"
+    base_risk: "mainline"
     config_gaps:
-      - "known math_verify scorer anomaly keeps this path out of rollout-ready status"
       - "no explicit thinking knob on the generic openclaw path"
     overrides:
       run_id: "{run_id}"
@@ -440,88 +442,3 @@ path_templates:
       agent.config.model: "{model_name}"
       agent.config.api_base: "{api_base_env_ref}"
       agent.config.api_key: "{api_key_env_ref}"
-
-  - id: "swebench_pro_direct_llm"
-    benchmark: "swebench_pro"
-    harness: "direct_llm"
-    backend: "official_swebench_pro"
-    max_concurrent: 1
-    base_wave: "wave_b_official"
-    base_risk: "official_checkout"
-    config_gaps: []
-
-  - id: "swebench_pro_openclaw"
-    benchmark: "swebench_pro"
-    harness: "openclaw"
-    backend: "alphadiana"
-    config_path: "configs/full_runs/p29_full_openclaw_swebench_pro.yaml"
-    max_concurrent: 1
-    base_wave: "wave_d_blocked"
-    base_risk: "blocked_but_requested"
-    config_gaps:
-      - "latest smoke is trajectory-valid but still not rollout-ready for stronger claims"
-      - "no explicit thinking knob on the generic openclaw path"
-    overrides:
-      run_id: "{run_id}"
-      output_dir: "./results/{run_id}"
-      max_concurrent: 1
-      agent.config.output_dir: "./swebench_artifacts/{run_id}"
-      agent.config.temperature: 0.6
-      agent.config.top_p: 0.95
-      agent.config.max_tokens: 32768
-      agent.config.request_timeout: 1800
-      agent.config.env.OPENAI_API_KEY: "{api_key_env_ref}"
-      agent.config.env.OPENAI_BASE_URL: "{api_base_env_ref}"
-      agent.config.env.OPENAI_MODEL_NAME: "{model_name}"
-      agent.config.env.OPENCLAW_STREAM_IDLE_TIMEOUT_SEC: "600"
-      agent.config.env.OPENCLAW_COMPLETION_MAX_TOKENS: "32768"
-      agent.config.env.OPENCLAW_CONTEXT_WINDOW: "32768"
-
-  - id: "swebench_pro_opencode"
-    benchmark: "swebench_pro"
-    harness: "opencode"
-    backend: "alphadiana"
-    config_path: "configs/full_runs/p29_full_opencode_swebench_pro.yaml"
-    max_concurrent: 2
-    base_wave: "wave_a_mainline"
-    base_risk: "mainline"
-    config_gaps:
-      - "top_p is not exposed on the swebench opencode path"
-      - "max_tokens is not exposed on the swebench opencode path"
-      - "thinking knob is not exposed on the swebench opencode path"
-    overrides:
-      run_id: "{run_id}"
-      output_dir: "./results/{run_id}"
-      max_concurrent: 2
-      agent.config.output_dir: "./swebench_artifacts/{run_id}"
-      agent.config.temperature: 0.6
-      agent.config.request_timeout: 1800
-      agent.config.env.OPENAI_API_KEY: "{api_key_env_ref}"
-      agent.config.env.OPENAI_BASE_URL: "{api_base_env_ref}"
-      agent.config.env.OPENAI_MODEL_NAME: "{model_name}"
-      agent.config.env.OPENCODE_TIMEOUT_SEC: "1800"
-
-  - id: "swebench_pro_zeroclaw"
-    benchmark: "swebench_pro"
-    harness: "zeroclaw"
-    backend: "alphadiana"
-    config_path: "configs/full_runs/p29_full_zeroclaw_swebench_pro.yaml"
-    max_concurrent: 1
-    base_wave: "wave_a_mainline"
-    base_risk: "mainline"
-    config_gaps:
-      - "top_p is not exposed on the swebench zeroclaw path"
-      - "max_tokens is not exposed on the swebench zeroclaw path"
-      - "streaming knob is not exposed on the swebench zeroclaw path"
-      - "thinking knob is not exposed on the swebench zeroclaw path"
-    overrides:
-      run_id: "{run_id}"
-      output_dir: "./results/{run_id}"
-      max_concurrent: 1
-      agent.config.output_dir: "./swebench_artifacts/{run_id}"
-      agent.config.temperature: 0.6
-      agent.config.request_timeout: 1800
-      agent.config.env.OPENAI_API_KEY: "{api_key_env_ref}"
-      agent.config.env.OPENAI_BASE_URL: "{api_base_env_ref}"
-      agent.config.env.OPENAI_MODEL_NAME: "{model_name}"
-      agent.config.env.ZEROCLAW_TIMEOUT_SEC: "1800"

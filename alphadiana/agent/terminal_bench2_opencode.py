@@ -231,10 +231,12 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
                 encoding="utf-8",
                 errors="replace",
             )
-            test_output, reward_content = self._run_verifier_and_read_reward(
+            verifier_result = self._run_verifier_and_read_reward(
                 runtime,
                 timeout_sec=self._test_timeout_sec,
             )
+            test_output = verifier_result.test_output
+            reward_content = verifier_result.reward
         finally:
             artifact_files = self._collect_text_artifacts({
                 "/terminal_bench2/opencode/TASK.md": runtime.workdir / "TASK.md",
@@ -296,6 +298,7 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
                     "num_events": len(events),
                     "session_id": session_id,
                     "test_output": test_output,
+                    "verifier_status": verifier_result.status,
                     "container_workdir": container_workdir,
                     **runtime_metadata,
                 },

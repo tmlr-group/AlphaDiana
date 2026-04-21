@@ -25,5 +25,7 @@ scorer:
 
 max_concurrent: 4
 output_dir: "./results/p25_full_terminal_bench2_directllm_minimax"
+strict_report: true
+strict_isolation: true
 metadata:
   notes: "Full DirectLLM run for terminal-bench-2 via minimax-m2.5. Pre-pull task Docker images first."

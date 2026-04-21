@@ -82,6 +82,15 @@ class LocalCommandResult:
     returncode: int = 0
 
 
+@dataclass
+class VerifierResult:
+    test_output: str
+    reward: str
+    status: str
+    reward_path: str
+    verifier_output_path: str
+
+
 def parse_commands(text: str) -> list[str]:
     """Extract shell commands from LLM output."""
     commands: list[str] = []
@@ -686,23 +695,63 @@ chmod +x /usr/local/bin/uvx /root/.local/bin/env
         runtime: TerminalBench2RuntimeContext,
         *,
         timeout_sec: int | None = None,
-    ) -> tuple[str, str]:
+    ) -> VerifierResult:
+        reward_path = self._verifier_reward_path(runtime.logs_dir)
+        verifier_output_path = reward_path.parent
         existing_reward = self._read_reward_if_exists(runtime.logs_dir, runtime.task.task_id)
         if existing_reward is not None:
-            return "[reused existing verifier reward.txt]", existing_reward
+            return VerifierResult(
+                test_output="[reused existing verifier reward.txt]",
+                reward=existing_reward,
+                status="ok",
+                reward_path=str(reward_path),
+                verifier_output_path=str(verifier_output_path),
+            )
 
-        if self._has_running_verifier(runtime.container_id):
+        running_verifier, probe_status = self._probe_running_verifier(runtime.container_id)
+        if running_verifier:
             wait_timeout = timeout_sec if timeout_sec is not None else self._test_timeout_sec
-            reused_output, reused_reward = self._wait_for_existing_verifier(
+            reused_output, reused_reward, reused_status = self._wait_for_existing_verifier(
                 runtime,
                 timeout_sec=wait_timeout,
             )
             if reused_reward is not None:
-                return reused_output, reused_reward
+                return VerifierResult(
+                    test_output=reused_output,
+                    reward=reused_reward,
+                    status="ok",
+                    reward_path=str(reward_path),
+                    verifier_output_path=str(verifier_output_path),
+                )
+            if reused_status == "skipped_duplicate":
+                return VerifierResult(
+                    test_output=reused_output,
+                    reward="0",
+                    status="skipped_duplicate",
+                    reward_path=str(reward_path),
+                    verifier_output_path=str(verifier_output_path),
+                )
 
         test_output = self._run_tests(runtime.container_id, timeout_sec)
-        reward = self._read_reward(runtime.logs_dir, runtime.task.task_id)
-        return test_output, reward
+        reward = self._read_reward_if_exists(runtime.logs_dir, runtime.task.task_id)
+        if reward is not None:
+            status = "ok"
+        elif "[TIMEOUT" in test_output:
+            reward = "0"
+            status = "timeout"
+        elif probe_status == "probe_error":
+            reward = "0"
+            status = "probe_error"
+        else:
+            reward = "0"
+            status = "missing_reward"
+        return VerifierResult(
+            test_output=test_output,
+            reward=reward,
+            status=status,
+            reward_path=str(reward_path),
+            verifier_output_path=str(verifier_output_path),
+        )
 
     @staticmethod
     def _collect_text_artifacts(files: dict[str, Path]) -> dict[str, str]:
@@ -729,35 +778,29 @@ chmod +x /usr/local/bin/uvx /root/.local/bin/env
             "reward": reward,
             "rounds_used": rounds_used,
             "runner": runner,
+            "reward_path": str(self._verifier_reward_path(runtime.logs_dir)),
+            "verifier_output_path": str(runtime.logs_dir / "verifier"),
+            "test_timeout_sec": self._test_timeout_sec,
         }
         if extra:
             metadata.update(extra)
         return metadata
 
-    def _read_reward(self, logs_dir: Path, task_id: str) -> str:
-        reward = self._read_reward_if_exists(logs_dir, task_id)
-        if reward is not None:
-            return reward
-        reward_path = logs_dir / "verifier" / "reward.txt"
-        logger.warning(
-            "Task %s — reward.txt not found at %s "
-            "(tests/test.sh may have failed to write it)",
-            task_id,
-            reward_path,
-        )
-        return "0"
+    @staticmethod
+    def _verifier_reward_path(logs_dir: Path) -> Path:
+        return logs_dir / "verifier" / "reward.txt"
 
     def _read_reward_if_exists(self, logs_dir: Path, task_id: str) -> str | None:
-        reward_path = logs_dir / "verifier" / "reward.txt"
+        reward_path = self._verifier_reward_path(logs_dir)
         if not reward_path.exists():
             return None
         try:
             return reward_path.read_text(encoding="utf-8").strip()
         except Exception as exc:
             logger.warning("Task %s — failed to read reward.txt: %s", task_id, exc)
-            return "0"
+            return None
 
-    def _has_running_verifier(self, container_id: str) -> bool:
+    def _probe_running_verifier(self, container_id: str) -> tuple[bool, str]:
         probe = r"""
 me="$$"
 for pid in /proc/[0-9]*; do
@@ -779,38 +822,50 @@ exit 1
             )
         except subprocess.TimeoutExpired:
             logger.warning("Verifier probe timed out for container %s", container_id[:12])
-            return False
+            return False, "probe_error"
         except Exception as exc:
             logger.warning("Verifier probe failed for container %s: %s", container_id[:12], exc)
-            return False
-        if result.returncode not in (0, 1):
-            logger.warning(
-                "Verifier probe exited with %d for container %s: %s",
-                result.returncode,
-                container_id[:12],
-                result.stderr.strip(),
-            )
-        return result.returncode == 0
+            return False, "probe_error"
+        if result.returncode == 0:
+            return True, "ok"
+        if result.returncode == 1:
+            return False, "ok"
+        logger.warning(
+            "Verifier probe exited with %d for container %s: %s",
+            result.returncode,
+            container_id[:12],
+            result.stderr.strip(),
+        )
+        return False, "probe_error"
+
+    def _has_running_verifier(self, container_id: str) -> bool:
+        running, _ = self._probe_running_verifier(container_id)
+        return running
 
     def _wait_for_existing_verifier(
         self,
         runtime: TerminalBench2RuntimeContext,
         *,
         timeout_sec: int,
-    ) -> tuple[str, str | None]:
+    ) -> tuple[str, str | None, str]:
         deadline = time.time() + max(timeout_sec, 1)
+        final_status = "ok"
         while time.time() < deadline:
             reward = self._read_reward_if_exists(runtime.logs_dir, runtime.task.task_id)
             if reward is not None:
-                return "[reused reward.txt from existing verifier]", reward
-            if not self._has_running_verifier(runtime.container_id):
+                return "[reused reward.txt from existing verifier]", reward, "ok"
+            running, probe_status = self._probe_running_verifier(runtime.container_id)
+            final_status = probe_status
+            if not running:
                 break
             time.sleep(1)
 
         reward = self._read_reward_if_exists(runtime.logs_dir, runtime.task.task_id)
         if reward is not None:
-            return "[reused reward.txt from existing verifier after wait]", reward
-        if self._has_running_verifier(runtime.container_id):
+            return "[reused reward.txt from existing verifier after wait]", reward, "ok"
+        running, probe_status = self._probe_running_verifier(runtime.container_id)
+        final_status = probe_status
+        if running:
             logger.warning(
                 "Task %s — existing verifier still running after %ds; "
                 "skipping duplicate verifier run",
@@ -820,9 +875,10 @@ exit 1
             return (
                 f"[skipped duplicate verifier run after waiting {timeout_sec}s "
                 "for an existing verifier]",
-                self._read_reward(runtime.logs_dir, runtime.task.task_id),
+                None,
+                "skipped_duplicate",
             )
-        return "", None
+        return "", None, final_status
 
     def _stop_container(self, container_id: str, task_id: str) -> None:
         try:

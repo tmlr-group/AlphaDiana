@@ -13,7 +13,11 @@ import re
 
 from alphadiana.scorer.base import Scorer, ScoreResult
 from alphadiana.scorer.registry import register_scorer
-from alphadiana.utils.math_answer import normalize_math_text, parse_numeric_answer
+from alphadiana.utils.math_answer import (
+    is_numeric_literal_answer,
+    normalize_math_text,
+    parse_numeric_answer,
+)
 
 
 def _wrap_boxed(text: str) -> str:
@@ -56,33 +60,55 @@ def _math_verify_equal(expected: str, predicted: str) -> bool | None:
 
 
 def _split_multi_valued(text: str) -> list[str]:
-    """Split ground truth on commas that separate distinct values.
-
-    Handles cases like "$P(x)=-1, P(x)=x+1$" and "$-2/3, 0, 2/3$".
-    Does NOT split commas inside braces/parens.
-    """
+    """Split top-level multi-value answers while preserving inner structure."""
     cleaned = text.strip().strip("$").strip()
-    parts = []
+    if not cleaned:
+        return [cleaned]
+
+    parts: list[str] = []
     depth = 0
     current: list[str] = []
-    for ch in cleaned:
+    i = 0
+    lower_cleaned = cleaned.lower()
+    delimiters = [
+        r"\text{ or }",
+        r"\text{ and }",
+        " or ",
+        " and ",
+        ";",
+        ",",
+    ]
+
+    while i < len(cleaned):
+        if depth == 0:
+            for delimiter in delimiters:
+                if lower_cleaned.startswith(delimiter, i):
+                    part = "".join(current).strip()
+                    if part:
+                        parts.append(part)
+                    current = []
+                    i += len(delimiter)
+                    break
+            else:
+                delimiter = None
+            if delimiter is not None:
+                continue
+
+        ch = cleaned[i]
         if ch in "({[":
             depth += 1
             current.append(ch)
         elif ch in ")}]":
             depth -= 1
             current.append(ch)
-        elif ch == "," and depth == 0:
-            part = "".join(current).strip()
-            if part:
-                parts.append(part)
-            current = []
         else:
             current.append(ch)
+        i += 1
+
     last = "".join(current).strip()
     if last:
         parts.append(last)
-    return parts if len(parts) > 1 else [text]
+    return parts if parts else [cleaned]
 
 
 def _single_match(expected: str, predicted: str) -> tuple[bool, str]:
@@ -101,7 +127,12 @@ def _single_match(expected: str, predicted: str) -> tuple[bool, str]:
 
     exp_num = parse_numeric_answer(expected)
     pred_num = parse_numeric_answer(predicted)
-    if exp_num is not None and pred_num is not None:
+    if (
+        is_numeric_literal_answer(expected)
+        and is_numeric_literal_answer(predicted)
+        and exp_num is not None
+        and pred_num is not None
+    ):
         if abs(exp_num - pred_num) < 1e-9:
             return True, "numeric"
 
@@ -141,20 +172,50 @@ class ImoVerifyScorer(Scorer):
 
         pred_parts = _split_multi_valued(predicted_raw)
 
+        if len(gt_parts) != len(pred_parts):
+            return ScoreResult(
+                correct=False,
+                score=0.0,
+                expected=expected_raw,
+                predicted=predicted_raw,
+                rationale=(
+                    "Multi-value: expected "
+                    f"{len(gt_parts)} values but predicted {len(pred_parts)}."
+                ),
+                metadata={
+                    "method": "multi_value",
+                    "matched": 0,
+                    "total": len(gt_parts),
+                    "predicted_total": len(pred_parts),
+                },
+            )
+
         matched_gt = 0
+        used_pred_indices: set[int] = set()
         for gt_val in gt_parts:
-            for pred_val in pred_parts:
+            for pred_idx, pred_val in enumerate(pred_parts):
+                if pred_idx in used_pred_indices:
+                    continue
                 ok, _ = _single_match(gt_val, pred_val)
                 if ok:
                     matched_gt += 1
+                    used_pred_indices.add(pred_idx)
                     break
 
-        all_matched = matched_gt == len(gt_parts)
+        all_matched = (
+            matched_gt == len(gt_parts) == len(pred_parts)
+            and len(used_pred_indices) == len(pred_parts)
+        )
         return ScoreResult(
             correct=all_matched,
             score=1.0 if all_matched else 0.0,
             expected=expected_raw,
             predicted=predicted_raw,
             rationale=f"Multi-value: {matched_gt}/{len(gt_parts)} ground truth values matched.",
-            metadata={"method": "multi_value", "matched": matched_gt, "total": len(gt_parts)},
+            metadata={
+                "method": "multi_value",
+                "matched": matched_gt,
+                "total": len(gt_parts),
+                "predicted_total": len(pred_parts),
+            },
         )

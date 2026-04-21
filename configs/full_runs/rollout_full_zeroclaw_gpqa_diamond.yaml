@@ -43,5 +43,7 @@ scorer:
 max_concurrent: 1
 num_samples: 1
 output_dir: "./results/rollout_full_zeroclaw_gpqa_diamond"
+strict_report: true
+strict_isolation: true
 metadata:
   notes: "Full ZeroClaw x GPQA-Diamond config for the local-vLLM rollout matrix."

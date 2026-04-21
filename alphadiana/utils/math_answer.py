@@ -13,6 +13,10 @@ _SIMPLE_FRAC_RE = re.compile(
     r"\\(?:d|t)?frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}"
 )
 _SIMPLE_SQRT_RE = re.compile(r"\\sqrt\s*\{([^{}]+)\}")
+_NUMERIC_LITERAL_RE = re.compile(r"-?\d+(?:\.\d+)?%?")
+_NUMERIC_FRACTION_RE = re.compile(
+    r"\(?-?\d+(?:\.\d+)?\)?/\(?-?\d+(?:\.\d+)?\)?"
+)
 
 
 def extract_boxed(text: str) -> str | None:
@@ -166,3 +170,23 @@ def parse_numeric_answer(text: str) -> float | None:
         return float(candidate)
     except ValueError:
         return None
+
+
+def is_numeric_literal_answer(text: str) -> bool:
+    """Return True only for pure numeric literals, not symbolic expressions."""
+    candidate = extract_answer_candidate(text)
+    candidate = candidate.strip().rstrip(".")
+    candidate = _strip_wrappers(candidate)
+    candidate = _normalize_latex(candidate)
+    candidate = candidate.replace(",", "")
+    candidate = re.sub(r"\s+", "", candidate)
+    if not candidate or "=" in candidate:
+        return False
+    if any(ch in candidate for ch in ("+", "*", "^", "_")):
+        return False
+    if re.search(r"[A-Za-z\\]", candidate):
+        return False
+    return bool(
+        _NUMERIC_LITERAL_RE.fullmatch(candidate)
+        or _NUMERIC_FRACTION_RE.fullmatch(candidate)
+    )

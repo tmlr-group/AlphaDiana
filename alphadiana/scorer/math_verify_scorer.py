@@ -16,7 +16,11 @@ from __future__ import annotations
 
 from alphadiana.scorer.base import Scorer, ScoreResult
 from alphadiana.scorer.registry import register_scorer
-from alphadiana.utils.math_answer import normalize_math_text, parse_numeric_answer
+from alphadiana.utils.math_answer import (
+    is_numeric_literal_answer,
+    normalize_math_text,
+    parse_numeric_answer,
+)
 
 
 def _wrap_boxed(text: str) -> str:
@@ -100,7 +104,12 @@ class MathVerifyScorer(Scorer):
         # Fallback 2: numeric comparison (handles leading zeros, e.g. "045" vs "45")
         expected_num = parse_numeric_answer(expected_raw)
         predicted_num = parse_numeric_answer(predicted_raw)
-        if expected_num is not None and predicted_num is not None:
+        if (
+            is_numeric_literal_answer(expected_raw)
+            and is_numeric_literal_answer(predicted_raw)
+            and expected_num is not None
+            and predicted_num is not None
+        ):
             numeric_match = abs(expected_num - predicted_num) < 1e-9
             if numeric_match:
                 return ScoreResult(

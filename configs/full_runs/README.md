@@ -6,8 +6,8 @@ The smoke configs under `configs/examples/` intentionally pin one task with `dat
 
 ## Local-vLLM Campaign
 
-The staged April 19, 2026 full-rollout assets for the requested
-`6 benchmarks x 4 harnesses x 3 models` matrix live here:
+The staged April 19, 2026 full-rollout assets for the active
+`5 benchmarks x 4 harnesses x 3 models` local-vLLM matrix live here:
 
 - manifest:
   `configs/full_runs/rollout_local_vllm_campaign_20260419.yaml`
@@ -47,27 +47,31 @@ export NEMOTRON_VLLM_API_KEY=EMPTY
 
 export DIRECTLLM_ROOT=/path/to/directllm
 export TERMINAL_BENCH2_DIR=/path/to/terminal-bench/tasks
-export SWE_BENCH_PRO_EVAL_SCRIPT=/path/to/SWE-bench_Pro-os/swe_bench_pro_eval.py
-export SWE_BENCH_PRO_SCRIPTS_DIR=/path/to/SWE-bench_Pro-os/run_scripts
 export HF_TOKEN=hf_...
 ```
 
 Campaign rules:
 
-- The helper expands `72` concrete runs and keeps official `direct_llm` paths in the manifest.
-- Official `terminal-bench-2` and `SWE-bench Pro` direct-LLM commands are executed from the official checkout via `DIRECTLLM_ROOT` or the benchmark-specific override envs.
+- The helper expands `60` concrete runs and keeps the official `terminal-bench-2` `direct_llm` path in the manifest.
+- `SWE-bench Pro` is intentionally excluded from the current rollout manifest while scorer/evaluator health is fixed separately.
 - Generated run commands do not add `--redo-all`; AlphaDiana resumes from checkpoint by default.
 - Raw shell logs stay under this repo's `logs/` even for official-checkout runs.
 - `MMMU-Pro` full configs intentionally use `data_config: "vision"`.
+- Checked-in full-run configs now set `strict_report: true`; the AlphaDiana-backed full configs also set `strict_isolation: true`.
 
 Wave summary from the checked-in manifest:
 
-- `wave_a_mainline`: `47`
-- `wave_b_official`: `5`
-- `wave_c_high_risk`: `11`
-- `wave_d_blocked`: `9`
+- `wave_a_mainline`: `46`
+- `wave_b_official`: `3`
+- `wave_c_high_risk`: `8`
+- `wave_d_blocked`: `3`
 
 ## SWE-bench Pro
+
+These PR29 configs remain checked in for targeted follow-up work, but they are
+not part of the current `rollout_local_vllm_campaign_20260419.yaml` manifest.
+Keep them out of any "full campaign" summary until SWE-bench Pro scorer /
+evaluator health is revisited.
 
 These are the PR29 full-run configs for the Diana-backed SWE-bench Pro paths:
 
@@ -160,6 +164,7 @@ Scope notes:
 ## Legacy PR25 Matrix
 
 These configs are the ready-to-run full benchmark entry points for the nine PR25 combinations that passed strict smoke validation.
+All checked-in PR25 full configs now set `strict_report: true` and `strict_isolation: true`.
 
 ## Supported Matrix
 

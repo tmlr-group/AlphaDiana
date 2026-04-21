@@ -19,8 +19,8 @@ from alphadiana.utils.rock_runtime import PREBUILT_SANDBOX_IMAGE
 
 DEFAULT_MANIFEST_PATH = Path("configs/full_runs/rollout_local_vllm_campaign_20260419.yaml")
 
-_BLOCKED_OPENCLAW_BENCHMARKS = {"imo_answerbench", "terminal_bench2", "swebench_pro"}
-_NEMOTRON_HIGH_RISK_BENCHMARKS = {"hle", "mmmu_pro", "swebench_pro"}
+_BLOCKED_OPENCLAW_BENCHMARKS = {"terminal_bench2"}
+_NEMOTRON_HIGH_RISK_BENCHMARKS = {"hle", "mmmu_pro"}
 _MULTIMODAL_BENCHMARKS = {"hle", "mmmu_pro"}
 _OPENCLAW_ROCK_IMAGE = "tmlrgroup/alphadiana:v1"
 _ZEROCLAW_ROCK_IMAGE = "zeroclaw-reasoning:0.6.9"

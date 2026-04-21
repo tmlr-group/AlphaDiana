@@ -38,9 +38,7 @@ benchmark:
 sandbox: null
 
 scorer:
-  name: math_verify
-  config:
-    tolerance: 1e-6
+  name: imo_verify
 
 max_concurrent: 3
 num_samples: 1

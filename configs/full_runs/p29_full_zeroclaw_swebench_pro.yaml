@@ -43,5 +43,7 @@ scorer:
 max_concurrent: 10
 num_samples: 1
 output_dir: "./results/p29_full_zeroclaw_swebench_pro"
+strict_report: true
+strict_isolation: true
 metadata:
   notes: "Full SWE-bench Pro ZeroClaw run through swebench_docker. Set SWEBENCH_ZEROCLAW_RUNTIME_IMAGE when the default runtime source image is unavailable."

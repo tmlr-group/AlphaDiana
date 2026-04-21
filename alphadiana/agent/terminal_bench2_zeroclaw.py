@@ -193,10 +193,12 @@ class TerminalBench2ZeroClawAgent(TerminalBench2InContainerMixin, ZeroClawAgent)
                 request_messages=request_messages,
             )
             try:
-                test_output, reward_content = self._run_verifier_and_read_reward(
+                verifier_result = self._run_verifier_and_read_reward(
                     runtime,
                     timeout_sec=self._test_timeout_sec,
                 )
+                test_output = verifier_result.test_output
+                reward_content = verifier_result.reward
             except Exception as exc:
                 partial_response.metadata["test_output"] = test_output
                 self._raise_with_partial_response(f"terminal-bench-2 verifier failed: {exc}", partial_response)
@@ -261,6 +263,7 @@ class TerminalBench2ZeroClawAgent(TerminalBench2InContainerMixin, ZeroClawAgent)
                     "returncode": returncode,
                     "stderr": raw_stderr[:2000] if raw_stderr else "",
                     "test_output": test_output,
+                    "verifier_status": verifier_result.status,
                     "timed_out": returncode == -1,
                     "container_workdir": container_workdir,
                     **runtime_metadata,

@@ -50,5 +50,7 @@ scorer:
 max_concurrent: 10
 num_samples: 1
 output_dir: "./results/p29_full_opencode_swebench_pro"
+strict_report: true
+strict_isolation: true
 metadata:
   notes: "Full SWE-bench Pro OpenCode run through swebench_docker. Set SWEBENCH_OPENCODE_RUNTIME_IMAGE when the default runtime image is unavailable."

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 import re
+import subprocess
 from pathlib import Path
 
 from alphadiana.config.experiment_config import ExperimentConfig
@@ -53,6 +55,11 @@ class ConfigValidator:
                 errors.append("max_concurrent must be >= 1")
             if max_concurrent > 64:
                 errors.append("max_concurrent should be <= 64 to avoid resource exhaustion")
+        if config.benchmark_name == "imo_answerbench" and config.scorer_name != "imo_verify":
+            errors.append(
+                "benchmark 'imo_answerbench' must use scorer 'imo_verify'; "
+                f"got '{config.scorer_name}'"
+            )
         if config.benchmark_name in self.SANDBOX_REQUIRED_BENCHMARKS and not config.sandbox_name:
             errors.append(
                 f"benchmark '{config.benchmark_name}' requires a sandbox "
@@ -116,6 +123,23 @@ class ConfigValidator:
                     "agent 'opencode' controller_mode must be one of "
                     f"{supported}; got '{controller_mode}'"
                 )
+            if controller_mode == "docker":
+                self._validate_controller_image(
+                    errors,
+                    agent_name="opencode",
+                    image=config.agent_config.get("controller_image"),
+                )
+
+        if config.agent_name == "terminal_bench2_opencode":
+            controller_mode = (
+                str(config.agent_config.get("controller_mode", "host") or "host").strip().lower()
+            )
+            if controller_mode == "docker":
+                self._validate_controller_image(
+                    errors,
+                    agent_name="terminal_bench2_opencode",
+                    image=config.agent_config.get("controller_image"),
+                )
 
         if (
             config.agent_name == "swebench_docker"
@@ -178,6 +202,18 @@ class ConfigValidator:
             )
 
         num_samples = self._validate_int_field(errors, "num_samples", getattr(config, "num_samples", 1))
+        if config.benchmark_name == "terminal_bench2":
+            self._validate_terminal_bench2_tasks_dir(errors, config)
+
+        if (
+            config.benchmark_name in {"hle", "mmmu_pro"}
+            and config.metadata.get("supports_multimodal") is False
+        ):
+            errors.append(
+                f"benchmark '{config.benchmark_name}' requires a multimodal-capable model/config "
+                "(metadata.supports_multimodal=false)"
+            )
+
         if num_samples is not None and num_samples < 1:
             errors.append("num_samples must be >= 1")
         task_retries = self._validate_int_field(errors, "task_retries", getattr(config, "task_retries", 0))
@@ -235,3 +271,61 @@ class ConfigValidator:
             errors.append(f"scorer '{scorer_name}' {key} must be a directory: {raw}")
         if not expect_dir and not path.is_file():
             errors.append(f"scorer '{scorer_name}' {key} must be a file: {raw}")
+
+    @classmethod
+    def _validate_terminal_bench2_tasks_dir(
+        cls,
+        errors: list[str],
+        config: ExperimentConfig,
+    ) -> None:
+        tasks_dir_raw = str(
+            config.benchmark_config.get("tasks_dir")
+            or os.environ.get("TERMINAL_BENCH2_DIR", "")
+            or ""
+        ).strip()
+        if not tasks_dir_raw:
+            errors.append(
+                "benchmark 'terminal_bench2' requires benchmark.config.tasks_dir "
+                "or TERMINAL_BENCH2_DIR"
+            )
+            return
+        if not cls._has_nonempty_value(tasks_dir_raw):
+            errors.append(
+                "benchmark 'terminal_bench2' got an unresolved tasks_dir placeholder; "
+                "set benchmark.config.tasks_dir or TERMINAL_BENCH2_DIR"
+            )
+            return
+        tasks_dir = Path(tasks_dir_raw).expanduser()
+        if not tasks_dir.exists():
+            errors.append(f"benchmark 'terminal_bench2' tasks_dir does not exist: {tasks_dir_raw}")
+            return
+        if not tasks_dir.is_dir():
+            errors.append(f"benchmark 'terminal_bench2' tasks_dir must be a directory: {tasks_dir_raw}")
+
+    @staticmethod
+    def _validate_controller_image(
+        errors: list[str],
+        *,
+        agent_name: str,
+        image: object,
+    ) -> None:
+        raw = str(image or "").strip()
+        if not raw:
+            errors.append(f"agent '{agent_name}' controller_mode=docker requires controller_image")
+            return
+        try:
+            result = subprocess.run(
+                ["docker", "image", "inspect", raw],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except Exception as exc:
+            errors.append(
+                f"agent '{agent_name}' controller_image preflight failed for '{raw}': {exc}"
+            )
+            return
+        if result.returncode != 0:
+            errors.append(
+                f"agent '{agent_name}' controller_image not present locally: {raw}"
+            )

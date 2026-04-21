@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
+from alphadiana.results.status import INVALID_SCORE_STATUSES, VALID_SCORE_STATUS, infer_score_status
+
 if TYPE_CHECKING:
     from alphadiana.config.experiment_config import ExperimentConfig
     from alphadiana.results.result_store import ResultStore
@@ -35,7 +37,16 @@ class RunSummary:
     avg_at_k: float = 0.0
     per_category_pass_at_k: dict[str, float] = field(default_factory=dict)
     per_category_avg_at_k: dict[str, float] = field(default_factory=dict)
-    total_samples: int = 0
+    expected_task_count: int = 0
+    expected_sample_count: int = 0
+    written_records: int = 0
+    valid_scored: int = 0
+    invalid_scored: int = 0
+    error_records: int = 0
+    missing_samples: int = 0
+    missing_tasks: int = 0
+    strict_report_failed: bool = False
+    strict_report_issues: list[str] = field(default_factory=list)
     timestamp: str = ""
 
 
@@ -50,28 +61,13 @@ def _get_category(r: dict) -> str:
     return "default"
 
 
-def _sample_index(record: dict) -> int:
-    value = record.get("sample_index", 0)
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return 0
-
-
-def _unique_task_ids(results: list[dict]) -> set[str]:
-    return {str(r["task_id"]) for r in results if "task_id" in r}
-
-
-def _unique_task_records(results: list[dict]) -> list[dict]:
-    """Return one record per unique task_id, keeping the latest sample_index."""
-    by_task: dict[str, dict] = {}
-    for record in results:
-        if "task_id" not in record:
-            continue
-        task_id = str(record["task_id"])
-        if task_id not in by_task or _sample_index(record) >= _sample_index(by_task[task_id]):
-            by_task[task_id] = record
-    return list(by_task.values())
+def _manifest_category(task_id: str, manifest: dict) -> str:
+    task_meta = manifest.get("task_metadata_by_id", {})
+    if isinstance(task_meta, dict):
+        task_data = task_meta.get(task_id, {})
+        if isinstance(task_data, dict) and task_data.get("category"):
+            return str(task_data["category"])
+    return "default"
 
 
 class ReportGenerator:
@@ -98,8 +94,8 @@ class ReportGenerator:
         files that lack these fields.
         """
         results = result_store.load()
-        total_samples = len(results)
-        total_tasks = len(_unique_task_ids(results))
+        manifest = result_store.load_manifest()
+        written_records = len(results)
 
         # Infer run-level metadata from data; fall back to config.
         _cfg = config  # may be None
@@ -112,9 +108,12 @@ class ReportGenerator:
         benchmark_name = self._infer_from_results(results, "benchmark_name") or (
             getattr(_cfg, "benchmark_name", "") if _cfg else "unknown")
 
-        # num_samples: prefer data, then config, then infer from max samples per task.
+        # num_samples: prefer manifest, then data, then config, then infer.
+        manifest_num_samples = manifest.get("num_samples")
         num_samples_raw = self._infer_from_results(results, "num_samples")
-        if num_samples_raw:
+        if manifest_num_samples:
+            num_samples = int(manifest_num_samples)
+        elif num_samples_raw:
             num_samples = int(num_samples_raw)
         elif _cfg is not None:
             num_samples = getattr(_cfg, "num_samples", 1)
@@ -125,19 +124,51 @@ class ReportGenerator:
                 by_task_tmp[tid] = by_task_tmp.get(tid, 0) + 1
             num_samples = max(by_task_tmp.values(), default=1)
 
-        # Only count tasks that were scored (excludes infrastructure errors).
-        completed_results = [r for r in results if r.get("score") is not None]
-        completed = len(completed_results)
-        failed = total_samples - completed
+        expected_task_ids = manifest.get("expected_task_ids")
+        if isinstance(expected_task_ids, list) and expected_task_ids:
+            ordered_expected_task_ids = [str(task_id) for task_id in expected_task_ids]
+        else:
+            ordered_expected_task_ids = list(dict.fromkeys(r.get("task_id", "") for r in results if r.get("task_id")))
 
-        correct_count = sum(1 for r in completed_results if r.get("correct", False))
+        expected_task_count = int(
+            manifest.get("expected_task_count", len(ordered_expected_task_ids))
+        )
+        if manifest.get("expected_sample_count") is not None:
+            expected_sample_count = int(manifest["expected_sample_count"])
+        elif expected_task_count and num_samples:
+            expected_sample_count = expected_task_count * num_samples
+        else:
+            expected_sample_count = written_records
+
+        status_by_key = {
+            (r["task_id"], r.get("sample_index", 0)): infer_score_status(r)
+            for r in results
+        }
+        valid_results = [
+            r for r in results
+            if status_by_key[(r["task_id"], r.get("sample_index", 0))] == VALID_SCORE_STATUS
+        ]
+        valid_scored = len(valid_results)
+        error_statuses = {"agent_error", "provider_error", "runtime_error", "scorer_error"}
+        error_records = sum(
+            1 for status in status_by_key.values()
+            if status in error_statuses
+        )
+        invalid_scored = sum(
+            1 for status in status_by_key.values()
+            if status in INVALID_SCORE_STATUSES and status not in error_statuses
+        )
+        completed = valid_scored
+        failed = max(expected_sample_count - completed, 0)
+
+        correct_count = sum(1 for r in valid_results if r.get("correct", False))
         accuracy = correct_count / completed if completed > 0 else 0.0
-        accuracy_total = correct_count / total_samples if total_samples > 0 else 0.0
+        accuracy_total = correct_count / expected_sample_count if expected_sample_count > 0 else 0.0
 
-        scores = [r.get("score", 0.0) for r in completed_results]
+        scores = [r.get("score", 0.0) for r in valid_results]
         mean_score = sum(scores) / len(scores) if scores else 0.0
 
-        wall_times = [r.get("wall_time_sec", 0.0) for r in completed_results]
+        wall_times = [r.get("wall_time_sec", 0.0) for r in valid_results]
         mean_wall_time = sum(wall_times) / len(wall_times) if wall_times else 0.0
 
         # Aggregate token usage across all results.
@@ -157,6 +188,24 @@ class ReportGenerator:
         for r in results:
             by_task[r["task_id"]].append(r)
 
+        observed_task_ids = {task_id for task_id in by_task}
+        if ordered_expected_task_ids:
+            missing_tasks = sum(1 for task_id in ordered_expected_task_ids if task_id not in observed_task_ids)
+            expected_sample_keys = {
+                (task_id, sample_index)
+                for task_id in ordered_expected_task_ids
+                for sample_index in range(num_samples)
+            }
+            observed_sample_keys = {
+                (r["task_id"], r.get("sample_index", 0))
+                for r in results
+                if r.get("task_id") in set(ordered_expected_task_ids)
+            }
+            missing_samples = len(expected_sample_keys - observed_sample_keys)
+        else:
+            missing_tasks = max(expected_task_count - len(observed_task_ids), 0)
+            missing_samples = max(expected_sample_count - written_records, 0)
+
         # Per-category accuracy (based on task metadata "category" field).
         category_correct: dict[str, int] = {}
         category_total: dict[str, int] = {}
@@ -164,8 +213,10 @@ class ReportGenerator:
         for r in results:
             cat = _get_category(r)
             category_sample_totals[cat] = category_sample_totals.get(cat, 0) + 1
-        for r in _unique_task_records(completed_results):
-            cat = _get_category(r)
+        for r in valid_results:
+            cat = _manifest_category(r["task_id"], manifest)
+            if cat == "default":
+                cat = _get_category(r)
             category_total[cat] = category_total.get(cat, 0) + 1
             if r.get("correct", False):
                 category_correct[cat] = category_correct.get(cat, 0) + 1
@@ -183,26 +234,39 @@ class ReportGenerator:
         # Compute error distribution from failed tasks
         error_dist: dict[str, int] = {}
         for r in results:
-            err = r.get("error")
-            if isinstance(err, dict):
-                etype = err.get("error_type", "unknown")
+            status = status_by_key[(r["task_id"], r.get("sample_index", 0))]
+            if status in error_statuses:
+                err = r.get("error")
+                etype = err.get("error_type", "unknown") if isinstance(err, dict) else status
                 error_dist[etype] = error_dist.get(etype, 0) + 1
 
         # Pass@K: fraction of unique tasks where at least 1 sample is correct.
-        num_unique_tasks = len(by_task)
+        task_ids_for_summary = ordered_expected_task_ids or list(by_task.keys())
+        num_unique_tasks = expected_task_count or len(task_ids_for_summary)
         tasks_passed = sum(
-            1 for samples in by_task.values()
-            if any(s.get("correct", False) for s in samples)
+            1 for task_id in task_ids_for_summary
+            if any(
+                status_by_key[(s["task_id"], s.get("sample_index", 0))] == VALID_SCORE_STATUS
+                and s.get("correct", False)
+                for s in by_task.get(task_id, [])
+            )
         )
         pass_at_k = tasks_passed / num_unique_tasks if num_unique_tasks > 0 else 0.0
 
         # Per-category pass@k
         cat_tasks_total: dict[str, set[str]] = defaultdict(set)
         cat_tasks_passed: dict[str, set[str]] = defaultdict(set)
-        for task_id, samples in by_task.items():
-            cat = _get_category(samples[0])
+        for task_id in task_ids_for_summary:
+            samples = by_task.get(task_id, [])
+            cat = _manifest_category(task_id, manifest)
+            if cat == "default" and samples:
+                cat = _get_category(samples[0])
             cat_tasks_total[cat].add(task_id)
-            if any(s.get("correct", False) for s in samples):
+            if any(
+                status_by_key[(s["task_id"], s.get("sample_index", 0))] == VALID_SCORE_STATUS
+                and s.get("correct", False)
+                for s in samples
+            ):
                 cat_tasks_passed[cat].add(task_id)
 
         per_category_pass_at_k = {
@@ -213,31 +277,49 @@ class ReportGenerator:
         # Avg@K: per-task average correctness rate, then averaged across tasks.
         # For each task, compute (number of correct samples) / (number of total samples).
         task_avg_scores: list[float] = []
-        for samples in by_task.values():
-            n_total = len(samples)
-            n_correct = sum(1 for s in samples if s.get("correct", False))
-            task_avg_scores.append(n_correct / n_total if n_total > 0 else 0.0)
+        for task_id in task_ids_for_summary:
+            samples = by_task.get(task_id, [])
+            n_correct = sum(
+                1 for s in samples
+                if status_by_key[(s["task_id"], s.get("sample_index", 0))] == VALID_SCORE_STATUS
+                and s.get("correct", False)
+            )
+            task_avg_scores.append(n_correct / num_samples if num_samples > 0 else 0.0)
         avg_at_k = sum(task_avg_scores) / len(task_avg_scores) if task_avg_scores else 0.0
 
         # Per-category avg@k
         cat_task_avgs: dict[str, list[float]] = defaultdict(list)
-        for task_id, samples in by_task.items():
-            cat = _get_category(samples[0])
-            n_total = len(samples)
-            n_correct = sum(1 for s in samples if s.get("correct", False))
-            cat_task_avgs[cat].append(n_correct / n_total if n_total > 0 else 0.0)
+        for task_id in task_ids_for_summary:
+            samples = by_task.get(task_id, [])
+            cat = _manifest_category(task_id, manifest)
+            if cat == "default" and samples:
+                cat = _get_category(samples[0])
+            n_correct = sum(
+                1 for s in samples
+                if status_by_key[(s["task_id"], s.get("sample_index", 0))] == VALID_SCORE_STATUS
+                and s.get("correct", False)
+            )
+            cat_task_avgs[cat].append(n_correct / num_samples if num_samples > 0 else 0.0)
 
         per_category_avg_at_k = {
             cat: sum(avgs) / len(avgs) if avgs else 0.0
             for cat, avgs in cat_task_avgs.items()
         }
 
+        strict_report_issues: list[str] = []
+        if missing_samples > 0:
+            strict_report_issues.append(f"missing_samples={missing_samples}")
+        if invalid_scored > 0:
+            strict_report_issues.append(f"invalid_scored={invalid_scored}")
+        if error_records > 0:
+            strict_report_issues.append(f"error_records={error_records}")
+
         return RunSummary(
             run_id=run_id,
             agent=agent_name,
             agent_version=agent_version,
             benchmark=benchmark_name,
-            total_tasks=total_tasks,
+            total_tasks=expected_sample_count,
             completed=completed,
             failed=failed,
             accuracy=accuracy,
@@ -252,7 +334,16 @@ class ReportGenerator:
             avg_at_k=avg_at_k,
             per_category_pass_at_k=per_category_pass_at_k,
             per_category_avg_at_k=per_category_avg_at_k,
-            total_samples=total_samples,
+            expected_task_count=expected_task_count,
+            expected_sample_count=expected_sample_count,
+            written_records=written_records,
+            valid_scored=valid_scored,
+            invalid_scored=invalid_scored,
+            error_records=error_records,
+            missing_samples=missing_samples,
+            missing_tasks=missing_tasks,
+            strict_report_failed=bool(strict_report_issues),
+            strict_report_issues=strict_report_issues,
             timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
@@ -275,9 +366,16 @@ class ReportGenerator:
             f"| Agent Version | {summary.agent_version} |",
             f"| Benchmark | {summary.benchmark} |",
             f"| Total Tasks | {summary.total_tasks} |",
-            f"| Total Samples | {summary.total_samples} |",
+            f"| Expected Tasks | {summary.expected_task_count} |",
+            f"| Expected Samples | {summary.expected_sample_count} |",
+            f"| Written Records | {summary.written_records} |",
             f"| Completed | {summary.completed} |",
             f"| Failed | {summary.failed} |",
+            f"| Valid Scored | {summary.valid_scored} |",
+            f"| Invalid Scored | {summary.invalid_scored} |",
+            f"| Error Records | {summary.error_records} |",
+            f"| Missing Tasks | {summary.missing_tasks} |",
+            f"| Missing Samples | {summary.missing_samples} |",
             f"| Num Samples (k) | {summary.num_samples} |",
             f"| Accuracy (completed) | {summary.accuracy:.4f} |",
             f"| Accuracy (total) | {summary.accuracy_total:.4f} |",

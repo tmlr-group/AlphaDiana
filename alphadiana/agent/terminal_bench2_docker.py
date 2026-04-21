@@ -130,10 +130,12 @@ class TerminalBench2DockerAgent(TerminalBench2ContainerMixin, Agent):
                     break
 
             logger.info("Task %s — running tests/test.sh", task.task_id)
-            test_output, reward_content = self._run_verifier_and_read_reward(
+            verifier_result = self._run_verifier_and_read_reward(
                 runtime,
                 timeout_sec=self._test_timeout_sec,
             )
+            test_output = verifier_result.test_output
+            reward_content = verifier_result.reward
             logger.info("Task %s — reward.txt: %r", task.task_id, reward_content)
 
         finally:
@@ -153,7 +155,10 @@ class TerminalBench2DockerAgent(TerminalBench2ContainerMixin, Agent):
                 reward=reward_content,
                 rounds_used=len([m for m in trajectory if m["role"] == "assistant"]),
                 runner="direct_llm",
-                extra={"test_output": test_output},
+                extra={
+                    "test_output": test_output,
+                    "verifier_status": verifier_result.status,
+                },
             ),
             request_messages=messages,
             response_json=last_response_json,
