@@ -457,18 +457,30 @@ def _normalize_attachments(payload: Any) -> list[dict[str, Any]]:
     return items
 
 
+def _safe_attachment_path(workspace_dir: Path, rel_path: str) -> Path:
+    path = Path(rel_path)
+    if path.is_absolute() or ".." in path.parts:
+        raise ValueError("invalid attachment path")
+    base = workspace_dir.resolve()
+    target = (base / path).resolve()
+    if not target.is_relative_to(base):
+        raise ValueError("invalid attachment path")
+    return target
+
+
 def _write_attachments(workspace_dir: Path, attachments: list[dict[str, Any]]) -> list[dict[str, Any]]:
     manifest: list[dict[str, Any]] = []
     for item in attachments:
-        rel_path = str(item["path"]).lstrip("/")
-        dest = workspace_dir / rel_path
+        rel_path = str(item["path"])
+        dest = _safe_attachment_path(workspace_dir, rel_path)
+        manifest_path = dest.relative_to(workspace_dir.resolve()).as_posix()
         dest.parent.mkdir(parents=True, exist_ok=True)
         data = bytes(item["data"])
         dest.write_bytes(data)
         manifest.append({
             "key": item.get("key", ""),
-            "path": rel_path,
-            "filename": item.get("filename", "") or Path(rel_path).name,
+            "path": manifest_path,
+            "filename": item.get("filename", "") or Path(manifest_path).name,
             "mime": item.get("mime", ""),
             "size_bytes": len(data),
         })
@@ -734,6 +746,13 @@ class Handler(BaseHTTPRequestHandler):
                     }
                 ],
                 "usage": {},
+            })
+        except ValueError as exc:
+            self._write_json(HTTPStatus.BAD_REQUEST, {
+                "error": {
+                    "message": str(exc),
+                    "type": exc.__class__.__name__,
+                }
             })
         except Exception as exc:
             self._write_json(HTTPStatus.INTERNAL_SERVER_ERROR, {
