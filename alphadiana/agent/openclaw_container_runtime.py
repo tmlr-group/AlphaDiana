@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -135,13 +136,16 @@ class OpenClawContainerRuntimeManager:
 
     def __init__(self, config: dict) -> None:
         self._config = dict(config)
-        self._gateway_token = config.get("gateway_token", "OPENCLAW")
+        self._gateway_token = str(config.get("gateway_token", "OPENCLAW"))
+        if self._gateway_token and not re.fullmatch(r"[A-Za-z0-9_\-]+", self._gateway_token):
+            raise ValueError("Invalid gateway token charset; allowed [A-Za-z0-9_-]")
         self._gateway_model = config.get("model", "openclaw")
         self._openclaw_config_path = str(self._resolve_config_path(config.get("openclaw_config_path", ""))) if config.get("openclaw_config_path") else ""
         self._gateway_startup_timeout = int(config.get("gateway_startup_timeout", 180))
         self._gateway_warmup_timeout = int(config.get("gateway_warmup_timeout", 180))
         self._gateway_warmup_initial_delay = float(config.get("gateway_warmup_initial_delay", 3.0))
         self._gateway_log_path = config.get("gateway_log_path", "/tmp/openclaw-gateway.log")
+        self._gateway_pidfile = config.get("gateway_pidfile", "/tmp/openclaw-gateway.pid")
         self._workspace_path = config.get("workspace_path", "/tmp/oc_home/.openclaw/workspace")
         self._openclaw_home = config.get("openclaw_home", "/tmp/oc_home")
         self._remote_openclaw_config_path = config.get("remote_openclaw_config_path", "/tmp/openclaw.json")
@@ -392,11 +396,12 @@ class OpenClawContainerRuntimeManager:
                 "pkill -x openclaw >/dev/null 2>&1 || true",
                 f"export PATH=\"{TESTBED_TOOL_PATH}:$PATH\"",
                 f"if [ -d {NODE_RUNTIME_BIN} ]; then export PATH=\"{NODE_RUNTIME_BIN}:$PATH\"; fi",
-                f"export OPENCLAW_CONFIG_PATH={self._remote_openclaw_config_path}",
-                f"export OPENCLAW_HOME={self._openclaw_home}",
+                f"export OPENCLAW_CONFIG_PATH={shlex.quote(self._remote_openclaw_config_path)}",
+                f"export OPENCLAW_HOME={shlex.quote(self._openclaw_home)}",
                 "export OPENCLAW_BUNDLED_PLUGINS_DIR=/tmp/empty-bundled",
-                f"export OPENCLAW_GATEWAY_TOKEN={self._gateway_token}",
-                f"nohup openclaw gateway > {self._gateway_log_path} 2>&1 &",
+                f"export OPENCLAW_GATEWAY_TOKEN={shlex.quote(self._gateway_token)}",
+                f"nohup openclaw gateway > {shlex.quote(self._gateway_log_path)} 2>&1 &",
+                f"echo $! > {shlex.quote(self._gateway_pidfile)}",
             ]
         )
 
