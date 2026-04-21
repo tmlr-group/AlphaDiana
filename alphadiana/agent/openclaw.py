@@ -1460,9 +1460,10 @@ class OpenClawAgent(Agent):
                     status_code == 200
                     and not chunks
                     and not received_done
-                    and not response_json
+                    and not raw_output
+                    and not raw_reasoning
                 )
-                if is_empty_sse_body and error_type == "unknown":
+                if is_empty_sse_body and error_type in ("unknown", "empty_response"):
                     error_type = "empty_sse_body"
                 retry_responses.append({
                     "attempt": attempt,

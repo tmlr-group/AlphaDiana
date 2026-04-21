@@ -116,10 +116,23 @@ class TerminalBench2ContainerMixin:
     ) -> None:
         self._controller_mode = str(config.get("controller_mode", default_mode) or default_mode).strip()
         self._controller_image = str(config.get("controller_image", default_image) or default_image).strip()
-        self._controller_network = str(config.get("controller_network", "host") or "host").strip()
-        self._controller_mount_docker_socket = bool(
-            config.get("controller_mount_docker_socket", True)
+        self._unsafe_network_host = bool(config.get("unsafe_network_host", False))
+        explicit_network = str(config.get("controller_network", "") or "").strip()
+        self._controller_network = explicit_network or ("host" if self._unsafe_network_host else "")
+        self._mount_docker_socket = bool(
+            config.get(
+                "mount_docker_socket",
+                config.get("controller_mount_docker_socket", False),
+            )
         )
+        if self._controller_network == "host":
+            logger.warning(
+                "terminal_bench2: unsafe_network_host=True; controller container has full host network access"
+            )
+        if self._mount_docker_socket:
+            logger.warning(
+                "terminal_bench2: mount_docker_socket=True; controller container can access the host Docker socket"
+            )
 
     def _logs_dir_for_task(self, task: BenchmarkTask) -> Path:
         sample_index = task.metadata.get("sample_index", 0)
@@ -511,7 +524,7 @@ class TerminalBench2ContainerMixin:
         network = str(getattr(self, "_controller_network", "") or "").strip()
         if network:
             docker_cmd.extend(["--network", network])
-        if getattr(self, "_controller_mount_docker_socket", True):
+        if getattr(self, "_mount_docker_socket", False):
             try:
                 socket_gid = os.stat("/var/run/docker.sock").st_gid
             except OSError:

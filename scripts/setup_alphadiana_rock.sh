@@ -194,7 +194,7 @@ Before running python scripts/find_rock_ports.py manually, unset TMPDIR to avoid
 
 Start services in separate terminals:
   source scripts/activate.sh
-  docker start \$ROCK_REDIS_CONTAINER || docker run -d --restart unless-stopped --name \$ROCK_REDIS_CONTAINER -p \$ROCK_REDIS_PORT:6379 redis/redis-stack-server:latest
+  docker start \$ROCK_REDIS_CONTAINER || docker run -d --restart unless-stopped --name \$ROCK_REDIS_CONTAINER -p 127.0.0.1:\$ROCK_REDIS_PORT:6379 redis/redis-stack-server:latest
   cd ${ROCK_REL}
   ray start --head --port=\$ROCK_RAY_PORT --dashboard-port=\$ROCK_RAY_DASHBOARD_PORT --ray-client-server-port=\$ROCK_RAY_CLIENT_SERVER_PORT --temp-dir="\$RAY_TMPDIR" --disable-usage-stats --block
   python -m rock.admin.main --env local-proxy --role admin --port \$ROCK_ADMIN_PORT

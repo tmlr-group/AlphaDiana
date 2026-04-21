@@ -6,6 +6,7 @@ import io
 import json
 import logging
 import os
+import shlex
 import tarfile
 import tempfile
 import time
@@ -44,6 +45,17 @@ FORWARDED_CONTAINER_ENV_KEYS = (
     "no_proxy",
 )
 LOOPBACK_PROXY_HOSTS = {"127.0.0.1", "localhost", "::1", "0.0.0.0"}
+
+
+def _build_gateway_port_bindings(container_port: int) -> dict[str, list[dict[str, str]]]:
+    return {
+        f"{container_port}/tcp": [
+            {
+                "HostIp": "127.0.0.1",
+                "HostPort": "",
+            }
+        ]
+    }
 
 
 def _load_swebench_runtime() -> dict[str, Any]:
@@ -231,7 +243,7 @@ class SWEBenchContainerSession(SandboxSession):
         target = self._resolve_remote_path(filename)
         parent = str(target.parent)
         self._container.exec_run(
-            ["/bin/bash", "-lc", f"mkdir -p {parent!s}"],
+            ["/bin/bash", "-lc", f"mkdir -p {shlex.quote(parent)}"],
             workdir="/",
             user=self._user,
         )
@@ -248,7 +260,7 @@ class SWEBenchContainerSession(SandboxSession):
     def read_text(self, filename: str) -> str:
         target = self._resolve_remote_path(filename)
         result = self._container.exec_run(
-            ["/bin/bash", "-lc", f"cat {str(target)!s}"],
+            ["/bin/bash", "-lc", f"cat {shlex.quote(str(target))}"],
             workdir="/",
             user=self._user,
             demux=True,
@@ -430,7 +442,7 @@ class SWEBenchContainerSandbox(Sandbox):
                 name=container_name,
                 working_dir=workdir,
                 user=user,
-                ports={f"{container_port}/tcp": None},
+                ports=_build_gateway_port_bindings(container_port),
                 labels=labels,
                 environment=environment or None,
             )
@@ -438,6 +450,14 @@ class SWEBenchContainerSandbox(Sandbox):
             raise RuntimeError(
                 f"Failed to start SWE-bench instance container for {instance_id}: {exc}"
             ) from exc
+
+        container.reload()
+        published_ports = container.attrs.get("NetworkSettings", {}).get("Ports", {})
+        gateway_publish = published_ports.get(f"{container_port}/tcp") or []
+        if not gateway_publish or gateway_publish[0].get("HostIp") != "127.0.0.1":
+            raise RuntimeError(
+                f"SWE-bench gateway port {container_port} did not bind to 127.0.0.1: {gateway_publish!r}"
+            )
 
         host_port = self._resolve_gateway_host_port(container, container_port)
         metadata = {
