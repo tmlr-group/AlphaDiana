@@ -119,7 +119,7 @@ def test_swebench_container_metacharacter_no_injection():
     container._container = MagicMock()
     container._workdir = "/testbed"
     container._user = "root"
-    target = "/tmp/evil; rm -rf /"
+    target = "/tmp/evil; rm -rf /tmp/pwned"
     container._container.exec_run.return_value = SimpleNamespace(exit_code=0, output=(b"x", b""))
 
     container.read_text(target)
