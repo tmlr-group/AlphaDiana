@@ -23,7 +23,9 @@ from typing import Any
 from urllib.request import Request, urlopen
 
 
-HOST = "0.0.0.0"
+logger = logging.getLogger(__name__)
+
+HOST = os.environ.get("ZEROCLAW_BRIDGE_HOST", "127.0.0.1")
 PORT = 8080
 GATEWAY_TOKEN = os.environ.get("ZEROCLAW_GATEWAY_TOKEN", "ZEROCLAW")
 REQUEST_TIMEOUT = int(os.environ.get("ZEROCLAW_REQUEST_TIMEOUT", "1200"))
@@ -51,6 +53,12 @@ ARTIFACT_ROOT = Path(
 
 
 _bridge_logger = logging.getLogger("zeroclaw_bridge.vision_proxy")
+
+if HOST not in {"127.0.0.1", "localhost", "::1"}:
+    logger.warning(
+        "ZeroClaw bridge bound to non-loopback address %r; ensure this is intentional because it exposes agent credentials and the OpenAI-compatible endpoint.",
+        HOST,
+    )
 
 
 def _find_free_port() -> int:
