@@ -8,6 +8,7 @@ import os
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from alphadiana.agent.base import AgentResponse
 from alphadiana.benchmark.base import BenchmarkTask
@@ -217,11 +218,45 @@ class ResultStore:
                 path.write_text(content, encoding="utf-8")
                 workspace_files[remote_path] = str(rel)
             files["workspace_files"] = workspace_files
+            self._resolve_workspace_artifact_refs(files, workspace_files)
 
         artifact_root = self.artifacts_dir / sample_prefix
         if artifact_root.exists():
             manifest["local_artifact_root"] = str(sample_prefix)
         return manifest
+
+    def _resolve_workspace_artifact_refs(
+        self,
+        files: dict[str, Any],
+        workspace_files: dict[str, str],
+    ) -> None:
+        """Replace workspace file aliases in manifest entries with local relative paths."""
+        basename_lookup: dict[str, list[str]] = {}
+        for remote_path, rel_path in workspace_files.items():
+            basename_lookup.setdefault(Path(remote_path).name, []).append(rel_path)
+
+        def _resolve(value: Any) -> Any:
+            if isinstance(value, str):
+                direct = workspace_files.get(value)
+                if direct:
+                    return direct
+                candidates = basename_lookup.get(Path(value).name, [])
+                if len(candidates) == 1:
+                    return candidates[0]
+                return value
+            if isinstance(value, list):
+                return [_resolve(item) for item in value]
+            if isinstance(value, dict):
+                return {
+                    key: _resolve(item)
+                    for key, item in value.items()
+                }
+            return value
+
+        for key, value in list(files.items()):
+            if key == "workspace_files":
+                continue
+            files[key] = _resolve(value)
 
     def _save_per_task_json(self, task_id: str, record: dict) -> None:
         """Write/update a per-task JSON file under {run_id}/tasks/{task_id}.json.

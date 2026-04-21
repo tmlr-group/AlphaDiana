@@ -13,9 +13,11 @@ from typing import Any, Optional
 from alphadiana.agent.base import Agent, AgentResponse
 from alphadiana.agent.openclaw import (
     _extract_trajectory_error,
+    _extract_reasoning_trajectory_from_payload,
     _parse_openclaw_session,
     _recover_partial_output_from_trajectory,
 )
+from alphadiana.agent.preservation import add_artifact_file_refs
 from alphadiana.agent.registry import AgentRegistry
 from alphadiana.agent.terminal_bench2_incontainer import (
     IN_CONTAINER_AGENT_PROMPT,
@@ -24,6 +26,44 @@ from alphadiana.agent.terminal_bench2_incontainer import (
 from alphadiana.benchmark.base import BenchmarkTask
 
 logger = logging.getLogger(__name__)
+
+
+def _build_openclaw_reasoning_trajectory(trajectory: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Extract reasoning/tool events from a parsed OpenClaw session trajectory."""
+    reasoning: list[dict[str, Any]] = []
+    for entry in trajectory:
+        if not isinstance(entry, dict):
+            continue
+        thinking = str(entry.get("thinking", "") or "").strip()
+        if thinking:
+            reasoning.append(
+                {
+                    "role": "assistant",
+                    "type": "reasoning",
+                    "content": thinking,
+                }
+            )
+        role = str(entry.get("role", "") or "").strip()
+        if role in {"tool_use", "tool_result"}:
+            reasoning.append(
+                {
+                    "role": role,
+                    "type": role,
+                    "content": json.dumps(entry, ensure_ascii=False, sort_keys=True),
+                }
+            )
+            continue
+        for key, step_type in (("tool_calls", "tool_call"), ("tool_results", "tool_result")):
+            value = entry.get(key)
+            if isinstance(value, list) and value:
+                reasoning.append(
+                    {
+                        "role": role or "assistant",
+                        "type": step_type,
+                        "content": json.dumps(value, ensure_ascii=False, sort_keys=True),
+                    }
+                )
+    return reasoning
 
 
 class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
@@ -93,8 +133,12 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
         try:
             import httpx
 
+            headers = {}
+            if self._api_key and self._api_key.upper() != "EMPTY":
+                headers["Authorization"] = f"Bearer {self._api_key}"
             response = httpx.get(
                 f"{self._api_base.rstrip('/')}/models",
+                headers=headers,
                 timeout=self._context_probe_timeout_sec,
                 trust_env=False,
             )
@@ -324,6 +368,7 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
         trajectory_error = ""
         response_json: dict[str, Any] = {}
         assistant_text = ""
+        reasoning_trajectory: list[dict[str, Any]] = []
         session_file: Path | None = None
         context_preflight: dict[str, Any] = {}
         runtime_model_patch: dict[str, Any] = {}
@@ -449,6 +494,7 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
                 trajectory = _parse_openclaw_session(session_text)
                 assistant_text, _ = _recover_partial_output_from_trajectory(trajectory)
                 trajectory_error = _extract_trajectory_error(trajectory)
+                reasoning_trajectory = _build_openclaw_reasoning_trajectory(trajectory)
             if not assistant_text:
                 assistant_text = agent_stdout.strip()
 
@@ -479,15 +525,47 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
             trajectory = _parse_openclaw_session(
                 artifact_files["/terminal_bench2/openclaw/session.jsonl"]
             )
+            reasoning_trajectory = _build_openclaw_reasoning_trajectory(trajectory)
         if not trajectory:
             trajectory = [
                 {"role": "user", "content": prompt_text},
                 {"role": "assistant", "content": assistant_text},
             ]
+        if not reasoning_trajectory:
+            reasoning_trajectory = _extract_reasoning_trajectory_from_payload(response_json)
+
+        response_summary = dict(response_json) if isinstance(response_json, dict) else {}
+        if assistant_text or agent_stdout.strip():
+            response_summary.setdefault("output_text", assistant_text or agent_stdout.strip())
+        if agent_stderr.strip():
+            response_summary.setdefault("stderr_text", agent_stderr.strip())
+        response_summary.setdefault("returncode", agent_returncode)
+        response_summary.setdefault("onboard_returncode", onboard_returncode)
+        if session_id:
+            response_summary.setdefault("session_id", session_id)
+        if trajectory_error:
+            response_summary.setdefault("trajectory_error", trajectory_error)
+        if context_preflight:
+            response_summary.setdefault("context_preflight", context_preflight)
+        if runtime_model_patch:
+            response_summary.setdefault("runtime_model_patch", runtime_model_patch)
+
+        artifact_manifest = add_artifact_file_refs(
+            {},
+            response_stream="openclaw_stdout.log" if agent_stdout else None,
+            session_trace="session.jsonl" if session_file is not None else None,
+            stderr_log="openclaw_stderr.log" if agent_stderr else None,
+            prompt_text="PROMPT.txt",
+            runtime_config="runtime_openclaw.json",
+            context_preflight="openclaw_context_preflight.json",
+            onboard_stdout="openclaw_onboard_stdout.log" if onboard_stdout else None,
+            onboard_stderr="openclaw_onboard_stderr.log" if onboard_stderr else None,
+        )
 
         return AgentResponse(
             answer=reward_content,
             trajectory=trajectory,
+            reasoning_trajectory=reasoning_trajectory,
             raw_output=assistant_text or agent_stdout,
             wall_time_sec=time.time() - t_start,
             metadata=self._build_metadata(
@@ -514,7 +592,8 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
                 },
             ),
             request_messages=[{"role": "user", "content": prompt_text}],
-            response_json=response_json,
+            response_json=response_summary,
+            artifact_manifest=artifact_manifest,
             workspace_file_contents=artifact_files,
             system_prompt=IN_CONTAINER_AGENT_PROMPT,
         )

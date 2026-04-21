@@ -551,6 +551,10 @@ python -m alphadiana.cli run configs/examples/swebench_pro_zeroclaw_smoke.local.
   -o max_concurrent=10
 ```
 
+For a single-instance smoke rerun without changing the benchmark harness,
+override `benchmark.config.instance_ids=<instance_id>`, for example
+`-o benchmark.config.instance_ids=instance_qutebrowser__...`.
+
 ## Expected Results
 
 Use the following smoke pass criteria:

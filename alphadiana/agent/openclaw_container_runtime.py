@@ -530,17 +530,38 @@ class OpenClawContainerRuntimeManager:
         ]
 
         workspace_file_contents: dict[str, str] = {}
-        for path in [f"{workspace_root}/AGENTS.md", f"{workspace_root}/SOUL.md", *session_paths[:3]]:
-            try:
-                workspace_file_contents[path] = sandbox.read_text(path)
-            except Exception:
+        session_alias_path = ""
+        response_stream_alias = ""
+        candidate_paths = [
+            f"{workspace_root}/AGENTS.md",
+            f"{workspace_root}/SOUL.md",
+            f"{workspace_root}/openclaw_output.jsonl",
+            *session_paths[:3],
+        ]
+        for path in candidate_paths:
+            text = self._read_text_best_effort(sandbox, path)
+            if not text.strip():
                 continue
+            workspace_file_contents[path] = text
+            if path.endswith("openclaw_output.jsonl") and not response_stream_alias:
+                response_stream_alias = "openclaw_output.jsonl"
+                workspace_file_contents.setdefault(response_stream_alias, text)
+            if path.endswith(".jsonl") and "/sessions/" in path and not session_alias_path:
+                session_alias_path = "openclaw_session.jsonl"
+                workspace_file_contents.setdefault(session_alias_path, text)
+        if not response_stream_alias and session_alias_path:
+            response_stream_alias = session_alias_path
 
         artifact_manifest = {
-            "gateway_log_path": self._gateway_log_path,
-            "workspace_path": workspace_root,
+            "files": {
+                "gateway_log_source": self._gateway_log_path,
+                "workspace_root": workspace_root,
+                "response_stream": response_stream_alias,
+                "session_trace": session_alias_path or (session_paths[0] if session_paths else ""),
+                "system_prompt": f"{workspace_root}/AGENTS.md",
+                "runtime_config": self._remote_openclaw_config_path,
+            },
             "session_paths": session_paths,
-            "openclaw_config_path": self._remote_openclaw_config_path,
         }
         return {
             "artifact_manifest": artifact_manifest,
@@ -549,6 +570,26 @@ class OpenClawContainerRuntimeManager:
             "workspace_file_contents": workspace_file_contents,
             "sandbox_metadata": self._sandbox_metadata(sandbox),
         }
+
+    def _read_text_best_effort(self, sandbox: Any, remote_path: str) -> str:
+        path = str(remote_path or "").strip()
+        if not path:
+            return ""
+        try:
+            text = sandbox.read_text(path)
+            if isinstance(text, str):
+                return text
+        except Exception:
+            pass
+        try:
+            result = sandbox.execute(f"cat {shlex.quote(path)}")
+        except Exception:
+            return ""
+        exit_code = getattr(result, "exit_code", getattr(result, "returncode", 1))
+        if int(exit_code or 0) != 0:
+            return ""
+        stdout = getattr(result, "stdout", "")
+        return stdout if isinstance(stdout, str) else ""
 
     def teardown(self) -> None:
         return None

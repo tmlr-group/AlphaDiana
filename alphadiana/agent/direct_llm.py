@@ -290,18 +290,23 @@ class DirectLLMAgent(Agent):
         if not answer and raw_reasoning:
             answer = _extract_answer(raw_reasoning)
 
-        # Build response_json with reasoning_content if present
-        response_json: dict = {}
+        # Persist a normalized response envelope even when the provider does
+        # not expose separate reasoning fields. This keeps non-thinking models
+        # from collapsing to response_json={} in saved task records.
+        response_message: dict[str, Any] = {
+            "role": "assistant",
+            "content": raw_output,
+        }
         if raw_reasoning:
-            response_json = {
-                "choices": [{
-                    "message": {
-                        "role": "assistant",
-                        "content": raw_output,
-                        "reasoning_content": raw_reasoning,
-                    }
-                }]
-            }
+            response_message["reasoning_content"] = raw_reasoning
+        response_json: dict[str, Any] = {
+            "choices": [{
+                "message": response_message,
+                "finish_reason": finish_reason,
+            }]
+        }
+        if token_usage:
+            response_json["usage"] = token_usage
 
         reasoning_trajectory: list[dict] = []
         if raw_reasoning:

@@ -570,6 +570,18 @@ The evaluation results are saved in `results/<run_id>.jsonl`, with one JSON reco
 alphadiana report ./results
 ```
 
+Native task records also preserve the model-facing request and raw runtime
+evidence needed for replay and audit:
+
+- `request_messages`, `response_json`, `trajectory`, and
+  `reasoning_trajectory` are written into each task JSON when the runtime
+  exposes them.
+- Per-task raw files are stored under `results/<run_id>/artifacts/<task_id>/...`.
+- `artifact_manifest.files` exposes stable aliases such as `response_stream`,
+  `session_trace`, `prompt_text`, and `workspace_files` so downstream tooling
+  can find the preserved harness artifacts without knowing agent-specific
+  filenames.
+
 
 ### 7.2 Question-by-question analysis
 

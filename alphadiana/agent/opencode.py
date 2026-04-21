@@ -14,6 +14,11 @@ from pathlib import Path
 from typing import Any
 
 from alphadiana.agent.base import Agent, AgentResponse
+from alphadiana.agent.preservation import (
+    add_artifact_file_refs,
+    build_event_trajectories,
+    build_runtime_trace_summary,
+)
 from alphadiana.agent.registry import AgentRegistry
 from alphadiana.benchmark.base import BenchmarkTask
 from alphadiana.utils.attachments import iter_binary_attachments, write_attachments
@@ -204,6 +209,39 @@ def _parse_opencode_output(raw_output: str) -> tuple[str, list[dict[str, Any]], 
     return assistant_text, events, session_id
 
 
+def _read_opencode_session_trace(session_dir: Path, session_id: str) -> tuple[str, str]:
+    """Read the most relevant saved OpenCode session trace."""
+    if not session_dir.exists() or not session_dir.is_dir():
+        return "", ""
+
+    candidates: list[Path] = []
+    if session_id:
+        candidates.extend(
+            sorted(
+                session_dir.glob(f"{session_id}*"),
+                key=lambda path: path.stat().st_mtime,
+                reverse=True,
+            )
+        )
+    if not candidates:
+        candidates.extend(
+            sorted(
+                (path for path in session_dir.iterdir() if path.is_file()),
+                key=lambda path: path.stat().st_mtime,
+                reverse=True,
+            )
+        )
+
+    for path in candidates:
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if text.strip():
+            return text, path.name
+    return "", ""
+
+
 class OpenCodeAgent(Agent):
     """Agent that runs OpenCode CLI and supports task-container execution.
 
@@ -334,9 +372,15 @@ class OpenCodeAgent(Agent):
         stderr = result.get("stderr", "")
         exit_code = int(result.get("exit_code", -1))
         patch_from_git = str(result.get("patch", "") or "")
+        request_messages = [{"role": "user", "content": problem}]
 
         assistant_text, events, session_id = _parse_opencode_output(raw_stdout)
         full_content = assistant_text or raw_stdout
+        trajectory, reasoning_trajectory = build_event_trajectories(
+            request_messages,
+            events,
+            final_output=full_content,
+        )
 
         if patch_from_git:
             answer = patch_from_git
@@ -362,12 +406,27 @@ class OpenCodeAgent(Agent):
         except Exception as exc:
             logger.debug("Failed to collect OpenCode container artifacts: %s", exc)
 
+        artifact_manifest = add_artifact_file_refs(
+            artifacts.get("artifact_manifest", {}),
+            response_stream="/swebench_agent/opencode/opencode_output.jsonl",
+            session_trace="/swebench_agent/opencode/opencode_session.jsonl",
+            stderr_log="/swebench_agent/opencode/opencode_stderr.log",
+        )
+        response_json = build_runtime_trace_summary(
+            output_text=full_content,
+            stderr_text=stderr.strip(),
+            records=events,
+            extra={
+                "exit_code": exit_code,
+                "patch_source": "git_diff" if patch_from_git else "text_extraction",
+                "session_id": session_id,
+            },
+        )
+
         return AgentResponse(
             answer=answer,
-            trajectory=[
-                {"role": "user", "content": task.problem},
-                {"role": "assistant", "content": full_content},
-            ],
+            trajectory=trajectory,
+            reasoning_trajectory=reasoning_trajectory,
             raw_output=full_content,
             wall_time_sec=wall_time,
             metadata={
@@ -382,6 +441,9 @@ class OpenCodeAgent(Agent):
                 **artifacts,
             },
             system_prompt=system_prompt,
+            request_messages=request_messages,
+            response_json=response_json,
+            artifact_manifest=artifact_manifest,
         )
 
     def _run_in_docker(
@@ -445,6 +507,7 @@ class OpenCodeAgent(Agent):
     def _solve_cli(self, task: BenchmarkTask) -> AgentResponse:
         """Run tasks through the OpenCode CLI (host or Docker, multimodal-aware)."""
         start = time.time()
+        session_trace = ""
 
         with tempfile.TemporaryDirectory(prefix="opencode-task-") as workdir:
             workdir_path = Path(workdir)
@@ -507,6 +570,10 @@ class OpenCodeAgent(Agent):
 
             attachment_paths = write_attachments(workdir_path / "attachments", task.attachments)
             prompt = _build_prompt(task.problem, self._system_prompt, attachment_paths)
+            request_messages: list[dict[str, Any]] = []
+            if str(self._system_prompt).strip():
+                request_messages.append({"role": "system", "content": self._system_prompt})
+            request_messages.append({"role": "user", "content": task.problem})
 
             env = os.environ.copy()
             env["OPENAI_API_KEY"] = self._api_key
@@ -586,9 +653,20 @@ class OpenCodeAgent(Agent):
                             raw_output, timed_out_stderr = process.communicate()
                             stderr = timed_out_stderr or stderr
 
+            _, _, session_id = _parse_opencode_output(raw_output)
+            session_trace, _ = _read_opencode_session_trace(
+                config_dir / "sessions",
+                session_id,
+            )
+
         wall_time = time.time() - start
         assistant_text, events, session_id = _parse_opencode_output(raw_output)
         full_content = assistant_text or raw_output
+        trajectory, reasoning_trajectory = build_event_trajectories(
+            request_messages,
+            events,
+            final_output=full_content,
+        )
         transport = (
             "opencode_cli_container"
             if self._controller_mode == "docker"
@@ -610,12 +688,51 @@ class OpenCodeAgent(Agent):
                 stderr[:500],
             )
 
+        workspace_file_contents: dict[str, str] = {
+            "prompt.txt": prompt,
+            "opencode_output.jsonl": raw_output,
+        }
+        if session_trace:
+            workspace_file_contents["opencode_session.jsonl"] = session_trace
+        if stderr:
+            workspace_file_contents["opencode_stderr.log"] = stderr
+        if attachment_paths:
+            workspace_file_contents["attachment_manifest.json"] = json.dumps(
+                {
+                    "attachments": [
+                        {
+                            "filename": path.name,
+                            "path": f"attachments/{path.name}",
+                        }
+                        for path in attachment_paths
+                    ]
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+        artifact_manifest = add_artifact_file_refs(
+            {},
+            response_stream="opencode_output.jsonl",
+            session_trace="opencode_session.jsonl" if session_trace else None,
+            stderr_log="opencode_stderr.log" if stderr else None,
+            prompt_text="prompt.txt",
+            attachment_manifest="attachment_manifest.json" if attachment_paths else None,
+        )
+        response_json = build_runtime_trace_summary(
+            output_text=full_content,
+            stderr_text=stderr.strip(),
+            records=events,
+            extra={
+                "returncode": returncode,
+                "session_id": session_id,
+                "transport": transport,
+            },
+        )
+
         return AgentResponse(
             answer=answer,
-            trajectory=[
-                {"role": "user", "content": task.problem},
-                {"role": "assistant", "content": full_content},
-            ],
+            trajectory=trajectory,
+            reasoning_trajectory=reasoning_trajectory,
             raw_output=full_content,
             wall_time_sec=wall_time,
             metadata={
@@ -627,6 +744,11 @@ class OpenCodeAgent(Agent):
                 "controller_mode": self._controller_mode,
                 "transport": transport,
             },
+            request_messages=request_messages,
+            response_json=response_json,
+            artifact_manifest=artifact_manifest,
+            workspace_file_contents=workspace_file_contents,
+            system_prompt=str(self._system_prompt),
         )
 
     def teardown(self) -> None:

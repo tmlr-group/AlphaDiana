@@ -12,6 +12,12 @@ from typing import Any, Optional
 
 from alphadiana.agent.base import Agent, AgentResponse
 from alphadiana.agent.opencode import _extract_event_texts
+from alphadiana.agent.preservation import (
+    add_artifact_file_refs,
+    build_event_trajectories,
+    build_runtime_trace_summary,
+    parse_jsonl_records,
+)
 from alphadiana.agent.registry import AgentRegistry
 from alphadiana.agent.terminal_bench2_incontainer import (
     IN_CONTAINER_AGENT_PROMPT,
@@ -118,6 +124,27 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
         cmd.append('$(cat "$ALPHADIANA_PROMPT_FILE")')
         return cmd
 
+    def _collect_session_trace(
+        self,
+        container_id: str,
+        remote_opencode_home: str,
+    ) -> str:
+        result = self._docker_exec_capture(
+            container_id,
+            (
+                f"if [ -d {shlex.quote(remote_opencode_home)} ]; then "
+                f"find {shlex.quote(remote_opencode_home)} -type f -name '*.jsonl' -print | sort | "
+                "while IFS= read -r path; do "
+                "printf '# file: %s\\n' \"$path\"; "
+                "cat \"$path\"; "
+                "printf '\\n'; "
+                "done; "
+                "fi"
+            ),
+            timeout_sec=30,
+        )
+        return result.stdout
+
     def solve(self, task: BenchmarkTask, sandbox: Optional[Any] = None) -> AgentResponse:
         del sandbox
         t_start = time.time()
@@ -127,6 +154,7 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
         raw_output = ""
         session_id = ""
         events: list[dict[str, Any]] = []
+        session_trace = ""
         test_output = ""
         task_text, prompt_text = self._build_incontainer_prompt(task)
         runtime, runtime_metadata = self._prepare_incontainer_runtime(
@@ -184,6 +212,10 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
             raw_output = exec_result.stdout
             stderr = exec_result.stderr
             returncode = exec_result.returncode
+            session_trace = self._collect_session_trace(
+                runtime.container_id,
+                f"{remote_home}/.opencode",
+            )
             (runtime.workdir / "opencode_stdout.log").write_text(
                 raw_output,
                 encoding="utf-8",
@@ -191,6 +223,11 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
             )
             (runtime.workdir / "opencode_stderr.log").write_text(
                 stderr,
+                encoding="utf-8",
+                errors="replace",
+            )
+            (runtime.workdir / "opencode_session.jsonl").write_text(
+                session_trace,
                 encoding="utf-8",
                 errors="replace",
             )
@@ -204,6 +241,7 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
                 "/terminal_bench2/opencode/PROMPT.txt": runtime.workdir / "PROMPT.txt",
                 "/terminal_bench2/opencode/opencode_stdout.log": runtime.workdir / "opencode_stdout.log",
                 "/terminal_bench2/opencode/opencode_stderr.log": runtime.workdir / "opencode_stderr.log",
+                "/terminal_bench2/opencode/opencode_session.jsonl": runtime.workdir / "opencode_session.jsonl",
                 "/terminal_bench2/opencode/xdg-config/opencode/opencode.json": runtime.workdir / "xdg-config" / "opencode" / "opencode.json",
             })
             self._cleanup_runtime(runtime)
@@ -224,13 +262,27 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
             except (json.JSONDecodeError, ValueError):
                 content_parts.append(stripped)
         full_content = "\n".join(part for part in content_parts if part).strip() or raw_output
+        session_records = parse_jsonl_records(session_trace)
+        request_messages = [{"role": "user", "content": prompt_text}]
+        trajectory_records = session_records or events
+        trajectory, reasoning_trajectory = build_event_trajectories(
+            request_messages,
+            trajectory_records,
+            final_output=full_content,
+        )
+        artifact_manifest = add_artifact_file_refs(
+            {},
+            response_stream="opencode_stdout.log" if raw_output else None,
+            session_trace="opencode_session.jsonl" if session_trace else None,
+            stderr_log="opencode_stderr.log" if stderr else None,
+            prompt_text="PROMPT.txt",
+            runtime_config="opencode.json",
+        )
 
         return AgentResponse(
             answer=reward_content,
-            trajectory=[
-                {"role": "user", "content": prompt_text},
-                {"role": "assistant", "content": full_content},
-            ],
+            trajectory=trajectory,
+            reasoning_trajectory=reasoning_trajectory,
             raw_output=full_content,
             wall_time_sec=time.time() - t_start,
             metadata=self._build_metadata(
@@ -248,8 +300,21 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
                     **runtime_metadata,
                 },
             ),
-            request_messages=[{"role": "user", "content": prompt_text}],
-            response_json={"events": events} if events else {},
+            request_messages=request_messages,
+            response_json=build_runtime_trace_summary(
+                output_text=full_content,
+                stderr_text=stderr.strip(),
+                records=trajectory_records,
+                extra={
+                    "returncode": returncode,
+                    "session_id": session_id,
+                    "num_events": len(events),
+                    "session_trace_present": bool(session_trace.strip()),
+                    "num_session_records": len(session_records),
+                    "transport": "opencode_cli_container",
+                },
+            ),
+            artifact_manifest=artifact_manifest,
             workspace_file_contents=artifact_files,
             system_prompt=IN_CONTAINER_AGENT_PROMPT,
         )

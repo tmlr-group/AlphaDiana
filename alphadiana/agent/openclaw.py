@@ -35,6 +35,7 @@ from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 from alphadiana.agent.base import Agent, AgentResponse
+from alphadiana.agent.preservation import add_artifact_file_refs
 from alphadiana.agent.registry import AgentRegistry
 from alphadiana.benchmark.base import BenchmarkTask
 from alphadiana.utils.attachments import build_openai_multimodal_user_content
@@ -514,6 +515,92 @@ def _parse_openclaw_session(session_jsonl: str) -> list[dict]:
             })
 
     return trajectory
+
+
+def _extract_reasoning_trajectory_from_openclaw_trajectory(
+    trajectory: list[dict],
+) -> list[dict]:
+    """Extract reasoning/tool events from a parsed OpenClaw session trajectory."""
+    reasoning: list[dict] = []
+    for entry in trajectory:
+        if not isinstance(entry, dict):
+            continue
+        thinking = _coerce_text_content(entry.get("thinking", "")).strip()
+        if thinking:
+            reasoning.append(
+                {
+                    "role": "assistant",
+                    "type": "reasoning",
+                    "content": thinking,
+                }
+            )
+        role = str(entry.get("role", "") or "").strip()
+        if role in {"tool_use", "tool_result"}:
+            reasoning.append(
+                {
+                    "role": role,
+                    "type": role,
+                    "content": json.dumps(entry, ensure_ascii=False, sort_keys=True),
+                }
+            )
+            continue
+        for key, step_type in (("tool_calls", "tool_call"), ("tool_results", "tool_result")):
+            value = entry.get(key)
+            if isinstance(value, list) and value:
+                reasoning.append(
+                    {
+                        "role": role or "assistant",
+                        "type": step_type,
+                        "content": json.dumps(value, ensure_ascii=False, sort_keys=True),
+                    }
+                )
+    return reasoning
+
+
+def _recover_openclaw_session_artifacts(
+    workspace_file_contents: dict[str, str] | None,
+    *,
+    expected_user_content: str = "",
+) -> tuple[list[dict], list[dict], str]:
+    """Recover trajectory/reasoning from collected OpenClaw session JSONL files."""
+    if not isinstance(workspace_file_contents, dict):
+        return [], [], ""
+
+    preferred_candidates: list[tuple[str, str]] = []
+    fallback_candidates: list[tuple[str, str]] = []
+    for path, content in workspace_file_contents.items():
+        path_text = str(path or "").strip()
+        content_text = str(content or "")
+        if not path_text.endswith(".jsonl") or not content_text.strip():
+            continue
+        candidate = (path_text, content_text)
+        if path_text.endswith("/openclaw_session.jsonl") or path_text == "openclaw_session.jsonl":
+            preferred_candidates.append(candidate)
+        else:
+            fallback_candidates.append(candidate)
+
+    fallback_trajectory: list[dict] = []
+    fallback_reasoning: list[dict] = []
+    fallback_session_text = ""
+    for _, session_text in [*preferred_candidates, *fallback_candidates]:
+        trajectory = _parse_openclaw_session(session_text)
+        if trajectory and not fallback_trajectory:
+            fallback_trajectory = trajectory
+            fallback_reasoning = _extract_reasoning_trajectory_from_openclaw_trajectory(
+                trajectory
+            )
+            fallback_session_text = session_text
+        if expected_user_content and _trajectory_matches_request(
+            trajectory,
+            expected_user_content,
+        ):
+            return (
+                trajectory,
+                _extract_reasoning_trajectory_from_openclaw_trajectory(trajectory),
+                session_text,
+            )
+
+    return fallback_trajectory, fallback_reasoning, fallback_session_text
 
 
 class OpenClawAgent(Agent):
@@ -1298,28 +1385,41 @@ class OpenClawAgent(Agent):
                         raw_output = recovered_content
                     if recovered_reasoning and not raw_reasoning:
                         raw_reasoning = recovered_reasoning
-                if raw_reasoning:
-                    if not response_json:
-                        response_json = {
-                            "choices": [
-                                {
-                                    "message": {
-                                        "role": "assistant",
-                                        "content": raw_output if raw_output else "",
-                                        "reasoning_content": raw_reasoning,
-                                    }
-                                }
-                            ]
-                        }
-                    else:
-                        choices = response_json.setdefault("choices", [{}])
-                        if not choices:
-                            choices.append({})
-                        message = choices[0].setdefault("message", {})
-                        if isinstance(message, dict):
-                            message.setdefault("role", "assistant")
-                            message["content"] = raw_output if raw_output else ""
+                if not response_json:
+                    message: dict[str, Any] = {
+                        "role": "assistant",
+                        "content": raw_output if raw_output else "",
+                    }
+                    if raw_reasoning:
+                        message["reasoning_content"] = raw_reasoning
+                    response_json = {
+                        "choices": [
+                            {
+                                "message": message,
+                                "finish_reason": "stop" if received_done else "incomplete",
+                            }
+                        ],
+                        "stream_status": {
+                            "received_done": received_done,
+                            "status_code": status_code,
+                        },
+                    }
+                else:
+                    choices = response_json.setdefault("choices", [{}])
+                    if not choices:
+                        choices.append({})
+                    message = choices[0].setdefault("message", {})
+                    if isinstance(message, dict):
+                        message.setdefault("role", "assistant")
+                        message.setdefault("content", raw_output if raw_output else "")
+                        if raw_reasoning:
                             message["reasoning_content"] = raw_reasoning
+                    if "finish_reason" not in choices[0]:
+                        choices[0]["finish_reason"] = "stop" if received_done else "incomplete"
+                    stream_status = response_json.setdefault("stream_status", {})
+                    if isinstance(stream_status, dict):
+                        stream_status.setdefault("received_done", received_done)
+                        stream_status.setdefault("status_code", status_code)
                 # Accumulate token usage across retries.
                 attempt_usage = (response_json or {}).get("usage")
                 if attempt_usage:
@@ -1597,16 +1697,41 @@ class OpenClawAgent(Agent):
                     "total_tokens": int(usage.get("total_tokens", 0)),
                 }
 
+        expected_user_content = request_messages[0]["content"]
+
+        # Collect artifacts from runtime manager before finalizing the transcript
+        # so saved session JSONL files can recover the real agent trajectory.
+        if sandbox is not None and self._runtime_manager and self._runtime_manager.is_configured:
+            try:
+                artifact_data = self._runtime_manager.collect_artifacts(sandbox)
+            except Exception as exc:
+                logger.warning("Artifact collection failed: %s", exc)
+
+        session_trajectory, session_reasoning_trajectory, _ = _recover_openclaw_session_artifacts(
+            artifact_data.get("workspace_file_contents", {}),
+            expected_user_content=expected_user_content,
+        )
+
         # Try to retrieve the real agentic trajectory from the sandbox.
         trajectory = recovered_trajectory or self._retrieve_trajectory_sync(
             sandbox=sandbox,
             sandbox_id=runtime_info.get("sandbox_id", ""),
             rock_sandbox_url=actual_rock_sandbox_url,
-            expected_user_content=request_messages[0]["content"],
+            expected_user_content=expected_user_content,
         )
+        if session_trajectory and (
+            not trajectory
+            or (
+                not _trajectory_matches_request(trajectory, expected_user_content)
+                and _trajectory_matches_request(session_trajectory, expected_user_content)
+            )
+        ):
+            trajectory = session_trajectory
         if not trajectory:
             # Also try extracting from response payload
             trajectory = _extract_reasoning_trajectory_from_payload(response_json)
+        if not trajectory and session_trajectory:
+            trajectory = session_trajectory
         if not trajectory:
             # Fallback: record what we know from the API response
             assistant_entry = {"role": "assistant", "content": raw_output}
@@ -1616,7 +1741,9 @@ class OpenClawAgent(Agent):
                 {"role": "user", "content": task.problem},
                 assistant_entry,
             ]
-        reasoning_trajectory = _extract_reasoning_trajectory_from_payload(response_json)
+        reasoning_trajectory = (
+            session_reasoning_trajectory or _extract_reasoning_trajectory_from_payload(response_json)
+        )
         if not reasoning_trajectory and raw_reasoning:
             reasoning_trajectory = [
                 {
@@ -1639,12 +1766,20 @@ class OpenClawAgent(Agent):
                 getattr(task, "task_id", "?"),
             )
 
-        # Collect artifacts from runtime manager if available
-        if sandbox is not None and self._runtime_manager and self._runtime_manager.is_configured:
-            try:
-                artifact_data = self._runtime_manager.collect_artifacts(sandbox)
-            except Exception as exc:
-                logger.warning("Artifact collection failed: %s", exc)
+        preserved_workspace_files = dict(artifact_data.get("workspace_file_contents", {}) or {})
+        preserved_workspace_files.setdefault(
+            "openclaw_request_payload.json",
+            json.dumps(request_payload, ensure_ascii=False, indent=2),
+        )
+        preserved_workspace_files.setdefault(
+            "openclaw_selected_response.json",
+            json.dumps(response_json, ensure_ascii=False, indent=2),
+        )
+        preserved_artifact_manifest = add_artifact_file_refs(
+            artifact_data.get("artifact_manifest", {}),
+            request_payload="openclaw_request_payload.json",
+            selected_response="openclaw_selected_response.json",
+        )
 
         return AgentResponse(
             answer=answer,
@@ -1657,10 +1792,10 @@ class OpenClawAgent(Agent):
             response_json=response_json,
             sandbox_id=runtime_info.get("sandbox_id", ""),
             gateway_url=runtime_info.get("gateway_url", ""),
-            artifact_manifest=artifact_data.get("artifact_manifest", {}),
+            artifact_manifest=preserved_artifact_manifest,
             gateway_log_excerpt=artifact_data.get("gateway_log_excerpt", ""),
             workspace_snapshot_paths=artifact_data.get("workspace_snapshot_paths", []),
-            workspace_file_contents=artifact_data.get("workspace_file_contents", {}),
+            workspace_file_contents=preserved_workspace_files,
             sandbox_metadata=artifact_data.get("sandbox_metadata", {}),
             system_prompt=extract_system_prompt(trajectory) or self._retrieve_system_prompt_from_sandbox(sandbox),
             finish_reason="incomplete" if partial_reasoning_only and not raw_output else "",

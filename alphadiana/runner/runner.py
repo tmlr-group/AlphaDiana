@@ -48,6 +48,19 @@ def _sanitize_success_sandbox_metadata(metadata: dict | None) -> dict:
     return sanitized
 
 
+def _merge_artifact_manifests(existing: dict | None, incoming: dict | None) -> dict:
+    """Merge artifact manifests without dropping previously preserved file aliases."""
+    merged = dict(existing or {})
+    for key, value in dict(incoming or {}).items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = {**merged[key], **value}
+        elif isinstance(value, list) and isinstance(merged.get(key), list):
+            merged[key] = [*merged[key], *value]
+        else:
+            merged[key] = value
+    return merged
+
+
 def _has_openclaw_direct_gateway(config: "ExperimentConfig") -> bool:
     """Return whether OpenClaw should use an already-running gateway."""
     if config.agent_name != "openclaw":
@@ -805,10 +818,10 @@ class Runner:
                             artifact_data = runtime_manager.collect_artifacts(sandbox_session)
                             existing_manifest = dict(error_response.artifact_manifest or {})
                             existing_files = dict(error_response.workspace_file_contents or {})
-                            error_response.artifact_manifest = {
-                                **existing_manifest,
-                                **artifact_data.get("artifact_manifest", {}),
-                            }
+                            error_response.artifact_manifest = _merge_artifact_manifests(
+                                existing_manifest,
+                                artifact_data.get("artifact_manifest", {}),
+                            )
                             if not error_response.gateway_log_excerpt:
                                 error_response.gateway_log_excerpt = artifact_data.get("gateway_log_excerpt", "")
                             existing_paths = list(error_response.workspace_snapshot_paths or [])
