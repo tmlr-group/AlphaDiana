@@ -30,6 +30,7 @@ Skip `docs/archive/` and `context/archive/` unless the task is explicitly histor
 - Put new material under `context/`, not `contexts/`.
 - In committed `docs/*` and `context/*`, prefer repo-relative paths, run IDs, and filenames. Do not commit absolute local worktree paths as durable references.
 - When answering whether a path is "ready" or "supported", separate current repo-level status from historical evidence, and say when the referenced result artifacts are no longer present in the current checkout.
+- When you add or materially change a doc/context entry point, update the relevant index files in the same change. Typical indexes are `docs/README.md`, `docs/benchmarks/README.md`, `context/README.md`, and the root `README.md` documentation table.
 
 ## Hard rules
 
@@ -41,6 +42,8 @@ Skip `docs/archive/` and `context/archive/` unless the task is explicitly histor
 - When that verification yields a reusable repo fact, record it in `AGENTS.md` if it is broadly useful; otherwise record it in the relevant `context/*` note so it can be found later.
 - `python -m alphadiana.cli run` resumes from checkpoint by default. Without `--redo-all`, completed task JSONs are skipped and only remaining tasks are evaluated.
 - In `openclaw`, `agent.config.request_timeout` does not widen the streaming read timeout by itself. Unless `agent.config.stream_idle_timeout` is also set, the client still uses a 180s default stream-idle timeout.
+- On shared hosts, treat ROCK isolation as a precondition for any ROCK-backed run: use a checkout-specific conda env, checkout-specific ports / instance name / Redis container / short `RAY_TMPDIR`, and run `python -m alphadiana.cli env` before launch. A healthy admin/proxy on the configured ports is not sufficient if those ports belong to another checkout.
+- If a local ROCK-backed path logs `ROCK proxy failed` or `http proxy failed` after roughly two minutes, suspect the local ROCK proxy implementation before blaming the external model API. In this repo, older `ref/ROCK` copies hardcoded a `120s` timeout in `rock/sandbox/service/sandbox_proxy_service.py:http_proxy()`.
 - Make sure preserving intermediate artifacts for integrating new agents.
 - Make sure agent running in the container runtime for integrating new agents.
 - Never commit secrets or absolute local paths.
@@ -65,6 +68,7 @@ Any real experiment that changes support status, commands, caveats, or evidence 
 
 - Any code change or experiment that changes observable support status, recommended commands, config semantics, caveats, or stored evidence must update `docs/*` and `context/*` in the same change.
 - Keep these doc/context updates minimal and necessary. Do not churn unrelated files when the repo state has not changed.
+- Index updates are part of the doc change, not optional follow-up cleanup.
 - `docs/*` for user-facing commands, config semantics, expected outcomes, and caveats
 - `context/<milestone>/*` for run IDs, evidence, and debug trail
 - `context/README.md` when adding a new milestone folder

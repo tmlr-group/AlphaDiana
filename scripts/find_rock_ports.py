@@ -23,6 +23,9 @@ from alphadiana.utils.rock_ports import (
     DEFAULT_RAY_DASHBOARD_PORT,
     LOCALHOST,
     RockPorts,
+    default_rock_instance_name,
+    default_rock_ray_tmpdir,
+    default_rock_redis_container,
     is_port_available,
 )
 
@@ -56,8 +59,18 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--redis-container",
-        default=f"redis-alphadiana-{os.environ.get('USER', 'default')}",
-        help="Redis container name to reuse if already created (default: redis-alphadiana-$USER).",
+        default=default_rock_redis_container(REPO_ROOT),
+        help="Redis container name to reuse if already created (default: repo-specific isolated name).",
+    )
+    parser.add_argument(
+        "--instance-name",
+        default=default_rock_instance_name(REPO_ROOT),
+        help="Logical ROCK instance name used for isolation metadata.",
+    )
+    parser.add_argument(
+        "--ray-tmpdir",
+        default=default_rock_ray_tmpdir(REPO_ROOT),
+        help="Dedicated RAY_TMPDIR for this AlphaDiana checkout.",
     )
     parser.add_argument(
         "--proxy-port",
@@ -178,13 +191,21 @@ def detect_ports(args: argparse.Namespace) -> RockPorts:
     )
 
 
-def render_exports(ports: RockPorts) -> str:
+def render_exports(
+    ports: RockPorts,
+    *,
+    instance_name: str,
+    redis_container: str,
+    ray_tmpdir: str,
+) -> str:
     lines = [
+        f'export ALPHADIANA_ROCK_INSTANCE_NAME="{instance_name}"',
         f"export ROCK_RAY_PORT={ports.ray_port}",
         f"export ROCK_RAY_DASHBOARD_PORT={ports.ray_dashboard_port}",
         f"export ROCK_RAY_CLIENT_SERVER_PORT={ports.ray_client_server_port}",
+        f'export RAY_TMPDIR="{ray_tmpdir}"',
         f"export ROCK_REDIS_PORT={ports.redis_port}",
-        f'export ROCK_REDIS_CONTAINER="${{ROCK_REDIS_CONTAINER:-redis-alphadiana-${{USER:-default}}}}"',
+        f'export ROCK_REDIS_CONTAINER="{redis_container}"',
         f"export ROCK_ADMIN_PORT={ports.admin_port}",
         f"export ROCK_PROXY_PORT={ports.proxy_port}",
         'export ROCK_BIND_HOST="${ROCK_BIND_HOST:-127.0.0.1}"',
@@ -195,12 +216,12 @@ def render_exports(ports: RockPorts) -> str:
     return "\n".join(lines) + "\n"
 
 
-def render_dynamic_rock_config(ports: RockPorts) -> str:
+def render_dynamic_rock_config(ports: RockPorts, *, instance_name: str) -> str:
     return (
         "ray:\n"
         "    runtime_env:\n"
         "        working_dir: ./\n"
-        '    namespace: "rock-sandbox-local"\n'
+        f'    namespace: "rock-sandbox-{instance_name}"\n'
         "\n"
         "warmup:\n"
         "    images:\n"
@@ -216,7 +237,12 @@ def render_dynamic_rock_config(ports: RockPorts) -> str:
 def main() -> int:
     args = parse_args()
     ports = detect_ports(args)
-    content = render_exports(ports)
+    content = render_exports(
+        ports,
+        instance_name=args.instance_name,
+        redis_container=args.redis_container,
+        ray_tmpdir=args.ray_tmpdir,
+    )
     print(content, end="")
 
     if args.write_env:
@@ -225,7 +251,7 @@ def main() -> int:
         dynamic_config_path = REPO_ROOT / "dev/generated/rock-local-proxy.dynamic.yml"
         dynamic_config_path.parent.mkdir(parents=True, exist_ok=True)
         dynamic_config_path.write_text(
-            render_dynamic_rock_config(ports),
+            render_dynamic_rock_config(ports, instance_name=args.instance_name),
             encoding="utf-8",
         )
 

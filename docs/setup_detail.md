@@ -14,13 +14,38 @@ If you need to run manually, pay attention to the following:
 - Run `unset TMPDIR` before running `python scripts/find_rock_ports.py --write-env scripts/.rock_ports.env`
 - After `newgrp docker`, you must re-run `conda activate`, `source scripts/rock_env.sh`, and `source scripts/.rock_ports.env`
 - Run `ray stop` before starting Ray
-- `RAY_TMPDIR` defaults to `/tmp/ray`
+- `RAY_TMPDIR` now defaults to a short repo-isolated path such as `/tmp/<user>-ray-<hash>` to avoid both cross-checkout reuse and Ray AF_UNIX path-length failures
 
 Further manual steps from `README.md` can be migrated here over time.
 
+## ROCK Isolation On Shared Hosts
+
+If you have multiple AlphaDiana / ROCK checkouts on the same machine, isolate all of the following together:
+
+- Use a dedicated conda env per checkout.
+  `bash scripts/quickstart.sh alphadiana-full2`
+- Persist that env choice via `scripts/.alphadiana_env` and enter it with:
+  `source scripts/activate.sh`
+- Allocate dedicated admin/proxy/Ray/Redis ports for the checkout:
+  `python scripts/find_rock_ports.py --write-env scripts/.rock_ports.env`
+- Let the generated file carry a repo-specific
+  `ALPHADIANA_ROCK_INSTANCE_NAME`,
+  `ROCK_REDIS_CONTAINER`,
+  and short `RAY_TMPDIR`, so Redis and Ray state do not collide across worktrees.
+- Use `python -m alphadiana.cli env` before launching runs.
+  It now checks both service health and whether the configured admin/proxy ports belong to this checkout. If a foreign checkout owns them, regenerate ports and restart the local services.
+
+Current helper behavior:
+
+- `scripts/start_openclaw.sh` and `scripts/start_zeroclaw.sh` can reuse `ALPHADIANA_ROCK_ROOT` instead of requiring a local `ref/ROCK`.
+- Both start scripts refresh ports when the configured admin/proxy belong to another checkout.
+- `scripts/start_zeroclaw.sh` now restarts an unhealthy local Ray head instead of blindly reusing any listener on the GCS port.
+
 ## ROCK Proxy Timeout Configuration
 
-The ROCK proxy `post_proxy` timeout has been changed from a hardcoded 120s to reading from `ProxyServiceConfig.timeout` (default 180s). To set a larger value (600s recommended), configure it in the ROCK YAML config:
+The local `ref/ROCK` proxy `http_proxy` path no longer hardcodes a `120s` read timeout for proxied model requests. It now uses a connect-only timeout derived from `ProxyServiceConfig.timeout`, so long ZeroClaw / OpenClaw upstream calls are not cut off just because the model takes more than two minutes to answer.
+
+To raise the connect timeout itself, configure `proxy_service.timeout` in the ROCK YAML config:
 
 ```yaml
 # rock-config.yml (specified via the ROCK_CONFIG environment variable)
@@ -28,11 +53,11 @@ proxy_service:
   timeout: 600
 ```
 
-If your ROCK version still has `timeout=120` hardcoded, you need to modify it manually:
+If you are using an older external ROCK checkout that still hardcodes `timeout=120`, patch `rock/sandbox/service/sandbox_proxy_service.py` the same way:
 
 1. Open `rock/sandbox/service/sandbox_proxy_service.py` in the ROCK installation directory
-2. Find `timeout=120` (around line 454)
-3. Change it to `timeout=self.proxy_config.timeout`
+2. Find the `http_proxy()` request builder with `timeout=120`
+3. Remove the hardcoded per-request timeout and use a timeout object with `read=None` plus a bounded connect timeout
 
 ## FAQs
 
@@ -44,6 +69,9 @@ Common issues at a glance:
 | `deploy.py` sandbox timeout | Redis not running or `.venv` symlink broken | Check `docker ps` and `ls -la ref/ROCK/.venv` |
 | Ray port `8265` already in use | Shared server port conflict | Use `find_rock_ports.py` to detect free ports |
 | `rock.admin.main` Redis `ConnectionError` | Redis container not started | `docker start "$ROCK_REDIS_CONTAINER"` |
+| `alphadiana env` shows healthy proxy but wrong checkout | Another worktree owns the configured admin/proxy ports | Regenerate `scripts/.rock_ports.env` and restart from `source scripts/activate.sh` |
+| `alphadiana run` fails with `ROCK proxy failed` after about 120s | Old ROCK proxy path still has a hardcoded stream timeout, or the checkout is sharing stale ports/env with another instance | Use a dedicated env, dedicated ports, and ensure the current `ref/ROCK` patch is active |
+| `alphadiana env` loses `admin` while `6380` is still open | A stale Ray head is still listening on the GCS port but is not actually healthy | Re-run `bash scripts/start_zeroclaw.sh` or `bash scripts/start_openclaw.sh` so the unhealthy Ray head is restarted |
 | Sandbox container exits immediately | `ref/ROCK/.venv` missing or invalid | `ln -sfn "$(python -c 'import sys; print(sys.prefix)')" ref/ROCK/.venv` |
 
 

@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import yaml
+import pytest
 
 from alphadiana.agent.openclaw_runtime import OpenClawRuntimeManager
 
@@ -162,3 +163,35 @@ def test_openclaw_runtime_preserves_existing_input_capabilities_without_duplicat
     assert provider_model["input"] == ["text", "image"]
     resolved_model = cfg["agents"]["defaults"]["models"]["local/Qwen/Qwen3.5-27B"]
     assert resolved_model == {"params": {"maxTokens": 1024}}
+
+
+@pytest.mark.parametrize(
+    ("gateway_warmup_enabled", "expected_warmup_calls"),
+    [
+        (False, 0),
+        (True, 1),
+    ],
+)
+def test_openclaw_runtime_warmup_is_opt_in(
+    tmp_path: Path,
+    gateway_warmup_enabled: bool,
+    expected_warmup_calls: int,
+) -> None:
+    rock_cfg, openclaw_cfg = _write_runtime_templates(tmp_path)
+    mgr = OpenClawRuntimeManager({
+        "rock_agent_config_path": str(rock_cfg),
+        "openclaw_config_path": str(openclaw_cfg),
+        "gateway_warmup_enabled": gateway_warmup_enabled,
+    })
+    sandbox = MagicMock()
+    sandbox.sandbox_id = "sandbox-1"
+
+    with (
+        patch.object(mgr, "_prepare_runtime_files", return_value=tmp_path),
+        patch.object(mgr, "_wait_for_gateway"),
+        patch.object(mgr, "_warmup_gateway") as warmup_mock,
+        patch.object(mgr, "runtime_info", return_value={"sandbox_id": "sandbox-1", "api_base": "http://sandbox/v1", "gateway_url": "http://sandbox/v1/chat/completions", "gateway_token": "OPENCLAW"}),
+    ):
+        mgr.ensure_ready(sandbox)
+
+    assert warmup_mock.call_count == expected_warmup_calls

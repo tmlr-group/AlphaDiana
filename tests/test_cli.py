@@ -88,6 +88,10 @@ def test_run_keeps_rock_preflight_for_openclaw_autodeploy(monkeypatch, tmp_path)
 
     monkeypatch.setattr("alphadiana.utils.rock_ports.check_rock_services", _check_services)
     monkeypatch.setattr(
+        "alphadiana.utils.rock_ports.check_rock_service_ownership",
+        lambda *args, **kwargs: {"admin": True, "proxy": True},
+    )
+    monkeypatch.setattr(
         "alphadiana.utils.rock_ports.resolve_rock_ports_from_env",
         lambda: SimpleNamespace(admin_port=9000, proxy_port=9005, redis_port=6383),
     )
@@ -97,3 +101,61 @@ def test_run_keeps_rock_preflight_for_openclaw_autodeploy(monkeypatch, tmp_path)
     assert result.exit_code == 0, result.output
     assert check_called is True
     assert "Pre-flight passed: admin" in result.output
+
+
+def test_run_fails_when_rock_ports_belong_to_foreign_checkout(monkeypatch, tmp_path) -> None:
+    _patch_runner(monkeypatch)
+    config_path = _write_openclaw_config(tmp_path, api_base=None)
+
+    monkeypatch.setattr(
+        "alphadiana.utils.rock_ports.check_rock_services",
+        lambda *args, **kwargs: {"admin": True, "proxy": True, "redis": True, "docker": True},
+    )
+    monkeypatch.setattr(
+        "alphadiana.utils.rock_ports.check_rock_service_ownership",
+        lambda *args, **kwargs: {
+            "admin": "foreign checkout owns port 9000: pid=1 project_root=/tmp/other",
+            "proxy": True,
+        },
+    )
+    monkeypatch.setattr(
+        "alphadiana.utils.rock_ports.resolve_rock_ports_from_env",
+        lambda: SimpleNamespace(admin_port=9000, proxy_port=9005, redis_port=6383),
+    )
+
+    result = CliRunner().invoke(main, ["run", config_path])
+
+    assert result.exit_code != 0
+    assert "configured ROCK ports belong to another checkout" in result.output
+    assert "foreign checkout owns port 9000" in result.output
+
+
+def test_env_reports_ownership_failures(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "alphadiana.utils.rock_ports.resolve_rock_ports_from_env",
+        lambda: SimpleNamespace(
+            admin_port=9000,
+            proxy_port=9005,
+            redis_port=6383,
+            ray_port=6380,
+            base_url="http://127.0.0.1:9000",
+            proxy_root_url="http://127.0.0.1:9005",
+        ),
+    )
+    monkeypatch.setattr(
+        "alphadiana.utils.rock_ports.check_rock_services",
+        lambda *args, **kwargs: {"admin": True, "proxy": True, "redis": True, "docker": True},
+    )
+    monkeypatch.setattr(
+        "alphadiana.utils.rock_ports.check_rock_service_ownership",
+        lambda *args, **kwargs: {
+            "admin": "foreign checkout owns port 9000: pid=1 project_root=/tmp/other",
+            "proxy": True,
+        },
+    )
+
+    result = CliRunner().invoke(main, ["env"])
+
+    assert result.exit_code == 1
+    assert "Ownership Checks" in result.output
+    assert "foreign checkout owns port 9000" in result.output
