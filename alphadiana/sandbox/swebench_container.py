@@ -6,6 +6,7 @@ import io
 import json
 import logging
 import os
+import shlex
 import tarfile
 import tempfile
 import time
@@ -242,7 +243,7 @@ class SWEBenchContainerSession(SandboxSession):
         target = self._resolve_remote_path(filename)
         parent = str(target.parent)
         self._container.exec_run(
-            ["/bin/bash", "-lc", f"mkdir -p {parent!s}"],
+            ["/bin/bash", "-lc", f"mkdir -p {shlex.quote(parent)}"],
             workdir="/",
             user=self._user,
         )
@@ -259,7 +260,7 @@ class SWEBenchContainerSession(SandboxSession):
     def read_text(self, filename: str) -> str:
         target = self._resolve_remote_path(filename)
         result = self._container.exec_run(
-            ["/bin/bash", "-lc", f"cat {str(target)!s}"],
+            ["/bin/bash", "-lc", f"cat {shlex.quote(str(target))}"],
             workdir="/",
             user=self._user,
             demux=True,

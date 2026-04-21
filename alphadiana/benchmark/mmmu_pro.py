@@ -1,7 +1,7 @@
 """MMMU-Pro benchmark loader (MMMU/MMMU_Pro)."""
 from __future__ import annotations
 
-import os
+import re
 
 from alphadiana.benchmark.base import Benchmark, BenchmarkTask, load_dataset_with_retry
 from alphadiana.benchmark.registry import BenchmarkRegistry
@@ -49,6 +49,30 @@ def _collect_dataset_images(item: dict) -> list[object]:
     return []
 
 
+def _raise_mmmu_load_error(exc: Exception, *, data_config: str) -> None:
+    """Raise a user-actionable MMMU-Pro load error."""
+    message = str(exc)
+    lowered = message.lower()
+    if isinstance(exc, PermissionError) or re.search(r"\b(401|403)\b", message) or "token" in lowered:
+        raise RuntimeError(
+            f"Failed to load MMMU-Pro dataset: authentication required or denied. Original error: {exc}"
+        ) from exc
+    if isinstance(exc, (ConnectionError, TimeoutError)):
+        raise RuntimeError(
+            f"Failed to load MMMU-Pro dataset due to a network error. Original error: {exc}"
+        ) from exc
+    if isinstance(exc, ValueError) or "builderconfig" in lowered or "config" in lowered or "split" in lowered:
+        raise RuntimeError(
+            f"Failed to load MMMU-Pro dataset: config name {data_config!r} is invalid or unavailable. "
+            f"Original error: {exc}"
+        ) from exc
+    if "not found" in lowered or "datasetnotfound" in type(exc).__name__.lower():
+        raise RuntimeError(
+            f"Failed to load MMMU-Pro dataset: dataset not found. Original error: {exc}"
+        ) from exc
+    raise RuntimeError(f"Failed to load MMMU-Pro dataset. Original error: {exc}") from exc
+
+
 class MMMUProBenchmark(Benchmark):
     """Loads MMMU-Pro multimodal multiple-choice tasks.
 
@@ -79,19 +103,13 @@ class MMMUProBenchmark(Benchmark):
         data_config = config.get("data_config", "standard (4 options)")
         split = config.get("split", "test")
         max_tasks = config.get("max_tasks")
-        include_attachments = str(data_config).strip().lower() == "vision"
+        if max_tasks == 0:
+            return []
 
         try:
             dataset = load_dataset_with_retry(dataset_path, data_config, split=split)
         except Exception as exc:
-            hf_endpoint = os.environ.get("HF_ENDPOINT", "").strip()
-            raise RuntimeError(
-                "Failed to load MMMU-Pro dataset from Hugging Face. "
-                "If direct access is unavailable, set "
-                "`HF_ENDPOINT=https://hf-mirror.com` and retry. "
-                f"Current HF_ENDPOINT={hf_endpoint or '<unset>'}. "
-                f"Original error: {exc}"
-            ) from exc
+            _raise_mmmu_load_error(exc, data_config=str(data_config))
 
         tasks: list[BenchmarkTask] = []
         for idx, item in enumerate(dataset):
@@ -115,21 +133,16 @@ class MMMUProBenchmark(Benchmark):
             answer = str(item.get("answer", "")).strip().upper()
 
             attachments: dict[str, bytes] = {}
-            if include_attachments:
-                # Only the vision split should carry image payloads. The
-                # standard 4/10-option configs are documented and used as
-                # text-only variants, so exposing attachments there would force
-                # unnecessary multimodal model calls.
-                for img_index, img in enumerate(_collect_dataset_images(item), start=1):
-                    img_key = f"image_{img_index}"
-                    try:
-                        import io
-                        buf = io.BytesIO()
-                        img.save(buf, format="PNG")
-                        attachments[img_key] = buf.getvalue()
-                        attachments[f"{img_key}_mime"] = b"image/png"
-                    except Exception:
-                        pass
+            for img_index, img in enumerate(_collect_dataset_images(item), start=1):
+                img_key = f"image_{img_index}"
+                try:
+                    import io
+                    buf = io.BytesIO()
+                    img.save(buf, format="PNG")
+                    attachments[img_key] = buf.getvalue()
+                    attachments[f"{img_key}_mime"] = b"image/png"
+                except Exception:
+                    pass
 
             tasks.append(BenchmarkTask(
                 task_id=f"mmmu_pro_{task_id}",

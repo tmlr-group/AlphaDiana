@@ -24,7 +24,7 @@ def _fake_rows():
     ]
 
 
-def test_mmmu_pro_standard_configs_do_not_emit_attachments(monkeypatch) -> None:
+def test_mmmu_pro_standard_configs_emit_numbered_attachments(monkeypatch) -> None:
     monkeypatch.setattr(
         "alphadiana.benchmark.mmmu_pro.load_dataset_with_retry",
         lambda *args, **kwargs: _fake_rows(),
@@ -37,7 +37,8 @@ def test_mmmu_pro_standard_configs_do_not_emit_attachments(monkeypatch) -> None:
         "max_tasks": 1,
     })[0]
 
-    assert task.attachments == {}
+    assert task.attachments["image_1"] == b"fake-png"
+    assert task.attachments["image_1_mime"] == b"image/png"
 
 
 def test_mmmu_pro_vision_emits_png_attachments(monkeypatch) -> None:

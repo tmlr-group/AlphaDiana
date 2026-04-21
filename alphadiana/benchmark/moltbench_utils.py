@@ -24,6 +24,10 @@ def load_kernelbench_problems(
 
     Returns a list of dicts with keys:
       level, problem_id, name, source_code
+
+    Expected HF shape: ScalingIntelligence/KernelBench exposes `level_N`
+    splits in the default dataset configuration. Other layouts fail closed so
+    partial task lists are not mistaken for complete benchmark support.
     """
     try:
         from datasets import load_dataset
@@ -34,6 +38,9 @@ def load_kernelbench_problems(
         )
 
     problem_set = _parse_problem_range(problems)
+    if max_tasks == 0:
+        return []
+
     all_problems: list[dict] = []
 
     for level in levels:
@@ -42,17 +49,12 @@ def load_kernelbench_problems(
                 "ScalingIntelligence/KernelBench",
                 split=f"level_{level}",
             )
-        except Exception:
-            # Fallback: try as config name
-            try:
-                ds = load_dataset(
-                    "ScalingIntelligence/KernelBench",
-                    f"level_{level}",
-                    split="train",
-                )
-            except Exception as exc:
-                logger.warning("Failed to load KernelBench level %d: %s", level, exc)
-                continue
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to load level {level}: expected default config with "
+                f"split level_{level}. Broken fallback config loading has been removed. "
+                f"Underlying error: {exc}"
+            ) from exc
 
         for item in ds:
             pid = item.get("problem_id", item.get("id", 0))
@@ -64,7 +66,7 @@ def load_kernelbench_problems(
                 "name": item.get("name", f"L{level}_P{pid}"),
                 "source_code": item.get("code", item.get("source_code", "")),
             })
-            if max_tasks and len(all_problems) >= max_tasks:
+            if max_tasks is not None and len(all_problems) >= max_tasks:
                 return all_problems
 
     return all_problems
@@ -177,13 +179,30 @@ def build_task_json(
 
 def parse_results_json(artifacts_dir: str | Path) -> dict:
     """Parse results.json from artifacts directory."""
-    results_path = Path(artifacts_dir) / "results.json"
+    artifacts = Path(artifacts_dir)
+    results_path = artifacts / "results.json"
     if results_path.exists():
         try:
             return json.loads(results_path.read_text(encoding="utf-8"))
         except Exception as exc:
             logger.warning("Failed to parse results.json: %s", exc)
-    return {"correctness": "MISSING", "speedup": 0.0}
+    for log_name in ("benchmark.log", "eval.log"):
+        log_path = artifacts / log_name
+        if not log_path.exists():
+            continue
+        log_text = log_path.read_text(encoding="utf-8", errors="replace")
+        parsed = parse_bench_log(log_text)
+        score_match = re.search(
+            r"(?im)^\s*(?:score|reward)\s*:\s*([0-9]+(?:\.[0-9]+)?)",
+            log_text,
+        )
+        if score_match:
+            parsed["score"] = float(score_match.group(1))
+        if parsed:
+            return parsed
+    raise FileNotFoundError(
+        f"Missing or unreadable results.json and no parseable benchmark.log/eval.log in {artifacts}"
+    )
 
 
 def parse_bench_log(log_text: str) -> dict:

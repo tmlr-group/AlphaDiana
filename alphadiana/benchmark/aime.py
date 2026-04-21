@@ -1,10 +1,13 @@
 """AIME benchmark loader."""
 from __future__ import annotations
 
+import logging
 import os
 
 from alphadiana.benchmark.base import Benchmark, BenchmarkTask, load_dataset_with_retry
 from alphadiana.benchmark.registry import BenchmarkRegistry
+
+logger = logging.getLogger(__name__)
 
 
 class AIMEBenchmark(Benchmark):
@@ -40,9 +43,17 @@ class AIMEBenchmark(Benchmark):
         data_config = config.get("data_config")
         problem_field = config.get("problem_field", "problem")
         answer_field = config.get("answer_field", "answer")
+        max_tasks = config.get("max_tasks")
+
+        if max_tasks == 0:
+            return []
+
+        effective_split = split
+        if max_tasks is not None:
+            effective_split = f"{split}[:{int(max_tasks)}]"
 
         try:
-            dataset = load_dataset_with_retry(dataset_path, data_config, split=split)
+            dataset = load_dataset_with_retry(dataset_path, data_config, split=effective_split)
         except Exception as exc:
             hf_endpoint = os.environ.get("HF_ENDPOINT", "").strip()
             raise RuntimeError(
@@ -74,11 +85,16 @@ class AIMEBenchmark(Benchmark):
                 f"Available fields: {available}"
             )
 
-        max_tasks = config.get("max_tasks")
-
         tasks: list[BenchmarkTask] = []
+        warned_missing_problem_idx = False
         for idx, item in enumerate(dataset):
-            task_id_val = item.get("id", idx)
+            if "problem_idx" in item and item["problem_idx"] is not None:
+                task_id_val = item["problem_idx"]
+            else:
+                task_id_val = item.get("id", idx)
+                if not warned_missing_problem_idx:
+                    logger.warning("AIME dataset rows missing problem_idx; falling back to row/index IDs")
+                    warned_missing_problem_idx = True
             tasks.append(BenchmarkTask(
                 task_id=f"aime_{task_id_val}",
                 problem=item[problem_field],
