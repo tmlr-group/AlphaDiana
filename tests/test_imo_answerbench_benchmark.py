@@ -47,5 +47,5 @@ def test_imo_answerbench_dataset_index_selects_single_row(monkeypatch) -> None:
     })
 
     assert len(tasks) == 1
-    assert tasks[0].task_id == "imo_answerbench_1"
+    assert tasks[0].task_id == "imo_1"
     assert tasks[0].problem == "P1"
