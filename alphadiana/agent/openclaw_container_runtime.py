@@ -159,6 +159,7 @@ class OpenClawContainerRuntimeManager:
             config.get("container_gateway_bind_host", config.get("gateway_bind_host", "127.0.0.1"))
         ).strip() or "127.0.0.1"
         self._started_sandboxes: set[str] = set()
+        self._managed_sandboxes: dict[str, Any] = {}
         self._agent_md_applied_sandboxes: set[str] = set()
         self._git_mirror_uploaded_sandboxes: set[str] = set()
 
@@ -517,6 +518,8 @@ class OpenClawContainerRuntimeManager:
         except Exception as exc:
             _logger.warning("OpenClaw container warmup did not fully succeed: %s", exc)
         self._started_sandboxes.add(sandbox_id)
+        if sandbox_id:
+            self._managed_sandboxes[sandbox_id] = sandbox
         return self.runtime_info(sandbox)
 
     def collect_artifacts(self, sandbox: Any) -> dict:
@@ -561,4 +564,16 @@ class OpenClawContainerRuntimeManager:
         }
 
     def teardown(self) -> None:
-        return None
+        stop_command = (
+            f"if [ -f {shlex.quote(self._gateway_pidfile)} ]; then "
+            f"kill $(cat {shlex.quote(self._gateway_pidfile)}) >/dev/null 2>&1 || true; "
+            f"rm -f {shlex.quote(self._gateway_pidfile)}; "
+            "else pkill -x openclaw >/dev/null 2>&1 || true; fi"
+        )
+        for sandbox in list(self._managed_sandboxes.values()):
+            try:
+                sandbox.execute(stop_command)
+            except Exception:
+                _logger.debug("Failed to stop OpenClaw gateway during teardown", exc_info=True)
+        self._managed_sandboxes.clear()
+        self._started_sandboxes.clear()

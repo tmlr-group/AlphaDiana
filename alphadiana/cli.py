@@ -180,16 +180,26 @@ def report(results_dir: str):
 def batch(config_yamls: tuple[str, ...], parallel: bool, override: tuple[str, ...]):
     """Run multiple experiment configs sequentially or in parallel."""
     from alphadiana.config.experiment_config import ExperimentConfig, deep_merge, parse_override
+    from alphadiana.config.validator import ConfigValidator
     from alphadiana.runner.batch_runner import BatchRunner
 
     overrides: dict = {}
     for ov in override:
         overrides = deep_merge(overrides, parse_override(ov))
 
+    validator = ConfigValidator()
     configs = [
         ExperimentConfig.from_yaml(p, overrides=overrides or None)
         for p in config_yamls
     ]
+    validation_errors: list[str] = []
+    for config in configs:
+        errors = validator.validate(config)
+        validation_errors.extend(f"{config.run_id}: {error}" for error in errors)
+    if validation_errors:
+        raise click.ClickException(
+            "Config validation failed:\n" + "\n".join(f"  - {error}" for error in validation_errors)
+        )
 
     runner = BatchRunner(configs, parallel=parallel)
     summaries = runner.run()
@@ -251,7 +261,9 @@ def env():
         click.echo()
         click.echo("Or start manually:")
         click.echo(f"  # Redis")
-        click.echo(f"  docker run -d --name redis-stack -p {ports.redis_port}:6379 redis/redis-stack-server:latest")
+        click.echo(
+            f"  docker run -d --name redis-stack -p 127.0.0.1:{ports.redis_port}:6379 redis/redis-stack-server:latest"
+        )
         click.echo(f"  # Ray")
         click.echo(f"  cd ref/ROCK && ray start --head --port={ports.ray_port} --dashboard-port={ports.ray_dashboard_port} --disable-usage-stats")
         click.echo(f"  # Admin")

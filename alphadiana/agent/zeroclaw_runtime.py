@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import shlex
+import signal
 import time
 from pathlib import Path
 from typing import Any
@@ -105,6 +106,7 @@ class ZeroClawRuntimeManager:
             config.get("bridge_template_path", "zeroclaw_deploy/zeroclaw_bridge.py")
         )
         self._started_sandboxes: set[str] = set()
+        self._managed_sandboxes: dict[str, Any] = {}
 
     def _resolve_bridge_template_path(self, path_str: str) -> Path:
         path = Path(path_str).expanduser()
@@ -229,6 +231,8 @@ class ZeroClawRuntimeManager:
         self._wait_for_gateway(sandbox)
         self._warmup_gateway(sandbox)
         self._started_sandboxes.add(sandbox_id)
+        if sandbox_id:
+            self._managed_sandboxes[sandbox_id] = sandbox
         _progress(f"ZeroClaw runtime ready for sandbox_id={sandbox_id}")
         return self.runtime_info(sandbox)
 
@@ -351,4 +355,16 @@ class ZeroClawRuntimeManager:
         }
 
     def teardown(self) -> None:
+        stop_command = (
+            f"if [ -f {shlex.quote(self._bridge_pidfile)} ]; then "
+            f"kill -{signal.SIGTERM} $(cat {shlex.quote(self._bridge_pidfile)}) >/dev/null 2>&1 || true; "
+            f"rm -f {shlex.quote(self._bridge_pidfile)}; "
+            f"else pkill -f {shlex.quote(self._remote_bridge_path)} >/dev/null 2>&1 || true; fi"
+        )
+        for sandbox in list(self._managed_sandboxes.values()):
+            try:
+                sandbox.execute(stop_command)
+            except Exception:
+                _logger.debug("Failed to stop ZeroClaw bridge during teardown", exc_info=True)
+        self._managed_sandboxes.clear()
         self._started_sandboxes.clear()

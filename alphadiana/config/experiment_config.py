@@ -143,6 +143,11 @@ def parse_override(s: str) -> dict:
     if "=" not in s:
         raise ValueError(f"Invalid override (missing '='): {s}")
     key_path, raw_value = s.split("=", 1)
+    key_path = key_path.strip()
+    if not key_path:
+        raise ValueError("Invalid override: empty key path")
+    if key_path.startswith(".") or key_path.endswith(".") or ".." in key_path:
+        raise ValueError(f"Invalid override key path: {key_path}")
     value: Any = raw_value
     if raw_value.lower() in ("true", "false"):
         value = raw_value.lower() == "true"
@@ -155,6 +160,8 @@ def parse_override(s: str) -> dict:
             except ValueError:
                 pass
     parts = key_path.split(".")
+    if any(not part.strip() for part in parts):
+        raise ValueError(f"Invalid override key path: {key_path}")
     result: dict = {}
     current = result
     for part in parts[:-1]:
@@ -197,6 +204,10 @@ class ExperimentConfig:
     ) -> ExperimentConfig:
         with open(path) as f:
             data = yaml.safe_load(f)
+        if data is None:
+            data = {}
+        if not isinstance(data, dict):
+            raise ValueError("top-level YAML document must be a mapping")
 
         data = _expand_env_vars(data)
 
