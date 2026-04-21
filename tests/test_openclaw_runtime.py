@@ -5,8 +5,12 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import yaml
+import pytest
 
+from alphadiana.agent.openclaw import OpenClawAgent
+from alphadiana.agent.openclaw_container_runtime import OpenClawContainerRuntimeManager
 from alphadiana.agent.openclaw_runtime import OpenClawRuntimeManager
+from alphadiana.benchmark.base import BenchmarkTask
 
 
 def _write_runtime_templates(tmp_path: Path) -> tuple[Path, Path]:
@@ -162,3 +166,183 @@ def test_openclaw_runtime_preserves_existing_input_capabilities_without_duplicat
     assert provider_model["input"] == ["text", "image"]
     resolved_model = cfg["agents"]["defaults"]["models"]["local/Qwen/Qwen3.5-27B"]
     assert resolved_model == {"params": {"maxTokens": 1024}}
+
+def test_openclaw_runtime_collect_artifacts_preserves_session_trace_and_response_stream_aliases() -> None:
+    mgr = OpenClawRuntimeManager({})
+
+    class _Result:
+        def __init__(self, stdout: str = "", exit_code: int = 0) -> None:
+            self.stdout = stdout
+            self.exit_code = exit_code
+            self.stderr = ""
+
+    class _Sandbox:
+        sandbox_id = "sandbox-demo"
+
+        def __init__(self) -> None:
+            self.command_history = []
+
+        def execute(self, command: str) -> _Result:
+            self.command_history.append({
+                "command": command,
+                "exit_code": 0,
+                "stdout": "",
+                "stderr": "",
+                "wall_time_sec": 0.01,
+            })
+            if "find " in command and "sort -u" in command:
+                return _Result(
+                    "/tmp/oc_home/.openclaw/workspace/openclaw_output.jsonl\n"
+                    "/tmp/oc_home/.openclaw/workspace/AGENTS.md\n"
+                )
+            if "ls -t" in command and "sessions" in command:
+                return _Result("/tmp/oc_home/.openclaw/agents/main/sessions/demo-session.jsonl\n")
+            if command.startswith("cat ") and "demo-session.jsonl" in command:
+                return _Result(
+                    '{"type":"message","message":{"role":"user","content":[{"type":"text","text":"demo prompt"}]}}\n'
+                    '{"type":"message","message":{"role":"assistant","content":[{"type":"thinking","thinking":"step"},{"type":"text","text":"done"}]}}\n'
+                )
+            return _Result()
+
+        def read_text(self, path: str) -> str:
+            if path.endswith("openclaw_output.jsonl"):
+                return '{"choices":[{"delta":{"content":"done"}}]}\n'
+            if path.endswith("AGENTS.md"):
+                return "You are a solver."
+            if path.endswith("demo-session.jsonl"):
+                raise RuntimeError("fallback to cat")
+            raise FileNotFoundError(path)
+
+        def metadata(self) -> dict:
+            return {"sandbox_id": self.sandbox_id}
+
+    artifacts = mgr.collect_artifacts(_Sandbox())
+
+    files = artifacts["artifact_manifest"]["files"]
+    assert files["response_stream"] == "openclaw_output.jsonl"
+    assert files["session_trace"] == "openclaw_session.jsonl"
+    assert artifacts["workspace_file_contents"]["openclaw_output.jsonl"]
+    assert artifacts["workspace_file_contents"]["openclaw_session.jsonl"]
+    assert "/tmp/oc_home/.openclaw/workspace/openclaw_output.jsonl" in artifacts["workspace_snapshot_paths"]
+
+
+def test_recover_openclaw_session_artifacts_prefers_saved_session_trace() -> None:
+    from alphadiana.agent.openclaw import _recover_openclaw_session_artifacts
+
+    session_text = "\n".join([
+        json.dumps({
+            "type": "message",
+            "message": {
+                "role": "user",
+                "content": [{"type": "text", "text": "solve demo"}],
+            },
+        }),
+        json.dumps({
+            "type": "message",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {"type": "thinking", "thinking": "inspect first"},
+                    {"type": "toolCall", "name": "ls", "arguments": {"path": "."}},
+                    {"type": "text", "text": "done"},
+                ],
+            },
+        }),
+    ])
+
+    trajectory, reasoning, recovered_text = _recover_openclaw_session_artifacts(
+        {"openclaw_session.jsonl": session_text},
+        expected_user_content="solve demo",
+    )
+
+    assert recovered_text == session_text
+    assert len(trajectory) == 2
+    assert trajectory[1]["thinking"] == "inspect first"
+    assert trajectory[1]["tool_calls"][0]["tool"] == "ls"
+    assert reasoning[0]["type"] == "reasoning"
+    assert reasoning[1]["type"] == "tool_call"
+
+
+def test_openclaw_container_runtime_collect_artifacts_exposes_stable_aliases() -> None:
+    mgr = OpenClawContainerRuntimeManager({"openclaw_config_path": "openclaw_deploy/openclaw_swe_bench.runtime.json"})
+
+    class _Result:
+        def __init__(self, stdout: str = "", exit_code: int = 0) -> None:
+            self.stdout = stdout
+            self.exit_code = exit_code
+            self.stderr = ""
+
+    class _Sandbox:
+        sandbox_id = "container-sandbox"
+
+        def execute(self, command: str) -> _Result:
+            if "ls -t" in command and "sessions" in command:
+                return _Result("/tmp/oc_home/.openclaw/agents/main/sessions/demo-session.jsonl\n")
+            if command.startswith("cat ") and "demo-session.jsonl" in command:
+                return _Result('{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"done"}]}}\n')
+            return _Result()
+
+        def read_text(self, path: str) -> str:
+            if path.endswith("openclaw_output.jsonl"):
+                return '{"choices":[{"delta":{"content":"done"}}]}\n'
+            if path.endswith("AGENTS.md"):
+                return "You are a solver."
+            if path.endswith("demo-session.jsonl"):
+                raise RuntimeError("fallback to cat")
+            raise FileNotFoundError(path)
+
+        def metadata(self) -> dict:
+            return {"repo_workdir": "/testbed"}
+
+    mgr._list_workspace_paths = lambda _sandbox, _root: [  # type: ignore[method-assign]
+        "/testbed/openclaw_output.jsonl",
+        "/testbed/AGENTS.md",
+    ]
+
+    artifacts = mgr.collect_artifacts(_Sandbox())
+
+    files = artifacts["artifact_manifest"]["files"]
+    assert files["workspace_root"] == "/testbed"
+    assert files["response_stream"] == "openclaw_output.jsonl"
+    assert files["session_trace"] == "openclaw_session.jsonl"
+    assert files["system_prompt"] == "/testbed/AGENTS.md"
+    assert artifacts["workspace_file_contents"]["openclaw_output.jsonl"]
+    assert artifacts["workspace_file_contents"]["openclaw_session.jsonl"]
+
+
+def test_openclaw_solve_preserves_request_and_selected_response_aliases() -> None:
+    agent = OpenClawAgent()
+    agent.setup({
+        "api_base": "http://127.0.0.1:9999/v1",
+        "max_attempts": 1,
+        "request_timeout": 5,
+    })
+    task = BenchmarkTask(task_id="openclaw-demo", problem="What is 1+1?", ground_truth="2")
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.headers = {"content-type": "text/event-stream"}
+    mock_response.iter_lines = MagicMock(return_value=[
+        'data: {"choices":[{"delta":{"content":"2"}}]}',
+        'data: [DONE]',
+    ])
+    mock_response.__enter__ = MagicMock(return_value=mock_response)
+    mock_response.__exit__ = MagicMock(return_value=False)
+
+    mock_client = MagicMock()
+    mock_client.stream = MagicMock(return_value=mock_response)
+    mock_client.__enter__ = MagicMock(return_value=mock_client)
+    mock_client.__exit__ = MagicMock(return_value=False)
+
+    with patch.object(agent, "_health_check", return_value=None):
+        with patch.object(agent, "_retrieve_trajectory_sync", return_value=[]):
+            with patch("httpx.Client", return_value=mock_client):
+                response = agent.solve(task)
+
+    files = response.artifact_manifest["files"]
+    assert files["request_payload"] == "openclaw_request_payload.json"
+    assert files["selected_response"] == "openclaw_selected_response.json"
+    request_payload = json.loads(response.workspace_file_contents["openclaw_request_payload.json"])
+    selected_response = json.loads(response.workspace_file_contents["openclaw_selected_response.json"])
+    assert request_payload["messages"][0]["content"] == "What is 1+1?"
+    assert selected_response["choices"][0]["message"]["content"] == "2"

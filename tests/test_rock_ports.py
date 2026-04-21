@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from alphadiana.utils.rock_ports import RockPorts, check_rock_services
+from pathlib import Path
+
+from alphadiana.utils.rock_ports import (
+    PROJECT_ROOT,
+    RockPorts,
+    check_rock_service_ownership,
+    check_rock_services,
+    default_rock_ray_tmpdir,
+)
 
 
 class _DummySocket:
@@ -50,3 +58,49 @@ def test_check_rock_services_uses_openapi_probes(monkeypatch) -> None:
         "http://127.0.0.1:9120/openapi.json",
         "http://127.0.0.1:9121/openapi.json",
     ]
+
+
+def test_check_rock_service_ownership_flags_foreign_checkout(monkeypatch, tmp_path) -> None:
+    foreign_root = tmp_path / "foreign"
+    (foreign_root / "alphadiana").mkdir(parents=True)
+    (foreign_root / "scripts").mkdir()
+
+    monkeypatch.setattr(
+        "alphadiana.utils.rock_ports._pid_for_port",
+        lambda port: 1234 if port == 9120 else 2345,
+    )
+    monkeypatch.setattr(
+        "alphadiana.utils.rock_ports._read_proc_environ",
+        lambda pid: {
+            "PWD": str(foreign_root / "ref" / "ROCK"),
+            "PYTHONPATH": str(foreign_root),
+        },
+    )
+    monkeypatch.setattr(
+        "alphadiana.utils.rock_ports._read_proc_cwd",
+        lambda pid: str(foreign_root / "ref" / "ROCK"),
+    )
+    monkeypatch.setattr(
+        "alphadiana.utils.rock_ports._read_proc_cmdline",
+        lambda pid: f"python -m rock.admin.main --port {pid}",
+    )
+
+    ports = RockPorts(
+        ray_port=6480,
+        ray_dashboard_port=8365,
+        ray_client_server_port=30100,
+        redis_port=6390,
+        admin_port=9120,
+        proxy_port=9121,
+    )
+    results = check_rock_service_ownership(ports, expected_project_root=Path(PROJECT_ROOT))
+
+    assert "foreign checkout owns port 9120" in str(results["admin"])
+    assert "foreign checkout owns port 9121" in str(results["proxy"])
+
+
+def test_default_rock_ray_tmpdir_is_short_tmp_path(tmp_path) -> None:
+    ray_tmpdir = default_rock_ray_tmpdir(tmp_path / "AlphaDiana-full2")
+
+    assert ray_tmpdir.startswith("/tmp/")
+    assert len(ray_tmpdir) < 40

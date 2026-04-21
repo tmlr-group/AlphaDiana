@@ -35,8 +35,9 @@ export OPENAI_API_KEY='sk-or-v1-...'
 export OPENAI_MODEL_NAME='Qwen/Qwen3.5-27B'
 
 export TERMINAL_BENCH2_SMOKE_DIR=/tmp/terminal-bench-2-smoke-qwen-t3
-export SWE_BENCH_PRO_EVAL_SCRIPT=/tmp/phase11-swebench-pro-os-full/swe_bench_pro_eval.py
-export SWE_BENCH_PRO_SCRIPTS_DIR=/tmp/phase11-swebench-pro-os-full/run_scripts
+export SWE_BENCH_PRO_ROOT=/path/to/SWE-bench_Pro-os
+export SWE_BENCH_PRO_EVAL_SCRIPT="$SWE_BENCH_PRO_ROOT/swe_bench_pro_eval.py"
+export SWE_BENCH_PRO_SCRIPTS_DIR="$SWE_BENCH_PRO_ROOT/run_scripts"
 
 mkdir -p logs
 bash scripts/start_zeroclaw.sh
@@ -233,8 +234,8 @@ tmux new -d -s pilot-zc-swe "bash -lc '
   export ZEROCLAW_MAX_TOOL_ITERATIONS=100
   export ZEROCLAW_MAX_ACTIONS_PER_HOUR=200
   export ZEROCLAW_RUNTIME_TRACE_MODE=none
-  export SWE_BENCH_PRO_EVAL_SCRIPT=/tmp/phase11-swebench-pro-os-full/swe_bench_pro_eval.py
-  export SWE_BENCH_PRO_SCRIPTS_DIR=/tmp/phase11-swebench-pro-os-full/run_scripts
+  export SWE_BENCH_PRO_EVAL_SCRIPT="$SWE_BENCH_PRO_ROOT/swe_bench_pro_eval.py"
+  export SWE_BENCH_PRO_SCRIPTS_DIR="$SWE_BENCH_PRO_ROOT/run_scripts"
   python -m alphadiana.cli run configs/examples/swebench_pro_zeroclaw_smoke.local.yaml \
     -o run_id=pr23_qwen_openrouter_zeroclaw_swebench_pro_t3_20260419 \
     -o output_dir=./results/pr23_qwen_openrouter_zeroclaw_pilot_20260419 \
@@ -321,8 +322,8 @@ tmux new -d -s rerun-zc-swe "bash -lc '
   export ZEROCLAW_MAX_TOOL_ITERATIONS=100
   export ZEROCLAW_MAX_ACTIONS_PER_HOUR=200
   export ZEROCLAW_RUNTIME_TRACE_MODE=none
-  export SWE_BENCH_PRO_EVAL_SCRIPT=/tmp/phase11-swebench-pro-os-full/swe_bench_pro_eval.py
-  export SWE_BENCH_PRO_SCRIPTS_DIR=/tmp/phase11-swebench-pro-os-full/run_scripts
+  export SWE_BENCH_PRO_EVAL_SCRIPT="$SWE_BENCH_PRO_ROOT/swe_bench_pro_eval.py"
+  export SWE_BENCH_PRO_SCRIPTS_DIR="$SWE_BENCH_PRO_ROOT/run_scripts"
   python -m alphadiana.cli run configs/examples/swebench_pro_zeroclaw_smoke.local.yaml \
     -o run_id=pr23_qwen_openrouter_zeroclaw_swebench_pro_t3_repair_20260419 \
     -o output_dir=./results/pr23_qwen_openrouter_zeroclaw_repair_20260419 \

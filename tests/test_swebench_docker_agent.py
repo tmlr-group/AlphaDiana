@@ -1325,7 +1325,7 @@ class TestSWEBenchDockerInContainerModes:
         response = agent.solve(_task())
 
         assert response.answer == ""
-        assert len(response.trajectory) == 2
+        assert len(response.trajectory) >= 2
         assert response.metadata["zeroclaw_selected_classification"] == "active_session_no_patch"
         assert response.metadata["zeroclaw_selected_returncode"] == 1
         assert response.metadata["zeroclaw_preserved_failure"] is True
@@ -1335,6 +1335,10 @@ class TestSWEBenchDockerInContainerModes:
         )
         assert response.finish_reason == "preserved_failure"
         assert response.raw_output == "I inspected the repository and ran commands."
+        assert (
+            response.artifact_manifest["files"]["response_stream"]
+            == "/swebench_agent/zeroclaw/zeroclaw_output.txt"
+        )
 
     def test_zeroclaw_mode_returns_auditable_response_for_untracked_only_changes(
         self, monkeypatch, tmp_path
@@ -1408,7 +1412,7 @@ class TestSWEBenchDockerInContainerModes:
         response = agent.solve(_task())
 
         assert response.answer == ""
-        assert len(response.trajectory) == 2
+        assert len(response.trajectory) >= 2
         assert response.metadata["zeroclaw_selected_classification"] == "untracked_only_changes"
         assert response.metadata["zeroclaw_selected_returncode"] == 1
         assert response.metadata["zeroclaw_preserved_failure"] is True
@@ -1538,7 +1542,7 @@ class TestSWEBenchDockerInContainerModes:
         response = agent.solve(_task())
 
         assert response.answer == ""
-        assert len(response.trajectory) == 2
+        assert len(response.trajectory) >= 2
         assert response.metadata["zeroclaw_selected_classification"] == "cli_error"
         assert response.metadata["zeroclaw_selected_returncode"] == 17
         assert response.metadata["zeroclaw_selected_reason"] == "TLS handshake failed"

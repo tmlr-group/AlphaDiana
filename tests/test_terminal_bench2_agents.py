@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -355,6 +356,8 @@ def test_terminal_bench2_opencode_writes_native_prompt_and_provider_config(tmp_p
     assert task_text == "demo"
     assert prompt_text.startswith(IN_CONTAINER_AGENT_PROMPT)
     assert "tb2-exec" not in prompt_text
+    assert "do not assume they exist under `/app`" in prompt_text
+    assert "Read `TASK.md` for the task details" not in prompt_text
     assert agent._opencode_command_prefix() == ["opencode"]
     run_cmd = agent._build_run_command(task_id="tb2_demo", container_workdir="/app")
 
@@ -401,6 +404,8 @@ def test_terminal_bench2_zeroclaw_writes_native_prompt_and_config(tmp_path: Path
     assert '"./tb2-copy-to"' not in config_text
     assert prompt_text.endswith("--- Task ---\ndemo\n")
     assert "You are solving a terminal-bench-2 task from inside the task container." in prompt_text
+    assert "do not assume they exist under `/app`" in prompt_text
+    assert "Read `TASK.md` for the task details" not in prompt_text
     assert "You are already inside the target task container." in _ZEROCLAW_SYSTEM_PROMPT
     assert "You are NOT inside the target task container." not in prompt_text
 
@@ -490,7 +495,21 @@ def test_terminal_bench2_zeroclaw_solve_preserves_nonzero_solver_result(tmp_path
                 else (
                     "Error: Agent loop aborted by loop detector\n"
                     if remote_path.endswith("zeroclaw_stderr.log")
-                    else ""
+                    else (
+                        json.dumps(
+                            {
+                                "type": "assistant",
+                                "message": {
+                                    "role": "assistant",
+                                    "content": "Loop detector summary",
+                                    "thinking": "checked git state",
+                                },
+                            }
+                        )
+                        + "\n"
+                        if remote_path.endswith("runtime-trace.jsonl")
+                        else ""
+                    )
                 )
             ),
         ), patch.object(
@@ -507,13 +526,215 @@ def test_terminal_bench2_zeroclaw_solve_preserves_nonzero_solver_result(tmp_path
         runtime.cleanup()
 
     assert response.answer == "0"
-    assert len(response.trajectory) == 2
+    assert len(response.trajectory) >= 2
     assert response.raw_output == "Loop detector summary"
     assert response.metadata["raw_output_sanitized"] is True
     assert response.metadata["runtime_logs_dropped_from_output"]
     assert response.metadata["returncode"] == 1
     assert response.metadata["solver_error"] == "Error: Agent loop aborted by loop detector"
     assert response.metadata["container_workdir"] == "/app"
+    assert response.response_json["runtime_trace_present"] is True
+    assert response.artifact_manifest["files"]["response_stream"] == "runtime_trace.jsonl"
+    assert response.artifact_manifest["files"]["stdout_log"] == "zeroclaw_output.txt"
+    assert response.artifact_manifest["files"]["stderr_log"] == "zeroclaw_stderr.log"
+    assert len(response.reasoning_trajectory) >= 1
+
+
+def _make_incontainer_runtime(tmp_path: Path, task: BenchmarkTask, prefix: str) -> TerminalBench2RuntimeContext:
+    tempdir = tempfile.TemporaryDirectory(prefix=prefix)
+    runtime = TerminalBench2RuntimeContext(
+        task=task,
+        docker_image="demo:latest",
+        container_id="demo-container",
+        logs_dir=tmp_path / "logs",
+        workdir=Path(tempdir.name),
+        helper_paths={
+            "task": tmp_path / "TASK.md",
+            "task_hints": tmp_path / "TASK_HINTS.md",
+            "agents": tmp_path / "AGENTS.md",
+            "prompt": tmp_path / "PROMPT.txt",
+            "test": tmp_path / "tb2-test",
+        },
+        _tempdir=tempdir,
+    )
+    for path in runtime.helper_paths.values():
+        path.write_text("", encoding="utf-8")
+    return runtime
+
+
+def test_terminal_bench2_openclaw_solve_preserves_session_trace_and_summary(tmp_path: Path) -> None:
+    agent = TerminalBench2OpenClawAgent()
+    agent.setup({
+        "api_base": "http://localhost/v1",
+        "api_key": "secret",
+        "model_name": "minimax-m2.5",
+    })
+
+    task = BenchmarkTask(
+        task_id="tb2_demo",
+        problem="demo task",
+        ground_truth="1",
+        metadata={"task_dir": str(tmp_path)},
+    )
+    runtime = _make_incontainer_runtime(tmp_path, task, "tb2-openclaw-solve-")
+    session_jsonl = "\n".join([
+        json.dumps({"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "demo task"}]}}),
+        json.dumps(
+            {
+                "type": "message",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "thinking", "thinking": "inspect logs"},
+                        {"type": "toolCall", "name": "bash", "arguments": {"cmd": "ls"}},
+                        {"type": "text", "text": "fixed"},
+                    ],
+                },
+            }
+        ),
+    ])
+
+    try:
+        with patch.object(
+            agent,
+            "_prepare_incontainer_runtime",
+            return_value=(runtime, {"runtime_injected": True}),
+        ), patch.object(
+            agent,
+            "_detect_container_workspace",
+            return_value="/app",
+        ), patch.object(
+            agent,
+            "_write_context_preflight",
+            return_value={"resolved_context_window": 131072, "source": "models_endpoint"},
+        ), patch.object(
+            agent,
+            "_stage_file_into_container",
+            return_value=None,
+        ), patch.object(
+            agent,
+            "_copy_file_from_container",
+            side_effect=lambda _container_id, remote_path, local_path, **_kwargs: local_path.write_text(
+                session_jsonl if str(remote_path).endswith("session.jsonl") else "{\"models\":{}}",
+                encoding="utf-8",
+            ),
+        ), patch.object(
+            agent,
+            "_patch_runtime_model_contract",
+            return_value={"patched": False, "resolved_context_window": 131072},
+        ), patch.object(
+            agent,
+            "_find_latest_remote_session_file",
+            return_value="/tmp/openclaw/home/.openclaw/agents/main/sessions/demo-session.jsonl",
+        ), patch.object(
+            agent,
+            "_docker_exec_capture",
+            side_effect=[
+                LocalCommandResult(stdout='{"status":"ok"}\n', stderr="", returncode=0),
+                LocalCommandResult(
+                    stdout='{"choices":[{"message":{"role":"assistant","content":"fixed"}}]}\n',
+                    stderr="",
+                    returncode=0,
+                ),
+            ],
+        ), patch.object(
+            agent,
+            "_run_verifier_and_read_reward",
+            return_value=("verifier output", "1"),
+        ), patch.object(
+            agent,
+            "_cleanup_runtime",
+            return_value=None,
+        ):
+            response = agent.solve(task)
+    finally:
+        runtime.cleanup()
+
+    assert response.answer == "1"
+    assert response.response_json["session_id"] == "demo-session"
+    assert response.response_json["output_text"] == "fixed"
+    assert response.artifact_manifest["files"]["session_trace"] == "session.jsonl"
+    assert response.artifact_manifest["files"]["response_stream"] == "openclaw_stdout.log"
+    assert len(response.reasoning_trajectory) >= 2
+    assert any(
+        step.get("thinking") == "inspect logs"
+        for step in response.trajectory
+        if step.get("role") == "assistant"
+    )
+
+
+def test_terminal_bench2_opencode_solve_preserves_stream_and_session_trace(tmp_path: Path) -> None:
+    agent = TerminalBench2OpenCodeAgent()
+    agent.setup({
+        "api_base": "http://localhost/v1",
+        "api_key": "secret",
+        "model_name": "minimax-m2.5",
+        "model": "custom/minimax-m2.5",
+    })
+
+    task = BenchmarkTask(
+        task_id="tb2_demo",
+        problem="demo task",
+        ground_truth="1",
+        metadata={"task_dir": str(tmp_path)},
+    )
+    runtime = _make_incontainer_runtime(tmp_path, task, "tb2-opencode-solve-")
+    output_record = {
+        "type": "assistant",
+        "sessionID": "session-123",
+        "message": {"role": "assistant", "content": "patched"},
+    }
+    session_record = {
+        "type": "tool_call",
+        "name": "bash",
+        "content": "git status",
+    }
+
+    try:
+        with patch.object(
+            agent,
+            "_prepare_incontainer_runtime",
+            return_value=(runtime, {"runtime_injected": True}),
+        ), patch.object(
+            agent,
+            "_detect_container_workspace",
+            return_value="/app",
+        ), patch.object(
+            agent,
+            "_stage_file_into_container",
+            return_value=None,
+        ), patch.object(
+            agent,
+            "_collect_session_trace",
+            return_value=f"# file: /tmp/demo.jsonl\n{json.dumps(session_record)}\n",
+        ), patch.object(
+            agent,
+            "_docker_exec_capture",
+            return_value=LocalCommandResult(
+                stdout=f"{json.dumps(output_record)}\n",
+                stderr="stderr line",
+                returncode=0,
+            ),
+        ), patch.object(
+            agent,
+            "_run_verifier_and_read_reward",
+            return_value=("verifier output", "0"),
+        ), patch.object(
+            agent,
+            "_cleanup_runtime",
+            return_value=None,
+        ):
+            response = agent.solve(task)
+    finally:
+        runtime.cleanup()
+
+    assert response.answer == "0"
+    assert response.response_json["session_id"] == "session-123"
+    assert response.response_json["num_session_records"] == 1
+    assert response.artifact_manifest["files"]["response_stream"] == "opencode_stdout.log"
+    assert response.artifact_manifest["files"]["session_trace"] == "opencode_session.jsonl"
+    assert len(response.reasoning_trajectory) >= 1
+    assert response.trajectory[-1]["content"] == "patched"
 
 
 def test_terminal_bench2_opencode_host_mode_keeps_configured_binary() -> None:

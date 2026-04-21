@@ -7,7 +7,11 @@ import pytest
 from alphadiana.agent.base import AgentResponse
 from alphadiana.benchmark.base import BenchmarkTask
 from alphadiana.config.experiment_config import ExperimentConfig
-from alphadiana.runner.runner import Runner, _is_gateway_autodeploy_agent
+from alphadiana.runner.runner import (
+    Runner,
+    _is_gateway_autodeploy_agent,
+    _merge_artifact_manifests,
+)
 from alphadiana.runner.task_dispatcher import TaskDispatcher
 
 
@@ -145,6 +149,29 @@ def test_openclaw_direct_api_base_disables_gateway_autodeploy() -> None:
     )
 
     assert _is_gateway_autodeploy_agent(config) is False
+
+
+def test_merge_artifact_manifests_preserves_existing_file_aliases() -> None:
+    existing = {
+        "files": {
+            "response_stream": "zeroclaw_output.txt",
+            "stdout_log": "zeroclaw_output.txt",
+        },
+        "attachments": [],
+    }
+    incoming = {
+        "files": {
+            "bridge_log_source": "/tmp/zeroclaw-gateway.log",
+        },
+        "local_artifact_root": "task_0",
+    }
+
+    merged = _merge_artifact_manifests(existing, incoming)
+
+    assert merged["files"]["response_stream"] == "zeroclaw_output.txt"
+    assert merged["files"]["stdout_log"] == "zeroclaw_output.txt"
+    assert merged["files"]["bridge_log_source"] == "/tmp/zeroclaw-gateway.log"
+    assert merged["local_artifact_root"] == "task_0"
 
 
 def test_openclaw_gateway_pool_disables_gateway_autodeploy() -> None:
@@ -367,3 +394,121 @@ def test_runner_passes_kata_runtime_flag_to_auto_created_rock_sandbox(monkeypatc
     assert summary.completed == 1
     assert _FakeRockSandboxBackend.seen_configs
     assert _FakeRockSandboxBackend.seen_configs[0]["use_kata_runtime"] is True
+
+
+@pytest.mark.parametrize(
+    ("agent_name", "expected_create_calls", "expected_sandbox_ids"),
+    [
+        ("openclaw", 2, ["sandbox-1", "sandbox-2"]),
+        ("zeroclaw", 1, ["sandbox-1", "sandbox-1"]),
+    ],
+)
+def test_runner_sequential_session_reuse_depends_on_agent_name(
+    monkeypatch,
+    tmp_path,
+    agent_name,
+    expected_create_calls,
+    expected_sandbox_ids,
+):
+    class _FakeBenchmark:
+        def load_tasks(self, config):
+            return [
+                BenchmarkTask(task_id="task-0", problem="Q0", ground_truth="42"),
+                BenchmarkTask(task_id="task-1", problem="Q1", ground_truth="42"),
+            ]
+
+    class _FakeSession:
+        def __init__(self, sandbox_id: str):
+            self.sandbox_id = sandbox_id
+            self.reset_calls = 0
+            self.close_calls = 0
+
+        def metadata(self) -> dict:
+            return {"sandbox_id": self.sandbox_id}
+
+        def reset(self) -> None:
+            self.reset_calls += 1
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    class _FakeSandbox:
+        def __init__(self):
+            self.created_sessions: list[_FakeSession] = []
+
+        def setup(self, config) -> None:
+            self.config = dict(config)
+
+        def supports_shared_session(self) -> bool:
+            return True
+
+        def create_session(self):
+            session = _FakeSession(f"sandbox-{len(self.created_sessions) + 1}")
+            self.created_sessions.append(session)
+            return session
+
+        def teardown(self) -> None:
+            pass
+
+    class _FakeAgent:
+        def setup(self, config) -> None:
+            self.config = dict(config)
+            self.solve_sandbox_ids: list[str | None] = []
+
+        def solve(self, task, sandbox=None):
+            sandbox_id = getattr(sandbox, "sandbox_id", None)
+            self.solve_sandbox_ids.append(sandbox_id)
+            return AgentResponse(
+                answer="42",
+                sandbox_id=sandbox_id or "",
+                metadata={},
+            )
+
+        def teardown(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        "alphadiana.runner.runner.BenchmarkRegistry.get",
+        lambda name: _FakeBenchmark,
+    )
+    monkeypatch.setattr(
+        "alphadiana.runner.runner.AgentRegistry.get",
+        lambda name: _FakeAgent,
+    )
+    monkeypatch.setattr(
+        "alphadiana.runner.runner.SandboxRegistry.get",
+        lambda name: _FakeSandbox,
+    )
+
+    config = ExperimentConfig(
+        run_id=f"runner-shared-session-{agent_name}",
+        agent_name=agent_name,
+        agent_version="test",
+        agent_config={},
+        benchmark_name="aime",
+        benchmark_config={},
+        sandbox_name="fake_sandbox",
+        sandbox_config={},
+        scorer_name="numeric",
+        scorer_config={},
+        max_concurrent=1,
+        output_dir=str(tmp_path),
+    )
+
+    runner = Runner(config)
+    runner.setup()
+    try:
+        summary = runner.run()
+    finally:
+        runner.teardown()
+
+    assert summary.completed == 2
+    assert runner.agent.solve_sandbox_ids == expected_sandbox_ids
+    assert len(runner.sandbox.created_sessions) == expected_create_calls
+
+    if agent_name == "openclaw":
+        assert [session.reset_calls for session in runner.sandbox.created_sessions] == [0, 0]
+        assert [session.close_calls for session in runner.sandbox.created_sessions] == [1, 1]
+    else:
+        assert [session.reset_calls for session in runner.sandbox.created_sessions] == [2]
+        assert [session.close_calls for session in runner.sandbox.created_sessions] == [1]

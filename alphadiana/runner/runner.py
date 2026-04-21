@@ -48,6 +48,19 @@ def _sanitize_success_sandbox_metadata(metadata: dict | None) -> dict:
     return sanitized
 
 
+def _merge_artifact_manifests(existing: dict | None, incoming: dict | None) -> dict:
+    """Merge artifact manifests without dropping previously preserved file aliases."""
+    merged = dict(existing or {})
+    for key, value in dict(incoming or {}).items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = {**merged[key], **value}
+        elif isinstance(value, list) and isinstance(merged.get(key), list):
+            merged[key] = [*merged[key], *value]
+        else:
+            merged[key] = value
+    return merged
+
+
 def _has_openclaw_direct_gateway(config: "ExperimentConfig") -> bool:
     """Return whether OpenClaw should use an already-running gateway."""
     if config.agent_name != "openclaw":
@@ -670,13 +683,22 @@ class Runner:
 
         # For sequential mode, create a single shared session to reuse across
         # all tasks instead of creating (and tearing down) one per task.
+        #
+        # OpenClaw is excluded here: benchmark fairness requires a fresh
+        # sandbox/runtime per task so stale gateway state cannot leak across
+        # tasks inside a reused session.
         shared_session = None
         sandbox_supports_shared_session = True
         if self.sandbox is not None:
             supports_shared_session = getattr(self.sandbox, "supports_shared_session", None)
             if callable(supports_shared_session):
                 sandbox_supports_shared_session = bool(supports_shared_session())
-        if self.sandbox is not None and pool is None and sandbox_supports_shared_session:
+        if (
+            self.sandbox is not None
+            and pool is None
+            and sandbox_supports_shared_session
+            and self.config.agent_name != "openclaw"
+        ):
             logger.info("Creating shared sandbox session for sequential execution")
             shared_session = self.sandbox.create_session()
         predeployed_session_queue = None
@@ -800,10 +822,10 @@ class Runner:
                             artifact_data = runtime_manager.collect_artifacts(sandbox_session)
                             existing_manifest = dict(error_response.artifact_manifest or {})
                             existing_files = dict(error_response.workspace_file_contents or {})
-                            error_response.artifact_manifest = {
-                                **existing_manifest,
-                                **artifact_data.get("artifact_manifest", {}),
-                            }
+                            error_response.artifact_manifest = _merge_artifact_manifests(
+                                existing_manifest,
+                                artifact_data.get("artifact_manifest", {}),
+                            )
                             if not error_response.gateway_log_excerpt:
                                 error_response.gateway_log_excerpt = artifact_data.get("gateway_log_excerpt", "")
                             existing_paths = list(error_response.workspace_snapshot_paths or [])

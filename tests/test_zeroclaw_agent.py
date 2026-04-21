@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import textwrap
 from types import SimpleNamespace
 from pathlib import Path
@@ -243,6 +244,9 @@ def test_zeroclaw_local_solve_extracts_boxed_answer(monkeypatch):
     assert response.raw_output.endswith("$$\\boxed{42}$$")
     assert response.metadata["model"] == "demo-model"
     assert response.metadata["zeroclaw_version"] == "zeroclaw 0.6.9"
+    assert len(response.trajectory) >= 4
+    assert len(response.reasoning_trajectory) >= 1
+    assert response.artifact_manifest["files"]["response_stream"] == "zeroclaw_output.txt"
 
 
 def test_zeroclaw_local_solve_strips_runtime_logs_from_top_level_output(monkeypatch):
@@ -283,8 +287,43 @@ def test_zeroclaw_local_solve_strips_runtime_logs_from_top_level_output(monkeypa
     assert response.answer == "42"
     assert response.raw_output == "analysis\n\n$$\\boxed{42}$$"
     assert response.metadata["raw_output_sanitized"] is True
-    assert response.metadata["runtime_logs_dropped_from_output"]
-    assert "zeroclaw::config::schema" in response.workspace_file_contents["zeroclaw_output.txt"]
+
+
+def test_build_cli_response_promotes_runtime_trace_into_native_fields():
+    agent = ZeroClawAgent()
+    agent.setup({
+        "model": "demo-model",
+        "api_base": "https://example.test/v1",
+        "api_key": "sk-test",
+        "system_prompt": "Solve carefully.",
+    })
+
+    response = agent._build_cli_response(
+        prompt="Solve carefully.\n\nProblem:\nCompute 6*7.",
+        raw_output="analysis\n\n$$\\boxed{42}$$",
+        raw_stderr="",
+        runtime_trace="\n".join([
+            json.dumps({"type": "tool", "name": "python"}),
+            json.dumps({"type": "message", "message": "checked by python"}),
+        ]),
+        attachment_items=[],
+        metadata={"model": "demo-model"},
+        wall_time_sec=1.2,
+        system_prompt="Solve carefully.",
+        artifact_manifest={},
+        request_messages=[
+            {"role": "system", "content": "Solve carefully."},
+            {"role": "user", "content": "Compute 6*7."},
+        ],
+    )
+
+    assert len(response.trajectory) >= 3
+    assert response.trajectory[0]["role"] == "system"
+    assert any(step.get("type") == "tool" for step in response.trajectory)
+    assert response.reasoning_trajectory[0]["type"] == "tool"
+    assert response.response_json["runtime_trace_present"] is True
+    assert response.artifact_manifest["files"]["response_stream"] == "runtime_trace.jsonl"
+    assert '"type": "tool"' in response.workspace_file_contents["runtime_trace.jsonl"]
 
 
 def test_zeroclaw_sandbox_solve_uses_uploaded_workspace_and_returns_answer():
@@ -455,6 +494,11 @@ def test_zeroclaw_gateway_mode_uses_rock_proxy(monkeypatch):
     assert response.sandbox_id == "sandbox-123"
     assert response.gateway_log_excerpt == "bridge started"
     assert response.metadata["gateway_mode"] == "rock-proxy"
+    assert len(response.trajectory) >= 4
+    assert len(response.reasoning_trajectory) >= 1
+    assert response.artifact_manifest["files"]["response_stream"] == "zeroclaw_output.txt"
+    assert response.artifact_manifest["files"]["request_payload"] == "gateway_request.json"
+    assert response.artifact_manifest["files"]["selected_response"] == "gateway_response.json"
 
 
 def test_zeroclaw_gateway_mode_serializes_attachments(monkeypatch):

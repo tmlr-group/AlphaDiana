@@ -96,6 +96,23 @@ class TestSystemPromptPersistence:
         assert path.exists()
         assert "math expert" in path.read_text()
 
+    def test_workspace_artifact_aliases_resolve_to_saved_relative_paths(self, tmp_path):
+        store = ResultStore(output_dir=str(tmp_path), run_id="artifact-alias")
+        task = BenchmarkTask(task_id="t1", problem="P", ground_truth="42")
+        resp = AgentResponse(
+            answer="42",
+            artifact_manifest={"files": {"response_stream": "trace.jsonl"}},
+            workspace_file_contents={"trace.jsonl": '{"type":"tool"}\n'},
+        )
+        score = ScoreResult(correct=True, score=1.0, expected="42", predicted="42")
+
+        store.append(task, resp, score)
+        result = store.load()[0]
+
+        assert result["artifact_manifest"]["files"]["response_stream"].endswith(
+            "t1/workspace/trace.jsonl"
+        )
+
 
 # ===================================================================
 # 3.2 Timeout Configuration and Misclassification

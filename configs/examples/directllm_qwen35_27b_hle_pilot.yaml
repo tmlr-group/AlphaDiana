@@ -1,0 +1,42 @@
+run_id: "pilot_20260420_qwen35_27b_hle_directllm_t3_multimodal_r1"
+
+agent:
+  name: direct_llm
+  version: "1.0"
+  config:
+    model: "${OPENAI_MODEL_NAME}"
+    api_base: "${OPENAI_BASE_URL}"
+    api_key: "${OPENAI_API_KEY}"
+    temperature: 0.6
+    top_p: 0.95
+    max_tokens: 32768
+    max_retries: 3
+    stream: true
+    extra_body:
+      include_reasoning: true
+    system_prompt: |
+      You are solving expert-level multimodal multiple-choice questions.
+      Read the question and image carefully, then choose the single best option.
+
+      At the end of your response, output only one of:
+      \boxed{A}, \boxed{B}, \boxed{C}, \boxed{D}, \boxed{E}, \boxed{F}, \boxed{G}, \boxed{H}, \boxed{I}, or \boxed{J}
+
+benchmark:
+  name: hle
+  config:
+    dataset: "cais/hle"
+    split: "test"
+    dataset_indices: [53, 98, 111]
+    answer_types:
+      - "multipleChoice"
+    max_tasks: 3
+
+scorer:
+  name: exact_match
+  config: {}
+
+max_concurrent: 3
+num_samples: 1
+output_dir: "./results/pilot_20260420_qwen35_27b_hle_directllm_t3_multimodal_r1"
+metadata:
+  notes: "Qwen/Qwen3.5-27B x OpenRouter x HLE image-backed 3-task pilot via direct_llm."

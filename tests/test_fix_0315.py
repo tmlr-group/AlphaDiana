@@ -370,6 +370,53 @@ class TestDirectLLMFields:
         assert resp.request_messages[0]["content"] == "Be helpful."
         assert resp.request_messages[1]["role"] == "user"
 
+    def test_response_json_is_preserved_without_reasoning(self):
+        """Plain assistant responses should still persist a response envelope."""
+        from alphadiana.agent.direct_llm import DirectLLMAgent
+
+        agent = DirectLLMAgent()
+
+        mock_choice = MagicMock()
+        mock_choice.message.content = "plain answer"
+        mock_choice.finish_reason = "stop"
+
+        mock_usage = MagicMock()
+        mock_usage.prompt_tokens = 10
+        mock_usage.completion_tokens = 4
+        mock_usage.total_tokens = 14
+
+        mock_api_response = MagicMock()
+        mock_api_response.choices = [mock_choice]
+        mock_api_response.usage = mock_usage
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = mock_api_response
+
+        agent._model = "m"
+        agent._api_base = "http://x"
+        agent._api_key = "k"
+        agent._temperature = 0.7
+        agent._top_p = None
+        agent._max_tokens = 100
+        agent._resolved_max_tokens = 100
+        agent._max_completion_tokens = None
+        agent._system_prompt = "Be helpful."
+        agent._max_retries = 0
+        agent._stream = False
+        agent._enable_thinking = None
+        agent._extra_body = None
+        agent._client = mock_client
+
+        resp = agent.solve(_task())
+
+        assert resp.response_json["choices"][0]["message"]["content"] == "plain answer"
+        assert resp.response_json["choices"][0]["finish_reason"] == "stop"
+        assert resp.response_json["usage"] == {
+            "prompt_tokens": 10,
+            "completion_tokens": 4,
+            "total_tokens": 14,
+        }
+
 
 class TestClientReuse:
     """Problem 16: DirectLLM should reuse the OpenAI client across solve() calls."""

@@ -60,6 +60,40 @@ def test_hle_benchmark_dataset_index_selects_single_row(monkeypatch) -> None:
     assert tasks[0].ground_truth == "B"
 
 
+def test_hle_benchmark_dataset_indices_select_rows_in_order(monkeypatch) -> None:
+    rows = [
+        {
+            "question": "Q0",
+            "answer": "A",
+            "answer_type": "multipleChoice",
+            "subject": "math",
+        },
+        {
+            "question": "Q1",
+            "answer": "B",
+            "answer_type": "multipleChoice",
+            "subject": "physics",
+        },
+        {
+            "question": "Q2",
+            "answer": "C",
+            "answer_type": "multipleChoice",
+            "subject": "chemistry",
+        },
+    ]
+
+    monkeypatch.setattr("alphadiana.benchmark.hle.load_dataset_with_retry", lambda *args, **kwargs: rows)
+
+    tasks = HLEBenchmark().load_tasks({
+        "dataset": "cais/hle",
+        "dataset_indices": [2, 0],
+        "answer_types": ["multipleChoice"],
+    })
+
+    assert [task.task_id for task in tasks] == ["hle_2", "hle_0"]
+    assert [task.ground_truth for task in tasks] == ["C", "A"]
+
+
 def test_hle_benchmark_extracts_image_attachments_from_data_urls(monkeypatch) -> None:
     payload = b"fake-image-payload"
     rows = [

@@ -14,7 +14,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-ROCK_ROOT="${PROJECT_ROOT}/ref/ROCK"
+ROCK_ROOT="${ALPHADIANA_ROCK_ROOT:-${PROJECT_ROOT}/ref/ROCK}"
 PYTHON="${PYTHON:-$(command -v python3 || command -v python)}"
 ZEROCLAW_IMAGE="${ZEROCLAW_SANDBOX_IMAGE:-zeroclaw-reasoning:0.6.9}"
 ZEROCLAW_CONFIG="${ZEROCLAW_RUN_CONFIG:-${PROJECT_ROOT}/configs/examples/zeroclaw_aime2026.yaml}"
@@ -51,14 +51,14 @@ if ! "${PYTHON}" -c "import rock" >/dev/null 2>&1; then
 fi
 
 _rock_installed=$("${PYTHON}" -c "import rock; print(rock.__file__)" 2>/dev/null || echo "")
-_rock_expected="${PROJECT_ROOT}/ref/ROCK/rock/__init__.py"
+_rock_expected="${ROCK_ROOT}/rock/__init__.py"
 if [ "${_rock_installed}" != "${_rock_expected}" ]; then
     echo "ERROR: 'rock' editable install path does not match this project."
     echo "  Currently: ${_rock_installed:-(not installed)}"
     echo "  Expected:  ${_rock_expected}"
     echo ""
     echo "  Fix: re-install rock from this project, then re-run this script:"
-    echo "    ${PYTHON%/python}/pip install -e ${PROJECT_ROOT}/ref/ROCK -q"
+    echo "    ${PYTHON%/python}/pip install -e ${ROCK_ROOT} -q"
     exit 1
 fi
 
@@ -77,6 +77,53 @@ fi
 export ROCK_BASE_URL="http://${ROCK_HTTP_HOST}:${ROCK_ADMIN_PORT}"
 export ROCK_PROXY_ROOT_URL="http://${ROCK_HTTP_HOST}:${ROCK_PROXY_PORT}"
 export ROCK_PROXY_URL="${ROCK_PROXY_ROOT_URL}/apis/envs/sandbox/v1"
+
+_refresh_ports_if_foreign_checkout() {
+    local _ownership_output=""
+    if _ownership_output=$("${PYTHON}" - "${PROJECT_ROOT}" <<'PYEOF' 2>/dev/null
+import sys
+from pathlib import Path
+
+project_root = Path(sys.argv[1]).resolve()
+sys.path.insert(0, str(project_root))
+
+from alphadiana.utils.rock_ports import check_rock_service_ownership, resolve_rock_ports_from_env
+
+results = check_rock_service_ownership(resolve_rock_ports_from_env(), expected_project_root=project_root)
+foreign = {
+    service: status
+    for service, status in results.items()
+    if isinstance(status, str) and "foreign checkout owns port" in status
+}
+if not foreign:
+    raise SystemExit(0)
+for service, status in foreign.items():
+    print(f"{service}: {status}")
+raise SystemExit(10)
+PYEOF
+    ); then
+        return 0
+    fi
+
+    local _status=$?
+    if [ "${_status}" -ne 10 ]; then
+        echo "ERROR: failed to inspect existing ROCK service ownership"
+        [ -n "${_ownership_output}" ] && echo "${_ownership_output}"
+        exit 1
+    fi
+
+    echo "      Detected foreign ROCK listeners on configured ports:"
+    echo "${_ownership_output}" | sed 's/^/        /'
+    echo "      Regenerating isolated ports for this checkout..."
+    "${PYTHON}" "${SCRIPT_DIR}/find_rock_ports.py" --write-env "${SCRIPT_DIR}/.rock_ports.env" >/dev/null
+    # shellcheck disable=SC1091
+    source "${SCRIPT_DIR}/rock_env.sh"
+    export ROCK_BASE_URL="http://${ROCK_HTTP_HOST}:${ROCK_ADMIN_PORT}"
+    export ROCK_PROXY_ROOT_URL="http://${ROCK_HTTP_HOST}:${ROCK_PROXY_PORT}"
+    export ROCK_PROXY_URL="${ROCK_PROXY_ROOT_URL}/apis/envs/sandbox/v1"
+}
+
+_refresh_ports_if_foreign_checkout
 
 mkdir -p "${LOG_DIR}" "${TMP_DIR}"
 
@@ -117,6 +164,25 @@ _wait_for_route() {
         fi
         sleep 2
     done
+}
+
+_ray_cluster_healthy() {
+    local address="$1"
+    timeout 20 "${PYTHON}" - <<PYEOF >/dev/null 2>&1
+import logging
+import os
+
+import ray
+
+os.environ.setdefault("RAY_LOG_TO_STDERR", "0")
+logging.disable(logging.CRITICAL)
+
+ray.init(address="${address}", ignore_reinit_error=True, logging_level=50)
+try:
+    ray.cluster_resources()
+finally:
+    ray.shutdown()
+PYEOF
 }
 
 echo "[1/6] Environment loaded"
@@ -171,11 +237,22 @@ fi
 echo "[4/6] Starting or reusing Ray head node..."
 RAY_SESSION_DIR="${RAY_TMPDIR}/rock"
 mkdir -p "${RAY_SESSION_DIR}"
+RAY_GCS_HOST="${ROCK_RAY_HOST:-${ROCK_BIND_HOST}}"
+RAY_GCS_ADDRESS="${RAY_GCS_HOST}:${ROCK_RAY_PORT}"
 if _port_open "${ROCK_RAY_PORT}"; then
-    echo "      Ray GCS already listening on port ${ROCK_RAY_PORT} — reusing it"
-else
+    if _ray_cluster_healthy "${RAY_GCS_ADDRESS}"; then
+        echo "      Ray GCS already listening on port ${ROCK_RAY_PORT} — reusing it"
+    else
+        echo "      Existing Ray listener on ${RAY_GCS_ADDRESS} is unhealthy; restarting it"
+        pkill -u "$(id -un)" -f "gcs_server.*${ROCK_RAY_PORT}" 2>/dev/null || true
+        pkill -u "$(id -un)" -f "${RAY_SESSION_DIR}" 2>/dev/null || true
+        sleep 2
+    fi
+fi
+if ! _port_open "${ROCK_RAY_PORT}"; then
     _ray_bin="$(dirname "${PYTHON}")/ray"
     pkill -u "$(id -un)" -f "gcs_server.*${ROCK_RAY_PORT}" 2>/dev/null || true
+    pkill -u "$(id -un)" -f "${RAY_SESSION_DIR}" 2>/dev/null || true
     sleep 2
     RAY_TMPDIR="${RAY_SESSION_DIR}" "${_ray_bin}" start \
         --head \
@@ -191,8 +268,6 @@ else
         exit 1
     fi
 fi
-RAY_GCS_HOST="${ROCK_RAY_HOST:-${ROCK_BIND_HOST}}"
-RAY_GCS_ADDRESS="${RAY_GCS_HOST}:${ROCK_RAY_PORT}"
 echo "      Ray is up (GCS ${RAY_GCS_ADDRESS})"
 
 echo "[5/6] Starting ROCK admin and proxy..."
