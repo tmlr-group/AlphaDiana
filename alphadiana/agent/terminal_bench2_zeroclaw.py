@@ -8,6 +8,13 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
+from alphadiana.agent.preservation import (
+    add_artifact_file_refs,
+    build_event_trajectories,
+    build_text_step_trajectories,
+    build_runtime_trace_summary,
+    parse_jsonl_records,
+)
 from alphadiana.agent.base import AgentResponse
 from alphadiana.agent.registry import AgentRegistry
 from alphadiana.agent.terminal_bench2_incontainer import (
@@ -207,12 +214,42 @@ class TerminalBench2ZeroClawAgent(TerminalBench2InContainerMixin, ZeroClawAgent)
 
         sanitized_output, dropped_runtime_logs = _sanitize_cli_output(raw_output)
         assistant_text = sanitized_output or raw_stderr or runtime_trace
-        response = AgentResponse(
-            answer=reward_content,
-            trajectory=[
+        runtime_records = parse_jsonl_records(runtime_trace)
+        trajectory, reasoning_trajectory = build_event_trajectories(
+            request_messages,
+            runtime_records,
+            final_output=assistant_text,
+        )
+        if not runtime_records:
+            fallback_trajectory, fallback_reasoning = build_text_step_trajectories(
+                request_messages,
+                assistant_text,
+            )
+            if len(fallback_trajectory) > len(trajectory):
+                trajectory = fallback_trajectory
+            if len(fallback_reasoning) > len(reasoning_trajectory):
+                reasoning_trajectory = fallback_reasoning
+        if not trajectory:
+            trajectory = [
                 {"role": "user", "content": prompt_text},
                 {"role": "assistant", "content": assistant_text},
-            ],
+            ]
+        artifact_manifest = add_artifact_file_refs(
+            {},
+            response_stream=(
+                "runtime_trace.jsonl"
+                if runtime_trace
+                else ("zeroclaw_output.txt" if raw_output else None)
+            ),
+            stdout_log="zeroclaw_output.txt" if raw_output else None,
+            stderr_log="zeroclaw_stderr.log" if (raw_stderr or returncode != 0) else None,
+            prompt_text="PROMPT.txt",
+            config_path="config.toml",
+        )
+        response = AgentResponse(
+            answer=reward_content,
+            trajectory=trajectory,
+            reasoning_trajectory=reasoning_trajectory,
             raw_output=assistant_text,
             wall_time_sec=time.time() - t_start,
             metadata=self._build_metadata(
@@ -230,6 +267,18 @@ class TerminalBench2ZeroClawAgent(TerminalBench2InContainerMixin, ZeroClawAgent)
                 },
             ),
             request_messages=request_messages,
+            response_json=build_runtime_trace_summary(
+                output_text=sanitized_output or assistant_text,
+                stderr_text=raw_stderr.strip(),
+                records=runtime_records,
+                extra={
+                    "returncode": returncode,
+                    "runtime_trace_present": bool(runtime_trace.strip()),
+                    "runtime_trace_records": len(runtime_records),
+                    "container_workdir": container_workdir,
+                },
+            ),
+            artifact_manifest=artifact_manifest,
             workspace_file_contents=artifact_files,
             system_prompt=_ZEROCLAW_SYSTEM_PROMPT,
         )

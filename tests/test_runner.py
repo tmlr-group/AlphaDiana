@@ -7,7 +7,11 @@ import pytest
 from alphadiana.agent.base import AgentResponse
 from alphadiana.benchmark.base import BenchmarkTask
 from alphadiana.config.experiment_config import ExperimentConfig
-from alphadiana.runner.runner import Runner, _is_gateway_autodeploy_agent
+from alphadiana.runner.runner import (
+    Runner,
+    _is_gateway_autodeploy_agent,
+    _merge_artifact_manifests,
+)
 from alphadiana.runner.task_dispatcher import TaskDispatcher
 
 
@@ -145,6 +149,29 @@ def test_openclaw_direct_api_base_disables_gateway_autodeploy() -> None:
     )
 
     assert _is_gateway_autodeploy_agent(config) is False
+
+
+def test_merge_artifact_manifests_preserves_existing_file_aliases() -> None:
+    existing = {
+        "files": {
+            "response_stream": "zeroclaw_output.txt",
+            "stdout_log": "zeroclaw_output.txt",
+        },
+        "attachments": [],
+    }
+    incoming = {
+        "files": {
+            "bridge_log_source": "/tmp/zeroclaw-gateway.log",
+        },
+        "local_artifact_root": "task_0",
+    }
+
+    merged = _merge_artifact_manifests(existing, incoming)
+
+    assert merged["files"]["response_stream"] == "zeroclaw_output.txt"
+    assert merged["files"]["stdout_log"] == "zeroclaw_output.txt"
+    assert merged["files"]["bridge_log_source"] == "/tmp/zeroclaw-gateway.log"
+    assert merged["local_artifact_root"] == "task_0"
 
 
 def test_openclaw_gateway_pool_disables_gateway_autodeploy() -> None:

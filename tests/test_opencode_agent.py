@@ -137,6 +137,89 @@ def test_solve_text_only_uses_opencode_cli():
     assert "Which option is correct?" in cmd[-1]
     assert result.answer == "A"
     assert result.metadata["transport"] == "opencode_cli"
+    assert result.request_messages[0]["role"] == "system"
+    assert result.response_json["records"][0]["type"] == "assistant"
+    assert result.artifact_manifest["files"]["response_stream"] == "opencode_output.jsonl"
+    assert result.workspace_file_contents["prompt.txt"].startswith("You are an expert problem solver.")
+
+
+def test_solve_preserves_opencode_event_stream_as_trajectory():
+    agent = OpenCodeAgent()
+    agent.setup({
+        "model_name": "test-model",
+        "api_base": "http://localhost:9001/v1",
+        "api_key": "test-key",
+        "timeout": 5,
+        "system_prompt": "Use tools when needed.",
+    })
+
+    process = MagicMock()
+    process.communicate.return_value = (
+        "\n".join([
+            json.dumps({"type": "tool_use", "message": "Inspecting workspace"}),
+            json.dumps({"type": "assistant", "message": {"content": "Done.\\n\\boxed{A}"}}),
+        ]),
+        "stderr text\n",
+    )
+    process.returncode = 0
+
+    task = BenchmarkTask(
+        task_id="text_1",
+        problem="Which option is correct?",
+        ground_truth="A",
+    )
+
+    with patch("subprocess.Popen", return_value=process):
+        result = agent.solve(task)
+
+    assert len(result.trajectory) >= 3
+    assert result.trajectory[0]["role"] == "system"
+    assert any(step.get("type") == "tool_use" for step in result.trajectory)
+    assert result.reasoning_trajectory[0]["type"] == "tool_use"
+    assert result.response_json["stderr_text"] == "stderr text"
+    assert result.workspace_file_contents["opencode_output.jsonl"]
+
+
+def test_solve_preserves_opencode_session_trace_when_present():
+    agent = OpenCodeAgent()
+    agent.setup({
+        "model_name": "test-model",
+        "api_base": "http://localhost:9001/v1",
+        "api_key": "test-key",
+        "timeout": 5,
+    })
+
+    process = MagicMock()
+    process.communicate.return_value = (
+        json.dumps({
+            "type": "assistant",
+            "sessionID": "session-demo",
+            "message": {"content": "Done.\\n\\boxed{A}"},
+        }) + "\n",
+        "",
+    )
+    process.returncode = 0
+
+    task = BenchmarkTask(
+        task_id="text_session",
+        problem="Which option is correct?",
+        ground_truth="A",
+    )
+
+    def fake_popen(cmd, **kwargs):
+        session_dir = Path(kwargs["env"]["XDG_CONFIG_HOME"]) / "opencode" / "sessions"
+        session_dir.mkdir(parents=True, exist_ok=True)
+        (session_dir / "session-demo.jsonl").write_text(
+            json.dumps({"type": "message", "role": "assistant", "content": "Done"}) + "\n",
+            encoding="utf-8",
+        )
+        return process
+
+    with patch("subprocess.Popen", side_effect=fake_popen):
+        result = agent.solve(task)
+
+    assert result.artifact_manifest["files"]["session_trace"] == "opencode_session.jsonl"
+    assert "opencode_session.jsonl" in result.workspace_file_contents
 
 
 def test_setup_rejects_unknown_controller_mode():

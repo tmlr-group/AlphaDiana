@@ -22,6 +22,13 @@ from typing import Any, Optional
 from uuid import uuid4
 
 from alphadiana.agent.base import Agent, AgentResponse
+from alphadiana.agent.preservation import (
+    add_artifact_file_refs,
+    build_event_trajectories,
+    build_text_step_trajectories,
+    build_runtime_trace_summary,
+    parse_jsonl_records,
+)
 from alphadiana.agent.registry import register_agent
 from alphadiana.benchmark.base import BenchmarkTask
 from alphadiana.utils.rock_runtime import PREBUILT_SANDBOX_IMAGE
@@ -718,7 +725,15 @@ RUN chmod +x /usr/local/bin/zeroclaw
             import httpx
 
             api_base = self._api_base.rstrip("/")
-            response = httpx.get(f"{api_base}/models", timeout=5.0)
+            headers = {}
+            if self._api_key and self._api_key.upper() != "EMPTY":
+                headers["Authorization"] = f"Bearer {self._api_key}"
+            response = httpx.get(
+                f"{api_base}/models",
+                headers=headers,
+                timeout=5.0,
+                trust_env=False,
+            )
             if response.status_code != 200:
                 return None
 
@@ -1348,6 +1363,76 @@ RUN chmod +x /usr/local/bin/zeroclaw
             )
         return workspace_files
 
+    def _build_preserved_failure_response(
+        self,
+        *,
+        mode: str,
+        prompt: str,
+        local_artifacts: Path,
+        start_time: float,
+        workspace_names: tuple[str, ...],
+        artifact_refs: dict[str, str],
+        response_json: dict[str, Any] | None = None,
+        raw_output: str = "",
+        metadata: dict[str, Any] | None = None,
+    ) -> AgentResponse:
+        """Build an AgentResponse for failure paths with local artifacts."""
+        workspace_file_contents = self._collect_workspace_files(
+            local_artifacts,
+            mode=mode,
+            names=workspace_names,
+        )
+        artifact_manifest = {"files": {}}
+        for remote_name in workspace_file_contents:
+            artifact_manifest["files"].setdefault("workspace_files", []).append(remote_name)
+        artifact_manifest = add_artifact_file_refs(artifact_manifest, **artifact_refs)
+        request_messages = [{"role": "user", "content": prompt}]
+        trajectory = list(request_messages)
+        if raw_output.strip():
+            trajectory.append({"role": "assistant", "content": raw_output.strip()})
+        return AgentResponse(
+            answer=None,
+            trajectory=trajectory,
+            reasoning_trajectory=[],
+            raw_output=raw_output.strip(),
+            wall_time_sec=time.monotonic() - start_time,
+            request_messages=request_messages,
+            response_json=response_json or {},
+            artifact_manifest=artifact_manifest,
+            workspace_file_contents=workspace_file_contents,
+            system_prompt=self._system_prompt,
+            metadata=dict(metadata or {}),
+        )
+
+    def _raise_preserved_failure(
+        self,
+        message: str,
+        *,
+        mode: str,
+        prompt: str,
+        local_artifacts: Path,
+        start_time: float,
+        workspace_names: tuple[str, ...],
+        artifact_refs: dict[str, str],
+        response_json: dict[str, Any] | None = None,
+        raw_output: str = "",
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Raise a RuntimeError while attaching a partial AgentResponse."""
+        exc = RuntimeError(message)
+        exc.partial_response = self._build_preserved_failure_response(
+            mode=mode,
+            prompt=prompt,
+            local_artifacts=local_artifacts,
+            start_time=start_time,
+            workspace_names=workspace_names,
+            artifact_refs=artifact_refs,
+            response_json=response_json,
+            raw_output=raw_output,
+            metadata=metadata,
+        )
+        raise exc
+
     def _stage_file_into_container(
         self,
         container_id: str,
@@ -1419,6 +1504,47 @@ RUN chmod +x /usr/local/bin/zeroclaw
             json.dumps(prompt_budget, indent=2, sort_keys=True),
             encoding="utf-8",
         )
+        openclaw_failure_workspace_names = (
+            "patch.diff",
+            "gateway.log",
+            "openclaw_sse_raw.jsonl",
+            "openclaw_output.jsonl",
+            "openclaw_response.txt",
+            "openclaw_runner_stdout.log",
+            "openclaw_runner_stderr.log",
+            "openclaw_request.json",
+            "openclaw_tool_verdict.json",
+            "openclaw_edit_convergence.json",
+            "openclaw_attempt_matrix.json",
+            "openclaw_selected_attempt.json",
+            "openclaw_trajectory_summary.json",
+            "openclaw_session.jsonl",
+            "openclaw_candidate_models.txt",
+            "openclaw_prompt_contract.txt",
+            "openclaw_prompt_profile.txt",
+            "prompt.txt",
+            "prompt_budget.json",
+            "repo_root.txt",
+            "trajectory.jsonl",
+            "git_status_before.txt",
+            "git_status_after.txt",
+        )
+        openclaw_failure_artifact_refs = {
+            "response_stream": "/swebench_agent/openclaw/openclaw_output.jsonl",
+            "session_trace": "/swebench_agent/openclaw/openclaw_session.jsonl",
+            "request_payload": "/swebench_agent/openclaw/openclaw_request.json",
+            "prompt_text": "/swebench_agent/openclaw/prompt.txt",
+        }
+        openclaw_failure_metadata = {
+            "container_id": container_id,
+            "image": image,
+            "base_image": base_image,
+            "dockerhub_tag": str(task.metadata.get("dockerhub_tag", "")),
+            "agent_type": self._agent_type,
+            "artifacts_dir": str(local_artifacts),
+            "sample_index": sample_index,
+            "execution_id": execution_id,
+        }
         if prompt_budget.get("needs_larger_context_model"):
             raise RuntimeError(
                 "OpenClaw prompt does not fit the configured context window even after "
@@ -1615,20 +1741,45 @@ RUN chmod +x /usr/local/bin/zeroclaw
                 )
             return f" (runner exited {selected_returncode})"
 
+        def _raise_openclaw_failure(message: str, *, raw_output: str = "") -> None:
+            failure_json = build_runtime_trace_summary(
+                output_text=raw_output,
+                stderr_text=gateway_log.strip(),
+                extra={
+                    "attempts": attempt_records,
+                    "selected_attempt": selected_attempt_record,
+                    "tool_verdict": openclaw_tool_verdict,
+                    "edit_convergence": openclaw_edit_convergence,
+                },
+            )
+            self._raise_preserved_failure(
+                message,
+                mode="openclaw",
+                prompt=prompt,
+                local_artifacts=local_artifacts,
+                start_time=start_time,
+                workspace_names=openclaw_failure_workspace_names,
+                artifact_refs=openclaw_failure_artifact_refs,
+                response_json=failure_json,
+                raw_output=raw_output or gateway_log.strip(),
+                metadata=openclaw_failure_metadata,
+            )
+
         if not openclaw_output.strip():
             if openclaw_tool_classification == "provider_failure":
                 detail = openclaw_tool_reason or "unknown provider failure"
-                raise RuntimeError(
+                _raise_openclaw_failure(
                     "OpenClaw provider/model contract failed before a usable tool "
                     f"session started: {detail}. See {openclaw_tool_verdict_path}."
-                    f"{attempt_matrix_hint}"
+                    f"{attempt_matrix_hint}",
+                    raw_output=detail,
                 )
             if not (local_artifacts / "openclaw_output.jsonl").exists():
-                raise RuntimeError(
+                _raise_openclaw_failure(
                     f"OpenClaw run did not produce openclaw_output.jsonl"
                     f"{_runner_suffix()}.{attempt_matrix_hint}"
                 )
-            raise RuntimeError(
+            _raise_openclaw_failure(
                 f"OpenClaw run produced an empty openclaw_output.jsonl"
                 f"{_runner_suffix()}.{attempt_matrix_hint}"
             )
@@ -1652,7 +1803,7 @@ RUN chmod +x /usr/local/bin/zeroclaw
             events.append(payload)
 
         if not events:
-            raise RuntimeError(
+            _raise_openclaw_failure(
                 f"OpenClaw run produced no SSE events in openclaw_output.jsonl"
                 f"{_runner_suffix()}.{attempt_matrix_hint}"
             )
@@ -1664,20 +1815,23 @@ RUN chmod +x /usr/local/bin/zeroclaw
                     openclaw_convergence_reason
                     or "OpenClaw used tools but never produced repository edits"
                 )
-                raise RuntimeError(
+                _raise_openclaw_failure(
                     "OpenClaw active session used tools but produced no repository edits: "
-                    f"{detail}. See {openclaw_edit_convergence_path}.{attempt_matrix_hint}"
+                    f"{detail}. See {openclaw_edit_convergence_path}.{attempt_matrix_hint}",
+                    raw_output=detail,
                 )
             if openclaw_tool_classification == "text_only":
                 detail = openclaw_tool_reason or "OpenClaw only streamed assistant text"
-                raise RuntimeError(
+                _raise_openclaw_failure(
                     "OpenClaw provider/model contract produced a text-only OpenClaw "
                     f"session: {detail}. See {openclaw_tool_verdict_path}."
-                    f"{attempt_matrix_hint}"
+                    f"{attempt_matrix_hint}",
+                    raw_output=detail,
                 )
-            raise RuntimeError(
+            _raise_openclaw_failure(
                 f"OpenClaw run did not produce patch.diff{_runner_suffix()}."
-                f"{attempt_matrix_hint}"
+                f"{attempt_matrix_hint}",
+                raw_output=raw_output or gateway_log.strip(),
             )
 
         if selected_returncode != 0:
@@ -1687,9 +1841,10 @@ RUN chmod +x /usr/local/bin/zeroclaw
                 or openclaw_convergence_reason
                 or "unknown error"
             )
-            raise RuntimeError(
+            _raise_openclaw_failure(
                 f"OpenClaw runner exited with status {selected_returncode}: "
-                f"{detail.splitlines()[-1]}"
+                f"{detail.splitlines()[-1]}",
+                raw_output=detail,
             )
 
         raw_output = self._read_text_if_exists(local_artifacts / "openclaw_response.txt")
@@ -1729,18 +1884,52 @@ RUN chmod +x /usr/local/bin/zeroclaw
                 "git_status_after.txt",
             ),
         )
+        request_messages = [{"role": "user", "content": prompt}]
+        reasoning_trajectory = build_event_trajectories(
+            request_messages,
+            events,
+            final_output="",
+        )[1]
+        trajectory: list[dict[str, Any]] = []
+        openclaw_session_text = workspace_file_contents.get(
+            "/swebench_agent/openclaw/openclaw_session.jsonl",
+            "",
+        )
+        if openclaw_session_text:
+            try:
+                from alphadiana.agent.openclaw import _parse_openclaw_session
+
+                trajectory = _parse_openclaw_session(openclaw_session_text)
+            except Exception:
+                trajectory = []
+        if not trajectory:
+            trajectory, event_reasoning = build_event_trajectories(
+                request_messages,
+                events,
+                final_output=raw_output or patch,
+            )
+            if not reasoning_trajectory:
+                reasoning_trajectory = event_reasoning
         wall_time = time.monotonic() - start_time
         artifact_manifest = {"files": {}}
         for remote_name in workspace_file_contents:
             artifact_manifest["files"].setdefault("workspace_files", []).append(remote_name)
+        artifact_manifest = add_artifact_file_refs(
+            artifact_manifest,
+            response_stream="/swebench_agent/openclaw/openclaw_output.jsonl",
+            session_trace="/swebench_agent/openclaw/openclaw_session.jsonl",
+            request_payload="/swebench_agent/openclaw/openclaw_request.json",
+            prompt_text="/swebench_agent/openclaw/prompt.txt",
+        )
 
         assistant_text = raw_output or patch
         return AgentResponse(
             answer=patch,
-            trajectory=[
+            trajectory=trajectory or [
                 {"role": "user", "content": prompt},
                 {"role": "assistant", "content": assistant_text},
             ],
+            reasoning_trajectory=reasoning_trajectory,
             raw_output=assistant_text,
             wall_time_sec=wall_time,
             metadata={
@@ -1782,8 +1971,13 @@ RUN chmod +x /usr/local/bin/zeroclaw
                 "bootstrap_needed": bool(runtime_metadata.get("runtime_image_built", False)),
                 **runtime_metadata,
             },
-            request_messages=[{"role": "user", "content": prompt}],
-            response_json=response_json,
+            request_messages=request_messages,
+            response_json=build_runtime_trace_summary(
+                output_text=assistant_text,
+                stderr_text=gateway_log.strip(),
+                records=events,
+                extra=response_json,
+            ),
             artifact_manifest=artifact_manifest,
             gateway_log_excerpt=gateway_log,
             workspace_file_contents=workspace_file_contents,
@@ -1872,6 +2066,48 @@ RUN chmod +x /usr/local/bin/zeroclaw
             "target_file_hints": resolved_target_file_hints,
             "primary_target_file": resolved_primary_target_file,
             "target_file_hints_source": target_file_hints_source,
+        }
+        opencode_failure_workspace_names = (
+            "patch.diff",
+            "opencode_output.jsonl",
+            "opencode_stderr.log",
+            "opencode_session.jsonl",
+            "opencode_provider_preflight.txt",
+            "opencode_startup_diagnostics.txt",
+            "opencode_activity_summary.json",
+            "opencode_no_edit_reason.txt",
+            "opencode_prompt_contract.txt",
+            "opencode_prompt_profile.txt",
+            "opencode_candidate_models.txt",
+            "opencode_target_file_hints.txt",
+            "opencode_edit_bootstrap.txt",
+            "opencode_edit_contract.txt",
+            "opencode_attempt_matrix.json",
+            "opencode_selected_attempt.json",
+            "opencode_stall_reason.txt",
+            "opencode_progress_snapshot.txt",
+            "opencode_runner_stdout.log",
+            "opencode_runner_stderr.log",
+            "git_status_before.txt",
+            "git_status_after.txt",
+            "prompt.txt",
+            "repo_root.txt",
+        )
+        opencode_failure_artifact_refs = {
+            "response_stream": "/swebench_agent/opencode/opencode_output.jsonl",
+            "session_trace": "/swebench_agent/opencode/opencode_session.jsonl",
+            "stderr_log": "/swebench_agent/opencode/opencode_stderr.log",
+            "prompt_text": "/swebench_agent/opencode/prompt.txt",
+        }
+        opencode_failure_metadata = {
+            "container_id": container_id,
+            "image": image,
+            "base_image": base_image,
+            "dockerhub_tag": str(task.metadata.get("dockerhub_tag", "")),
+            "agent_type": self._agent_type,
+            "artifacts_dir": str(local_artifacts),
+            "sample_index": sample_index,
+            "execution_id": execution_id,
         }
 
         attempt_index = 0
@@ -2152,6 +2388,31 @@ RUN chmod +x /usr/local/bin/zeroclaw
                 )
             return f" (runner exited {selected_returncode})"
 
+        def _raise_opencode_failure(message: str, *, raw_output: str = "") -> None:
+            failure_json = build_runtime_trace_summary(
+                output_text=raw_output,
+                stderr_text=opencode_stderr.strip(),
+                extra={
+                    "attempts": attempt_records,
+                    "selected_attempt": selected_attempt_record,
+                    "provider_preflight": opencode_provider_preflight,
+                    "startup_diagnostics": opencode_startup_diagnostics,
+                    "activity_summary": opencode_activity_summary,
+                },
+            )
+            self._raise_preserved_failure(
+                message,
+                mode="opencode",
+                prompt=selected_prompt or prompt_path.read_text(encoding="utf-8", errors="replace"),
+                local_artifacts=local_artifacts,
+                start_time=start_time,
+                workspace_names=opencode_failure_workspace_names,
+                artifact_refs=opencode_failure_artifact_refs,
+                response_json=failure_json,
+                raw_output=raw_output or opencode_stderr.strip() or opencode_no_edit_reason,
+                metadata=opencode_failure_metadata,
+            )
+
         if "status: failed" in opencode_provider_preflight:
             model_alias = ""
             error_detail = ""
@@ -2163,15 +2424,18 @@ RUN chmod +x /usr/local/bin/zeroclaw
             detail = error_detail or "unknown provider-preflight failure"
             if model_alias:
                 detail = f"{detail} (model={model_alias})"
-            raise RuntimeError(f"OpenCode provider preflight failed: {detail}.{attempt_matrix_hint}")
+            _raise_opencode_failure(
+                f"OpenCode provider preflight failed: {detail}.{attempt_matrix_hint}",
+                raw_output=detail,
+            )
 
         if "status: no_activity_within_timeout" in opencode_startup_diagnostics:
-            raise RuntimeError(
+            _raise_opencode_failure(
                 "OpenCode startup produced no session/output activity. "
                 f"See {local_artifacts / 'opencode_startup_diagnostics.txt'}.{attempt_matrix_hint}"
             )
         if "status: process_exited_before_activity" in opencode_startup_diagnostics:
-            raise RuntimeError(
+            _raise_opencode_failure(
                 "OpenCode startup exited before any session/output activity. "
                 f"See {local_artifacts / 'opencode_startup_diagnostics.txt'}.{attempt_matrix_hint}"
             )
@@ -2190,15 +2454,15 @@ RUN chmod +x /usr/local/bin/zeroclaw
                     break
             if snapshot_summary:
                 detail = f"{detail}. Last progress: {snapshot_summary}"
-            raise RuntimeError(f"{detail}.{attempt_matrix_hint}")
+            _raise_opencode_failure(f"{detail}.{attempt_matrix_hint}", raw_output=detail)
 
         if not opencode_output.strip():
             if not (local_artifacts / "opencode_output.jsonl").exists():
-                raise RuntimeError(
+                _raise_opencode_failure(
                     f"OpenCode run did not produce opencode_output.jsonl"
                     f"{_runner_suffix()}.{attempt_matrix_hint}"
                 )
-            raise RuntimeError(
+            _raise_opencode_failure(
                 f"OpenCode run produced an empty opencode_output.jsonl"
                 f"{_runner_suffix()}.{attempt_matrix_hint}"
             )
@@ -2222,14 +2486,17 @@ RUN chmod +x /usr/local/bin/zeroclaw
             records.append(payload)
 
         if not records:
-            raise RuntimeError(
+            _raise_opencode_failure(
                 f"OpenCode run produced an empty opencode_output.jsonl{_runner_suffix()}"
             )
 
         for record in records:
             if record.get("type") == "error":
                 message = self._extract_opencode_error_message(record)
-                raise RuntimeError(f"OpenCode run reported error record: {message}.{attempt_matrix_hint}")
+                _raise_opencode_failure(
+                    f"OpenCode run reported error record: {message}.{attempt_matrix_hint}",
+                    raw_output=message,
+                )
 
         tolerate_no_edit_without_patch = (
             not opencode_require_patch
@@ -2242,16 +2509,18 @@ RUN chmod +x /usr/local/bin/zeroclaw
             ).strip()
             if not detail:
                 detail = "active session produced output but no tracked repository edits"
-            raise RuntimeError(
+            _raise_opencode_failure(
                 "OpenCode active session timed out without repository edits: "
-                f"{detail}. See {opencode_activity_summary_path}.{attempt_matrix_hint}"
+                f"{detail}. See {opencode_activity_summary_path}.{attempt_matrix_hint}",
+                raw_output=detail,
             )
 
         patch = self._read_text_if_exists(local_artifacts / "patch.diff").strip()
         if not patch and opencode_require_patch:
-            raise RuntimeError(
+            _raise_opencode_failure(
                 f"OpenCode run did not produce patch.diff{_runner_suffix()}."
-                f"{attempt_matrix_hint}"
+                f"{attempt_matrix_hint}",
+                raw_output=opencode_output.strip() or opencode_no_edit_reason,
             )
 
         if selected_returncode != 0 and not tolerate_no_edit_without_patch:
@@ -2261,9 +2530,10 @@ RUN chmod +x /usr/local/bin/zeroclaw
                 or opencode_stall_reason.strip()
                 or "unknown error"
             )
-            raise RuntimeError(
+            _raise_opencode_failure(
                 f"OpenCode runner exited with status {selected_returncode}: "
-                f"{detail.splitlines()[-1]}"
+                f"{detail.splitlines()[-1]}",
+                raw_output=detail,
             )
 
         resolved_repo_root = (
@@ -2298,18 +2568,29 @@ RUN chmod +x /usr/local/bin/zeroclaw
                 "repo_root.txt",
             ),
         )
+        request_messages = [{"role": "user", "content": selected_prompt}]
+        trajectory, reasoning_trajectory = build_event_trajectories(
+            request_messages,
+            records,
+            final_output=opencode_output.strip() or patch,
+        )
         artifact_manifest = {"files": {}}
         for remote_name in workspace_file_contents:
             artifact_manifest["files"].setdefault("workspace_files", []).append(remote_name)
+        artifact_manifest = add_artifact_file_refs(
+            artifact_manifest,
+            response_stream="/swebench_agent/opencode/opencode_output.jsonl",
+            session_trace="/swebench_agent/opencode/opencode_session.jsonl",
+            stderr_log="/swebench_agent/opencode/opencode_stderr.log",
+            prompt_text="/swebench_agent/opencode/prompt.txt",
+        )
 
         wall_time = time.monotonic() - start_time
         assistant_text = opencode_output.strip() or patch
         return AgentResponse(
             answer=patch,
-            trajectory=[
-                {"role": "user", "content": selected_prompt},
-                {"role": "assistant", "content": assistant_text},
-            ],
+            trajectory=trajectory,
+            reasoning_trajectory=reasoning_trajectory,
             raw_output=assistant_text,
             wall_time_sec=wall_time,
             metadata={
@@ -2398,8 +2679,18 @@ RUN chmod +x /usr/local/bin/zeroclaw
                 "bootstrap_needed": bool(runtime_metadata.get("runtime_image_built", False)),
                 **runtime_metadata,
             },
-            request_messages=[{"role": "user", "content": selected_prompt}],
-            response_json={"records": records},
+            request_messages=request_messages,
+            response_json=build_runtime_trace_summary(
+                output_text=assistant_text,
+                stderr_text=opencode_stderr.strip(),
+                records=records,
+                extra={
+                    "selected_returncode": selected_returncode,
+                    "selected_classification": str(
+                        selected_attempt_record.get("classification", "")
+                    ),
+                },
+            ),
             artifact_manifest=artifact_manifest,
             gateway_log_excerpt=opencode_stderr,
             workspace_file_contents=workspace_file_contents,
@@ -2696,9 +2987,56 @@ RUN chmod +x /usr/local/bin/zeroclaw
                 "repo_root.txt",
             ),
         )
+        request_messages = [{"role": "user", "content": selected_prompt}]
+        runtime_records = parse_jsonl_records(zeroclaw_runtime_trace)
+        trajectory, reasoning_trajectory = build_event_trajectories(
+            request_messages,
+            runtime_records,
+            final_output=(
+                zeroclaw_output.strip()
+                or patch
+                or zeroclaw_no_edit_reason
+                or zeroclaw_stderr.strip()
+                or zeroclaw_runner_stderr.strip()
+                or zeroclaw_runner_stdout.strip()
+                or selected_reason
+            ),
+        )
+        if not runtime_records:
+            fallback_trajectory, fallback_reasoning = build_text_step_trajectories(
+                request_messages,
+                (
+                    zeroclaw_output.strip()
+                    or patch
+                    or zeroclaw_no_edit_reason
+                    or zeroclaw_stderr.strip()
+                    or zeroclaw_runner_stderr.strip()
+                    or zeroclaw_runner_stdout.strip()
+                    or selected_reason
+                ),
+            )
+            if len(fallback_trajectory) > len(trajectory):
+                trajectory = fallback_trajectory
+            if len(fallback_reasoning) > len(reasoning_trajectory):
+                reasoning_trajectory = fallback_reasoning
         artifact_manifest = {"files": {}}
         for remote_name in workspace_file_contents:
             artifact_manifest["files"].setdefault("workspace_files", []).append(remote_name)
+        artifact_manifest = add_artifact_file_refs(
+            artifact_manifest,
+            response_stream=(
+                "/swebench_agent/zeroclaw/runtime_trace.jsonl"
+                if zeroclaw_runtime_trace.strip()
+                else (
+                    "/swebench_agent/zeroclaw/zeroclaw_output.txt"
+                    if zeroclaw_output.strip()
+                    else None
+                )
+            ),
+            stdout_log="/swebench_agent/zeroclaw/zeroclaw_output.txt",
+            stderr_log="/swebench_agent/zeroclaw/zeroclaw_stderr.log",
+            prompt_text="/swebench_agent/zeroclaw/prompt.txt",
+        )
 
         wall_time = time.monotonic() - start_time
         assistant_text = (
@@ -2723,10 +3061,8 @@ RUN chmod +x /usr/local/bin/zeroclaw
         )
         return AgentResponse(
             answer=patch,
-            trajectory=[
-                {"role": "user", "content": selected_prompt},
-                {"role": "assistant", "content": assistant_text},
-            ],
+            trajectory=trajectory,
+            reasoning_trajectory=reasoning_trajectory,
             raw_output=assistant_text,
             wall_time_sec=wall_time,
             metadata={
@@ -2774,16 +3110,19 @@ RUN chmod +x /usr/local/bin/zeroclaw
                 "bootstrap_needed": bool(runtime_metadata.get("runtime_image_built", False)),
                 **runtime_metadata,
             },
-            request_messages=[{"role": "user", "content": selected_prompt}],
-            response_json={
-                "output_text": zeroclaw_output.strip(),
-                "stderr_text": zeroclaw_stderr.strip(),
-                "runtime_trace_present": bool(zeroclaw_runtime_trace.strip()),
-                "runner_stdout_text": zeroclaw_runner_stdout.strip(),
-                "runner_stderr_text": zeroclaw_runner_stderr.strip(),
-                "selected_returncode": selected_returncode,
-                "selected_classification": selected_classification,
-            },
+            request_messages=request_messages,
+            response_json=build_runtime_trace_summary(
+                output_text=zeroclaw_output.strip(),
+                stderr_text=zeroclaw_stderr.strip(),
+                records=runtime_records,
+                extra={
+                    "runtime_trace_present": bool(zeroclaw_runtime_trace.strip()),
+                    "runner_stdout_text": zeroclaw_runner_stdout.strip(),
+                    "runner_stderr_text": zeroclaw_runner_stderr.strip(),
+                    "selected_returncode": selected_returncode,
+                    "selected_classification": selected_classification,
+                },
+            ),
             artifact_manifest=artifact_manifest,
             gateway_log_excerpt=zeroclaw_stderr,
             workspace_file_contents=workspace_file_contents,

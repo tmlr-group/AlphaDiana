@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import tempfile
 import time
 from copy import deepcopy
@@ -100,6 +101,18 @@ def _extract_text_from_gateway_payload(payload: Any) -> str:
             return content.strip()
 
     return ""
+
+
+_OPENCLAW_HOME_CANDIDATES = (
+    "/root/.openclaw",
+    "/tmp/oc_home/.openclaw",
+    "/home/node/.openclaw",
+)
+
+
+_OPENCLAW_WORKSPACE_CANDIDATES = tuple(
+    f"{home}/workspace" for home in _OPENCLAW_HOME_CANDIDATES
+)
 
 
 class OpenClawRuntimeManager:
@@ -331,20 +344,104 @@ class OpenClawRuntimeManager:
 
         gateway_log = self._safe_read_range(sandbox, self._gateway_log_path, 1, 400)
 
+        workspace_roots: list[str] = []
+        for candidate in (
+            self._workspace_path,
+            * _OPENCLAW_WORKSPACE_CANDIDATES,
+        ):
+            candidate = str(candidate or "").strip()
+            if candidate and candidate not in workspace_roots:
+                workspace_roots.append(candidate)
+
+        workspace_listing_cmd = " ; ".join(
+            f'if [ -d {shlex.quote(root)} ] && [ -r {shlex.quote(root)} ]; then '
+            f'find {shlex.quote(root)} -maxdepth 4 -type f; fi'
+            for root in workspace_roots
+        )
         workspace_listing = sandbox.execute(
-            f"find {self._workspace_path} -maxdepth 4 -type f | sort"
+            f"({workspace_listing_cmd}) | sort -u" if workspace_listing_cmd else "true"
         )
         workspace_paths = [
             line.strip()
             for line in workspace_listing.stdout.splitlines()
-            if line.strip()
+            if line.strip().startswith("/")
         ]
         workspace_file_contents: dict[str, str] = {}
         for remote_path in workspace_paths:
-            try:
-                workspace_file_contents[remote_path] = sandbox.read_text(remote_path)
-            except Exception:
+            text = self._read_text_best_effort(sandbox, remote_path)
+            if text.strip():
+                workspace_file_contents[remote_path] = text
+
+        session_listing = sandbox.execute(
+            "ls -t "
+            + " ".join(
+                f"{home}/agents/main/sessions/*.jsonl"
+                for home in _OPENCLAW_HOME_CANDIDATES
+            )
+            + " 2>/dev/null | head -10"
+        )
+        session_paths = [
+            line.strip()
+            for line in session_listing.stdout.splitlines()
+            if line.strip().endswith(".jsonl")
+        ]
+        session_alias_path = ""
+        for remote_path in session_paths[:3]:
+            text = workspace_file_contents.get(remote_path, "")
+            if not text:
+                text = self._read_text_best_effort(sandbox, remote_path)
+            if not text.strip():
                 continue
+            workspace_file_contents[remote_path] = text
+            if not session_alias_path:
+                session_alias_path = "openclaw_session.jsonl"
+                workspace_file_contents.setdefault(session_alias_path, text)
+
+        response_stream_alias = ""
+        for remote_path in workspace_paths:
+            if Path(remote_path).name != "openclaw_output.jsonl":
+                continue
+            text = workspace_file_contents.get(remote_path, "")
+            if not text:
+                text = self._read_text_best_effort(sandbox, remote_path)
+            if not text.strip():
+                continue
+            response_stream_alias = "openclaw_output.jsonl"
+            workspace_file_contents[remote_path] = text
+            workspace_file_contents.setdefault(response_stream_alias, text)
+            break
+        if not response_stream_alias and session_alias_path:
+            response_stream_alias = session_alias_path
+
+        system_prompt_candidates = [
+            f"{self._workspace_path}/AGENTS.md",
+            f"{self._workspace_path}/SOUL.md",
+            *(
+                f"{workspace}/AGENTS.md"
+                for workspace in _OPENCLAW_WORKSPACE_CANDIDATES
+            ),
+            *(
+                f"{workspace}/SOUL.md"
+                for workspace in _OPENCLAW_WORKSPACE_CANDIDATES
+            ),
+        ]
+        system_prompt_paths: list[str] = []
+        for remote_path in system_prompt_candidates:
+            content = self._read_text_best_effort(sandbox, remote_path)
+            if not content.strip():
+                continue
+            workspace_file_contents.setdefault(remote_path, content)
+            system_prompt_paths.append(remote_path)
+
+        openclaw_config_text = self._read_text_best_effort(
+            sandbox,
+            self._remote_openclaw_config_path,
+        )
+        if openclaw_config_text.strip():
+            workspace_file_contents.setdefault(
+                self._remote_openclaw_config_path,
+                openclaw_config_text,
+            )
         artifact_collection_history = getattr(sandbox, "command_history", [])
         sandbox_metadata = sandbox.metadata() if hasattr(sandbox, "metadata") else {}
         if isinstance(sandbox_metadata, dict) and "command_history" in sandbox_metadata:
@@ -353,9 +450,15 @@ class OpenClawRuntimeManager:
         artifact_manifest = {
             "files": {
                 "gateway_log_source": self._gateway_log_path,
-                "workspace_root": self._workspace_path,
+                "workspace_root": next(iter(workspace_roots), self._workspace_path),
+                "response_stream": response_stream_alias,
+                "session_trace": session_alias_path or (session_paths[0] if session_paths else ""),
+                "system_prompt": system_prompt_paths[0] if system_prompt_paths else "",
+                "runtime_config": self._remote_openclaw_config_path if openclaw_config_text.strip() else "",
             },
             "workspace_snapshot_paths": workspace_paths,
+            "session_paths": session_paths,
+            "system_prompt_paths": system_prompt_paths,
             # These timings are for artifact-collection shell commands only.
             "artifact_collection_history": artifact_collection_history,
         }
@@ -366,6 +469,27 @@ class OpenClawRuntimeManager:
             "workspace_file_contents": workspace_file_contents,
             "sandbox_metadata": sandbox_metadata,
         }
+
+    def _read_text_best_effort(self, sandbox: Any, remote_path: str) -> str:
+        """Read a sandbox file, falling back to ``cat`` when direct reads fail."""
+        path = str(remote_path or "").strip()
+        if not path:
+            return ""
+        try:
+            text = sandbox.read_text(path)
+            if isinstance(text, str):
+                return text
+        except Exception:
+            pass
+        try:
+            result = sandbox.execute(f"cat {shlex.quote(path)}")
+        except Exception:
+            return ""
+        exit_code = getattr(result, "exit_code", getattr(result, "returncode", 1))
+        if int(exit_code or 0) != 0:
+            return ""
+        stdout = getattr(result, "stdout", "")
+        return stdout if isinstance(stdout, str) else ""
 
     def _prepare_runtime_files(self, sandbox: Any) -> Path:
         """Upload openclaw.json and generate ROCK agent config."""
