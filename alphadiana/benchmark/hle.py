@@ -28,7 +28,7 @@ class HLEBenchmark(Benchmark):
         split: Dataset split (default: "test")
         problem_field: Column name for problem text (default: "question")
         answer_field: Column name for answer (default: "answer")
-        category_field: Column name for category filtering (default: "subject")
+        category_field: Column name for category filtering (default: "category")
         category: If set, only include rows where row[category_field] == category
         answer_types: List of answer_type values to include (default: ["multipleChoice"])
         dataset_index: If set, only load the raw dataset row at this index
@@ -57,11 +57,14 @@ class HLEBenchmark(Benchmark):
         data_config = config.get("data_config")
         problem_field = config.get("problem_field", "question")
         answer_field = config.get("answer_field", "answer")
-        category_field = config.get("category_field", "subject")
+        category_field = config.get("category_field", "category")
         category = config.get("category")
         answer_types = config.get("answer_types", ["multipleChoice"])
         dataset_index = config.get("dataset_index")
         max_tasks = config.get("max_tasks")
+
+        if max_tasks == 0:
+            return []
 
         try:
             dataset = load_dataset_with_retry(dataset_path, data_config, split=split)
@@ -97,8 +100,19 @@ class HLEBenchmark(Benchmark):
                 f"Available fields: {available}"
             )
 
+        if category is not None and category_field not in sample:
+            available = ", ".join(sorted(sample.keys()))
+            raise ValueError(
+                f"HLE: category_field={category_field!r} not present on dataset rows. "
+                f"Available fields: {available}"
+            )
+
         if dataset_index is not None:
             dataset_index = int(dataset_index)
+            if dataset_index < 0 or dataset_index >= len(dataset):
+                raise IndexError(
+                    f"dataset_index={dataset_index} out of range [0, {len(dataset)})"
+                )
             iterator = [(dataset_index, dataset[dataset_index])]
         else:
             iterator = enumerate(dataset)
@@ -110,7 +124,13 @@ class HLEBenchmark(Benchmark):
                 continue
 
             # Filter by category if specified
-            if category is not None and category_field in item:
+            if category is not None:
+                if category_field not in item:
+                    available = ", ".join(sorted(item.keys()))
+                    raise ValueError(
+                        f"HLE: category_field={category_field!r} not present on dataset rows. "
+                        f"Available fields: {available}"
+                    )
                 if item[category_field] != category:
                     continue
 
@@ -122,6 +142,14 @@ class HLEBenchmark(Benchmark):
                     mime = header.replace("data:", "").replace(";base64", "")
                     attachments["image_1"] = base64.b64decode(b64data)
                     attachments["image_1_mime"] = mime.encode()
+                elif isinstance(img, str) and (
+                    img.startswith("http://") or img.startswith("https://")
+                ):
+                    row_id = item.get("id", idx)
+                    raise NotImplementedError(
+                        f"HLE: URL image attachment not implemented for row {row_id}; "
+                        f"got {img[:80]!r}"
+                    )
                 else:
                     try:
                         from PIL import Image as PILImage
@@ -130,8 +158,16 @@ class HLEBenchmark(Benchmark):
                             img.save(buf, format="PNG")
                             attachments["image_1"] = buf.getvalue()
                             attachments["image_1_mime"] = b"image/png"
+                        else:
+                            raise TypeError(
+                                f"HLE: unsupported image type for row {item.get('id', idx)}: "
+                                f"{type(img).__name__}"
+                            )
                     except ImportError:
-                        pass
+                        raise TypeError(
+                            f"HLE: unsupported image type for row {item.get('id', idx)}: "
+                            f"{type(img).__name__}"
+                        )
 
             tasks.append(BenchmarkTask(
                 task_id=f"hle_{idx}",
