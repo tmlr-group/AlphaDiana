@@ -666,13 +666,22 @@ class Runner:
 
         # For sequential mode, create a single shared session to reuse across
         # all tasks instead of creating (and tearing down) one per task.
+        #
+        # OpenClaw is excluded here: benchmark fairness requires a fresh
+        # sandbox/runtime per task so stale gateway state cannot leak across
+        # tasks inside a reused session.
         shared_session = None
         sandbox_supports_shared_session = True
         if self.sandbox is not None:
             supports_shared_session = getattr(self.sandbox, "supports_shared_session", None)
             if callable(supports_shared_session):
                 sandbox_supports_shared_session = bool(supports_shared_session())
-        if self.sandbox is not None and pool is None and sandbox_supports_shared_session:
+        if (
+            self.sandbox is not None
+            and pool is None
+            and sandbox_supports_shared_session
+            and self.config.agent_name != "openclaw"
+        ):
             logger.info("Creating shared sandbox session for sequential execution")
             shared_session = self.sandbox.create_session()
         predeployed_session_queue = None

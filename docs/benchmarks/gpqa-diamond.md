@@ -76,6 +76,11 @@ python -m alphadiana.cli run configs/examples/direct_llm_gpqa_diamond.yaml
 Config:
 [configs/examples/openclaw_gpqa_diamond.yaml](../../configs/examples/openclaw_gpqa_diamond.yaml)
 
+Sequential `openclaw` benchmark runs now force a fresh ROCK sandbox session per
+task so gateway/session state cannot leak across questions. Current main also
+skips the OpenClaw chat-completions warmup by default on benchmark runs because
+that warmup could contaminate the first question's default session.
+
 ```bash
 python -m alphadiana.cli validate configs/examples/openclaw_gpqa_diamond.yaml
 python -m alphadiana.cli run configs/examples/openclaw_gpqa_diamond.yaml

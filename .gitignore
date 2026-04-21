@@ -62,6 +62,8 @@ results_*/
 external_benchmark_pipeline_*/
 
 dev/generated
+scripts/.alphadiana_env
+logs/
 
 .cache
 node_modules/

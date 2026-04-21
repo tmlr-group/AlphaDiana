@@ -15,6 +15,10 @@ _PROXY_VARS = ("ALL_PROXY", "HTTP_PROXY", "HTTPS_PROXY",
                "all_proxy", "http_proxy", "https_proxy")
 
 
+def _ownership_failures(results: dict[str, bool | str]) -> dict[str, str]:
+    return {svc: str(status) for svc, status in results.items() if status is not True}
+
+
 def _warn_proxy() -> bool:
     """Check for proxy environment variables and warn if present.
 
@@ -78,16 +82,33 @@ def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
         or _is_gateway_autodeploy_agent(config)
     )
     if uses_rock_runtime:
-        from alphadiana.utils.rock_ports import resolve_rock_ports_from_env, check_rock_services
+        from alphadiana.utils.rock_ports import (
+            check_rock_service_ownership,
+            check_rock_services,
+            resolve_rock_ports_from_env,
+        )
         ports = resolve_rock_ports_from_env()
         click.echo(f"Pre-flight: checking ROCK services (admin={ports.admin_port}, proxy={ports.proxy_port}, redis={ports.redis_port})...")
         results = check_rock_services(ports, timeout=5.0)
         failures = {k: v for k, v in results.items() if v is not True and k != "docker"}
+        ownership = check_rock_service_ownership(ports)
+        ownership_failures = _ownership_failures(ownership)
         if failures:
             click.echo("Pre-flight FAILED — ROCK services not reachable:", err=True)
             for svc, err in failures.items():
                 click.echo(f"  ✗ {svc}: {err}", err=True)
             click.echo("\nRun 'alphadiana env' to see full status and setup instructions.", err=True)
+            sys.exit(1)
+        if ownership_failures:
+            click.echo("Pre-flight FAILED — configured ROCK ports belong to another checkout:", err=True)
+            for svc, err in ownership_failures.items():
+                click.echo(f"  ✗ {svc}: {err}", err=True)
+            click.echo(
+                "\nFix: regenerate isolated ports with "
+                "'python scripts/find_rock_ports.py --write-env scripts/.rock_ports.env' "
+                "and restart ROCK services from this checkout.",
+                err=True,
+            )
             sys.exit(1)
         click.echo("Pre-flight passed: admin ✓  proxy ✓  redis ✓")
 
@@ -212,17 +233,22 @@ def env():
     If services are not running, prints the commands needed to start them.
     """
     from alphadiana.utils.rock_ports import (
+        check_rock_service_ownership,
         resolve_rock_ports_from_env,
         check_rock_services,
+        default_rock_redis_container,
         _find_rock_ports_env_file,
     )
 
     ports = resolve_rock_ports_from_env()
     ports_file = _find_rock_ports_env_file()
+    rock_root = os.environ.get("ALPHADIANA_ROCK_ROOT", "ref/ROCK")
+    redis_container = os.environ.get("ROCK_REDIS_CONTAINER", default_rock_redis_container())
 
     click.echo("ROCK Environment Status")
     click.echo("=" * 50)
     click.echo(f"  Ports file:  {ports_file or 'NOT FOUND'}")
+    click.echo(f"  ROCK root:   {rock_root}")
     click.echo(f"  Admin:       {ports.base_url}")
     click.echo(f"  Proxy:       {ports.proxy_root_url}")
     click.echo(f"  Redis:       {LOCALHOST}:{ports.redis_port}")
@@ -241,23 +267,53 @@ def env():
             all_ok = False
 
     click.echo()
+    click.echo("Ownership Checks")
+    click.echo("-" * 50)
+    ownership = check_rock_service_ownership(ports)
+    ownership_failures = _ownership_failures(ownership)
+    for service, status in ownership.items():
+        if status is True:
+            click.echo(f"  ✓ {service}")
+        else:
+            click.echo(f"  ✗ {service}: {status}")
+            all_ok = False
+
+    click.echo()
     if all_ok:
         click.echo("All services healthy. Ready for OpenClaw evaluation.")
     else:
         click.echo("Some services are unreachable.")
         click.echo()
+        if ownership_failures:
+            click.echo("Isolation fix:")
+            click.echo("  python scripts/find_rock_ports.py --write-env scripts/.rock_ports.env")
+            click.echo("  source scripts/activate.sh")
+            click.echo("  bash scripts/start_openclaw.sh   # or bash scripts/start_zeroclaw.sh")
+            click.echo()
         click.echo("To start services, run:")
         click.echo("  bash scripts/quickstart.sh")
         click.echo()
         click.echo("Or start manually:")
         click.echo(f"  # Redis")
-        click.echo(f"  docker run -d --name redis-stack -p {ports.redis_port}:6379 redis/redis-stack-server:latest")
+        click.echo(
+            f"  docker run -d --name {redis_container} -p 127.0.0.1:{ports.redis_port}:6379 "
+            "redis/redis-stack-server:latest"
+        )
         click.echo(f"  # Ray")
-        click.echo(f"  cd ref/ROCK && ray start --head --port={ports.ray_port} --dashboard-port={ports.ray_dashboard_port} --disable-usage-stats")
+        click.echo(
+            f"  cd {rock_root} && ray start --head --port={ports.ray_port} "
+            f"--dashboard-port={ports.ray_dashboard_port} --disable-usage-stats"
+        )
         click.echo(f"  # Admin")
-        click.echo(f"  cd ref/ROCK && python -m rock.admin.main --env local-proxy --role admin --port {ports.admin_port} &")
+        click.echo(
+            f"  cd {rock_root} && python -m rock.admin.main --env local-proxy --role admin "
+            f"--port {ports.admin_port} &"
+        )
         click.echo(f"  # Proxy")
-        click.echo(f"  cd ref/ROCK && python -m rock.admin.main --env local-proxy --role proxy --port {ports.proxy_port} &")
+        click.echo(
+            f"  cd {rock_root} && python -m rock.admin.main --env local-proxy --role proxy "
+            f"--port {ports.proxy_port} &"
+        )
         sys.exit(1)
 
 

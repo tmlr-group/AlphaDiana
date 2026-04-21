@@ -85,6 +85,11 @@ reproduction guide live in `docs/opencode-docker-isolation.md`.
 ## OpenClaw
 
 OpenClaw uses ROCK auto-deploy and the gateway config in `openclaw_deploy/`.
+Benchmark fairness now requires a fresh ROCK sandbox session per task for
+`openclaw`; do not treat older sequential runs that reused one shared session
+across tasks as comparable evidence. Current main also skips the OpenClaw
+chat-completions warmup by default on benchmark runs because that warmup could
+pollute the first task with a leftover `READY`/bootstrap response.
 
 ```bash
 python -m alphadiana.cli run configs/examples/openclaw_minimax_imo_answerbench.yaml \

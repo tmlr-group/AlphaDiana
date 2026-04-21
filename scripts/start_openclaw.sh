@@ -21,7 +21,7 @@ DEPLOY_EXTRA_ARGS=("$@")
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${SCRIPT_DIR%/dev}"
-ROCK_ROOT="${PROJECT_ROOT}/ref/ROCK"
+ROCK_ROOT="${ALPHADIANA_ROCK_ROOT:-${PROJECT_ROOT}/ref/ROCK}"
 PYTHON="${PYTHON:-$(command -v python3 || command -v python)}"
 ROCK_BIND_HOST="${ROCK_BIND_HOST:-127.0.0.1}"
 ROCK_REDIS_HOST="${ROCK_REDIS_HOST:-${ROCK_BIND_HOST}}"
@@ -34,14 +34,14 @@ ROCK_PORT_PROBE_HOST="${ROCK_PORT_PROBE_HOST:-${ROCK_BIND_HOST}}"
 # `pip install -e .`, the container's rocklet will fail with:
 #   ModuleNotFoundError: No module named 'rock'
 _rock_installed=$("${PYTHON}" -c "import rock; print(rock.__file__)" 2>/dev/null || echo "")
-_rock_expected="${PROJECT_ROOT}/ref/ROCK/rock/__init__.py"
+_rock_expected="${ROCK_ROOT}/rock/__init__.py"
 if [ "${_rock_installed}" != "${_rock_expected}" ]; then
     echo "ERROR: 'rock' editable install path does not match this project."
     echo "  Currently: ${_rock_installed:-(not installed)}"
     echo "  Expected:  ${_rock_expected}"
     echo ""
     echo "  Fix: re-install rock from this project, then re-run this script:"
-    echo "    ${PYTHON%/python}/pip install -e ${PROJECT_ROOT}/ref/ROCK -q"
+    echo "    ${PYTHON%/python}/pip install -e ${ROCK_ROOT} -q"
     echo ""
     echo "  Tip: when switching between project directories, re-run the above each time."
     exit 1
@@ -66,9 +66,57 @@ export ROCK_BASE_URL="http://${ROCK_HTTP_HOST}:${ROCK_ADMIN_PORT}"
 export ROCK_PROXY_ROOT_URL="http://${ROCK_HTTP_HOST}:${ROCK_PROXY_PORT}"
 export ROCK_PROXY_URL="${ROCK_PROXY_ROOT_URL}/apis/envs/sandbox/v1"
 
+_refresh_ports_if_foreign_checkout() {
+    local _ownership_output=""
+    if _ownership_output=$("${PYTHON}" - "${PROJECT_ROOT}" <<'PYEOF' 2>/dev/null
+import sys
+from pathlib import Path
+
+project_root = Path(sys.argv[1]).resolve()
+sys.path.insert(0, str(project_root))
+
+from alphadiana.utils.rock_ports import check_rock_service_ownership, resolve_rock_ports_from_env
+
+results = check_rock_service_ownership(resolve_rock_ports_from_env(), expected_project_root=project_root)
+foreign = {
+    service: status
+    for service, status in results.items()
+    if isinstance(status, str) and "foreign checkout owns port" in status
+}
+if not foreign:
+    raise SystemExit(0)
+for service, status in foreign.items():
+    print(f"{service}: {status}")
+raise SystemExit(10)
+PYEOF
+    ); then
+        return 0
+    fi
+
+    local _status=$?
+    if [ "${_status}" -ne 10 ]; then
+        echo "ERROR: failed to inspect existing ROCK service ownership"
+        [ -n "${_ownership_output}" ] && echo "${_ownership_output}"
+        exit 1
+    fi
+
+    echo "      Detected foreign ROCK listeners on configured ports:"
+    echo "${_ownership_output}" | sed 's/^/        /'
+    echo "      Regenerating isolated ports for this checkout..."
+    "${PYTHON}" "${SCRIPT_DIR}/find_rock_ports.py" --write-env "${SCRIPT_DIR}/.rock_ports.env" >/dev/null
+    # shellcheck disable=SC1091
+    source "${SCRIPT_DIR}/rock_env.sh"
+    export ROCK_BASE_URL="http://${ROCK_HTTP_HOST}:${ROCK_ADMIN_PORT}"
+    export ROCK_PROXY_ROOT_URL="http://${ROCK_HTTP_HOST}:${ROCK_PROXY_PORT}"
+    export ROCK_PROXY_URL="${ROCK_PROXY_ROOT_URL}/apis/envs/sandbox/v1"
+}
+
+_refresh_ports_if_foreign_checkout
+
 echo "[1/6] Environment loaded"
 echo "      ROCK_ADMIN_PORT = ${ROCK_ADMIN_PORT}"
 echo "      ROCK_PROXY_PORT = ${ROCK_PROXY_PORT}"
+echo "      ROCK_REDIS_PORT = ${ROCK_REDIS_PORT}"
 echo "      RAY_TMPDIR      = ${RAY_TMPDIR}"
 
 # ── 2. Check Redis ───────────────────────────────────────────────────────────

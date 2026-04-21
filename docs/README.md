@@ -13,7 +13,7 @@ Use this directory as a user-facing entry point. The canonical split is:
 - [Getting Started](getting_started.md)
   End-to-end onboarding tutorial.
 - [Setup Details](setup_detail.md)
-  Manual setup, troubleshooting, and environment details.
+  Manual setup, troubleshooting, shared-host ROCK isolation, and environment details.
 - [Dashboard](dashboard.md)
   Dashboard usage and deployment.
 - [Benchmark Runbooks](benchmarks/README.md)
@@ -65,6 +65,8 @@ entry points:
   Dated HLE multimodal validation note.
 - [context/qwen-openrouter-pilots/README.md](../context/qwen-openrouter-pilots/README.md)
   Dated April 18-20 Qwen/OpenRouter pilot evidence for the benchmark rollout.
+- [context/benchmark-rollout-deepseek-OpenAI-compatible-20260420/README.md](../context/benchmark-rollout-deepseek-OpenAI-compatible-20260420/README.md)
+  Dated DeepSeek/OpenAI-compatible full-rollout launch and infra-repair note for the IMO/GPQA campaign.
 - [context/pr26-swebench-verified/README.md](../context/pr26-swebench-verified/README.md)
   Entry point for the PR26 SWE-bench Verified evidence bundle.
 - [context/pr29-add-swebench-pro/README.md](../context/pr29-add-swebench-pro/README.md)

@@ -85,6 +85,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 PROJECT_NAME="$(basename "${PROJECT_ROOT}")"
 ROCK_REL="ref/ROCK"
 ENV_REL="scripts/rock_env.sh"
+ENV_MARKER_REL="scripts/.alphadiana_env"
 ROCK_REPO_URL="${ROCK_REPO_URL:-https://github.com/alibaba/ROCK.git}"
 LOCAL_TMPDIR="${PROJECT_ROOT}/.cache/tmp"
 
@@ -143,60 +144,15 @@ ln -sfn "$(with_nounset_disabled conda run -n "${ENV_NAME}" python -c 'import sy
 log_progress "ROCK local runtime symlink is ready"
 
 log_stage "Write ROCK environment helper"
-log_progress "Generating ${ENV_REL}"
-cat > "${ENV_REL}" <<'EOF'
-#!/usr/bin/env bash
-
-# This file can be sourced from any working directory.
-_rock_env_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_rock_env_project_root="$(cd "${_rock_env_script_dir}/.." && pwd)"
-_rock_env_rock_root="${_rock_env_project_root}/ref/ROCK"
-_rock_env_ports_file="${_rock_env_script_dir}/.rock_ports.env"
-_rock_env_dynamic_config_default="${_rock_env_project_root}/dev/generated/rock-local-proxy.dynamic.yml"
-_rock_env_cache_root="${_rock_env_project_root}/.cache"
-_rock_env_user_name="${USER:-$(id -un 2>/dev/null || echo user)}"
-_rock_env_ray_tmpdir_default="/tmp/${_rock_env_user_name}-ray"
-
-if [ ! -d "${_rock_env_rock_root}" ]; then
-  echo "ROCK repository not found at ${_rock_env_rock_root}" >&2
-  return 1 2>/dev/null || exit 1
+if [ ! -f "${ENV_REL}" ]; then
+  echo "Missing ${ENV_REL}; cannot continue." >&2
+  exit 1
 fi
-
-if [ -f "${_rock_env_ports_file}" ]; then
-  # Load dynamically detected local ports when available.
-  # shellcheck disable=SC1090
-  source "${_rock_env_ports_file}"
-fi
-
-export ROCK_RAY_PORT="${ROCK_RAY_PORT:-6380}"
-export ROCK_RAY_DASHBOARD_PORT="${ROCK_RAY_DASHBOARD_PORT:-8265}"
-export ROCK_RAY_CLIENT_SERVER_PORT="${ROCK_RAY_CLIENT_SERVER_PORT:-30001}"
-export ROCK_REDIS_PORT="${ROCK_REDIS_PORT:-6379}"
-export ROCK_REDIS_CONTAINER="${ROCK_REDIS_CONTAINER:-redis-stack}"
-export ROCK_ADMIN_PORT="${ROCK_ADMIN_PORT:-9000}"
-export ROCK_PROXY_PORT="${ROCK_PROXY_PORT:-9001}"
-export ROCK_BASE_URL="${ROCK_BASE_URL:-http://127.0.0.1:${ROCK_ADMIN_PORT}}"
-export ROCK_PROXY_ROOT_URL="${ROCK_PROXY_ROOT_URL:-http://127.0.0.1:${ROCK_PROXY_PORT}}"
-export ROCK_PROXY_URL="${ROCK_PROXY_URL:-${ROCK_PROXY_ROOT_URL}/apis/envs/sandbox/v1}"
-export ROCK_DYNAMIC_CONFIG="${ROCK_DYNAMIC_CONFIG:-${_rock_env_dynamic_config_default}}"
-export TMPDIR="${TMPDIR:-${_rock_env_cache_root}/tmp}"
-export RAY_TMPDIR="${RAY_TMPDIR:-${_rock_env_ray_tmpdir_default}}"
-mkdir -p "${TMPDIR}"
-mkdir -p "${RAY_TMPDIR}"
-
-export PYTHONPATH="${_rock_env_rock_root}:${_rock_env_project_root}${PYTHONPATH:+:${PYTHONPATH}}"
-if [ -f "${ROCK_DYNAMIC_CONFIG}" ]; then
-  export ROCK_CONFIG="${ROCK_DYNAMIC_CONFIG}"
-else
-  export ROCK_CONFIG="${_rock_env_rock_root}/rock-conf/rock-local-proxy.yml"
-fi
-export ROCK_WORKER_ENV_TYPE="local"
-export ROCK_PROJECT_ROOT="${_rock_env_rock_root}"
-export HF_ENDPOINT="${HF_ENDPOINT:-https://hf-mirror.com}"
-unset ALL_PROXY HTTP_PROXY HTTPS_PROXY all_proxy http_proxy https_proxy
+log_progress "Persisting checkout-local env name to ${ENV_MARKER_REL}"
+cat > "${ENV_MARKER_REL}" <<EOF
+export ALPHADIANA_ENV_NAME="${ENV_NAME}"
 EOF
-
-chmod +x "${ENV_REL}"
+chmod +x "${ENV_REL}" "${ENV_MARKER_REL}"
 mkdir -p "${ROCK_REL}/dev"
 cat > "${ROCK_REL}/dev/rock_env.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -217,7 +173,7 @@ cat <<EOF
 Setup completed.
 
 Activate the environment:
-  conda activate ${ENV_NAME}
+  source scripts/activate.sh
 
 Go to the project root:
   cd ${PROJECT_NAME}
@@ -237,7 +193,7 @@ Before running python scripts/find_rock_ports.py manually, unset TMPDIR to avoid
   unset TMPDIR
 
 Start services in separate terminals:
-  source ${ENV_REL}
+  source scripts/activate.sh
   docker start \$ROCK_REDIS_CONTAINER || docker run -d --restart unless-stopped --name \$ROCK_REDIS_CONTAINER -p \$ROCK_REDIS_PORT:6379 redis/redis-stack-server:latest
   cd ${ROCK_REL}
   ray start --head --port=\$ROCK_RAY_PORT --dashboard-port=\$ROCK_RAY_DASHBOARD_PORT --ray-client-server-port=\$ROCK_RAY_CLIENT_SERVER_PORT --temp-dir="\$RAY_TMPDIR" --disable-usage-stats --block

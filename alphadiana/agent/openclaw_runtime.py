@@ -111,6 +111,7 @@ class OpenClawRuntimeManager:
         self._rock_agent_config_path = str(self._resolve_config_path(config.get("rock_agent_config_path", ""))) if config.get("rock_agent_config_path") else ""
         self._openclaw_config_path = str(self._resolve_config_path(config.get("openclaw_config_path", ""))) if config.get("openclaw_config_path") else ""
         self._gateway_startup_timeout = int(config.get("gateway_startup_timeout", 180))
+        self._gateway_warmup_enabled = bool(config.get("gateway_warmup_enabled", False))
         self._gateway_warmup_timeout = int(config.get("gateway_warmup_timeout", 180))
         self._gateway_warmup_initial_delay = float(config.get("gateway_warmup_initial_delay", 5.0))
         self._gateway_log_path = config.get("gateway_log_path", "/tmp/gateway.log")
@@ -300,12 +301,15 @@ class OpenClawRuntimeManager:
         sandbox.run_agent("", config_dir=config_dir)
         _progress("waiting for OpenClaw gateway readiness")
         self._wait_for_gateway(sandbox)
-        _progress("warming up OpenClaw chat completions endpoint")
-        try:
-            self._warmup_gateway(sandbox)
-        except Exception as exc:
-            _logger.warning("OpenClaw gateway warmup did not fully succeed; continuing: %s", exc)
-            _progress(f"gateway warmup did not fully succeed; continuing: {exc}")
+        if self._gateway_warmup_enabled:
+            _progress("warming up OpenClaw chat completions endpoint")
+            try:
+                self._warmup_gateway(sandbox)
+            except Exception as exc:
+                _logger.warning("OpenClaw gateway warmup did not fully succeed; continuing: %s", exc)
+                _progress(f"gateway warmup did not fully succeed; continuing: {exc}")
+        else:
+            _progress("skipping OpenClaw chat completions warmup")
         self._started_sandboxes.add(sandbox_id)
         _progress(f"OpenClaw runtime ready for sandbox_id={sandbox_id}")
         return self.runtime_info(sandbox)
