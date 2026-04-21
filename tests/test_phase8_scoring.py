@@ -32,8 +32,16 @@ def _row(
         "requirements": f"requirements for {instance_id}",
         "interface": "cli",
         "repo_language": "Python",
-        "fail_to_pass": fail_to_pass or ["tests/test_issue.py::test_regression"],
-        "pass_to_pass": pass_to_pass or ["tests/test_smoke.py::test_existing_behavior"],
+        "fail_to_pass": (
+            ["tests/test_issue.py::test_regression"]
+            if fail_to_pass is None
+            else fail_to_pass
+        ),
+        "pass_to_pass": (
+            ["tests/test_smoke.py::test_existing_behavior"]
+            if pass_to_pass is None
+            else pass_to_pass
+        ),
         "before_repo_set_cmd": "python -m pip install -e .",
         "selected_test_files_to_run": ["tests/test_issue.py"],
         "dockerhub_tag": dockerhub_tag,
