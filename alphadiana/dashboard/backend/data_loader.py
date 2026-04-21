@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,8 @@ from alphadiana.dashboard.backend.models import (
     TaskResult,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def _load_jsonl(path: Path) -> list[dict[str, Any]]:
     """Read JSON lines from a file, deduplicating by (task_id, sample_index).
@@ -28,7 +31,11 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
         for line in f:
             line = line.strip()
             if line:
-                record = json.loads(line)
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    logger.warning("Skipping malformed JSONL line in %s: %s", path, line[:100])
+                    continue
                 key = (record.get("task_id", ""), record.get("sample_index", 0))
                 records[key] = record
     return list(records.values())
@@ -324,7 +331,15 @@ class DataLoader:
         # Try per-task JSON first
         task_path = self._safe_path(run_id, "tasks", f"{task_id}.json")
         if task_path is not None and task_path.exists():
-            record = json.loads(task_path.read_text(encoding="utf-8"))
+            content = json.loads(task_path.read_text(encoding="utf-8"))
+            if isinstance(content, list):
+                if not content:
+                    return None
+                record = content[-1]
+            elif isinstance(content, dict):
+                record = content
+            else:
+                return None
             return _record_to_task_result(record)
         # Fallback: scan JSONL
         jsonl_path = self._safe_path(f"{run_id}.jsonl")
