@@ -151,6 +151,9 @@ class OpenClawContainerRuntimeManager:
         )
         self._gateway_port = int(config.get("container_gateway_port", config.get("gateway_port", 8080)))
         self._gateway_host = config.get("container_gateway_host", "127.0.0.1")
+        self._gateway_bind_host = str(
+            config.get("container_gateway_bind_host", config.get("gateway_bind_host", "127.0.0.1"))
+        ).strip() or "127.0.0.1"
         self._started_sandboxes: set[str] = set()
         self._agent_md_applied_sandboxes: set[str] = set()
         self._git_mirror_uploaded_sandboxes: set[str] = set()
@@ -240,7 +243,9 @@ class OpenClawContainerRuntimeManager:
         gateway["port"] = self._gateway_port
         gateway["mode"] = "local"
         gateway["bind"] = "custom"
-        gateway["customBindHost"] = "0.0.0.0"
+        gateway["customBindHost"] = "127.0.0.1"
+        if self._gateway_bind_host != "127.0.0.1":
+            gateway["customBindHost"] = self._gateway_bind_host
         auth = gateway.setdefault("auth", {})
         auth["mode"] = "token"
         auth["token"] = "${OPENCLAW_GATEWAY_TOKEN}"
