@@ -61,6 +61,9 @@ class SWEBenchProBenchmark(Benchmark):
 
     name = "swebench_pro_os"
 
+    def default_scorer(self) -> str:
+        return "swebench_pro"
+
     def load_tasks(self, config: dict) -> list[BenchmarkTask]:
         try:
             from datasets import load_dataset
