@@ -279,6 +279,14 @@ def test_swebench_container_skips_loopback_proxy_environment(monkeypatch, tmp_pa
     class FakeContainer:
         id = "container-id"
         name = "container-name"
+        attrs: dict = {
+            "NetworkSettings": {
+                "Ports": {"8080/tcp": [{"HostIp": "127.0.0.1", "HostPort": "32768"}]}
+            }
+        }
+
+        def reload(self):
+            pass
 
     class FakeContainers:
         def run(self, *args, **kwargs):

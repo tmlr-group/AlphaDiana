@@ -227,26 +227,30 @@ class Runner:
         import alphadiana.scorer.swebench_pro  # noqa: F401
         import alphadiana.scorer.terminal_bench2_scorer  # noqa: F401
 
-        # Resolve and instantiate benchmark.
-        benchmark_cls = BenchmarkRegistry.get(self.config.benchmark_name)
-        self.benchmark = benchmark_cls()
+        try:
+            # Resolve and instantiate benchmark.
+            benchmark_cls = BenchmarkRegistry.get(self.config.benchmark_name)
+            self.benchmark = benchmark_cls()
 
-        # Resolve and instantiate agent.
-        agent_cls = AgentRegistry.get(self.config.agent_name)
-        self.agent = agent_cls()
-        self.agent.version = self.config.agent_version
-        self.agent.setup(self.config.agent_config)
+            # Resolve and instantiate agent.
+            agent_cls = AgentRegistry.get(self.config.agent_name)
+            self.agent = agent_cls()
+            self.agent.version = self.config.agent_version
+            self.agent.setup(self.config.agent_config)
 
-        # Resolve and instantiate sandbox (if configured).
-        if self.config.sandbox_name:
-            sandbox_cls = SandboxRegistry.get(self.config.sandbox_name)
-            self.sandbox = sandbox_cls()
-            self.sandbox.setup(self.config.sandbox_config)
+            # Resolve and instantiate sandbox (if configured).
+            if self.config.sandbox_name:
+                sandbox_cls = SandboxRegistry.get(self.config.sandbox_name)
+                self.sandbox = sandbox_cls()
+                self.sandbox.setup(self.config.sandbox_config)
 
-        # Resolve and instantiate scorer.
-        scorer_cls = ScorerRegistry.get(self.config.scorer_name)
-        self.scorer = scorer_cls()
-        self.scorer.setup(self.config.scorer_config)
+            # Resolve and instantiate scorer.
+            scorer_cls = ScorerRegistry.get(self.config.scorer_name)
+            self.scorer = scorer_cls()
+            self.scorer.setup(self.config.scorer_config)
+        except Exception:
+            self.teardown()
+            raise
 
         # Initialize result store and report generator.
         self.result_store = ResultStore(

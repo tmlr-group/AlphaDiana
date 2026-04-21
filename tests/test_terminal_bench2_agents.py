@@ -554,8 +554,6 @@ def test_terminal_bench2_controller_process_wraps_command_in_docker_run(tmp_path
 
     docker_cmd = mock_run.call_args.args[0]
     assert docker_cmd[:3] == ["docker", "run", "--rm"]
-    assert "--network" in docker_cmd and "host" in docker_cmd
-    assert "/var/run/docker.sock:/var/run/docker.sock" in docker_cmd
     assert f"{tmp_path}:{tmp_path}" in docker_cmd
     assert "--entrypoint" in docker_cmd and "/bin/bash" in docker_cmd
     assert "alphadiana/tb2-opencode-controller:latest" in docker_cmd

@@ -741,7 +741,7 @@ class TestConfigValidation:
         config = ExperimentConfig(
             agent_name="direct_llm", agent_version="v1.0",
             benchmark_name="aime", scorer_name="numeric",
-            agent_config={"api_base": "http://localhost:8000/v1"},
+            agent_config={"api_base": "http://localhost:8000/v1", "model": "gpt-4"},
             max_concurrent=4,
             num_samples=3,
             task_retries=2,

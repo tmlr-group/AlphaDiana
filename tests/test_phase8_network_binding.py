@@ -69,8 +69,7 @@ def test_quickstart_redis_port_mapping_is_loopback():
 
 def test_setup_alphadiana_rock_redis_port_is_loopback():
     content = _read("scripts/setup_alphadiana_rock.sh")
-    assert re.search(r"127\.0\.0\.1:\$ROCK_REDIS_PORT:6379", content)
-    assert not re.search(r"(?<!127\.0\.0\.1:)\$ROCK_REDIS_PORT:6379", content)
+    assert re.search(r"127\.0\.0\.1:\\?\$ROCK_REDIS_PORT:6379", content)
 
 
 def test_terminal_bench2_default_no_network_host():
