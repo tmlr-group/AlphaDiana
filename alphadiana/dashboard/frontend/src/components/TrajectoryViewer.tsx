@@ -27,7 +27,12 @@ export default function TrajectoryViewer({
           size="small"
           style={{ marginBottom: 8 }}
           title={
-            <Tag color={roleColors[step.role] || 'default'}>{step.role}</Tag>
+            <>
+              <Tag color={roleColors[step.role] || 'default'}>{step.role}</Tag>
+              {step.type && step.type !== 'message' && (
+                <Tag>{step.type}</Tag>
+              )}
+            </>
           }
         >
           {step.thinking && (
@@ -82,6 +87,34 @@ export default function TrajectoryViewer({
                   <pre style={{ fontSize: 11, margin: 0 }}>
                     {JSON.stringify(tc.input, null, 2)}
                   </pre>
+                ),
+              }))}
+              style={{ marginTop: 8 }}
+            />
+          )}
+          {step.tool_results && step.tool_results.length > 0 && (
+            <Collapse
+              size="small"
+              items={step.tool_results.map((result, j) => ({
+                key: `tool-result-${j}`,
+                label: (
+                  <span>
+                    <Tag color={result.is_error ? 'red' : 'geekblue'}>
+                      {result.is_error ? 'tool error' : 'tool result'}
+                    </Tag>{' '}
+                    {result.tool_use_id || `result_${j}`}
+                  </span>
+                ),
+                children: (
+                  <Paragraph
+                    style={{
+                      whiteSpace: 'pre-wrap',
+                      fontSize: 12,
+                      marginBottom: 0,
+                    }}
+                  >
+                    {result.content || '(empty)'}
+                  </Paragraph>
                 ),
               }))}
               style={{ marginTop: 8 }}

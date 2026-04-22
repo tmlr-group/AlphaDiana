@@ -12,6 +12,12 @@ from typing import Any
 
 from alphadiana.agent.base import AgentResponse
 from alphadiana.benchmark.base import BenchmarkTask
+from alphadiana.results.normalized_trace import (
+    TRACE_ARTIFACT_NAME,
+    build_normalized_trace,
+    normalize_persisted_trajectory,
+    normalize_reasoning_trajectory,
+)
 from alphadiana.scorer.base import ScoreResult
 from alphadiana.results.status import infer_score_status, is_valid_completed_record
 
@@ -79,6 +85,11 @@ class ResultStore:
         """Append a single result record to the JSONL file."""
         self._ensure_dirs()
         artifact_key = f"{task.task_id}:{sample_index}"
+        normalized_trajectory = normalize_persisted_trajectory(response.trajectory)
+        normalized_reasoning_trajectory = normalize_reasoning_trajectory(
+            response.reasoning_trajectory,
+            trajectory=response.trajectory,
+        )
         with self._get_artifact_lock(artifact_key):
             # Phase 9: flush logprobs to JSONL and strip from in-memory metadata before
             # it is serialized into the per-task record (keeps result JSONs compact).
@@ -88,7 +99,13 @@ class ResultStore:
             if isinstance(logprob_records, list) and logprob_records:
                 self.write_logprobs_jsonl(task.task_id, logprob_records)
                 logprobs_path_rel = f"{self.run_id}/logprobs/{task.task_id}.jsonl"
-            artifact_manifest = self._persist_artifacts(task, response, sample_index=sample_index)
+            artifact_manifest = self._persist_artifacts(
+                task,
+                response,
+                sample_index=sample_index,
+                normalized_trajectory=normalized_trajectory,
+                normalized_reasoning_trajectory=normalized_reasoning_trajectory,
+            )
             record = {
                 "task_id": task.task_id,
                 "sample_index": sample_index,
@@ -101,8 +118,8 @@ class ResultStore:
                 "score": score.score,
                 "rationale": score.rationale,
                 "score_metadata": score.metadata,
-                "trajectory": response.trajectory,
-                "reasoning_trajectory": response.reasoning_trajectory,
+                "trajectory": normalized_trajectory,
+                "reasoning_trajectory": normalized_reasoning_trajectory,
                 "raw_output": response.raw_output,
                 "request_messages": response.request_messages,
                 "response_json": response.response_json,
@@ -139,6 +156,11 @@ class ResultStore:
         self._ensure_dirs()
         response = response or AgentResponse(answer=None)
         artifact_key = f"{task.task_id}:{sample_index}"
+        normalized_trajectory = normalize_persisted_trajectory(response.trajectory)
+        normalized_reasoning_trajectory = normalize_reasoning_trajectory(
+            response.reasoning_trajectory,
+            trajectory=response.trajectory,
+        )
         with self._get_artifact_lock(artifact_key):
             # Phase 9: flush logprobs to JSONL and strip from in-memory metadata before
             # it is serialized into the per-task record (keeps result JSONs compact).
@@ -148,7 +170,13 @@ class ResultStore:
             if isinstance(logprob_records, list) and logprob_records:
                 self.write_logprobs_jsonl(task.task_id, logprob_records)
                 logprobs_path_rel = f"{self.run_id}/logprobs/{task.task_id}.jsonl"
-            artifact_manifest = self._persist_artifacts(task, response, sample_index=sample_index)
+            artifact_manifest = self._persist_artifacts(
+                task,
+                response,
+                sample_index=sample_index,
+                normalized_trajectory=normalized_trajectory,
+                normalized_reasoning_trajectory=normalized_reasoning_trajectory,
+            )
             record = {
                 "task_id": task.task_id,
                 "sample_index": sample_index,
@@ -161,8 +189,8 @@ class ResultStore:
                 "score": None,
                 "rationale": error.get("error", ""),
                 "score_metadata": {},
-                "trajectory": response.trajectory,
-                "reasoning_trajectory": response.reasoning_trajectory,
+                "trajectory": normalized_trajectory,
+                "reasoning_trajectory": normalized_reasoning_trajectory,
                 "raw_output": response.raw_output,
                 "request_messages": response.request_messages,
                 "response_json": response.response_json,
@@ -189,7 +217,13 @@ class ResultStore:
             self._save_per_task_json(task.task_id, record)
 
     def _persist_artifacts(
-        self, task: BenchmarkTask, response: AgentResponse, *, sample_index: int = 0,
+        self,
+        task: BenchmarkTask,
+        response: AgentResponse,
+        *,
+        sample_index: int = 0,
+        normalized_trajectory: list[dict[str, Any]] | None = None,
+        normalized_reasoning_trajectory: list[dict[str, Any]] | None = None,
     ) -> dict:
         """Write gateway logs, response JSON, and workspace files to disk."""
         manifest = dict(response.artifact_manifest)
@@ -252,6 +286,24 @@ class ResultStore:
                 workspace_files[remote_path] = str(rel)
             files["workspace_files"] = workspace_files
             self._resolve_workspace_artifact_refs(files, workspace_files)
+
+        normalized_trace = build_normalized_trace(
+            task_id=task.task_id,
+            sample_index=sample_index,
+            response=response,
+            run_metadata=self._run_metadata,
+            trajectory=normalized_trajectory,
+            reasoning_trajectory=normalized_reasoning_trajectory,
+            artifact_files=files,
+        )
+        rel = sample_prefix / "agent" / TRACE_ARTIFACT_NAME
+        path = self.artifacts_dir / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(normalized_trace, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        files["normalized_trace"] = str(rel)
 
         artifact_root = self.artifacts_dir / sample_prefix
         if artifact_root.exists():
