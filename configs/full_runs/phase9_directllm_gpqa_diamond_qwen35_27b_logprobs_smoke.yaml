@@ -1,0 +1,62 @@
+# Phase 9 SMOKE config — 1-task validation before the full 198-task run.
+#
+# Purpose: validate that vLLM's --reasoning-parser qwen3 and the logprobs
+# API align correctly (Pitfall 1 in 09-RESEARCH.md). Specifically, confirm
+# that len(logprob_records) is within ~10% of token_usage["completion_tokens"].
+#
+# DO NOT run the full config until this smoke produces a per-task JSON with
+# non-empty token_entropy_stats AND a non-empty logprobs JSONL file.
+
+run_id: "phase9_directllm_gpqa_diamond_qwen35_27b_logprobs_smoke"
+
+agent:
+  name: direct_llm
+  version: "1.0"
+  config:
+    model: "Qwen/Qwen3.5-27B"
+    api_base: "http://127.0.0.1:8011/v1"
+    api_key: "EMPTY"
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 32768
+    stream: true
+    capture_logprobs: true
+    top_logprobs: 20
+    system_prompt: |
+      You are solving expert-level science multiple-choice questions.
+      Read the question carefully, reason step by step, and choose the single best option.
+
+      Your final answer must be on the last line in exactly one of these forms:
+      $$\boxed{A}$$
+      $$\boxed{B}$$
+      $$\boxed{C}$$
+      $$\boxed{D}$$
+
+benchmark:
+  name: gpqa_diamond
+  config:
+    dataset: "fingertap/GPQA-Diamond"
+    split: "test"
+    seed: 42
+    max_tasks: 1
+
+scorer:
+  name: exact_match
+  config: {}
+
+max_concurrent: 1
+num_samples: 1
+max_tasks: 1
+output_dir: "./results/phase9_directllm_gpqa_diamond_qwen35_27b_logprobs_smoke"
+
+metadata:
+  phase: "09"
+  notes: |
+    Phase 9 SMOKE: 1-task run to validate vLLM reasoning-parser + logprobs alignment.
+    Acceptance gate: len(logprob_records) is within 10% of token_usage['completion_tokens'].
+  model: "Qwen/Qwen3.5-27B"
+  api_base: "http://127.0.0.1:8011/v1"
+  vllm_reasoning_parser: "qwen3"
+  thinking: true
+  n_samples: 1
+  smoke: true
