@@ -52,6 +52,15 @@ def default_rock_instance_name(project_root: Path | None = None) -> str:
     return f"{user}-{repo}-{digest}"
 
 
+def default_checkout_env_name(project_root: Path | None = None) -> str:
+    """Return a checkout-specific conda environment name."""
+    root = (project_root or PROJECT_ROOT).resolve()
+    repo = _slugify(root.name)
+    digest = hashlib.sha1(str(root).encode("utf-8")).hexdigest()[:8]
+    prefix = repo or "alphadiana"
+    return f"{prefix}-{digest}"
+
+
 def default_rock_redis_container(project_root: Path | None = None) -> str:
     return f"redis-alphadiana-{default_rock_instance_name(project_root)}"
 

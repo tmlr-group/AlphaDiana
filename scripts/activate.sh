@@ -12,20 +12,45 @@
 
 _activate_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _activate_project_root="$(cd "${_activate_script_dir}/.." && pwd)"
+_activate_python="${PYTHON:-$(command -v python3 || command -v python || echo python3)}"
 _activate_rock_root="${_activate_project_root}/ref/ROCK"
 _activate_env_file="${_activate_script_dir}/.alphadiana_env"
+_activate_default_env_name="$(
+  "${_activate_python}" - "${_activate_project_root}" <<'PYEOF' 2>/dev/null || true
+import sys
+from pathlib import Path
+
+project_root = Path(sys.argv[1]).resolve()
+sys.path.insert(0, str(project_root))
+
+from alphadiana.utils.rock_ports import default_checkout_env_name
+
+print(default_checkout_env_name(project_root))
+PYEOF
+)"
 if [ -f "${_activate_env_file}" ]; then
   # shellcheck disable=SC1090
   source "${_activate_env_file}"
 fi
-_activate_env_name="${ALPHADIANA_ENV_NAME:-alphadiana}"
+if [ -n "${ALPHADIANA_ENV_PROJECT_ROOT:-}" ] && [ "${ALPHADIANA_ENV_PROJECT_ROOT}" != "${_activate_project_root}" ]; then
+  echo "Warning: scripts/.alphadiana_env belongs to a different checkout (${ALPHADIANA_ENV_PROJECT_ROOT}); ignoring stale local state." >&2
+  unset ALPHADIANA_ENV_NAME ALPHADIANA_ENV_PROJECT_ROOT ALPHADIANA_ROCK_ROOT
+fi
+if [ -n "${ALPHADIANA_ROCK_ROOT:-}" ] && [ ! -d "${ALPHADIANA_ROCK_ROOT}" ]; then
+  echo "Warning: ALPHADIANA_ROCK_ROOT points to a missing directory (${ALPHADIANA_ROCK_ROOT}); falling back to this checkout." >&2
+  unset ALPHADIANA_ROCK_ROOT
+fi
+if [ -d "${_activate_rock_root}" ]; then
+  export ALPHADIANA_ROCK_ROOT="${_activate_rock_root}"
+fi
+_activate_env_name="${ALPHADIANA_ENV_NAME:-${_activate_default_env_name:-alphadiana}}"
 
 # ── 1. Conda ─────────────────────────────────────────────────────────────────
 eval "$(conda shell.bash hook)" 2>/dev/null
 conda activate "${_activate_env_name}" 2>/dev/null
 if [ $? -ne 0 ]; then
   echo "Warning: could not activate conda env '${_activate_env_name}'." >&2
-  echo "Run 'bash scripts/quickstart.sh ${_activate_env_name}' first to create it." >&2
+  echo "Run 'bash scripts/quickstart.sh ${_activate_env_name}' first to create the checkout-local environment." >&2
 fi
 
 # ── 2. Clear proxy variables ─────────────────────────────────────────────────
@@ -73,6 +98,6 @@ else
 fi
 
 # ── Cleanup temp vars ────────────────────────────────────────────────────────
-unset _activate_detected_rock_root _activate_env_file _activate_env_name _activate_script_dir _activate_project_root _activate_rock_root
+unset _activate_default_env_name _activate_detected_rock_root _activate_env_file _activate_env_name _activate_project_root _activate_python _activate_rock_root _activate_script_dir
 
 echo "AlphaDiana environment ready."

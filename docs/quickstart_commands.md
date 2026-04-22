@@ -8,7 +8,7 @@ Tested on 2026-03-23. All commands assume you are in the project root (`/path/to
 
 ## Prerequisites
 
-- Conda environment `alphadiana` with all dependencies installed
+- Checkout-local Conda environment created by `bash scripts/quickstart.sh`
 - ROCK repository cloned at `ref/ROCK` with `rl-rock` installed
 - Docker accessible (for Redis container)
 - Ray head node running
@@ -16,10 +16,8 @@ Tested on 2026-03-23. All commands assume you are in the project root (`/path/to
 ## 1. Environment Setup
 
 ```bash
-# Activate conda and clear proxy variables
-eval "$(conda shell.bash hook)"
-conda activate alphadiana
-unset ALL_PROXY HTTP_PROXY HTTPS_PROXY all_proxy http_proxy https_proxy
+# Activate the checkout-local environment and load ROCK variables
+source scripts/activate.sh
 
 # Load ROCK port configuration
 source scripts/.rock_ports.env
@@ -157,7 +155,7 @@ fuser -k 9016/tcp   # admin
 fuser -k 9027/tcp   # proxy
 ```
 
-Or use the cleanup script (requires `scripts/` to be under a `dev/` path):
+Or use the cleanup script:
 
 ```bash
 bash scripts/cleanup_rock_ports.sh
@@ -166,9 +164,7 @@ bash scripts/cleanup_rock_ports.sh
 ## Full One-Liner (Copy-Paste)
 
 ```bash
-eval "$(conda shell.bash hook)" && \
-conda activate alphadiana && \
-unset ALL_PROXY HTTP_PROXY HTTPS_PROXY all_proxy http_proxy https_proxy && \
+source scripts/activate.sh && \
 source scripts/.rock_ports.env && \
 export $(grep -v '^#' .env | xargs) && \
 alphadiana env && \

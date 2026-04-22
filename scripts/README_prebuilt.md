@@ -50,7 +50,7 @@ curl -s -X POST \
 
 | Step | Action |
 |------|--------|
-| 1 | Sources `dev/rock_env.sh` — loads all port/path configuration |
+| 1 | Sources `scripts/rock_env.sh` — loads all port/path configuration |
 | 2 | Checks Redis is reachable on the port configured in the ROCK YAML |
 | 3 | Kills any stale ROCK processes on ports 9050/9051; stops leftover sandbox containers |
 | 4 | Starts a Ray head node on `ROCK_RAY_PORT` (default 6385), or reuses one already listening |

@@ -55,7 +55,8 @@ Typical questions AlphaDiana helps answer:
 git clone https://github.com/tmlr-group/AlphaDiana
 cd AlphaDiana
 
-# One-click setup: creates conda env, installs all dependencies, starts services
+# One-click setup: creates a checkout-local conda env, installs all
+# dependencies, starts services
 bash scripts/quickstart.sh
 
 # Note: If quickstart fails, or you want to reset the ports/RAY clusters, please run: bash scripts/cleanup_rock_ports.sh (USE WITH CAUTION!)
@@ -71,6 +72,11 @@ docker pull tmlrgroup/alphadiana:v1
 > ```
 >
 > Then reference `openclaw-reasoning:v1` in your config's `rock_image` field instead of the base image.
+
+`quickstart.sh` now defaults to a checkout-derived env name such as
+`alphadiana-dev-9809e32f` instead of the shared generic `alphadiana`.
+That keeps editable installs and ROCK bindings isolated across worktrees on the
+same host.
 
 ### 2. Configure your model
 

@@ -29,7 +29,7 @@ Dashboard is AlphaDiana’s web management interface, providing the following ca
 Dashboard runs on top of the existing AlphaDiana environment. Please complete the Quick Start in the main README or install manually:
 
 ```bash
-conda activate alphadiana
+source scripts/activate.sh
 pip install -e '.[all]'   # or pip install -e '.[all,dev]'
 ```
 
@@ -38,7 +38,7 @@ Node.js >= 18 (for building the frontend).
 > **Important: after pulling new code or updating the Python package, always re-run the environment update steps before starting the dashboard:**
 >
 > ```bash
-> conda activate alphadiana
+> source scripts/activate.sh
 > pip install -e '.[all]'           # pick up new Python dependencies
 > cd alphadiana/dashboard/frontend
 > npm install && npm run build       # rebuild frontend (if frontend files changed)
@@ -55,7 +55,7 @@ Node.js >= 18 (for building the frontend).
 
 
 ```bash
-conda activate alphadiana
+source scripts/activate.sh
 pip install -e '.[dashboard]'
 ```
 
@@ -117,7 +117,7 @@ VITE_BACKEND_PORT=8000 npm run dev
 
 
 ```bash
-conda activate alphadiana
+source scripts/activate.sh
 uvicorn alphadiana.dashboard.backend.main:app --host 0.0.0.0 --port 8000
 # Browser access http://<host>:8000
 ```
@@ -258,8 +258,8 @@ When entering the API Base URL, Dashboard will automatically match and fill in t
 | `ALPHADIANA_CONFIGS_DIR` | `./configs` | Directory to store the `.yaml` configuration file (automatically written by Dashboard) |
 | `ALPHADIANA_BACKEND_PORT` | `8000` | Backend preferred port (automatically incremented when occupied) |
 | `ALPHADIANA_FRONTEND_PORT` | `5173` | Front-end preferred port (automatically incremented when occupied) |
-| `ROCK_BASE_URL` | Automatic detection | ROCK admin URL, usually injected by `dev/rock_env.sh` |
-| `ROCK_PROXY_URL` | Automatic detection | ROCK proxy URL, usually injected by `dev/rock_env.sh` |
+| `ROCK_BASE_URL` | Automatic detection | ROCK admin URL, usually injected by `scripts/rock_env.sh` |
+| `ROCK_PROXY_URL` | Automatic detection | ROCK proxy URL, usually injected by `scripts/rock_env.sh` |
 | `HF_ENDPOINT` | `https://hf-mirror.com` | HuggingFace mirror site (automatically used when not set) |
 
 Port variables are automatically handled by `run.sh` and usually do not need to be set manually.
@@ -304,7 +304,7 @@ Dashboard uses `contextvars` to isolate the logs of concurrent tasks. In Python 
 
 **Q: Sandbox related functions are not available (gray)**
 
-The ROCK service is not running, or `dev/rock_env.sh` is not sourced. Sandbox-independent functionality (browse results, Direct LLM evaluation) is still available.
+The ROCK service is not running, or `scripts/rock_env.sh` is not sourced. Sandbox-independent functionality (browse results, Direct LLM evaluation) is still available.
 
 **Q: The Config area of the Run Detail page is blank**
 

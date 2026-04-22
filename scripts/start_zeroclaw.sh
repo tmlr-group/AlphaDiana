@@ -24,7 +24,18 @@ ROCK_HTTP_HOST="${ROCK_HTTP_HOST:-${ROCK_BIND_HOST}}"
 ROCK_PORT_PROBE_HOST="${ROCK_PORT_PROBE_HOST:-${ROCK_BIND_HOST}}"
 LOG_DIR="${PROJECT_ROOT}/.cache/logs"
 TMP_DIR="${PROJECT_ROOT}/.cache/tmp"
-ALPHADIANA_ENV_NAME="${ALPHADIANA_ENV_NAME:-alphadiana}"
+ALPHADIANA_ENV_NAME="${ALPHADIANA_ENV_NAME:-$("${PYTHON}" - "${PROJECT_ROOT}" <<'PYEOF' 2>/dev/null || true
+import sys
+from pathlib import Path
+
+project_root = Path(sys.argv[1]).resolve()
+sys.path.insert(0, str(project_root))
+
+from alphadiana.utils.rock_ports import default_checkout_env_name
+
+print(default_checkout_env_name(project_root))
+PYEOF
+)}"
 
 if [ ! -d "${ROCK_ROOT}" ]; then
     echo "ERROR: ROCK repository not found at ${ROCK_ROOT}"

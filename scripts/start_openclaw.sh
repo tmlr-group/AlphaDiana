@@ -20,13 +20,43 @@ DEFAULT_IMAGE="${OPENCLAW_SANDBOX_IMAGE:-tmlrgroup/alphadiana:v1}"
 DEPLOY_EXTRA_ARGS=("$@")
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="${SCRIPT_DIR%/dev}"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ROCK_ROOT="${ALPHADIANA_ROCK_ROOT:-${PROJECT_ROOT}/ref/ROCK}"
 PYTHON="${PYTHON:-$(command -v python3 || command -v python)}"
 ROCK_BIND_HOST="${ROCK_BIND_HOST:-127.0.0.1}"
 ROCK_REDIS_HOST="${ROCK_REDIS_HOST:-${ROCK_BIND_HOST}}"
 ROCK_HTTP_HOST="${ROCK_HTTP_HOST:-${ROCK_BIND_HOST}}"
 ROCK_PORT_PROBE_HOST="${ROCK_PORT_PROBE_HOST:-${ROCK_BIND_HOST}}"
+ALPHADIANA_ENV_NAME="${ALPHADIANA_ENV_NAME:-$("${PYTHON}" - "${PROJECT_ROOT}" <<'PYEOF' 2>/dev/null || true
+import sys
+from pathlib import Path
+
+project_root = Path(sys.argv[1]).resolve()
+sys.path.insert(0, str(project_root))
+
+from alphadiana.utils.rock_ports import default_checkout_env_name
+
+print(default_checkout_env_name(project_root))
+PYEOF
+)}"
+
+if ! "${PYTHON}" -c "import rock" >/dev/null 2>&1; then
+    if command -v conda >/dev/null 2>&1; then
+        _conda_hook="$(conda shell.bash hook 2>/dev/null || true)"
+        if [ -n "${_conda_hook}" ]; then
+            eval "${_conda_hook}"
+            conda activate "${ALPHADIANA_ENV_NAME}" >/dev/null 2>&1 || true
+            PYTHON="$(command -v python3 || command -v python)"
+        fi
+    fi
+fi
+
+if ! "${PYTHON}" -c "import rock" >/dev/null 2>&1; then
+    echo "ERROR: Python cannot import 'rock' in the current environment."
+    echo "       Activate the correct env first, for example:"
+    echo "         source scripts/activate.sh"
+    exit 1
+fi
 
 # ── 0. Preflight: verify rock editable install points to THIS project ────────
 # rock is installed via `pip install -e .` and its path is hardcoded in the

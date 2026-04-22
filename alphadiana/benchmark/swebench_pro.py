@@ -112,7 +112,7 @@ class SWEBenchProBenchmark(Benchmark):
             hf_endpoint = os.environ.get("HF_ENDPOINT", "").strip()
             raise RuntimeError(
                 "Failed to load SWE-bench Pro dataset from Hugging Face. "
-                "If direct access is unavailable, source `dev/rock_env.sh` first "
+                "If direct access is unavailable, source `scripts/rock_env.sh` first "
                 "or set `HF_ENDPOINT=https://hf-mirror.com` and retry. "
                 f"Current HF_ENDPOINT={hf_endpoint or '<unset>'}. "
                 f"Original error: {exc}"

@@ -14,9 +14,21 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 export ALPHADIANA_RESULTS_DIR="${ALPHADIANA_RESULTS_DIR:-$PROJECT_ROOT/results}"
 export ALPHADIANA_CONFIGS_DIR="${ALPHADIANA_CONFIGS_DIR:-$PROJECT_ROOT/configs}"
 
+LOCAL_ENV_FILE="${PROJECT_ROOT}/scripts/.alphadiana_env"
+if [ -f "$LOCAL_ENV_FILE" ]; then
+    # shellcheck disable=SC1090
+    source "$LOCAL_ENV_FILE"
+fi
+
 # --- Source ROCK port configuration if available ---
 # This ensures the dashboard backend uses the correct ROCK admin/proxy ports.
-ROCK_PORTS_ENV="${ROCK_PORTS_ENV:-$PROJECT_ROOT/dev/.rock_ports.env}"
+if [ -z "${ROCK_PORTS_ENV:-}" ]; then
+    if [ -f "$PROJECT_ROOT/scripts/.rock_ports.env" ]; then
+        ROCK_PORTS_ENV="$PROJECT_ROOT/scripts/.rock_ports.env"
+    else
+        ROCK_PORTS_ENV="$PROJECT_ROOT/dev/.rock_ports.env"
+    fi
+fi
 if [ -f "$ROCK_PORTS_ENV" ] && [ -z "$ROCK_BASE_URL" ]; then
     echo "[INFO] Sourcing ROCK ports from $ROCK_PORTS_ENV"
     # shellcheck disable=SC1090
@@ -36,18 +48,18 @@ resolve_python() {
         return 0
     fi
 
-    # 2. If already in the alphadiana conda env, use current python
-    if [ "$(basename "${CONDA_DEFAULT_ENV:-}")" = "alphadiana" ]; then
+    # 2. If current python already imports AlphaDiana, keep it.
+    if python3 -c "import alphadiana" &>/dev/null; then
         echo "python3"
         return 0
     fi
 
-    # 3. Try to find alphadiana conda env
+    # 3. Try to find the checkout-local conda env written by setup/quickstart.
     local conda_envs_output
     if command -v conda &>/dev/null; then
         conda_envs_output="$(conda info --envs 2>/dev/null || true)"
         local env_path
-        env_path="$(echo "$conda_envs_output" | awk '/^alphadiana / {print $NF}')"
+        env_path="$(echo "$conda_envs_output" | awk -v env_name="${ALPHADIANA_ENV_NAME:-}" '$1 == env_name {print $NF}')"
         if [ -n "$env_path" ] && [ -x "$env_path/bin/python" ]; then
             echo "$env_path/bin/python"
             return 0
@@ -74,7 +86,7 @@ check_dependencies() {
         echo "[ERROR] Missing Python packages: ${missing[*]}" >&2
         echo "" >&2
         echo "Please install AlphaDiana in the correct environment:" >&2
-        echo "  conda activate alphadiana" >&2
+        echo "  source scripts/activate.sh" >&2
         echo "  pip install -e '.[all]'" >&2
         echo "" >&2
         echo "Or set ALPHADIANA_PYTHON to point to the right interpreter:" >&2

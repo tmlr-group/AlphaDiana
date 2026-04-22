@@ -42,8 +42,8 @@ AlphaDiana Runner
 
 
 ```bash
-conda create -n alphadiana python=3.11 -y
-conda activate alphadiana
+bash scripts/quickstart.sh
+source scripts/activate.sh
 ```
 
 
@@ -54,6 +54,8 @@ conda activate alphadiana
 cd /hd2/chentao/AlphaDiana-dev
 pip install -e .
 ```
+
+`quickstart.sh` creates a checkout-local Conda env and writes `scripts/.alphadiana_env`, so later terminals should also use `source scripts/activate.sh` instead of hard-coding `conda activate alphadiana`.
 
 
 Verify installation:

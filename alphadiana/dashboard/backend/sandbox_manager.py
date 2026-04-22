@@ -14,7 +14,10 @@ from typing import Any
 
 import httpx
 
-from alphadiana.utils.rock_ports import resolve_rock_ports_from_env
+from alphadiana.utils.rock_ports import (
+    ROCK_PORTS_ENV_FILE as RESOLVED_ROCK_PORTS_ENV_FILE,
+    resolve_rock_ports_from_env,
+)
 from alphadiana.utils.rock_runtime import (
     DEFAULT_SANDBOX_IMAGE,
     PREBUILT_SANDBOX_IMAGE,
@@ -29,14 +32,14 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEPLOY_DIR = PROJECT_ROOT / "openclaw_deploy"
 
 
-ROCK_PORTS_ENV_FILE = PROJECT_ROOT / "dev" / ".rock_ports.env"
+ROCK_PORTS_ENV_FILE = RESOLVED_ROCK_PORTS_ENV_FILE
 
 # Cache for resolved working ROCK URLs
 _resolved_rock_urls: tuple[str, str] | None = None
 
 
 def _load_rock_ports_env() -> None:
-    """Source dev/.rock_ports.env into os.environ if present and not already set."""
+    """Source scripts/.rock_ports.env, or legacy dev/.rock_ports.env, when present."""
     if not ROCK_PORTS_ENV_FILE.exists():
         return
     for line in ROCK_PORTS_ENV_FILE.read_text().splitlines():
