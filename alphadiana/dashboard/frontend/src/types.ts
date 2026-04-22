@@ -43,14 +43,22 @@ export interface TaskResult {
 export interface TrajectoryStep {
   role: string;
   content: string;
+  type?: string;
   thinking?: string;
   tool_calls?: ToolCall[];
+  tool_results?: ToolResult[];
 }
 
 export interface ToolCall {
   id: string;
   tool: string;
   input: Record<string, unknown>;
+}
+
+export interface ToolResult {
+  tool_use_id?: string;
+  content: string;
+  is_error?: boolean;
 }
 
 export interface RunDetail {

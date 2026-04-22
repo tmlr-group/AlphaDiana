@@ -112,6 +112,9 @@ class TestSystemPromptPersistence:
         assert result["artifact_manifest"]["files"]["response_stream"].endswith(
             "t1/workspace/trace.jsonl"
         )
+        assert result["artifact_manifest"]["files"]["normalized_trace"].endswith(
+            "t1/agent/normalized_trace.json"
+        )
 
 
 # ===================================================================
