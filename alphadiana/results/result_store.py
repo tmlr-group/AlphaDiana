@@ -80,6 +80,14 @@ class ResultStore:
         self._ensure_dirs()
         artifact_key = f"{task.task_id}:{sample_index}"
         with self._get_artifact_lock(artifact_key):
+            # Phase 9: flush logprobs to JSONL and strip from in-memory metadata before
+            # it is serialized into the per-task record (keeps result JSONs compact).
+            response_metadata = dict(response.metadata or {})
+            logprob_records = response_metadata.pop("logprob_records", None)
+            logprobs_path_rel = ""
+            if isinstance(logprob_records, list) and logprob_records:
+                self.write_logprobs_jsonl(task.task_id, logprob_records)
+                logprobs_path_rel = f"{self.run_id}/logprobs/{task.task_id}.jsonl"
             artifact_manifest = self._persist_artifacts(task, response, sample_index=sample_index)
             record = {
                 "task_id": task.task_id,
@@ -99,6 +107,8 @@ class ResultStore:
                 "request_messages": response.request_messages,
                 "response_json": response.response_json,
                 "token_usage": response.token_usage,
+                "token_entropy_stats": getattr(response, "token_entropy_stats", {}),
+                "logprobs_path": logprobs_path_rel,
                 "wall_time_sec": response.wall_time_sec,
                 "sandbox_id": response.sandbox_id,
                 "gateway_url": response.gateway_url,
@@ -108,7 +118,7 @@ class ResultStore:
                 "sandbox_metadata": response.sandbox_metadata,
                 "system_prompt": response.system_prompt,
                 "finish_reason": getattr(response, "finish_reason", ""),
-                "metadata": response.metadata,
+                "metadata": response_metadata,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
             record["score_status"] = infer_score_status(record)
@@ -130,6 +140,14 @@ class ResultStore:
         response = response or AgentResponse(answer=None)
         artifact_key = f"{task.task_id}:{sample_index}"
         with self._get_artifact_lock(artifact_key):
+            # Phase 9: flush logprobs to JSONL and strip from in-memory metadata before
+            # it is serialized into the per-task record (keeps result JSONs compact).
+            response_metadata = dict(response.metadata or {})
+            logprob_records = response_metadata.pop("logprob_records", None)
+            logprobs_path_rel = ""
+            if isinstance(logprob_records, list) and logprob_records:
+                self.write_logprobs_jsonl(task.task_id, logprob_records)
+                logprobs_path_rel = f"{self.run_id}/logprobs/{task.task_id}.jsonl"
             artifact_manifest = self._persist_artifacts(task, response, sample_index=sample_index)
             record = {
                 "task_id": task.task_id,
@@ -149,6 +167,8 @@ class ResultStore:
                 "request_messages": response.request_messages,
                 "response_json": response.response_json,
                 "token_usage": response.token_usage,
+                "token_entropy_stats": getattr(response, "token_entropy_stats", {}),
+                "logprobs_path": logprobs_path_rel,
                 "wall_time_sec": response.wall_time_sec,
                 "sandbox_id": response.sandbox_id,
                 "gateway_url": response.gateway_url,
@@ -157,7 +177,7 @@ class ResultStore:
                 "workspace_snapshot_paths": response.workspace_snapshot_paths,
                 "sandbox_metadata": response.sandbox_metadata,
                 "system_prompt": response.system_prompt,
-                "metadata": response.metadata,
+                "metadata": response_metadata,
                 "finish_reason": getattr(response, "finish_reason", ""),
                 "error": error,
                 "timestamp": datetime.now(timezone.utc).isoformat(),

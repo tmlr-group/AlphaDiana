@@ -8,6 +8,25 @@ from pathlib import Path
 import pytest
 
 from alphadiana.results.result_store import ResultStore
+from alphadiana.agent.base import AgentResponse
+from alphadiana.benchmark.base import BenchmarkTask
+from alphadiana.scorer.base import ScoreResult
+
+
+def _task():
+    return BenchmarkTask(task_id="t1", problem="p", ground_truth="A")
+
+
+def _score():
+    return ScoreResult(correct=True, score=1.0, expected="A", predicted="A", rationale="ok", metadata={})
+
+
+def _response(records, stats):
+    return AgentResponse(
+        answer="A",
+        token_entropy_stats=stats,
+        metadata={"logprob_records": records, "other_key": "keep"},
+    )
 
 
 class TestWriteLogprobsJsonl:
@@ -63,3 +82,74 @@ class TestWriteLogprobsJsonl:
             assert len(lines) == 100
             for ln in lines:
                 json.loads(ln)  # no decode errors = no interleaving
+
+
+class TestAppendSerializesLogprobs:
+    def test_with_records(self, tmp_path: Path):
+        store = ResultStore(str(tmp_path), "run_y")
+        records = [
+            {"token_index": 0, "token": "A", "logprob": -0.1,
+             "top_logprobs": [{"token": "A", "logprob": -0.1}]},
+        ]
+        stats = {"mean": 0.5, "max": 0.5, "p50": 0.5, "p90": 0.5, "n_tokens": 1}
+        store.append(_task(), _response(records, stats), _score())
+
+        # Logprobs file written
+        lp_path = tmp_path / "run_y" / "logprobs" / "t1.jsonl"
+        assert lp_path.exists()
+        assert json.loads(lp_path.read_text().strip()) == records[0]
+
+        # Main JSONL record
+        loaded = store.load()
+        assert len(loaded) == 1
+        rec = loaded[0]
+        assert rec["token_entropy_stats"] == stats
+        assert rec["logprobs_path"] == "run_y/logprobs/t1.jsonl"
+        assert "logprob_records" not in rec.get("metadata", {})
+        assert rec["metadata"].get("other_key") == "keep"
+
+        # Per-task JSON
+        per_task = json.loads((tmp_path / "run_y" / "tasks" / "t1.json").read_text())
+        assert per_task[0]["token_entropy_stats"] == stats
+        assert per_task[0]["logprobs_path"] == "run_y/logprobs/t1.jsonl"
+
+    def test_without_records(self, tmp_path: Path):
+        store = ResultStore(str(tmp_path), "run_y")
+        stats = {"mean": 0.0, "max": 0.0, "p50": 0.0, "p90": 0.0, "n_tokens": 0}
+        store.append(_task(), _response([], stats), _score())
+
+        lp_path = tmp_path / "run_y" / "logprobs" / "t1.jsonl"
+        assert not lp_path.exists()
+
+        rec = store.load()[0]
+        assert rec["token_entropy_stats"] == stats
+        assert rec["logprobs_path"] == ""
+
+    def test_legacy_response_no_entropy_field(self, tmp_path: Path):
+        """Older AgentResponse shape (entropy_stats missing) must not crash."""
+        store = ResultStore(str(tmp_path), "run_y")
+        resp = AgentResponse(answer="A")
+        # Simulate legacy by deleting the attribute.
+        del resp.token_entropy_stats
+        store.append(_task(), resp, _score())
+        rec = store.load()[0]
+        assert rec["token_entropy_stats"] == {}
+        assert rec["logprobs_path"] == ""
+
+
+class TestAppendErrorSerializesLogprobs:
+    def test_error_path_preserves_entropy(self, tmp_path: Path):
+        store = ResultStore(str(tmp_path), "run_y")
+        records = [
+            {"token_index": 0, "token": "X", "logprob": -2.0, "top_logprobs": []},
+        ]
+        stats = {"mean": 0.0, "max": 0.0, "p50": 0.0, "p90": 0.0, "n_tokens": 1}
+        resp = _response(records, stats)
+        store.append_error(_task(), error={"error": "boom"}, response=resp)
+
+        lp_path = tmp_path / "run_y" / "logprobs" / "t1.jsonl"
+        assert lp_path.exists()
+        rec = store.load()[0]
+        assert rec["token_entropy_stats"] == stats
+        assert rec["logprobs_path"] == "run_y/logprobs/t1.jsonl"
+        assert rec["error"] == {"error": "boom"}
