@@ -57,6 +57,21 @@ python -m alphadiana.cli run configs/full_runs/p25_full_openclaw_minimax_imo_ans
 python -m alphadiana.cli run configs/full_runs/p25_full_zeroclaw_minimax_imo_answerbench.yaml --redo-all
 ```
 
+Current OpenRouter free-text follow-up on April 22, 2026 uses
+`nvidia/nemotron-3-nano-30b-a3b:free`.
+Early full-run evidence:
+
+- `full_20260422_openrouter_nemotron_3_nano_30b_a3b_imo_answerbench_directllm_r1`
+  writes normal task JSONs, but many early answers collapse to short scalar
+  outputs even on symbolic-ground-truth items
+- `..._opencode_r1` is the healthiest current path and already wrote normal
+  `score=1` and `score=0` task records
+- `..._openclaw_r1` still preserves `predicted=null` with
+  `metadata.partial_reasoning_only=true`
+- `..._zeroclaw_r1` still fails the first task with
+  `score_status=runtime_error` and
+  `metadata.failure_reason=empty_response`
+
 ## DirectLLM
 
 DirectLLM calls the OpenAI-compatible endpoint directly and scores the returned answer with `imo_verify`.
@@ -146,6 +161,12 @@ python -m alphadiana.cli run configs/examples/openclaw_minimax_imo_answerbench.y
 
 ROCK services must be healthy before this run. `scripts/activate.sh` loads the local ROCK port configuration.
 
+Current OpenRouter free-text full-run evidence on April 22, 2026:
+`full_20260422_openrouter_nemotron_3_nano_30b_a3b_imo_answerbench_openclaw_r1`
+continues to reproduce the same failure shape from smoke scale-up:
+normal task JSONs are written, but early tasks preserve `predicted=null` with
+`metadata.partial_reasoning_only=true`.
+
 ## ZeroClaw
 
 ZeroClaw uses the same ROCK auto-deploy path as the PR23 AIME integration.
@@ -166,6 +187,12 @@ python -m alphadiana.cli run configs/examples/zeroclaw_imo_answerbench.yaml \
   -o run_id=imo_zeroclaw_smoke
 ```
 
+Current OpenRouter free-text full-run evidence on April 22, 2026:
+`full_20260422_openrouter_nemotron_3_nano_30b_a3b_imo_answerbench_zeroclaw_r1`
+still fails its first task as `score_status=runtime_error` with
+`metadata.failure_reason=empty_response`, even though current main preserves
+the failure record cleanly.
+
 ### Reproduce The 2026-04-17 Formal Sandbox Smoke
 
 This is the exact smoke style used for local validation of the ZeroClaw sandbox path. It intentionally forces a fast wrong answer so the run terminates quickly with dashboard `X`, which is enough for the execution-path smoke criterion.
@@ -177,7 +204,6 @@ export OPENAI_MODEL_NAME=minimax
 
 python -m alphadiana.cli run configs/examples/zeroclaw_imo_answerbench.yaml \
   -o run_id=pr26_formal_smoke_zeroclaw_imo_minimax_rock_cli_box0_20260417_v2 \
-  -o agent.config.use_gateway_in_sandbox=false \
   -o benchmark.config.dataset_index=0 \
   -o agent.config.system_prompt='Smoke test mode: ignore the math problem. Do not use tools. Output exactly $$\\boxed{0}$$ and nothing else.'
 ```

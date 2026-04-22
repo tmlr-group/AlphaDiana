@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import json
 import logging
 import mimetypes
@@ -10,10 +9,7 @@ import os
 import re
 import shlex
 import subprocess
-import tempfile
-import threading
 import time
-from collections import deque
 from pathlib import Path
 from typing import Any
 
@@ -21,16 +17,12 @@ from alphadiana.agent.base import Agent, AgentResponse
 from alphadiana.agent.preservation import (
     add_artifact_file_refs,
     build_event_trajectories,
-    build_text_step_trajectories,
     build_runtime_trace_summary,
+    build_text_step_trajectories,
     parse_jsonl_records,
 )
 from alphadiana.agent.registry import AgentRegistry
-from alphadiana.agent.zeroclaw_runtime import (
-    ZeroClawRuntimeManager,
-    _normalize_api_base,
-    _resolve_zeroclaw_provider,
-)
+from alphadiana.agent.zeroclaw_runtime import _resolve_zeroclaw_provider
 from alphadiana.benchmark.base import BenchmarkTask
 from alphadiana.utils.math_answer import extract_answer_candidate
 
@@ -69,10 +61,29 @@ _DEFAULT_ALLOWED_COMMANDS = [
     "rm",
 ]
 
+_UNSUPPORTED_SINGLE_PATH_KEYS = (
+    "disable_tools",
+    "multimodal_via_proxy",
+    "use_gateway_in_sandbox",
+    "gateway_api_base",
+    "gateway_pool",
+    "gateway_token",
+    "rock_sandbox_url",
+    "sandbox_id",
+)
+
+_MIME_EXTENSION_MAP = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+    "application/pdf": ".pdf",
+    "text/plain": ".txt",
+}
+
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 LOG_LINE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T[0-9:.]+Z\s+(INFO|WARN|ERROR)\b")
 _RUNTIME_LOG_PREFIXES = (
-    "[ZeroClawBridge]",
     "OpenRouter transport error while reading response body",
     "OpenRouter transport error",
     "transport error while reading response body",
@@ -90,6 +101,21 @@ _RUNTIME_LOG_SUBSTRINGS = (
 
 def _extract_answer(text: str) -> str:
     return extract_answer_candidate(text)
+
+
+def _parse_optional_bool(value: Any) -> bool | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"Invalid boolean value: {value!r}")
 
 
 def _is_runtime_log_line(line: str) -> bool:
@@ -118,121 +144,46 @@ def _sanitize_cli_output(raw_output: str) -> tuple[str, list[str]]:
 
 
 def _quote_toml(value: str) -> str:
-    return json.dumps(value, ensure_ascii=False)
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
 
 
-def _parse_optional_bool(value: Any) -> bool | None:
-    if value in ("", None):
-        return None
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        return bool(value)
-    normalized = str(value).strip().lower()
-    if normalized in {"1", "true", "yes", "on"}:
-        return True
-    if normalized in {"0", "false", "no", "off"}:
-        return False
-    raise ValueError(f"Invalid boolean value: {value!r}")
-
-
-def _coerce_text_content(content: Any) -> str:
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for item in content:
-            if isinstance(item, str):
-                parts.append(item)
-            elif isinstance(item, dict):
-                text = item.get("text") or item.get("content")
-                if isinstance(text, str):
-                    parts.append(text)
-        return "".join(parts)
-    if isinstance(content, dict):
-        text = content.get("text") or content.get("content")
-        if isinstance(text, str):
-            return text
-    return ""
-
-
-def _extract_gateway_text(payload: Any) -> str:
-    if not isinstance(payload, dict):
-        return ""
-    choices = payload.get("choices")
-    if isinstance(choices, list) and choices:
-        message = choices[0].get("message", {})
-        if isinstance(message, dict):
-            content = _coerce_text_content(message.get("content", ""))
-            if content.strip():
-                return content.strip()
-        text = choices[0].get("text")
-        if isinstance(text, str) and text.strip():
-            return text.strip()
-    output_text = payload.get("output_text")
-    if isinstance(output_text, str) and output_text.strip():
-        return output_text.strip()
-    return ""
-
-
-def _should_fallback_from_gateway(exc: Exception) -> bool:
-    try:
-        import httpx
-    except ImportError:
-        httpx = None
-    if httpx is not None and isinstance(exc, httpx.TransportError):
-        return True
-    message = str(exc).lower()
-    error_type = str(getattr(exc, "error_type", "") or "").strip().lower()
-    if error_type == "proxy_error" and any(
-        marker in message
-        for marker in ("before response", "unavailable", "connect", "timeout")
-    ):
-        return True
-    return "http proxy failed" in message or "post proxy failed" in message
-
-
-_MIME_EXTENSION_MAP = {
-    "image/jpeg": ".jpg",
-    "image/png": ".png",
-    "image/webp": ".webp",
-    "image/gif": ".gif",
-    "application/pdf": ".pdf",
-    "text/plain": ".txt",
-}
-
-
-def _build_multimodal_content_from_attachment_items(
-    text: str,
-    attachment_items: list[dict[str, Any]],
-) -> Any:
-    image_parts: list[dict[str, Any]] = []
-    for item in attachment_items:
-        mime = str(item.get("mime", "") or "").strip().lower()
-        data = item.get("data")
-        if not mime.startswith("image/") or not data:
-            continue
-        image_parts.append({
-            "type": "image_url",
-            "image_url": {"url": f"data:{mime};base64,{base64.b64encode(bytes(data)).decode('ascii')}"},
-        })
-    if not image_parts:
-        return text
-    return [{"type": "text", "text": text}, *image_parts]
+def _classify_cli_error_output(text: str) -> str:
+    normalized = str(text or "").strip().lower()
+    if "proxy_error" in normalized:
+        return "proxy_error"
+    provider_markers = (
+        "all providers/models failed",
+        "provider",
+        "rate_limited",
+        "rate limited",
+        "too many requests",
+        "api error",
+        "bad gateway",
+        "authentication",
+        "unauthorized",
+        "forbidden",
+        "capability=vision",
+    )
+    if any(marker in normalized for marker in provider_markers):
+        return "provider_error"
+    return "cli_error"
 
 
 class ZeroClawAgent(Agent):
-    """Run ZeroClaw against a benchmark problem.
-
-    Supports:
-      - local CLI execution
-      - direct CLI execution inside a sandbox
-      - OpenClaw-style ROCK proxy execution via a lightweight ZeroClaw bridge
-    """
+    """Run ZeroClaw in a live sandbox/container using its native CLI path."""
 
     name = "zeroclaw"
 
     def setup(self, config: dict) -> None:
+        unsupported = [key for key in _UNSUPPORTED_SINGLE_PATH_KEYS if key in config]
+        if unsupported:
+            unsupported_csv = ", ".join(sorted(unsupported))
+            raise ValueError(
+                "ZeroClawAgent now supports only the native sandbox CLI path. "
+                f"Unsupported config keys: {unsupported_csv}"
+            )
+
         self._model = self._resolve_setting(config, "model", "OPENAI_MODEL_NAME")
         self._provider_api_base = self._resolve_setting(
             config,
@@ -283,57 +234,17 @@ class ZeroClawAgent(Agent):
             configured_allowed_commands,
             configured_extra_allowed_commands,
         )
-        self._multimodal_via_proxy = bool(config.get("multimodal_via_proxy", True))
-        self._disable_tools = bool(config.get("disable_tools", False))
-        self._provider_base_url_override: str | None = None
         configured_provider = str(config.get("provider", "")).strip().lower()
         self._provider = _resolve_zeroclaw_provider(configured_provider, self._provider_api_base)
         self._system_prompt = str(config.get("system_prompt", _DEFAULT_SYSTEM_PROMPT)).strip()
         self._install_command = str(config.get("install_command", "")).strip()
         self._timeout_command = str(config.get("timeout_command", "timeout")).strip() or "timeout"
-        self._gateway_token = str(config.get("gateway_token", "ZEROCLAW")).strip() or "ZEROCLAW"
-        self._use_gateway_in_sandbox = bool(config.get("use_gateway_in_sandbox", True))
-        self._gateway_api_base = str(config.get("gateway_api_base", "")).strip()
-        gateway_pool_list = config.get("gateway_pool", [])
-        if not isinstance(gateway_pool_list, list):
-            gateway_pool_list = []
-        normalized_gateway_pool = [
-            str(url).strip().rstrip("/")
-            for url in gateway_pool_list
-            if str(url).strip()
-        ]
-        if not normalized_gateway_pool and self._gateway_api_base:
-            normalized_gateway_pool = [self._gateway_api_base.rstrip("/")]
-        self._gateway_pool: deque[str] = deque(normalized_gateway_pool)
-        self._gateway_pool_lock = threading.Lock()
-        self._rock_sandbox_url = str(config.get("rock_sandbox_url", "")).strip()
-        self._sandbox_id = str(config.get("sandbox_id", "")).strip()
-        if not self._sandbox_id and self._gateway_api_base:
-            gateway_sandbox_id, rock_sandbox_url = self._extract_sandbox_target_from_api_base(
-                self._gateway_api_base
-            )
-            if gateway_sandbox_id:
-                self._sandbox_id = gateway_sandbox_id
-            if rock_sandbox_url and not self._rock_sandbox_url:
-                self._rock_sandbox_url = rock_sandbox_url
         raw_env = config.get("env", {})
         self._env = {
             str(key): str(value)
             for key, value in raw_env.items()
             if value is not None
         } if isinstance(raw_env, dict) else {}
-        self._runtime_manager = (
-            ZeroClawRuntimeManager({
-                **config,
-                "model": self._model,
-                "api_base": self._provider_api_base,
-                "api_key": self._provider_api_key,
-                "gateway_token": self._gateway_token,
-                "disable_tools": self._disable_tools,
-            })
-            if self._use_gateway_in_sandbox
-            else None
-        )
 
     @staticmethod
     def _resolve_allowed_commands(
@@ -381,22 +292,305 @@ class ZeroClawAgent(Agent):
             return env_value
         return value if isinstance(value, str) else default
 
-    def _build_prompt(self, task: BenchmarkTask) -> str:
-        return str(self._build_task_context(task)["prompt"])
+    @staticmethod
+    def _decode_attachment_mime(value: Any) -> str:
+        if isinstance(value, bytes):
+            return value.decode("utf-8", errors="ignore").strip()
+        if isinstance(value, str):
+            return value.strip()
+        return ""
 
-    def _build_request_messages(self, task: BenchmarkTask) -> list[dict[str, str]]:
-        return list(self._build_task_context(task)["request_messages"])
+    @classmethod
+    def _attachment_filename(cls, key: str, mime: str) -> str:
+        candidate = Path(str(key)).name
+        if Path(candidate).suffix:
+            return candidate
+        ext = _MIME_EXTENSION_MAP.get(mime, "")
+        if not ext and mime:
+            ext = mimetypes.guess_extension(mime) or ""
+        safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", candidate).strip("._") or "attachment"
+        return f"{safe_stem}{ext}"
+
+    def _build_attachment_items(self, task: BenchmarkTask) -> list[dict[str, Any]]:
+        raw_attachments = getattr(task, "attachments", {}) or {}
+        if not isinstance(raw_attachments, dict):
+            return []
+
+        items: list[dict[str, Any]] = []
+        for key in sorted(raw_attachments):
+            if key.endswith("_mime"):
+                continue
+            value = raw_attachments.get(key)
+            if value is None:
+                continue
+            if isinstance(value, bytes):
+                data = value
+            elif isinstance(value, str):
+                data = value.encode("utf-8")
+            else:
+                continue
+            if not data:
+                continue
+            mime = self._decode_attachment_mime(raw_attachments.get(f"{key}_mime"))
+            filename = self._attachment_filename(key, mime)
+            rel_path = f"attachments/{filename}"
+            items.append({
+                "key": str(key),
+                "mime": mime,
+                "filename": filename,
+                "rel_path": rel_path,
+                "data": data,
+                "is_image": mime.lower().startswith("image/"),
+            })
+        return items
+
+    def _build_problem_text(
+        self,
+        task: BenchmarkTask,
+        attachment_items: list[dict[str, Any]],
+        *,
+        image_marker_paths: list[str] | None = None,
+    ) -> str:
+        problem_text = str(task.problem).rstrip()
+        if attachment_items:
+            attachment_lines = [
+                f"- {item['rel_path']}" + (f" ({item['mime']})" if item["mime"] else "")
+                for item in attachment_items
+            ]
+            problem_text = (
+                f"{problem_text}\n\n"
+                "--- Workspace Attachments ---\n"
+                "The following files are available relative to the working directory:\n"
+                f"{chr(10).join(attachment_lines)}"
+            ).rstrip()
+
+        marker_paths = [path for path in list(image_marker_paths or []) if path]
+        if marker_paths:
+            marker_block = "\n".join(f"[IMAGE:{path}]" for path in marker_paths)
+            problem_text = (
+                f"{problem_text}\n\n"
+                "--- Image Inputs ---\n"
+                f"{marker_block}"
+            ).rstrip()
+        return problem_text
+
+    def _build_task_context(
+        self,
+        task: BenchmarkTask,
+        attachment_items: list[dict[str, Any]],
+        *,
+        image_marker_paths: list[str] | None = None,
+    ) -> dict[str, Any]:
+        problem_text = self._build_problem_text(
+            task,
+            attachment_items,
+            image_marker_paths=image_marker_paths,
+        )
+        if self._system_prompt:
+            prompt = f"{self._system_prompt}\n\nProblem:\n{problem_text}"
+        else:
+            prompt = problem_text
+
+        request_messages: list[dict[str, str]] = []
+        if self._system_prompt:
+            request_messages.append({"role": "system", "content": self._system_prompt})
+        request_messages.append({"role": "user", "content": problem_text})
+        return {
+            "prompt": prompt,
+            "problem_text": problem_text,
+            "request_messages": request_messages,
+            "attachments": attachment_items,
+        }
+
+    @staticmethod
+    def _attachment_manifest(attachment_items: list[dict[str, Any]]) -> dict[str, Any]:
+        return {
+            "attachments": [
+                {
+                    "key": item["key"],
+                    "path": item["rel_path"],
+                    "filename": item["filename"],
+                    "mime": item["mime"],
+                    "size_bytes": len(item["data"]),
+                }
+                for item in attachment_items
+            ]
+        }
+
+    @staticmethod
+    def _merge_artifact_manifest(*manifests: dict[str, Any] | None) -> dict[str, Any]:
+        merged: dict[str, Any] = {}
+        for manifest in manifests:
+            if not isinstance(manifest, dict):
+                continue
+            for key, value in manifest.items():
+                if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                    merged[key] = {**merged[key], **value}
+                elif isinstance(value, list) and isinstance(merged.get(key), list):
+                    merged[key] = [*merged[key], *value]
+                else:
+                    merged[key] = value
+        return merged
+
+    def _build_workspace_file_contents(
+        self,
+        *,
+        prompt: str,
+        raw_output: str,
+        raw_stderr: str,
+        runtime_trace: str,
+    ) -> dict[str, str]:
+        files = {"task.txt": prompt}
+        if raw_output:
+            files["zeroclaw_output.txt"] = raw_output
+        if raw_stderr:
+            files["zeroclaw_stderr.log"] = raw_stderr
+        if runtime_trace:
+            files["runtime_trace.jsonl"] = runtime_trace
+        return files
+
+    def _apply_text_fallback_trajectory(
+        self,
+        *,
+        request_messages: list[dict[str, Any]],
+        output_text: str,
+        current_trajectory: list[dict[str, Any]],
+        current_reasoning: list[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        fallback_trajectory, fallback_reasoning = build_text_step_trajectories(
+            request_messages,
+            output_text,
+        )
+        if len(fallback_trajectory) > len(current_trajectory):
+            current_trajectory = fallback_trajectory
+        if len(fallback_reasoning) > len(current_reasoning):
+            current_reasoning = fallback_reasoning
+        return current_trajectory, current_reasoning
+
+    def _build_cli_response(
+        self,
+        *,
+        prompt: str,
+        raw_output: str,
+        raw_stderr: str,
+        runtime_trace: str,
+        attachment_items: list[dict[str, Any]],
+        metadata: dict[str, Any],
+        wall_time_sec: float,
+        system_prompt: str,
+        artifact_manifest: dict[str, Any] | None = None,
+        request_messages: list[dict[str, Any]] | None = None,
+    ) -> AgentResponse:
+        sanitized_output, dropped_runtime_logs = _sanitize_cli_output(raw_output)
+        combined_output = sanitized_output or raw_stderr or runtime_trace
+        runtime_records = parse_jsonl_records(runtime_trace)
+        trajectory, reasoning_trajectory = build_event_trajectories(
+            list(request_messages or []),
+            runtime_records,
+            final_output=combined_output,
+        )
+        if not runtime_records:
+            trajectory, reasoning_trajectory = self._apply_text_fallback_trajectory(
+                request_messages=list(request_messages or []),
+                output_text=combined_output,
+                current_trajectory=trajectory,
+                current_reasoning=reasoning_trajectory,
+            )
+        if not trajectory:
+            trajectory = [{"role": "user", "content": prompt}]
+            if combined_output:
+                trajectory.append({"role": "assistant", "content": combined_output})
+
+        manifest = self._merge_artifact_manifest(
+            artifact_manifest,
+            self._attachment_manifest(attachment_items),
+        )
+        manifest = add_artifact_file_refs(
+            manifest,
+            response_stream=(
+                "runtime_trace.jsonl"
+                if runtime_trace
+                else ("zeroclaw_output.txt" if raw_output else None)
+            ),
+            stdout_log="zeroclaw_output.txt" if raw_output else None,
+            stderr_log="zeroclaw_stderr.log" if raw_stderr else None,
+            prompt_text="task.txt",
+            attachment_manifest="attachment_manifest.json" if attachment_items else None,
+        )
+
+        response_metadata = dict(metadata)
+        if dropped_runtime_logs:
+            response_metadata["runtime_logs_dropped_from_output"] = dropped_runtime_logs
+        if sanitized_output != raw_output:
+            response_metadata["raw_output_sanitized"] = True
+
+        workspace_files = self._build_workspace_file_contents(
+            prompt=prompt,
+            raw_output=raw_output,
+            raw_stderr=raw_stderr,
+            runtime_trace=runtime_trace,
+        )
+        if attachment_items:
+            workspace_files["attachment_manifest.json"] = json.dumps(
+                self._attachment_manifest(attachment_items),
+                indent=2,
+                ensure_ascii=False,
+            )
+
+        return AgentResponse(
+            answer=_extract_answer(sanitized_output) if sanitized_output else None,
+            trajectory=trajectory,
+            reasoning_trajectory=reasoning_trajectory,
+            raw_output=combined_output,
+            wall_time_sec=wall_time_sec,
+            workspace_file_contents=workspace_files,
+            artifact_manifest=manifest,
+            system_prompt=system_prompt,
+            metadata=response_metadata,
+            request_messages=list(request_messages or []),
+            response_json=build_runtime_trace_summary(
+                output_text=sanitized_output or combined_output,
+                stderr_text=raw_stderr.strip(),
+                records=runtime_records,
+                extra={"runtime_trace_present": bool(runtime_records)},
+            ),
+        )
+
+    @staticmethod
+    def _raise_with_partial_response(
+        message: str,
+        partial_response: AgentResponse,
+        *,
+        error_type: str | None = None,
+    ) -> None:
+        exc = RuntimeError(message)
+        setattr(exc, "partial_response", partial_response)
+        if error_type:
+            setattr(exc, "error_type", error_type)
+        raise exc
+
+    @staticmethod
+    def _mark_partial_failure(
+        partial_response: AgentResponse,
+        *,
+        failure_reason: str,
+        extra_metadata: dict[str, Any] | None = None,
+        response_json_extra: dict[str, Any] | None = None,
+    ) -> AgentResponse:
+        metadata = dict(partial_response.metadata or {})
+        metadata["failure_reason"] = failure_reason
+        if extra_metadata:
+            metadata.update(extra_metadata)
+        partial_response.metadata = metadata
+        if response_json_extra:
+            merged_response_json = dict(partial_response.response_json or {})
+            merged_response_json.update(response_json_extra)
+            partial_response.response_json = merged_response_json
+        return partial_response
 
     def _build_config_toml(self) -> str:
         workspace_only = "true" if self._workspace_only else "false"
         allowed_commands = json.dumps(self._allowed_commands, ensure_ascii=False)
-        provider_override = ""
-        if getattr(self, "_provider_base_url_override", None):
-            provider_override = (
-                f"[model_providers.{self._provider}]\n"
-                f"name = {_quote_toml(self._provider)}\n"
-                f"base_url = {_quote_toml(self._provider_base_url_override)}\n\n"
-            )
         provider_max_tokens = ""
         if self._provider_max_tokens is not None:
             provider_max_tokens = f"provider_max_tokens = {self._provider_max_tokens}\n"
@@ -435,7 +629,7 @@ class ZeroClawAgent(Agent):
             f"{provider_max_tokens}"
             "model_routes = []\n"
             "embedding_routes = []\n\n"
-            f"{provider_override or '[model_providers]'}\n\n"
+            "[model_providers]\n\n"
             f"{runtime_section}"
             f"{security_section}"
             "[observability]\n"
@@ -479,625 +673,6 @@ class ZeroClawAgent(Agent):
                 f"(or api_key / OPENAI_API_KEY) for {context}."
             )
 
-    @staticmethod
-    def _extract_sandbox_target_from_api_base(api_base: str) -> tuple[str, str]:
-        if not api_base:
-            return "", ""
-        sandbox_id = ""
-        rock_sandbox_url = ""
-        match = re.search(r"/sandboxes/([A-Za-z0-9_-]+)/proxy", api_base)
-        if match:
-            sandbox_id = match.group(1)
-        match = re.search(r"(https?://[^/]+)/apis/envs/sandbox/v1", api_base)
-        if match:
-            rock_sandbox_url = f"{match.group(1)}/apis/envs/sandbox/v1"
-        return sandbox_id, rock_sandbox_url
-
-    @staticmethod
-    def _decode_attachment_mime(value: Any) -> str:
-        if isinstance(value, bytes):
-            return value.decode("utf-8", errors="ignore").strip()
-        if isinstance(value, str):
-            return value.strip()
-        return ""
-
-    @classmethod
-    def _attachment_filename(cls, key: str, mime: str) -> str:
-        candidate = Path(str(key)).name
-        if Path(candidate).suffix:
-            return candidate
-        ext = _MIME_EXTENSION_MAP.get(mime, "")
-        if not ext and mime:
-            ext = mimetypes.guess_extension(mime) or ""
-        safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", candidate).strip("._") or "attachment"
-        return f"{safe_stem}{ext}"
-
-    def _build_attachment_items(self, task: BenchmarkTask) -> list[dict[str, Any]]:
-        raw_attachments = getattr(task, "attachments", {}) or {}
-        if not isinstance(raw_attachments, dict):
-            return []
-
-        items: list[dict[str, Any]] = []
-        for key in sorted(raw_attachments):
-            if key.endswith("_mime"):
-                continue
-            value = raw_attachments.get(key)
-            if value is None:
-                continue
-            if isinstance(value, bytes):
-                data = value
-            elif isinstance(value, str):
-                data = value.encode("utf-8")
-            else:
-                continue
-            mime = self._decode_attachment_mime(raw_attachments.get(f"{key}_mime"))
-            filename = self._attachment_filename(key, mime)
-            rel_path = f"attachments/{filename}"
-            items.append({
-                "key": str(key),
-                "mime": mime,
-                "filename": filename,
-                "rel_path": rel_path,
-                "data": data,
-            })
-        return items
-
-    def _build_problem_text(self, task: BenchmarkTask, attachment_items: list[dict[str, Any]]) -> str:
-        problem_text = str(task.problem).rstrip()
-        if not attachment_items:
-            return problem_text
-        attachment_lines = [
-            f"- {item['rel_path']}" + (f" ({item['mime']})" if item["mime"] else "")
-            for item in attachment_items
-        ]
-        return (
-            f"{problem_text}\n\n"
-            "--- Workspace Attachments ---\n"
-            "The following files are available relative to the working directory:\n"
-            f"{chr(10).join(attachment_lines)}"
-        ).rstrip()
-
-    def _build_task_context(self, task: BenchmarkTask) -> dict[str, Any]:
-        attachment_items = self._build_attachment_items(task)
-        problem_text = self._build_problem_text(task, attachment_items)
-        if self._system_prompt:
-            prompt = f"{self._system_prompt}\n\nProblem:\n{problem_text}"
-        else:
-            prompt = problem_text
-
-        request_messages: list[dict[str, str]] = []
-        if self._system_prompt:
-            request_messages.append({"role": "system", "content": self._system_prompt})
-        request_messages.append({"role": "user", "content": problem_text})
-        return {
-            "prompt": prompt,
-            "problem_text": problem_text,
-            "request_messages": request_messages,
-            "attachments": attachment_items,
-        }
-
-    @staticmethod
-    def _attachment_manifest(attachment_items: list[dict[str, Any]]) -> dict[str, Any]:
-        return {
-            "attachments": [
-                {
-                    "key": item["key"],
-                    "path": item["rel_path"],
-                    "mime": item["mime"],
-                    "size_bytes": len(item["data"]),
-                }
-                for item in attachment_items
-            ]
-        }
-
-    @staticmethod
-    def _serialize_gateway_attachments(attachment_items: list[dict[str, Any]]) -> list[dict[str, str]]:
-        payload: list[dict[str, str]] = []
-        for item in attachment_items:
-            payload.append({
-                "key": item["key"],
-                "filename": item["filename"],
-                "path": item["rel_path"],
-                "mime": item["mime"],
-                "data_base64": base64.b64encode(item["data"]).decode("ascii"),
-            })
-        return payload
-
-    @staticmethod
-    def _merge_artifact_manifest(*manifests: dict[str, Any] | None) -> dict[str, Any]:
-        merged: dict[str, Any] = {}
-        for manifest in manifests:
-            if not isinstance(manifest, dict):
-                continue
-            for key, value in manifest.items():
-                if isinstance(value, dict) and isinstance(merged.get(key), dict):
-                    merged[key] = {**merged[key], **value}
-                elif isinstance(value, list) and isinstance(merged.get(key), list):
-                    merged[key] = [*merged[key], *value]
-                else:
-                    merged[key] = value
-        return merged
-
-    @staticmethod
-    def _read_local_text(path_str: str) -> str:
-        path = Path(path_str)
-        if not path.exists() or path.is_dir():
-            return ""
-        return path.read_text(encoding="utf-8", errors="replace")
-
-    def _build_workspace_file_contents(
-        self,
-        *,
-        prompt: str,
-        raw_output: str,
-        raw_stderr: str,
-        runtime_trace: str,
-    ) -> dict[str, str]:
-        files = {"task.txt": prompt}
-        if raw_output:
-            files["zeroclaw_output.txt"] = raw_output
-        if raw_stderr:
-            files["zeroclaw_stderr.log"] = raw_stderr
-        if runtime_trace:
-            files["runtime_trace.jsonl"] = runtime_trace
-        return files
-
-    @staticmethod
-    def _find_workspace_file_key(
-        workspace_files: dict[str, str],
-        *names: str,
-    ) -> str:
-        for candidate in names:
-            if candidate in workspace_files:
-                return candidate
-        for candidate in names:
-            for key in workspace_files:
-                if str(key).endswith(f"/{candidate}"):
-                    return str(key)
-        return ""
-
-    def _apply_text_fallback_trajectory(
-        self,
-        *,
-        request_messages: list[dict[str, Any]],
-        output_text: str,
-        current_trajectory: list[dict[str, Any]],
-        current_reasoning: list[dict[str, Any]],
-    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-        fallback_trajectory, fallback_reasoning = build_text_step_trajectories(
-            request_messages,
-            output_text,
-        )
-        if len(fallback_trajectory) > len(current_trajectory):
-            current_trajectory = fallback_trajectory
-        if len(fallback_reasoning) > len(current_reasoning):
-            current_reasoning = fallback_reasoning
-        return current_trajectory, current_reasoning
-
-    def _build_gateway_request_payload(
-        self,
-        request_messages: list[dict[str, Any]],
-        attachment_items: list[dict[str, Any]],
-    ) -> dict[str, Any]:
-        payload: dict[str, Any] = {
-            "model": self._model,
-            "messages": request_messages,
-            "temperature": self._temperature,
-            "stream": False,
-            "disable_tools": self._disable_tools,
-        }
-        if attachment_items:
-            payload["attachments"] = self._serialize_gateway_attachments(attachment_items)
-        return payload
-
-    @staticmethod
-    def _inject_inline_image_attachments(
-        request_messages: list[dict[str, Any]],
-        attachment_items: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
-        if not attachment_items:
-            return list(request_messages)
-        injected = False
-        updated_messages: list[dict[str, Any]] = []
-        for message in request_messages:
-            cloned = dict(message)
-            if not injected and cloned.get("role") == "user":
-                text = _coerce_text_content(cloned.get("content", ""))
-                cloned["content"] = _build_multimodal_content_from_attachment_items(
-                    text,
-                    attachment_items,
-                )
-                injected = True
-            updated_messages.append(cloned)
-        return updated_messages
-
-    def _build_no_tools_request_payload(
-        self,
-        request_messages: list[dict[str, Any]],
-        attachment_items: list[dict[str, Any]],
-    ) -> dict[str, Any]:
-        payload: dict[str, Any] = {
-            "model": self._model,
-            "messages": self._inject_inline_image_attachments(
-                request_messages,
-                attachment_items,
-            ),
-            "temperature": self._temperature,
-            "stream": False,
-        }
-        if self._provider_max_tokens is not None:
-            payload["max_tokens"] = self._provider_max_tokens
-        return payload
-
-    def _build_no_tools_partial_response(
-        self,
-        *,
-        task_context: dict[str, Any],
-        request_payload: dict[str, Any],
-        response_json: dict[str, Any],
-        raw_output: str,
-        wall_time_sec: float,
-        gateway_mode: str,
-        sandbox: Any = None,
-        gateway_url: str = "",
-        sandbox_id: str = "",
-        extra_metadata: dict[str, Any] | None = None,
-    ) -> AgentResponse:
-        workspace_files = {
-            "task.txt": str(task_context["prompt"]),
-            "gateway_request.json": json.dumps(request_payload, indent=2, ensure_ascii=False),
-            "gateway_response.json": json.dumps(response_json, indent=2, ensure_ascii=False),
-        }
-        attachment_items = list(task_context["attachments"])
-        if attachment_items:
-            workspace_files["attachment_manifest.json"] = json.dumps(
-                self._attachment_manifest(attachment_items),
-                indent=2,
-                ensure_ascii=False,
-            )
-        if raw_output:
-            workspace_files["zeroclaw_output.txt"] = raw_output
-
-        request_messages = list(request_payload.get("messages", task_context["request_messages"]))
-        trajectory, reasoning_trajectory = self._apply_text_fallback_trajectory(
-            request_messages=request_messages,
-            output_text=raw_output,
-            current_trajectory=[],
-            current_reasoning=[],
-        )
-        response_metadata = {
-            "model": self._model,
-            "provider_api_base": self._provider_api_base,
-            "gateway_mode": gateway_mode,
-            "disable_tools": True,
-            "sandbox_backend": getattr(sandbox, "name", ""),
-        }
-        if extra_metadata:
-            response_metadata.update(extra_metadata)
-        return AgentResponse(
-            answer=_extract_answer(raw_output),
-            trajectory=trajectory or request_messages,
-            reasoning_trajectory=reasoning_trajectory,
-            raw_output=raw_output,
-            request_messages=request_messages,
-            response_json=build_runtime_trace_summary(
-                output_text=raw_output,
-                stderr_text="",
-                records=[],
-                extra=response_json,
-            ),
-            wall_time_sec=wall_time_sec,
-            gateway_url=gateway_url,
-            sandbox_id=sandbox_id,
-            artifact_manifest=add_artifact_file_refs(
-                self._merge_artifact_manifest(
-                    self._attachment_manifest(attachment_items),
-                ),
-                response_stream="zeroclaw_output.txt" if raw_output else None,
-                stdout_log="zeroclaw_output.txt" if raw_output else None,
-                prompt_text="task.txt",
-                request_payload="gateway_request.json",
-                selected_response="gateway_response.json",
-                attachment_manifest="attachment_manifest.json" if attachment_items else None,
-            ),
-            workspace_file_contents=workspace_files,
-            system_prompt=self._system_prompt,
-            metadata=response_metadata,
-        )
-
-    @staticmethod
-    def _mark_partial_failure(
-        partial_response: AgentResponse,
-        *,
-        failure_reason: str,
-        gateway_mode: str = "",
-        extra_metadata: dict[str, Any] | None = None,
-        response_json_extra: dict[str, Any] | None = None,
-    ) -> AgentResponse:
-        metadata = dict(partial_response.metadata or {})
-        metadata["failure_reason"] = failure_reason
-        if gateway_mode and not metadata.get("gateway_mode"):
-            metadata["gateway_mode"] = gateway_mode
-        if extra_metadata:
-            metadata.update(extra_metadata)
-        partial_response.metadata = metadata
-        if response_json_extra:
-            merged_response_json = dict(partial_response.response_json or {})
-            merged_response_json.update(response_json_extra)
-            partial_response.response_json = merged_response_json
-        return partial_response
-
-    def _run_no_tools_provider(
-        self,
-        task: BenchmarkTask,
-        *,
-        task_context: dict[str, Any] | None = None,
-        gateway_mode: str,
-        sandbox: Any = None,
-        sandbox_id: str = "",
-    ) -> AgentResponse:
-        try:
-            import httpx
-        except ImportError as exc:
-            raise RuntimeError(
-                "The 'httpx' package is required for ZeroClaw no-tools mode. "
-                "Install with: pip install httpx"
-            ) from exc
-
-        start = time.time()
-        resolved_task_context = task_context or self._build_task_context(task)
-        request_payload = self._build_no_tools_request_payload(
-            list(resolved_task_context["request_messages"]),
-            list(resolved_task_context["attachments"]),
-        )
-        url = f"{self._provider_api_base.rstrip('/')}/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {self._provider_api_key}",
-            "Content-Type": "application/json",
-        }
-        try:
-            response = httpx.post(
-                url,
-                headers=headers,
-                json=request_payload,
-                timeout=self._request_timeout + 60,
-                trust_env=False,
-            )
-        except Exception as exc:
-            partial_response = self._build_no_tools_partial_response(
-                task_context=resolved_task_context,
-                request_payload=request_payload,
-                response_json={
-                    "transport_error": str(exc),
-                    "exception_type": type(exc).__name__,
-                },
-                raw_output="",
-                wall_time_sec=time.time() - start,
-                gateway_mode=gateway_mode,
-                sandbox=sandbox,
-                gateway_url=url,
-                sandbox_id=sandbox_id,
-                extra_metadata={
-                    "provider_exception_type": type(exc).__name__,
-                },
-            )
-            self._mark_partial_failure(
-                partial_response,
-                failure_reason="provider_error",
-                gateway_mode=gateway_mode,
-            )
-            self._raise_with_partial_response(
-                f"ZeroClaw no-tools request failed before response: {exc}",
-                partial_response,
-                error_type="provider_error",
-                request_payload=request_payload,
-                response_body=str(exc),
-            )
-        try:
-            response_json = response.json()
-        except Exception:
-            response_json = {"raw_body": response.text}
-
-        raw_output = _extract_gateway_text(response_json)
-        partial_response = self._build_no_tools_partial_response(
-            task_context=resolved_task_context,
-            request_payload=request_payload,
-            response_json=response_json if isinstance(response_json, dict) else {"raw_body": response.text},
-            raw_output=raw_output,
-            wall_time_sec=time.time() - start,
-            gateway_mode=gateway_mode,
-            sandbox=sandbox,
-            gateway_url=url,
-            sandbox_id=sandbox_id,
-        )
-        if response.status_code != 200:
-            self._mark_partial_failure(
-                partial_response,
-                failure_reason="provider_error",
-                gateway_mode=gateway_mode,
-                extra_metadata={"provider_status_code": response.status_code},
-                response_json_extra={"provider_status_code": response.status_code},
-            )
-            self._raise_with_partial_response(
-                "ZeroClaw no-tools request failed: "
-                f"status={response.status_code} body={response_json!r}",
-                partial_response,
-                error_type="provider_error",
-                request_payload=request_payload,
-                response_body=response.text,
-            )
-        if not raw_output:
-            self._mark_partial_failure(
-                partial_response,
-                failure_reason="empty_response",
-                gateway_mode=gateway_mode,
-                extra_metadata={"provider_status_code": response.status_code},
-                response_json_extra={"provider_status_code": response.status_code},
-            )
-            self._raise_with_partial_response(
-                f"ZeroClaw no-tools request returned empty content: {response_json!r}",
-                partial_response,
-                error_type="empty_response",
-                request_payload=request_payload,
-                response_body=response.text,
-            )
-        return partial_response
-
-    def _refresh_preserved_runtime_state(self, response: AgentResponse) -> None:
-        workspace_files = dict(response.workspace_file_contents or {})
-        runtime_trace_key = self._find_workspace_file_key(workspace_files, "runtime_trace.jsonl")
-        stdout_key = self._find_workspace_file_key(workspace_files, "zeroclaw_output.txt")
-        stderr_key = self._find_workspace_file_key(workspace_files, "zeroclaw_stderr.log")
-        prompt_key = self._find_workspace_file_key(workspace_files, "task.txt", "prompt.txt", "PROMPT.txt")
-        request_payload_key = self._find_workspace_file_key(workspace_files, "gateway_request.json")
-        selected_response_key = self._find_workspace_file_key(workspace_files, "gateway_response.json")
-        attachment_manifest_key = self._find_workspace_file_key(workspace_files, "attachment_manifest.json")
-
-        response.artifact_manifest = add_artifact_file_refs(
-            response.artifact_manifest,
-            response_stream=runtime_trace_key or stdout_key or None,
-            stdout_log=stdout_key or None,
-            stderr_log=stderr_key or None,
-            prompt_text=prompt_key or None,
-            request_payload=request_payload_key or None,
-            selected_response=selected_response_key or None,
-            attachment_manifest=attachment_manifest_key or None,
-        )
-
-        runtime_trace = workspace_files.get(runtime_trace_key, "") if runtime_trace_key else ""
-        runtime_records = parse_jsonl_records(runtime_trace)
-        if runtime_records:
-            response.trajectory, response.reasoning_trajectory = build_event_trajectories(
-                response.request_messages,
-                runtime_records,
-                final_output=response.raw_output,
-            )
-            response.response_json = build_runtime_trace_summary(
-                output_text=response.raw_output,
-                stderr_text=str(response.response_json.get("stderr_text", "")),
-                records=runtime_records,
-                extra=dict(response.response_json or {}),
-            )
-            return
-
-        response.trajectory, response.reasoning_trajectory = self._apply_text_fallback_trajectory(
-            request_messages=response.request_messages,
-            output_text=response.raw_output,
-            current_trajectory=list(response.trajectory or []),
-            current_reasoning=list(response.reasoning_trajectory or []),
-        )
-
-    def _build_cli_response(
-        self,
-        *,
-        prompt: str,
-        raw_output: str,
-        raw_stderr: str,
-        runtime_trace: str,
-        attachment_items: list[dict[str, Any]],
-        metadata: dict[str, Any],
-        wall_time_sec: float,
-        system_prompt: str,
-        artifact_manifest: dict[str, Any] | None = None,
-        request_messages: list[dict[str, Any]] | None = None,
-    ) -> AgentResponse:
-        sanitized_output, dropped_runtime_logs = _sanitize_cli_output(raw_output)
-        combined_output = sanitized_output or raw_stderr or runtime_trace
-        runtime_records = parse_jsonl_records(runtime_trace)
-        trajectory, reasoning_trajectory = build_event_trajectories(
-            list(request_messages or []),
-            runtime_records,
-            final_output=combined_output,
-        )
-        if not runtime_records:
-            trajectory, reasoning_trajectory = self._apply_text_fallback_trajectory(
-                request_messages=list(request_messages or []),
-                output_text=combined_output,
-                current_trajectory=trajectory,
-                current_reasoning=reasoning_trajectory,
-            )
-        if not trajectory:
-            trajectory = [{"role": "user", "content": prompt}]
-            if combined_output:
-                trajectory.append({"role": "assistant", "content": combined_output})
-        manifest = self._merge_artifact_manifest(
-            artifact_manifest,
-            self._attachment_manifest(attachment_items),
-        )
-        manifest = add_artifact_file_refs(
-            manifest,
-            response_stream=(
-                "runtime_trace.jsonl"
-                if runtime_trace
-                else ("zeroclaw_output.txt" if raw_output else None)
-            ),
-            stdout_log="zeroclaw_output.txt" if raw_output else None,
-            stderr_log="zeroclaw_stderr.log" if raw_stderr else None,
-            prompt_text="task.txt",
-            attachment_manifest="attachment_manifest.json" if attachment_items else None,
-        )
-        response_metadata = dict(metadata)
-        if dropped_runtime_logs:
-            response_metadata["runtime_logs_dropped_from_output"] = dropped_runtime_logs
-        if sanitized_output != raw_output:
-            response_metadata["raw_output_sanitized"] = True
-        workspace_files = self._build_workspace_file_contents(
-            prompt=prompt,
-            raw_output=raw_output,
-            raw_stderr=raw_stderr,
-            runtime_trace=runtime_trace,
-        )
-        if attachment_items:
-            workspace_files["attachment_manifest.json"] = json.dumps(
-                self._attachment_manifest(attachment_items),
-                indent=2,
-                ensure_ascii=False,
-            )
-        return AgentResponse(
-            answer=_extract_answer(sanitized_output) if sanitized_output else None,
-            trajectory=trajectory,
-            reasoning_trajectory=reasoning_trajectory,
-            raw_output=combined_output,
-            wall_time_sec=wall_time_sec,
-            workspace_file_contents=workspace_files,
-            artifact_manifest=manifest,
-            system_prompt=system_prompt,
-            metadata=response_metadata,
-            request_messages=list(request_messages or []),
-            response_json=build_runtime_trace_summary(
-                output_text=sanitized_output or combined_output,
-                stderr_text=raw_stderr.strip(),
-                records=runtime_records,
-                extra={"runtime_trace_present": bool(runtime_records)},
-            ),
-        )
-
-    @staticmethod
-    def _raise_with_partial_response(
-        message: str,
-        partial_response: AgentResponse,
-        *,
-        error_type: str | None = None,
-        request_payload: Any = None,
-        response_body: Any = None,
-    ) -> None:
-        exc = RuntimeError(message)
-        setattr(exc, "partial_response", partial_response)
-        if error_type:
-            setattr(exc, "error_type", error_type)
-        if request_payload is not None:
-            setattr(exc, "request_payload", request_payload)
-        if response_body is not None:
-            setattr(exc, "response_body", response_body)
-        raise exc
-
-    def _write_local_attachments(self, attachments_dir: str, attachment_items: list[dict[str, Any]]) -> None:
-        if not attachment_items:
-            return
-        Path(attachments_dir).mkdir(parents=True, exist_ok=True)
-        for item in attachment_items:
-            (Path(attachments_dir) / item["filename"]).write_bytes(item["data"])
-
     def _upload_sandbox_attachments(
         self,
         sandbox: Any,
@@ -1114,50 +689,6 @@ class ZeroClawAgent(Agent):
             )
         for item in attachment_items:
             sandbox.upload(str(Path(attachments_dir) / item["filename"]), item["data"])
-
-    def _ensure_local_binary(self, env: dict[str, str], cwd: str) -> str:
-        check = subprocess.run(
-            "command -v zeroclaw >/dev/null 2>&1",
-            shell=True,
-            cwd=cwd,
-            env=env,
-            capture_output=True,
-            text=True,
-        )
-        if check.returncode != 0:
-            if not self._install_command:
-                raise RuntimeError(
-                    "ZeroClaw binary not found in PATH. Install zeroclaw locally or "
-                    "set agent.config.install_command."
-                )
-            install = subprocess.run(
-                self._install_command,
-                shell=True,
-                cwd=cwd,
-                env=env,
-                capture_output=True,
-                text=True,
-            )
-            if install.returncode != 0:
-                raise RuntimeError(
-                    "Failed to install zeroclaw locally: "
-                    f"{install.stderr.strip() or install.stdout.strip() or self._install_command}"
-                )
-
-        version = subprocess.run(
-            "zeroclaw --version",
-            shell=True,
-            cwd=cwd,
-            env=env,
-            capture_output=True,
-            text=True,
-        )
-        if version.returncode != 0:
-            raise RuntimeError(
-                "zeroclaw --version failed: "
-                f"{version.stderr.strip() or version.stdout.strip()}"
-            )
-        return version.stdout.strip()
 
     def _ensure_sandbox_binary(self, sandbox: Any, env: dict[str, str]) -> str:
         base_check = sandbox.execute("command -v zeroclaw >/dev/null 2>&1")
@@ -1227,7 +758,8 @@ class ZeroClawAgent(Agent):
         prep_command = (
             f"mkdir -p {shlex.quote(paths['workspace_dir'])} {shlex.quote(paths['zc_home_dir'])} "
             f"{shlex.quote(paths['state_dir'])} {shlex.quote(paths['attachments_dir'])} "
-            f"&& ln -sfn {shlex.quote(paths['workspace_dir'])} {shlex.quote(str(Path(paths['zc_home_dir']) / 'workspace'))}"
+            f"&& ln -sfn {shlex.quote(paths['workspace_dir'])} "
+            f"{shlex.quote(str(Path(paths['zc_home_dir']) / 'workspace'))}"
         )
         prep_result = sandbox.execute(prep_command)
         if prep_result.exit_code != 0:
@@ -1235,6 +767,7 @@ class ZeroClawAgent(Agent):
                 "Failed to prepare sandbox workspace: "
                 f"{prep_result.stderr.strip() or prep_result.stdout.strip()}"
             )
+
         sandbox.upload(paths["config_path"], self._build_config_toml().encode("utf-8"))
         sandbox.upload(paths["task_path"], str(task_context["prompt"]).encode("utf-8"))
         self._upload_sandbox_attachments(
@@ -1277,95 +810,30 @@ class ZeroClawAgent(Agent):
 
     def _build_diag_command(self, paths: dict[str, str]) -> str:
         return (
-            f"echo 'pwd='$(pwd) && "
-            f"echo 'home='${{HOME}} && "
+            "echo 'pwd='$(pwd) && "
+            "echo 'home='${HOME} && "
             f"echo 'workspace_dir={shlex.quote(paths['workspace_dir'])}' && "
             f"echo 'task_path={shlex.quote(paths['task_path'])}' && "
-            f"command -v zeroclaw && "
+            "command -v zeroclaw && "
             f"ls -la {shlex.quote(paths['base_dir'])} && "
             f"ls -la {shlex.quote(paths['zc_home_dir'])} && "
-            f"wc -c "
+            "wc -c "
             f"{shlex.quote(paths['task_path'])} "
             f"{shlex.quote(paths['config_path'])} "
             f"{shlex.quote(paths['stdout_path'])} "
             f"{shlex.quote(paths['stderr_path'])} && "
-            f"printf '\\n--- task.txt ---\\n' && "
-            f"sed -n '1,40p' {shlex.quote(paths['task_path'])} && "
-            f"printf '\\n--- config.toml ---\\n' && "
-            f"sed -n '1,40p' {shlex.quote(paths['config_path'])} && "
-            f"printf '\\n--- stdout ---\\n' && "
+            "printf '\\n--- task.txt ---\\n' && "
+            f"sed -n '1,80p' {shlex.quote(paths['task_path'])} && "
+            "printf '\\n--- config.toml ---\\n' && "
+            f"sed -n '1,80p' {shlex.quote(paths['config_path'])} && "
+            "printf '\\n--- stdout ---\\n' && "
             f"sed -n '1,80p' {shlex.quote(paths['stdout_path'])} && "
-            f"printf '\\n--- stderr ---\\n' && "
+            "printf '\\n--- stderr ---\\n' && "
             f"sed -n '1,80p' {shlex.quote(paths['stderr_path'])} && "
             f"test -f {shlex.quote(paths['runtime_trace_path'])} && "
-            f"printf '\\n--- runtime_trace ---\\n' && "
+            "printf '\\n--- runtime_trace ---\\n' && "
             f"sed -n '1,80p' {shlex.quote(paths['runtime_trace_path'])} || true"
         )
-
-    def _build_gateway_partial_response(
-        self,
-        *,
-        task_context: dict[str, Any],
-        artifact_data: dict[str, Any] | None,
-        metadata: dict[str, Any],
-        wall_time_sec: float,
-        sandbox_id: str,
-        gateway_url: str,
-        response_json: dict[str, Any] | None = None,
-    ) -> AgentResponse:
-        artifact_payload = dict(artifact_data or {})
-        workspace_files = dict(artifact_payload.get("workspace_file_contents", {}) or {})
-        raw_output = workspace_files.get("zeroclaw_output.txt", "")
-        raw_stderr = workspace_files.get("zeroclaw_stderr.log", "")
-        runtime_trace = workspace_files.get("runtime_trace.jsonl", "")
-        partial_response = self._build_cli_response(
-            prompt=str(task_context["prompt"]),
-            raw_output=raw_output,
-            raw_stderr=raw_stderr,
-            runtime_trace=runtime_trace,
-            attachment_items=list(task_context["attachments"]),
-            metadata=metadata,
-            wall_time_sec=wall_time_sec,
-            system_prompt=self._system_prompt,
-            artifact_manifest=artifact_payload.get("artifact_manifest", {}),
-            request_messages=list(task_context["request_messages"]),
-        )
-        partial_response.workspace_file_contents.setdefault(
-            "gateway_request.json",
-            json.dumps(
-                self._build_gateway_request_payload(
-                    list(task_context["request_messages"]),
-                    list(task_context["attachments"]),
-                ),
-                indent=2,
-                ensure_ascii=False,
-            ),
-        )
-        if response_json:
-            partial_response.workspace_file_contents.setdefault(
-                "gateway_response.json",
-                json.dumps(response_json, indent=2, ensure_ascii=False),
-            )
-        partial_response.response_json = dict(response_json or {})
-        partial_response.gateway_log_excerpt = str(artifact_payload.get("gateway_log_excerpt", "") or "")
-        partial_response.workspace_snapshot_paths = list(
-            artifact_payload.get("workspace_snapshot_paths", []) or []
-        )
-        partial_response.workspace_file_contents.update(workspace_files)
-        partial_response.sandbox_metadata = dict(artifact_payload.get("sandbox_metadata", {}) or {})
-        partial_response.gateway_url = gateway_url
-        partial_response.sandbox_id = sandbox_id
-        self._refresh_preserved_runtime_state(partial_response)
-        return partial_response
-
-    def _collect_gateway_artifacts_safe(self, sandbox: Any) -> dict[str, Any]:
-        if self._runtime_manager is None:
-            return {}
-        try:
-            return self._runtime_manager.collect_artifacts(sandbox)
-        except Exception as exc:
-            logger.warning("ZeroClaw gateway artifact collection failed: %s", exc)
-            return {}
 
     def _collect_sandbox_diagnostics(
         self,
@@ -1389,16 +857,11 @@ class ZeroClawAgent(Agent):
         try:
             return self._collect_sandbox_diagnostics(sandbox, paths, env)
         except Exception as exc:
-            return (
-                "sandbox diagnostics unavailable: "
-                f"{exc}"
-            )
+            return f"sandbox diagnostics unavailable: {exc}"
 
     def _run_in_sandbox(self, task: BenchmarkTask, sandbox: Any) -> AgentResponse:
         start = time.time()
-        task_context = self._build_task_context(task)
-        prompt = str(task_context["prompt"])
-        attachment_items = list(task_context["attachments"])
+        attachment_items = self._build_attachment_items(task)
         cwd_result = sandbox.execute("pwd")
         if cwd_result.exit_code != 0:
             raise RuntimeError(
@@ -1408,6 +871,18 @@ class ZeroClawAgent(Agent):
         root_dir = cwd_result.stdout.strip().splitlines()[-1]
         execution_id = str(task.metadata.get("execution_id") or f"task_{int(start)}")
         paths = self._prepare_paths(root_dir, execution_id)
+        image_marker_paths = [
+            str(Path(paths["attachments_dir"]) / item["filename"])
+            for item in attachment_items
+            if bool(item.get("is_image"))
+        ]
+        task_context = self._build_task_context(
+            task,
+            attachment_items,
+            image_marker_paths=image_marker_paths,
+        )
+        prompt = str(task_context["prompt"])
+
         self._prepare_sandbox_workspace(sandbox, paths, task_context)
 
         env = self._build_env(paths["home_dir"])
@@ -1422,6 +897,7 @@ class ZeroClawAgent(Agent):
             )
         else:
             result = sandbox.execute(run_command)
+
         raw_output = self._read_sandbox_file(sandbox, paths["stdout_path"]).strip()
         raw_stderr = self._read_sandbox_file(sandbox, paths["stderr_path"]).strip()
         runtime_trace = self._read_sandbox_file(sandbox, paths["runtime_trace_path"]).strip()
@@ -1434,6 +910,7 @@ class ZeroClawAgent(Agent):
             "home_dir": paths["home_dir"],
             "zeroclaw_version": version_output,
             "sandbox_backend": getattr(sandbox, "name", ""),
+            "transport": "zeroclaw_cli_sandbox",
         }
         if dropped_runtime_logs:
             metadata["runtime_logs_dropped_from_output"] = dropped_runtime_logs
@@ -1455,12 +932,34 @@ class ZeroClawAgent(Agent):
             },
             request_messages=list(task_context["request_messages"]),
         )
+        partial_response.workspace_snapshot_paths = [
+            path
+            for path in [
+                paths["task_path"],
+                paths["config_path"],
+                paths["stdout_path"],
+                paths["stderr_path"],
+                paths["runtime_trace_path"],
+            ]
+            if path
+        ]
+        partial_response.sandbox_metadata = (
+            sandbox.metadata()
+            if hasattr(sandbox, "metadata")
+            else {}
+        )
+        partial_response.sandbox_id = str(
+            partial_response.sandbox_metadata.get("sandbox_id", "")
+            or getattr(sandbox, "sandbox_id", "")
+            or ""
+        )
 
         if result.exit_code == 124:
             self._mark_partial_failure(partial_response, failure_reason="timeout")
             self._raise_with_partial_response(
                 f"ZeroClaw agent timed out after {self._request_timeout}s",
                 partial_response,
+                error_type="timeout",
             )
         if result.exit_code != 0:
             diagnostics = self._collect_sandbox_diagnostics_safe(sandbox, paths, env)
@@ -1470,10 +969,16 @@ class ZeroClawAgent(Agent):
                 f"{raw_stderr or sanitized_output or raw_output or result.stderr.strip() or f'exit code {result.exit_code}'}\n"
                 f"diagnostics:\n{diagnostics}",
                 partial_response,
+                error_type="cli_error",
             )
         if sanitized_output.lower().startswith("error:"):
-            self._mark_partial_failure(partial_response, failure_reason="cli_error")
-            self._raise_with_partial_response(sanitized_output.splitlines()[0], partial_response)
+            failure_reason = _classify_cli_error_output(sanitized_output)
+            self._mark_partial_failure(partial_response, failure_reason=failure_reason)
+            self._raise_with_partial_response(
+                sanitized_output.splitlines()[0],
+                partial_response,
+                error_type=failure_reason,
+            )
         if raw_output and not sanitized_output and dropped_runtime_logs:
             diagnostics = self._collect_sandbox_diagnostics_safe(sandbox, paths, env)
             self._mark_partial_failure(partial_response, failure_reason="empty_response")
@@ -1481,6 +986,7 @@ class ZeroClawAgent(Agent):
                 "ZeroClaw produced no assistant output; stdout contained only runtime/provider logs.\n"
                 f"diagnostics:\n{diagnostics}",
                 partial_response,
+                error_type="empty_response",
             )
         if not sanitized_output:
             diagnostics = self._collect_sandbox_diagnostics_safe(sandbox, paths, env)
@@ -1489,681 +995,24 @@ class ZeroClawAgent(Agent):
                 f"ZeroClaw agent produced no output. stderr={raw_stderr}\n"
                 f"diagnostics:\n{diagnostics}",
                 partial_response,
+                error_type="empty_response",
             )
 
         return partial_response
 
-    def _run_via_gateway_api_base(
-        self,
-        task: BenchmarkTask,
-        api_base: str,
-        *,
-        task_context: dict[str, Any] | None = None,
-        sandbox: Any = None,
-        runtime_info: dict[str, Any] | None = None,
-        artifact_data: dict[str, Any] | None = None,
-        gateway_mode: str,
-    ) -> AgentResponse:
-        try:
-            import httpx
-        except ImportError as exc:
-            raise RuntimeError(
-                "The 'httpx' package is required for ZeroClaw gateway mode. "
-                "Install with: pip install httpx"
-            ) from exc
-
-        start = time.time()
-        resolved_task_context = task_context or self._build_task_context(task)
-        request_messages = list(resolved_task_context["request_messages"])
-        attachment_items = list(resolved_task_context["attachments"])
-        resolved_runtime_info = dict(runtime_info or {})
-        resolved_api_base = api_base.rstrip("/")
-        actual_sandbox_id, _ = self._extract_sandbox_target_from_api_base(resolved_api_base)
-        if actual_sandbox_id:
-            resolved_runtime_info["sandbox_id"] = actual_sandbox_id
-        url = f"{resolved_api_base}/chat/completions"
-        headers = {
-            "Authorization": f"bearer {self._gateway_token}",
-            "Content-Type": "application/json",
-        }
-        request_payload = self._build_gateway_request_payload(request_messages, attachment_items)
-
-        resolved_sandbox_id = str(
-            resolved_runtime_info.get("sandbox_id")
-            or getattr(sandbox, "sandbox_id", "")
-            or self._sandbox_id
-            or actual_sandbox_id
-        )
-        try:
-            response = httpx.post(
-                url,
-                headers=headers,
-                json=request_payload,
-                timeout=self._request_timeout + 60,
-                trust_env=False,
-            )
-        except Exception as exc:
-            partial_response = self._build_gateway_partial_response(
-                task_context=resolved_task_context,
-                artifact_data=artifact_data,
-                metadata={
-                    "model": self._model,
-                    "provider_api_base": self._provider_api_base,
-                    "gateway_api_base": resolved_api_base,
-                    "gateway_mode": gateway_mode,
-                    "sandbox_backend": getattr(sandbox, "name", ""),
-                    "gateway_exception_type": type(exc).__name__,
-                },
-                wall_time_sec=time.time() - start,
-                sandbox_id=resolved_sandbox_id,
-                gateway_url=resolved_runtime_info.get("gateway_url", url),
-                response_json={
-                    "transport_error": str(exc),
-                    "exception_type": type(exc).__name__,
-                },
-            )
-            self._mark_partial_failure(
-                partial_response,
-                failure_reason="proxy_error",
-                gateway_mode=gateway_mode,
-            )
-            self._raise_with_partial_response(
-                f"ZeroClaw bridge request failed before response: {exc}",
-                partial_response,
-                error_type="proxy_error",
-                request_payload=request_payload,
-                response_body=str(exc),
-            )
-        try:
-            response_json = response.json()
-        except Exception:
-            response_json = {"raw_body": response.text}
-
-        if response.status_code != 200:
-            partial_response = self._build_gateway_partial_response(
-                task_context=resolved_task_context,
-                artifact_data=artifact_data,
-                metadata={
-                    "model": self._model,
-                    "provider_api_base": self._provider_api_base,
-                    "gateway_api_base": resolved_api_base,
-                    "gateway_mode": gateway_mode,
-                    "sandbox_backend": getattr(sandbox, "name", ""),
-                },
-                wall_time_sec=time.time() - start,
-                sandbox_id=resolved_sandbox_id,
-                gateway_url=resolved_runtime_info.get("gateway_url", url),
-                response_json=response_json if isinstance(response_json, dict) else {"raw_body": response.text},
-            )
-            self._mark_partial_failure(
-                partial_response,
-                failure_reason="proxy_error",
-                gateway_mode=gateway_mode,
-                extra_metadata={"gateway_status_code": response.status_code},
-                response_json_extra={"gateway_status_code": response.status_code},
-            )
-            self._raise_with_partial_response(
-                "ZeroClaw bridge request failed: "
-                f"status={response.status_code} body={response_json!r}"
-                ,
-                partial_response,
-                error_type="proxy_error",
-                request_payload=request_payload,
-                response_body=response.text,
-            )
-
-        raw_output = _extract_gateway_text(response_json)
-        if not raw_output:
-            partial_response = self._build_gateway_partial_response(
-                task_context=resolved_task_context,
-                artifact_data=artifact_data,
-                metadata={
-                    "model": self._model,
-                    "provider_api_base": self._provider_api_base,
-                    "gateway_api_base": resolved_api_base,
-                    "gateway_mode": gateway_mode,
-                    "sandbox_backend": getattr(sandbox, "name", ""),
-                },
-                wall_time_sec=time.time() - start,
-                sandbox_id=resolved_sandbox_id,
-                gateway_url=resolved_runtime_info.get("gateway_url", url),
-                response_json=response_json if isinstance(response_json, dict) else {"raw_body": response.text},
-            )
-            self._mark_partial_failure(
-                partial_response,
-                failure_reason="empty_response",
-                gateway_mode=gateway_mode,
-                extra_metadata={"gateway_status_code": response.status_code},
-                response_json_extra={"gateway_status_code": response.status_code},
-            )
-            self._raise_with_partial_response(
-                f"ZeroClaw bridge returned empty content: {response_json!r}",
-                partial_response,
-                error_type="empty_response",
-                request_payload=request_payload,
-                response_body=response.text,
-            )
-
-        answer = _extract_answer(raw_output)
-        wall_time = time.time() - start
-        resolved_artifact_data = artifact_data or {
-            "artifact_manifest": {},
-            "gateway_log_excerpt": "",
-            "workspace_snapshot_paths": [],
-            "workspace_file_contents": {},
-            "sandbox_metadata": {},
-        }
-        workspace_files = dict(resolved_artifact_data.get("workspace_file_contents", {}) or {})
-        workspace_files.setdefault("task.txt", str(resolved_task_context["prompt"]))
-        workspace_files.setdefault(
-            "gateway_request.json",
-            json.dumps(request_payload, indent=2, ensure_ascii=False),
-        )
-        workspace_files.setdefault(
-            "gateway_response.json",
-            json.dumps(response_json, indent=2, ensure_ascii=False),
-        )
-        workspace_files.setdefault("zeroclaw_output.txt", raw_output)
-        runtime_trace = ""
-        for key, value in workspace_files.items():
-            if key == "runtime_trace.jsonl" or str(key).endswith("/runtime_trace.jsonl"):
-                runtime_trace = value
-                break
-        runtime_records = parse_jsonl_records(runtime_trace)
-        trajectory, reasoning_trajectory = build_event_trajectories(
-            request_messages,
-            runtime_records,
-            final_output=raw_output,
-        )
-        if not runtime_records:
-            trajectory, reasoning_trajectory = self._apply_text_fallback_trajectory(
-                request_messages=request_messages,
-                output_text=raw_output,
-                current_trajectory=trajectory,
-                current_reasoning=reasoning_trajectory,
-            )
-        return AgentResponse(
-            answer=answer,
-            trajectory=trajectory or [
-                {"role": "user", "content": resolved_task_context["problem_text"]},
-                {"role": "assistant", "content": raw_output},
-            ],
-            reasoning_trajectory=reasoning_trajectory,
-            raw_output=raw_output,
-            request_messages=request_messages,
-            response_json=build_runtime_trace_summary(
-                output_text=raw_output,
-                stderr_text="",
-                records=runtime_records,
-                extra=response_json if isinstance(response_json, dict) else {},
-            ),
-            wall_time_sec=wall_time,
-            gateway_url=resolved_runtime_info.get("gateway_url", url),
-            sandbox_id=resolved_sandbox_id,
-            artifact_manifest=add_artifact_file_refs(
-                self._merge_artifact_manifest(
-                    resolved_artifact_data.get("artifact_manifest", {}),
-                    self._attachment_manifest(attachment_items),
-                ),
-                response_stream=(
-                    "runtime_trace.jsonl"
-                    if runtime_trace
-                    else ("zeroclaw_output.txt" if "zeroclaw_output.txt" in workspace_files else None)
-                ),
-                stdout_log="zeroclaw_output.txt" if "zeroclaw_output.txt" in workspace_files else None,
-                stderr_log="zeroclaw_stderr.log" if "zeroclaw_stderr.log" in workspace_files else None,
-                prompt_text="task.txt",
-                request_payload="gateway_request.json",
-                selected_response="gateway_response.json",
-                attachment_manifest="attachment_manifest.json" if attachment_items else None,
-            ),
-            gateway_log_excerpt=resolved_artifact_data.get("gateway_log_excerpt", ""),
-            workspace_snapshot_paths=resolved_artifact_data.get("workspace_snapshot_paths", []),
-            workspace_file_contents=workspace_files,
-            sandbox_metadata=resolved_artifact_data.get("sandbox_metadata", {}),
-            system_prompt=self._system_prompt,
-            metadata={
-                "model": self._model,
-                "provider_api_base": self._provider_api_base,
-                "gateway_api_base": resolved_api_base,
-                "gateway_mode": gateway_mode,
-                "sandbox_backend": getattr(sandbox, "name", ""),
-            },
-        )
-
-    def _run_via_gateway(self, task: BenchmarkTask, sandbox: Any) -> AgentResponse:
-        if self._runtime_manager is None:
-            raise RuntimeError("ZeroClaw gateway mode is not configured.")
-        task_context = self._build_task_context(task)
-        fallback_gateway_url = (
-            f"{sandbox.proxy_v1_base()}/chat/completions"
-            if hasattr(sandbox, "proxy_v1_base")
-            else ""
-        )
-        fallback_sandbox_id = str(getattr(sandbox, "sandbox_id", "") or "")
-        try:
-            runtime_info = self._runtime_manager.ensure_ready(sandbox)
-        except Exception as exc:
-            artifact_data = self._collect_gateway_artifacts_safe(sandbox)
-            fallback_label = (
-                "direct provider chat (tools disabled)"
-                if self._disable_tools
-                else "direct sandbox CLI"
-            )
-            logger.warning(
-                "ZeroClaw gateway bootstrap failed for sandbox_id=%s; falling back to %s: %s",
-                fallback_sandbox_id,
-                fallback_label,
-                exc,
-            )
-            if self._disable_tools:
-                response = self._run_no_tools_provider(
-                    task,
-                    task_context=task_context,
-                    gateway_mode="rock-proxy-bootstrap-fallback-no-tools",
-                    sandbox=sandbox,
-                    sandbox_id=fallback_sandbox_id,
-                )
-            else:
-                response = self._run_in_sandbox(task, sandbox)
-            response.gateway_url = fallback_gateway_url
-            response.sandbox_id = fallback_sandbox_id
-            response.artifact_manifest = self._merge_artifact_manifest(
-                response.artifact_manifest,
-                artifact_data.get("artifact_manifest", {}),
-            )
-            response.gateway_log_excerpt = artifact_data.get("gateway_log_excerpt", "")
-            response.workspace_snapshot_paths = artifact_data.get("workspace_snapshot_paths", [])
-            response.workspace_file_contents.update(
-                artifact_data.get("workspace_file_contents", {})
-            )
-            response.sandbox_metadata = artifact_data.get("sandbox_metadata", {})
-            response.metadata["gateway_mode"] = (
-                "rock-proxy-bootstrap-fallback-no-tools"
-                if self._disable_tools
-                else "rock-proxy-bootstrap-fallback-to-cli"
-            )
-            response.metadata["gateway_fallback_reason"] = str(exc)
-            self._refresh_preserved_runtime_state(response)
-            return response
-
-        gateway_url = str(runtime_info.get("gateway_url") or f"{runtime_info['api_base']}/chat/completions")
-        sandbox_id = str(
-            runtime_info.get("sandbox_id")
-            or getattr(sandbox, "sandbox_id", "")
-            or ""
-        )
-        try:
-            response = self._run_via_gateway_api_base(
-                task,
-                runtime_info["api_base"],
-                task_context=task_context,
-                sandbox=sandbox,
-                runtime_info=runtime_info,
-                gateway_mode="rock-proxy",
-            )
-            artifact_data = self._collect_gateway_artifacts_safe(sandbox)
-            response.artifact_manifest = self._merge_artifact_manifest(
-                response.artifact_manifest,
-                artifact_data.get("artifact_manifest", {}),
-            )
-            response.gateway_log_excerpt = artifact_data.get("gateway_log_excerpt", "")
-            response.workspace_snapshot_paths = artifact_data.get("workspace_snapshot_paths", [])
-            response.workspace_file_contents.update(
-                artifact_data.get("workspace_file_contents", {})
-            )
-            response.sandbox_metadata = artifact_data.get("sandbox_metadata", {})
-            self._refresh_preserved_runtime_state(response)
-            return response
-        except Exception as exc:
-            artifact_data = self._collect_gateway_artifacts_safe(sandbox)
-            if not _should_fallback_from_gateway(exc):
-                if not self._disable_tools:
-                    partial_response = getattr(exc, "partial_response", None)
-                    if partial_response is None:
-                        partial_response = self._build_gateway_partial_response(
-                            task_context=task_context,
-                            artifact_data=artifact_data,
-                            metadata={
-                                "model": self._model,
-                                "provider_api_base": self._provider_api_base,
-                                "gateway_api_base": runtime_info["api_base"],
-                                "gateway_mode": "rock-proxy",
-                                "sandbox_backend": getattr(sandbox, "name", ""),
-                            },
-                            wall_time_sec=0.0,
-                            sandbox_id=sandbox_id,
-                            gateway_url=gateway_url,
-                        )
-                    else:
-                        partial_response.artifact_manifest = self._merge_artifact_manifest(
-                            partial_response.artifact_manifest,
-                            artifact_data.get("artifact_manifest", {}),
-                        )
-                        partial_response.gateway_log_excerpt = (
-                            partial_response.gateway_log_excerpt
-                            or artifact_data.get("gateway_log_excerpt", "")
-                        )
-                        partial_response.workspace_snapshot_paths = (
-                            list(partial_response.workspace_snapshot_paths or [])
-                            + [
-                                path for path in artifact_data.get("workspace_snapshot_paths", [])
-                                if path not in list(partial_response.workspace_snapshot_paths or [])
-                            ]
-                        )
-                        partial_response.workspace_file_contents.update(
-                            artifact_data.get("workspace_file_contents", {})
-                        )
-                        partial_response.sandbox_metadata = {
-                            **dict(partial_response.sandbox_metadata or {}),
-                            **dict(artifact_data.get("sandbox_metadata", {}) or {}),
-                        }
-                    self._raise_with_partial_response(
-                        str(exc),
-                        partial_response,
-                        error_type=getattr(exc, "error_type", None),
-                        request_payload=getattr(exc, "request_payload", None),
-                        response_body=getattr(exc, "response_body", None),
-                    )
-            fallback_label = (
-                "direct provider chat (tools disabled)"
-                if self._disable_tools
-                else "direct sandbox CLI"
-            )
-            logger.warning(
-                "ZeroClaw ROCK proxy failed for sandbox_id=%s; falling back to %s: %s",
-                runtime_info.get("sandbox_id") or getattr(sandbox, "sandbox_id", ""),
-                fallback_label,
-                exc,
-            )
-            if self._disable_tools:
-                response = self._run_no_tools_provider(
-                    task,
-                    task_context=task_context,
-                    gateway_mode="rock-proxy-fallback-no-tools",
-                    sandbox=sandbox,
-                    sandbox_id=sandbox_id,
-                )
-            else:
-                response = self._run_in_sandbox(task, sandbox)
-            response.gateway_url = gateway_url
-            response.sandbox_id = sandbox_id
-            response.artifact_manifest = self._merge_artifact_manifest(
-                response.artifact_manifest,
-                artifact_data.get("artifact_manifest", {}),
-            )
-            response.gateway_log_excerpt = artifact_data.get("gateway_log_excerpt", "")
-            response.workspace_snapshot_paths = artifact_data.get("workspace_snapshot_paths", [])
-            response.workspace_file_contents.update(
-                artifact_data.get("workspace_file_contents", {})
-            )
-            response.sandbox_metadata = artifact_data.get("sandbox_metadata", {})
-            response.metadata["gateway_mode"] = (
-                "rock-proxy-fallback-no-tools"
-                if self._disable_tools
-                else "rock-proxy-fallback-to-cli"
-            )
-            response.metadata["gateway_fallback_reason"] = str(exc)
-            self._refresh_preserved_runtime_state(response)
-            return response
-
-    def _run_via_predeployed_gateway(self, task: BenchmarkTask) -> AgentResponse:
-        task_context = self._build_task_context(task)
-        resolved_api_base = ""
-        used_pool = False
-        if self._gateway_pool:
-            with self._gateway_pool_lock:
-                resolved_api_base = self._gateway_pool[0]
-                self._gateway_pool.rotate(-1)
-            used_pool = True
-        elif self._gateway_api_base:
-            resolved_api_base = self._gateway_api_base.rstrip("/")
-        if not resolved_api_base:
-            raise RuntimeError(
-                "ZeroClaw gateway mode requires agent.config.gateway_api_base (or gateway_pool) "
-                "when no live sandbox is provided."
-            )
-        runtime_info = {
-            "sandbox_id": self._sandbox_id,
-            "gateway_url": f"{resolved_api_base}/chat/completions",
-            "api_base": resolved_api_base,
-        }
-        try:
-            return self._run_via_gateway_api_base(
-                task,
-                resolved_api_base,
-                task_context=task_context,
-                runtime_info=runtime_info,
-                gateway_mode="gateway-pool" if used_pool else "gateway-api-base",
-            )
-        except Exception as exc:
-            if self._disable_tools:
-                return self._run_no_tools_provider(
-                    task,
-                    task_context=task_context,
-                    gateway_mode=(
-                        "gateway-pool-fallback-no-tools"
-                        if used_pool
-                        else "gateway-api-base-fallback-no-tools"
-                    ),
-                )
-            partial_response = getattr(exc, "partial_response", None)
-            if partial_response is None:
-                partial_response = self._build_gateway_partial_response(
-                    task_context=task_context,
-                    artifact_data=None,
-                    metadata={
-                        "model": self._model,
-                        "provider_api_base": self._provider_api_base,
-                        "gateway_api_base": resolved_api_base,
-                        "gateway_mode": "gateway-pool" if used_pool else "gateway-api-base",
-                    },
-                    wall_time_sec=0.0,
-                    sandbox_id=str(runtime_info.get("sandbox_id", "")),
-                    gateway_url=str(runtime_info.get("gateway_url", "")),
-                )
-            self._raise_with_partial_response(
-                str(exc),
-                partial_response,
-                error_type=getattr(exc, "error_type", None),
-                request_payload=getattr(exc, "request_payload", None),
-                response_body=getattr(exc, "response_body", None),
-            )
-
-    def _run_locally(self, task: BenchmarkTask) -> AgentResponse:
-        start = time.time()
-        task_context = self._build_task_context(task)
-        prompt = str(task_context["prompt"])
-        attachment_items = list(task_context["attachments"])
-        execution_id = str(task.metadata.get("execution_id") or f"task_{int(start)}")
-
-        with tempfile.TemporaryDirectory(prefix=f"alphadiana_zeroclaw_{execution_id}_") as td:
-            paths = self._prepare_paths(td, execution_id)
-            Path(paths["workspace_dir"]).mkdir(parents=True, exist_ok=True)
-            Path(paths["zc_home_dir"]).mkdir(parents=True, exist_ok=True)
-            Path(paths["state_dir"]).mkdir(parents=True, exist_ok=True)
-            workspace_link = Path(paths["zc_home_dir"]) / "workspace"
-            if workspace_link.exists() or workspace_link.is_symlink():
-                workspace_link.unlink()
-            workspace_link.symlink_to(Path(paths["workspace_dir"]))
-            Path(paths["config_path"]).write_text(self._build_config_toml(), encoding="utf-8")
-            Path(paths["task_path"]).write_text(prompt, encoding="utf-8")
-            self._write_local_attachments(paths["attachments_dir"], attachment_items)
-
-            env = os.environ.copy()
-            env.update(self._build_env(paths["home_dir"]))
-            version_output = self._ensure_local_binary(env, paths["workspace_dir"])
-
-            command = self._build_run_command(paths)
-            result = subprocess.run(
-                command,
-                shell=True,
-                cwd=paths["workspace_dir"],
-                env=env,
-                capture_output=True,
-                text=True,
-            )
-
-            raw_output = Path(paths["stdout_path"]).read_text(encoding="utf-8", errors="replace").strip() if Path(paths["stdout_path"]).exists() else ""
-            raw_stderr = Path(paths["stderr_path"]).read_text(encoding="utf-8", errors="replace").strip() if Path(paths["stderr_path"]).exists() else ""
-            runtime_trace = self._read_local_text(paths["runtime_trace_path"]).strip()
-            sanitized_output, dropped_runtime_logs = _sanitize_cli_output(raw_output)
-            metadata = {
-                "model": self._model,
-                "provider_api_base": self._provider_api_base,
-                "execution_id": execution_id,
-                "workspace_dir": paths["workspace_dir"],
-                "home_dir": paths["home_dir"],
-                "zeroclaw_version": version_output,
-                "sandbox_backend": "local-process",
-            }
-            if dropped_runtime_logs:
-                metadata["runtime_logs_dropped_from_output"] = dropped_runtime_logs
-            partial_response = self._build_cli_response(
-                prompt=prompt,
-                raw_output=raw_output,
-                raw_stderr=raw_stderr,
-                runtime_trace=runtime_trace,
-                attachment_items=attachment_items,
-                metadata=metadata,
-                wall_time_sec=time.time() - start,
-                system_prompt=self._system_prompt,
-                artifact_manifest={
-                    "files": {
-                        "runtime_trace_source": paths["runtime_trace_path"],
-                    }
-                },
-                request_messages=list(task_context["request_messages"]),
-            )
-
-            if result.returncode == 124:
-                self._mark_partial_failure(partial_response, failure_reason="timeout")
-                self._raise_with_partial_response(
-                    f"ZeroClaw agent timed out after {self._request_timeout}s",
-                    partial_response,
-                )
-            if result.returncode != 0:
-                self._mark_partial_failure(partial_response, failure_reason="cli_error")
-                self._raise_with_partial_response(
-                    "ZeroClaw agent failed locally: "
-                    f"{raw_stderr or sanitized_output or raw_output or result.stderr.strip() or f'exit code {result.returncode}'}",
-                    partial_response,
-                )
-            if sanitized_output.lower().startswith("error:"):
-                self._mark_partial_failure(partial_response, failure_reason="cli_error")
-                self._raise_with_partial_response(sanitized_output.splitlines()[0], partial_response)
-            if raw_output and not sanitized_output and dropped_runtime_logs:
-                self._mark_partial_failure(partial_response, failure_reason="empty_response")
-                self._raise_with_partial_response(
-                    "ZeroClaw produced no assistant output; stdout contained only runtime/provider logs.",
-                    partial_response,
-                )
-            if not sanitized_output:
-                self._mark_partial_failure(partial_response, failure_reason="empty_response")
-                self._raise_with_partial_response(
-                    f"ZeroClaw agent produced no output. stderr={raw_stderr}",
-                    partial_response,
-                )
-            return partial_response
-
     def solve(self, task: BenchmarkTask, sandbox: Any = None) -> AgentResponse:
         if not self._model:
             raise RuntimeError("ZeroClawAgent requires agent.config.model or OPENAI_MODEL_NAME.")
-
-        if (
-            not self._disable_tools
-            and
-            self._multimodal_via_proxy
-            and self._has_image_attachments(task)
-            and sandbox is None
-            and not self._gateway_pool
-            and not self._gateway_api_base
-        ):
-            return self._solve_with_vision_proxy(task, sandbox)
-        return self._solve_inner(task, sandbox)
-
-    def _solve_inner(self, task: BenchmarkTask, sandbox: Any = None) -> AgentResponse:
-        if sandbox is not None:
-            if (
-                self._runtime_manager is not None
-                and hasattr(sandbox, "proxy_v1_base")
-                and self._runtime_manager.is_configured
-            ):
-                return self._run_via_gateway(task, sandbox)
-            if self._disable_tools:
-                self._ensure_provider_credentials("no-tools direct execution")
-                return self._run_no_tools_provider(
-                    task,
-                    gateway_mode="sandbox-bypass-no-tools",
-                    sandbox=sandbox,
-                    sandbox_id=str(getattr(sandbox, "sandbox_id", "") or ""),
-                )
-            self._ensure_provider_credentials("direct sandbox execution")
-            return self._run_in_sandbox(task, sandbox)
-        if self._gateway_pool or self._gateway_api_base:
-            return self._run_via_predeployed_gateway(task)
-        if self._disable_tools:
-            self._ensure_provider_credentials("no-tools direct execution")
-            return self._run_no_tools_provider(
-                task,
-                gateway_mode="no-tools-direct",
+        self._ensure_provider_credentials("native sandbox execution")
+        if sandbox is None:
+            raise RuntimeError(
+                "ZeroClawAgent now requires a live sandbox/container session. "
+                "Configure sandbox_name or rock_image so Runner can provide one."
             )
-        self._ensure_provider_credentials("local execution")
-        return self._run_locally(task)
-
-    @staticmethod
-    def _has_image_attachments(task: BenchmarkTask) -> bool:
-        attachments = getattr(task, "attachments", None) or {}
-        if not isinstance(attachments, dict):
-            return False
-        for key, value in attachments.items():
-            if key.endswith("_mime") or not isinstance(value, (bytes, bytearray)):
-                continue
-            mime_value = attachments.get(f"{key}_mime", b"")
-            mime = (
-                mime_value.decode(errors="ignore") if isinstance(mime_value, (bytes, bytearray))
-                else str(mime_value)
-            ).lower().strip()
-            if mime.startswith("image/"):
-                return True
-        return False
-
-    def _solve_with_vision_proxy(self, task: BenchmarkTask, sandbox: Any) -> AgentResponse:
-        """Run ZeroClaw behind a local vision proxy so image attachments reach the LLM.
-
-        ZeroClaw CLI cannot natively send image_url content blocks; the proxy
-        intercepts every chat/completions request and injects the image bytes
-        as multimodal content into the matching user message.
-        """
-        from alphadiana.utils.vision_proxy import VisionProxy
-
-        original_api_base = self._provider_api_base
-        try:
-            with VisionProxy(
-                upstream_base=original_api_base,
-                upstream_api_key=self._provider_api_key,
-                attachments=task.attachments,
-                target_text=task.problem,
-                upstream_model=self._model,
-            ) as proxy:
-                self._provider_api_base = proxy.url
-                self._provider_base_url_override = proxy.url
-                try:
-                    response = self._solve_inner(task, sandbox)
-                finally:
-                    self._provider_base_url_override = None
-                response.metadata = {
-                    **(response.metadata or {}),
-                    "transport": "zeroclaw_vision_proxy",
-                    "vision_proxy_injections": proxy.injection_count,
-                }
-                return response
-        finally:
-            self._provider_api_base = original_api_base
+        return self._run_in_sandbox(task, sandbox)
 
     def teardown(self) -> None:
-        if self._runtime_manager is not None:
-            self._runtime_manager.teardown()
+        pass
 
 
 AgentRegistry.register("zeroclaw", ZeroClawAgent)

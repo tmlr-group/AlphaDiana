@@ -6,6 +6,7 @@ import json
 import math
 import logging
 import queue
+import re
 import threading
 import time
 from dataclasses import replace
@@ -36,16 +37,64 @@ logger = logging.getLogger(__name__)
 OPENCLAW_CONCURRENCY_PER_SANDBOX = 1
 _OPENCLAW_PROFILE_CACHE_PATH = Path(".cache/openclaw_startup_profiles.json")
 
+_SECRET_ENV_KEYS = (
+    "OPENAI_API_KEY",
+    "OPENROUTER_API_KEY",
+    "ZEROCLAW_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "GEMINI_API_KEY",
+)
+_SECRET_ASSIGNMENT_RE = re.compile(
+    r"\b("
+    + "|".join(re.escape(key) for key in _SECRET_ENV_KEYS)
+    + r")=([^\s\"']+|\"[^\"]*\"|'[^']*')"
+)
 
-def _sanitize_success_sandbox_metadata(metadata: dict | None) -> dict:
-    """Strip noisy debug-only fields from normal successful task results."""
+
+def _redact_secret_assignments(text: str) -> str:
+    if not isinstance(text, str) or not text:
+        return text
+    return _SECRET_ASSIGNMENT_RE.sub(r"\1=<redacted>", text)
+
+
+def _sanitize_history_entries(entries: object) -> list[dict]:
+    sanitized_entries: list[dict] = []
+    if not isinstance(entries, list):
+        return sanitized_entries
+    for entry in entries:
+        if not isinstance(entry, dict):
+            sanitized_entries.append(entry)
+            continue
+        sanitized = dict(entry)
+        for key in ("command", "stdout", "stderr"):
+            if isinstance(sanitized.get(key), str):
+                sanitized[key] = _redact_secret_assignments(sanitized[key])
+        sanitized_entries.append(sanitized)
+    return sanitized_entries
+
+
+def _sanitize_sandbox_metadata(metadata: dict | None, *, keep_command_history: bool) -> dict:
+    """Redact secrets from sandbox metadata and optionally preserve command history."""
     if not isinstance(metadata, dict):
         return {}
     sanitized = dict(metadata)
-    sanitized.pop("command_history", None)
+    if keep_command_history:
+        if "command_history" in sanitized:
+            sanitized["command_history"] = _sanitize_history_entries(sanitized.get("command_history"))
+    else:
+        sanitized.pop("command_history", None)
+    if "artifact_collection_history" in sanitized:
+        sanitized["artifact_collection_history"] = _sanitize_history_entries(
+            sanitized.get("artifact_collection_history")
+        )
     if not sanitized.get("artifact_collection_history"):
         sanitized.pop("artifact_collection_history", None)
     return sanitized
+
+
+def _sanitize_success_sandbox_metadata(metadata: dict | None) -> dict:
+    """Strip noisy debug-only fields from normal successful task results."""
+    return _sanitize_sandbox_metadata(metadata, keep_command_history=False)
 
 
 def _merge_artifact_manifests(existing: dict | None, incoming: dict | None) -> dict:
@@ -78,6 +127,12 @@ def _is_gateway_autodeploy_agent(config: "ExperimentConfig") -> bool:
             config.agent_config.get("rock_agent_config_path")
             and config.agent_config.get("openclaw_config_path")
         )
+    return False
+
+
+def _needs_auto_rock_sandbox(config: "ExperimentConfig") -> bool:
+    if _is_gateway_autodeploy_agent(config):
+        return True
     if config.agent_name == "zeroclaw":
         return bool(config.agent_config.get("rock_image"))
     return False
@@ -624,15 +679,13 @@ class Runner:
                             pass
                     predeployed_sessions = []
 
-        # Auto-create a ROCK sandbox when:
-        #   - agent is a gateway auto-deploy agent
-        #   - no sandbox_name was explicitly configured (sandbox: null)
-        # Note: this creates a single sandbox for auto-deploy.
+        # Auto-create a ROCK sandbox when the agent requires one implicitly and
+        # no sandbox_name was explicitly configured (sandbox: null).
         _auto_sandbox = None
         if (
             self.sandbox is None
             and not predeployed_sessions
-            and _is_gateway_autodeploy_agent(self.config)
+            and _needs_auto_rock_sandbox(self.config)
         ):
             try:
                 import alphadiana.sandbox.rock  # noqa: F401 — trigger registration
@@ -693,6 +746,16 @@ class Runner:
                 # Treat _auto_sandbox as the sandbox for pool creation below.
                 self.sandbox = _auto_sandbox
             except Exception as exc:
+                if self.config.agent_name == "zeroclaw":
+                    if self.config.strict_isolation:
+                        raise RuntimeError(
+                            "strict_isolation=true: failed to auto-create ROCK sandbox; "
+                            "refusing shared-gateway fallback"
+                        ) from exc
+                    raise RuntimeError(
+                        "ZeroClaw requires a ROCK sandbox; auto-create failed and "
+                        "host/shared fallback is disabled."
+                    ) from exc
                 if self.config.strict_isolation:
                     raise RuntimeError(
                         "strict_isolation=true: failed to auto-create ROCK sandbox; "
@@ -874,7 +937,15 @@ class Runner:
                 # Collect sandbox metadata and artifacts on failure.
                 if sandbox_session is not None:
                     if not error_response.sandbox_metadata:
-                        error_response.sandbox_metadata = sandbox_session.metadata()
+                        error_response.sandbox_metadata = _sanitize_sandbox_metadata(
+                            sandbox_session.metadata(),
+                            keep_command_history=True,
+                        )
+                    elif error_response.sandbox_metadata:
+                        error_response.sandbox_metadata = _sanitize_sandbox_metadata(
+                            error_response.sandbox_metadata,
+                            keep_command_history=True,
+                        )
                     if not error_response.sandbox_id:
                         error_response.sandbox_id = error_response.sandbox_metadata.get("sandbox_id", "")
                     response_sandbox_id = str(error_response.sandbox_id or "")
@@ -899,7 +970,10 @@ class Runner:
                             error_response.workspace_file_contents = existing_files
                             sandbox_metadata = dict(error_response.sandbox_metadata or {})
                             sandbox_metadata.update(artifact_data.get("sandbox_metadata", {}) or {})
-                            error_response.sandbox_metadata = sandbox_metadata
+                            error_response.sandbox_metadata = _sanitize_sandbox_metadata(
+                                sandbox_metadata,
+                                keep_command_history=True,
+                            )
                         except Exception as artifact_exc:
                             logger.warning("Artifact collection failed for task %s: %s", task.task_id, artifact_exc)
                     if not error_response.gateway_url and hasattr(sandbox_session, "proxy_v1_base"):

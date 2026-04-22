@@ -17,9 +17,18 @@ These files should answer:
 - which configs are supported
 - what status or caveats apply right now
 
-As of April 22, 2026, the `HLE`, `MMMU-Pro`, and `terminal-bench-2` runbooks
-also document current result-semantics caveats for `qwen3vl` OpenCode errors,
-ZeroClaw failure evidence, and `terminal_bench2` verifier bookkeeping.
+As of April 22, 2026, the benchmark runbooks also document current
+result-semantics caveats for `qwen3vl` OpenCode errors, ZeroClaw failure
+evidence, `terminal_bench2` verifier bookkeeping, the current OpenRouter
+`nvidia/nemotron-nano-12b-v2-vl:free` multimodal smoke evidence, and the new
+same-day early full-run caveats for `IMO-AnswerBench`, `MMMU-Pro`, and
+`terminal-bench-2`.
+
+Current main generic `zeroclaw` is now simpler than the earlier April 22
+notes: normal benchmark runs use one sandbox-only CLI path
+(`metadata.transport=zeroclaw_cli_sandbox`) for both text and image-backed
+tasks. Historical `disable_tools`, gateway, and proxy path notes remain
+useful audit evidence only.
 
 Reviewer-facing evidence, dated pilot notes, internal design notes, and
 cross-benchmark status snapshots belong under `context/`.

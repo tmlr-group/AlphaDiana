@@ -141,7 +141,6 @@ export OPENAI_MODEL_NAME=minimax-m2.5
 python -m alphadiana.cli run configs/examples/zeroclaw_gpqa_diamond.yaml \
   -o run_id=pr23_smoke_zeroclaw_gpqa_minimaxm25_boxA_20260418 \
   -o output_dir=./results/pr23_zeroclaw_smokes \
-  -o agent.config.use_gateway_in_sandbox=false \
   -o agent.config.system_prompt='Smoke test mode: ignore the question. Do not use tools. Output exactly $$\\boxed{A}$$ and nothing else.'
 ```
 

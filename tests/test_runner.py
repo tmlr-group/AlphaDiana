@@ -12,6 +12,9 @@ from alphadiana.runner.runner import (
     Runner,
     _is_gateway_autodeploy_agent,
     _merge_artifact_manifests,
+    _needs_auto_rock_sandbox,
+    _sanitize_sandbox_metadata,
+    _sanitize_success_sandbox_metadata,
 )
 from alphadiana.runner.task_dispatcher import TaskDispatcher
 
@@ -191,6 +194,74 @@ def test_openclaw_gateway_pool_disables_gateway_autodeploy() -> None:
     assert _is_gateway_autodeploy_agent(config) is False
 
 
+def test_zeroclaw_rock_image_requires_auto_rock_sandbox_without_gateway_autodeploy() -> None:
+    config = ExperimentConfig(
+        agent_name="zeroclaw",
+        agent_version="0.6.9",
+        agent_config={
+            "model": "demo-model",
+            "api_base": "https://example.test/v1",
+            "api_key": "sk-test",
+            "rock_image": "zeroclaw-reasoning:0.6.9",
+        },
+        benchmark_name="aime",
+        scorer_name="numeric",
+    )
+
+    assert _is_gateway_autodeploy_agent(config) is False
+    assert _needs_auto_rock_sandbox(config) is True
+
+
+def test_sanitize_success_sandbox_metadata_drops_command_history() -> None:
+    metadata = {
+        "sandbox_id": "sbx-1",
+        "command_history": [
+            {"command": "OPENAI_API_KEY=sk-live abc"},
+        ],
+        "artifact_collection_history": [],
+    }
+
+    sanitized = _sanitize_success_sandbox_metadata(metadata)
+
+    assert sanitized == {"sandbox_id": "sbx-1"}
+
+
+def test_sanitize_error_sandbox_metadata_redacts_secret_env_assignments() -> None:
+    metadata = {
+        "sandbox_id": "sbx-2",
+        "command_history": [
+            {
+                "command": (
+                    "OPENAI_API_KEY=sk-live "
+                    "OPENROUTER_API_KEY='sk-router' "
+                    "ZEROCLAW_API_KEY=\"sk-zero\" zeroclaw agent"
+                ),
+                "stdout": "OPENAI_API_KEY=sk-live",
+                "stderr": "ZEROCLAW_API_KEY=sk-zero",
+            }
+        ],
+        "artifact_collection_history": [
+            {"command": "OPENAI_API_KEY=sk-live cat file"}
+        ],
+    }
+
+    sanitized = _sanitize_sandbox_metadata(metadata, keep_command_history=True)
+
+    history = sanitized["command_history"][0]
+    assert "sk-live" not in history["command"]
+    assert "sk-router" not in history["command"]
+    assert "sk-zero" not in history["command"]
+    assert "OPENAI_API_KEY=<redacted>" in history["command"]
+    assert "OPENROUTER_API_KEY=<redacted>" in history["command"]
+    assert "ZEROCLAW_API_KEY=<redacted>" in history["command"]
+    assert history["stdout"] == "OPENAI_API_KEY=<redacted>"
+    assert history["stderr"] == "ZEROCLAW_API_KEY=<redacted>"
+    assert (
+        sanitized["artifact_collection_history"][0]["command"]
+        == "OPENAI_API_KEY=<redacted> cat file"
+    )
+
+
 def test_runner_uses_live_predeployed_sessions_for_gateway_pool(monkeypatch, tmp_path):
     class _FakeBenchmark:
         def load_tasks(self, config):
@@ -279,13 +350,12 @@ def test_runner_uses_live_predeployed_sessions_for_gateway_pool(monkeypatch, tmp
 
     config = ExperimentConfig(
         run_id="runner-predeployed-gateway-pool",
-        agent_name="zeroclaw",
-        agent_version="0.6.9",
+        agent_name="openclaw",
+        agent_version="2026.3.20",
         agent_config={
-            "model": "demo-model",
-            "api_base": "https://example.test/v1",
             "api_key": "sk-test",
-            "rock_image": "zeroclaw-reasoning:0.6.9",
+            "rock_agent_config_path": "openclaw_deploy/rock_agent_config.prebuilt.yaml",
+            "openclaw_config_path": "openclaw_deploy/openclaw.json",
             "admin_base_url": "http://127.0.0.1:9000",
             "proxy_base_url": "http://127.0.0.1:9005/apis/envs/sandbox/v1",
         },
@@ -686,13 +756,13 @@ def test_strict_isolation_rejects_partial_predeploy(monkeypatch, tmp_path):
 
     config = ExperimentConfig(
         run_id="runner-strict-predeploy",
-        agent_name="zeroclaw",
-        agent_version="0.6.9",
+        agent_name="openclaw",
+        agent_version="2026.3.20",
         agent_config={
-            "model": "demo-model",
-            "api_base": "https://example.test/v1",
             "api_key": "sk-test",
-            "rock_image": "zeroclaw-reasoning:0.6.9",
+            "rock_image": "alphadiana/openclaw:latest",
+            "rock_agent_config_path": "openclaw_deploy/rock_agent_config.prebuilt.yaml",
+            "openclaw_config_path": "openclaw_deploy/openclaw.json",
             "num_sandboxes": 2,
         },
         benchmark_name="aime",
@@ -737,6 +807,56 @@ def test_non_strict_keeps_old_fallback_behavior(monkeypatch, tmp_path):
 
     config = ExperimentConfig(
         run_id="runner-nonstrict-shared-gateway",
+        agent_name="openclaw",
+        agent_version="2026.3.20",
+        agent_config={
+            "api_key": "sk-test",
+            "rock_image": "alphadiana/openclaw:latest",
+            "rock_agent_config_path": "openclaw_deploy/rock_agent_config.prebuilt.yaml",
+            "openclaw_config_path": "openclaw_deploy/openclaw.json",
+        },
+        benchmark_name="aime",
+        benchmark_config={},
+        scorer_name="numeric",
+        strict_isolation=False,
+        output_dir=str(tmp_path),
+    )
+
+    runner = Runner(config)
+    runner.setup()
+    try:
+        summary = runner.run()
+    finally:
+        runner.teardown()
+
+    assert summary.completed == 1
+
+
+def test_zeroclaw_non_strict_rejects_host_fallback_when_auto_sandbox_fails(monkeypatch, tmp_path):
+    class _FakeBenchmark:
+        def load_tasks(self, config):
+            return [BenchmarkTask(task_id="t1", problem="Q1", ground_truth="42")]
+
+    class _FakeAgent:
+        def setup(self, config) -> None:
+            self.config = dict(config)
+
+        def solve(self, task, sandbox=None):
+            return AgentResponse(answer="42", metadata={})
+
+        def teardown(self) -> None:
+            pass
+
+    class _BrokenRockSandbox:
+        def setup(self, config) -> None:
+            raise RuntimeError("rock bootstrap failed")
+
+    monkeypatch.setattr("alphadiana.runner.runner.BenchmarkRegistry.get", lambda name: _FakeBenchmark)
+    monkeypatch.setattr("alphadiana.runner.runner.AgentRegistry.get", lambda name: _FakeAgent)
+    monkeypatch.setattr("alphadiana.runner.runner.SandboxRegistry.get", lambda name: _BrokenRockSandbox)
+
+    config = ExperimentConfig(
+        run_id="runner-zeroclaw-no-host-fallback",
         agent_name="zeroclaw",
         agent_version="0.6.9",
         agent_config={
@@ -755,8 +875,7 @@ def test_non_strict_keeps_old_fallback_behavior(monkeypatch, tmp_path):
     runner = Runner(config)
     runner.setup()
     try:
-        summary = runner.run()
+        with pytest.raises(RuntimeError, match="ZeroClaw requires a ROCK sandbox"):
+            runner.run()
     finally:
         runner.teardown()
-
-    assert summary.completed == 1
