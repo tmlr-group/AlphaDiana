@@ -17,6 +17,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+from alphadiana.agent._entropy import _compute_entropy_stats
 from alphadiana.agent.base import Agent, AgentResponse
 from alphadiana.agent.registry import AgentRegistry
 from alphadiana.benchmark.base import BenchmarkTask
@@ -89,6 +90,8 @@ class DirectLLMAgent(Agent):
         self._system_prompt = config.get("system_prompt", _DEFAULT_SYSTEM_PROMPT)
         self._enable_thinking = config.get("enable_thinking", None)
         self._extra_body: dict[str, Any] | None = config.get("extra_body", None)
+        self._capture_logprobs = bool(config.get("capture_logprobs", False))
+        self._top_logprobs = int(config.get("top_logprobs", 20)) if self._capture_logprobs else 0
         try:
             self._client = self._build_client()
         except ImportError:
@@ -249,21 +252,26 @@ class DirectLLMAgent(Agent):
         if extra_body:
             request_kwargs["extra_body"] = extra_body
 
+        if self._capture_logprobs:
+            request_kwargs["logprobs"] = True
+            request_kwargs["top_logprobs"] = self._top_logprobs
+
         # Retry loop with exponential backoff for transient errors.
         last_exc: Exception | None = None
         raw_output = ""
         raw_reasoning = ""
         finish_reason = ""
         token_usage: dict = {}
+        logprob_records: list[dict] = []
 
         for attempt in range(self._max_retries + 1):
             try:
                 if self._stream:
-                    raw_output, finish_reason, token_usage, raw_reasoning = (
+                    raw_output, finish_reason, token_usage, raw_reasoning, logprob_records = (
                         self._call_streaming(request_kwargs)
                     )
                 else:
-                    raw_output, finish_reason, token_usage, raw_reasoning = (
+                    raw_output, finish_reason, token_usage, raw_reasoning, logprob_records = (
                         self._call_non_streaming(request_kwargs)
                     )
                 last_exc = None
@@ -284,6 +292,11 @@ class DirectLLMAgent(Agent):
             raise last_exc
 
         wall_time = time.time() - start
+        # Only compute entropy when capture was explicitly enabled; discard any
+        # records that leaked through (e.g. test stubs always returning logprobs).
+        if not self._capture_logprobs:
+            logprob_records = []
+        token_entropy_stats = _compute_entropy_stats(logprob_records)
 
         # Extract answer: try raw_output first, fall back to reasoning
         answer = _extract_answer(raw_output) if raw_output else ""
@@ -329,6 +342,8 @@ class DirectLLMAgent(Agent):
             raw_output=raw_output,
             token_usage=token_usage,
             wall_time_sec=wall_time,
+            token_entropy_stats=token_entropy_stats,
+            metadata={"logprob_records": logprob_records},
             system_prompt=self._system_prompt,
             request_messages=messages,
             finish_reason=finish_reason,
@@ -385,8 +400,8 @@ class DirectLLMAgent(Agent):
 
     _stream_options_supported: bool = True
 
-    def _call_streaming(self, request_kwargs: dict) -> tuple[str, str, dict, str]:
-        """Call the API in streaming mode, returning (raw_output, finish_reason, token_usage, raw_reasoning)."""
+    def _call_streaming(self, request_kwargs: dict) -> tuple[str, str, dict, str, list[dict]]:
+        """Call the API in streaming mode, returning (raw_output, finish_reason, token_usage, raw_reasoning, logprob_records)."""
         kwargs = {**request_kwargs, "stream": True}
         if self._stream_options_supported:
             kwargs["stream_options"] = {"include_usage": True}
@@ -410,6 +425,8 @@ class DirectLLMAgent(Agent):
         reasoning_parts: list[str] = []
         finish_reason = ""
         token_usage: dict = {}
+        logprob_records: list[dict] = []
+        token_index = 0
         for chunk in stream:
             if chunk.choices:
                 delta = chunk.choices[0].delta
@@ -422,6 +439,19 @@ class DirectLLMAgent(Agent):
                         reasoning_parts.append(rc)
                 if chunk.choices[0].finish_reason:
                     finish_reason = chunk.choices[0].finish_reason
+                chunk_logprobs = getattr(chunk.choices[0], "logprobs", None)
+                if chunk_logprobs is not None and getattr(chunk_logprobs, "content", None):
+                    for tlp in chunk_logprobs.content:
+                        logprob_records.append({
+                            "token_index": token_index,
+                            "token": tlp.token,
+                            "logprob": float(tlp.logprob),
+                            "top_logprobs": [
+                                {"token": t.token, "logprob": float(t.logprob)}
+                                for t in (tlp.top_logprobs or [])
+                            ],
+                        })
+                        token_index += 1
             if hasattr(chunk, "usage") and chunk.usage:
                 token_usage = {
                     "prompt_tokens": chunk.usage.prompt_tokens or 0,
@@ -438,10 +468,10 @@ class DirectLLMAgent(Agent):
             if tag_reasoning:
                 raw_reasoning = tag_reasoning
 
-        return raw_content, finish_reason, token_usage, raw_reasoning
+        return raw_content, finish_reason, token_usage, raw_reasoning, logprob_records
 
-    def _call_non_streaming(self, request_kwargs: dict) -> tuple[str, str, dict, str]:
-        """Call the API in non-streaming mode, returning (raw_output, finish_reason, token_usage, raw_reasoning)."""
+    def _call_non_streaming(self, request_kwargs: dict) -> tuple[str, str, dict, str, list[dict]]:
+        """Call the API in non-streaming mode, returning (raw_output, finish_reason, token_usage, raw_reasoning, logprob_records)."""
         response = self._client.chat.completions.create(**request_kwargs)
         choice = response.choices[0]
         raw_output = choice.message.content or ""
@@ -457,7 +487,20 @@ class DirectLLMAgent(Agent):
         # Handle <think> tags embedded in content (Qwen3/vLLM pattern)
         if not raw_reasoning and "<think>" in raw_output:
             raw_reasoning, raw_output = _split_think_tags(raw_output)
-        return raw_output, finish_reason, token_usage, raw_reasoning
+        logprob_records: list[dict] = []
+        choice_logprobs = getattr(choice, "logprobs", None)
+        if choice_logprobs is not None and getattr(choice_logprobs, "content", None):
+            for idx, tlp in enumerate(choice_logprobs.content):
+                logprob_records.append({
+                    "token_index": idx,
+                    "token": tlp.token,
+                    "logprob": float(tlp.logprob),
+                    "top_logprobs": [
+                        {"token": t.token, "logprob": float(t.logprob)}
+                        for t in (tlp.top_logprobs or [])
+                    ],
+                })
+        return raw_output, finish_reason, token_usage, raw_reasoning, logprob_records
 
     def teardown(self) -> None:
         pass
