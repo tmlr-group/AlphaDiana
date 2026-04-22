@@ -160,3 +160,24 @@ from checkpoint by default.
 Reviewer-facing rollout state lives in:
 
 - `context/full-rollout-local-vllm-20260419/README.md`
+
+## April 22 Local Qwen Smoke Update
+
+Fresh branch-local validation against the local endpoint
+`http://127.0.0.1:8011/v1` and served model `Qwen/Qwen3.5-27B` now exists in:
+
+- `context/full-rollout-local-vllm-20260419/local-qwen-normalized-trace-validation-20260422.md`
+
+Current practical takeaway from that note:
+
+- `direct_llm` wrote normal scored task JSONs plus the new
+  `artifact_manifest.files.normalized_trace` artifact on
+  `imo_answerbench`, `hle`, `gpqa_diamond`, and `mmmu_pro`
+- `opencode` now reaches the namespaced local model alias correctly and also
+  writes the normalized trace artifact on the same four benchmarks
+- on this local `32768`-context Qwen deployment, the current plain-benchmark
+  `opencode` path still over-requests output tokens and preserves
+  `ContextOverflowError` task records for `hle`, `gpqa_diamond`, and
+  `mmmu_pro`
+- `openclaw` / `zeroclaw` local-Qwen follow-up from this checkout is still
+  blocked by ROCK bring-up drift rather than by the plain benchmark configs
