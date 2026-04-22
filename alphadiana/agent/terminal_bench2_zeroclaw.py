@@ -264,6 +264,7 @@ class TerminalBench2ZeroClawAgent(TerminalBench2InContainerMixin, ZeroClawAgent)
                     "stderr": raw_stderr[:2000] if raw_stderr else "",
                     "test_output": test_output,
                     "verifier_status": verifier_result.status,
+                    "verifier_reward_observed": verifier_result.reward is not None,
                     "timed_out": returncode == -1,
                     "container_workdir": container_workdir,
                     **runtime_metadata,

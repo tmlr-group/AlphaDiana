@@ -209,6 +209,50 @@ def _parse_opencode_output(raw_output: str) -> tuple[str, list[dict[str, Any]], 
     return assistant_text, events, session_id
 
 
+def _classify_opencode_error(name: str, message: str) -> str:
+    """Map OpenCode-reported failures into result-store error buckets."""
+    blob = f"{name} {message}".lower()
+    provider_markers = (
+        "apierror",
+        "badrequest",
+        "authentication",
+        "rate limit",
+        "ratelimit",
+        "openai",
+        "litellm",
+        "provider",
+        "tool choice requires",
+    )
+    if any(marker in blob for marker in provider_markers):
+        return "provider_error"
+    return "agent_error"
+
+
+def _extract_opencode_error(events: list[dict[str, Any]]) -> dict[str, str] | None:
+    """Return the last OpenCode error event, if present."""
+    for event in reversed(events):
+        if str(event.get("type", "")).strip().lower() != "error":
+            continue
+        error_obj = event.get("error")
+        if not isinstance(error_obj, dict):
+            error_obj = {}
+        name = str(error_obj.get("name", "") or "").strip()
+        message = ""
+        data_obj = error_obj.get("data")
+        if isinstance(data_obj, dict):
+            message = str(data_obj.get("message", "") or "").strip()
+        if not message:
+            message = str(event.get("message", "") or "").strip()
+        if not message:
+            message = json.dumps(error_obj, ensure_ascii=False)
+        return {
+            "name": name,
+            "message": message,
+            "error_type": _classify_opencode_error(name, message),
+        }
+    return None
+
+
 def _read_opencode_session_trace(session_dir: Path, session_id: str) -> tuple[str, str]:
     """Read the most relevant saved OpenCode session trace."""
     if not session_dir.exists() or not session_dir.is_dir():
@@ -729,27 +773,47 @@ class OpenCodeAgent(Agent):
             },
         )
 
-        return AgentResponse(
-            answer=answer,
+        error_info = _extract_opencode_error(events)
+        response_metadata = {
+            "returncode": returncode,
+            "stderr": stderr[:2000] if stderr else "",
+            "num_events": len(events),
+            "session_id": session_id,
+            "num_attachments": len(attachment_paths),
+            "controller_mode": self._controller_mode,
+            "transport": transport,
+        }
+        if error_info:
+            response_metadata.update({
+                "opencode_error_name": error_info["name"],
+                "opencode_error_message": error_info["message"],
+            })
+            response_json = {
+                **response_json,
+                "opencode_error_name": error_info["name"],
+                "opencode_error_message": error_info["message"],
+            }
+
+        response = AgentResponse(
+            answer=None if error_info else answer,
             trajectory=trajectory,
             reasoning_trajectory=reasoning_trajectory,
             raw_output=full_content,
             wall_time_sec=wall_time,
-            metadata={
-                "returncode": returncode,
-                "stderr": stderr[:2000] if stderr else "",
-                "num_events": len(events),
-                "session_id": session_id,
-                "num_attachments": len(attachment_paths),
-                "controller_mode": self._controller_mode,
-                "transport": transport,
-            },
+            metadata=response_metadata,
             request_messages=request_messages,
             response_json=response_json,
             artifact_manifest=artifact_manifest,
             workspace_file_contents=workspace_file_contents,
             system_prompt=str(self._system_prompt),
         )
+        if error_info:
+            exc = RuntimeError(error_info["message"])
+            setattr(exc, "partial_response", response)
+            setattr(exc, "error_type", error_info["error_type"])
+            setattr(exc, "response_body", full_content)
+            raise exc
+        return response
 
     def teardown(self) -> None:
         pass

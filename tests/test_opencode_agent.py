@@ -180,6 +180,53 @@ def test_solve_preserves_opencode_event_stream_as_trajectory():
     assert result.workspace_file_contents["opencode_output.jsonl"]
 
 
+def test_solve_raises_provider_error_when_opencode_emits_error_event():
+    agent = OpenCodeAgent()
+    agent.setup({
+        "model_name": "qwen3vl",
+        "api_base": "https://example.test/v1",
+        "api_key": "test-key",
+        "timeout": 5,
+    })
+
+    process = MagicMock()
+    process.communicate.return_value = (
+        json.dumps({
+            "type": "error",
+            "sessionID": "session-error",
+            "error": {
+                "name": "APIError",
+                "data": {
+                    "message": (
+                        'litellm.BadRequestError: OpenAIException - "auto" tool choice requires '
+                        "--enable-auto-tool-choice"
+                    )
+                },
+            },
+        }) + "\n",
+        "",
+    )
+    process.returncode = 0
+
+    task = BenchmarkTask(
+        task_id="hle_error",
+        problem="Which option is correct?",
+        ground_truth="A",
+    )
+
+    with patch("subprocess.Popen", return_value=process):
+        with pytest.raises(RuntimeError) as excinfo:
+            agent.solve(task)
+
+    assert getattr(excinfo.value, "error_type", "") == "provider_error"
+    partial = getattr(excinfo.value, "partial_response", None)
+    assert partial is not None
+    assert partial.answer is None
+    assert partial.metadata["opencode_error_name"] == "APIError"
+    assert "tool choice requires" in partial.metadata["opencode_error_message"]
+    assert "tool choice requires" in partial.response_json["opencode_error_message"]
+
+
 def test_solve_preserves_opencode_session_trace_when_present():
     agent = OpenCodeAgent()
     agent.setup({

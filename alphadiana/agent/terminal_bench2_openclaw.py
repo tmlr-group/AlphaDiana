@@ -583,6 +583,7 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
                     "trajectory_error": trajectory_error,
                     "test_output": test_output,
                     "verifier_status": verifier_result.status,
+                    "verifier_reward_observed": verifier_result.reward is not None,
                     "context_window": context_preflight.get("resolved_context_window"),
                     "context_window_source": context_preflight.get("source", ""),
                     "context_window_required": context_preflight.get(

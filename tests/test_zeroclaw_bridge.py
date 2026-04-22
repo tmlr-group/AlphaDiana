@@ -16,6 +16,7 @@ def _load_bridge_module(monkeypatch, **env):
         "ZEROCLAW_TEMPERATURE",
         "ZEROCLAW_PROVIDER_TIMEOUT_SECS",
         "ZEROCLAW_PROVIDER_MAX_TOKENS",
+        "ZEROCLAW_DISABLE_TOOLS",
         "ZEROCLAW_REASONING_ENABLED",
         "ZEROCLAW_REASONING_EFFORT",
         "ZEROCLAW_ARTIFACT_ROOT",
@@ -68,6 +69,7 @@ def test_zeroclaw_runtime_manager_exports_request_controls_for_bridge():
         "api_base": "https://example.test/v1",
         "api_key": "sk-test",
         "provider_max_tokens": 32768,
+        "disable_tools": True,
         "reasoning_enabled": True,
         "reasoning_effort": "high",
     })
@@ -75,8 +77,36 @@ def test_zeroclaw_runtime_manager_exports_request_controls_for_bridge():
     env = manager._runtime_env()
 
     assert env["ZEROCLAW_PROVIDER_MAX_TOKENS"] == "32768"
+    assert env["ZEROCLAW_DISABLE_TOOLS"] == "true"
     assert env["ZEROCLAW_REASONING_ENABLED"] == "true"
     assert env["ZEROCLAW_REASONING_EFFORT"] == "high"
+
+
+def test_zeroclaw_runtime_manager_reuses_alive_gateway(monkeypatch):
+    manager = ZeroClawRuntimeManager({
+        "model": "demo-model",
+        "api_base": "https://example.test/v1",
+        "api_key": "sk-test",
+    })
+
+    class _Sandbox:
+        sandbox_id = "sandbox-123"
+
+        def proxy_v1_base(self) -> str:
+            return "http://proxy.test/apis/envs/sandbox/v1/sandboxes/sandbox-123/proxy/v1"
+
+        def upload(self, *_args, **_kwargs):
+            raise AssertionError("upload should not be called when reusing a live gateway")
+
+        def execute(self, *_args, **_kwargs):
+            raise AssertionError("execute should not be called when reusing a live gateway")
+
+    monkeypatch.setattr(manager, "_probe_gateway_alive", lambda sandbox: True)
+
+    info = manager.ensure_ready(_Sandbox())
+
+    assert info["sandbox_id"] == "sandbox-123"
+    assert info["gateway_url"].endswith("/chat/completions")
 
 
 def test_zeroclaw_bridge_config_toml_uses_env_default_temperature(monkeypatch):
@@ -155,6 +185,65 @@ def test_zeroclaw_bridge_post_forwards_request_temperature(monkeypatch):
     assert seen["prompt"] == "What is 6*7?"
     assert seen["temperature"] == 0.25
     assert seen["attachments"][0]["path"] == "attachments/image_1.png"
+    assert captured["status"] == 200
+
+
+def test_zeroclaw_bridge_disable_tools_uses_provider_path(monkeypatch):
+    module = _load_bridge_module(
+        monkeypatch,
+        ZEROCLAW_GATEWAY_TOKEN="ZEROCLAW",
+        ZEROCLAW_DISABLE_TOOLS="true",
+        OPENAI_MODEL_NAME="demo-model",
+        OPENAI_BASE_URL="https://example.test/v1",
+        OPENAI_API_KEY="sk-test",
+    )
+
+    seen: dict[str, object] = {}
+
+    def fake_run_provider(messages, *, temperature: float | None = None, attachments=None) -> str:
+        seen["messages"] = messages
+        seen["temperature"] = temperature
+        seen["attachments"] = attachments
+        return "analysis\n\n$$\\boxed{A}$$"
+
+    monkeypatch.setattr(module, "_run_provider_chat_without_tools", fake_run_provider)
+
+    body = json.dumps({
+        "model": "demo-model",
+        "disable_tools": True,
+        "messages": [{"role": "user", "content": "Read the image."}],
+        "temperature": 0.4,
+        "attachments": [
+            {
+                "key": "image_1",
+                "filename": "image_1.png",
+                "path": "attachments/image_1.png",
+                "mime": "image/png",
+                "data_base64": "ZmFrZS1wbmc=",
+            }
+        ],
+    }).encode("utf-8")
+
+    handler = object.__new__(module.Handler)
+    handler.headers = {
+        "Authorization": "bearer ZEROCLAW",
+        "Content-Length": str(len(body)),
+    }
+    handler.path = "/v1/chat/completions"
+    handler.rfile = io.BytesIO(body)
+    captured: dict[str, object] = {}
+
+    def fake_write_json(status: int, payload: dict[str, object]) -> None:
+        captured["status"] = status
+        captured["payload"] = payload
+
+    handler._write_json = fake_write_json  # type: ignore[attr-defined]
+
+    module.Handler.do_POST(handler)
+
+    assert seen["messages"][0]["content"] == "Read the image."
+    assert seen["temperature"] == 0.4
+    assert seen["attachments"][0]["mime"] == "image/png"
     assert captured["status"] == 200
 
 
@@ -272,3 +361,15 @@ def test_readme_zeroclaw_autodeploy_mentions_sourcing_rock_env():
 
     assert "bash scripts/start_zeroclaw.sh" in readme
     assert "source scripts/rock_env.sh" in readme
+
+
+def test_zeroclaw_bridge_server_allows_fast_rebind(monkeypatch):
+    module = _load_bridge_module(
+        monkeypatch,
+        OPENAI_MODEL_NAME="demo-model",
+        OPENAI_BASE_URL="https://example.test/v1",
+        OPENAI_API_KEY="sk-test",
+    )
+
+    assert module.ReusableThreadingHTTPServer.allow_reuse_address is True
+    assert module.ReusableThreadingHTTPServer.daemon_threads is True

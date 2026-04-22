@@ -148,6 +148,8 @@ class HLEBenchmark(Benchmark):
 
             attachments: dict[str, bytes] = {}
             img = item.get("image")
+            if isinstance(img, str):
+                img = img.strip() or None
             if img is not None:
                 if isinstance(img, str) and img.startswith("data:image") and "," in img:
                     header, b64data = img.split(",", 1)

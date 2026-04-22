@@ -116,3 +116,25 @@ def test_hle_benchmark_extracts_image_attachments_from_data_urls(monkeypatch) ->
     assert len(tasks) == 1
     assert tasks[0].attachments["image_1"] == payload
     assert tasks[0].attachments["image_1_mime"] == b"image/png"
+
+
+def test_hle_benchmark_ignores_empty_string_image(monkeypatch) -> None:
+    rows = [
+        {
+            "question": "Q0",
+            "answer": "A",
+            "answer_type": "multipleChoice",
+            "subject": "math",
+            "image": "",
+        },
+    ]
+
+    monkeypatch.setattr("alphadiana.benchmark.hle.load_dataset_with_retry", lambda *args, **kwargs: rows)
+    tasks = HLEBenchmark().load_tasks({
+        "dataset": "cais/hle",
+        "answer_types": ["multipleChoice"],
+        "max_tasks": 1,
+    })
+
+    assert len(tasks) == 1
+    assert tasks[0].attachments == {}

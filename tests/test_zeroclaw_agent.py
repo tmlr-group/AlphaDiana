@@ -289,6 +289,117 @@ def test_zeroclaw_local_solve_strips_runtime_logs_from_top_level_output(monkeypa
     assert response.metadata["raw_output_sanitized"] is True
 
 
+def test_zeroclaw_disable_tools_uses_direct_provider_with_inline_images(monkeypatch):
+    task = BenchmarkTask(
+        task_id="hle_no_tools",
+        problem="Use the image to answer.",
+        ground_truth="A",
+        attachments={
+            "image_1": b"fake-png",
+            "image_1_mime": b"image/png",
+        },
+    )
+
+    agent = ZeroClawAgent()
+    agent.setup({
+        "model": "qwen3vl",
+        "api_base": "https://example.test/v1",
+        "api_key": "sk-test",
+        "disable_tools": True,
+        "system_prompt": "Solve carefully.",
+    })
+
+    monkeypatch.setattr(
+        ZeroClawAgent,
+        "_ensure_local_binary",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("CLI path should not run")),
+    )
+
+    seen: dict[str, object] = {}
+
+    def fake_post(url, headers, json, timeout, trust_env):
+        seen["url"] = url
+        seen["payload"] = json
+        return SimpleNamespace(
+            status_code=200,
+            json=lambda: {
+                "choices": [{"message": {"content": "analysis\n\n$$\\boxed{A}$$"}}],
+            },
+            text="",
+        )
+
+    monkeypatch.setattr("httpx.post", fake_post)
+
+    response = agent.solve(task)
+
+    user_content = seen["payload"]["messages"][1]["content"]
+    assert seen["url"] == "https://example.test/v1/chat/completions"
+    assert user_content[0]["type"] == "text"
+    assert user_content[1]["type"] == "image_url"
+    assert response.answer == "A"
+    assert response.metadata["gateway_mode"] == "no-tools-direct"
+
+
+def test_zeroclaw_no_tools_transport_error_preserves_failure_evidence(monkeypatch):
+    import httpx
+
+    task = BenchmarkTask(task_id="hle_no_tools_error", problem="Use the image to answer.", ground_truth="A")
+
+    agent = ZeroClawAgent()
+    agent.setup({
+        "model": "qwen3vl",
+        "api_base": "https://example.test/v1",
+        "api_key": "sk-test",
+        "disable_tools": True,
+    })
+
+    def fake_post(url, headers, json, timeout, trust_env):
+        raise httpx.ConnectError("provider unavailable", request=httpx.Request("POST", url))
+
+    monkeypatch.setattr("httpx.post", fake_post)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        agent.solve(task)
+
+    partial = getattr(excinfo.value, "partial_response", None)
+    assert partial is not None
+    assert getattr(excinfo.value, "error_type", "") == "provider_error"
+    assert partial.metadata["gateway_mode"] == "no-tools-direct"
+    assert partial.metadata["failure_reason"] == "provider_error"
+    assert partial.response_json["transport_error"] == "provider unavailable"
+
+
+def test_zeroclaw_no_tools_empty_response_preserves_failure_evidence(monkeypatch):
+    task = BenchmarkTask(task_id="hle_no_tools_empty", problem="Use the image to answer.", ground_truth="A")
+
+    agent = ZeroClawAgent()
+    agent.setup({
+        "model": "qwen3vl",
+        "api_base": "https://example.test/v1",
+        "api_key": "sk-test",
+        "disable_tools": True,
+    })
+
+    def fake_post(url, headers, json, timeout, trust_env):
+        return SimpleNamespace(
+            status_code=200,
+            json=lambda: {"choices": [{"message": {"content": ""}}]},
+            text='{"choices":[{"message":{"content":""}}]}',
+        )
+
+    monkeypatch.setattr("httpx.post", fake_post)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        agent.solve(task)
+
+    partial = getattr(excinfo.value, "partial_response", None)
+    assert partial is not None
+    assert getattr(excinfo.value, "error_type", "") == "empty_response"
+    assert partial.metadata["gateway_mode"] == "no-tools-direct"
+    assert partial.metadata["failure_reason"] == "empty_response"
+    assert partial.response_json["provider_status_code"] == 200
+
+
 def test_build_cli_response_promotes_runtime_trace_into_native_fields():
     agent = ZeroClawAgent()
     agent.setup({
@@ -565,6 +676,65 @@ def test_zeroclaw_gateway_mode_serializes_attachments(monkeypatch):
     assert response.answer == "A"
 
 
+def test_zeroclaw_gateway_disable_tools_falls_back_to_provider_without_cli(monkeypatch):
+    task = BenchmarkTask(task_id="hle_gateway_no_tools", problem="Read the image.", ground_truth="A")
+    sandbox = _FakeProxySandbox()
+
+    agent = ZeroClawAgent()
+    agent.setup({
+        "model": "qwen3vl",
+        "api_base": "https://example.test/v1",
+        "api_key": "sk-test",
+        "disable_tools": True,
+        "use_gateway_in_sandbox": True,
+        "gateway_token": "ZEROCLAW",
+    })
+
+    class _FakeRuntimeManager:
+        is_configured = True
+
+        def ensure_ready(self, sandbox):
+            return {
+                "api_base": sandbox.proxy_v1_base(),
+                "gateway_url": f"{sandbox.proxy_v1_base()}/chat/completions",
+                "sandbox_id": sandbox.sandbox_id,
+            }
+
+        def collect_artifacts(self, sandbox):
+            return {
+                "artifact_manifest": {"files": {"bridge_log_source": "/tmp/zeroclaw-gateway.log"}},
+                "gateway_log_excerpt": "bridge failed",
+                "workspace_snapshot_paths": [],
+                "workspace_file_contents": {},
+                "sandbox_metadata": sandbox.metadata(),
+            }
+
+    agent._runtime_manager = _FakeRuntimeManager()
+
+    def fake_post(url, headers, json, timeout, trust_env):
+        if url.startswith("http://proxy.test/"):
+            return SimpleNamespace(
+                status_code=500,
+                json=lambda: {"error": {"message": "bridge failed"}},
+                text='{"error":{"message":"bridge failed"}}',
+            )
+        return SimpleNamespace(
+            status_code=200,
+            json=lambda: {
+                "choices": [{"message": {"content": "analysis\n\n$$\\boxed{A}$$"}}],
+            },
+            text="",
+        )
+
+    monkeypatch.setattr("httpx.post", fake_post)
+
+    response = agent.solve(task, sandbox=sandbox)
+
+    assert response.answer == "A"
+    assert response.metadata["gateway_mode"] == "rock-proxy-fallback-no-tools"
+    assert sandbox.long_running_commands == []
+
+
 def test_zeroclaw_gateway_mode_falls_back_to_direct_sandbox(monkeypatch):
     task = BenchmarkTask(task_id="aime_5", problem="What is 6*7?", ground_truth="42")
     sandbox = _FakeProxySandbox()
@@ -613,6 +783,45 @@ def test_zeroclaw_gateway_mode_falls_back_to_direct_sandbox(monkeypatch):
     assert response.answer == "42"
     assert response.metadata["gateway_mode"] == "rock-proxy-fallback-to-cli"
     assert "http proxy failed" in response.metadata["gateway_fallback_reason"]
+    assert sandbox.long_running_commands
+
+
+def test_zeroclaw_gateway_bootstrap_failure_falls_back_to_direct_sandbox(monkeypatch):
+    task = BenchmarkTask(task_id="aime_5_bootstrap", problem="What is 6*7?", ground_truth="42")
+    sandbox = _FakeProxySandbox()
+
+    agent = ZeroClawAgent()
+    agent.setup({
+        "model": "demo-model",
+        "api_base": "https://example.test/v1",
+        "api_key": "sk-test",
+        "use_gateway_in_sandbox": True,
+        "gateway_token": "ZEROCLAW",
+    })
+
+    class _FakeRuntimeManager:
+        is_configured = True
+
+        def ensure_ready(self, sandbox):
+            raise RuntimeError("warmup status=200 body={'status': 'Failed', 'message': 'http proxy failed'}")
+
+        def collect_artifacts(self, sandbox):
+            return {
+                "artifact_manifest": {"files": {"bridge_log_source": "/tmp/zeroclaw-gateway.log"}},
+                "gateway_log_excerpt": "bridge startup failed",
+                "workspace_snapshot_paths": [],
+                "workspace_file_contents": {},
+                "sandbox_metadata": sandbox.metadata(),
+            }
+
+    agent._runtime_manager = _FakeRuntimeManager()
+
+    response = agent.solve(task, sandbox=sandbox)
+
+    assert response.answer == "42"
+    assert response.metadata["gateway_mode"] == "rock-proxy-bootstrap-fallback-to-cli"
+    assert "http proxy failed" in response.metadata["gateway_fallback_reason"]
+    assert response.gateway_log_excerpt == "bridge startup failed"
     assert sandbox.long_running_commands
 
 
@@ -793,6 +1002,38 @@ def test_zeroclaw_gateway_pool_mode_round_robins_without_live_sandbox(monkeypatc
         "http://proxy.test/apis/envs/sandbox/v1/sandboxes/sandbox-a/proxy/v1/chat/completions",
         "http://proxy.test/apis/envs/sandbox/v1/sandboxes/sandbox-b/proxy/v1/chat/completions",
     ]
+
+
+def test_zeroclaw_gateway_empty_response_preserves_partial_failure(monkeypatch):
+    task = BenchmarkTask(task_id="aime_gateway_empty", problem="What is 6*7?", ground_truth="42")
+
+    agent = ZeroClawAgent()
+    agent.setup({
+        "model": "demo-model",
+        "api_base": "https://example.test/v1",
+        "api_key": "sk-test",
+        "gateway_api_base": "http://proxy.test/apis/envs/sandbox/v1/sandboxes/sandbox-a/proxy/v1",
+        "sandbox_id": "sandbox-a",
+    })
+
+    def fake_post(url, headers, json, timeout, trust_env):
+        return SimpleNamespace(
+            status_code=200,
+            json=lambda: {"choices": [{"message": {"content": ""}}]},
+            text='{"choices":[{"message":{"content":""}}]}',
+        )
+
+    monkeypatch.setattr("httpx.post", fake_post)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        agent.solve(task)
+
+    partial = getattr(excinfo.value, "partial_response", None)
+    assert partial is not None
+    assert getattr(excinfo.value, "error_type", "") == "empty_response"
+    assert partial.metadata["gateway_mode"] == "gateway-pool"
+    assert partial.metadata["failure_reason"] == "empty_response"
+    assert partial.response_json["gateway_status_code"] == 200
 
 
 def test_zeroclaw_local_timeout_raises_with_partial_response(monkeypatch):

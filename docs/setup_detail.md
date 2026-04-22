@@ -40,6 +40,7 @@ Current helper behavior:
 - `scripts/start_openclaw.sh` and `scripts/start_zeroclaw.sh` can reuse `ALPHADIANA_ROCK_ROOT` instead of requiring a local `ref/ROCK`.
 - Both start scripts refresh ports when the configured admin/proxy belong to another checkout.
 - `scripts/start_zeroclaw.sh` now restarts an unhealthy local Ray head instead of blindly reusing any listener on the GCS port.
+- If `ray start --head` fails with `Session name ... does not match persisted value ... Perhaps there was an error connecting to Redis`, the checkout-isolated Redis still has stale Ray session metadata. Recreate that checkout's `ROCK_REDIS_CONTAINER` and clear that checkout's `RAY_TMPDIR` before retrying the Ray startup.
 
 ## ROCK Proxy Timeout Configuration
 
@@ -72,6 +73,7 @@ Common issues at a glance:
 | `alphadiana env` shows healthy proxy but wrong checkout | Another worktree owns the configured admin/proxy ports | Regenerate `scripts/.rock_ports.env` and restart from `source scripts/activate.sh` |
 | `alphadiana run` fails with `ROCK proxy failed` after about 120s | Old ROCK proxy path still has a hardcoded stream timeout, or the checkout is sharing stale ports/env with another instance | Use a dedicated env, dedicated ports, and ensure the current `ref/ROCK` patch is active |
 | `alphadiana env` loses `admin` while `6380` is still open | A stale Ray head is still listening on the GCS port but is not actually healthy | Re-run `bash scripts/start_zeroclaw.sh` or `bash scripts/start_openclaw.sh` so the unhealthy Ray head is restarted |
+| `ray start --head` aborts with `Session name ... does not match persisted value ...` | The checkout's isolated Redis still contains stale Ray session metadata | Recreate `"$ROCK_REDIS_CONTAINER"` and clear `"$RAY_TMPDIR"` before retrying Ray startup |
 | Sandbox container exits immediately | `ref/ROCK/.venv` missing or invalid | `ln -sfn "$(python -c 'import sys; print(sys.prefix)')" ref/ROCK/.venv` |
 
 

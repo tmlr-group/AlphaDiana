@@ -54,6 +54,14 @@ def infer_score_status(record: dict[str, Any]) -> str:
         return "provider_error"
     if zeroclaw_classification in {"runtime_error"}:
         return "runtime_error"
+    if benchmark_name == "terminal_bench2" and verifier_status == "skipped_duplicate":
+        if (
+            metadata.get("verifier_reward_observed") is True
+            and record.get("score") is not None
+            and record.get("correct") is not None
+        ):
+            return VALID_SCORE_STATUS
+        return "verifier_error"
     if verifier_status and verifier_status != "ok":
         return "verifier_error"
     if benchmark_name == "terminal_bench2" and verifier_status != "ok":

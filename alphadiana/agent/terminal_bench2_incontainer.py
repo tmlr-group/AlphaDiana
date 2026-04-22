@@ -68,9 +68,8 @@ class TerminalBench2InContainerMixin(TerminalBench2ContainerMixin):
         runtime_source_image: str,
         temp_prefix: str,
     ) -> tuple[TerminalBench2RuntimeContext, dict[str, Any]]:
-        base_image = self._resolve_docker_image(task)
         runtime_image, runtime_metadata = self._prepare_runtime_image(
-            base_image,
+            task,
             agent_type=agent_type,
             runtime_source_image=runtime_source_image,
         )
@@ -91,21 +90,27 @@ class TerminalBench2InContainerMixin(TerminalBench2ContainerMixin):
 
     def _prepare_runtime_image(
         self,
-        base_image: str,
+        task: BenchmarkTask,
         *,
         agent_type: str,
         runtime_source_image: str,
     ) -> tuple[str, dict[str, Any]]:
+        base_image = self._resolve_docker_image(task)
         dockerfile = self._build_runtime_overlay_dockerfile(agent_type)
         fingerprint = hashlib.sha256(
             "\n".join([agent_type, base_image, runtime_source_image, dockerfile]).encode("utf-8")
         ).hexdigest()[:16]
         runtime_image = f"{_RUNTIME_IMAGE_REPO}:{agent_type}-{fingerprint}"
         runtime_image_built = False
+        base_image_built_locally = False
 
         if not self._docker_image_exists(runtime_image):
             if not self._docker_image_exists(base_image):
-                self._docker_pull(base_image)
+                if self._is_local_task_image(base_image):
+                    self._docker_build_local_task_image(task, base_image)
+                    base_image_built_locally = True
+                else:
+                    self._docker_pull(base_image)
             if not self._docker_image_exists(runtime_source_image):
                 self._docker_pull(runtime_source_image)
             self._docker_build_image(
@@ -124,6 +129,7 @@ class TerminalBench2InContainerMixin(TerminalBench2ContainerMixin):
             "runtime_source_image": runtime_source_image,
             "runtime_injected": True,
             "runtime_image_built": runtime_image_built,
+            "base_image_built_locally": base_image_built_locally,
         }
 
     @staticmethod
@@ -164,6 +170,35 @@ USER root
 COPY --from=runtime /usr/local/bin/zeroclaw /usr/local/bin/zeroclaw
 """.strip()
         raise RuntimeError(f"Unsupported TB2 runtime overlay agent_type: {agent_type!r}")
+
+    @staticmethod
+    def _is_local_task_image(image: str) -> bool:
+        return str(image or "").strip().endswith(":local")
+
+    def _docker_build_local_task_image(self, task: BenchmarkTask, image: str) -> None:
+        task_dir = Path(str(task.metadata.get("task_dir", "") or "").strip())
+        if not task_dir:
+            raise RuntimeError(
+                f"Task {task.task_id} declares local image {image} but is missing task_dir metadata"
+            )
+
+        env_dir = task_dir / "environment"
+        dockerfile_path = env_dir / "Dockerfile"
+        if not dockerfile_path.exists():
+            raise RuntimeError(
+                f"Task {task.task_id} declares local image {image} but {dockerfile_path} is missing"
+            )
+
+        build_timeout_sec = int(float(task.metadata.get("build_timeout_sec", 600.0) or 600.0))
+        result = subprocess.run(
+            ["docker", "build", "--tag", image, "-f", str(dockerfile_path), str(env_dir)],
+            capture_output=True,
+            text=True,
+            timeout=build_timeout_sec,
+        )
+        if result.returncode != 0:
+            detail = result.stderr.strip() or result.stdout.strip()
+            raise RuntimeError(f"docker build failed for local task image {image}: {detail}")
 
     @staticmethod
     def _docker_image_exists(image: str) -> bool:

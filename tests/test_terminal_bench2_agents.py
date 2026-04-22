@@ -161,6 +161,69 @@ def test_terminal_bench2_incontainer_zeroclaw_overlay_uses_direct_binary_copy() 
     assert "ld-linux-x86-64.so.2" not in dockerfile
 
 
+def test_terminal_bench2_incontainer_builds_local_task_images_from_environment_dir(
+    tmp_path: Path,
+) -> None:
+    harness = _InContainerHarness()
+    task_dir = tmp_path / "adaptive-rejection-sampler"
+    env_dir = task_dir / "environment"
+    env_dir.mkdir(parents=True, exist_ok=True)
+    dockerfile_path = env_dir / "Dockerfile"
+    dockerfile_path.write_text("FROM ubuntu:24.04\n", encoding="utf-8")
+    task = BenchmarkTask(
+        task_id="tb2_adaptive-rejection-sampler",
+        problem="demo",
+        ground_truth="1",
+        metadata={
+            "docker_image": "adaptive-rejection-sampler-r-min:local",
+            "task_dir": str(task_dir),
+            "build_timeout_sec": 321.0,
+        },
+    )
+
+    pulled_images: list[str] = []
+    local_builds: list[tuple[str, str, str]] = []
+    overlay_builds: list[tuple[str, dict[str, str]]] = []
+
+    def _fake_exists(image: str) -> bool:
+        return image == "tmlrgroup/alphadiana:opencode"
+
+    def _fake_local_build(build_task: BenchmarkTask, image: str) -> None:
+        assert build_task is task
+        local_builds.append((image, str(dockerfile_path), str(env_dir)))
+
+    def _fake_overlay_build(image: str, dockerfile: str, *, build_args: dict[str, str]) -> None:
+        overlay_builds.append((image, build_args))
+
+    with patch.object(harness, "_docker_image_exists", side_effect=_fake_exists), patch.object(
+        harness,
+        "_docker_pull",
+        side_effect=pulled_images.append,
+    ), patch.object(
+        harness,
+        "_docker_build_local_task_image",
+        side_effect=_fake_local_build,
+    ), patch.object(
+        harness,
+        "_docker_build_image",
+        side_effect=_fake_overlay_build,
+    ):
+        runtime_image, metadata = harness._prepare_runtime_image(
+            task,
+            agent_type="opencode",
+            runtime_source_image="tmlrgroup/alphadiana:opencode",
+        )
+
+    assert runtime_image.startswith("alphadiana-tb2-runtime:opencode-")
+    assert local_builds == [
+        ("adaptive-rejection-sampler-r-min:local", str(dockerfile_path), str(env_dir))
+    ]
+    assert pulled_images == []
+    assert overlay_builds
+    assert overlay_builds[0][1]["BASE_IMAGE"] == "adaptive-rejection-sampler-r-min:local"
+    assert metadata["base_image_built_locally"] is True
+
+
 def test_terminal_bench2_openclaw_validation_requires_api_base() -> None:
     config = ExperimentConfig(
         run_id="tb2-openclaw",
@@ -908,6 +971,39 @@ def test_terminal_bench2_verifier_waits_for_existing_run_to_finish(tmp_path: Pat
     mock_run.assert_not_called()
 
 
+def test_terminal_bench2_verifier_skipped_duplicate_keeps_reward_missing(tmp_path: Path) -> None:
+    harness = _MixinHarness()
+    task = BenchmarkTask(task_id="tb2_demo", problem="demo", ground_truth="1")
+    tempdir = tempfile.TemporaryDirectory(prefix="tb2-test-")
+    runtime = TerminalBench2RuntimeContext(
+        task=task,
+        docker_image="demo:latest",
+        container_id="demo-container",
+        logs_dir=tmp_path,
+        workdir=Path(tempdir.name),
+        helper_paths={},
+        _tempdir=tempdir,
+    )
+
+    try:
+        with patch.object(harness, "_probe_running_verifier", return_value=(True, "ok")), patch.object(
+            harness,
+            "_wait_for_existing_verifier",
+            return_value=(
+                "[skipped duplicate verifier run after waiting 5s for an existing verifier]",
+                None,
+                "skipped_duplicate",
+            ),
+        ), patch.object(harness, "_run_tests") as mock_run:
+            verifier_result = harness._run_verifier_and_read_reward(runtime, timeout_sec=5)
+    finally:
+        runtime.cleanup()
+
+    assert verifier_result.status == "skipped_duplicate"
+    assert verifier_result.reward is None
+    mock_run.assert_not_called()
+
+
 def test_terminal_bench2_missing_reward_is_verifier_error_not_valid_scored() -> None:
     record = {
         "task_id": "tb2_demo",
@@ -940,6 +1036,42 @@ def test_terminal_bench2_reward_zero_with_verifier_ok_is_valid_scored() -> None:
 
     assert infer_score_status(record) == "valid_scored"
     assert is_valid_completed_record(record, scorer_name="terminal_bench2") is True
+
+
+def test_terminal_bench2_skipped_duplicate_with_observed_reward_is_valid_scored() -> None:
+    record = {
+        "task_id": "tb2_demo",
+        "benchmark_name": "terminal_bench2",
+        "scorer_name": "terminal_bench2",
+        "score": 0.0,
+        "correct": False,
+        "metadata": {
+            "verifier_status": "skipped_duplicate",
+            "verifier_reward_observed": True,
+            "reward": "0",
+        },
+    }
+
+    assert infer_score_status(record) == "valid_scored"
+    assert is_valid_completed_record(record, scorer_name="terminal_bench2") is True
+
+
+def test_terminal_bench2_skipped_duplicate_without_reward_is_verifier_error() -> None:
+    record = {
+        "task_id": "tb2_demo",
+        "benchmark_name": "terminal_bench2",
+        "scorer_name": "terminal_bench2",
+        "score": 0.0,
+        "correct": False,
+        "metadata": {
+            "verifier_status": "skipped_duplicate",
+            "verifier_reward_observed": False,
+            "reward": None,
+        },
+    }
+
+    assert infer_score_status(record) == "verifier_error"
+    assert is_valid_completed_record(record, scorer_name="terminal_bench2") is False
 
 
 def test_terminal_bench2_trajectory_error_does_not_invalidate_verifier_ok_result() -> None:

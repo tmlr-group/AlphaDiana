@@ -115,6 +115,7 @@ class TerminalBench2Benchmark(Benchmark):
                     "tests_dir": str(task_dir),
                     "category": category,
                     "difficulty": difficulty,
+                    "build_timeout_sec": float(env_section.get("build_timeout_sec", 600.0)),
                     "timeout_sec": float(
                         agent_section.get("timeout_sec",
                         verifier_section.get("timeout_sec", 900.0))

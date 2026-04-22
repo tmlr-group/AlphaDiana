@@ -293,6 +293,17 @@ class TestTopPSupport:
         )
         assert payload.get("top_p") == 0.9
 
+    def test_openclaw_payload_supports_stream_override(self):
+        """OpenClaw._build_request_payload() should honor stream=false overrides."""
+        from alphadiana.agent.openclaw import OpenClawAgent
+
+        agent = OpenClawAgent()
+        agent.setup({"api_base": "http://localhost/v1", "stream": False})
+        payload = agent._build_request_payload(
+            [{"role": "user", "content": "hi"}]
+        )
+        assert payload.get("stream") is False
+
     def test_openclaw_multimodal_request_includes_hle_images(self):
         """OpenClaw should forward task image attachments as multimodal user content."""
         from alphadiana.agent.openclaw import OpenClawAgent
