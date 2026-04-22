@@ -30,6 +30,30 @@ serving `Qwen/Qwen3.5-27B` at `http://127.0.0.1:8011/v1` with
 
 ## Step 1 — Smoke Run (1 task, ~2 min)
 
+For the direct vLLM GPQA script that stores trajectory/artifacts plus top-20
+Int16 logprob probabilities, run:
+
+```bash
+python scripts/phase9_gpqa_top20_int16_entropy.py \
+  --api-base http://127.0.0.1:8011/v1 \
+  --api-key EMPTY \
+  --model Qwen/Qwen3.5-27B \
+  --run-id phase9_gpqa_direct_vllm_top20_int16_smoke \
+  --max-tasks 1
+```
+
+Expected artifacts:
+
+- `results/phase9_gpqa_direct_vllm_top20_int16_smoke/tasks/gpqa_0.json`
+- `results/phase9_gpqa_direct_vllm_top20_int16_smoke/trajectories/gpqa_0.json`
+- `results/phase9_gpqa_direct_vllm_top20_int16_smoke/artifacts/gpqa_0/response.json`
+- `results/phase9_gpqa_direct_vllm_top20_int16_smoke/logprobs_int16/gpqa_0.jsonl`
+
+`response.json` strips raw float provider logprobs; the canonical logprob
+artifact is `logprobs_int16/<task_id>.jsonl`.
+
+The legacy AlphaDiana-runner smoke remains:
+
 ```bash
 alphadiana run configs/full_runs/phase9_directllm_gpqa_diamond_qwen35_27b_logprobs_smoke.yaml
 ```
@@ -67,6 +91,22 @@ workload. The reasoning-parser / logprobs alignment issue needs investigation
 before burning GPU time.
 
 ## Step 2 — Full Run (198 tasks, ~2-3 hours)
+
+Direct vLLM GPQA script:
+
+```bash
+python scripts/phase9_gpqa_top20_int16_entropy.py \
+  --api-base http://127.0.0.1:8011/v1 \
+  --api-key EMPTY \
+  --model Qwen/Qwen3.5-27B \
+  --run-id phase9_gpqa_direct_vllm_top20_int16 \
+  --max-tasks 198
+```
+
+This writes compact Int16 logprob files under
+`results/phase9_gpqa_direct_vllm_top20_int16/logprobs_int16/`.
+
+Legacy AlphaDiana-runner full run:
 
 Open **two terminal panes** (or tmux windows).
 
