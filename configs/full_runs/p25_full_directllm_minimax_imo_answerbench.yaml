@@ -10,9 +10,10 @@ agent:
     model: "minimax-m2.5"
     api_base: ${OPENAI_BASE_URL}
     api_key: ${OPENAI_API_KEY}
-    temperature: 0.2
-    max_tokens: 4096
-    stream: false
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 32768
+    stream: true
     system_prompt: |
       You are an expert mathematician. Solve the problem carefully.
 

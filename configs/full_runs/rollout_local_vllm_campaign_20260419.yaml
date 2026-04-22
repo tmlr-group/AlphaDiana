@@ -5,7 +5,7 @@ defaults:
   logs_dir: "logs"
   results_dir: "./results"
   rollout_semantics:
-    temperature: 0.6
+    temperature: 0.0
     top_p: 0.95
     max_tokens: 32768
     streaming: true
@@ -53,7 +53,7 @@ path_templates:
       agent.config.model: "{model_name}"
       agent.config.api_base: "{api_base_env_ref}"
       agent.config.api_key: "{api_key_env_ref}"
-      agent.config.temperature: 0.6
+      agent.config.temperature: 0.0
       agent.config.top_p: 0.95
       agent.config.max_tokens: 32768
       agent.config.stream: true
@@ -75,7 +75,7 @@ path_templates:
       agent.config.OPENAI_BASE_URL: "{api_base_env_ref}"
       agent.config.OPENAI_API_KEY: "{api_key_env_ref}"
       agent.config.OPENAI_MODEL_NAME: "{model_name}"
-      agent.config.temperature: 0.6
+      agent.config.temperature: 0.0
       agent.config.top_p: 0.95
       agent.config.max_tokens: 32768
       agent.config.request_timeout: 1800
@@ -124,7 +124,7 @@ path_templates:
       agent.config.model: "{model_name}"
       agent.config.api_base: "{api_base_env_ref}"
       agent.config.api_key: "{api_key_env_ref}"
-      agent.config.temperature: 0.6
+      agent.config.temperature: 0.0
       agent.config.request_timeout: 1800
 
   - id: "gpqa_diamond_direct_llm"
@@ -222,7 +222,7 @@ path_templates:
       agent.config.model: "{model_name}"
       agent.config.api_base: "{api_base_env_ref}"
       agent.config.api_key: "{api_key_env_ref}"
-      agent.config.temperature: 0.6
+      agent.config.temperature: 0.0
       agent.config.top_p: 0.95
       agent.config.max_tokens: 32768
       agent.config.stream: true
@@ -244,7 +244,7 @@ path_templates:
       agent.config.OPENAI_BASE_URL: "{api_base_env_ref}"
       agent.config.OPENAI_API_KEY: "{api_key_env_ref}"
       agent.config.OPENAI_MODEL_NAME: "{model_name}"
-      agent.config.temperature: 0.6
+      agent.config.temperature: 0.0
       agent.config.top_p: 0.95
       agent.config.max_tokens: 32768
       agent.config.request_timeout: 1800
@@ -293,7 +293,7 @@ path_templates:
       agent.config.model: "{model_name}"
       agent.config.api_base: "{api_base_env_ref}"
       agent.config.api_key: "{api_key_env_ref}"
-      agent.config.temperature: 0.6
+      agent.config.temperature: 0.0
       agent.config.request_timeout: 1800
 
   - id: "mmmu_pro_direct_llm"

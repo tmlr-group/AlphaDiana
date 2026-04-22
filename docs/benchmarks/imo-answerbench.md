@@ -17,6 +17,15 @@ export OPENAI_MODEL_NAME=minimax-m2.5
 
 The benchmark loads from HuggingFace. If the default mirror is slow, set `HF_ENDPOINT` before running.
 
+If the host cannot reach `huggingface.co` directly, set:
+
+```bash
+export HF_ENDPOINT=https://hf-mirror.com
+```
+
+The April 22, 2026 local-vLLM Qwen follow-up on this repo required that
+override before `imo_answerbench` could load at all.
+
 ## Supported Modes
 
 | Mode | Status | Config |
@@ -69,6 +78,32 @@ you explicitly change them.
 python -m alphadiana.cli run configs/examples/directllm_minimax_imo_answerbench.yaml \
   -o run_id=imo_directllm_smoke
 ```
+
+Local-vLLM Qwen example with the rollout-plan `temperature=0.0` semantics:
+
+```bash
+source scripts/activate.sh
+export PYTHONPATH=$PWD
+export HF_ENDPOINT=https://hf-mirror.com
+export QWEN_VLLM_API_BASE=http://127.0.0.1:8011/v1
+export QWEN_VLLM_API_KEY=EMPTY
+
+python -m alphadiana.cli run configs/full_runs/p25_full_directllm_minimax_imo_answerbench.yaml \
+  -o run_id=full_20260422_imo_answerbench_direct_llm_qwen35_27b_localvllm_mc20_r1 \
+  -o output_dir=./results/full_20260422_imo_answerbench_direct_llm_qwen35_27b_localvllm_mc20_r1 \
+  -o max_concurrent=20 \
+  -o agent.config.model='Qwen/Qwen3.5-27B' \
+  -o agent.config.api_base="$QWEN_VLLM_API_BASE" \
+  -o agent.config.api_key="$QWEN_VLLM_API_KEY" \
+  -o agent.config.temperature=0.0 \
+  -o agent.config.top_p=0.95 \
+  -o agent.config.max_tokens=32768 \
+  -o agent.config.stream=true
+```
+
+This command intentionally differs from the checked-in rollout manifest only on
+`max_concurrent`: the local follow-up kept the user-requested `20`, while the
+manifest template for this path still defaults to `10`.
 
 ## OpenCode
 

@@ -10,7 +10,7 @@ agent:
     model: "${OPENAI_MODEL_NAME}"
     api_base: "${OPENAI_BASE_URL}"
     api_key: "${OPENAI_API_KEY}"
-    temperature: 0.6
+    temperature: 0.0
     rock_image: "zeroclaw-reasoning:0.6.9"
     rock_memory: "4g"
     rock_cpus: 1

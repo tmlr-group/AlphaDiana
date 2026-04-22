@@ -58,6 +58,15 @@ Campaign rules:
 - Raw shell logs stay under this repo's `logs/` even for official-checkout runs.
 - `MMMU-Pro` full configs intentionally use `data_config: "vision"`.
 - Checked-in full-run configs now set `strict_report: true`; the AlphaDiana-backed full configs also set `strict_isolation: true`.
+- The checked-in rollout configs now align to the frozen
+  `context/benchmark-rollout-full-plan-20260419.md` semantics where the
+  runtime actually exposes them:
+  `temperature=0.0`, `top_p=0.95`, `max_tokens=32768`, `streaming=true`,
+  `timeout=1800`.
+- Keep the plan's published gap list in mind when reading that line:
+  `thinking` is not uniformly forwarded, `opencode` does not uniformly expose
+  `top_p` / `max_tokens`, and `zeroclaw` does not uniformly expose
+  `top_p` / `max_tokens` / `streaming`.
 
 Wave summary from the checked-in manifest:
 
@@ -105,7 +114,7 @@ export OPENCLAW_REQUIRE_PATCH=1
 export OPENCLAW_MAX_TOOL_CALLS_WITHOUT_EDIT=12
 export OPENCLAW_MAX_NO_EDIT_SECONDS=180
 export OPENCLAW_CONTEXT_WINDOW=128000
-export OPENCLAW_COMPLETION_MAX_TOKENS=4096
+export OPENCLAW_COMPLETION_MAX_TOKENS=32768
 
 export OPENCODE_FULL_MODEL_NAME=minimax
 export OPENCODE_FULL_MODEL_CANDIDATES=minimax

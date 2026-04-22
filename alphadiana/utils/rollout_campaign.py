@@ -457,7 +457,7 @@ def _render_official_tb2_command(run: ConcreteRun) -> str:
         f"  --n-concurrent {run.path.max_concurrent} \\\n"
         "  --debug \\\n"
         f"  --ak api_base={run.model.api_base_env_ref} \\\n"
-        "  --ak temperature=0.6 \\\n"
+        "  --ak temperature=0.0 \\\n"
         "  --ak reasoning_effort=high \\\n"
         f"  --ak {llm_kwargs_q}\n"
         f'}} 2>&1 | tee "$repo_root/logs/{run.run_id}.log"'
@@ -494,7 +494,7 @@ def _render_official_swebench_command(run: ConcreteRun) -> str:
         f"  --agent.model.name {model_q} \\\n"
         f"  --agent.model.api_base {api_base_ref} \\\n"
         f"  --agent.model.api_key {api_key_expr} \\\n"
-        "  --agent.model.temperature 0.6 \\\n"
+        "  --agent.model.temperature 0.0 \\\n"
         "  --agent.model.top_p 0.95 \\\n"
         "  --agent.model.max_output_tokens 32768 \\\n"
         "  --agent.model.per_instance_cost_limit 0 \\\n"
