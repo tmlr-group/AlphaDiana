@@ -64,11 +64,10 @@ Key properties of this config:
 - `model: deepseek-chat`
 - `max_tasks: 30`
 - `max_concurrent: 1`
-- `use_gateway_in_sandbox: false`
 - `temperature: 0.0`
 
-That means the full run uses the ROCK sandbox, but executes ZeroClaw through
-the direct in-sandbox CLI path rather than the bridge-backed gateway path.
+That means the full run uses the ROCK sandbox and executes ZeroClaw through the
+single direct in-sandbox CLI path used by current main.
 
 ## Monitoring
 

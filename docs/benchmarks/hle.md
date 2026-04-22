@@ -49,6 +49,11 @@ attempts on the same snapshot could fail early with
 
 The corresponding smoke configs remain under `configs/examples/` and pin `dataset_index: 1`, `max_tasks: 1`.
 
+Current dataset caveat:
+the checked-in smoke row `hle_1` is text-only in the current `cais/hle`
+snapshot. For a real image-backed transport probe, override
+`-o benchmark.config.dataset_index=53`.
+
 Additional April 19, 2026 pilot config:
 
 - `configs/examples/directllm_qwen35_27b_hle_pilot.yaml`
@@ -114,6 +119,19 @@ python -m alphadiana.cli run configs/examples/openclaw_minimax_hle.yaml \
 
 OpenClaw HLE responses can take several minutes after the gateway returns HTTP 200. Wait for artifact collection and result writing before classifying the run as stuck.
 
+Current OpenRouter free-VLM evidence on April 22, 2026:
+`smoke_20260422_openrouter_nemotron_nano_12b_v2_vl_hle_openclaw_img53_t1_r1`
+used the real image-backed row `hle_53`, logged one initial empty-body
+`http proxy failed`, retried automatically, and then wrote a normal scored task
+record.
+
+Early same-day full-run caveat on the same provider:
+`full_20260422_openrouter_nemotron_nano_12b_v2_vl_hle_openclaw_r1` is
+advancing, but several early text-only rows preserved
+`metadata.partial_reasoning_only=true` or other free-form predictions instead
+of a clean option letter. Treat that as current model/harness quality drift,
+not as a silent-runner failure.
+
 ## ZeroClaw
 
 ZeroClaw now consumes HLE attachments by writing them into the workspace under
@@ -136,16 +154,28 @@ python -m alphadiana.cli run configs/examples/zeroclaw_hle.yaml \
 ```
 
 On the OpenAI-compatible `qwen3vl` endpoint, multimodal ZeroClaw currently works most
-reliably with:
+reliably through the same single sandbox CLI path now used for text benchmarks
+on current main. No extra override is required: when a live ROCK sandbox is
+present and the HLE row has an image attachment, AlphaDiana uploads the image
+into the sandbox workspace, appends an
+`[IMAGE:<absolute sandbox path>]` marker to the prompt, and runs the stock
+`zeroclaw agent` CLI there. The transport marker is now
+`metadata.transport=zeroclaw_cli_sandbox`.
 
-```bash
--o agent.config.disable_tools=true
-```
+Current transport proof:
+`smoke_20260422_zeroclaw_cli_sandbox_hle53_nemotron_vl_t1` used `hle_53` on
+`nvidia/nemotron-nano-12b-v2-vl:free` and wrote `tasks/hle_53.json` with
+`metadata.transport=zeroclaw_cli_sandbox`, the preserved
+`[IMAGE:/.alphadiana_zeroclaw/.../workspace/attachments/image_1.png]` prompt
+marker, normal sandbox metadata, attachment artifacts, and a preserved
+in-sandbox OpenRouter `429` failure record. Treat that run as execution-path
+evidence, not a quality claim.
 
-The provider accepts the direct OpenAI-style `image_url` path, while the
-tool-enabled ZeroClaw bridge can still return empty-body `http proxy failed`
-responses on image-backed tasks. The current transport evidence for this
-workaround is `smoke_20260422_hle_zeroclaw_qwen3vl_disable_tools_t1`.
+Historical same-day `disable_tools=true` runs such as
+`smoke_20260422_hle_zeroclaw_qwen3vl_disable_tools_t1` and
+`smoke_20260422_openrouter_nemotron_nano_12b_v2_vl_hle_zeroclaw_disable_tools_img53_t1_r1`
+remain useful audit evidence for the old workaround, but they are no longer
+the recommended path for current main.
 
 When ZeroClaw still fails on current main, the task JSON now preserves an
 explicit `metadata.failure_reason` such as `empty_response` or
@@ -166,7 +196,6 @@ export HF_TOKEN=hf_...
 
 python -m alphadiana.cli run configs/examples/zeroclaw_hle.yaml \
   -o run_id=pr26_formal_smoke_zeroclaw_hle_minimax_rock_cli_boxA_20260417 \
-  -o agent.config.use_gateway_in_sandbox=false \
   -o benchmark.config.dataset_index=1 \
   -o agent.config.system_prompt='Smoke test mode: ignore the question and attachments. Do not use tools. Output exactly $$\\boxed{A}$$ and nothing else.'
 ```
@@ -228,6 +257,36 @@ Config note:
 - The dedicated `direct_llm` and `openclaw` pilot configs therefore pin
   `dataset_indices: [53, 98, 111]`, which do carry real image payloads and
   preserve `task.attachments.image_1`.
+
+### OpenRouter Free-VLM Smoke (2026-04-22)
+
+Current accepted image-backed OpenRouter smoke uses:
+
+```bash
+export OPENAI_BASE_URL=https://openrouter.ai/api/v1
+export OPENAI_API_KEY=sk-...
+export OPENAI_MODEL_NAME=nvidia/nemotron-nano-12b-v2-vl:free
+```
+
+The accepted run IDs on the real image-backed `hle_53` row are:
+
+- `smoke_20260422_openrouter_nemotron_nano_12b_v2_vl_hle_direct_llm_img53_t1_r1`
+- `smoke_20260422_openrouter_nemotron_nano_12b_v2_vl_hle_opencode_img53_t1_r1`
+- `smoke_20260422_openrouter_nemotron_nano_12b_v2_vl_hle_openclaw_img53_t1_r1`
+- `smoke_20260422_zeroclaw_cli_sandbox_hle53_nemotron_vl_t1` for the current
+  native ZeroClaw execution-path proof
+
+Observed current behavior:
+
+- `direct_llm` and `opencode` both preserved the image-backed request path.
+- `openclaw` wrote a normal scored task after recovering from one initial
+  empty-body `http proxy failed`.
+- `zeroclaw` now uses the same native sandbox CLI path for both text and
+  image-backed HLE rows. The current execution proof is
+  `smoke_20260422_zeroclaw_cli_sandbox_hle53_nemotron_vl_t1`, which wrote
+  `metadata.transport=zeroclaw_cli_sandbox` and preserved the
+  `[IMAGE:<absolute sandbox path>]` marker in the prompt. Earlier
+  `disable_tools=true` runs remain historical workaround evidence only.
 
 Observed on April 19/20, 2026:
 

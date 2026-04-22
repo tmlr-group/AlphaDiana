@@ -53,6 +53,16 @@ attachments before handing the task to the agent.
 The checked-in full configs also use `data_config: "vision"` so the full run
 matches the image-backed path rather than a text-only variant.
 
+Current full-run caveat on April 22, 2026:
+the full `vision` loader is currently front-loaded. The implementation in
+`alphadiana/benchmark/mmmu_pro.py` eagerly converts every dataset image into
+PNG bytes before it returns the task list, so a full run can spend several
+minutes with no task JSONs while still being active. Early OpenRouter evidence:
+`full_20260422_openrouter_nemotron_nano_12b_v2_vl_mmmu_pro_{directllm,openclaw,opencode,zeroclaw}_r1`
+all stayed alive with roughly `90-99%` CPU and about `1.6 GiB` RSS before the
+first task. Do not classify those full runs as stalled until this preload
+phase is ruled out.
+
 ## Full Run
 
 Validate the four full configs directly:
@@ -106,6 +116,11 @@ from the pre-fix full run, such as
 `predicted="400"` values sourced from provider/tool-choice error bodies and
 should be treated as audit-only evidence. Current main records those failures
 as explicit provider errors instead.
+
+Current OpenRouter free-VLM evidence on April 22, 2026:
+`smoke_20260422_openrouter_nemotron_nano_12b_v2_vl_mmmu_pro_opencode_t1_r1`
+wrote a normal scored `mmmu_pro_test_History_1` task with
+`metadata.transport=opencode_cli_container` and `metadata.num_attachments=1`.
 
 ### Qwen/OpenRouter Vision Pilot (2026-04-19/20)
 
@@ -170,15 +185,26 @@ python -m alphadiana.cli run configs/examples/zeroclaw_mmmu_pro.yaml \
 ```
 
 On the OpenAI-compatible `qwen3vl` endpoint, multimodal ZeroClaw currently works most
-reliably with:
+reliably through the same single sandbox CLI path now used for HLE on current
+main. No extra override is required for the intended path: when a live ROCK
+sandbox is present and the task carries image attachments, AlphaDiana uploads
+them into the sandbox workspace, appends `[IMAGE:<absolute sandbox path>]`
+markers to the prompt, and runs the stock `zeroclaw agent` CLI there. The
+transport marker is `metadata.transport=zeroclaw_cli_sandbox`.
 
-```bash
--o agent.config.disable_tools=true
-```
+This turn's fresh real-run image proofs are:
+`smoke_20260422_zeroclaw_cli_sandbox_hle53_nemotron_vl_t1`, which wrote
+`tasks/hle_53.json`, and
+`smoke_20260422_zeroclaw_cli_sandbox_mmmu_nemotron_vl_t1`, which wrote
+`tasks/mmmu_pro_test_History_1.json`. Both task records preserve
+`metadata.transport=zeroclaw_cli_sandbox`, attachment artifacts, the
+`[IMAGE:<absolute sandbox path>]` prompt marker, and explicit in-sandbox
+OpenRouter `429` failure evidence. Treat them as execution-path proofs rather
+than quality claims.
 
-The provider accepts direct OpenAI-style `image_url` chat payloads, while the
-tool-enabled ZeroClaw bridge can still fail early with empty-body
-`http proxy failed` responses on image-backed tasks.
+Historical `disable_tools=true` runs such as
+`smoke_20260422_openrouter_nemotron_nano_12b_v2_vl_mmmu_pro_zeroclaw_disable_tools_t1_r1`
+remain useful audit evidence for the old workaround only.
 
 When the path still fails, current main preserves explicit failure metadata
 such as `metadata.failure_reason=empty_response` or `provider_error` so the
@@ -198,7 +224,6 @@ export OPENAI_MODEL_NAME=minimax-m2.5
 python -m alphadiana.cli run configs/examples/zeroclaw_mmmu_pro.yaml \
   -o run_id=pr23_smoke_zeroclaw_mmmupro_minimaxm25_boxA_20260418 \
   -o output_dir=./results/pr23_zeroclaw_smokes \
-  -o agent.config.use_gateway_in_sandbox=false \
   -o agent.config.system_prompt='Smoke test mode: ignore the question and attachments. Do not use tools. Output exactly $$\\boxed{A}$$ and nothing else.'
 ```
 
@@ -213,8 +238,8 @@ Observed local verification on 2026-04-18:
 Accepted local pilot:
 
 - run_id: `pilot_20260419_qwen35_27b_mmmu_pro_zeroclaw_t3_vision_r3`
-- result: `3/3` normal trajectories with `use_gateway_in_sandbox=false`,
-  preserved `attachments/image_1.png`, no provider warning, and no
+- result: `3/3` normal trajectories on the then-current direct in-sandbox CLI
+  path, preserved `attachments/image_1.png`, no provider warning, and no
   `command_history` pollution in successful task metadata
 
 Rejected earlier attempts from the same day:
@@ -240,9 +265,51 @@ export OPENAI_MODEL_NAME=qwen/qwen3.5-27b
 python -m alphadiana.cli run configs/examples/zeroclaw_mmmu_pro.yaml \
   -o run_id=pilot_20260419_qwen35_27b_mmmu_pro_zeroclaw_t3_vision_r3 \
   -o benchmark.config.max_tasks=3 \
-  -o max_concurrent=1 \
-  -o agent.config.use_gateway_in_sandbox=false
+  -o max_concurrent=1
 ```
+
+### OpenRouter Free-VLM Smoke (2026-04-22)
+
+Current accepted OpenRouter smoke uses:
+
+```bash
+export OPENAI_BASE_URL=https://openrouter.ai/api/v1
+export OPENAI_API_KEY=sk-...
+export OPENAI_MODEL_NAME=nvidia/nemotron-nano-12b-v2-vl:free
+```
+
+Accepted run IDs:
+
+- `smoke_20260422_openrouter_nemotron_nano_12b_v2_vl_mmmu_pro_direct_llm_t1_r1`
+- `smoke_20260422_openrouter_nemotron_nano_12b_v2_vl_mmmu_pro_opencode_t1_r1`
+- `smoke_20260422_openrouter_nemotron_nano_12b_v2_vl_mmmu_pro_openclaw_t1_r1`
+- `smoke_20260422_openrouter_nemotron_nano_12b_v2_vl_mmmu_pro_zeroclaw_disable_tools_t1_r1`
+
+Observed current behavior:
+
+- all four runs wrote normal scored `mmmu_pro_test_History_1` task JSONs
+- `openclaw` recovered from one initial empty-body `http proxy failed` and
+  then completed normally on attempt 2
+- `zeroclaw` now targets the native in-sandbox multimodal path by default on
+  image-backed MMMU-Pro rows. Historical `disable_tools=true` runs remain
+  workaround evidence only; rerun MMMU-Pro on current main to refresh
+  benchmark-specific support evidence
+
+Early full-run follow-up on the same provider:
+
+- `full_20260422_openrouter_nemotron_nano_12b_v2_vl_mmmu_pro_{directllm,openclaw,opencode,zeroclaw}_r1`
+  were all launched on the checked-in full configs
+- by the `2026-04-22 17:15 +0800` snapshot, all four were still in the loader
+  preload phase described above, so no task JSON had appeared yet
+- later the same day, `..._openclaw_r1` and `..._zeroclaw_r1` did start
+  writing task JSONs after the preload cleared
+- `openclaw` still shows the usual first-attempt empty-body retry and can
+  preserve free-form answers or `metadata.partial_reasoning_only=true` on some
+  MMMU-Pro rows
+- historical `zeroclaw` results from that run family still reflect the older
+  `rock-proxy-fallback-no-tools` workaround; current main now uses the same
+  single sandbox CLI transport re-proved on HLE in
+  `smoke_20260422_zeroclaw_cli_sandbox_hle53_nemotron_vl_t1`
 
 ## Result Locations
 

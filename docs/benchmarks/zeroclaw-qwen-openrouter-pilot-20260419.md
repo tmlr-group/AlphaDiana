@@ -1,5 +1,11 @@
 # ZeroClaw Qwen OpenRouter Pilot Matrix (2026-04-19)
 
+Historical note: this pilot froze the pre-refactor generic ZeroClaw wrapper.
+Current main no longer accepts `agent.config.use_gateway_in_sandbox` for the
+generic benchmark wrapper; the commands below are audit evidence for the April
+19 pilot, not the current recommended invocation. For current commands, use the
+benchmark-specific runbooks in this directory.
+
 ## Scope
 
 This runbook freezes the `Qwen/Qwen3.5-27B × zeroclaw` pilot matrix requested
@@ -56,8 +62,8 @@ Observed local preflight on `2026-04-19`:
 
 ## Config Notes
 
-- `IMO-AnswerBench`, `GPQA-Diamond`, `MMMU-Pro`, and `HLE` run in ROCK
-  sandboxes with in-sandbox ZeroClaw CLI by forcing
+- At the time of this pilot, `IMO-AnswerBench`, `GPQA-Diamond`, `MMMU-Pro`,
+  and `HLE` were forced onto the in-sandbox ZeroClaw CLI path with
   `agent.config.use_gateway_in_sandbox=false`.
 - `terminal-bench-2` still needs explicit CLI overrides because
   `configs/examples/terminal_bench2_zeroclaw_minimax.yaml` pins the MiniMax
