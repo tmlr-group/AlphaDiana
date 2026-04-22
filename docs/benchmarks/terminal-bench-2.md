@@ -410,6 +410,16 @@ The current AlphaDiana `terminal_bench2` scorer is binary:
 
 The JSONL `score` comes from that reward path.
 
+As of April 22, 2026, current main no longer fabricates `metadata.reward="0"`
+for `metadata.verifier_status="skipped_duplicate"` when no reward file was
+actually observed. Historical artifacts such as
+`full_20260422_terminal_bench2_opencode_deepseek_chat_r2/tasks/tb2_adaptive-rejection-sampler.json`
+remain useful audit evidence, but the intended current behavior is the
+post-fix reproducer
+`fixproof_after_20260422_tb2_opencode_deepseek_fast2_t1`, which records
+`metadata.reward=null`, `metadata.verifier_reward_observed=false`, and
+`score_status=verifier_error` for that bookkeeping path.
+
 ## Current Config Semantics
 
 Smoke configs:

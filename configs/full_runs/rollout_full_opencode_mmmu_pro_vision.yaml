@@ -11,6 +11,8 @@ agent:
     model_name: "${OPENAI_MODEL_NAME}"
     api_base: "${OPENAI_BASE_URL}"
     api_key: "${OPENAI_API_KEY}"
+    controller_mode: "docker"
+    controller_image: "alphadiana/tb2-opencode-controller:latest"
     timeout: 1800
     streaming: true
     tool_call: false

@@ -17,6 +17,10 @@ These files should answer:
 - which configs are supported
 - what status or caveats apply right now
 
+As of April 22, 2026, the `HLE`, `MMMU-Pro`, and `terminal-bench-2` runbooks
+also document current result-semantics caveats for `qwen3vl` OpenCode errors,
+ZeroClaw failure evidence, and `terminal_bench2` verifier bookkeeping.
+
 Reviewer-facing evidence, dated pilot notes, internal design notes, and
 cross-benchmark status snapshots belong under `context/`.
 

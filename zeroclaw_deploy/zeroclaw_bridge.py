@@ -39,6 +39,8 @@ DEFAULT_TEMPERATURE = float(os.environ.get("ZEROCLAW_TEMPERATURE", "0.0"))
 PROVIDER_TIMEOUT_SECS = int(os.environ.get("ZEROCLAW_PROVIDER_TIMEOUT_SECS", "120"))
 PROVIDER_MAX_TOKENS_RAW = os.environ.get("ZEROCLAW_PROVIDER_MAX_TOKENS", "").strip()
 PROVIDER_MAX_TOKENS = int(PROVIDER_MAX_TOKENS_RAW) if PROVIDER_MAX_TOKENS_RAW else None
+DISABLE_TOOLS_RAW = os.environ.get("ZEROCLAW_DISABLE_TOOLS", "").strip().lower()
+DISABLE_TOOLS = DISABLE_TOOLS_RAW in {"1", "true", "yes", "on"}
 REASONING_ENABLED_RAW = os.environ.get("ZEROCLAW_REASONING_ENABLED", "").strip().lower()
 if REASONING_ENABLED_RAW in {"1", "true", "yes", "on"}:
     REASONING_ENABLED = True
@@ -418,6 +420,25 @@ def _build_prompt(messages: list[dict[str, Any]]) -> str:
     return "\n\n".join(system_parts)
 
 
+def _extract_chat_completion_text(payload: Any) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    choices = payload.get("choices")
+    if isinstance(choices, list) and choices:
+        message = choices[0].get("message", {})
+        if isinstance(message, dict):
+            content = _coerce_text_content(message.get("content", ""))
+            if content.strip():
+                return content.strip()
+        text = choices[0].get("text")
+        if isinstance(text, str) and text.strip():
+            return text.strip()
+    output_text = payload.get("output_text")
+    if isinstance(output_text, str) and output_text.strip():
+        return output_text.strip()
+    return ""
+
+
 def _sanitize_output(raw_output: str) -> tuple[str, list[str]]:
     cleaned_lines: list[str] = []
     dropped_runtime_logs: list[str] = []
@@ -434,6 +455,14 @@ def _coerce_temperature(value: Any) -> float | None:
     if value in (None, ""):
         return None
     return float(value)
+
+
+def _coerce_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value in (None, ""):
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _normalize_attachments(payload: Any) -> list[dict[str, Any]]:
@@ -485,6 +514,122 @@ def _write_attachments(workspace_dir: Path, attachments: list[dict[str, Any]]) -
             "size_bytes": len(data),
         })
     return manifest
+
+
+def _build_provider_messages(
+    messages: list[dict[str, Any]],
+    attachments: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    normalized_messages = [dict(message) for message in messages]
+    if not _attachments_have_image(attachments):
+        return normalized_messages
+    updated_messages, _ = _vision_inject_messages(normalized_messages, attachments, "")
+    return updated_messages
+
+
+def _run_provider_chat_without_tools(
+    messages: list[dict[str, Any]],
+    *,
+    temperature: float | None = None,
+    attachments: list[dict[str, Any]] | None = None,
+) -> str:
+    execution_id = uuid.uuid4().hex
+    attachments_list = list(attachments or [])
+    effective_messages = _build_provider_messages(messages, attachments_list)
+    payload: dict[str, Any] = {
+        "model": MODEL_NAME,
+        "messages": effective_messages,
+        "temperature": DEFAULT_TEMPERATURE if temperature is None else float(temperature),
+        "stream": False,
+    }
+    if PROVIDER_MAX_TOKENS is not None:
+        payload["max_tokens"] = PROVIDER_MAX_TOKENS
+    request_body = json.dumps(payload).encode("utf-8")
+    request = Request(
+        f"{API_BASE.rstrip('/')}/chat/completions",
+        data=request_body,
+        headers={
+            "Content-Type": "application/json",
+            **(
+                {"Authorization": f"Bearer {API_KEY}"}
+                if API_KEY
+                else {}
+            ),
+        },
+        method="POST",
+    )
+    status_payload = {
+        "created_at": int(time.time()),
+        "model": MODEL_NAME,
+        "provider": PROVIDER,
+        "api_base": API_BASE,
+        "temperature": DEFAULT_TEMPERATURE if temperature is None else float(temperature),
+        "disable_tools": True,
+        "error_message": "",
+    }
+    response_json: dict[str, Any]
+    raw_output = ""
+    try:
+        with urlopen(request, timeout=REQUEST_TIMEOUT) as response:
+            response_json = json.loads(response.read().decode("utf-8"))
+            status_payload["http_status"] = getattr(response, "status", 200)
+    except Exception as exc:
+        response_json = {"error": {"message": str(exc), "type": exc.__class__.__name__}}
+        status_payload["error_message"] = str(exc)
+        _persist_last_request(
+            execution_id=execution_id,
+            prompt=_build_prompt(messages),
+            attachment_manifest=[
+                {
+                    "key": item.get("key", ""),
+                    "path": item.get("path", ""),
+                    "filename": item.get("filename", ""),
+                    "mime": item.get("mime", ""),
+                    "size_bytes": len(bytes(item.get("data", b""))),
+                }
+                for item in attachments_list
+            ],
+            stdout_text="",
+            stderr_text=str(exc),
+            runtime_trace_text="",
+            status_payload={
+                **status_payload,
+                "request_payload": payload,
+                "response_payload": response_json,
+            },
+        )
+        raise RuntimeError(str(exc)) from exc
+
+    raw_output = _extract_chat_completion_text(response_json)
+    if not raw_output:
+        status_payload["error_message"] = (
+            f"ZeroClaw no-tools provider call returned empty content: {response_json!r}"
+        )
+    _persist_last_request(
+        execution_id=execution_id,
+        prompt=_build_prompt(messages),
+        attachment_manifest=[
+            {
+                "key": item.get("key", ""),
+                "path": item.get("path", ""),
+                "filename": item.get("filename", ""),
+                "mime": item.get("mime", ""),
+                "size_bytes": len(bytes(item.get("data", b""))),
+            }
+            for item in attachments_list
+        ],
+        stdout_text=raw_output,
+        stderr_text="",
+        runtime_trace_text="",
+        status_payload={
+            **status_payload,
+            "request_payload": payload,
+            "response_payload": response_json,
+        },
+    )
+    if not raw_output:
+        raise RuntimeError(status_payload["error_message"])
+    return raw_output
 
 
 def _persist_last_request(
@@ -728,7 +873,15 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("prompt is empty")
             temperature = _coerce_temperature(payload.get("temperature"))
             attachments = _normalize_attachments(payload.get("attachments"))
-            raw_output = _run_zeroclaw(prompt, temperature=temperature, attachments=attachments)
+            disable_tools = _coerce_bool(payload.get("disable_tools")) or DISABLE_TOOLS
+            if disable_tools:
+                raw_output = _run_provider_chat_without_tools(
+                    messages,
+                    temperature=temperature,
+                    attachments=attachments,
+                )
+            else:
+                raw_output = _run_zeroclaw(prompt, temperature=temperature, attachments=attachments)
             now = int(time.time())
             self._write_json(HTTPStatus.OK, {
                 "id": f"chatcmpl-{uuid.uuid4().hex}",
@@ -766,8 +919,13 @@ class Handler(BaseHTTPRequestHandler):
         print(f"[ZeroClawBridge] {self.address_string()} - {fmt % args}", flush=True)
 
 
+class ReusableThreadingHTTPServer(ThreadingHTTPServer):
+    allow_reuse_address = True
+    daemon_threads = True
+
+
 def main() -> None:
-    server = ThreadingHTTPServer((HOST, PORT), Handler)
+    server = ReusableThreadingHTTPServer((HOST, PORT), Handler)
     print(f"[ZeroClawBridge] listening on {HOST}:{PORT}", flush=True)
     server.serve_forever()
 

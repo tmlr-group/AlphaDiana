@@ -158,6 +158,7 @@ class TerminalBench2DockerAgent(TerminalBench2ContainerMixin, Agent):
                 extra={
                     "test_output": test_output,
                     "verifier_status": verifier_result.status,
+                    "verifier_reward_observed": verifier_result.reward is not None,
                 },
             ),
             request_messages=messages,

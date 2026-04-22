@@ -99,6 +99,14 @@ default. Build `alphadiana/tb2-opencode-controller:latest` first if it is not
 already present. If you need the old host-process path for debugging, override
 `-o agent.config.controller_mode=host`.
 
+As of April 22, 2026, current main also stops treating OpenCode provider error
+bodies as normal MMMU-Pro answers on `qwen3vl`. Historical April 22 artifacts
+from the pre-fix full run, such as
+`full_20260422_mmmu_pro_vision_opencode_qwen3vl_r1`, can contain synthetic
+`predicted="400"` values sourced from provider/tool-choice error bodies and
+should be treated as audit-only evidence. Current main records those failures
+as explicit provider errors instead.
+
 ### Qwen/OpenRouter Vision Pilot (2026-04-19/20)
 
 Accepted local pilot:
@@ -160,6 +168,21 @@ python -m alphadiana.cli validate configs/examples/zeroclaw_mmmu_pro.yaml
 python -m alphadiana.cli run configs/examples/zeroclaw_mmmu_pro.yaml \
   -o run_id=mmmu_pro_zeroclaw_smoke
 ```
+
+On the OpenAI-compatible `qwen3vl` endpoint, multimodal ZeroClaw currently works most
+reliably with:
+
+```bash
+-o agent.config.disable_tools=true
+```
+
+The provider accepts direct OpenAI-style `image_url` chat payloads, while the
+tool-enabled ZeroClaw bridge can still fail early with empty-body
+`http proxy failed` responses on image-backed tasks.
+
+When the path still fails, current main preserves explicit failure metadata
+such as `metadata.failure_reason=empty_response` or `provider_error` so the
+task JSON remains diagnosable.
 
 ### Reproduce The 2026-04-18 Sandbox Smoke
 

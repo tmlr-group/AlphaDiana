@@ -248,6 +248,22 @@ def classify_error(
     return "unknown"
 
 
+def _coerce_bool_config(value: Any, *, default: bool) -> bool:
+    """Parse bool-like config values while preserving a sane default."""
+    if value in (None, ""):
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"Invalid boolean value: {value!r}")
+
+
 def _coerce_text_content(content: Any) -> str:
     """Coerce various content formats to a plain string."""
     if isinstance(content, str):
@@ -640,6 +656,10 @@ class OpenClawAgent(Agent):
         self._temperature = config.get("temperature", 0.7)
         self._top_p = config.get("top_p", None)
         self._max_tokens = config.get("max_tokens", None)
+        self._stream = _coerce_bool_config(
+            config.get("stream", config.get("streaming", True)),
+            default=True,
+        )
         self._max_attempts = max(1, int(config.get("max_attempts", 5)))
         self._request_timeout = float(config.get("request_timeout", 1800))
         self._stream_idle_timeout = max(
@@ -1131,7 +1151,7 @@ class OpenClawAgent(Agent):
             "model": self._model,
             "messages": messages,
             "temperature": self._temperature,
-            "stream": True,
+            "stream": self._stream,
         }
         resolved = self._resolve_max_tokens()
         if resolved is not None:

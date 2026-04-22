@@ -299,6 +299,7 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
                     "session_id": session_id,
                     "test_output": test_output,
                     "verifier_status": verifier_result.status,
+                    "verifier_reward_observed": verifier_result.reward is not None,
                     "container_workdir": container_workdir,
                     **runtime_metadata,
                 },

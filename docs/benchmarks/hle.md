@@ -42,6 +42,11 @@ If the dataset is already cached locally, the loader can run without forcing `HF
 
 The full configs run the supported HLE `multipleChoice` subset. Other HLE answer types are not included in the current exact-match scoring path.
 
+As of April 22, 2026, the loader also treats `image: ""` rows in the current
+`cais/hle` snapshot as ordinary no-attachment questions. Earlier full-run
+attempts on the same snapshot could fail early with
+`HLE: unsupported image type ... str` before this compatibility fix landed.
+
 The corresponding smoke configs remain under `configs/examples/` and pin `dataset_index: 1`, `max_tasks: 1`.
 
 Additional April 19, 2026 pilot config:
@@ -92,6 +97,14 @@ The smoke config keeps `timeout: 1800` to allow visible model output before
 scoring. The controller image build and caveats are documented in
 `docs/opencode-docker-isolation.md`.
 
+As of April 22, 2026, current main also stops treating OpenCode provider error
+bodies as normal HLE answers on `qwen3vl`. Historical April 22 artifacts such
+as `fixproof_before_20260422_hle_opencode_qwen3vl_t1/tasks/hle_1.json`, which
+recorded `predicted="400"` from a tool-choice failure body, are pre-fix audit
+evidence only. The replacement run
+`fixproof_after_20260422_hle_opencode_qwen3vl_t1` records the same class of
+failure as `score_status=provider_error` with `predicted=null`.
+
 ## OpenClaw
 
 ```bash
@@ -121,6 +134,25 @@ If another branch is already using ROCK, edit `scripts/.rock_ports.env` before s
 python -m alphadiana.cli run configs/examples/zeroclaw_hle.yaml \
   -o run_id=hle_zeroclaw_smoke
 ```
+
+On the OpenAI-compatible `qwen3vl` endpoint, multimodal ZeroClaw currently works most
+reliably with:
+
+```bash
+-o agent.config.disable_tools=true
+```
+
+The provider accepts the direct OpenAI-style `image_url` path, while the
+tool-enabled ZeroClaw bridge can still return empty-body `http proxy failed`
+responses on image-backed tasks. The current transport evidence for this
+workaround is `smoke_20260422_hle_zeroclaw_qwen3vl_disable_tools_t1`.
+
+When ZeroClaw still fails on current main, the task JSON now preserves an
+explicit `metadata.failure_reason` such as `empty_response` or
+`provider_error` instead of dropping the failure into an opaque runtime error.
+The real-API before/after evidence is
+`fixproof_before_20260422_hle_zeroclaw_qwen3vl_t1` versus
+`fixproof_after_20260422_hle_zeroclaw_qwen3vl_t1`.
 
 ### Reproduce The 2026-04-17 Formal Sandbox Smoke
 

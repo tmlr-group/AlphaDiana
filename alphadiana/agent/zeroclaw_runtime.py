@@ -102,6 +102,7 @@ class ZeroClawRuntimeManager:
         self._max_tool_iterations = int(config.get("max_tool_iterations", 100))
         self._max_actions_per_hour = int(config.get("max_actions_per_hour", 200))
         self._workspace_only = bool(config.get("workspace_only", False))
+        self._disable_tools = bool(config.get("disable_tools", False))
         self._bridge_template_path = self._resolve_bridge_template_path(
             config.get("bridge_template_path", "zeroclaw_deploy/zeroclaw_bridge.py")
         )
@@ -159,6 +160,7 @@ class ZeroClawRuntimeManager:
             "ZEROCLAW_MAX_TOOL_ITERATIONS": str(self._max_tool_iterations),
             "ZEROCLAW_MAX_ACTIONS_PER_HOUR": str(self._max_actions_per_hour),
             "ZEROCLAW_WORKSPACE_ONLY": "true" if self._workspace_only else "false",
+            "ZEROCLAW_DISABLE_TOOLS": "true" if self._disable_tools else "",
         }
 
     @staticmethod
@@ -191,10 +193,14 @@ class ZeroClawRuntimeManager:
 
     def ensure_ready(self, sandbox: Any) -> dict:
         sandbox_id = str(getattr(sandbox, "sandbox_id", ""))
+        if self._probe_gateway_alive(sandbox):
+            if sandbox_id:
+                self._started_sandboxes.add(sandbox_id)
+                self._managed_sandboxes[sandbox_id] = sandbox
+            _progress(f"reusing live runtime for sandbox_id={sandbox_id}")
+            return self.runtime_info(sandbox)
+
         if sandbox_id in self._started_sandboxes:
-            if self._probe_gateway_alive(sandbox):
-                _progress(f"reusing existing runtime for sandbox_id={sandbox_id}")
-                return self.runtime_info(sandbox)
             self._started_sandboxes.discard(sandbox_id)
 
         if not self._bridge_template_path.exists():

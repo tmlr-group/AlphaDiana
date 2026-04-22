@@ -183,6 +183,12 @@ def _should_fallback_from_gateway(exc: Exception) -> bool:
     if httpx is not None and isinstance(exc, httpx.TransportError):
         return True
     message = str(exc).lower()
+    error_type = str(getattr(exc, "error_type", "") or "").strip().lower()
+    if error_type == "proxy_error" and any(
+        marker in message
+        for marker in ("before response", "unavailable", "connect", "timeout")
+    ):
+        return True
     return "http proxy failed" in message or "post proxy failed" in message
 
 
@@ -194,6 +200,25 @@ _MIME_EXTENSION_MAP = {
     "application/pdf": ".pdf",
     "text/plain": ".txt",
 }
+
+
+def _build_multimodal_content_from_attachment_items(
+    text: str,
+    attachment_items: list[dict[str, Any]],
+) -> Any:
+    image_parts: list[dict[str, Any]] = []
+    for item in attachment_items:
+        mime = str(item.get("mime", "") or "").strip().lower()
+        data = item.get("data")
+        if not mime.startswith("image/") or not data:
+            continue
+        image_parts.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:{mime};base64,{base64.b64encode(bytes(data)).decode('ascii')}"},
+        })
+    if not image_parts:
+        return text
+    return [{"type": "text", "text": text}, *image_parts]
 
 
 class ZeroClawAgent(Agent):
@@ -259,6 +284,7 @@ class ZeroClawAgent(Agent):
             configured_extra_allowed_commands,
         )
         self._multimodal_via_proxy = bool(config.get("multimodal_via_proxy", True))
+        self._disable_tools = bool(config.get("disable_tools", False))
         self._provider_base_url_override: str | None = None
         configured_provider = str(config.get("provider", "")).strip().lower()
         self._provider = _resolve_zeroclaw_provider(configured_provider, self._provider_api_base)
@@ -303,6 +329,7 @@ class ZeroClawAgent(Agent):
                 "api_base": self._provider_api_base,
                 "api_key": self._provider_api_key,
                 "gateway_token": self._gateway_token,
+                "disable_tools": self._disable_tools,
             })
             if self._use_gateway_in_sandbox
             else None
@@ -657,10 +684,264 @@ class ZeroClawAgent(Agent):
             "messages": request_messages,
             "temperature": self._temperature,
             "stream": False,
+            "disable_tools": self._disable_tools,
         }
         if attachment_items:
             payload["attachments"] = self._serialize_gateway_attachments(attachment_items)
         return payload
+
+    @staticmethod
+    def _inject_inline_image_attachments(
+        request_messages: list[dict[str, Any]],
+        attachment_items: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        if not attachment_items:
+            return list(request_messages)
+        injected = False
+        updated_messages: list[dict[str, Any]] = []
+        for message in request_messages:
+            cloned = dict(message)
+            if not injected and cloned.get("role") == "user":
+                text = _coerce_text_content(cloned.get("content", ""))
+                cloned["content"] = _build_multimodal_content_from_attachment_items(
+                    text,
+                    attachment_items,
+                )
+                injected = True
+            updated_messages.append(cloned)
+        return updated_messages
+
+    def _build_no_tools_request_payload(
+        self,
+        request_messages: list[dict[str, Any]],
+        attachment_items: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "model": self._model,
+            "messages": self._inject_inline_image_attachments(
+                request_messages,
+                attachment_items,
+            ),
+            "temperature": self._temperature,
+            "stream": False,
+        }
+        if self._provider_max_tokens is not None:
+            payload["max_tokens"] = self._provider_max_tokens
+        return payload
+
+    def _build_no_tools_partial_response(
+        self,
+        *,
+        task_context: dict[str, Any],
+        request_payload: dict[str, Any],
+        response_json: dict[str, Any],
+        raw_output: str,
+        wall_time_sec: float,
+        gateway_mode: str,
+        sandbox: Any = None,
+        gateway_url: str = "",
+        sandbox_id: str = "",
+        extra_metadata: dict[str, Any] | None = None,
+    ) -> AgentResponse:
+        workspace_files = {
+            "task.txt": str(task_context["prompt"]),
+            "gateway_request.json": json.dumps(request_payload, indent=2, ensure_ascii=False),
+            "gateway_response.json": json.dumps(response_json, indent=2, ensure_ascii=False),
+        }
+        attachment_items = list(task_context["attachments"])
+        if attachment_items:
+            workspace_files["attachment_manifest.json"] = json.dumps(
+                self._attachment_manifest(attachment_items),
+                indent=2,
+                ensure_ascii=False,
+            )
+        if raw_output:
+            workspace_files["zeroclaw_output.txt"] = raw_output
+
+        request_messages = list(request_payload.get("messages", task_context["request_messages"]))
+        trajectory, reasoning_trajectory = self._apply_text_fallback_trajectory(
+            request_messages=request_messages,
+            output_text=raw_output,
+            current_trajectory=[],
+            current_reasoning=[],
+        )
+        response_metadata = {
+            "model": self._model,
+            "provider_api_base": self._provider_api_base,
+            "gateway_mode": gateway_mode,
+            "disable_tools": True,
+            "sandbox_backend": getattr(sandbox, "name", ""),
+        }
+        if extra_metadata:
+            response_metadata.update(extra_metadata)
+        return AgentResponse(
+            answer=_extract_answer(raw_output),
+            trajectory=trajectory or request_messages,
+            reasoning_trajectory=reasoning_trajectory,
+            raw_output=raw_output,
+            request_messages=request_messages,
+            response_json=build_runtime_trace_summary(
+                output_text=raw_output,
+                stderr_text="",
+                records=[],
+                extra=response_json,
+            ),
+            wall_time_sec=wall_time_sec,
+            gateway_url=gateway_url,
+            sandbox_id=sandbox_id,
+            artifact_manifest=add_artifact_file_refs(
+                self._merge_artifact_manifest(
+                    self._attachment_manifest(attachment_items),
+                ),
+                response_stream="zeroclaw_output.txt" if raw_output else None,
+                stdout_log="zeroclaw_output.txt" if raw_output else None,
+                prompt_text="task.txt",
+                request_payload="gateway_request.json",
+                selected_response="gateway_response.json",
+                attachment_manifest="attachment_manifest.json" if attachment_items else None,
+            ),
+            workspace_file_contents=workspace_files,
+            system_prompt=self._system_prompt,
+            metadata=response_metadata,
+        )
+
+    @staticmethod
+    def _mark_partial_failure(
+        partial_response: AgentResponse,
+        *,
+        failure_reason: str,
+        gateway_mode: str = "",
+        extra_metadata: dict[str, Any] | None = None,
+        response_json_extra: dict[str, Any] | None = None,
+    ) -> AgentResponse:
+        metadata = dict(partial_response.metadata or {})
+        metadata["failure_reason"] = failure_reason
+        if gateway_mode and not metadata.get("gateway_mode"):
+            metadata["gateway_mode"] = gateway_mode
+        if extra_metadata:
+            metadata.update(extra_metadata)
+        partial_response.metadata = metadata
+        if response_json_extra:
+            merged_response_json = dict(partial_response.response_json or {})
+            merged_response_json.update(response_json_extra)
+            partial_response.response_json = merged_response_json
+        return partial_response
+
+    def _run_no_tools_provider(
+        self,
+        task: BenchmarkTask,
+        *,
+        task_context: dict[str, Any] | None = None,
+        gateway_mode: str,
+        sandbox: Any = None,
+        sandbox_id: str = "",
+    ) -> AgentResponse:
+        try:
+            import httpx
+        except ImportError as exc:
+            raise RuntimeError(
+                "The 'httpx' package is required for ZeroClaw no-tools mode. "
+                "Install with: pip install httpx"
+            ) from exc
+
+        start = time.time()
+        resolved_task_context = task_context or self._build_task_context(task)
+        request_payload = self._build_no_tools_request_payload(
+            list(resolved_task_context["request_messages"]),
+            list(resolved_task_context["attachments"]),
+        )
+        url = f"{self._provider_api_base.rstrip('/')}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self._provider_api_key}",
+            "Content-Type": "application/json",
+        }
+        try:
+            response = httpx.post(
+                url,
+                headers=headers,
+                json=request_payload,
+                timeout=self._request_timeout + 60,
+                trust_env=False,
+            )
+        except Exception as exc:
+            partial_response = self._build_no_tools_partial_response(
+                task_context=resolved_task_context,
+                request_payload=request_payload,
+                response_json={
+                    "transport_error": str(exc),
+                    "exception_type": type(exc).__name__,
+                },
+                raw_output="",
+                wall_time_sec=time.time() - start,
+                gateway_mode=gateway_mode,
+                sandbox=sandbox,
+                gateway_url=url,
+                sandbox_id=sandbox_id,
+                extra_metadata={
+                    "provider_exception_type": type(exc).__name__,
+                },
+            )
+            self._mark_partial_failure(
+                partial_response,
+                failure_reason="provider_error",
+                gateway_mode=gateway_mode,
+            )
+            self._raise_with_partial_response(
+                f"ZeroClaw no-tools request failed before response: {exc}",
+                partial_response,
+                error_type="provider_error",
+                request_payload=request_payload,
+                response_body=str(exc),
+            )
+        try:
+            response_json = response.json()
+        except Exception:
+            response_json = {"raw_body": response.text}
+
+        raw_output = _extract_gateway_text(response_json)
+        partial_response = self._build_no_tools_partial_response(
+            task_context=resolved_task_context,
+            request_payload=request_payload,
+            response_json=response_json if isinstance(response_json, dict) else {"raw_body": response.text},
+            raw_output=raw_output,
+            wall_time_sec=time.time() - start,
+            gateway_mode=gateway_mode,
+            sandbox=sandbox,
+            gateway_url=url,
+            sandbox_id=sandbox_id,
+        )
+        if response.status_code != 200:
+            self._mark_partial_failure(
+                partial_response,
+                failure_reason="provider_error",
+                gateway_mode=gateway_mode,
+                extra_metadata={"provider_status_code": response.status_code},
+                response_json_extra={"provider_status_code": response.status_code},
+            )
+            self._raise_with_partial_response(
+                "ZeroClaw no-tools request failed: "
+                f"status={response.status_code} body={response_json!r}",
+                partial_response,
+                error_type="provider_error",
+                request_payload=request_payload,
+                response_body=response.text,
+            )
+        if not raw_output:
+            self._mark_partial_failure(
+                partial_response,
+                failure_reason="empty_response",
+                gateway_mode=gateway_mode,
+                extra_metadata={"provider_status_code": response.status_code},
+                response_json_extra={"provider_status_code": response.status_code},
+            )
+            self._raise_with_partial_response(
+                f"ZeroClaw no-tools request returned empty content: {response_json!r}",
+                partial_response,
+                error_type="empty_response",
+                request_payload=request_payload,
+                response_body=response.text,
+            )
+        return partial_response
 
     def _refresh_preserved_runtime_state(self, response: AgentResponse) -> None:
         workspace_files = dict(response.workspace_file_contents or {})
@@ -792,9 +1073,22 @@ class ZeroClawAgent(Agent):
         )
 
     @staticmethod
-    def _raise_with_partial_response(message: str, partial_response: AgentResponse) -> None:
+    def _raise_with_partial_response(
+        message: str,
+        partial_response: AgentResponse,
+        *,
+        error_type: str | None = None,
+        request_payload: Any = None,
+        response_body: Any = None,
+    ) -> None:
         exc = RuntimeError(message)
         setattr(exc, "partial_response", partial_response)
+        if error_type:
+            setattr(exc, "error_type", error_type)
+        if request_payload is not None:
+            setattr(exc, "request_payload", request_payload)
+        if response_body is not None:
+            setattr(exc, "response_body", response_body)
         raise exc
 
     def _write_local_attachments(self, attachments_dir: str, attachment_items: list[dict[str, Any]]) -> None:
@@ -1163,12 +1457,14 @@ class ZeroClawAgent(Agent):
         )
 
         if result.exit_code == 124:
+            self._mark_partial_failure(partial_response, failure_reason="timeout")
             self._raise_with_partial_response(
                 f"ZeroClaw agent timed out after {self._request_timeout}s",
                 partial_response,
             )
         if result.exit_code != 0:
             diagnostics = self._collect_sandbox_diagnostics_safe(sandbox, paths, env)
+            self._mark_partial_failure(partial_response, failure_reason="cli_error")
             self._raise_with_partial_response(
                 "ZeroClaw agent failed in sandbox: "
                 f"{raw_stderr or sanitized_output or raw_output or result.stderr.strip() or f'exit code {result.exit_code}'}\n"
@@ -1176,9 +1472,11 @@ class ZeroClawAgent(Agent):
                 partial_response,
             )
         if sanitized_output.lower().startswith("error:"):
+            self._mark_partial_failure(partial_response, failure_reason="cli_error")
             self._raise_with_partial_response(sanitized_output.splitlines()[0], partial_response)
         if raw_output and not sanitized_output and dropped_runtime_logs:
             diagnostics = self._collect_sandbox_diagnostics_safe(sandbox, paths, env)
+            self._mark_partial_failure(partial_response, failure_reason="empty_response")
             self._raise_with_partial_response(
                 "ZeroClaw produced no assistant output; stdout contained only runtime/provider logs.\n"
                 f"diagnostics:\n{diagnostics}",
@@ -1186,6 +1484,7 @@ class ZeroClawAgent(Agent):
             )
         if not sanitized_output:
             diagnostics = self._collect_sandbox_diagnostics_safe(sandbox, paths, env)
+            self._mark_partial_failure(partial_response, failure_reason="empty_response")
             self._raise_with_partial_response(
                 f"ZeroClaw agent produced no output. stderr={raw_stderr}\n"
                 f"diagnostics:\n{diagnostics}",
@@ -1229,27 +1528,121 @@ class ZeroClawAgent(Agent):
         }
         request_payload = self._build_gateway_request_payload(request_messages, attachment_items)
 
-        response = httpx.post(
-            url,
-            headers=headers,
-            json=request_payload,
-            timeout=self._request_timeout + 60,
-            trust_env=False,
+        resolved_sandbox_id = str(
+            resolved_runtime_info.get("sandbox_id")
+            or getattr(sandbox, "sandbox_id", "")
+            or self._sandbox_id
+            or actual_sandbox_id
         )
+        try:
+            response = httpx.post(
+                url,
+                headers=headers,
+                json=request_payload,
+                timeout=self._request_timeout + 60,
+                trust_env=False,
+            )
+        except Exception as exc:
+            partial_response = self._build_gateway_partial_response(
+                task_context=resolved_task_context,
+                artifact_data=artifact_data,
+                metadata={
+                    "model": self._model,
+                    "provider_api_base": self._provider_api_base,
+                    "gateway_api_base": resolved_api_base,
+                    "gateway_mode": gateway_mode,
+                    "sandbox_backend": getattr(sandbox, "name", ""),
+                    "gateway_exception_type": type(exc).__name__,
+                },
+                wall_time_sec=time.time() - start,
+                sandbox_id=resolved_sandbox_id,
+                gateway_url=resolved_runtime_info.get("gateway_url", url),
+                response_json={
+                    "transport_error": str(exc),
+                    "exception_type": type(exc).__name__,
+                },
+            )
+            self._mark_partial_failure(
+                partial_response,
+                failure_reason="proxy_error",
+                gateway_mode=gateway_mode,
+            )
+            self._raise_with_partial_response(
+                f"ZeroClaw bridge request failed before response: {exc}",
+                partial_response,
+                error_type="proxy_error",
+                request_payload=request_payload,
+                response_body=str(exc),
+            )
         try:
             response_json = response.json()
         except Exception:
             response_json = {"raw_body": response.text}
 
         if response.status_code != 200:
-            raise RuntimeError(
+            partial_response = self._build_gateway_partial_response(
+                task_context=resolved_task_context,
+                artifact_data=artifact_data,
+                metadata={
+                    "model": self._model,
+                    "provider_api_base": self._provider_api_base,
+                    "gateway_api_base": resolved_api_base,
+                    "gateway_mode": gateway_mode,
+                    "sandbox_backend": getattr(sandbox, "name", ""),
+                },
+                wall_time_sec=time.time() - start,
+                sandbox_id=resolved_sandbox_id,
+                gateway_url=resolved_runtime_info.get("gateway_url", url),
+                response_json=response_json if isinstance(response_json, dict) else {"raw_body": response.text},
+            )
+            self._mark_partial_failure(
+                partial_response,
+                failure_reason="proxy_error",
+                gateway_mode=gateway_mode,
+                extra_metadata={"gateway_status_code": response.status_code},
+                response_json_extra={"gateway_status_code": response.status_code},
+            )
+            self._raise_with_partial_response(
                 "ZeroClaw bridge request failed: "
                 f"status={response.status_code} body={response_json!r}"
+                ,
+                partial_response,
+                error_type="proxy_error",
+                request_payload=request_payload,
+                response_body=response.text,
             )
 
         raw_output = _extract_gateway_text(response_json)
         if not raw_output:
-            raise RuntimeError(f"ZeroClaw bridge returned empty content: {response_json!r}")
+            partial_response = self._build_gateway_partial_response(
+                task_context=resolved_task_context,
+                artifact_data=artifact_data,
+                metadata={
+                    "model": self._model,
+                    "provider_api_base": self._provider_api_base,
+                    "gateway_api_base": resolved_api_base,
+                    "gateway_mode": gateway_mode,
+                    "sandbox_backend": getattr(sandbox, "name", ""),
+                },
+                wall_time_sec=time.time() - start,
+                sandbox_id=resolved_sandbox_id,
+                gateway_url=resolved_runtime_info.get("gateway_url", url),
+                response_json=response_json if isinstance(response_json, dict) else {"raw_body": response.text},
+            )
+            self._mark_partial_failure(
+                partial_response,
+                failure_reason="empty_response",
+                gateway_mode=gateway_mode,
+                extra_metadata={"gateway_status_code": response.status_code},
+                response_json_extra={"gateway_status_code": response.status_code},
+            )
+            self._raise_with_partial_response(
+                f"ZeroClaw bridge returned empty content: {response_json!r}",
+                partial_response,
+                error_type="empty_response",
+                request_payload=request_payload,
+                response_body=response.text,
+            )
 
         answer = _extract_answer(raw_output)
         wall_time = time.time() - start
@@ -1271,13 +1664,6 @@ class ZeroClawAgent(Agent):
             json.dumps(response_json, indent=2, ensure_ascii=False),
         )
         workspace_files.setdefault("zeroclaw_output.txt", raw_output)
-        resolved_sandbox_id = str(
-            resolved_runtime_info.get("sandbox_id")
-            or getattr(sandbox, "sandbox_id", "")
-            or self._sandbox_id
-        )
-        if not resolved_sandbox_id:
-            resolved_sandbox_id, _ = self._extract_sandbox_target_from_api_base(resolved_api_base)
         runtime_trace = ""
         for key, value in workspace_files.items():
             if key == "runtime_trace.jsonl" or str(key).endswith("/runtime_trace.jsonl"):
@@ -1348,8 +1734,59 @@ class ZeroClawAgent(Agent):
     def _run_via_gateway(self, task: BenchmarkTask, sandbox: Any) -> AgentResponse:
         if self._runtime_manager is None:
             raise RuntimeError("ZeroClaw gateway mode is not configured.")
-        runtime_info = self._runtime_manager.ensure_ready(sandbox)
         task_context = self._build_task_context(task)
+        fallback_gateway_url = (
+            f"{sandbox.proxy_v1_base()}/chat/completions"
+            if hasattr(sandbox, "proxy_v1_base")
+            else ""
+        )
+        fallback_sandbox_id = str(getattr(sandbox, "sandbox_id", "") or "")
+        try:
+            runtime_info = self._runtime_manager.ensure_ready(sandbox)
+        except Exception as exc:
+            artifact_data = self._collect_gateway_artifacts_safe(sandbox)
+            fallback_label = (
+                "direct provider chat (tools disabled)"
+                if self._disable_tools
+                else "direct sandbox CLI"
+            )
+            logger.warning(
+                "ZeroClaw gateway bootstrap failed for sandbox_id=%s; falling back to %s: %s",
+                fallback_sandbox_id,
+                fallback_label,
+                exc,
+            )
+            if self._disable_tools:
+                response = self._run_no_tools_provider(
+                    task,
+                    task_context=task_context,
+                    gateway_mode="rock-proxy-bootstrap-fallback-no-tools",
+                    sandbox=sandbox,
+                    sandbox_id=fallback_sandbox_id,
+                )
+            else:
+                response = self._run_in_sandbox(task, sandbox)
+            response.gateway_url = fallback_gateway_url
+            response.sandbox_id = fallback_sandbox_id
+            response.artifact_manifest = self._merge_artifact_manifest(
+                response.artifact_manifest,
+                artifact_data.get("artifact_manifest", {}),
+            )
+            response.gateway_log_excerpt = artifact_data.get("gateway_log_excerpt", "")
+            response.workspace_snapshot_paths = artifact_data.get("workspace_snapshot_paths", [])
+            response.workspace_file_contents.update(
+                artifact_data.get("workspace_file_contents", {})
+            )
+            response.sandbox_metadata = artifact_data.get("sandbox_metadata", {})
+            response.metadata["gateway_mode"] = (
+                "rock-proxy-bootstrap-fallback-no-tools"
+                if self._disable_tools
+                else "rock-proxy-bootstrap-fallback-to-cli"
+            )
+            response.metadata["gateway_fallback_reason"] = str(exc)
+            self._refresh_preserved_runtime_state(response)
+            return response
+
         gateway_url = str(runtime_info.get("gateway_url") or f"{runtime_info['api_base']}/chat/completions")
         sandbox_id = str(
             runtime_info.get("sandbox_id")
@@ -1381,27 +1818,74 @@ class ZeroClawAgent(Agent):
         except Exception as exc:
             artifact_data = self._collect_gateway_artifacts_safe(sandbox)
             if not _should_fallback_from_gateway(exc):
-                partial_response = self._build_gateway_partial_response(
-                    task_context=task_context,
-                    artifact_data=artifact_data,
-                    metadata={
-                        "model": self._model,
-                        "provider_api_base": self._provider_api_base,
-                        "gateway_api_base": runtime_info["api_base"],
-                        "gateway_mode": "rock-proxy",
-                        "sandbox_backend": getattr(sandbox, "name", ""),
-                    },
-                    wall_time_sec=0.0,
-                    sandbox_id=sandbox_id,
-                    gateway_url=gateway_url,
-                )
-                self._raise_with_partial_response(str(exc), partial_response)
+                if not self._disable_tools:
+                    partial_response = getattr(exc, "partial_response", None)
+                    if partial_response is None:
+                        partial_response = self._build_gateway_partial_response(
+                            task_context=task_context,
+                            artifact_data=artifact_data,
+                            metadata={
+                                "model": self._model,
+                                "provider_api_base": self._provider_api_base,
+                                "gateway_api_base": runtime_info["api_base"],
+                                "gateway_mode": "rock-proxy",
+                                "sandbox_backend": getattr(sandbox, "name", ""),
+                            },
+                            wall_time_sec=0.0,
+                            sandbox_id=sandbox_id,
+                            gateway_url=gateway_url,
+                        )
+                    else:
+                        partial_response.artifact_manifest = self._merge_artifact_manifest(
+                            partial_response.artifact_manifest,
+                            artifact_data.get("artifact_manifest", {}),
+                        )
+                        partial_response.gateway_log_excerpt = (
+                            partial_response.gateway_log_excerpt
+                            or artifact_data.get("gateway_log_excerpt", "")
+                        )
+                        partial_response.workspace_snapshot_paths = (
+                            list(partial_response.workspace_snapshot_paths or [])
+                            + [
+                                path for path in artifact_data.get("workspace_snapshot_paths", [])
+                                if path not in list(partial_response.workspace_snapshot_paths or [])
+                            ]
+                        )
+                        partial_response.workspace_file_contents.update(
+                            artifact_data.get("workspace_file_contents", {})
+                        )
+                        partial_response.sandbox_metadata = {
+                            **dict(partial_response.sandbox_metadata or {}),
+                            **dict(artifact_data.get("sandbox_metadata", {}) or {}),
+                        }
+                    self._raise_with_partial_response(
+                        str(exc),
+                        partial_response,
+                        error_type=getattr(exc, "error_type", None),
+                        request_payload=getattr(exc, "request_payload", None),
+                        response_body=getattr(exc, "response_body", None),
+                    )
+            fallback_label = (
+                "direct provider chat (tools disabled)"
+                if self._disable_tools
+                else "direct sandbox CLI"
+            )
             logger.warning(
-                "ZeroClaw ROCK proxy failed for sandbox_id=%s; falling back to direct sandbox CLI: %s",
+                "ZeroClaw ROCK proxy failed for sandbox_id=%s; falling back to %s: %s",
                 runtime_info.get("sandbox_id") or getattr(sandbox, "sandbox_id", ""),
+                fallback_label,
                 exc,
             )
-            response = self._run_in_sandbox(task, sandbox)
+            if self._disable_tools:
+                response = self._run_no_tools_provider(
+                    task,
+                    task_context=task_context,
+                    gateway_mode="rock-proxy-fallback-no-tools",
+                    sandbox=sandbox,
+                    sandbox_id=sandbox_id,
+                )
+            else:
+                response = self._run_in_sandbox(task, sandbox)
             response.gateway_url = gateway_url
             response.sandbox_id = sandbox_id
             response.artifact_manifest = self._merge_artifact_manifest(
@@ -1414,7 +1898,11 @@ class ZeroClawAgent(Agent):
                 artifact_data.get("workspace_file_contents", {})
             )
             response.sandbox_metadata = artifact_data.get("sandbox_metadata", {})
-            response.metadata["gateway_mode"] = "rock-proxy-fallback-to-cli"
+            response.metadata["gateway_mode"] = (
+                "rock-proxy-fallback-no-tools"
+                if self._disable_tools
+                else "rock-proxy-fallback-to-cli"
+            )
             response.metadata["gateway_fallback_reason"] = str(exc)
             self._refresh_preserved_runtime_state(response)
             return response
@@ -1449,20 +1937,38 @@ class ZeroClawAgent(Agent):
                 gateway_mode="gateway-pool" if used_pool else "gateway-api-base",
             )
         except Exception as exc:
-            partial_response = self._build_gateway_partial_response(
-                task_context=task_context,
-                artifact_data=None,
-                metadata={
-                    "model": self._model,
-                    "provider_api_base": self._provider_api_base,
-                    "gateway_api_base": resolved_api_base,
-                    "gateway_mode": "gateway-pool" if used_pool else "gateway-api-base",
-                },
-                wall_time_sec=0.0,
-                sandbox_id=str(runtime_info.get("sandbox_id", "")),
-                gateway_url=str(runtime_info.get("gateway_url", "")),
+            if self._disable_tools:
+                return self._run_no_tools_provider(
+                    task,
+                    task_context=task_context,
+                    gateway_mode=(
+                        "gateway-pool-fallback-no-tools"
+                        if used_pool
+                        else "gateway-api-base-fallback-no-tools"
+                    ),
+                )
+            partial_response = getattr(exc, "partial_response", None)
+            if partial_response is None:
+                partial_response = self._build_gateway_partial_response(
+                    task_context=task_context,
+                    artifact_data=None,
+                    metadata={
+                        "model": self._model,
+                        "provider_api_base": self._provider_api_base,
+                        "gateway_api_base": resolved_api_base,
+                        "gateway_mode": "gateway-pool" if used_pool else "gateway-api-base",
+                    },
+                    wall_time_sec=0.0,
+                    sandbox_id=str(runtime_info.get("sandbox_id", "")),
+                    gateway_url=str(runtime_info.get("gateway_url", "")),
+                )
+            self._raise_with_partial_response(
+                str(exc),
+                partial_response,
+                error_type=getattr(exc, "error_type", None),
+                request_payload=getattr(exc, "request_payload", None),
+                response_body=getattr(exc, "response_body", None),
             )
-            self._raise_with_partial_response(str(exc), partial_response)
 
     def _run_locally(self, task: BenchmarkTask) -> AgentResponse:
         start = time.time()
@@ -1531,24 +2037,29 @@ class ZeroClawAgent(Agent):
             )
 
             if result.returncode == 124:
+                self._mark_partial_failure(partial_response, failure_reason="timeout")
                 self._raise_with_partial_response(
                     f"ZeroClaw agent timed out after {self._request_timeout}s",
                     partial_response,
                 )
             if result.returncode != 0:
+                self._mark_partial_failure(partial_response, failure_reason="cli_error")
                 self._raise_with_partial_response(
                     "ZeroClaw agent failed locally: "
                     f"{raw_stderr or sanitized_output or raw_output or result.stderr.strip() or f'exit code {result.returncode}'}",
                     partial_response,
                 )
             if sanitized_output.lower().startswith("error:"):
+                self._mark_partial_failure(partial_response, failure_reason="cli_error")
                 self._raise_with_partial_response(sanitized_output.splitlines()[0], partial_response)
             if raw_output and not sanitized_output and dropped_runtime_logs:
+                self._mark_partial_failure(partial_response, failure_reason="empty_response")
                 self._raise_with_partial_response(
                     "ZeroClaw produced no assistant output; stdout contained only runtime/provider logs.",
                     partial_response,
                 )
             if not sanitized_output:
+                self._mark_partial_failure(partial_response, failure_reason="empty_response")
                 self._raise_with_partial_response(
                     f"ZeroClaw agent produced no output. stderr={raw_stderr}",
                     partial_response,
@@ -1560,6 +2071,8 @@ class ZeroClawAgent(Agent):
             raise RuntimeError("ZeroClawAgent requires agent.config.model or OPENAI_MODEL_NAME.")
 
         if (
+            not self._disable_tools
+            and
             self._multimodal_via_proxy
             and self._has_image_attachments(task)
             and sandbox is None
@@ -1577,10 +2090,24 @@ class ZeroClawAgent(Agent):
                 and self._runtime_manager.is_configured
             ):
                 return self._run_via_gateway(task, sandbox)
+            if self._disable_tools:
+                self._ensure_provider_credentials("no-tools direct execution")
+                return self._run_no_tools_provider(
+                    task,
+                    gateway_mode="sandbox-bypass-no-tools",
+                    sandbox=sandbox,
+                    sandbox_id=str(getattr(sandbox, "sandbox_id", "") or ""),
+                )
             self._ensure_provider_credentials("direct sandbox execution")
             return self._run_in_sandbox(task, sandbox)
         if self._gateway_pool or self._gateway_api_base:
             return self._run_via_predeployed_gateway(task)
+        if self._disable_tools:
+            self._ensure_provider_credentials("no-tools direct execution")
+            return self._run_no_tools_provider(
+                task,
+                gateway_mode="no-tools-direct",
+            )
         self._ensure_provider_credentials("local execution")
         return self._run_locally(task)
 

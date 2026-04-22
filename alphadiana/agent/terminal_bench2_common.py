@@ -85,7 +85,7 @@ class LocalCommandResult:
 @dataclass
 class VerifierResult:
     test_output: str
-    reward: str
+    reward: str | None
     status: str
     reward_path: str
     verifier_output_path: str
@@ -726,7 +726,7 @@ chmod +x /usr/local/bin/uvx /root/.local/bin/env
             if reused_status == "skipped_duplicate":
                 return VerifierResult(
                     test_output=reused_output,
-                    reward="0",
+                    reward=None,
                     status="skipped_duplicate",
                     reward_path=str(reward_path),
                     verifier_output_path=str(verifier_output_path),
@@ -766,7 +766,7 @@ chmod +x /usr/local/bin/uvx /root/.local/bin/env
         self,
         runtime: TerminalBench2RuntimeContext,
         *,
-        reward: str,
+        reward: str | None,
         rounds_used: int = 0,
         runner: str,
         extra: dict[str, Any] | None = None,
