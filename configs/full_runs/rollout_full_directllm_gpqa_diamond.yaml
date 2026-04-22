@@ -10,7 +10,7 @@ agent:
     model: "${OPENAI_MODEL_NAME}"
     api_base: "${OPENAI_BASE_URL}"
     api_key: "${OPENAI_API_KEY}"
-    temperature: 0.6
+    temperature: 0.0
     top_p: 0.95
     max_tokens: 32768
     stream: true

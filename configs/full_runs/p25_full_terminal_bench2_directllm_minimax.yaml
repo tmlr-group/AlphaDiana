@@ -15,8 +15,9 @@ agent:
     model: "minimax-m2.5"
     api_base: ${OPENAI_BASE_URL}
     api_key: ${OPENAI_API_KEY}
+    temperature: 0.0
     max_rounds: 8
-    max_tokens: 4096
+    max_tokens: 32768
     timeout_sec: 900
     test_timeout_sec: 1200
 

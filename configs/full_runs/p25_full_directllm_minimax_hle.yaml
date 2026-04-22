@@ -11,8 +11,9 @@ agent:
     api_base: ${OPENAI_BASE_URL}
     api_key: ${OPENAI_API_KEY}
     temperature: 0.0
-    max_tokens: 4096
-    stream: false
+    top_p: 0.95
+    max_tokens: 32768
+    stream: true
     system_prompt: |
       Solve the question carefully and keep the answer concise.
       The final line must be:

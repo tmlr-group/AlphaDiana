@@ -15,6 +15,7 @@ agent:
     model: ${OPENAI_MODEL_NAME}
     api_base: ${OPENAI_BASE_URL}
     api_key: ${OPENAI_API_KEY}
+    temperature: 0.0
     runtime_source_image: "zeroclaw-reasoning:0.6.9"
     zeroclaw_bin: "zeroclaw"
     solver_timeout_sec: 1800

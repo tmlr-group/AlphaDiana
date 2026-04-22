@@ -20,7 +20,7 @@ agent:
     OPENAI_MODEL_NAME: "${OPENAI_MODEL_NAME}"
     model: openclaw
     gateway_token: "OPENCLAW"
-    temperature: 0.6
+    temperature: 0.0
     top_p: 0.95
     max_tokens: 32768
     request_timeout: 1800

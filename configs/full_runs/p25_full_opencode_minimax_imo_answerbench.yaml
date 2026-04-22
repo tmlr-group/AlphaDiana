@@ -14,7 +14,7 @@ agent:
     controller_mode: "docker"
     controller_image: "alphadiana/tb2-opencode-controller:latest"
     timeout: 1800
-    streaming: false
+    streaming: true
     tool_call: false
     agent: "lean-math"
     agent_md_path: "context/opencode_lean_math.md"

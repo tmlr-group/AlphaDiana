@@ -8,7 +8,10 @@ agent:
   version: "1.0"
   config:
     agent_type: opencode
-    request_timeout: 2400
+    request_timeout: 1800
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 32768
     output_dir: "./swebench_artifacts_opencode_full"
     env:
       OPENAI_API_KEY: "${OPENAI_API_KEY}"

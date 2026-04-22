@@ -10,13 +10,14 @@ agent:
     model: "minimax-m2.5"
     api_base: "${OPENAI_BASE_URL}"
     api_key: "${OPENAI_API_KEY}"
+    temperature: 0.0
     rock_image: "zeroclaw-reasoning:0.6.9"
     rock_memory: "4g"
     rock_cpus: 1
     rock_startup_timeout: 600
     admin_base_url: "${ROCK_BASE_URL}"
     proxy_base_url: "${ROCK_PROXY_URL}"
-    request_timeout: 2400
+    request_timeout: 1800
     max_tool_iterations: 100
     max_actions_per_hour: 200
     system_prompt: |

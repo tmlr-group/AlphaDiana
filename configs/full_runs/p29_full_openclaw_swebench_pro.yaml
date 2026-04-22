@@ -9,6 +9,9 @@ agent:
   config:
     agent_type: openclaw
     request_timeout: 1800
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 32768
     output_dir: "./swebench_artifacts_openclaw_full"
     env:
       OPENAI_API_KEY: "${OPENAI_API_KEY}"

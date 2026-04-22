@@ -69,6 +69,15 @@ Notes:
 - Override the official terminal-bench checkout root with `DIRECTLLM_TB2_ROOT` when you do not want to rely on `DIRECTLLM_ROOT`.
 - `MMMU-Pro` full configs use `data_config: "vision"`.
 - Checked-in full-run configs set `strict_report: true`; AlphaDiana-backed full configs also set `strict_isolation: true`.
+- The checked-in rollout configs now match the frozen
+  `benchmark-rollout-full-plan-20260419` semantics where the current runtime
+  actually exposes them:
+  `temperature=0.0`, `top_p=0.95`, `max_tokens=32768`, `streaming=true`,
+  `timeout=1800`.
+- Keep the plan's gap list in mind when reading that line:
+  `thinking` is not uniformly forwarded, `opencode` does not uniformly expose
+  `top_p` / `max_tokens`, and `zeroclaw` does not uniformly expose
+  `top_p` / `max_tokens` / `streaming`.
 
 ## Preflight
 

@@ -20,8 +20,11 @@ agent:
     OPENAI_MODEL_NAME: "minimax-m2.5"
     model: openclaw
     gateway_token: "OPENCLAW"
-    max_tokens: 4096
-    request_timeout: 2400
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 32768
+    request_timeout: 1800
+    stream_idle_timeout: 600
     max_attempts: 5
     system_prompt: |
       Solve carefully and keep the final answer concise.
