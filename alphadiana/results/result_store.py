@@ -304,6 +304,22 @@ class ResultStore:
                 existing.append(record)
             path.write_text(json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8")
 
+    def write_logprobs_jsonl(self, task_id: str, records: list[dict]) -> Path:
+        """Write per-token logprob records to results/{run_id}/logprobs/{task_id}.jsonl.
+
+        Overwrites any prior file for the same task_id. Safe under concurrent writes
+        because each task has its own file and directory creation is idempotent.
+        """
+        self._ensure_dirs()
+        logprobs_dir = self.output_dir / self.run_id / "logprobs"
+        logprobs_dir.mkdir(parents=True, exist_ok=True)
+        path = logprobs_dir / f"{task_id}.jsonl"
+        with self._get_task_json_lock(f"logprobs:{task_id}"):
+            with open(path, "w", encoding="utf-8") as f:
+                for rec in records:
+                    f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        return path
+
     def completed_task_ids(self, scorer_name: str | None = None) -> set[str]:
         """Return task_ids of records that should NOT be retried.
 
