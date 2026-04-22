@@ -132,6 +132,49 @@ class TestOpenClawEmptyResponseHandling:
         assert len(err.retry_responses) == 2
         assert err.request_payload["model"] == "test"
 
+    def test_terminal_provider_error_in_trajectory_skips_retry(self):
+        """Explicit upstream provider errors in the session transcript should fail fast."""
+        from alphadiana.agent.openclaw import OpenClawRequestError
+
+        agent = self._setup_agent(max_attempts=3)
+        task = BenchmarkTask(task_id="t_provider", problem="What is 1+1?", ground_truth="2")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "text/event-stream"}
+        mock_response.iter_lines = MagicMock(return_value=["data: [DONE]"])
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        mock_client = MagicMock()
+        mock_client.stream = MagicMock(return_value=mock_response)
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+
+        recovered_trajectory = [
+            {
+                "role": "assistant",
+                "content": "",
+                "error": (
+                    '404 No endpoints found that support tool use. '
+                    'Try disabling "read".'
+                ),
+            }
+        ]
+
+        with patch.object(agent, "_health_check", return_value=None):
+            with patch.object(agent, "_retrieve_trajectory_sync", return_value=recovered_trajectory):
+                with patch("httpx.Client", return_value=mock_client):
+                    with patch("alphadiana.agent.openclaw.time.sleep") as mock_sleep:
+                        with pytest.raises(OpenClawRequestError) as exc_info:
+                            agent.solve(task)
+
+        err = exc_info.value
+        assert err.error_type == "provider_error"
+        assert len(err.retry_responses) == 1
+        mock_client.stream.assert_called_once()
+        mock_sleep.assert_not_called()
+
     def test_streaming_reasoning_content_falls_back_when_final_content_missing(self):
         """SSE reasoning deltas should be used when no assistant content is ever emitted."""
         agent = self._setup_agent(max_attempts=1)

@@ -560,12 +560,9 @@ class OpenCodeAgent(Agent):
             config_dir.mkdir(parents=True, exist_ok=True)
 
             provider_model_name = self._model_name or self._api_model
-            model_key = (
-                provider_model_name.split("/")[-1]
-                if "/" in provider_model_name
-                else provider_model_name
-            )
-            cli_model = f"custom/{model_key}"
+            if not provider_model_name:
+                provider_model_name = _derive_api_model(self._cli_model, self._model_name)
+            cli_model = f"custom/{provider_model_name}"
             model_spec: dict[str, Any] = {
                 "name": provider_model_name,
                 "tool_call": self._tool_call,
@@ -592,7 +589,7 @@ class OpenCodeAgent(Agent):
                                 else {}
                             ),
                         },
-                        "models": {model_key: model_spec},
+                        "models": {provider_model_name: model_spec},
                     }
                 },
                 "model": cli_model,

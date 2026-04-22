@@ -407,6 +407,23 @@ def _extract_trajectory_error(trajectory: list[dict]) -> str:
     return ""
 
 
+def _classify_terminal_upstream_error(error_text: str) -> str | None:
+    """Map explicit upstream terminal errors into non-retryable buckets."""
+    blob = str(error_text or "").strip().lower()
+    if not blob:
+        return None
+
+    provider_markers = (
+        "no endpoints found that support tool use",
+        "developer instruction is not enabled",
+        "user location is not supported for the api use",
+        "tool choice requires",
+    )
+    if any(marker in blob for marker in provider_markers):
+        return "provider_error"
+    return None
+
+
 def _normalize_request_content(content: Any) -> str:
     """Normalize request text for transcript matching."""
     return _coerce_text_content(content).replace("\r\n", "\n").strip()
@@ -1471,6 +1488,9 @@ class OpenClawAgent(Agent):
                     response_json=response_json,
                     status_code=status_code,
                 )
+                terminal_upstream_error_type = _classify_terminal_upstream_error(
+                    trajectory_error
+                )
                 # Detect crashed backend: HTTP 200 + empty SSE (no chunks, no [DONE]).
                 # classify_error() returns "unknown" here because response_json is {}
                 # (no choices key).  Use a dedicated "empty_sse_body" type so the
@@ -1485,6 +1505,8 @@ class OpenClawAgent(Agent):
                 )
                 if is_empty_sse_body and error_type in ("unknown", "empty_response"):
                     error_type = "empty_sse_body"
+                if terminal_upstream_error_type:
+                    error_type = terminal_upstream_error_type
                 retry_responses.append({
                     "attempt": attempt,
                     "status_code": status_code,
@@ -1493,6 +1515,7 @@ class OpenClawAgent(Agent):
                     "elapsed_sec": elapsed,
                     "error_type": error_type,
                     "trajectory_error": trajectory_error,
+                    "non_retryable": bool(terminal_upstream_error_type),
                 })
                 logger.warning(
                     "OpenClaw attempt %d/%d returned empty content: status=%s elapsed=%.2fs body=%r reasoning_chars=%d trajectory_error=%r",
@@ -1661,7 +1684,14 @@ class OpenClawAgent(Agent):
 
             if attempt < self._max_attempts:
                 # Distinguish "busy/empty" from real errors for retry delay.
-                last_error_type = retry_responses[-1]["error_type"] if retry_responses else "unknown"
+                last_retry = retry_responses[-1] if retry_responses else {}
+                last_error_type = last_retry.get("error_type", "unknown")
+                if last_retry.get("non_retryable"):
+                    logger.info(
+                        "OpenClaw not retrying terminal upstream error (error_type=%s)",
+                        last_error_type,
+                    )
+                    break
                 if last_error_type == "empty_response":
                     # Agent returned a properly-structured but empty response —
                     # it may still be processing.  Wait longer before retrying.

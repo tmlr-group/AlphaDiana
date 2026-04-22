@@ -143,6 +143,45 @@ def test_solve_text_only_uses_opencode_cli():
     assert result.workspace_file_contents["prompt.txt"].startswith("You are an expert problem solver.")
 
 
+def test_solve_preserves_namespaced_model_alias_in_provider_config():
+    agent = OpenCodeAgent()
+    agent.setup({
+        "model_name": "Qwen/Qwen3.5-27B",
+        "api_base": "http://localhost:9001/v1",
+        "api_key": "test-key",
+        "timeout": 5,
+    })
+
+    process = MagicMock()
+    process.communicate.return_value = (
+        '{"type":"assistant","message":{"content":"Done.\\\\boxed{A}"}}\n',
+        "",
+    )
+    process.returncode = 0
+    seen: dict[str, object] = {}
+
+    task = BenchmarkTask(
+        task_id="text_qwen",
+        problem="Which option is correct?",
+        ground_truth="A",
+    )
+
+    def fake_popen(cmd, **kwargs):
+        seen["cmd"] = cmd
+        config_path = Path(kwargs["env"]["XDG_CONFIG_HOME"]) / "opencode" / "opencode.json"
+        seen["provider_config"] = json.loads(config_path.read_text(encoding="utf-8"))
+        return process
+
+    with patch("subprocess.Popen", side_effect=fake_popen):
+        result = agent.solve(task)
+
+    provider_config = seen["provider_config"]
+    assert provider_config["model"] == "custom/Qwen/Qwen3.5-27B"
+    assert "Qwen/Qwen3.5-27B" in provider_config["provider"]["custom"]["models"]
+    assert "custom/Qwen/Qwen3.5-27B" in seen["cmd"]
+    assert result.answer == "A"
+
+
 def test_solve_preserves_opencode_event_stream_as_trajectory():
     agent = OpenCodeAgent()
     agent.setup({

@@ -195,6 +195,12 @@ cp -a "$TERMINAL_BENCH2_SOURCE_ROOT"/break-filter-js-from-html "$TERMINAL_BENCH2
 
 The smoke configs assume `TERMINAL_BENCH2_SMOKE_DIR` points at a directory whose immediate children are task directories. The full-run configs assume `TERMINAL_BENCH2_DIR` points at the full task root.
 
+Current loader note on April 22, 2026:
+pointing `TERMINAL_BENCH2_DIR` at a normal checkout root is valid. The loader
+skips non-task directories such as `.git` and `jobs`. On the current local
+April 22 checkout used for the OpenRouter full-run follow-up, that meant
+`91` immediate directories on disk but `89` loaded task roots.
+
 ## Pre-pull Task Images
 
 Before any smoke or full run:
@@ -236,6 +242,23 @@ docker pull zeroclaw-reasoning:0.6.9
 The first native-agent smoke/full run automatically builds a derived
 `alphadiana-tb2-runtime:<agent>-<fingerprint>` image from the task image plus
 the selected runtime source image.
+
+Early OpenRouter full-run evidence on April 22, 2026 uses
+`nvidia/nemotron-3-nano-30b-a3b:free`:
+
+- `full_20260422_openrouter_nemotron_3_nano_30b_a3b_terminal_bench2_directllm_r1`
+  and `..._openclaw_r1` already wrote
+  `tb2_adaptive-rejection-sampler.json` as `valid_scored` with
+  `reward=0`, `metadata.verifier_status=ok`, and
+  `metadata.verifier_reward_observed=true`
+- `..._zeroclaw_r1` also advanced with normal `valid_scored` reward-0 task
+  JSONs
+- `..._opencode_r1` is less quiet so far: its first task wrote
+  `score_status=verifier_error` with
+  `metadata.verifier_status=missing_reward`
+- the first task still takes roughly minutes before its JSON appears because of
+  container bring-up plus verifier startup; do not classify the run as stalled
+  during that gap alone
 
 For ZeroClaw, prefer putting large temporary files on a data disk before running:
 
