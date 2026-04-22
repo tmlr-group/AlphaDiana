@@ -2,6 +2,8 @@
 
 set -euo pipefail
 
+unset ALL_PROXY HTTP_PROXY HTTPS_PROXY all_proxy http_proxy https_proxy
+
 TOTAL_STEPS=6
 CURRENT_STEP=0
 
@@ -41,8 +43,10 @@ from packaging.version import Version
 
 project_root = Path(r'''${PROJECT_ROOT}''').resolve()
 module_path = Path(alphadiana.__file__).resolve()
+rock_path = Path(rock.__file__).resolve()
 
 assert project_root in module_path.parents
+assert rock_path == (project_root / 'ref' / 'ROCK' / 'rock' / '__init__.py')
 assert md.version('alphadiana') == '0.1.0'
 assert Version(md.version('rl-rock')) >= Version('1.3.0')
 assert md.version('nacos-sdk-python') == '2.0.9'
@@ -79,10 +83,23 @@ init_conda_shell() {
   return "${status}"
 }
 
-ENV_NAME="${1:-alphadiana}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 PROJECT_NAME="$(basename "${PROJECT_ROOT}")"
+DEFAULT_ENV_NAME="$(
+python - "${PROJECT_ROOT}" <<'PYEOF' 2>/dev/null || true
+import sys
+from pathlib import Path
+
+project_root = Path(sys.argv[1]).resolve()
+sys.path.insert(0, str(project_root))
+
+from alphadiana.utils.rock_ports import default_checkout_env_name
+
+print(default_checkout_env_name(project_root))
+PYEOF
+)"
+ENV_NAME="${1:-${DEFAULT_ENV_NAME:-alphadiana}}"
 ROCK_REL="ref/ROCK"
 ENV_REL="scripts/rock_env.sh"
 ENV_MARKER_REL="scripts/.alphadiana_env"
@@ -133,6 +150,8 @@ else
   # do not fail in network-restricted shells while trying to create an isolated
   # build env for the local project.
   with_nounset_disabled conda run -n "${ENV_NAME}" python -m pip install --no-build-isolation -e ".[all,benchmarks,dev]"
+  log_progress "Installing ROCK editable package from ${ROCK_REL}"
+  with_nounset_disabled conda run -n "${ENV_NAME}" python -m pip install --no-build-isolation -e "${ROCK_REL}"
   log_progress "Installing pinned nacos-sdk-python==2.0.9"
   with_nounset_disabled conda run -n "${ENV_NAME}" python -m pip install "nacos-sdk-python==2.0.9"
   log_progress "Dependency installation completed"
@@ -151,6 +170,8 @@ fi
 log_progress "Persisting checkout-local env name to ${ENV_MARKER_REL}"
 cat > "${ENV_MARKER_REL}" <<EOF
 export ALPHADIANA_ENV_NAME="${ENV_NAME}"
+export ALPHADIANA_ENV_PROJECT_ROOT="${PROJECT_ROOT}"
+export ALPHADIANA_ROCK_ROOT="${PROJECT_ROOT}/${ROCK_REL}"
 EOF
 chmod +x "${ENV_REL}" "${ENV_MARKER_REL}"
 mkdir -p "${ROCK_REL}/dev"

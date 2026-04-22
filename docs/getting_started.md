@@ -83,12 +83,12 @@ AlphaDiana Runner
 
 
 ```bash
-conda create -n alphadiana python=3.11 -y
-conda activate alphadiana
+bash scripts/quickstart.sh
+source scripts/activate.sh
 ```
 
 
-> Python version must be >=3.10, 3.11 is recommended. Do not use 3.13 (ROCK depends on gem-llm only supports <=3.12).
+> `quickstart.sh` creates a checkout-local Conda env name automatically, so multiple AlphaDiana checkouts on the same host do not collide. Python version must be >=3.10, 3.11 is recommended. Do not use 3.13 (ROCK depends on gem-llm only supports <=3.12).
 
 ### 1.3 Install vLLM
 
@@ -575,12 +575,17 @@ evidence needed for replay and audit:
 
 - `request_messages`, `response_json`, `trajectory`, and
   `reasoning_trajectory` are written into each task JSON when the runtime
-  exposes them.
+  exposes them. The persisted `trajectory` is a normalized summary view with
+  stable step types (`system`, `message`, `tool_use`, `tool_result`,
+  `reasoning`) rather than a verbatim dump of harness-native events.
 - Per-task raw files are stored under `results/<run_id>/artifacts/<task_id>/...`.
 - `artifact_manifest.files` exposes stable aliases such as `response_stream`,
-  `session_trace`, `prompt_text`, and `workspace_files` so downstream tooling
-  can find the preserved harness artifacts without knowing agent-specific
-  filenames.
+  `session_trace`, `prompt_text`, `normalized_trace`, and `workspace_files`
+  so downstream tooling can find the preserved harness artifacts without
+  knowing agent-specific filenames.
+- `artifact_manifest.files.normalized_trace` points to a harness-agnostic
+  `normalized_trace.json` artifact that separates the stable saved trace view
+  from the raw runtime/session files.
 
 
 ### 7.2 Question-by-question analysis
@@ -605,7 +610,10 @@ for r in results:
 
 ### 7.3 View the Agent’s reasoning process
 
-The `trajectory` field of each result contains the complete agentic trace:
+The `trajectory` field of each result contains the normalized agentic summary
+used by the dashboard. For replay-quality inspection, prefer the
+`normalized_trace.json` artifact plus the raw `response_stream` /
+`session_trace` files referenced from `artifact_manifest.files`.
 
 
 ```python

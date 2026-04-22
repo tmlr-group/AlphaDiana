@@ -8,6 +8,11 @@ Quick entry:
 bash scripts/quickstart.sh
 ```
 
+By default, `quickstart.sh` now creates a checkout-derived conda env such as
+`alphadiana-dev-9809e32f`. That default is intentional on shared hosts: it
+keeps the current checkout's editable installs from drifting onto another
+worktree's conda env.
+
 If you need to run manually, pay attention to the following:
 
 - Run `source scripts/rock_env.sh` from the repository root directory
@@ -15,6 +20,10 @@ If you need to run manually, pay attention to the following:
 - After `newgrp docker`, you must re-run `conda activate`, `source scripts/rock_env.sh`, and `source scripts/.rock_ports.env`
 - Run `ray stop` before starting Ray
 - `RAY_TMPDIR` now defaults to a short repo-isolated path such as `/tmp/<user>-ray-<hash>` to avoid both cross-checkout reuse and Ray AF_UNIX path-length failures
+- `scripts/.alphadiana_env` is local ignored state. If it points at a missing
+  checkout or wrong ROCK root, re-run `bash scripts/setup_alphadiana_rock.sh`
+  or `bash scripts/quickstart.sh`; `source scripts/activate.sh` now ignores a
+  stale marker and prefers this checkout's local `ref/ROCK` when it exists.
 
 Further manual steps from `README.md` can be migrated here over time.
 
@@ -23,7 +32,9 @@ Further manual steps from `README.md` can be migrated here over time.
 If you have multiple AlphaDiana / ROCK checkouts on the same machine, isolate all of the following together:
 
 - Use a dedicated conda env per checkout.
-  `bash scripts/quickstart.sh alphadiana-full2`
+  Plain `bash scripts/quickstart.sh` now does this automatically by deriving a
+  checkout-specific env name. If you need to pin it explicitly, pass
+  `bash scripts/quickstart.sh <env_name>`.
 - Persist that env choice via `scripts/.alphadiana_env` and enter it with:
   `source scripts/activate.sh`
 - Allocate dedicated admin/proxy/Ray/Redis ports for the checkout:
@@ -37,7 +48,12 @@ If you have multiple AlphaDiana / ROCK checkouts on the same machine, isolate al
 
 Current helper behavior:
 
+- `scripts/activate.sh` now ignores stale `scripts/.alphadiana_env` markers
+  whose recorded project root does not match the current checkout.
 - `scripts/start_openclaw.sh` and `scripts/start_zeroclaw.sh` can reuse `ALPHADIANA_ROCK_ROOT` instead of requiring a local `ref/ROCK`.
+- `scripts/start_openclaw.sh` and `scripts/start_zeroclaw.sh` now default their
+  conda env fallback to the same checkout-derived env name that
+  `quickstart.sh` writes.
 - Both start scripts refresh ports when the configured admin/proxy belong to another checkout.
 - `scripts/start_zeroclaw.sh` now restarts an unhealthy local Ray head instead of blindly reusing any listener on the GCS port.
 - If `ray start --head` fails with `Session name ... does not match persisted value ... Perhaps there was an error connecting to Redis`, the checkout-isolated Redis still has stale Ray session metadata. Recreate that checkout's `ROCK_REDIS_CONTAINER` and clear that checkout's `RAY_TMPDIR` before retrying the Ray startup.

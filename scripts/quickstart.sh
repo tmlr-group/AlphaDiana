@@ -16,10 +16,25 @@
 
 set -euo pipefail
 
-ENV_NAME="${1:-alphadiana}"
+unset ALL_PROXY HTTP_PROXY HTTPS_PROXY all_proxy http_proxy https_proxy
+
 SCRIPT_PATH="${BASH_SOURCE[0]}"
 SCRIPT_DIR="$(dirname "${SCRIPT_PATH}")"
 PROJECT_ROOT="${SCRIPT_DIR}/.."
+DEFAULT_ENV_NAME="$(
+python - "${PROJECT_ROOT}" <<'PYEOF' 2>/dev/null || true
+import sys
+from pathlib import Path
+
+project_root = Path(sys.argv[1]).resolve()
+sys.path.insert(0, str(project_root))
+
+from alphadiana.utils.rock_ports import default_checkout_env_name
+
+print(default_checkout_env_name(project_root))
+PYEOF
+)"
+ENV_NAME="${1:-${DEFAULT_ENV_NAME:-alphadiana}}"
 
 cd "${PROJECT_ROOT}"
 
@@ -122,12 +137,24 @@ log_ok "Activated conda env ${ENV_NAME}"
 
 # ── 4. Install ROCK editable package ────────────────────────────────────────
 
-log_section "Installing ROCK editable package"
-if python -c "import rock" >/dev/null 2>&1; then
-  log_ok "rl-rock already importable"
+log_section "Verifying ROCK editable package"
+EXPECTED_ROCK_INIT="$(cd ref/ROCK && pwd)/rock/__init__.py"
+CURRENT_ROCK_INIT="$(python - <<'PYEOF' 2>/dev/null || true
+from pathlib import Path
+
+try:
+    import rock
+except Exception:
+    raise SystemExit(0)
+
+print(Path(rock.__file__).resolve())
+PYEOF
+)"
+if [ "${CURRENT_ROCK_INIT}" = "${EXPECTED_ROCK_INIT}" ]; then
+  log_ok "rl-rock already points at ${EXPECTED_ROCK_INIT}"
 else
   python -m pip install --no-build-isolation -e ref/ROCK
-  log_ok "rl-rock installed"
+  log_ok "rl-rock installed from ${EXPECTED_ROCK_INIT}"
 fi
 
 # ── 5. Source rock_env and detect ports ──────────────────────────────────────
@@ -172,9 +199,6 @@ echo "  Starting Ray head..."
 if ! ensure_writable_dir "${RAY_TMPDIR}"; then
   log_fail "RAY_TMPDIR is not writable: ${RAY_TMPDIR}"
   exit 1
-fi
-if ! ray stop --force >/dev/null 2>&1; then
-  log_warn "ray stop reported no running local Ray processes"
 fi
 (
   cd ref/ROCK
