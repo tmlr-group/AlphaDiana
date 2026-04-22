@@ -17,6 +17,7 @@ class AgentResponse:
     trajectory: list[dict] = field(default_factory=list)
     raw_output: str = ""
     token_usage: dict = field(default_factory=dict)
+    token_entropy_stats: dict = field(default_factory=dict)
     wall_time_sec: float = 0.0
     metadata: dict = field(default_factory=dict)
 
