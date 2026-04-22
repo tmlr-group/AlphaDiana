@@ -75,6 +75,9 @@ class DirectLLMAgent(Agent):
     """
 
     name = "direct_llm"
+    # Logprobs capture — defaults to off; set via setup(config)
+    _capture_logprobs: bool = False
+    _top_logprobs: int = 0
 
     def setup(self, config: dict) -> None:
         self._model = self._resolve_setting(config, "model", "OPENAI_MODEL_NAME")
