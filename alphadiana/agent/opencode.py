@@ -779,6 +779,8 @@ class OpenCodeAgent(Agent):
             {},
             response_stream="opencode_output.jsonl",
             session_trace="opencode_session.jsonl" if session_trace else None,
+            opencode_output="opencode_output.jsonl",
+            opencode_session="opencode_session.jsonl" if session_trace else None,
             stderr_log="opencode_stderr.log" if stderr else None,
             prompt_text="prompt.txt",
             attachment_manifest="attachment_manifest.json" if attachment_paths else None,

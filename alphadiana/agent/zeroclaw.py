@@ -559,6 +559,7 @@ class ZeroClawAgent(Agent):
                 if runtime_trace
                 else ("zeroclaw_output.txt" if raw_output else None)
             ),
+            zeroclaw_output="zeroclaw_output.txt" if raw_output else None,
             stdout_log="zeroclaw_output.txt" if raw_output else None,
             stderr_log="zeroclaw_stderr.log" if raw_stderr else None,
             prompt_text="task.txt",

@@ -496,6 +496,8 @@ class OpenClawRuntimeManager:
                 "workspace_root": next(iter(workspace_roots), self._workspace_path),
                 "response_stream": response_stream_alias,
                 "session_trace": session_alias_path or (session_paths[0] if session_paths else ""),
+                "openclaw_output": response_stream_alias,
+                "openclaw_session": session_alias_path or (session_paths[0] if session_paths else ""),
                 "system_prompt": system_prompt_paths[0] if system_prompt_paths else "",
                 "runtime_config": self._remote_openclaw_config_path if openclaw_config_text.strip() else "",
             },
