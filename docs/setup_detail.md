@@ -23,6 +23,15 @@ Important caveat for agent-managed shells:
   `ray.address` points at the active checkout-owned Ray GCS port. Otherwise
   admin can fall back to a local default Ray init and later exit with
   `GCS unavailable` even though the intended Ray head is healthy.
+- `source scripts/activate.sh` loads `.env` into the current shell. If a pilot
+  wrapper later uses shell-default syntax such as
+  `OPENAI_BASE_URL="${OPENAI_BASE_URL:-http://localhost:8011/v1}"`, any
+  existing `.env` or parent-shell `OPENAI_*` values win and the wrapper will
+  silently keep the old provider. For local-model pilots, either export the
+  desired `OPENAI_BASE_URL`, `OPENAI_API_KEY`, and `OPENAI_MODEL_NAME`
+  explicitly after `source scripts/activate.sh`, or unset those vars first
+  before applying local defaults. When in doubt, verify the effective provider
+  from the final `python -m alphadiana.cli run ...` argv or `/proc/<pid>/environ`.
 
 If you need to run manually, pay attention to the following:
 
