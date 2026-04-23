@@ -13,6 +13,13 @@ import time
 from pathlib import Path
 from typing import Any
 
+from alphadiana.agent.logprob_capture import (
+    apply_openai_logprob_request,
+    extract_openai_logprob_records,
+    finalize_logprob_capture,
+    raw_token_logprob_dict_to_record,
+    resolve_logprob_capture_config,
+)
 from alphadiana.agent.base import Agent, AgentResponse
 from alphadiana.agent.preservation import (
     add_artifact_file_refs,
@@ -290,6 +297,78 @@ def _read_opencode_session_trace(session_dir: Path, session_id: str) -> tuple[st
     return "", ""
 
 
+def extract_opencode_logprob_records(
+    *,
+    events: list[dict[str, Any]],
+    session_trace: str,
+    stdout: str,
+) -> list[dict]:
+    """Extract OpenAI-shaped logprob records from OpenCode event/trace payloads."""
+
+    def _jsonl_objects(text: str) -> list[dict[str, Any]]:
+        objects: list[dict[str, Any]] = []
+        for raw_line in (text or "").splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(payload, dict):
+                objects.append(payload)
+        return objects
+
+    records: list[dict] = []
+    token_index = 0
+    seen_payloads: set[str] = set()
+
+    def _scan(node: Any) -> None:
+        nonlocal token_index
+        if isinstance(node, dict):
+            payload_fingerprint = ""
+            if "choices" in node:
+                try:
+                    payload_fingerprint = json.dumps(node, sort_keys=True, ensure_ascii=False)
+                except (TypeError, ValueError):
+                    payload_fingerprint = ""
+            should_extract = not payload_fingerprint or payload_fingerprint not in seen_payloads
+            if payload_fingerprint:
+                seen_payloads.add(payload_fingerprint)
+            if should_extract:
+                parsed, token_index_next = extract_openai_logprob_records(
+                    node,
+                    start_index=token_index,
+                )
+                if parsed:
+                    for item in parsed:
+                        records.append(
+                            raw_token_logprob_dict_to_record(
+                                {
+                                    "token": item.get("token", ""),
+                                    "logprob": item.get("logprob", 0.0),
+                                    "top_logprobs": item.get("top_logprobs", []),
+                                },
+                                int(item.get("token_index", 0)),
+                            )
+                        )
+                token_index = token_index_next
+            for value in node.values():
+                _scan(value)
+            return
+        if isinstance(node, list):
+            for entry in node:
+                _scan(entry)
+
+    for event in events or []:
+        _scan(event)
+    for payload in _jsonl_objects(session_trace):
+        _scan(payload)
+    for payload in _jsonl_objects(stdout):
+        _scan(payload)
+    return records
+
+
 class OpenCodeAgent(Agent):
     """Agent that runs OpenCode CLI and supports task-container execution.
 
@@ -347,6 +426,7 @@ class OpenCodeAgent(Agent):
         self._system_prompt = config.get("system_prompt", _DEFAULT_SYSTEM_PROMPT)
         self._opencode_bin = config.get("opencode_bin", "opencode")
         self._streaming = config.get("streaming") if "streaming" in config else None
+        self._logprob_capture = resolve_logprob_capture_config(config)
         self._config = dict(config)
         self._runtime_manager = None
 
@@ -483,6 +563,19 @@ class OpenCodeAgent(Agent):
             "transport": "opencode_cli_container",
             **artifacts,
         }
+        logprob_records = extract_opencode_logprob_records(
+            events=events,
+            session_trace=(artifacts.get("workspace_file_contents", {}) or {}).get(
+                "opencode_session.jsonl", ""
+            ),
+            stdout=raw_stdout,
+        )
+        token_entropy_stats, response_metadata = finalize_logprob_capture(
+            harness="opencode",
+            enabled=self._logprob_capture["enabled"],
+            records=logprob_records,
+            metadata=response_metadata,
+        )
         if error_info:
             response_metadata.update({
                 "opencode_error_name": error_info["name"],
@@ -500,6 +593,7 @@ class OpenCodeAgent(Agent):
             reasoning_trajectory=reasoning_trajectory,
             raw_output=full_content,
             wall_time_sec=wall_time,
+            token_entropy_stats=token_entropy_stats,
             metadata=response_metadata,
             system_prompt=system_prompt,
             request_messages=request_messages,
@@ -619,6 +713,10 @@ class OpenCodeAgent(Agent):
                 "model": cli_model,
                 "small_model": cli_model,
             }
+            apply_openai_logprob_request(
+                provider_config["provider"]["custom"]["options"],
+                self._logprob_capture,
+            )
             (config_dir / "opencode.json").write_text(json.dumps(provider_config, indent=2))
 
             if self._agent_name and (self._agent_md_path or self._agent_md_content):
@@ -806,6 +904,17 @@ class OpenCodeAgent(Agent):
             "controller_mode": self._controller_mode,
             "transport": transport,
         }
+        logprob_records = extract_opencode_logprob_records(
+            events=events,
+            session_trace=session_trace,
+            stdout=raw_output,
+        )
+        token_entropy_stats, response_metadata = finalize_logprob_capture(
+            harness="opencode",
+            enabled=self._logprob_capture["enabled"],
+            records=logprob_records,
+            metadata=response_metadata,
+        )
         if error_info:
             response_metadata.update({
                 "opencode_error_name": error_info["name"],
@@ -823,6 +932,7 @@ class OpenCodeAgent(Agent):
             reasoning_trajectory=reasoning_trajectory,
             raw_output=full_content,
             wall_time_sec=wall_time,
+            token_entropy_stats=token_entropy_stats,
             metadata=response_metadata,
             request_messages=request_messages,
             response_json=response_json,
