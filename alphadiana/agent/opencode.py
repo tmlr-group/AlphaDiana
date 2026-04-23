@@ -304,6 +304,7 @@ def extract_opencode_logprob_records(
     stdout: str,
 ) -> list[dict]:
     """Extract OpenAI-shaped logprob records from OpenCode event/trace payloads."""
+    envelope_keys = {"choices", "response", "provider_response", "payload", "data", "message", "part"}
 
     def _jsonl_objects(text: str) -> list[dict[str, Any]]:
         objects: list[dict[str, Any]] = []
@@ -318,6 +319,18 @@ def extract_opencode_logprob_records(
             if isinstance(payload, dict):
                 objects.append(payload)
         return objects
+
+    def _json_from_string(value: Any) -> Any | None:
+        if not isinstance(value, str):
+            return None
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            return None
+        return parsed if isinstance(parsed, (dict, list)) else None
 
     records: list[dict] = []
     token_index = 0
@@ -353,7 +366,16 @@ def extract_opencode_logprob_records(
                             )
                         )
                 token_index = token_index_next
-            for value in node.values():
+            for key, value in node.items():
+                if key not in envelope_keys:
+                    continue
+                parsed_value = _json_from_string(value)
+                if parsed_value is not None:
+                    _scan(parsed_value)
+                _scan(value)
+            for key, value in node.items():
+                if key in envelope_keys:
+                    continue
                 _scan(value)
             return
         if isinstance(node, list):
@@ -367,6 +389,22 @@ def extract_opencode_logprob_records(
     for payload in _jsonl_objects(stdout):
         _scan(payload)
     return records
+
+
+def _count_json_objects(text: str) -> int:
+    """Count valid JSON objects in a JSONL-like blob."""
+    count = 0
+    for raw_line in (text or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            count += 1
+    return count
 
 
 class OpenCodeAgent(Agent):
@@ -558,18 +596,28 @@ class OpenCodeAgent(Agent):
             "exit_code": exit_code,
             "stderr": stderr[:2000] if stderr else "",
             "num_events": len(events),
+            "logprob_probe_event_count": len(events),
+            "logprob_probe_session_json_count": 0,
+            "logprob_probe_stdout_json_count": 0,
+            "logprob_probe_record_count": 0,
             "session_id": session_id,
             "patch_source": "git_diff" if patch_from_git else "text_extraction",
             "transport": "opencode_cli_container",
             **artifacts,
         }
+        session_trace_text = (artifacts.get("workspace_file_contents", {}) or {}).get(
+            "opencode_session.jsonl", ""
+        )
+        logprob_probe_session_json_count = _count_json_objects(session_trace_text)
+        logprob_probe_stdout_json_count = _count_json_objects(raw_stdout)
         logprob_records = extract_opencode_logprob_records(
             events=events,
-            session_trace=(artifacts.get("workspace_file_contents", {}) or {}).get(
-                "opencode_session.jsonl", ""
-            ),
+            session_trace=session_trace_text,
             stdout=raw_stdout,
         )
+        response_metadata["logprob_probe_session_json_count"] = logprob_probe_session_json_count
+        response_metadata["logprob_probe_stdout_json_count"] = logprob_probe_stdout_json_count
+        response_metadata["logprob_probe_record_count"] = len(logprob_records)
         token_entropy_stats, response_metadata = finalize_logprob_capture(
             harness="opencode",
             enabled=self._logprob_capture["enabled"],
@@ -899,16 +947,25 @@ class OpenCodeAgent(Agent):
             "returncode": returncode,
             "stderr": stderr[:2000] if stderr else "",
             "num_events": len(events),
+            "logprob_probe_event_count": len(events),
+            "logprob_probe_session_json_count": 0,
+            "logprob_probe_stdout_json_count": 0,
+            "logprob_probe_record_count": 0,
             "session_id": session_id,
             "num_attachments": len(attachment_paths),
             "controller_mode": self._controller_mode,
             "transport": transport,
         }
+        logprob_probe_session_json_count = _count_json_objects(session_trace)
+        logprob_probe_stdout_json_count = _count_json_objects(raw_output)
         logprob_records = extract_opencode_logprob_records(
             events=events,
             session_trace=session_trace,
             stdout=raw_output,
         )
+        response_metadata["logprob_probe_session_json_count"] = logprob_probe_session_json_count
+        response_metadata["logprob_probe_stdout_json_count"] = logprob_probe_stdout_json_count
+        response_metadata["logprob_probe_record_count"] = len(logprob_records)
         token_entropy_stats, response_metadata = finalize_logprob_capture(
             harness="opencode",
             enabled=self._logprob_capture["enabled"],
