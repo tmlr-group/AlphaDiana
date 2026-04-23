@@ -12,6 +12,7 @@ from typing import Any
 
 from alphadiana.agent.base import AgentResponse
 from alphadiana.benchmark.base import BenchmarkTask
+from alphadiana.results.logprob_artifacts import INT16_PROB_SCALE, raw_record_to_int16_record
 from alphadiana.results.normalized_trace import (
     TRACE_ARTIFACT_NAME,
     build_normalized_trace,
@@ -391,6 +392,49 @@ class ResultStore:
                 for rec in records:
                     f.write(json.dumps(rec, ensure_ascii=False) + "\n")
         return path
+
+    def write_logprob_sidecars(self, task_id: str, response_metadata: dict) -> dict:
+        """Write raw float and compact Int16 logprob sidecars for a task."""
+        logprob_records = response_metadata.pop("logprob_records", None)
+        logprob_int16_records = response_metadata.pop("logprob_int16_records", None)
+        raw_records = logprob_records if isinstance(logprob_records, list) else []
+        int16_records = logprob_int16_records if isinstance(logprob_int16_records, list) else []
+
+        logprobs_path_rel = ""
+        logprobs_int16_path_rel = ""
+        artifact_file_refs: dict[str, str] = {}
+
+        if raw_records:
+            self.write_logprobs_jsonl(task_id, raw_records)
+            logprobs_path_rel = f"{self.run_id}/logprobs/{task_id}.jsonl"
+            artifact_file_refs["logprobs_float"] = f"logprobs/{task_id}.jsonl"
+
+        if not int16_records and raw_records:
+            int16_records = [
+                raw_record_to_int16_record(record)
+                for record in raw_records
+            ]
+
+        if int16_records:
+            self._ensure_dirs()
+            logprobs_int16_dir = self.output_dir / self.run_id / "logprobs_int16"
+            logprobs_int16_dir.mkdir(parents=True, exist_ok=True)
+            path = logprobs_int16_dir / f"{task_id}.jsonl"
+            with self._get_task_json_lock(f"logprobs_int16:{task_id}"):
+                with open(path, "w", encoding="utf-8") as f:
+                    for record in int16_records:
+                        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            logprobs_int16_path_rel = f"{self.run_id}/logprobs_int16/{task_id}.jsonl"
+            artifact_file_refs["logprobs_int16"] = f"logprobs_int16/{task_id}.jsonl"
+
+        has_int16_sidecar = bool(logprobs_int16_path_rel)
+        return {
+            "logprobs_path": logprobs_path_rel,
+            "logprobs_int16_path": logprobs_int16_path_rel,
+            "top_logprobs": 20 if has_int16_sidecar else 0,
+            "int16_probability_scale": INT16_PROB_SCALE if has_int16_sidecar else 0,
+            "artifact_file_refs": artifact_file_refs,
+        }
 
     def completed_task_ids(self, scorer_name: str | None = None) -> set[str]:
         """Return task_ids of records that should NOT be retried.
