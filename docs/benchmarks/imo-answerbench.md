@@ -57,6 +57,13 @@ python -m alphadiana.cli run configs/full_runs/p25_full_openclaw_minimax_imo_ans
 python -m alphadiana.cli run configs/full_runs/p25_full_zeroclaw_minimax_imo_answerbench.yaml --redo-all
 ```
 
+For the local-vLLM `Qwen/Qwen3.5-27B` path when you need per-token logprobs,
+use:
+
+```bash
+python -m alphadiana.cli run configs/full_runs/phase9_directllm_qwen35_27b_imo_answerbench_logprobs.yaml --redo-all
+```
+
 Current OpenRouter free-text follow-up on April 22, 2026 uses
 `nvidia/nemotron-3-nano-30b-a3b:free`.
 Early full-run evidence:
@@ -119,6 +126,11 @@ python -m alphadiana.cli run configs/full_runs/p25_full_directllm_minimax_imo_an
 This command intentionally differs from the checked-in rollout manifest only on
 `max_concurrent`: the local follow-up kept the user-requested `20`, while the
 manifest template for this path still defaults to `10`.
+
+On current main, `direct_llm` captures logprobs by default. The dedicated
+`phase9_directllm_qwen35_27b_imo_answerbench_logprobs.yaml` config is still the
+preferred local-vLLM Qwen path because it checks in the intended model/api-base
+contract and `max_concurrent: 10` for the heavier logprob run.
 
 ## OpenCode
 

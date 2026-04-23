@@ -1,0 +1,42 @@
+# FULL RUN: all supported HLE multiple-choice tasks via local vLLM Qwen3.5-27B
+# with per-token logprobs capture (top_logprobs=20).
+
+run_id: "phase9_directllm_qwen35_27b_hle_logprobs"
+
+agent:
+  name: direct_llm
+  version: "1.0"
+  config:
+    model: "Qwen/Qwen3.5-27B"
+    api_base: ${QWEN_VLLM_API_BASE}
+    api_key: ${QWEN_VLLM_API_KEY}
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 32768
+    stream: true
+    capture_logprobs: true
+    top_logprobs: 20
+    request_timeout: 1800
+    system_prompt: |
+      Solve the question carefully and keep the answer concise.
+      The final line must be:
+      $$\boxed{your answer here}$$
+
+benchmark:
+  name: hle
+  config:
+    dataset: "cais/hle"
+    split: "test"
+    answer_types:
+      - "multipleChoice"
+
+scorer:
+  name: exact_match
+  config: {}
+
+max_concurrent: 15
+output_dir: "./results/phase9_directllm_qwen35_27b_hle_logprobs"
+strict_report: true
+strict_isolation: true
+metadata:
+  notes: "Phase 9 — HLE multiple-choice full run on local vLLM Qwen3.5-27B with logprobs capture and entropy analysis."
