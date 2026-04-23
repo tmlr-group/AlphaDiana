@@ -120,9 +120,18 @@ def _fake_stream_chunks(num_tokens: int):
 
 
 class TestDirectLLMAgentLogprobsSetup:
-    def test_default_disabled(self):
+    def test_default_enabled(self):
+        # Default flipped to on so every direct_llm run persists quantised
+        # logprobs unless explicitly disabled.
         agent = DirectLLMAgent()
         agent.setup({"model": "m", "api_base": "b", "api_key": "EMPTY"})
+        assert agent._capture_logprobs is True
+        assert agent._top_logprobs == 20
+
+    def test_explicitly_disabled(self):
+        agent = DirectLLMAgent()
+        agent.setup({"model": "m", "api_base": "b", "api_key": "EMPTY",
+                     "capture_logprobs": False})
         assert agent._capture_logprobs is False
         assert agent._top_logprobs == 0
 
@@ -140,12 +149,13 @@ class TestDirectLLMAgentLogprobsSetup:
 
 
 class TestDirectLLMAgentStreamingLogprobs:
-    def _build_agent(self, capture: bool):
+    def _build_agent(self, capture: bool, logprobs_format: str = "float"):
         agent = DirectLLMAgent()
         agent.setup({
             "model": "m", "api_base": "b", "api_key": "EMPTY",
             "stream": True, "max_tokens": 256,
             "capture_logprobs": capture,
+            "logprobs_format": logprobs_format,
         })
         # Bypass real client — stub it with a mock whose create() returns our stream.
         agent._client = MagicMock()
@@ -153,7 +163,8 @@ class TestDirectLLMAgentStreamingLogprobs:
         return agent
 
     def test_streaming_collects_records_and_stats(self):
-        agent = self._build_agent(capture=True)
+        # Use explicit float format to keep the raw-shape assertion below.
+        agent = self._build_agent(capture=True, logprobs_format="float")
         agent._client.chat.completions.create.return_value = _fake_stream_chunks(3)
         task = BenchmarkTask(task_id="t1", problem="2+2?", ground_truth="4")
         resp = agent.solve(task)

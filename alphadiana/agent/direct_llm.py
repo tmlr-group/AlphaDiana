@@ -18,6 +18,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 from alphadiana.agent._entropy import _compute_entropy_stats
+from alphadiana.agent._logprobs import INT16_PROB_SCALE, quantize_records_int16
 from alphadiana.agent.base import Agent, AgentResponse
 from alphadiana.agent.registry import AgentRegistry
 from alphadiana.benchmark.base import BenchmarkTask
@@ -75,9 +76,11 @@ class DirectLLMAgent(Agent):
     """
 
     name = "direct_llm"
-    # Logprobs capture — defaults to off; set via setup(config)
-    _capture_logprobs: bool = False
-    _top_logprobs: int = 0
+    # Logprobs capture — defaults to on (int16); disable per-run by setting
+    # `capture_logprobs: false` in yaml if the backend rejects `logprobs=true`.
+    _capture_logprobs: bool = True
+    _top_logprobs: int = 20
+    _logprobs_format: str = "int16"
 
     def setup(self, config: dict) -> None:
         self._model = self._resolve_setting(config, "model", "OPENAI_MODEL_NAME")
@@ -93,8 +96,12 @@ class DirectLLMAgent(Agent):
         self._system_prompt = config.get("system_prompt", _DEFAULT_SYSTEM_PROMPT)
         self._enable_thinking = config.get("enable_thinking", None)
         self._extra_body: dict[str, Any] | None = config.get("extra_body", None)
-        self._capture_logprobs = bool(config.get("capture_logprobs", False))
+        self._capture_logprobs = bool(config.get("capture_logprobs", True))
         self._top_logprobs = int(config.get("top_logprobs", 20)) if self._capture_logprobs else 0
+        fmt = str(config.get("logprobs_format", "int16")).lower()
+        if fmt not in ("float", "int16"):
+            raise ValueError(f"logprobs_format must be 'float' or 'int16', got {fmt!r}")
+        self._logprobs_format = fmt
         try:
             self._client = self._build_client()
         except ImportError:
@@ -260,7 +267,13 @@ class DirectLLMAgent(Agent):
         # records that leaked through (e.g. test stubs always returning logprobs).
         if not self._capture_logprobs:
             logprob_records = []
+        # Entropy stats are computed on raw-float records; quantisation is
+        # applied afterwards so downstream JSONL output can be compact.
         token_entropy_stats = _compute_entropy_stats(logprob_records)
+        if self._capture_logprobs and self._logprobs_format == "int16" and logprob_records:
+            logprob_records = quantize_records_int16(
+                logprob_records, top_k=self._top_logprobs or 20
+            )
 
         # Extract answer: try raw_output first, fall back to reasoning
         answer = _extract_answer(raw_output) if raw_output else ""
