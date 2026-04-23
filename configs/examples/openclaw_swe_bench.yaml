@@ -10,7 +10,7 @@ agent:
     container_gateway_port: 8080
     gateway_token: "OPENCLAW"
     model: "openclaw"
-    max_tokens: 32784
+    max_tokens: 4096
     request_timeout: 3600
     max_attempts: 3
     system_prompt: |

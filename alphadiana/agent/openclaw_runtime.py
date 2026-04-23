@@ -24,6 +24,7 @@ import logging as _logging
 
 _logger = _logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_UNRESOLVED_PLACEHOLDER_RE = re.compile(r"^\$\{.+\}$")
 
 # Hint for slow npm installs in restricted networks.
 NPM_TIMEOUT_HINT = (
@@ -35,6 +36,10 @@ NPM_TIMEOUT_HINT = (
 
 def _progress(message: str) -> None:
     print(f"[OpenClaw] {message}", flush=True)
+
+
+def _is_unresolved_placeholder(value: str) -> bool:
+    return bool(_UNRESOLVED_PLACEHOLDER_RE.match(value.strip()))
 
 
 def _is_ready_probe_status(status_code: int) -> bool:
@@ -121,6 +126,7 @@ class OpenClawRuntimeManager:
     def __init__(self, config: dict) -> None:
         self._gateway_token = config.get("gateway_token", "OPENCLAW")
         self._gateway_model = config.get("model", "openclaw")
+        self._gateway_port = int(config.get("gateway_port", 8080))
         self._rock_agent_config_path = str(self._resolve_config_path(config.get("rock_agent_config_path", ""))) if config.get("rock_agent_config_path") else ""
         self._openclaw_config_path = str(self._resolve_config_path(config.get("openclaw_config_path", ""))) if config.get("openclaw_config_path") else ""
         self._gateway_startup_timeout = int(config.get("gateway_startup_timeout", 180))
@@ -134,9 +140,9 @@ class OpenClawRuntimeManager:
         self._agent_md_applied_sandboxes: set[str] = set()
         self._temp_dirs: list[tempfile.TemporaryDirectory] = []
         self._provider_env = {
-            "OPENAI_BASE_URL": str(config.get("OPENAI_BASE_URL", "") or ""),
-            "OPENAI_API_KEY": str(config.get("OPENAI_API_KEY", "") or ""),
-            "OPENAI_MODEL_NAME": str(config.get("OPENAI_MODEL_NAME", "") or ""),
+            "OPENAI_BASE_URL": self._resolve_provider_override(config, "OPENAI_BASE_URL", "openai_base_url"),
+            "OPENAI_API_KEY": self._resolve_provider_override(config, "OPENAI_API_KEY", "openai_api_key"),
+            "OPENAI_MODEL_NAME": self._resolve_provider_override(config, "OPENAI_MODEL_NAME", "openai_model_name"),
         }
 
         # Agent.md customization
@@ -153,6 +159,27 @@ class OpenClawRuntimeManager:
         self._tools_profile = str(config.get("tools_profile", "") or "").strip()
         self._tools_allow = list(config.get("tools_allow", []) or [])
         self._tools_deny = list(config.get("tools_deny", []) or [])
+
+    @staticmethod
+    def _resolve_provider_override(config: dict[str, Any], primary_key: str, fallback_key: str) -> str:
+        """Accept both historical uppercase and newer lowercase provider keys.
+
+        Prefer explicit non-placeholder config values and only then retain
+        unresolved placeholders so the later validation path can raise a clear
+        error. Launcher-shell env fallback still happens later in
+        ``_prepare_runtime_files`` so tests and runtime behavior can control it
+        at the point of materialization.
+        """
+        unresolved = ""
+        for key in (primary_key, fallback_key):
+            value = str(config.get(key, "") or "").strip()
+            if not value:
+                continue
+            if not _is_unresolved_placeholder(value):
+                return value
+            if not unresolved:
+                unresolved = value
+        return unresolved
 
     def _resolve_config_path(self, path_str: str) -> Path:
         """Resolve config paths stably, independent of the current working directory."""
@@ -224,6 +251,14 @@ class OpenClawRuntimeManager:
             memory.pop("enabled", None)
             if not memory:
                 config.pop("memory", None)
+
+        gateway = config.setdefault("gateway", {})
+        gateway["port"] = self._gateway_port
+        # ROCK publishes the container's 8080/tcp to a host port. Binding the
+        # gateway to loopback keeps that published port unreachable from the
+        # host-side evaluator, so force a non-loopback bind for sandbox runs.
+        gateway["bind"] = "lan"
+        gateway.pop("customBindHost", None)
 
         self._ensure_image_capability_metadata(config)
         return config
@@ -329,7 +364,15 @@ class OpenClawRuntimeManager:
 
     def runtime_info(self, sandbox: Any) -> dict:
         """Return connection info for the running gateway."""
-        api_base = sandbox.proxy_v1_base()
+        api_base = ""
+        published_base = getattr(sandbox, "published_base", None)
+        if callable(published_base):
+            try:
+                api_base = f"{published_base(self._gateway_port).rstrip('/')}/v1"
+            except Exception:
+                _logger.debug("Failed to resolve published OpenClaw gateway port", exc_info=True)
+        if not api_base:
+            api_base = sandbox.proxy_v1_base()
         return {
             "sandbox_id": str(getattr(sandbox, "sandbox_id", "")),
             "gateway_url": f"{api_base}/chat/completions",
@@ -506,20 +549,25 @@ class OpenClawRuntimeManager:
         generated_config = yaml.safe_load(rock_agent_config.read_text(encoding="utf-8"))
         env_cfg = generated_config.setdefault("env", {})
         for key in ("OPENAI_BASE_URL", "OPENAI_API_KEY", "OPENAI_MODEL_NAME"):
+            # Respect explicit agent config overrides before inheriting the
+            # launcher shell environment. This keeps `-o agent.config.*=...`
+            # effective even when `source scripts/activate.sh` has already
+            # populated OPENAI_* from repo-level defaults.
+            config_val = self._provider_env.get(key, "").strip()
+            if config_val and not _is_unresolved_placeholder(config_val):
+                env_cfg[key] = config_val
+                continue
             local_val = os.environ.get(key, "").strip()
             if local_val:
                 env_cfg[key] = local_val
                 continue
-            config_val = self._provider_env.get(key, "").strip()
-            if config_val and not re.match(r"^\$\{.+\}$", config_val):
-                env_cfg[key] = config_val
-                continue
             current_val = str(env_cfg.get(key, ""))
-            if not current_val or re.match(r"^\$\{.+\}$", current_val):
+            if not current_val or _is_unresolved_placeholder(current_val):
                 raise RuntimeError(
                     f"OpenClaw auto-deploy requires {key} to be set either in agent.config "
                     f"or the local environment."
                 )
+        env_cfg["OPENCLAW_GATEWAY_TOKEN"] = str(self._gateway_token or "OPENCLAW")
 
         td = tempfile.TemporaryDirectory(prefix="alphadiana-openclaw-")
         self._temp_dirs.append(td)

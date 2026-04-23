@@ -31,6 +31,20 @@ LIBSIGNAL_MIRROR_DIR_NAME = "libsignal-node-bare"
 LIBSIGNAL_MIRROR_CACHE_DIR = PROJECT_ROOT / ".cache" / "openclaw" / LIBSIGNAL_MIRROR_DIR_NAME
 LIBSIGNAL_MIRROR_REMOTE_ARCHIVE = f"/tmp/{LIBSIGNAL_MIRROR_DIR_NAME}.tar"
 LIBSIGNAL_MIRROR_REMOTE_DIR = f"/tmp/{LIBSIGNAL_MIRROR_DIR_NAME}"
+OPENCLAW_OFFLINE_DIR_NAME = "openclaw-offline"
+OPENCLAW_OFFLINE_REMOTE_DIR = f"/tmp/{OPENCLAW_OFFLINE_DIR_NAME}"
+OPENCLAW_OFFLINE_REMOTE_ENTRYPOINT = f"{OPENCLAW_OFFLINE_REMOTE_DIR}/dist/index.js"
+OPENCLAW_OFFLINE_CACHE_DIR = PROJECT_ROOT / ".cache" / "openclaw" / OPENCLAW_OFFLINE_DIR_NAME
+OPENCLAW_OFFLINE_SOURCE_IMAGE_ENV = "OPENCLAW_OFFLINE_SOURCE_IMAGE"
+OPENCLAW_OFFLINE_SOURCE_IMAGE_PREFIXES = (
+    "alphadiana-swebench-runtime:openclaw-",
+    "alphadiana-tb2-runtime:openclaw-",
+    "ghcr.io/tsrigo/openclaw-reasoning:",
+)
+OPENCLAW_OFFLINE_SOURCE_PATH_CANDIDATES = (
+    "/opt/openclaw",
+    "/app",
+)
 TESTBED_PYTHON_BIN_CANDIDATES = (
     "/opt/miniconda3/envs/testbed/bin",
     "/opt/conda/envs/testbed/bin",
@@ -90,6 +104,42 @@ DEFAULT_INSTALL_OPENCLAW_COMMAND = "\n".join(
     ]
 )
 
+DEFAULT_PREPARE_OPENCLAW_PREREQS_COMMAND = "\n".join(
+    [
+        "set -e",
+        "if ! command -v wget >/dev/null 2>&1 || ! command -v xz >/dev/null 2>&1 || ! command -v git >/dev/null 2>&1; then",
+        "  apt-get update",
+        "  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends wget ca-certificates git xz-utils",
+        "  rm -rf /var/lib/apt/lists/*",
+        "fi",
+        f"if [ ! -x {NODE_RUNTIME_BIN}/node ] || ! {NODE_RUNTIME_BIN}/node -e \"process.exit(Number(process.versions.node.split('.')[0]) >= 20 ? 0 : 1)\"; then",
+        f"  rm -rf {NODE_RUNTIME_ROOT} /tmp/{NODE_TARBALL}",
+        f"  wget -q -O /tmp/{NODE_TARBALL} {NODE_DOWNLOAD_URL}",
+        f"  echo \"{NODE_SHA256}  /tmp/{NODE_TARBALL}\" | sha256sum -c -",
+        "  mkdir -p /tmp",
+        f"  tar -xf /tmp/{NODE_TARBALL} -C /tmp",
+        f"  mv /tmp/node-v22.18.0-linux-x64 {NODE_RUNTIME_ROOT}",
+        f"  rm -f /tmp/{NODE_TARBALL}",
+        "fi",
+        f"export PATH=\"{NODE_RUNTIME_BIN}:$PATH\"",
+        "git config --global --unset-all url.'https://github.com/'.insteadOf || true",
+        "git config --global --add url.'https://github.com/'.insteadOf 'ssh://git@github.com/'",
+        "git config --global --add url.'https://github.com/'.insteadOf 'git@github.com:'",
+        "git config --global --add url.'https://github.com/'.insteadOf 'git+ssh://git@github.com/'",
+        "git config --global http.version HTTP/1.1",
+        "git config --global http.lowSpeedLimit 0",
+        "git config --global http.lowSpeedTime 999999",
+        f"if [ -f {LIBSIGNAL_MIRROR_REMOTE_ARCHIVE} ]; then",
+        f"  rm -rf {LIBSIGNAL_MIRROR_REMOTE_DIR}",
+        "  mkdir -p /tmp",
+        f"  tar -xf {LIBSIGNAL_MIRROR_REMOTE_ARCHIVE} -C /tmp",
+        f"  git config --global --add safe.directory {LIBSIGNAL_MIRROR_REMOTE_DIR}",
+        f"  git config --global --add url.'file://{LIBSIGNAL_MIRROR_REMOTE_DIR}'.insteadOf '{LIBSIGNAL_GIT_URL}'",
+        f"  git config --global --add url.'file://{LIBSIGNAL_MIRROR_REMOTE_DIR}'.insteadOf 'git+{LIBSIGNAL_GIT_URL}'",
+        "fi",
+    ]
+)
+
 
 def _progress(message: str) -> None:
     print(f"[OpenClawContainer] {message}", flush=True)
@@ -131,6 +181,93 @@ def _ensure_bare_git_mirror(source_url: str, cache_dir: Path) -> Path | None:
         return None
 
 
+def _resolve_offline_source_image() -> str | None:
+    explicit = os.environ.get(OPENCLAW_OFFLINE_SOURCE_IMAGE_ENV, "").strip()
+    if explicit:
+        return explicit
+    try:
+        result = subprocess.run(
+            ["docker", "images", "--format", "{{.Repository}}:{{.Tag}}"],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except Exception as exc:
+        _logger.warning("Failed to list local OpenClaw source images: %s", exc)
+        return None
+    for line in result.stdout.splitlines():
+        image = line.strip()
+        if image and any(image.startswith(prefix) for prefix in OPENCLAW_OFFLINE_SOURCE_IMAGE_PREFIXES):
+            return image
+    return None
+
+
+def _ensure_offline_openclaw_payload(cache_dir: Path) -> Path | None:
+    if (cache_dir / "dist" / "index.js").exists() and (cache_dir / "node_modules").is_dir():
+        return cache_dir
+
+    source_image = _resolve_offline_source_image()
+    if not source_image:
+        return None
+
+    cache_dir.parent.mkdir(parents=True, exist_ok=True)
+    tmp_dir = cache_dir.with_name(f"{cache_dir.name}.tmp-{os.getpid()}-{time.time_ns()}")
+    shutil.rmtree(tmp_dir, ignore_errors=True)
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    container_id = ""
+    try:
+        container_id = subprocess.run(
+            ["docker", "create", source_image],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        ).stdout.strip()
+        copied = False
+        for source_path in OPENCLAW_OFFLINE_SOURCE_PATH_CANDIDATES:
+            result = subprocess.run(
+                ["docker", "cp", f"{container_id}:{source_path}/.", str(tmp_dir)],
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            if result.returncode == 0:
+                copied = True
+                break
+        if not copied:
+            _logger.warning(
+                "Failed to extract offline OpenClaw payload from %s",
+                source_image,
+            )
+            return None
+        if not (tmp_dir / "dist" / "index.js").exists() or not (tmp_dir / "node_modules").is_dir():
+            _logger.warning(
+                "Extracted offline OpenClaw payload from %s but required runtime files are missing",
+                source_image,
+            )
+            return None
+        if cache_dir.exists():
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            return cache_dir
+        tmp_dir.replace(cache_dir)
+        return cache_dir
+    except Exception as exc:
+        _logger.warning("Failed to prepare offline OpenClaw payload from %s: %s", source_image, exc)
+        return None
+    finally:
+        if container_id:
+            subprocess.run(
+                ["docker", "rm", "-f", container_id],
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
 class OpenClawContainerRuntimeManager:
     """Bootstraps the OpenClaw gateway inside a SWE-bench task container."""
 
@@ -156,12 +293,13 @@ class OpenClawContainerRuntimeManager:
         self._gateway_port = int(config.get("container_gateway_port", config.get("gateway_port", 8080)))
         self._gateway_host = config.get("container_gateway_host", "127.0.0.1")
         self._gateway_bind_host = str(
-            config.get("container_gateway_bind_host", config.get("gateway_bind_host", "127.0.0.1"))
-        ).strip() or "127.0.0.1"
+            config.get("container_gateway_bind_host", config.get("gateway_bind_host", ""))
+        ).strip()
         self._started_sandboxes: set[str] = set()
         self._managed_sandboxes: dict[str, Any] = {}
         self._agent_md_applied_sandboxes: set[str] = set()
         self._git_mirror_uploaded_sandboxes: set[str] = set()
+        self._offline_openclaw_uploaded_sandboxes: set[str] = set()
 
         self._agent_md_mode = config.get("agent_md_mode", "none")
         self._agent_md_content = config.get("agent_md_content", "")
@@ -169,6 +307,7 @@ class OpenClawContainerRuntimeManager:
 
         self._embedding_api_base = config.get("embedding_api_base", "")
         self._embedding_api_key = config.get("embedding_api_key", "")
+        self._max_tokens = config.get("max_tokens", None)
 
     def _resolve_config_path(self, path_str: str) -> Path:
         path = Path(path_str).expanduser()
@@ -198,6 +337,29 @@ class OpenClawContainerRuntimeManager:
             except Exception:
                 _logger.debug("Failed to read sandbox metadata", exc_info=True)
         return {}
+
+    def _stage_offline_openclaw_payload(self, sandbox: Any) -> bool:
+        sandbox_id = str(getattr(sandbox, "sandbox_id", ""))
+        if sandbox_id and sandbox_id in self._offline_openclaw_uploaded_sandboxes:
+            return True
+        metadata = self._sandbox_metadata(sandbox)
+        container_name = str(metadata.get("container_name", "")).strip()
+        if not container_name:
+            return False
+        payload_dir = _ensure_offline_openclaw_payload(OPENCLAW_OFFLINE_CACHE_DIR)
+        if payload_dir is None:
+            return False
+        sandbox.execute(f"rm -rf {shlex.quote(OPENCLAW_OFFLINE_REMOTE_DIR)} && mkdir -p {shlex.quote(OPENCLAW_OFFLINE_REMOTE_DIR)}")
+        subprocess.run(
+            ["docker", "cp", f"{payload_dir}/.", f"{container_name}:{OPENCLAW_OFFLINE_REMOTE_DIR}"],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if sandbox_id:
+            self._offline_openclaw_uploaded_sandboxes.add(sandbox_id)
+        return True
 
     def _resolve_workspace_root(self, sandbox: Any | None = None) -> str:
         if self._workspace:
@@ -243,14 +405,44 @@ class OpenClawContainerRuntimeManager:
         agents = config.setdefault("agents", {})
         defaults = agents.setdefault("defaults", {})
         defaults["workspace"] = workspace_root or self._workspace_path
+        if self._max_tokens is not None:
+            try:
+                max_tokens = int(self._max_tokens)
+            except (TypeError, ValueError):
+                max_tokens = 0
+            if max_tokens > 0:
+                model_defaults = defaults.setdefault("models", {})
+                primary_model = ""
+                model_cfg = defaults.get("model")
+                if isinstance(model_cfg, dict):
+                    primary_model = str(model_cfg.get("primary", "")).strip()
+                if not primary_model:
+                    model_name = str(env_cfg.get("OPENAI_MODEL_NAME", "")).strip()
+                    if model_name:
+                        primary_model = f"local/{model_name}"
+                if primary_model:
+                    target_cfg = model_defaults.setdefault(primary_model, {})
+                    if not isinstance(target_cfg, dict):
+                        target_cfg = {}
+                        model_defaults[primary_model] = target_cfg
+                    params = target_cfg.setdefault("params", {})
+                    if not isinstance(params, dict):
+                        params = {}
+                        target_cfg["params"] = params
+                    params["maxTokens"] = max_tokens
 
         gateway = config.setdefault("gateway", {})
         gateway["port"] = self._gateway_port
         gateway["mode"] = "local"
-        gateway["bind"] = "custom"
-        gateway["customBindHost"] = "127.0.0.1"
-        if self._gateway_bind_host != "127.0.0.1":
+        # Published host ports cannot reach a gateway bound to container-local
+        # loopback. Default to a non-loopback bind for task containers and only
+        # fall back to custom binds when explicitly requested.
+        if self._gateway_bind_host:
+            gateway["bind"] = "custom"
             gateway["customBindHost"] = self._gateway_bind_host
+        else:
+            gateway["bind"] = "lan"
+            gateway.pop("customBindHost", None)
         auth = gateway.setdefault("auth", {})
         auth["mode"] = "token"
         auth["token"] = "${OPENCLAW_GATEWAY_TOKEN}"
@@ -361,6 +553,17 @@ class OpenClawContainerRuntimeManager:
         )
         if check.exit_code == 0:
             return
+        sandbox.execute(self._with_node_runtime_path(DEFAULT_PREPARE_OPENCLAW_PREREQS_COMMAND))
+        if self._stage_offline_openclaw_payload(sandbox):
+            offline_check = sandbox.execute(
+                self._with_node_runtime_path(
+                    f"test -f {shlex.quote(OPENCLAW_OFFLINE_REMOTE_ENTRYPOINT)} && "
+                    f"{shlex.quote(NODE_RUNTIME_BIN + '/node')} {shlex.quote(OPENCLAW_OFFLINE_REMOTE_ENTRYPOINT)} --version"
+                )
+            )
+            if offline_check.exit_code == 0:
+                return
+            _logger.warning("Offline OpenClaw payload verification failed inside task container")
         if not self._install_openclaw_command:
             raise RuntimeError("OpenClaw is not installed in the container and no install command was configured")
         _progress("installing OpenClaw inside task container")
@@ -401,7 +604,11 @@ class OpenClawContainerRuntimeManager:
                 f"export OPENCLAW_HOME={shlex.quote(self._openclaw_home)}",
                 "export OPENCLAW_BUNDLED_PLUGINS_DIR=/tmp/empty-bundled",
                 f"export OPENCLAW_GATEWAY_TOKEN={shlex.quote(self._gateway_token)}",
-                f"nohup openclaw gateway > {shlex.quote(self._gateway_log_path)} 2>&1 &",
+                f"if [ -f {shlex.quote(OPENCLAW_OFFLINE_REMOTE_ENTRYPOINT)} ]; then",
+                f"  nohup {shlex.quote(NODE_RUNTIME_BIN + '/node')} {shlex.quote(OPENCLAW_OFFLINE_REMOTE_ENTRYPOINT)} gateway > {shlex.quote(self._gateway_log_path)} 2>&1 &",
+                "else",
+                f"  nohup openclaw gateway > {shlex.quote(self._gateway_log_path)} 2>&1 &",
+                "fi",
                 f"echo $! > {shlex.quote(self._gateway_pidfile)}",
             ]
         )
@@ -512,11 +719,30 @@ class OpenClawContainerRuntimeManager:
         self._upload_git_dependency_mirrors(sandbox)
         self._install_openclaw_if_needed(sandbox)
         self._start_gateway(sandbox)
-        self._wait_for_gateway(sandbox)
+        probe_error: Exception | None = None
+        try:
+            self._wait_for_gateway(sandbox)
+        except Exception as exc:
+            probe_error = exc
+            _logger.warning(
+                "OpenClaw container readiness probe failed; falling back to warmup: %s",
+                exc,
+            )
         try:
             self._warmup_gateway(sandbox)
         except Exception as exc:
+            if probe_error is not None:
+                raise RuntimeError(
+                    "OpenClaw gateway did not become ready: "
+                    f"probe_error={probe_error}; warmup_error={exc}"
+                ) from exc
             _logger.warning("OpenClaw container warmup did not fully succeed: %s", exc)
+        else:
+            if probe_error is not None:
+                _logger.warning(
+                    "OpenClaw container readiness probe failed but warmup succeeded: %s",
+                    probe_error,
+                )
         self._started_sandboxes.add(sandbox_id)
         if sandbox_id:
             self._managed_sandboxes[sandbox_id] = sandbox

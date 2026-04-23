@@ -589,6 +589,37 @@ class ROCKSession(SandboxSession):
     def proxy_v1_base(self) -> str:
         return f"{self._proxy_base_url}/sandboxes/{self.sandbox_id}/proxy/v1"
 
+    def published_port(self, container_port: int) -> int:
+        """Return the host-published port for a container port."""
+        import httpx
+
+        status_url = f"{self._admin_base_url}/apis/envs/sandbox/v1/get_status"
+        response = httpx.get(
+            status_url,
+            params={"sandbox_id": self.sandbox_id},
+            timeout=10.0,
+            trust_env=False,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if payload.get("status") != "Success":
+            raise RuntimeError(
+                f"Failed to get sandbox status for {self.sandbox_id}: {payload}"
+            )
+        port_mapping = payload.get("result", {}).get("port_mapping", {}) or {}
+        raw_value = port_mapping.get(str(container_port))
+        if raw_value is None:
+            raw_value = port_mapping.get(container_port)
+        if raw_value is None:
+            raise RuntimeError(
+                f"Sandbox {self.sandbox_id} does not publish container port {container_port}"
+            )
+        return int(raw_value)
+
+    def published_base(self, container_port: int, *, host: str = "127.0.0.1") -> str:
+        """Return an HTTP base URL for a published sandbox container port."""
+        return f"http://{host}:{self.published_port(container_port)}"
+
     def execute(self, command: str) -> ExecutionResult:
         start = time.monotonic()
         result = _run_async(self._execute_command(command))

@@ -97,6 +97,10 @@ _RUNTIME_LOG_SUBSTRINGS = (
     "retrying request in ",
     "retry attempt ",
 )
+_DIFF_GIT_RE = re.compile(
+    r"^diff --git .+?(?=\n(?:diff --git |\Z))",
+    re.MULTILINE | re.DOTALL,
+)
 
 
 def _extract_answer(text: str) -> str:
@@ -175,6 +179,30 @@ def _classify_cli_error_output(text: str) -> str:
     return "cli_error"
 
 
+def _extract_patch_from_text(text: str) -> str:
+    """Extract a unified diff patch from free-form agent output."""
+    candidate = _extract_answer(text)
+    if candidate and ("diff --git" in candidate or ("---" in candidate and "+++" in candidate)):
+        return candidate.strip()
+
+    matches = _DIFF_GIT_RE.findall(text)
+    if matches:
+        return "\n".join(match.strip() for match in matches).strip()
+
+    fenced_re = re.compile(r"```(?:diff)?\s*\n(.*?)```", re.DOTALL)
+    for match in fenced_re.finditer(text):
+        block = match.group(1).strip()
+        if "diff --git" in block or ("---" in block and "+++" in block):
+            return block
+    return ""
+
+
+def _is_swe_bench_task(task: BenchmarkTask) -> bool:
+    """Return whether *task* comes from a SWE-bench-style dataset."""
+    metadata = getattr(task, "metadata", None) or {}
+    return "instance_id" in metadata or "repo" in metadata
+
+
 class ZeroClawAgent(Agent):
     """Run ZeroClaw in a live sandbox/container using its native CLI path."""
 
@@ -239,6 +267,19 @@ class ZeroClawAgent(Agent):
             configured_allowed_commands,
             configured_extra_allowed_commands,
         )
+        self._binary_source_image = str(
+            config.get(
+                "binary_source_image",
+                os.environ.get("ZEROCLAW_BINARY_SOURCE_IMAGE")
+                or os.environ.get("SWEBENCH_ZEROCLAW_RUNTIME_IMAGE")
+                or "zeroclaw-reasoning:0.6.9",
+            )
+            or ""
+        ).strip()
+        self._binary_source_path = str(
+            config.get("binary_source_path", "/usr/local/bin/zeroclaw") or "/usr/local/bin/zeroclaw"
+        ).strip()
+        self._host_binary_cache: bytes | None = None
         configured_provider = str(config.get("provider", "")).strip().lower()
         self._provider = _resolve_zeroclaw_provider(configured_provider, self._provider_api_base)
         self._system_prompt = str(config.get("system_prompt", _DEFAULT_SYSTEM_PROMPT)).strip()
@@ -485,6 +526,7 @@ class ZeroClawAgent(Agent):
         system_prompt: str,
         artifact_manifest: dict[str, Any] | None = None,
         request_messages: list[dict[str, Any]] | None = None,
+        answer_override: str | None = None,
     ) -> AgentResponse:
         sanitized_output, dropped_runtime_logs = _sanitize_cli_output(raw_output)
         combined_output = sanitized_output or raw_stderr or runtime_trace
@@ -543,7 +585,9 @@ class ZeroClawAgent(Agent):
             )
 
         return AgentResponse(
-            answer=_extract_answer(sanitized_output) if sanitized_output else None,
+            answer=answer_override if answer_override is not None else (
+                _extract_answer(sanitized_output) if sanitized_output else None
+            ),
             trajectory=trajectory,
             reasoning_trajectory=reasoning_trajectory,
             raw_output=combined_output,
@@ -656,6 +700,7 @@ class ZeroClawAgent(Agent):
     def _build_env(self, home_dir: str) -> dict[str, str]:
         env = {
             "HOME": home_dir,
+            "PATH": f"{home_dir}/bin:/usr/local/bin:/usr/bin:/bin",
             "OPENAI_API_KEY": self._provider_api_key,
             "OPENAI_BASE_URL": self._provider_api_base,
             "OPENAI_MODEL_NAME": self._model,
@@ -665,6 +710,67 @@ class ZeroClawAgent(Agent):
         }
         env.update(self._env)
         return env
+
+    def _load_host_binary_from_image(self) -> bytes:
+        if self._host_binary_cache is not None:
+            return self._host_binary_cache
+        if not self._binary_source_image:
+            raise RuntimeError("No ZeroClaw binary source image configured.")
+        result = subprocess.run(
+            [
+                "docker",
+                "run",
+                "--rm",
+                "--entrypoint",
+                "cat",
+                self._binary_source_image,
+                self._binary_source_path,
+            ],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        if not result.stdout:
+            raise RuntimeError(
+                "Resolved ZeroClaw binary source image produced an empty binary payload."
+            )
+        self._host_binary_cache = result.stdout
+        return result.stdout
+
+    def _upload_host_binary(
+        self,
+        sandbox: Any,
+        paths: dict[str, str],
+    ) -> bool:
+        try:
+            binary_bytes = self._load_host_binary_from_image()
+        except Exception as exc:
+            logger.debug("Failed to read ZeroClaw binary from image %s: %s", self._binary_source_image, exc)
+            return False
+
+        mkdir_result = sandbox.execute(
+            f"mkdir -p {shlex.quote(paths['bin_dir'])}"
+        )
+        if mkdir_result.exit_code != 0:
+            logger.debug(
+                "Failed to create sandbox bin dir %s: %s",
+                paths["bin_dir"],
+                mkdir_result.stderr.strip() or mkdir_result.stdout.strip(),
+            )
+            return False
+        try:
+            sandbox.upload(paths["zeroclaw_path"], binary_bytes)
+        except Exception as exc:
+            logger.debug("Failed to upload ZeroClaw binary into sandbox: %s", exc)
+            return False
+        chmod_result = sandbox.execute(f"chmod 755 {shlex.quote(paths['zeroclaw_path'])}")
+        if chmod_result.exit_code != 0:
+            logger.debug(
+                "Failed to chmod uploaded ZeroClaw binary: %s",
+                chmod_result.stderr.strip() or chmod_result.stdout.strip(),
+            )
+            return False
+        return True
 
     def _ensure_provider_credentials(self, context: str) -> None:
         if not self._provider_api_base:
@@ -695,21 +801,31 @@ class ZeroClawAgent(Agent):
         for item in attachment_items:
             sandbox.upload(str(Path(attachments_dir) / item["filename"]), item["data"])
 
-    def _ensure_sandbox_binary(self, sandbox: Any, env: dict[str, str]) -> str:
+    def _ensure_sandbox_binary(
+        self,
+        sandbox: Any,
+        env: dict[str, str],
+        paths: dict[str, str],
+    ) -> str:
         base_check = sandbox.execute("command -v zeroclaw >/dev/null 2>&1")
         if base_check.exit_code != 0:
+            uploaded = self._upload_host_binary(sandbox, paths)
+            if not uploaded and not self._install_command:
+                raise RuntimeError(
+                    "ZeroClaw binary not found in sandbox PATH. "
+                    "Set agent.config.binary_source_image to a local runtime image with "
+                    "zeroclaw installed, or provide agent.config.install_command."
+                )
             if not self._install_command:
-                raise RuntimeError(
-                    "ZeroClaw binary not found in sandbox PATH. Build a sandbox image "
-                    "with zeroclaw preinstalled or set agent.config.install_command."
-                )
-            install_command = self._with_env_prefix(self._install_command, env)
-            install_result = sandbox.execute(install_command)
-            if install_result.exit_code != 0:
-                raise RuntimeError(
-                    "Failed to install zeroclaw in sandbox: "
-                    f"{install_result.stderr.strip() or install_result.stdout.strip() or self._install_command}"
-                )
+                pass
+            else:
+                install_command = self._with_env_prefix(self._install_command, env)
+                install_result = sandbox.execute(install_command)
+                if install_result.exit_code != 0:
+                    raise RuntimeError(
+                        "Failed to install zeroclaw in sandbox: "
+                        f"{install_result.stderr.strip() or install_result.stdout.strip() or self._install_command}"
+                    )
 
         version_result = sandbox.execute(self._with_env_prefix("zeroclaw --version", env))
         if version_result.exit_code != 0:
@@ -744,15 +860,43 @@ class ZeroClawAgent(Agent):
             "base_dir": base_dir,
             "workspace_dir": workspace_dir,
             "home_dir": home_dir,
+            "bin_dir": str(Path(home_dir) / "bin"),
             "zc_home_dir": zc_home_dir,
             "state_dir": state_dir,
             "attachments_dir": attachments_dir,
             "config_path": str(Path(zc_home_dir) / "config.toml"),
             "task_path": str(Path(workspace_dir) / "task.txt"),
+            "zeroclaw_path": str(Path(home_dir) / "bin" / "zeroclaw"),
             "stdout_path": str(Path(base_dir) / "zeroclaw_output.txt"),
             "stderr_path": str(Path(base_dir) / "zeroclaw_stderr.log"),
             "runtime_trace_path": str(Path(state_dir) / "runtime-trace.jsonl"),
         }
+
+    @staticmethod
+    def _resolve_repo_workdir(sandbox: Any, root_dir: str) -> str:
+        metadata_fn = getattr(sandbox, "metadata", None)
+        if callable(metadata_fn):
+            try:
+                metadata = metadata_fn()
+            except Exception:
+                metadata = {}
+            if isinstance(metadata, dict):
+                repo_workdir = str(metadata.get("repo_workdir", "")).strip()
+                if repo_workdir:
+                    return repo_workdir
+        return root_dir
+
+    @staticmethod
+    def _collect_repo_patch(sandbox: Any, repo_workdir: str) -> str:
+        if not repo_workdir:
+            return ""
+        try:
+            result = sandbox.execute(f"cd {shlex.quote(repo_workdir)} && git diff HEAD 2>/dev/null")
+        except Exception:
+            return ""
+        if result.exit_code != 0:
+            return ""
+        return result.stdout.strip()
 
     def _prepare_sandbox_workspace(
         self,
@@ -891,7 +1035,7 @@ class ZeroClawAgent(Agent):
         self._prepare_sandbox_workspace(sandbox, paths, task_context)
 
         env = self._build_env(paths["home_dir"])
-        version_output = self._ensure_sandbox_binary(sandbox, env)
+        version_output = self._ensure_sandbox_binary(sandbox, env, paths)
         run_command = self._wrap_shell_command(self._build_run_command(paths), env)
         execute_long_running = getattr(sandbox, "execute_long_running", None)
         if execute_long_running is not None:
@@ -907,16 +1051,32 @@ class ZeroClawAgent(Agent):
         raw_stderr = self._read_sandbox_file(sandbox, paths["stderr_path"]).strip()
         runtime_trace = self._read_sandbox_file(sandbox, paths["runtime_trace_path"]).strip()
         sanitized_output, dropped_runtime_logs = _sanitize_cli_output(raw_output)
+        repo_workdir = self._resolve_repo_workdir(sandbox, root_dir)
+        patch_answer: str | None = None
+        patch_source = ""
+        if _is_swe_bench_task(task):
+            patch_from_git = self._collect_repo_patch(sandbox, repo_workdir)
+            if patch_from_git:
+                patch_answer = patch_from_git
+                patch_source = "git_diff"
+            elif sanitized_output:
+                extracted_patch = _extract_patch_from_text(sanitized_output)
+                if extracted_patch:
+                    patch_answer = extracted_patch
+                    patch_source = "raw_output_patch"
         metadata = {
             "model": self._model,
             "provider_api_base": self._provider_api_base,
             "execution_id": execution_id,
             "workspace_dir": paths["workspace_dir"],
+            "repo_workdir": repo_workdir,
             "home_dir": paths["home_dir"],
             "zeroclaw_version": version_output,
             "sandbox_backend": getattr(sandbox, "name", ""),
             "transport": "zeroclaw_cli_sandbox",
         }
+        if patch_source:
+            metadata["patch_source"] = patch_source
         if dropped_runtime_logs:
             metadata["runtime_logs_dropped_from_output"] = dropped_runtime_logs
         partial_response = self._build_cli_response(
@@ -936,6 +1096,7 @@ class ZeroClawAgent(Agent):
                 }
             },
             request_messages=list(task_context["request_messages"]),
+            answer_override=patch_answer,
         )
         partial_response.workspace_snapshot_paths = [
             path
@@ -968,13 +1129,21 @@ class ZeroClawAgent(Agent):
             )
         if result.exit_code != 0:
             diagnostics = self._collect_sandbox_diagnostics_safe(sandbox, paths, env)
-            self._mark_partial_failure(partial_response, failure_reason="cli_error")
+            failure_detail = (
+                raw_stderr
+                or sanitized_output
+                or raw_output
+                or result.stderr.strip()
+                or f"exit code {result.exit_code}"
+            )
+            failure_reason = _classify_cli_error_output(failure_detail)
+            self._mark_partial_failure(partial_response, failure_reason=failure_reason)
             self._raise_with_partial_response(
                 "ZeroClaw agent failed in sandbox: "
-                f"{raw_stderr or sanitized_output or raw_output or result.stderr.strip() or f'exit code {result.exit_code}'}\n"
+                f"{failure_detail}\n"
                 f"diagnostics:\n{diagnostics}",
                 partial_response,
-                error_type="cli_error",
+                error_type=failure_reason,
             )
         if sanitized_output.lower().startswith("error:"):
             failure_reason = _classify_cli_error_output(sanitized_output)
