@@ -17,7 +17,7 @@ Reference run for parity: `T-MARS/alphadiana-benchmark-results/full_run/YYYYMMDD
 | -------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------ |
 | `temperature`        | `0.0`                                           | manifest `overrides.temperature`                                               |
 | `top_p`              | `0.95`                                          | manifest `overrides.top_p`                                                     |
-| `max_output_tokens`  | `32768` (32K)                                   | manifest `overrides.max_output_tokens`                                         |
+| `max_output_tokens`  | `131072` (128K)                                 | manifest `overrides.max_output_tokens`                                         |
 | Sample K             | `1`                                             | `sweagent run-batch` is single-shot per instance                               |
 | `max_concurrent`     | `10`                                            | manifest `path_template.max_concurrent`                                        |
 | `per_instance_call_limit` | `80`                                       | manifest `overrides.per_instance_call_limit` (matches reference run)           |
@@ -119,7 +119,7 @@ path_templates:
       split: "test"
       temperature: 0.0
       top_p: 0.95
-      max_output_tokens: 32768
+      max_output_tokens: 131072
       per_instance_call_limit: 80
       eval_max_workers: 4
 ```
@@ -152,7 +152,7 @@ tmux attach -t swe-verified-mini     # Ctrl+B D to detach
 The generated shell does:
 
 1. `cd $DIRECTLLM_SWE_VERIFIED_ROOT/SWE-agent`
-2. `sweagent run-batch --config config/default.yaml --instances.type swe_bench --instances.path_override MariusHobbhahn/swe-bench-verified-mini --instances.subset verified --instances.split test --agent.model.name openai/qwen3.5-27b --agent.model.api_base $QWEN_VLLM_API_BASE --agent.model.temperature 0.0 --agent.model.top_p 0.95 --agent.model.max_output_tokens 32768 --agent.model.per_instance_call_limit 80 ...`
+2. `sweagent run-batch --config config/default.yaml --instances.type swe_bench --instances.path_override MariusHobbhahn/swe-bench-verified-mini --instances.subset verified --instances.split test --agent.model.name openai/qwen3.5-27b --agent.model.api_base $QWEN_VLLM_API_BASE --agent.model.temperature 0.0 --agent.model.top_p 0.95 --agent.model.max_output_tokens 131072 --agent.model.per_instance_call_limit 80 ...`
 3. `python -m swebench.harness.run_evaluation --dataset_name MariusHobbhahn/swe-bench-verified-mini --split test --predictions_path sweagent_results/<run_id>/preds.json --run_id <run_id> --max_workers 4`
 
 Outputs:

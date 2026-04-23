@@ -51,7 +51,7 @@ path_templates:
       split: "test"
       temperature: 0.0
       top_p: 0.95
-      max_output_tokens: 32768
+      max_output_tokens: 131072
       per_instance_call_limit: 80
 """
 
@@ -105,7 +105,7 @@ def test_swe_verified_render_uses_override_sampling(manifest_path: Path):
     cmd = rc.render_run_command(runs[0])
     assert "--agent.model.temperature 0.0" in cmd
     assert "--agent.model.top_p 0.95" in cmd
-    assert "--agent.model.max_output_tokens 32768" in cmd
+    assert "--agent.model.max_output_tokens 131072" in cmd
 
 
 def test_swe_verified_render_respects_overrides(tmp_path: Path):
@@ -114,7 +114,7 @@ def test_swe_verified_render_respects_overrides(tmp_path: Path):
               .replace("per_instance_call_limit: 80", "per_instance_call_limit: 40")
               .replace('split: "test"', 'split: "dev"')
               .replace("temperature: 0.0", "temperature: 0.6")
-              .replace("max_output_tokens: 32768", "max_output_tokens: 65536"))
+              .replace("max_output_tokens: 131072", "max_output_tokens: 65536"))
     p = tmp_path / "custom.yaml"
     p.write_text(textwrap.dedent(custom).lstrip(), encoding="utf-8")
     runs = rc.filter_runs(rc.expand_campaign(p), benchmark="swe_bench_verified")

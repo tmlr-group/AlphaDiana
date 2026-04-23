@@ -440,7 +440,7 @@ def _escape_for_double_quotes(value: str) -> str:
 def _render_official_tb2_command(run: ConcreteRun) -> str:
     workdir_ref = _tb2_workdir_ref()
     api_key_expr = _env_with_default(run.model.api_key_env, "EMPTY")
-    llm_call_kwargs = json.dumps({"top_p": 0.95, "max_tokens": 32768}, separators=(",", ":"))
+    llm_call_kwargs = json.dumps({"top_p": 0.95, "max_tokens": 131072}, separators=(",", ":"))
     model_q = shlex.quote(run.model.official_model_name)
     run_id_q = shlex.quote(run.run_id)
     llm_kwargs_q = shlex.quote(f"llm_call_kwargs={llm_call_kwargs}")
@@ -544,7 +544,7 @@ def _render_official_swebench_verified_command(run: ConcreteRun) -> str:
       ``split``                   default ``test``
       ``temperature``             default ``0.0``
       ``top_p``                   default ``0.95``
-      ``max_output_tokens``       default ``32768``
+      ``max_output_tokens``       default ``131072``
       ``per_instance_call_limit`` default ``80``
       ``per_instance_cost_limit`` default ``0``
       ``total_cost_limit``        default ``0``
@@ -563,7 +563,7 @@ def _render_official_swebench_verified_command(run: ConcreteRun) -> str:
     split_q = shlex.quote(str(o.get("split", "test")))
     temperature = str(o.get("temperature", "0.0"))
     top_p = str(o.get("top_p", "0.95"))
-    max_output_tokens = str(o.get("max_output_tokens", "32768"))
+    max_output_tokens = str(o.get("max_output_tokens", "131072"))
     call_limit = str(o.get("per_instance_call_limit", "80"))
     per_instance_cost_limit = str(o.get("per_instance_cost_limit", "0"))
     total_cost_limit = str(o.get("total_cost_limit", "0"))
