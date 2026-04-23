@@ -111,6 +111,27 @@ class _FakeRockLikeSandbox(_FakeSandbox):
         return super().execute(command)
 
 
+class _FakeNonZeroProviderSandbox(_FakeSandbox):
+    def execute(self, command: str):
+        if "zeroclaw agent -m" in command:
+            self.commands.append(command)
+            task_path = next((path for path in self._files if path.endswith("/task.txt")), "")
+            stdout_path = command.split("> ", 1)[1].split(" 2> ", 1)[0]
+            stderr_path = command.split(" 2> ", 1)[1]
+            provider_error = (
+                "Error: All providers/models failed. Attempts:\n"
+                "provider=custom:http://172.17.0.1:8011/v1 model=Qwen/Qwen3.5-27B "
+                "attempt 1/3: non_retryable; error=Custom API error (400 Bad Request): "
+                '{"error":{"message":"System message must be at the beginning.","type":"BadRequestError","code":400}}'
+            )
+            self._files[stdout_path] = ""
+            self._files[stderr_path] = provider_error
+            runtime_trace_path = str(Path(task_path).parent / "state" / "runtime-trace.jsonl")
+            self._files[runtime_trace_path] = ""
+            return type("Result", (), {"exit_code": 1, "stdout": "", "stderr": provider_error})()
+        return super().execute(command)
+
+
 def test_zeroclaw_agent_is_registered():
     assert AgentRegistry.get("zeroclaw") is ZeroClawAgent
 
@@ -406,4 +427,34 @@ def test_zeroclaw_sandbox_provider_failures_preserve_failure_reason():
     assert partial is not None
     assert getattr(excinfo.value, "error_type", "") == "proxy_error"
     assert partial.metadata["failure_reason"] == "proxy_error"
+    assert partial.metadata["transport"] == "zeroclaw_cli_sandbox"
+
+
+def test_zeroclaw_nonzero_sandbox_provider_failures_classify_as_provider_error():
+    task = BenchmarkTask(
+        task_id="swe_provider_error",
+        problem="Fix the issue.",
+        ground_truth="diff --git a/foo b/foo",
+        metadata={
+            "execution_id": "exec-nonzero-provider-error",
+            "instance_id": "django__django-11790",
+            "repo": "django/django",
+        },
+    )
+    sandbox = _FakeNonZeroProviderSandbox()
+
+    agent = ZeroClawAgent()
+    agent.setup({
+        "model": "Qwen/Qwen3.5-27B",
+        "api_base": "http://172.17.0.1:8011/v1",
+        "api_key": "LOCAL_DUMMY",
+    })
+
+    with pytest.raises(RuntimeError) as excinfo:
+        agent.solve(task, sandbox=sandbox)
+
+    partial = getattr(excinfo.value, "partial_response", None)
+    assert partial is not None
+    assert getattr(excinfo.value, "error_type", "") == "provider_error"
+    assert partial.metadata["failure_reason"] == "provider_error"
     assert partial.metadata["transport"] == "zeroclaw_cli_sandbox"

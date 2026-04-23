@@ -1,0 +1,61 @@
+run_id: "zeroclaw-swe-bench-001"
+
+agent:
+  name: zeroclaw
+  version: "0.6.9"
+  config:
+    model: "${OPENAI_MODEL_NAME}"
+    api_base: "${OPENAI_BASE_URL}"
+    provider_api_base: "${OPENAI_BASE_URL}"
+    api_key: "${OPENAI_API_KEY}"
+    binary_source_image: "zeroclaw-reasoning:0.6.9"
+    request_timeout: 1800
+    provider_timeout_secs: 1800
+    max_tool_iterations: 100
+    max_actions_per_hour: 200
+    workspace_only: false
+    runtime_trace_mode: "none"
+    system_prompt: |
+      You are an expert software engineer. You will be given a GitHub issue description
+      for a Python repository. Your task is to fix the issue by making the minimal
+      necessary code changes.
+
+      Guidelines:
+      - Use your file reading, bash, and editing tools to inspect and modify the repository.
+      - Make the smallest correct change needed; avoid unrelated refactoring.
+      - Do not modify test files.
+      - After making your changes, ensure the code is syntactically correct.
+      - Present your final answer as a valid unified diff patch starting with "diff --git".
+
+benchmark:
+  name: swe_bench
+  config:
+    dataset: "SWE-bench/SWE-bench_Verified"
+    split: "test"
+    include_hints: false
+    max_tasks: 1
+
+sandbox:
+  name: swebench_container
+  config:
+    namespace: "swebench"
+    force_rebuild: false
+    keep_container: false
+    keep_logs: true
+    log_dir: "./logs/swebench_container"
+    gateway_host: "127.0.0.1"
+    gateway_port: 8080
+
+scorer:
+  name: swe_bench
+  config:
+    timeout: 1800
+    cache_level: "env"
+    namespace: "swebench"
+    force_rebuild: false
+    log_dir: "./swe_bench_logs"
+
+max_concurrent: 1
+output_dir: "./results"
+metadata:
+  notes: "SWE-bench Verified via zeroclaw CLI inside task container"

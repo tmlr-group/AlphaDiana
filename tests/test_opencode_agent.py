@@ -266,6 +266,67 @@ def test_solve_raises_provider_error_when_opencode_emits_error_event():
     assert "tool choice requires" in partial.response_json["opencode_error_message"]
 
 
+def test_solve_in_container_raises_provider_error_when_opencode_emits_error_event():
+    agent = OpenCodeAgent()
+    agent.setup({
+        "runtime": "swebench_container",
+        "model_name": "Qwen/Qwen3.5-27B",
+        "api_base": "http://172.17.0.1:8011/v1",
+        "api_key": "test-key",
+        "timeout": 5,
+    })
+
+    runtime_manager = MagicMock()
+    runtime_manager.run_task.return_value = {
+        "stdout": json.dumps({
+            "type": "error",
+            "sessionID": "session-error",
+            "error": {
+                "name": "ContextOverflowError",
+                "data": {
+                    "message": (
+                        "This model's maximum context length is 32768 tokens. "
+                        "However, you requested 32000 output tokens and your prompt "
+                        "contains at least 769 input tokens."
+                    )
+                },
+            },
+        }) + "\n",
+        "stderr": "",
+        "exit_code": 0,
+        "patch": "",
+    }
+    runtime_manager.collect_artifacts.return_value = {
+        "artifact_manifest": {},
+        "session_files": ["session-error.jsonl"],
+    }
+    agent._runtime_manager = runtime_manager
+
+    sandbox = MagicMock()
+    task = BenchmarkTask(
+        task_id="swe_django__django-11790",
+        problem="Fix the regression.",
+        ground_truth="diff --git a/foo b/foo",
+        metadata={
+            "instance_id": "django__django-11790",
+            "repo": "django/django",
+            "base_commit": "deadbeef",
+        },
+    )
+
+    with pytest.raises(RuntimeError) as excinfo:
+        agent.solve(task, sandbox=sandbox)
+
+    assert getattr(excinfo.value, "error_type", "") == "provider_error"
+    partial = getattr(excinfo.value, "partial_response", None)
+    assert partial is not None
+    assert partial.answer is None
+    assert partial.metadata["transport"] == "opencode_cli_container"
+    assert partial.metadata["opencode_error_name"] == "ContextOverflowError"
+    assert "maximum context length" in partial.metadata["opencode_error_message"]
+    assert "maximum context length" in partial.response_json["opencode_error_message"]
+
+
 def test_solve_preserves_opencode_session_trace_when_present():
     agent = OpenCodeAgent()
     agent.setup({

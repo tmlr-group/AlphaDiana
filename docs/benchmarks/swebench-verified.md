@@ -1,4 +1,4 @@
-# SWE-bench: OpenClaw 与 OpenCode 的配置与运行说明
+# SWE-bench Verified: OpenClaw / OpenCode / ZeroClaw 配置与运行说明
 
 说明：
 
@@ -7,7 +7,7 @@
 - 这条 Verified 路径的内部设计说明见 `context/pr26-swebench-verified/implementation-notes.md`。
 - 本地验证证据见 `context/pr26-swebench-verified/`。
 
-本文面向想要复现当前仓库 SWE-bench Verified 实验结果的用户，说明两个配置文件的用途、差异、环境准备方式、烟测命令和预期结果。
+本文面向想要复现当前仓库 SWE-bench Verified 实验结果的用户，说明三个配置文件的用途、差异、环境准备方式、烟测命令和预期结果。
 
 文档分层如下：
 
@@ -15,14 +15,19 @@
 - `context/pr26-swebench-verified/implementation-notes.md`：实现原理、执行时序、关键文件职责
 - `context/pr26-swebench-verified/`：本地真实 smoke 结果、run id、review 证据和开发 handoff
 
-涉及的两个配置文件：
+涉及的三个配置文件：
 
 - `configs/examples/openclaw_swe_bench.yaml`
 - `configs/examples/opencode_swe_bench.yaml`
+- `configs/examples/zeroclaw_swe_bench.yaml`
 
 ## 1. 先说当前仓库状态
 
-这两个 YAML 当前都可以通过 `validate`，并且 `run` 已经能走到真实的 SWE-bench 评测链路：
+这三个 YAML 当前都可以通过 `validate`。其中：
+
+- `openclaw` / `opencode` 已有更早的 MiniMax smoke 通过证据，见 `context/pr26-swebench-verified/`
+- `opencode` 在本地 `Qwen/Qwen3.5-27B` / vLLM 上已确认会把 provider-side overflow 保留成 `provider_error`，而不是再落成空 patch
+- `zeroclaw` 在同一本地 Qwen 路径上当前仍会因为上下文窗口过大写出保留的 `provider_error`；这是当前限制证据，不是“已跑通”声明
 
 ```bash
 source scripts/activate.sh
@@ -32,6 +37,10 @@ python -m alphadiana.cli validate configs/examples/openclaw_swe_bench.yaml \
 
 python -m alphadiana.cli validate configs/examples/opencode_swe_bench.yaml \
   -o run_id=my-opencode-smoke \
+  -o benchmark.config.max_tasks=1
+
+python -m alphadiana.cli validate configs/examples/zeroclaw_swe_bench.yaml \
+  -o run_id=my-zeroclaw-smoke \
   -o benchmark.config.max_tasks=1
 ```
 
@@ -110,7 +119,7 @@ SWE-bench 数据集默认从 Hugging Face 加载。如果当前环境直连 Hugg
 export HF_ENDPOINT=https://hf-mirror.com
 ```
 
-## 3. 两个配置文件分别是怎么配的
+## 3. 三个配置文件分别是怎么配的
 
 ## 3.1 OpenClaw 配置
 
@@ -277,6 +286,10 @@ python -m alphadiana.cli validate configs/examples/openclaw_swe_bench.yaml \
 python -m alphadiana.cli validate configs/examples/opencode_swe_bench.yaml \
   -o run_id=my-opencode-smoke \
   -o benchmark.config.max_tasks=1
+
+python -m alphadiana.cli validate configs/examples/zeroclaw_swe_bench.yaml \
+  -o run_id=my-zeroclaw-smoke \
+  -o benchmark.config.max_tasks=1
 ```
 
 ## 5.2 真正执行
@@ -297,7 +310,15 @@ python -m alphadiana.cli run configs/examples/opencode_swe_bench.yaml \
   -o benchmark.config.max_tasks=1
 ```
 
-如果你想直接复现“1 个 task、2 个 agent、MiniMax M2.5 后端”的本次 smoke，建议保持：
+ZeroClaw：
+
+```bash
+python -m alphadiana.cli run configs/examples/zeroclaw_swe_bench.yaml \
+  -o run_id=my-zeroclaw-smoke \
+  -o benchmark.config.max_tasks=1
+```
+
+如果你想直接复现“1 个 task、单 agent、MiniMax M2.5 后端”的 smoke，建议保持：
 
 ```bash
 -o benchmark.config.max_tasks=1
@@ -319,10 +340,11 @@ python -m alphadiana.cli run configs/examples/opencode_swe_bench.yaml \
 - 任务记录里没有 `error`
 - dashboard 显示 `O` 或 `X`，而不是 `-`
 
-对当前这两个 example config，更具体的预期结果是：
+对当前这三个 example config，更具体的预期结果是：
 
 - `openclaw_swe_bench.yaml`：应当拿到 task JSON、dashboard `O/X`，并且 artifacts 中能看到 OpenClaw session / gateway 相关产物
 - `opencode_swe_bench.yaml`：应当拿到 task JSON、dashboard `O/X`，并且 patch 优先来自 `git diff HEAD`
+- `zeroclaw_swe_bench.yaml`：应当拿到 task JSON，以及容器内 `zeroclaw_output.txt` / `zeroclaw_stderr.log` artifacts；如果是当前本地 `Qwen/Qwen3.5-27B` 路径，provider overflow 现在会保留成 `provider_error`
 
 本地真实 smoke 证据见：
 
@@ -357,6 +379,13 @@ python -m alphadiana.cli run configs/examples/opencode_swe_bench.yaml \
 ## 7. 当前 OpenClaw 的网络稳态策略
 
 当前仓库里的 OpenClaw 容器链路已经做了一个显式稳态修复，用来处理 `openclaw@2026.3.7` 依赖树里最容易卡住的 GitHub 依赖 `libsignal-node`。
+
+同时，当前 `swebench_container` 路径还有一个很重要的默认约束：
+
+- task container 里的 OpenClaw gateway 不能默认只绑 `127.0.0.1`
+- 如果 runtime JSON 渲染成 `gateway.bind=custom` 且 `customBindHost=127.0.0.1`，那么容器内 `openclaw-gateway` 进程虽然活着，宿主机通过 Docker published port 去访问 `http://127.0.0.1:<host-port>/v1/models` 仍然会直接 `connection reset by peer`
+- 当前主线代码已经把这个默认行为改成“非 loopback bind”，只有在你显式指定 `container_gateway_bind_host` / `gateway_bind_host` 时才走自定义 bind
+- 因此，如果你在本地 smoke 里看到 task container 已经起来、gateway log 也正常，但 host 侧 `/v1/models` 一直 reset，不要先怀疑模型服务，先检查渲染后的 `openclaw.json` 里 `gateway.bind` / `customBindHost`
 
 默认行为现在是：
 
@@ -454,6 +483,7 @@ python -m alphadiana.cli run configs/examples/opencode_swe_bench.yaml \
 
 - `configs/examples/openclaw_swe_bench.yaml`
 - `configs/examples/opencode_swe_bench.yaml`
+- `configs/examples/zeroclaw_swe_bench.yaml`
 - `openclaw_deploy/openclaw_swe_bench.runtime.json`
 
 执行入口：
@@ -467,12 +497,13 @@ SWE-bench 数据与容器：
 - `alphadiana/utils/swebench.py`
 - `alphadiana/sandbox/swebench_container.py`
 
-两个 agent 的具体实现：
+三个 agent 的具体实现：
 
 - `alphadiana/agent/openclaw.py`
 - `alphadiana/agent/openclaw_container_runtime.py`
 - `alphadiana/agent/opencode.py`
 - `alphadiana/agent/opencode_container_runtime.py`
+- `alphadiana/agent/zeroclaw.py`
 
 如果你想看“原理、时序、每个文件分别干什么”，请继续看
 `context/pr26-swebench-verified/implementation-notes.md`。

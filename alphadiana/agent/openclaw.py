@@ -94,6 +94,10 @@ _PARTIAL_REASONING_ANSWER_RE = re.compile(
     r"(?:\*{0,2})(?:the\s+)?(?:final\s+)?answer(?:\*{0,2})\s*(?:[:：]|is|=)\s*(.+)",
     re.IGNORECASE,
 )
+_DIFF_GIT_RE = re.compile(
+    r"^diff --git .+?(?=\n(?:diff --git |\Z))",
+    re.MULTILINE | re.DOTALL,
+)
 
 
 def _extract_answer_from_partial_reasoning(text: str) -> str | None:
@@ -127,6 +131,72 @@ def _extract_answer_from_partial_reasoning(text: str) -> str | None:
             return candidate
 
     return None
+
+
+def _extract_patch_from_text(text: str) -> str:
+    """Extract a unified diff patch from free-form agent output."""
+    candidate = extract_answer_candidate(text)
+    if candidate and ("diff --git" in candidate or ("---" in candidate and "+++" in candidate)):
+        return candidate.strip()
+
+    matches = _DIFF_GIT_RE.findall(text)
+    if matches:
+        return "\n".join(match.strip() for match in matches).strip()
+
+    fenced_re = re.compile(r"```(?:diff)?\s*\n(.*?)```", re.DOTALL)
+    for match in fenced_re.finditer(text):
+        block = match.group(1).strip()
+        if "diff --git" in block or ("---" in block and "+++" in block):
+            return block
+
+    return ""
+
+
+def _is_swe_bench_task(task: BenchmarkTask) -> bool:
+    """Return whether *task* comes from a SWE-bench-style dataset."""
+    metadata = getattr(task, "metadata", None) or {}
+    return "instance_id" in metadata or "repo" in metadata
+
+
+def _resolve_repo_workdir_from_sandbox(sandbox: Any) -> str:
+    """Resolve the checked-out repo workdir from an active sandbox session."""
+    metadata_fn = getattr(sandbox, "metadata", None)
+    if callable(metadata_fn):
+        try:
+            metadata = metadata_fn()
+        except Exception:
+            metadata = {}
+        if isinstance(metadata, dict):
+            repo_workdir = str(metadata.get("repo_workdir", "")).strip()
+            if repo_workdir:
+                return repo_workdir
+
+    execute = getattr(sandbox, "execute", None)
+    if callable(execute):
+        try:
+            pwd_result = execute("pwd")
+        except Exception:
+            return ""
+        if getattr(pwd_result, "exit_code", 1) == 0:
+            return str(pwd_result.stdout).strip().splitlines()[-1].strip()
+    return ""
+
+
+def _extract_repo_patch_from_sandbox(sandbox: Any) -> str:
+    """Return ``git diff HEAD`` from the active sandbox repo, if available."""
+    repo_workdir = _resolve_repo_workdir_from_sandbox(sandbox)
+    if not repo_workdir:
+        return ""
+    execute = getattr(sandbox, "execute", None)
+    if not callable(execute):
+        return ""
+    try:
+        result = execute(f"cd {shlex.quote(repo_workdir)} && git diff HEAD 2>/dev/null")
+    except Exception:
+        return ""
+    if getattr(result, "exit_code", 1) != 0:
+        return ""
+    return str(result.stdout or "").strip()
 
 
 def extract_system_prompt(trajectory: list[dict]) -> str:
@@ -1733,9 +1803,18 @@ class OpenClawAgent(Agent):
 
         answer = None
         answer_source = ""
-        if raw_output:
-            answer = _extract_answer(raw_output)
-            answer_source = "raw_output"
+        if _is_swe_bench_task(task) and sandbox is not None:
+            answer = _extract_repo_patch_from_sandbox(sandbox)
+            if answer:
+                answer_source = "git_diff"
+        if not answer and raw_output:
+            if _is_swe_bench_task(task):
+                answer = _extract_patch_from_text(raw_output)
+                if answer:
+                    answer_source = "raw_output_patch"
+            if not answer:
+                answer = _extract_answer(raw_output)
+                answer_source = "raw_output"
         elif raw_reasoning:
             answer = _extract_answer_from_partial_reasoning(raw_reasoning)
             if answer is not None:
@@ -1863,6 +1942,7 @@ class OpenClawAgent(Agent):
                 "retry_count": attempt,
                 "token_usage_total": cumulative_token_usage,
                 "partial_reasoning_only": partial_reasoning_only and not raw_output,
+                "answer_source": answer_source,
                 "answer_source": answer_source,
                 "received_done": received_done,
                 "session_tainted": session_tainted,

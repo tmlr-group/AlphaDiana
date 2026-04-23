@@ -68,6 +68,8 @@ class ZeroClawRuntimeManager:
     def __init__(self, config: dict) -> None:
         self._gateway_token = config.get("gateway_token", "ZEROCLAW")
         self._gateway_model = config.get("model", "zeroclaw")
+        self._bridge_port = int(config.get("bridge_port", 8080))
+        self._bridge_host = str(config.get("bridge_host", "0.0.0.0") or "0.0.0.0").strip()
         self._model_api_base = str(config.get("api_base", "")).strip()
         self._model_api_key = str(config.get("api_key", "")).strip()
         self._model_name = str(config.get("model", "")).strip() or self._gateway_model
@@ -126,7 +128,15 @@ class ZeroClawRuntimeManager:
         return self._bridge_template_path.exists()
 
     def runtime_info(self, sandbox: Any) -> dict:
-        api_base = sandbox.proxy_v1_base()
+        api_base = ""
+        published_base = getattr(sandbox, "published_base", None)
+        if callable(published_base):
+            try:
+                api_base = f"{published_base(self._bridge_port).rstrip('/')}/v1"
+            except Exception:
+                _logger.debug("Failed to resolve published ZeroClaw bridge port", exc_info=True)
+        if not api_base:
+            api_base = sandbox.proxy_v1_base()
         return {
             "sandbox_id": str(getattr(sandbox, "sandbox_id", "")),
             "gateway_url": f"{api_base}/chat/completions",
@@ -141,6 +151,7 @@ class ZeroClawRuntimeManager:
             "OPENAI_MODEL_NAME": self._model_name or os.environ.get("OPENAI_MODEL_NAME", self._gateway_model),
             "OPENROUTER_API_KEY": self._model_api_key or os.environ.get("OPENROUTER_API_KEY", ""),
             "ZEROCLAW_GATEWAY_TOKEN": self._gateway_token,
+            "ZEROCLAW_BRIDGE_HOST": self._bridge_host,
             "ZEROCLAW_PROVIDER": self._provider,
             "ZEROCLAW_ARTIFACT_ROOT": self._artifact_root,
             "ZEROCLAW_TEMPERATURE": str(self._temperature),

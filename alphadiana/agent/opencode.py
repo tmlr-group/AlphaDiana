@@ -471,28 +471,48 @@ class OpenCodeAgent(Agent):
             },
         )
 
-        return AgentResponse(
-            answer=answer,
+        error_info = _extract_opencode_error(events)
+        response_metadata = {
+            "runtime": "swebench_container",
+            "returncode": exit_code,
+            "exit_code": exit_code,
+            "stderr": stderr[:2000] if stderr else "",
+            "num_events": len(events),
+            "session_id": session_id,
+            "patch_source": "git_diff" if patch_from_git else "text_extraction",
+            "transport": "opencode_cli_container",
+            **artifacts,
+        }
+        if error_info:
+            response_metadata.update({
+                "opencode_error_name": error_info["name"],
+                "opencode_error_message": error_info["message"],
+            })
+            response_json = {
+                **response_json,
+                "opencode_error_name": error_info["name"],
+                "opencode_error_message": error_info["message"],
+            }
+
+        response = AgentResponse(
+            answer=None if error_info else answer,
             trajectory=trajectory,
             reasoning_trajectory=reasoning_trajectory,
             raw_output=full_content,
             wall_time_sec=wall_time,
-            metadata={
-                "runtime": "swebench_container",
-                "returncode": exit_code,
-                "exit_code": exit_code,
-                "stderr": stderr[:2000] if stderr else "",
-                "num_events": len(events),
-                "session_id": session_id,
-                "patch_source": "git_diff" if patch_from_git else "text_extraction",
-                "transport": "opencode_cli_container",
-                **artifacts,
-            },
+            metadata=response_metadata,
             system_prompt=system_prompt,
             request_messages=request_messages,
             response_json=response_json,
             artifact_manifest=artifact_manifest,
         )
+        if error_info:
+            exc = RuntimeError(error_info["message"])
+            setattr(exc, "partial_response", response)
+            setattr(exc, "error_type", error_info["error_type"])
+            setattr(exc, "response_body", full_content)
+            raise exc
+        return response
 
     def _run_in_docker(
         self,

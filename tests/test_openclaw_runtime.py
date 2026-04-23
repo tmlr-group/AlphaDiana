@@ -49,6 +49,29 @@ def test_openclaw_runtime_uses_agent_config_provider_env(tmp_path: Path) -> None
     assert generated["env"]["OPENAI_MODEL_NAME"] == "minimax-m2.5"
 
 
+def test_openclaw_runtime_accepts_lowercase_provider_overrides(tmp_path: Path) -> None:
+    rock_cfg, openclaw_cfg = _write_runtime_templates(tmp_path)
+    mgr = OpenClawRuntimeManager({
+        "rock_agent_config_path": str(rock_cfg),
+        "openclaw_config_path": str(openclaw_cfg),
+        "openai_base_url": "http://127.0.0.1:8011/v1",
+        "openai_api_key": "LOCAL_DUMMY",
+        "openai_model_name": "Qwen/Qwen3.5-27B",
+    })
+
+    with patch.dict("os.environ", {
+        "OPENAI_BASE_URL": "https://models.sjtu.edu.cn/api/v1",
+        "OPENAI_API_KEY": "sk-remote",
+        "OPENAI_MODEL_NAME": "minimax-m2.5",
+    }, clear=True):
+        config_dir = mgr._prepare_runtime_files(MagicMock())
+
+    generated = yaml.safe_load((config_dir / "rock_agent_config.yaml").read_text(encoding="utf-8"))
+    assert generated["env"]["OPENAI_BASE_URL"] == "http://127.0.0.1:8011/v1"
+    assert generated["env"]["OPENAI_API_KEY"] == "LOCAL_DUMMY"
+    assert generated["env"]["OPENAI_MODEL_NAME"] == "Qwen/Qwen3.5-27B"
+
+
 def test_openclaw_runtime_rejects_unresolved_placeholder_provider_env(tmp_path: Path) -> None:
     rock_cfg, openclaw_cfg = _write_runtime_templates(tmp_path)
     mgr = OpenClawRuntimeManager({
@@ -308,6 +331,110 @@ def test_openclaw_container_runtime_collect_artifacts_exposes_stable_aliases() -
     assert files["system_prompt"] == "/testbed/AGENTS.md"
     assert artifacts["workspace_file_contents"]["openclaw_output.jsonl"]
     assert artifacts["workspace_file_contents"]["openclaw_session.jsonl"]
+
+
+def test_openclaw_container_runtime_applies_max_tokens_override_to_rendered_config(tmp_path: Path) -> None:
+    runtime_cfg = tmp_path / "openclaw.json"
+    runtime_cfg.write_text(json.dumps({
+        "models": {
+            "providers": {
+                "local": {
+                    "models": [
+                        {
+                            "id": "${OPENAI_MODEL_NAME}",
+                            "name": "${OPENAI_MODEL_NAME}",
+                        }
+                    ]
+                }
+            }
+        },
+        "agents": {
+            "defaults": {
+                "model": {"primary": "local/${OPENAI_MODEL_NAME}"},
+                "models": {
+                    "local/${OPENAI_MODEL_NAME}": {
+                        "params": {"maxTokens": 32768},
+                    }
+                },
+            }
+        },
+    }), encoding="utf-8")
+
+    mgr = OpenClawContainerRuntimeManager({
+        "openclaw_config_path": str(runtime_cfg),
+        "OPENAI_BASE_URL": "http://127.0.0.1:8011/v1",
+        "OPENAI_API_KEY": "LOCAL_DUMMY",
+        "OPENAI_MODEL_NAME": "Qwen/Qwen3.5-27B",
+        "max_tokens": 4096,
+    })
+
+    cfg = mgr._build_openclaw_config(json.loads(runtime_cfg.read_text(encoding="utf-8")))
+
+    assert cfg["agents"]["defaults"]["models"]["local/${OPENAI_MODEL_NAME}"]["params"]["maxTokens"] == 4096
+
+
+def test_openclaw_container_runtime_binds_gateway_for_published_host_access(tmp_path: Path) -> None:
+    runtime_cfg = tmp_path / "openclaw.json"
+    runtime_cfg.write_text(json.dumps({}), encoding="utf-8")
+
+    mgr = OpenClawContainerRuntimeManager({
+        "openclaw_config_path": str(runtime_cfg),
+        "OPENAI_BASE_URL": "http://127.0.0.1:8011/v1",
+        "OPENAI_API_KEY": "LOCAL_DUMMY",
+        "OPENAI_MODEL_NAME": "Qwen/Qwen3.5-27B",
+    })
+
+    cfg = mgr._build_openclaw_config(json.loads(runtime_cfg.read_text(encoding="utf-8")))
+
+    assert cfg["gateway"]["bind"] == "lan"
+    assert "customBindHost" not in cfg["gateway"]
+
+
+def test_openclaw_container_runtime_stages_offline_payload_via_docker_cp(tmp_path: Path) -> None:
+    runtime_cfg = tmp_path / "openclaw.json"
+    runtime_cfg.write_text(json.dumps({}), encoding="utf-8")
+    payload_dir = tmp_path / "offline-openclaw"
+    (payload_dir / "dist").mkdir(parents=True)
+    (payload_dir / "node_modules").mkdir()
+    (payload_dir / "dist" / "index.js").write_text("console.log('index');", encoding="utf-8")
+
+    mgr = OpenClawContainerRuntimeManager({
+        "openclaw_config_path": str(runtime_cfg),
+    })
+
+    class _Result:
+        def __init__(self, exit_code: int = 0) -> None:
+            self.exit_code = exit_code
+            self.stdout = ""
+            self.stderr = ""
+
+    class _Sandbox:
+        sandbox_id = "sandbox-1"
+
+        def __init__(self) -> None:
+            self.commands: list[str] = []
+
+        def execute(self, command: str) -> _Result:
+            self.commands.append(command)
+            return _Result()
+
+        def metadata(self) -> dict:
+            return {"container_name": "sandbox-container"}
+
+    sandbox = _Sandbox()
+
+    with patch("alphadiana.agent.openclaw_container_runtime._ensure_offline_openclaw_payload", return_value=payload_dir):
+        with patch("alphadiana.agent.openclaw_container_runtime.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(stdout="", stderr="", returncode=0)
+            assert mgr._stage_offline_openclaw_payload(sandbox) is True
+
+    docker_cp_calls = [
+        call.args[0]
+        for call in mock_run.call_args_list
+        if call.args and isinstance(call.args[0], list) and call.args[0][:2] == ["docker", "cp"]
+    ]
+    assert docker_cp_calls == [["docker", "cp", f"{payload_dir}/.", "sandbox-container:/tmp/openclaw-offline"]]
+    assert any("/tmp/openclaw-offline" in command for command in sandbox.commands)
 
 
 def test_openclaw_solve_preserves_request_and_selected_response_aliases() -> None:
