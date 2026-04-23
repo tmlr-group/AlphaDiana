@@ -178,16 +178,20 @@ class TestDirectLLMAgentStreamingLogprobs:
         }
         assert resp.token_entropy_stats["n_tokens"] == 3
         assert resp.token_entropy_stats["mean"] > 0
+        assert resp.metadata["logprobs_capture_status"] == "captured"
+        assert resp.metadata["logprob_capture_harness"] == "direct_llm"
 
     def test_streaming_disabled_yields_no_records(self):
         agent = self._build_agent(capture=False)
         agent._client.chat.completions.create.return_value = _fake_stream_chunks(3)
         task = BenchmarkTask(task_id="t1", problem="2+2?", ground_truth="4")
         resp = agent.solve(task)
-        assert resp.metadata["logprob_records"] == []
         assert resp.token_entropy_stats == {
             "mean": 0.0, "max": 0.0, "p50": 0.0, "p90": 0.0, "n_tokens": 0,
         }
+        assert resp.metadata["logprobs_capture_status"] == "not_requested"
+        assert resp.metadata["logprob_capture_harness"] == "direct_llm"
+        assert "logprob_records" not in resp.metadata
         # Confirm request did NOT include logprobs
         call_kwargs = agent._client.chat.completions.create.call_args.kwargs
         assert "logprobs" not in call_kwargs
@@ -229,3 +233,5 @@ class TestDirectLLMAgentNonStreamingLogprobs:
         resp = agent.solve(task)
         assert len(resp.metadata["logprob_records"]) == 4
         assert resp.token_entropy_stats["n_tokens"] == 4
+        assert resp.metadata["logprobs_capture_status"] == "captured"
+        assert resp.metadata["logprob_capture_harness"] == "direct_llm"
