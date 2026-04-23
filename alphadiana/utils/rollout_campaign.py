@@ -230,6 +230,8 @@ def render_run_command(run: ConcreteRun) -> str:
         return _render_official_tb2_command(run)
     if run.path.backend == "official_swebench_pro":
         return _render_official_swebench_command(run)
+    if run.path.backend == "official_swebench_verified":
+        return _render_official_swebench_verified_command(run)
     raise ValueError(f"Unsupported backend: {run.path.backend}")
 
 
@@ -447,9 +449,9 @@ def _render_official_tb2_command(run: ConcreteRun) -> str:
         'mkdir -p "$repo_root/logs"\n'
         '{\n'
         f"cd {workdir_ref}\n"
-        "unset ALL_PROXY all_proxy HTTP_PROXY HTTPS_PROXY http_proxy https_proxy\n"
+        "export NO_PROXY=\"${NO_PROXY:-localhost,127.0.0.1}\"\n"
         f"OPENAI_API_KEY={api_key_expr} \\\n"
-        "uv run harbor run --dataset terminal-bench@2.0 \\\n"
+        "harbor run --dataset terminal-bench@2.0 \\\n"
         "  --agent terminus-2 \\\n"
         f"  --model {model_q} \\\n"
         f"  --job-name {run_id_q} \\\n"
@@ -517,6 +519,103 @@ def _render_official_swebench_command(run: ConcreteRun) -> str:
     )
 
 
+def _render_official_swebench_verified_command(run: ConcreteRun) -> str:
+    """Shell command for SWE-bench Verified / Verified-Mini via standalone SWE-agent.
+
+    Mirrors the manual pipeline used for the
+    ``20260422-swe-bench-verified-mini-sweagent-qwen35-27b-local-v1`` HF run:
+    ``sweagent run-batch`` against ``MariusHobbhahn/swe-bench-verified-mini``,
+    followed by the SWE-bench official harness eval (``swebench.harness.run_evaluation``)
+    — not the SWE-bench-Pro-specific eval script.
+
+    Required env:
+      DIRECTLLM_SWE_VERIFIED_ROOT or DIRECTLLM_ROOT (+ an ``SWE-bench`` subdir)
+      The root must contain ``SWE-agent/`` and its ``.venv``, plus the SWE-bench
+      harness package importable as ``swebench``.
+
+    All tunable knobs come from ``path_template.overrides`` in the manifest —
+    sampling params are not hardcoded so a different batch can swap them by
+    editing the manifest alone, without touching this file.
+
+    Overrides read from ``run.overrides`` (with defaults):
+      ``sweagent_config``         default ``config/default.yaml`` (relative to SWE-agent/)
+      ``dataset``                 default ``MariusHobbhahn/swe-bench-verified-mini``
+      ``subset``                  default ``verified``
+      ``split``                   default ``test``
+      ``temperature``             default ``0.0``
+      ``top_p``                   default ``0.95``
+      ``max_output_tokens``       default ``32768``
+      ``per_instance_call_limit`` default ``80``
+      ``per_instance_cost_limit`` default ``0``
+      ``total_cost_limit``        default ``0``
+      ``eval_max_workers``        default ``4`` (SWE-bench harness parallelism)
+    """
+    root_ref = _swe_verified_workdir_ref()
+    api_key_expr = _env_with_default(run.model.api_key_env, "EMPTY")
+    api_base_ref = run.model.api_base_env_ref
+    run_id_q = shlex.quote(run.run_id)
+    model_q = shlex.quote(run.model.official_model_name)
+
+    o = run.overrides
+    sweagent_config_q = shlex.quote(str(o.get("sweagent_config", "config/default.yaml")))
+    dataset_q = shlex.quote(str(o.get("dataset", "MariusHobbhahn/swe-bench-verified-mini")))
+    subset_q = shlex.quote(str(o.get("subset", "verified")))
+    split_q = shlex.quote(str(o.get("split", "test")))
+    temperature = str(o.get("temperature", "0.0"))
+    top_p = str(o.get("top_p", "0.95"))
+    max_output_tokens = str(o.get("max_output_tokens", "32768"))
+    call_limit = str(o.get("per_instance_call_limit", "80"))
+    per_instance_cost_limit = str(o.get("per_instance_cost_limit", "0"))
+    total_cost_limit = str(o.get("total_cost_limit", "0"))
+    eval_max_workers = str(o.get("eval_max_workers", "4"))
+
+    return (
+        'repo_root="$PWD"\n'
+        'mkdir -p "$repo_root/logs"\n'
+        '{\n'
+        f"cd {root_ref}\n"
+        # Keep HTTP(S)_PROXY set (HF dataset download needs it). Local vLLM is
+        # bypassed automatically if NO_PROXY includes 127.0.0.1; callers should
+        # export NO_PROXY if their proxy interferes with localhost.
+        "export NO_PROXY=\"${NO_PROXY:-localhost,127.0.0.1}\"\n"
+        "cd SWE-agent\n"
+        f"OPENAI_API_KEY={api_key_expr} OPENAI_BASE_URL={api_base_ref} \\\n"
+        "../.venv/bin/sweagent run-batch \\\n"
+        f"  --config {sweagent_config_q} \\\n"
+        f"  --output_dir ../sweagent_results/{run_id_q} \\\n"
+        f"  --num_workers {run.path.max_concurrent} \\\n"
+        "  --random_delay_multiplier 0 \\\n"
+        "  --instances.type swe_bench \\\n"
+        f"  --instances.subset {subset_q} \\\n"
+        f"  --instances.split {split_q} \\\n"
+        f"  --instances.path_override {dataset_q} \\\n"
+        "  --instances.shuffle=False \\\n"
+        "  --instances.evaluate=False \\\n"
+        "  --instances.deployment.type docker \\\n"
+        "  --instances.deployment.startup_timeout 1800 \\\n"
+        f"  --agent.model.name {model_q} \\\n"
+        f"  --agent.model.api_base {api_base_ref} \\\n"
+        f"  --agent.model.api_key {api_key_expr} \\\n"
+        f"  --agent.model.temperature {temperature} \\\n"
+        f"  --agent.model.top_p {top_p} \\\n"
+        f"  --agent.model.max_output_tokens {max_output_tokens} \\\n"
+        f"  --agent.model.per_instance_cost_limit {per_instance_cost_limit} \\\n"
+        f"  --agent.model.total_cost_limit {total_cost_limit} \\\n"
+        f"  --agent.model.per_instance_call_limit {call_limit} \\\n"
+        "  --progress_bar False\n"
+        "cd ..\n"
+        # Gather SWE-agent per-instance .pred files into a single JSON consumable by
+        # the SWE-bench official eval harness (one object per instance_id).
+        "./.venv/bin/python -m swebench.harness.run_evaluation \\\n"
+        f"  --dataset_name {dataset_q} \\\n"
+        f"  --split {split_q} \\\n"
+        f"  --predictions_path sweagent_results/{run_id_q}/preds.json \\\n"
+        f"  --run_id {run_id_q} \\\n"
+        f"  --max_workers {eval_max_workers}\n"
+        f'}} 2>&1 | tee "$repo_root/logs/{run.run_id}.log"'
+    )
+
+
 def _model_env_checks(model: ModelSpec) -> list[CheckResult]:
     api_base = os.environ.get(model.api_base_env, "").strip()
     api_key = os.environ.get(model.api_key_env, "").strip()
@@ -572,6 +671,8 @@ def _required_checks_for_run(run: ConcreteRun) -> list[CheckResult]:
         checks.append(_check_resolved_root("DIRECTLLM_TB2_ROOT", "DIRECTLLM_ROOT", "terminal-bench-2"))
     elif run.path.backend == "official_swebench_pro":
         checks.append(_check_resolved_root("DIRECTLLM_SWEBENCH_ROOT", "DIRECTLLM_ROOT", "SWE-bench_Pro-os"))
+    elif run.path.backend == "official_swebench_verified":
+        checks.append(_check_resolved_root("DIRECTLLM_SWE_VERIFIED_ROOT", "DIRECTLLM_ROOT", "SWE-bench"))
     if run.path.benchmark in _MULTIMODAL_BENCHMARKS and not run.model.supports_multimodal:
         checks.append(
             CheckResult(
@@ -734,6 +835,13 @@ def _tb2_workdir_ref() -> str:
 
 def _swebench_workdir_ref() -> str:
     return "${DIRECTLLM_SWEBENCH_ROOT:-${DIRECTLLM_ROOT}/SWE-bench_Pro-os}"
+
+
+def _swe_verified_workdir_ref() -> str:
+    # Root is expected to contain:
+    #   SWE-agent/   (clone of github.com/SWE-agent/SWE-agent)
+    #   SWE-bench/   (clone of github.com/SWE-bench/SWE-bench for the eval harness)
+    return "${DIRECTLLM_SWE_VERIFIED_ROOT:-${DIRECTLLM_ROOT}/SWE-bench}"
 
 
 def _env_with_default(name: str, default: str) -> str:

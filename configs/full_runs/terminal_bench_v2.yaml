@@ -1,0 +1,19 @@
+campaign_id: "terminal_bench_v2"
+defaults:
+  run_id_prefix: "tb2"
+models:
+  - id: qwen35_27b
+    model_name: Qwen/Qwen3.5-27B
+    api_base_env: QWEN_VLLM_API_BASE
+    api_key_env:  QWEN_VLLM_API_KEY
+    official_model_name: openai/qwen3.5-27b
+    supports_multimodal: false
+path_templates:
+  - id: tb2_terminus2
+    benchmark: terminal_bench2
+    harness: direct_llm
+    backend: official_terminal_bench_2
+    max_concurrent: 10
+    base_wave: wave_b_official
+    base_risk: official_checkout
+    config_gaps: []
