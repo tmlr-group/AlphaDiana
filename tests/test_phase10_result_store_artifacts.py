@@ -4,8 +4,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from alphadiana.agent.base import AgentResponse
+from alphadiana.benchmark.base import BenchmarkTask
 from alphadiana.results.logprob_artifacts import INT16_PROB_SCALE
 from alphadiana.results.result_store import ResultStore
+from alphadiana.scorer.base import ScoreResult
 
 
 def _raw_logprob_records() -> list[dict]:
@@ -29,6 +32,14 @@ def _raw_logprob_records() -> list[dict]:
             ],
         },
     ]
+
+
+def _task() -> BenchmarkTask:
+    return BenchmarkTask(task_id="t1", problem="p", ground_truth="A")
+
+
+def _score() -> ScoreResult:
+    return ScoreResult(correct=True, score=1.0, expected="A", predicted="A", rationale="ok", metadata={})
 
 
 class TestResultStoreLogprobSidecars:
@@ -115,3 +126,63 @@ class TestResultStoreLogprobSidecars:
         }
         assert not (tmp_path / "run_z" / "logprobs" / "t1.jsonl").exists()
         assert not (tmp_path / "run_z" / "logprobs_int16" / "t1.jsonl").exists()
+
+    def test_append_wires_sidecar_fields_manifest_and_normalized_trace(self, tmp_path: Path) -> None:
+        store = ResultStore(str(tmp_path), "run_z")
+        response = AgentResponse(
+            answer="A",
+            token_entropy_stats={"mean": 0.5, "max": 0.5, "p50": 0.5, "p90": 0.5, "n_tokens": 2},
+            metadata={"logprob_records": _raw_logprob_records(), "other_key": "kept"},
+            artifact_manifest={"files": {"response_stream": "runtime_trace.jsonl"}},
+            workspace_file_contents={"runtime_trace.jsonl": "{}\n"},
+        )
+
+        store.append(_task(), response, _score())
+
+        record = store.load()[0]
+        assert record["logprobs_path"] == "run_z/logprobs/t1.jsonl"
+        assert record["logprobs_int16_path"] == "run_z/logprobs_int16/t1.jsonl"
+        assert record["top_logprobs"] == 20
+        assert record["int16_probability_scale"] == INT16_PROB_SCALE
+        assert "logprob_records" not in record["metadata"]
+        assert "logprob_int16_records" not in record["metadata"]
+        assert record["metadata"] == {"other_key": "kept"}
+
+        files = record["artifact_manifest"]["files"]
+        assert files["response_stream"].endswith("t1/workspace/runtime_trace.jsonl")
+        assert files["normalized_trace"].endswith("t1/agent/normalized_trace.json")
+        assert files["logprobs_float"] == "logprobs/t1.jsonl"
+        assert files["logprobs_int16"] == "logprobs_int16/t1.jsonl"
+
+        task_record = json.loads((tmp_path / "run_z" / "tasks" / "t1.json").read_text())[0]
+        assert task_record["logprobs_int16_path"] == "run_z/logprobs_int16/t1.jsonl"
+        assert task_record["artifact_manifest"]["files"]["logprobs_int16"] == "logprobs_int16/t1.jsonl"
+
+        trace = json.loads(
+            (tmp_path / "run_z" / "artifacts" / "t1" / "agent" / "normalized_trace.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert trace["refs"]["logprobs_float"] == "logprobs/t1.jsonl"
+        assert trace["refs"]["logprobs_int16"] == "logprobs_int16/t1.jsonl"
+
+    def test_append_error_wires_sidecar_fields_and_strips_metadata(self, tmp_path: Path) -> None:
+        store = ResultStore(str(tmp_path), "run_z")
+        response = AgentResponse(
+            answer=None,
+            token_entropy_stats={"mean": 0.0, "max": 0.0, "p50": 0.0, "p90": 0.0, "n_tokens": 1},
+            metadata={"logprob_records": _raw_logprob_records(), "other_key": "kept"},
+        )
+
+        store.append_error(_task(), error={"error": "boom"}, response=response)
+
+        record = store.load()[0]
+        assert record["error"] == {"error": "boom"}
+        assert record["logprobs_path"] == "run_z/logprobs/t1.jsonl"
+        assert record["logprobs_int16_path"] == "run_z/logprobs_int16/t1.jsonl"
+        assert record["top_logprobs"] == 20
+        assert record["int16_probability_scale"] == INT16_PROB_SCALE
+        assert "logprob_records" not in record["metadata"]
+        assert "logprob_int16_records" not in record["metadata"]
+        assert record["artifact_manifest"]["files"]["logprobs_float"] == "logprobs/t1.jsonl"
+        assert record["artifact_manifest"]["files"]["logprobs_int16"] == "logprobs_int16/t1.jsonl"
