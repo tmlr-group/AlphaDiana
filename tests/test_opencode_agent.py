@@ -1,4 +1,5 @@
 import json
+import sqlite3
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -367,6 +368,122 @@ def test_solve_preserves_opencode_session_trace_when_present():
 
     assert result.artifact_manifest["files"]["session_trace"] == "opencode_session.jsonl"
     assert "opencode_session.jsonl" in result.workspace_file_contents
+
+
+def test_solve_preserves_opencode_state_and_memory_artifacts():
+    agent = OpenCodeAgent()
+    agent.setup({
+        "model_name": "test-model",
+        "api_base": "http://localhost:9001/v1",
+        "api_key": "test-key",
+        "timeout": 5,
+        "agent_md_content": "# custom agent\n",
+    })
+
+    process = MagicMock()
+    process.communicate.return_value = (
+        json.dumps({
+            "type": "assistant",
+            "sessionID": "session-demo",
+            "message": {"content": "Done.\\n\\boxed{A}"},
+        }) + "\n",
+        "",
+    )
+    process.returncode = 0
+
+    task = BenchmarkTask(
+        task_id="text_session_state",
+        problem="Which option is correct?",
+        ground_truth="A",
+    )
+
+    def fake_popen(cmd, **kwargs):
+        opencode_root = Path(kwargs["env"]["XDG_CONFIG_HOME"]) / "opencode"
+        session_dir = opencode_root / "sessions"
+        session_dir.mkdir(parents=True, exist_ok=True)
+        (session_dir / "session-demo.jsonl").write_text(
+            json.dumps({"type": "message", "role": "assistant", "content": "Done"}) + "\n",
+            encoding="utf-8",
+        )
+        conn = sqlite3.connect(opencode_root / "opencode.db")
+        conn.execute("CREATE TABLE session(id TEXT)")
+        conn.execute("INSERT INTO session(id) VALUES ('session-demo')")
+        conn.commit()
+        conn.close()
+        return process
+
+    with patch("subprocess.Popen", side_effect=fake_popen):
+        result = agent.solve(task)
+
+    files = result.artifact_manifest["files"]
+    assert files["runtime_config"] == "opencode_config.json"
+    assert files["workspace_listing"] == "opencode_workspace_listing.txt"
+    assert files["memory_summary"] == "memory/opencode.db.summary.json"
+    assert "opencode.db" in result.workspace_file_contents["opencode_workspace_listing.txt"]
+    assert "state/sessions/session-demo.jsonl" in result.workspace_file_contents
+    assert "REDACTED" in result.workspace_file_contents["opencode_config.json"]
+    assert "test-key" not in result.workspace_file_contents["opencode_config.json"]
+
+
+def test_solve_in_container_preserves_runtime_workspace_artifacts():
+    agent = OpenCodeAgent()
+    agent.setup({
+        "runtime": "swebench_container",
+        "model_name": "Qwen/Qwen3.5-27B",
+        "api_base": "http://172.17.0.1:8011/v1",
+        "api_key": "test-key",
+        "timeout": 5,
+    })
+
+    runtime_manager = MagicMock()
+    runtime_manager.run_task.return_value = {
+        "stdout": json.dumps({
+            "type": "assistant",
+            "sessionID": "session-demo",
+            "message": {"content": "diff --git a/foo b/foo"},
+        }) + "\n",
+        "stderr": "stderr text\n",
+        "exit_code": 0,
+        "patch": "diff --git a/foo b/foo",
+    }
+    runtime_manager.collect_artifacts.return_value = {
+        "artifact_manifest": {
+            "files": {
+                "workspace_listing": "opencode_workspace_listing.txt",
+                "memory_summary": "memory/opencode.db.summary.json",
+            }
+        },
+        "workspace_file_contents": {
+            "opencode_workspace_listing.txt": "opencode.json\nsessions/session-demo.jsonl\n",
+            "opencode_session.jsonl": '{"type":"message"}\n',
+            "memory/opencode.db.summary.json": '{"tables":[{"name":"session","row_count":1}]}\n',
+        },
+        "workspace_snapshot_paths": ["/tmp/opencode-xdg/opencode/opencode.db"],
+        "sandbox_metadata": {"sandbox_id": "sandbox-demo"},
+    }
+    agent._runtime_manager = runtime_manager
+
+    sandbox = MagicMock()
+    task = BenchmarkTask(
+        task_id="swe_django__django-11790",
+        problem="Fix the regression.",
+        ground_truth="diff --git a/foo b/foo",
+        metadata={
+            "instance_id": "django__django-11790",
+            "repo": "django/django",
+            "base_commit": "deadbeef",
+        },
+    )
+
+    response = agent.solve(task, sandbox=sandbox)
+
+    assert response.workspace_file_contents["opencode_session.jsonl"]
+    assert response.workspace_file_contents["memory/opencode.db.summary.json"]
+    assert response.workspace_file_contents["opencode_output.jsonl"]
+    assert response.workspace_file_contents["prompt.txt"].startswith("You are an expert software engineer.")
+    assert response.artifact_manifest["files"]["memory_summary"] == "memory/opencode.db.summary.json"
+    assert response.artifact_manifest["files"]["response_stream"] == "opencode_output.jsonl"
+    assert response.workspace_snapshot_paths == ["/tmp/opencode-xdg/opencode/opencode.db"]
 
 
 def test_setup_rejects_unknown_controller_mode():

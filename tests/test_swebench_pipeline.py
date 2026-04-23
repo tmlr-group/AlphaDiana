@@ -256,6 +256,57 @@ def test_opencode_runtime_writes_permission_config():
     assert payload["permission"] == {"edit": "deny", "bash": "allow"}
 
 
+def test_opencode_runtime_collect_artifacts_exposes_workspace_listing_and_memory_summary():
+    class _Result:
+        def __init__(self, stdout: str = "", exit_code: int = 0) -> None:
+            self.stdout = stdout
+            self.exit_code = exit_code
+            self.stderr = ""
+
+    class FakeSandbox:
+        def execute(self, command: str):
+            if command.startswith("find "):
+                return _Result(
+                    "/tmp/opencode-xdg/opencode/opencode.json\n"
+                    "/tmp/opencode-xdg/opencode/opencode.db\n"
+                    "/tmp/opencode-xdg/opencode/sessions/demo-session.jsonl\n"
+                )
+            if "ls -t" in command and "sessions" in command:
+                return _Result("/tmp/opencode-xdg/opencode/sessions/demo-session.jsonl\n")
+            if command.startswith("wc -c < "):
+                return _Result("42\n")
+            if command.startswith("cat ") and "demo-session.jsonl" in command:
+                return _Result('{"type":"message","message":{"role":"assistant","content":"done"}}\n')
+            return _Result()
+
+        def read_text(self, path: str) -> str:
+            if path == OPENCODE_CONFIG_PATH:
+                return '{"provider":{"custom":{"options":{"apiKey":"secret"}}}}\n'
+            raise FileNotFoundError(path)
+
+        def metadata(self) -> dict:
+            return {"sandbox_id": "sandbox-demo"}
+
+    runtime = OpenCodeContainerRuntimeManager(
+        {
+            "api_base": "https://example.test/v1",
+            "api_key": "secret",
+        }
+    )
+    runtime._summarize_sqlite_db = lambda *_args: '{"tables":[{"name":"session","row_count":1}]}\n'  # type: ignore[method-assign]
+
+    artifacts = runtime.collect_artifacts(FakeSandbox())
+
+    files = artifacts["artifact_manifest"]["files"]
+    assert files["workspace_listing"] == "opencode_workspace_listing.txt"
+    assert files["runtime_config"] == "opencode_config.json"
+    assert files["session_trace"] == "opencode_session.jsonl"
+    assert files["memory_summary"] == "memory/opencode.db.summary.json"
+    assert "opencode.db" in artifacts["workspace_file_contents"]["opencode_workspace_listing.txt"]
+    assert "REDACTED" in artifacts["workspace_file_contents"]["opencode_config.json"]
+    assert "secret" not in artifacts["workspace_file_contents"]["opencode_config.json"]
+
+
 def test_openclaw_install_command_uses_official_registry_and_git_prereqs():
     with open("alphadiana/agent/openclaw_container_runtime.py", encoding="utf-8") as f:
         source = f.read()

@@ -118,6 +118,35 @@ _OPENCLAW_HOME_CANDIDATES = (
 _OPENCLAW_WORKSPACE_CANDIDATES = tuple(
     f"{home}/workspace" for home in _OPENCLAW_HOME_CANDIDATES
 )
+_SECRET_FIELD_NAMES = frozenset({
+    "api_key",
+    "apikey",
+    "authorization",
+    "token",
+})
+
+
+def _redact_secret_fields(value: Any) -> Any:
+    if isinstance(value, dict):
+        redacted: dict[str, Any] = {}
+        for key, item in value.items():
+            normalized = str(key).strip().lower().replace("-", "_")
+            if normalized in _SECRET_FIELD_NAMES or normalized.endswith("_api_key"):
+                redacted[key] = "REDACTED"
+            else:
+                redacted[key] = _redact_secret_fields(item)
+        return redacted
+    if isinstance(value, list):
+        return [_redact_secret_fields(item) for item in value]
+    return value
+
+
+def _sanitize_json_text(raw_text: str) -> str:
+    try:
+        payload = json.loads(raw_text)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return raw_text
+    return json.dumps(_redact_secret_fields(payload), indent=2, ensure_ascii=False)
 
 
 class OpenClawRuntimeManager:
@@ -410,10 +439,25 @@ class OpenClawRuntimeManager:
             if line.strip().startswith("/")
         ]
         workspace_file_contents: dict[str, str] = {}
+        manifest_files: dict[str, str] = {
+            "gateway_log_source": self._gateway_log_path,
+            "workspace_root": next(iter(workspace_roots), self._workspace_path),
+        }
+        state_files: list[str] = []
+        collected_snapshot_paths = list(workspace_paths)
+        if workspace_paths:
+            workspace_file_contents["openclaw_workspace_listing.txt"] = (
+                "\n".join(dict.fromkeys(workspace_paths)) + "\n"
+            )
+            manifest_files["workspace_listing"] = "openclaw_workspace_listing.txt"
         for remote_path in workspace_paths:
             text = self._read_text_best_effort(sandbox, remote_path)
             if text.strip():
                 workspace_file_contents[remote_path] = text
+
+        if gateway_log.strip():
+            workspace_file_contents["openclaw_gateway.log"] = gateway_log
+            manifest_files["gateway_log"] = "openclaw_gateway.log"
 
         session_listing = sandbox.execute(
             "ls -t "
@@ -439,6 +483,7 @@ class OpenClawRuntimeManager:
             if not session_alias_path:
                 session_alias_path = "openclaw_session.jsonl"
                 workspace_file_contents.setdefault(session_alias_path, text)
+                state_files.append(session_alias_path)
 
         response_stream_alias = ""
         for remote_path in workspace_paths:
@@ -481,10 +526,52 @@ class OpenClawRuntimeManager:
             self._remote_openclaw_config_path,
         )
         if openclaw_config_text.strip():
+            sanitized_config = _sanitize_json_text(openclaw_config_text)
             workspace_file_contents.setdefault(
                 self._remote_openclaw_config_path,
-                openclaw_config_text,
+                sanitized_config,
             )
+            workspace_file_contents.setdefault(
+                "openclaw_runtime_config.json",
+                sanitized_config,
+            )
+            manifest_files["runtime_config"] = "openclaw_runtime_config.json"
+            state_files.append("openclaw_runtime_config.json")
+
+        sidecar_candidates: list[tuple[str, str, str]] = []
+        for workspace_root in workspace_roots:
+            workspace_root = str(workspace_root or "").strip()
+            if workspace_root:
+                sidecar_candidates.append((
+                    f"{workspace_root}/.openclaw/workspace-state.json",
+                    "openclaw_workspace_state.json",
+                    "workspace_state",
+                ))
+        for home in _OPENCLAW_HOME_CANDIDATES:
+            sidecar_candidates.extend([
+                (
+                    f"{home}/workspace-state.json",
+                    "openclaw_workspace_state.json",
+                    "workspace_state",
+                ),
+                (
+                    f"{home}/agents/main/sessions.json",
+                    "openclaw_sessions_index.json",
+                    "session_index",
+                ),
+            ])
+        for remote_path, alias, manifest_key in sidecar_candidates:
+            if alias in workspace_file_contents:
+                continue
+            content = self._read_text_best_effort(sandbox, remote_path)
+            if not content.strip():
+                continue
+            workspace_file_contents[remote_path] = content
+            workspace_file_contents[alias] = content
+            manifest_files[manifest_key] = alias
+            state_files.append(alias)
+            if remote_path not in collected_snapshot_paths:
+                collected_snapshot_paths.append(remote_path)
         artifact_collection_history = getattr(sandbox, "command_history", [])
         sandbox_metadata = sandbox.metadata() if hasattr(sandbox, "metadata") else {}
         if isinstance(sandbox_metadata, dict) and "command_history" in sandbox_metadata:
@@ -492,23 +579,23 @@ class OpenClawRuntimeManager:
 
         artifact_manifest = {
             "files": {
-                "gateway_log_source": self._gateway_log_path,
-                "workspace_root": next(iter(workspace_roots), self._workspace_path),
+                **manifest_files,
                 "response_stream": response_stream_alias,
                 "session_trace": session_alias_path or (session_paths[0] if session_paths else ""),
                 "system_prompt": system_prompt_paths[0] if system_prompt_paths else "",
-                "runtime_config": self._remote_openclaw_config_path if openclaw_config_text.strip() else "",
             },
-            "workspace_snapshot_paths": workspace_paths,
+            "workspace_snapshot_paths": collected_snapshot_paths,
             "session_paths": session_paths,
             "system_prompt_paths": system_prompt_paths,
             # These timings are for artifact-collection shell commands only.
             "artifact_collection_history": artifact_collection_history,
         }
+        if state_files:
+            artifact_manifest["state_files"] = list(dict.fromkeys(state_files))
         return {
             "artifact_manifest": artifact_manifest,
             "gateway_log_excerpt": gateway_log,
-            "workspace_snapshot_paths": workspace_paths,
+            "workspace_snapshot_paths": collected_snapshot_paths,
             "workspace_file_contents": workspace_file_contents,
             "sandbox_metadata": sandbox_metadata,
         }
