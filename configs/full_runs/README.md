@@ -17,6 +17,8 @@ The staged April 19, 2026 full-rollout assets for the active
   `rollout_full_{directllm,openclaw,opencode,zeroclaw}_gpqa_diamond.yaml`
 - new full configs for `MMMU-Pro`:
   `rollout_full_{directllm,openclaw,opencode,zeroclaw}_mmmu_pro_vision.yaml`
+- logprobs-enabled local-vLLM DirectLLM full configs for targeted analysis:
+  `phase9_directllm_qwen35_27b_{gpqa_diamond,imo_answerbench,hle}_logprobs.yaml`
 
 Use the rollout helper instead of hand-expanding commands:
 
@@ -258,6 +260,19 @@ python -m alphadiana.cli run configs/full_runs/p25_full_openclaw_minimax_hle.yam
 python -m alphadiana.cli run configs/full_runs/p25_full_terminal_bench2_directllm_minimax.yaml --redo-all
 python -m alphadiana.cli run configs/full_runs/p25_full_terminal_bench2_opencode_minimax.yaml --redo-all
 python -m alphadiana.cli run configs/full_runs/p25_full_terminal_bench2_openclaw_minimax.yaml --redo-all
+```
+
+When you want the checked-in local-vLLM `Qwen/Qwen3.5-27B` DirectLLM path with
+the intended benchmark-specific concurrency already pinned, use the dedicated
+configs below. On current main, `direct_llm` logprob capture is enabled by
+default; these configs remain useful because they freeze the local-vLLM Qwen
+model/api-base entrypoint and the target `max_concurrent` values for the
+logprob-heavy runs:
+
+```bash
+python -m alphadiana.cli run configs/full_runs/phase9_directllm_qwen35_27b_imo_answerbench_logprobs.yaml --redo-all
+python -m alphadiana.cli run configs/full_runs/phase9_directllm_qwen35_27b_hle_logprobs.yaml --redo-all
+python -m alphadiana.cli run configs/full_runs/phase9_directllm_gpqa_diamond_qwen35_27b_logprobs.yaml --redo-all
 ```
 
 ## Scope Notes

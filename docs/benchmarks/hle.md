@@ -72,12 +72,24 @@ python -m alphadiana.cli run configs/full_runs/p25_full_openclaw_minimax_hle.yam
 python -m alphadiana.cli run configs/full_runs/p25_full_zeroclaw_minimax_hle.yaml --redo-all
 ```
 
+For the local-vLLM `Qwen/Qwen3.5-27B` path when you need per-token logprobs,
+use:
+
+```bash
+python -m alphadiana.cli run configs/full_runs/phase9_directllm_qwen35_27b_hle_logprobs.yaml --redo-all
+```
+
 ## DirectLLM
 
 ```bash
 python -m alphadiana.cli run configs/examples/directllm_minimax_hle.yaml \
   -o run_id=hle_directllm_smoke
 ```
+
+On current main, `direct_llm` captures logprobs by default. The dedicated
+`configs/full_runs/phase9_directllm_qwen35_27b_hle_logprobs.yaml` entrypoint is
+still the preferred local-vLLM Qwen path because it pins the model/api-base and
+the heavier `max_concurrent: 15` benchmark run contract in one checked-in file.
 
 ## OpenCode
 
