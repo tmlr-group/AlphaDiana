@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from alphadiana.agent.base import AgentResponse
+from alphadiana.agent.preservation import add_artifact_file_refs
 from alphadiana.benchmark.base import BenchmarkTask
 from alphadiana.results.logprob_artifacts import INT16_PROB_SCALE, raw_record_to_int16_record
 from alphadiana.results.normalized_trace import (
@@ -92,14 +93,12 @@ class ResultStore:
             trajectory=response.trajectory,
         )
         with self._get_artifact_lock(artifact_key):
-            # Phase 9: flush logprobs to JSONL and strip from in-memory metadata before
-            # it is serialized into the per-task record (keeps result JSONs compact).
             response_metadata = dict(response.metadata or {})
-            logprob_records = response_metadata.pop("logprob_records", None)
-            logprobs_path_rel = ""
-            if isinstance(logprob_records, list) and logprob_records:
-                self.write_logprobs_jsonl(task.task_id, logprob_records)
-                logprobs_path_rel = f"{self.run_id}/logprobs/{task.task_id}.jsonl"
+            logprob_sidecars = self.write_logprob_sidecars(task.task_id, response_metadata)
+            self._add_missing_artifact_file_refs(
+                response,
+                logprob_sidecars["artifact_file_refs"],
+            )
             artifact_manifest = self._persist_artifacts(
                 task,
                 response,
@@ -126,7 +125,10 @@ class ResultStore:
                 "response_json": response.response_json,
                 "token_usage": response.token_usage,
                 "token_entropy_stats": getattr(response, "token_entropy_stats", {}),
-                "logprobs_path": logprobs_path_rel,
+                "logprobs_path": logprob_sidecars["logprobs_path"],
+                "logprobs_int16_path": logprob_sidecars["logprobs_int16_path"],
+                "top_logprobs": logprob_sidecars["top_logprobs"],
+                "int16_probability_scale": logprob_sidecars["int16_probability_scale"],
                 "wall_time_sec": response.wall_time_sec,
                 "sandbox_id": response.sandbox_id,
                 "gateway_url": response.gateway_url,
@@ -163,14 +165,12 @@ class ResultStore:
             trajectory=response.trajectory,
         )
         with self._get_artifact_lock(artifact_key):
-            # Phase 9: flush logprobs to JSONL and strip from in-memory metadata before
-            # it is serialized into the per-task record (keeps result JSONs compact).
             response_metadata = dict(response.metadata or {})
-            logprob_records = response_metadata.pop("logprob_records", None)
-            logprobs_path_rel = ""
-            if isinstance(logprob_records, list) and logprob_records:
-                self.write_logprobs_jsonl(task.task_id, logprob_records)
-                logprobs_path_rel = f"{self.run_id}/logprobs/{task.task_id}.jsonl"
+            logprob_sidecars = self.write_logprob_sidecars(task.task_id, response_metadata)
+            self._add_missing_artifact_file_refs(
+                response,
+                logprob_sidecars["artifact_file_refs"],
+            )
             artifact_manifest = self._persist_artifacts(
                 task,
                 response,
@@ -197,7 +197,10 @@ class ResultStore:
                 "response_json": response.response_json,
                 "token_usage": response.token_usage,
                 "token_entropy_stats": getattr(response, "token_entropy_stats", {}),
-                "logprobs_path": logprobs_path_rel,
+                "logprobs_path": logprob_sidecars["logprobs_path"],
+                "logprobs_int16_path": logprob_sidecars["logprobs_int16_path"],
+                "top_logprobs": logprob_sidecars["top_logprobs"],
+                "int16_probability_scale": logprob_sidecars["int16_probability_scale"],
                 "wall_time_sec": response.wall_time_sec,
                 "sandbox_id": response.sandbox_id,
                 "gateway_url": response.gateway_url,
@@ -376,6 +379,30 @@ class ResultStore:
             if not replaced:
                 existing.append(record)
             path.write_text(json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    def _add_missing_artifact_file_refs(
+        self,
+        response: AgentResponse,
+        file_refs: dict[str, str],
+    ) -> None:
+        """Add generated sidecar aliases without replacing existing manifest refs."""
+        if not file_refs:
+            return
+        existing_files = {}
+        if isinstance(response.artifact_manifest, dict):
+            existing_files = response.artifact_manifest.get("files", {})
+            if not isinstance(existing_files, dict):
+                existing_files = {}
+        refs_to_add = {
+            key: value
+            for key, value in file_refs.items()
+            if key not in existing_files
+        }
+        if refs_to_add:
+            response.artifact_manifest = add_artifact_file_refs(
+                response.artifact_manifest,
+                **refs_to_add,
+            )
 
     def write_logprobs_jsonl(self, task_id: str, records: list[dict]) -> Path:
         """Write per-token logprob records to results/{run_id}/logprobs/{task_id}.jsonl.
