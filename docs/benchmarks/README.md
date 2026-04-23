@@ -30,11 +30,6 @@ notes: normal benchmark runs use one sandbox-only CLI path
 tasks. Historical `disable_tools`, gateway, and proxy path notes remain
 useful audit evidence only.
 
-As of April 23, 2026, current GPQA-Diamond `direct_llm` local-vLLM evidence
-also includes a Phase 10 top-20 Int16 logprob sidecar smoke; see
-[`context/current_eval_status.md`](../../context/current_eval_status.md) for
-the run ID, config, log, result paths, and current harness limitations.
-
 Reviewer-facing evidence, dated pilot notes, internal design notes, and
 cross-benchmark status snapshots belong under `context/`.
 

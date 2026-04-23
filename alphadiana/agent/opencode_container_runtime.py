@@ -19,11 +19,6 @@ import shlex
 import time
 from typing import Any
 
-from alphadiana.agent.logprob_capture import (
-    apply_openai_logprob_request,
-    resolve_logprob_capture_config,
-)
-
 _logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -113,7 +108,6 @@ class OpenCodeContainerRuntimeManager:
         self._agent_name = str(config.get("agent", "")).strip()
         self._print_logs = bool(config.get("print_logs", False))
         self._log_level = str(config.get("log_level", "")).strip()
-        self._logprob_capture = resolve_logprob_capture_config(config)
         self._install_opencode_command = config.get(
             "install_opencode_command", DEFAULT_INSTALL_OPENCODE_COMMAND
         )
@@ -204,7 +198,6 @@ class OpenCodeContainerRuntimeManager:
         }
         if self._streaming is not None:
             provider_options["streaming"] = self._streaming
-        apply_openai_logprob_request(provider_options, self._logprob_capture)
 
         cfg = {
             "$schema": "https://opencode.ai/config.json",
