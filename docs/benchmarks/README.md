@@ -33,6 +33,10 @@ useful audit evidence only.
 Reviewer-facing evidence, dated pilot notes, internal design notes, and
 cross-benchmark status snapshots belong under `context/`.
 
+For Hugging Face result archival rules, staging layout, and the current
+DirectLLM `trajectory / artifacts / logprobs` upload contract, use
+[context/hf-result-upload-spec-20260423.md](../../context/hf-result-upload-spec-20260423.md).
+
 Each benchmark document describes prerequisites, supported execution modes,
 example configs, and smoke-test commands:
 
