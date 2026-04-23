@@ -18,7 +18,7 @@ Reference run for parity: `T-MARS/alphadiana-benchmark-results/full_run/YYYYMMDD
 | `temperature`        | `0.0`                                           | manifest `overrides.temperature`                                               |
 | `top_p`              | `0.95`                                          | manifest `overrides.top_p`                                                     |
 | `max_output_tokens`  | `131072` (128K)                                 | manifest `overrides.max_output_tokens`                                         |
-| Sample K             | `1`                                             | `sweagent run-batch` is single-shot per instance                               |
+| Sample K             | `1` (pass@1)                                    | `sweagent run-batch` is single-shot per instance                               |
 | `max_concurrent`     | `10`                                            | manifest `path_template.max_concurrent`                                        |
 | `per_instance_call_limit` | `80`                                       | manifest `overrides.per_instance_call_limit` (matches reference run)           |
 | `sweagent_config`    | `config/default.yaml`                           | manifest `overrides.sweagent_config` (relative to `SWE-agent/`)                |
@@ -43,6 +43,32 @@ the container-agent path (`openclaw` / `opencode` / `zeroclaw` via
 ## 2. Prerequisites
 
 ### 2.1 vLLM endpoint
+
+**Launch vLLM** (adjust GPU indices, port, and local/HF model path to your setup):
+
+```bash
+python -m vllm.entrypoints.openai.api_server \
+  --model Qwen/Qwen3.5-27B \
+  --host 0.0.0.0 --port <port> \
+  --trust-remote-code \
+  --enable-auto-tool-choice \
+  --tool-call-parser qwen3_coder \
+  --tensor-parallel-size 2 \
+  --gpu-memory-utilization 0.9 \
+  --max-model-len 262144 \
+  --generation-config vllm \
+  --override-generation-config '{"presence_penalty": 1.5}' \
+  --served-model-name qwen3.5-27b Qwen/Qwen3.5-27B
+```
+
+Why each flag matters:
+- `--max-model-len 262144` (256K): matches the model's native max context so long SWE-bench problem statements fit alongside 128K output budget.
+- `--override-generation-config '{"presence_penalty": 1.5}'`: per-request default that suppresses Qwen3.5's repetition loops. Setting it serverside means every client request inherits it automatically.
+- `--generation-config vllm`: ignores the model's shipped `generation_config.json` (which sets `temperature=0.6`, `top_k=20`, `top_p=0.95`). Without this, clients that omit sampling params silently get non-greedy defaults.
+- No `--reasoning-parser`: keep thinking tokens inside `message.content` (SWE-agent reads content, not a separate reasoning field).
+- `--enable-auto-tool-choice --tool-call-parser qwen3_coder`: harmless here (SWE-agent sends XML-parsed text, not OpenAI tools), required if any other agent on the same endpoint wants function calling.
+
+**Sanity check from the client side:**
 
 ```bash
 export QWEN_VLLM_API_BASE=http://127.0.0.1:<port>/v1
@@ -187,6 +213,20 @@ which time out the single-shot uploader.
 
 ## 6. Known gotchas
 
+- **`config/default.yaml` vs known-working Qwen config.** The default manifest
+  uses `config/default.yaml`, which is upstream SWE-agent's generic config with
+  `function_calling` parsing. Qwen3.5 served via vLLM is not a perfect
+  function-calling client; the reference 46 %-resolved run used
+  `config/benchmarks/250522_anthropic_filemap_simple_review.yaml` (anthropic
+  filemap tool bundle) combined with an XML parse override. If you want the
+  closest match to that reference run, override:
+  ```yaml
+  overrides:
+    sweagent_config: "config/benchmarks/250522_anthropic_filemap_simple_review.yaml"
+  ```
+  and pass `--agent.tools.parse_function.type xml_thought_action` as an extra
+  flag (manual edit of the materialized shell today; renderer-level override
+  tracked as a follow-up).
 - **preds.json aggregation.** Some SWE-agent versions don't emit a single
   `preds.json`. If the harness step fails to open it, use SWE-agent's gather
   helper (`python helper_code/gather_patches.py` if present in your checkout) or
