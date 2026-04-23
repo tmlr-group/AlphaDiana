@@ -108,3 +108,22 @@ def test_entropy_stats_from_int16_records_preserves_phase9_shape() -> None:
         "p90": 0.4,
         "n_tokens": 4,
     }
+
+
+def test_phase9_script_exports_shared_top_logprob_conversion() -> None:
+    from scripts.phase9_gpqa_top20_int16_entropy import (
+        top_logprob_to_int16_record as script_top_logprob_to_int16_record,
+    )
+
+    token_logprob = _TokenLogprob(
+        "answer",
+        -0.1,
+        [_Candidate("answer", -0.1), _Candidate("other", -2.0)],
+    )
+
+    record = script_top_logprob_to_int16_record(token_logprob, 0)
+
+    assert script_top_logprob_to_int16_record is top_logprob_to_int16_record
+    assert "top20" in record
+    assert "prob_i16" in record["top20"][0]
+    assert "entropy_nats" in record
