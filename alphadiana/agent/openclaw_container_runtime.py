@@ -797,6 +797,8 @@ class OpenClawContainerRuntimeManager:
                 "workspace_root": workspace_root,
                 "response_stream": response_stream_alias,
                 "session_trace": session_alias_path or (session_paths[0] if session_paths else ""),
+                "openclaw_output": response_stream_alias,
+                "openclaw_session": session_alias_path or (session_paths[0] if session_paths else ""),
                 "system_prompt": f"{workspace_root}/AGENTS.md",
                 "runtime_config": self._remote_openclaw_config_path,
             },
