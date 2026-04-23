@@ -21,11 +21,10 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import httpx
 from openai import OpenAI
@@ -36,9 +35,14 @@ from alphadiana.agent.direct_llm import (
     _split_think_tags,
 )
 from alphadiana.benchmark.gpqa import GPQADiamondBenchmark
+from alphadiana.results.logprob_artifacts import (
+    DEFAULT_TOP_LOGPROBS,
+    INT16_PROB_SCALE,
+    entropy_stats_from_int16_records as entropy_stats,
+    top_logprob_to_int16_record,
+)
 
-INT16_PROB_SCALE = 32767
-TOP_LOGPROBS = 20
+TOP_LOGPROBS = DEFAULT_TOP_LOGPROBS
 
 SYSTEM_PROMPT = """You are solving expert-level science multiple-choice questions.
 Read the question carefully, reason step by step, and choose the single best option.
@@ -74,66 +78,6 @@ def _strip_raw_logprobs(value: Any) -> Any:
     if isinstance(value, list):
         return [_strip_raw_logprobs(v) for v in value]
     return value
-
-
-def _softmax_from_logprobs(top_logprobs: list[dict]) -> list[float]:
-    if not top_logprobs:
-        return []
-    logps = [float(entry["logprob"]) for entry in top_logprobs]
-    max_logp = max(logps)
-    weights = [math.exp(lp - max_logp) for lp in logps]
-    total = sum(weights)
-    if total <= 0.0:
-        return []
-    return [w / total for w in weights]
-
-
-def _entropy_nats(probs: Iterable[float]) -> float:
-    return -sum(p * math.log(p) for p in probs if p > 0.0)
-
-
-def _prob_to_i16(prob: float) -> int:
-    code = int(round(prob * INT16_PROB_SCALE))
-    return max(0, min(INT16_PROB_SCALE, code))
-
-
-def _percentile(sorted_values: list[float], p: float) -> float:
-    if not sorted_values:
-        return 0.0
-    idx = int(len(sorted_values) * p)
-    return sorted_values[min(idx, len(sorted_values) - 1)]
-
-
-def top_logprob_to_int16_record(token_logprob: Any, token_index: int) -> dict:
-    """Convert one SDK token-logprob object into compact Int16 probability form."""
-    top_entries = [
-        {"token": item.token, "logprob": float(item.logprob)}
-        for item in (getattr(token_logprob, "top_logprobs", None) or [])[:TOP_LOGPROBS]
-    ]
-    probs = _softmax_from_logprobs(top_entries)
-    return {
-        "token_index": token_index,
-        "token": getattr(token_logprob, "token", ""),
-        "top20": [
-            {"token": entry["token"], "prob_i16": _prob_to_i16(prob)}
-            for entry, prob in zip(top_entries, probs)
-        ],
-        "entropy_nats": _entropy_nats(probs),
-    }
-
-
-def entropy_stats(records: list[dict]) -> dict:
-    entropies = [float(r.get("entropy_nats") or 0.0) for r in records]
-    if not entropies:
-        return {"mean": 0.0, "max": 0.0, "p50": 0.0, "p90": 0.0, "n_tokens": 0}
-    sorted_e = sorted(entropies)
-    return {
-        "mean": sum(entropies) / len(entropies),
-        "max": max(entropies),
-        "p50": _percentile(sorted_e, 0.5),
-        "p90": _percentile(sorted_e, 0.9),
-        "n_tokens": len(entropies),
-    }
 
 
 def build_messages(problem: str) -> list[dict[str, str]]:
