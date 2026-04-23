@@ -13,6 +13,11 @@ import time
 from pathlib import Path
 from typing import Any
 
+from alphadiana.agent.logprob_capture import (
+    extract_openai_logprob_records,
+    finalize_logprob_capture,
+    resolve_logprob_capture_config,
+)
 from alphadiana.agent.base import Agent, AgentResponse
 from alphadiana.agent.preservation import (
     add_artifact_file_refs,
@@ -203,6 +208,69 @@ def _is_swe_bench_task(task: BenchmarkTask) -> bool:
     return "instance_id" in metadata or "repo" in metadata
 
 
+def extract_zeroclaw_logprob_records(
+    *,
+    runtime_records: list[dict[str, Any]],
+    runtime_trace: str,
+    raw_output: str,
+    raw_stderr: str,
+) -> list[dict]:
+    """Extract OpenAI-shaped provider logprobs from ZeroClaw runtime artifacts."""
+
+    def _jsonl_objects(text: str) -> list[dict[str, Any]]:
+        objects: list[dict[str, Any]] = []
+        for raw_line in (text or "").splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(payload, dict):
+                objects.append(payload)
+        return objects
+
+    records: list[dict] = []
+    token_index = 0
+    seen_payloads: set[str] = set()
+
+    def _scan(node: Any) -> None:
+        nonlocal token_index
+        if isinstance(node, dict):
+            payload_fingerprint = ""
+            if "choices" in node:
+                try:
+                    payload_fingerprint = json.dumps(node, sort_keys=True, ensure_ascii=False)
+                except (TypeError, ValueError):
+                    payload_fingerprint = ""
+            should_extract = not payload_fingerprint or payload_fingerprint not in seen_payloads
+            if payload_fingerprint:
+                seen_payloads.add(payload_fingerprint)
+            if should_extract:
+                parsed, token_index = extract_openai_logprob_records(
+                    node,
+                    start_index=token_index,
+                )
+                records.extend(parsed)
+            for value in node.values():
+                _scan(value)
+            return
+        if isinstance(node, list):
+            for entry in node:
+                _scan(entry)
+
+    for record in runtime_records or []:
+        _scan(record)
+    for payload in _jsonl_objects(runtime_trace):
+        _scan(payload)
+    for payload in _jsonl_objects(raw_output):
+        _scan(payload)
+    for payload in _jsonl_objects(raw_stderr):
+        _scan(payload)
+    return records
+
+
 class ZeroClawAgent(Agent):
     """Run ZeroClaw in a live sandbox/container using its native CLI path."""
 
@@ -230,9 +298,13 @@ class ZeroClawAgent(Agent):
             "OPENAI_API_KEY",
             default=str(config.get("api_key", "EMPTY")),
         )
+        self._logprob_capture = resolve_logprob_capture_config(config)
         raw_temperature = config.get("temperature", 0.0)
         self._temperature = float(raw_temperature if raw_temperature not in ("", None) else 0.0)
-        self._runtime_trace_mode = str(config.get("runtime_trace_mode", "none") or "none").strip()
+        runtime_trace_mode = str(config.get("runtime_trace_mode", "none") or "none").strip()
+        if self._logprob_capture["enabled"] and runtime_trace_mode.lower() in {"", "none"}:
+            runtime_trace_mode = "all"
+        self._runtime_trace_mode = runtime_trace_mode
         self._request_timeout = int(config.get("request_timeout", 1200))
         raw_provider_timeout = config.get("provider_timeout_secs", None)
         if raw_provider_timeout in ("", None):
@@ -571,6 +643,18 @@ class ZeroClawAgent(Agent):
             response_metadata["runtime_logs_dropped_from_output"] = dropped_runtime_logs
         if sanitized_output != raw_output:
             response_metadata["raw_output_sanitized"] = True
+        logprob_records = extract_zeroclaw_logprob_records(
+            runtime_records=runtime_records,
+            runtime_trace=runtime_trace,
+            raw_output=raw_output,
+            raw_stderr=raw_stderr,
+        )
+        token_entropy_stats, response_metadata = finalize_logprob_capture(
+            harness="zeroclaw",
+            enabled=self._logprob_capture["enabled"],
+            records=logprob_records,
+            metadata=response_metadata,
+        )
 
         workspace_files = self._build_workspace_file_contents(
             prompt=prompt,
@@ -593,6 +677,7 @@ class ZeroClawAgent(Agent):
             reasoning_trajectory=reasoning_trajectory,
             raw_output=combined_output,
             wall_time_sec=wall_time_sec,
+            token_entropy_stats=token_entropy_stats,
             workspace_file_contents=workspace_files,
             artifact_manifest=manifest,
             system_prompt=system_prompt,
@@ -671,6 +756,13 @@ class ZeroClawAgent(Agent):
                     f"backend = {_quote_toml(self._security_sandbox_backend)}"
                 )
             security_section = "\n".join(security_lines) + "\n\n"
+        logprob_provider_options = ""
+        if self._logprob_capture["enabled"]:
+            logprob_provider_options = (
+                "[model_providers.custom.options]\n"
+                "logprobs = true\n"
+                f"top_logprobs = {self._logprob_capture['top_logprobs']}\n\n"
+            )
         return (
             f"default_provider = {_quote_toml(self._provider)}\n"
             f"default_model = {_quote_toml(self._model)}\n\n"
@@ -680,6 +772,7 @@ class ZeroClawAgent(Agent):
             "model_routes = []\n"
             "embedding_routes = []\n\n"
             "[model_providers]\n\n"
+            f"{logprob_provider_options}"
             f"{runtime_section}"
             f"{security_section}"
             "[observability]\n"
