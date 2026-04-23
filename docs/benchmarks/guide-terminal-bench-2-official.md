@@ -16,7 +16,7 @@ AlphaDiana container-agent path on the same benchmark, see
 | -------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------ |
 | `temperature`        | `0.0`                                           | renderer (hardcoded `--ak temperature=0.0`)                                    |
 | `top_p`              | `0.95`                                          | renderer (hardcoded in `llm_call_kwargs`)                                      |
-| `max_tokens`         | `32768` (32K)                                   | renderer (hardcoded in `llm_call_kwargs`)                                      |
+| `max_tokens`         | `131072` (128K)                                 | renderer (hardcoded in `llm_call_kwargs`)                                      |
 | `reasoning_effort`   | `high`                                          | renderer (hardcoded `--ak reasoning_effort=high`)                              |
 | Sample K             | `1`                                             | harbor is single-shot per task                                                 |
 | `max_concurrent`     | `10`                                            | manifest `path_template.max_concurrent` → `--n-concurrent`                     |
@@ -139,7 +139,7 @@ harbor run --dataset terminal-bench@2.0 \
   --ak api_base=$QWEN_VLLM_API_BASE \
   --ak temperature=0.0 \
   --ak reasoning_effort=high \
-  --ak 'llm_call_kwargs={"top_p":0.95,"max_tokens":32768}'
+  --ak 'llm_call_kwargs={"top_p":0.95,"max_tokens":131072}'
 ```
 
 Outputs land in `$DIRECTLLM_TB2_ROOT/jobs/<run_id>/`. If `$DIRECTLLM_TB2_ROOT`
