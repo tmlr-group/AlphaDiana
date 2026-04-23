@@ -168,7 +168,17 @@ cleanup() {
 }
 trap cleanup EXIT
 
-export OPENCLAW_GATEWAY_TOKEN="${OPENCLAW_GATEWAY_TOKEN:-OPENCLAW}"
+export OPENCLAW_GATEWAY_TOKEN="${OPENCLAW_GATEWAY_TOKEN:-$(python3 - <<'PY'
+import os
+import secrets
+
+weak = {"", "OPENCLAW", "openclaw", "test", "token", "default", "changeme", "secret"}
+token = os.environ.get("OPENCLAW_GATEWAY_TOKEN", "")
+if token in weak:
+    token = secrets.token_urlsafe(32)
+print(token)
+PY
+)}"
 export OPENCLAW_GATEWAY_PORT="${OPENCLAW_GATEWAY_PORT:-$(python3 - <<'PY'
 import socket
 s = socket.socket()

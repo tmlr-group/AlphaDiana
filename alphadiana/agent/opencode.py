@@ -222,6 +222,10 @@ def _classify_opencode_error(name: str, message: str) -> str:
         "litellm",
         "provider",
         "tool choice requires",
+        "contextoverflowerror",
+        "maximum context length",
+        "input_tokens",
+        "max context",
     )
     if any(marker in blob for marker in provider_markers):
         return "provider_error"

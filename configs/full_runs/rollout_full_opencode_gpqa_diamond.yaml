@@ -15,7 +15,7 @@ agent:
     controller_image: "alphadiana/tb2-opencode-controller:latest"
     timeout: 1800
     streaming: true
-    tool_call: false
+    tool_call: true
     system_prompt: |
       You are solving expert-level science multiple-choice questions.
       Read the question carefully, reason step by step, and choose the single best option.

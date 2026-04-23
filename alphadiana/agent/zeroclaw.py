@@ -164,6 +164,11 @@ def _classify_cli_error_output(text: str) -> str:
         "unauthorized",
         "forbidden",
         "capability=vision",
+        "contextoverflowerror",
+        "vllmvalidationerror",
+        "maximum context length",
+        "input_tokens",
+        "max context",
     )
     if any(marker in normalized for marker in provider_markers):
         return "provider_error"

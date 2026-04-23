@@ -19,4 +19,4 @@ env:
   OPENAI_BASE_URL: ""           # Model API endpoint, e.g. "http://<your-vllm-host>:8000/v1"
   OPENAI_API_KEY: "EMPTY"       # API key for the model service
   OPENAI_MODEL_NAME: ""         # Model name or path, e.g. "Qwen/Qwen2.5-14B-Instruct"
-  OPENCLAW_GATEWAY_TOKEN: "OPENCLAW"  # Auth token for the OpenClaw gateway
+  OPENCLAW_GATEWAY_TOKEN: "${OPENCLAW_GATEWAY_TOKEN}"  # Auth token for the OpenClaw gateway
