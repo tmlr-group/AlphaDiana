@@ -39,7 +39,7 @@ scorer:
 
 max_concurrent: 1
 num_samples: 1
-output_dir: "./results/phase10_directllm_gpqa_diamond_qwen35_27b_int16_logprobs_smoke"
+output_dir: "./results"
 
 metadata:
   phase: "10"
