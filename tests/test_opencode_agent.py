@@ -140,6 +140,7 @@ def test_solve_text_only_uses_opencode_cli():
     assert result.request_messages[0]["role"] == "system"
     assert result.response_json["records"][0]["type"] == "assistant"
     assert result.artifact_manifest["files"]["response_stream"] == "opencode_output.jsonl"
+    assert result.artifact_manifest["files"]["opencode_output"] == "opencode_output.jsonl"
     assert result.workspace_file_contents["prompt.txt"].startswith("You are an expert problem solver.")
 
 
@@ -366,6 +367,7 @@ def test_solve_preserves_opencode_session_trace_when_present():
         result = agent.solve(task)
 
     assert result.artifact_manifest["files"]["session_trace"] == "opencode_session.jsonl"
+    assert result.artifact_manifest["files"]["opencode_session"] == "opencode_session.jsonl"
     assert "opencode_session.jsonl" in result.workspace_file_contents
 
 

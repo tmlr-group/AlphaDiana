@@ -292,6 +292,7 @@ def test_build_cli_response_promotes_runtime_trace_into_native_fields():
     assert response.reasoning_trajectory[0]["type"] == "tool"
     assert response.response_json["runtime_trace_present"] is True
     assert response.artifact_manifest["files"]["response_stream"] == "runtime_trace.jsonl"
+    assert response.artifact_manifest["files"]["zeroclaw_output"] == "zeroclaw_output.txt"
     assert '"type": "tool"' in response.workspace_file_contents["runtime_trace.jsonl"]
 
 
@@ -321,6 +322,7 @@ def test_zeroclaw_sandbox_solve_uses_uploaded_workspace_and_returns_answer():
     assert response.metadata["execution_id"] == "exec-123"
     assert response.metadata["workspace_dir"].endswith("/workspace")
     assert response.metadata["transport"] == "zeroclaw_cli_sandbox"
+    assert response.artifact_manifest["files"]["zeroclaw_output"] == "zeroclaw_output.txt"
     assert 'level = "full"' in sandbox.read_text(config_path)
     assert "What is 40+2?" in sandbox.read_text(task_path)
     assert len(sandbox.long_running_commands) == 1

@@ -244,6 +244,8 @@ def test_openclaw_runtime_collect_artifacts_preserves_session_trace_and_response
     files = artifacts["artifact_manifest"]["files"]
     assert files["response_stream"] == "openclaw_output.jsonl"
     assert files["session_trace"] == "openclaw_session.jsonl"
+    assert files["openclaw_output"] == "openclaw_output.jsonl"
+    assert files["openclaw_session"] == "openclaw_session.jsonl"
     assert artifacts["workspace_file_contents"]["openclaw_output.jsonl"]
     assert artifacts["workspace_file_contents"]["openclaw_session.jsonl"]
     assert "/tmp/oc_home/.openclaw/workspace/openclaw_output.jsonl" in artifacts["workspace_snapshot_paths"]
@@ -328,6 +330,8 @@ def test_openclaw_container_runtime_collect_artifacts_exposes_stable_aliases() -
     assert files["workspace_root"] == "/testbed"
     assert files["response_stream"] == "openclaw_output.jsonl"
     assert files["session_trace"] == "openclaw_session.jsonl"
+    assert files["openclaw_output"] == "openclaw_output.jsonl"
+    assert files["openclaw_session"] == "openclaw_session.jsonl"
     assert files["system_prompt"] == "/testbed/AGENTS.md"
     assert artifacts["workspace_file_contents"]["openclaw_output.jsonl"]
     assert artifacts["workspace_file_contents"]["openclaw_session.jsonl"]
