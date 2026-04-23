@@ -1,6 +1,6 @@
 # Benchmark Isolation Notes
 
-Updated on April 20, 2026.
+Updated on April 23, 2026.
 
 This note explains what "sandboxed" or "containerized" benchmark execution
 means in AlphaDiana today for `openclaw`, `opencode`, and `zeroclaw`.
@@ -58,6 +58,29 @@ Avoid wording like:
   metadata with `controller_mode=docker` and
   `transport=opencode_cli_container`; the `MMMU-Pro` vision rerun also wrote
   `num_attachments=1` on all three tasks.
+
+## Preserved Runtime Artifacts
+
+These benchmark paths are also designed to preserve readable task-scoped
+runtime artifacts in the result record. This is still task-local evidence, not
+cross-task memory.
+
+- `openclaw` now preserves stable aliases for the main session trace and common
+  sidecar state, including `openclaw_session.jsonl`,
+  `openclaw_workspace_listing.txt`, `openclaw_workspace_state.json`,
+  `openclaw_sessions_index.json`, `openclaw_runtime_config.json`,
+  `openclaw_request_payload.json`, and `openclaw_selected_response.json`.
+- `opencode` now preserves the main event/session stream plus task-local state
+  and memory summaries under stable aliases such as
+  `opencode_session.jsonl`, `opencode_workspace_listing.txt`,
+  `opencode_config.json`, `memory/opencode_db_files.json`, and
+  `memory/opencode.db.summary.json`.
+- `zeroclaw` already preserved the equivalent task-local CLI evidence:
+  `config.toml`, `workspace_listing.txt`, readable `state/*` files, and
+  `memory/brain.db.summary.json` when the runtime creates a memory database.
+
+Credential-bearing JSON artifacts are redacted before they are persisted into
+the result payload.
 
 ## If You Need The Cleanest Paper Story
 

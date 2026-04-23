@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import signal
+import sqlite3
 import subprocess
 import tempfile
 import time
@@ -55,6 +56,23 @@ _SWE_BENCH_SYSTEM_PROMPT = (
     "- After making your changes, ensure the code is syntactically correct.\n"
     "- You do not need to run the full test suite; just fix the issue described."
 )
+
+_PRESERVED_TEXT_ARTIFACT_SUFFIXES = {
+    ".json",
+    ".jsonl",
+    ".log",
+    ".md",
+    ".txt",
+    ".toml",
+    ".yaml",
+    ".yml",
+}
+_SECRET_FIELD_NAMES = frozenset({
+    "api_key",
+    "apikey",
+    "authorization",
+    "token",
+})
 
 
 def _extract_boxed_content(text: str) -> str | None:
@@ -290,6 +308,188 @@ def _read_opencode_session_trace(session_dir: Path, session_id: str) -> tuple[st
     return "", ""
 
 
+def _redact_secret_fields(value: Any) -> Any:
+    """Redact obvious credential-like fields from structured artifacts."""
+    if isinstance(value, dict):
+        redacted: dict[str, Any] = {}
+        for key, item in value.items():
+            normalized = str(key).strip().lower().replace("-", "_")
+            if normalized in _SECRET_FIELD_NAMES or normalized.endswith("_api_key"):
+                redacted[key] = "REDACTED"
+            else:
+                redacted[key] = _redact_secret_fields(item)
+        return redacted
+    if isinstance(value, list):
+        return [_redact_secret_fields(item) for item in value]
+    return value
+
+
+def _sanitize_json_artifact_text(raw_text: str) -> str:
+    """Best-effort JSON sanitizer for persisted config artifacts."""
+    try:
+        payload = json.loads(raw_text)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return raw_text
+    return json.dumps(
+        _redact_secret_fields(payload),
+        indent=2,
+        ensure_ascii=False,
+    )
+
+
+def _summarize_local_sqlite_db(db_path: Path) -> str:
+    """Return a compact JSON summary for a local SQLite artifact."""
+    summary: dict[str, Any] = {
+        "path": db_path.name,
+        "size_bytes": db_path.stat().st_size if db_path.exists() else 0,
+    }
+    if not db_path.exists():
+        return json.dumps(summary, indent=2, ensure_ascii=False)
+
+    connection: sqlite3.Connection | None = None
+    try:
+        connection = sqlite3.connect(str(db_path))
+        cursor = connection.cursor()
+        tables: list[dict[str, Any]] = []
+        schema: list[dict[str, Any]] = []
+        for name, sql in cursor.execute(
+            "SELECT name, sql FROM sqlite_master WHERE type='table' ORDER BY name"
+        ).fetchall():
+            row_count: int | None
+            try:
+                row_count = cursor.execute(f'SELECT COUNT(*) FROM "{name}"').fetchone()[0]
+            except Exception:
+                row_count = None
+            tables.append({"name": name, "row_count": row_count})
+            schema.append({"name": name, "sql": sql})
+        summary["tables"] = tables
+        summary["schema"] = schema
+
+        preview_tables = [
+            table["name"]
+            for table in tables
+            if table["name"] in {"message", "part", "session"}
+        ]
+        previews: dict[str, list[dict[str, Any]]] = {}
+        for table_name in preview_tables:
+            columns = [row[1] for row in cursor.execute(f"PRAGMA table_info('{table_name}')").fetchall()]
+            rows = cursor.execute(f'SELECT * FROM "{table_name}" ORDER BY rowid LIMIT 10').fetchall()
+            preview_rows: list[dict[str, Any]] = []
+            for row in rows:
+                item: dict[str, Any] = {}
+                for index, column in enumerate(columns):
+                    cell = row[index]
+                    if isinstance(cell, bytes):
+                        cell = cell.decode("utf-8", "replace")
+                    if isinstance(cell, str) and len(cell) > 2000:
+                        cell = cell[:2000] + "...<truncated>"
+                    item[column] = cell
+                preview_rows.append(item)
+            previews[table_name] = preview_rows
+        if previews:
+            summary["previews"] = previews
+    except Exception as exc:
+        summary["error"] = f"{type(exc).__name__}: {exc}"
+    finally:
+        if connection is not None:
+            connection.close()
+
+    return json.dumps(summary, indent=2, ensure_ascii=False)
+
+
+def _collect_local_opencode_artifacts(config_dir: Path, session_id: str) -> dict[str, Any]:
+    """Collect stable OpenCode artifacts before the temp workdir is deleted."""
+    artifact_root = config_dir
+    artifact_paths = sorted(path for path in artifact_root.rglob("*") if path.is_file())
+
+    workspace_file_contents: dict[str, str] = {}
+    manifest_files: dict[str, str] = {}
+    state_files: list[str] = []
+    memory_files: list[str] = []
+
+    if artifact_paths:
+        workspace_file_contents["opencode_workspace_listing.txt"] = "".join(
+            f"{path.relative_to(artifact_root).as_posix()}\t{path.stat().st_size}\n"
+            for path in artifact_paths
+        )
+        manifest_files["workspace_listing"] = "opencode_workspace_listing.txt"
+
+    config_path = artifact_root / "opencode.json"
+    if config_path.exists():
+        config_text = _sanitize_json_artifact_text(
+            config_path.read_text(encoding="utf-8", errors="replace")
+        )
+        workspace_file_contents["opencode_config.json"] = config_text
+        manifest_files["runtime_config"] = "opencode_config.json"
+        state_files.append("opencode_config.json")
+
+    session_dir = artifact_root / "sessions"
+    session_text, session_name = _read_opencode_session_trace(session_dir, session_id)
+    if session_text:
+        workspace_file_contents["opencode_session.jsonl"] = session_text
+        manifest_files["session_trace"] = "opencode_session.jsonl"
+        state_files.append("opencode_session.jsonl")
+        if session_name:
+            session_alias = f"state/sessions/{session_name}"
+            workspace_file_contents[session_alias] = session_text
+            state_files.append(session_alias)
+
+    db_paths = sorted(path for path in artifact_paths if path.name.startswith("opencode.db"))
+    if db_paths:
+        inventory_alias = "memory/opencode_db_files.json"
+        workspace_file_contents[inventory_alias] = json.dumps(
+            {
+                "files": [
+                    {
+                        "path": path.relative_to(artifact_root).as_posix(),
+                        "size_bytes": path.stat().st_size,
+                    }
+                    for path in db_paths
+                ]
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+        manifest_files["memory_inventory"] = inventory_alias
+        memory_files.append(inventory_alias)
+
+        primary_db = next((path for path in db_paths if path.name == "opencode.db"), None)
+        if primary_db is not None:
+            summary_alias = "memory/opencode.db.summary.json"
+            workspace_file_contents[summary_alias] = _summarize_local_sqlite_db(primary_db)
+            manifest_files["memory_summary"] = summary_alias
+            memory_files.append(summary_alias)
+
+    for path in artifact_paths:
+        relative = path.relative_to(artifact_root).as_posix()
+        if path == config_path:
+            continue
+        if relative.startswith("sessions/"):
+            continue
+        if path.name.startswith("opencode.db"):
+            continue
+        if path.suffix.lower() not in _PRESERVED_TEXT_ARTIFACT_SUFFIXES:
+            continue
+        alias = f"state/{relative}"
+        if alias in workspace_file_contents:
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if not text:
+            continue
+        workspace_file_contents[alias] = text
+        state_files.append(alias)
+
+    artifact_manifest: dict[str, Any] = {"files": manifest_files} if manifest_files else {}
+    if state_files:
+        artifact_manifest["state_files"] = list(dict.fromkeys(state_files))
+    if memory_files:
+        artifact_manifest["memory_files"] = list(dict.fromkeys(memory_files))
+    return {
+        "artifact_manifest": artifact_manifest,
+        "workspace_file_contents": workspace_file_contents,
+    }
+
+
 class OpenCodeAgent(Agent):
     """Agent that runs OpenCode CLI and supports task-container execution.
 
@@ -454,11 +654,22 @@ class OpenCodeAgent(Agent):
         except Exception as exc:
             logger.debug("Failed to collect OpenCode container artifacts: %s", exc)
 
+        preserved_workspace_files = dict(artifacts.get("workspace_file_contents", {}) or {})
+        preserved_workspace_files.setdefault("prompt.txt", problem)
+        preserved_workspace_files.setdefault("opencode_output.jsonl", raw_stdout)
+        if stderr:
+            preserved_workspace_files.setdefault("opencode_stderr.log", stderr)
+
         artifact_manifest = add_artifact_file_refs(
             artifacts.get("artifact_manifest", {}),
-            response_stream="/swebench_agent/opencode/opencode_output.jsonl",
-            session_trace="/swebench_agent/opencode/opencode_session.jsonl",
-            stderr_log="/swebench_agent/opencode/opencode_stderr.log",
+            response_stream="opencode_output.jsonl",
+            session_trace=(
+                "opencode_session.jsonl"
+                if "opencode_session.jsonl" in preserved_workspace_files
+                else None
+            ),
+            stderr_log="opencode_stderr.log" if stderr else None,
+            prompt_text="prompt.txt",
         )
         response_json = build_runtime_trace_summary(
             output_text=full_content,
@@ -505,6 +716,9 @@ class OpenCodeAgent(Agent):
             request_messages=request_messages,
             response_json=response_json,
             artifact_manifest=artifact_manifest,
+            workspace_file_contents=preserved_workspace_files,
+            workspace_snapshot_paths=list(artifacts.get("workspace_snapshot_paths", []) or []),
+            sandbox_metadata=artifacts.get("sandbox_metadata", {}),
         )
         if error_info:
             exc = RuntimeError(error_info["message"])
@@ -575,7 +789,7 @@ class OpenCodeAgent(Agent):
     def _solve_cli(self, task: BenchmarkTask) -> AgentResponse:
         """Run tasks through the OpenCode CLI (host or Docker, multimodal-aware)."""
         start = time.time()
-        session_trace = ""
+        preserved_local_artifacts: dict[str, Any] = {}
 
         with tempfile.TemporaryDirectory(prefix="opencode-task-") as workdir:
             workdir_path = Path(workdir)
@@ -719,10 +933,7 @@ class OpenCodeAgent(Agent):
                             stderr = timed_out_stderr or stderr
 
             _, _, session_id = _parse_opencode_output(raw_output)
-            session_trace, _ = _read_opencode_session_trace(
-                config_dir / "sessions",
-                session_id,
-            )
+            preserved_local_artifacts = _collect_local_opencode_artifacts(config_dir, session_id)
 
         wall_time = time.time() - start
         assistant_text, events, session_id = _parse_opencode_output(raw_output)
@@ -753,12 +964,13 @@ class OpenCodeAgent(Agent):
                 stderr[:500],
             )
 
-        workspace_file_contents: dict[str, str] = {
+        workspace_file_contents: dict[str, str] = dict(
+            preserved_local_artifacts.get("workspace_file_contents", {}) or {}
+        )
+        workspace_file_contents.update({
             "prompt.txt": prompt,
             "opencode_output.jsonl": raw_output,
-        }
-        if session_trace:
-            workspace_file_contents["opencode_session.jsonl"] = session_trace
+        })
         if stderr:
             workspace_file_contents["opencode_stderr.log"] = stderr
         if attachment_paths:
@@ -776,9 +988,13 @@ class OpenCodeAgent(Agent):
                 ensure_ascii=False,
             )
         artifact_manifest = add_artifact_file_refs(
-            {},
+            preserved_local_artifacts.get("artifact_manifest", {}),
             response_stream="opencode_output.jsonl",
-            session_trace="opencode_session.jsonl" if session_trace else None,
+            session_trace=(
+                "opencode_session.jsonl"
+                if "opencode_session.jsonl" in workspace_file_contents
+                else None
+            ),
             stderr_log="opencode_stderr.log" if stderr else None,
             prompt_text="prompt.txt",
             attachment_manifest="attachment_manifest.json" if attachment_paths else None,

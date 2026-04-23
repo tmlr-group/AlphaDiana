@@ -45,6 +45,12 @@ OPENCLAW_OFFLINE_SOURCE_PATH_CANDIDATES = (
     "/opt/openclaw",
     "/app",
 )
+_SECRET_FIELD_NAMES = frozenset({
+    "api_key",
+    "apikey",
+    "authorization",
+    "token",
+})
 TESTBED_PYTHON_BIN_CANDIDATES = (
     "/opt/miniconda3/envs/testbed/bin",
     "/opt/conda/envs/testbed/bin",
@@ -266,6 +272,29 @@ def _ensure_offline_openclaw_payload(cache_dir: Path) -> Path | None:
                 text=True,
             )
         shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def _redact_secret_fields(value: Any) -> Any:
+    if isinstance(value, dict):
+        redacted: dict[str, Any] = {}
+        for key, item in value.items():
+            normalized = str(key).strip().lower().replace("-", "_")
+            if normalized in _SECRET_FIELD_NAMES or normalized.endswith("_api_key"):
+                redacted[key] = "REDACTED"
+            else:
+                redacted[key] = _redact_secret_fields(item)
+        return redacted
+    if isinstance(value, list):
+        return [_redact_secret_fields(item) for item in value]
+    return value
+
+
+def _sanitize_json_text(raw_text: str) -> str:
+    try:
+        payload = json.loads(raw_text)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return raw_text
+    return json.dumps(_redact_secret_fields(payload), indent=2, ensure_ascii=False)
 
 
 class OpenClawContainerRuntimeManager:
@@ -769,12 +798,32 @@ class OpenClawContainerRuntimeManager:
         ]
 
         workspace_file_contents: dict[str, str] = {}
+        manifest_files: dict[str, str] = {
+            "gateway_log_source": self._gateway_log_path,
+            "workspace_root": workspace_root,
+        }
+        state_files: list[str] = []
         session_alias_path = ""
         response_stream_alias = ""
+        collected_snapshot_paths = list(workspace_paths)
+        if workspace_paths:
+            workspace_file_contents["openclaw_workspace_listing.txt"] = (
+                "\n".join(dict.fromkeys(workspace_paths)) + "\n"
+            )
+            manifest_files["workspace_listing"] = "openclaw_workspace_listing.txt"
+        if gateway_log.strip():
+            workspace_file_contents["openclaw_gateway.log"] = gateway_log[-20000:]
+            manifest_files["gateway_log"] = "openclaw_gateway.log"
         candidate_paths = [
             f"{workspace_root}/AGENTS.md",
             f"{workspace_root}/SOUL.md",
             f"{workspace_root}/openclaw_output.jsonl",
+            f"{workspace_root}/.openclaw/workspace-state.json",
+            "/tmp/oc_home/.openclaw/workspace-state.json",
+            "/root/.openclaw/workspace-state.json",
+            "/tmp/oc_home/.openclaw/agents/main/sessions.json",
+            "/root/.openclaw/agents/main/sessions.json",
+            self._remote_openclaw_config_path,
             *session_paths[:3],
         ]
         for path in candidate_paths:
@@ -782,30 +831,47 @@ class OpenClawContainerRuntimeManager:
             if not text.strip():
                 continue
             workspace_file_contents[path] = text
+            if path.endswith("workspace-state.json"):
+                workspace_file_contents.setdefault("openclaw_workspace_state.json", text)
+                manifest_files["workspace_state"] = "openclaw_workspace_state.json"
+                state_files.append("openclaw_workspace_state.json")
+            if path.endswith("sessions.json"):
+                workspace_file_contents.setdefault("openclaw_sessions_index.json", text)
+                manifest_files["session_index"] = "openclaw_sessions_index.json"
+                state_files.append("openclaw_sessions_index.json")
+            if path == self._remote_openclaw_config_path:
+                sanitized_config = _sanitize_json_text(text)
+                workspace_file_contents[path] = sanitized_config
+                workspace_file_contents.setdefault("openclaw_runtime_config.json", sanitized_config)
+                manifest_files["runtime_config"] = "openclaw_runtime_config.json"
+                state_files.append("openclaw_runtime_config.json")
             if path.endswith("openclaw_output.jsonl") and not response_stream_alias:
                 response_stream_alias = "openclaw_output.jsonl"
                 workspace_file_contents.setdefault(response_stream_alias, text)
             if path.endswith(".jsonl") and "/sessions/" in path and not session_alias_path:
                 session_alias_path = "openclaw_session.jsonl"
                 workspace_file_contents.setdefault(session_alias_path, text)
+                state_files.append(session_alias_path)
+            if path not in collected_snapshot_paths:
+                collected_snapshot_paths.append(path)
         if not response_stream_alias and session_alias_path:
             response_stream_alias = session_alias_path
 
         artifact_manifest = {
             "files": {
-                "gateway_log_source": self._gateway_log_path,
-                "workspace_root": workspace_root,
+                **manifest_files,
                 "response_stream": response_stream_alias,
                 "session_trace": session_alias_path or (session_paths[0] if session_paths else ""),
                 "system_prompt": f"{workspace_root}/AGENTS.md",
-                "runtime_config": self._remote_openclaw_config_path,
             },
             "session_paths": session_paths,
         }
+        if state_files:
+            artifact_manifest["state_files"] = list(dict.fromkeys(state_files))
         return {
             "artifact_manifest": artifact_manifest,
             "gateway_log_excerpt": gateway_log[-20000:] if gateway_log else "",
-            "workspace_snapshot_paths": workspace_paths,
+            "workspace_snapshot_paths": collected_snapshot_paths,
             "workspace_file_contents": workspace_file_contents,
             "sandbox_metadata": self._sandbox_metadata(sandbox),
         }

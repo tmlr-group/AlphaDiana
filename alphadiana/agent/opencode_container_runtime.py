@@ -17,6 +17,7 @@ import logging
 import os
 import shlex
 import time
+from pathlib import Path
 from typing import Any
 
 _logger = logging.getLogger(__name__)
@@ -59,6 +60,16 @@ TESTBED_TOOL_PATH = ":".join(dict.fromkeys(TESTBED_PATH_SEGMENTS))
 # ---------------------------------------------------------------------------
 OPENCODE_XDG_DIR = "/tmp/opencode-xdg"
 OPENCODE_CONFIG_PATH = f"{OPENCODE_XDG_DIR}/opencode/opencode.json"
+_PRESERVED_TEXT_ARTIFACT_SUFFIXES = {
+    ".json",
+    ".jsonl",
+    ".log",
+    ".md",
+    ".txt",
+    ".toml",
+    ".yaml",
+    ".yml",
+}
 
 # ---------------------------------------------------------------------------
 # Default install script
@@ -93,6 +104,29 @@ DEFAULT_INSTALL_OPENCODE_COMMAND = "\n".join([
 
 def _progress(message: str) -> None:
     print(f"[OpenCodeContainer] {message}", flush=True)
+
+
+def _redact_secret_fields(value: Any) -> Any:
+    if isinstance(value, dict):
+        redacted: dict[str, Any] = {}
+        for key, item in value.items():
+            normalized = str(key).strip().lower().replace("-", "_")
+            if normalized in {"api_key", "apikey", "authorization", "token"} or normalized.endswith("_api_key"):
+                redacted[key] = "REDACTED"
+            else:
+                redacted[key] = _redact_secret_fields(item)
+        return redacted
+    if isinstance(value, list):
+        return [_redact_secret_fields(item) for item in value]
+    return value
+
+
+def _sanitize_json_text(raw_text: str) -> str:
+    try:
+        payload = json.loads(raw_text)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return raw_text
+    return json.dumps(_redact_secret_fields(payload), indent=2, ensure_ascii=False)
 
 
 class OpenCodeContainerRuntimeManager:
@@ -142,6 +176,99 @@ class OpenCodeContainerRuntimeManager:
             except Exception:
                 _logger.debug("Failed to read sandbox metadata", exc_info=True)
         return {}
+
+    def _read_text_best_effort(self, sandbox: Any, remote_path: str) -> str:
+        path = str(remote_path or "").strip()
+        if not path:
+            return ""
+        try:
+            text = sandbox.read_text(path)
+            if isinstance(text, str):
+                return text
+        except Exception:
+            pass
+        try:
+            result = sandbox.execute(f"cat {shlex.quote(path)}")
+        except Exception:
+            return ""
+        if getattr(result, "exit_code", 1) != 0:
+            return ""
+        stdout = getattr(result, "stdout", "")
+        return stdout if isinstance(stdout, str) else ""
+
+    def _summarize_sqlite_db(self, sandbox: Any, db_path: str) -> str:
+        script = """
+import json
+import os
+import pathlib
+import sqlite3
+
+db_path = pathlib.Path(os.environ["DB_PATH"])
+summary = {"path": str(db_path)}
+if db_path.exists():
+    summary["size_bytes"] = db_path.stat().st_size
+else:
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+    raise SystemExit(0)
+
+conn = None
+try:
+    conn = sqlite3.connect(str(db_path))
+    cur = conn.cursor()
+    tables = []
+    schema = []
+    for name, sql in cur.execute(
+        "SELECT name, sql FROM sqlite_master WHERE type='table' ORDER BY name"
+    ).fetchall():
+        row_count = None
+        try:
+            row_count = cur.execute(f'SELECT COUNT(*) FROM "{name}"').fetchone()[0]
+        except Exception:
+            row_count = None
+        tables.append({"name": name, "row_count": row_count})
+        schema.append({"name": name, "sql": sql})
+    summary["tables"] = tables
+    summary["schema"] = schema
+    preview_tables = [name for name in ("session", "message", "part") if any(item["name"] == name for item in tables)]
+    previews = {}
+    for name in preview_tables:
+        columns = [row[1] for row in cur.execute(f"PRAGMA table_info('{name}')").fetchall()]
+        rows = cur.execute(f'SELECT * FROM "{name}" ORDER BY rowid LIMIT 10').fetchall()
+        preview_rows = []
+        for row in rows:
+            item = {}
+            for index, column in enumerate(columns):
+                value = row[index]
+                if isinstance(value, bytes):
+                    value = value.decode("utf-8", "replace")
+                if isinstance(value, str) and len(value) > 2000:
+                    value = value[:2000] + "...<truncated>"
+                item[column] = value
+            preview_rows.append(item)
+        previews[name] = preview_rows
+    if previews:
+        summary["previews"] = previews
+except Exception as exc:
+    summary["error"] = f"{type(exc).__name__}: {exc}"
+finally:
+    if conn is not None:
+        conn.close()
+
+print(json.dumps(summary, ensure_ascii=False, indent=2))
+"""
+        command = (
+            f"DB_PATH={shlex.quote(db_path)} python3 - <<'PY'\n"
+            f"{script}"
+            "PY"
+        )
+        try:
+            result = sandbox.execute(command)
+        except Exception:
+            return ""
+        if getattr(result, "exit_code", 1) != 0:
+            return ""
+        stdout = getattr(result, "stdout", "")
+        return stdout if isinstance(stdout, str) else ""
 
     # ------------------------------------------------------------------
     # Installation
@@ -333,14 +460,120 @@ class OpenCodeContainerRuntimeManager:
 
     def collect_artifacts(self, sandbox: Any) -> dict[str, Any]:
         """Collect opencode session artifacts from the container."""
-        session_dir = f"{OPENCODE_XDG_DIR}/opencode/sessions"
+        artifact_root = f"{OPENCODE_XDG_DIR}/opencode"
         listing = sandbox.execute(
-            f"ls -t {shlex.quote(session_dir)}/ 2>/dev/null | head -5 || true"
+            f"find {shlex.quote(artifact_root)} -maxdepth 4 -type f | sort 2>/dev/null || true"
         )
-        session_files = [ln.strip() for ln in listing.stdout.splitlines() if ln.strip()]
+        artifact_paths = [
+            line.strip()
+            for line in listing.stdout.splitlines()
+            if line.strip().startswith("/")
+        ]
+        session_listing = sandbox.execute(
+            f"ls -t {shlex.quote(artifact_root)}/sessions/*.jsonl 2>/dev/null | head -5 || true"
+        )
+        session_files = [
+            ln.strip()
+            for ln in session_listing.stdout.splitlines()
+            if ln.strip().endswith(".jsonl")
+        ]
+
+        workspace_file_contents: dict[str, str] = {}
+        manifest_files: dict[str, str] = {}
+        state_files: list[str] = []
+        memory_files: list[str] = []
+
+        if artifact_paths:
+            workspace_file_contents["opencode_workspace_listing.txt"] = "".join(
+                f"{Path(path).relative_to(Path(artifact_root)).as_posix()}\n"
+                for path in artifact_paths
+            )
+            manifest_files["workspace_listing"] = "opencode_workspace_listing.txt"
+
+        config_text = self._read_text_best_effort(sandbox, OPENCODE_CONFIG_PATH)
+        if config_text.strip():
+            workspace_file_contents["opencode_config.json"] = _sanitize_json_text(config_text)
+            manifest_files["runtime_config"] = "opencode_config.json"
+            state_files.append("opencode_config.json")
+
+        selected_session_path = ""
+        for remote_path in session_files[:3]:
+            text = self._read_text_best_effort(sandbox, remote_path)
+            if not text.strip():
+                continue
+            selected_session_path = remote_path
+            workspace_file_contents["opencode_session.jsonl"] = text
+            manifest_files["session_trace"] = "opencode_session.jsonl"
+            state_files.append("opencode_session.jsonl")
+            session_alias = f"state/sessions/{Path(remote_path).name}"
+            workspace_file_contents[session_alias] = text
+            state_files.append(session_alias)
+            break
+
+        db_paths = [path for path in artifact_paths if Path(path).name.startswith("opencode.db")]
+        if db_paths:
+            inventory_alias = "memory/opencode_db_files.json"
+            workspace_file_contents[inventory_alias] = json.dumps(
+                {
+                    "files": [
+                        {
+                            "path": Path(path).relative_to(Path(artifact_root)).as_posix(),
+                            "size_bytes": int(
+                                getattr(
+                                    sandbox.execute(f"wc -c < {shlex.quote(path)} || true"),
+                                    "stdout",
+                                    "0",
+                                ).strip() or "0"
+                            ),
+                        }
+                        for path in db_paths
+                    ]
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+            manifest_files["memory_inventory"] = inventory_alias
+            memory_files.append(inventory_alias)
+
+            primary_db = next((path for path in db_paths if Path(path).name == "opencode.db"), "")
+            if primary_db:
+                summary_text = self._summarize_sqlite_db(sandbox, primary_db)
+                if summary_text.strip():
+                    summary_alias = "memory/opencode.db.summary.json"
+                    workspace_file_contents[summary_alias] = summary_text
+                    manifest_files["memory_summary"] = summary_alias
+                    memory_files.append(summary_alias)
+
+        for remote_path in artifact_paths:
+            relative = Path(remote_path).relative_to(Path(artifact_root)).as_posix()
+            if remote_path == OPENCODE_CONFIG_PATH:
+                continue
+            if relative.startswith("sessions/"):
+                continue
+            if Path(remote_path).name.startswith("opencode.db"):
+                continue
+            if Path(relative).suffix.lower() not in _PRESERVED_TEXT_ARTIFACT_SUFFIXES:
+                continue
+            text = self._read_text_best_effort(sandbox, remote_path)
+            if not text.strip():
+                continue
+            alias = f"state/{relative}"
+            workspace_file_contents[alias] = text
+            state_files.append(alias)
+
+        artifact_manifest: dict[str, Any] = {"files": manifest_files} if manifest_files else {}
+        if state_files:
+            artifact_manifest["state_files"] = list(dict.fromkeys(state_files))
+        if memory_files:
+            artifact_manifest["memory_files"] = list(dict.fromkeys(memory_files))
         return {
             "xdg_dir": OPENCODE_XDG_DIR,
             "session_files": session_files,
+            "artifact_manifest": artifact_manifest,
+            "workspace_snapshot_paths": artifact_paths,
+            "workspace_file_contents": workspace_file_contents,
+            "sandbox_metadata": self._sandbox_metadata(sandbox),
+            "selected_session_path": selected_session_path,
         }
 
     def teardown(self) -> None:
