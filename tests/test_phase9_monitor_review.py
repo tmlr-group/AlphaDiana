@@ -205,6 +205,17 @@ class TestGenerateReview:
 
 
 class TestReviewCLI:
+    def test_reads_jsonl_inside_run_dir(self, tmp_path: Path):
+        run_dir = tmp_path / "run_1"
+        run_dir.mkdir()
+        (run_dir / "run_1.jsonl").write_text(
+            json.dumps(_make_record("t0", True, 0.5)) + "\n",
+            encoding="utf-8",
+        )
+        md = generate_review(run_dir)
+        assert "Total records: **1**" in md
+        assert "Correct: **1**" in md
+
     def test_writes_codex_review_md(self, tmp_path: Path):
         run_dir = tmp_path / "run_1"
         run_dir.mkdir()
