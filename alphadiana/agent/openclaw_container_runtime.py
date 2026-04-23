@@ -324,6 +324,10 @@ class OpenClawContainerRuntimeManager:
 
     def _resolve_env_value(self, env_key: str, config_key: str) -> str:
         value = str(self._config.get(config_key, "")).strip()
+        if not value:
+            # Backward compatibility: some configs/tests pass upstream values
+            # using uppercase env-style keys directly in agent.config.
+            value = str(self._config.get(env_key, "")).strip()
         if value:
             return value
         return os.environ.get(env_key, "").strip()

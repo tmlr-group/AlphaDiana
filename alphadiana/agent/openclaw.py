@@ -34,6 +34,12 @@ from collections import deque
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
+from alphadiana.agent.logprob_capture import (
+    apply_openai_logprob_request,
+    extract_openai_logprob_records,
+    finalize_logprob_capture,
+    resolve_logprob_capture_config,
+)
 from alphadiana.agent.base import Agent, AgentResponse
 from alphadiana.agent.preservation import add_artifact_file_refs
 from alphadiana.agent.registry import AgentRegistry
@@ -759,6 +765,7 @@ class OpenClawAgent(Agent):
             float(config.get("stream_idle_timeout", min(self._request_timeout, 180.0))),
         )
         self._proxy_timeout = int(config.get("proxy_timeout", 600))
+        self._logprob_capture = resolve_logprob_capture_config(config)
         self._config = config
 
         # Agent.md customization
@@ -1250,6 +1257,7 @@ class OpenClawAgent(Agent):
             payload["max_tokens"] = resolved
         if self._top_p is not None:
             payload["top_p"] = self._top_p
+        apply_openai_logprob_request(payload, self._logprob_capture)
         return payload
 
     def solve(self, task: BenchmarkTask, sandbox: Any = None) -> AgentResponse:
@@ -1355,8 +1363,12 @@ class OpenClawAgent(Agent):
         recovered_trajectory: list[dict] = []
         partial_reasoning_only = False
         received_done: bool = False
+        selected_logprob_records: list[dict] = []
+        logprob_source_attempt = 0
         for attempt in range(1, self._max_attempts + 1):
             attempt_start = time.monotonic()
+            attempt_logprob_records: list[dict] = []
+            attempt_token_index = 0
             try:
                 chunks: list[str] = []
                 reasoning_chunks: list[str] = []
@@ -1406,6 +1418,10 @@ class OpenClawAgent(Agent):
                                         chunks.append(_coerce_text_content(assistant_content))
                                     elif reasoning_content:
                                         reasoning_chunks.append(_coerce_text_content(reasoning_content))
+                                attempt_logprob_records, attempt_token_index = extract_openai_logprob_records(
+                                    response_json,
+                                    start_index=0,
+                                )
                         else:
                             # SSE path (text/event-stream or unspecified Content-Type).
                             if status_code >= 400:
@@ -1466,6 +1482,12 @@ class OpenClawAgent(Agent):
                                         chunks.append(content)
                                     if reasoning_content:
                                         reasoning_chunks.append(_coerce_text_content(reasoning_content))
+                                    chunk_records, attempt_token_index = extract_openai_logprob_records(
+                                        chunk_json,
+                                        start_index=attempt_token_index,
+                                    )
+                                    if chunk_records:
+                                        attempt_logprob_records.extend(chunk_records)
                                     if chunk_json.get("usage"):
                                         response_json = chunk_json
 
@@ -1539,11 +1561,15 @@ class OpenClawAgent(Agent):
                     cumulative_token_usage["completion_tokens"] += int(attempt_usage.get("completion_tokens", 0))
                     cumulative_token_usage["total_tokens"] += int(attempt_usage.get("total_tokens", 0))
                 if raw_output:
+                    selected_logprob_records = list(attempt_logprob_records)
+                    logprob_source_attempt = attempt if selected_logprob_records else 0
                     # Successful response — reset the consecutive-empty counter.
                     with self._circuit_lock:
                         self._consecutive_empty_sse = 0
                     break
                 if raw_reasoning:
+                    selected_logprob_records = list(attempt_logprob_records)
+                    logprob_source_attempt = attempt if selected_logprob_records else 0
                     # Partial reasoning counts as a success for the circuit breaker.
                     with self._circuit_lock:
                         self._consecutive_empty_sse = 0
@@ -1916,6 +1942,28 @@ class OpenClawAgent(Agent):
             selected_response="openclaw_selected_response.json",
         )
 
+        response_metadata = {
+            "gateway_response_id": response_json.get("id", ""),
+            "sandbox_id": runtime_info.get("sandbox_id", "") or sandbox_id,
+            "model": self._model,
+            "retry_responses": retry_responses,
+            "retry_count": attempt,
+            "token_usage_total": cumulative_token_usage,
+            "partial_reasoning_only": partial_reasoning_only and not raw_output,
+            "answer_source": answer_source,
+            "received_done": received_done,
+            "session_tainted": session_tainted,
+            "raw_reasoning": raw_reasoning,
+            "logprob_attempt_count": attempt,
+            "logprob_source_attempt": logprob_source_attempt,
+        }
+        token_entropy_stats, response_metadata = finalize_logprob_capture(
+            harness="openclaw",
+            enabled=self._logprob_capture["enabled"],
+            records=selected_logprob_records,
+            metadata=response_metadata,
+        )
+
         return AgentResponse(
             answer=answer,
             trajectory=trajectory,
@@ -1923,6 +1971,7 @@ class OpenClawAgent(Agent):
             raw_output=raw_output,
             token_usage=token_usage,
             wall_time_sec=wall_time,
+            token_entropy_stats=token_entropy_stats,
             request_messages=request_messages,
             response_json=response_json,
             sandbox_id=runtime_info.get("sandbox_id", ""),
@@ -1934,20 +1983,7 @@ class OpenClawAgent(Agent):
             sandbox_metadata=artifact_data.get("sandbox_metadata", {}),
             system_prompt=extract_system_prompt(trajectory) or self._retrieve_system_prompt_from_sandbox(sandbox),
             finish_reason="incomplete" if partial_reasoning_only and not raw_output else "",
-            metadata={
-                "gateway_response_id": response_json.get("id", ""),
-                "sandbox_id": runtime_info.get("sandbox_id", "") or sandbox_id,
-                "model": self._model,
-                "retry_responses": retry_responses,
-                "retry_count": attempt,
-                "token_usage_total": cumulative_token_usage,
-                "partial_reasoning_only": partial_reasoning_only and not raw_output,
-                "answer_source": answer_source,
-                "answer_source": answer_source,
-                "received_done": received_done,
-                "session_tainted": session_tainted,
-                "raw_reasoning": raw_reasoning,
-            },
+            metadata=response_metadata,
         )
 
     def teardown(self) -> None:
