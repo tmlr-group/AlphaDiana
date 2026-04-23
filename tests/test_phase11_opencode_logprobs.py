@@ -31,13 +31,20 @@ def _logprob_payload(token: str, value: float) -> dict:
 
 def test_opencode_parser_extracts_openai_logprob_records() -> None:
     records = extract_opencode_logprob_records(
-        events=[{"type": "trace", "payload": _logprob_payload("A", -0.1)}],
+        events=[
+            {"type": "trace", "payload": _logprob_payload("A", -0.1)},
+            {"type": "trace", "payload": _logprob_payload("B", -0.2)},
+        ],
         session_trace="",
         stdout="",
     )
-    assert len(records) == 1
+    assert len(records) == 2
     assert records[0]["token_index"] == 0
     assert records[0]["token"] == "A"
+    assert records[1]["token_index"] == 1
+    assert records[1]["token"] == "B"
+    token_indices = [record["token_index"] for record in records]
+    assert token_indices == sorted(token_indices)
 
 
 def test_opencode_parser_scans_session_trace() -> None:
@@ -181,4 +188,3 @@ def test_opencode_container_response_finalizes_captured_logprobs() -> None:
     assert response.metadata["logprobs_capture_status"] == "captured"
     assert response.metadata["logprob_capture_harness"] == "opencode"
     assert response.token_entropy_stats["n_tokens"] == 1
-
