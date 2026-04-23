@@ -164,44 +164,6 @@ class DirectLLMAgent(Agent):
         self._resolved_max_tokens = 65536
         return self._resolved_max_tokens
 
-    _IMAGE_TOKEN_ESTIMATE = 765
-
-    def _estimate_prompt_tokens(self, messages: list[dict]) -> int:
-        """Rough token estimate: ~4 chars per token for text, 765 per image."""
-        total_chars = 0
-        image_tokens = 0
-        for m in messages:
-            c = m.get("content", "")
-            if isinstance(c, str):
-                total_chars += len(c)
-            elif isinstance(c, list):
-                for part in c:
-                    if isinstance(part, dict) and part.get("type") == "text":
-                        total_chars += len(part.get("text", ""))
-                    elif isinstance(part, dict) and part.get("type") == "image_url":
-                        image_tokens += self._IMAGE_TOKEN_ESTIMATE
-        return total_chars // 3 + image_tokens
-
-    def _cap_max_tokens(self, max_tokens: int, messages: list[dict]) -> int:
-        """Cap max_tokens so that prompt + output stays within model context.
-
-        This avoids vLLM ``VLLMValidationError`` when
-        ``prompt_tokens + max_tokens > max_model_len``.
-        """
-        max_model_len = getattr(self, "_max_model_len", None) or 0
-        if max_model_len <= 0:
-            return max_tokens
-        estimated_prompt = self._estimate_prompt_tokens(messages)
-        headroom = max_model_len - estimated_prompt
-        if headroom < max_tokens:
-            capped = max(headroom - 64, 1)  # 64-token safety margin
-            logger.info(
-                "Capping max_tokens from %d to %d (est. prompt=%d, model_len=%d)",
-                max_tokens, capped, estimated_prompt, max_model_len,
-            )
-            return capped
-        return max_tokens
-
     def solve(self, task: BenchmarkTask, sandbox: Any = None) -> AgentResponse:
         if self._client is None:
             try:
@@ -241,8 +203,7 @@ class DirectLLMAgent(Agent):
         if self._max_completion_tokens is not None:
             request_kwargs["max_completion_tokens"] = self._max_completion_tokens
         else:
-            raw_max = self._resolve_max_tokens()
-            request_kwargs["max_tokens"] = self._cap_max_tokens(raw_max, messages)
+            request_kwargs["max_tokens"] = self._resolve_max_tokens()
         if self._top_p is not None:
             request_kwargs["top_p"] = self._top_p
 

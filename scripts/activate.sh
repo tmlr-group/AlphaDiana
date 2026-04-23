@@ -28,6 +28,12 @@ from alphadiana.utils.rock_ports import default_checkout_env_name
 print(default_checkout_env_name(project_root))
 PYEOF
 )"
+_activate_is_weak_gateway_token() {
+  case "${1:-}" in
+    ""|OPENCLAW|openclaw|test|token|default|changeme|secret) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 if [ -f "${_activate_env_file}" ]; then
   # shellcheck disable=SC1090
   source "${_activate_env_file}"
@@ -63,6 +69,16 @@ if [ -f "${_activate_project_root}/.env" ]; then
   set +a
 else
   echo "Warning: .env not found. Create it with OPENAI_BASE_URL, OPENAI_API_KEY, OPENAI_MODEL_NAME." >&2
+fi
+
+if _activate_is_weak_gateway_token "${OPENCLAW_GATEWAY_TOKEN:-}"; then
+  OPENCLAW_GATEWAY_TOKEN="$("${_activate_python}" - <<'PYEOF' 2>/dev/null || true
+import secrets
+
+print(secrets.token_urlsafe(32))
+PYEOF
+)"
+  export OPENCLAW_GATEWAY_TOKEN
 fi
 
 # ── 4. ROCK environment variables ────────────────────────────────────────────

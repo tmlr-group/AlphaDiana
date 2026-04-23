@@ -179,5 +179,21 @@ Current practical takeaway from that note:
   `opencode` path still over-requests output tokens and preserves
   `ContextOverflowError` task records for `hle`, `gpqa_diamond`, and
   `mmmu_pro`
+- as of April 23, 2026, the checked-in plain-benchmark `opencode` configs keep
+  `tool_call: true` again. We intentionally do not rewrite benchmark prompts
+  or add a token-budget proxy in front of the local vLLM server for this path;
+  if vLLM rejects the request with `ContextOverflowError` /
+  `VLLMValidationError`, AlphaDiana stores that upstream failure directly as a
+  provider-error task record
+- the same direct-provider default now applies across the local-Qwen harnesses:
+  current main no longer does request-side token estimation / max-token
+  down-capping in `direct_llm`, and the SWE container path no longer adds
+  default problem-statement truncation or OpenClaw completion-cap shrinking
+  just to avoid overflow. Oversized requests are left to the provider, and
+  upstream overflow stays a preserved task error
+- `swebench_docker` also now reuses cached local base/runtime images instead of
+  forcing `docker pull` before every derived runtime-image build. That removes
+  one common Docker Hub failure mode on shared hosts that already have the
+  required SWE images cached
 - `openclaw` / `zeroclaw` local-Qwen follow-up from this checkout is still
   blocked by ROCK bring-up drift rather than by the plain benchmark configs

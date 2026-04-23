@@ -13,6 +13,17 @@ By default, `quickstart.sh` now creates a checkout-derived conda env such as
 keeps the current checkout's editable installs from drifting onto another
 worktree's conda env.
 
+Important caveat for agent-managed shells:
+
+- `quickstart.sh` is a bootstrap helper, not a long-lived daemon supervisor.
+  If your shell runner reaps background children after the command exits,
+  keep `ray start --head --block`, ROCK admin, and ROCK proxy in dedicated
+  long-lived terminal sessions while the evaluation is running.
+- If you start ROCK admin manually, use a runtime `ROCK_CONFIG` whose
+  `ray.address` points at the active checkout-owned Ray GCS port. Otherwise
+  admin can fall back to a local default Ray init and later exit with
+  `GCS unavailable` even though the intended Ray head is healthy.
+
 If you need to run manually, pay attention to the following:
 
 - Run `source scripts/rock_env.sh` from the repository root directory

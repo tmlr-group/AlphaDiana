@@ -31,6 +31,7 @@ from alphadiana.agent.preservation import (
 )
 from alphadiana.agent.registry import register_agent
 from alphadiana.benchmark.base import BenchmarkTask
+from alphadiana.utils.openclaw_security import resolve_openclaw_gateway_token
 from alphadiana.utils.rock_runtime import PREBUILT_SANDBOX_IMAGE
 
 logger = logging.getLogger(__name__)
@@ -70,13 +71,32 @@ _RUNTIME_IMAGE_REPO = os.environ.get(
     "SWEBENCH_RUNTIME_IMAGE_REPO",
     "alphadiana-swebench-runtime",
 )
-_OPENCLAW_MIN_COMPLETION_TOKENS = 512
-_OPENCLAW_MAX_COMPLETION_TOKENS = 8192
-_OPENCLAW_LIST_SECTION_LIMIT = 20
 _EDIT_FIRST_LIST_SECTION_LIMIT = 10
 _OPENCODE_TARGET_HINT_LIMIT = 6
-_PROMPT_HEADROOM_MARGIN_TOKENS = 64
 _TRUNCATION_MARKER = "...[truncated for context budget]"
+_PROVIDER_FAILURE_MARKERS = (
+    "all providers/models failed",
+    "api error",
+    "authentication",
+    "bad gateway",
+    "contextoverflowerror",
+    "developer instruction is not enabled",
+    "forbidden",
+    "input_tokens",
+    "max context",
+    "maximum context length",
+    "no endpoints found that support tool use",
+    "provider",
+    "provider_failure",
+    "provider_preflight_failed",
+    "rate limited",
+    "rate_limited",
+    "tool choice requires",
+    "too many requests",
+    "unauthorized",
+    "user location is not supported for the api use",
+    "vllmvalidationerror",
+)
 
 
 def _run(cmd: list[str], timeout: int | None = None, **kwargs: Any) -> subprocess.CompletedProcess:
@@ -134,6 +154,14 @@ def _safe_artifact_fragment(value: str) -> str:
     """Convert arbitrary identifiers into filesystem-safe path fragments."""
     fragment = re.sub(r"[^A-Za-z0-9._-]+", "-", str(value).strip()).strip("-")
     return fragment or "value"
+
+
+def _classify_preserved_failure_error_type(*parts: Any) -> str:
+    """Map preserved SWE-bench failures into stable result-store error types."""
+    blob = "\n".join(str(part or "") for part in parts).strip().lower()
+    if any(marker in blob for marker in _PROVIDER_FAILURE_MARKERS):
+        return "provider_error"
+    return "agent_error"
 
 
 def _extract_prefixed_value(text: str, prefix: str) -> str:
@@ -549,8 +577,10 @@ exit 1
         runtime_image_built = False
 
         if not self._docker_image_exists(runtime_image):
-            self._docker_pull(base_image)
-            self._docker_pull(runtime_source_image)
+            if not self._docker_image_exists(base_image):
+                self._docker_pull(base_image)
+            if not self._docker_image_exists(runtime_source_image):
+                self._docker_pull(runtime_source_image)
             self._docker_build_image(
                 runtime_image,
                 dockerfile,
@@ -776,112 +806,13 @@ RUN chmod +x /usr/local/bin/zeroclaw
             return None
         return parsed if parsed > 0 else None
 
-    def _resolve_context_window(
-        self,
-        *,
-        override_env_var: str | None = None,
-        mode_env: dict[str, str] | None = None,
-    ) -> int:
-        """Resolve a context window from env override or provider metadata."""
-        if override_env_var:
-            for source in (mode_env or {}, os.environ):
-                parsed = self._parse_positive_int(source.get(override_env_var))
-                if parsed is not None:
-                    return parsed
-        model_name = ""
-        if mode_env:
-            model_name = str(mode_env.get("OPENAI_MODEL_NAME", "")).strip()
-        return self._resolve_model_context_window(model_name or self._model) or 65536
-
-    def _evaluate_openclaw_prompt_budget(
-        self,
-        *,
-        parts: dict[str, Any],
-        context_window: int,
-        requested_completion_cap: int,
-        compactions_applied: list[str],
-    ) -> dict[str, Any]:
-        """Estimate prompt budget and derive a safe OpenClaw completion cap."""
-        prompt = self._render_container_prompt(parts)
-        estimated_prompt_tokens = self._estimate_prompt_tokens(
-            [{"role": "user", "content": prompt}]
-        )
-        raw_headroom_tokens = max(context_window - estimated_prompt_tokens, 0)
-        available_headroom_after_prompt = max(
-            raw_headroom_tokens - _PROMPT_HEADROOM_MARGIN_TOKENS,
-            0,
-        )
-        completion_cap = min(
-            requested_completion_cap,
-            available_headroom_after_prompt,
-            _OPENCLAW_MAX_COMPLETION_TOKENS,
-        )
-        return {
-            "prompt": prompt,
-            "estimated_prompt_tokens": estimated_prompt_tokens,
-            "raw_headroom_tokens": raw_headroom_tokens,
-            "available_headroom_after_prompt": available_headroom_after_prompt,
-            "requested_completion_cap": requested_completion_cap,
-            "completion_cap": completion_cap,
-            "context_window": context_window,
-            "compactions_applied": list(compactions_applied),
-            "fits": completion_cap >= _OPENCLAW_MIN_COMPLETION_TOKENS,
-        }
-
-    def _truncate_openclaw_issue_description(
-        self,
-        *,
-        parts: dict[str, Any],
-        context_window: int,
-        requested_completion_cap: int,
-        compactions_applied: list[str],
-    ) -> dict[str, Any]:
-        """Truncate the issue description until the prompt fits the context budget."""
-        original_issue = str(parts.get("issue_description", "")).strip()
-        if not original_issue:
-            return self._evaluate_openclaw_prompt_budget(
-                parts=parts,
-                context_window=context_window,
-                requested_completion_cap=requested_completion_cap,
-                compactions_applied=compactions_applied,
-            )
-
-        low = 0
-        high = len(original_issue)
-        best: dict[str, Any] | None = None
-        while low <= high:
-            mid = (low + high) // 2
-            candidate_parts = dict(parts)
-            candidate_parts["issue_description"] = (
-                original_issue[:mid].rstrip() + _TRUNCATION_MARKER
-            )
-            evaluation = self._evaluate_openclaw_prompt_budget(
-                parts=candidate_parts,
-                context_window=context_window,
-                requested_completion_cap=requested_completion_cap,
-                compactions_applied=compactions_applied + ["truncated_issue_description"],
-            )
-            if evaluation["fits"]:
-                best = evaluation
-                low = mid + 1
-            else:
-                high = mid - 1
-        if best is not None:
-            return best
-        return self._evaluate_openclaw_prompt_budget(
-            parts=parts,
-            context_window=context_window,
-            requested_completion_cap=requested_completion_cap,
-            compactions_applied=compactions_applied,
-        )
-
     def _prepare_openclaw_prompt(
         self,
         task: BenchmarkTask,
         repo_root: str,
         mode_env: dict[str, str],
     ) -> tuple[str, dict[str, Any]]:
-        """Prepare an OpenClaw prompt that fits the target model context window."""
+        """Prepare an OpenClaw prompt without request-side context trimming."""
         parts = self._build_container_prompt_parts(task, repo_root)
         prompt_profile = (
             str(mode_env.get("OPENCLAW_PROMPT_PROFILE", "edit_first")).strip()
@@ -890,14 +821,8 @@ RUN chmod +x /usr/local/bin/zeroclaw
         issue_char_limit = self._parse_positive_int(
             mode_env.get("OPENCLAW_PROBLEM_STATEMENT_MAX_CHARS")
         )
-        context_window = self._resolve_context_window(
-            override_env_var="OPENCLAW_CONTEXT_WINDOW",
-            mode_env=mode_env,
-        )
-        requested_completion_cap = min(
-            self._parse_positive_int(mode_env.get("OPENCLAW_COMPLETION_MAX_TOKENS"))
-            or _OPENCLAW_MAX_COMPLETION_TOKENS,
-            _OPENCLAW_MAX_COMPLETION_TOKENS,
+        requested_completion_cap = self._parse_positive_int(
+            mode_env.get("OPENCLAW_COMPLETION_MAX_TOKENS")
         )
         compactions_applied: list[str] = []
 
@@ -926,60 +851,20 @@ RUN chmod +x /usr/local/bin/zeroclaw
                     f"capped_issue_description_chars:{issue_char_limit}"
                 )
 
-        evaluation = self._evaluate_openclaw_prompt_budget(
-            parts=parts,
-            context_window=context_window,
-            requested_completion_cap=requested_completion_cap,
-            compactions_applied=compactions_applied,
-        )
-        if not evaluation["fits"] and parts.get("pass_to_pass"):
-            parts["pass_to_pass"] = []
-            compactions_applied.append("removed_pass_to_pass")
-            evaluation = self._evaluate_openclaw_prompt_budget(
-                parts=parts,
-                context_window=context_window,
-                requested_completion_cap=requested_completion_cap,
-                compactions_applied=compactions_applied,
-            )
-
-        if not evaluation["fits"]:
-            relevant_tests = list(parts.get("relevant_tests", []))
-            fail_to_pass = list(parts.get("fail_to_pass", []))
-            capped_relevant = relevant_tests[:_OPENCLAW_LIST_SECTION_LIMIT]
-            capped_fail = fail_to_pass[:_OPENCLAW_LIST_SECTION_LIMIT]
-            if capped_relevant != relevant_tests or capped_fail != fail_to_pass:
-                parts["relevant_tests"] = capped_relevant
-                parts["fail_to_pass"] = capped_fail
-                compactions_applied.append("capped_test_lists_to_20")
-                evaluation = self._evaluate_openclaw_prompt_budget(
-                    parts=parts,
-                    context_window=context_window,
-                    requested_completion_cap=requested_completion_cap,
-                    compactions_applied=compactions_applied,
-                )
-
-        if not evaluation["fits"]:
-            evaluation = self._truncate_openclaw_issue_description(
-                parts=parts,
-                context_window=context_window,
-                requested_completion_cap=requested_completion_cap,
-                compactions_applied=compactions_applied,
-            )
-
-        budget_metadata = {
-            **evaluation,
+        prompt = self._render_container_prompt(parts)
+        prompt_metadata = {
+            "prompt": prompt,
             "mode": "openclaw",
             "repo_root": repo_root,
             "model": mode_env.get("OPENAI_MODEL_NAME", self._model),
-            "needs_larger_context_model": not evaluation["fits"],
-            "recommended_env": [
-                "OPENCLAW_SMOKE_MODEL_NAME",
-                "OPENCLAW_CONTEXT_WINDOW",
-            ],
             "prompt_profile": prompt_profile,
             "problem_statement_max_chars": issue_char_limit,
+            "compactions_applied": compactions_applied,
+            "requested_completion_cap": requested_completion_cap,
+            "completion_cap": requested_completion_cap,
+            "budget_enforcement": "disabled_direct_provider_error",
         }
-        return evaluation["prompt"], budget_metadata
+        return prompt, prompt_metadata
 
     def _prepare_opencode_prompt(
         self,
@@ -1417,6 +1302,7 @@ RUN chmod +x /usr/local/bin/zeroclaw
         response_json: dict[str, Any] | None = None,
         raw_output: str = "",
         metadata: dict[str, Any] | None = None,
+        error_type: str | None = None,
     ) -> None:
         """Raise a RuntimeError while attaching a partial AgentResponse."""
         exc = RuntimeError(message)
@@ -1431,6 +1317,8 @@ RUN chmod +x /usr/local/bin/zeroclaw
             raw_output=raw_output,
             metadata=metadata,
         )
+        if error_type:
+            exc.error_type = error_type
         raise exc
 
     def _stage_file_into_container(
@@ -1467,15 +1355,15 @@ RUN chmod +x /usr/local/bin/zeroclaw
 
         repo_root = self._detect_repo_root(container_id)
         mode_env = self._build_mode_env()
+        gateway_token = resolve_openclaw_gateway_token(mode_env.get("OPENCLAW_GATEWAY_TOKEN"))
         for key, value in {
-            "OPENCLAW_GATEWAY_TOKEN": "OPENCLAW",
+            "OPENCLAW_GATEWAY_TOKEN": gateway_token,
             "OPENCLAW_AGENT_ID": "main",
             "OPENCLAW_TOOLS_PROFILE": "coding",
             "OPENCLAW_REQUIRE_PATCH": "1",
             "OPENCLAW_MAX_TOOL_CALLS_WITHOUT_EDIT": "20",
             "OPENCLAW_MAX_NO_EDIT_SECONDS": "300",
             "OPENCLAW_PROMPT_PROFILE": "edit_first",
-            "OPENCLAW_PROBLEM_STATEMENT_MAX_CHARS": "12000",
             "ALPHADIANA_INSTANCE_ID": task.task_id,
             "OPENCLAW_SESSION_KEY": task.task_id,
             "OPENCLAW_CHAT_USER": task.task_id,
@@ -1545,15 +1433,6 @@ RUN chmod +x /usr/local/bin/zeroclaw
             "sample_index": sample_index,
             "execution_id": execution_id,
         }
-        if prompt_budget.get("needs_larger_context_model"):
-            raise RuntimeError(
-                "OpenClaw prompt does not fit the configured context window even after "
-                "compaction. Export OPENCLAW_SMOKE_MODEL_NAME to a larger-context model "
-                "or set OPENCLAW_CONTEXT_WINDOW explicitly."
-            )
-        mode_env["OPENCLAW_COMPLETION_MAX_TOKENS"] = str(
-            prompt_budget["completion_cap"]
-        )
         openclaw_attempts_dir = local_artifacts / "openclaw_attempts"
         openclaw_attempts_dir.mkdir(parents=True, exist_ok=True)
         attempt_records: list[dict[str, Any]] = []
@@ -1752,6 +1631,15 @@ RUN chmod +x /usr/local/bin/zeroclaw
                     "edit_convergence": openclaw_edit_convergence,
                 },
             )
+            error_type = _classify_preserved_failure_error_type(
+                message,
+                raw_output,
+                gateway_log,
+                openclaw_tool_classification,
+                openclaw_tool_reason,
+                openclaw_convergence_classification,
+                openclaw_convergence_reason,
+            )
             self._raise_preserved_failure(
                 message,
                 mode="openclaw",
@@ -1763,6 +1651,7 @@ RUN chmod +x /usr/local/bin/zeroclaw
                 response_json=failure_json,
                 raw_output=raw_output or gateway_log.strip(),
                 metadata=openclaw_failure_metadata,
+                error_type=error_type,
             )
 
         if not openclaw_output.strip():
@@ -2008,7 +1897,6 @@ RUN chmod +x /usr/local/bin/zeroclaw
         for key, value in {
             "OPENCODE_REQUIRE_PATCH": "1",
             "OPENCODE_PROMPT_PROFILE": "edit_first",
-            "OPENCODE_PROBLEM_STATEMENT_MAX_CHARS": "12000",
             "OPENCODE_AUTO_TARGET_HINTS": "1",
         }.items():
             if _is_blank_env_value(mode_env.get(key, "")):
@@ -2400,6 +2288,17 @@ RUN chmod +x /usr/local/bin/zeroclaw
                     "activity_summary": opencode_activity_summary,
                 },
             )
+            error_type = _classify_preserved_failure_error_type(
+                message,
+                raw_output,
+                opencode_stderr,
+                opencode_provider_preflight,
+                opencode_startup_diagnostics,
+                opencode_stall_reason,
+                opencode_no_edit_reason,
+                selected_attempt_record.get("classification", "") if selected_attempt_record else "",
+                selected_attempt_record.get("reason", "") if selected_attempt_record else "",
+            )
             self._raise_preserved_failure(
                 message,
                 mode="opencode",
@@ -2411,6 +2310,7 @@ RUN chmod +x /usr/local/bin/zeroclaw
                 response_json=failure_json,
                 raw_output=raw_output or opencode_stderr.strip() or opencode_no_edit_reason,
                 metadata=opencode_failure_metadata,
+                error_type=error_type,
             )
 
         if "status: failed" in opencode_provider_preflight:
@@ -2721,7 +2621,6 @@ RUN chmod +x /usr/local/bin/zeroclaw
         for key, value in {
             "ZEROCLAW_REQUIRE_PATCH": "1",
             "ZEROCLAW_PROMPT_PROFILE": "edit_first",
-            "ZEROCLAW_PROBLEM_STATEMENT_MAX_CHARS": "12000",
             "ZEROCLAW_TIMEOUT_SEC": str(max(self._timeout, 60)),
             "ZEROCLAW_WORKSPACE_ONLY": "false",
             "ZEROCLAW_MAX_TOOL_ITERATIONS": "100",
@@ -2781,6 +2680,40 @@ RUN chmod +x /usr/local/bin/zeroclaw
                 mode_env.get("ZEROCLAW_PROBLEM_STATEMENT_MAX_CHARS")
             ),
             "compactions_applied": [],
+        }
+        zeroclaw_failure_workspace_names = (
+            "patch.diff",
+            "zeroclaw_output.txt",
+            "zeroclaw_stderr.log",
+            "runtime_trace.jsonl",
+            "zeroclaw_no_edit_reason.txt",
+            "zeroclaw_prompt_contract.txt",
+            "zeroclaw_prompt_profile.txt",
+            "zeroclaw_candidate_models.txt",
+            "zeroclaw_attempt_matrix.json",
+            "zeroclaw_selected_attempt.json",
+            "zeroclaw_runner_stdout.log",
+            "zeroclaw_runner_stderr.log",
+            "prompt.txt",
+            "git_status_before.txt",
+            "git_status_after.txt",
+            "repo_root.txt",
+        )
+        zeroclaw_failure_artifact_refs = {
+            "response_stream": "/swebench_agent/zeroclaw/runtime_trace.jsonl",
+            "stdout_log": "/swebench_agent/zeroclaw/zeroclaw_output.txt",
+            "stderr_log": "/swebench_agent/zeroclaw/zeroclaw_stderr.log",
+            "prompt_text": "/swebench_agent/zeroclaw/prompt.txt",
+        }
+        zeroclaw_failure_metadata = {
+            "container_id": container_id,
+            "image": image,
+            "base_image": base_image,
+            "dockerhub_tag": str(task.metadata.get("dockerhub_tag", "")),
+            "agent_type": self._agent_type,
+            "artifacts_dir": str(local_artifacts),
+            "sample_index": sample_index,
+            "execution_id": execution_id,
         }
 
         for index, alias in enumerate(candidate_aliases, start=1):
@@ -3059,6 +2992,54 @@ RUN chmod +x /usr/local/bin/zeroclaw
         zeroclaw_preserved_failure = bool(
             selected_returncode != 0 or not patch or selected_classification != "patch_created"
         )
+        if zeroclaw_preserved_failure:
+            detail = zeroclaw_failure_detail or "unknown ZeroClaw preserved failure"
+            failure_json = build_runtime_trace_summary(
+                output_text=assistant_text,
+                stderr_text=zeroclaw_stderr.strip(),
+                records=runtime_records,
+                extra={
+                    "runtime_trace_present": bool(zeroclaw_runtime_trace.strip()),
+                    "runner_stdout_text": zeroclaw_runner_stdout.strip(),
+                    "runner_stderr_text": zeroclaw_runner_stderr.strip(),
+                    "selected_returncode": selected_returncode,
+                    "selected_classification": selected_classification,
+                    "selected_attempt": selected_attempt_record,
+                    "attempts": attempt_records,
+                },
+            )
+            error_type = _classify_preserved_failure_error_type(
+                selected_classification,
+                selected_reason,
+                detail,
+                zeroclaw_output,
+                zeroclaw_stderr,
+                zeroclaw_runner_stdout,
+                zeroclaw_runner_stderr,
+            )
+            self._raise_preserved_failure(
+                (
+                    "ZeroClaw SWE-bench run preserved failure: "
+                    f"classification={selected_classification or 'unknown'}; "
+                    f"detail={detail}"
+                ),
+                mode="zeroclaw",
+                prompt=selected_prompt,
+                local_artifacts=local_artifacts,
+                start_time=start_time,
+                workspace_names=zeroclaw_failure_workspace_names,
+                artifact_refs=zeroclaw_failure_artifact_refs,
+                response_json=failure_json,
+                raw_output=assistant_text,
+                metadata={
+                    **zeroclaw_failure_metadata,
+                    "selected_returncode": selected_returncode,
+                    "selected_classification": selected_classification,
+                    "selected_reason": selected_reason,
+                    **runtime_metadata,
+                },
+                error_type=error_type,
+            )
         return AgentResponse(
             answer=patch,
             trajectory=trajectory,
@@ -3164,8 +3145,7 @@ RUN chmod +x /usr/local/bin/zeroclaw
         if self._max_completion_tokens is not None:
             request_kwargs["max_completion_tokens"] = self._max_completion_tokens
         else:
-            raw_max = self._resolve_max_tokens()
-            request_kwargs["max_tokens"] = self._cap_max_tokens(raw_max, messages)
+            request_kwargs["max_tokens"] = self._resolve_max_tokens()
         if self._top_p is not None:
             request_kwargs["top_p"] = self._top_p
 
@@ -3277,31 +3257,6 @@ RUN chmod +x /usr/local/bin/zeroclaw
 
         self._resolved_max_tokens = 65536
         return self._resolved_max_tokens
-
-    @staticmethod
-    def _estimate_prompt_tokens(messages: list[dict[str, str]]) -> int:
-        """Rough token estimate for prompt sizing."""
-        total_chars = sum(len(message.get("content", "")) for message in messages)
-        return total_chars // 3
-
-    def _cap_max_tokens(self, max_tokens: int, messages: list[dict[str, str]]) -> int:
-        """Cap output tokens so prompt + completion stays within context."""
-        max_model_len = getattr(self, "_max_model_len", None) or 0
-        if max_model_len <= 0:
-            return max_tokens
-        estimated_prompt = self._estimate_prompt_tokens(messages)
-        headroom = max_model_len - estimated_prompt
-        if headroom < max_tokens:
-            capped = max(headroom - 64, 1)
-            logger.info(
-                "Capping max_tokens from %d to %d (est. prompt=%d, model_len=%d)",
-                max_tokens,
-                capped,
-                estimated_prompt,
-                max_model_len,
-            )
-            return capped
-        return max_tokens
 
     @staticmethod
     def _is_retryable(exc: Exception) -> bool:

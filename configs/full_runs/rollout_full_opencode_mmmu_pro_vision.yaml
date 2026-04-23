@@ -15,7 +15,7 @@ agent:
     controller_image: "alphadiana/tb2-opencode-controller:latest"
     timeout: 1800
     streaming: true
-    tool_call: false
+    tool_call: true
     system_prompt: |
       You are an expert at multimodal multiple-choice reasoning.
       Carefully analyze any provided images along with the question text and options.

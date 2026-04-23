@@ -17,7 +17,7 @@ agent:
     api_base: ${OPENAI_BASE_URL}
     api_key: ${OPENAI_API_KEY}
     runtime_source_image: "alphadiana/tb2-opencode-controller:latest"
-    tool_call: false
+    tool_call: true
     streaming: true
     solver_timeout_sec: 1800
     timeout_sec: 900

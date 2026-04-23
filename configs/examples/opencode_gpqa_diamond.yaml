@@ -12,7 +12,7 @@ agent:
     controller_image: "alphadiana/tb2-opencode-controller:latest"
     timeout: 1800
     streaming: false
-    tool_call: false
+    tool_call: true
     system_prompt: |
       You are solving expert-level multiple-choice science questions.
       Reason carefully, but the final answer must be a single option letter.

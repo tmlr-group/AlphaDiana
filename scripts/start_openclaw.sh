@@ -27,6 +27,12 @@ ROCK_BIND_HOST="${ROCK_BIND_HOST:-127.0.0.1}"
 ROCK_REDIS_HOST="${ROCK_REDIS_HOST:-${ROCK_BIND_HOST}}"
 ROCK_HTTP_HOST="${ROCK_HTTP_HOST:-${ROCK_BIND_HOST}}"
 ROCK_PORT_PROBE_HOST="${ROCK_PORT_PROBE_HOST:-${ROCK_BIND_HOST}}"
+_is_weak_gateway_token() {
+    case "${1:-}" in
+        ""|OPENCLAW|openclaw|test|token|default|changeme|secret) return 0 ;;
+        *) return 1 ;;
+    esac
+}
 ALPHADIANA_ENV_NAME="${ALPHADIANA_ENV_NAME:-$("${PYTHON}" - "${PROJECT_ROOT}" <<'PYEOF' 2>/dev/null || true
 import sys
 from pathlib import Path
@@ -56,6 +62,16 @@ if ! "${PYTHON}" -c "import rock" >/dev/null 2>&1; then
     echo "       Activate the correct env first, for example:"
     echo "         source scripts/activate.sh"
     exit 1
+fi
+
+if _is_weak_gateway_token "${OPENCLAW_GATEWAY_TOKEN:-}"; then
+    OPENCLAW_GATEWAY_TOKEN="$("${PYTHON}" - <<'PYEOF' 2>/dev/null || true
+import secrets
+
+print(secrets.token_urlsafe(32))
+PYEOF
+)"
+    export OPENCLAW_GATEWAY_TOKEN
 fi
 
 # ── 0. Preflight: verify rock editable install points to THIS project ────────
@@ -321,9 +337,10 @@ echo "      Ray address in config = ${RAY_GCS_ADDRESS}"
 echo "[5/6] Starting ROCK admin (port ${ROCK_ADMIN_PORT})..."
 (
     cd "${ROCK_ROOT}"
-    nohup "${PYTHON}" -m rock.admin.main \
+    nohup "${PYTHON}" ../../scripts/run_rock_admin_local.py \
         --env local-proxy --role admin --port "${ROCK_ADMIN_PORT}" \
-        > "${LOG_DIR}/rock-admin.log" 2>&1
+        < /dev/null > "${LOG_DIR}/rock-admin.log" 2>&1 &
+    disown || true
 ) &
 
 # Wait for admin (up to 90 s — first start may need to install Ray runtime env)
@@ -367,9 +384,10 @@ done
 echo "      Starting ROCK proxy (port ${ROCK_PROXY_PORT})..."
 (
     cd "${ROCK_ROOT}"
-    nohup "${PYTHON}" -m rock.admin.main \
+    nohup "${PYTHON}" ../../scripts/run_rock_admin_local.py \
         --env local-proxy --role proxy --port "${ROCK_PROXY_PORT}" \
-        > "${LOG_DIR}/rock-proxy.log" 2>&1
+        < /dev/null > "${LOG_DIR}/rock-proxy.log" 2>&1 &
+    disown || true
 ) &
 
 echo "      Waiting for ROCK proxy to become ready..."

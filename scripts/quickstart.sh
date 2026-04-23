@@ -127,6 +127,8 @@ fi
 
 log_section "Running setup_alphadiana_rock.sh (env=${ENV_NAME})"
 bash "${SCRIPT_DIR}/setup_alphadiana_rock.sh" "${ENV_NAME}"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/.alphadiana_env"
 
 # ── 3. Init conda in this shell ─────────────────────────────────────────────
 
@@ -215,9 +217,10 @@ log_ok "Ray head started on port ${ROCK_RAY_PORT}"
 echo "  Starting ROCK admin on port ${ROCK_ADMIN_PORT}..."
 (
   cd ref/ROCK
-  nohup python -m rock.admin.main --env local-proxy --role admin --port "${ROCK_ADMIN_PORT}" \
-    > ../../dev/generated/admin.log 2>&1 &
+  nohup python ../../scripts/run_rock_admin_local.py --env local-proxy --role admin --port "${ROCK_ADMIN_PORT}" \
+    < /dev/null > ../../dev/generated/admin.log 2>&1 &
   echo $! > ../../dev/generated/admin.pid
+  disown || true
 )
 ADMIN_PID="$(cat dev/generated/admin.pid)"
 rm -f dev/generated/admin.pid
@@ -226,9 +229,10 @@ rm -f dev/generated/admin.pid
 echo "  Starting ROCK proxy on port ${ROCK_PROXY_PORT}..."
 (
   cd ref/ROCK
-  nohup python -m rock.admin.main --env local-proxy --role proxy --port "${ROCK_PROXY_PORT}" \
-    > ../../dev/generated/proxy.log 2>&1 &
+  nohup python ../../scripts/run_rock_admin_local.py --env local-proxy --role proxy --port "${ROCK_PROXY_PORT}" \
+    < /dev/null > ../../dev/generated/proxy.log 2>&1 &
   echo $! > ../../dev/generated/proxy.pid
+  disown || true
 )
 PROXY_PID="$(cat dev/generated/proxy.pid)"
 rm -f dev/generated/proxy.pid
@@ -277,9 +281,7 @@ All services are running:
   Proxy:  port ${ROCK_PROXY_PORT}  (PID ${PROXY_PID}, log: dev/generated/proxy.log)
 
 In any new terminal, run:
-  conda activate ${ENV_NAME}
-  source scripts/rock_env.sh
-  source scripts/.rock_ports.env
+  source scripts/activate.sh
 
 Minimal OpenClaw smoke path:
   docker pull tmlrgroup/alphadiana:v1

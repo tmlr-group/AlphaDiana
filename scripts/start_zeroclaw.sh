@@ -299,9 +299,10 @@ echo "      ROCK_CONFIG (runtime) = ${ROCK_CONFIG}"
 
 (
     cd "${ROCK_ROOT}"
-    nohup "${PYTHON}" -m rock.admin.main \
+    nohup "${PYTHON}" ../../scripts/run_rock_admin_local.py \
         --env local-proxy --role admin --port "${ROCK_ADMIN_PORT}" \
-        > "${LOG_DIR}/rock-admin.log" 2>&1
+        < /dev/null > "${LOG_DIR}/rock-admin.log" 2>&1 &
+    disown || true
 ) &
 
 if ! _wait_for_route \
@@ -319,9 +320,10 @@ echo "      ROCK admin is up and exposing sandbox lifecycle routes"
 
 (
     cd "${ROCK_ROOT}"
-    nohup "${PYTHON}" -m rock.admin.main \
+    nohup "${PYTHON}" ../../scripts/run_rock_admin_local.py \
         --env local-proxy --role proxy --port "${ROCK_PROXY_PORT}" \
-        > "${LOG_DIR}/rock-proxy.log" 2>&1
+        < /dev/null > "${LOG_DIR}/rock-proxy.log" 2>&1 &
+    disown || true
 ) &
 
 if ! _wait_for_route \

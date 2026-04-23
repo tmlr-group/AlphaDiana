@@ -4,7 +4,7 @@
     "OPENAI_BASE_URL": "",
     "OPENAI_API_KEY": "EMPTY",
     "OPENAI_MODEL_NAME": "",
-    "OPENCLAW_GATEWAY_TOKEN": "OPENCLAW"
+    "OPENCLAW_GATEWAY_TOKEN": "${OPENCLAW_GATEWAY_TOKEN}"
   },
   "models": {
     "mode": "merge",
@@ -50,7 +50,7 @@
     "port": 8080,
     "mode": "local",
     "bind": "custom",
-    "customBindHost": "0.0.0.0",
+    "customBindHost": "127.0.0.1",
     "auth": {
       "mode": "token",
       "token": "${OPENCLAW_GATEWAY_TOKEN}"

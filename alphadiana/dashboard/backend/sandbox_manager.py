@@ -6,6 +6,7 @@ import asyncio
 import io
 import logging
 import os
+import secrets
 import threading
 import uuid
 from datetime import datetime, timezone
@@ -25,6 +26,7 @@ from alphadiana.utils.rock_runtime import (
     get_custom_install_cmd,
     is_prebuilt_image,
 )
+from alphadiana.utils.openclaw_security import is_weak_openclaw_gateway_token
 
 logger = logging.getLogger(__name__)
 
@@ -552,7 +554,10 @@ class SandboxManager:
                 env["OPENAI_API_KEY"] = model_api_key
             if model_name:
                 env["OPENAI_MODEL_NAME"] = model_name
-            env.setdefault("OPENCLAW_GATEWAY_TOKEN", "OPENCLAW")
+            token = env.get("OPENCLAW_GATEWAY_TOKEN") or os.environ.get("OPENCLAW_GATEWAY_TOKEN", "")
+            if is_weak_openclaw_gateway_token(token):
+                token = secrets.token_urlsafe(32)
+            env["OPENCLAW_GATEWAY_TOKEN"] = token
 
             import re as _re
             for _key in ("OPENAI_BASE_URL", "OPENAI_API_KEY", "OPENAI_MODEL_NAME"):
