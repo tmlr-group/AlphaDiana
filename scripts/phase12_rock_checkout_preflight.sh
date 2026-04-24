@@ -8,7 +8,13 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 OPENCLAW_SMOKE_CONFIG="configs/full_runs/phase11_openclaw_gpqa_diamond_qwen35_27b_logprobs_smoke.yaml"
 ZEROCLAW_SMOKE_CONFIG="configs/full_runs/phase11_zeroclaw_gpqa_diamond_qwen35_27b_logprobs_smoke.yaml"
 
+set +e
 source "${SCRIPT_DIR}/activate.sh"
+activate_rc=$?
+set -e
+if [ "${activate_rc}" -ne 0 ]; then
+    echo "warning: scripts/activate.sh exited ${activate_rc}; continuing with current shell context"
+fi
 source "${SCRIPT_DIR}/rock_env.sh"
 
 cd "${PROJECT_ROOT}"
