@@ -419,4 +419,5 @@ echo ""
 echo ""
 echo "Done. OpenClaw is ready."
 echo "Logs: ${LOG_DIR}/rock-admin.log  |  ${LOG_DIR}/rock-proxy.log"
+# phase12_start_ready readiness marker
 echo "phase12_start_ready admin=${ROCK_ADMIN_PORT} proxy=${ROCK_PROXY_PORT} redis=${ROCK_REDIS_PORT} ray=${ROCK_RAY_PORT}"
