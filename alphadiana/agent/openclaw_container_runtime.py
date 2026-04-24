@@ -351,6 +351,16 @@ class OpenClawContainerRuntimeManager:
     def is_configured(self) -> bool:
         return bool(self._openclaw_config_path)
 
+    def set_provider_api_base(self, api_base: str) -> None:
+        value = str(api_base or "").strip()
+        self._config["OPENAI_BASE_URL"] = value
+        self._config["openai_base_url"] = value
+
+    def set_provider_api_key(self, api_key: str) -> None:
+        value = str(api_key or "").strip()
+        self._config["OPENAI_API_KEY"] = value
+        self._config["openai_api_key"] = value
+
     def _resolve_env_value(self, env_key: str, config_key: str) -> str:
         value = str(self._config.get(config_key, "")).strip()
         if not value:

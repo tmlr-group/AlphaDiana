@@ -27,7 +27,7 @@ def _runtime_payload(token: str, value: float) -> dict:
     }
 
 
-def test_zeroclaw_config_enables_provider_logprobs() -> None:
+def test_zeroclaw_config_does_not_write_unsupported_provider_logprob_options() -> None:
     agent = ZeroClawAgent()
     agent.setup(
         {
@@ -39,8 +39,9 @@ def test_zeroclaw_config_enables_provider_logprobs() -> None:
         }
     )
     toml = agent._build_config_toml()
-    assert "logprobs = true" in toml
-    assert "top_logprobs = 20" in toml
+    assert "[model_providers.custom.options]" not in toml
+    assert "logprobs = true" not in toml
+    assert "top_logprobs = 20" not in toml
 
 
 def test_zeroclaw_config_omits_provider_logprobs_when_disabled() -> None:

@@ -47,6 +47,20 @@ For the staged `72`-run local-vLLM campaign, use
 [full-rollout-local-vllm-20260419.md](full-rollout-local-vllm-20260419.md)
 instead of launching the four full configs manually.
 
+For local-vLLM `Qwen/Qwen3.5-27B` logprob smoke checks, the checked-in
+Phase 11 configs cover OpenCode, OpenClaw, and ZeroClaw:
+
+```bash
+python -m alphadiana.cli run configs/full_runs/phase11_opencode_gpqa_diamond_qwen35_27b_logprobs_smoke.yaml --redo-all
+python -m alphadiana.cli run configs/full_runs/phase11_openclaw_gpqa_diamond_qwen35_27b_logprobs_smoke.yaml --redo-all
+python -m alphadiana.cli run configs/full_runs/phase11_zeroclaw_gpqa_diamond_qwen35_27b_logprobs_smoke.yaml --redo-all
+```
+
+OpenClaw and ZeroClaw use a host-side provider proxy for logprob capture on the
+ROCK path. The proxy injects the logprob request fields and uses a random
+per-proxy bearer token for sandbox access. Current validation evidence is in
+[`context/phase12-harness-logprob-smokes/run_evidence.md`](../../context/phase12-harness-logprob-smokes/run_evidence.md).
+
 ## Full Run
 
 Checked-in full configs now exist for all four harnesses and target the full

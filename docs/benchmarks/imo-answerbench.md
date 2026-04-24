@@ -134,7 +134,12 @@ contract and `max_concurrent: 10` for the heavier logprob run.
 
 ## OpenCode
 
-OpenCode runs the `opencode` CLI and uses the prompt file at `context/opencode_lean_math.md` for the IMO smoke config.
+OpenCode runs the `opencode` CLI. The checked-in minimax smoke config includes
+OpenCode-specific external agent settings (`agent: lean-math` and
+`agent_md_path: context/opencode_lean_math.md`) in addition to
+`agent.config.system_prompt`. When comparing harness prompts or running local
+Qwen logprob smoke without that external agent layer, override both fields to
+empty strings.
 
 Build the controller image once before using the checked-in OpenCode configs:
 
@@ -148,6 +153,31 @@ docker build --network host \
 python -m alphadiana.cli run configs/examples/opencode_minimax_imo_answerbench.yaml \
   -o run_id=imo_opencode_smoke
 ```
+
+Local-vLLM Qwen logprob smoke with the external agent disabled:
+
+```bash
+python -m alphadiana.cli run configs/examples/opencode_minimax_imo_answerbench.yaml \
+  --redo-all \
+  -o run_id=phase11_opencode_imo_answerbench_qwen35_27b_logprobs_smoke \
+  -o output_dir=./results \
+  -o agent.config.model=custom/Qwen/Qwen3.5-27B \
+  -o agent.config.model_name=Qwen/Qwen3.5-27B \
+  -o agent.config.api_base=http://127.0.0.1:8011/v1 \
+  -o agent.config.api_key=EMPTY \
+  -o agent.config.controller_mode=docker \
+  -o agent.config.controller_network=host \
+  -o agent.config.capture_logprobs=true \
+  -o agent.config.top_logprobs=20 \
+  -o agent.config.agent= \
+  -o agent.config.agent_md_path=
+```
+
+Observed on April 24, 2026: this command wrote
+`results/phase11_opencode_imo_answerbench_qwen35_27b_logprobs_smoke/tasks/imo-bench-number_theory-068.json`
+with `score=1.0`, `metadata.logprobs_capture_status="captured"`, and
+`token_entropy_stats.n_tokens=11949`. The preserved OpenCode config/listing
+showed no external `agent/*.md` file.
 
 The checked-in OpenCode benchmark configs now use Docker controller isolation
 by default. If you need the old host-process path for debugging, override
