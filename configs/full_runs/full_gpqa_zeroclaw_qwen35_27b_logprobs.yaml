@@ -1,0 +1,42 @@
+# Phase 12 full run: ZeroClaw on full GPQA-Diamond with top-20 logprob capture.
+
+run_id: "full_gpqa_zeroclaw_qwen35_27b_logprobs"
+
+agent:
+  name: zeroclaw
+  version: "0.6.9"
+  config:
+    model: "Qwen/Qwen3.5-27B"
+    api_base: "http://127.0.0.1:8011/v1"
+    api_key: "EMPTY"
+    provider_api_base: "http://127.0.0.1:8011/v1"
+    provider_api_key: "EMPTY"
+    temperature: 0.0
+    top_p: 0.95
+    request_timeout: 1200
+    runtime_trace_mode: "all"
+    capture_logprobs: true
+    top_logprobs: 20
+    max_tool_iterations: 100
+    max_actions_per_hour: 200
+    rock_image: "zeroclaw-reasoning:0.6.9"
+    rock_memory: "4g"
+    rock_cpus: 1
+    rock_startup_timeout: 600
+    admin_base_url: "${ROCK_BASE_URL}"
+    proxy_base_url: "${ROCK_PROXY_URL}"
+
+benchmark:
+  name: gpqa_diamond
+  config:
+    dataset: "fingertap/GPQA-Diamond"
+    split: "test"
+    seed: 42
+
+scorer:
+  name: exact_match
+  config: {}
+
+max_concurrent: 1
+num_samples: 1
+output_dir: "./results"
