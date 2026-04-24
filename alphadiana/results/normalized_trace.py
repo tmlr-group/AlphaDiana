@@ -17,7 +17,6 @@ TRACE_ARTIFACT_NAME = "normalized_trace.json"
 _TOOL_USE_TYPES = {"tool", "tool_use", "toolcall", "tool_call", "tooluse"}
 _TOOL_RESULT_TYPES = {"tool_result", "toolresult"}
 _REASONING_TYPES = {"reasoning", "thinking"}
-_LOGPROB_REF_ALIASES = ("logprobs_float", "logprobs_int16")
 
 
 def normalize_request_messages(
@@ -127,12 +126,8 @@ def build_normalized_trace(
         getattr(response, "reasoning_trajectory", None),
         trajectory=getattr(response, "trajectory", None),
     )
-    artifact_files = artifact_files or {}
-    refs = deepcopy(artifact_files)
+    refs = deepcopy(artifact_files or {})
     refs.pop("normalized_trace", None)
-    for alias in _LOGPROB_REF_ALIASES:
-        if alias in artifact_files:
-            refs[alias] = artifact_files[alias]
 
     return {
         "schema_version": TRACE_SCHEMA_VERSION,

@@ -21,20 +21,13 @@ from pathlib import Path
 from typing import Any
 
 
-def _candidate_jsonl_paths(run_dir: Path) -> list[Path]:
-    """Return supported main-JSONL locations for legacy and current layouts."""
-    run_id = run_dir.name
-    return [
-        run_dir / f"{run_id}.jsonl",
-        run_dir.parent / f"{run_id}.jsonl",
-        run_dir / run_id / f"{run_id}.jsonl",
-    ]
-
-
 def _load_records(run_dir: Path) -> list[dict]:
     """Locate and load the main JSONL for a run."""
-    jsonl = next((p for p in _candidate_jsonl_paths(run_dir) if p.exists()), None)
-    if jsonl is None:
+    # run_dir is results/{run_id}; the JSONL lives at results/{run_id}.jsonl
+    parent = run_dir.parent
+    run_id = run_dir.name
+    jsonl = parent / f"{run_id}.jsonl"
+    if not jsonl.exists():
         return []
     records: list[dict] = []
     for line in jsonl.read_text(encoding="utf-8").splitlines():
@@ -72,9 +65,8 @@ def generate_review(run_dir: Path) -> str:
     lines: list[str] = [f"# Phase 9 Review — {run_id}", ""]
 
     if not records:
-        expected = "`, `".join(str(p) for p in _candidate_jsonl_paths(run_dir))
-        lines.append("**No results found.** Expected JSONL at one of "
-                     f"`{expected}`.")
+        lines.append("**No results found.** Expected JSONL at "
+                     f"`{run_dir.parent}/{run_id}.jsonl`.")
         return "\n".join(lines) + "\n"
 
     # --- Overall accuracy ---

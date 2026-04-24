@@ -4,9 +4,6 @@ Run Qwen3.5-27B on Terminal-Bench v2 via the standalone Harbor CLI + Terminus-2
 agent, orchestrated by `alphadiana.benchmark_rollout_cli` with backend
 `official_terminal_bench_2`.
 
-Wall time estimate: several hours at `max_concurrent=10`, plus one-time image
-pulls on the first run.
-
 This guide covers the *official/leaderboard* path (Harbor + Terminus-2). For the
 AlphaDiana container-agent path on the same benchmark, see
 [`terminal-bench-2.md`](terminal-bench-2.md).
@@ -21,7 +18,7 @@ AlphaDiana container-agent path on the same benchmark, see
 | `top_p`              | `0.95`                                          | renderer (hardcoded in `llm_call_kwargs`)                                      |
 | `max_tokens`         | `131072` (128K)                                 | renderer (hardcoded in `llm_call_kwargs`)                                      |
 | `reasoning_effort`   | `high`                                          | renderer (hardcoded `--ak reasoning_effort=high`)                              |
-| Sample K             | `1` (pass@1)                                    | harbor is single-shot per task                                                 |
+| Sample K             | `1`                                             | harbor is single-shot per task                                                 |
 | `max_concurrent`     | `10`                                            | manifest `path_template.max_concurrent` → `--n-concurrent`                     |
 | thinking             | on                                              | vLLM serve default (no `--reasoning-parser`)                                   |
 | streaming            | on                                              | harbor internally streams; no knob needed                                      |
@@ -40,32 +37,6 @@ System prompt: **unchanged** — Harbor's `terminus-2` agent owns the prompt.
 ## 2. Prerequisites
 
 ### 2.1 vLLM endpoint
-
-**Launch vLLM** (adjust GPU indices, port, and local/HF model path to your setup):
-
-```bash
-python -m vllm.entrypoints.openai.api_server \
-  --model Qwen/Qwen3.5-27B \
-  --host 0.0.0.0 --port <port> \
-  --trust-remote-code \
-  --enable-auto-tool-choice \
-  --tool-call-parser qwen3_coder \
-  --tensor-parallel-size 2 \
-  --gpu-memory-utilization 0.9 \
-  --max-model-len 262144 \
-  --generation-config vllm \
-  --override-generation-config '{"presence_penalty": 1.5}' \
-  --served-model-name qwen3.5-27b Qwen/Qwen3.5-27B
-```
-
-Why each flag matters:
-- `--max-model-len 262144` (256K): matches Qwen3.5's native max so Terminal-Bench task prompts + 128K output budget fit.
-- `--override-generation-config '{"presence_penalty": 1.5}'`: per-request default that prevents Qwen3.5 from getting stuck in repetition loops mid-task.
-- `--generation-config vllm`: ignores the model's shipped `generation_config.json` (which sets non-greedy defaults). Prevents silent deviation when clients omit sampling params.
-- No `--reasoning-parser`: keep thinking tokens inside `message.content` (Harbor reads content, not a separate reasoning field).
-- `--enable-auto-tool-choice --tool-call-parser qwen3_coder`: required for Harbor's `terminus-2` agent to issue tool calls via the OpenAI tools protocol.
-
-**Sanity check from the client side:**
 
 ```bash
 export QWEN_VLLM_API_BASE=http://127.0.0.1:<port>/v1

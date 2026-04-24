@@ -353,10 +353,6 @@ class OpenClawContainerRuntimeManager:
 
     def _resolve_env_value(self, env_key: str, config_key: str) -> str:
         value = str(self._config.get(config_key, "")).strip()
-        if not value:
-            # Backward compatibility: some configs/tests pass upstream values
-            # using uppercase env-style keys directly in agent.config.
-            value = str(self._config.get(env_key, "")).strip()
         if value:
             return value
         return os.environ.get(env_key, "").strip()
@@ -866,8 +862,6 @@ class OpenClawContainerRuntimeManager:
                 **manifest_files,
                 "response_stream": response_stream_alias,
                 "session_trace": session_alias_path or (session_paths[0] if session_paths else ""),
-                "openclaw_output": response_stream_alias,
-                "openclaw_session": session_alias_path or (session_paths[0] if session_paths else ""),
                 "system_prompt": f"{workspace_root}/AGENTS.md",
             },
             "session_paths": session_paths,
