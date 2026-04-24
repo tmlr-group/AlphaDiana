@@ -1167,6 +1167,74 @@ class OpenCodeAgent(Agent):
             if self._controller_mode == "docker"
             else "opencode_cli"
         )
+
+        if _is_swe_bench_task(task):
+            answer = _extract_patch_from_text(full_content)
+        elif returncode == -1:
+            answer = _extract_strict_answer(assistant_text)
+        else:
+            answer = extract_answer_candidate(full_content)
+
+        if returncode != 0 and not answer:
+            logger.warning(
+                "OpenCode returned non-zero exit code %d for task %s. stderr: %s",
+                returncode,
+                task.task_id,
+                stderr[:500],
+            )
+
+        workspace_file_contents: dict[str, str] = dict(
+            preserved_local_artifacts.get("workspace_file_contents", {}) or {}
+        )
+        workspace_file_contents.update({
+            "prompt.txt": prompt,
+            "opencode_output.jsonl": raw_output,
+        })
+        if stderr:
+            workspace_file_contents["opencode_stderr.log"] = stderr
+        if attachment_paths:
+            workspace_file_contents["attachment_manifest.json"] = json.dumps(
+                {
+                    "attachments": [
+                        {
+                            "filename": path.name,
+                            "path": f"attachments/{path.name}",
+                        }
+                        for path in attachment_paths
+                    ]
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+        artifact_manifest = add_artifact_file_refs(
+            preserved_local_artifacts.get("artifact_manifest", {}),
+            response_stream="opencode_output.jsonl",
+            opencode_output="opencode_output.jsonl",
+            session_trace=(
+                "opencode_session.jsonl"
+                if "opencode_session.jsonl" in workspace_file_contents
+                else None
+            ),
+            opencode_session=(
+                "opencode_session.jsonl"
+                if "opencode_session.jsonl" in workspace_file_contents
+                else None
+            ),
+            stderr_log="opencode_stderr.log" if stderr else None,
+            prompt_text="prompt.txt",
+            attachment_manifest="attachment_manifest.json" if attachment_paths else None,
+        )
+        response_json = build_runtime_trace_summary(
+            output_text=full_content,
+            stderr_text=stderr.strip(),
+            records=events,
+            extra={
+                "returncode": returncode,
+                "session_id": session_id,
+                "transport": transport,
+            },
+        )
+
         error_info = _extract_opencode_error(events)
         response_metadata = {
             "returncode": returncode,
