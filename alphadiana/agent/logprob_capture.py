@@ -87,6 +87,7 @@ def extract_openai_logprob_records(payload: object, *, start_index: int = 0) -> 
     if not choices:
         return records, token_index
 
+    # OpenAI chat-completions logprobs shape is choices[0].logprobs.content (list of per-token dict/object entries).
     content = _choice_logprobs_content(choices[0])
     for token_logprob in content:
         if isinstance(token_logprob, dict):
