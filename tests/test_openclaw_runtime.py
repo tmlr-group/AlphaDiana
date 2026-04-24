@@ -232,6 +232,12 @@ def test_openclaw_runtime_collect_artifacts_preserves_session_trace_and_response
                 return '{"choices":[{"delta":{"content":"done"}}]}\n'
             if path.endswith("AGENTS.md"):
                 return "You are a solver."
+            if path.endswith("workspace-state.json"):
+                return '{"active":"session-demo"}\n'
+            if path.endswith("sessions.json"):
+                return '{"latest":"session-demo"}\n'
+            if path == "/tmp/openclaw.json":
+                return '{"env":{"OPENAI_API_KEY":"secret"}}\n'
             if path.endswith("demo-session.jsonl"):
                 raise RuntimeError("fallback to cat")
             raise FileNotFoundError(path)
@@ -244,10 +250,15 @@ def test_openclaw_runtime_collect_artifacts_preserves_session_trace_and_response
     files = artifacts["artifact_manifest"]["files"]
     assert files["response_stream"] == "openclaw_output.jsonl"
     assert files["session_trace"] == "openclaw_session.jsonl"
-    assert files["openclaw_output"] == "openclaw_output.jsonl"
-    assert files["openclaw_session"] == "openclaw_session.jsonl"
+    assert files["workspace_listing"] == "openclaw_workspace_listing.txt"
+    assert files["workspace_state"] == "openclaw_workspace_state.json"
+    assert files["session_index"] == "openclaw_sessions_index.json"
+    assert files["runtime_config"] == "openclaw_runtime_config.json"
     assert artifacts["workspace_file_contents"]["openclaw_output.jsonl"]
     assert artifacts["workspace_file_contents"]["openclaw_session.jsonl"]
+    assert artifacts["workspace_file_contents"]["openclaw_workspace_state.json"] == '{"active":"session-demo"}\n'
+    assert artifacts["workspace_file_contents"]["openclaw_sessions_index.json"] == '{"latest":"session-demo"}\n'
+    assert "REDACTED" in artifacts["workspace_file_contents"]["openclaw_runtime_config.json"]
     assert "/tmp/oc_home/.openclaw/workspace/openclaw_output.jsonl" in artifacts["workspace_snapshot_paths"]
 
 
@@ -312,6 +323,12 @@ def test_openclaw_container_runtime_collect_artifacts_exposes_stable_aliases() -
                 return '{"choices":[{"delta":{"content":"done"}}]}\n'
             if path.endswith("AGENTS.md"):
                 return "You are a solver."
+            if path.endswith("workspace-state.json"):
+                return '{"active":"session-demo"}\n'
+            if path.endswith("sessions.json"):
+                return '{"latest":"session-demo"}\n'
+            if path == "/tmp/openclaw.json":
+                return '{"env":{"OPENAI_API_KEY":"secret"}}\n'
             if path.endswith("demo-session.jsonl"):
                 raise RuntimeError("fallback to cat")
             raise FileNotFoundError(path)
@@ -333,8 +350,15 @@ def test_openclaw_container_runtime_collect_artifacts_exposes_stable_aliases() -
     assert files["openclaw_output"] == "openclaw_output.jsonl"
     assert files["openclaw_session"] == "openclaw_session.jsonl"
     assert files["system_prompt"] == "/testbed/AGENTS.md"
+    assert files["workspace_listing"] == "openclaw_workspace_listing.txt"
+    assert files["workspace_state"] == "openclaw_workspace_state.json"
+    assert files["session_index"] == "openclaw_sessions_index.json"
+    assert files["runtime_config"] == "openclaw_runtime_config.json"
     assert artifacts["workspace_file_contents"]["openclaw_output.jsonl"]
     assert artifacts["workspace_file_contents"]["openclaw_session.jsonl"]
+    assert artifacts["workspace_file_contents"]["openclaw_workspace_state.json"] == '{"active":"session-demo"}\n'
+    assert artifacts["workspace_file_contents"]["openclaw_sessions_index.json"] == '{"latest":"session-demo"}\n'
+    assert "REDACTED" in artifacts["workspace_file_contents"]["openclaw_runtime_config.json"]
 
 
 def test_openclaw_container_runtime_applies_max_tokens_override_to_rendered_config(tmp_path: Path) -> None:
