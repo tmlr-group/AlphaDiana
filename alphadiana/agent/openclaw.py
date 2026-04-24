@@ -868,7 +868,11 @@ class OpenClawAgent(Agent):
             else:
                 from alphadiana.agent.openclaw_runtime import OpenClawRuntimeManager
 
-                self._runtime_manager = OpenClawRuntimeManager(config)
+                # Pass logprob capture config to runtime manager so it can
+                # start the Docker-accessible MITM proxy when enabled.
+                runtime_config = dict(config)
+                runtime_config["_logprob_capture"] = self._logprob_capture
+                self._runtime_manager = OpenClawRuntimeManager(runtime_config)
         except ImportError:
             self._runtime_manager = None
 
@@ -2052,6 +2056,27 @@ class OpenClawAgent(Agent):
             request_payload="openclaw_request_payload.json",
             selected_response="openclaw_selected_response.json",
         )
+
+        # Collect proxy-captured logprob records from the MITM proxy (Docker path).
+        # The proxy intercepts the OpenClaw container's calls to vLLM and captures
+        # per-token logprob data that the gateway strips from its own response.
+        proxy_logprob_records: list[dict] = []
+        if (
+            not selected_logprob_records
+            and self._logprob_capture.get("enabled")
+            and self._runtime_manager is not None
+            and hasattr(self._runtime_manager, "get_proxy_logprob_records")
+        ):
+            try:
+                proxy_logprob_records = self._runtime_manager.get_proxy_logprob_records()
+            except Exception as exc:
+                logger.debug("Failed to collect proxy logprob records: %s", exc)
+        if proxy_logprob_records and not selected_logprob_records:
+            selected_logprob_records = proxy_logprob_records
+            logger.info(
+                "logprob capture harness=openclaw: using proxy-captured records count=%d",
+                len(proxy_logprob_records),
+            )
 
         response_metadata = {
             "gateway_response_id": response_json.get("id", ""),
