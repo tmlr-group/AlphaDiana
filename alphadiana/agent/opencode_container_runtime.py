@@ -141,6 +141,14 @@ class OpenCodeContainerRuntimeManager:
         self._config = dict(config)
         self._timeout = int(config.get("timeout", 1800))
         self._tool_call = bool(config.get("tool_call", True))
+        raw_temperature = config.get("temperature", None)
+        self._temperature = (
+            None if raw_temperature in (None, "") else float(raw_temperature)
+        )
+        raw_top_p = config.get("top_p", None)
+        self._top_p = None if raw_top_p in (None, "") else float(raw_top_p)
+        raw_max_tokens = config.get("max_tokens", None)
+        self._max_tokens = None if raw_max_tokens in (None, "") else int(raw_max_tokens)
         streaming = config.get("streaming")
         self._streaming: bool | None = bool(streaming) if streaming is not None else None
         self._variant = str(config.get("variant", "")).strip()
@@ -329,6 +337,12 @@ print(json.dumps(summary, ensure_ascii=False, indent=2))
             "baseURL": api_base,
             "timeout": self._timeout * 1000,
         }
+        if self._temperature is not None:
+            provider_options["temperature"] = self._temperature
+        if self._top_p is not None:
+            provider_options["top_p"] = self._top_p
+        if self._max_tokens is not None:
+            provider_options["max_tokens"] = self._max_tokens
         if self._streaming is not None:
             provider_options["streaming"] = self._streaming
         apply_openai_logprob_request(provider_options, self._logprob_capture)

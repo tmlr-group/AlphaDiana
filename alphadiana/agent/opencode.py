@@ -656,6 +656,14 @@ class OpenCodeAgent(Agent):
         )
         self._tool_call = bool(config.get("tool_call", True))
         self._timeout = int(config.get("timeout", 1200))
+        raw_temperature = config.get("temperature", None)
+        self._temperature = (
+            None if raw_temperature in (None, "") else float(raw_temperature)
+        )
+        raw_top_p = config.get("top_p", None)
+        self._top_p = None if raw_top_p in (None, "") else float(raw_top_p)
+        raw_max_tokens = config.get("max_tokens", None)
+        self._max_tokens = None if raw_max_tokens in (None, "") else int(raw_max_tokens)
         self._variant = str(config.get("variant", "")).strip()
         self._agent_name = str(config.get("agent", "")).strip()
         self._agent_md_path = str(config.get("agent_md_path", "")).strip()
@@ -968,6 +976,21 @@ class OpenCodeAgent(Agent):
                             "baseURL": self._api_base,
                             "timeout": self._timeout * 1000,
                             **(
+                                {"temperature": self._temperature}
+                                if self._temperature is not None
+                                else {}
+                            ),
+                            **(
+                                {"top_p": self._top_p}
+                                if self._top_p is not None
+                                else {}
+                            ),
+                            **(
+                                {"max_tokens": self._max_tokens}
+                                if self._max_tokens is not None
+                                else {}
+                            ),
+                            **(
                                 {"streaming": bool(self._streaming)}
                                 if self._streaming is not None
                                 else {}
@@ -994,7 +1017,18 @@ class OpenCodeAgent(Agent):
                 upstream_base = self._api_base.rstrip("/")
                 if upstream_base.endswith("/v1"):
                     upstream_base = upstream_base[:-3]
-                proxy = LogprobCaptureProxy(upstream_base, self._logprob_capture["top_logprobs"])
+                request_overrides = {}
+                if self._temperature is not None:
+                    request_overrides["temperature"] = self._temperature
+                if self._top_p is not None:
+                    request_overrides["top_p"] = self._top_p
+                if self._max_tokens is not None:
+                    request_overrides["max_tokens"] = self._max_tokens
+                proxy = LogprobCaptureProxy(
+                    upstream_base,
+                    self._logprob_capture["top_logprobs"],
+                    request_overrides=request_overrides or None,
+                )
                 proxy.start()
                 effective_api_base = proxy.proxy_url + "/v1"
                 provider_config["provider"]["custom"]["options"]["baseURL"] = effective_api_base
