@@ -7,17 +7,12 @@ import logging
 import os
 import re
 import signal
-import socketserver
 import sqlite3
 import subprocess
 import tempfile
-import threading
 import time
-import http.server
 from pathlib import Path
 from typing import Any
-
-import httpx
 
 from alphadiana.agent.logprob_capture import (
     apply_openai_logprob_request,
@@ -26,6 +21,7 @@ from alphadiana.agent.logprob_capture import (
     raw_token_logprob_dict_to_record,
     resolve_logprob_capture_config,
 )
+from alphadiana.agent.logprob_proxy import LogprobCaptureProxy
 from alphadiana.agent.base import Agent, AgentResponse
 from alphadiana.agent.preservation import (
     add_artifact_file_refs,
@@ -428,197 +424,6 @@ def _count_json_objects(text: str) -> int:
         if isinstance(payload, dict):
             count += 1
     return count
-
-
-class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
-    server: "_LogprobCaptureServer"
-
-    def _forward_headers(self, resp: httpx.Response, *, skip_length: bool = False) -> None:
-        self.send_response(resp.status_code)
-        for k, v in resp.headers.items():
-            kl = k.lower()
-            if kl in ("transfer-encoding", "content-encoding"):
-                continue
-            if skip_length and kl == "content-length":
-                continue
-            self.send_header(k, v)
-        self.end_headers()
-
-    def _extract_sse_logprobs(self, line: str) -> None:
-        """Parse one SSE data line and append any logprob token dicts to the server list."""
-        if not line.startswith("data: ") or line == "data: [DONE]":
-            return
-        try:
-            data = json.loads(line[6:])
-            choices = data.get("choices", [])
-            if choices:
-                lp_content = (choices[0].get("logprobs") or {}).get("content") or []
-                if lp_content:
-                    with self.server.lock:
-                        self.server.streaming_logprobs.extend(lp_content)
-        except (json.JSONDecodeError, KeyError, TypeError):
-            pass
-
-    def do_POST(self) -> None:
-        length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(length)
-        path = self.path
-        is_completions = "/chat/completions" in path
-
-        if is_completions:
-            try:
-                payload = json.loads(body)
-            except json.JSONDecodeError:
-                payload = {}
-            payload["logprobs"] = True
-            payload["top_logprobs"] = self.server.top_logprobs
-            # Keep stream / stream_options unchanged — removing stream causes vLLM to
-            # reject stream_options; removing both forces full buffering before OpenCode
-            # gets any tokens, making long generations take 10x longer.
-            body = json.dumps(payload).encode()
-
-        fwd_url = self.server.upstream.rstrip("/") + path
-        fwd_headers = {
-            k: v
-            for k, v in self.headers.items()
-            if k.lower() not in ("host", "transfer-encoding", "content-length")
-        }
-        fwd_headers["Content-Length"] = str(len(body))
-
-        try:
-            with self.server.client.stream(
-                "POST", fwd_url, content=body, headers=fwd_headers
-            ) as resp:
-                is_sse = "text/event-stream" in resp.headers.get("content-type", "")
-
-                if resp.status_code >= 400:
-                    # Buffer error body for logging, then forward
-                    err_body = resp.read()
-                    logger.warning(
-                        "LogprobProxy upstream %s → %d sent=%s err=%s",
-                        fwd_url, resp.status_code, body[:300], err_body[:300],
-                    )
-                    self.send_response(resp.status_code)
-                    for k, v in resp.headers.items():
-                        if k.lower() in ("transfer-encoding", "content-encoding"):
-                            continue
-                    self.send_header("Content-Length", str(len(err_body)))
-                    self.end_headers()
-                    self.wfile.write(err_body)
-                    return
-
-                if is_sse and is_completions:
-                    # Stream SSE to client while parsing each event for logprobs.
-                    # We forward raw bytes immediately so OpenCode gets tokens in real
-                    # time; we also maintain a sliding line buffer to parse SSE events.
-                    self._forward_headers(resp, skip_length=True)
-                    sse_buf = ""
-                    for raw in resp.iter_bytes(chunk_size=512):
-                        self.wfile.write(raw)
-                        self.wfile.flush()
-                        sse_buf += raw.decode("utf-8", errors="replace")
-                        while "\n" in sse_buf:
-                            line, sse_buf = sse_buf.split("\n", 1)
-                            self._extract_sse_logprobs(line.rstrip("\r"))
-                else:
-                    # Non-streaming: buffer full body, parse logprobs, forward.
-                    resp_body = resp.read()
-                    if is_completions:
-                        try:
-                            with self.server.lock:
-                                self.server.raw_responses.append(json.loads(resp_body))
-                        except (json.JSONDecodeError, ValueError):
-                            pass
-                    self.send_response(resp.status_code)
-                    for k, v in resp.headers.items():
-                        if k.lower() in ("transfer-encoding", "content-encoding"):
-                            continue
-                    self.send_header("Content-Length", str(len(resp_body)))
-                    self.end_headers()
-                    self.wfile.write(resp_body)
-        except Exception as exc:
-            try:
-                self.send_error(502, str(exc))
-            except Exception:
-                pass
-
-    def do_GET(self) -> None:
-        fwd_url = self.server.upstream.rstrip("/") + self.path
-        fwd_headers = {k: v for k, v in self.headers.items() if k.lower() != "host"}
-        try:
-            resp = self.server.client.get(fwd_url, headers=fwd_headers)
-        except Exception as exc:
-            self.send_error(502, str(exc))
-            return
-        resp_body = resp.content
-        self.send_response(resp.status_code)
-        for k, v in resp.headers.items():
-            if k.lower() in ("transfer-encoding", "content-encoding"):
-                continue
-            self.send_header(k, v)
-        self.send_header("Content-Length", str(len(resp_body)))
-        self.end_headers()
-        self.wfile.write(resp_body)
-
-    def log_message(self, *args: object) -> None:
-        pass
-
-
-class _LogprobCaptureServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
-    daemon_threads = True
-
-    def __init__(self, upstream: str, top_logprobs: int) -> None:
-        super().__init__(("127.0.0.1", 0), _LogprobProxyHandler)
-        self.upstream = upstream
-        self.top_logprobs = top_logprobs
-        self.raw_responses: list[dict] = []      # non-streaming full responses
-        self.streaming_logprobs: list[dict] = [] # per-token dicts from SSE events
-        self.lock = threading.Lock()
-        self.client = httpx.Client(timeout=120.0)
-
-
-class LogprobCaptureProxy:
-    def __init__(self, upstream: str, top_logprobs: int) -> None:
-        self._upstream = upstream
-        self._top_logprobs = top_logprobs
-        self._server: _LogprobCaptureServer | None = None
-        self._thread: threading.Thread | None = None
-
-    def start(self) -> None:
-        self._server = _LogprobCaptureServer(self._upstream, self._top_logprobs)
-        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
-        self._thread.start()
-
-    def stop(self) -> None:
-        if self._server:
-            self._server.shutdown()
-            self._server.client.close()
-
-    @property
-    def proxy_url(self) -> str:
-        assert self._server is not None
-        port = self._server.server_address[1]
-        return f"http://127.0.0.1:{port}"
-
-    def captured_records(self) -> list[dict]:
-        assert self._server is not None
-        records: list[dict] = []
-        token_index = 0
-        with self._server.lock:
-            sse_tokens = list(self._server.streaming_logprobs)
-            payloads = list(self._server.raw_responses)
-        # Prefer SSE per-token stream (real tokens in order); fall back to buffered JSON.
-        if sse_tokens:
-            for item in sse_tokens:
-                records.append(raw_token_logprob_dict_to_record(item, token_index))
-                token_index += 1
-        else:
-            for payload in payloads:
-                new_records, token_index = extract_openai_logprob_records(
-                    payload, start_index=token_index
-                )
-                records.extend(new_records)
-        return records
 
 
 def _redact_secret_fields(value: Any) -> Any:

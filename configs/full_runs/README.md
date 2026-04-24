@@ -275,6 +275,23 @@ python -m alphadiana.cli run configs/full_runs/phase9_directllm_qwen35_27b_hle_l
 python -m alphadiana.cli run configs/full_runs/phase9_directllm_gpqa_diamond_qwen35_27b_logprobs.yaml --redo-all
 ```
 
+For 1-task GPQA-Diamond smoke coverage of top-20 logprob storage across the
+agent harnesses, use the Phase 11 configs:
+
+```bash
+python -m alphadiana.cli run configs/full_runs/phase11_opencode_gpqa_diamond_qwen35_27b_logprobs_smoke.yaml --redo-all
+python -m alphadiana.cli run configs/full_runs/phase11_openclaw_gpqa_diamond_qwen35_27b_logprobs_smoke.yaml --redo-all
+python -m alphadiana.cli run configs/full_runs/phase11_zeroclaw_gpqa_diamond_qwen35_27b_logprobs_smoke.yaml --redo-all
+```
+
+On ROCK-backed OpenClaw/ZeroClaw local-vLLM smokes, `capture_logprobs: true`
+starts a host-side OpenAI-compatible capture proxy. The proxy forwards to the
+configured provider, injects `logprobs=true` and `top_logprobs`, and advertises a
+sandbox-reachable URL to the runtime. The sandbox uses a random per-proxy bearer
+token, while the proxy forwards upstream with the configured provider key.
+Validated local run evidence is in
+[`context/phase12-harness-logprob-smokes/run_evidence.md`](../../context/phase12-harness-logprob-smokes/run_evidence.md).
+
 ## Scope Notes
 
 - IMO-AnswerBench configs run the full configured `train` split.

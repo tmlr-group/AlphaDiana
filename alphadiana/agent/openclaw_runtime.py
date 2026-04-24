@@ -227,6 +227,12 @@ class OpenClawRuntimeManager:
     def is_configured(self) -> bool:
         return bool(self._rock_agent_config_path and self._openclaw_config_path)
 
+    def set_provider_api_base(self, api_base: str) -> None:
+        self._provider_env["OPENAI_BASE_URL"] = str(api_base or "").strip()
+
+    def set_provider_api_key(self, api_key: str) -> None:
+        self._provider_env["OPENAI_API_KEY"] = str(api_key or "").strip()
+
     def inject_agent_md(self, sandbox: Any) -> None:
         """Inject or modify AGENTS.md in the sandbox based on mode."""
         sandbox_id = str(getattr(sandbox, "sandbox_id", ""))

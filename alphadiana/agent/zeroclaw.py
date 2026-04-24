@@ -7,6 +7,7 @@ import logging
 import mimetypes
 import os
 import re
+import secrets
 import shlex
 import subprocess
 import time
@@ -17,6 +18,10 @@ from alphadiana.agent.logprob_capture import (
     extract_openai_logprob_records,
     finalize_logprob_capture,
     resolve_logprob_capture_config,
+)
+from alphadiana.agent.logprob_proxy import (
+    LogprobCaptureProxy,
+    resolve_logprob_proxy_advertise_host,
 )
 from alphadiana.agent.base import Agent, AgentResponse
 from alphadiana.agent.preservation import (
@@ -299,6 +304,16 @@ class ZeroClawAgent(Agent):
             default=str(config.get("api_key", "EMPTY")),
         )
         self._logprob_capture = resolve_logprob_capture_config(config)
+        self._logprob_proxy_bind_host = str(
+            config.get("logprob_proxy_bind_host", "0.0.0.0") or "0.0.0.0"
+        ).strip()
+        self._logprob_proxy_advertise_host = str(
+            config.get(
+                "logprob_proxy_advertise_host",
+                config.get("logprob_proxy_host", ""),
+            )
+            or ""
+        ).strip()
         raw_temperature = config.get("temperature", 0.0)
         self._temperature = float(raw_temperature if raw_temperature not in ("", None) else 0.0)
         runtime_trace_mode = str(config.get("runtime_trace_mode", "none") or "none").strip()
@@ -599,6 +614,7 @@ class ZeroClawAgent(Agent):
         artifact_manifest: dict[str, Any] | None = None,
         request_messages: list[dict[str, Any]] | None = None,
         answer_override: str | None = None,
+        logprob_records_override: list[dict] | None = None,
     ) -> AgentResponse:
         sanitized_output, dropped_runtime_logs = _sanitize_cli_output(raw_output)
         combined_output = sanitized_output or raw_stderr or runtime_trace
@@ -643,12 +659,15 @@ class ZeroClawAgent(Agent):
             response_metadata["runtime_logs_dropped_from_output"] = dropped_runtime_logs
         if sanitized_output != raw_output:
             response_metadata["raw_output_sanitized"] = True
-        logprob_records = extract_zeroclaw_logprob_records(
-            runtime_records=runtime_records,
-            runtime_trace=runtime_trace,
-            raw_output=raw_output,
-            raw_stderr=raw_stderr,
-        )
+        if logprob_records_override is not None:
+            logprob_records = list(logprob_records_override)
+        else:
+            logprob_records = extract_zeroclaw_logprob_records(
+                runtime_records=runtime_records,
+                runtime_trace=runtime_trace,
+                raw_output=raw_output,
+                raw_stderr=raw_stderr,
+            )
         token_entropy_stats, response_metadata = finalize_logprob_capture(
             harness="zeroclaw",
             enabled=self._logprob_capture["enabled"],
@@ -756,13 +775,6 @@ class ZeroClawAgent(Agent):
                     f"backend = {_quote_toml(self._security_sandbox_backend)}"
                 )
             security_section = "\n".join(security_lines) + "\n\n"
-        logprob_provider_options = ""
-        if self._logprob_capture["enabled"]:
-            logprob_provider_options = (
-                "[model_providers.custom.options]\n"
-                "logprobs = true\n"
-                f"top_logprobs = {self._logprob_capture['top_logprobs']}\n\n"
-            )
         return (
             f"default_provider = {_quote_toml(self._provider)}\n"
             f"default_model = {_quote_toml(self._model)}\n\n"
@@ -772,7 +784,6 @@ class ZeroClawAgent(Agent):
             "model_routes = []\n"
             "embedding_routes = []\n\n"
             "[model_providers]\n\n"
-            f"{logprob_provider_options}"
             f"{runtime_section}"
             f"{security_section}"
             "[observability]\n"
@@ -1130,16 +1141,53 @@ class ZeroClawAgent(Agent):
 
         env = self._build_env(paths["home_dir"])
         version_output = self._ensure_sandbox_binary(sandbox, env, paths)
-        run_command = self._wrap_shell_command(self._build_run_command(paths), env)
-        execute_long_running = getattr(sandbox, "execute_long_running", None)
-        if execute_long_running is not None:
-            result = execute_long_running(
-                run_command,
-                wait_timeout=self._request_timeout + 60,
-                wait_interval=10,
-            )
-        else:
-            result = sandbox.execute(run_command)
+        logprob_proxy: LogprobCaptureProxy | None = None
+        logprob_proxy_records: list[dict] = []
+        logprob_proxy_metadata: dict[str, Any] = {}
+        try:
+            if self._logprob_capture["enabled"]:
+                proxy_api_key = secrets.token_urlsafe(24)
+                advertise_host = resolve_logprob_proxy_advertise_host(
+                    self._provider_api_base,
+                    self._logprob_proxy_advertise_host,
+                )
+                logprob_proxy = LogprobCaptureProxy(
+                    self._provider_api_base,
+                    self._logprob_capture["top_logprobs"],
+                    bind_host=self._logprob_proxy_bind_host,
+                    advertise_host=advertise_host,
+                    client_timeout=max(120.0, float(self._request_timeout)),
+                    upstream_api_key=self._provider_api_key,
+                    proxy_api_key=proxy_api_key,
+                )
+                logprob_proxy.start()
+                proxy_api_base = f"{logprob_proxy.proxy_url.rstrip('/')}/v1"
+                env = dict(env)
+                env["OPENAI_BASE_URL"] = proxy_api_base
+                env["OPENAI_API_KEY"] = proxy_api_key
+                env["OPENROUTER_API_KEY"] = proxy_api_key
+                env["ZEROCLAW_API_KEY"] = proxy_api_key
+                env["ZEROCLAW_PROVIDER"] = _resolve_zeroclaw_provider("", proxy_api_base)
+                logprob_proxy_metadata = {
+                    "logprob_proxy_enabled": True,
+                    "logprob_proxy_url": proxy_api_base,
+                    "logprob_proxy_upstream": logprob_proxy.upstream,
+                }
+            run_command = self._wrap_shell_command(self._build_run_command(paths), env)
+            execute_long_running = getattr(sandbox, "execute_long_running", None)
+            if execute_long_running is not None:
+                result = execute_long_running(
+                    run_command,
+                    wait_timeout=self._request_timeout + 60,
+                    wait_interval=10,
+                )
+            else:
+                result = sandbox.execute(run_command)
+            if logprob_proxy is not None:
+                logprob_proxy_records = logprob_proxy.drain_records()
+        finally:
+            if logprob_proxy is not None:
+                logprob_proxy.stop()
 
         raw_output = self._read_sandbox_file(sandbox, paths["stdout_path"]).strip()
         raw_stderr = self._read_sandbox_file(sandbox, paths["stderr_path"]).strip()
@@ -1169,6 +1217,10 @@ class ZeroClawAgent(Agent):
             "sandbox_backend": getattr(sandbox, "name", ""),
             "transport": "zeroclaw_cli_sandbox",
         }
+        if logprob_proxy_metadata:
+            metadata.update(logprob_proxy_metadata)
+            metadata["logprob_probe_proxy_count"] = len(logprob_proxy_records)
+            metadata["logprob_source"] = "provider_proxy" if logprob_proxy_records else ""
         if patch_source:
             metadata["patch_source"] = patch_source
         if dropped_runtime_logs:
@@ -1191,6 +1243,7 @@ class ZeroClawAgent(Agent):
             },
             request_messages=list(task_context["request_messages"]),
             answer_override=patch_answer,
+            logprob_records_override=logprob_proxy_records if logprob_proxy_records else None,
         )
         partial_response.workspace_snapshot_paths = [
             path

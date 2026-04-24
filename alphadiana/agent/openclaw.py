@@ -27,6 +27,7 @@ import logging
 import os
 import random
 import re
+import secrets
 import shlex
 import threading
 import time
@@ -40,6 +41,11 @@ from alphadiana.agent.logprob_capture import (
     finalize_logprob_capture,
     resolve_logprob_capture_config,
 )
+from alphadiana.agent.logprob_proxy import (
+    LogprobCaptureProxy,
+    normalize_openai_proxy_upstream,
+    resolve_logprob_proxy_advertise_host,
+)
 from alphadiana.agent.base import Agent, AgentResponse
 from alphadiana.agent.preservation import add_artifact_file_refs
 from alphadiana.agent.registry import AgentRegistry
@@ -49,6 +55,11 @@ from alphadiana.utils.math_answer import extract_answer_candidate
 from alphadiana.utils.rock_ports import resolve_rock_ports_from_env
 
 logger = logging.getLogger(__name__)
+
+
+def _is_unresolved_placeholder(value: str) -> bool:
+    stripped = str(value or "").strip()
+    return stripped.startswith("${") and stripped.endswith("}")
 
 
 class OpenClawRequestError(RuntimeError):
@@ -766,6 +777,17 @@ class OpenClawAgent(Agent):
         )
         self._proxy_timeout = int(config.get("proxy_timeout", 600))
         self._logprob_capture = resolve_logprob_capture_config(config)
+        self._logprob_proxy_bind_host = str(
+            config.get("logprob_proxy_bind_host", "0.0.0.0") or "0.0.0.0"
+        ).strip()
+        self._logprob_proxy_advertise_host = str(
+            config.get(
+                "logprob_proxy_advertise_host",
+                config.get("logprob_proxy_host", ""),
+            )
+            or ""
+        ).strip()
+        self._logprob_proxy: LogprobCaptureProxy | None = None
         self._config = config
 
         # Agent.md customization
@@ -849,6 +871,70 @@ class OpenClawAgent(Agent):
                 self._runtime_manager = OpenClawRuntimeManager(config)
         except ImportError:
             self._runtime_manager = None
+
+    def _resolve_runtime_provider_api_base(self) -> str:
+        for key in ("OPENAI_BASE_URL", "openai_base_url"):
+            value = str(self._config.get(key, "") or "").strip()
+            if value and not _is_unresolved_placeholder(value):
+                return value
+        return os.environ.get("OPENAI_BASE_URL", "").strip()
+
+    def _resolve_runtime_provider_api_key(self) -> str:
+        for key in ("OPENAI_API_KEY", "openai_api_key"):
+            value = str(self._config.get(key, "") or "").strip()
+            if value and not _is_unresolved_placeholder(value):
+                return value
+        return os.environ.get("OPENAI_API_KEY", "").strip()
+
+    def _ensure_runtime_logprob_proxy(self) -> LogprobCaptureProxy | None:
+        if not self._logprob_capture["enabled"]:
+            return None
+        if self._runtime_manager is None or not self._runtime_manager.is_configured:
+            return None
+        if self._logprob_proxy is not None:
+            return self._logprob_proxy
+
+        upstream = normalize_openai_proxy_upstream(self._resolve_runtime_provider_api_base())
+        if not upstream:
+            return None
+        proxy_api_key = secrets.token_urlsafe(24)
+        advertise_host = resolve_logprob_proxy_advertise_host(
+            upstream,
+            self._logprob_proxy_advertise_host,
+        )
+        proxy = LogprobCaptureProxy(
+            upstream,
+            self._logprob_capture["top_logprobs"],
+            bind_host=self._logprob_proxy_bind_host,
+            advertise_host=advertise_host,
+            client_timeout=max(120.0, self._request_timeout),
+            upstream_api_key=self._resolve_runtime_provider_api_key(),
+            proxy_api_key=proxy_api_key,
+        )
+        proxy.start()
+        proxy_api_base = f"{proxy.proxy_url.rstrip('/')}/v1"
+        setter = getattr(self._runtime_manager, "set_provider_api_base", None)
+        if callable(setter):
+            setter(proxy_api_base)
+        else:
+            provider_env = getattr(self._runtime_manager, "_provider_env", None)
+            if isinstance(provider_env, dict):
+                provider_env["OPENAI_BASE_URL"] = proxy_api_base
+        key_setter = getattr(self._runtime_manager, "set_provider_api_key", None)
+        if callable(key_setter):
+            key_setter(proxy_api_key)
+        else:
+            provider_env = getattr(self._runtime_manager, "_provider_env", None)
+            if isinstance(provider_env, dict):
+                provider_env["OPENAI_API_KEY"] = proxy_api_key
+        self._logprob_proxy = proxy
+        logger.info(
+            "OpenClaw logprob proxy started local_url=%s advertised_url=%s upstream=%s",
+            proxy.local_url,
+            proxy.proxy_url,
+            proxy.upstream,
+        )
+        return proxy
 
     def _ensure_agent_md(self, sandbox: Any = None) -> None:
         if (
@@ -1322,8 +1408,12 @@ class OpenClawAgent(Agent):
             "workspace_file_contents": {},
             "sandbox_metadata": {},
         }
+        logprob_proxy: LogprobCaptureProxy | None = None
         if not runtime_info["api_base"] and sandbox is not None and self._runtime_manager and self._runtime_manager.is_configured:
+            logprob_proxy = self._ensure_runtime_logprob_proxy()
             runtime_info = self._runtime_manager.ensure_ready(sandbox)
+            if logprob_proxy is not None:
+                logprob_proxy.drain_records()
         elif not runtime_info["api_base"]:
             raise RuntimeError(
                 "OpenClawAgent requires either agent.config.api_base (or gateway_pool) "
@@ -1365,9 +1455,12 @@ class OpenClawAgent(Agent):
         received_done: bool = False
         selected_logprob_records: list[dict] = []
         logprob_source_attempt = 0
+        logprob_source = ""
+        selected_proxy_logprob_count = 0
         for attempt in range(1, self._max_attempts + 1):
             attempt_start = time.monotonic()
             attempt_logprob_records: list[dict] = []
+            attempt_proxy_logprob_records: list[dict] = []
             attempt_token_index = 0
             try:
                 chunks: list[str] = []
@@ -1375,6 +1468,8 @@ class OpenClawAgent(Agent):
                 status_code: int = 0
                 resp_headers: dict = {}
                 received_done: bool = False
+                if logprob_proxy is not None:
+                    logprob_proxy.drain_records()
                 logger.info(
                     "OpenClaw attempt %d/%d starting request: timeout=%.1fs stream_idle_timeout=%.1fs url=%s",
                     attempt,
@@ -1491,6 +1586,8 @@ class OpenClawAgent(Agent):
                                     if chunk_json.get("usage"):
                                         response_json = chunk_json
 
+                if logprob_proxy is not None:
+                    attempt_proxy_logprob_records = logprob_proxy.drain_records()
                 raw_output = "".join(chunks)
                 raw_reasoning = "".join(reasoning_chunks)
                 logger.info(
@@ -1561,15 +1658,29 @@ class OpenClawAgent(Agent):
                     cumulative_token_usage["completion_tokens"] += int(attempt_usage.get("completion_tokens", 0))
                     cumulative_token_usage["total_tokens"] += int(attempt_usage.get("total_tokens", 0))
                 if raw_output:
-                    selected_logprob_records = list(attempt_logprob_records)
+                    selected_logprob_records = list(
+                        attempt_logprob_records or attempt_proxy_logprob_records
+                    )
                     logprob_source_attempt = attempt if selected_logprob_records else 0
+                    selected_proxy_logprob_count = len(attempt_proxy_logprob_records)
+                    if attempt_logprob_records:
+                        logprob_source = "gateway_response"
+                    elif attempt_proxy_logprob_records:
+                        logprob_source = "provider_proxy"
                     # Successful response — reset the consecutive-empty counter.
                     with self._circuit_lock:
                         self._consecutive_empty_sse = 0
                     break
                 if raw_reasoning:
-                    selected_logprob_records = list(attempt_logprob_records)
+                    selected_logprob_records = list(
+                        attempt_logprob_records or attempt_proxy_logprob_records
+                    )
                     logprob_source_attempt = attempt if selected_logprob_records else 0
+                    selected_proxy_logprob_count = len(attempt_proxy_logprob_records)
+                    if attempt_logprob_records:
+                        logprob_source = "gateway_response"
+                    elif attempt_proxy_logprob_records:
+                        logprob_source = "provider_proxy"
                     # Partial reasoning counts as a success for the circuit breaker.
                     with self._circuit_lock:
                         self._consecutive_empty_sse = 0
@@ -1956,7 +2067,17 @@ class OpenClawAgent(Agent):
             "raw_reasoning": raw_reasoning,
             "logprob_attempt_count": attempt,
             "logprob_source_attempt": logprob_source_attempt,
+            "logprob_source": logprob_source,
+            "logprob_probe_proxy_count": selected_proxy_logprob_count,
         }
+        if logprob_proxy is not None:
+            response_metadata.update(
+                {
+                    "logprob_proxy_enabled": True,
+                    "logprob_proxy_url": f"{logprob_proxy.proxy_url.rstrip('/')}/v1",
+                    "logprob_proxy_upstream": logprob_proxy.upstream,
+                }
+            )
         token_entropy_stats, response_metadata = finalize_logprob_capture(
             harness="openclaw",
             enabled=self._logprob_capture["enabled"],
@@ -1987,6 +2108,12 @@ class OpenClawAgent(Agent):
         )
 
     def teardown(self) -> None:
+        if self._logprob_proxy is not None:
+            try:
+                self._logprob_proxy.stop()
+            except Exception as exc:
+                logger.warning("OpenClaw logprob proxy teardown failed: %s", exc)
+            self._logprob_proxy = None
         if self._runtime_manager is not None:
             try:
                 self._runtime_manager.teardown()
