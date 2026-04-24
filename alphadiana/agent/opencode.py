@@ -7,13 +7,25 @@ import logging
 import os
 import re
 import signal
+import socketserver
 import sqlite3
 import subprocess
 import tempfile
+import threading
 import time
+import http.server
 from pathlib import Path
 from typing import Any
 
+import httpx
+
+from alphadiana.agent.logprob_capture import (
+    apply_openai_logprob_request,
+    extract_openai_logprob_records,
+    finalize_logprob_capture,
+    raw_token_logprob_dict_to_record,
+    resolve_logprob_capture_config,
+)
 from alphadiana.agent.base import Agent, AgentResponse
 from alphadiana.agent.preservation import (
     add_artifact_file_refs,
@@ -308,6 +320,307 @@ def _read_opencode_session_trace(session_dir: Path, session_id: str) -> tuple[st
     return "", ""
 
 
+def extract_opencode_logprob_records(
+    *,
+    events: list[dict[str, Any]],
+    session_trace: str,
+    stdout: str,
+) -> list[dict]:
+    """Extract OpenAI-shaped logprob records from OpenCode event/trace payloads."""
+    envelope_keys = {"choices", "response", "provider_response", "payload", "data", "message", "part"}
+
+    def _jsonl_objects(text: str) -> list[dict[str, Any]]:
+        objects: list[dict[str, Any]] = []
+        for raw_line in (text or "").splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(payload, dict):
+                objects.append(payload)
+        return objects
+
+    def _json_from_string(value: Any) -> Any | None:
+        if not isinstance(value, str):
+            return None
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            return None
+        return parsed if isinstance(parsed, (dict, list)) else None
+
+    records: list[dict] = []
+    token_index = 0
+    seen_payloads: set[str] = set()
+
+    def _scan(node: Any) -> None:
+        nonlocal token_index
+        if isinstance(node, dict):
+            payload_fingerprint = ""
+            if "choices" in node:
+                try:
+                    payload_fingerprint = json.dumps(node, sort_keys=True, ensure_ascii=False)
+                except (TypeError, ValueError):
+                    payload_fingerprint = ""
+            should_extract = not payload_fingerprint or payload_fingerprint not in seen_payloads
+            if payload_fingerprint:
+                seen_payloads.add(payload_fingerprint)
+            if should_extract:
+                parsed, token_index_next = extract_openai_logprob_records(
+                    node,
+                    start_index=token_index,
+                )
+                if parsed:
+                    for item in parsed:
+                        records.append(
+                            raw_token_logprob_dict_to_record(
+                                {
+                                    "token": item.get("token", ""),
+                                    "logprob": item.get("logprob", 0.0),
+                                    "top_logprobs": item.get("top_logprobs", []),
+                                },
+                                int(item.get("token_index", 0)),
+                            )
+                        )
+                token_index = token_index_next
+            for key, value in node.items():
+                if key not in envelope_keys:
+                    continue
+                parsed_value = _json_from_string(value)
+                if parsed_value is not None:
+                    _scan(parsed_value)
+                _scan(value)
+            for key, value in node.items():
+                if key in envelope_keys:
+                    continue
+                _scan(value)
+            return
+        if isinstance(node, list):
+            for entry in node:
+                _scan(entry)
+
+    for event in events or []:
+        _scan(event)
+    for payload in _jsonl_objects(session_trace):
+        _scan(payload)
+    for payload in _jsonl_objects(stdout):
+        _scan(payload)
+    return records
+
+
+def _count_json_objects(text: str) -> int:
+    """Count valid JSON objects in a JSONL-like blob."""
+    count = 0
+    for raw_line in (text or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            count += 1
+    return count
+
+
+class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
+    server: "_LogprobCaptureServer"
+
+    def _forward_headers(self, resp: httpx.Response, *, skip_length: bool = False) -> None:
+        self.send_response(resp.status_code)
+        for k, v in resp.headers.items():
+            kl = k.lower()
+            if kl in ("transfer-encoding", "content-encoding"):
+                continue
+            if skip_length and kl == "content-length":
+                continue
+            self.send_header(k, v)
+        self.end_headers()
+
+    def _extract_sse_logprobs(self, line: str) -> None:
+        """Parse one SSE data line and append any logprob token dicts to the server list."""
+        if not line.startswith("data: ") or line == "data: [DONE]":
+            return
+        try:
+            data = json.loads(line[6:])
+            choices = data.get("choices", [])
+            if choices:
+                lp_content = (choices[0].get("logprobs") or {}).get("content") or []
+                if lp_content:
+                    with self.server.lock:
+                        self.server.streaming_logprobs.extend(lp_content)
+        except (json.JSONDecodeError, KeyError, TypeError):
+            pass
+
+    def do_POST(self) -> None:
+        length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(length)
+        path = self.path
+        is_completions = "/chat/completions" in path
+
+        if is_completions:
+            try:
+                payload = json.loads(body)
+            except json.JSONDecodeError:
+                payload = {}
+            payload["logprobs"] = True
+            payload["top_logprobs"] = self.server.top_logprobs
+            # Keep stream / stream_options unchanged — removing stream causes vLLM to
+            # reject stream_options; removing both forces full buffering before OpenCode
+            # gets any tokens, making long generations take 10x longer.
+            body = json.dumps(payload).encode()
+
+        fwd_url = self.server.upstream.rstrip("/") + path
+        fwd_headers = {
+            k: v
+            for k, v in self.headers.items()
+            if k.lower() not in ("host", "transfer-encoding", "content-length")
+        }
+        fwd_headers["Content-Length"] = str(len(body))
+
+        try:
+            with self.server.client.stream(
+                "POST", fwd_url, content=body, headers=fwd_headers
+            ) as resp:
+                is_sse = "text/event-stream" in resp.headers.get("content-type", "")
+
+                if resp.status_code >= 400:
+                    # Buffer error body for logging, then forward
+                    err_body = resp.read()
+                    logger.warning(
+                        "LogprobProxy upstream %s → %d sent=%s err=%s",
+                        fwd_url, resp.status_code, body[:300], err_body[:300],
+                    )
+                    self.send_response(resp.status_code)
+                    for k, v in resp.headers.items():
+                        if k.lower() in ("transfer-encoding", "content-encoding"):
+                            continue
+                    self.send_header("Content-Length", str(len(err_body)))
+                    self.end_headers()
+                    self.wfile.write(err_body)
+                    return
+
+                if is_sse and is_completions:
+                    # Stream SSE to client while parsing each event for logprobs.
+                    # We forward raw bytes immediately so OpenCode gets tokens in real
+                    # time; we also maintain a sliding line buffer to parse SSE events.
+                    self._forward_headers(resp, skip_length=True)
+                    sse_buf = ""
+                    for raw in resp.iter_bytes(chunk_size=512):
+                        self.wfile.write(raw)
+                        self.wfile.flush()
+                        sse_buf += raw.decode("utf-8", errors="replace")
+                        while "\n" in sse_buf:
+                            line, sse_buf = sse_buf.split("\n", 1)
+                            self._extract_sse_logprobs(line.rstrip("\r"))
+                else:
+                    # Non-streaming: buffer full body, parse logprobs, forward.
+                    resp_body = resp.read()
+                    if is_completions:
+                        try:
+                            with self.server.lock:
+                                self.server.raw_responses.append(json.loads(resp_body))
+                        except (json.JSONDecodeError, ValueError):
+                            pass
+                    self.send_response(resp.status_code)
+                    for k, v in resp.headers.items():
+                        if k.lower() in ("transfer-encoding", "content-encoding"):
+                            continue
+                    self.send_header("Content-Length", str(len(resp_body)))
+                    self.end_headers()
+                    self.wfile.write(resp_body)
+        except Exception as exc:
+            try:
+                self.send_error(502, str(exc))
+            except Exception:
+                pass
+
+    def do_GET(self) -> None:
+        fwd_url = self.server.upstream.rstrip("/") + self.path
+        fwd_headers = {k: v for k, v in self.headers.items() if k.lower() != "host"}
+        try:
+            resp = self.server.client.get(fwd_url, headers=fwd_headers)
+        except Exception as exc:
+            self.send_error(502, str(exc))
+            return
+        resp_body = resp.content
+        self.send_response(resp.status_code)
+        for k, v in resp.headers.items():
+            if k.lower() in ("transfer-encoding", "content-encoding"):
+                continue
+            self.send_header(k, v)
+        self.send_header("Content-Length", str(len(resp_body)))
+        self.end_headers()
+        self.wfile.write(resp_body)
+
+    def log_message(self, *args: object) -> None:
+        pass
+
+
+class _LogprobCaptureServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+    daemon_threads = True
+
+    def __init__(self, upstream: str, top_logprobs: int) -> None:
+        super().__init__(("127.0.0.1", 0), _LogprobProxyHandler)
+        self.upstream = upstream
+        self.top_logprobs = top_logprobs
+        self.raw_responses: list[dict] = []      # non-streaming full responses
+        self.streaming_logprobs: list[dict] = [] # per-token dicts from SSE events
+        self.lock = threading.Lock()
+        self.client = httpx.Client(timeout=120.0)
+
+
+class LogprobCaptureProxy:
+    def __init__(self, upstream: str, top_logprobs: int) -> None:
+        self._upstream = upstream
+        self._top_logprobs = top_logprobs
+        self._server: _LogprobCaptureServer | None = None
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        self._server = _LogprobCaptureServer(self._upstream, self._top_logprobs)
+        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        if self._server:
+            self._server.shutdown()
+            self._server.client.close()
+
+    @property
+    def proxy_url(self) -> str:
+        assert self._server is not None
+        port = self._server.server_address[1]
+        return f"http://127.0.0.1:{port}"
+
+    def captured_records(self) -> list[dict]:
+        assert self._server is not None
+        records: list[dict] = []
+        token_index = 0
+        with self._server.lock:
+            sse_tokens = list(self._server.streaming_logprobs)
+            payloads = list(self._server.raw_responses)
+        # Prefer SSE per-token stream (real tokens in order); fall back to buffered JSON.
+        if sse_tokens:
+            for item in sse_tokens:
+                records.append(raw_token_logprob_dict_to_record(item, token_index))
+                token_index += 1
+        else:
+            for payload in payloads:
+                new_records, token_index = extract_openai_logprob_records(
+                    payload, start_index=token_index
+                )
+                records.extend(new_records)
+        return records
+
+
 def _redact_secret_fields(value: Any) -> Any:
     """Redact obvious credential-like fields from structured artifacts."""
     if isinstance(value, dict):
@@ -547,6 +860,7 @@ class OpenCodeAgent(Agent):
         self._system_prompt = config.get("system_prompt", _DEFAULT_SYSTEM_PROMPT)
         self._opencode_bin = config.get("opencode_bin", "opencode")
         self._streaming = config.get("streaming") if "streaming" in config else None
+        self._logprob_capture = resolve_logprob_capture_config(config)
         self._config = dict(config)
         self._runtime_manager = None
 
@@ -689,11 +1003,34 @@ class OpenCodeAgent(Agent):
             "exit_code": exit_code,
             "stderr": stderr[:2000] if stderr else "",
             "num_events": len(events),
+            "logprob_probe_event_count": len(events),
+            "logprob_probe_session_json_count": 0,
+            "logprob_probe_stdout_json_count": 0,
+            "logprob_probe_record_count": 0,
             "session_id": session_id,
             "patch_source": "git_diff" if patch_from_git else "text_extraction",
             "transport": "opencode_cli_container",
             **artifacts,
         }
+        session_trace_text = (artifacts.get("workspace_file_contents", {}) or {}).get(
+            "opencode_session.jsonl", ""
+        )
+        logprob_probe_session_json_count = _count_json_objects(session_trace_text)
+        logprob_probe_stdout_json_count = _count_json_objects(raw_stdout)
+        logprob_records = extract_opencode_logprob_records(
+            events=events,
+            session_trace=session_trace_text,
+            stdout=raw_stdout,
+        )
+        response_metadata["logprob_probe_session_json_count"] = logprob_probe_session_json_count
+        response_metadata["logprob_probe_stdout_json_count"] = logprob_probe_stdout_json_count
+        response_metadata["logprob_probe_record_count"] = len(logprob_records)
+        token_entropy_stats, response_metadata = finalize_logprob_capture(
+            harness="opencode",
+            enabled=self._logprob_capture["enabled"],
+            records=logprob_records,
+            metadata=response_metadata,
+        )
         if error_info:
             response_metadata.update({
                 "opencode_error_name": error_info["name"],
@@ -711,6 +1048,7 @@ class OpenCodeAgent(Agent):
             reasoning_trajectory=reasoning_trajectory,
             raw_output=full_content,
             wall_time_sec=wall_time,
+            token_entropy_stats=token_entropy_stats,
             metadata=response_metadata,
             system_prompt=system_prompt,
             request_messages=request_messages,
@@ -789,10 +1127,13 @@ class OpenCodeAgent(Agent):
     def _solve_cli(self, task: BenchmarkTask) -> AgentResponse:
         """Run tasks through the OpenCode CLI (host or Docker, multimodal-aware)."""
         start = time.time()
+        session_trace = ""
+        proxy_logprob_records: list[dict] = []
         preserved_local_artifacts: dict[str, Any] = {}
 
         with tempfile.TemporaryDirectory(prefix="opencode-task-") as workdir:
             workdir_path = Path(workdir)
+            container_home = workdir_path / ".controller-home"
             config_root = workdir_path / "xdg-config"
             config_dir = config_root / "opencode"
             config_dir.mkdir(parents=True, exist_ok=True)
@@ -833,6 +1174,26 @@ class OpenCodeAgent(Agent):
                 "model": cli_model,
                 "small_model": cli_model,
             }
+            apply_openai_logprob_request(
+                provider_config["provider"]["custom"]["options"],
+                self._logprob_capture,
+            )
+            # Streaming stays as configured — the proxy intercepts SSE chunks to extract
+            # logprobs in real time, so we don't need to disable streaming.
+            proxy: LogprobCaptureProxy | None = None
+            effective_api_base = self._api_base
+            if self._logprob_capture["enabled"]:
+                # Strip any path suffix (e.g. "/v1") from api_base before handing to proxy —
+                # OpenCode will append its own "/v1/chat/completions" to the proxy URL,
+                # and the proxy forwards that full path to upstream unchanged.
+                upstream_base = self._api_base.rstrip("/")
+                if upstream_base.endswith("/v1"):
+                    upstream_base = upstream_base[:-3]
+                proxy = LogprobCaptureProxy(upstream_base, self._logprob_capture["top_logprobs"])
+                proxy.start()
+                effective_api_base = proxy.proxy_url + "/v1"
+                provider_config["provider"]["custom"]["options"]["baseURL"] = effective_api_base
+                provider_config["provider"]["custom"]["options"]["apiKey"] = self._api_key
             (config_dir / "opencode.json").write_text(json.dumps(provider_config, indent=2))
 
             if self._agent_name and (self._agent_md_path or self._agent_md_content):
@@ -856,7 +1217,7 @@ class OpenCodeAgent(Agent):
 
             env = os.environ.copy()
             env["OPENAI_API_KEY"] = self._api_key
-            env["OPENAI_BASE_URL"] = self._api_base
+            env["OPENAI_BASE_URL"] = effective_api_base
             env["XDG_CONFIG_HOME"] = str(config_root)
             for var in (
                 "ALL_PROXY",
@@ -931,9 +1292,13 @@ class OpenCodeAgent(Agent):
                         except ProcessLookupError:
                             raw_output, timed_out_stderr = process.communicate()
                             stderr = timed_out_stderr or stderr
+            if proxy is not None:
+                proxy_logprob_records = proxy.captured_records()
+                proxy.stop()
 
             _, _, session_id = _parse_opencode_output(raw_output)
             preserved_local_artifacts = _collect_local_opencode_artifacts(config_dir, session_id)
+            session_trace = preserved_local_artifacts.get("workspace_file_contents", {}).get("opencode_session.jsonl", "")
 
         wall_time = time.time() - start
         assistant_text, events, session_id = _parse_opencode_output(raw_output)
@@ -1015,11 +1380,34 @@ class OpenCodeAgent(Agent):
             "returncode": returncode,
             "stderr": stderr[:2000] if stderr else "",
             "num_events": len(events),
+            "logprob_probe_event_count": len(events),
+            "logprob_probe_session_json_count": 0,
+            "logprob_probe_stdout_json_count": 0,
+            "logprob_probe_record_count": 0,
             "session_id": session_id,
             "num_attachments": len(attachment_paths),
             "controller_mode": self._controller_mode,
             "transport": transport,
         }
+        logprob_probe_session_json_count = _count_json_objects(session_trace)
+        logprob_probe_stdout_json_count = _count_json_objects(raw_output)
+        logprob_records = extract_opencode_logprob_records(
+            events=events,
+            session_trace=session_trace,
+            stdout=raw_output,
+        )
+        if not logprob_records and proxy_logprob_records:
+            logprob_records = proxy_logprob_records
+        response_metadata["logprob_probe_session_json_count"] = logprob_probe_session_json_count
+        response_metadata["logprob_probe_stdout_json_count"] = logprob_probe_stdout_json_count
+        response_metadata["logprob_probe_record_count"] = len(logprob_records)
+        response_metadata["logprob_probe_proxy_count"] = len(proxy_logprob_records)
+        token_entropy_stats, response_metadata = finalize_logprob_capture(
+            harness="opencode",
+            enabled=self._logprob_capture["enabled"],
+            records=logprob_records,
+            metadata=response_metadata,
+        )
         if error_info:
             response_metadata.update({
                 "opencode_error_name": error_info["name"],
@@ -1037,6 +1425,7 @@ class OpenCodeAgent(Agent):
             reasoning_trajectory=reasoning_trajectory,
             raw_output=full_content,
             wall_time_sec=wall_time,
+            token_entropy_stats=token_entropy_stats,
             metadata=response_metadata,
             request_messages=request_messages,
             response_json=response_json,

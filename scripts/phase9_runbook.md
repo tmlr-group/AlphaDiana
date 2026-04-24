@@ -12,6 +12,10 @@ serving `Qwen/Qwen3.5-27B` at `http://127.0.0.1:8011/v1` with
    ```
    Expected: JSON response with `data[].id` equal to `Qwen/Qwen3.5-27B`.
 
+   For Phase 9, using the shared local vLLM endpoint is acceptable; the
+   Docker/container isolation requirement applies to agent runtimes such as
+   OpenClaw, OpenCode, and ZeroClaw, not to this direct local vLLM service.
+
 2. **Verify disk headroom (need > 20 GB free for logprobs JSONL files):**
    ```bash
    df -h ./results
@@ -27,6 +31,14 @@ serving `Qwen/Qwen3.5-27B` at `http://127.0.0.1:8011/v1` with
                     tests/test_phase9_monitor_review.py -x -v
    ```
    All must pass before running against vLLM.
+
+4. **Use a writable Hugging Face dataset cache if needed:**
+   ```bash
+   export HF_ENDPOINT=https://hf-mirror.com
+   export HF_DATASETS_CACHE=/tmp/alphadiana_hf_datasets_phase9
+   ```
+   This avoids lock-file failures when the shared `/path/to/datasets` cache is
+   readable but not writable.
 
 ## Step 1 — Smoke Run (1 task, ~2 min)
 

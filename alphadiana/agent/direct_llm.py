@@ -17,8 +17,13 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-from alphadiana.agent._entropy import _compute_entropy_stats
 from alphadiana.agent._logprobs import INT16_PROB_SCALE, quantize_records_int16
+from alphadiana.agent.logprob_capture import (
+    apply_openai_logprob_request,
+    extract_openai_logprob_records,
+    finalize_logprob_capture,
+    resolve_logprob_capture_config,
+)
 from alphadiana.agent.base import Agent, AgentResponse
 from alphadiana.agent.registry import AgentRegistry
 from alphadiana.benchmark.base import BenchmarkTask
@@ -96,8 +101,12 @@ class DirectLLMAgent(Agent):
         self._system_prompt = config.get("system_prompt", _DEFAULT_SYSTEM_PROMPT)
         self._enable_thinking = config.get("enable_thinking", None)
         self._extra_body: dict[str, Any] | None = config.get("extra_body", None)
-        self._capture_logprobs = bool(config.get("capture_logprobs", True))
-        self._top_logprobs = int(config.get("top_logprobs", 20)) if self._capture_logprobs else 0
+        capture_config = dict(config)
+        # DirectLLM defaults to enabled capture for backward compatibility.
+        capture_config.setdefault("capture_logprobs", True)
+        self._logprob_capture = resolve_logprob_capture_config(capture_config)
+        self._capture_logprobs = self._logprob_capture["enabled"]
+        self._top_logprobs = self._logprob_capture["top_logprobs"]
         fmt = str(config.get("logprobs_format", "int16")).lower()
         if fmt not in ("float", "int16"):
             raise ValueError(f"logprobs_format must be 'float' or 'int16', got {fmt!r}")
@@ -223,9 +232,7 @@ class DirectLLMAgent(Agent):
         if extra_body:
             request_kwargs["extra_body"] = extra_body
 
-        if self._capture_logprobs:
-            request_kwargs["logprobs"] = True
-            request_kwargs["top_logprobs"] = self._top_logprobs
+        apply_openai_logprob_request(request_kwargs, self._logprob_capture)
 
         # Retry loop with exponential backoff for transient errors.
         last_exc: Exception | None = None
@@ -267,11 +274,14 @@ class DirectLLMAgent(Agent):
         # records that leaked through (e.g. test stubs always returning logprobs).
         if not self._capture_logprobs:
             logprob_records = []
-        # Entropy stats are computed on raw-float records; quantisation is
-        # applied afterwards so downstream JSONL output can be compact.
-        token_entropy_stats = _compute_entropy_stats(logprob_records)
+        token_entropy_stats, response_metadata = finalize_logprob_capture(
+            harness="direct_llm",
+            enabled=self._logprob_capture["enabled"],
+            records=logprob_records,
+            metadata={},
+        )
         if self._capture_logprobs and self._logprobs_format == "int16" and logprob_records:
-            logprob_records = quantize_records_int16(
+            response_metadata["logprob_records"] = quantize_records_int16(
                 logprob_records, top_k=self._top_logprobs or 20
             )
 
@@ -320,7 +330,7 @@ class DirectLLMAgent(Agent):
             token_usage=token_usage,
             wall_time_sec=wall_time,
             token_entropy_stats=token_entropy_stats,
-            metadata={"logprob_records": logprob_records},
+            metadata=response_metadata,
             system_prompt=self._system_prompt,
             request_messages=messages,
             finish_reason=finish_reason,
@@ -418,17 +428,11 @@ class DirectLLMAgent(Agent):
                     finish_reason = chunk.choices[0].finish_reason
                 chunk_logprobs = getattr(chunk.choices[0], "logprobs", None)
                 if chunk_logprobs is not None and getattr(chunk_logprobs, "content", None):
-                    for tlp in chunk_logprobs.content:
-                        logprob_records.append({
-                            "token_index": token_index,
-                            "token": tlp.token,
-                            "logprob": float(tlp.logprob),
-                            "top_logprobs": [
-                                {"token": t.token, "logprob": float(t.logprob)}
-                                for t in (tlp.top_logprobs or [])
-                            ],
-                        })
-                        token_index += 1
+                    chunk_records, token_index = extract_openai_logprob_records(
+                        {"choices": [{"logprobs": {"content": chunk_logprobs.content}}]},
+                        start_index=token_index,
+                    )
+                    logprob_records.extend(chunk_records)
             if hasattr(chunk, "usage") and chunk.usage:
                 token_usage = {
                     "prompt_tokens": chunk.usage.prompt_tokens or 0,
@@ -464,19 +468,7 @@ class DirectLLMAgent(Agent):
         # Handle <think> tags embedded in content (Qwen3/vLLM pattern)
         if not raw_reasoning and "<think>" in raw_output:
             raw_reasoning, raw_output = _split_think_tags(raw_output)
-        logprob_records: list[dict] = []
-        choice_logprobs = getattr(choice, "logprobs", None)
-        if choice_logprobs is not None and getattr(choice_logprobs, "content", None):
-            for idx, tlp in enumerate(choice_logprobs.content):
-                logprob_records.append({
-                    "token_index": idx,
-                    "token": tlp.token,
-                    "logprob": float(tlp.logprob),
-                    "top_logprobs": [
-                        {"token": t.token, "logprob": float(t.logprob)}
-                        for t in (tlp.top_logprobs or [])
-                    ],
-                })
+        logprob_records, _ = extract_openai_logprob_records(response, start_index=0)
         return raw_output, finish_reason, token_usage, raw_reasoning, logprob_records
 
     def teardown(self) -> None:
