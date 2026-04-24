@@ -858,7 +858,12 @@ class OpenClawRuntimeManager:
                         self._logprob_proxy.stop()
                     except Exception:
                         pass
-                self._logprob_proxy = OpenClawLogprobProxy(upstream_base_url, top_logprobs)
+                # Strip trailing /v1 — proxy re-appends the full request path (which
+                # already contains /v1/...), so passing it in upstream causes double /v1.
+                upstream_no_v1 = upstream_base_url
+                if upstream_no_v1.endswith("/v1"):
+                    upstream_no_v1 = upstream_no_v1[:-3]
+                self._logprob_proxy = OpenClawLogprobProxy(upstream_no_v1, top_logprobs)
                 self._logprob_proxy.start()
                 proxy_url = self._logprob_proxy.proxy_url_for_docker(self._docker_host_ip)
                 env_cfg["OPENAI_BASE_URL"] = proxy_url + "/v1"
