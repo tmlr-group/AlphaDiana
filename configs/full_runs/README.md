@@ -66,8 +66,7 @@ Campaign rules:
   `temperature=0.0`, `top_p=0.95`, `max_tokens=32768`, `streaming=true`,
   `timeout=1800`.
 - Keep the plan's published gap list in mind when reading that line:
-  `thinking` is not uniformly forwarded, `opencode` does not uniformly expose
-  `top_p` / `max_tokens`, and `zeroclaw` does not uniformly expose
+  `thinking` is not uniformly forwarded, and `zeroclaw` does not uniformly expose
   `top_p` / `max_tokens` / `streaming`.
 
 Wave summary from the checked-in manifest:

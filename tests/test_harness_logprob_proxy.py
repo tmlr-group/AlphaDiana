@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import http.server
+import json
+import threading
+import urllib.request
+
 from alphadiana.agent.logprob_proxy import (
     LogprobCaptureProxy,
     normalize_openai_proxy_upstream,
@@ -15,6 +20,76 @@ def test_logprob_proxy_normalizes_upstream_and_advertise_host() -> None:
     assert resolve_logprob_proxy_advertise_host("http://127.0.0.1:8011") == "172.17.0.1"
     assert resolve_logprob_proxy_advertise_host("http://10.0.0.3:8011") == "10.0.0.3"
     assert resolve_logprob_proxy_advertise_host("http://127.0.0.1:8011", "host.test") == "host.test"
+
+
+def test_logprob_proxy_injects_request_overrides() -> None:
+    seen: dict = {}
+
+    class _CaptureHandler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            length = int(self.headers.get("Content-Length", 0))
+            seen["path"] = self.path
+            seen["authorization"] = self.headers.get("Authorization", "")
+            seen["payload"] = json.loads(self.rfile.read(length))
+            body = {
+                "choices": [
+                    {
+                        "message": {"content": "D"},
+                        "logprobs": {
+                            "content": [
+                                {
+                                    "token": "D",
+                                    "logprob": -0.1,
+                                    "top_logprobs": [{"token": "D", "logprob": -0.1}],
+                                }
+                            ]
+                        },
+                    }
+                ]
+            }
+            raw = json.dumps(body).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
+        def log_message(self, *args: object) -> None:
+            pass
+
+    upstream = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _CaptureHandler)
+    thread = threading.Thread(target=upstream.serve_forever, daemon=True)
+    thread.start()
+    proxy = LogprobCaptureProxy(
+        f"http://127.0.0.1:{upstream.server_address[1]}",
+        20,
+        upstream_api_key="UPSTREAM",
+        request_overrides={"temperature": 0.0, "top_p": 0.95, "max_tokens": 131072},
+    )
+    proxy.start()
+    try:
+        payload = json.dumps({"messages": [{"role": "user", "content": "x"}]}).encode("utf-8")
+        req = urllib.request.Request(
+            f"{proxy.proxy_url}/v1/chat/completions",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            assert resp.status == 200
+            resp.read()
+        assert seen["path"] == "/v1/chat/completions"
+        assert seen["authorization"] == "Bearer UPSTREAM"
+        assert seen["payload"]["logprobs"] is True
+        assert seen["payload"]["top_logprobs"] == 20
+        assert seen["payload"]["temperature"] == 0.0
+        assert seen["payload"]["top_p"] == 0.95
+        assert seen["payload"]["max_tokens"] == 131072
+        assert proxy.captured_records()[0]["token"] == "D"
+    finally:
+        proxy.stop()
+        upstream.shutdown()
+        upstream.server_close()
 
 
 class _FakeOpenClawRuntime:
@@ -44,6 +119,7 @@ class _FakeProxy:
         client_timeout: float = 120.0,
         upstream_api_key: str = "",
         proxy_api_key: str = "",
+        request_overrides: dict | None = None,
     ) -> None:
         self.upstream = normalize_openai_proxy_upstream(upstream)
         self.top_logprobs = top_logprobs
@@ -52,6 +128,7 @@ class _FakeProxy:
         self.client_timeout = client_timeout
         self.upstream_api_key = upstream_api_key
         self.proxy_api_key = proxy_api_key
+        self.request_overrides = dict(request_overrides or {})
         self.started = False
         _FakeProxy.instances.append(self)
 

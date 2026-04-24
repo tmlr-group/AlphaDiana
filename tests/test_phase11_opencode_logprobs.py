@@ -99,7 +99,15 @@ def _base_agent_config(**overrides) -> dict:
 
 def test_opencode_host_provider_options_request_logprobs_when_enabled() -> None:
     agent = OpenCodeAgent()
-    agent.setup(_base_agent_config(capture_logprobs=True, top_logprobs=20))
+    agent.setup(
+        _base_agent_config(
+            capture_logprobs=True,
+            top_logprobs=20,
+            temperature=0.0,
+            top_p=0.95,
+            max_tokens=131072,
+        )
+    )
     process = MagicMock()
     process.communicate.return_value = (
         json.dumps({"type": "assistant", "message": {"content": "Done.\\n\\boxed{4}"}}),
@@ -118,12 +126,20 @@ def test_opencode_host_provider_options_request_logprobs_when_enabled() -> None:
     mock_proxy.captured_records.return_value = []
 
     with patch("subprocess.Popen", side_effect=_fake_popen):
-        with patch("alphadiana.agent.opencode.LogprobCaptureProxy", return_value=mock_proxy):
+        with patch("alphadiana.agent.opencode.LogprobCaptureProxy", return_value=mock_proxy) as proxy_cls:
             response = agent.solve(BenchmarkTask(task_id="t1", problem="2+2?", ground_truth="4"))
 
     options = captured_config["provider"]["custom"]["options"]
     assert options["logprobs"] is True
     assert options["top_logprobs"] == 20
+    assert options["temperature"] == 0.0
+    assert options["top_p"] == 0.95
+    assert options["max_tokens"] == 131072
+    assert proxy_cls.call_args.kwargs["request_overrides"] == {
+        "temperature": 0.0,
+        "top_p": 0.95,
+        "max_tokens": 131072,
+    }
     assert response.metadata["logprobs_capture_status"] == "requested_missing"
 
 
@@ -159,6 +175,9 @@ def test_opencode_container_provider_config_requests_logprobs() -> None:
             "api_key": "EMPTY",
             "capture_logprobs": True,
             "top_logprobs": 20,
+            "temperature": 0.0,
+            "top_p": 0.95,
+            "max_tokens": 131072,
         }
     )
 
@@ -174,6 +193,9 @@ def test_opencode_container_provider_config_requests_logprobs() -> None:
     options = sandbox.uploaded["/tmp/opencode-xdg/opencode/opencode.json"]["provider"]["custom"]["options"]
     assert options["logprobs"] is True
     assert options["top_logprobs"] == 20
+    assert options["temperature"] == 0.0
+    assert options["top_p"] == 0.95
+    assert options["max_tokens"] == 131072
 
 
 def test_opencode_container_response_finalizes_captured_logprobs() -> None:

@@ -8,6 +8,7 @@ import logging
 import os
 import socketserver
 import threading
+from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
@@ -107,6 +108,7 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
                 payload = {}
             payload["logprobs"] = True
             payload["top_logprobs"] = self.server.top_logprobs
+            payload.update(self.server.request_overrides)
             body = json.dumps(payload).encode()
 
         fwd_url = self.server.upstream.rstrip("/") + path
@@ -137,9 +139,10 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
                 if resp.status_code >= 400:
                     err_body = resp.read()
                     logger.warning(
-                        "LogprobProxy upstream %s returned %d sent=%s err=%s",
+                        "LogprobProxy upstream %s returned %d overrides=%s sent=%s err=%s",
                         fwd_url,
                         resp.status_code,
+                        self.server.request_overrides,
                         body[:300],
                         err_body[:300],
                     )
@@ -228,12 +231,14 @@ class _LogprobCaptureServer(socketserver.ThreadingMixIn, http.server.HTTPServer)
         client_timeout: float,
         upstream_api_key: str = "",
         proxy_api_key: str = "",
+        request_overrides: dict[str, Any] | None = None,
     ) -> None:
         super().__init__((bind_host, 0), _LogprobProxyHandler)
         self.upstream = upstream
         self.top_logprobs = top_logprobs
         self.upstream_api_key = upstream_api_key
         self.proxy_api_key = proxy_api_key
+        self.request_overrides = dict(request_overrides or {})
         self.raw_responses: list[dict] = []
         self.streaming_logprobs: list[dict] = []
         self.lock = threading.Lock()
@@ -253,6 +258,7 @@ class LogprobCaptureProxy:
         client_timeout: float = 120.0,
         upstream_api_key: str = "",
         proxy_api_key: str = "",
+        request_overrides: dict[str, Any] | None = None,
     ) -> None:
         self._upstream = normalize_openai_proxy_upstream(upstream)
         self._top_logprobs = int(top_logprobs)
@@ -261,6 +267,7 @@ class LogprobCaptureProxy:
         self._client_timeout = float(client_timeout)
         self._upstream_api_key = str(upstream_api_key or "").strip()
         self._proxy_api_key = str(proxy_api_key or "").strip()
+        self._request_overrides = dict(request_overrides or {})
         self._server: _LogprobCaptureServer | None = None
         self._thread: threading.Thread | None = None
 
@@ -274,6 +281,7 @@ class LogprobCaptureProxy:
             client_timeout=self._client_timeout,
             upstream_api_key=self._upstream_api_key,
             proxy_api_key=self._proxy_api_key,
+            request_overrides=self._request_overrides,
         )
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
