@@ -8,6 +8,7 @@ import pytest
 
 from alphadiana.agent.opencode import OpenCodeAgent, extract_opencode_logprob_records
 from alphadiana.agent.opencode_container_runtime import OpenCodeContainerRuntimeManager
+from alphadiana.agent.logprob_capture import extract_openai_logprob_records
 from alphadiana.benchmark.base import BenchmarkTask
 
 
@@ -45,6 +46,23 @@ def test_opencode_parser_extracts_openai_logprob_records() -> None:
     assert records[1]["token"] == "B"
     token_indices = [record["token_index"] for record in records]
     assert token_indices == sorted(token_indices)
+
+
+def test_extract_chat_completion_logprobs() -> None:
+    payload = {
+        "choices": [
+            {
+                "logprobs": {
+                    "content": [{"token": "X", "logprob": -0.5, "top_logprobs": []}]
+                }
+            }
+        ]
+    }
+    records, next_idx = extract_openai_logprob_records(payload, start_index=0)
+    assert len(records) == 1
+    assert records[0]["token"] == "X"
+    assert records[0]["token_index"] == 0
+    assert next_idx == 1
 
 
 def test_opencode_parser_scans_session_trace() -> None:
@@ -95,8 +113,13 @@ def test_opencode_host_provider_options_request_logprobs_when_enabled() -> None:
         captured_config.update(json.loads(config_path.read_text(encoding="utf-8")))
         return process
 
+    mock_proxy = MagicMock()
+    mock_proxy.proxy_url = "http://127.0.0.1:19999"
+    mock_proxy.captured_records.return_value = []
+
     with patch("subprocess.Popen", side_effect=_fake_popen):
-        response = agent.solve(BenchmarkTask(task_id="t1", problem="2+2?", ground_truth="4"))
+        with patch("alphadiana.agent.opencode.LogprobCaptureProxy", return_value=mock_proxy):
+            response = agent.solve(BenchmarkTask(task_id="t1", problem="2+2?", ground_truth="4"))
 
     options = captured_config["provider"]["custom"]["options"]
     assert options["logprobs"] is True
