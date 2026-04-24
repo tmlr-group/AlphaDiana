@@ -7,11 +7,14 @@ workspace snapshots) after task execution.
 
 from __future__ import annotations
 
+import http.server
 import json
 import os
 import re
 import shlex
+import socketserver
 import tempfile
+import threading
 import time
 from copy import deepcopy
 from pathlib import Path
@@ -40,6 +43,181 @@ def _progress(message: str) -> None:
 
 def _is_unresolved_placeholder(value: str) -> bool:
     return bool(_UNRESOLVED_PLACEHOLDER_RE.match(value.strip()))
+
+
+# ---------------------------------------------------------------------------
+# MITM logprob capture proxy for Docker-backed OpenClaw sandboxes
+#
+# The OpenClaw gateway runs inside a Docker container and makes HTTP calls to
+# vLLM.  Since the gateway strips logprob data from its response to AlphaDiana,
+# we intercept the container-to-vLLM path by starting a host-side proxy that:
+#   1. Binds to 0.0.0.0 (accessible from Docker containers via host bridge IP)
+#   2. Forwards requests to the real vLLM endpoint (with logprobs=True injected)
+#   3. Captures logprob data from vLLM SSE responses in real time
+# ---------------------------------------------------------------------------
+
+class _OpenClawLogprobProxyHandler(http.server.BaseHTTPRequestHandler):
+    """HTTP handler that forwards to vLLM and captures per-token logprob dicts."""
+
+    server: "_OpenClawLogprobServer"
+
+    def log_message(self, fmt: str, *args: Any) -> None:  # silence access log
+        pass
+
+    def do_POST(self) -> None:  # noqa: N802
+        import httpx
+
+        length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(length) if length else b""
+        try:
+            payload = json.loads(body)
+        except Exception:
+            payload = {}
+
+        # Inject logprob request parameters
+        payload["logprobs"] = True
+        payload["top_logprobs"] = self.server.top_logprobs
+
+        upstream_url = self.server.upstream.rstrip("/") + self.path
+        headers = {
+            k: v for k, v in self.headers.items()
+            if k.lower() not in ("host", "content-length", "transfer-encoding")
+        }
+        is_stream = payload.get("stream", False)
+
+        try:
+            if is_stream:
+                self._handle_streaming(upstream_url, headers, payload, httpx)
+            else:
+                self._handle_non_streaming(upstream_url, headers, payload, httpx)
+        except Exception as exc:
+            _logger.debug("OpenClaw logprob proxy error: %s", exc)
+            self.send_error(502, f"Proxy error: {exc}")
+
+    def _handle_non_streaming(
+        self, url: str, headers: dict, payload: dict, httpx: Any
+    ) -> None:
+        resp = self.server.client.post(url, headers=headers, json=payload)
+        resp_bytes = resp.content
+
+        # Capture logprobs
+        try:
+            resp_json = resp.json()
+            with self.server.lock:
+                self.server.raw_responses.append(resp_json)
+        except Exception:
+            pass
+
+        self.send_response(resp.status_code)
+        for k, v in resp.headers.items():
+            if k.lower() not in ("transfer-encoding", "content-encoding"):
+                self.send_header(k, v)
+        self.send_header("Content-Length", str(len(resp_bytes)))
+        self.end_headers()
+        self.wfile.write(resp_bytes)
+
+    def _handle_streaming(
+        self, url: str, headers: dict, payload: dict, httpx: Any
+    ) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Transfer-Encoding", "chunked")
+        self.end_headers()
+
+        with self.server.client.stream(
+            "POST", url, headers=headers, json=payload
+        ) as resp:
+            for line_bytes in resp.iter_lines():
+                line = line_bytes if isinstance(line_bytes, str) else line_bytes.decode("utf-8", errors="replace")
+                # Capture SSE logprob data
+                if line.startswith("data:") and line.strip() != "data: [DONE]":
+                    data_str = line[5:].strip()
+                    try:
+                        chunk = json.loads(data_str)
+                        choices = chunk.get("choices", [])
+                        if choices:
+                            logprobs = choices[0].get("logprobs") or {}
+                            content = logprobs.get("content", []) if isinstance(logprobs, dict) else []
+                            if content:
+                                with self.server.lock:
+                                    self.server.streaming_logprobs.extend(content)
+                    except Exception:
+                        pass
+                encoded = (line + "\n").encode("utf-8")
+                try:
+                    self.wfile.write(encoded)
+                    self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError):
+                    break
+
+
+class _OpenClawLogprobServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+    daemon_threads = True
+
+    def __init__(self, upstream: str, top_logprobs: int) -> None:
+        super().__init__(("0.0.0.0", 0), _OpenClawLogprobProxyHandler)
+        self.upstream = upstream
+        self.top_logprobs = top_logprobs
+        self.raw_responses: list[dict] = []
+        self.streaming_logprobs: list[dict] = []
+        self.lock = threading.Lock()
+        import httpx as _httpx
+        self.client = _httpx.Client(timeout=120.0)
+
+
+class OpenClawLogprobProxy:
+    """Host-side MITM proxy accessible from Docker containers via host bridge IP."""
+
+    def __init__(self, upstream: str, top_logprobs: int) -> None:
+        self._upstream = upstream
+        self._top_logprobs = top_logprobs
+        self._server: _OpenClawLogprobServer | None = None
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        self._server = _OpenClawLogprobServer(self._upstream, self._top_logprobs)
+        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        if self._server:
+            try:
+                self._server.shutdown()
+                self._server.client.close()
+            except Exception:
+                pass
+
+    @property
+    def local_port(self) -> int:
+        assert self._server is not None
+        return self._server.server_address[1]
+
+    def proxy_url_for_docker(self, docker_host_ip: str = "host.docker.internal") -> str:
+        """Return the URL that Docker containers can use to reach this proxy."""
+        return f"http://{docker_host_ip}:{self.local_port}"
+
+    def captured_records(self) -> list[dict]:
+        """Return all captured per-token logprob dicts (SSE preferred over buffered)."""
+        if self._server is None:
+            return []
+        from alphadiana.agent.logprob_capture import raw_token_logprob_dict_to_record, extract_openai_logprob_records
+        records: list[dict] = []
+        token_index = 0
+        with self._server.lock:
+            sse_tokens = list(self._server.streaming_logprobs)
+            payloads = list(self._server.raw_responses)
+        if sse_tokens:
+            for item in sse_tokens:
+                records.append(raw_token_logprob_dict_to_record(item, token_index))
+                token_index += 1
+        else:
+            for payload in payloads:
+                new_records, token_index = extract_openai_logprob_records(
+                    payload, start_index=token_index
+                )
+                records.extend(new_records)
+        return records
 
 
 def _is_ready_probe_status(status_code: int) -> bool:
@@ -173,6 +351,10 @@ class OpenClawRuntimeManager:
             "OPENAI_API_KEY": self._resolve_provider_override(config, "OPENAI_API_KEY", "openai_api_key"),
             "OPENAI_MODEL_NAME": self._resolve_provider_override(config, "OPENAI_MODEL_NAME", "openai_model_name"),
         }
+        # Logprob capture via Docker-accessible MITM proxy
+        self._logprob_capture: dict = config.get("_logprob_capture", {})
+        self._logprob_proxy: OpenClawLogprobProxy | None = None
+        self._docker_host_ip: str = str(config.get("docker_host_ip", "host.docker.internal"))
 
         # Agent.md customization
         self._agent_md_mode = config.get("agent_md_mode", "none")
@@ -662,6 +844,29 @@ class OpenClawRuntimeManager:
                     f"OpenClaw auto-deploy requires {key} to be set either in agent.config "
                     f"or the local environment."
                 )
+
+        # Start Docker-accessible MITM logprob proxy when capture is enabled.
+        # The proxy intercepts calls from the OpenClaw container to vLLM,
+        # captures per-token logprob dicts, and is accessible via the host bridge IP.
+        if self._logprob_capture.get("enabled"):
+            upstream_base_url = env_cfg.get("OPENAI_BASE_URL", "").rstrip("/")
+            if upstream_base_url:
+                top_logprobs = int(self._logprob_capture.get("top_logprobs", 20))
+                # Stop any previous proxy
+                if self._logprob_proxy is not None:
+                    try:
+                        self._logprob_proxy.stop()
+                    except Exception:
+                        pass
+                self._logprob_proxy = OpenClawLogprobProxy(upstream_base_url, top_logprobs)
+                self._logprob_proxy.start()
+                proxy_url = self._logprob_proxy.proxy_url_for_docker(self._docker_host_ip)
+                env_cfg["OPENAI_BASE_URL"] = proxy_url + "/v1"
+                _progress(
+                    f"logprob capture proxy started: "
+                    f"container→proxy({proxy_url})→vLLM({upstream_base_url})"
+                )
+
         env_cfg["OPENCLAW_GATEWAY_TOKEN"] = str(self._gateway_token or "OPENCLAW")
 
         td = tempfile.TemporaryDirectory(prefix="alphadiana-openclaw-")
@@ -767,8 +972,24 @@ class OpenClawRuntimeManager:
             raise RuntimeError(f"OpenClaw gateway warmup did not succeed: {last_error}") from last_error
         raise RuntimeError("OpenClaw gateway warmup did not succeed before timeout")
 
+    def get_proxy_logprob_records(self) -> list[dict]:
+        """Return per-token logprob records captured by the MITM proxy (may be empty)."""
+        if self._logprob_proxy is None:
+            return []
+        try:
+            return self._logprob_proxy.captured_records()
+        except Exception as exc:
+            _logger.debug("Error collecting proxy logprob records: %s", exc)
+            return []
+
     def teardown(self) -> None:
-        """Clean up temporary directories."""
+        """Clean up temporary directories and the logprob capture proxy."""
+        if self._logprob_proxy is not None:
+            try:
+                self._logprob_proxy.stop()
+            except Exception:
+                pass
+            self._logprob_proxy = None
         for td in self._temp_dirs:
             try:
                 td.cleanup()
