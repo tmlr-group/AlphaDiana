@@ -18,6 +18,18 @@ set -euo pipefail
 
 unset ALL_PROXY HTTP_PROXY HTTPS_PROXY all_proxy http_proxy https_proxy
 
+# Security preflight: abort if known misconfigurations are present (HIGH/CRITICAL).
+# Matches the pattern used by scripts/start_openclaw.sh and scripts/start_zeroclaw.sh
+# so quickstart cannot silently bring up Redis/Ray/ROCK with public 0.0.0.0 bindings.
+_SG_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+echo "[preflight] Running security_guard.py --check..."
+if ! python3 "${_SG_SCRIPT_DIR}/security_guard.py" --check; then
+    echo ""
+    echo "ERROR: Security preflight check failed. Start aborted."
+    echo "       Fix the issues above, or set SECURITY_GUARD_BYPASS=1 to override."
+    exit 1
+fi
+
 SCRIPT_PATH="${BASH_SOURCE[0]}"
 SCRIPT_DIR="$(dirname "${SCRIPT_PATH}")"
 PROJECT_ROOT="${SCRIPT_DIR}/.."
