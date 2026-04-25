@@ -6,6 +6,7 @@ import pytest
 
 from alphadiana.analysis import (
     build_record_feature_rows,
+    cluster_analysis_views,
     compute_reliability_summary,
     load_jsonl_records,
     load_run_bundle,
@@ -214,3 +215,72 @@ def test_reliability_pass_power_k_requires_full_repeated_samples():
     assert summary["pass_at_k"] == 1.0
     assert summary["avg_at_k"] == pytest.approx(0.75)
     assert summary["pass_power_k"] == pytest.approx(((1 / 2) ** 2 + 1.0**2) / 2)
+
+
+def test_cluster_analysis_views_separate_valid_scored_from_status_rows():
+    rows = [
+        {
+            "task_id": "t1",
+            "score_status": "valid_scored",
+            "correct": True,
+            "answer_length": 1,
+            "has_logprobs": True,
+            "n_tokens": 10,
+            "entropy_mean": 0.1,
+            "entropy_p90": 0.2,
+            "entropy_max": 0.3,
+            "top1_mean_prob": 0.8,
+            "wall_time_sec": 3.0,
+            "completion_tokens": 10,
+        },
+        {
+            "task_id": "t2",
+            "score_status": "valid_scored",
+            "correct": False,
+            "answer_length": 2,
+            "has_logprobs": True,
+            "n_tokens": 12,
+            "entropy_mean": 0.4,
+            "entropy_p90": 0.5,
+            "entropy_max": 0.6,
+            "top1_mean_prob": 0.6,
+            "wall_time_sec": 4.0,
+            "completion_tokens": 12,
+        },
+        {
+            "task_id": "t3",
+            "score_status": "runtime_error",
+            "correct": None,
+            "answer_length": 0,
+            "has_logprobs": False,
+            "n_tokens": 0,
+            "entropy_mean": None,
+            "entropy_p90": None,
+            "entropy_max": None,
+            "top1_mean_prob": None,
+            "wall_time_sec": 30.0,
+            "completion_tokens": 0,
+        },
+    ]
+
+    views = cluster_analysis_views(rows, max_clusters=2)
+
+    assert set(views) == {"valid_scored_only", "all_records_status"}
+    assert views["valid_scored_only"]["n_rows"] == 2
+    assert views["all_records_status"]["n_rows"] == 3
+    assert views["valid_scored_only"]["method"] == "scipy.linkage.average"
+    assert views["valid_scored_only"]["distance"] == "euclidean"
+    assert views["valid_scored_only"]["feature_columns"] == [
+        "answer_length",
+        "has_logprobs",
+        "n_tokens",
+        "entropy_mean",
+        "entropy_p90",
+        "entropy_max",
+        "top1_mean_prob",
+        "wall_time_sec",
+        "completion_tokens",
+    ]
+    assert sum(cluster["n"] for cluster in views["valid_scored_only"]["clusters"]) == 2
+    assert sum(cluster["n"] for cluster in views["all_records_status"]["clusters"]) == 3
+    assert views["all_records_status"]["clusters"][0]["exemplar_task_ids"]
