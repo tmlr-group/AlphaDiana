@@ -6,6 +6,14 @@ agent:
   name: openclaw
   version: "2026.3.20"
   config:
+    system_prompt: |
+      You are solving expert-level science multiple-choice questions.
+      Read the question carefully, reason step by step, and choose the single best option.
+      Your final answer must be on the last line in exactly one of these forms:
+      $$\boxed{A}$$
+      $$\boxed{B}$$
+      $$\boxed{C}$$
+      $$\boxed{D}$$
     rock_image: "tmlrgroup/alphadiana:v1"
     rock_agent_config_path: "openclaw_deploy/rock_agent_config.prebuilt.yaml"
     openclaw_config_path: "openclaw_deploy/openclaw.json"
@@ -21,7 +29,7 @@ agent:
     gateway_token: "${OPENCLAW_GATEWAY_TOKEN}"
     temperature: 0.0
     top_p: 0.95
-    max_tokens: 32768
+    max_tokens: 131072
     stream: true
     request_timeout: 1200
     stream_idle_timeout: 1200

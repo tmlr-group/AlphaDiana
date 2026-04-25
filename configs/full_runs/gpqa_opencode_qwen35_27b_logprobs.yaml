@@ -26,7 +26,7 @@ agent:
     tool_call: true
     temperature: 0.0
     top_p: 0.95
-    max_tokens: 32768
+    max_tokens: 131072
     capture_logprobs: true
     top_logprobs: 20
 

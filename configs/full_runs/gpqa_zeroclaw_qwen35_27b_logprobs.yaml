@@ -21,6 +21,7 @@ agent:
     provider_api_key: "EMPTY"
     temperature: 0.0
     top_p: 0.95
+    max_tokens: 131072
     request_timeout: 1200
     runtime_trace_mode: "all"
     capture_logprobs: true
