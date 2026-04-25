@@ -28,10 +28,10 @@ report_harness() {
     fi
     echo "  Tasks:     ${task_count} / ${EXPECTED}"
 
-    # Logprob sidecar count
+    # Logprob sidecar count (sidecars live at results/{run}/logprobs_int16/, not inside tasks/)
     local lp_count=0
-    if [ -d "${task_dir}" ]; then
-        lp_count=$(find "${task_dir}" -name "logprobs_int16*" 2>/dev/null | wc -l | tr -d ' ')
+    if [ -d "${result_dir}/logprobs_int16" ]; then
+        lp_count=$(ls "${result_dir}/logprobs_int16" 2>/dev/null | wc -l | tr -d ' ')
     fi
     echo "  LP sidecars (int16): ${lp_count} / ${task_count}"
 

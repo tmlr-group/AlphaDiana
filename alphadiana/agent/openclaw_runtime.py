@@ -123,46 +123,68 @@ class _OpenClawLogprobProxyHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(resp_bytes)
 
+    def _strip_and_capture_event(self, event_bytes: bytes) -> bytes:
+        """Capture logprobs from an SSE event and return it with logprobs stripped.
+
+        The gateway's SSE parser fails on large data: lines produced when
+        top_logprobs=20 injects thousands of bytes per token. Strip logprobs
+        from the forwarded event so the gateway sees compact normal-sized chunks,
+        while still capturing the logprob data in streaming_logprobs.
+        """
+        out_lines: list[bytes] = []
+        for line_bytes in event_bytes.split(b"\n"):
+            line = line_bytes.decode("utf-8", errors="replace")
+            if line.startswith("data:") and line.strip() != "data: [DONE]":
+                data_str = line[5:].strip()
+                try:
+                    chunk = json.loads(data_str)
+                    choices = chunk.get("choices", [])
+                    if choices:
+                        logprob_data = choices[0].get("logprobs")
+                        if isinstance(logprob_data, dict):
+                            content = logprob_data.get("content") or []
+                            if content:
+                                with self.server.lock:
+                                    self.server.streaming_logprobs.extend(content)
+                        choices[0]["logprobs"] = None
+                    out_lines.append(b"data: " + json.dumps(chunk, separators=(",", ":")).encode())
+                except Exception:
+                    out_lines.append(line_bytes)
+            else:
+                out_lines.append(line_bytes)
+        return b"\n".join(out_lines)
+
     def _handle_streaming(
         self, url: str, headers: dict, payload: dict, httpx: Any
     ) -> None:
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache")
-        self.send_header("Transfer-Encoding", "chunked")
         self.end_headers()
 
         with self.server.client.stream(
             "POST", url, headers=headers, json=payload
         ) as resp:
-            # Use iter_raw() to preserve SSE \n\n event separators intact.
-            # iter_lines() would strip blank lines, breaking the gateway's SSE parser.
+            # Buffer raw bytes and emit complete SSE events with logprobs stripped.
+            # Stripping is required: top_logprobs=20 makes each data: line thousands
+            # of bytes long; the OpenClaw gateway SSE parser fails on such large lines.
             buf = b""
             for raw_chunk in resp.iter_raw():
-                try:
-                    self.wfile.write(raw_chunk)
-                    self.wfile.flush()
-                except (BrokenPipeError, ConnectionResetError):
-                    break
-                # Parse complete SSE events for logprob capture
                 buf += raw_chunk
                 while b"\n\n" in buf:
                     event_bytes, buf = buf.split(b"\n\n", 1)
-                    for line_bytes in event_bytes.split(b"\n"):
-                        line = line_bytes.decode("utf-8", errors="replace")
-                        if line.startswith("data:") and line.strip() != "data: [DONE]":
-                            data_str = line[5:].strip()
-                            try:
-                                chunk = json.loads(data_str)
-                                choices = chunk.get("choices", [])
-                                if choices:
-                                    logprobs = choices[0].get("logprobs") or {}
-                                    content = logprobs.get("content", []) if isinstance(logprobs, dict) else []
-                                    if content:
-                                        with self.server.lock:
-                                            self.server.streaming_logprobs.extend(content)
-                            except Exception:
-                                pass
+                    stripped = self._strip_and_capture_event(event_bytes)
+                    try:
+                        self.wfile.write(stripped + b"\n\n")
+                        self.wfile.flush()
+                    except (BrokenPipeError, ConnectionResetError):
+                        return
+            if buf:
+                try:
+                    self.wfile.write(buf)
+                    self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
 
 
 class _OpenClawLogprobServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
