@@ -1,0 +1,56 @@
+# SWE-Bench-Verified-Mini smoke (1 task) on Qwen3.5-27B local vLLM.
+# Derived from context/swe-verified-mini-runbook.md — smoke variant used to
+# validate that the runbook instructions are actually executable.
+
+run_id: "20260423-swe_verified_mini-directllm-qwen35_27b-smoke"
+
+agent:
+  name: direct_llm
+  version: "1.0"
+  config:
+    model: "Qwen/Qwen3.5-27B"
+    api_base: "http://127.0.0.1:8011/v1"
+    api_key: "EMPTY"
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 131072
+    stream: true
+    capture_logprobs: true
+    top_logprobs: 20
+    system_prompt: |
+      You are a software engineering assistant working on a SWE-bench task.
+      Return only a unified diff patch that solves the issue. Do not include
+      prose, markdown fences, or explanations.
+
+      Wrap your final patch as:
+
+      $$\boxed{
+      <your unified diff patch here>
+      }$$
+
+benchmark:
+  name: swe_bench
+  config:
+    dataset: "MariusHobbhahn/swe-bench-verified-mini"
+    split: "test"
+    include_hints: false
+    max_tasks: 1
+
+scorer:
+  name: swe_bench
+  config: {}
+
+max_concurrent: 1
+num_samples: 1
+output_dir: "/path/to/tmp/rollout_20260423/swe_verified_mini_directllm_qwen35_27b_smoke"
+
+metadata:
+  model: "Qwen/Qwen3.5-27B"
+  api_base: "http://127.0.0.1:8011/v1"
+  vllm_max_model_len: 262144
+  vllm_presence_penalty_default: 1.5
+  thinking: true
+  streaming: true
+  n_samples: 1
+  dataset_hf: "MariusHobbhahn/swe-bench-verified-mini"
+  smoke: true

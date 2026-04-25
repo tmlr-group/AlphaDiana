@@ -1,0 +1,62 @@
+# GPQA-Diamond full run — Qwen3.5-27B direct_llm, Apr 2026 rollout.
+#
+# Parameter set frozen for the 20260423 evaluation batch (IMO-AnswerBench,
+# MMMU-Pro, GPQA-Diamond, HLE). Server-side presence_penalty=1.5 is injected
+# by vLLM `--override-generation-config`; don't duplicate here.
+
+run_id: "20260423-gpqa_diamond-directllm-qwen35_27b-v01"
+
+agent:
+  name: direct_llm
+  version: "1.0"
+  config:
+    model: "Qwen/Qwen3.5-27B"
+    api_base: "http://127.0.0.1:8011/v1"
+    api_key: "EMPTY"
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 131072
+    stream: true
+    capture_logprobs: true
+    top_logprobs: 20
+    system_prompt: |
+      You are solving expert-level science multiple-choice questions.
+      Read the question carefully, reason step by step, and choose the single best option.
+
+      Your final answer must be on the last line in exactly one of these forms:
+      $$\boxed{A}$$
+      $$\boxed{B}$$
+      $$\boxed{C}$$
+      $$\boxed{D}$$
+
+benchmark:
+  name: gpqa_diamond
+  config:
+    dataset: "fingertap/GPQA-Diamond"
+    split: "test"
+    seed: 42
+
+scorer:
+  name: exact_match
+  config: {}
+
+max_concurrent: 10
+num_samples: 1
+output_dir: "/path/to/tmp/rollout_20260423/gpqa_diamond_directllm_qwen35_27b_v01"
+
+metadata:
+  batch: "20260423"
+  model: "Qwen/Qwen3.5-27B"
+  api_base: "http://127.0.0.1:8011/v1"
+  vllm_max_model_len: 262144
+  vllm_presence_penalty_default: 1.5
+  thinking: true
+  n_samples: 1
+  notes: |
+    20260423 rollout parameter set:
+      Temperature 0.0, Sample K 1, top_p 0.95
+      max_model_length 262144 (server), max_tokens 131072 (request)
+      thinking true, streaming true, max_concurrent 10
+      server default presence_penalty 1.5 (vllm override-generation-config)
+    HF archive target: T-MARS/alphadiana-benchmark-results (private)
+    HF folder: 20260423-gpqa_diamond-directllm-qwen35_27b-v01
