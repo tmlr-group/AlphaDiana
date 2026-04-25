@@ -19,9 +19,9 @@ agent:
     agent: "lean-math"
     agent_md_path: "context/opencode_lean_math.md"
     system_prompt: |
-      Solve efficiently and keep the response short.
-      The final line must be $$\boxed{your answer here}$$.
-
+      You are an expert mathematician. Solve the problem carefully.
+      The final line must be:
+      $$\boxed{your answer here}$$
 benchmark:
   name: imo_answerbench
   config:

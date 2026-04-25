@@ -6,6 +6,14 @@ agent:
   name: opencode
   version: "1.3.2"
   config:
+    system_prompt: |
+      You are solving expert-level science multiple-choice questions.
+      Read the question carefully, reason step by step, and choose the single best option.
+      Your final answer must be on the last line in exactly one of these forms:
+      $$\boxed{A}$$
+      $$\boxed{B}$$
+      $$\boxed{C}$$
+      $$\boxed{D}$$
     model: "custom/Qwen/Qwen3.5-27B"
     model_name: "Qwen/Qwen3.5-27B"
     api_base: "http://127.0.0.1:8011/v1"

@@ -27,11 +27,9 @@ agent:
     stream_idle_timeout: 600
     max_attempts: 5
     system_prompt: |
-      You are an expert problem solver. Use available tools when they help.
-
+      You are an expert mathematician. Solve the problem carefully.
       The final line must be:
       $$\boxed{your answer here}$$
-
 benchmark:
   name: imo_answerbench
   config:

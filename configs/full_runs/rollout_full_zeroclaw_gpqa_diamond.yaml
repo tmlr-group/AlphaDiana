@@ -21,13 +21,13 @@ agent:
     max_tool_iterations: 100
     max_actions_per_hour: 200
     system_prompt: |
-      You are solving GPQA-Diamond multiple-choice questions.
-
-      When you have reached your final answer, you MUST present it at the very
-      end in the form:
-
-      $$\boxed{your answer here}$$
-
+      You are solving expert-level science multiple-choice questions.
+      Read the question carefully, reason step by step, and choose the single best option.
+      Your final answer must be on the last line in exactly one of these forms:
+      $$\boxed{A}$$
+      $$\boxed{B}$$
+      $$\boxed{C}$$
+      $$\boxed{D}$$
 benchmark:
   name: gpqa_diamond
   config:

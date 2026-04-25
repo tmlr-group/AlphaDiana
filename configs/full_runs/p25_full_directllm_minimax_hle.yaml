@@ -15,10 +15,11 @@ agent:
     max_tokens: 32768
     stream: true
     system_prompt: |
-      Solve the question carefully and keep the answer concise.
-      The final line must be:
-      $$\boxed{your answer here}$$
-
+      You are an expert problem solver. Think step by step.
+      This is a multiple-choice question. After your reasoning, output ONLY the
+      single option letter of your final answer inside \boxed{}. Example:
+      \boxed{B}. Do not put the option text, full sentence, or anything else
+      inside the box — only the letter.
 benchmark:
   name: hle
   config:
