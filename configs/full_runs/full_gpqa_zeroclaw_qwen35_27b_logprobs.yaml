@@ -19,6 +19,7 @@ agent:
     top_logprobs: 20
     max_tool_iterations: 100
     max_actions_per_hour: 200
+    network_mode: "host"
     rock_image: "zeroclaw-reasoning:0.6.9"
     rock_memory: "4g"
     rock_cpus: 1

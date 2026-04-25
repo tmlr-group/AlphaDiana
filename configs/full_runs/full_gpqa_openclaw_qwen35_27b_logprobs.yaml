@@ -9,6 +9,8 @@ agent:
     rock_image: "tmlrgroup/alphadiana:v1"
     rock_agent_config_path: "openclaw_deploy/rock_agent_config.prebuilt.yaml"
     openclaw_config_path: "openclaw_deploy/openclaw.json"
+    network_mode: "host"
+    docker_host_ip: "127.0.0.1"
     rock_memory: "4g"
     rock_cpus: 1
     rock_startup_timeout: 600
