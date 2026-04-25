@@ -60,6 +60,17 @@ class TestWriteLogprobsJsonl:
         path = store.write_logprobs_jsonl("t", r2)
         assert json.loads(path.read_text().strip()) == r2[0]
 
+    def test_multi_sample_paths_do_not_overwrite_each_other(self, tmp_path: Path):
+        store = ResultStore(str(tmp_path), "run_x")
+        sample0 = [{"token_index": 0, "token": "A", "logprob": 0.0, "top_logprobs": []}]
+        sample1 = [{"token_index": 0, "token": "B", "logprob": 0.0, "top_logprobs": []}]
+        path0 = store.write_logprobs_jsonl("t", sample0, sample_index=0)
+        path1 = store.write_logprobs_jsonl("t", sample1, sample_index=1)
+        assert path0 == tmp_path / "run_x" / "logprobs" / "t.jsonl"
+        assert path1 == tmp_path / "run_x" / "logprobs" / "t" / "sample_1.jsonl"
+        assert json.loads(path0.read_text().strip()) == sample0[0]
+        assert json.loads(path1.read_text().strip()) == sample1[0]
+
     def test_concurrent_writes_different_tasks(self, tmp_path: Path):
         store = ResultStore(str(tmp_path), "run_x")
 
@@ -124,6 +135,20 @@ class TestAppendSerializesLogprobs:
         rec = store.load()[0]
         assert rec["token_entropy_stats"] == stats
         assert rec["logprobs_path"] == ""
+
+    def test_multi_sample_append_uses_distinct_logprob_paths(self, tmp_path: Path):
+        store = ResultStore(str(tmp_path), "run_y")
+        stats = {"mean": 0.5, "max": 0.5, "p50": 0.5, "p90": 0.5, "n_tokens": 1}
+        sample0 = [{"token_index": 0, "token": "A", "logprob": -0.1, "top_logprobs": []}]
+        sample1 = [{"token_index": 0, "token": "B", "logprob": -0.2, "top_logprobs": []}]
+        store.append(_task(), _response(sample0, stats), _score(), sample_index=0)
+        store.append(_task(), _response(sample1, stats), _score(), sample_index=1)
+
+        recs = sorted(store.load(), key=lambda rec: rec["sample_index"])
+        assert recs[0]["logprobs_path"] == "run_y/logprobs/t1.jsonl"
+        assert recs[1]["logprobs_path"] == "run_y/logprobs/t1/sample_1.jsonl"
+        assert json.loads((tmp_path / "run_y" / "logprobs" / "t1.jsonl").read_text().strip()) == sample0[0]
+        assert json.loads((tmp_path / "run_y" / "logprobs" / "t1" / "sample_1.jsonl").read_text().strip()) == sample1[0]
 
     def test_legacy_response_no_entropy_field(self, tmp_path: Path):
         """Older AgentResponse shape (entropy_stats missing) must not crash."""

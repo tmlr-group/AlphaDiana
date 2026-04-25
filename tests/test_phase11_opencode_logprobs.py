@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -141,6 +142,67 @@ def test_opencode_host_provider_options_request_logprobs_when_enabled() -> None:
         "max_tokens": 131072,
     }
     assert response.metadata["logprobs_capture_status"] == "requested_missing"
+
+
+def test_opencode_timeout_preserves_proxy_partial_output() -> None:
+    agent = OpenCodeAgent()
+    agent.setup(_base_agent_config(timeout=1, capture_logprobs=True, controller_mode="host"))
+
+    timeout_event = "\n".join(
+        [
+            json.dumps({"type": "step_start", "timestamp": 1, "sessionID": "ses_test"}),
+            json.dumps(
+                {
+                    "type": "error",
+                    "timestamp": 1801,
+                    "sessionID": "ses_test",
+                    "error": {"name": "UnknownError", "data": {"message": "The operation timed out."}},
+                }
+            ),
+        ]
+    )
+    process = MagicMock()
+    process.pid = 12345
+    process.communicate.side_effect = [
+        subprocess.TimeoutExpired(cmd=["opencode"], timeout=1),
+        (timeout_event, ""),
+    ]
+
+    def _fake_popen(*args, **kwargs):
+        return process
+
+    mock_proxy = MagicMock()
+    mock_proxy.proxy_url = "http://127.0.0.1:19999"
+    mock_proxy.captured_records.return_value = [
+        {
+            "token_index": 0,
+            "token": "partial ",
+            "logprob": -0.1,
+            "top_logprobs": [{"token": "partial ", "logprob": -0.1}],
+        },
+        {
+            "token_index": 1,
+            "token": "answer",
+            "logprob": -0.2,
+            "top_logprobs": [{"token": "answer", "logprob": -0.2}],
+        },
+    ]
+
+    with patch("subprocess.Popen", side_effect=_fake_popen), patch("os.killpg"):
+        with patch("alphadiana.agent.opencode.LogprobCaptureProxy", return_value=mock_proxy):
+            with pytest.raises(RuntimeError, match="timed out") as exc_info:
+                agent.solve(BenchmarkTask(task_id="timeout", problem="2+2?", ground_truth="4"))
+
+    response = exc_info.value.partial_response
+    assert response.raw_output == "partial answer"
+    assert getattr(exc_info.value, "response_body") == "partial answer"
+    assert response.metadata["logprobs_capture_status"] == "captured"
+    assert response.metadata["partial_output_source"] == "logprob_records"
+    assert response.metadata["partial_output_used_for_raw_output"] is True
+    assert response.metadata["partial_output_chars"] == len("partial answer")
+    assert response.workspace_file_contents["opencode_output.jsonl"] == timeout_event
+    assert response.workspace_file_contents["opencode_partial_output.txt"] == "partial answer"
+    assert response.artifact_manifest["files"]["partial_output"] == "opencode_partial_output.txt"
 
 
 def test_opencode_host_provider_options_omit_logprobs_when_disabled() -> None:

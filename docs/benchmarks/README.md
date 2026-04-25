@@ -46,6 +46,7 @@ Each benchmark document describes prerequisites, supported execution modes,
 example configs, and smoke-test commands:
 
 - [IMO-AnswerBench](imo-answerbench.md)
+- [AIME](aime.md)
 - [HLE](hle.md)
 - [GPQA-Diamond](gpqa-diamond.md)
 - [MMMU-Pro](mmmu-pro.md)
@@ -63,6 +64,10 @@ If you know the benchmark already:
 - `IMO-AnswerBench`:
   [imo-answerbench.md](imo-answerbench.md) covers `direct_llm`,
   `openclaw`, `opencode`, and `zeroclaw`.
+- `AIME`:
+  [aime.md](aime.md) covers the checked-in local-vLLM `direct_llm` and
+  `opencode` AIME 2026 multi-sample paths and points to the older ZeroClaw
+  guides.
 - `HLE`:
   [hle.md](hle.md) covers `direct_llm`, `openclaw`, `opencode`, and
   `zeroclaw`.
@@ -84,7 +89,7 @@ If you know the benchmark already:
 If you know the harness first:
 
 - `direct_llm`:
-  use the benchmark runbook directly for `IMO-AnswerBench`, `HLE`,
+  use the benchmark runbook directly for `AIME`, `IMO-AnswerBench`, `HLE`,
   `GPQA-Diamond`, and `MMMU-Pro`; for `terminal-bench-2` and
   `SWE-bench Pro`, the runbooks route you to the official external repos.
 - `openclaw`:

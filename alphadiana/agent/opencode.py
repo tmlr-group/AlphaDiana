@@ -235,6 +235,16 @@ def _parse_opencode_output(raw_output: str) -> tuple[str, list[dict[str, Any]], 
     return assistant_text, events, session_id
 
 
+def _text_from_logprob_records(records: list[dict]) -> str:
+    """Best-effort reconstruction of streamed provider text from token records."""
+    parts: list[str] = []
+    for record in records or []:
+        token = record.get("token")
+        if isinstance(token, str) and token:
+            parts.append(token)
+    return "".join(parts)
+
+
 def _classify_opencode_error(name: str, message: str) -> str:
     """Map OpenCode-reported failures into result-store error buckets."""
     blob = f"{name} {message}".lower()
@@ -1141,79 +1151,11 @@ class OpenCodeAgent(Agent):
 
         wall_time = time.time() - start
         assistant_text, events, session_id = _parse_opencode_output(raw_output)
-        full_content = assistant_text or raw_output
-        trajectory, reasoning_trajectory = build_event_trajectories(
-            request_messages,
-            events,
-            final_output=full_content,
-        )
         transport = (
             "opencode_cli_container"
             if self._controller_mode == "docker"
             else "opencode_cli"
         )
-
-        if _is_swe_bench_task(task):
-            answer = _extract_patch_from_text(full_content)
-        elif returncode == -1:
-            answer = _extract_strict_answer(assistant_text)
-        else:
-            answer = extract_answer_candidate(full_content)
-
-        if returncode != 0 and not answer:
-            logger.warning(
-                "OpenCode returned non-zero exit code %d for task %s. stderr: %s",
-                returncode,
-                task.task_id,
-                stderr[:500],
-            )
-
-        workspace_file_contents: dict[str, str] = dict(
-            preserved_local_artifacts.get("workspace_file_contents", {}) or {}
-        )
-        workspace_file_contents.update({
-            "prompt.txt": prompt,
-            "opencode_output.jsonl": raw_output,
-        })
-        if stderr:
-            workspace_file_contents["opencode_stderr.log"] = stderr
-        if attachment_paths:
-            workspace_file_contents["attachment_manifest.json"] = json.dumps(
-                {
-                    "attachments": [
-                        {
-                            "filename": path.name,
-                            "path": f"attachments/{path.name}",
-                        }
-                        for path in attachment_paths
-                    ]
-                },
-                indent=2,
-                ensure_ascii=False,
-            )
-        artifact_manifest = add_artifact_file_refs(
-            preserved_local_artifacts.get("artifact_manifest", {}),
-            response_stream="opencode_output.jsonl",
-            session_trace=(
-                "opencode_session.jsonl"
-                if "opencode_session.jsonl" in workspace_file_contents
-                else None
-            ),
-            stderr_log="opencode_stderr.log" if stderr else None,
-            prompt_text="prompt.txt",
-            attachment_manifest="attachment_manifest.json" if attachment_paths else None,
-        )
-        response_json = build_runtime_trace_summary(
-            output_text=full_content,
-            stderr_text=stderr.strip(),
-            records=events,
-            extra={
-                "returncode": returncode,
-                "session_id": session_id,
-                "transport": transport,
-            },
-        )
-
         error_info = _extract_opencode_error(events)
         response_metadata = {
             "returncode": returncode,
@@ -1246,6 +1188,106 @@ class OpenCodeAgent(Agent):
             enabled=self._logprob_capture["enabled"],
             records=logprob_records,
             metadata=response_metadata,
+        )
+        partial_output = _text_from_logprob_records(logprob_records)
+        if partial_output.strip():
+            response_metadata.update({
+                "partial_output_source": "logprob_records",
+                "partial_output_chars": len(partial_output),
+                "opencode_event_text_chars": len(assistant_text),
+                "partial_output_used_for_raw_output": False,
+            })
+
+        full_content = assistant_text or raw_output
+        if (
+            partial_output.strip()
+            and (returncode != 0 or error_info)
+            and (
+                not assistant_text.strip()
+                or len(partial_output.strip()) > len(full_content.strip())
+            )
+        ):
+            full_content = partial_output
+            response_metadata["partial_output_used_for_raw_output"] = True
+
+        trajectory, reasoning_trajectory = build_event_trajectories(
+            request_messages,
+            events,
+            final_output=full_content,
+        )
+
+        if _is_swe_bench_task(task):
+            answer = _extract_patch_from_text(full_content)
+        elif returncode == -1:
+            answer = _extract_strict_answer(full_content)
+        else:
+            answer = extract_answer_candidate(full_content)
+
+        if returncode != 0 and not answer:
+            logger.warning(
+                "OpenCode returned non-zero exit code %d for task %s. stderr: %s",
+                returncode,
+                task.task_id,
+                stderr[:500],
+            )
+
+        workspace_file_contents: dict[str, str] = dict(
+            preserved_local_artifacts.get("workspace_file_contents", {}) or {}
+        )
+        workspace_file_contents.update({
+            "prompt.txt": prompt,
+            "opencode_output.jsonl": raw_output,
+        })
+        if partial_output.strip():
+            workspace_file_contents["opencode_partial_output.txt"] = partial_output
+        if stderr:
+            workspace_file_contents["opencode_stderr.log"] = stderr
+        if attachment_paths:
+            workspace_file_contents["attachment_manifest.json"] = json.dumps(
+                {
+                    "attachments": [
+                        {
+                            "filename": path.name,
+                            "path": f"attachments/{path.name}",
+                        }
+                        for path in attachment_paths
+                    ]
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+        artifact_manifest = add_artifact_file_refs(
+            preserved_local_artifacts.get("artifact_manifest", {}),
+            response_stream="opencode_output.jsonl",
+            partial_output=(
+                "opencode_partial_output.txt"
+                if "opencode_partial_output.txt" in workspace_file_contents
+                else None
+            ),
+            session_trace=(
+                "opencode_session.jsonl"
+                if "opencode_session.jsonl" in workspace_file_contents
+                else None
+            ),
+            stderr_log="opencode_stderr.log" if stderr else None,
+            prompt_text="prompt.txt",
+            attachment_manifest="attachment_manifest.json" if attachment_paths else None,
+        )
+        response_json = build_runtime_trace_summary(
+            output_text=full_content,
+            stderr_text=stderr.strip(),
+            records=events,
+            extra={
+                "returncode": returncode,
+                "session_id": session_id,
+                "transport": transport,
+                "partial_output_source": response_metadata.get("partial_output_source", ""),
+                "partial_output_chars": response_metadata.get("partial_output_chars", 0),
+                "partial_output_used_for_raw_output": response_metadata.get(
+                    "partial_output_used_for_raw_output",
+                    False,
+                ),
+            },
         )
         if error_info:
             response_metadata.update({

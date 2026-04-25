@@ -94,7 +94,11 @@ class ResultStore:
         )
         with self._get_artifact_lock(artifact_key):
             response_metadata = dict(response.metadata or {})
-            logprob_sidecars = self.write_logprob_sidecars(task.task_id, response_metadata)
+            logprob_sidecars = self.write_logprob_sidecars(
+                task.task_id,
+                response_metadata,
+                sample_index=sample_index,
+            )
             self._add_missing_artifact_file_refs(
                 response,
                 logprob_sidecars["artifact_file_refs"],
@@ -166,7 +170,11 @@ class ResultStore:
         )
         with self._get_artifact_lock(artifact_key):
             response_metadata = dict(response.metadata or {})
-            logprob_sidecars = self.write_logprob_sidecars(task.task_id, response_metadata)
+            logprob_sidecars = self.write_logprob_sidecars(
+                task.task_id,
+                response_metadata,
+                sample_index=sample_index,
+            )
             self._add_missing_artifact_file_refs(
                 response,
                 logprob_sidecars["artifact_file_refs"],
@@ -404,23 +412,47 @@ class ResultStore:
                 **refs_to_add,
             )
 
-    def write_logprobs_jsonl(self, task_id: str, records: list[dict]) -> Path:
-        """Write per-token logprob records to results/{run_id}/logprobs/{task_id}.jsonl.
+    def _logprobs_relative_path(self, task_id: str, sample_index: int = 0) -> Path:
+        if sample_index <= 0:
+            return Path("logprobs") / f"{task_id}.jsonl"
+        return Path("logprobs") / task_id / f"sample_{sample_index}.jsonl"
 
-        Overwrites any prior file for the same task_id. Safe under concurrent writes
-        because each task has its own file and directory creation is idempotent.
+    def _logprobs_int16_relative_path(self, task_id: str, sample_index: int = 0) -> Path:
+        if sample_index <= 0:
+            return Path("logprobs_int16") / f"{task_id}.jsonl"
+        return Path("logprobs_int16") / task_id / f"sample_{sample_index}.jsonl"
+
+    def write_logprobs_jsonl(
+        self,
+        task_id: str,
+        records: list[dict],
+        *,
+        sample_index: int = 0,
+    ) -> Path:
+        """Write per-token logprob records to results/{run_id}/logprobs/.
+
+        Single-sample runs keep the historic flat path
+        `logprobs/{task_id}.jsonl`. Multi-sample runs use
+        `logprobs/{task_id}/sample_<N>.jsonl` for sample indices > 0 so
+        concurrent samples do not overwrite each other.
         """
         self._ensure_dirs()
-        logprobs_dir = self.output_dir / self.run_id / "logprobs"
-        logprobs_dir.mkdir(parents=True, exist_ok=True)
-        path = logprobs_dir / f"{task_id}.jsonl"
-        with self._get_task_json_lock(f"logprobs:{task_id}"):
+        rel_path = self._logprobs_relative_path(task_id, sample_index)
+        path = self.output_dir / self.run_id / rel_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with self._get_task_json_lock(f"logprobs:{task_id}:{sample_index}"):
             with open(path, "w", encoding="utf-8") as f:
                 for rec in records:
                     f.write(json.dumps(rec, ensure_ascii=False) + "\n")
         return path
 
-    def write_logprob_sidecars(self, task_id: str, response_metadata: dict) -> dict:
+    def write_logprob_sidecars(
+        self,
+        task_id: str,
+        response_metadata: dict,
+        *,
+        sample_index: int = 0,
+    ) -> dict:
         """Write raw float and compact Int16 logprob sidecars for a task."""
         logprob_records = response_metadata.pop("logprob_records", None)
         logprob_int16_records = response_metadata.pop("logprob_int16_records", None)
@@ -432,9 +464,14 @@ class ResultStore:
         artifact_file_refs: dict[str, str] = {}
 
         if raw_records:
-            self.write_logprobs_jsonl(task_id, raw_records)
-            logprobs_path_rel = f"{self.run_id}/logprobs/{task_id}.jsonl"
-            artifact_file_refs["logprobs_float"] = f"logprobs/{task_id}.jsonl"
+            path = self.write_logprobs_jsonl(
+                task_id,
+                raw_records,
+                sample_index=sample_index,
+            )
+            rel_path = path.relative_to(self.output_dir / self.run_id).as_posix()
+            logprobs_path_rel = f"{self.run_id}/{rel_path}"
+            artifact_file_refs["logprobs_float"] = rel_path
 
         if not int16_records and raw_records:
             int16_records = [
@@ -444,15 +481,16 @@ class ResultStore:
 
         if int16_records:
             self._ensure_dirs()
-            logprobs_int16_dir = self.output_dir / self.run_id / "logprobs_int16"
-            logprobs_int16_dir.mkdir(parents=True, exist_ok=True)
-            path = logprobs_int16_dir / f"{task_id}.jsonl"
-            with self._get_task_json_lock(f"logprobs_int16:{task_id}"):
+            rel_path_obj = self._logprobs_int16_relative_path(task_id, sample_index)
+            path = self.output_dir / self.run_id / rel_path_obj
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with self._get_task_json_lock(f"logprobs_int16:{task_id}:{sample_index}"):
                 with open(path, "w", encoding="utf-8") as f:
                     for record in int16_records:
                         f.write(json.dumps(record, ensure_ascii=False) + "\n")
-            logprobs_int16_path_rel = f"{self.run_id}/logprobs_int16/{task_id}.jsonl"
-            artifact_file_refs["logprobs_int16"] = f"logprobs_int16/{task_id}.jsonl"
+            rel_path = rel_path_obj.as_posix()
+            logprobs_int16_path_rel = f"{self.run_id}/{rel_path}"
+            artifact_file_refs["logprobs_int16"] = rel_path
 
         has_int16_sidecar = bool(logprobs_int16_path_rel)
         return {
