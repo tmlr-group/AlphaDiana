@@ -105,6 +105,9 @@ def test_solve_uses_cli_with_image_attachments():
     assert result.answer == "A"
     assert result.metadata["transport"] == "opencode_cli"
     assert result.metadata["num_attachments"] == 1
+    assert result.workspace_file_contents["attachments/image_1.png.base64"] == "iVBORw0K"
+    manifest = json.loads(result.workspace_file_contents["attachment_manifest.json"])
+    assert manifest["attachments"][0]["base64_artifact"] == "attachments/image_1.png.base64"
 
 
 def test_solve_text_only_uses_opencode_cli():
