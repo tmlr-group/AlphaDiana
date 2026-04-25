@@ -17,6 +17,7 @@ agent:
     runtime_trace_mode: "all"
     capture_logprobs: true
     top_logprobs: 20
+    docker_host_ip: "127.0.0.1"
     max_tool_iterations: 100
     max_actions_per_hour: 200
     network_mode: "host"
