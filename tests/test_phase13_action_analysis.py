@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 
 import pytest
 
@@ -11,6 +13,7 @@ from alphadiana.analysis import (
     load_jsonl_records,
     load_run_bundle,
 )
+from alphadiana.analysis.reports import render_markdown_report
 from alphadiana.analysis.result_reader import resolve_run_relative_path
 
 
@@ -284,3 +287,152 @@ def test_cluster_analysis_views_separate_valid_scored_from_status_rows():
     assert sum(cluster["n"] for cluster in views["valid_scored_only"]["clusters"]) == 2
     assert sum(cluster["n"] for cluster in views["all_records_status"]["clusters"]) == 3
     assert views["all_records_status"]["clusters"][0]["exemplar_task_ids"]
+
+
+def test_render_markdown_report_includes_incomplete_dataset_caveat(tmp_path):
+    results_dir = tmp_path / "results"
+    run_dir = results_dir / "demo_run"
+    run_dir.mkdir(parents=True)
+    (results_dir / "demo_run.jsonl").write_text(
+        json.dumps(
+            {
+                "run_id": "demo_run",
+                "task_id": "t1",
+                "sample_index": 0,
+                "score_status": "valid_scored",
+                "correct": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "run_manifest.json").write_text(
+        json.dumps(
+            {
+                "run_id": "demo_run",
+                "expected_task_ids": ["t1", "t2"],
+                "expected_sample_count": 2,
+                "num_samples": 1,
+            }
+        ),
+        encoding="utf-8",
+    )
+    bundle = load_run_bundle(results_dir, "demo_run")
+    reliability = compute_reliability_summary(bundle.records, bundle.manifest)
+
+    markdown = render_markdown_report(
+        bundle,
+        reliability,
+        {"valid_scored_only": {"clusters": []}, "all_records_status": {"clusters": []}},
+        {"report": "demo_run/action_space_report.md"},
+    )
+
+    assert "## Dataset Caveat" in markdown
+    assert "## Reliability Metrics" in markdown
+    assert "## Cluster Views" in markdown
+    assert "## Output Files" in markdown
+    assert "This run is incomplete; missing samples are reported separately and are not silently converted into model failures." in markdown
+    for label in [
+        "Run ID",
+        "Expected Samples",
+        "Written Records",
+        "Valid Scored",
+        "Error Records",
+        "Missing Samples",
+        "Observed Valid Accuracy",
+        "Expected-Sample Accuracy",
+        "Coverage",
+        "Pass^k Available",
+    ]:
+        assert label in markdown
+
+
+def test_analyze_action_space_cli_writes_report_files(tmp_path):
+    results_dir = tmp_path / "results"
+    run_id = "demo_run"
+    run_dir = results_dir / run_id
+    logprob_dir = run_dir / "logprobs_int16"
+    logprob_dir.mkdir(parents=True)
+    records = [
+        {
+            "run_id": run_id,
+            "task_id": "t1",
+            "sample_index": 0,
+            "score_status": "valid_scored",
+            "correct": False,
+            "predicted": "A",
+            "ground_truth": "B",
+            "logprobs_int16_path": f"{run_id}/logprobs_int16/t1.jsonl",
+            "int16_probability_scale": 1000,
+            "wall_time_sec": 1.0,
+            "token_usage": {"completion_tokens": 2},
+        },
+        {
+            "run_id": run_id,
+            "task_id": "t2",
+            "sample_index": 0,
+            "score_status": "runtime_error",
+            "correct": None,
+            "predicted": None,
+            "ground_truth": "C",
+            "metadata": {"logprobs_capture_status": "missing"},
+            "error": {"error_type": "SandboxTimeout"},
+        },
+    ]
+    (results_dir / f"{run_id}.jsonl").write_text(
+        "\n".join(json.dumps(record) for record in records),
+        encoding="utf-8",
+    )
+    (run_dir / "run_manifest.json").write_text(
+        json.dumps(
+            {
+                "run_id": run_id,
+                "expected_task_ids": ["t1", "t2", "t3"],
+                "expected_sample_count": 3,
+                "num_samples": 1,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (logprob_dir / "t1.jsonl").write_text(
+        json.dumps(
+            {
+                "token_index": 0,
+                "token": "A",
+                "entropy_nats": 0.25,
+                "top20": [{"token": "A", "prob_i16": 700}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/analyze_action_space.py",
+            "--results-dir",
+            str(results_dir),
+            "--run-id",
+            run_id,
+            "--max-clusters",
+            "2",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    output_names = [
+        "action_space_features.csv",
+        "action_space_clusters.json",
+        "action_space_reliability.json",
+        "action_space_report.md",
+    ]
+    for name in output_names:
+        assert (run_dir / name).exists()
+        assert str(run_dir / name) in result.stdout
+
+    clusters_text = (run_dir / "action_space_clusters.json").read_text(encoding="utf-8")
+    reliability_text = (run_dir / "action_space_reliability.json").read_text(encoding="utf-8")
+    assert str(tmp_path) not in clusters_text
+    assert str(tmp_path) not in reliability_text
+    assert "## Dataset Caveat" in (run_dir / "action_space_report.md").read_text(encoding="utf-8")
