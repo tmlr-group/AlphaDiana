@@ -447,6 +447,8 @@ class Runner:
         # the agent round-robin across the resulting gateway_pool.
         predeployed_sessions = []
         predeployed_session_by_sandbox_id: dict[str, object] = {}
+        predeployed_logprob_proxies: dict[str, object] = {}
+        predeployed_gateway_api_base_by_sandbox_id: dict[str, str] = {}
         predeployed_session_reset_lock = threading.Lock()
         predeploy_partial = False
         desired_num = 1
@@ -531,6 +533,7 @@ class Runner:
                         last_error = None
                         for attempt in range(1, max_attempts + 1):
                             session = None
+                            logprob_proxy = None
                             try:
                                 logger.info(
                                     "Predeploy sandbox %d/%d attempt %d/%d",
@@ -550,18 +553,42 @@ class Runner:
                                     )
                                 sandbox_backend.setup(sandbox_config)
                                 session = sandbox_backend.create_session()
-                                runtime_manager = _make_gateway_runtime_manager(self.config)
+                                runtime_config = self.config.agent_config
+                                start_logprob_proxy = getattr(
+                                    self.agent,
+                                    "start_logprob_proxy_for_gateway",
+                                    None,
+                                )
+                                if callable(start_logprob_proxy):
+                                    started_proxy = start_logprob_proxy()
+                                    if started_proxy is not None:
+                                        logprob_proxy, proxy_api_base, proxy_api_key = started_proxy
+                                        runtime_config = dict(self.config.agent_config)
+                                        runtime_config.update({
+                                            "OPENAI_BASE_URL": proxy_api_base,
+                                            "openai_base_url": proxy_api_base,
+                                            "OPENAI_API_KEY": proxy_api_key,
+                                            "openai_api_key": proxy_api_key,
+                                        })
+                                runtime_manager = _make_gateway_runtime_manager(
+                                    replace(self.config, agent_config=runtime_config)
+                                )
                                 info = runtime_manager.ensure_ready(session)
                                 md = session.metadata() if hasattr(session, "metadata") else {}
                                 profile_memory = str(md.get("memory", sandbox_config["memory"]))
                                 profile_cpus = float(md.get("cpus", sandbox_config["cpus"]))
-                                return session, info, (profile_memory, profile_cpus)
+                                return session, info, (profile_memory, profile_cpus), logprob_proxy
                             except Exception as exc:
                                 last_error = exc
                                 logger.warning(
                                     "Predeploy sandbox %d/%d attempt %d/%d failed: %s",
                                     sb_idx + 1, desired_num, attempt, max_attempts, exc,
                                 )
+                                if logprob_proxy is not None:
+                                    try:
+                                        logprob_proxy.stop()
+                                    except Exception:
+                                        pass
                                 if session is not None:
                                     try:
                                         session.close()
@@ -608,12 +635,22 @@ class Runner:
                         if stagger_sec > 0 and i + 1 < desired_num:
                             time.sleep(stagger_sec)
 
-                    predeployed_sessions = [session for session, _, _ in deployment_results]
-                    gateway_pool = [info["api_base"] for _, info, _ in deployment_results]
+                    predeployed_sessions = [session for session, _, _, _ in deployment_results]
+                    gateway_pool = [info["api_base"] for _, info, _, _ in deployment_results]
                     predeployed_session_by_sandbox_id = {
                         str(getattr(session, "sandbox_id", "")): session
                         for session in predeployed_sessions
                         if str(getattr(session, "sandbox_id", ""))
+                    }
+                    predeployed_gateway_api_base_by_sandbox_id = {
+                        str(getattr(session, "sandbox_id", "")): str(info["api_base"])
+                        for session, info, _, _ in deployment_results
+                        if str(getattr(session, "sandbox_id", ""))
+                    }
+                    predeployed_logprob_proxies = {
+                        str(getattr(session, "sandbox_id", "")): proxy
+                        for session, _, _, proxy in deployment_results
+                        if str(getattr(session, "sandbox_id", "")) and proxy is not None
                     }
                     effective_capacity = max(
                         1,
@@ -635,6 +672,14 @@ class Runner:
                     self.config.agent_config["rock_sandbox_url"] = (
                         predeployed_sessions[0].metadata().get("proxy_base_url", "")
                     )
+                    if predeployed_gateway_api_base_by_sandbox_id:
+                        self.config.agent_config["_predeployed_gateway_api_base_by_sandbox_id"] = (
+                            predeployed_gateway_api_base_by_sandbox_id
+                        )
+                    if predeployed_logprob_proxies:
+                        self.config.agent_config["_predeployed_logprob_proxies"] = (
+                            predeployed_logprob_proxies
+                        )
                     if preferred_profile is not None:
                         _save_cached_openclaw_profile(
                             cache_key,
@@ -655,7 +700,12 @@ class Runner:
                         gateway_pool,
                     )
                 except Exception as exc:
-                    for session, _, _ in deployment_results:
+                    for session, _, _, proxy in deployment_results:
+                        if proxy is not None:
+                            try:
+                                proxy.stop()
+                            except Exception:
+                                pass
                         try:
                             session.close()
                         except Exception:

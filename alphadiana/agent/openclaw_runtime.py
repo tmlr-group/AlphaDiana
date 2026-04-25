@@ -386,6 +386,9 @@ class OpenClawRuntimeManager:
             "OPENAI_API_KEY": self._resolve_provider_override(config, "OPENAI_API_KEY", "openai_api_key"),
             "OPENAI_MODEL_NAME": self._resolve_provider_override(config, "OPENAI_MODEL_NAME", "openai_model_name"),
         }
+        self._temperature = config.get("temperature", None)
+        self._top_p = config.get("top_p", None)
+        self._max_tokens = config.get("max_tokens", None)
         # Logprob capture via Docker-accessible MITM proxy
         self._logprob_capture: dict = config.get("_logprob_capture", {})
         self._logprob_proxy: OpenClawLogprobProxy | None = None
@@ -513,7 +516,46 @@ class OpenClawRuntimeManager:
         gateway.pop("customBindHost", None)
 
         self._ensure_image_capability_metadata(config)
+        self._apply_generation_params(config)
         return config
+
+    def _apply_generation_params(self, config: dict[str, Any]) -> None:
+        """Apply common sampling controls to the configured OpenClaw model."""
+        agents = config.setdefault("agents", {})
+        defaults = agents.setdefault("defaults", {})
+        model_defaults = defaults.setdefault("models", {})
+
+        primary_model = ""
+        model_cfg = defaults.get("model")
+        if isinstance(model_cfg, dict):
+            primary_model = str(model_cfg.get("primary", "") or "").strip()
+        if not primary_model:
+            model_name = str(self._provider_env.get("OPENAI_MODEL_NAME", "") or "").strip()
+            if model_name:
+                primary_model = f"local/{model_name}"
+        if not primary_model:
+            return
+
+        target_cfg = model_defaults.setdefault(primary_model, {})
+        if not isinstance(target_cfg, dict):
+            target_cfg = {}
+            model_defaults[primary_model] = target_cfg
+        params = target_cfg.setdefault("params", {})
+        if not isinstance(params, dict):
+            params = {}
+            target_cfg["params"] = params
+
+        if self._temperature is not None:
+            params["temperature"] = self._temperature
+        if self._top_p is not None:
+            params["topP"] = self._top_p
+        if self._max_tokens is not None:
+            try:
+                max_tokens = int(self._max_tokens)
+            except (TypeError, ValueError):
+                max_tokens = 0
+            if max_tokens > 0:
+                params["maxTokens"] = max_tokens
 
     def _ensure_image_capability_metadata(self, config: dict[str, Any]) -> None:
         """Mark the configured OpenAI-compatible model as vision-capable.

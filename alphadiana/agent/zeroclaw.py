@@ -132,6 +132,31 @@ def _parse_optional_bool(value: Any) -> bool | None:
     raise ValueError(f"Invalid boolean value: {value!r}")
 
 
+def _provider_body_overrides_from_config(config: dict[str, Any]) -> dict[str, Any]:
+    overrides: dict[str, Any] = {}
+    raw_extra_body = config.get("extra_body", {})
+    if isinstance(raw_extra_body, dict):
+        overrides.update(raw_extra_body)
+    raw_chat_template_kwargs = config.get("chat_template_kwargs", None)
+    if isinstance(raw_chat_template_kwargs, dict):
+        merged_chat_template_kwargs = dict(overrides.get("chat_template_kwargs", {}))
+        merged_chat_template_kwargs.update(raw_chat_template_kwargs)
+        overrides["chat_template_kwargs"] = merged_chat_template_kwargs
+    enable_thinking = _parse_optional_bool(config.get("enable_thinking", None))
+    reasoning_enabled = _parse_optional_bool(config.get("reasoning_enabled", None))
+    if enable_thinking is None and reasoning_enabled is not None:
+        enable_thinking = reasoning_enabled
+    if enable_thinking is not None:
+        merged_chat_template_kwargs = dict(overrides.get("chat_template_kwargs", {}))
+        merged_chat_template_kwargs["enable_thinking"] = enable_thinking
+        overrides["chat_template_kwargs"] = merged_chat_template_kwargs
+    if reasoning_enabled is not None:
+        merged_reasoning = dict(overrides.get("reasoning", {}))
+        merged_reasoning["enabled"] = reasoning_enabled
+        overrides["reasoning"] = merged_reasoning
+    return overrides
+
+
 def _is_runtime_log_line(line: str) -> bool:
     if not line:
         return False
@@ -316,6 +341,9 @@ class ZeroClawAgent(Agent):
         ).strip()
         raw_temperature = config.get("temperature", 0.0)
         self._temperature = float(raw_temperature if raw_temperature not in ("", None) else 0.0)
+        raw_top_p = config.get("top_p", None)
+        self._top_p = None if raw_top_p in ("", None) else float(raw_top_p)
+        self._provider_body_overrides = _provider_body_overrides_from_config(config)
         runtime_trace_mode = str(config.get("runtime_trace_mode", "none") or "none").strip()
         if self._logprob_capture["enabled"] and runtime_trace_mode.lower() in {"", "none"}:
             runtime_trace_mode = "all"
@@ -327,6 +355,8 @@ class ZeroClawAgent(Agent):
         else:
             self._provider_timeout_secs = int(raw_provider_timeout)
         raw_provider_max_tokens = config.get("provider_max_tokens", None)
+        if raw_provider_max_tokens in ("", None):
+            raw_provider_max_tokens = config.get("max_tokens", None)
         if raw_provider_max_tokens in ("", None):
             self._provider_max_tokens: int | None = None
         else:
@@ -378,6 +408,15 @@ class ZeroClawAgent(Agent):
             for key, value in raw_env.items()
             if value is not None
         } if isinstance(raw_env, dict) else {}
+
+    def _logprob_request_overrides(self) -> dict[str, Any]:
+        overrides: dict[str, Any] = dict(self._provider_body_overrides)
+        overrides["temperature"] = self._temperature
+        if self._top_p is not None:
+            overrides["top_p"] = self._top_p
+        if self._provider_max_tokens is not None:
+            overrides["max_tokens"] = self._provider_max_tokens
+        return overrides
 
     @staticmethod
     def _resolve_allowed_commands(
@@ -1159,6 +1198,7 @@ class ZeroClawAgent(Agent):
                     client_timeout=max(120.0, float(self._request_timeout)),
                     upstream_api_key=self._provider_api_key,
                     proxy_api_key=proxy_api_key,
+                    request_overrides=self._logprob_request_overrides(),
                 )
                 logprob_proxy.start()
                 proxy_api_base = f"{logprob_proxy.proxy_url.rstrip('/')}/v1"
@@ -1172,6 +1212,7 @@ class ZeroClawAgent(Agent):
                     "logprob_proxy_enabled": True,
                     "logprob_proxy_url": proxy_api_base,
                     "logprob_proxy_upstream": logprob_proxy.upstream,
+                    "logprob_proxy_request_overrides": self._logprob_request_overrides(),
                 }
             run_command = self._wrap_shell_command(self._build_run_command(paths), env)
             execute_long_running = getattr(sandbox, "execute_long_running", None)
