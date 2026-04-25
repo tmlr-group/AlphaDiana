@@ -30,6 +30,25 @@ notes: normal benchmark runs use one sandbox-only CLI path
 tasks. Historical `disable_tools`, gateway, and proxy path notes remain
 useful audit evidence only.
 
+As of April 25, 2026, local `Qwen/Qwen3.5-27B` 3-sample smokes validated
+`OpenClaw` and `ZeroClaw` on AIME 2026, IMO-AnswerBench, GPQA-Diamond, HLE,
+and MMMU-Pro vision with `top_p=0.95`, `max_tokens=65536`, and stored
+logprobs. See
+[`context/phase12-harness-logprob-smokes/run_evidence.md`](../../context/phase12-harness-logprob-smokes/run_evidence.md)
+for run IDs, token counts, sidecar checks, and local-Qwen caveats.
+
+The same April 25 evidence now includes OpenClaw thinking-on 3-sample smokes
+for GPQA-Diamond, HLE, MMMU-Pro vision, and IMO-AnswerBench in both 25K
+truncation and 64K long-timeout settings. HLE and IMO include normal
+partial-reasoning-only exits at the output cap with captured logprobs and
+matching float/int16 sidecars.
+
+The same evidence folder also records an April 25 thinking-on long-sample smoke
+for AIME 2026 `aime_17` across OpenCode, OpenClaw, and ZeroClaw with
+`max_tokens=25000`. Use `benchmark.config.dataset_index=16` for this single
+task; do not combine a sliced split such as `train[16:17]` with a config that
+already sets `benchmark.config.max_tasks`.
+
 As of April 23, 2026, current GPQA-Diamond `direct_llm` local-vLLM evidence
 also includes a Phase 10 top-20 Int16 logprob sidecar smoke; see
 [`context/current_eval_status.md`](../../context/current_eval_status.md) for
@@ -241,6 +260,8 @@ Smoke-test success means the evaluation path loads tasks, invokes the selected a
 For the benchmark runbooks in this folder, ZeroClaw smoke validation is documented only for sandboxed execution:
 
 - `IMO-AnswerBench` and `HLE`: ROCK sandbox with in-sandbox ZeroClaw CLI
+- `AIME 2026`, `GPQA-Diamond`, and `MMMU-Pro`: ROCK sandbox with in-sandbox
+  ZeroClaw CLI for the April 25 local-Qwen logprob smokes
 - `terminal-bench-2`: Docker task container with an in-container derived runtime image
 
 The host-local `_run_locally()` path is useful for debugging, but it is not counted as the formal benchmark smoke path in these runbooks.

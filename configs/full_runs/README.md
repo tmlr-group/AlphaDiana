@@ -10,6 +10,12 @@ rely on harness-hardcoded defaults.
 Smoke/pilot configs live in `configs/examples/` (they pin `max_tasks: 1–5`). Do not
 use those for full benchmark runs.
 
+Before launching local-Qwen logprob full runs, also read
+[`context/current_eval_status.md`](../../context/current_eval_status.md) and
+[`context/phase12-harness-logprob-smokes/full_run_context/README.md`](../../context/phase12-harness-logprob-smokes/full_run_context/README.md).
+They record the latest OpenClaw/ZeroClaw/OpenCode support matrix, local-Qwen
+timeout sizing, `tee` logging guidance, and output-cap preservation caveats.
+
 ---
 
 ## Naming convention
