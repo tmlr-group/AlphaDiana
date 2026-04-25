@@ -17,7 +17,7 @@ agent:
     controller_mode: "docker"
     controller_network: "host"
     controller_image: "alphadiana/tb2-opencode-controller:latest"
-    timeout: 9000
+    timeout: 3600
     streaming: true
     tool_call: true
     temperature: 0.6

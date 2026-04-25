@@ -16,7 +16,7 @@ agent:
     stream: true
     capture_logprobs: true
     top_logprobs: 20
-    request_timeout: 1800
+    request_timeout: 3600
     system_prompt: |
       You are an expert mathematician. Solve the problem carefully.
 

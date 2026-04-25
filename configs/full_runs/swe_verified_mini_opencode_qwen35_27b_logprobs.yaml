@@ -11,7 +11,7 @@ agent:
   config:
     agent_type: opencode
     system_prompt: "You are a helpful assistant that can interact with a computer to solve tasks."
-    request_timeout: 1800
+    request_timeout: 3600
     temperature: 0.0
     top_p: 0.95
     max_tokens: 131072
@@ -43,7 +43,7 @@ benchmark:
 scorer:
   name: swe_bench
   config:
-    timeout: 1800
+    timeout: 3600
     namespace: swebench
     arch: x86_64
 
