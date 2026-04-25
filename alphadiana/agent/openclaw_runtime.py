@@ -77,6 +77,13 @@ class _OpenClawLogprobProxyHandler(http.server.BaseHTTPRequestHandler):
         # Inject logprob request parameters
         payload["logprobs"] = True
         payload["top_logprobs"] = self.server.top_logprobs
+        # Qwen3.x outputs thinking in delta.content using a non-standard "Thinking Process:"
+        # prefix that the OpenClaw gateway cannot parse (it expects delta.reasoning_content
+        # for thinking, not embedded in delta.content). Disable thinking mode so the gateway
+        # receives clean answer content.
+        chat_kwargs = payload.get("chat_template_kwargs") or {}
+        chat_kwargs["enable_thinking"] = False
+        payload["chat_template_kwargs"] = chat_kwargs
 
         upstream_url = self.server.upstream.rstrip("/") + self.path
         headers = {
@@ -128,28 +135,34 @@ class _OpenClawLogprobProxyHandler(http.server.BaseHTTPRequestHandler):
         with self.server.client.stream(
             "POST", url, headers=headers, json=payload
         ) as resp:
-            for line_bytes in resp.iter_lines():
-                line = line_bytes if isinstance(line_bytes, str) else line_bytes.decode("utf-8", errors="replace")
-                # Capture SSE logprob data
-                if line.startswith("data:") and line.strip() != "data: [DONE]":
-                    data_str = line[5:].strip()
-                    try:
-                        chunk = json.loads(data_str)
-                        choices = chunk.get("choices", [])
-                        if choices:
-                            logprobs = choices[0].get("logprobs") or {}
-                            content = logprobs.get("content", []) if isinstance(logprobs, dict) else []
-                            if content:
-                                with self.server.lock:
-                                    self.server.streaming_logprobs.extend(content)
-                    except Exception:
-                        pass
-                encoded = (line + "\n").encode("utf-8")
+            # Use iter_raw() to preserve SSE \n\n event separators intact.
+            # iter_lines() would strip blank lines, breaking the gateway's SSE parser.
+            buf = b""
+            for raw_chunk in resp.iter_raw():
                 try:
-                    self.wfile.write(encoded)
+                    self.wfile.write(raw_chunk)
                     self.wfile.flush()
                 except (BrokenPipeError, ConnectionResetError):
                     break
+                # Parse complete SSE events for logprob capture
+                buf += raw_chunk
+                while b"\n\n" in buf:
+                    event_bytes, buf = buf.split(b"\n\n", 1)
+                    for line_bytes in event_bytes.split(b"\n"):
+                        line = line_bytes.decode("utf-8", errors="replace")
+                        if line.startswith("data:") and line.strip() != "data: [DONE]":
+                            data_str = line[5:].strip()
+                            try:
+                                chunk = json.loads(data_str)
+                                choices = chunk.get("choices", [])
+                                if choices:
+                                    logprobs = choices[0].get("logprobs") or {}
+                                    content = logprobs.get("content", []) if isinstance(logprobs, dict) else []
+                                    if content:
+                                        with self.server.lock:
+                                            self.server.streaming_logprobs.extend(content)
+                            except Exception:
+                                pass
 
 
 class _OpenClawLogprobServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
@@ -873,6 +886,16 @@ class OpenClawRuntimeManager:
                 )
 
         env_cfg["OPENCLAW_GATEWAY_TOKEN"] = str(self._gateway_token or "OPENCLAW")
+
+        # Propagate the resolved OPENAI_* values (including proxy URL when logprob
+        # capture is active) into the openclaw.json env section.  The JSON template
+        # ships with empty-string defaults that would otherwise override the values
+        # already written to rock_agent_config.yaml.
+        oc_env = rendered_openclaw_config.setdefault("env", {})
+        for key in ("OPENAI_BASE_URL", "OPENAI_API_KEY", "OPENAI_MODEL_NAME"):
+            val = env_cfg.get(key, "")
+            if val:
+                oc_env[key] = val
 
         td = tempfile.TemporaryDirectory(prefix="alphadiana-openclaw-")
         self._temp_dirs.append(td)
