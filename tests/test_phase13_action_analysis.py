@@ -193,6 +193,10 @@ def test_single_sample_reliability_does_not_claim_pass_power_k():
     summary = compute_reliability_summary(records, manifest)
 
     assert summary["observed_valid_accuracy"] == 1.0
+    assert summary["num_samples"] == 1
+    assert summary["expected_sample_count"] == 3
+    assert summary["written_records"] == 2
+    assert summary["valid_scored"] == 1
     assert summary["expected_sample_accuracy"] == pytest.approx(1 / 3)
     assert summary["coverage"] == pytest.approx(2 / 3)
     assert summary["missing_samples"] == 1
@@ -201,6 +205,26 @@ def test_single_sample_reliability_does_not_claim_pass_power_k():
     assert summary["avg_at_k"] == pytest.approx(1 / 3)
     assert summary["pass_power_k_available"] is False
     assert summary["pass_power_k"] is None
+
+
+def test_reliability_missing_samples_uses_written_record_coverage_with_duplicates():
+    records = [
+        {"task_id": "t1", "sample_index": 0, "score_status": "runtime_error", "correct": None},
+        {"task_id": "t1", "sample_index": 0, "score_status": "valid_scored", "correct": False},
+        {"task_id": "t2", "sample_index": 0, "score_status": "runtime_error", "correct": None},
+    ]
+    manifest = {
+        "num_samples": 1,
+        "expected_task_ids": ["t1", "t2", "t3", "t4"],
+        "expected_sample_count": 4,
+    }
+
+    summary = compute_reliability_summary(records, manifest)
+
+    assert summary["written_records"] == 3
+    assert summary["valid_scored"] == 1
+    assert summary["missing_samples"] == 1
+    assert summary["coverage"] == pytest.approx(3 / 4)
 
 
 def test_reliability_pass_power_k_requires_full_repeated_samples():
