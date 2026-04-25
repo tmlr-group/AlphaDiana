@@ -222,6 +222,63 @@ def test_zeroclaw_config_toml_honors_request_controls_and_security_config():
     assert 'backend = "auto"' in config_toml
 
 
+def test_zeroclaw_config_toml_maps_max_tokens_to_provider_max_tokens():
+    agent = ZeroClawAgent()
+    agent.setup({
+        "model": "demo-model",
+        "api_base": "https://example.test/v1",
+        "api_key": "sk-test",
+        "max_tokens": 65536,
+        "top_p": 0.95,
+    })
+
+    config_toml = agent._build_config_toml()
+
+    assert "provider_max_tokens = 65536" in config_toml
+    assert "top_p" not in config_toml
+    assert "logprobs" not in config_toml
+
+
+def test_zeroclaw_logprob_overrides_include_provider_extra_body():
+    agent = ZeroClawAgent()
+    agent.setup({
+        "model": "demo-model",
+        "api_base": "https://example.test/v1",
+        "api_key": "sk-test",
+        "max_tokens": 65536,
+        "top_p": 0.95,
+        "temperature": 0.0,
+        "enable_thinking": False,
+        "reasoning_enabled": False,
+        "extra_body": {"metadata": {"run": "smoke"}},
+    })
+
+    overrides = agent._logprob_request_overrides()
+
+    assert overrides["temperature"] == 0.0
+    assert overrides["top_p"] == 0.95
+    assert overrides["max_tokens"] == 65536
+    assert overrides["chat_template_kwargs"] == {"enable_thinking": False}
+    assert overrides["reasoning"] == {"enabled": False}
+    assert overrides["metadata"] == {"run": "smoke"}
+
+
+def test_zeroclaw_provider_max_tokens_overrides_common_max_tokens():
+    agent = ZeroClawAgent()
+    agent.setup({
+        "model": "demo-model",
+        "api_base": "https://example.test/v1",
+        "api_key": "sk-test",
+        "max_tokens": 65536,
+        "provider_max_tokens": 32768,
+    })
+
+    config_toml = agent._build_config_toml()
+
+    assert "provider_max_tokens = 32768" in config_toml
+    assert "provider_max_tokens = 65536" not in config_toml
+
+
 @pytest.mark.parametrize(
     "config",
     [

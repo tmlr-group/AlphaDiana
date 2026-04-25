@@ -14,6 +14,8 @@ def _load_bridge_module(monkeypatch, **env):
     for key in [
         "ZEROCLAW_GATEWAY_TOKEN",
         "ZEROCLAW_TEMPERATURE",
+        "ZEROCLAW_TOP_P",
+        "ZEROCLAW_PROVIDER_REQUEST_OVERRIDES",
         "ZEROCLAW_PROVIDER_TIMEOUT_SECS",
         "ZEROCLAW_PROVIDER_MAX_TOKENS",
         "ZEROCLAW_DISABLE_TOOLS",
@@ -68,7 +70,9 @@ def test_zeroclaw_runtime_manager_exports_request_controls_for_bridge():
         "model": "demo-model",
         "api_base": "https://example.test/v1",
         "api_key": "sk-test",
-        "provider_max_tokens": 32768,
+        "max_tokens": 32768,
+        "top_p": 0.95,
+        "enable_thinking": False,
         "disable_tools": True,
         "reasoning_enabled": True,
         "reasoning_effort": "high",
@@ -77,6 +81,11 @@ def test_zeroclaw_runtime_manager_exports_request_controls_for_bridge():
     env = manager._runtime_env()
 
     assert env["ZEROCLAW_PROVIDER_MAX_TOKENS"] == "32768"
+    assert env["ZEROCLAW_TOP_P"] == "0.95"
+    assert json.loads(env["ZEROCLAW_PROVIDER_REQUEST_OVERRIDES"]) == {
+        "chat_template_kwargs": {"enable_thinking": False},
+        "reasoning": {"enabled": True},
+    }
     assert env["ZEROCLAW_DISABLE_TOOLS"] == "true"
     assert env["ZEROCLAW_REASONING_ENABLED"] == "true"
     assert env["ZEROCLAW_REASONING_EFFORT"] == "high"
@@ -245,6 +254,60 @@ def test_zeroclaw_bridge_disable_tools_uses_provider_path(monkeypatch):
     assert seen["temperature"] == 0.4
     assert seen["attachments"][0]["mime"] == "image/png"
     assert captured["status"] == 200
+
+
+def test_zeroclaw_bridge_provider_path_sends_top_p_and_max_tokens(monkeypatch, tmp_path):
+    module = _load_bridge_module(
+        monkeypatch,
+        ZEROCLAW_DISABLE_TOOLS="true",
+        ZEROCLAW_TEMPERATURE="0.0",
+        ZEROCLAW_TOP_P="0.95",
+        ZEROCLAW_PROVIDER_MAX_TOKENS="65536",
+        ZEROCLAW_PROVIDER_REQUEST_OVERRIDES=json.dumps({
+            "chat_template_kwargs": {"enable_thinking": False},
+        }),
+        ZEROCLAW_ARTIFACT_ROOT=str(tmp_path / "artifacts"),
+        OPENAI_MODEL_NAME="demo-model",
+        OPENAI_BASE_URL="https://example.test/v1",
+        OPENAI_API_KEY="sk-test",
+    )
+
+    seen: dict[str, object] = {}
+
+    class _FakeResponse:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self) -> bytes:
+            return json.dumps({
+                "choices": [{"message": {"content": "analysis\n\n$$\\boxed{A}$$"}}]
+            }).encode("utf-8")
+
+    def fake_urlopen(request, timeout: int):
+        seen["url"] = request.full_url
+        seen["timeout"] = timeout
+        seen["payload"] = json.loads(request.data.decode("utf-8"))
+        return _FakeResponse()
+
+    monkeypatch.setattr(module, "urlopen", fake_urlopen)
+
+    output = module._run_provider_chat_without_tools(
+        [{"role": "user", "content": "Pick A."}],
+        temperature=0.2,
+    )
+
+    assert output == "analysis\n\n$$\\boxed{A}$$"
+    assert seen["url"] == "https://example.test/v1/chat/completions"
+    assert seen["timeout"] == 1200
+    assert seen["payload"]["temperature"] == 0.2
+    assert seen["payload"]["top_p"] == 0.95
+    assert seen["payload"]["max_tokens"] == 65536
+    assert seen["payload"]["chat_template_kwargs"] == {"enable_thinking": False}
 
 
 def test_zeroclaw_bridge_persists_last_request_artifacts(monkeypatch, tmp_path):

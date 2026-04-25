@@ -7,6 +7,7 @@ the ROCK proxy, so benchmark execution aligns with the OpenClaw gateway flow.
 
 from __future__ import annotations
 
+import json
 import os
 import shlex
 import signal
@@ -45,6 +46,31 @@ def _parse_optional_bool(value: Any) -> bool | None:
     if normalized in {"0", "false", "no", "off"}:
         return False
     raise ValueError(f"Invalid boolean value: {value!r}")
+
+
+def _provider_body_overrides_from_config(config: dict[str, Any]) -> dict[str, Any]:
+    overrides: dict[str, Any] = {}
+    raw_extra_body = config.get("extra_body", {})
+    if isinstance(raw_extra_body, dict):
+        overrides.update(raw_extra_body)
+    raw_chat_template_kwargs = config.get("chat_template_kwargs", None)
+    if isinstance(raw_chat_template_kwargs, dict):
+        merged_chat_template_kwargs = dict(overrides.get("chat_template_kwargs", {}))
+        merged_chat_template_kwargs.update(raw_chat_template_kwargs)
+        overrides["chat_template_kwargs"] = merged_chat_template_kwargs
+    enable_thinking = _parse_optional_bool(config.get("enable_thinking", None))
+    reasoning_enabled = _parse_optional_bool(config.get("reasoning_enabled", None))
+    if enable_thinking is None and reasoning_enabled is not None:
+        enable_thinking = reasoning_enabled
+    if enable_thinking is not None:
+        merged_chat_template_kwargs = dict(overrides.get("chat_template_kwargs", {}))
+        merged_chat_template_kwargs["enable_thinking"] = enable_thinking
+        overrides["chat_template_kwargs"] = merged_chat_template_kwargs
+    if reasoning_enabled is not None:
+        merged_reasoning = dict(overrides.get("reasoning", {}))
+        merged_reasoning["enabled"] = reasoning_enabled
+        overrides["reasoning"] = merged_reasoning
+    return overrides
 
 
 def _resolve_zeroclaw_provider(provider: str, api_base: str) -> str:
@@ -90,9 +116,14 @@ class ZeroClawRuntimeManager:
             self._provider_timeout_secs = int(raw_provider_timeout)
         raw_provider_max_tokens = config.get("provider_max_tokens", None)
         if raw_provider_max_tokens in ("", None):
+            raw_provider_max_tokens = config.get("max_tokens", None)
+        if raw_provider_max_tokens in ("", None):
             self._provider_max_tokens: int | None = None
         else:
             self._provider_max_tokens = int(raw_provider_max_tokens)
+        raw_top_p = config.get("top_p", None)
+        self._top_p: float | None = None if raw_top_p in ("", None) else float(raw_top_p)
+        self._provider_body_overrides = _provider_body_overrides_from_config(config)
         self._reasoning_enabled = _parse_optional_bool(config.get("reasoning_enabled", None))
         raw_reasoning_effort = config.get("reasoning_effort", None)
         if raw_reasoning_effort in ("", None):
@@ -155,6 +186,11 @@ class ZeroClawRuntimeManager:
             "ZEROCLAW_PROVIDER": self._provider,
             "ZEROCLAW_ARTIFACT_ROOT": self._artifact_root,
             "ZEROCLAW_TEMPERATURE": str(self._temperature),
+            "ZEROCLAW_TOP_P": "" if self._top_p is None else str(self._top_p),
+            "ZEROCLAW_PROVIDER_REQUEST_OVERRIDES": json.dumps(
+                self._provider_body_overrides,
+                ensure_ascii=True,
+            ),
             "ZEROCLAW_PROVIDER_TIMEOUT_SECS": str(self._provider_timeout_secs),
             "ZEROCLAW_PROVIDER_MAX_TOKENS": (
                 str(self._provider_max_tokens)

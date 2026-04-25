@@ -60,6 +60,14 @@ class _FakeClient:
         return self._responses.pop(0)
 
 
+class _TimeoutAfterFirstLineResponse(_FakeResponse):
+    def iter_lines(self):
+        import httpx
+
+        yield from self._sse_lines[:1]
+        raise httpx.ReadTimeout("OpenClaw stream total timeout after 1.0s")
+
+
 def _base_config(**overrides) -> dict:
     config = {
         "api_base": "http://127.0.0.1:18001/v1",
@@ -88,10 +96,13 @@ def _patch_network(monkeypatch: pytest.MonkeyPatch, responses: list[_FakeRespons
 
 def test_openclaw_request_payload_uses_shared_capture_config() -> None:
     agent = OpenClawAgent()
-    agent.setup(_base_config(capture_logprobs=True, top_logprobs=20))
+    agent.setup(_base_config(capture_logprobs=True, top_logprobs=20, enable_thinking=True, top_p=0.95))
     payload = agent._build_request_payload([{"role": "user", "content": "x"}])
     assert payload["logprobs"] is True
     assert payload["top_logprobs"] == 20
+    assert payload["top_p"] == 0.95
+    assert payload["max_tokens"] == 128
+    assert payload["chat_template_kwargs"] == {"enable_thinking": True}
 
     agent_disabled = OpenClawAgent()
     agent_disabled.setup(_base_config(capture_logprobs=False))
@@ -175,6 +186,39 @@ def test_streaming_sse_collects_logprob_records(monkeypatch: pytest.MonkeyPatch)
     assert resp.metadata["logprobs_capture_status"] == "captured"
     assert [r["token_index"] for r in resp.metadata["logprob_records"]] == [0, 1]
     assert resp.token_entropy_stats["n_tokens"] == 2
+
+
+def test_streaming_timeout_preserves_partial_output_and_logprobs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chunk = {
+        "choices": [
+            {
+                "delta": {"content": "The answer is 4"},
+                "logprobs": {
+                    "content": [
+                        {"token": "4", "logprob": -0.1, "top_logprobs": [{"token": "4", "logprob": -0.1}]}
+                    ]
+                },
+            }
+        ]
+    }
+    response = _TimeoutAfterFirstLineResponse(
+        headers={"content-type": "text/event-stream"},
+        sse_lines=[f"data: {json.dumps(chunk)}"],
+    )
+    _patch_network(monkeypatch, [response])
+
+    agent = OpenClawAgent()
+    agent.setup(_base_config(stream=True, max_attempts=1))
+    resp = agent.solve(_task())
+
+    assert resp.raw_output == "The answer is 4"
+    assert resp.finish_reason == ""
+    assert resp.response_json["choices"][0]["finish_reason"] == "incomplete"
+    assert resp.metadata["logprobs_capture_status"] == "captured"
+    assert resp.metadata["logprob_records"][0]["token"] == "4"
+    assert resp.token_entropy_stats["n_tokens"] == 1
 
 
 def test_retry_uses_only_final_successful_attempt_records(monkeypatch: pytest.MonkeyPatch) -> None:

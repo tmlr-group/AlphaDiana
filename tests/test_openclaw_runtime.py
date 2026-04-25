@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import yaml
 import pytest
 
-from alphadiana.agent.openclaw import OpenClawAgent
+from alphadiana.agent.openclaw import OpenClawAgent, _detect_session_pollution
 from alphadiana.agent.openclaw_container_runtime import OpenClawContainerRuntimeManager
 from alphadiana.agent.openclaw_runtime import OpenClawRuntimeManager
 from alphadiana.benchmark.base import BenchmarkTask
@@ -28,6 +28,34 @@ def _write_runtime_templates(tmp_path: Path) -> tuple[Path, Path]:
     openclaw_cfg = tmp_path / "openclaw.json"
     openclaw_cfg.write_text(json.dumps({"models": {"providers": {}}}), encoding="utf-8")
     return rock_cfg, openclaw_cfg
+
+
+def test_openclaw_session_pollution_heuristic_allows_formula_rewrites() -> None:
+    problem = (
+        "For a given positive integer N, Henry writes the quotient of ab divided "
+        "by N+1 on the board for each pair. Find all N such that the sum is "
+        "(N^3-N^2+2)/4."
+    )
+    raw_output = (
+        "Let S = sum_{a=1}^N sum_{b=1}^N floor(ab/(N+1)). "
+        "Checking and simplifying the condition gives the only solution "
+        "$$\\boxed{3}$$."
+    )
+
+    assert _detect_session_pollution(problem, raw_output, "") is False
+
+
+def test_openclaw_session_pollution_heuristic_flags_near_total_mismatch() -> None:
+    problem = (
+        "For a given positive integer N, Henry writes the quotient of ab divided "
+        "by N+1 on the board for each pair. Find all N."
+    )
+    raw_output = (
+        "The mitochondrion is the organelle responsible for cellular respiration. "
+        "The historical event occurred in Paris in 1789."
+    )
+
+    assert _detect_session_pollution(problem, raw_output, "") is True
 
 
 def test_openclaw_runtime_uses_agent_config_provider_env(tmp_path: Path) -> None:
@@ -189,6 +217,50 @@ def test_openclaw_runtime_preserves_existing_input_capabilities_without_duplicat
     assert provider_model["input"] == ["text", "image"]
     resolved_model = cfg["agents"]["defaults"]["models"]["local/Qwen/Qwen3.5-27B"]
     assert resolved_model == {"params": {"maxTokens": 1024}}
+
+
+def test_openclaw_runtime_applies_generation_param_overrides(tmp_path: Path) -> None:
+    rock_cfg, openclaw_cfg = _write_runtime_templates(tmp_path)
+    openclaw_cfg.write_text(json.dumps({
+        "models": {
+            "providers": {
+                "local": {
+                    "models": [
+                        {
+                            "id": "${OPENAI_MODEL_NAME}",
+                            "name": "${OPENAI_MODEL_NAME}",
+                        }
+                    ]
+                }
+            }
+        },
+        "agents": {
+            "defaults": {
+                "model": {"primary": "local/${OPENAI_MODEL_NAME}"},
+                "models": {
+                    "local/${OPENAI_MODEL_NAME}": {
+                        "params": {"maxTokens": 32768},
+                    }
+                },
+            }
+        },
+    }), encoding="utf-8")
+    mgr = OpenClawRuntimeManager({
+        "rock_agent_config_path": str(rock_cfg),
+        "openclaw_config_path": str(openclaw_cfg),
+        "OPENAI_MODEL_NAME": "Qwen/Qwen3.5-27B",
+        "temperature": 0.0,
+        "top_p": 0.95,
+        "max_tokens": 65536,
+    })
+
+    cfg = mgr._build_openclaw_config(json.loads(openclaw_cfg.read_text(encoding="utf-8")))
+
+    params = cfg["agents"]["defaults"]["models"]["local/${OPENAI_MODEL_NAME}"]["params"]
+    assert params["temperature"] == 0.0
+    assert params["topP"] == 0.95
+    assert params["maxTokens"] == 65536
+
 
 def test_openclaw_runtime_collect_artifacts_preserves_session_trace_and_response_stream_aliases() -> None:
     mgr = OpenClawRuntimeManager({})

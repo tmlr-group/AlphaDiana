@@ -19,6 +19,10 @@ class AIMEBenchmark(Benchmark):
         split: Dataset split (default: "train")
         problem_field: Column name for problem text (default: "problem")
         answer_field: Column name for answer (default: "answer")
+        dataset_index: If set, only load the raw dataset row at this index
+        dataset_indices: If set, only load the listed raw dataset rows
+        max_tasks: Maximum number of tasks to load. Ignored when dataset_index
+            or dataset_indices is set, and not appended to an already-sliced split.
     """
 
     name = "aime"
@@ -44,12 +48,24 @@ class AIMEBenchmark(Benchmark):
         problem_field = config.get("problem_field", "problem")
         answer_field = config.get("answer_field", "answer")
         max_tasks = config.get("max_tasks")
+        dataset_index = config.get("dataset_index")
+        dataset_indices = config.get("dataset_indices")
 
         if max_tasks == 0:
             return []
+        if dataset_index is not None and dataset_indices is not None:
+            raise ValueError(
+                "AIME benchmark config may set only one of 'dataset_index' or "
+                "'dataset_indices'."
+            )
 
         effective_split = split
-        if max_tasks is not None:
+        if (
+            max_tasks is not None
+            and dataset_index is None
+            and dataset_indices is None
+            and "[" not in str(split)
+        ):
             effective_split = f"{split}[:{int(max_tasks)}]"
 
         try:
@@ -85,9 +101,24 @@ class AIMEBenchmark(Benchmark):
                 f"Available fields: {available}"
             )
 
+        if dataset_indices is not None:
+            iterator = [
+                (int(idx), dataset[int(idx)])
+                for idx in dataset_indices
+            ]
+        elif dataset_index is not None:
+            dataset_index = int(dataset_index)
+            if dataset_index < 0 or dataset_index >= len(dataset):
+                raise IndexError(
+                    f"dataset_index={dataset_index} out of range [0, {len(dataset)})"
+                )
+            iterator = [(dataset_index, dataset[dataset_index])]
+        else:
+            iterator = enumerate(dataset)
+
         tasks: list[BenchmarkTask] = []
         warned_missing_problem_idx = False
-        for idx, item in enumerate(dataset):
+        for idx, item in iterator:
             if "problem_idx" in item and item["problem_idx"] is not None:
                 task_id_val = item["problem_idx"]
             else:
@@ -106,7 +137,12 @@ class AIMEBenchmark(Benchmark):
                     "url": item.get("url", ""),
                 },
             ))
-            if max_tasks is not None and len(tasks) >= max_tasks:
+            if (
+                max_tasks is not None
+                and dataset_index is None
+                and dataset_indices is None
+                and len(tasks) >= max_tasks
+            ):
                 break
         return tasks
 

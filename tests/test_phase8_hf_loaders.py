@@ -373,6 +373,44 @@ def test_aime_max_tasks_zero_returns_empty(mock_load):
     assert AIMEBenchmark().load_tasks({"dataset": "HuggingFaceH4/aime_2024", "max_tasks": 0}) == []
 
 
+@patch("alphadiana.benchmark.aime.load_dataset_with_retry")
+def test_aime_sliced_split_does_not_append_max_tasks(mock_load):
+    mock_load.return_value = _make_mock_dataset([
+        {"problem": "P17", "answer": "243", "problem_idx": 17}
+    ])
+    from alphadiana.benchmark.aime import AIMEBenchmark
+
+    tasks = AIMEBenchmark().load_tasks({
+        "dataset": "MathArena/aime_2026",
+        "split": "train[16:17]",
+        "max_tasks": 1,
+    })
+
+    assert tasks[0].task_id == "aime_17"
+    assert mock_load.call_args.kwargs["split"] == "train[16:17]"
+
+
+@patch("alphadiana.benchmark.aime.load_dataset_with_retry")
+def test_aime_dataset_index_selects_raw_row_and_ignores_max_tasks(mock_load):
+    mock_load.return_value = _make_mock_dataset([
+        {"problem": "P1", "answer": "1", "problem_idx": 1},
+        {"problem": "P17", "answer": "243", "problem_idx": 17},
+    ])
+    from alphadiana.benchmark.aime import AIMEBenchmark
+
+    tasks = AIMEBenchmark().load_tasks({
+        "dataset": "MathArena/aime_2026",
+        "split": "train",
+        "dataset_index": 1,
+        "max_tasks": 1,
+    })
+
+    assert len(tasks) == 1
+    assert tasks[0].task_id == "aime_17"
+    assert tasks[0].metadata["index"] == 1
+    assert mock_load.call_args.kwargs["split"] == "train"
+
+
 @patch("alphadiana.benchmark.gpqa.load_dataset_with_retry")
 def test_gpqa_validates_answer_values(mock_load):
     mock_load.return_value = _make_mock_dataset(

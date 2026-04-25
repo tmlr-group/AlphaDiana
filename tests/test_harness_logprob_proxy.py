@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import http.server
 import json
 import threading
+import time
 import urllib.request
 
 from alphadiana.agent.logprob_proxy import (
@@ -161,6 +163,10 @@ def test_openclaw_runtime_logprob_proxy_overrides_upstream_base(monkeypatch) -> 
             "OPENAI_BASE_URL": "http://127.0.0.1:8011/v1",
             "OPENAI_API_KEY": "EMPTY",
             "OPENAI_MODEL_NAME": "Qwen/Qwen3.5-27B",
+            "temperature": 0.0,
+            "top_p": 0.95,
+            "max_tokens": 65536,
+            "enable_thinking": False,
             "capture_logprobs": True,
             "top_logprobs": 7,
         }
@@ -176,8 +182,78 @@ def test_openclaw_runtime_logprob_proxy_overrides_upstream_base(monkeypatch) -> 
     assert _FakeProxy.instances[0].bind_host == "0.0.0.0"
     assert _FakeProxy.instances[0].upstream_api_key == "EMPTY"
     assert _FakeProxy.instances[0].proxy_api_key == "proxy-token"
+    assert _FakeProxy.instances[0].request_overrides == {
+        "chat_template_kwargs": {"enable_thinking": False},
+        "temperature": 0.0,
+        "top_p": 0.95,
+        "max_tokens": 65536,
+    }
     assert runtime.provider_api_base == "http://172.17.0.1:4567/v1"
     assert runtime.provider_api_key == "proxy-token"
+
+
+def test_openclaw_runtime_logprob_proxy_init_is_concurrency_safe(monkeypatch) -> None:
+    class _SlowProxy(_FakeProxy):
+        def start(self) -> None:
+            time.sleep(0.01)
+            super().start()
+
+    _FakeProxy.instances = []
+    monkeypatch.setattr("alphadiana.agent.openclaw.LogprobCaptureProxy", _SlowProxy)
+    monkeypatch.setattr("alphadiana.agent.openclaw.secrets.token_urlsafe", lambda _: "proxy-token")
+    runtime = _FakeOpenClawRuntime()
+    agent = OpenClawAgent()
+    agent.setup(
+        {
+            "OPENAI_BASE_URL": "http://127.0.0.1:8011/v1",
+            "OPENAI_API_KEY": "EMPTY",
+            "OPENAI_MODEL_NAME": "Qwen/Qwen3.5-27B",
+            "temperature": 0.0,
+            "top_p": 0.95,
+            "max_tokens": 65536,
+            "capture_logprobs": True,
+            "top_logprobs": 7,
+        }
+    )
+    agent._runtime_manager = runtime
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        proxies = list(pool.map(lambda _: agent._ensure_runtime_logprob_proxy(), range(16)))
+
+    assert len(_FakeProxy.instances) == 1
+    assert all(proxy is _FakeProxy.instances[0] for proxy in proxies)
+    assert runtime.provider_api_base == "http://172.17.0.1:4567/v1"
+
+
+def test_openclaw_setup_tracks_predeployed_gateway_logprob_proxy() -> None:
+    proxy = _FakeProxy(
+        "http://127.0.0.1:8011",
+        7,
+        request_overrides={"temperature": 0.0, "top_p": 0.95, "max_tokens": 65536},
+    )
+    proxy.start()
+    agent = OpenClawAgent()
+    agent.setup(
+        {
+            "api_base": "http://gateway-one/v1",
+            "capture_logprobs": True,
+            "_predeployed_gateway_api_base_by_sandbox_id": {
+                "sandbox-one": "http://gateway-one/v1",
+            },
+            "_predeployed_logprob_proxies": {
+                "sandbox-one": proxy,
+            },
+        }
+    )
+
+    assert agent._predeployed_gateway_api_base_by_sandbox_id == {
+        "sandbox-one": "http://gateway-one/v1",
+    }
+    assert agent._predeployed_logprob_proxies == {"sandbox-one": proxy}
+    assert proxy in agent._logprob_proxies
+
+    agent.teardown()
+    assert proxy.started is False
 
 
 class _ZeroClawProxy(_FakeProxy):
@@ -241,6 +317,9 @@ def test_zeroclaw_uses_logprob_proxy_records(monkeypatch) -> None:
             "model": "Qwen/Qwen3.5-27B",
             "api_base": "http://127.0.0.1:8011/v1",
             "api_key": "EMPTY",
+            "temperature": 0.0,
+            "top_p": 0.95,
+            "max_tokens": 65536,
             "capture_logprobs": True,
             "top_logprobs": 20,
         }
@@ -255,8 +334,26 @@ def test_zeroclaw_uses_logprob_proxy_records(monkeypatch) -> None:
     assert "OPENAI_BASE_URL=http://172.17.0.1:4567/v1" in run_commands[0]
     assert "OPENAI_API_KEY=proxy-token" in run_commands[0]
     assert "ZEROCLAW_PROVIDER=custom:http://172.17.0.1:4567/v1" in run_commands[0]
+    assert _FakeProxy.instances[0].request_overrides == {
+        "temperature": 0.0,
+        "top_p": 0.95,
+        "max_tokens": 65536,
+    }
+    config_text = next(
+        content
+        for path, content in sandbox.files.items()
+        if path.endswith("/.zeroclaw/config.toml")
+    )
+    assert "provider_max_tokens = 65536" in config_text
+    assert "top_p" not in config_text
+    assert "logprobs" not in config_text
     assert response.metadata["logprobs_capture_status"] == "captured"
     assert response.metadata["logprob_probe_proxy_count"] == 1
+    assert response.metadata["logprob_proxy_request_overrides"] == {
+        "temperature": 0.0,
+        "top_p": 0.95,
+        "max_tokens": 65536,
+    }
     assert response.token_entropy_stats["n_tokens"] == 1
     assert response.metadata["logprob_records"][0]["token"] == "D"
     config_path = next(path for path in sandbox.files if path.endswith("config.toml"))

@@ -62,6 +62,47 @@ def _is_unresolved_placeholder(value: str) -> bool:
     return stripped.startswith("${") and stripped.endswith("}")
 
 
+def _parse_bool_like(value: Any) -> bool | None:
+    if value in ("", None):
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    lowered = str(value).strip().lower()
+    if lowered in {"1", "true", "yes", "on"}:
+        return True
+    if lowered in {"0", "false", "no", "off"}:
+        return False
+    return None
+
+
+def _provider_body_overrides_from_config(config: dict[str, Any]) -> dict[str, Any]:
+    """Return OpenAI-compatible request-body overrides from common config keys."""
+    overrides: dict[str, Any] = {}
+    raw_extra_body = config.get("extra_body", {})
+    if isinstance(raw_extra_body, dict):
+        overrides.update(raw_extra_body)
+    raw_chat_template_kwargs = config.get("chat_template_kwargs", None)
+    if isinstance(raw_chat_template_kwargs, dict):
+        merged_chat_template_kwargs = dict(overrides.get("chat_template_kwargs", {}))
+        merged_chat_template_kwargs.update(raw_chat_template_kwargs)
+        overrides["chat_template_kwargs"] = merged_chat_template_kwargs
+    enable_thinking = _parse_bool_like(config.get("enable_thinking", None))
+    reasoning_enabled = _parse_bool_like(config.get("reasoning_enabled", None))
+    if enable_thinking is None and reasoning_enabled is not None:
+        enable_thinking = reasoning_enabled
+    if enable_thinking is not None:
+        merged_chat_template_kwargs = dict(overrides.get("chat_template_kwargs", {}))
+        merged_chat_template_kwargs["enable_thinking"] = enable_thinking
+        overrides["chat_template_kwargs"] = merged_chat_template_kwargs
+    if reasoning_enabled is not None:
+        merged_reasoning = dict(overrides.get("reasoning", {}))
+        merged_reasoning["enabled"] = reasoning_enabled
+        overrides["reasoning"] = merged_reasoning
+    return overrides
+
+
 class OpenClawRequestError(RuntimeError):
     """Request failure with attached diagnostics for result persistence."""
 
@@ -114,6 +155,10 @@ _PARTIAL_REASONING_ANSWER_RE = re.compile(
 _DIFF_GIT_RE = re.compile(
     r"^diff --git .+?(?=\n(?:diff --git |\Z))",
     re.MULTILINE | re.DOTALL,
+)
+_FINAL_ANSWER_MARKER_RE = re.compile(
+    r"(?:\\boxed|final\s+answer|answer\s+is|therefore)",
+    re.IGNORECASE,
 )
 
 
@@ -269,6 +314,11 @@ def _detect_session_pollution(
     if len(model_text.strip()) < 100:
         # Too short to judge reliably.
         return False
+    if _FINAL_ANSWER_MARKER_RE.search(raw_output):
+        # A stale-session detector should not override a completed answer. This
+        # is especially noisy on short multiple-choice and vision prompts where
+        # the assistant may not repeat distinctive wording from the question.
+        return False
 
     raw_tokens = set(_DISTINCTIVE_TOKEN_RE.findall(problem))
     # Filter out common math words
@@ -285,7 +335,10 @@ def _detect_session_pollution(
         if re.search(pattern, model_text):
             hits += 1
     ratio = hits / len(tokens)
-    return ratio < 0.35
+    # Math solutions often rewrite the problem into formulas and drop proper
+    # nouns from the prompt. Only flag near-total mismatch as stale-session
+    # evidence; otherwise this heuristic produces false positives on IMO/AIME.
+    return ratio < 0.15
 
 
 def classify_error(
@@ -775,6 +828,14 @@ class OpenClawAgent(Agent):
             1.0,
             float(config.get("stream_idle_timeout", min(self._request_timeout, 180.0))),
         )
+        raw_stream_total_timeout = config.get(
+            "stream_total_timeout",
+            config.get("response_timeout", self._request_timeout),
+        )
+        if raw_stream_total_timeout in ("", None, 0, "0"):
+            self._stream_total_timeout: float | None = None
+        else:
+            self._stream_total_timeout = max(1.0, float(raw_stream_total_timeout))
         self._proxy_timeout = int(config.get("proxy_timeout", 600))
         self._logprob_capture = resolve_logprob_capture_config(config)
         self._logprob_proxy_bind_host = str(
@@ -788,6 +849,27 @@ class OpenClawAgent(Agent):
             or ""
         ).strip()
         self._logprob_proxy: LogprobCaptureProxy | None = None
+        self._logprob_proxy_lock = threading.Lock()
+        self._logprob_proxies: list[LogprobCaptureProxy] = []
+        predeployed_logprob_proxies = config.get("_predeployed_logprob_proxies", {}) or {}
+        if isinstance(predeployed_logprob_proxies, dict):
+            self._predeployed_logprob_proxies: dict[str, LogprobCaptureProxy] = {
+                str(key): proxy
+                for key, proxy in predeployed_logprob_proxies.items()
+                if str(key) and proxy is not None
+            }
+            self._logprob_proxies.extend(self._predeployed_logprob_proxies.values())
+        else:
+            self._predeployed_logprob_proxies = {}
+        predeployed_gateway_map = config.get("_predeployed_gateway_api_base_by_sandbox_id", {}) or {}
+        if isinstance(predeployed_gateway_map, dict):
+            self._predeployed_gateway_api_base_by_sandbox_id: dict[str, str] = {
+                str(key): str(value).strip()
+                for key, value in predeployed_gateway_map.items()
+                if str(key) and str(value).strip()
+            }
+        else:
+            self._predeployed_gateway_api_base_by_sandbox_id = {}
         self._config = config
 
         # Agent.md customization
@@ -890,14 +972,17 @@ class OpenClawAgent(Agent):
                 return value
         return os.environ.get("OPENAI_API_KEY", "").strip()
 
-    def _ensure_runtime_logprob_proxy(self) -> LogprobCaptureProxy | None:
-        if not self._logprob_capture["enabled"]:
-            return None
-        if self._runtime_manager is None or not self._runtime_manager.is_configured:
-            return None
-        if self._logprob_proxy is not None:
-            return self._logprob_proxy
+    def _logprob_request_overrides(self) -> dict[str, Any]:
+        overrides: dict[str, Any] = _provider_body_overrides_from_config(self._config)
+        overrides["temperature"] = self._temperature
+        if self._top_p is not None:
+            overrides["top_p"] = self._top_p
+        resolved_max_tokens = self._resolve_max_tokens()
+        if resolved_max_tokens is not None:
+            overrides["max_tokens"] = resolved_max_tokens
+        return overrides
 
+    def _start_logprob_proxy_locked(self) -> tuple[LogprobCaptureProxy, str, str] | None:
         upstream = normalize_openai_proxy_upstream(self._resolve_runtime_provider_api_base())
         if not upstream:
             return None
@@ -914,31 +999,56 @@ class OpenClawAgent(Agent):
             client_timeout=max(120.0, self._request_timeout),
             upstream_api_key=self._resolve_runtime_provider_api_key(),
             proxy_api_key=proxy_api_key,
+            request_overrides=self._logprob_request_overrides(),
         )
         proxy.start()
+        self._logprob_proxies.append(proxy)
         proxy_api_base = f"{proxy.proxy_url.rstrip('/')}/v1"
-        setter = getattr(self._runtime_manager, "set_provider_api_base", None)
-        if callable(setter):
-            setter(proxy_api_base)
-        else:
-            provider_env = getattr(self._runtime_manager, "_provider_env", None)
-            if isinstance(provider_env, dict):
-                provider_env["OPENAI_BASE_URL"] = proxy_api_base
-        key_setter = getattr(self._runtime_manager, "set_provider_api_key", None)
-        if callable(key_setter):
-            key_setter(proxy_api_key)
-        else:
-            provider_env = getattr(self._runtime_manager, "_provider_env", None)
-            if isinstance(provider_env, dict):
-                provider_env["OPENAI_API_KEY"] = proxy_api_key
-        self._logprob_proxy = proxy
         logger.info(
-            "OpenClaw logprob proxy started local_url=%s advertised_url=%s upstream=%s",
+            "OpenClaw logprob proxy started local_url=%s advertised_url=%s upstream=%s overrides=%s",
             proxy.local_url,
             proxy.proxy_url,
             proxy.upstream,
+            self._logprob_request_overrides(),
         )
-        return proxy
+        return proxy, proxy_api_base, proxy_api_key
+
+    def start_logprob_proxy_for_gateway(self) -> tuple[LogprobCaptureProxy, str, str] | None:
+        """Start a per-gateway provider proxy before a predeployed gateway boots."""
+        if not self._logprob_capture["enabled"]:
+            return None
+        with self._logprob_proxy_lock:
+            return self._start_logprob_proxy_locked()
+
+    def _ensure_runtime_logprob_proxy(self) -> LogprobCaptureProxy | None:
+        if not self._logprob_capture["enabled"]:
+            return None
+        if self._runtime_manager is None or not self._runtime_manager.is_configured:
+            return None
+        with self._logprob_proxy_lock:
+            if self._logprob_proxy is not None:
+                return self._logprob_proxy
+
+            started = self._start_logprob_proxy_locked()
+            if started is None:
+                return None
+            proxy, proxy_api_base, proxy_api_key = started
+            setter = getattr(self._runtime_manager, "set_provider_api_base", None)
+            if callable(setter):
+                setter(proxy_api_base)
+            else:
+                provider_env = getattr(self._runtime_manager, "_provider_env", None)
+                if isinstance(provider_env, dict):
+                    provider_env["OPENAI_BASE_URL"] = proxy_api_base
+            key_setter = getattr(self._runtime_manager, "set_provider_api_key", None)
+            if callable(key_setter):
+                key_setter(proxy_api_key)
+            else:
+                provider_env = getattr(self._runtime_manager, "_provider_env", None)
+                if isinstance(provider_env, dict):
+                    provider_env["OPENAI_API_KEY"] = proxy_api_key
+            self._logprob_proxy = proxy
+            return proxy
 
     def _ensure_agent_md(self, sandbox: Any = None) -> None:
         if (
@@ -1342,6 +1452,9 @@ class OpenClawAgent(Agent):
             "temperature": self._temperature,
             "stream": self._stream,
         }
+        payload.update(_provider_body_overrides_from_config(self._config))
+        payload["temperature"] = self._temperature
+        payload["stream"] = self._stream
         resolved = self._resolve_max_tokens()
         if resolved is not None:
             payload["max_tokens"] = resolved
@@ -1387,15 +1500,21 @@ class OpenClawAgent(Agent):
         #   2. Round-robin from gateway_pool (predeployed multi-sandbox mode)
         #   3. Single configured api_base
         resolved_api_base = ""
-        if sandbox is not None and hasattr(sandbox, "proxy_v1_base"):
-            # Auto-deploy: sandbox session provides its own proxy endpoint.
-            resolved_api_base = ""  # let ensure_ready() set it below
+        predeployed_api_base = ""
+        if sandbox_id:
+            predeployed_api_base = self._predeployed_gateway_api_base_by_sandbox_id.get(sandbox_id, "")
+
+        if predeployed_api_base:
+            resolved_api_base = predeployed_api_base
         elif self._gateway_pool:
             with self._gateway_pool_lock:
                 # Round-robin: rotate the deque so each concurrent call gets
                 # a different gateway when multiple are configured.
                 resolved_api_base = self._gateway_pool[0]
                 self._gateway_pool.rotate(-1)
+        elif sandbox is not None and hasattr(sandbox, "proxy_v1_base"):
+            # Auto-deploy: sandbox session provides its own proxy endpoint.
+            resolved_api_base = ""  # let ensure_ready() set it below
         else:
             resolved_api_base = self._api_base
 
@@ -1413,8 +1532,11 @@ class OpenClawAgent(Agent):
             "sandbox_metadata": {},
         }
         logprob_proxy: LogprobCaptureProxy | None = None
+        if sandbox_id:
+            logprob_proxy = self._predeployed_logprob_proxies.get(sandbox_id)
         if not runtime_info["api_base"] and sandbox is not None and self._runtime_manager and self._runtime_manager.is_configured:
-            logprob_proxy = self._ensure_runtime_logprob_proxy()
+            if logprob_proxy is None:
+                logprob_proxy = self._ensure_runtime_logprob_proxy()
             runtime_info = self._runtime_manager.ensure_ready(sandbox)
             if logprob_proxy is not None:
                 logprob_proxy.drain_records()
@@ -1475,11 +1597,16 @@ class OpenClawAgent(Agent):
                 if logprob_proxy is not None:
                     logprob_proxy.drain_records()
                 logger.info(
-                    "OpenClaw attempt %d/%d starting request: timeout=%.1fs stream_idle_timeout=%.1fs url=%s",
+                    "OpenClaw attempt %d/%d starting request: timeout=%.1fs stream_idle_timeout=%.1fs stream_total_timeout=%s url=%s",
                     attempt,
                     self._max_attempts,
                     self._request_timeout,
                     min(self._request_timeout, self._stream_idle_timeout),
+                    (
+                        f"{self._stream_total_timeout:.1f}s"
+                        if self._stream_total_timeout is not None
+                        else "disabled"
+                    ),
                     url,
                 )
                 with httpx.Client(timeout=self._build_httpx_timeout(), trust_env=False) as client:
@@ -1547,6 +1674,14 @@ class OpenClawAgent(Agent):
                                 last_sse_progress_at = time.monotonic()
                                 for line in response.iter_lines():
                                     now = time.monotonic()
+                                    if (
+                                        self._stream_total_timeout is not None
+                                        and now - attempt_start > self._stream_total_timeout
+                                    ):
+                                        raise httpx.ReadTimeout(
+                                            "OpenClaw stream total timeout "
+                                            f"after {self._stream_total_timeout:.1f}s"
+                                        )
                                     if not line.startswith("data:"):
                                         if now - last_sse_progress_at > stream_idle_limit:
                                             raise httpx.ReadTimeout(
@@ -1828,6 +1963,12 @@ class OpenClawAgent(Agent):
             except Exception as exc:
                 elapsed = time.monotonic() - attempt_start
                 last_error = exc
+                if chunks and not raw_output:
+                    raw_output = "".join(chunks)
+                if reasoning_chunks and not raw_reasoning:
+                    raw_reasoning = "".join(reasoning_chunks)
+                if logprob_proxy is not None:
+                    attempt_proxy_logprob_records = logprob_proxy.drain_records()
                 # Extract status code / body from httpx HTTPStatusError if available.
                 exc_status = getattr(getattr(exc, "response", None), "status_code", None)
                 exc_body = str(exc)
@@ -1852,9 +1993,47 @@ class OpenClawAgent(Agent):
                         raw_output = recovered_content
                     if recovered_reasoning and not raw_reasoning:
                         raw_reasoning = recovered_reasoning
+                    if (raw_output or raw_reasoning) and not response_json:
+                        message: dict[str, Any] = {
+                            "role": "assistant",
+                            "content": raw_output if raw_output else "",
+                        }
+                        if raw_reasoning:
+                            message["reasoning_content"] = raw_reasoning
+                        response_json = {
+                            "choices": [
+                                {
+                                    "message": message,
+                                    "finish_reason": "incomplete",
+                                }
+                            ],
+                            "stream_status": {
+                                "received_done": received_done,
+                                "error": str(exc),
+                                "error_type": error_type,
+                            },
+                        }
                     if raw_output:
+                        selected_logprob_records = list(
+                            attempt_logprob_records or attempt_proxy_logprob_records
+                        )
+                        logprob_source_attempt = attempt if selected_logprob_records else 0
+                        selected_proxy_logprob_count = len(attempt_proxy_logprob_records)
+                        if attempt_logprob_records:
+                            logprob_source = "gateway_response"
+                        elif attempt_proxy_logprob_records:
+                            logprob_source = "provider_proxy"
                         break
                     if raw_reasoning:
+                        selected_logprob_records = list(
+                            attempt_logprob_records or attempt_proxy_logprob_records
+                        )
+                        logprob_source_attempt = attempt if selected_logprob_records else 0
+                        selected_proxy_logprob_count = len(attempt_proxy_logprob_records)
+                        if attempt_logprob_records:
+                            logprob_source = "gateway_response"
+                        elif attempt_proxy_logprob_records:
+                            logprob_source = "provider_proxy"
                         partial_reasoning_only = True
                         break
                 retry_responses.append(
@@ -1869,12 +2048,17 @@ class OpenClawAgent(Agent):
                     }
                 )
                 logger.warning(
-                    "OpenClaw attempt %d/%d failed: error_type=%s timeout=%.1fs stream_idle_timeout=%.1fs elapsed=%.2fs recovered_trajectory_len=%d error=%s",
+                    "OpenClaw attempt %d/%d failed: error_type=%s timeout=%.1fs stream_idle_timeout=%.1fs stream_total_timeout=%s elapsed=%.2fs recovered_trajectory_len=%d error=%s",
                     attempt,
                     self._max_attempts,
                     error_type,
                     self._request_timeout,
                     min(self._request_timeout, self._stream_idle_timeout),
+                    (
+                        f"{self._stream_total_timeout:.1f}s"
+                        if self._stream_total_timeout is not None
+                        else "disabled"
+                    ),
                     elapsed,
                     len(recovered_trajectory),
                     exc,
@@ -2133,12 +2317,16 @@ class OpenClawAgent(Agent):
         )
 
     def teardown(self) -> None:
-        if self._logprob_proxy is not None:
+        proxies = list(dict.fromkeys(self._logprob_proxies))
+        if self._logprob_proxy is not None and self._logprob_proxy not in proxies:
+            proxies.append(self._logprob_proxy)
+        for proxy in proxies:
             try:
-                self._logprob_proxy.stop()
+                proxy.stop()
             except Exception as exc:
                 logger.warning("OpenClaw logprob proxy teardown failed: %s", exc)
-            self._logprob_proxy = None
+        self._logprob_proxy = None
+        self._logprob_proxies.clear()
         if self._runtime_manager is not None:
             try:
                 self._runtime_manager.teardown()

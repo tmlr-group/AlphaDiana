@@ -25,6 +25,21 @@ from urllib.request import Request, urlopen
 
 logger = logging.getLogger(__name__)
 
+
+def _json_object_from_env(name: str) -> dict[str, Any]:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        logger.warning("Ignoring invalid JSON in %s", name)
+        return {}
+    if not isinstance(parsed, dict):
+        logger.warning("Ignoring non-object JSON in %s", name)
+        return {}
+    return parsed
+
 HOST = os.environ.get("ZEROCLAW_BRIDGE_HOST", "127.0.0.1")
 PORT = 8080
 GATEWAY_TOKEN = os.environ.get("ZEROCLAW_GATEWAY_TOKEN", "ZEROCLAW")
@@ -36,6 +51,9 @@ MODEL_NAME = os.environ.get("OPENAI_MODEL_NAME", "zeroclaw")
 API_BASE = os.environ.get("OPENAI_BASE_URL", "")
 API_KEY = os.environ.get("OPENAI_API_KEY", "")
 DEFAULT_TEMPERATURE = float(os.environ.get("ZEROCLAW_TEMPERATURE", "0.0"))
+PROVIDER_TOP_P_RAW = os.environ.get("ZEROCLAW_TOP_P", "").strip()
+PROVIDER_TOP_P = float(PROVIDER_TOP_P_RAW) if PROVIDER_TOP_P_RAW else None
+PROVIDER_REQUEST_OVERRIDES = _json_object_from_env("ZEROCLAW_PROVIDER_REQUEST_OVERRIDES")
 PROVIDER_TIMEOUT_SECS = int(os.environ.get("ZEROCLAW_PROVIDER_TIMEOUT_SECS", "120"))
 PROVIDER_MAX_TOKENS_RAW = os.environ.get("ZEROCLAW_PROVIDER_MAX_TOKENS", "").strip()
 PROVIDER_MAX_TOKENS = int(PROVIDER_MAX_TOKENS_RAW) if PROVIDER_MAX_TOKENS_RAW else None
@@ -120,12 +138,14 @@ def _vision_inject_messages(
 class _BridgeVisionProxyState:
     def __init__(self, upstream_base: str, upstream_api_key: str,
                  image_items: list[dict[str, Any]], target_text: str,
-                 upstream_model: str | None) -> None:
+                 upstream_model: str | None,
+                 request_overrides: dict[str, Any] | None = None) -> None:
         self.upstream_base = upstream_base.rstrip("/")
         self.upstream_api_key = upstream_api_key
         self.image_items = image_items
         self.target_text = target_text
         self.upstream_model = upstream_model
+        self.request_overrides = dict(request_overrides or {})
         self.request_count = 0
         self.injection_count = 0
 
@@ -176,11 +196,12 @@ def _make_vision_proxy_handler(state: _BridgeVisionProxyState):
             state.request_count += 1
             is_chat = self.path.endswith("/chat/completions")
             has_images = bool(state.image_items)
-            if is_chat and (has_images or state.upstream_model):
+            if is_chat and (has_images or state.upstream_model or state.request_overrides):
                 try:
                     payload = json.loads(body.decode("utf-8"))
                     if state.upstream_model:
                         payload["model"] = state.upstream_model
+                    payload.update(state.request_overrides)
                     messages = payload.get("messages")
                     if has_images and isinstance(messages, list):
                         new_messages, injected = _vision_inject_messages(
@@ -207,9 +228,15 @@ class _BridgeVisionProxy:
 
     def __init__(self, upstream_base: str, upstream_api_key: str,
                  image_items: list[dict[str, Any]], target_text: str,
-                 upstream_model: str | None = None) -> None:
+                 upstream_model: str | None = None,
+                 request_overrides: dict[str, Any] | None = None) -> None:
         self._state = _BridgeVisionProxyState(
-            upstream_base, upstream_api_key, image_items, target_text, upstream_model,
+            upstream_base,
+            upstream_api_key,
+            image_items,
+            target_text,
+            upstream_model,
+            request_overrides,
         )
         self._port: int | None = None
         self._server: HTTPServer | None = None
@@ -527,6 +554,15 @@ def _build_provider_messages(
     return updated_messages
 
 
+def _provider_request_overrides() -> dict[str, Any]:
+    overrides = dict(PROVIDER_REQUEST_OVERRIDES)
+    if PROVIDER_TOP_P is not None:
+        overrides["top_p"] = PROVIDER_TOP_P
+    if PROVIDER_MAX_TOKENS is not None:
+        overrides["max_tokens"] = PROVIDER_MAX_TOKENS
+    return overrides
+
+
 def _run_provider_chat_without_tools(
     messages: list[dict[str, Any]],
     *,
@@ -542,8 +578,7 @@ def _run_provider_chat_without_tools(
         "temperature": DEFAULT_TEMPERATURE if temperature is None else float(temperature),
         "stream": False,
     }
-    if PROVIDER_MAX_TOKENS is not None:
-        payload["max_tokens"] = PROVIDER_MAX_TOKENS
+    payload.update(_provider_request_overrides())
     request_body = json.dumps(payload).encode("utf-8")
     request = Request(
         f"{API_BASE.rstrip('/')}/chat/completions",
@@ -564,6 +599,9 @@ def _run_provider_chat_without_tools(
         "provider": PROVIDER,
         "api_base": API_BASE,
         "temperature": DEFAULT_TEMPERATURE if temperature is None else float(temperature),
+        "top_p": PROVIDER_TOP_P,
+        "max_tokens": PROVIDER_MAX_TOKENS,
+        "provider_request_overrides": PROVIDER_REQUEST_OVERRIDES,
         "disable_tools": True,
         "error_message": "",
     }
@@ -687,6 +725,7 @@ def _run_zeroclaw(
     image_items = [item for item in attachments_list
                    if str(item.get("mime", "") or "").lower().startswith("image/")
                    and item.get("data")]
+    provider_request_overrides = _provider_request_overrides()
     vision_proxy_ctx = (
         _BridgeVisionProxy(
             upstream_base=API_BASE,
@@ -694,6 +733,7 @@ def _run_zeroclaw(
             image_items=image_items,
             target_text=prompt,
             upstream_model=MODEL_NAME,
+            request_overrides=provider_request_overrides,
         )
         if image_items
         else None
