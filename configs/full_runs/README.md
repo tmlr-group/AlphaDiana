@@ -110,6 +110,19 @@ timeout sizing, `tee` logging guidance, and output-cap preservation caveats.
 
 > DirectLLM is intentionally excluded — use the official `scaleapi/SWE-bench_Pro-os` repo for that baseline.
 
+### SWE-Bench Verified-Mini × Qwen3.5-27B (local vLLM)
+
+| File | Harness | Type |
+|---|---|---|
+| `swe_verified_mini_openclaw_qwen35_27b_logprobs.yaml` | OpenClaw | full run (50 tasks) |
+| `swe_verified_mini_opencode_qwen35_27b_logprobs.yaml` | OpenCode | full run (50 tasks) |
+| `swe_verified_mini_zeroclaw_qwen35_27b_logprobs.yaml` | ZeroClaw | full run (50 tasks) |
+
+> DirectLLM is intentionally excluded — use the `swe_verified_mini.yaml`
+> campaign manifest with backend `official_swebench_verified` (upstream
+> SWE-agent CLI) for the leaderboard-aligned baseline. Pure DirectLLM through
+> alphadiana scores ~0% on SWE-bench because the model never sees repo code.
+
 ### Campaign orchestrators
 
 | File | Purpose |
