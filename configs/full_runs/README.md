@@ -1,8 +1,92 @@
-# Full Benchmark Configs
+# Full-Run Configs
 
-This directory stores ready-to-run full benchmark entry points.
+Production experiment configs. Each file is a single benchmark × harness combination
+with a pinned model and all hyperparameters explicit.
 
-The smoke configs under `configs/examples/` intentionally pin one task with `dataset_index` or `max_tasks`. Do not use those files for full benchmark runs.
+See [`../PROMPTS.md`](../PROMPTS.md) for the canonical system prompt for every
+benchmark × harness type. **Every config must set `system_prompt` explicitly** — never
+rely on harness-hardcoded defaults.
+
+Smoke/pilot configs live in `configs/examples/` (they pin `max_tasks: 1–5`). Do not
+use those for full benchmark runs.
+
+---
+
+## Naming convention
+
+```
+{benchmark}_{harness}_{model_short}_logprobs.yaml
+```
+
+- `benchmark`: `gpqa`, `aime`, `imo`, `hle`, `mmmu_pro`, `tb2`, `swe`
+- `harness`: `directllm`, `openclaw`, `opencode`, `zeroclaw`
+- `model_short`: e.g. `qwen35_27b`, `minimax`
+- `_logprobs` suffix: run captures token-level top-20 int16 logprob sidecars
+
+---
+
+## File inventory
+
+### Phase 12 — GPQA-Diamond × Qwen3.5-27B (local vLLM, 2026-04-25)
+
+| File | Harness | Notes |
+|---|---|---|
+| `full_gpqa_openclaw_qwen35_27b_logprobs.yaml` | OpenClaw | partial run; set `redo_all: true` to rerun with correct prompt |
+| `full_gpqa_opencode_qwen35_27b_logprobs.yaml` | OpenCode | 198/198 done with wrong prompt; set `redo_all: true` to rerun |
+| `full_gpqa_zeroclaw_qwen35_27b_logprobs.yaml` | ZeroClaw | partial run; `redo_all: true` already set |
+
+> All three were missing `system_prompt` in the original run. Fixed 2026-04-25.
+
+### Phase 25 — MiniMax (cloud)
+
+| File | Benchmark | Harness |
+|---|---|---|
+| `p25_full_directllm_minimax_imo_answerbench.yaml` | IMO | DirectLLM |
+| `p25_full_openclaw_minimax_imo_answerbench.yaml` | IMO | OpenClaw |
+| `p25_full_opencode_minimax_imo_answerbench.yaml` | IMO | OpenCode |
+| `p25_full_zeroclaw_minimax_imo_answerbench.yaml` | IMO | ZeroClaw |
+| `p25_full_directllm_minimax_hle.yaml` | HLE | DirectLLM |
+| `p25_full_openclaw_minimax_hle.yaml` | HLE | OpenClaw |
+| `p25_full_opencode_minimax_hle.yaml` | HLE | OpenCode |
+| `p25_full_zeroclaw_minimax_hle.yaml` | HLE | ZeroClaw |
+| `p25_full_terminal_bench2_{harness}_minimax.yaml` | TB2 | all 4 harnesses |
+
+### Phase 29 — SWE-Bench Pro
+
+`p29_full_{openclaw,opencode,zeroclaw}_swebench_pro.yaml`
+
+### Rollout — multi-model campaigns
+
+| File | Benchmark | Harness |
+|---|---|---|
+| `rollout_full_{directllm,openclaw,opencode,zeroclaw}_gpqa_diamond.yaml` | GPQA | all 4 |
+| `rollout_full_{directllm,openclaw,opencode,zeroclaw}_mmmu_pro_vision.yaml` | MMMU-Pro | all 4 |
+| `rollout_local_vllm_campaign_20260419.yaml` | multi | multi |
+
+### Phase 9–11 — Historical (Qwen3.5-27B logprob dev)
+
+`phase{9,10,11}_{harness}_{benchmark}_qwen35_27b_logprobs[_smoke].yaml`
+
+---
+
+## Key config fields
+
+```yaml
+run_id: "unique_identifier"           # used as results/ subdirectory name
+
+agent:
+  name: openclaw | opencode | zeroclaw | direct_llm
+  version: "..."
+  config:
+    system_prompt: |                  # REQUIRED — see ../PROMPTS.md
+      ...
+    capture_logprobs: true            # enables top-20 int16 logprob sidecar files
+    top_logprobs: 20
+    docker_host_ip: "127.0.0.1"   # required for logprob proxy (openclaw/zeroclaw)
+
+max_concurrent: 1                     # tasks in parallel (1 = sequential)
+redo_all: true                        # set when intentionally re-running completed tasks
+```
 
 ## Local-vLLM Campaign
 

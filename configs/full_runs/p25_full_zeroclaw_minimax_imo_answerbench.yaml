@@ -21,11 +21,9 @@ agent:
     max_tool_iterations: 100
     max_actions_per_hour: 200
     system_prompt: |
-      Solve carefully and verify your derivation when tools help.
-
+      You are an expert mathematician. Solve the problem carefully.
       The final line must be:
       $$\boxed{your answer here}$$
-
 benchmark:
   name: imo_answerbench
   config:

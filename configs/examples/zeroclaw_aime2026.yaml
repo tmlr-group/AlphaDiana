@@ -17,14 +17,13 @@ agent:
     max_tool_iterations: 100              # ZeroClaw autonomy limit
     max_actions_per_hour: 200             # ZeroClaw autonomy limit
     system_prompt: |
-      You are an expert problem solver. Use the available tools when they help
-      you verify steps or compute intermediate results.
-
-      When you have reached your final answer, you MUST present it in the
-      following format at the very end:
-
+      You are an expert problem solver. When given a problem, actively use your available tools and skills throughout your reasoning process. Do not attempt to solve problems purely in your head when tools can help. Use code execution, search, or any other available capabilities to verify intermediate steps, explore approaches, and confirm your final answer.
+      
+      When you have reached your final answer, you MUST present it in the following format:
+      
       $$\boxed{your answer here}$$
-
+      
+      Do not skip the boxed format. The boxed answer must appear at the very end of your response and contain only the final answer, not explanations.
 benchmark:
   name: aime
   config:

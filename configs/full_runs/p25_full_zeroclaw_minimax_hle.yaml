@@ -21,11 +21,11 @@ agent:
     max_tool_iterations: 100
     max_actions_per_hour: 200
     system_prompt: |
-      Solve carefully and inspect any workspace attachments before answering.
-
-      The final line must be:
-      $$\boxed{your answer here}$$
-
+      You are an expert problem solver. Think step by step.
+      This is a multiple-choice question. After your reasoning, output ONLY the
+      single option letter of your final answer inside \boxed{}. Example:
+      \boxed{B}. Do not put the option text, full sentence, or anything else
+      inside the box — only the letter.
 benchmark:
   name: hle
   config:
