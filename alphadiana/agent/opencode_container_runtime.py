@@ -134,6 +134,21 @@ def _sanitize_json_text(raw_text: str) -> str:
     return json.dumps(_redact_secret_fields(payload), indent=2, ensure_ascii=False)
 
 
+def _parse_optional_bool(value: Any) -> bool | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off"}:
+        return False
+    return bool(value)
+
+
 class OpenCodeContainerRuntimeManager:
     """Bootstraps OpenCode inside a SWE-bench task container and runs it."""
 
@@ -149,6 +164,7 @@ class OpenCodeContainerRuntimeManager:
         self._top_p = None if raw_top_p in (None, "") else float(raw_top_p)
         raw_max_tokens = config.get("max_tokens", None)
         self._max_tokens = None if raw_max_tokens in (None, "") else int(raw_max_tokens)
+        self._enable_thinking = _parse_optional_bool(config.get("enable_thinking", None))
         streaming = config.get("streaming")
         self._streaming: bool | None = bool(streaming) if streaming is not None else None
         self._variant = str(config.get("variant", "")).strip()
@@ -345,6 +361,10 @@ print(json.dumps(summary, ensure_ascii=False, indent=2))
             provider_options["max_tokens"] = self._max_tokens
         if self._streaming is not None:
             provider_options["streaming"] = self._streaming
+        if self._enable_thinking is not None:
+            provider_options["chat_template_kwargs"] = {
+                "enable_thinking": self._enable_thinking,
+            }
         apply_openai_logprob_request(provider_options, self._logprob_capture)
 
         cfg = {

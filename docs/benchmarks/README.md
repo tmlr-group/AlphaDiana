@@ -253,6 +253,13 @@ The checked-in plain-benchmark `opencode` configs for `GPQA-Diamond`,
 host-process path is still available for debugging via
 `-o agent.config.controller_mode=host`.
 
+On April 25, 2026, latest-code local `Qwen/Qwen3.5-27B` OpenCode smokes
+completed 3/3 tasks on GPQA-Diamond, IMO-AnswerBench, HLE, and MMMU-Pro vision
+with `agent.config.enable_thinking=true`, `top_p=0.95`, `max_tokens=25000`,
+and captured logprob sidecars. See
+[`context/current_eval_status.md`](../../context/current_eval_status.md) for
+the current run IDs and caveats.
+
 Smoke-test success means the evaluation path loads tasks, invokes the selected agent mode, and writes scored results. It does not mean the model answered correctly.
 
 ## ZeroClaw Note

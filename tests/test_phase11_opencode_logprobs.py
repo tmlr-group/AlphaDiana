@@ -107,6 +107,7 @@ def test_opencode_host_provider_options_request_logprobs_when_enabled() -> None:
             temperature=0.0,
             top_p=0.95,
             max_tokens=131072,
+            enable_thinking=True,
         )
     )
     process = MagicMock()
@@ -136,12 +137,20 @@ def test_opencode_host_provider_options_request_logprobs_when_enabled() -> None:
     assert options["temperature"] == 0.0
     assert options["top_p"] == 0.95
     assert options["max_tokens"] == 131072
+    assert options["chat_template_kwargs"] == {"enable_thinking": True}
     assert proxy_cls.call_args.kwargs["request_overrides"] == {
         "temperature": 0.0,
         "top_p": 0.95,
         "max_tokens": 131072,
+        "chat_template_kwargs": {"enable_thinking": True},
     }
     assert response.metadata["logprobs_capture_status"] == "requested_missing"
+    assert response.metadata["logprob_proxy_request_overrides"] == {
+        "temperature": 0.0,
+        "top_p": 0.95,
+        "max_tokens": 131072,
+        "chat_template_kwargs": {"enable_thinking": True},
+    }
 
 
 def test_opencode_timeout_preserves_proxy_partial_output() -> None:
@@ -240,6 +249,7 @@ def test_opencode_container_provider_config_requests_logprobs() -> None:
             "temperature": 0.0,
             "top_p": 0.95,
             "max_tokens": 131072,
+            "enable_thinking": True,
         }
     )
 
@@ -258,6 +268,7 @@ def test_opencode_container_provider_config_requests_logprobs() -> None:
     assert options["temperature"] == 0.0
     assert options["top_p"] == 0.95
     assert options["max_tokens"] == 131072
+    assert options["chat_template_kwargs"] == {"enable_thinking": True}
 
 
 def test_opencode_container_response_finalizes_captured_logprobs() -> None:
