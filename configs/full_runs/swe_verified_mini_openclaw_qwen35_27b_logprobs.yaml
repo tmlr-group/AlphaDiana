@@ -14,7 +14,7 @@ agent:
     request_timeout: 1800
     temperature: 0.0
     top_p: 0.95
-    max_tokens: 131072
+    max_tokens: 32768
     capture_logprobs: true
     top_logprobs: 20
     output_dir: "./swebench_artifacts_openclaw_verified_mini"
@@ -25,7 +25,7 @@ agent:
       OPENCLAW_AGENT_TIMEOUT_SEC: "1200"
       OPENCLAW_CHAT_MAX_TIME_SEC: "1260"
       OPENCLAW_CONTEXT_WINDOW: "262144"
-      OPENCLAW_COMPLETION_MAX_TOKENS: "131072"
+      OPENCLAW_COMPLETION_MAX_TOKENS: "32768"
       OPENCLAW_PROMPT_PROFILE: "swebench"
       OPENCLAW_AGENT_ID: "openclaw_swebench_verified_mini"
       OPENCLAW_TOOLS_PROFILE: "swebench"
