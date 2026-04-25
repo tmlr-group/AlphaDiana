@@ -30,6 +30,9 @@ export HF_TOKEN=hf_...
 ```
 
 If the dataset is already cached locally, the loader can run without forcing `HF_TOKEN`.
+You can also point `benchmark.config.dataset` at a complete local Hugging Face
+snapshot directory; the HLE loader has been smoke-tested on that path with the
+OpenCode Docker controller.
 
 ## Supported Modes
 
@@ -121,6 +124,20 @@ recorded `predicted="400"` from a tool-choice failure body, are pre-fix audit
 evidence only. The replacement run
 `fixproof_after_20260422_hle_opencode_qwen3vl_t1` records the same class of
 failure as `score_status=provider_error` with `predicted=null`.
+
+Local Qwen/OpenCode logprob evidence on April 25, 2026:
+`smoke_20260425_hle_opencode_qwen35_local_snapshot_t1` used a local
+`cais/hle` snapshot path, Docker-controller OpenCode,
+`Qwen/Qwen3.5-27B` at `http://127.0.0.1:8011/v1`, `streaming=true`,
+`max_tokens=25000`, `capture_logprobs=true`, and `top_logprobs=20`. It wrote a
+normal `hle_1` task record with `score_status=valid_scored`, `score=1.0`,
+`predicted=D`, and matching float/int16 logprob sidecars with `1538` lines
+each. A follow-up image-backed smoke,
+`smoke_20260425_hle53_opencode_qwen35_attachment_artifact_fix_t1`, completed
+`hle_53` with `metadata.num_attachments=1`,
+`metadata.logprobs_capture_status=captured`, matching float/int16 sidecars with
+`512` lines each, and preserved the attachment bytes as
+`artifacts/hle_53/workspace/attachments/image_1.png.base64`.
 
 ## OpenClaw
 

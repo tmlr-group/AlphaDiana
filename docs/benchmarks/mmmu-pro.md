@@ -53,6 +53,12 @@ attachments before handing the task to the agent.
 The checked-in full configs also use `data_config: "vision"` so the full run
 matches the image-backed path rather than a text-only variant.
 
+When using a local Hugging Face snapshot, verify that the selected subset
+directory contains actual data files before launching an agent run. A snapshot
+that only has `README.md`, `.gitattributes`, and empty
+`vision` / `standard (4 options)` / `standard (10 options)` directories fails
+at dataset load time with `DataFilesNotFoundError` and is not runnable.
+
 Current full-run caveat on April 22, 2026:
 the full `vision` loader is currently front-loaded. The implementation in
 `alphadiana/benchmark/mmmu_pro.py` eagerly converts every dataset image into

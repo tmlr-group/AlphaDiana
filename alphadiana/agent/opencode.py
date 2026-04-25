@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import os
@@ -953,6 +954,7 @@ class OpenCodeAgent(Agent):
         session_trace = ""
         proxy_logprob_records: list[dict] = []
         preserved_local_artifacts: dict[str, Any] = {}
+        attachment_artifacts: list[dict[str, str]] = []
 
         with tempfile.TemporaryDirectory(prefix="opencode-task-") as workdir:
             workdir_path = Path(workdir)
@@ -1058,6 +1060,15 @@ class OpenCodeAgent(Agent):
                 (agent_dir / f"{self._agent_name}.md").write_text(agent_text)
 
             attachment_paths = write_attachments(workdir_path / "attachments", task.attachments)
+            attachment_artifacts = [
+                {
+                    "filename": path.name,
+                    "path": f"attachments/{path.name}",
+                    "base64_artifact": f"attachments/{path.name}.base64",
+                    "base64": base64.b64encode(path.read_bytes()).decode("ascii"),
+                }
+                for path in attachment_paths
+            ]
             prompt = _build_prompt(task.problem, self._system_prompt, attachment_paths)
             request_messages: list[dict[str, Any]] = []
             if str(self._system_prompt).strip():
@@ -1243,14 +1254,17 @@ class OpenCodeAgent(Agent):
         if stderr:
             workspace_file_contents["opencode_stderr.log"] = stderr
         if attachment_paths:
+            for item in attachment_artifacts:
+                workspace_file_contents[item["base64_artifact"]] = item["base64"]
             workspace_file_contents["attachment_manifest.json"] = json.dumps(
                 {
                     "attachments": [
                         {
-                            "filename": path.name,
-                            "path": f"attachments/{path.name}",
+                            "filename": item["filename"],
+                            "path": item["path"],
+                            "base64_artifact": item["base64_artifact"],
                         }
-                        for path in attachment_paths
+                        for item in attachment_artifacts
                     ]
                 },
                 indent=2,
