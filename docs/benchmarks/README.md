@@ -49,6 +49,13 @@ for AIME 2026 `aime_17` across OpenCode, OpenClaw, and ZeroClaw with
 task; do not combine a sliced split such as `train[16:17]` with a config that
 already sets `benchmark.config.max_tasks`.
 
+The April 25 evidence also includes local-Qwen OpenCode 3-sample follow-ups for
+SWE-bench Verified mini and terminal-bench-2. SWE-bench Verified mini is clean
+on the generic `opencode_swe_bench.yaml` / `swebench_container` path with
+stored provider-proxy logprobs. terminal-bench-2 now stores logprobs too, but
+the local stress run exposed long-tail runtime and context-window overflow
+caveats under a very large output budget.
+
 As of April 23, 2026, current GPQA-Diamond `direct_llm` local-vLLM evidence
 also includes a Phase 10 top-20 Int16 logprob sidecar smoke; see
 [`context/current_eval_status.md`](../../context/current_eval_status.md) for

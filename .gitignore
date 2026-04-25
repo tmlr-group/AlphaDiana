@@ -58,6 +58,7 @@ dump.rdb
 # external_benchmark runtime artifacts
 external_benchmark_artifacts_*/
 swebench_artifacts_*/
+swe_bench_logs/
 results_*/
 external_benchmark_pipeline_*/
 

@@ -11,7 +11,21 @@ from pathlib import Path
 from typing import Any, Optional
 
 from alphadiana.agent.base import Agent, AgentResponse
-from alphadiana.agent.opencode import _extract_event_texts
+from alphadiana.agent.logprob_capture import (
+    apply_openai_logprob_request,
+    finalize_logprob_capture,
+    resolve_logprob_capture_config,
+)
+from alphadiana.agent.logprob_proxy import (
+    LogprobCaptureProxy,
+    normalize_openai_proxy_upstream,
+    resolve_logprob_proxy_advertise_host,
+)
+from alphadiana.agent.opencode import (
+    _count_json_objects,
+    _extract_event_texts,
+    extract_opencode_logprob_records,
+)
 from alphadiana.agent.preservation import (
     add_artifact_file_refs,
     build_event_trajectories,
@@ -48,7 +62,23 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
         self._print_logs = bool(config.get("print_logs", False))
         self._log_level = str(config.get("log_level", "")).strip()
         self._opencode_bin = str(config.get("opencode_bin", "opencode") or "opencode").strip()
+        raw_temperature = config.get("temperature", None)
+        self._temperature = (
+            None if raw_temperature in (None, "") else float(raw_temperature)
+        )
+        raw_top_p = config.get("top_p", None)
+        self._top_p = None if raw_top_p in (None, "") else float(raw_top_p)
+        raw_max_tokens = config.get("max_tokens", None)
+        self._max_tokens = None if raw_max_tokens in (None, "") else int(raw_max_tokens)
         self._streaming = config.get("streaming") if "streaming" in config else None
+        self._logprob_capture = resolve_logprob_capture_config(config)
+        self._logprob_proxy_bind_host = str(
+            config.get("logprob_proxy_bind_host", "0.0.0.0") or "0.0.0.0"
+        ).strip()
+        self._logprob_proxy_advertise_host = str(
+            config.get("logprob_proxy_advertise_host", config.get("logprob_proxy_host", ""))
+            or ""
+        ).strip()
         self._runtime_source_image = self._resolve_runtime_source_image(
             config,
             agent_type="opencode",
@@ -65,15 +95,33 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
         parts = shlex.split(self._opencode_bin)
         return parts or ["opencode"]
 
-    def _write_provider_config(self, config_path: Path) -> None:
+    def _provider_request_overrides(self) -> dict[str, Any]:
+        overrides: dict[str, Any] = {}
+        if self._temperature is not None:
+            overrides["temperature"] = self._temperature
+        if self._top_p is not None:
+            overrides["top_p"] = self._top_p
+        if self._max_tokens is not None:
+            overrides["max_tokens"] = self._max_tokens
+        return overrides
+
+    def _write_provider_config(
+        self,
+        config_path: Path,
+        *,
+        api_base: str | None = None,
+        api_key: str | None = None,
+    ) -> None:
         config_path.parent.mkdir(parents=True, exist_ok=True)
         provider_options: dict[str, Any] = {
-            "apiKey": self._api_key,
-            "baseURL": self._api_base,
+            "apiKey": self._api_key if api_key is None else api_key,
+            "baseURL": self._api_base if api_base is None else api_base,
             "timeout": self._solver_timeout_sec * 1000,
         }
+        provider_options.update(self._provider_request_overrides())
         if self._streaming is not None:
             provider_options["streaming"] = bool(self._streaming)
+        apply_openai_logprob_request(provider_options, self._logprob_capture)
         provider_config = {
             "$schema": "https://opencode.ai/config.json",
             "provider": {
@@ -156,6 +204,10 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
         events: list[dict[str, Any]] = []
         session_trace = ""
         test_output = ""
+        verifier_result: Any | None = None
+        logprob_proxy: LogprobCaptureProxy | None = None
+        logprob_proxy_records: list[dict] = []
+        logprob_proxy_metadata: dict[str, Any] = {}
         task_text, prompt_text = self._build_incontainer_prompt(task)
         runtime, runtime_metadata = self._prepare_incontainer_runtime(
             task,
@@ -175,7 +227,35 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
         try:
             container_workdir = self._detect_container_workspace(runtime.container_id)
             config_path = runtime.workdir / "xdg-config" / "opencode" / "opencode.json"
-            self._write_provider_config(config_path)
+            effective_api_base = self._api_base
+            effective_api_key = self._api_key
+            if self._logprob_capture["enabled"]:
+                upstream = normalize_openai_proxy_upstream(self._api_base)
+                advertise_host = resolve_logprob_proxy_advertise_host(
+                    self._api_base,
+                    self._logprob_proxy_advertise_host,
+                )
+                logprob_proxy = LogprobCaptureProxy(
+                    upstream,
+                    self._logprob_capture["top_logprobs"],
+                    bind_host=self._logprob_proxy_bind_host,
+                    advertise_host=advertise_host,
+                    client_timeout=max(120.0, float(self._solver_timeout_sec)),
+                    upstream_api_key=self._api_key,
+                    request_overrides=self._provider_request_overrides() or None,
+                )
+                logprob_proxy.start()
+                effective_api_base = f"{logprob_proxy.proxy_url.rstrip('/')}/v1"
+                logprob_proxy_metadata = {
+                    "logprob_proxy_enabled": True,
+                    "logprob_proxy_url": effective_api_base,
+                    "logprob_proxy_upstream": logprob_proxy.upstream,
+                }
+            self._write_provider_config(
+                config_path,
+                api_base=effective_api_base,
+                api_key=effective_api_key,
+            )
             self._stage_file_into_container(
                 runtime.container_id,
                 local_path=prompt_path,
@@ -189,13 +269,14 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
             env = {
                 "HOME": remote_home,
                 "XDG_CONFIG_HOME": f"{remote_root}/xdg-config",
-                "OPENAI_API_KEY": self._api_key,
-                "OPENAI_BASE_URL": self._api_base,
+                "OPENAI_API_KEY": effective_api_key,
+                "OPENAI_BASE_URL": effective_api_base,
             }
             cmd = self._build_run_command(
                 task_id=task.task_id,
                 container_workdir=container_workdir,
             )
+            runner = shlex.join(cmd[:-1])
             exec_result = self._docker_exec_capture(
                 runtime.container_id,
                 (
@@ -203,15 +284,17 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
                     "unset ALL_PROXY HTTP_PROXY HTTPS_PROXY all_proxy http_proxy https_proxy 2>/dev/null || true\n"
                     f"export ALPHADIANA_PROMPT_FILE={shlex.quote(remote_prompt_path)}\n"
                     f"prompt=$(cat {shlex.quote(remote_prompt_path)})\n"
-                    f"{shlex.join(cmd[:-1])} \"$prompt\""
+                    f"timeout --kill-after=15s {self._solver_timeout_sec}s {runner} \"$prompt\""
                 ),
                 env=env,
                 cwd=container_workdir,
-                timeout_sec=self._solver_timeout_sec,
+                timeout_sec=self._solver_timeout_sec + 30,
             )
             raw_output = exec_result.stdout
             stderr = exec_result.stderr
             returncode = exec_result.returncode
+            if logprob_proxy is not None:
+                logprob_proxy_records = logprob_proxy.drain_records()
             session_trace = self._collect_session_trace(
                 runtime.container_id,
                 f"{remote_home}/.opencode",
@@ -238,6 +321,8 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
             test_output = verifier_result.test_output
             reward_content = verifier_result.reward
         finally:
+            if logprob_proxy is not None:
+                logprob_proxy.stop()
             artifact_files = self._collect_text_artifacts({
                 "/terminal_bench2/opencode/TASK.md": runtime.workdir / "TASK.md",
                 "/terminal_bench2/opencode/PROMPT.txt": runtime.workdir / "PROMPT.txt",
@@ -280,6 +365,48 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
             prompt_text="PROMPT.txt",
             runtime_config="opencode.json",
         )
+        logprob_records = extract_opencode_logprob_records(
+            events=events,
+            session_trace=session_trace,
+            stdout=raw_output,
+        )
+        logprob_source = "opencode_artifacts" if logprob_records else ""
+        if not logprob_records and logprob_proxy_records:
+            logprob_records = logprob_proxy_records
+            logprob_source = "provider_proxy"
+
+        response_metadata = self._build_metadata(
+            runtime,
+            reward=reward_content,
+            rounds_used=1,
+            runner="opencode",
+            extra={
+                "returncode": returncode,
+                "stderr": stderr[:2000] if stderr else "",
+                "num_events": len(events),
+                "logprob_probe_event_count": len(events),
+                "logprob_probe_session_json_count": _count_json_objects(session_trace),
+                "logprob_probe_stdout_json_count": _count_json_objects(raw_output),
+                "logprob_probe_proxy_count": len(logprob_proxy_records),
+                "logprob_probe_record_count": len(logprob_records),
+                "logprob_source": logprob_source,
+                "session_id": session_id,
+                "test_output": test_output,
+                "verifier_status": verifier_result.status if verifier_result else "",
+                "verifier_reward_observed": (
+                    verifier_result.reward is not None if verifier_result else False
+                ),
+                "container_workdir": container_workdir,
+                **logprob_proxy_metadata,
+                **runtime_metadata,
+            },
+        )
+        token_entropy_stats, response_metadata = finalize_logprob_capture(
+            harness="opencode",
+            enabled=self._logprob_capture["enabled"],
+            records=logprob_records,
+            metadata=response_metadata,
+        )
 
         return AgentResponse(
             answer=reward_content,
@@ -287,23 +414,8 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
             reasoning_trajectory=reasoning_trajectory,
             raw_output=full_content,
             wall_time_sec=time.time() - t_start,
-            metadata=self._build_metadata(
-                runtime,
-                reward=reward_content,
-                rounds_used=1,
-                runner="opencode",
-                extra={
-                    "returncode": returncode,
-                    "stderr": stderr[:2000] if stderr else "",
-                    "num_events": len(events),
-                    "session_id": session_id,
-                    "test_output": test_output,
-                    "verifier_status": verifier_result.status,
-                    "verifier_reward_observed": verifier_result.reward is not None,
-                    "container_workdir": container_workdir,
-                    **runtime_metadata,
-                },
-            ),
+            token_entropy_stats=token_entropy_stats,
+            metadata=response_metadata,
             request_messages=request_messages,
             response_json=build_runtime_trace_summary(
                 output_text=full_content,

@@ -52,6 +52,23 @@ Local follow-up on April 19, 2026:
   no longer reproduced the old missing-repo / missing-site workspace mismatch;
   the preserved failure moved to the loop detector
 
+Local OpenCode/logprob follow-up on April 25, 2026:
+
+- `phase12_opencode_tb2_qwen35_64k_logprobs_t3_parallel_20260425` completed
+  the same three-task local OpenCode path and wrote all three task JSONs.
+- All three tasks have no task-level `error` and saved provider-proxy logprobs
+  with matching float/int16 sidecars (`1388`, `1242`, and `4389` records).
+- This was not a clean task-quality pass: `bn-fit-modify` is `valid_scored`,
+  while `adaptive-rejection-sampler` and `break-filter-js-from-html` ended with
+  `response_json.returncode=-1` and `score_status=verifier_error` after a long
+  local run. The raw log also contains one vLLM HTTP 400 where accumulated
+  OpenCode context plus the local output cap exceeded the model context window
+  by one token.
+- `terminal_bench2_opencode` now wraps the container-local OpenCode command in
+  `timeout --kill-after`, so future solver timeouts should not leave
+  container-local OpenCode processes continuing to hit the provider after the
+  host-side `docker exec` timeout.
+
 ## Prerequisites
 
 Run from the repo root:

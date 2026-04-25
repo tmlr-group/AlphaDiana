@@ -549,7 +549,8 @@ terminate_process_group() {
   kill -KILL -- "-$leader_pid" 2>/dev/null || true
 }
 
-python3 - <<'PY'
+write_opencode_config() {
+  python3 - <<'PY'
 import json
 import os
 from pathlib import Path
@@ -559,8 +560,29 @@ target = Path(os.environ["OPENCODE_CONFIG"])
 config = json.loads(template.read_text(encoding="utf-8"))
 
 model_name = os.environ["OPENCODE_MODEL_NAME"]
-config["provider"]["custom"]["options"]["apiKey"] = os.environ["OPENAI_API_KEY"]
-config["provider"]["custom"]["options"]["baseURL"] = os.environ["OPENAI_BASE_URL"]
+options = config["provider"]["custom"]["options"]
+options["apiKey"] = os.environ["OPENAI_API_KEY"]
+options["baseURL"] = os.environ["OPENAI_BASE_URL"]
+
+def present(name: str) -> bool:
+    return os.environ.get(name, "").strip() != ""
+
+def truthy(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+if present("OPENCODE_PROVIDER_TEMPERATURE"):
+    options["temperature"] = float(os.environ["OPENCODE_PROVIDER_TEMPERATURE"])
+if present("OPENCODE_PROVIDER_TOP_P"):
+    options["top_p"] = float(os.environ["OPENCODE_PROVIDER_TOP_P"])
+if present("OPENCODE_PROVIDER_MAX_TOKENS"):
+    options["max_tokens"] = int(os.environ["OPENCODE_PROVIDER_MAX_TOKENS"])
+if present("OPENCODE_PROVIDER_TIMEOUT_MS"):
+    options["timeout"] = int(os.environ["OPENCODE_PROVIDER_TIMEOUT_MS"])
+if present("OPENCODE_PROVIDER_STREAMING"):
+    options["streaming"] = truthy("OPENCODE_PROVIDER_STREAMING")
+if truthy("OPENCODE_PROVIDER_LOGPROBS"):
+    options["logprobs"] = True
+    options["top_logprobs"] = int(os.environ.get("OPENCODE_PROVIDER_TOP_LOGPROBS", "20"))
 config["provider"]["custom"]["models"] = {
     model_name: {
         "name": model_name,
@@ -571,6 +593,9 @@ config["model"] = f"custom/{model_name}"
 
 target.write_text(json.dumps(config, indent=2), encoding="utf-8")
 PY
+}
+
+write_opencode_config
 
 PROMPT="$(python3 - <<'PY'
 import os
@@ -858,6 +883,14 @@ mkdir -p "$HOME"
 
 if [[ "$OPENCODE_PREFLIGHT_RESULT" != "passed" ]]; then
   exit 1
+fi
+
+if [[ -n "${ALPHADIANA_OPENCODE_PROXY_BASE_URL:-}" ]]; then
+  export OPENAI_BASE_URL="$ALPHADIANA_OPENCODE_PROXY_BASE_URL"
+  if [[ -n "${ALPHADIANA_OPENCODE_PROXY_API_KEY:-}" ]]; then
+    export OPENAI_API_KEY="$ALPHADIANA_OPENCODE_PROXY_API_KEY"
+  fi
+  write_opencode_config
 fi
 
 git -C "$REPO_ROOT" status --short >"$OPENCODE_GIT_STATUS_BEFORE_PATH" || true

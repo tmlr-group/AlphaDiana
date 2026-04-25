@@ -852,6 +852,12 @@ class OpenCodeAgent(Agent):
             "transport": "opencode_cli_container",
             **artifacts,
         }
+        proxy_logprob_records = list(result.get("logprob_records") or [])
+        proxy_logprob_metadata = dict(result.get("logprob_proxy_metadata") or {})
+        if proxy_logprob_metadata:
+            response_metadata.update(proxy_logprob_metadata)
+            response_metadata["logprob_probe_proxy_count"] = len(proxy_logprob_records)
+            response_metadata["logprob_source"] = "provider_proxy" if proxy_logprob_records else ""
         session_trace_text = (artifacts.get("workspace_file_contents", {}) or {}).get(
             "opencode_session.jsonl", ""
         )
@@ -862,6 +868,11 @@ class OpenCodeAgent(Agent):
             session_trace=session_trace_text,
             stdout=raw_stdout,
         )
+        if not logprob_records and proxy_logprob_records:
+            logprob_records = proxy_logprob_records
+            response_metadata["logprob_source"] = "provider_proxy"
+        elif logprob_records:
+            response_metadata["logprob_source"] = "opencode_artifacts"
         response_metadata["logprob_probe_session_json_count"] = logprob_probe_session_json_count
         response_metadata["logprob_probe_stdout_json_count"] = logprob_probe_stdout_json_count
         response_metadata["logprob_probe_record_count"] = len(logprob_records)
