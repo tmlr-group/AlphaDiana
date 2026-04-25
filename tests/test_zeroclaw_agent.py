@@ -132,6 +132,96 @@ class _FakeNonZeroProviderSandbox(_FakeSandbox):
         return super().execute(command)
 
 
+class _FakeRuntimeOnlySandbox(_FakeSandbox):
+    def execute(self, command: str):
+        if "zeroclaw agent -m" in command:
+            self.commands.append(command)
+            task_path = next((path for path in self._files if path.endswith("/task.txt")), "")
+            stdout_path = command.split("> ", 1)[1].split(" 2> ", 1)[0]
+            stderr_path = command.split(" 2> ", 1)[1]
+            self._files[stdout_path] = (
+                "2026-04-25T00:00:00Z INFO zeroclaw::agent::loop_: Memory initialized\n"
+                "2026-04-25T00:00:01Z INFO zeroclaw::security::detect: No sandbox backend available\n"
+            )
+            self._files[stderr_path] = ""
+            runtime_trace_path = str(Path(task_path).parent / "state" / "runtime-trace.jsonl")
+            self._files[runtime_trace_path] = ""
+            return type("Result", (), {"exit_code": 0, "stdout": "", "stderr": ""})()
+        return super().execute(command)
+
+
+class _FakeLoopDetectorSandbox(_FakeSandbox):
+    _stderr = (
+        "Error: Agent loop aborted by loop detector: Circuit breaker: "
+        "tool 'web_search_tool' called 5 times consecutively"
+    )
+
+    def execute(self, command: str):
+        if "zeroclaw agent -m" in command:
+            self.commands.append(command)
+            task_path = next((path for path in self._files if path.endswith("/task.txt")), "")
+            stdout_path = command.split("> ", 1)[1].split(" 2> ", 1)[0]
+            stderr_path = command.split(" 2> ", 1)[1]
+            self._files[stdout_path] = (
+                "2026-04-25T00:00:00Z INFO zeroclaw::tools::web_search_tool: Searching\n"
+            )
+            self._files[stderr_path] = self._stderr
+            runtime_trace_path = str(Path(task_path).parent / "state" / "runtime-trace.jsonl")
+            self._files[runtime_trace_path] = ""
+            return type("Result", (), {"exit_code": 0, "stdout": "", "stderr": ""})()
+        return super().execute(command)
+
+    def read_text(self, filename: str) -> str:
+        if filename.endswith("zeroclaw_stderr.log"):
+            return self._stderr
+        return super().read_text(filename)
+
+
+class _FakeTimeoutWithLogprobsSandbox(_FakeSandbox):
+    def execute(self, command: str):
+        if "zeroclaw agent -m" in command:
+            self.commands.append(command)
+            task_path = next((path for path in self._files if path.endswith("/task.txt")), "")
+            stdout_path = command.split("> ", 1)[1].split(" 2> ", 1)[0]
+            stderr_path = command.split(" 2> ", 1)[1]
+            self._files[stdout_path] = (
+                "2026-04-25T00:00:00Z INFO zeroclaw::agent::loop_: still running\n"
+            )
+            self._files[stderr_path] = ""
+            runtime_trace_path = str(Path(task_path).parent / "state" / "runtime-trace.jsonl")
+            self._files[runtime_trace_path] = ""
+            return type("Result", (), {"exit_code": 124, "stdout": "", "stderr": ""})()
+        return super().execute(command)
+
+
+class _FakeLogprobProxy:
+    def __init__(self, upstream: str, top_logprobs: int, **_: object) -> None:
+        self.upstream = upstream
+        self.top_logprobs = top_logprobs
+        self.started = False
+
+    def start(self) -> None:
+        self.started = True
+
+    def stop(self) -> None:
+        self.started = False
+
+    @property
+    def proxy_url(self) -> str:
+        return "http://172.17.0.1:4567"
+
+    def drain_records(self) -> list[dict]:
+        return [
+            {
+                "token_index": idx,
+                "token": f"tok{idx}",
+                "logprob": -0.1,
+                "top_logprobs": [{"token": f"tok{idx}", "logprob": -0.1}],
+            }
+            for idx in range(5)
+        ]
+
+
 def test_zeroclaw_agent_is_registered():
     assert AgentRegistry.get("zeroclaw") is ZeroClawAgent
 
@@ -517,3 +607,86 @@ def test_zeroclaw_nonzero_sandbox_provider_failures_classify_as_provider_error()
     assert getattr(excinfo.value, "error_type", "") == "provider_error"
     assert partial.metadata["failure_reason"] == "provider_error"
     assert partial.metadata["transport"] == "zeroclaw_cli_sandbox"
+
+
+def test_zeroclaw_runtime_only_output_with_logprobs_scores_zero(monkeypatch):
+    monkeypatch.setattr("alphadiana.agent.zeroclaw.LogprobCaptureProxy", _FakeLogprobProxy)
+    task = BenchmarkTask(
+        task_id="aime_truncated",
+        problem="Compute 6*7.",
+        ground_truth="42",
+        metadata={"execution_id": "exec-runtime-only"},
+    )
+    sandbox = _FakeRuntimeOnlySandbox()
+    agent = ZeroClawAgent()
+    agent.setup({
+        "model": "Qwen/Qwen3.5-27B",
+        "api_base": "http://127.0.0.1:8011/v1",
+        "api_key": "EMPTY",
+        "capture_logprobs": True,
+        "max_tokens": 5,
+    })
+
+    response = agent.solve(task, sandbox=sandbox)
+
+    assert response.answer is None
+    assert response.finish_reason == "length"
+    assert response.metadata["zeroclaw_empty_assistant_scored_zero"] is True
+    assert response.metadata["logprobs_capture_status"] == "captured"
+    assert response.token_entropy_stats["n_tokens"] == 5
+
+
+def test_zeroclaw_loop_detector_with_logprobs_scores_zero(monkeypatch):
+    monkeypatch.setattr("alphadiana.agent.zeroclaw.LogprobCaptureProxy", _FakeLogprobProxy)
+    task = BenchmarkTask(
+        task_id="hle_loop_detector",
+        problem="Pick A.",
+        ground_truth="A",
+        metadata={"execution_id": "exec-loop-detector"},
+    )
+    sandbox = _FakeLoopDetectorSandbox()
+    agent = ZeroClawAgent()
+    agent.setup({
+        "model": "Qwen/Qwen3.5-27B",
+        "api_base": "http://127.0.0.1:8011/v1",
+        "api_key": "EMPTY",
+        "capture_logprobs": True,
+        "max_tokens": 10,
+    })
+
+    response = agent.solve(task, sandbox=sandbox)
+
+    assert response.answer is None
+    assert response.finish_reason == "incomplete"
+    assert response.metadata["zeroclaw_empty_assistant_scored_zero"] is True
+    assert "Agent loop aborted" in response.metadata["zeroclaw_terminal_cli_error"]
+    assert response.metadata["logprobs_capture_status"] == "captured"
+
+
+def test_zeroclaw_timeout_with_logprobs_scores_zero(monkeypatch):
+    monkeypatch.setattr("alphadiana.agent.zeroclaw.LogprobCaptureProxy", _FakeLogprobProxy)
+    task = BenchmarkTask(
+        task_id="imo_timeout",
+        problem="Solve a long problem.",
+        ground_truth="42",
+        metadata={"execution_id": "exec-timeout"},
+    )
+    sandbox = _FakeTimeoutWithLogprobsSandbox()
+    agent = ZeroClawAgent()
+    agent.setup({
+        "model": "Qwen/Qwen3.5-27B",
+        "api_base": "http://127.0.0.1:8011/v1",
+        "api_key": "EMPTY",
+        "capture_logprobs": True,
+        "max_tokens": 10,
+        "request_timeout": 30,
+    })
+
+    response = agent.solve(task, sandbox=sandbox)
+
+    assert response.answer is None
+    assert response.finish_reason == "timeout"
+    assert response.metadata["zeroclaw_timeout_preserved_partial_response"] is True
+    assert response.metadata["zeroclaw_timeout_seconds"] == 30
+    assert response.metadata["zeroclaw_empty_assistant_scored_zero"] is True
+    assert response.metadata["logprobs_capture_status"] == "captured"

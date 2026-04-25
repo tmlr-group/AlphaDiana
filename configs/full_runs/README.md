@@ -1,10 +1,12 @@
 # Full-Run Configs
 
 Active production configs in this directory are intentionally limited to the
-five non-code benchmarks and two harness families currently being realigned:
+five non-code benchmarks and four harness families currently being realigned:
 
 - `direct_llm`
 - `opencode`
+- `openclaw`
+- `zeroclaw`
 
 Older full-run configs, campaign manifests, smoke configs, templates, and
 non-target harness configs were moved to
@@ -17,13 +19,13 @@ below uses the matching Direct or Harness prompt from that file.
 
 ## Active Inventory
 
-| Benchmark | DirectLLM | OpenCode |
-|---|---|---|
-| AIME 2024 | [`aime_directllm_qwen35_27b_logprobs.yaml`](aime_directllm_qwen35_27b_logprobs.yaml) | [`aime_opencode_qwen35_27b_logprobs.yaml`](aime_opencode_qwen35_27b_logprobs.yaml) |
-| IMO-AnswerBench | [`imo_directllm_qwen35_27b_logprobs.yaml`](imo_directllm_qwen35_27b_logprobs.yaml) | [`imo_opencode_qwen35_27b_logprobs.yaml`](imo_opencode_qwen35_27b_logprobs.yaml) |
-| GPQA-Diamond | [`gpqa_directllm_qwen35_27b_logprobs.yaml`](gpqa_directllm_qwen35_27b_logprobs.yaml) | [`gpqa_opencode_qwen35_27b_logprobs.yaml`](gpqa_opencode_qwen35_27b_logprobs.yaml) |
-| HLE multiple-choice | [`hle_directllm_qwen35_27b_logprobs.yaml`](hle_directllm_qwen35_27b_logprobs.yaml) | [`hle_opencode_qwen35_27b_logprobs.yaml`](hle_opencode_qwen35_27b_logprobs.yaml) |
-| MMMU-Pro vision | [`mmmu_pro_directllm_qwen35_27b_logprobs.yaml`](mmmu_pro_directllm_qwen35_27b_logprobs.yaml) | [`mmmu_pro_opencode_qwen35_27b_logprobs.yaml`](mmmu_pro_opencode_qwen35_27b_logprobs.yaml) |
+| Benchmark | DirectLLM | OpenCode | OpenClaw | ZeroClaw |
+|---|---|---|---|---|
+| AIME 2024 | [`aime_directllm_qwen35_27b_logprobs.yaml`](aime_directllm_qwen35_27b_logprobs.yaml) | [`aime_opencode_qwen35_27b_logprobs.yaml`](aime_opencode_qwen35_27b_logprobs.yaml) | [`aime_openclaw_qwen35_27b_logprobs.yaml`](aime_openclaw_qwen35_27b_logprobs.yaml) | [`aime_zeroclaw_qwen35_27b_logprobs.yaml`](aime_zeroclaw_qwen35_27b_logprobs.yaml) |
+| IMO-AnswerBench | [`imo_directllm_qwen35_27b_logprobs.yaml`](imo_directllm_qwen35_27b_logprobs.yaml) | [`imo_opencode_qwen35_27b_logprobs.yaml`](imo_opencode_qwen35_27b_logprobs.yaml) | [`imo_openclaw_qwen35_27b_logprobs.yaml`](imo_openclaw_qwen35_27b_logprobs.yaml) | [`imo_zeroclaw_qwen35_27b_logprobs.yaml`](imo_zeroclaw_qwen35_27b_logprobs.yaml) |
+| GPQA-Diamond | [`gpqa_directllm_qwen35_27b_logprobs.yaml`](gpqa_directllm_qwen35_27b_logprobs.yaml) | [`gpqa_opencode_qwen35_27b_logprobs.yaml`](gpqa_opencode_qwen35_27b_logprobs.yaml) | [`gpqa_openclaw_qwen35_27b_logprobs.yaml`](gpqa_openclaw_qwen35_27b_logprobs.yaml) | [`gpqa_zeroclaw_qwen35_27b_logprobs.yaml`](gpqa_zeroclaw_qwen35_27b_logprobs.yaml) |
+| HLE multiple-choice | [`hle_directllm_qwen35_27b_logprobs.yaml`](hle_directllm_qwen35_27b_logprobs.yaml) | [`hle_opencode_qwen35_27b_logprobs.yaml`](hle_opencode_qwen35_27b_logprobs.yaml) | [`hle_openclaw_qwen35_27b_logprobs.yaml`](hle_openclaw_qwen35_27b_logprobs.yaml) | [`hle_zeroclaw_qwen35_27b_logprobs.yaml`](hle_zeroclaw_qwen35_27b_logprobs.yaml) |
+| MMMU-Pro vision | [`mmmu_pro_directllm_qwen35_27b_logprobs.yaml`](mmmu_pro_directllm_qwen35_27b_logprobs.yaml) | [`mmmu_pro_opencode_qwen35_27b_logprobs.yaml`](mmmu_pro_opencode_qwen35_27b_logprobs.yaml) | [`mmmu_pro_openclaw_qwen35_27b_logprobs.yaml`](mmmu_pro_openclaw_qwen35_27b_logprobs.yaml) | [`mmmu_pro_zeroclaw_qwen35_27b_logprobs.yaml`](mmmu_pro_zeroclaw_qwen35_27b_logprobs.yaml) |
 
 ## Parameter Contract
 
@@ -49,6 +51,10 @@ Thinking is represented per harness:
 - `direct_llm`: `extra_body.chat_template_kwargs.enable_thinking: true`
 - `opencode`: `agent.config.enable_thinking: true`; the logprob proxy injects
   this as `chat_template_kwargs.enable_thinking=true` on provider requests
+- `openclaw`: `agent.config.enable_thinking: true`; the provider proxy injects
+  this as `chat_template_kwargs.enable_thinking=true`
+- `zeroclaw`: `agent.config.enable_thinking: true`; the provider proxy injects
+  this as `chat_template_kwargs.enable_thinking=true`
 
 OpenCode configs also set:
 
@@ -58,6 +64,28 @@ OpenCode configs also set:
 - `timeout: 9300`
 - `streaming: true`
 - `tool_call: true`
+
+OpenClaw configs also set:
+
+- `rock_agent_config_path: openclaw_deploy/rock_agent_config.prebuilt.yaml`
+- `openclaw_config_path: openclaw_deploy/openclaw.json`
+- `request_timeout: 9300`
+- `stream_idle_timeout: 600`
+- `stream_total_timeout: 9000`
+
+ZeroClaw configs also set:
+
+- `provider_api_base: http://127.0.0.1:8011/v1`
+- `runtime_trace_mode: all`
+- `request_timeout: 9300`
+- `max_tool_iterations: 100`
+
+For local `long64k` ZeroClaw smoke/recovery runs, use the serial smoke configs
+under `configs/smokes/harness_prompt_alignment_20260425/` or override
+`-o max_concurrent=1`. The April 26 evidence found that concurrent ZeroClaw
+long-run recovery can stall before the first provider request for the full
+9300-second timeout; serial checkpoint resume completed the affected tasks and
+captured logprobs normally.
 
 ## Benchmark Scope
 

@@ -94,6 +94,80 @@ def test_logprob_proxy_injects_request_overrides() -> None:
         upstream.server_close()
 
 
+def test_logprob_proxy_hoists_late_system_messages_for_strict_templates() -> None:
+    seen: dict = {}
+
+    class _CaptureHandler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            length = int(self.headers.get("Content-Length", 0))
+            seen["payload"] = json.loads(self.rfile.read(length))
+            body = {
+                "choices": [
+                    {
+                        "message": {"content": "ok"},
+                        "logprobs": {
+                            "content": [
+                                {
+                                    "token": "ok",
+                                    "logprob": -0.1,
+                                    "top_logprobs": [{"token": "ok", "logprob": -0.1}],
+                                }
+                            ]
+                        },
+                    }
+                ]
+            }
+            raw = json.dumps(body).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
+        def log_message(self, *args: object) -> None:
+            pass
+
+    upstream = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _CaptureHandler)
+    thread = threading.Thread(target=upstream.serve_forever, daemon=True)
+    thread.start()
+    proxy = LogprobCaptureProxy(f"http://127.0.0.1:{upstream.server_address[1]}", 20)
+    proxy.start()
+    try:
+        payload = json.dumps(
+            {
+                "messages": [
+                    {"role": "system", "content": "base"},
+                    {"role": "user", "content": "question"},
+                    {"role": "assistant", "content": "tool plan"},
+                    {"role": "system", "content": "late tool instruction"},
+                    {"role": "user", "content": "continue"},
+                ]
+            }
+        ).encode("utf-8")
+        req = urllib.request.Request(
+            f"{proxy.proxy_url}/v1/chat/completions",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            assert resp.status == 200
+            resp.read()
+
+        assert seen["payload"]["messages"] == [
+            {"role": "system", "content": "base\n\nlate tool instruction"},
+            {"role": "user", "content": "question"},
+            {"role": "assistant", "content": "tool plan"},
+            {"role": "user", "content": "continue"},
+        ]
+        assert seen["payload"]["logprobs"] is True
+        assert seen["payload"]["top_logprobs"] == 20
+    finally:
+        proxy.stop()
+        upstream.shutdown()
+        upstream.server_close()
+
+
 class _FakeOpenClawRuntime:
     is_configured = True
 
