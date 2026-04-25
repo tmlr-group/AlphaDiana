@@ -12,7 +12,7 @@ agent:
     api_key: ${QWEN_VLLM_API_KEY}
     temperature: 0.0
     top_p: 0.95
-    max_tokens: 32768
+    max_tokens: 131072
     stream: true
     capture_logprobs: true
     top_logprobs: 20
