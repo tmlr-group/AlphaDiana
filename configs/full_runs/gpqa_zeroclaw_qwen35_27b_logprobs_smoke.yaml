@@ -22,7 +22,7 @@ agent:
     temperature: 0.0
     top_p: 0.95
     max_tokens: 131072
-    request_timeout: 1200
+    request_timeout: 3600
     runtime_trace_mode: "all"
     capture_logprobs: true
     top_logprobs: 20
@@ -47,6 +47,6 @@ scorer:
   name: exact_match
   config: {}
 
-max_concurrent: 1
+max_concurrent: 10
 num_samples: 1
 output_dir: "./results"

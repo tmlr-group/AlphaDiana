@@ -16,7 +16,7 @@ agent:
     stream: true
     capture_logprobs: true
     top_logprobs: 20
-    request_timeout: 1800
+    request_timeout: 3600
     system_prompt: |
       You are an expert problem solver. Think step by step.
       This is a multiple-choice question. After your reasoning, output ONLY the
@@ -35,7 +35,7 @@ scorer:
   name: exact_match
   config: {}
 
-max_concurrent: 15
+max_concurrent: 10
 output_dir: "./results/phase9_directllm_qwen35_27b_hle_logprobs"
 strict_report: true
 strict_isolation: true
