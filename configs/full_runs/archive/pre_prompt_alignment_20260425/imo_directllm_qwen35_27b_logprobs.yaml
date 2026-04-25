@@ -1,26 +1,25 @@
-# FULL RUN: IMO-AnswerBench x DirectLLM on local Qwen/Qwen3.5-27B with logprob capture.
+# FULL RUN: all IMO-AnswerBench tasks via local vLLM Qwen3.5-27B
+# with per-token logprobs capture (top_logprobs=20).
 
-run_id: "full_imo_directllm_qwen35_27b_logprobs"
+run_id: "phase9_directllm_qwen35_27b_imo_answerbench_logprobs"
 
 agent:
   name: direct_llm
   version: "1.0"
   config:
     model: "Qwen/Qwen3.5-27B"
-    api_base: "http://127.0.0.1:8011/v1"
-    api_key: "EMPTY"
+    api_base: ${QWEN_VLLM_API_BASE}
+    api_key: ${QWEN_VLLM_API_KEY}
     temperature: 0.0
     top_p: 0.95
     max_tokens: 131072
     stream: true
     capture_logprobs: true
     top_logprobs: 20
-    logprobs_format: "int16"
-    extra_body:
-      chat_template_kwargs:
-        enable_thinking: true
+    request_timeout: 3600
     system_prompt: |
       You are an expert mathematician. Solve the problem carefully.
+
       The final line must be:
       $$\boxed{your answer here}$$
 
@@ -32,12 +31,10 @@ benchmark:
 
 scorer:
   name: imo_verify
-  config: {}
 
 max_concurrent: 10
-num_samples: 1
-output_dir: "./results"
+output_dir: "./results/phase9_directllm_qwen35_27b_imo_answerbench_logprobs"
 strict_report: true
 strict_isolation: true
 metadata:
-  notes: "Canonical full IMO-AnswerBench DirectLLM config after prompt alignment."
+  notes: "Phase 9 — IMO-AnswerBench full run on local vLLM Qwen3.5-27B with logprobs capture and entropy analysis."

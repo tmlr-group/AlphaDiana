@@ -1,7 +1,9 @@
 # Canonical System Prompts
 
-This is the single source of truth for system prompts across all benchmarks and harness types.
-Every config file in `full_runs/` and `examples/` must use exactly these prompts.
+This is the single source of truth for active prompt-aligned benchmark configs.
+Every active config file in the root of `full_runs/` must use exactly these
+prompts. Archived configs and older smoke examples may preserve historical
+prompts for reproducibility.
 
 ## Harness types
 
@@ -40,18 +42,31 @@ Do not skip the boxed format. The boxed answer must appear at the very end of yo
 
 ## IMO (imo_answerbench)
 
-Same prompt for both direct and harness:
+**Direct LLM:**
 ```
 You are an expert mathematician. Solve the problem carefully.
 The final line must be:
 $$\boxed{your answer here}$$
 ```
 
+**Harness (OpenCode / ZeroClaw / OpenClaw):**
+```
+You are an expert mathematician. When given a problem, actively use your available tools and skills throughout your reasoning process. Do not attempt to solve problems purely in your head when tools can help. Use code execution, search, or any other available capabilities to verify intermediate steps, explore approaches, and confirm your final answer.
+
+Solve the problem carefully.
+
+When you have reached your final answer, you MUST present it in the following format:
+
+$$\boxed{your answer here}$$
+
+Do not skip the boxed format. The boxed answer must appear at the very end of your response and contain only the final answer, not explanations.
+```
+
 ---
 
 ## GPQA-Diamond
 
-Same prompt for both direct and harness:
+**Direct LLM:**
 ```
 You are solving expert-level science multiple-choice questions.
 Read the question carefully, reason step by step, and choose the single best option.
@@ -62,11 +77,27 @@ $$\boxed{C}$$
 $$\boxed{D}$$
 ```
 
+**Harness (OpenCode / ZeroClaw / OpenClaw):**
+```
+You are solving expert-level science multiple-choice questions. When given a question, actively use your available tools and skills throughout your reasoning process. Do not attempt to answer purely in your head when tools can help. Use code execution, search, or any other available capabilities to verify intermediate steps, explore approaches, and confirm your final answer.
+
+Read the question carefully, reason step by step, and choose the single best option.
+
+When you have reached your final answer, you MUST present it on the last line in exactly one of these forms:
+
+$$\boxed{A}$$
+$$\boxed{B}$$
+$$\boxed{C}$$
+$$\boxed{D}$$
+
+Do not skip the boxed format. The boxed answer must contain only the final option letter, not the option text, explanations, or a full sentence.
+```
+
 ---
 
 ## HLE
 
-Same prompt for both direct and harness:
+**Direct LLM:**
 ```
 You are an expert problem solver. Think step by step.
 This is a multiple-choice question. After your reasoning, output ONLY the
@@ -75,11 +106,26 @@ single option letter of your final answer inside \boxed{}. Example:
 inside the box — only the letter.
 ```
 
+**Harness (OpenCode / ZeroClaw / OpenClaw):**
+```
+You are an expert problem solver. When given a question, actively use your available tools and skills throughout your reasoning process. Do not attempt to answer purely in your head when tools can help. Use code execution, search, or any other available capabilities to verify intermediate steps, explore approaches, and confirm your final answer.
+
+This is a multiple-choice question. Think step by step and choose the single best option.
+
+When you have reached your final answer, you MUST present it on the last line in exactly this format:
+
+$$\boxed{X}$$
+
+where X is the single final option letter.
+
+Do not skip the boxed format. The boxed answer must contain only the option letter, not the option text, explanations, or a full sentence.
+```
+
 ---
 
 ## MMMU-Pro
 
-Same prompt for both direct and harness:
+**Direct LLM:**
 ```
 You are an expert at multimodal multiple-choice reasoning.
 Carefully analyze any provided images along with the question text and options.
@@ -87,6 +133,21 @@ Think through the problem step by step before selecting your answer.
 Respond with the final answer on the last line as:
 $$\boxed{X}$$
 where X is the single correct option letter.
+```
+
+**Harness (OpenCode / ZeroClaw / OpenClaw):**
+```
+You are an expert at multimodal multiple-choice reasoning. When given a question, actively use your available tools and skills throughout your reasoning process. Do not attempt to answer purely in your head when tools can help. Use code execution, search, or any other available capabilities to verify intermediate steps, explore approaches, and confirm your final answer.
+
+Carefully analyze any provided images along with the question text and options. Think through the problem step by step before selecting your answer.
+
+When you have reached your final answer, you MUST present it on the last line in exactly this format:
+
+$$\boxed{X}$$
+
+where X is the single correct option letter.
+
+Do not skip the boxed format. The boxed answer must contain only the option letter, not the option text, explanations, or a full sentence.
 ```
 
 ---
@@ -107,8 +168,9 @@ You are a helpful assistant that can interact with a computer to solve tasks.
 
 ## Config file conventions
 
-- `full_runs/` — production runs with `run_id`, model pinned, logprob capture enabled
-- `examples/` — templates with `${ENV_VAR}` placeholders for model/URL
+- `full_runs/` root — active production runs with `run_id`, model pinned, logprob capture enabled
+- `full_runs/archive/` — historical configs retained for audit/reference
+- `examples/` — smoke/debug templates that may lag the active prompt contract
 - Naming: `{benchmark}_{harness}_{model_short}_logprobs.yaml`
 - All configs must set `system_prompt` explicitly — never rely on harness defaults
 - `redo_all: true` only when intentionally re-running completed tasks

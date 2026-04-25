@@ -1,6 +1,6 @@
-# FULL RUN: IMO-AnswerBench x DirectLLM on local Qwen/Qwen3.5-27B with logprob capture.
+# FULL RUN: AIME 2024 x DirectLLM on local Qwen/Qwen3.5-27B with logprob capture.
 
-run_id: "full_imo_directllm_qwen35_27b_logprobs"
+run_id: "full_aime2024_directllm_qwen35_27b_logprobs"
 
 agent:
   name: direct_llm
@@ -20,24 +20,27 @@ agent:
       chat_template_kwargs:
         enable_thinking: true
     system_prompt: |
-      You are an expert mathematician. Solve the problem carefully.
-      The final line must be:
-      $$\boxed{your answer here}$$
+      You are solving AIME-style competition mathematics problems.
+      Reason carefully and show the derivation clearly.
+
+      The final line must be exactly:
+      \boxed{your integer answer}
 
 benchmark:
-  name: imo_answerbench
+  name: aime
   config:
-    dataset: "Hwilner/imo-answerbench"
+    dataset: "HuggingFaceH4/aime_2024"
     split: "train"
 
 scorer:
-  name: imo_verify
-  config: {}
+  name: numeric
+  config:
+    tolerance: 1e-6
 
 max_concurrent: 10
-num_samples: 1
+num_samples: 32
 output_dir: "./results"
 strict_report: true
 strict_isolation: true
 metadata:
-  notes: "Canonical full IMO-AnswerBench DirectLLM config after prompt alignment."
+  notes: "Canonical full AIME 2024 DirectLLM config after prompt alignment."

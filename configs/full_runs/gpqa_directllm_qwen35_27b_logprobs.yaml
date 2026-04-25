@@ -1,12 +1,6 @@
-# Phase 9: Direct LLM inference on GPQA-Diamond using local Qwen3.5-27B vLLM,
-# with per-token logprobs capture (top_logprobs=20) and entropy analysis.
-#
-# FROZEN PARAMETERS — do not modify. See
-# .planning/phases/09-direct-llm-inference-on-gpqa-diamond-with-qwen3-5-27b-vllm-trajectory-logging-token-prob-and-entropy-capture-codex-monitored-execution/09-CONTEXT.md
-# (decisions D-12, D-13, D-14) for the locking rationale. Source-of-truth
-# reference: context/benchmark-rollout-full-plan-20260419.md.
+# FULL RUN: GPQA-Diamond x DirectLLM on local Qwen/Qwen3.5-27B with logprob capture.
 
-run_id: "phase9_directllm_gpqa_diamond_qwen35_27b_logprobs"
+run_id: "full_gpqa_directllm_qwen35_27b_logprobs"
 
 agent:
   name: direct_llm
@@ -18,14 +12,16 @@ agent:
     temperature: 0.0
     top_p: 0.95
     max_tokens: 131072
-    request_timeout: 3600
     stream: true
     capture_logprobs: true
     top_logprobs: 20
+    logprobs_format: "int16"
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: true
     system_prompt: |
       You are solving expert-level science multiple-choice questions.
       Read the question carefully, reason step by step, and choose the single best option.
-
       Your final answer must be on the last line in exactly one of these forms:
       $$\boxed{A}$$
       $$\boxed{B}$$
@@ -45,16 +41,8 @@ scorer:
 
 max_concurrent: 10
 num_samples: 1
-output_dir: "./results/phase9_directllm_gpqa_diamond_qwen35_27b_logprobs"
-
+output_dir: "./results"
+strict_report: true
+strict_isolation: true
 metadata:
-  phase: "09"
-  notes: |
-    Phase 9 — GPQA-Diamond full run with logprobs capture and entropy analysis.
-    Task-level timeout 1800s is enforced at the rollout-runner layer
-    (alphadiana/runner/runner.py) per Phase 8 convention; not a YAML field.
-  model: "Qwen/Qwen3.5-27B"
-  api_base: "http://127.0.0.1:8011/v1"
-  vllm_reasoning_parser: "qwen3"
-  thinking: true
-  n_samples: 1
+  notes: "Canonical full GPQA-Diamond DirectLLM config after prompt alignment."
