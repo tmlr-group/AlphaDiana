@@ -882,11 +882,18 @@ class TestSWEBenchDockerInContainerModes:
     def test_opencode_mode_returns_patch_and_artifact_metadata(self, monkeypatch, tmp_path):
         staged_paths: list[str] = []
         docker_exec_calls: list[list[str]] = []
+        exec_envs: list[dict[str, str]] = []
 
         agent = SWEBenchDockerAgent()
         agent.setup({
             "agent_type": "opencode",
             "output_dir": str(tmp_path),
+            "temperature": 0.0,
+            "top_p": 0.95,
+            "max_tokens": 4096,
+            "capture_logprobs": True,
+            "top_logprobs": 7,
+            "logprob_proxy_advertise_host": "127.0.0.1",
             "env": {
                 "OPENAI_MODEL_NAME": "demo-model",
                 "OPENCODE_SMOKE_MODEL_CANDIDATES": "demo-model,fallback-model",
@@ -932,6 +939,8 @@ class TestSWEBenchDockerInContainerModes:
             workdir=None,
         ):
             docker_exec_calls.append(args)
+            if env is not None:
+                exec_envs.append(dict(env))
             return subprocess.CompletedProcess(args, 0, stdout="runner ok\n", stderr="")
 
         def fake_cp_from(container_id, src, dst):
@@ -995,6 +1004,38 @@ class TestSWEBenchDockerInContainerModes:
         monkeypatch.setattr(agent, "_docker_exec", fake_exec)
         monkeypatch.setattr(agent, "_docker_cp_from", fake_cp_from)
 
+        proxy_instances = []
+
+        class _FakeProxy:
+            def __init__(self, upstream, top_logprobs, **kwargs):
+                self.upstream = upstream
+                self.top_logprobs = top_logprobs
+                self.kwargs = kwargs
+                self.proxy_url = "http://127.0.0.1:19999"
+                self.stopped = False
+                proxy_instances.append(self)
+
+            def start(self):
+                pass
+
+            def drain_records(self):
+                return [
+                    {
+                        "token_index": 0,
+                        "token": "done",
+                        "logprob": -0.1,
+                        "top_logprobs": [{"token": "done", "logprob": -0.1}],
+                    }
+                ]
+
+            def stop(self):
+                self.stopped = True
+
+        monkeypatch.setattr(
+            "alphadiana.agent.swebench_docker.LogprobCaptureProxy",
+            _FakeProxy,
+        )
+
         response = agent.solve(_task())
 
         assert response.answer.startswith("diff --git")
@@ -1054,6 +1095,11 @@ class TestSWEBenchDockerInContainerModes:
         assert response.metadata["opencode_selected_target_file_hints_source"] == "env_override"
         assert response.metadata["opencode_selected_tracked_repo_changed_paths"] == ["README.md"]
         assert response.metadata["opencode_selected_primary_target_file_changed"] is True
+        assert response.metadata["logprobs_capture_status"] == "captured"
+        assert response.metadata["logprob_capture_harness"] == "opencode"
+        assert response.metadata["logprob_probe_proxy_count"] == 1
+        assert response.metadata["logprob_source"] == "provider_proxy"
+        assert response.token_entropy_stats["n_tokens"] == 1
         assert response.metadata["opencode_strategy_sequence"] == [
             "bash_edit_first",
             "guided_edit_first",
@@ -1062,6 +1108,14 @@ class TestSWEBenchDockerInContainerModes:
         assert any(path.endswith("/run_opencode.sh") for path in staged_paths)
         assert any(path.endswith("/opencode.json.template") for path in staged_paths)
         assert any("run_opencode.sh" in " ".join(call) for call in docker_exec_calls)
+        assert exec_envs[0]["OPENAI_BASE_URL"] == "http://localhost:8000/v1"
+        assert exec_envs[0]["ALPHADIANA_OPENCODE_PROXY_BASE_URL"] == "http://127.0.0.1:19999/v1"
+        assert exec_envs[0]["OPENCODE_PROVIDER_MAX_TOKENS"] == "4096"
+        assert exec_envs[0]["OPENCODE_PROVIDER_LOGPROBS"] == "1"
+        assert exec_envs[0]["OPENCODE_PROVIDER_TOP_LOGPROBS"] == "7"
+        assert proxy_instances[0].upstream == "http://localhost:8000"
+        assert proxy_instances[0].top_logprobs == 7
+        assert proxy_instances[0].stopped is True
         assert "/swebench_agent/opencode/opencode_provider_preflight.txt" in response.workspace_file_contents
         assert "/swebench_agent/opencode/opencode_startup_diagnostics.txt" in response.workspace_file_contents
         assert "/swebench_agent/opencode/opencode_activity_summary.json" in response.workspace_file_contents

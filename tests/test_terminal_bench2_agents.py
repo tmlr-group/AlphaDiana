@@ -414,6 +414,11 @@ def test_terminal_bench2_opencode_writes_native_prompt_and_provider_config(tmp_p
         "model_name": "minimax-m2.5",
         "model": "custom/minimax-m2.5",
         "opencode_bin": "opencode",
+        "temperature": 0.0,
+        "top_p": 0.95,
+        "max_tokens": 4096,
+        "capture_logprobs": True,
+        "top_logprobs": 7,
     })
     assert agent._runtime_source_image == "tmlrgroup/alphadiana:opencode"
     task = BenchmarkTask(task_id="tb2_demo", problem="demo", ground_truth="1")
@@ -429,10 +434,17 @@ def test_terminal_bench2_opencode_writes_native_prompt_and_provider_config(tmp_p
     config_path = tmp_path / "xdg-config" / "opencode" / "opencode.json"
     agent._write_provider_config(config_path)
     payload = config_path.read_text(encoding="utf-8")
+    config = json.loads(payload)
+    options = config["provider"]["custom"]["options"]
 
     assert '"tool_call": true' in payload
     assert '"baseURL": "http://localhost/v1"' in payload
     assert '"timeout": 1800000' in payload
+    assert options["temperature"] == 0.0
+    assert options["top_p"] == 0.95
+    assert options["max_tokens"] == 4096
+    assert options["logprobs"] is True
+    assert options["top_logprobs"] == 7
     assert '"model": "custom/minimax-m2.5"' in payload
     assert run_cmd[-1] == '$(cat "$ALPHADIANA_PROMPT_FILE")'
     assert run_cmd[0:4] == ["opencode", "run", "--format", "json"]
@@ -747,6 +759,10 @@ def test_terminal_bench2_opencode_solve_preserves_stream_and_session_trace(tmp_p
         "api_key": "secret",
         "model_name": "minimax-m2.5",
         "model": "custom/minimax-m2.5",
+        "capture_logprobs": True,
+        "top_logprobs": 7,
+        "max_tokens": 4096,
+        "logprob_proxy_advertise_host": "127.0.0.1",
     })
 
     task = BenchmarkTask(
@@ -766,6 +782,32 @@ def test_terminal_bench2_opencode_solve_preserves_stream_and_session_trace(tmp_p
         "name": "bash",
         "content": "git status",
     }
+    proxy_instances = []
+
+    class _FakeProxy:
+        def __init__(self, upstream, top_logprobs, **kwargs):
+            self.upstream = upstream
+            self.top_logprobs = top_logprobs
+            self.kwargs = kwargs
+            self.proxy_url = "http://127.0.0.1:19999"
+            self.stopped = False
+            proxy_instances.append(self)
+
+        def start(self):
+            pass
+
+        def drain_records(self):
+            return [
+                {
+                    "token_index": 0,
+                    "token": "patched",
+                    "logprob": -0.1,
+                    "top_logprobs": [{"token": "patched", "logprob": -0.1}],
+                }
+            ]
+
+        def stop(self):
+            self.stopped = True
 
     try:
         with patch.object(
@@ -792,21 +834,24 @@ def test_terminal_bench2_opencode_solve_preserves_stream_and_session_trace(tmp_p
                 stderr="stderr line",
                 returncode=0,
             ),
-            ), patch.object(
-                agent,
-                "_run_verifier_and_read_reward",
-                return_value=VerifierResult(
-                    test_output="verifier output",
-                    reward="0",
-                    status="ok",
-                    reward_path="/tmp/reward.txt",
-                    verifier_output_path="/tmp/verifier",
-                ),
-            ), patch.object(
-                agent,
-                "_cleanup_runtime",
-                return_value=None,
-            ):
+        ) as mock_exec, patch.object(
+            agent,
+            "_run_verifier_and_read_reward",
+            return_value=VerifierResult(
+                test_output="verifier output",
+                reward="0",
+                status="ok",
+                reward_path="/tmp/reward.txt",
+                verifier_output_path="/tmp/verifier",
+            ),
+        ), patch(
+            "alphadiana.agent.terminal_bench2_opencode.LogprobCaptureProxy",
+            _FakeProxy,
+        ), patch.object(
+            agent,
+            "_cleanup_runtime",
+            return_value=None,
+        ):
             response = agent.solve(task)
     finally:
         runtime.cleanup()
@@ -818,6 +863,17 @@ def test_terminal_bench2_opencode_solve_preserves_stream_and_session_trace(tmp_p
     assert response.artifact_manifest["files"]["session_trace"] == "opencode_session.jsonl"
     assert len(response.reasoning_trajectory) >= 1
     assert response.trajectory[-1]["content"] == "patched"
+    assert response.metadata["logprobs_capture_status"] == "captured"
+    assert response.metadata["logprob_capture_harness"] == "opencode"
+    assert response.metadata["logprob_probe_proxy_count"] == 1
+    assert response.metadata["logprob_source"] == "provider_proxy"
+    assert response.token_entropy_stats["n_tokens"] == 1
+    assert proxy_instances[0].top_logprobs == 7
+    assert proxy_instances[0].kwargs["request_overrides"]["max_tokens"] == 4096
+    assert proxy_instances[0].stopped is True
+    exec_script = mock_exec.call_args.args[1]
+    assert "timeout --kill-after=15s 1800s opencode run" in exec_script
+    assert mock_exec.call_args.kwargs["timeout_sec"] == 1830
 
 
 def test_terminal_bench2_opencode_host_mode_keeps_configured_binary() -> None:

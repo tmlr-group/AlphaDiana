@@ -29,6 +29,19 @@
 - `opencode` 在本地 `Qwen/Qwen3.5-27B` / vLLM 上已确认会把 provider-side overflow 保留成 `provider_error`，而不是再落成空 patch
 - `zeroclaw` 在同一本地 Qwen 路径上当前仍会因为上下文窗口过大写出保留的 `provider_error`；这是当前限制证据，不是“已跑通”声明
 
+2026-04-25 本地补充证据：
+
+- `phase12_opencode_swe_verified_mini_generic_qwen35_64k_logprobs_t3_parallel_r2_20260425`
+  使用 `configs/examples/opencode_swe_bench.yaml` 加 dataset override
+  `MariusHobbhahn/swe-bench-verified-mini` 完成 3 个样本。
+- 3 个 task JSON 都是 `score_status=valid_scored`、`error=null`、轨迹非空；
+  分数为 `0,1,0`，总用时 `1245s`。
+- 3 个样本都通过 provider proxy 存到了 logprob，float/int16 sidecar 行数分别为
+  `763`、`1459`、`1374`。
+- `swebench_docker` 直接跑 Verified mini 的探针在 agent 启动前失败，因为该 mini
+  dataset 没有提供 `metadata.dockerhub_tag`。当前 mini 通过证据来自 generic
+  `opencode_swe_bench.yaml` / `swebench_container` 路径。
+
 ```bash
 source scripts/activate.sh
 python -m alphadiana.cli validate configs/examples/openclaw_swe_bench.yaml \

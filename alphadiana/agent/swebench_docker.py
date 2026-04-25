@@ -22,6 +22,19 @@ from typing import Any, Optional
 from uuid import uuid4
 
 from alphadiana.agent.base import Agent, AgentResponse
+from alphadiana.agent.logprob_capture import (
+    finalize_logprob_capture,
+    resolve_logprob_capture_config,
+)
+from alphadiana.agent.logprob_proxy import (
+    LogprobCaptureProxy,
+    normalize_openai_proxy_upstream,
+    resolve_logprob_proxy_advertise_host,
+)
+from alphadiana.agent.opencode import (
+    _count_json_objects,
+    extract_opencode_logprob_records,
+)
 from alphadiana.agent.preservation import (
     add_artifact_file_refs,
     build_event_trajectories,
@@ -211,6 +224,9 @@ class SWEBenchDockerAgent(Agent):
         self._system_prompt: str = _DEFAULT_SYSTEM_PROMPT
         self._client: Any = None
         self._stream_options_supported: bool = True
+        self._logprob_capture: dict[str, Any] = {"enabled": False, "top_logprobs": 0}
+        self._logprob_proxy_bind_host: str = "0.0.0.0"
+        self._logprob_proxy_advertise_host: str = ""
 
     def setup(self, config: dict) -> None:
         self._agent_type = str(config.get("agent_type", "direct_llm")).strip() or "direct_llm"
@@ -236,6 +252,14 @@ class SWEBenchDockerAgent(Agent):
         self._max_completion_tokens = config.get("max_completion_tokens", None)
         self._max_retries = int(config.get("max_retries", 3))
         self._stream = bool(config.get("stream", True))
+        self._logprob_capture = resolve_logprob_capture_config(config)
+        self._logprob_proxy_bind_host = str(
+            config.get("logprob_proxy_bind_host", "0.0.0.0") or "0.0.0.0"
+        ).strip()
+        self._logprob_proxy_advertise_host = str(
+            config.get("logprob_proxy_advertise_host", config.get("logprob_proxy_host", ""))
+            or ""
+        ).strip()
         self._reasoning_enabled = _parse_optional_bool(config.get("reasoning_enabled", None))
         raw_reasoning_effort = config.get("reasoning_effort", None)
         if raw_reasoning_effort in ("", None):
@@ -1901,6 +1925,23 @@ RUN chmod +x /usr/local/bin/zeroclaw
         }.items():
             if _is_blank_env_value(mode_env.get(key, "")):
                 mode_env[key] = value
+        provider_env_defaults: dict[str, str] = {}
+        if self._temperature is not None:
+            provider_env_defaults["OPENCODE_PROVIDER_TEMPERATURE"] = str(self._temperature)
+        if not _is_blank_env_value(self._top_p):
+            provider_env_defaults["OPENCODE_PROVIDER_TOP_P"] = str(self._top_p)
+        if not _is_blank_env_value(self._max_tokens):
+            provider_env_defaults["OPENCODE_PROVIDER_MAX_TOKENS"] = str(self._max_tokens)
+        provider_env_defaults["OPENCODE_PROVIDER_STREAMING"] = "1" if self._stream else "0"
+        provider_env_defaults["OPENCODE_PROVIDER_TIMEOUT_MS"] = str(self._timeout * 1000)
+        if self._logprob_capture.get("enabled", False):
+            provider_env_defaults["OPENCODE_PROVIDER_LOGPROBS"] = "1"
+            provider_env_defaults["OPENCODE_PROVIDER_TOP_LOGPROBS"] = str(
+                self._logprob_capture.get("top_logprobs", 20)
+            )
+        for key, value in provider_env_defaults.items():
+            if _is_blank_env_value(mode_env.get(key, "")):
+                mode_env[key] = value
         opencode_require_patch = (
             str(mode_env.get("OPENCODE_REQUIRE_PATCH", "1")).strip().lower()
             not in {"0", "false", "no", "off"}
@@ -1998,6 +2039,36 @@ RUN chmod +x /usr/local/bin/zeroclaw
             "execution_id": execution_id,
         }
 
+        logprob_proxy: LogprobCaptureProxy | None = None
+        logprob_proxy_metadata: dict[str, Any] = {}
+        selected_logprob_records: list[dict] = []
+        if self._logprob_capture.get("enabled", False):
+            upstream_api_base = str(mode_env.get("OPENAI_BASE_URL", "")).strip()
+            upstream_api_key = str(mode_env.get("OPENAI_API_KEY", "")).strip()
+            upstream = normalize_openai_proxy_upstream(upstream_api_base)
+            advertise_host = resolve_logprob_proxy_advertise_host(
+                upstream_api_base,
+                self._logprob_proxy_advertise_host,
+            )
+            logprob_proxy = LogprobCaptureProxy(
+                upstream,
+                self._logprob_capture["top_logprobs"],
+                bind_host=self._logprob_proxy_bind_host,
+                advertise_host=advertise_host,
+                client_timeout=max(120.0, float(self._timeout)),
+                upstream_api_key=upstream_api_key,
+            )
+            logprob_proxy.start()
+            proxy_api_base = f"{logprob_proxy.proxy_url.rstrip('/')}/v1"
+            mode_env["ALPHADIANA_OPENCODE_PROXY_BASE_URL"] = proxy_api_base
+            mode_env["ALPHADIANA_OPENCODE_PROXY_API_KEY"] = upstream_api_key
+            logprob_proxy_metadata = {
+                "logprob_proxy_enabled": True,
+                "logprob_proxy_url": proxy_api_base,
+                "logprob_proxy_upstream": logprob_proxy.upstream,
+            }
+            opencode_failure_metadata.update(logprob_proxy_metadata)
+
         attempt_index = 0
         patch_found = False
         for alias in candidate_aliases:
@@ -2082,6 +2153,9 @@ RUN chmod +x /usr/local/bin/zeroclaw
                     timeout=self._timeout,
                     check=False,
                 )
+                attempt_logprob_records: list[dict] = []
+                if logprob_proxy is not None:
+                    attempt_logprob_records = logprob_proxy.drain_records()
 
                 self._docker_cp_from(
                     container_id,
@@ -2175,6 +2249,7 @@ RUN chmod +x /usr/local/bin/zeroclaw
                     ),
                     "reason": attempt_reason,
                     "returncode": exec_result.returncode,
+                    "logprob_proxy_record_count": len(attempt_logprob_records),
                     "artifacts_dir": str(attempt_local_artifacts),
                 }
                 attempt_records.append(attempt_record)
@@ -2183,11 +2258,15 @@ RUN chmod +x /usr/local/bin/zeroclaw
                 selected_returncode = exec_result.returncode
                 selected_prompt = attempt_prompt
                 selected_prompt_metadata = attempt_prompt_metadata
+                selected_logprob_records = attempt_logprob_records
                 if attempt_patch and exec_result.returncode == 0:
                     patch_found = True
                     break
             if patch_found:
                 break
+        if logprob_proxy is not None:
+            logprob_proxy.stop()
+            logprob_proxy = None
 
         if selected_attempt_dir is None or selected_attempt_record is None:
             raise RuntimeError("OpenCode attempts did not produce any artifacts")
@@ -2225,6 +2304,9 @@ RUN chmod +x /usr/local/bin/zeroclaw
 
         opencode_output = self._read_text_if_exists(local_artifacts / "opencode_output.jsonl")
         opencode_stderr = self._read_text_if_exists(local_artifacts / "opencode_stderr.log")
+        opencode_session_trace = self._read_text_if_exists(
+            local_artifacts / "opencode_session.jsonl"
+        )
         opencode_provider_preflight = self._read_text_if_exists(
             local_artifacts / "opencode_provider_preflight.txt"
         )
@@ -2246,6 +2328,18 @@ RUN chmod +x /usr/local/bin/zeroclaw
         )
         opencode_no_edit_reason_path = local_artifacts / "opencode_no_edit_reason.txt"
         opencode_no_edit_reason = self._read_text_if_exists(opencode_no_edit_reason_path).strip()
+        failure_logprob_metadata = {
+            **opencode_failure_metadata,
+            "logprob_probe_proxy_count": len(selected_logprob_records),
+            "logprob_probe_record_count": len(selected_logprob_records),
+            "logprob_source": "provider_proxy" if selected_logprob_records else "",
+        }
+        _, opencode_failure_metadata = finalize_logprob_capture(
+            harness="opencode",
+            enabled=self._logprob_capture.get("enabled", False),
+            records=selected_logprob_records,
+            metadata=failure_logprob_metadata,
+        )
         selected_hint_summary = ", ".join(
             str(item).strip()
             for item in selected_attempt_record.get("target_file_hints", [])
@@ -2484,101 +2578,125 @@ RUN chmod +x /usr/local/bin/zeroclaw
             stderr_log="/swebench_agent/opencode/opencode_stderr.log",
             prompt_text="/swebench_agent/opencode/prompt.txt",
         )
+        logprob_records = extract_opencode_logprob_records(
+            events=records,
+            session_trace=opencode_session_trace,
+            stdout=opencode_output,
+        )
+        logprob_source = "opencode_artifacts" if logprob_records else ""
+        if not logprob_records and selected_logprob_records:
+            logprob_records = selected_logprob_records
+            logprob_source = "provider_proxy"
 
         wall_time = time.monotonic() - start_time
         assistant_text = opencode_output.strip() or patch
+        response_metadata = {
+            "container_id": container_id,
+            "image": image,
+            "base_image": base_image,
+            "dockerhub_tag": str(task.metadata.get("dockerhub_tag", "")),
+            "agent_type": self._agent_type,
+            "patch_format": _detect_patch_format(patch),
+            "container_started": True,
+            "repo_root": resolved_repo_root,
+            "artifacts_dir": str(local_artifacts),
+            "sample_index": sample_index,
+            "execution_id": execution_id,
+            "opencode_prompt_profile": selected_prompt_metadata["prompt_profile"],
+            "opencode_prompt_compactions_applied": selected_prompt_metadata[
+                "compactions_applied"
+            ],
+            "opencode_output_path": str(local_artifacts / "opencode_output.jsonl"),
+            "opencode_stderr_path": str(local_artifacts / "opencode_stderr.log"),
+            "opencode_session_path": str(local_artifacts / "opencode_session.jsonl"),
+            "opencode_provider_preflight_path": str(
+                local_artifacts / "opencode_provider_preflight.txt"
+            ),
+            "opencode_startup_diagnostics_path": str(
+                local_artifacts / "opencode_startup_diagnostics.txt"
+            ),
+            "opencode_activity_summary_path": str(opencode_activity_summary_path),
+            "opencode_no_edit_reason_path": str(opencode_no_edit_reason_path),
+            "opencode_prompt_contract_path": str(
+                local_artifacts / "opencode_prompt_contract.txt"
+            ),
+            "opencode_prompt_profile_path": str(
+                local_artifacts / "opencode_prompt_profile.txt"
+            ),
+            "opencode_candidate_models_path": str(
+                local_artifacts / "opencode_candidate_models.txt"
+            ),
+            "opencode_target_file_hints_path": str(
+                local_artifacts / "opencode_target_file_hints.txt"
+            ),
+            "opencode_edit_bootstrap_path": str(
+                local_artifacts / "opencode_edit_bootstrap.txt"
+            ),
+            "opencode_edit_contract_path": str(
+                local_artifacts / "opencode_edit_contract.txt"
+            ),
+            "opencode_attempt_matrix_path": str(opencode_attempt_matrix_path),
+            "opencode_selected_attempt_path": str(opencode_selected_attempt_path),
+            "opencode_stall_reason_path": str(local_artifacts / "opencode_stall_reason.txt"),
+            "opencode_progress_snapshot_path": str(
+                local_artifacts / "opencode_progress_snapshot.txt"
+            ),
+            "git_status_before_path": str(local_artifacts / "git_status_before.txt"),
+            "git_status_after_path": str(local_artifacts / "git_status_after.txt"),
+            "opencode_candidate_aliases": candidate_aliases,
+            "opencode_require_patch": opencode_require_patch,
+            "opencode_strategy_sequence": strategy_sequence,
+            "opencode_selected_model_alias": str(
+                selected_attempt_record.get("resolved_model_alias", "")
+            ),
+            "opencode_selected_classification": str(
+                selected_attempt_record.get("classification", "")
+            ),
+            "opencode_selected_reason": str(
+                selected_attempt_record.get("reason", "")
+            ),
+            "opencode_selected_strategy_name": str(
+                selected_attempt_record.get("strategy_name", "")
+            ),
+            "opencode_selected_target_file_hints": list(
+                selected_attempt_record.get("target_file_hints", [])
+            ),
+            "opencode_selected_primary_target_file": str(
+                selected_attempt_record.get("primary_target_file", "")
+            ),
+            "opencode_selected_target_file_hints_source": str(
+                selected_attempt_record.get("target_file_hints_source", "")
+            ),
+            "opencode_selected_tracked_repo_changed_paths": list(
+                selected_attempt_record.get("tracked_repo_changed_paths", [])
+            ),
+            "opencode_selected_primary_target_file_changed": bool(
+                selected_attempt_record.get("primary_target_file_changed")
+            ),
+            "logprob_probe_event_count": len(records),
+            "logprob_probe_session_json_count": _count_json_objects(opencode_session_trace),
+            "logprob_probe_stdout_json_count": _count_json_objects(opencode_output),
+            "logprob_probe_proxy_count": len(selected_logprob_records),
+            "logprob_probe_record_count": len(logprob_records),
+            "logprob_source": logprob_source,
+            "bootstrap_needed": bool(runtime_metadata.get("runtime_image_built", False)),
+            **logprob_proxy_metadata,
+            **runtime_metadata,
+        }
+        token_entropy_stats, response_metadata = finalize_logprob_capture(
+            harness="opencode",
+            enabled=self._logprob_capture.get("enabled", False),
+            records=logprob_records,
+            metadata=response_metadata,
+        )
         return AgentResponse(
             answer=patch,
             trajectory=trajectory,
             reasoning_trajectory=reasoning_trajectory,
             raw_output=assistant_text,
             wall_time_sec=wall_time,
-            metadata={
-                "container_id": container_id,
-                "image": image,
-                "base_image": base_image,
-                "dockerhub_tag": str(task.metadata.get("dockerhub_tag", "")),
-                "agent_type": self._agent_type,
-                "patch_format": _detect_patch_format(patch),
-                "container_started": True,
-                "repo_root": resolved_repo_root,
-                "artifacts_dir": str(local_artifacts),
-                "sample_index": sample_index,
-                "execution_id": execution_id,
-                "opencode_prompt_profile": selected_prompt_metadata["prompt_profile"],
-                "opencode_prompt_compactions_applied": selected_prompt_metadata[
-                    "compactions_applied"
-                ],
-                "opencode_output_path": str(local_artifacts / "opencode_output.jsonl"),
-                "opencode_stderr_path": str(local_artifacts / "opencode_stderr.log"),
-                "opencode_session_path": str(local_artifacts / "opencode_session.jsonl"),
-                "opencode_provider_preflight_path": str(
-                    local_artifacts / "opencode_provider_preflight.txt"
-                ),
-                "opencode_startup_diagnostics_path": str(
-                    local_artifacts / "opencode_startup_diagnostics.txt"
-                ),
-                "opencode_activity_summary_path": str(opencode_activity_summary_path),
-                "opencode_no_edit_reason_path": str(opencode_no_edit_reason_path),
-                "opencode_prompt_contract_path": str(
-                    local_artifacts / "opencode_prompt_contract.txt"
-                ),
-                "opencode_prompt_profile_path": str(
-                    local_artifacts / "opencode_prompt_profile.txt"
-                ),
-                "opencode_candidate_models_path": str(
-                    local_artifacts / "opencode_candidate_models.txt"
-                ),
-                "opencode_target_file_hints_path": str(
-                    local_artifacts / "opencode_target_file_hints.txt"
-                ),
-                "opencode_edit_bootstrap_path": str(
-                    local_artifacts / "opencode_edit_bootstrap.txt"
-                ),
-                "opencode_edit_contract_path": str(
-                    local_artifacts / "opencode_edit_contract.txt"
-                ),
-                "opencode_attempt_matrix_path": str(opencode_attempt_matrix_path),
-                "opencode_selected_attempt_path": str(opencode_selected_attempt_path),
-                "opencode_stall_reason_path": str(local_artifacts / "opencode_stall_reason.txt"),
-                "opencode_progress_snapshot_path": str(
-                    local_artifacts / "opencode_progress_snapshot.txt"
-                ),
-                "git_status_before_path": str(local_artifacts / "git_status_before.txt"),
-                "git_status_after_path": str(local_artifacts / "git_status_after.txt"),
-                "opencode_candidate_aliases": candidate_aliases,
-                "opencode_require_patch": opencode_require_patch,
-                "opencode_strategy_sequence": strategy_sequence,
-                "opencode_selected_model_alias": str(
-                    selected_attempt_record.get("resolved_model_alias", "")
-                ),
-                "opencode_selected_classification": str(
-                    selected_attempt_record.get("classification", "")
-                ),
-                "opencode_selected_reason": str(
-                    selected_attempt_record.get("reason", "")
-                ),
-                "opencode_selected_strategy_name": str(
-                    selected_attempt_record.get("strategy_name", "")
-                ),
-                "opencode_selected_target_file_hints": list(
-                    selected_attempt_record.get("target_file_hints", [])
-                ),
-                "opencode_selected_primary_target_file": str(
-                    selected_attempt_record.get("primary_target_file", "")
-                ),
-                "opencode_selected_target_file_hints_source": str(
-                    selected_attempt_record.get("target_file_hints_source", "")
-                ),
-                "opencode_selected_tracked_repo_changed_paths": list(
-                    selected_attempt_record.get("tracked_repo_changed_paths", [])
-                ),
-                "opencode_selected_primary_target_file_changed": bool(
-                    selected_attempt_record.get("primary_target_file_changed")
-                ),
-                "bootstrap_needed": bool(runtime_metadata.get("runtime_image_built", False)),
-                **runtime_metadata,
-            },
+            token_entropy_stats=token_entropy_stats,
+            metadata=response_metadata,
             request_messages=request_messages,
             response_json=build_runtime_trace_summary(
                 output_text=assistant_text,

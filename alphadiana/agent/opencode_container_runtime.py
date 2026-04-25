@@ -24,6 +24,11 @@ from alphadiana.agent.logprob_capture import (
     apply_openai_logprob_request,
     resolve_logprob_capture_config,
 )
+from alphadiana.agent.logprob_proxy import (
+    LogprobCaptureProxy,
+    normalize_openai_proxy_upstream,
+    resolve_logprob_proxy_advertise_host,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -172,6 +177,13 @@ class OpenCodeContainerRuntimeManager:
         self._print_logs = bool(config.get("print_logs", False))
         self._log_level = str(config.get("log_level", "")).strip()
         self._logprob_capture = resolve_logprob_capture_config(config)
+        self._logprob_proxy_bind_host = str(
+            config.get("logprob_proxy_bind_host", "0.0.0.0") or "0.0.0.0"
+        ).strip()
+        self._logprob_proxy_advertise_host = str(
+            config.get("logprob_proxy_advertise_host", config.get("logprob_proxy_host", ""))
+            or ""
+        ).strip()
         self._install_opencode_command = config.get(
             "install_opencode_command", DEFAULT_INSTALL_OPENCODE_COMMAND
         )
@@ -333,9 +345,28 @@ print(json.dumps(summary, ensure_ascii=False, indent=2))
     # Config
     # ------------------------------------------------------------------
 
-    def _write_opencode_config(self, sandbox: Any, *, model_name: str) -> None:
-        api_base = self._resolve_env_value("api_base", "OPENAI_BASE_URL")
-        api_key = self._resolve_env_value("api_key", "OPENAI_API_KEY") or "EMPTY"
+    def _provider_request_overrides(self) -> dict[str, Any]:
+        overrides: dict[str, Any] = {}
+        if self._temperature is not None:
+            overrides["temperature"] = self._temperature
+        if self._top_p is not None:
+            overrides["top_p"] = self._top_p
+        if self._max_tokens is not None:
+            overrides["max_tokens"] = self._max_tokens
+        return overrides
+
+    def _write_opencode_config(
+        self,
+        sandbox: Any,
+        *,
+        model_name: str,
+        api_base: str | None = None,
+        api_key: str | None = None,
+    ) -> None:
+        if api_base is None:
+            api_base = self._resolve_env_value("api_base", "OPENAI_BASE_URL")
+        if api_key is None:
+            api_key = self._resolve_env_value("api_key", "OPENAI_API_KEY") or "EMPTY"
 
         missing = []
         if not api_base:
@@ -353,12 +384,7 @@ print(json.dumps(summary, ensure_ascii=False, indent=2))
             "baseURL": api_base,
             "timeout": self._timeout * 1000,
         }
-        if self._temperature is not None:
-            provider_options["temperature"] = self._temperature
-        if self._top_p is not None:
-            provider_options["top_p"] = self._top_p
-        if self._max_tokens is not None:
-            provider_options["max_tokens"] = self._max_tokens
+        provider_options.update(self._provider_request_overrides())
         if self._streaming is not None:
             provider_options["streaming"] = self._streaming
         if self._enable_thinking is not None:
@@ -418,9 +444,6 @@ print(json.dumps(summary, ensure_ascii=False, indent=2))
             self._install_opencode_if_needed(sandbox)
             self._installed_sandboxes.add(sandbox_id)
 
-        # Write fresh config for each task (credentials may change)
-        self._write_opencode_config(sandbox, model_name=model_name)
-
         # Resolve repo working directory from sandbox metadata
         metadata = self._sandbox_metadata(sandbox)
         workdir = str(metadata.get("repo_workdir", "")).strip()
@@ -428,45 +451,86 @@ print(json.dumps(summary, ensure_ascii=False, indent=2))
         # Resolve credentials (env is set inside the container via export)
         api_key = self._resolve_env_value("api_key", "OPENAI_API_KEY") or "EMPTY"
         api_base = self._resolve_env_value("api_base", "OPENAI_BASE_URL")
+        effective_api_key = api_key
+        effective_api_base = api_base
+        logprob_proxy: LogprobCaptureProxy | None = None
+        logprob_proxy_records: list[dict] = []
+        logprob_proxy_metadata: dict[str, Any] = {}
+        try:
+            if self._logprob_capture["enabled"]:
+                upstream = normalize_openai_proxy_upstream(api_base)
+                advertise_host = resolve_logprob_proxy_advertise_host(
+                    api_base,
+                    self._logprob_proxy_advertise_host,
+                )
+                logprob_proxy = LogprobCaptureProxy(
+                    upstream,
+                    self._logprob_capture["top_logprobs"],
+                    bind_host=self._logprob_proxy_bind_host,
+                    advertise_host=advertise_host,
+                    client_timeout=max(120.0, float(self._timeout)),
+                    upstream_api_key=api_key,
+                    request_overrides=self._provider_request_overrides() or None,
+                )
+                logprob_proxy.start()
+                effective_api_base = f"{logprob_proxy.proxy_url.rstrip('/')}/v1"
+                logprob_proxy_metadata = {
+                    "logprob_proxy_enabled": True,
+                    "logprob_proxy_url": effective_api_base,
+                    "logprob_proxy_upstream": logprob_proxy.upstream,
+                }
 
-        # Build the opencode CLI invocation
-        opencode_args = [
-            "opencode", "run",
-            "--format", "json",
-        ]
-        if workdir:
-            opencode_args.extend(["--dir", workdir])
-        if task_id:
-            opencode_args.extend(["--title", task_id])
-        opencode_args.extend(["--model", f"custom/{model_name}"])
-        if self._variant:
-            opencode_args.extend(["--variant", self._variant])
-        if self._agent_name:
-            opencode_args.extend(["--agent", self._agent_name])
-        if self._print_logs:
-            opencode_args.append("--print-logs")
-        if self._log_level:
-            opencode_args.extend(["--log-level", self._log_level])
-        opencode_args.append(problem)
+            # Write fresh config for each task (credentials may change)
+            self._write_opencode_config(
+                sandbox,
+                model_name=model_name,
+                api_base=effective_api_base,
+                api_key=effective_api_key,
+            )
 
-        shell_cmd = "\n".join([
-            f"export XDG_CONFIG_HOME={OPENCODE_XDG_DIR}",
-            f"export PATH=\"{NODE_RUNTIME_BIN}:{TESTBED_TOOL_PATH}:$PATH\"",
-            f"export OPENAI_API_KEY={shlex.quote(api_key)}",
-            f"export OPENAI_BASE_URL={shlex.quote(api_base)}",
-            # Clear proxy variables that may interfere with model calls
-            "unset ALL_PROXY HTTP_PROXY HTTPS_PROXY all_proxy http_proxy https_proxy 2>/dev/null || true",
-            # Wrap with timeout to avoid indefinite hangs
-            f"timeout {self._timeout} {shlex.join(opencode_args)}",
-        ])
+            # Build the opencode CLI invocation
+            opencode_args = [
+                "opencode", "run",
+                "--format", "json",
+            ]
+            if workdir:
+                opencode_args.extend(["--dir", workdir])
+            if task_id:
+                opencode_args.extend(["--title", task_id])
+            opencode_args.extend(["--model", f"custom/{model_name}"])
+            if self._variant:
+                opencode_args.extend(["--variant", self._variant])
+            if self._agent_name:
+                opencode_args.extend(["--agent", self._agent_name])
+            if self._print_logs:
+                opencode_args.append("--print-logs")
+            if self._log_level:
+                opencode_args.extend(["--log-level", self._log_level])
+            opencode_args.append(problem)
 
-        _logger.info(
-            "Running opencode inside container for task_id=%s timeout=%ds",
-            task_id, self._timeout,
-        )
-        start = time.time()
-        run_result = sandbox.execute(shell_cmd)
-        wall_time = time.time() - start
+            shell_cmd = "\n".join([
+                f"export XDG_CONFIG_HOME={OPENCODE_XDG_DIR}",
+                f"export PATH=\"{NODE_RUNTIME_BIN}:{TESTBED_TOOL_PATH}:$PATH\"",
+                f"export OPENAI_API_KEY={shlex.quote(effective_api_key)}",
+                f"export OPENAI_BASE_URL={shlex.quote(effective_api_base)}",
+                # Clear proxy variables that may interfere with model calls
+                "unset ALL_PROXY HTTP_PROXY HTTPS_PROXY all_proxy http_proxy https_proxy 2>/dev/null || true",
+                # Wrap with timeout to avoid indefinite hangs
+                f"timeout {self._timeout} {shlex.join(opencode_args)}",
+            ])
+
+            _logger.info(
+                "Running opencode inside container for task_id=%s timeout=%ds",
+                task_id, self._timeout,
+            )
+            start = time.time()
+            run_result = sandbox.execute(shell_cmd)
+            wall_time = time.time() - start
+            if logprob_proxy is not None:
+                logprob_proxy_records = logprob_proxy.drain_records()
+        finally:
+            if logprob_proxy is not None:
+                logprob_proxy.stop()
 
         # Collect git diff to capture file-level changes opencode made
         patch = ""
@@ -497,6 +561,8 @@ print(json.dumps(summary, ensure_ascii=False, indent=2))
             "exit_code": run_result.exit_code,
             "wall_time": wall_time,
             "patch": patch,
+            "logprob_records": logprob_proxy_records,
+            "logprob_proxy_metadata": logprob_proxy_metadata,
         }
 
     def collect_artifacts(self, sandbox: Any) -> dict[str, Any]:

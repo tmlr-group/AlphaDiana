@@ -58,6 +58,7 @@ dump.rdb
 # MoltBench runtime artifacts
 moltbench_artifacts_*/
 swebench_artifacts_*/
+swe_bench_logs/
 results_*/
 moltbench_pipeline_*/
 
