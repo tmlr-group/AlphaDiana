@@ -1,0 +1,47 @@
+# FULL RUN: MMMU-Pro vision x DirectLLM on local Qwen/Qwen3.5-27B with logprob capture.
+
+run_id: "full_mmmu_pro_directllm_qwen35_27b_logprobs"
+
+agent:
+  name: direct_llm
+  version: "1.0"
+  config:
+    model: "Qwen/Qwen3.5-27B"
+    api_base: "http://127.0.0.1:8011/v1"
+    api_key: "EMPTY"
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 131072
+    stream: true
+    capture_logprobs: true
+    top_logprobs: 20
+    logprobs_format: "int16"
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: true
+    system_prompt: |
+      You are an expert at multimodal multiple-choice reasoning.
+      Carefully analyze any provided images along with the question text and options.
+      Think through the problem step by step before selecting your answer.
+      Respond with the final answer on the last line as:
+      $$\boxed{X}$$
+      where X is the single correct option letter.
+
+benchmark:
+  name: mmmu_pro
+  config:
+    dataset: "MMMU/MMMU_Pro"
+    data_config: "vision"
+    split: "test"
+
+scorer:
+  name: exact_match
+  config: {}
+
+max_concurrent: 10
+num_samples: 1
+output_dir: "./results"
+strict_report: true
+strict_isolation: true
+metadata:
+  notes: "Canonical full MMMU-Pro vision DirectLLM config after prompt alignment."

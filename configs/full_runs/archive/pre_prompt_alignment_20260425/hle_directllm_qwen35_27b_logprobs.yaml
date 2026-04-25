@@ -1,0 +1,43 @@
+# FULL RUN: all supported HLE multiple-choice tasks via local vLLM Qwen3.5-27B
+# with per-token logprobs capture (top_logprobs=20).
+
+run_id: "phase9_directllm_qwen35_27b_hle_logprobs"
+
+agent:
+  name: direct_llm
+  version: "1.0"
+  config:
+    model: "Qwen/Qwen3.5-27B"
+    api_base: ${QWEN_VLLM_API_BASE}
+    api_key: ${QWEN_VLLM_API_KEY}
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 131072
+    stream: true
+    capture_logprobs: true
+    top_logprobs: 20
+    request_timeout: 3600
+    system_prompt: |
+      You are an expert problem solver. Think step by step.
+      This is a multiple-choice question. After your reasoning, output ONLY the
+      single option letter of your final answer inside \boxed{}. Example:
+      \boxed{B}. Do not put the option text, full sentence, or anything else
+      inside the box — only the letter.
+benchmark:
+  name: hle
+  config:
+    dataset: "cais/hle"
+    split: "test"
+    answer_types:
+      - "multipleChoice"
+
+scorer:
+  name: exact_match
+  config: {}
+
+max_concurrent: 10
+output_dir: "./results/phase9_directllm_qwen35_27b_hle_logprobs"
+strict_report: true
+strict_isolation: true
+metadata:
+  notes: "Phase 9 — HLE multiple-choice full run on local vLLM Qwen3.5-27B with logprobs capture and entropy analysis."
