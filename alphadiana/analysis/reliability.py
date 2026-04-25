@@ -61,21 +61,7 @@ def compute_reliability_summary(records: list[dict[str, Any]], manifest: dict[st
     correct_valid_records = [record for record in valid_records if record.get("correct") is True]
     error_records = sum(1 for status in status_by_record if status in ERROR_STATUSES)
 
-    observed_sample_keys = {
-        (str(record.get("task_id")), int(record.get("sample_index") or 0))
-        for record in records
-        if record.get("task_id")
-    }
-    expected_sample_keys = {
-        (task_id, sample_index)
-        for task_id in task_ids
-        for sample_index in range(num_samples)
-    }
-    missing_samples = (
-        len(expected_sample_keys - observed_sample_keys)
-        if expected_sample_keys
-        else max(expected_sample_count - len(records), 0)
-    )
+    missing_samples = max(expected_sample_count - len(records), 0)
 
     by_task: dict[str, list[dict[str, Any]]] = defaultdict(list)
     status_by_key: dict[tuple[str, int], str] = {}
@@ -117,6 +103,10 @@ def compute_reliability_summary(records: list[dict[str, Any]], manifest: dict[st
     )
 
     return {
+        "num_samples": num_samples,
+        "expected_sample_count": expected_sample_count,
+        "written_records": len(records),
+        "valid_scored": len(valid_records),
         "observed_valid_accuracy": (
             len(correct_valid_records) / len(valid_records)
             if valid_records
