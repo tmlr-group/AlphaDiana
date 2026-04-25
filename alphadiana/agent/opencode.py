@@ -84,6 +84,21 @@ _SECRET_FIELD_NAMES = frozenset({
 })
 
 
+def _parse_optional_bool(value: Any) -> bool | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off"}:
+        return False
+    return bool(value)
+
+
 def _extract_boxed_content(text: str) -> str | None:
     """Extract content from \\boxed{...} handling nested braces."""
     match = _BOXED_RE.search(text)
@@ -675,6 +690,7 @@ class OpenCodeAgent(Agent):
         self._top_p = None if raw_top_p in (None, "") else float(raw_top_p)
         raw_max_tokens = config.get("max_tokens", None)
         self._max_tokens = None if raw_max_tokens in (None, "") else int(raw_max_tokens)
+        self._enable_thinking = _parse_optional_bool(config.get("enable_thinking", None))
         self._variant = str(config.get("variant", "")).strip()
         self._agent_name = str(config.get("agent", "")).strip()
         self._agent_md_path = str(config.get("agent_md_path", "")).strip()
@@ -977,6 +993,9 @@ class OpenCodeAgent(Agent):
                     "input": ["text", "image"],
                     "output": ["text"],
                 }
+            chat_template_kwargs: dict[str, Any] = {}
+            if self._enable_thinking is not None:
+                chat_template_kwargs["enable_thinking"] = self._enable_thinking
             provider_config = {
                 "$schema": "https://opencode.ai/config.json",
                 "provider": {
@@ -1007,6 +1026,11 @@ class OpenCodeAgent(Agent):
                                 if self._streaming is not None
                                 else {}
                             ),
+                            **(
+                                {"chat_template_kwargs": chat_template_kwargs}
+                                if chat_template_kwargs
+                                else {}
+                            ),
                         },
                         "models": {provider_model_name: model_spec},
                     }
@@ -1022,6 +1046,7 @@ class OpenCodeAgent(Agent):
             # logprobs in real time, so we don't need to disable streaming.
             proxy: LogprobCaptureProxy | None = None
             effective_api_base = self._api_base
+            request_overrides = {}
             if self._logprob_capture["enabled"]:
                 # Strip any path suffix (e.g. "/v1") from api_base before handing to proxy —
                 # OpenCode will append its own "/v1/chat/completions" to the proxy URL,
@@ -1029,13 +1054,14 @@ class OpenCodeAgent(Agent):
                 upstream_base = self._api_base.rstrip("/")
                 if upstream_base.endswith("/v1"):
                     upstream_base = upstream_base[:-3]
-                request_overrides = {}
                 if self._temperature is not None:
                     request_overrides["temperature"] = self._temperature
                 if self._top_p is not None:
                     request_overrides["top_p"] = self._top_p
                 if self._max_tokens is not None:
                     request_overrides["max_tokens"] = self._max_tokens
+                if chat_template_kwargs:
+                    request_overrides["chat_template_kwargs"] = chat_template_kwargs
                 proxy = LogprobCaptureProxy(
                     upstream_base,
                     self._logprob_capture["top_logprobs"],
@@ -1168,73 +1194,6 @@ class OpenCodeAgent(Agent):
             else "opencode_cli"
         )
 
-        if _is_swe_bench_task(task):
-            answer = _extract_patch_from_text(full_content)
-        elif returncode == -1:
-            answer = _extract_strict_answer(assistant_text)
-        else:
-            answer = extract_answer_candidate(full_content)
-
-        if returncode != 0 and not answer:
-            logger.warning(
-                "OpenCode returned non-zero exit code %d for task %s. stderr: %s",
-                returncode,
-                task.task_id,
-                stderr[:500],
-            )
-
-        workspace_file_contents: dict[str, str] = dict(
-            preserved_local_artifacts.get("workspace_file_contents", {}) or {}
-        )
-        workspace_file_contents.update({
-            "prompt.txt": prompt,
-            "opencode_output.jsonl": raw_output,
-        })
-        if stderr:
-            workspace_file_contents["opencode_stderr.log"] = stderr
-        if attachment_paths:
-            workspace_file_contents["attachment_manifest.json"] = json.dumps(
-                {
-                    "attachments": [
-                        {
-                            "filename": path.name,
-                            "path": f"attachments/{path.name}",
-                        }
-                        for path in attachment_paths
-                    ]
-                },
-                indent=2,
-                ensure_ascii=False,
-            )
-        artifact_manifest = add_artifact_file_refs(
-            preserved_local_artifacts.get("artifact_manifest", {}),
-            response_stream="opencode_output.jsonl",
-            opencode_output="opencode_output.jsonl",
-            session_trace=(
-                "opencode_session.jsonl"
-                if "opencode_session.jsonl" in workspace_file_contents
-                else None
-            ),
-            opencode_session=(
-                "opencode_session.jsonl"
-                if "opencode_session.jsonl" in workspace_file_contents
-                else None
-            ),
-            stderr_log="opencode_stderr.log" if stderr else None,
-            prompt_text="prompt.txt",
-            attachment_manifest="attachment_manifest.json" if attachment_paths else None,
-        )
-        response_json = build_runtime_trace_summary(
-            output_text=full_content,
-            stderr_text=stderr.strip(),
-            records=events,
-            extra={
-                "returncode": returncode,
-                "session_id": session_id,
-                "transport": transport,
-            },
-        )
-
         error_info = _extract_opencode_error(events)
         response_metadata = {
             "returncode": returncode,
@@ -1249,6 +1208,8 @@ class OpenCodeAgent(Agent):
             "controller_mode": self._controller_mode,
             "transport": transport,
         }
+        if request_overrides:
+            response_metadata["logprob_proxy_request_overrides"] = request_overrides
         logprob_probe_session_json_count = _count_json_objects(session_trace)
         logprob_probe_stdout_json_count = _count_json_objects(raw_output)
         logprob_records = extract_opencode_logprob_records(
@@ -1341,12 +1302,18 @@ class OpenCodeAgent(Agent):
         artifact_manifest = add_artifact_file_refs(
             preserved_local_artifacts.get("artifact_manifest", {}),
             response_stream="opencode_output.jsonl",
+            opencode_output="opencode_output.jsonl",
             partial_output=(
                 "opencode_partial_output.txt"
                 if "opencode_partial_output.txt" in workspace_file_contents
                 else None
             ),
             session_trace=(
+                "opencode_session.jsonl"
+                if "opencode_session.jsonl" in workspace_file_contents
+                else None
+            ),
+            opencode_session=(
                 "opencode_session.jsonl"
                 if "opencode_session.jsonl" in workspace_file_contents
                 else None
