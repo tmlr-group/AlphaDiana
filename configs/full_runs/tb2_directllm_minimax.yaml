@@ -17,7 +17,7 @@ agent:
     api_key: ${OPENAI_API_KEY}
     temperature: 0.0
     max_rounds: 8
-    max_tokens: 131072
+    max_tokens: 32768
     timeout_sec: 900
     test_timeout_sec: 1200
 
