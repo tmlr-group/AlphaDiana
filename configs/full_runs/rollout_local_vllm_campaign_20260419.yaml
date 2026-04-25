@@ -7,7 +7,7 @@ defaults:
   rollout_semantics:
     temperature: 0.0
     top_p: 0.95
-    max_tokens: 32768
+    max_tokens: 131072
     streaming: true
     timeout_sec: 1800
     thinking: true
@@ -55,7 +55,7 @@ path_templates:
       agent.config.api_key: "{api_key_env_ref}"
       agent.config.temperature: 0.0
       agent.config.top_p: 0.95
-      agent.config.max_tokens: 32768
+      agent.config.max_tokens: 131072
       agent.config.stream: true
 
   - id: "imo_answerbench_openclaw"
@@ -77,7 +77,7 @@ path_templates:
       agent.config.OPENAI_MODEL_NAME: "{model_name}"
       agent.config.temperature: 0.0
       agent.config.top_p: 0.95
-      agent.config.max_tokens: 32768
+      agent.config.max_tokens: 131072
       agent.config.request_timeout: 1800
       agent.config.stream_idle_timeout: 600
 
@@ -101,7 +101,7 @@ path_templates:
       agent.config.api_key: "{api_key_env_ref}"
       agent.config.temperature: 0.0
       agent.config.top_p: 0.95
-      agent.config.max_tokens: 32768
+      agent.config.max_tokens: 131072
       agent.config.timeout: 1800
       agent.config.streaming: true
 
@@ -184,7 +184,7 @@ path_templates:
       agent.config.api_key: "{api_key_env_ref}"
       agent.config.temperature: 0.0
       agent.config.top_p: 0.95
-      agent.config.max_tokens: 32768
+      agent.config.max_tokens: 131072
 
   - id: "gpqa_diamond_zeroclaw"
     benchmark: "gpqa_diamond"
@@ -226,7 +226,7 @@ path_templates:
       agent.config.api_key: "{api_key_env_ref}"
       agent.config.temperature: 0.0
       agent.config.top_p: 0.95
-      agent.config.max_tokens: 32768
+      agent.config.max_tokens: 131072
       agent.config.stream: true
 
   - id: "hle_openclaw"
@@ -248,7 +248,7 @@ path_templates:
       agent.config.OPENAI_MODEL_NAME: "{model_name}"
       agent.config.temperature: 0.0
       agent.config.top_p: 0.95
-      agent.config.max_tokens: 32768
+      agent.config.max_tokens: 131072
       agent.config.request_timeout: 1800
       agent.config.stream_idle_timeout: 600
 
@@ -272,7 +272,7 @@ path_templates:
       agent.config.api_key: "{api_key_env_ref}"
       agent.config.temperature: 0.0
       agent.config.top_p: 0.95
-      agent.config.max_tokens: 32768
+      agent.config.max_tokens: 131072
       agent.config.timeout: 1800
       agent.config.streaming: true
 
@@ -355,7 +355,7 @@ path_templates:
       agent.config.api_key: "{api_key_env_ref}"
       agent.config.temperature: 0.0
       agent.config.top_p: 0.95
-      agent.config.max_tokens: 32768
+      agent.config.max_tokens: 131072
 
   - id: "mmmu_pro_zeroclaw"
     benchmark: "mmmu_pro"
