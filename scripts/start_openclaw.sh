@@ -137,9 +137,10 @@ raise SystemExit(10)
 PYEOF
     ); then
         return 0
+    else
+        local _status=$?
     fi
 
-    local _status=$?
     if [ "${_status}" -ne 10 ]; then
         echo "ERROR: failed to inspect existing ROCK service ownership"
         [ -n "${_ownership_output}" ] && echo "${_ownership_output}"

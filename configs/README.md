@@ -9,6 +9,7 @@ configs/
 ├── schema.yaml                ← annotated full-field reference for config structure
 ├── full_runs/                 ← production runs (pinned models, logprob capture)
 │   └── README.md              ← inventory and naming conventions for full runs
+├── smokes/                    ← active smoke matrices with pinned local settings
 ├── examples/                  ← smoke / pilot templates (env-var placeholders, max_tasks ≤ 5)
 │   └── *.yaml
 ├── test_direct_llm_qwen.yaml  ← quick sanity-check: direct_llm via OpenRouter
@@ -23,7 +24,8 @@ configs/
 | Goal | Where to look |
 |---|---|
 | Run a full benchmark | `full_runs/` |
-| Smoke-test a new model or harness (1–5 tasks) | `examples/` |
+| Run the active local-Qwen harness smoke matrix | `smokes/` |
+| Smoke-test a new model or harness ad hoc (1–5 tasks) | `examples/` |
 | Understand what fields are valid | `schema.yaml` |
 | Check which system prompt to use | `PROMPTS.md` |
 | Quick one-off sanity check | root-level `test_*.yaml` |
@@ -40,6 +42,18 @@ Each file is one benchmark × harness × model combination, fully pinned.
 - Naming: `{benchmark}_{harness}_{model_short}_logprobs.yaml`
 
 See [`full_runs/README.md`](full_runs/README.md) for the full file inventory.
+
+---
+
+## `smokes/` — active smoke matrices
+
+The current prompt-aligned local-Qwen smoke matrix lives in
+[`smokes/harness_prompt_alignment_20260425/`](smokes/harness_prompt_alignment_20260425/).
+It contains OpenClaw and ZeroClaw configs for AIME 2024, IMO-AnswerBench,
+GPQA-Diamond, HLE, and MMMU-Pro in both `trunc5k` and `long64k` settings.
+ZeroClaw `long64k` smokes are serial per config (`max_concurrent: 1`) because
+the April 26 local-Qwen recovery evidence found concurrent ZeroClaw long runs
+can stall before the first provider request and therefore cannot save logprobs.
 
 ---
 

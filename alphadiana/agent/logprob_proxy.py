@@ -51,6 +51,36 @@ def resolve_logprob_proxy_advertise_host(
     return "host.docker.internal"
 
 
+def _system_content_to_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    try:
+        return json.dumps(content, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return str(content)
+
+
+def normalize_chat_system_messages(messages: Any) -> tuple[Any, bool]:
+    """Move all system messages to a single leading message for strict templates."""
+    if not isinstance(messages, list):
+        return messages, False
+
+    system_parts: list[str] = []
+    non_system_messages: list[Any] = []
+    for message in messages:
+        if isinstance(message, dict) and message.get("role") == "system":
+            system_parts.append(_system_content_to_text(message.get("content", "")))
+        else:
+            non_system_messages.append(message)
+
+    if not system_parts:
+        return messages, False
+
+    merged_system = "\n\n".join(system_parts)
+    normalized_messages = [{"role": "system", "content": merged_system}, *non_system_messages]
+    return normalized_messages, normalized_messages != messages
+
+
 class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
     server: "_LogprobCaptureServer"
 
@@ -106,6 +136,9 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
                 payload = json.loads(body)
             except json.JSONDecodeError:
                 payload = {}
+            normalized_messages, normalized = normalize_chat_system_messages(payload.get("messages"))
+            if normalized:
+                payload["messages"] = normalized_messages
             payload["logprobs"] = True
             payload["top_logprobs"] = self.server.top_logprobs
             payload.update(self.server.request_overrides)

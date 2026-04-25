@@ -1309,6 +1309,23 @@ class ZeroClawAgent(Agent):
         )
 
         if result.exit_code == 124:
+            if sanitized_output or logprob_proxy_records:
+                partial_response.finish_reason = (
+                    "length"
+                    if self._provider_max_tokens is not None
+                    and len(logprob_proxy_records) >= self._provider_max_tokens
+                    else "timeout"
+                )
+                response_metadata = dict(partial_response.metadata or {})
+                response_metadata["zeroclaw_timeout_preserved_partial_response"] = True
+                response_metadata["zeroclaw_timeout_seconds"] = self._request_timeout
+                if not sanitized_output and logprob_proxy_records:
+                    response_metadata["zeroclaw_empty_assistant_scored_zero"] = True
+                    response_metadata["zeroclaw_empty_assistant_reason"] = (
+                        "timeout_with_provider_logprobs"
+                    )
+                partial_response.metadata = response_metadata
+                return partial_response
             self._mark_partial_failure(partial_response, failure_reason="timeout")
             self._raise_with_partial_response(
                 f"ZeroClaw agent timed out after {self._request_timeout}s",
@@ -1341,6 +1358,30 @@ class ZeroClawAgent(Agent):
                 partial_response,
                 error_type=failure_reason,
             )
+        if not sanitized_output and logprob_proxy_records:
+            stderr_failure_reason = _classify_cli_error_output(raw_stderr)
+            if raw_stderr and stderr_failure_reason != "cli_error":
+                self._mark_partial_failure(partial_response, failure_reason=stderr_failure_reason)
+                self._raise_with_partial_response(
+                    raw_stderr.splitlines()[0],
+                    partial_response,
+                    error_type=stderr_failure_reason,
+                )
+            partial_response.finish_reason = (
+                "length"
+                if self._provider_max_tokens is not None
+                and len(logprob_proxy_records) >= self._provider_max_tokens
+                else "incomplete"
+            )
+            response_metadata = dict(partial_response.metadata or {})
+            response_metadata["zeroclaw_empty_assistant_scored_zero"] = True
+            response_metadata["zeroclaw_empty_assistant_reason"] = (
+                "provider_logprobs_captured_without_cli_assistant_output"
+            )
+            if raw_stderr:
+                response_metadata["zeroclaw_terminal_cli_error"] = raw_stderr.splitlines()[0]
+            partial_response.metadata = response_metadata
+            return partial_response
         if raw_output and not sanitized_output and dropped_runtime_logs:
             diagnostics = self._collect_sandbox_diagnostics_safe(sandbox, paths, env)
             self._mark_partial_failure(partial_response, failure_reason="empty_response")
