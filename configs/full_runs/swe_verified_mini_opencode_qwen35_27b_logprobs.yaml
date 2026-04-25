@@ -1,0 +1,56 @@
+# FULL RUN: SWE-bench Verified-Mini via `swebench_docker` in OpenCode mode.
+# Dataset: MariusHobbhahn/swe-bench-verified-mini (50 tasks).
+# For the upstream / leaderboard-aligned path, use the `swe_verified_mini.yaml`
+# campaign manifest with backend=official_swebench_verified instead.
+
+run_id: "full_swe_verified_mini_opencode_qwen35_27b_logprobs"
+
+agent:
+  name: swebench_docker
+  version: "1.0"
+  config:
+    agent_type: opencode
+    system_prompt: "You are a helpful assistant that can interact with a computer to solve tasks."
+    request_timeout: 1800
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 32768
+    capture_logprobs: true
+    top_logprobs: 20
+    output_dir: "./swebench_artifacts_opencode_verified_mini"
+    env:
+      OPENAI_API_KEY: "EMPTY"
+      OPENAI_BASE_URL: "http://127.0.0.1:8011/v1"
+      OPENAI_MODEL_NAME: "Qwen/Qwen3.5-27B"
+      OPENCODE_TIMEOUT_SEC: "1800"
+      OPENCODE_PROMPT_PROFILE: "swebench"
+      OPENCODE_REQUIRE_PATCH: "true"
+      OPENCODE_PROBLEM_STATEMENT_MAX_CHARS: "200000"
+      OPENCODE_PREFLIGHT_TIMEOUT_SEC: "120"
+      OPENCODE_STARTUP_TIMEOUT_SEC: "300"
+      OPENCODE_IDLE_TIMEOUT_SEC: "600"
+      OPENCODE_IDLE_POLL_SEC: "5"
+      OPENCODE_MAX_ACTIVE_NO_EDIT_SEC: "600"
+      OPENCODE_MAX_TOOL_CALLS_WITHOUT_EDIT: "30"
+      OPENCODE_ACTIVITY_HEARTBEAT_SEC: "30"
+
+benchmark:
+  name: swe_bench
+  config:
+    dataset: "MariusHobbhahn/swe-bench-verified-mini"
+    split: test
+
+scorer:
+  name: swe_bench
+  config:
+    timeout: 1800
+    namespace: swebench
+    arch: x86_64
+
+max_concurrent: 10
+num_samples: 1
+output_dir: "./results/full_swe_verified_mini_opencode_qwen35_27b_logprobs"
+strict_report: true
+strict_isolation: true
+metadata:
+  notes: "Full SWE-bench Verified-Mini OpenCode run on local Qwen3.5-27B vLLM with top-20 int16 logprob capture."
