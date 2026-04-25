@@ -8,6 +8,7 @@ agent:
   version: "1.0"
   config:
     agent_type: opencode
+    system_prompt: "You are a helpful assistant that can interact with a computer to solve tasks."
     request_timeout: 1800
     temperature: 0.0
     top_p: 0.95

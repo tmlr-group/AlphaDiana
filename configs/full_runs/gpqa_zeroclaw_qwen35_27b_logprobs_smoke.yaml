@@ -6,6 +6,14 @@ agent:
   name: zeroclaw
   version: "0.6.9"
   config:
+    system_prompt: |
+      You are solving expert-level science multiple-choice questions.
+      Read the question carefully, reason step by step, and choose the single best option.
+      Your final answer must be on the last line in exactly one of these forms:
+      $$\boxed{A}$$
+      $$\boxed{B}$$
+      $$\boxed{C}$$
+      $$\boxed{D}$$
     model: "Qwen/Qwen3.5-27B"
     api_base: "http://127.0.0.1:8011/v1"
     api_key: "EMPTY"
@@ -13,6 +21,7 @@ agent:
     provider_api_key: "EMPTY"
     temperature: 0.0
     top_p: 0.95
+    max_tokens: 131072
     request_timeout: 1200
     runtime_trace_mode: "all"
     capture_logprobs: true
