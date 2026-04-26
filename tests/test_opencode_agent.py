@@ -1,4 +1,5 @@
 import json
+import subprocess
 import sqlite3
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -531,3 +532,74 @@ def test_solve_text_only_uses_docker_runner_when_configured():
     popen.assert_not_called()
     assert result.answer == "A"
     assert result.metadata["controller_mode"] == "docker"
+
+
+def test_solve_raises_agent_error_on_nonzero_exit_without_error_event():
+    agent = OpenCodeAgent()
+    agent.setup({
+        "model_name": "test-model",
+        "api_base": "http://localhost:9001/v1",
+        "api_key": "test-key",
+        "timeout": 5,
+    })
+
+    process = MagicMock()
+    process.communicate.return_value = (
+        '{"type":"assistant","message":{"content":"partial output only"}}\n',
+        "killed",
+    )
+    process.returncode = 137
+
+    with patch("subprocess.Popen", return_value=process):
+        with pytest.raises(RuntimeError, match="OpenCode exited with return code 137") as exc_info:
+            agent.solve(BenchmarkTask(task_id="text_0", problem="Which option is correct?", ground_truth="A"))
+
+    response = exc_info.value.partial_response
+    assert response.answer is None
+    assert response.raw_output == "partial output only"
+    assert response.response_json["returncode"] == 137
+    assert response.metadata["opencode_error_name"] == "OpenCodeNonZeroExit"
+    assert getattr(exc_info.value, "error_type") == "agent_error"
+
+
+def test_docker_runner_removes_container_on_timeout(tmp_path):
+    agent = OpenCodeAgent()
+    agent.setup({
+        "model_name": "test-model",
+        "api_base": "http://localhost:9001/v1",
+        "api_key": "test-key",
+        "timeout": 5,
+        "controller_mode": "docker",
+    })
+
+    process = MagicMock()
+    process.pid = 12345
+    process.communicate.side_effect = [
+        subprocess.TimeoutExpired(cmd=["docker", "run"], timeout=5),
+        ("", "terminated"),
+    ]
+
+    with patch("subprocess.Popen", return_value=process) as popen:
+        with patch("subprocess.run") as run:
+            with patch("os.killpg"):
+                run.return_value = MagicMock(returncode=0, stderr="")
+                raw_output, stderr, returncode = agent._run_in_docker(
+                    ["opencode", "run", "--format", "json"],
+                    str(tmp_path),
+                    {"OPENAI_API_KEY": "test-key", "OPENAI_BASE_URL": "http://localhost:9001/v1"},
+                )
+
+    docker_cmd = popen.call_args.args[0]
+    container_name = docker_cmd[docker_cmd.index("--name") + 1]
+    assert docker_cmd[:3] == ["docker", "run", "--rm"]
+    assert "alphadiana.component=opencode-controller" in docker_cmd
+    run.assert_called_once_with(
+        ["docker", "rm", "-f", container_name],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=30,
+    )
+    assert raw_output == ""
+    assert stderr == "terminated"
+    assert returncode == -1

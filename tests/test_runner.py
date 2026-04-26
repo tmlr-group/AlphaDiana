@@ -18,6 +18,7 @@ from alphadiana.runner.runner import (
     _sanitize_success_sandbox_metadata,
 )
 from alphadiana.runner.task_dispatcher import TaskDispatcher
+from alphadiana.sandbox.pool import SandboxPool
 
 
 class _FakeTask:
@@ -395,6 +396,46 @@ def test_predeployed_session_failure_reason_detects_dead_gateway() -> None:
     assert _predeployed_session_failure_reason(exc) == "gateway_connection_refused"
 
 
+def test_session_failure_reason_detects_rock_upstream_unreachable() -> None:
+    exc = RuntimeError(
+        "Failed to execute command: {'status': 'Failed', 'message': 'run in session failed', "
+        "'error': 'Service unavailable: Upstream server is not reachable.', 'result': None}"
+    )
+
+    assert _predeployed_session_failure_reason(exc) == "sandbox_upstream_unreachable"
+
+
+def test_sandbox_pool_discards_and_replaces_broken_session() -> None:
+    class _FakeSession:
+        def __init__(self, sandbox_id: str):
+            self.sandbox_id = sandbox_id
+            self.close_calls = 0
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    class _FakeSandbox:
+        def __init__(self):
+            self.created_sessions: list[_FakeSession] = []
+
+        def create_session(self):
+            session = _FakeSession(f"sandbox-{len(self.created_sessions) + 1}")
+            self.created_sessions.append(session)
+            return session
+
+    sandbox = _FakeSandbox()
+    pool = SandboxPool(sandbox, 1)
+    original = pool.acquire()
+
+    assert pool.discard_and_replace(original, reason="sandbox_upstream_unreachable") is True
+    replacement = pool.acquire(timeout=0.1)
+
+    assert original.close_calls == 1
+    assert replacement.sandbox_id == "sandbox-2"
+    pool.release(replacement)
+    pool.teardown()
+
+
 def test_runner_quarantines_dead_predeployed_session(monkeypatch, tmp_path):
     class _FakeBenchmark:
         def load_tasks(self, config):
@@ -479,6 +520,7 @@ def test_runner_quarantines_dead_predeployed_session(monkeypatch, tmp_path):
     created_sessions = [
         _FakePredeployedSession("sandbox-a"),
         _FakePredeployedSession("sandbox-b"),
+        _FakePredeployedSession("sandbox-c"),
     ]
     sessions = list(created_sessions)
 
@@ -529,13 +571,136 @@ def test_runner_quarantines_dead_predeployed_session(monkeypatch, tmp_path):
 
     assert summary.completed == 2
     assert summary.error_records == 1
-    assert runner.agent.solve_sandbox_ids == ["sandbox-a", "sandbox-b", "sandbox-b"]
-    assert [session.reset_calls for session in created_sessions] == [0, 2]
-    assert [session.close_calls for session in created_sessions] == [1, 1]
+    assert runner.agent.solve_sandbox_ids == ["sandbox-a", "sandbox-b", "sandbox-c"]
+    assert [session.reset_calls for session in created_sessions] == [0, 1, 1]
+    assert [session.close_calls for session in created_sessions] == [1, 1, 1]
 
     task0 = json.loads((tmp_path / "runner-predeployed-quarantine" / "tasks" / "aime_0.json").read_text())
     assert task0[0]["metadata"]["predeployed_session_quarantined"] is True
     assert task0[0]["metadata"]["predeployed_session_quarantine_reason"] == "gateway_connection_refused"
+
+
+def test_runner_replaces_pooled_session_and_retries_after_rock_upstream_failure(
+    monkeypatch,
+    tmp_path,
+):
+    class _FakeBenchmark:
+        def load_tasks(self, config):
+            return [BenchmarkTask(task_id="aime_0", problem="Q0", ground_truth="42")]
+
+    class _FakeSession:
+        def __init__(self, sandbox_id: str):
+            self.sandbox_id = sandbox_id
+            self.reset_calls = 0
+            self.close_calls = 0
+
+        def metadata(self) -> dict:
+            return {
+                "sandbox_id": self.sandbox_id,
+                "command_history": [
+                    {"command": "OPENAI_API_KEY=sk-live ZEROCLAW_API_KEY=sk-zero zeroclaw"}
+                ],
+            }
+
+        def reset(self) -> None:
+            self.reset_calls += 1
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    class _FakeSandbox:
+        def __init__(self):
+            self.created_sessions: list[_FakeSession] = []
+
+        def setup(self, config) -> None:
+            self.config = dict(config)
+
+        def create_session(self):
+            session = _FakeSession(f"sandbox-{len(self.created_sessions) + 1}")
+            self.created_sessions.append(session)
+            return session
+
+        def teardown(self) -> None:
+            pass
+
+    class _FakeAgent:
+        def setup(self, config) -> None:
+            self.config = dict(config)
+            self.solve_sandbox_ids: list[str | None] = []
+
+        def solve(self, task, sandbox=None):
+            sandbox_id = getattr(sandbox, "sandbox_id", None)
+            self.solve_sandbox_ids.append(sandbox_id)
+            if len(self.solve_sandbox_ids) == 1:
+                raise RuntimeError(
+                    "Failed to execute command: {'status': 'Failed', "
+                    "'message': 'run in session failed', "
+                    "'error': 'Service unavailable: Upstream server is not reachable.', "
+                    "'result': None}"
+                )
+            return AgentResponse(answer="42", sandbox_id=sandbox_id or "", metadata={})
+
+        def teardown(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        "alphadiana.runner.runner.BenchmarkRegistry.get",
+        lambda name: _FakeBenchmark,
+    )
+    monkeypatch.setattr(
+        "alphadiana.runner.runner.AgentRegistry.get",
+        lambda name: _FakeAgent,
+    )
+    monkeypatch.setattr(
+        "alphadiana.runner.runner.SandboxRegistry.get",
+        lambda name: _FakeSandbox,
+    )
+
+    config = ExperimentConfig(
+        run_id="runner-replace-pooled-session",
+        agent_name="zeroclaw",
+        agent_version="0.6.9",
+        agent_config={},
+        benchmark_name="aime",
+        benchmark_config={},
+        sandbox_name="fake_sandbox",
+        sandbox_config={},
+        scorer_name="numeric",
+        scorer_config={},
+        max_concurrent=2,
+        task_retries=1,
+        output_dir=str(tmp_path),
+    )
+
+    runner = Runner(config)
+    runner.setup()
+    try:
+        summary = runner.run()
+    finally:
+        runner.teardown()
+
+    assert summary.completed == 1
+    assert summary.error_records == 0
+    assert runner.agent.solve_sandbox_ids == ["sandbox-1", "sandbox-2"]
+    assert len(runner.sandbox.created_sessions) == 3
+    assert runner.sandbox.created_sessions[0].close_calls == 1
+
+    jsonl_records = [
+        json.loads(line)
+        for line in (tmp_path / "runner-replace-pooled-session.jsonl").read_text().splitlines()
+    ]
+    assert [record["score_status"] for record in jsonl_records] == ["runtime_error", "valid_scored"]
+    error_record = jsonl_records[0]
+    assert error_record["metadata"]["pooled_session_replaced"] is True
+    assert (
+        error_record["metadata"]["pooled_session_replacement_reason"]
+        == "sandbox_upstream_unreachable"
+    )
+    history = error_record["sandbox_metadata"]["command_history"][0]["command"]
+    assert "sk-live" not in history
+    assert "sk-zero" not in history
+    assert "OPENAI_API_KEY=<redacted>" in history
+    assert "ZEROCLAW_API_KEY=<redacted>" in history
 
 
 def test_runner_passes_kata_runtime_flag_to_auto_created_rock_sandbox(monkeypatch, tmp_path):

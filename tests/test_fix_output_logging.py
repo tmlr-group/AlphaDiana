@@ -196,6 +196,54 @@ class TestTimeoutErrorClassification:
         results = store.load()
         assert results[0]["error"]["error_type"] == "timeout"
 
+    def test_persisted_failure_artifacts_redact_secret_env_assignments(self, tmp_path):
+        store = ResultStore(output_dir=str(tmp_path), run_id="secret-test")
+        task = BenchmarkTask(task_id="t1", problem="P", ground_truth="42")
+        command = (
+            "env OPENAI_API_KEY=secret-value ZEROCLAW_API_KEY='other-secret' "
+            "zeroclaw agent"
+        )
+        response = AgentResponse(
+            answer=None,
+            raw_output=f"failed command: {command}",
+            metadata={
+                "retry_responses": [
+                    {
+                        "body": f"Authorization: Bearer retry-secret\n{command}",
+                        "OPENAI_API_KEY": "retry-secret",
+                    }
+                ]
+            },
+            sandbox_metadata={"command_history": [{"command": command}]},
+            workspace_file_contents={"zeroclaw_output.txt": f"stdout\n{command}\n"},
+        )
+
+        store.append_error(
+            task,
+            error={
+                "error": f"ZeroClaw failed while running {command}",
+                "error_type": "provider_error",
+            },
+            response=response,
+        )
+
+        assert "secret-value" not in Path(store.path).read_text(encoding="utf-8")
+        assert "other-secret" not in Path(store.path).read_text(encoding="utf-8")
+        assert "retry-secret" not in Path(store.path).read_text(encoding="utf-8")
+        assert "OPENAI_API_KEY=<redacted>" in Path(store.path).read_text(encoding="utf-8")
+
+        artifact_root = tmp_path / "secret-test" / "artifacts" / "t1"
+        for artifact in (
+            artifact_root / "agent" / "retry_responses.json",
+            artifact_root / "sandbox" / "sandbox_meta.json",
+            artifact_root / "workspace" / "zeroclaw_output.txt",
+            artifact_root / "agent" / "normalized_trace.json",
+        ):
+            text = artifact.read_text(encoding="utf-8")
+            assert "secret-value" not in text
+            assert "other-secret" not in text
+            assert "retry-secret" not in text
+
 
 # ===================================================================
 # 3.3 Null Response Diagnostics

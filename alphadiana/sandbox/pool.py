@@ -91,6 +91,40 @@ class SandboxPool:
             self._available.append(session)
             self._event.set()
 
+    def discard_and_replace(self, session: Any, *, reason: str = "") -> bool:
+        """Discard a broken session and replace it without returning it to the pool."""
+        sandbox_id = str(getattr(session, "sandbox_id", "") or getattr(session, "session_id", "") or "")
+        logger.warning(
+            "Discarding broken sandbox session%s%s",
+            f" sandbox_id={sandbox_id}" if sandbox_id else "",
+            f" reason={reason}" if reason else "",
+        )
+        try:
+            close = getattr(session, "close", None)
+            if callable(close):
+                close()
+        except Exception:
+            logger.warning("Failed to close broken session", exc_info=True)
+
+        with self._lock:
+            try:
+                self._all_sessions.remove(session)
+            except ValueError:
+                pass
+
+        try:
+            replacement = self._sandbox.create_session()
+        except Exception:
+            logger.error("Failed to create replacement session", exc_info=True)
+            logger.error("session replacement failed; waiters will continue to wait")
+            return False
+
+        with self._lock:
+            self._all_sessions.append(replacement)
+            self._available.append(replacement)
+            self._event.set()
+        return True
+
     def teardown(self, timeout: float = 30.0) -> None:
         """Close all sessions in the pool with a per-session timeout.
 
