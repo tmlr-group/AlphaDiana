@@ -13,6 +13,7 @@ from alphadiana.runner.runner import (
     _is_gateway_autodeploy_agent,
     _merge_artifact_manifests,
     _needs_auto_rock_sandbox,
+    _predeployed_session_failure_reason,
     _sanitize_sandbox_metadata,
     _sanitize_success_sandbox_metadata,
 )
@@ -379,6 +380,162 @@ def test_runner_uses_live_predeployed_sessions_for_gateway_pool(monkeypatch, tmp
     assert sorted(runner.agent.solve_sandbox_ids) == ["sandbox-a", "sandbox-b"]
     assert [session.reset_calls for session in created_sessions] == [1, 1]
     assert [session.close_calls for session in created_sessions] == [1, 1]
+
+
+def test_predeployed_session_failure_reason_detects_dead_gateway() -> None:
+    exc = RuntimeError("OpenClaw response did not contain assistant text")
+    exc.retry_responses = [
+        {
+            "attempt": 1,
+            "body": "[Errno 111] Connection refused",
+            "error_type": "unknown",
+        }
+    ]
+
+    assert _predeployed_session_failure_reason(exc) == "gateway_connection_refused"
+
+
+def test_runner_quarantines_dead_predeployed_session(monkeypatch, tmp_path):
+    class _FakeBenchmark:
+        def load_tasks(self, config):
+            return [
+                BenchmarkTask(task_id="aime_0", problem="Q0", ground_truth="42"),
+                BenchmarkTask(task_id="aime_1", problem="Q1", ground_truth="42"),
+                BenchmarkTask(task_id="aime_2", problem="Q2", ground_truth="42"),
+            ]
+
+    class _FakePredeployedSession:
+        def __init__(self, sandbox_id: str):
+            self.sandbox_id = sandbox_id
+            self.reset_calls = 0
+            self.close_calls = 0
+
+        def proxy_v1_base(self) -> str:
+            return f"http://proxy.test/apis/envs/sandbox/v1/sandboxes/{self.sandbox_id}/proxy/v1"
+
+        def metadata(self) -> dict:
+            return {
+                "sandbox_id": self.sandbox_id,
+                "proxy_base_url": self.proxy_v1_base(),
+            }
+
+        def reset(self) -> None:
+            self.reset_calls += 1
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    class _FakeRockSandboxBackend:
+        def setup(self, config) -> None:
+            self.config = config
+
+        def create_session(self):
+            return sessions.pop(0)
+
+    class _FakeGatewayRuntimeManager:
+        def ensure_ready(self, session):
+            return {
+                "sandbox_id": session.sandbox_id,
+                "gateway_url": f"{session.proxy_v1_base()}/chat/completions",
+                "api_base": session.proxy_v1_base(),
+            }
+
+    class _FakeGatewayAgent:
+        def __init__(self):
+            self.solve_sandbox_ids: list[str | None] = []
+
+        def setup(self, config) -> None:
+            self.config = dict(config)
+
+        def solve(self, task, sandbox=None):
+            sandbox_id = getattr(sandbox, "sandbox_id", None)
+            self.solve_sandbox_ids.append(sandbox_id)
+            if task.task_id == "aime_0":
+                retry_responses = [
+                    {
+                        "attempt": 1,
+                        "body": "[Errno 111] Connection refused",
+                        "error_type": "unknown",
+                    }
+                ]
+                exc = RuntimeError("OpenClaw response did not contain assistant text")
+                exc.error_type = "unknown"
+                exc.retry_responses = retry_responses
+                exc.partial_response = AgentResponse(
+                    answer=None,
+                    sandbox_id=sandbox_id or "",
+                    metadata={"retry_responses": retry_responses},
+                )
+                raise exc
+            return AgentResponse(
+                answer="42",
+                sandbox_id=sandbox_id or "",
+                metadata={},
+            )
+
+        def teardown(self) -> None:
+            pass
+
+    created_sessions = [
+        _FakePredeployedSession("sandbox-a"),
+        _FakePredeployedSession("sandbox-b"),
+    ]
+    sessions = list(created_sessions)
+
+    monkeypatch.setattr(
+        "alphadiana.runner.runner.BenchmarkRegistry.get",
+        lambda name: _FakeBenchmark,
+    )
+    monkeypatch.setattr(
+        "alphadiana.runner.runner.AgentRegistry.get",
+        lambda name: _FakeGatewayAgent,
+    )
+    monkeypatch.setattr(
+        "alphadiana.runner.runner.SandboxRegistry.get",
+        lambda name: _FakeRockSandboxBackend,
+    )
+    monkeypatch.setattr(
+        "alphadiana.runner.runner._make_gateway_runtime_manager",
+        lambda config: _FakeGatewayRuntimeManager(),
+    )
+
+    config = ExperimentConfig(
+        run_id="runner-predeployed-quarantine",
+        agent_name="openclaw",
+        agent_version="2026.3.20",
+        agent_config={
+            "api_key": "sk-test",
+            "rock_agent_config_path": "openclaw_deploy/rock_agent_config.prebuilt.yaml",
+            "openclaw_config_path": "openclaw_deploy/openclaw.json",
+            "admin_base_url": "http://127.0.0.1:9000",
+            "proxy_base_url": "http://127.0.0.1:9005/apis/envs/sandbox/v1",
+            "num_sandboxes": 2,
+        },
+        benchmark_name="aime",
+        benchmark_config={},
+        scorer_name="numeric",
+        scorer_config={},
+        max_concurrent=1,
+        task_retries=0,
+        output_dir=str(tmp_path),
+    )
+
+    runner = Runner(config)
+    runner.setup()
+    try:
+        summary = runner.run()
+    finally:
+        runner.teardown()
+
+    assert summary.completed == 2
+    assert summary.error_records == 1
+    assert runner.agent.solve_sandbox_ids == ["sandbox-a", "sandbox-b", "sandbox-b"]
+    assert [session.reset_calls for session in created_sessions] == [0, 2]
+    assert [session.close_calls for session in created_sessions] == [1, 1]
+
+    task0 = json.loads((tmp_path / "runner-predeployed-quarantine" / "tasks" / "aime_0.json").read_text())
+    assert task0[0]["metadata"]["predeployed_session_quarantined"] is True
+    assert task0[0]["metadata"]["predeployed_session_quarantine_reason"] == "gateway_connection_refused"
 
 
 def test_runner_passes_kata_runtime_flag_to_auto_created_rock_sandbox(monkeypatch, tmp_path):

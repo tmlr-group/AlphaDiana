@@ -220,6 +220,49 @@ def _is_sandbox_disconnect(exc: Exception) -> bool:
     return "connection" in msg and ("refused" in msg or "reset" in msg or "timeout" in msg)
 
 
+def _payload_text(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    try:
+        return json.dumps(value, ensure_ascii=True, sort_keys=True, default=str)
+    except Exception:
+        return str(value)
+
+
+def _predeployed_session_failure_reason(exc: Exception, response: object | None = None) -> str:
+    """Return a quarantine reason when a predeployed gateway session is no longer usable."""
+    error_type = str(getattr(exc, "error_type", "") or "").lower()
+    if error_type == "control_plane_unavailable":
+        return "control_plane_unavailable"
+
+    chunks: list[str] = [
+        str(exc),
+        error_type,
+        _payload_text(getattr(exc, "response_body", None)),
+        _payload_text(getattr(exc, "retry_responses", None)),
+    ]
+    if response is not None:
+        chunks.extend([
+            _payload_text(getattr(response, "metadata", None)),
+            _payload_text(getattr(response, "response_json", None)),
+            _payload_text(getattr(response, "sandbox_metadata", None)),
+            str(getattr(response, "gateway_url", "") or ""),
+            str(getattr(response, "gateway_log_excerpt", "") or ""),
+        ])
+    text = "\n".join(chunk for chunk in chunks if chunk).lower()
+    if "not started" in text:
+        return "sandbox_not_started"
+    if "not alive" in text:
+        return "sandbox_not_alive"
+    if "connection refused" in text or "[errno 111]" in text:
+        return "gateway_connection_refused"
+    if "failed to connect" in text or "connecterror" in text:
+        return "gateway_connect_failed"
+    return ""
+
+
 def _build_error_info(exc: Exception) -> dict:
     """Build a serializable error dict from an exception."""
     error_type = getattr(exc, "error_type", type(exc).__name__)
@@ -450,6 +493,7 @@ class Runner:
         predeployed_logprob_proxies: dict[str, object] = {}
         predeployed_gateway_api_base_by_sandbox_id: dict[str, str] = {}
         predeployed_session_reset_lock = threading.Lock()
+        predeployed_session_pool_lock = threading.Lock()
         predeploy_partial = False
         desired_num = 1
         reset_predeployed_between_tasks = bool(
@@ -877,10 +921,82 @@ class Runner:
             logger.info("Creating shared sandbox session for sequential execution")
             shared_session = self.sandbox.create_session()
         predeployed_session_queue = None
+        predeployed_live_session_ids: set[str] = set()
         if predeployed_sessions:
             predeployed_session_queue = queue.Queue()
             for session in predeployed_sessions:
                 predeployed_session_queue.put(session)
+                sandbox_id = str(getattr(session, "sandbox_id", "") or "")
+                if sandbox_id:
+                    predeployed_live_session_ids.add(sandbox_id)
+
+        def _live_predeployed_count() -> int:
+            with predeployed_session_pool_lock:
+                return len(predeployed_live_session_ids)
+
+        def _acquire_predeployed_session(task_id: str):
+            if predeployed_session_queue is None:
+                raise RuntimeError("predeployed session queue is not configured")
+            while True:
+                try:
+                    return predeployed_session_queue.get(timeout=1.0)
+                except queue.Empty:
+                    if _live_predeployed_count() == 0:
+                        raise RuntimeError(
+                            "No live predeployed sandbox sessions remain; "
+                            "restart the run to create a fresh gateway pool"
+                        )
+                    if self.cancel_event is not None and self.cancel_event.is_set():
+                        raise RuntimeError(f"Cancelled while waiting for predeployed sandbox for task {task_id}")
+
+        def _quarantine_predeployed_session(session: object, sandbox_id: str, reason: str, task_id: str) -> None:
+            resolved_sandbox_id = str(sandbox_id or getattr(session, "sandbox_id", "") or "")
+            proxy = None
+            with predeployed_session_pool_lock:
+                if resolved_sandbox_id:
+                    predeployed_live_session_ids.discard(resolved_sandbox_id)
+                    predeployed_session_by_sandbox_id.pop(resolved_sandbox_id, None)
+                    predeployed_gateway_api_base_by_sandbox_id.pop(resolved_sandbox_id, None)
+                    proxy = predeployed_logprob_proxies.pop(resolved_sandbox_id, None)
+                    gateway_map = self.config.agent_config.get(
+                        "_predeployed_gateway_api_base_by_sandbox_id"
+                    )
+                    if isinstance(gateway_map, dict):
+                        gateway_map.pop(resolved_sandbox_id, None)
+                    proxy_map = self.config.agent_config.get("_predeployed_logprob_proxies")
+                    if isinstance(proxy_map, dict):
+                        proxy_map.pop(resolved_sandbox_id, None)
+                try:
+                    predeployed_sessions.remove(session)
+                except ValueError:
+                    pass
+                remaining = len(predeployed_live_session_ids)
+            logger.warning(
+                "Quarantining predeployed sandbox for task %s sandbox_id=%s reason=%s remaining=%d",
+                task_id,
+                resolved_sandbox_id or "<unknown>",
+                reason,
+                remaining,
+            )
+            if proxy is not None:
+                try:
+                    proxy.stop()
+                except Exception:
+                    logger.debug(
+                        "Failed to stop logprob proxy for quarantined sandbox_id=%s",
+                        resolved_sandbox_id,
+                        exc_info=True,
+                    )
+            try:
+                close = getattr(session, "close", None)
+                if callable(close):
+                    close()
+            except Exception as exc:
+                logger.warning(
+                    "Failed to close quarantined predeployed sandbox_id=%s: %s",
+                    resolved_sandbox_id or "<unknown>",
+                    exc,
+                )
 
         def _reset_predeployed_session(sandbox_id: str, task_id: str) -> None:
             if not reset_predeployed_between_tasks or not sandbox_id:
@@ -910,11 +1026,12 @@ class Runner:
             sandbox_session = None
             used_pool = False
             used_predeployed_pool = False
+            predeployed_quarantine_reason = ""
             if pool is not None:
                 sandbox_session = pool.acquire()
                 used_pool = True
             elif predeployed_session_queue is not None:
-                sandbox_session = predeployed_session_queue.get()
+                sandbox_session = _acquire_predeployed_session(task.task_id)
                 used_predeployed_pool = True
             elif shared_session is not None:
                 sandbox_session = shared_session
@@ -1043,6 +1160,16 @@ class Runner:
                 retry_responses = getattr(exc, "retry_responses", None)
                 if retry_responses and "retry_responses" not in error_response.metadata:
                     error_response.metadata["retry_responses"] = retry_responses
+                if used_predeployed_pool:
+                    predeployed_quarantine_reason = _predeployed_session_failure_reason(
+                        exc,
+                        error_response,
+                    )
+                    if predeployed_quarantine_reason:
+                        error_response.metadata["predeployed_session_quarantined"] = True
+                        error_response.metadata["predeployed_session_quarantine_reason"] = (
+                            predeployed_quarantine_reason
+                        )
                 self.result_store.append_error(
                     runtime_task,
                     error=_build_error_info(exc),
@@ -1051,11 +1178,22 @@ class Runner:
                 )
                 raise
             finally:
-                if predeployed_session_by_sandbox_id and response_sandbox_id:
+                if (
+                    not predeployed_quarantine_reason
+                    and predeployed_session_by_sandbox_id
+                    and response_sandbox_id
+                ):
                     _reset_predeployed_session(response_sandbox_id, task.task_id)
                 if sandbox_session is not None:
                     try:
-                        if used_predeployed_pool:
+                        if used_predeployed_pool and predeployed_quarantine_reason:
+                            _quarantine_predeployed_session(
+                                sandbox_session,
+                                response_sandbox_id,
+                                predeployed_quarantine_reason,
+                                task.task_id,
+                            )
+                        elif used_predeployed_pool:
                             predeployed_session_queue.put(sandbox_session)
                         elif used_pool:
                             pool.release(sandbox_session)
