@@ -52,6 +52,7 @@ scorer:
 
 max_concurrent: 10
 num_samples: 32
+task_retries: 2
 output_dir: "./results"
 strict_report: true
 strict_isolation: true

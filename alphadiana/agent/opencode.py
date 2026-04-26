@@ -928,8 +928,12 @@ class OpenCodeAgent(Agent):
         gid = os.getgid()
         container_home = Path(workdir) / ".controller-home"
         container_home.mkdir(parents=True, exist_ok=True)
+        container_name = f"alphadiana-opencode-{os.getpid()}-{time.time_ns()}"
         docker_cmd = [
             "docker", "run", "--rm",
+            "--name", container_name,
+            "--label", "alphadiana.component=opencode-controller",
+            "--label", f"alphadiana.workdir={workdir}",
             f"--network={self._controller_network}",
             f"--user={uid}:{gid}",
             "-v", f"{workdir}:{workdir}",
@@ -961,6 +965,7 @@ class OpenCodeAgent(Agent):
             logger.warning("OpenCode Docker timed out after %ds", self._timeout)
             raw_output = ""
             stderr = f"Timeout after {self._timeout}s"
+            self._force_remove_docker_container(container_name)
             if process is not None:
                 try:
                     os.killpg(process.pid, signal.SIGTERM)
@@ -974,6 +979,26 @@ class OpenCodeAgent(Agent):
                     raw_output, timed_out_stderr = process.communicate()
                     stderr = timed_out_stderr or stderr
             return raw_output, stderr, -1
+
+    def _force_remove_docker_container(self, container_name: str) -> None:
+        """Stop an OpenCode controller container that outlived the docker client."""
+        try:
+            result = subprocess.run(
+                ["docker", "rm", "-f", container_name],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=30,
+            )
+        except Exception as exc:  # pragma: no cover - defensive cleanup path
+            logger.warning("Failed to remove timed-out OpenCode container %s: %s", container_name, exc)
+            return
+        if result.returncode != 0 and "No such container" not in result.stderr:
+            logger.warning(
+                "Failed to remove timed-out OpenCode container %s: %s",
+                container_name,
+                result.stderr.strip()[:500],
+            )
 
     def _solve_cli(self, task: BenchmarkTask) -> AgentResponse:
         """Run tasks through the OpenCode CLI (host or Docker, multimodal-aware)."""
@@ -1286,6 +1311,14 @@ class OpenCodeAgent(Agent):
                 task.task_id,
                 stderr[:500],
             )
+        failure_info = error_info
+        if returncode != 0 and failure_info is None:
+            message = "The operation timed out." if returncode == -1 else f"OpenCode exited with return code {returncode}."
+            failure_info = {
+                "name": "OpenCodeNonZeroExit",
+                "message": message,
+                "error_type": "agent_error",
+            }
 
         workspace_file_contents: dict[str, str] = dict(
             preserved_local_artifacts.get("workspace_file_contents", {}) or {}
@@ -1354,19 +1387,19 @@ class OpenCodeAgent(Agent):
                 ),
             },
         )
-        if error_info:
+        if failure_info:
             response_metadata.update({
-                "opencode_error_name": error_info["name"],
-                "opencode_error_message": error_info["message"],
+                "opencode_error_name": failure_info["name"],
+                "opencode_error_message": failure_info["message"],
             })
             response_json = {
                 **response_json,
-                "opencode_error_name": error_info["name"],
-                "opencode_error_message": error_info["message"],
+                "opencode_error_name": failure_info["name"],
+                "opencode_error_message": failure_info["message"],
             }
 
         response = AgentResponse(
-            answer=None if error_info else answer,
+            answer=None if failure_info else answer,
             trajectory=trajectory,
             reasoning_trajectory=reasoning_trajectory,
             raw_output=full_content,
@@ -1379,10 +1412,10 @@ class OpenCodeAgent(Agent):
             workspace_file_contents=workspace_file_contents,
             system_prompt=str(self._system_prompt),
         )
-        if error_info:
-            exc = RuntimeError(error_info["message"])
+        if failure_info:
+            exc = RuntimeError(failure_info["message"])
             setattr(exc, "partial_response", response)
-            setattr(exc, "error_type", error_info["error_type"])
+            setattr(exc, "error_type", failure_info["error_type"])
             setattr(exc, "response_body", full_content)
             raise exc
         return response

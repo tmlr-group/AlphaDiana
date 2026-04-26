@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,6 +25,56 @@ from alphadiana.scorer.base import ScoreResult
 from alphadiana.results.status import infer_score_status, is_valid_completed_record
 
 logger = logging.getLogger(__name__)
+
+_REDACTED = "<redacted>"
+_SECRET_KEY_PARTS = (
+    "api_key",
+    "apikey",
+    "access_token",
+    "refresh_token",
+    "bearer_token",
+    "authorization",
+    "password",
+    "secret",
+)
+_SECRET_ENV_ASSIGNMENT_RE = re.compile(
+    r"\b([A-Z][A-Z0-9_]*(?:API_KEY|TOKEN|SECRET|PASSWORD)[A-Z0-9_]*)="
+    r"([^\s\"']+|\"[^\"]*\"|'[^']*')"
+)
+_AUTH_HEADER_RE = re.compile(
+    r"\b(Authorization\s*:\s*(?:Bearer\s+)?)([^\s,;]+)",
+    re.IGNORECASE,
+)
+
+
+def _looks_sensitive_key(key: object) -> bool:
+    if not isinstance(key, str):
+        return False
+    normalized = key.lower().replace("-", "_")
+    return any(part in normalized for part in _SECRET_KEY_PARTS)
+
+
+def _redact_text(value: str) -> str:
+    value = _SECRET_ENV_ASSIGNMENT_RE.sub(r"\1=" + _REDACTED, value)
+    return _AUTH_HEADER_RE.sub(r"\1" + _REDACTED, value)
+
+
+def _redact_for_persistence(value: Any, *, key: object | None = None) -> Any:
+    """Return a copy safe for persisted result records and artifacts."""
+    if _looks_sensitive_key(key):
+        return _REDACTED
+    if isinstance(value, str):
+        return _redact_text(value)
+    if isinstance(value, list):
+        return [_redact_for_persistence(item) for item in value]
+    if isinstance(value, tuple):
+        return [_redact_for_persistence(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            item_key: _redact_for_persistence(item_value, key=item_key)
+            for item_key, item_value in value.items()
+        }
+    return value
 
 
 class ResultStore:
@@ -145,6 +196,7 @@ class ResultStore:
                 "metadata": response_metadata,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
+            record = _redact_for_persistence(record)
             record["score_status"] = infer_score_status(record)
             with self._write_lock:
                 with open(self.path, "a", encoding="utf-8") as f:
@@ -222,6 +274,7 @@ class ResultStore:
                 "error": error,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
+            record = _redact_for_persistence(record)
             record["score_status"] = infer_score_status(record)
             with self._write_lock:
                 with open(self.path, "a", encoding="utf-8") as f:
@@ -248,35 +301,44 @@ class ResultStore:
             rel = sample_prefix / "agent" / "gateway.log"
             path = self.artifacts_dir / rel
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(response.gateway_log_excerpt, encoding="utf-8")
+            path.write_text(_redact_text(response.gateway_log_excerpt), encoding="utf-8")
             files["gateway_log"] = str(rel)
 
         if response.response_json:
             rel = sample_prefix / "agent" / "response.json"
             path = self.artifacts_dir / rel
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(response.response_json, indent=2), encoding="utf-8")
+            path.write_text(
+                json.dumps(_redact_for_persistence(response.response_json), indent=2),
+                encoding="utf-8",
+            )
             files["response_json"] = str(rel)
 
         if response.request_messages:
             rel = sample_prefix / "agent" / "request_messages.json"
             path = self.artifacts_dir / rel
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(response.request_messages, indent=2), encoding="utf-8")
+            path.write_text(
+                json.dumps(_redact_for_persistence(response.request_messages), indent=2),
+                encoding="utf-8",
+            )
             files["request_messages"] = str(rel)
 
         if response.sandbox_metadata:
             rel = sample_prefix / "sandbox" / "sandbox_meta.json"
             path = self.artifacts_dir / rel
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(response.sandbox_metadata, indent=2), encoding="utf-8")
+            path.write_text(
+                json.dumps(_redact_for_persistence(response.sandbox_metadata), indent=2),
+                encoding="utf-8",
+            )
             files["sandbox_metadata"] = str(rel)
 
         if response.system_prompt:
             rel = sample_prefix / "agent" / "system_prompt.txt"
             path = self.artifacts_dir / rel
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(response.system_prompt, encoding="utf-8")
+            path.write_text(_redact_text(response.system_prompt), encoding="utf-8")
             files["system_prompt"] = str(rel)
 
         retry_responses = response.metadata.get("retry_responses")
@@ -284,7 +346,10 @@ class ResultStore:
             rel = sample_prefix / "agent" / "retry_responses.json"
             path = self.artifacts_dir / rel
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(retry_responses, indent=2), encoding="utf-8")
+            path.write_text(
+                json.dumps(_redact_for_persistence(retry_responses), indent=2),
+                encoding="utf-8",
+            )
             files["retry_responses"] = str(rel)
 
         if response.workspace_file_contents:
@@ -294,7 +359,7 @@ class ResultStore:
                 rel = sample_prefix / "workspace" / normalized
                 path = self.artifacts_dir / rel
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(content, encoding="utf-8")
+                path.write_text(_redact_text(content), encoding="utf-8")
                 workspace_files[remote_path] = str(rel)
             files["workspace_files"] = workspace_files
             self._resolve_workspace_artifact_refs(files, workspace_files)
@@ -312,7 +377,7 @@ class ResultStore:
         path = self.artifacts_dir / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
-            json.dumps(normalized_trace, indent=2, ensure_ascii=False),
+            json.dumps(_redact_for_persistence(normalized_trace), indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
         files["normalized_trace"] = str(rel)

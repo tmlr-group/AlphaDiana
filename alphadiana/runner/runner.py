@@ -256,6 +256,10 @@ def _predeployed_session_failure_reason(exc: Exception, response: object | None 
         return "sandbox_not_started"
     if "not alive" in text:
         return "sandbox_not_alive"
+    if "upstream server is not reachable" in text:
+        return "sandbox_upstream_unreachable"
+    if "run in session failed" in text and "service unavailable" in text:
+        return "sandbox_upstream_unreachable"
     if "connection refused" in text or "[errno 111]" in text:
         return "gateway_connection_refused"
     if "failed to connect" in text or "connecterror" in text:
@@ -494,6 +498,9 @@ class Runner:
         predeployed_gateway_api_base_by_sandbox_id: dict[str, str] = {}
         predeployed_session_reset_lock = threading.Lock()
         predeployed_session_pool_lock = threading.Lock()
+        predeployed_replacement_lock = threading.Lock()
+        predeployed_gateway_deployer = None
+        predeployed_replacement_count = 0
         predeploy_partial = False
         desired_num = 1
         reset_predeployed_between_tasks = bool(
@@ -572,7 +579,7 @@ class Runner:
                     )
                     preferred_profile: tuple[str, float] | None = None
 
-                    def _deploy_one_gateway(sb_idx: int):
+                    def _deploy_one_gateway(sb_idx: int, *, label: str = "Predeploy"):
                         max_attempts = 3
                         last_error = None
                         for attempt in range(1, max_attempts + 1):
@@ -580,8 +587,8 @@ class Runner:
                             logprob_proxy = None
                             try:
                                 logger.info(
-                                    "Predeploy sandbox %d/%d attempt %d/%d",
-                                    sb_idx + 1, desired_num, attempt, max_attempts,
+                                    "%s sandbox %d attempt %d/%d",
+                                    label, sb_idx + 1, attempt, max_attempts,
                                 )
                                 sandbox_backend = rock_cls()
                                 sandbox_config = dict(auto_sandbox_config)
@@ -589,9 +596,9 @@ class Runner:
                                     sandbox_config["memory"] = preferred_profile[0]
                                     sandbox_config["cpus"] = preferred_profile[1]
                                     logger.info(
-                                        "Predeploy sandbox %d/%d reusing startup profile memory=%s cpus=%s",
+                                        "%s sandbox %d reusing startup profile memory=%s cpus=%s",
+                                        label,
                                         sb_idx + 1,
-                                        desired_num,
                                         preferred_profile[0],
                                         preferred_profile[1],
                                     )
@@ -625,8 +632,8 @@ class Runner:
                             except Exception as exc:
                                 last_error = exc
                                 logger.warning(
-                                    "Predeploy sandbox %d/%d attempt %d/%d failed: %s",
-                                    sb_idx + 1, desired_num, attempt, max_attempts, exc,
+                                    "%s sandbox %d attempt %d/%d failed: %s",
+                                    label, sb_idx + 1, attempt, max_attempts, exc,
                                 )
                                 if logprob_proxy is not None:
                                     try:
@@ -643,6 +650,8 @@ class Runner:
                                 time.sleep(5)
                         assert last_error is not None
                         raise last_error
+
+                    predeployed_gateway_deployer = _deploy_one_gateway
 
                     logger.info(
                         "Predeploying %d %s sandboxes for CLI concurrency "
@@ -934,6 +943,113 @@ class Runner:
             with predeployed_session_pool_lock:
                 return len(predeployed_live_session_ids)
 
+        def _drop_predeployed_agent_maps(sandbox_id: str, proxy: object | None) -> None:
+            agent_gateway_map = getattr(self.agent, "_predeployed_gateway_api_base_by_sandbox_id", None)
+            if isinstance(agent_gateway_map, dict):
+                agent_gateway_map.pop(sandbox_id, None)
+            agent_proxy_map = getattr(self.agent, "_predeployed_logprob_proxies", None)
+            if isinstance(agent_proxy_map, dict):
+                agent_proxy_map.pop(sandbox_id, None)
+            agent_proxies = getattr(self.agent, "_logprob_proxies", None)
+            if proxy is not None and isinstance(agent_proxies, list):
+                try:
+                    agent_proxies.remove(proxy)
+                except ValueError:
+                    pass
+
+        def _register_predeployed_replacement(
+            session: object,
+            info: dict,
+            proxy: object | None,
+            reason: str,
+            task_id: str,
+        ) -> bool:
+            if predeployed_session_queue is None:
+                return False
+            sandbox_id = str(getattr(session, "sandbox_id", "") or info.get("sandbox_id", "") or "")
+            api_base = str(info.get("api_base", "") or "")
+            if not sandbox_id or not api_base:
+                logger.warning(
+                    "Replacement predeployed sandbox for task %s missing sandbox_id/api_base; closing it",
+                    task_id,
+                )
+                try:
+                    stop_proxy = getattr(proxy, "stop", None)
+                    if callable(stop_proxy):
+                        stop_proxy()
+                except Exception:
+                    logger.debug("Failed to stop incomplete replacement logprob proxy", exc_info=True)
+                try:
+                    close = getattr(session, "close", None)
+                    if callable(close):
+                        close()
+                except Exception:
+                    logger.debug("Failed to close incomplete replacement session", exc_info=True)
+                return False
+
+            with predeployed_session_pool_lock:
+                predeployed_sessions.append(session)
+                predeployed_session_by_sandbox_id[sandbox_id] = session
+                predeployed_gateway_api_base_by_sandbox_id[sandbox_id] = api_base
+                predeployed_live_session_ids.add(sandbox_id)
+                gateway_map = self.config.agent_config.setdefault(
+                    "_predeployed_gateway_api_base_by_sandbox_id",
+                    {},
+                )
+                if isinstance(gateway_map, dict):
+                    gateway_map[sandbox_id] = api_base
+                if proxy is not None:
+                    predeployed_logprob_proxies[sandbox_id] = proxy
+                    proxy_map = self.config.agent_config.setdefault("_predeployed_logprob_proxies", {})
+                    if isinstance(proxy_map, dict):
+                        proxy_map[sandbox_id] = proxy
+                agent_gateway_map = getattr(self.agent, "_predeployed_gateway_api_base_by_sandbox_id", None)
+                if isinstance(agent_gateway_map, dict):
+                    agent_gateway_map[sandbox_id] = api_base
+                if proxy is not None:
+                    agent_proxy_map = getattr(self.agent, "_predeployed_logprob_proxies", None)
+                    if isinstance(agent_proxy_map, dict):
+                        agent_proxy_map[sandbox_id] = proxy
+                    agent_proxies = getattr(self.agent, "_logprob_proxies", None)
+                    if isinstance(agent_proxies, list) and proxy not in agent_proxies:
+                        agent_proxies.append(proxy)
+                remaining = len(predeployed_live_session_ids)
+            predeployed_session_queue.put(session)
+            logger.info(
+                "Replacement predeployed sandbox ready for task %s sandbox_id=%s reason=%s live=%d",
+                task_id,
+                sandbox_id,
+                reason,
+                remaining,
+            )
+            return True
+
+        def _create_predeployed_replacement(reason: str, task_id: str, *, force: bool = False) -> bool:
+            nonlocal predeployed_replacement_count, preferred_profile
+            if predeployed_gateway_deployer is None:
+                return False
+            with predeployed_replacement_lock:
+                if not force and _live_predeployed_count() > 0:
+                    return True
+                predeployed_replacement_count += 1
+                replacement_idx = desired_num + predeployed_replacement_count - 1
+                try:
+                    deployed = predeployed_gateway_deployer(
+                        replacement_idx,
+                        label="Replacement predeploy",
+                    )
+                except Exception as exc:
+                    logger.error(
+                        "Failed to create replacement predeployed sandbox for task %s reason=%s: %s",
+                        task_id,
+                        reason,
+                        exc,
+                    )
+                    return False
+                session, info, profile, proxy = deployed
+                preferred_profile = profile
+                return _register_predeployed_replacement(session, info, proxy, reason, task_id)
+
         def _acquire_predeployed_session(task_id: str):
             if predeployed_session_queue is None:
                 raise RuntimeError("predeployed session queue is not configured")
@@ -942,6 +1058,8 @@ class Runner:
                     return predeployed_session_queue.get(timeout=1.0)
                 except queue.Empty:
                     if _live_predeployed_count() == 0:
+                        if _create_predeployed_replacement("predeployed_pool_depleted", task_id):
+                            continue
                         raise RuntimeError(
                             "No live predeployed sandbox sessions remain; "
                             "restart the run to create a fresh gateway pool"
@@ -958,6 +1076,7 @@ class Runner:
                     predeployed_session_by_sandbox_id.pop(resolved_sandbox_id, None)
                     predeployed_gateway_api_base_by_sandbox_id.pop(resolved_sandbox_id, None)
                     proxy = predeployed_logprob_proxies.pop(resolved_sandbox_id, None)
+                    _drop_predeployed_agent_maps(resolved_sandbox_id, proxy)
                     gateway_map = self.config.agent_config.get(
                         "_predeployed_gateway_api_base_by_sandbox_id"
                     )
@@ -997,6 +1116,8 @@ class Runner:
                     resolved_sandbox_id or "<unknown>",
                     exc,
                 )
+            if not (self.cancel_event is not None and self.cancel_event.is_set()):
+                _create_predeployed_replacement(reason, task_id, force=True)
 
         def _reset_predeployed_session(sandbox_id: str, task_id: str) -> None:
             if not reset_predeployed_between_tasks or not sandbox_id:
@@ -1027,6 +1148,7 @@ class Runner:
             used_pool = False
             used_predeployed_pool = False
             predeployed_quarantine_reason = ""
+            pooled_session_replacement_reason = ""
             if pool is not None:
                 sandbox_session = pool.acquire()
                 used_pool = True
@@ -1170,6 +1292,16 @@ class Runner:
                         error_response.metadata["predeployed_session_quarantine_reason"] = (
                             predeployed_quarantine_reason
                         )
+                if used_pool:
+                    pooled_session_replacement_reason = _predeployed_session_failure_reason(
+                        exc,
+                        error_response,
+                    )
+                    if pooled_session_replacement_reason:
+                        error_response.metadata["pooled_session_replaced"] = True
+                        error_response.metadata["pooled_session_replacement_reason"] = (
+                            pooled_session_replacement_reason
+                        )
                 self.result_store.append_error(
                     runtime_task,
                     error=_build_error_info(exc),
@@ -1196,7 +1328,13 @@ class Runner:
                         elif used_predeployed_pool:
                             predeployed_session_queue.put(sandbox_session)
                         elif used_pool:
-                            pool.release(sandbox_session)
+                            if pooled_session_replacement_reason:
+                                pool.discard_and_replace(
+                                    sandbox_session,
+                                    reason=pooled_session_replacement_reason,
+                                )
+                            else:
+                                pool.release(sandbox_session)
                         elif shared_session is not None:
                             # Shared session: reset for next task, don't close.
                             try:
