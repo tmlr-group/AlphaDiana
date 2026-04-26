@@ -13,6 +13,10 @@ from alphadiana.config.experiment_config import ExperimentConfig
 from alphadiana.config.validator import ConfigValidator
 
 
+def _is_zeroclaw_agent_command(command: str) -> bool:
+    return "zeroclaw " in command and " agent " in command and " -m " in command
+
+
 class _FakeSandbox:
     sandbox_id = "sandbox-123"
     name = "rock"
@@ -33,7 +37,7 @@ class _FakeSandbox:
             return type("Result", (), {"exit_code": 0, "stdout": "/usr/local/bin/zeroclaw\n", "stderr": ""})()
         if "zeroclaw --version" in command:
             return type("Result", (), {"exit_code": 0, "stdout": "zeroclaw 0.6.9\n", "stderr": ""})()
-        if "zeroclaw agent -m" in command:
+        if _is_zeroclaw_agent_command(command):
             task_path = next((path for path in self._files if path.endswith("/task.txt")), "")
             prompt = self._files.get(task_path, "")
             stdout_path = command.split("> ", 1)[1].split(" 2> ", 1)[0]
@@ -83,7 +87,7 @@ class _FakeSandbox:
 
 class _FakeErrorSandbox(_FakeSandbox):
     def execute(self, command: str):
-        if "zeroclaw agent -m" in command:
+        if _is_zeroclaw_agent_command(command):
             self.commands.append(command)
             task_path = next((path for path in self._files if path.endswith("/task.txt")), "")
             stdout_path = command.split("> ", 1)[1].split(" 2> ", 1)[0]
@@ -113,7 +117,7 @@ class _FakeRockLikeSandbox(_FakeSandbox):
 
 class _FakeNonZeroProviderSandbox(_FakeSandbox):
     def execute(self, command: str):
-        if "zeroclaw agent -m" in command:
+        if _is_zeroclaw_agent_command(command):
             self.commands.append(command)
             task_path = next((path for path in self._files if path.endswith("/task.txt")), "")
             stdout_path = command.split("> ", 1)[1].split(" 2> ", 1)[0]
@@ -134,7 +138,7 @@ class _FakeNonZeroProviderSandbox(_FakeSandbox):
 
 class _FakeRuntimeOnlySandbox(_FakeSandbox):
     def execute(self, command: str):
-        if "zeroclaw agent -m" in command:
+        if _is_zeroclaw_agent_command(command):
             self.commands.append(command)
             task_path = next((path for path in self._files if path.endswith("/task.txt")), "")
             stdout_path = command.split("> ", 1)[1].split(" 2> ", 1)[0]
@@ -157,7 +161,7 @@ class _FakeLoopDetectorSandbox(_FakeSandbox):
     )
 
     def execute(self, command: str):
-        if "zeroclaw agent -m" in command:
+        if _is_zeroclaw_agent_command(command):
             self.commands.append(command)
             task_path = next((path for path in self._files if path.endswith("/task.txt")), "")
             stdout_path = command.split("> ", 1)[1].split(" 2> ", 1)[0]
@@ -179,7 +183,7 @@ class _FakeLoopDetectorSandbox(_FakeSandbox):
 
 class _FakeTimeoutWithLogprobsSandbox(_FakeSandbox):
     def execute(self, command: str):
-        if "zeroclaw agent -m" in command:
+        if _is_zeroclaw_agent_command(command):
             self.commands.append(command)
             task_path = next((path for path in self._files if path.endswith("/task.txt")), "")
             stdout_path = command.split("> ", 1)[1].split(" 2> ", 1)[0]
@@ -474,7 +478,10 @@ def test_zeroclaw_sandbox_solve_uses_uploaded_workspace_and_returns_answer():
     assert "What is 40+2?" in sandbox.read_text(task_path)
     assert len(sandbox.long_running_commands) == 1
     long_running_command, wait_timeout, wait_interval = sandbox.long_running_commands[0]
-    assert "zeroclaw agent -m" in long_running_command
+    assert "zeroclaw --config-dir /sandbox/work/.alphadiana_zeroclaw/exec-123/home/.zeroclaw" in long_running_command
+    assert "--session-state-file /sandbox/work/.alphadiana_zeroclaw/exec-123/workspace/state/zeroclaw-session-state.json" in long_running_command
+    assert "ZEROCLAW_CONFIG_DIR=/sandbox/work/.alphadiana_zeroclaw/exec-123/home/.zeroclaw" in long_running_command
+    assert "XDG_CONFIG_HOME=/sandbox/work/.alphadiana_zeroclaw/exec-123/home/.config" in long_running_command
     assert wait_timeout == agent._request_timeout + 60
     assert wait_interval == 10
     assert any("env " in command and "bash -lc" in command for command in sandbox.commands)

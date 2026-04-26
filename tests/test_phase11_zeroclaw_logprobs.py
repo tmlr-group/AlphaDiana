@@ -148,7 +148,7 @@ class _FailureSandbox:
             return type("Result", (), {"exit_code": 0, "stdout": "/usr/local/bin/zeroclaw\n", "stderr": ""})()
         if "zeroclaw --version" in command:
             return type("Result", (), {"exit_code": 0, "stdout": "zeroclaw 0.6.9\n", "stderr": ""})()
-        if "zeroclaw agent -m" in command:
+        if "zeroclaw " in command and " agent " in command and " -m " in command:
             stdout_path = command.split("> ", 1)[1].split(" 2> ", 1)[0]
             stderr_path = command.split(" 2> ", 1)[1]
             self.files[stdout_path] = ""

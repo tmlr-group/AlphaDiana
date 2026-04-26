@@ -360,7 +360,7 @@ class _ZeroClawSandbox:
             return type("Result", (), {"exit_code": 0, "stdout": "/usr/local/bin/zeroclaw\n", "stderr": ""})()
         if "zeroclaw --version" in command:
             return type("Result", (), {"exit_code": 0, "stdout": "zeroclaw 0.6.9\n", "stderr": ""})()
-        if "zeroclaw agent -m" in command:
+        if "zeroclaw " in command and " agent " in command and " -m " in command:
             stdout_path = command.split("> ", 1)[1].split(" 2> ", 1)[0]
             stderr_path = command.split(" 2> ", 1)[1]
             self.files[stdout_path] = "$$\\boxed{D}$$"
@@ -403,11 +403,16 @@ def test_zeroclaw_uses_logprob_proxy_records(monkeypatch) -> None:
 
     response = agent.solve(task, sandbox=sandbox)
 
-    run_commands = [command for command in sandbox.commands if "zeroclaw agent -m" in command]
+    run_commands = [
+        command
+        for command in sandbox.commands
+        if "zeroclaw " in command and " agent " in command and " -m " in command
+    ]
     assert run_commands
     assert "OPENAI_BASE_URL=http://172.17.0.1:4567/v1" in run_commands[0]
     assert "OPENAI_API_KEY=proxy-token" in run_commands[0]
     assert "ZEROCLAW_PROVIDER=custom:http://172.17.0.1:4567/v1" in run_commands[0]
+    assert "ZEROCLAW_CONFIG_DIR=/sandbox/work/.alphadiana_zeroclaw/z-proxy/home/.zeroclaw" in run_commands[0]
     assert _FakeProxy.instances[0].request_overrides == {
         "temperature": 0.0,
         "top_p": 0.95,
