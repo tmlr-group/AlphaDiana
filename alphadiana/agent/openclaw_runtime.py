@@ -389,6 +389,28 @@ class OpenClawRuntimeManager:
         self._temperature = config.get("temperature", None)
         self._top_p = config.get("top_p", None)
         self._max_tokens = config.get("max_tokens", None)
+        self._agent_timeout_seconds = self._coerce_positive_int(
+            config.get(
+                "openclaw_agent_timeout",
+                config.get("agent_timeout", config.get("request_timeout")),
+            )
+        )
+        self._exec_timeout_seconds = self._coerce_positive_int(
+            config.get(
+                "openclaw_exec_timeout",
+                config.get("exec_timeout", self._agent_timeout_seconds),
+            )
+        )
+        self._rock_agent_run_timeout_seconds = self._coerce_positive_int(
+            config.get(
+                "openclaw_agent_run_timeout",
+                config.get(
+                    "rock_agent_run_timeout",
+                    config.get("agent_run_timeout", self._agent_timeout_seconds),
+                ),
+            )
+        )
+        self._undici_stream_timeout_ms = self._resolve_undici_stream_timeout_ms(config)
         # Logprob capture via Docker-accessible MITM proxy
         self._logprob_capture: dict = config.get("_logprob_capture", {})
         self._logprob_proxy: OpenClawLogprobProxy | None = None
@@ -443,6 +465,32 @@ class OpenClawRuntimeManager:
                 return candidate
         return (PROJECT_ROOT / path).resolve()
 
+    @staticmethod
+    def _coerce_positive_int(value: Any) -> int | None:
+        if value in (None, "", 0, "0"):
+            return None
+        try:
+            coerced = int(float(value))
+        except (TypeError, ValueError):
+            return None
+        return coerced if coerced > 0 else None
+
+    def _resolve_undici_stream_timeout_ms(self, config: dict[str, Any]) -> int | None:
+        timeout_ms = self._coerce_positive_int(
+            config.get("openclaw_undici_stream_timeout_ms")
+        )
+        if timeout_ms is not None:
+            return timeout_ms
+        timeout_seconds = self._coerce_positive_int(
+            config.get(
+                "openclaw_undici_stream_timeout",
+                self._agent_timeout_seconds,
+            )
+        )
+        if timeout_seconds is None:
+            return None
+        return timeout_seconds * 1000
+
     @property
     def is_configured(self) -> bool:
         return bool(self._rock_agent_config_path and self._openclaw_config_path)
@@ -490,6 +538,8 @@ class OpenClawRuntimeManager:
             defaults["contextInjection"] = self._context_injection
         if self._system_prompt_override:
             defaults["systemPromptOverride"] = self._system_prompt_override
+        if self._agent_timeout_seconds is not None:
+            defaults["timeoutSeconds"] = self._agent_timeout_seconds
         if self._tools_profile:
             tools = config.setdefault("tools", {})
             tools["profile"] = self._tools_profile
@@ -499,6 +549,13 @@ class OpenClawRuntimeManager:
         if self._tools_deny:
             tools = config.setdefault("tools", {})
             tools["deny"] = list(self._tools_deny)
+        if self._exec_timeout_seconds is not None:
+            tools = config.setdefault("tools", {})
+            exec_cfg = tools.setdefault("exec", {})
+            if not isinstance(exec_cfg, dict):
+                exec_cfg = {}
+                tools["exec"] = exec_cfg
+            exec_cfg["timeoutSec"] = self._exec_timeout_seconds
 
         # Remove memory.enabled — incompatible with openclaw@2026.3.7
         memory = config.get("memory", {})
@@ -518,6 +575,37 @@ class OpenClawRuntimeManager:
         self._ensure_image_capability_metadata(config)
         self._apply_generation_params(config)
         return config
+
+    def _openclaw_undici_timeout_patch_command(self) -> str:
+        if self._undici_stream_timeout_ms is None:
+            return ""
+        timeout_ms = self._undici_stream_timeout_ms
+        return (
+            "export "
+            f"OPENCLAW_UNDICI_STREAM_TIMEOUT_MS=${{OPENCLAW_UNDICI_STREAM_TIMEOUT_MS:-{timeout_ms}}}; "
+            "patch_file=\"$(grep -Rsl 'opts?.timeoutMs ?? 18e5' /app/dist 2>/dev/null | head -1 || true)\"; "
+            "if [ -n \"$patch_file\" ]; then "
+            "sed -i \"s/const timeoutMsRaw = opts?.timeoutMs ?? 18e5;/"
+            "const timeoutMsRaw = opts?.timeoutMs ?? "
+            f"(Number(process.env.OPENCLAW_UNDICI_STREAM_TIMEOUT_MS || {timeout_ms}) || 18e5);/\" "
+            "\"$patch_file\"; "
+            "else echo '[AlphaDiana] OpenClaw undici stream timeout patch skipped: pattern not found' "
+            ">> /tmp/gateway.log; fi;"
+        )
+
+    def _apply_openclaw_runtime_patches(self, generated_config: dict[str, Any]) -> None:
+        patch_cmd = self._openclaw_undici_timeout_patch_command()
+        if not patch_cmd:
+            return
+        run_cmd = str(generated_config.get("run_cmd", "") or "").strip()
+        if not run_cmd:
+            return
+        if (
+            "opts?.timeoutMs ?? (Number(process.env.OPENCLAW_UNDICI_STREAM_TIMEOUT_MS"
+            in run_cmd
+        ):
+            return
+        generated_config["run_cmd"] = f"{patch_cmd} {run_cmd}"
 
     def _apply_generation_params(self, config: dict[str, Any]) -> None:
         """Apply common sampling controls to the configured OpenClaw model."""
@@ -901,6 +989,8 @@ class OpenClawRuntimeManager:
         rendered_openclaw_config = self._build_openclaw_config(base_openclaw_config)
 
         generated_config = yaml.safe_load(rock_agent_config.read_text(encoding="utf-8"))
+        if self._rock_agent_run_timeout_seconds is not None:
+            generated_config["agent_run_timeout"] = self._rock_agent_run_timeout_seconds
         env_cfg = generated_config.setdefault("env", {})
         for key in ("OPENAI_BASE_URL", "OPENAI_API_KEY", "OPENAI_MODEL_NAME"):
             # Respect explicit agent config overrides before inheriting the
@@ -950,6 +1040,10 @@ class OpenClawRuntimeManager:
                 )
 
         env_cfg["OPENCLAW_GATEWAY_TOKEN"] = str(self._gateway_token or "OPENCLAW")
+        if self._undici_stream_timeout_ms is not None:
+            env_cfg["OPENCLAW_UNDICI_STREAM_TIMEOUT_MS"] = str(
+                self._undici_stream_timeout_ms
+            )
 
         # Propagate the resolved OPENAI_* values (including proxy URL when logprob
         # capture is active) into the openclaw.json env section.  The JSON template
@@ -960,6 +1054,8 @@ class OpenClawRuntimeManager:
             val = env_cfg.get(key, "")
             if val:
                 oc_env[key] = val
+
+        self._apply_openclaw_runtime_patches(generated_config)
 
         td = tempfile.TemporaryDirectory(prefix="alphadiana-openclaw-")
         self._temp_dirs.append(td)

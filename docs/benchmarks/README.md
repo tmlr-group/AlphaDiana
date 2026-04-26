@@ -267,6 +267,16 @@ and captured logprob sidecars. See
 [`context/current_eval_status.md`](../../context/current_eval_status.md) for
 the current run IDs and caveats.
 
+For ROCK-backed OpenClaw long runs, set `agent.config.request_timeout`,
+`agent.config.stream_idle_timeout`, and, when the stream can remain active for a
+long time, `agent.config.stream_total_timeout`. Current AlphaDiana also writes
+`request_timeout` into the generated OpenClaw `agents.defaults.timeoutSeconds`
+and `tools.exec.timeoutSec`, sets ROCK `agent_run_timeout`, and patches the
+prebuilt OpenClaw embedded-provider undici stream watchdog through
+`OPENCLAW_UNDICI_STREAM_TIMEOUT_MS`. When debugging unexpected `~1800s`
+OpenClaw empty-response retries, inspect both the sandbox `openclaw.json` and
+the generated ROCK `run_cmd` patch for `opts?.timeoutMs ?? 18e5`.
+
 Smoke-test success means the evaluation path loads tasks, invokes the selected agent mode, and writes scored results. It does not mean the model answered correctly.
 
 ## ZeroClaw Note

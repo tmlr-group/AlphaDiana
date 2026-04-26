@@ -160,6 +160,8 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
         if self.server.upstream_api_key:
             fwd_headers["Authorization"] = f"Bearer {self.server.upstream_api_key}"
 
+        response_started = False
+        sse_response = False
         try:
             with self.server.client.stream(
                 "POST",
@@ -179,6 +181,7 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
                         body[:300],
                         err_body[:300],
                     )
+                    response_started = True
                     self.send_response(resp.status_code)
                     for key, value in resp.headers.items():
                         if key.lower() in ("transfer-encoding", "content-encoding", "content-length"):
@@ -190,6 +193,8 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
                     return
 
                 if is_sse and is_completions:
+                    sse_response = True
+                    response_started = True
                     self._forward_headers(resp, skip_length=True)
                     sse_buf = ""
                     for raw in resp.iter_bytes(chunk_size=512):
@@ -207,6 +212,7 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
                                 self.server.raw_responses.append(json.loads(resp_body))
                         except (json.JSONDecodeError, ValueError):
                             pass
+                    response_started = True
                     self.send_response(resp.status_code)
                     for key, value in resp.headers.items():
                         if key.lower() in ("transfer-encoding", "content-encoding", "content-length"):
@@ -216,6 +222,13 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
                     self.end_headers()
                     self.wfile.write(resp_body)
         except Exception as exc:
+            if response_started or sse_response:
+                logger.warning(
+                    "LogprobProxy upstream stream failed after response started url=%s err=%s",
+                    fwd_url,
+                    exc,
+                )
+                return
             try:
                 self.send_error(502, str(exc))
             except Exception:
