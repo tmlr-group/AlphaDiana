@@ -104,6 +104,7 @@ def test_opencode_host_provider_options_request_logprobs_when_enabled() -> None:
         _base_agent_config(
             capture_logprobs=True,
             top_logprobs=20,
+            timeout=9000,
             temperature=0.0,
             top_p=0.95,
             max_tokens=131072,
@@ -138,6 +139,8 @@ def test_opencode_host_provider_options_request_logprobs_when_enabled() -> None:
     assert options["top_p"] == 0.95
     assert options["max_tokens"] == 131072
     assert options["chat_template_kwargs"] == {"enable_thinking": True}
+    assert options["timeout"] == 9000000
+    assert proxy_cls.call_args.kwargs["client_timeout"] == 9000.0
     assert proxy_cls.call_args.kwargs["request_overrides"] == {
         "temperature": 0.0,
         "top_p": 0.95,
@@ -151,6 +154,7 @@ def test_opencode_host_provider_options_request_logprobs_when_enabled() -> None:
         "max_tokens": 131072,
         "chat_template_kwargs": {"enable_thinking": True},
     }
+    assert response.metadata["logprob_proxy_client_timeout"] == 9000.0
 
 
 def test_opencode_timeout_preserves_proxy_partial_output() -> None:

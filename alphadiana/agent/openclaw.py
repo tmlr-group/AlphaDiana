@@ -1348,6 +1348,18 @@ class OpenClawAgent(Agent):
                 ):
                     return trajectory
 
+            # Match the stricter async retrieval path: if the caller provided
+            # expected content, an unmatched fallback is stale state from a
+            # previous task/session and must not drive diagnostics.
+            if fallback_trajectory and expected_user_content:
+                logger.warning(
+                    "Sandbox-session trajectory retrieval found %d session file(s) "
+                    "but none matched the expected user content (len=%d). "
+                    "Discarding stale fallback to avoid recording a mismatched trajectory.",
+                    len(session_files),
+                    len(expected_user_content),
+                )
+                return []
             return fallback_trajectory
         except Exception as exc:
             logger.debug("Sandbox-session trajectory retrieval failed: %s", exc)

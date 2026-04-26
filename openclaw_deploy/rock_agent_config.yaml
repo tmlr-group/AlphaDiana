@@ -1,8 +1,15 @@
 working_dir: "."                # Working directory inside the sandbox container
 
+agent_run_timeout: 9300         # Timeout for the ROCK agent wrapper that starts the gateway
+
 run_cmd: export PATH=$(find /tmp/rock-runtime-envs/node -name 'npm' -type f ! -path '*/nodewin/*'
   ! -path '*/shims/*' 2>/dev/null | head -1 | xargs dirname):$PATH && mkdir -p /tmp/empty-bundled /tmp/oc_home
-  && OPENCLAW_CONFIG_PATH=${working_dir}/openclaw.json OPENCLAW_HOME=/tmp/oc_home OPENCLAW_BUNDLED_PLUGINS_DIR=/tmp/empty-bundled
+  && export OPENCLAW_UNDICI_STREAM_TIMEOUT_MS=${OPENCLAW_UNDICI_STREAM_TIMEOUT_MS:-9300000}
+  && patch_file="$(grep -Rsl 'opts?.timeoutMs ?? 18e5' /app/dist 2>/dev/null | head -1 || true)";
+  if [ -n "$patch_file" ]; then
+  sed -i "s/const timeoutMsRaw = opts?.timeoutMs ?? 18e5;/const timeoutMsRaw = opts?.timeoutMs ?? (Number(process.env.OPENCLAW_UNDICI_STREAM_TIMEOUT_MS || 9300000) || 18e5);/" "$patch_file";
+  fi;
+  OPENCLAW_CONFIG_PATH=${working_dir}/openclaw.json OPENCLAW_HOME=/tmp/oc_home OPENCLAW_BUNDLED_PLUGINS_DIR=/tmp/empty-bundled
   nohup openclaw gateway >> /tmp/gateway.log 2>&1 &
                                 # Command to start the OpenClaw gateway inside the sandbox
 
@@ -20,3 +27,4 @@ env:
   OPENAI_API_KEY: "EMPTY"       # API key for the model service
   OPENAI_MODEL_NAME: ""         # Model name or path, e.g. "Qwen/Qwen2.5-14B-Instruct"
   OPENCLAW_GATEWAY_TOKEN: "${OPENCLAW_GATEWAY_TOKEN}"  # Auth token for the OpenClaw gateway
+  OPENCLAW_UNDICI_STREAM_TIMEOUT_MS: "9300000"  # In-sandbox provider stream watchdog

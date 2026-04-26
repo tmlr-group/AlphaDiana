@@ -7,6 +7,7 @@ import threading
 import time
 import urllib.request
 
+import alphadiana.agent.logprob_proxy as logprob_proxy_module
 from alphadiana.agent.logprob_proxy import (
     LogprobCaptureProxy,
     normalize_openai_proxy_upstream,
@@ -162,6 +163,136 @@ def test_logprob_proxy_hoists_late_system_messages_for_strict_templates() -> Non
         ]
         assert seen["payload"]["logprobs"] is True
         assert seen["payload"]["top_logprobs"] == 20
+    finally:
+        proxy.stop()
+        upstream.shutdown()
+        upstream.server_close()
+
+
+def test_logprob_proxy_does_not_inject_502_after_sse_body_started() -> None:
+    class _SlowSseHandler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            token_payload = {
+                "choices": [
+                    {
+                        "delta": {"content": "A"},
+                        "logprobs": {
+                            "content": [
+                                {
+                                    "token": "A",
+                                    "logprob": -0.1,
+                                    "top_logprobs": [{"token": "A", "logprob": -0.1}],
+                                }
+                            ]
+                        },
+                    }
+                ]
+            }
+            chunk = f"data: {json.dumps(token_payload)}\n\n".encode("utf-8")
+            chunk += b": " + (b"x" * 600) + b"\n\n"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.end_headers()
+            self.wfile.write(chunk)
+            self.wfile.flush()
+            time.sleep(1.0)
+
+        def log_message(self, *args: object) -> None:
+            pass
+
+    upstream = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _SlowSseHandler)
+    thread = threading.Thread(target=upstream.serve_forever, daemon=True)
+    thread.start()
+    proxy = LogprobCaptureProxy(
+        f"http://127.0.0.1:{upstream.server_address[1]}",
+        20,
+        client_timeout=0.2,
+    )
+    proxy.start()
+    try:
+        payload = json.dumps({"messages": [{"role": "user", "content": "x"}]}).encode("utf-8")
+        req = urllib.request.Request(
+            f"{proxy.proxy_url}/v1/chat/completions",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+
+        assert "data:" in body
+        assert "HTTP/1.0 502 timed out" not in body
+        assert "timed out" not in body
+        assert proxy.captured_records()[0]["token"] == "A"
+    finally:
+        proxy.stop()
+        upstream.shutdown()
+        upstream.server_close()
+
+
+def test_logprob_proxy_does_not_inject_502_if_sse_header_forwarding_fails(monkeypatch) -> None:
+    class _SseHandler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            token_payload = {
+                "choices": [
+                    {
+                        "delta": {"content": "A"},
+                        "logprobs": {
+                            "content": [
+                                {
+                                    "token": "A",
+                                    "logprob": -0.1,
+                                    "top_logprobs": [{"token": "A", "logprob": -0.1}],
+                                }
+                            ]
+                        },
+                    }
+                ]
+            }
+            chunk = f"data: {json.dumps(token_payload)}\n\n".encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.end_headers()
+            self.wfile.write(chunk)
+            self.wfile.flush()
+
+        def log_message(self, *args: object) -> None:
+            pass
+
+    original_forward_headers = logprob_proxy_module._LogprobProxyHandler._forward_headers
+
+    def _raise_after_headers(self, resp, *, skip_length: bool = False) -> None:
+        original_forward_headers(self, resp, skip_length=skip_length)
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(
+        logprob_proxy_module._LogprobProxyHandler,
+        "_forward_headers",
+        _raise_after_headers,
+    )
+
+    upstream = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _SseHandler)
+    thread = threading.Thread(target=upstream.serve_forever, daemon=True)
+    thread.start()
+    proxy = LogprobCaptureProxy(
+        f"http://127.0.0.1:{upstream.server_address[1]}",
+        20,
+    )
+    proxy.start()
+    try:
+        payload = json.dumps({"messages": [{"role": "user", "content": "x"}]}).encode("utf-8")
+        req = urllib.request.Request(
+            f"{proxy.proxy_url}/v1/chat/completions",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+
+        assert resp.status == 200
+        assert "HTTP/1.0 502 timed out" not in body
+        assert "timed out" not in body
     finally:
         proxy.stop()
         upstream.shutdown()

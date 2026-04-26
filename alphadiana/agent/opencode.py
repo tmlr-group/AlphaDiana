@@ -1058,6 +1058,7 @@ class OpenCodeAgent(Agent):
             proxy: LogprobCaptureProxy | None = None
             effective_api_base = self._api_base
             request_overrides = {}
+            logprob_proxy_client_timeout: float | None = None
             if self._logprob_capture["enabled"]:
                 # Strip any path suffix (e.g. "/v1") from api_base before handing to proxy —
                 # OpenCode will append its own "/v1/chat/completions" to the proxy URL,
@@ -1073,9 +1074,11 @@ class OpenCodeAgent(Agent):
                     request_overrides["max_tokens"] = self._max_tokens
                 if chat_template_kwargs:
                     request_overrides["chat_template_kwargs"] = chat_template_kwargs
+                logprob_proxy_client_timeout = max(120.0, float(self._timeout))
                 proxy = LogprobCaptureProxy(
                     upstream_base,
                     self._logprob_capture["top_logprobs"],
+                    client_timeout=logprob_proxy_client_timeout,
                     request_overrides=request_overrides or None,
                 )
                 proxy.start()
@@ -1221,6 +1224,8 @@ class OpenCodeAgent(Agent):
         }
         if request_overrides:
             response_metadata["logprob_proxy_request_overrides"] = request_overrides
+        if logprob_proxy_client_timeout is not None:
+            response_metadata["logprob_proxy_client_timeout"] = logprob_proxy_client_timeout
         logprob_probe_session_json_count = _count_json_objects(session_trace)
         logprob_probe_stdout_json_count = _count_json_objects(raw_output)
         logprob_records = extract_opencode_logprob_records(

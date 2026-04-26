@@ -1,6 +1,15 @@
 working_dir: "."
 
-run_cmd: mkdir -p /tmp/empty-bundled /tmp/oc_home && OPENCLAW_CONFIG_PATH=${working_dir}/openclaw.json OPENCLAW_HOME=/tmp/oc_home OPENCLAW_BUNDLED_PLUGINS_DIR=/tmp/empty-bundled nohup openclaw gateway >> /tmp/gateway.log 2>&1 &
+agent_run_timeout: 9300
+
+run_cmd: >-
+  mkdir -p /tmp/empty-bundled /tmp/oc_home &&
+  export OPENCLAW_UNDICI_STREAM_TIMEOUT_MS=${OPENCLAW_UNDICI_STREAM_TIMEOUT_MS:-9300000};
+  patch_file="$(grep -Rsl 'opts?.timeoutMs ?? 18e5' /app/dist 2>/dev/null | head -1 || true)";
+  if [ -n "$patch_file" ]; then
+  sed -i "s/const timeoutMsRaw = opts?.timeoutMs ?? 18e5;/const timeoutMsRaw = opts?.timeoutMs ?? (Number(process.env.OPENCLAW_UNDICI_STREAM_TIMEOUT_MS || 9300000) || 18e5);/" "$patch_file";
+  else echo '[AlphaDiana] OpenClaw undici stream timeout patch skipped: pattern not found' >> /tmp/gateway.log; fi;
+  OPENCLAW_CONFIG_PATH=${working_dir}/openclaw.json OPENCLAW_HOME=/tmp/oc_home OPENCLAW_BUNDLED_PLUGINS_DIR=/tmp/empty-bundled nohup openclaw gateway >> /tmp/gateway.log 2>&1 &
 
 runtime_env_config:
   type: node
@@ -13,3 +22,4 @@ env:
   OPENAI_API_KEY: "${OPENAI_API_KEY}"
   OPENAI_MODEL_NAME: "${OPENAI_MODEL_NAME}"
   OPENCLAW_GATEWAY_TOKEN: "${OPENCLAW_GATEWAY_TOKEN}"
+  OPENCLAW_UNDICI_STREAM_TIMEOUT_MS: "9300000"

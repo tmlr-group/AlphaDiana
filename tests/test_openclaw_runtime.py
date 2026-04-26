@@ -262,6 +262,125 @@ def test_openclaw_runtime_applies_generation_param_overrides(tmp_path: Path) -> 
     assert params["maxTokens"] == 65536
 
 
+def test_openclaw_runtime_propagates_request_timeout_to_agent_and_exec(tmp_path: Path) -> None:
+    rock_cfg, openclaw_cfg = _write_runtime_templates(tmp_path)
+    mgr = OpenClawRuntimeManager({
+        "rock_agent_config_path": str(rock_cfg),
+        "openclaw_config_path": str(openclaw_cfg),
+        "request_timeout": 9300,
+    })
+
+    cfg = mgr._build_openclaw_config({
+        "agents": {"defaults": {"timeoutSeconds": 3600}},
+        "tools": {"exec": {"timeoutSec": 1800}},
+    })
+
+    assert cfg["agents"]["defaults"]["timeoutSeconds"] == 9300
+    assert cfg["tools"]["exec"]["timeoutSec"] == 9300
+
+
+def test_openclaw_runtime_patches_embedded_provider_stream_timeout(
+    tmp_path: Path,
+) -> None:
+    rock_cfg, openclaw_cfg = _write_runtime_templates(tmp_path)
+    rock_cfg.write_text(
+        "\n".join([
+            "name: test",
+            "run_cmd: >-",
+            "  mkdir -p /tmp/empty-bundled /tmp/oc_home &&",
+            "  OPENCLAW_CONFIG_PATH=${working_dir}/openclaw.json nohup openclaw gateway &",
+            "env:",
+            '  OPENAI_BASE_URL: "${OPENAI_BASE_URL}"',
+            '  OPENAI_API_KEY: "${OPENAI_API_KEY}"',
+            '  OPENAI_MODEL_NAME: "${OPENAI_MODEL_NAME}"',
+        ]),
+        encoding="utf-8",
+    )
+    mgr = OpenClawRuntimeManager({
+        "rock_agent_config_path": str(rock_cfg),
+        "openclaw_config_path": str(openclaw_cfg),
+        "OPENAI_BASE_URL": "http://127.0.0.1:8011/v1",
+        "OPENAI_API_KEY": "EMPTY",
+        "OPENAI_MODEL_NAME": "Qwen/Qwen3.5-27B",
+        "request_timeout": 9300,
+    })
+
+    with patch.dict("os.environ", {}, clear=True):
+        config_dir = mgr._prepare_runtime_files(MagicMock())
+
+    generated = yaml.safe_load((config_dir / "rock_agent_config.yaml").read_text(encoding="utf-8"))
+
+    assert generated["agent_run_timeout"] == 9300
+    assert generated["env"]["OPENCLAW_UNDICI_STREAM_TIMEOUT_MS"] == "9300000"
+    assert "opts?.timeoutMs ?? 18e5" in generated["run_cmd"]
+    assert (
+        "opts?.timeoutMs ?? (Number(process.env.OPENCLAW_UNDICI_STREAM_TIMEOUT_MS || 9300000) || 18e5)"
+        in generated["run_cmd"]
+    )
+    assert "9300000" in generated["run_cmd"]
+
+
+def test_openclaw_runtime_does_not_duplicate_existing_undici_timeout_patch(
+    tmp_path: Path,
+) -> None:
+    rock_cfg, openclaw_cfg = _write_runtime_templates(tmp_path)
+    replacement = (
+        "opts?.timeoutMs ?? "
+        "(Number(process.env.OPENCLAW_UNDICI_STREAM_TIMEOUT_MS || 9300000) || 18e5)"
+    )
+    rock_cfg.write_text(
+        "\n".join([
+            "name: test",
+            "run_cmd: >-",
+            "  export OPENCLAW_UNDICI_STREAM_TIMEOUT_MS=${OPENCLAW_UNDICI_STREAM_TIMEOUT_MS:-9300000};",
+            "  patch_file=\"$(grep -Rsl 'opts?.timeoutMs ?? 18e5' /app/dist 2>/dev/null | head -1 || true)\";",
+            "  if [ -n \"$patch_file\" ]; then",
+            "  sed -i \"s/const timeoutMsRaw = opts?.timeoutMs ?? 18e5;/const timeoutMsRaw = opts?.timeoutMs ?? (Number(process.env.OPENCLAW_UNDICI_STREAM_TIMEOUT_MS || 9300000) || 18e5);/\" \"$patch_file\";",
+            "  fi;",
+            "  OPENCLAW_CONFIG_PATH=${working_dir}/openclaw.json nohup openclaw gateway &",
+            "env:",
+            '  OPENAI_BASE_URL: "${OPENAI_BASE_URL}"',
+            '  OPENAI_API_KEY: "${OPENAI_API_KEY}"',
+            '  OPENAI_MODEL_NAME: "${OPENAI_MODEL_NAME}"',
+        ]),
+        encoding="utf-8",
+    )
+    mgr = OpenClawRuntimeManager({
+        "rock_agent_config_path": str(rock_cfg),
+        "openclaw_config_path": str(openclaw_cfg),
+        "OPENAI_BASE_URL": "http://127.0.0.1:8011/v1",
+        "OPENAI_API_KEY": "EMPTY",
+        "OPENAI_MODEL_NAME": "Qwen/Qwen3.5-27B",
+        "request_timeout": 9300,
+    })
+
+    with patch.dict("os.environ", {}, clear=True):
+        config_dir = mgr._prepare_runtime_files(MagicMock())
+
+    generated = yaml.safe_load((config_dir / "rock_agent_config.yaml").read_text(encoding="utf-8"))
+
+    assert generated["agent_run_timeout"] == 9300
+    assert generated["run_cmd"].count(replacement) == 1
+
+
+def test_openclaw_runtime_allows_explicit_agent_and_exec_timeout_overrides(
+    tmp_path: Path,
+) -> None:
+    rock_cfg, openclaw_cfg = _write_runtime_templates(tmp_path)
+    mgr = OpenClawRuntimeManager({
+        "rock_agent_config_path": str(rock_cfg),
+        "openclaw_config_path": str(openclaw_cfg),
+        "request_timeout": 9300,
+        "openclaw_agent_timeout": 7200,
+        "openclaw_exec_timeout": 8100,
+    })
+
+    cfg = mgr._build_openclaw_config({})
+
+    assert cfg["agents"]["defaults"]["timeoutSeconds"] == 7200
+    assert cfg["tools"]["exec"]["timeoutSec"] == 8100
+
+
 def test_openclaw_runtime_collect_artifacts_preserves_session_trace_and_response_stream_aliases() -> None:
     mgr = OpenClawRuntimeManager({})
 
@@ -369,6 +488,50 @@ def test_recover_openclaw_session_artifacts_prefers_saved_session_trace() -> Non
     assert trajectory[1]["tool_calls"][0]["tool"] == "ls"
     assert reasoning[0]["type"] == "reasoning"
     assert reasoning[1]["type"] == "tool_call"
+
+
+def test_openclaw_sandbox_session_retrieval_discards_unmatched_fallback() -> None:
+    agent = OpenClawAgent()
+    session_text = "\n".join([
+        json.dumps({
+            "type": "message",
+            "message": {
+                "role": "user",
+                "content": [{"type": "text", "text": "stale problem"}],
+            },
+        }),
+        json.dumps({
+            "type": "message",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "stale answer"}],
+            },
+        }),
+    ])
+
+    class _Result:
+        def __init__(self, stdout: str = "", exit_code: int = 0) -> None:
+            self.stdout = stdout
+            self.exit_code = exit_code
+            self.stderr = ""
+
+    class _Sandbox:
+        def execute(self, command: str) -> _Result:
+            if "ls -t" in command and "sessions" in command:
+                return _Result("/tmp/oc_home/.openclaw/agents/main/sessions/stale.jsonl\n")
+            if command.startswith("cat ") and "stale.jsonl" in command:
+                return _Result(session_text)
+            raise AssertionError(command)
+
+        def read_text(self, _path: str) -> str:
+            raise RuntimeError("force cat fallback")
+
+    trajectory = agent._retrieve_trajectory_from_sandbox_session(
+        sandbox=_Sandbox(),
+        expected_user_content="fresh problem",
+    )
+
+    assert trajectory == []
 
 
 def test_openclaw_container_runtime_collect_artifacts_exposes_stable_aliases() -> None:

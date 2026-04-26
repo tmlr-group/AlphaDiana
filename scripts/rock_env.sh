@@ -91,6 +91,15 @@ export ROCK_DYNAMIC_CONFIG="${ROCK_DYNAMIC_CONFIG:-${_rock_env_dynamic_config_de
 export TMPDIR="${TMPDIR:-${_rock_env_cache_root}/tmp}"
 export RAY_TMPDIR="${RAY_TMPDIR:-${_rock_env_ray_tmpdir_default}}"
 export ALPHADIANA_ROCK_ROOT="${_rock_env_rock_root}"
+_rock_env_python_env_path="$("${_rock_env_python}" - <<'PYEOF' 2>/dev/null || true
+import sys
+
+print(sys.prefix)
+PYEOF
+)"
+if [ -n "${_rock_env_python_env_path}" ]; then
+  export ROCK_PYTHON_ENV_PATH="${_rock_env_python_env_path}"
+fi
 mkdir -p "${TMPDIR}"
 mkdir -p "${RAY_TMPDIR}"
 

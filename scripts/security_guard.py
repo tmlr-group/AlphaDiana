@@ -160,9 +160,11 @@ def check_redis_security(port: int, container_name: str = "") -> list[SecurityIs
     label = f"Redis(:{port})" + (f" [{container_name}]" if container_name else "")
 
     # 检查是否可连接（无密码直连）
-    success, _ = redis_cmd(port, "PING")
+    success, out = redis_cmd(port, "PING")
     if not success:
         return issues  # 连不上则跳过
+    if "NOAUTH" in out:
+        return issues  # 已要求认证，后续无密码 CONFIG 检查不可用
 
     # 1. 无密码
     password = get_redis_config(port, "requirepass")
