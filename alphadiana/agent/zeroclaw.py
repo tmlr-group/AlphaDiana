@@ -841,15 +841,20 @@ class ZeroClawAgent(Agent):
             f"max_tool_iterations = {self._max_tool_iterations}\n"
         )
 
-    def _build_env(self, home_dir: str) -> dict[str, str]:
+    def _build_env(self, paths: dict[str, str]) -> dict[str, str]:
         env = {
-            "HOME": home_dir,
-            "PATH": f"{home_dir}/bin:/usr/local/bin:/usr/bin:/bin",
+            "HOME": paths["home_dir"],
+            "PATH": f"{paths['home_dir']}/bin:/usr/local/bin:/usr/bin:/bin",
+            "XDG_CONFIG_HOME": paths["xdg_config_home"],
+            "XDG_CACHE_HOME": paths["xdg_cache_home"],
+            "XDG_DATA_HOME": paths["xdg_data_home"],
+            "XDG_STATE_HOME": paths["xdg_state_home"],
             "OPENAI_API_KEY": self._provider_api_key,
             "OPENAI_BASE_URL": self._provider_api_base,
             "OPENAI_MODEL_NAME": self._model,
             "OPENROUTER_API_KEY": self._provider_api_key,
             "ZEROCLAW_API_KEY": self._provider_api_key,
+            "ZEROCLAW_CONFIG_DIR": paths["zc_home_dir"],
             "ZEROCLAW_PROVIDER": self._provider,
         }
         env.update(self._env)
@@ -1000,16 +1005,22 @@ class ZeroClawAgent(Agent):
         zc_home_dir = str(Path(home_dir) / ".zeroclaw")
         state_dir = str(Path(workspace_dir) / "state")
         attachments_dir = str(Path(workspace_dir) / "attachments")
+        local_dir = Path(home_dir) / ".local"
         return {
             "base_dir": base_dir,
             "workspace_dir": workspace_dir,
             "home_dir": home_dir,
             "bin_dir": str(Path(home_dir) / "bin"),
             "zc_home_dir": zc_home_dir,
+            "xdg_config_home": str(Path(home_dir) / ".config"),
+            "xdg_cache_home": str(Path(home_dir) / ".cache"),
+            "xdg_data_home": str(local_dir / "share"),
+            "xdg_state_home": str(local_dir / "state"),
             "state_dir": state_dir,
             "attachments_dir": attachments_dir,
             "config_path": str(Path(zc_home_dir) / "config.toml"),
             "task_path": str(Path(workspace_dir) / "task.txt"),
+            "session_state_path": str(Path(state_dir) / "zeroclaw-session-state.json"),
             "zeroclaw_path": str(Path(home_dir) / "bin" / "zeroclaw"),
             "stdout_path": str(Path(base_dir) / "zeroclaw_output.txt"),
             "stderr_path": str(Path(base_dir) / "zeroclaw_stderr.log"),
@@ -1051,6 +1062,8 @@ class ZeroClawAgent(Agent):
         prep_command = (
             f"mkdir -p {shlex.quote(paths['workspace_dir'])} {shlex.quote(paths['zc_home_dir'])} "
             f"{shlex.quote(paths['state_dir'])} {shlex.quote(paths['attachments_dir'])} "
+            f"{shlex.quote(paths['xdg_config_home'])} {shlex.quote(paths['xdg_cache_home'])} "
+            f"{shlex.quote(paths['xdg_data_home'])} {shlex.quote(paths['xdg_state_home'])} "
             f"&& ln -sfn {shlex.quote(paths['workspace_dir'])} "
             f"{shlex.quote(str(Path(paths['zc_home_dir']) / 'workspace'))}"
         )
@@ -1096,7 +1109,11 @@ class ZeroClawAgent(Agent):
             f"cd {shlex.quote(paths['workspace_dir'])} && "
             f"prompt=$(cat {shlex.quote(paths['task_path'])}) && "
             f"{self._timeout_command} {self._request_timeout} "
-            f"zeroclaw agent -m \"$prompt\" "
+            f"zeroclaw --config-dir {shlex.quote(paths['zc_home_dir'])} "
+            f"agent --model {shlex.quote(self._model)} "
+            f"--temperature {shlex.quote(str(self._temperature))} "
+            f"--session-state-file {shlex.quote(paths['session_state_path'])} "
+            f"-m \"$prompt\" "
             f"> {shlex.quote(paths['stdout_path'])} "
             f"2> {shlex.quote(paths['stderr_path'])}"
         )
@@ -1105,8 +1122,11 @@ class ZeroClawAgent(Agent):
         return (
             "echo 'pwd='$(pwd) && "
             "echo 'home='${HOME} && "
+            "echo 'xdg_config_home='${XDG_CONFIG_HOME} && "
+            "echo 'zeroclaw_config_dir='${ZEROCLAW_CONFIG_DIR} && "
             f"echo 'workspace_dir={shlex.quote(paths['workspace_dir'])}' && "
             f"echo 'task_path={shlex.quote(paths['task_path'])}' && "
+            f"echo 'session_state_path={shlex.quote(paths['session_state_path'])}' && "
             "command -v zeroclaw && "
             f"ls -la {shlex.quote(paths['base_dir'])} && "
             f"ls -la {shlex.quote(paths['zc_home_dir'])} && "
@@ -1178,7 +1198,7 @@ class ZeroClawAgent(Agent):
 
         self._prepare_sandbox_workspace(sandbox, paths, task_context)
 
-        env = self._build_env(paths["home_dir"])
+        env = self._build_env(paths)
         version_output = self._ensure_sandbox_binary(sandbox, env, paths)
         logprob_proxy: LogprobCaptureProxy | None = None
         logprob_proxy_records: list[dict] = []
