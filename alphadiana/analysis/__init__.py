@@ -47,6 +47,11 @@ from alphadiana.analysis.trajectory_metrics import (
     has_tool_grounded_reasoning,
     trajectory_key,
 )
+from alphadiana.analysis.trajectory_reports import (
+    render_chinese_discussion,
+    render_latex_appendix,
+    write_phase14_outputs,
+)
 
 __all__ = [
     "ACTION_LABEL_CONFIDENCES",
@@ -84,6 +89,8 @@ __all__ = [
     "normalized_records",
     "observation_status_from_text",
     "render_markdown_report",
+    "render_chinese_discussion",
+    "render_latex_appendix",
     "resolve_run_relative_path",
     "select_case_studies",
     "select_directllm_baseline",
@@ -91,4 +98,5 @@ __all__ = [
     "trajectory_key",
     "write_feature_csv",
     "write_json",
+    "write_phase14_outputs",
 ]
