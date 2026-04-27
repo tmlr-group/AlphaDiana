@@ -81,6 +81,11 @@ OpenClaw configs also set:
   still available with `reuse_predeployed_sandboxes: true`; that path clears
   OpenClaw session state under the known OpenClaw home directories on every
   reset to prevent stale chat history reuse.
+- `predeployed_lease_probe: true` is enabled by default for real ROCK sessions.
+  Before assigning a predeployed sandbox, the runner makes a short
+  `trust_env=False` reachability probe to the sandbox's host-published gateway
+  and discards/replaces the sandbox if the gateway is already unreachable. This
+  prevents a dead standby sandbox from consuming a full task retry cycle.
 
 ZeroClaw configs also set:
 
