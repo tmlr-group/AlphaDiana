@@ -141,6 +141,53 @@ class TestTaskDispatcherErrorIsolation:
         dispatcher2 = TaskDispatcher(max_concurrent=-1)
         assert dispatcher2.max_concurrent == 1
 
+    def test_retry_filter_blocks_nonrecoverable_error(self, monkeypatch):
+        """Retry filters can keep preserved task errors from being rerun."""
+        monkeypatch.setattr("alphadiana.runner.task_dispatcher.time.sleep", lambda _: None)
+        calls = 0
+
+        def solve_fn(task):
+            nonlocal calls
+            calls += 1
+            exc = RuntimeError("output cap reached")
+            exc.retryable_task_failure = False
+            raise exc
+
+        dispatcher = TaskDispatcher(
+            max_concurrent=1,
+            task_retries=2,
+            retry_if=lambda exc: bool(getattr(exc, "retryable_task_failure", False)),
+        )
+        outcomes = dispatcher.dispatch([_FakeTask("t0")], solve_fn)
+
+        assert calls == 1
+        assert outcomes[0]["success"] is False
+        assert "output cap reached" in outcomes[0]["error"]
+
+    def test_retry_filter_allows_recoverable_error(self, monkeypatch):
+        """Recoverable infrastructure failures are retried."""
+        monkeypatch.setattr("alphadiana.runner.task_dispatcher.time.sleep", lambda _: None)
+        calls = 0
+
+        def solve_fn(task):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                exc = RuntimeError("gateway connection refused")
+                exc.retryable_task_failure = True
+                raise exc
+            return {"task_id": task.task_id, "answer": "42"}
+
+        dispatcher = TaskDispatcher(
+            max_concurrent=1,
+            task_retries=2,
+            retry_if=lambda exc: bool(getattr(exc, "retryable_task_failure", False)),
+        )
+        outcomes = dispatcher.dispatch([_FakeTask("t0")], solve_fn)
+
+        assert calls == 2
+        assert outcomes[0]["success"] is True
+
 
 def test_openclaw_direct_api_base_disables_gateway_autodeploy() -> None:
     config = ExperimentConfig(
