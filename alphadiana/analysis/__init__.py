@@ -27,6 +27,11 @@ from alphadiana.analysis.action_events import (
     select_directllm_baseline,
 )
 from alphadiana.analysis.action_features import build_record_feature_rows
+from alphadiana.analysis.case_studies import (
+    CASE_STUDY_MOTIFS,
+    select_case_studies,
+    summarize_event_sequence,
+)
 from alphadiana.analysis.clustering import cluster_analysis_views, cluster_rows
 from alphadiana.analysis.reliability import compute_reliability_summary
 from alphadiana.analysis.reports import render_markdown_report, write_feature_csv, write_json
@@ -55,6 +60,7 @@ __all__ = [
     "RunBundle",
     "TOOL_SUBTYPES",
     "ActionEvent",
+    "CASE_STUDY_MOTIFS",
     "ERROR_STATUSES",
     "MAIN_METRIC_NAMES",
     "build_record_feature_rows",
@@ -79,7 +85,9 @@ __all__ = [
     "observation_status_from_text",
     "render_markdown_report",
     "resolve_run_relative_path",
+    "select_case_studies",
     "select_directllm_baseline",
+    "summarize_event_sequence",
     "trajectory_key",
     "write_feature_csv",
     "write_json",
