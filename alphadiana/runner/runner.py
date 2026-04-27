@@ -536,6 +536,13 @@ class Runner:
             self.config.agent_config.get("reset_predeployed_between_tasks"),
             default=True,
         )
+        predeployed_lease_probe_enabled = _coerce_config_bool(
+            self.config.agent_config.get("predeployed_lease_probe"),
+            default=True,
+        )
+        predeployed_lease_probe_timeout = float(
+            self.config.agent_config.get("predeployed_lease_probe_timeout", 2.0) or 0.0
+        )
         fresh_predeployed_mode = False
         if (
             self.sandbox is None
@@ -1149,7 +1156,13 @@ class Runner:
             with predeployed_replacement_state_lock:
                 return predeployed_replacements_in_progress
 
-        def _create_predeployed_replacement(reason: str, task_id: str, *, force: bool = False) -> bool:
+        def _create_predeployed_replacement(
+            reason: str,
+            task_id: str,
+            *,
+            force: bool = False,
+            require_fresh_need: bool = True,
+        ) -> bool:
             nonlocal predeployed_replacement_count, predeployed_replacements_in_progress, preferred_profile
             if predeployed_gateway_deployer is None or predeployed_shutdown_event.is_set():
                 return False
@@ -1159,8 +1172,12 @@ class Runner:
                 with predeployed_replacement_lock:
                     if predeployed_shutdown_event.is_set():
                         return False
-                    if fresh_predeployed_mode and not _fresh_predeployed_needs_replenishment(
-                        replacement_in_progress_offset=1,
+                    if (
+                        fresh_predeployed_mode
+                        and require_fresh_need
+                        and not _fresh_predeployed_needs_replenishment(
+                            replacement_in_progress_offset=1,
+                        )
                     ):
                         return True
                     if not fresh_predeployed_mode and not force and _live_predeployed_count() > 0:
@@ -1190,12 +1207,23 @@ class Runner:
                         predeployed_replacements_in_progress - 1,
                     )
 
-        def _start_predeployed_replacement(reason: str, task_id: str, *, force: bool = True) -> bool:
+        def _start_predeployed_replacement(
+            reason: str,
+            task_id: str,
+            *,
+            force: bool = True,
+            require_fresh_need: bool = True,
+        ) -> bool:
             if predeployed_gateway_deployer is None or predeployed_shutdown_event.is_set():
                 return False
 
             def _target() -> None:
-                _create_predeployed_replacement(reason, task_id, force=force)
+                _create_predeployed_replacement(
+                    reason,
+                    task_id,
+                    force=force,
+                    require_fresh_need=require_fresh_need,
+                )
 
             thread = threading.Thread(
                 target=_target,
@@ -1206,12 +1234,92 @@ class Runner:
             thread.start()
             return True
 
+        def _probe_predeployed_session_before_lease(session: object, task_id: str) -> str:
+            if (
+                not predeployed_lease_probe_enabled
+                or predeployed_lease_probe_timeout <= 0
+            ):
+                return ""
+            has_published_probe = callable(getattr(session, "published_base", None)) or callable(
+                getattr(session, "published_port", None)
+            )
+            if not has_published_probe:
+                return ""
+            sandbox_id = str(getattr(session, "sandbox_id", "") or "")
+            if not sandbox_id:
+                return ""
+            with predeployed_session_pool_lock:
+                api_base = str(predeployed_gateway_api_base_by_sandbox_id.get(sandbox_id, "") or "")
+            if not api_base:
+                return "gateway_missing_api_base"
+            probe_url = f"{api_base.rstrip('/')}/models"
+            try:
+                response = httpx.get(
+                    probe_url,
+                    timeout=predeployed_lease_probe_timeout,
+                    trust_env=False,
+                )
+                # OpenClaw's prebuilt gateway can return 404 for /v1/models; any
+                # response below 500 still proves the host-published gateway is reachable.
+                if response.status_code >= 500:
+                    return f"gateway_probe_http_{response.status_code}"
+                return ""
+            except Exception as exc:
+                reason = _predeployed_session_failure_reason(exc)
+                if reason:
+                    return reason
+                return "gateway_probe_failed"
+
+        def _discard_unhealthy_predeployed_session(
+            session: object,
+            reason: str,
+            task_id: str,
+        ) -> None:
+            sandbox_id = str(getattr(session, "sandbox_id", "") or "")
+            resolved_sandbox_id, proxy = _unregister_predeployed_session(session, sandbox_id)
+            logger.warning(
+                "Discarding unhealthy predeployed sandbox before task %s sandbox_id=%s reason=%s",
+                task_id,
+                resolved_sandbox_id or "<unknown>",
+                reason,
+            )
+            if proxy is not None:
+                try:
+                    proxy.stop()
+                except Exception:
+                    logger.debug(
+                        "Failed to stop logprob proxy for unhealthy sandbox_id=%s",
+                        resolved_sandbox_id,
+                        exc_info=True,
+                    )
+            try:
+                close = getattr(session, "close", None)
+                if callable(close):
+                    close()
+            except Exception as exc:
+                logger.warning(
+                    "Failed to close unhealthy predeployed sandbox_id=%s: %s",
+                    resolved_sandbox_id or "<unknown>",
+                    exc,
+                )
+
         def _acquire_predeployed_session(task_id: str):
             if predeployed_session_queue is None:
                 raise RuntimeError("predeployed session queue is not configured")
             while True:
                 try:
                     session = predeployed_session_queue.get(timeout=1.0)
+                    lease_probe_reason = _probe_predeployed_session_before_lease(
+                        session,
+                        task_id,
+                    )
+                    if lease_probe_reason:
+                        _discard_unhealthy_predeployed_session(
+                            session,
+                            lease_probe_reason,
+                            task_id,
+                        )
+                        continue
                     if fresh_predeployed_mode:
                         sandbox_id = str(getattr(session, "sandbox_id", "") or "")
                         if sandbox_id:
@@ -1225,7 +1333,12 @@ class Runner:
                     ):
                         continue
                     if _live_predeployed_count() == 0:
-                        if _create_predeployed_replacement("predeployed_pool_depleted", task_id):
+                        if _create_predeployed_replacement(
+                            "predeployed_pool_depleted",
+                            task_id,
+                            force=True,
+                            require_fresh_need=False,
+                        ):
                             continue
                         raise RuntimeError(
                             "No live predeployed sandbox sessions remain; "
