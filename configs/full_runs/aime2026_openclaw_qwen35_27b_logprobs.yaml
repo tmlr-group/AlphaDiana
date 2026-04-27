@@ -29,13 +29,17 @@ agent:
     OPENAI_API_KEY: "EMPTY"
     OPENAI_MODEL_NAME: "Qwen/Qwen3.5-27B"
     model: "openclaw"
-    gateway_token: "OPENCLAW"
+    gateway_token: "${OPENCLAW_GATEWAY_TOKEN}"
     temperature: 0.0
     top_p: 0.95
     max_tokens: 131072
     stream: true
     request_timeout: 9300
     stream_idle_timeout: 9300
+    stream_total_timeout: 9000
+    num_sandboxes: 1
+    standby_sandboxes: 1
+    reuse_predeployed_sandboxes: false
     enable_thinking: true
     capture_logprobs: true
     top_logprobs: 20
@@ -51,10 +55,10 @@ scorer:
   config:
     tolerance: 1e-6
 
-max_concurrent: 2
+max_concurrent: 1
 num_samples: 32
 output_dir: "./results"
 strict_report: true
 strict_isolation: true
 metadata:
-  notes: "AIME 2026 x OpenClaw x local vLLM Qwen3.5-27B with k=32, OpenCode-aligned harness prompt and inference parameters, ROCK sandbox auto-deploy, and logprob capture."
+  notes: "AIME 2026 x OpenClaw x local vLLM Qwen3.5-27B with k=32, max_tokens=131072, conservative max_concurrent=1 fresh-per-task ROCK sandboxes plus one standby sandbox, and logprob capture."

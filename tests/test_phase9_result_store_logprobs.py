@@ -96,6 +96,27 @@ class TestWriteLogprobsJsonl:
 
 
 class TestAppendSerializesLogprobs:
+    def test_paths_remain_under_initial_output_dir_after_cwd_change(self, tmp_path: Path, monkeypatch):
+        root = tmp_path / "root"
+        other = tmp_path / "other"
+        root.mkdir()
+        other.mkdir()
+        monkeypatch.chdir(root)
+        store = ResultStore("results", "run_cwd")
+
+        monkeypatch.chdir(other)
+        stats = {"mean": 0.5, "max": 0.5, "p50": 0.5, "p90": 0.5, "n_tokens": 1}
+        records = [{"token_index": 0, "token": "A", "logprob": -0.1, "top_logprobs": []}]
+        store.append(_task(), _response(records, stats), _score())
+
+        expected_root = root / "results"
+        assert Path(store.path) == expected_root / "run_cwd.jsonl"
+        assert (expected_root / "run_cwd.jsonl").exists()
+        assert (expected_root / "run_cwd" / "tasks" / "t1.json").exists()
+        assert (expected_root / "run_cwd" / "artifacts" / "t1" / "agent" / "normalized_trace.json").exists()
+        assert (expected_root / "run_cwd" / "logprobs" / "t1.jsonl").exists()
+        assert not (other / "results").exists()
+
     def test_with_records(self, tmp_path: Path):
         store = ResultStore(str(tmp_path), "run_y")
         records = [

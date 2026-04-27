@@ -360,6 +360,7 @@ def test_runner_uses_live_predeployed_sessions_for_gateway_pool(monkeypatch, tmp
             "openclaw_config_path": "openclaw_deploy/openclaw.json",
             "admin_base_url": "http://127.0.0.1:9000",
             "proxy_base_url": "http://127.0.0.1:9005/apis/envs/sandbox/v1",
+            "reuse_predeployed_sandboxes": True,
         },
         benchmark_name="aime",
         benchmark_config={},
@@ -381,6 +382,347 @@ def test_runner_uses_live_predeployed_sessions_for_gateway_pool(monkeypatch, tmp
     assert sorted(runner.agent.solve_sandbox_ids) == ["sandbox-a", "sandbox-b"]
     assert [session.reset_calls for session in created_sessions] == [1, 1]
     assert [session.close_calls for session in created_sessions] == [1, 1]
+
+
+def test_runner_defaults_to_fresh_predeployed_sandboxes(monkeypatch, tmp_path):
+    class _FakeBenchmark:
+        def load_tasks(self, config):
+            return [
+                BenchmarkTask(task_id="aime_0", problem="Q0", ground_truth="42"),
+                BenchmarkTask(task_id="aime_1", problem="Q1", ground_truth="42"),
+            ]
+
+    class _FakePredeployedSession:
+        def __init__(self, sandbox_id: str):
+            self.sandbox_id = sandbox_id
+            self.reset_calls = 0
+            self.close_calls = 0
+
+        def proxy_v1_base(self) -> str:
+            return f"http://proxy.test/apis/envs/sandbox/v1/sandboxes/{self.sandbox_id}/proxy/v1"
+
+        def metadata(self) -> dict:
+            return {
+                "sandbox_id": self.sandbox_id,
+                "proxy_base_url": self.proxy_v1_base(),
+            }
+
+        def reset(self) -> None:
+            self.reset_calls += 1
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    created_sessions: list[_FakePredeployedSession] = []
+
+    class _FakeRockSandboxBackend:
+        def setup(self, config) -> None:
+            self.config = config
+
+        def create_session(self):
+            session = _FakePredeployedSession(f"sandbox-{len(created_sessions)}")
+            created_sessions.append(session)
+            return session
+
+    class _FakeGatewayRuntimeManager:
+        def ensure_ready(self, session):
+            return {
+                "sandbox_id": session.sandbox_id,
+                "gateway_url": f"{session.proxy_v1_base()}/chat/completions",
+                "api_base": session.proxy_v1_base(),
+            }
+
+    class _FakeGatewayAgent:
+        def __init__(self):
+            self.solve_sandbox_ids: list[str | None] = []
+
+        def setup(self, config) -> None:
+            self.config = dict(config)
+
+        def solve(self, task, sandbox=None):
+            sandbox_id = getattr(sandbox, "sandbox_id", None)
+            self.solve_sandbox_ids.append(sandbox_id)
+            return AgentResponse(answer="42", sandbox_id=sandbox_id or "", metadata={})
+
+        def teardown(self) -> None:
+            pass
+
+    monkeypatch.setattr("alphadiana.runner.runner.BenchmarkRegistry.get", lambda name: _FakeBenchmark)
+    monkeypatch.setattr("alphadiana.runner.runner.AgentRegistry.get", lambda name: _FakeGatewayAgent)
+    monkeypatch.setattr("alphadiana.runner.runner.SandboxRegistry.get", lambda name: _FakeRockSandboxBackend)
+    monkeypatch.setattr(
+        "alphadiana.runner.runner._make_gateway_runtime_manager",
+        lambda config: _FakeGatewayRuntimeManager(),
+    )
+
+    config = ExperimentConfig(
+        run_id="runner-fresh-predeployed-default",
+        agent_name="openclaw",
+        agent_version="2026.3.20",
+        agent_config={
+            "api_key": "sk-test",
+            "rock_agent_config_path": "openclaw_deploy/rock_agent_config.prebuilt.yaml",
+            "openclaw_config_path": "openclaw_deploy/openclaw.json",
+            "admin_base_url": "http://127.0.0.1:9000",
+            "proxy_base_url": "http://127.0.0.1:9005/apis/envs/sandbox/v1",
+            "predeploy_stagger_seconds": 0,
+        },
+        benchmark_name="aime",
+        benchmark_config={},
+        scorer_name="numeric",
+        scorer_config={},
+        max_concurrent=1,
+        output_dir=str(tmp_path),
+    )
+
+    runner = Runner(config)
+    runner.setup()
+    try:
+        summary = runner.run()
+    finally:
+        runner.teardown()
+
+    assert summary.completed == 2
+    assert runner.agent.solve_sandbox_ids[0] != runner.agent.solve_sandbox_ids[1]
+    assert all(session.reset_calls == 0 for session in created_sessions)
+    used_ids = set(runner.agent.solve_sandbox_ids)
+    used_sessions = [s for s in created_sessions if s.sandbox_id in used_ids]
+    assert len(used_sessions) == 2
+    assert all(session.close_calls == 1 for session in used_sessions)
+    records = runner.result_store.load()
+    assert {record["isolation_mode"] for record in records} == {"fresh_predeployed_pool"}
+    assert {record["reuse_predeployed_sandboxes"] for record in records} == {False}
+
+
+def test_runner_fresh_predeployed_standby_sandboxes(monkeypatch, tmp_path):
+    class _FakeBenchmark:
+        def load_tasks(self, config):
+            return [BenchmarkTask(task_id="aime_0", problem="Q0", ground_truth="42")]
+
+    class _FakePredeployedSession:
+        def __init__(self, sandbox_id: str):
+            self.sandbox_id = sandbox_id
+            self.reset_calls = 0
+            self.close_calls = 0
+
+        def proxy_v1_base(self) -> str:
+            return f"http://proxy.test/apis/envs/sandbox/v1/sandboxes/{self.sandbox_id}/proxy/v1"
+
+        def metadata(self) -> dict:
+            return {
+                "sandbox_id": self.sandbox_id,
+                "proxy_base_url": self.proxy_v1_base(),
+            }
+
+        def reset(self) -> None:
+            self.reset_calls += 1
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    created_sessions: list[_FakePredeployedSession] = []
+
+    class _FakeRockSandboxBackend:
+        def setup(self, config) -> None:
+            self.config = config
+
+        def create_session(self):
+            session = _FakePredeployedSession(f"sandbox-{len(created_sessions)}")
+            created_sessions.append(session)
+            return session
+
+    class _FakeGatewayRuntimeManager:
+        def ensure_ready(self, session):
+            return {
+                "sandbox_id": session.sandbox_id,
+                "gateway_url": f"{session.proxy_v1_base()}/chat/completions",
+                "api_base": session.proxy_v1_base(),
+            }
+
+    class _FakeGatewayAgent:
+        def __init__(self):
+            self.solve_sandbox_ids: list[str | None] = []
+
+        def setup(self, config) -> None:
+            self.config = dict(config)
+
+        def solve(self, task, sandbox=None):
+            sandbox_id = getattr(sandbox, "sandbox_id", None)
+            self.solve_sandbox_ids.append(sandbox_id)
+            return AgentResponse(answer="42", sandbox_id=sandbox_id or "", metadata={})
+
+        def teardown(self) -> None:
+            pass
+
+    monkeypatch.setattr("alphadiana.runner.runner.BenchmarkRegistry.get", lambda name: _FakeBenchmark)
+    monkeypatch.setattr("alphadiana.runner.runner.AgentRegistry.get", lambda name: _FakeGatewayAgent)
+    monkeypatch.setattr("alphadiana.runner.runner.SandboxRegistry.get", lambda name: _FakeRockSandboxBackend)
+    monkeypatch.setattr(
+        "alphadiana.runner.runner._make_gateway_runtime_manager",
+        lambda config: _FakeGatewayRuntimeManager(),
+    )
+
+    config = ExperimentConfig(
+        run_id="runner-fresh-predeployed-standby",
+        agent_name="openclaw",
+        agent_version="2026.3.20",
+        agent_config={
+            "api_key": "sk-test",
+            "rock_agent_config_path": "openclaw_deploy/rock_agent_config.prebuilt.yaml",
+            "openclaw_config_path": "openclaw_deploy/openclaw.json",
+            "admin_base_url": "http://127.0.0.1:9000",
+            "proxy_base_url": "http://127.0.0.1:9005/apis/envs/sandbox/v1",
+            "standby_sandboxes": 1,
+            "predeploy_stagger_seconds": 0,
+        },
+        benchmark_name="aime",
+        benchmark_config={},
+        scorer_name="numeric",
+        scorer_config={},
+        max_concurrent=1,
+        output_dir=str(tmp_path),
+    )
+
+    runner = Runner(config)
+    runner.setup()
+    try:
+        summary = runner.run()
+    finally:
+        runner.teardown()
+
+    assert summary.completed == 1
+    assert len(created_sessions) == 2
+    assert runner.agent.solve_sandbox_ids == ["sandbox-0"]
+    assert all(session.reset_calls == 0 for session in created_sessions)
+    assert all(session.close_calls == 1 for session in created_sessions)
+    records = runner.result_store.load()
+    assert {record["standby_sandboxes"] for record in records} == {1}
+
+
+def test_runner_quarantines_predeployed_session_after_reset_failure(monkeypatch, tmp_path):
+    class _FakeBenchmark:
+        def load_tasks(self, config):
+            return [
+                BenchmarkTask(task_id="aime_0", problem="Q0", ground_truth="42"),
+                BenchmarkTask(task_id="aime_1", problem="Q1", ground_truth="42"),
+            ]
+
+    class _FakePredeployedSession:
+        def __init__(self, sandbox_id: str, *, fail_reset: bool = False):
+            self.sandbox_id = sandbox_id
+            self.fail_reset = fail_reset
+            self.reset_calls = 0
+            self.close_calls = 0
+
+        def proxy_v1_base(self) -> str:
+            return f"http://proxy.test/apis/envs/sandbox/v1/sandboxes/{self.sandbox_id}/proxy/v1"
+
+        def metadata(self) -> dict:
+            return {
+                "sandbox_id": self.sandbox_id,
+                "proxy_base_url": self.proxy_v1_base(),
+            }
+
+        def reset(self) -> None:
+            self.reset_calls += 1
+            if self.fail_reset:
+                raise RuntimeError("reset failed")
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    class _FakeRockSandboxBackend:
+        def setup(self, config) -> None:
+            self.config = config
+
+        def create_session(self):
+            return sessions.pop(0)
+
+    class _FakeGatewayRuntimeManager:
+        def ensure_ready(self, session):
+            return {
+                "sandbox_id": session.sandbox_id,
+                "gateway_url": f"{session.proxy_v1_base()}/chat/completions",
+                "api_base": session.proxy_v1_base(),
+            }
+
+    class _FakeGatewayAgent:
+        def __init__(self):
+            self.solve_sandbox_ids: list[str | None] = []
+
+        def setup(self, config) -> None:
+            self.config = dict(config)
+
+        def solve(self, task, sandbox=None):
+            sandbox_id = getattr(sandbox, "sandbox_id", None)
+            self.solve_sandbox_ids.append(sandbox_id)
+            return AgentResponse(
+                answer="42",
+                sandbox_id=sandbox_id or "",
+                metadata={},
+            )
+
+        def teardown(self) -> None:
+            pass
+
+    created_sessions = [
+        _FakePredeployedSession("sandbox-a", fail_reset=True),
+        _FakePredeployedSession("sandbox-b"),
+        _FakePredeployedSession("sandbox-c"),
+    ]
+    sessions = list(created_sessions)
+
+    monkeypatch.setattr(
+        "alphadiana.runner.runner.BenchmarkRegistry.get",
+        lambda name: _FakeBenchmark,
+    )
+    monkeypatch.setattr(
+        "alphadiana.runner.runner.AgentRegistry.get",
+        lambda name: _FakeGatewayAgent,
+    )
+    monkeypatch.setattr(
+        "alphadiana.runner.runner.SandboxRegistry.get",
+        lambda name: _FakeRockSandboxBackend,
+    )
+    monkeypatch.setattr(
+        "alphadiana.runner.runner._make_gateway_runtime_manager",
+        lambda config: _FakeGatewayRuntimeManager(),
+    )
+
+    config = ExperimentConfig(
+        run_id="runner-predeployed-reset-quarantine",
+        agent_name="openclaw",
+        agent_version="2026.3.20",
+        agent_config={
+            "api_key": "sk-test",
+            "rock_agent_config_path": "openclaw_deploy/rock_agent_config.prebuilt.yaml",
+            "openclaw_config_path": "openclaw_deploy/openclaw.json",
+            "admin_base_url": "http://127.0.0.1:9000",
+            "proxy_base_url": "http://127.0.0.1:9005/apis/envs/sandbox/v1",
+            "num_sandboxes": 2,
+            "reuse_predeployed_sandboxes": True,
+        },
+        benchmark_name="aime",
+        benchmark_config={},
+        scorer_name="numeric",
+        scorer_config={},
+        max_concurrent=1,
+        output_dir=str(tmp_path),
+    )
+
+    runner = Runner(config)
+    runner.setup()
+    try:
+        summary = runner.run()
+    finally:
+        runner.teardown()
+
+    assert summary.completed == 2
+    assert summary.error_records == 0
+    assert runner.agent.solve_sandbox_ids == ["sandbox-a", "sandbox-b"]
+    assert [session.reset_calls for session in created_sessions] == [1, 1, 0]
+    assert [session.close_calls for session in created_sessions] == [1, 1, 1]
+    assert not sessions
 
 
 def test_predeployed_session_failure_reason_detects_dead_gateway() -> None:
@@ -552,6 +894,7 @@ def test_runner_quarantines_dead_predeployed_session(monkeypatch, tmp_path):
             "admin_base_url": "http://127.0.0.1:9000",
             "proxy_base_url": "http://127.0.0.1:9005/apis/envs/sandbox/v1",
             "num_sandboxes": 2,
+            "reuse_predeployed_sandboxes": True,
         },
         benchmark_name="aime",
         benchmark_config={},

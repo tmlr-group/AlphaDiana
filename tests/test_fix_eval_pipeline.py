@@ -135,7 +135,7 @@ class TestSandboxIsolation:
     def test_close_executes_cleanup(self):
         from alphadiana.sandbox.rock import ROCKSession
 
-        session = MagicMock(spec=ROCKSession)
+        session = object.__new__(ROCKSession)
         session._reset_between_tasks = True
         session.execute = MagicMock()
 
@@ -145,6 +145,8 @@ class TestSandboxIsolation:
         cmd = session.execute.call_args[0][0]
         assert "/root/.openclaw/workspace" in cmd
         assert "/root/.openclaw/agents/main/sessions" in cmd
+        assert "/tmp/oc_home/.openclaw/workspace" in cmd
+        assert "/tmp/oc_home/.openclaw/agents/main/sessions" in cmd
 
     def test_close_calls_cleanup_before_stop(self):
         from alphadiana.sandbox.rock import ROCKSession
@@ -163,33 +165,49 @@ class TestSandboxIsolation:
         session._cleanup_workspace.assert_called_once()
         session._sandbox.stop.assert_called_once()
 
-    def test_close_skips_cleanup_when_disabled(self):
+    def test_cleanup_disabled_only_preserves_workspace(self):
         from alphadiana.sandbox.rock import ROCKSession
 
-        session = MagicMock(spec=ROCKSession)
+        session = object.__new__(ROCKSession)
         session._reset_between_tasks = False
         session.execute = MagicMock()
 
         ROCKSession._cleanup_workspace(session)
 
-        session.execute.assert_not_called()
+        session.execute.assert_called_once()
+        cmd = session.execute.call_args[0][0]
+        paths = set(cmd.split()[2:])
+        assert "/root/.openclaw/workspace" not in paths
+        assert "/tmp/oc_home/.openclaw/workspace" not in paths
+        assert "/root/.openclaw/agents/main/sessions" in paths
+        assert "/tmp/oc_home/.openclaw/agents/main/sessions" in paths
+        assert "/tmp/oc_home/.openclaw/agents/main/sessions.json" in paths
 
     def test_reset_executes_cleanup(self):
         from alphadiana.sandbox.rock import ROCKSession
 
-        session = MagicMock(spec=ROCKSession)
+        session = object.__new__(ROCKSession)
+        session._command_history = [{"command": "cat old-session.jsonl"}]
         session._cleanup_workspace = MagicMock()
 
         ROCKSession.reset(session)
 
         session._cleanup_workspace.assert_called_once()
+        assert session._command_history == []
 
     def test_cleanup_paths_in_module(self):
-        from alphadiana.sandbox.rock import CLEANUP_PATHS
+        from alphadiana.sandbox.rock import (
+            CLEANUP_PATHS,
+            OPENCLAW_SESSION_CLEANUP_PATHS,
+            OPENCLAW_WORKSPACE_CLEANUP_PATHS,
+        )
 
         joined = " ".join(CLEANUP_PATHS)
         assert "/root/.openclaw/workspace" in joined
         assert "/root/.openclaw/agents/main/sessions" in joined
+        assert "/tmp/oc_home/.openclaw/workspace" in OPENCLAW_WORKSPACE_CLEANUP_PATHS
+        assert "/tmp/oc_home/.openclaw/agents/main/sessions" in OPENCLAW_SESSION_CLEANUP_PATHS
+        assert "/tmp/oc_home/.openclaw/agents/main/sessions.json" in OPENCLAW_SESSION_CLEANUP_PATHS
 
     def test_schema_includes_reset_between_tasks(self):
         from pathlib import Path

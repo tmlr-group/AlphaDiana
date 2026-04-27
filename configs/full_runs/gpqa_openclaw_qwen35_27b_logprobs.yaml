@@ -37,11 +37,11 @@ agent:
     gateway_token: "${OPENCLAW_GATEWAY_TOKEN}"
     temperature: 0.0
     top_p: 0.95
-    max_tokens: 65536
+    max_tokens: 131072
     stream: true
-    request_timeout: 7200
-    stream_idle_timeout: 3600
-    stream_total_timeout: 14400
+    request_timeout: 9300
+    stream_idle_timeout: 1800
+    stream_total_timeout: 9000
     enable_thinking: true
     capture_logprobs: true
     top_logprobs: 20
@@ -61,4 +61,4 @@ max_concurrent: 4
 num_samples: 1
 output_dir: "./results"
 metadata:
-  notes: "Canonical full GPQA-Diamond OpenClaw config after prompt alignment. enable_thinking=true, max_tokens=65536, top_logprobs=20."
+  notes: "Canonical full GPQA-Diamond OpenClaw config after prompt alignment. enable_thinking=true, max_tokens=131072, top_logprobs=20."
