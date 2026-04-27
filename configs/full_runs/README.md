@@ -80,9 +80,16 @@ ZeroClaw configs also set:
 - `request_timeout: 9300`
 - `max_tool_iterations: 100`
 
-The AIME 2026 ZeroClaw full-run config additionally sets `task_retries: 2` so
-checkpoint resumes can replace a dead pooled ROCK session and retry the affected
-sample on a fresh sandbox.
+The AIME 2026 OpenClaw and ZeroClaw full-run configs are currently lowered to
+`max_concurrent: 2` to avoid deep local-vLLM queueing during the AIME 2026
+recovery run. The AIME 2026 ZeroClaw full-run config additionally sets
+`task_retries: 2` so checkpoint resumes can replace a dead pooled ROCK session
+and retry the affected sample on a fresh sandbox.
+
+Result persistence redacts common secret env assignments and sensitive key
+fields before writing JSONL records, task JSONs, sandbox metadata, retry
+artifacts, normalized traces, and common text artifacts. Raw experiment shell
+logs still live under `logs/` and should be treated as local operational logs.
 
 For local `long64k` ZeroClaw smoke/recovery runs, use the serial smoke configs
 under `configs/smokes/harness_prompt_alignment_20260425/` or override

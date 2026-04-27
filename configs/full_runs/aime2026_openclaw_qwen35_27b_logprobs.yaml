@@ -51,7 +51,7 @@ scorer:
   config:
     tolerance: 1e-6
 
-max_concurrent: 10
+max_concurrent: 2
 num_samples: 32
 output_dir: "./results"
 strict_report: true
