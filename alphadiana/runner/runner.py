@@ -283,6 +283,11 @@ def _predeployed_session_failure_reason(exc: Exception, response: object | None 
     return ""
 
 
+def _is_recoverable_task_failure(exc: Exception) -> bool:
+    """Return True when a failed task should be retried on fresh infrastructure."""
+    return bool(getattr(exc, "retryable_task_failure", False))
+
+
 def _build_error_info(exc: Exception) -> dict:
     """Build a serializable error dict from an exception."""
     error_type = getattr(exc, "error_type", type(exc).__name__)
@@ -1633,6 +1638,13 @@ class Runner:
                         error_response.metadata["pooled_session_replacement_reason"] = (
                             pooled_session_replacement_reason
                         )
+                task_retry_reason = predeployed_quarantine_reason or pooled_session_replacement_reason
+                try:
+                    setattr(exc, "retryable_task_failure", bool(task_retry_reason))
+                    if task_retry_reason:
+                        setattr(exc, "task_retry_reason", task_retry_reason)
+                except Exception:
+                    pass
                 self.result_store.append_error(
                     runtime_task,
                     error=_build_error_info(exc),
@@ -1705,6 +1717,11 @@ class Runner:
             max_concurrent=self.config.max_concurrent,
             cancel_event=self.cancel_event,
             task_retries=getattr(self.config, "task_retries", 0),
+            retry_if=(
+                _is_recoverable_task_failure
+                if getattr(self.config, "task_retry_on_recoverable_only", False)
+                else None
+            ),
         )
         try:
             outcomes = dispatcher.dispatch(work_items, solve_fn)
