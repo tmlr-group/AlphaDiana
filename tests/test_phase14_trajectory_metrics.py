@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from alphadiana.analysis.case_studies import select_case_studies, summarize_event_sequence
 from alphadiana.analysis.trajectory_metrics import (
     MAIN_METRIC_NAMES,
     compute_outcome_conditioned_metrics,
@@ -111,3 +112,122 @@ def test_motif_metrics_and_failure_cost_separate_error_records():
     assert failure_cost["provider_error"] == 1
     assert failure_cost["runtime_error"] == 1
     assert failure_cost["scorer_error"] == 1
+
+
+def test_select_case_studies_prefers_correct_and_incorrect_motif_examples():
+    rows = [
+        _event(
+            "openclaw",
+            "verify_recover_correct",
+            0,
+            "tool_use",
+            correct=True,
+            tool_subtype="python",
+            text_span="python solve.py",
+            action_label_confidence="strict",
+            run_id="openclaw-run",
+        ),
+        _event(
+            "openclaw",
+            "verify_recover_correct",
+            1,
+            "verify",
+            correct=True,
+            observation_status="error",
+            text_span="Traceback while checking intermediate result",
+            run_id="openclaw-run",
+        ),
+        _event(
+            "openclaw",
+            "verify_recover_correct",
+            2,
+            "recover",
+            correct=True,
+            text_span="Retry with the corrected unit conversion",
+            run_id="openclaw-run",
+        ),
+        _event(
+            "openclaw",
+            "verify_recover_correct",
+            3,
+            "answer",
+            correct=True,
+            text_span="Final answer: B",
+            run_id="openclaw-run",
+        ),
+        _event(
+            "opencode",
+            "premature_incorrect",
+            0,
+            "answer",
+            correct=False,
+            text_span="Final answer: /data2/xuan/AlphaDiana/secret-looking-path with sk-test-1234567890abcdef",
+            run_id="opencode-run",
+            action_label_confidence="strict",
+        ),
+        _event(
+            "zeroclaw",
+            "budget_error",
+            0,
+            "reason",
+            correct=None,
+            score_status="runtime_error",
+            text_span="continued reasoning until timeout",
+            run_id="zeroclaw-run",
+        ),
+        _event(
+            "directllm",
+            "degenerate_answer",
+            0,
+            "reason",
+            correct=False,
+            text_span="The direct model compares choices quickly.",
+            run_id="direct-run",
+        ),
+        _event(
+            "directllm",
+            "degenerate_answer",
+            1,
+            "answer",
+            correct=False,
+            text_span="Final answer: D",
+            run_id="direct-run",
+        ),
+    ]
+
+    cases = select_case_studies(rows, per_harness=2)
+    by_task = {case["task_id"]: case for case in cases}
+
+    assert by_task["verify_recover_correct"]["correct"] is True
+    assert by_task["premature_incorrect"]["correct"] is False
+    assert by_task["budget_error"]["score_status"] == "runtime_error"
+    assert "verification_circuit" in by_task["verify_recover_correct"]["motifs"]
+    assert "recovery_circuit" in by_task["verify_recover_correct"]["motifs"]
+    assert "tool_grounded_reasoning" in by_task["verify_recover_correct"]["motifs"]
+    assert "premature_answer" in by_task["premature_incorrect"]["motifs"]
+    assert "budget_collapse" in by_task["budget_error"]["motifs"]
+    assert all(len(snippet) <= 240 for case in cases for snippet in case["evidence_snippets"])
+    assert all("/data2/" not in snippet for case in cases for snippet in case["evidence_snippets"])
+    assert all("sk-test" not in snippet for case in cases for snippet in case["evidence_snippets"])
+
+
+def test_summarize_event_sequence_returns_required_case_shape():
+    summary = summarize_event_sequence(
+        [
+            _event("openclaw", "gpqa_1", 0, "verify", correct=True, run_id="run-a"),
+            _event("openclaw", "gpqa_1", 1, "answer", correct=True, run_id="run-a"),
+        ]
+    )
+
+    assert set(summary) >= {
+        "run_id",
+        "harness",
+        "task_id",
+        "sample_index",
+        "correct",
+        "score_status",
+        "actions",
+        "motifs",
+        "evidence_snippets",
+    }
+    assert summary["motifs"] == ["verification_circuit"]
