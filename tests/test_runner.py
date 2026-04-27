@@ -3,6 +3,7 @@
 import json
 from types import SimpleNamespace
 
+import httpx
 import pytest
 
 from alphadiana.agent.base import AgentResponse
@@ -597,6 +598,122 @@ def test_runner_fresh_predeployed_standby_sandboxes(monkeypatch, tmp_path):
     assert all(session.close_calls == 1 for session in created_sessions)
     records = runner.result_store.load()
     assert {record["standby_sandboxes"] for record in records} == {1}
+
+
+def test_runner_skips_unhealthy_fresh_predeployed_standby_on_acquire(monkeypatch, tmp_path):
+    class _FakeBenchmark:
+        def load_tasks(self, config):
+            return [
+                BenchmarkTask(task_id="aime_0", problem="Q0", ground_truth="42"),
+                BenchmarkTask(task_id="aime_1", problem="Q1", ground_truth="42"),
+            ]
+
+    class _FakePredeployedSession:
+        def __init__(self, sandbox_id: str):
+            self.sandbox_id = sandbox_id
+            self.close_calls = 0
+
+        def proxy_v1_base(self) -> str:
+            return f"http://proxy.test/apis/envs/sandbox/v1/sandboxes/{self.sandbox_id}/proxy/v1"
+
+        def published_base(self, container_port: int, *, host: str = "127.0.0.1") -> str:
+            return f"http://127.0.0.1:1/{self.sandbox_id}"
+
+        def metadata(self) -> dict:
+            return {
+                "sandbox_id": self.sandbox_id,
+                "proxy_base_url": self.proxy_v1_base(),
+            }
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    created_sessions: list[_FakePredeployedSession] = []
+
+    class _FakeRockSandboxBackend:
+        def setup(self, config) -> None:
+            self.config = config
+
+        def create_session(self):
+            session = _FakePredeployedSession(f"sandbox-{len(created_sessions)}")
+            created_sessions.append(session)
+            return session
+
+    class _FakeGatewayRuntimeManager:
+        def ensure_ready(self, session):
+            return {
+                "sandbox_id": session.sandbox_id,
+                "gateway_url": f"http://127.0.0.1:1/{session.sandbox_id}/v1/chat/completions",
+                "api_base": f"http://127.0.0.1:1/{session.sandbox_id}/v1",
+            }
+
+    class _FakeGatewayAgent:
+        def __init__(self):
+            self.solve_sandbox_ids: list[str | None] = []
+
+        def setup(self, config) -> None:
+            self.config = dict(config)
+
+        def solve(self, task, sandbox=None):
+            sandbox_id = getattr(sandbox, "sandbox_id", None)
+            self.solve_sandbox_ids.append(sandbox_id)
+            return AgentResponse(answer="42", sandbox_id=sandbox_id or "", metadata={})
+
+        def teardown(self) -> None:
+            pass
+
+    probe_urls: list[str] = []
+
+    def _fake_probe(url, *, timeout, trust_env):
+        probe_urls.append(url)
+        assert trust_env is False
+        if "/sandbox-1/" in url:
+            raise httpx.ConnectError("Connection refused")
+        return SimpleNamespace(status_code=404)
+
+    monkeypatch.setattr("alphadiana.runner.runner.httpx.get", _fake_probe)
+    monkeypatch.setattr("alphadiana.runner.runner.BenchmarkRegistry.get", lambda name: _FakeBenchmark)
+    monkeypatch.setattr("alphadiana.runner.runner.AgentRegistry.get", lambda name: _FakeGatewayAgent)
+    monkeypatch.setattr("alphadiana.runner.runner.SandboxRegistry.get", lambda name: _FakeRockSandboxBackend)
+    monkeypatch.setattr(
+        "alphadiana.runner.runner._make_gateway_runtime_manager",
+        lambda config: _FakeGatewayRuntimeManager(),
+    )
+
+    config = ExperimentConfig(
+        run_id="runner-fresh-predeployed-skip-dead-standby",
+        agent_name="openclaw",
+        agent_version="2026.3.20",
+        agent_config={
+            "api_key": "sk-test",
+            "rock_agent_config_path": "openclaw_deploy/rock_agent_config.prebuilt.yaml",
+            "openclaw_config_path": "openclaw_deploy/openclaw.json",
+            "admin_base_url": "http://127.0.0.1:9000",
+            "proxy_base_url": "http://127.0.0.1:9005/apis/envs/sandbox/v1",
+            "standby_sandboxes": 1,
+            "predeploy_stagger_seconds": 0,
+        },
+        benchmark_name="aime",
+        benchmark_config={},
+        scorer_name="numeric",
+        scorer_config={},
+        max_concurrent=1,
+        output_dir=str(tmp_path),
+    )
+
+    runner = Runner(config)
+    runner.setup()
+    try:
+        summary = runner.run()
+    finally:
+        runner.teardown()
+
+    assert summary.completed == 2
+    assert "sandbox-1" not in runner.agent.solve_sandbox_ids
+    assert runner.agent.solve_sandbox_ids[0] == "sandbox-0"
+    assert runner.agent.solve_sandbox_ids[1] != "sandbox-1"
+    assert created_sessions[1].close_calls == 1
+    assert any("/sandbox-1/v1/models" in url for url in probe_urls)
 
 
 def test_runner_quarantines_predeployed_session_after_reset_failure(monkeypatch, tmp_path):
