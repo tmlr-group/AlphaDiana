@@ -86,6 +86,12 @@ OpenClaw configs also set:
   `trust_env=False` reachability probe to the sandbox's host-published gateway
   and discards/replaces the sandbox if the gateway is already unreachable. This
   prevents a dead standby sandbox from consuming a full task retry cycle.
+- Streamed OpenClaw responses that emit partial text or logprobs but never
+  receive the terminal `[DONE]` marker are preserved as `runtime_error` partial
+  responses instead of being scored as normal answers. Partial raw output and
+  logprob sidecars remain available for audit, and recoverable-only task retry
+  can rerun the sample when the failure evidence points to a dead gateway or
+  sandbox.
 
 ZeroClaw configs also set:
 
