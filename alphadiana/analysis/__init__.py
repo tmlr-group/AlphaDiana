@@ -30,6 +30,18 @@ from alphadiana.analysis.action_features import build_record_feature_rows
 from alphadiana.analysis.clustering import cluster_analysis_views, cluster_rows
 from alphadiana.analysis.reliability import compute_reliability_summary
 from alphadiana.analysis.reports import render_markdown_report, write_feature_csv, write_json
+from alphadiana.analysis.trajectory_metrics import (
+    ERROR_STATUSES,
+    MAIN_METRIC_NAMES,
+    compute_outcome_conditioned_metrics,
+    group_event_sequences,
+    has_answer_after_verification,
+    has_budget_collapse,
+    has_error_recovery,
+    has_premature_answer,
+    has_tool_grounded_reasoning,
+    trajectory_key,
+)
 
 __all__ = [
     "ACTION_LABEL_CONFIDENCES",
@@ -43,14 +55,23 @@ __all__ = [
     "RunBundle",
     "TOOL_SUBTYPES",
     "ActionEvent",
+    "ERROR_STATUSES",
+    "MAIN_METRIC_NAMES",
     "build_record_feature_rows",
     "classify_action_intent",
     "classify_tool_subtype",
     "cluster_analysis_views",
     "cluster_rows",
+    "compute_outcome_conditioned_metrics",
     "compute_reliability_summary",
     "extract_action_event_rows",
     "extract_action_events",
+    "group_event_sequences",
+    "has_answer_after_verification",
+    "has_budget_collapse",
+    "has_error_recovery",
+    "has_premature_answer",
+    "has_tool_grounded_reasoning",
     "inventory_corpus",
     "load_jsonl_records",
     "load_run_bundle",
@@ -59,6 +80,7 @@ __all__ = [
     "render_markdown_report",
     "resolve_run_relative_path",
     "select_directllm_baseline",
+    "trajectory_key",
     "write_feature_csv",
     "write_json",
 ]
