@@ -241,7 +241,7 @@ def test_extract_action_events_reads_normalized_trace_artifact(tmp_path):
         json.dumps(
             {
                 "steps": [
-                    {"type": "reasoning", "content": "Plan: solve then verify."},
+                    {"type": "reasoning", "content": "Plan: solve the problem."},
                     {"type": "tool_use", "tool_calls": [{"name": "python"}], "content": "run python check"},
                     {"type": "tool_result", "content": "Traceback exception"},
                     {"type": "message", "content": "Retry with a simpler calculation"},
