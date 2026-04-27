@@ -97,8 +97,10 @@ ZeroClaw configs also set:
 The AIME 2026 OpenClaw full-run config is intentionally conservative for
 shared local-vLLM recovery: `max_concurrent: 1`, `max_tokens: 131072`,
 `agent.config.num_sandboxes: 1`, and `agent.config.standby_sandboxes: 1`.
-Raise concurrency only with explicit overrides after checking local vLLM queue
-headroom. The AIME 2026 ZeroClaw full-run config remains lowered to
+It also sets `task_retries: 2` so a task-level `runtime_error` caused by a dead
+gateway or sandbox can be retried on a replacement fresh sandbox in the same
+run. Raise concurrency only with explicit overrides after checking local vLLM
+queue headroom. The AIME 2026 ZeroClaw full-run config remains lowered to
 `max_concurrent: 2` and additionally sets `task_retries: 2` so checkpoint
 resumes can replace a dead pooled ROCK session and retry the affected sample on
 a fresh sandbox.
