@@ -1,6 +1,6 @@
 # FULL RUN: GPQA-Diamond x OpenCode on local Qwen/Qwen3.5-27B with logprob capture.
 
-run_id: "full_gpqa_opencode_qwen35_27b_logprobs"
+run_id: "full_gpqa_v2_opencode_qwen35_27b_logprobs"
 
 agent:
   name: opencode
@@ -47,7 +47,7 @@ scorer:
   name: exact_match
   config: {}
 
-max_concurrent: 10
+max_concurrent: 30
 num_samples: 1
 output_dir: "./results"
 strict_report: true

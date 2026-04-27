@@ -51,7 +51,7 @@ mkdir -p logs results
 OPENCODE_LOG="logs/full_gpqa_opencode_qwen35_27b_logprobs.log"
 echo "[launch] OpenCode → ${OPENCODE_LOG}"
 nohup python -m alphadiana.cli run \
-    configs/full_runs/full_gpqa_opencode_qwen35_27b_logprobs.yaml \
+    configs/full_runs/gpqa_opencode_qwen35_27b_logprobs.yaml \
     > "${OPENCODE_LOG}" 2>&1 &
 OPENCODE_PID=$!
 echo "[launch] OpenCode PID=${OPENCODE_PID}"
@@ -60,7 +60,7 @@ echo "[launch] OpenCode PID=${OPENCODE_PID}"
 OPENCLAW_LOG="logs/full_gpqa_openclaw_qwen35_27b_logprobs.log"
 echo "[launch] OpenClaw → ${OPENCLAW_LOG}"
 nohup python -m alphadiana.cli run \
-    configs/full_runs/full_gpqa_openclaw_qwen35_27b_logprobs.yaml \
+    configs/full_runs/gpqa_openclaw_qwen35_27b_logprobs.yaml \
     > "${OPENCLAW_LOG}" 2>&1 &
 OPENCLAW_PID=$!
 echo "[launch] OpenClaw PID=${OPENCLAW_PID}"
@@ -84,7 +84,7 @@ ZEROCLAW_LOG="logs/full_gpqa_zeroclaw_qwen35_27b_logprobs.log"
     echo "[launch] Starting ZeroClaw → ${ZEROCLAW_LOG}"
     source "${SCRIPT_DIR}/rock_env.sh"
     python -m alphadiana.cli run \
-        configs/full_runs/full_gpqa_zeroclaw_qwen35_27b_logprobs.yaml \
+        configs/full_runs/gpqa_zeroclaw_qwen35_27b_logprobs.yaml \
         > "${ZEROCLAW_LOG}" 2>&1
     ZC_EXIT=$?
     echo "[monitor] ZeroClaw finished with exit code ${ZC_EXIT}" >> "${ZEROCLAW_LOG}"
