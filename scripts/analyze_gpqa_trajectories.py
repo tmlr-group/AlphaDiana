@@ -33,18 +33,33 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     results_dir = args.results_dir
-    corpus_specs = dict(DEFAULT_PRIMARY_RUNS)
+    corpus_specs: dict[str, tuple[Path, str]] = {
+        harness: (results_dir, run_id) for harness, run_id in DEFAULT_PRIMARY_RUNS.items()
+    }
 
     directllm = select_directllm_baseline(results_dir)
     direct_bundle = directllm.get("bundle")
     if direct_bundle is not None and directllm.get("run_id"):
-        corpus_specs = {"directllm": str(directllm["run_id"]), **corpus_specs}
+        direct_results_dir, direct_bundle = _resolve_directllm_bundle(results_dir, str(directllm["run_id"]), direct_bundle)
+        directllm = {
+            **directllm,
+            "valid_scored": sum(
+                1 for record in direct_bundle.records if record.get("score_status") == "valid_scored"
+            ),
+            "jsonl_records": len(direct_bundle.records),
+            "task_records": sum(len(records) for records in direct_bundle.task_records.values()),
+        }
+        corpus_specs = {"directllm": (direct_results_dir, str(directllm["run_id"])), **corpus_specs}
 
     inventory_rows: list[dict[str, Any]] = []
     event_rows: list[dict[str, Any]] = []
-    for harness, run_id in corpus_specs.items():
-        inventory_rows.append(inventory_corpus(results_dir, run_id, harness))
-        bundle = direct_bundle if harness == "directllm" and direct_bundle is not None else load_run_bundle(results_dir, run_id)
+    for harness, (corpus_results_dir, run_id) in corpus_specs.items():
+        inventory_rows.append(inventory_corpus(corpus_results_dir, run_id, harness))
+        bundle = (
+            direct_bundle
+            if harness == "directllm" and direct_bundle is not None
+            else load_run_bundle(corpus_results_dir, run_id)
+        )
         event_rows.extend(extract_action_event_rows(bundle, harness=harness))
 
     inventory = {
@@ -75,6 +90,16 @@ def main(argv: list[str] | None = None) -> int:
     for path in output_paths.values():
         sys.stdout.write(f"Wrote {path}\n")
     return 0
+
+
+def _resolve_directllm_bundle(results_dir: Path, run_id: str, bundle):
+    if bundle.records or bundle.task_records:
+        return results_dir, bundle
+    packed_results_dir = results_dir / run_id
+    packed_bundle = load_run_bundle(packed_results_dir, run_id)
+    if packed_bundle.records or packed_bundle.task_records:
+        return packed_results_dir, packed_bundle
+    return results_dir, bundle
 
 
 if __name__ == "__main__":
