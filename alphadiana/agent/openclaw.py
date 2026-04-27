@@ -1721,6 +1721,7 @@ class OpenClawAgent(Agent):
                                 pass
                             else:
                                 # Successful non-streaming JSON — extract assistant content.
+                                received_done = True
                                 choices = response_json.get("choices") or []
                                 if choices:
                                     msg = choices[0].get("message", {})
@@ -2210,6 +2211,48 @@ class OpenClawAgent(Agent):
                 jitter = random.uniform(0, delay * 0.3)
                 logger.info("Retry delay: %.1fs (error_type=%s)", delay + jitter, last_error_type)
                 time.sleep(delay + jitter)
+
+        if request_payload.get("stream") and (raw_output or partial_reasoning_only) and not received_done:
+            status_code = retry_responses[-1]["status_code"] if retry_responses else None
+            error_type = classify_error(
+                last_error,
+                response_json=response_json or None,
+                status_code=status_code,
+            )
+            if error_type == "unknown":
+                error_type = "incomplete_stream"
+            if not retry_responses:
+                retry_responses.append(
+                    {
+                        "attempt": logprob_source_attempt or 0,
+                        "status_code": status_code,
+                        "headers": {},
+                        "body": "OpenClaw stream ended before [DONE]",
+                        "elapsed_sec": time.time() - start,
+                        "error_type": error_type,
+                        "recovered_trajectory_len": len(recovered_trajectory),
+                    }
+                )
+            detail = response_json or {
+                "url": url,
+                "request": request_payload,
+                "stream_status": {
+                    "received_done": received_done,
+                    "error_type": error_type,
+                },
+            }
+            partial_response = _build_partial_error_response(
+                error_type=error_type,
+                detail=detail,
+            )
+            raise OpenClawRequestError(
+                f"OpenClaw stream ended before [DONE]: {detail}",
+                error_type=error_type,
+                request_payload=request_payload,
+                response_body=detail,
+                retry_responses=retry_responses,
+                partial_response=partial_response,
+            )
 
         if not raw_output and not partial_reasoning_only:
             error_type = classify_error(

@@ -211,14 +211,57 @@ def test_streaming_timeout_preserves_partial_output_and_logprobs(
 
     agent = OpenClawAgent()
     agent.setup(_base_config(stream=True, max_attempts=1))
-    resp = agent.solve(_task())
 
-    assert resp.raw_output == "The answer is 4"
-    assert resp.finish_reason == ""
-    assert resp.response_json["choices"][0]["finish_reason"] == "incomplete"
-    assert resp.metadata["logprobs_capture_status"] == "captured"
-    assert resp.metadata["logprob_records"][0]["token"] == "4"
-    assert resp.token_entropy_stats["n_tokens"] == 1
+    with pytest.raises(OpenClawRequestError) as exc_info:
+        agent.solve(_task())
+
+    partial = exc_info.value.partial_response
+    assert partial is not None
+    assert partial.raw_output == "The answer is 4"
+    assert partial.finish_reason == "incomplete"
+    assert partial.response_json["choices"][0]["finish_reason"] == "incomplete"
+    assert partial.metadata["received_done"] is False
+    assert partial.metadata["failure_reason"] == "timeout"
+    assert partial.metadata["logprobs_capture_status"] == "captured"
+    assert partial.metadata["logprob_records"][0]["token"] == "4"
+    assert partial.token_entropy_stats["n_tokens"] == 1
+
+
+def test_streaming_without_done_preserves_partial_as_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chunk = {
+        "choices": [
+            {
+                "delta": {"content": "The answer is 4"},
+                "logprobs": {
+                    "content": [
+                        {"token": "4", "logprob": -0.1, "top_logprobs": [{"token": "4", "logprob": -0.1}]}
+                    ]
+                },
+            }
+        ]
+    }
+    response = _FakeResponse(
+        headers={"content-type": "text/event-stream"},
+        sse_lines=[f"data: {json.dumps(chunk)}"],
+    )
+    _patch_network(monkeypatch, [response])
+
+    agent = OpenClawAgent()
+    agent.setup(_base_config(stream=True, max_attempts=1))
+
+    with pytest.raises(OpenClawRequestError) as exc_info:
+        agent.solve(_task())
+
+    partial = exc_info.value.partial_response
+    assert partial is not None
+    assert partial.raw_output == "The answer is 4"
+    assert partial.metadata["received_done"] is False
+    assert partial.metadata["failure_reason"] == "incomplete_stream"
+    assert partial.metadata["retry_count"] == 1
+    assert partial.metadata["logprobs_capture_status"] == "captured"
+    assert partial.metadata["logprob_records"][0]["token"] == "4"
 
 
 def test_retry_uses_only_final_successful_attempt_records(monkeypatch: pytest.MonkeyPatch) -> None:
