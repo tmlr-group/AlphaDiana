@@ -91,7 +91,7 @@ class ResultStore:
         *,
         run_metadata: dict | None = None,
     ) -> None:
-        self.output_dir = Path(output_dir)
+        self.output_dir = Path(output_dir).expanduser().resolve()
         self.run_id = run_id
         self.path = str(self.output_dir / f"{run_id}.jsonl")
         self.manifest_path = self.output_dir / run_id / "run_manifest.json"

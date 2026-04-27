@@ -34,7 +34,7 @@
       "models": {
         "local/${OPENAI_MODEL_NAME}": {
           "params": {
-            "maxTokens": 131072
+            "maxTokens": 32768
           }
         }
       },

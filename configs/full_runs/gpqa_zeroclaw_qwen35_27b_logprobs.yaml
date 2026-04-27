@@ -27,7 +27,7 @@ agent:
     provider_api_key: "EMPTY"
     temperature: 0.0
     top_p: 0.95
-    max_tokens: 131072
+    max_tokens: 65536
     enable_thinking: true
     request_timeout: 9000
     runtime_trace_mode: "all"
@@ -59,4 +59,4 @@ max_concurrent: 4
 num_samples: 1
 output_dir: "./results"
 metadata:
-  notes: "Canonical full GPQA-Diamond ZeroClaw config after prompt alignment. enable_thinking=true, max_tokens=131072, top_logprobs=20."
+  notes: "Canonical full GPQA-Diamond ZeroClaw config after prompt alignment. enable_thinking=true, max_tokens=65536, top_logprobs=20."

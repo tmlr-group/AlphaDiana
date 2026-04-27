@@ -22,7 +22,7 @@ agent:
     enable_thinking: true
     stream: true
     request_timeout: 9300
-    stream_idle_timeout: 600
+    stream_idle_timeout: 1800
     stream_total_timeout: 9000
     max_attempts: 5
     capture_logprobs: true

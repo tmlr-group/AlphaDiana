@@ -70,8 +70,17 @@ OpenClaw configs also set:
 - `rock_agent_config_path: openclaw_deploy/rock_agent_config.prebuilt.yaml`
 - `openclaw_config_path: openclaw_deploy/openclaw.json`
 - `request_timeout: 9300`
-- `stream_idle_timeout: 600`
+- `stream_idle_timeout: 1800` for the standard five-benchmark configs;
+  AIME 2026 keeps `stream_idle_timeout: 9300`
 - `stream_total_timeout: 9000`
+- Predeployed ROCK sandboxes default to fresh-per-task mode:
+  `reuse_predeployed_sandboxes: false`. Each task gets a ready sandbox/gateway,
+  results and artifacts are written, then the sandbox is closed instead of
+  reset and reused. Set `standby_sandboxes: N` to keep extra ready sandboxes
+  warm while workers consume the active pool. The older reset-and-reuse mode is
+  still available with `reuse_predeployed_sandboxes: true`; that path clears
+  OpenClaw session state under the known OpenClaw home directories on every
+  reset to prevent stale chat history reuse.
 
 ZeroClaw configs also set:
 
@@ -80,16 +89,22 @@ ZeroClaw configs also set:
 - `request_timeout: 9300`
 - `max_tool_iterations: 100`
 
-The AIME 2026 OpenClaw and ZeroClaw full-run configs are currently lowered to
-`max_concurrent: 2` to avoid deep local-vLLM queueing during the AIME 2026
-recovery run. The AIME 2026 ZeroClaw full-run config additionally sets
-`task_retries: 2` so checkpoint resumes can replace a dead pooled ROCK session
-and retry the affected sample on a fresh sandbox.
+The AIME 2026 OpenClaw full-run config is intentionally conservative for
+shared local-vLLM recovery: `max_concurrent: 1`, `max_tokens: 131072`,
+`agent.config.num_sandboxes: 1`, and `agent.config.standby_sandboxes: 1`.
+Raise concurrency only with explicit overrides after checking local vLLM queue
+headroom. The AIME 2026 ZeroClaw full-run config remains lowered to
+`max_concurrent: 2` and additionally sets `task_retries: 2` so checkpoint
+resumes can replace a dead pooled ROCK session and retry the affected sample on
+a fresh sandbox.
 
 Result persistence redacts common secret env assignments and sensitive key
 fields before writing JSONL records, task JSONs, sandbox metadata, retry
 artifacts, normalized traces, and common text artifacts. Raw experiment shell
 logs still live under `logs/` and should be treated as local operational logs.
+Result paths are resolved relative to the launch directory at run setup time,
+so background ROCK deployment cwd changes cannot redirect JSONL, task JSON,
+artifact, dashboard, or logprob sidecar writes.
 
 For local `long64k` ZeroClaw smoke/recovery runs, use the serial smoke configs
 under `configs/smokes/harness_prompt_alignment_20260425/` or override

@@ -18,7 +18,7 @@ class PlainTextDashboard:
     """
 
     def __init__(self, path: str | Path, tasks: list[Any], samples_per_task: int = 1) -> None:
-        self._path = Path(path)
+        self._path = Path(path).expanduser().resolve()
         self._samples = samples_per_task
         # Deduplicate task_ids while preserving order.
         seen: set[str] = set()

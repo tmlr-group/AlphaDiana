@@ -32,7 +32,7 @@ class TerminalBench2DockerAgent(TerminalBench2ContainerMixin, Agent):
             config.get("api_key") or os.environ.get("OPENAI_API_KEY", "EMPTY")
         )
         self._max_rounds = int(config.get("max_rounds", 10))
-        self._max_tokens = int(config.get("max_tokens", 131072))
+        self._max_tokens = int(config.get("max_tokens", 4096))
         self._temperature = float(config.get("temperature", 0.0))
         self._setup_container_config(config)
         self._client = None
