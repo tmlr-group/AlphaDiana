@@ -1414,6 +1414,111 @@ def test_runner_sequential_session_reuse_depends_on_agent_name(
         assert [session.close_calls for session in runner.sandbox.created_sessions] == [1]
 
 
+@pytest.mark.parametrize(
+    ("response_kwargs", "expected_reason", "expected_error_type"),
+    [
+        (
+            {"metadata": {"received_done": False}, "raw_output": "$$\\boxed{42}$$"},
+            "stream_incomplete",
+            "incomplete_stream",
+        ),
+        (
+            {
+                "metadata": {"received_done": True},
+                "trajectory": [
+                    {"role": "user", "content": "Read HEARTBEAT.md if it exists."},
+                    {"role": "assistant", "content": "HEARTBEAT_OK"},
+                ],
+            },
+            "heartbeat_trace",
+            "openclaw_heartbeat_taint",
+        ),
+        (
+            {"metadata": {"received_done": True, "session_tainted": True}},
+            "session_tainted",
+            "openclaw_session_tainted",
+        ),
+    ],
+)
+def test_runner_rejects_tainted_openclaw_responses_before_scoring(
+    monkeypatch,
+    tmp_path,
+    response_kwargs,
+    expected_reason,
+    expected_error_type,
+):
+    class _FakeBenchmark:
+        def load_tasks(self, config):
+            return [BenchmarkTask(task_id="task-0", problem="Q0", ground_truth="42")]
+
+    class _FakeSession:
+        sandbox_id = "sandbox-1"
+
+        def metadata(self) -> dict:
+            return {"sandbox_id": self.sandbox_id}
+
+        def close(self) -> None:
+            pass
+
+    class _FakeSandbox:
+        def setup(self, config) -> None:
+            self.config = dict(config)
+
+        def create_session(self):
+            return _FakeSession()
+
+        def teardown(self) -> None:
+            pass
+
+    class _FakeAgent:
+        def setup(self, config) -> None:
+            self.config = dict(config)
+
+        def solve(self, task, sandbox=None):
+            return AgentResponse(answer="42", sandbox_id="sandbox-1", **response_kwargs)
+
+        def teardown(self) -> None:
+            pass
+
+    monkeypatch.setattr("alphadiana.runner.runner.BenchmarkRegistry.get", lambda name: _FakeBenchmark)
+    monkeypatch.setattr("alphadiana.runner.runner.AgentRegistry.get", lambda name: _FakeAgent)
+    monkeypatch.setattr("alphadiana.runner.runner.SandboxRegistry.get", lambda name: _FakeSandbox)
+
+    config = ExperimentConfig(
+        run_id=f"runner-openclaw-taint-{expected_reason}",
+        agent_name="openclaw",
+        agent_version="test",
+        agent_config={},
+        benchmark_name="aime",
+        benchmark_config={},
+        sandbox_name="fake_sandbox",
+        sandbox_config={},
+        scorer_name="numeric",
+        scorer_config={},
+        max_concurrent=1,
+        output_dir=str(tmp_path),
+    )
+
+    runner = Runner(config)
+    runner.setup()
+    try:
+        summary = runner.run()
+    finally:
+        runner.teardown()
+
+    assert summary.completed == 0
+    assert summary.error_records == 1
+    records = runner.result_store.load()
+    assert len(records) == 1
+    record = records[0]
+    assert record["score_status"] == "runtime_error"
+    assert record["correct"] is None
+    assert record["predicted"] == "42"
+    assert record["error"]["error_type"] == expected_error_type
+    assert record["metadata"]["openclaw_integrity_guard"] is True
+    assert record["metadata"]["openclaw_integrity_guard_reason"] == expected_reason
+
+
 def test_runner_checkpoint_ignores_completed_records_from_other_scorer(monkeypatch, tmp_path):
     class _FakeBenchmark:
         def load_tasks(self, config):

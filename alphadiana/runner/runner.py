@@ -288,6 +288,56 @@ def _is_recoverable_task_failure(exc: Exception) -> bool:
     return bool(getattr(exc, "retryable_task_failure", False))
 
 
+class _OpenClawResponseRejected(RuntimeError):
+    """Raised when a completed OpenClaw response fails harness integrity checks."""
+
+    def __init__(
+        self,
+        reason: str,
+        response: object,
+        *,
+        error_type: str = "openclaw_response_rejected",
+    ) -> None:
+        super().__init__(f"OpenClaw response rejected by integrity guard: {reason}")
+        self.reason = reason
+        self.error_type = error_type
+        self.partial_response = response
+        self.response_body = {"guard_reason": reason}
+
+
+def _iter_openclaw_response_text(response: object):
+    for attr in (
+        "raw_output",
+        "trajectory",
+        "reasoning_trajectory",
+        "request_messages",
+        "response_json",
+    ):
+        value = getattr(response, attr, None)
+        if value:
+            yield _payload_text(value)
+
+
+def _openclaw_integrity_guard_reason(config: "ExperimentConfig", response: object) -> tuple[str, str]:
+    """Return a rejection reason/error_type for tainted OpenClaw responses."""
+    if config.agent_name != "openclaw":
+        return "", ""
+
+    metadata = getattr(response, "metadata", None)
+    metadata = metadata if isinstance(metadata, dict) else {}
+    if metadata.get("session_tainted") is True:
+        return "session_tainted", "openclaw_session_tainted"
+    if metadata.get("received_done") is False:
+        return "stream_incomplete", "incomplete_stream"
+    if str(getattr(response, "finish_reason", "") or "").strip() == "incomplete":
+        return "finish_reason_incomplete", "incomplete_stream"
+
+    for text in _iter_openclaw_response_text(response):
+        if "Read HEARTBEAT.md" in text or "HEARTBEAT_OK" in text or "HEARTBEAT.md" in text:
+            return "heartbeat_trace", "openclaw_heartbeat_taint"
+    return "", ""
+
+
 def _build_error_info(exc: Exception) -> dict:
     """Build a serializable error dict from an exception."""
     error_type = getattr(exc, "error_type", type(exc).__name__)
@@ -1524,6 +1574,18 @@ class Runner:
                 if self.sandbox is not None:
                     sandbox_backend_name = getattr(self.sandbox, "name", type(self.sandbox).__name__)
                     response.metadata.setdefault("sandbox_backend", sandbox_backend_name)
+                guard_reason, guard_error_type = _openclaw_integrity_guard_reason(
+                    self.config,
+                    response,
+                )
+                if guard_reason:
+                    response.metadata["openclaw_integrity_guard"] = True
+                    response.metadata["openclaw_integrity_guard_reason"] = guard_reason
+                    raise _OpenClawResponseRejected(
+                        guard_reason,
+                        response,
+                        error_type=guard_error_type,
+                    )
                 # Score the result.
                 score = self.scorer.score(runtime_task, response)
                 # Store the result.

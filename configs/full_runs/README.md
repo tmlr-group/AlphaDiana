@@ -92,6 +92,13 @@ OpenClaw configs also set:
   logprob sidecars remain available for audit, and recoverable-only task retry
   can rerun the sample when the failure evidence points to a dead gateway or
   sandbox.
+- Runner-side OpenClaw integrity checks reject responses before scoring when
+  `metadata.received_done=false`, `metadata.session_tainted=true`,
+  `finish_reason=incomplete`, or heartbeat markers appear in the trajectory or
+  raw output. Rejected responses are stored as `runtime_error` with available
+  artifacts preserved. See
+  [`docs/benchmarks/openclaw.md`](../../docs/benchmarks/openclaw.md) for the
+  full OpenClaw runbook and result-validity contract.
 
 ZeroClaw configs also set:
 
