@@ -131,6 +131,44 @@ def test_score_none_error_none_counts_invalid_not_completed(tmp_path):
     assert summary.completed == 0
 
 
+def test_legacy_timeout_error_counts_as_valid_zero_in_report(tmp_path):
+    store = ResultStore(output_dir=str(tmp_path), run_id="manifest-legacy-timeout")
+    store.save_manifest({
+        "run_id": "manifest-legacy-timeout",
+        "num_samples": 1,
+        "expected_task_count": 2,
+        "expected_sample_count": 2,
+        "expected_task_ids": ["t1", "t2"],
+    })
+    store.append(_task("t1"), AgentResponse(answer="42"), _score(True))
+    with open(store.path, "a", encoding="utf-8") as handle:
+        import json
+        handle.write(json.dumps({
+            "task_id": "t2",
+            "sample_index": 0,
+            "predicted": None,
+            "correct": None,
+            "score": None,
+            "rationale": "OpenClaw stream total timeout after 60.0s",
+            "finish_reason": "",
+            "metadata": {"failure_reason": "timeout"},
+            "error": {
+                "error": "OpenClaw stream total timeout after 60.0s",
+                "error_type": "timeout",
+            },
+            "score_status": "runtime_error",
+        }) + "\n")
+
+    summary = ReportGenerator().generate(store, _cfg("manifest-legacy-timeout"))
+
+    assert summary.valid_scored == 2
+    assert summary.error_records == 0
+    assert summary.completed == 2
+    assert summary.failed == 0
+    assert summary.accuracy == 0.5
+    assert summary.mean_score == 0.5
+
+
 def test_preserved_failure_counts_invalid_not_valid_scored(tmp_path):
     store = ResultStore(output_dir=str(tmp_path), run_id="manifest-preserved")
     store.save_manifest({
