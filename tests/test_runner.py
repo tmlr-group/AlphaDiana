@@ -14,6 +14,7 @@ from alphadiana.runner.runner import (
     _is_gateway_autodeploy_agent,
     _merge_artifact_manifests,
     _needs_auto_rock_sandbox,
+    _openclaw_integrity_guard_reason,
     _predeployed_session_failure_reason,
     _sanitize_sandbox_metadata,
     _sanitize_success_sandbox_metadata,
@@ -1517,6 +1518,62 @@ def test_runner_rejects_tainted_openclaw_responses_before_scoring(
     assert record["error"]["error_type"] == expected_error_type
     assert record["metadata"]["openclaw_integrity_guard"] is True
     assert record["metadata"]["openclaw_integrity_guard_reason"] == expected_reason
+
+
+def test_runner_allows_openclaw_timeout_scored_zero_response():
+    config = ExperimentConfig(
+        run_id="runner-openclaw-timeout-zero",
+        agent_name="openclaw",
+        agent_version="test",
+        agent_config={},
+        benchmark_name="aime",
+        benchmark_config={},
+        sandbox_name="none",
+        sandbox_config={},
+        scorer_name="numeric",
+        scorer_config={},
+    )
+    response = AgentResponse(
+        answer=None,
+        finish_reason="timeout",
+        metadata={
+            "received_done": False,
+            "failure_reason": "timeout",
+            "openclaw_timeout_scored_zero": True,
+        },
+    )
+
+    assert _openclaw_integrity_guard_reason(config, response) == ("", "")
+
+
+def test_runner_still_rejects_heartbeat_tainted_openclaw_timeout_zero():
+    config = ExperimentConfig(
+        run_id="runner-openclaw-timeout-zero-heartbeat",
+        agent_name="openclaw",
+        agent_version="test",
+        agent_config={},
+        benchmark_name="aime",
+        benchmark_config={},
+        sandbox_name="none",
+        sandbox_config={},
+        scorer_name="numeric",
+        scorer_config={},
+    )
+    response = AgentResponse(
+        answer=None,
+        finish_reason="timeout",
+        raw_output="HEARTBEAT_OK",
+        metadata={
+            "received_done": False,
+            "failure_reason": "timeout",
+            "openclaw_timeout_scored_zero": True,
+        },
+    )
+
+    assert _openclaw_integrity_guard_reason(config, response) == (
+        "heartbeat_trace",
+        "openclaw_heartbeat_taint",
+    )
 
 
 def test_runner_checkpoint_ignores_completed_records_from_other_scorer(monkeypatch, tmp_path):

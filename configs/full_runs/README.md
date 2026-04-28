@@ -64,6 +64,13 @@ OpenCode configs also set:
 - `timeout: 9300`
 - `streaming: true`
 - `tool_call: true`
+- OpenCode CLI timeouts without a structured provider/tool error are persisted
+  as normal scored samples with `finish_reason: timeout`,
+  `metadata.opencode_error_name: OpenCodeTimeout`, and
+  `metadata.opencode_timeout_scored_zero: true`. Because the response answer is
+  `None`, the benchmark scorer records `score=0` / `correct=false`, and
+  checkpoint resume treats the sample as completed. Structured provider errors
+  and non-timeout non-zero exits such as return code `137` remain error records.
 
 OpenClaw configs also set:
 
@@ -87,12 +94,13 @@ OpenClaw configs also set:
   `trust_env=False` reachability probe to the sandbox's host-published gateway
   and discards/replaces the sandbox if the gateway is already unreachable. This
   prevents a dead standby sandbox from consuming a full task retry cycle.
-- Streamed OpenClaw responses that emit partial text or logprobs but never
-  receive the terminal `[DONE]` marker are preserved as `runtime_error` partial
-  responses instead of being scored as normal answers. Partial raw output and
-  logprob sidecars remain available for audit, and recoverable-only task retry
-  can rerun the sample when the failure evidence points to a dead gateway or
-  sandbox.
+- Streamed OpenClaw responses that time out before the terminal `[DONE]` marker
+  are persisted as scored-zero samples with `finish_reason: timeout`,
+  `metadata.openclaw_error_name: OpenClawTimeout`, and
+  `metadata.openclaw_timeout_scored_zero: true`. Because the response answer is
+  `None`, the benchmark scorer records `score=0` / `correct=false`, and
+  checkpoint resume treats the sample as completed. Non-timeout incomplete
+  streams remain preserved `runtime_error` partial responses.
 - Runner-side OpenClaw integrity checks reject responses before scoring when
   `metadata.received_done=false`, `metadata.session_tainted=true`,
   `finish_reason=incomplete`, or heartbeat markers appear in the trajectory or
@@ -108,6 +116,16 @@ ZeroClaw configs also set:
 - `request_timeout: 9300`
 - `max_tool_iterations: 100`
 - `task_retries: 2` on current local-Qwen full-run rerun configs
+- ZeroClaw CLI timeouts (`exit_code=124`) and runtime-only CLI output that has
+  reached an `llm_request` and the configured request timeout are persisted as
+  scored-zero samples with `finish_reason: timeout`,
+  `metadata.zeroclaw_error_name: ZeroClawTimeout`, and
+  `metadata.zeroclaw_timeout_scored_zero: true`. Because the response answer is
+  `None`, the benchmark scorer records `score=0` / `correct=false`, and
+  checkpoint resume treats the sample as completed. Provider errors,
+  non-timeout CLI errors, and empty-response cases that are not
+  timeout-classified remain error records unless the agent explicitly marks
+  them as scored-zero partial-output cases.
 
 AlphaDiana writes ZeroClaw's schema-supported permissive shell controls into
 the generated `config.toml`: `require_approval_for_medium_risk=false`,

@@ -325,11 +325,15 @@ def _openclaw_integrity_guard_reason(config: "ExperimentConfig", response: objec
 
     metadata = getattr(response, "metadata", None)
     metadata = metadata if isinstance(metadata, dict) else {}
+    timeout_scored_zero = metadata.get("openclaw_timeout_scored_zero") is True
     if metadata.get("session_tainted") is True:
         return "session_tainted", "openclaw_session_tainted"
-    if metadata.get("received_done") is False:
+    if not timeout_scored_zero and metadata.get("received_done") is False:
         return "stream_incomplete", "incomplete_stream"
-    if str(getattr(response, "finish_reason", "") or "").strip() == "incomplete":
+    if (
+        not timeout_scored_zero
+        and str(getattr(response, "finish_reason", "") or "").strip() == "incomplete"
+    ):
         return "finish_reason_incomplete", "incomplete_stream"
 
     for text in _iter_openclaw_response_text(response):

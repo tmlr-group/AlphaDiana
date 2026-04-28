@@ -1597,6 +1597,8 @@ class OpenClawAgent(Agent):
         logprob_source_attempt = 0
         logprob_source = ""
         selected_proxy_logprob_count = 0
+        timeout_scored_zero = False
+        timeout_error_message = ""
 
         def _remember_attempt_logprobs(
             *,
@@ -2076,6 +2078,7 @@ class OpenClawAgent(Agent):
                         pass
                 error_type = classify_error(exc, response_json=response_json or None, status_code=exc_status)
                 if error_type == "timeout":
+                    timeout_error_message = str(exc)
                     recovered_trajectory = self._retrieve_trajectory_sync(
                         sandbox=sandbox,
                         sandbox_id=runtime_info.get("sandbox_id", ""),
@@ -2110,6 +2113,7 @@ class OpenClawAgent(Agent):
                             },
                         }
                     if raw_output:
+                        timeout_scored_zero = True
                         selected_logprob_records = list(
                             attempt_logprob_records or attempt_proxy_logprob_records
                         )
@@ -2123,6 +2127,7 @@ class OpenClawAgent(Agent):
                             logprob_source = ""
                         break
                     if raw_reasoning:
+                        timeout_scored_zero = True
                         selected_logprob_records = list(
                             attempt_logprob_records or attempt_proxy_logprob_records
                         )
@@ -2241,18 +2246,26 @@ class OpenClawAgent(Agent):
                     "error_type": error_type,
                 },
             }
-            partial_response = _build_partial_error_response(
-                error_type=error_type,
-                detail=detail,
-            )
-            raise OpenClawRequestError(
-                f"OpenClaw stream ended before [DONE]: {detail}",
-                error_type=error_type,
-                request_payload=request_payload,
-                response_body=detail,
-                retry_responses=retry_responses,
-                partial_response=partial_response,
-            )
+            if error_type == "timeout":
+                timeout_scored_zero = True
+                timeout_error_message = timeout_error_message or str(
+                    last_error or "OpenClaw stream timed out before [DONE]"
+                )
+                if isinstance(detail, dict):
+                    response_json = detail
+            else:
+                partial_response = _build_partial_error_response(
+                    error_type=error_type,
+                    detail=detail,
+                )
+                raise OpenClawRequestError(
+                    f"OpenClaw stream ended before [DONE]: {detail}",
+                    error_type=error_type,
+                    request_payload=request_payload,
+                    response_body=detail,
+                    retry_responses=retry_responses,
+                    partial_response=partial_response,
+                )
 
         if not raw_output and not partial_reasoning_only:
             error_type = classify_error(
@@ -2261,21 +2274,33 @@ class OpenClawAgent(Agent):
                 status_code=retry_responses[-1]["status_code"] if retry_responses else None,
             )
             detail = response_json or {"url": url, "request": request_payload}
-            partial_response = _build_partial_error_response(
-                error_type=error_type,
-                detail=detail,
-            )
-            if isinstance(last_error, OpenClawRequestError):
-                last_error.partial_response = partial_response
-                raise last_error
-            raise OpenClawRequestError(
-                f"OpenClaw response did not contain assistant text: {detail}",
-                error_type=error_type,
-                request_payload=request_payload,
-                response_body=detail,
-                retry_responses=retry_responses,
-                partial_response=partial_response,
-            )
+            if error_type == "timeout":
+                timeout_scored_zero = True
+                timeout_error_message = timeout_error_message or str(
+                    last_error or "OpenClaw request timed out"
+                )
+                if isinstance(detail, dict):
+                    response_json = detail
+                    stream_status = response_json.setdefault("stream_status", {})
+                    if isinstance(stream_status, dict):
+                        stream_status.setdefault("received_done", received_done)
+                        stream_status.setdefault("error_type", "timeout")
+            else:
+                partial_response = _build_partial_error_response(
+                    error_type=error_type,
+                    detail=detail,
+                )
+                if isinstance(last_error, OpenClawRequestError):
+                    last_error.partial_response = partial_response
+                    raise last_error
+                raise OpenClawRequestError(
+                    f"OpenClaw response did not contain assistant text: {detail}",
+                    error_type=error_type,
+                    request_payload=request_payload,
+                    response_body=detail,
+                    retry_responses=retry_responses,
+                    partial_response=partial_response,
+                )
 
         wall_time = time.time() - start
 
@@ -2297,6 +2322,9 @@ class OpenClawAgent(Agent):
             answer = _extract_answer_from_partial_reasoning(raw_reasoning)
             if answer is not None:
                 answer_source = "reasoning_content"
+        if timeout_scored_zero:
+            answer = None
+            answer_source = ""
 
         # Use cumulative token usage across all retry attempts.
         token_usage = cumulative_token_usage if any(cumulative_token_usage.values()) else {}
@@ -2432,6 +2460,28 @@ class OpenClawAgent(Agent):
             "logprob_source": logprob_source,
             "logprob_probe_proxy_count": selected_proxy_logprob_count,
         }
+        if timeout_scored_zero:
+            response_metadata.update({
+                "failure_reason": "timeout",
+                "openclaw_error_name": "OpenClawTimeout",
+                "openclaw_error_message": timeout_error_message or "The operation timed out.",
+                "openclaw_timeout_scored_zero": True,
+                "openclaw_timeout_seconds": (
+                    self._stream_total_timeout
+                    if self._stream_total_timeout is not None
+                    else self._request_timeout
+                ),
+            })
+            response_json.update({
+                "openclaw_error_name": "OpenClawTimeout",
+                "openclaw_error_message": response_metadata["openclaw_error_message"],
+                "openclaw_timeout_scored_zero": True,
+                "openclaw_timeout_seconds": response_metadata["openclaw_timeout_seconds"],
+            })
+            stream_status = response_json.setdefault("stream_status", {})
+            if isinstance(stream_status, dict):
+                stream_status["error_type"] = "timeout"
+                stream_status.setdefault("received_done", received_done)
         if logprob_proxy is not None:
             response_metadata.update(
                 {
@@ -2465,7 +2515,11 @@ class OpenClawAgent(Agent):
             workspace_file_contents=preserved_workspace_files,
             sandbox_metadata=artifact_data.get("sandbox_metadata", {}),
             system_prompt=extract_system_prompt(trajectory) or self._retrieve_system_prompt_from_sandbox(sandbox),
-            finish_reason="incomplete" if partial_reasoning_only and not raw_output else "",
+            finish_reason=(
+                "timeout"
+                if timeout_scored_zero
+                else ("incomplete" if partial_reasoning_only and not raw_output else "")
+            ),
             metadata=response_metadata,
         )
 

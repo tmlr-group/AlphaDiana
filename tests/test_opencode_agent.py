@@ -562,6 +562,46 @@ def test_solve_raises_agent_error_on_nonzero_exit_without_error_event():
     assert getattr(exc_info.value, "error_type") == "agent_error"
 
 
+def test_solve_scores_timeout_without_error_event_as_no_answer():
+    agent = OpenCodeAgent()
+    agent.setup({
+        "model_name": "test-model",
+        "api_base": "http://localhost:9001/v1",
+        "api_key": "test-key",
+        "timeout": 5,
+    })
+
+    process = MagicMock()
+    process.pid = 12345
+    process.communicate.side_effect = [
+        subprocess.TimeoutExpired(cmd=["opencode", "run"], timeout=5),
+        (
+            '{"type":"assistant","message":{"content":"still thinking without a final box"}}\n',
+            "terminated",
+        ),
+    ]
+
+    with patch("subprocess.Popen", return_value=process):
+        with patch("os.killpg"):
+            response = agent.solve(
+                BenchmarkTask(
+                    task_id="text_timeout",
+                    problem="Which option is correct?",
+                    ground_truth="A",
+                )
+            )
+
+    assert response.answer is None
+    assert response.finish_reason == "timeout"
+    assert response.raw_output == "still thinking without a final box"
+    assert response.response_json["returncode"] == -1
+    assert response.response_json["opencode_error_name"] == "OpenCodeTimeout"
+    assert response.response_json["opencode_error_message"] == "The operation timed out."
+    assert response.response_json["opencode_timeout_scored_zero"] is True
+    assert response.metadata["opencode_error_name"] == "OpenCodeTimeout"
+    assert response.metadata["opencode_timeout_seconds"] == 5
+
+
 def test_docker_runner_removes_container_on_timeout(tmp_path):
     agent = OpenCodeAgent()
     agent.setup({

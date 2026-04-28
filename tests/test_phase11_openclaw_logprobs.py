@@ -212,19 +212,44 @@ def test_streaming_timeout_preserves_partial_output_and_logprobs(
     agent = OpenClawAgent()
     agent.setup(_base_config(stream=True, max_attempts=1))
 
-    with pytest.raises(OpenClawRequestError) as exc_info:
-        agent.solve(_task())
+    response = agent.solve(_task())
 
-    partial = exc_info.value.partial_response
-    assert partial is not None
-    assert partial.raw_output == "The answer is 4"
-    assert partial.finish_reason == "incomplete"
-    assert partial.response_json["choices"][0]["finish_reason"] == "incomplete"
-    assert partial.metadata["received_done"] is False
-    assert partial.metadata["failure_reason"] == "timeout"
-    assert partial.metadata["logprobs_capture_status"] == "captured"
-    assert partial.metadata["logprob_records"][0]["token"] == "4"
-    assert partial.token_entropy_stats["n_tokens"] == 1
+    assert response.answer is None
+    assert response.raw_output == "The answer is 4"
+    assert response.finish_reason == "timeout"
+    assert response.response_json["choices"][0]["finish_reason"] == "incomplete"
+    assert response.response_json["openclaw_error_name"] == "OpenClawTimeout"
+    assert response.metadata["received_done"] is False
+    assert response.metadata["failure_reason"] == "timeout"
+    assert response.metadata["openclaw_timeout_scored_zero"] is True
+    assert response.metadata["openclaw_error_message"] == "OpenClaw stream total timeout after 1.0s"
+    assert response.metadata["logprobs_capture_status"] == "captured"
+    assert response.metadata["logprob_records"][0]["token"] == "4"
+    assert response.token_entropy_stats["n_tokens"] == 1
+
+
+def test_streaming_timeout_without_partial_output_scores_zero(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = _TimeoutAfterFirstLineResponse(
+        headers={"content-type": "text/event-stream"},
+        sse_lines=[],
+    )
+    _patch_network(monkeypatch, [response])
+
+    agent = OpenClawAgent()
+    agent.setup(_base_config(stream=True, max_attempts=1, stream_total_timeout=1))
+
+    result = agent.solve(_task())
+
+    assert result.answer is None
+    assert result.raw_output == ""
+    assert result.finish_reason == "timeout"
+    assert result.metadata["received_done"] is False
+    assert result.metadata["failure_reason"] == "timeout"
+    assert result.metadata["openclaw_timeout_scored_zero"] is True
+    assert result.metadata["openclaw_timeout_seconds"] == 1.0
+    assert result.response_json["openclaw_error_name"] == "OpenClawTimeout"
 
 
 def test_streaming_without_done_preserves_partial_as_error(

@@ -81,6 +81,35 @@ def test_append_error_not_completed(tmp_path):
     assert store.completed_task_ids() == set()
 
 
+def test_timeout_scored_zero_is_completed(tmp_path):
+    store = ResultStore(output_dir=str(tmp_path), run_id="status-timeout-zero")
+    response = AgentResponse(
+        answer=None,
+        finish_reason="timeout",
+        metadata={
+            "opencode_error_name": "OpenCodeTimeout",
+            "opencode_error_message": "The operation timed out.",
+            "opencode_timeout_scored_zero": True,
+        },
+    )
+    score = ScoreResult(
+        correct=False,
+        score=0.0,
+        expected="42",
+        predicted=None,
+        rationale="No answer produced.",
+    )
+
+    store.append(_task("t1"), response, score)
+
+    records = store.load()
+    assert records[0]["score_status"] == "valid_scored"
+    assert records[0]["score"] == 0.0
+    assert records[0]["finish_reason"] == "timeout"
+    assert records[0]["metadata"]["opencode_error_message"] == "The operation timed out."
+    assert store.completed_task_ids() == {"t1"}
+
+
 def test_completed_sample_ids_uses_valid_status(tmp_path):
     store = ResultStore(
         output_dir=str(tmp_path),
