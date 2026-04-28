@@ -31,6 +31,9 @@ Use this directory as a user-facing entry point. The canonical split is:
   guidance for OpenClaw benchmark runs.
 - [ZeroClaw AIME 2026 Runbook](zeroclaw_aime2026_runbook.md)
   Short, command-first runbook for the ZeroClaw AIME 2026 path.
+- [ZeroClaw Local-Qwen Rerun Parameters](benchmarks/zeroclaw-local-qwen-rerun-20260428.md)
+  April 28 parameter contract for rerunning the five non-coding ZeroClaw
+  local-Qwen benchmark paths.
 - [ZeroClaw AIME 2026 Tutorial](tutorial_zeroclaw_aime2026.md)
   More detailed ZeroClaw tutorial with setup and background.
 - [OpenCode Docker Isolation](opencode-docker-isolation.md)

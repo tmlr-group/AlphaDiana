@@ -345,8 +345,10 @@ class ZeroClawAgent(Agent):
         self._top_p = None if raw_top_p in ("", None) else float(raw_top_p)
         self._provider_body_overrides = _provider_body_overrides_from_config(config)
         runtime_trace_mode = str(config.get("runtime_trace_mode", "none") or "none").strip()
+        if runtime_trace_mode.lower() == "all":
+            runtime_trace_mode = "full"
         if self._logprob_capture["enabled"] and runtime_trace_mode.lower() in {"", "none"}:
-            runtime_trace_mode = "all"
+            runtime_trace_mode = "full"
         self._runtime_trace_mode = runtime_trace_mode
         self._request_timeout = int(config.get("request_timeout", 1200))
         raw_provider_timeout = config.get("provider_timeout_secs", None)
@@ -784,9 +786,6 @@ class ZeroClawAgent(Agent):
     def _build_config_toml(self) -> str:
         workspace_only = "true" if self._workspace_only else "false"
         allowed_commands = json.dumps(self._allowed_commands, ensure_ascii=False)
-        provider_max_tokens = ""
-        if self._provider_max_tokens is not None:
-            provider_max_tokens = f"provider_max_tokens = {self._provider_max_tokens}\n"
         runtime_section = ""
         if self._reasoning_enabled is not None or self._reasoning_effort is not None:
             runtime_lines = ["[runtime]"]
@@ -819,7 +818,6 @@ class ZeroClawAgent(Agent):
             f"default_model = {_quote_toml(self._model)}\n\n"
             f"default_temperature = {self._temperature}\n"
             f"provider_timeout_secs = {self._provider_timeout_secs}\n"
-            f"{provider_max_tokens}"
             "model_routes = []\n"
             "embedding_routes = []\n\n"
             "[model_providers]\n\n"
@@ -836,7 +834,12 @@ class ZeroClawAgent(Agent):
             f"allowed_commands = {allowed_commands}\n"
             'forbidden_paths = ["/etc", "/usr", "/bin", "/sbin", "/lib", "/opt", "/boot", "/dev", "/proc", "/sys"]\n'
             f"max_actions_per_hour = {self._max_actions_per_hour}\n\n"
-            "max_cost_per_day_cents = 10000\n\n"
+            "max_cost_per_day_cents = 10000\n"
+            "require_approval_for_medium_risk = false\n"
+            "block_high_risk_commands = false\n"
+            f"shell_timeout_secs = {self._request_timeout}\n\n"
+            "[shell_tool]\n"
+            f"timeout_secs = {self._request_timeout}\n\n"
             "[agent]\n"
             f"max_tool_iterations = {self._max_tool_iterations}\n"
         )

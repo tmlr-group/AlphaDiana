@@ -43,7 +43,7 @@ All active configs align on:
 | Streaming | enabled |
 | Logprobs | `capture_logprobs: true`, `top_logprobs: 20` |
 | Samples | `num_samples: 1`; AIME 2024 uses `num_samples: 32` |
-| Task concurrency | `max_concurrent: 10` |
+| Task concurrency | Harness-specific; current ZeroClaw local-Qwen full reruns use `max_concurrent: 2` |
 | Output root | `./results` |
 
 Thinking is represented per harness:
@@ -104,9 +104,18 @@ OpenClaw configs also set:
 ZeroClaw configs also set:
 
 - `provider_api_base: http://host.docker.internal:8011/v1` for local vLLM on the host
-- `runtime_trace_mode: all`
+- `runtime_trace_mode: full`
 - `request_timeout: 9300`
 - `max_tool_iterations: 100`
+- `task_retries: 2` on current local-Qwen full-run rerun configs
+
+AlphaDiana writes ZeroClaw's schema-supported permissive shell controls into
+the generated `config.toml`: `require_approval_for_medium_risk=false`,
+`block_high_risk_commands=false`, `shell_timeout_secs=<request_timeout>`, and
+`[shell_tool].timeout_secs=<request_timeout>`. ZeroClaw 0.6.9 has no dedicated
+heredoc syntax allowlist knob. Use
+[`docs/benchmarks/zeroclaw-local-qwen-rerun-20260428.md`](../../docs/benchmarks/zeroclaw-local-qwen-rerun-20260428.md)
+for the April 28 ZeroClaw rerun parameter contract.
 
 The AIME 2026 OpenClaw full-run config is intentionally conservative for
 shared local-vLLM recovery: `max_concurrent: 1`, `max_tokens: 131072`,
@@ -116,10 +125,9 @@ It also sets `task_retries: 2` with
 by a dead gateway or sandbox can be retried on a replacement fresh sandbox in
 the same run without retrying ordinary output-cap or timeout failures. Raise
 concurrency only with explicit overrides after checking local vLLM queue
-headroom. The AIME 2026 ZeroClaw full-run config remains lowered to
-`max_concurrent: 2` and additionally sets `task_retries: 2` so checkpoint
-resumes can replace a dead pooled ROCK session and retry the affected sample on
-a fresh sandbox.
+headroom. The local-Qwen ZeroClaw full-run rerun configs are lowered to
+`max_concurrent: 2` and set `task_retries: 2` so checkpoint resumes can replace
+a dead pooled ROCK session and retry the affected sample on a fresh sandbox.
 
 Result persistence redacts common secret env assignments and sensitive key
 fields before writing JSONL records, task JSONs, sandbox metadata, retry

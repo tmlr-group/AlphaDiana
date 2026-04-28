@@ -27,10 +27,10 @@ agent:
     provider_api_key: "EMPTY"
     temperature: 0.0
     top_p: 0.95
-    max_tokens: 65536
+    max_tokens: 131072
     enable_thinking: true
-    request_timeout: 9000
-    runtime_trace_mode: "all"
+    request_timeout: 9300
+    runtime_trace_mode: "full"
     capture_logprobs: true
     top_logprobs: 20
     docker_host_ip: "host.docker.internal"
@@ -55,8 +55,9 @@ scorer:
   name: exact_match
   config: {}
 
-max_concurrent: 4
+max_concurrent: 2
 num_samples: 1
+task_retries: 2
 output_dir: "./results"
 metadata:
-  notes: "Canonical full GPQA-Diamond ZeroClaw config after prompt alignment. enable_thinking=true, max_tokens=65536, top_logprobs=20."
+  notes: "Canonical full GPQA-Diamond ZeroClaw config after prompt alignment. enable_thinking=true, max_tokens=131072, top_logprobs=20."
