@@ -281,6 +281,10 @@ def test_zeroclaw_config_toml_uses_snake_case_fields():
     assert "max_tool_iterations = 100" in config_toml
     assert "default_temperature = 0.0" in config_toml
     assert "provider_timeout_secs = 1200" in config_toml
+    assert "require_approval_for_medium_risk = false" in config_toml
+    assert "block_high_risk_commands = false" in config_toml
+    assert "shell_timeout_secs = 1200" in config_toml
+    assert "[shell_tool]\ntimeout_secs = 1200" in config_toml
     assert 'default_provider = "custom:https://example.test/v1"' in config_toml
     assert "[provider]" not in config_toml
     assert "workspace-only" not in config_toml
@@ -295,6 +299,7 @@ def test_zeroclaw_config_toml_honors_request_controls_and_security_config():
         "api_base": "https://example.test/v1",
         "api_key": "sk-test",
         "temperature": 0.2,
+        "request_timeout": 345,
         "provider_timeout_secs": 600,
         "provider_max_tokens": 32768,
         "reasoning_enabled": True,
@@ -307,7 +312,9 @@ def test_zeroclaw_config_toml_honors_request_controls_and_security_config():
 
     assert "default_temperature = 0.2" in config_toml
     assert "provider_timeout_secs = 600" in config_toml
-    assert "provider_max_tokens = 32768" in config_toml
+    assert "shell_timeout_secs = 345" in config_toml
+    assert "[shell_tool]\ntimeout_secs = 345" in config_toml
+    assert "provider_max_tokens" not in config_toml
     assert "[runtime]" in config_toml
     assert "reasoning_enabled = true" in config_toml
     assert 'reasoning_effort = "high"' in config_toml
@@ -316,7 +323,7 @@ def test_zeroclaw_config_toml_honors_request_controls_and_security_config():
     assert 'backend = "auto"' in config_toml
 
 
-def test_zeroclaw_config_toml_maps_max_tokens_to_provider_max_tokens():
+def test_zeroclaw_config_toml_omits_unsupported_provider_max_tokens():
     agent = ZeroClawAgent()
     agent.setup({
         "model": "demo-model",
@@ -328,9 +335,10 @@ def test_zeroclaw_config_toml_maps_max_tokens_to_provider_max_tokens():
 
     config_toml = agent._build_config_toml()
 
-    assert "provider_max_tokens = 65536" in config_toml
+    assert "provider_max_tokens" not in config_toml
     assert "top_p" not in config_toml
     assert "logprobs" not in config_toml
+    assert agent._logprob_request_overrides()["max_tokens"] == 65536
 
 
 def test_zeroclaw_logprob_overrides_include_provider_extra_body():
@@ -369,8 +377,8 @@ def test_zeroclaw_provider_max_tokens_overrides_common_max_tokens():
 
     config_toml = agent._build_config_toml()
 
-    assert "provider_max_tokens = 32768" in config_toml
-    assert "provider_max_tokens = 65536" not in config_toml
+    assert "provider_max_tokens" not in config_toml
+    assert agent._logprob_request_overrides()["max_tokens"] == 32768
 
 
 @pytest.mark.parametrize(

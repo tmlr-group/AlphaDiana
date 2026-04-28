@@ -29,6 +29,15 @@ notes: normal benchmark runs use one sandbox-only CLI path
 (`metadata.transport=zeroclaw_cli_sandbox`) for both text and image-backed
 tasks. Historical `disable_tools`, gateway, and proxy path notes remain
 useful audit evidence only.
+Generated ZeroClaw configs use `runtime_trace_mode="full"` for logprob capture
+and write ZeroClaw's schema-supported permissive shell controls; ZeroClaw
+0.6.9 does not expose a heredoc-specific allowlist setting.
+The April 28 AIME smoke `smoke_20260428_zeroclaw_shell_config_aime2` validated
+that path on one sandboxed local-Qwen task with captured logprobs and runtime
+trace artifacts.
+Use
+[`zeroclaw-local-qwen-rerun-20260428.md`](zeroclaw-local-qwen-rerun-20260428.md)
+for the five-benchmark ZeroClaw rerun parameter contract.
 
 As of April 25, 2026, local `Qwen/Qwen3.5-27B` 3-sample smokes validated
 `OpenClaw` and `ZeroClaw` on AIME 2026, IMO-AnswerBench, GPQA-Diamond, HLE,
@@ -148,6 +157,7 @@ smoke recipe rather than the general runbook, start from:
 
 - [zeroclaw-minimax-smoke-20260418.md](zeroclaw-minimax-smoke-20260418.md)
 - [zeroclaw-qwen-openrouter-pilot-20260419.md](zeroclaw-qwen-openrouter-pilot-20260419.md)
+- [zeroclaw-local-qwen-rerun-20260428.md](zeroclaw-local-qwen-rerun-20260428.md)
 - [full-rollout-local-vllm-20260419.md](full-rollout-local-vllm-20260419.md)
 
 Ready-to-run full benchmark configs live in

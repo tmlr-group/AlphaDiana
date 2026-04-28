@@ -13,7 +13,7 @@ agent:
     max_tokens: 131072
     enable_thinking: true
     request_timeout: 9300
-    runtime_trace_mode: all
+    runtime_trace_mode: full
     capture_logprobs: true
     top_logprobs: 20
     max_tool_iterations: 100
@@ -45,8 +45,9 @@ sandbox: null
 scorer:
   name: exact_match
   config: {}
-max_concurrent: 10
+max_concurrent: 2
 num_samples: 1
+task_retries: 2
 output_dir: ./results
 strict_report: true
 strict_isolation: true
