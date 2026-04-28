@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 # This file can be sourced from any working directory.
-_rock_env_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_rock_env_project_root="$(cd "${_rock_env_script_dir}/.." && pwd)"
+_rock_env_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+_rock_env_project_root="$(cd "${_rock_env_script_dir}/.." && pwd -P)"
 _rock_env_python="${PYTHON:-$(command -v python3 || command -v python || echo python3)}"
 _rock_env_rock_root_default="${_rock_env_project_root}/ref/ROCK"
 _rock_env_ports_file="${_rock_env_script_dir}/.rock_ports.env"

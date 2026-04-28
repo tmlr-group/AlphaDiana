@@ -21,5 +21,8 @@ RUN npm config set registry https://registry.npmmirror.com \
     && npm install -g openclaw@2026.3.7 --omit=optional \
     && npm cache clean --force
 
+RUN python -m pip install --no-cache-dir --timeout 120 \
+        requests numpy sympy scipy pandas Pillow matplotlib
+
 # Verify installation
 RUN node --version && npm --version && openclaw --version
