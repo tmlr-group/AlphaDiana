@@ -1,5 +1,18 @@
 FROM tmlrgroup/alphadiana:v1
 
+# Keep this stream-timeout variant aligned with the standard OpenClaw sandbox
+# tool layer used by non-code benchmark harness smokes.
+USER root
+
+RUN ln -sf /usr/bin/python3 /usr/bin/python \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends python3-pip \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir --break-system-packages --timeout 120 \
+        requests numpy sympy scipy pandas Pillow matplotlib
+
+USER node
+
 # Fix: Node.js native fetch (used by OpenAI SDK v6.26.0) has an internal undici
 # dispatcher with default bodyTimeout=300s. When a GLM-5 streaming response via
 # OpenRouter takes >300s to complete (reasoning only, no content yet), the native

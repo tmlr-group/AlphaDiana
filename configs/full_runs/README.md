@@ -34,7 +34,7 @@ All active configs align on:
 | Field | Value |
 |---|---|
 | Model | `Qwen/Qwen3.5-27B` |
-| Provider base | `http://127.0.0.1:8011/v1` |
+| Provider base | DirectLLM/OpenCode use host-local `http://127.0.0.1:8011/v1`; OpenClaw/ZeroClaw sandbox configs use container-reachable `http://172.17.0.1:8011/v1` |
 | API key | `EMPTY` |
 | Temperature | `0.0` |
 | `top_p` | `0.95` |
@@ -67,6 +67,7 @@ OpenCode configs also set:
 
 OpenClaw configs also set:
 
+- `OPENAI_BASE_URL: http://172.17.0.1:8011/v1` for local vLLM on the host
 - `rock_agent_config_path: openclaw_deploy/rock_agent_config.prebuilt.yaml`
 - `openclaw_config_path: openclaw_deploy/openclaw.json`
 - `request_timeout: 9300`
@@ -102,7 +103,7 @@ OpenClaw configs also set:
 
 ZeroClaw configs also set:
 
-- `provider_api_base: http://127.0.0.1:8011/v1`
+- `provider_api_base: http://172.17.0.1:8011/v1` for local vLLM on the host
 - `runtime_trace_mode: all`
 - `request_timeout: 9300`
 - `max_tool_iterations: 100`
@@ -155,19 +156,86 @@ export PYTHONPATH=$PWD
 export HF_ENDPOINT=https://hf-mirror.com
 ```
 
+After pulling the April 28 harness environment changes, rebuild the local
+harness images before running the non-coding OpenCode/OpenClaw/ZeroClaw
+configs. The Git change updates Dockerfiles and configs; it does not publish or
+replace Docker images on other machines.
+
+```bash
+docker build --network host \
+  -f docker/terminal_bench2/Dockerfile.opencode-controller \
+  -t alphadiana/tb2-opencode-controller:latest .
+
+docker pull tmlrgroup/alphadiana:v1
+docker build --network host \
+  -f openclaw_deploy/Dockerfile.patched \
+  -t tmlrgroup/alphadiana:v1 .
+
+docker build --network host \
+  -f zeroclaw_deploy/Dockerfile \
+  -t zeroclaw-reasoning:0.6.9 .
+```
+
+No benchmark YAML edits are required when using the default local-Qwen layout
+on this host family:
+
+- DirectLLM/OpenCode call the host-local provider at
+  `http://127.0.0.1:8011/v1`.
+- OpenClaw/ZeroClaw sandbox configs call the host provider through Docker
+  bridge at `http://172.17.0.1:8011/v1`.
+
+If a host uses a different Docker bridge gateway or vLLM bind address, override
+the provider URL instead of editing the checked-in config. For OpenClaw, use
+`-o agent.config.OPENAI_BASE_URL=http://<host-reachable-ip>:8011/v1`; for
+ZeroClaw, override both `agent.config.api_base` and
+`agent.config.provider_api_base`.
+
 Verify the local model endpoint before launching:
 
 ```bash
 curl -sS http://127.0.0.1:8011/v1/models
 ```
 
-Build the OpenCode controller image if it is not already present:
+For ROCK/Docker sandbox harnesses, also verify the container-reachable host IP:
 
 ```bash
-docker build --network host \
-  -f docker/terminal_bench2/Dockerfile.opencode-controller \
-  -t alphadiana/tb2-opencode-controller:latest .
+curl -sS http://172.17.0.1:8011/v1/models
 ```
+
+Probe the three tool-harness images before support/debug runs:
+
+```bash
+HF_ENDPOINT=https://hf-mirror.com \
+MODEL_API_BASE=http://localhost:8011/v1 \
+MODEL_NAME=Qwen/Qwen3.5-27B \
+./scripts/probe_harness_env.sh
+```
+
+For a sandbox-style network probe matching the OpenClaw/ZeroClaw provider
+address, run the same probe on Docker bridge:
+
+```bash
+HF_ENDPOINT=https://hf-mirror.com \
+DOCKER_NETWORK=bridge \
+MODEL_API_BASE=http://172.17.0.1:8011/v1 \
+MODEL_NAME=Qwen/Qwen3.5-27B \
+./scripts/probe_harness_env.sh
+```
+
+The probe checks Python, common scientific packages, the local model API, PyPI,
+files.pythonhosted, the configured `HF_ENDPOINT`, direct Hugging Face
+reachability, generic web access, search-page HTTP reachability, and native
+search-provider credential presence. On the April 28 support audit, direct
+`huggingface.co`, Google Search, DuckDuckGo, Wikipedia, and Brave Search API
+did not pass direct probes from this host, while `hf-mirror.com`,
+`example.com`, and Bing search pages succeeded.
+
+OpenClaw's first-class `web_search` tool is provider-backed. It is not Google
+Search by default; it requires a Brave/Gemini/Grok/Kimi/Perplexity/OpenRouter
+credential, with Brave as the default provider path. Without such a credential,
+the April 28 audit only validates keyless `web_fetch` prerequisites and
+shell/Python-backed HTTP access at the container-network level. To make native
+search a hard preflight, rerun the probe with `REQUIRE_NATIVE_SEARCH=1`.
 
 Validate one config:
 
