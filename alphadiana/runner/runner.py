@@ -283,61 +283,6 @@ def _predeployed_session_failure_reason(exc: Exception, response: object | None 
     return ""
 
 
-def _is_recoverable_task_failure(exc: Exception) -> bool:
-    """Return True when a failed task should be retried on fresh infrastructure."""
-    return bool(getattr(exc, "retryable_task_failure", False))
-
-
-class _OpenClawResponseRejected(RuntimeError):
-    """Raised when a completed OpenClaw response fails harness integrity checks."""
-
-    def __init__(
-        self,
-        reason: str,
-        response: object,
-        *,
-        error_type: str = "openclaw_response_rejected",
-    ) -> None:
-        super().__init__(f"OpenClaw response rejected by integrity guard: {reason}")
-        self.reason = reason
-        self.error_type = error_type
-        self.partial_response = response
-        self.response_body = {"guard_reason": reason}
-
-
-def _iter_openclaw_response_text(response: object):
-    for attr in (
-        "raw_output",
-        "trajectory",
-        "reasoning_trajectory",
-        "request_messages",
-        "response_json",
-    ):
-        value = getattr(response, attr, None)
-        if value:
-            yield _payload_text(value)
-
-
-def _openclaw_integrity_guard_reason(config: "ExperimentConfig", response: object) -> tuple[str, str]:
-    """Return a rejection reason/error_type for tainted OpenClaw responses."""
-    if config.agent_name != "openclaw":
-        return "", ""
-
-    metadata = getattr(response, "metadata", None)
-    metadata = metadata if isinstance(metadata, dict) else {}
-    if metadata.get("session_tainted") is True:
-        return "session_tainted", "openclaw_session_tainted"
-    if metadata.get("received_done") is False:
-        return "stream_incomplete", "incomplete_stream"
-    if str(getattr(response, "finish_reason", "") or "").strip() == "incomplete":
-        return "finish_reason_incomplete", "incomplete_stream"
-
-    for text in _iter_openclaw_response_text(response):
-        if "Read HEARTBEAT.md" in text or "HEARTBEAT_OK" in text or "HEARTBEAT.md" in text:
-            return "heartbeat_trace", "openclaw_heartbeat_taint"
-    return "", ""
-
-
 def _build_error_info(exc: Exception) -> dict:
     """Build a serializable error dict from an exception."""
     error_type = getattr(exc, "error_type", type(exc).__name__)
@@ -590,13 +535,6 @@ class Runner:
         reset_predeployed_between_tasks = _coerce_config_bool(
             self.config.agent_config.get("reset_predeployed_between_tasks"),
             default=True,
-        )
-        predeployed_lease_probe_enabled = _coerce_config_bool(
-            self.config.agent_config.get("predeployed_lease_probe"),
-            default=True,
-        )
-        predeployed_lease_probe_timeout = float(
-            self.config.agent_config.get("predeployed_lease_probe_timeout", 2.0) or 0.0
         )
         fresh_predeployed_mode = False
         if (
@@ -1211,13 +1149,7 @@ class Runner:
             with predeployed_replacement_state_lock:
                 return predeployed_replacements_in_progress
 
-        def _create_predeployed_replacement(
-            reason: str,
-            task_id: str,
-            *,
-            force: bool = False,
-            require_fresh_need: bool = True,
-        ) -> bool:
+        def _create_predeployed_replacement(reason: str, task_id: str, *, force: bool = False) -> bool:
             nonlocal predeployed_replacement_count, predeployed_replacements_in_progress, preferred_profile
             if predeployed_gateway_deployer is None or predeployed_shutdown_event.is_set():
                 return False
@@ -1227,12 +1159,8 @@ class Runner:
                 with predeployed_replacement_lock:
                     if predeployed_shutdown_event.is_set():
                         return False
-                    if (
-                        fresh_predeployed_mode
-                        and require_fresh_need
-                        and not _fresh_predeployed_needs_replenishment(
-                            replacement_in_progress_offset=1,
-                        )
+                    if fresh_predeployed_mode and not _fresh_predeployed_needs_replenishment(
+                        replacement_in_progress_offset=1,
                     ):
                         return True
                     if not fresh_predeployed_mode and not force and _live_predeployed_count() > 0:
@@ -1262,23 +1190,12 @@ class Runner:
                         predeployed_replacements_in_progress - 1,
                     )
 
-        def _start_predeployed_replacement(
-            reason: str,
-            task_id: str,
-            *,
-            force: bool = True,
-            require_fresh_need: bool = True,
-        ) -> bool:
+        def _start_predeployed_replacement(reason: str, task_id: str, *, force: bool = True) -> bool:
             if predeployed_gateway_deployer is None or predeployed_shutdown_event.is_set():
                 return False
 
             def _target() -> None:
-                _create_predeployed_replacement(
-                    reason,
-                    task_id,
-                    force=force,
-                    require_fresh_need=require_fresh_need,
-                )
+                _create_predeployed_replacement(reason, task_id, force=force)
 
             thread = threading.Thread(
                 target=_target,
@@ -1289,92 +1206,12 @@ class Runner:
             thread.start()
             return True
 
-        def _probe_predeployed_session_before_lease(session: object, task_id: str) -> str:
-            if (
-                not predeployed_lease_probe_enabled
-                or predeployed_lease_probe_timeout <= 0
-            ):
-                return ""
-            has_published_probe = callable(getattr(session, "published_base", None)) or callable(
-                getattr(session, "published_port", None)
-            )
-            if not has_published_probe:
-                return ""
-            sandbox_id = str(getattr(session, "sandbox_id", "") or "")
-            if not sandbox_id:
-                return ""
-            with predeployed_session_pool_lock:
-                api_base = str(predeployed_gateway_api_base_by_sandbox_id.get(sandbox_id, "") or "")
-            if not api_base:
-                return "gateway_missing_api_base"
-            probe_url = f"{api_base.rstrip('/')}/models"
-            try:
-                response = httpx.get(
-                    probe_url,
-                    timeout=predeployed_lease_probe_timeout,
-                    trust_env=False,
-                )
-                # OpenClaw's prebuilt gateway can return 404 for /v1/models; any
-                # response below 500 still proves the host-published gateway is reachable.
-                if response.status_code >= 500:
-                    return f"gateway_probe_http_{response.status_code}"
-                return ""
-            except Exception as exc:
-                reason = _predeployed_session_failure_reason(exc)
-                if reason:
-                    return reason
-                return "gateway_probe_failed"
-
-        def _discard_unhealthy_predeployed_session(
-            session: object,
-            reason: str,
-            task_id: str,
-        ) -> None:
-            sandbox_id = str(getattr(session, "sandbox_id", "") or "")
-            resolved_sandbox_id, proxy = _unregister_predeployed_session(session, sandbox_id)
-            logger.warning(
-                "Discarding unhealthy predeployed sandbox before task %s sandbox_id=%s reason=%s",
-                task_id,
-                resolved_sandbox_id or "<unknown>",
-                reason,
-            )
-            if proxy is not None:
-                try:
-                    proxy.stop()
-                except Exception:
-                    logger.debug(
-                        "Failed to stop logprob proxy for unhealthy sandbox_id=%s",
-                        resolved_sandbox_id,
-                        exc_info=True,
-                    )
-            try:
-                close = getattr(session, "close", None)
-                if callable(close):
-                    close()
-            except Exception as exc:
-                logger.warning(
-                    "Failed to close unhealthy predeployed sandbox_id=%s: %s",
-                    resolved_sandbox_id or "<unknown>",
-                    exc,
-                )
-
         def _acquire_predeployed_session(task_id: str):
             if predeployed_session_queue is None:
                 raise RuntimeError("predeployed session queue is not configured")
             while True:
                 try:
                     session = predeployed_session_queue.get(timeout=1.0)
-                    lease_probe_reason = _probe_predeployed_session_before_lease(
-                        session,
-                        task_id,
-                    )
-                    if lease_probe_reason:
-                        _discard_unhealthy_predeployed_session(
-                            session,
-                            lease_probe_reason,
-                            task_id,
-                        )
-                        continue
                     if fresh_predeployed_mode:
                         sandbox_id = str(getattr(session, "sandbox_id", "") or "")
                         if sandbox_id:
@@ -1388,12 +1225,7 @@ class Runner:
                     ):
                         continue
                     if _live_predeployed_count() == 0:
-                        if _create_predeployed_replacement(
-                            "predeployed_pool_depleted",
-                            task_id,
-                            force=True,
-                            require_fresh_need=False,
-                        ):
+                        if _create_predeployed_replacement("predeployed_pool_depleted", task_id):
                             continue
                         raise RuntimeError(
                             "No live predeployed sandbox sessions remain; "
@@ -1574,18 +1406,6 @@ class Runner:
                 if self.sandbox is not None:
                     sandbox_backend_name = getattr(self.sandbox, "name", type(self.sandbox).__name__)
                     response.metadata.setdefault("sandbox_backend", sandbox_backend_name)
-                guard_reason, guard_error_type = _openclaw_integrity_guard_reason(
-                    self.config,
-                    response,
-                )
-                if guard_reason:
-                    response.metadata["openclaw_integrity_guard"] = True
-                    response.metadata["openclaw_integrity_guard_reason"] = guard_reason
-                    raise _OpenClawResponseRejected(
-                        guard_reason,
-                        response,
-                        error_type=guard_error_type,
-                    )
                 # Score the result.
                 score = self.scorer.score(runtime_task, response)
                 # Store the result.
@@ -1700,13 +1520,6 @@ class Runner:
                         error_response.metadata["pooled_session_replacement_reason"] = (
                             pooled_session_replacement_reason
                         )
-                task_retry_reason = predeployed_quarantine_reason or pooled_session_replacement_reason
-                try:
-                    setattr(exc, "retryable_task_failure", bool(task_retry_reason))
-                    if task_retry_reason:
-                        setattr(exc, "task_retry_reason", task_retry_reason)
-                except Exception:
-                    pass
                 self.result_store.append_error(
                     runtime_task,
                     error=_build_error_info(exc),
@@ -1779,11 +1592,6 @@ class Runner:
             max_concurrent=self.config.max_concurrent,
             cancel_event=self.cancel_event,
             task_retries=getattr(self.config, "task_retries", 0),
-            retry_if=(
-                _is_recoverable_task_failure
-                if getattr(self.config, "task_retry_on_recoverable_only", False)
-                else None
-            ),
         )
         try:
             outcomes = dispatcher.dispatch(work_items, solve_fn)

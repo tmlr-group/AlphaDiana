@@ -189,7 +189,6 @@ class ExperimentConfig:
     sandbox_retries: int = 1
     num_samples: int = 1
     task_retries: int = 1
-    task_retry_on_recoverable_only: bool = False
     strict_report: bool = False
     strict_isolation: bool = False
     metadata: dict = field(default_factory=dict)
@@ -244,7 +243,6 @@ class ExperimentConfig:
             sandbox_retries=data.get("sandbox_retries", 1),
             num_samples=data.get("num_samples", 1),
             task_retries=data.get("task_retries", 0),
-            task_retry_on_recoverable_only=data.get("task_retry_on_recoverable_only", False),
             strict_report=data.get("strict_report", False),
             strict_isolation=data.get("strict_isolation", False),
             metadata=data.get("metadata", {}),

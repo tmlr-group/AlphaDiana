@@ -21,12 +21,10 @@ class TaskDispatcher:
         max_concurrent: int = 1,
         cancel_event: threading.Event | None = None,
         task_retries: int = 0,
-        retry_if: Callable[[Exception], bool] | None = None,
     ) -> None:
         self.max_concurrent = max(1, max_concurrent)
         self._cancel = cancel_event
         self._task_retries = max(0, task_retries)
-        self._retry_if = retry_if
 
     @property
     def cancelled(self) -> bool:
@@ -67,8 +65,7 @@ class TaskDispatcher:
                 return solve_fn(task)
             except Exception as exc:
                 task_id = self._item_id(task)
-                retry_allowed = self._retry_if(exc) if self._retry_if is not None else True
-                if attempt < self._task_retries and retry_allowed:
+                if attempt < self._task_retries:
                     delay = min(2.0 * (2 ** attempt), 60.0)
                     jitter = random.uniform(0, delay * 0.3)
                     logger.warning(

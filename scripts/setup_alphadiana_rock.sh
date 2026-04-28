@@ -7,7 +7,7 @@ unset ALL_PROXY HTTP_PROXY HTTPS_PROXY all_proxy http_proxy https_proxy
 # Security preflight: abort if known misconfigurations are present (HIGH/CRITICAL).
 # Matches the pattern used by scripts/start_openclaw.sh and scripts/start_zeroclaw.sh
 # so setup_alphadiana_rock cannot silently bring up services with public 0.0.0.0 bindings.
-_SG_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_SG_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 echo "[preflight] Running security_guard.py --check..."
 if ! python3 "${_SG_SCRIPT_DIR}/security_guard.py" --check; then
     echo ""
@@ -95,8 +95,8 @@ init_conda_shell() {
   return "${status}"
 }
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd -P)"
 PROJECT_NAME="$(basename "${PROJECT_ROOT}")"
 DEFAULT_ENV_NAME="$(
 python - "${PROJECT_ROOT}" <<'PYEOF' 2>/dev/null || true
@@ -236,14 +236,14 @@ mkdir -p "${ROCK_REL}/dev"
 cat > "${ROCK_REL}/dev/rock_env.sh" <<'EOF'
 #!/usr/bin/env bash
 
-_rock_wrapper_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_rock_wrapper_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck disable=SC1091
 source "${_rock_wrapper_dir}/../../../scripts/rock_env.sh"
 EOF
 chmod +x "${ROCK_REL}/dev/rock_env.sh"
 cat > "${ROCK_REL}/dev/.rock_ports.env" <<'EOF'
 # shellcheck disable=SC1091
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/.rock_ports.env"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/../../../scripts/.rock_ports.env"
 EOF
 log_progress "Environment helper is ready"
 log_progress "The helper exports absolute ROCK paths and clears inherited proxy variables"

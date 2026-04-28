@@ -4,9 +4,9 @@ agent:
   version: 0.6.9
   config:
     model: Qwen/Qwen3.5-27B
-    api_base: http://127.0.0.1:8011/v1
+    api_base: http://host.docker.internal:8011/v1
     api_key: EMPTY
-    provider_api_base: http://127.0.0.1:8011/v1
+    provider_api_base: http://host.docker.internal:8011/v1
     provider_api_key: EMPTY
     temperature: 0.0
     top_p: 0.95

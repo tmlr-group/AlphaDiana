@@ -26,9 +26,6 @@ Use this directory as a user-facing entry point. The canonical split is:
 
 ## Specialized Guides
 
-- [OpenClaw Benchmark Reliability](benchmarks/openclaw.md)
-  Current fresh-per-task sandbox, timeout, retry, heartbeat, and result-validity
-  guidance for OpenClaw benchmark runs.
 - [ZeroClaw AIME 2026 Runbook](zeroclaw_aime2026_runbook.md)
   Short, command-first runbook for the ZeroClaw AIME 2026 path.
 - [ZeroClaw AIME 2026 Tutorial](tutorial_zeroclaw_aime2026.md)

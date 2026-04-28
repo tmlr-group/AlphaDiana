@@ -21,7 +21,7 @@ unset ALL_PROXY HTTP_PROXY HTTPS_PROXY all_proxy http_proxy https_proxy
 # Security preflight: abort if known misconfigurations are present (HIGH/CRITICAL).
 # Matches the pattern used by scripts/start_openclaw.sh and scripts/start_zeroclaw.sh
 # so quickstart cannot silently bring up Redis/Ray/ROCK with public 0.0.0.0 bindings.
-_SG_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_SG_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 echo "[preflight] Running security_guard.py --check..."
 if ! python3 "${_SG_SCRIPT_DIR}/security_guard.py" --check; then
     echo ""
@@ -30,9 +30,8 @@ if ! python3 "${_SG_SCRIPT_DIR}/security_guard.py" --check; then
     exit 1
 fi
 
-SCRIPT_PATH="${BASH_SOURCE[0]}"
-SCRIPT_DIR="$(dirname "${SCRIPT_PATH}")"
-PROJECT_ROOT="${SCRIPT_DIR}/.."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd -P)"
 DEFAULT_ENV_NAME="$(
 python - "${PROJECT_ROOT}" <<'PYEOF' 2>/dev/null || true
 import sys
@@ -152,7 +151,7 @@ log_ok "Activated conda env ${ENV_NAME}"
 # ── 4. Install ROCK editable package ────────────────────────────────────────
 
 log_section "Verifying ROCK editable package"
-EXPECTED_ROCK_INIT="$(cd ref/ROCK && pwd)/rock/__init__.py"
+EXPECTED_ROCK_INIT="$(cd ref/ROCK && pwd -P)/rock/__init__.py"
 CURRENT_ROCK_INIT="$(python - <<'PYEOF' 2>/dev/null || true
 from pathlib import Path
 

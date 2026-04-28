@@ -10,8 +10,8 @@
 #   3. Loads API keys from .env
 #   4. Reuses scripts/rock_env.sh for ROCK ports, PYTHONPATH, and ROCK_CONFIG
 
-_activate_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_activate_project_root="$(cd "${_activate_script_dir}/.." && pwd)"
+_activate_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+_activate_project_root="$(cd "${_activate_script_dir}/.." && pwd -P)"
 _activate_python="${PYTHON:-$(command -v python3 || command -v python || echo python3)}"
 _activate_rock_root="${_activate_project_root}/ref/ROCK"
 _activate_env_file="${_activate_script_dir}/.alphadiana_env"

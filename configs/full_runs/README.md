@@ -34,7 +34,7 @@ All active configs align on:
 | Field | Value |
 |---|---|
 | Model | `Qwen/Qwen3.5-27B` |
-| Provider base | `http://127.0.0.1:8011/v1` |
+| Provider base | DirectLLM/OpenCode use host-local `http://127.0.0.1:8011/v1`; OpenClaw/ZeroClaw sandbox configs use container-reachable `http://host.docker.internal:8011/v1` |
 | API key | `EMPTY` |
 | Temperature | `0.0` |
 | `top_p` | `0.95` |
@@ -67,6 +67,7 @@ OpenCode configs also set:
 
 OpenClaw configs also set:
 
+- `OPENAI_BASE_URL: http://host.docker.internal:8011/v1` for local vLLM on the host
 - `rock_agent_config_path: openclaw_deploy/rock_agent_config.prebuilt.yaml`
 - `openclaw_config_path: openclaw_deploy/openclaw.json`
 - `request_timeout: 9300`
@@ -81,28 +82,10 @@ OpenClaw configs also set:
   still available with `reuse_predeployed_sandboxes: true`; that path clears
   OpenClaw session state under the known OpenClaw home directories on every
   reset to prevent stale chat history reuse.
-- `predeployed_lease_probe: true` is enabled by default for real ROCK sessions.
-  Before assigning a predeployed sandbox, the runner makes a short
-  `trust_env=False` reachability probe to the sandbox's host-published gateway
-  and discards/replaces the sandbox if the gateway is already unreachable. This
-  prevents a dead standby sandbox from consuming a full task retry cycle.
-- Streamed OpenClaw responses that emit partial text or logprobs but never
-  receive the terminal `[DONE]` marker are preserved as `runtime_error` partial
-  responses instead of being scored as normal answers. Partial raw output and
-  logprob sidecars remain available for audit, and recoverable-only task retry
-  can rerun the sample when the failure evidence points to a dead gateway or
-  sandbox.
-- Runner-side OpenClaw integrity checks reject responses before scoring when
-  `metadata.received_done=false`, `metadata.session_tainted=true`,
-  `finish_reason=incomplete`, or heartbeat markers appear in the trajectory or
-  raw output. Rejected responses are stored as `runtime_error` with available
-  artifacts preserved. See
-  [`docs/benchmarks/openclaw.md`](../../docs/benchmarks/openclaw.md) for the
-  full OpenClaw runbook and result-validity contract.
 
 ZeroClaw configs also set:
 
-- `provider_api_base: http://127.0.0.1:8011/v1`
+- `provider_api_base: http://host.docker.internal:8011/v1` for local vLLM on the host
 - `runtime_trace_mode: all`
 - `request_timeout: 9300`
 - `max_tool_iterations: 100`
@@ -110,11 +93,7 @@ ZeroClaw configs also set:
 The AIME 2026 OpenClaw full-run config is intentionally conservative for
 shared local-vLLM recovery: `max_concurrent: 1`, `max_tokens: 131072`,
 `agent.config.num_sandboxes: 1`, and `agent.config.standby_sandboxes: 1`.
-It also sets `task_retries: 2` with
-`task_retry_on_recoverable_only: true`, so a task-level `runtime_error` caused
-by a dead gateway or sandbox can be retried on a replacement fresh sandbox in
-the same run without retrying ordinary output-cap or timeout failures. Raise
-concurrency only with explicit overrides after checking local vLLM queue
+Raise concurrency only with explicit overrides after checking local vLLM queue
 headroom. The AIME 2026 ZeroClaw full-run config remains lowered to
 `max_concurrent: 2` and additionally sets `task_retries: 2` so checkpoint
 resumes can replace a dead pooled ROCK session and retry the affected sample on
@@ -155,19 +134,86 @@ export PYTHONPATH=$PWD
 export HF_ENDPOINT=https://hf-mirror.com
 ```
 
+After pulling the April 28 harness environment changes, rebuild the local
+harness images before running the non-coding OpenCode/OpenClaw/ZeroClaw
+configs. The Git change updates Dockerfiles and configs; it does not publish or
+replace Docker images on other machines.
+
+```bash
+docker build --network host \
+  -f docker/terminal_bench2/Dockerfile.opencode-controller \
+  -t alphadiana/tb2-opencode-controller:latest .
+
+docker pull tmlrgroup/alphadiana:v1
+docker build --network host \
+  -f openclaw_deploy/Dockerfile.patched \
+  -t tmlrgroup/alphadiana:v1 .
+
+docker build --network host \
+  -f zeroclaw_deploy/Dockerfile \
+  -t zeroclaw-reasoning:0.6.9 .
+```
+
+No benchmark YAML edits are required when using the default local-Qwen layout
+on this host family:
+
+- DirectLLM/OpenCode call the host-local provider at
+  `http://127.0.0.1:8011/v1`.
+- OpenClaw/ZeroClaw sandbox configs call the host provider through Docker
+  bridge at `http://host.docker.internal:8011/v1`.
+
+If a host uses a different Docker bridge gateway or vLLM bind address, override
+the provider URL instead of editing the checked-in config. For OpenClaw, use
+`-o agent.config.OPENAI_BASE_URL=http://<host-reachable-ip>:8011/v1`; for
+ZeroClaw, override both `agent.config.api_base` and
+`agent.config.provider_api_base`.
+
 Verify the local model endpoint before launching:
 
 ```bash
 curl -sS http://127.0.0.1:8011/v1/models
 ```
 
-Build the OpenCode controller image if it is not already present:
+For ROCK/Docker sandbox harnesses, also verify the container-reachable host IP:
 
 ```bash
-docker build --network host \
-  -f docker/terminal_bench2/Dockerfile.opencode-controller \
-  -t alphadiana/tb2-opencode-controller:latest .
+curl -sS http://host.docker.internal:8011/v1/models
 ```
+
+Probe the three tool-harness images before support/debug runs:
+
+```bash
+HF_ENDPOINT=https://hf-mirror.com \
+MODEL_API_BASE=http://localhost:8011/v1 \
+MODEL_NAME=Qwen/Qwen3.5-27B \
+./scripts/probe_harness_env.sh
+```
+
+For a sandbox-style network probe matching the OpenClaw/ZeroClaw provider
+address, run the same probe on Docker bridge:
+
+```bash
+HF_ENDPOINT=https://hf-mirror.com \
+DOCKER_NETWORK=bridge \
+MODEL_API_BASE=http://host.docker.internal:8011/v1 \
+MODEL_NAME=Qwen/Qwen3.5-27B \
+./scripts/probe_harness_env.sh
+```
+
+The probe checks Python, common scientific packages, the local model API, PyPI,
+files.pythonhosted, the configured `HF_ENDPOINT`, direct Hugging Face
+reachability, generic web access, search-page HTTP reachability, and native
+search-provider credential presence. On the April 28 support audit, direct
+`huggingface.co`, Google Search, DuckDuckGo, Wikipedia, and Brave Search API
+did not pass direct probes from this host, while `hf-mirror.com`,
+`example.com`, and Bing search pages succeeded.
+
+OpenClaw's first-class `web_search` tool is provider-backed. It is not Google
+Search by default; it requires a Brave/Gemini/Grok/Kimi/Perplexity/OpenRouter
+credential, with Brave as the default provider path. Without such a credential,
+the April 28 audit only validates keyless `web_fetch` prerequisites and
+shell/Python-backed HTTP access at the container-network level. To make native
+search a hard preflight, rerun the probe with `REQUIRE_NATIVE_SEARCH=1`.
 
 Validate one config:
 

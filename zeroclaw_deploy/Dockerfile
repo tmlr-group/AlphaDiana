@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=zc-builder /usr/local/cargo/bin/zeroclaw /usr/local/bin/zeroclaw
 
-RUN pip install --no-cache-dir sympy numpy
+RUN pip install --no-cache-dir --timeout 120 \
+        requests numpy sympy scipy pandas Pillow matplotlib
 
 RUN zeroclaw --version && python --version
