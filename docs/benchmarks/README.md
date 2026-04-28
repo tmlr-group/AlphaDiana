@@ -87,6 +87,7 @@ DirectLLM `trajectory / artifacts / logprobs` upload contract, use
 Each benchmark document describes prerequisites, supported execution modes,
 example configs, and smoke-test commands:
 
+- [OpenClaw Benchmark Reliability](openclaw.md)
 - [IMO-AnswerBench](imo-answerbench.md)
 - [AIME](aime.md)
 - [HLE](hle.md)
@@ -135,7 +136,8 @@ If you know the harness first:
   `GPQA-Diamond`, and `MMMU-Pro`; for `terminal-bench-2` and
   `SWE-bench Pro`, the runbooks route you to the official external repos.
 - `openclaw`:
-  use the matching benchmark runbook for all six benchmarks.
+  start with [OpenClaw Benchmark Reliability](openclaw.md), then use the
+  matching benchmark runbook for the target benchmark.
 - `opencode`:
   use the matching benchmark runbook for all six benchmarks.
 - `zeroclaw`:

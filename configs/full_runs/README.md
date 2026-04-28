@@ -82,6 +82,24 @@ OpenClaw configs also set:
   still available with `reuse_predeployed_sandboxes: true`; that path clears
   OpenClaw session state under the known OpenClaw home directories on every
   reset to prevent stale chat history reuse.
+- `predeployed_lease_probe: true` is enabled by default for real ROCK sessions.
+  Before assigning a predeployed sandbox, the runner makes a short
+  `trust_env=False` reachability probe to the sandbox's host-published gateway
+  and discards/replaces the sandbox if the gateway is already unreachable. This
+  prevents a dead standby sandbox from consuming a full task retry cycle.
+- Streamed OpenClaw responses that emit partial text or logprobs but never
+  receive the terminal `[DONE]` marker are preserved as `runtime_error` partial
+  responses instead of being scored as normal answers. Partial raw output and
+  logprob sidecars remain available for audit, and recoverable-only task retry
+  can rerun the sample when the failure evidence points to a dead gateway or
+  sandbox.
+- Runner-side OpenClaw integrity checks reject responses before scoring when
+  `metadata.received_done=false`, `metadata.session_tainted=true`,
+  `finish_reason=incomplete`, or heartbeat markers appear in the trajectory or
+  raw output. Rejected responses are stored as `runtime_error` with available
+  artifacts preserved. See
+  [`docs/benchmarks/openclaw.md`](../../docs/benchmarks/openclaw.md) for the
+  full OpenClaw runbook and result-validity contract.
 
 ZeroClaw configs also set:
 
@@ -93,7 +111,11 @@ ZeroClaw configs also set:
 The AIME 2026 OpenClaw full-run config is intentionally conservative for
 shared local-vLLM recovery: `max_concurrent: 1`, `max_tokens: 131072`,
 `agent.config.num_sandboxes: 1`, and `agent.config.standby_sandboxes: 1`.
-Raise concurrency only with explicit overrides after checking local vLLM queue
+It also sets `task_retries: 2` with
+`task_retry_on_recoverable_only: true`, so a task-level `runtime_error` caused
+by a dead gateway or sandbox can be retried on a replacement fresh sandbox in
+the same run without retrying ordinary output-cap or timeout failures. Raise
+concurrency only with explicit overrides after checking local vLLM queue
 headroom. The AIME 2026 ZeroClaw full-run config remains lowered to
 `max_concurrent: 2` and additionally sets `task_retries: 2` so checkpoint
 resumes can replace a dead pooled ROCK session and retry the affected sample on

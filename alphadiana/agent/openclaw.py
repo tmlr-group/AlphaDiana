@@ -114,12 +114,14 @@ class OpenClawRequestError(RuntimeError):
         request_payload: dict | None = None,
         response_body: Any = None,
         retry_responses: list[dict] | None = None,
+        partial_response: AgentResponse | None = None,
     ) -> None:
         super().__init__(message)
         self.error_type = error_type
         self.request_payload = request_payload
         self.response_body = response_body
         self.retry_responses = retry_responses or []
+        self.partial_response = partial_response
 
 
 class BackendDownError(OpenClawRequestError):
@@ -1595,6 +1597,78 @@ class OpenClawAgent(Agent):
         logprob_source_attempt = 0
         logprob_source = ""
         selected_proxy_logprob_count = 0
+
+        def _remember_attempt_logprobs(
+            *,
+            attempt_number: int,
+            gateway_records: list[dict],
+            proxy_records: list[dict],
+        ) -> None:
+            nonlocal selected_logprob_records
+            nonlocal logprob_source_attempt
+            nonlocal logprob_source
+            nonlocal selected_proxy_logprob_count
+            records = gateway_records or proxy_records
+            if not records:
+                return
+            selected_logprob_records = list(records)
+            logprob_source_attempt = attempt_number
+            selected_proxy_logprob_count = len(proxy_records)
+            logprob_source = "gateway_response" if gateway_records else "provider_proxy"
+
+        def _build_partial_error_response(*, error_type: str, detail: Any) -> AgentResponse:
+            response_metadata = {
+                "gateway_response_id": response_json.get("id", "") if isinstance(response_json, dict) else "",
+                "sandbox_id": runtime_info.get("sandbox_id", "") or sandbox_id,
+                "model": self._model,
+                "retry_responses": retry_responses,
+                "retry_count": len(retry_responses),
+                "token_usage_total": cumulative_token_usage,
+                "partial_reasoning_only": False,
+                "answer_source": "",
+                "received_done": received_done,
+                "session_tainted": False,
+                "raw_reasoning": raw_reasoning,
+                "logprob_attempt_count": logprob_source_attempt or len(retry_responses),
+                "logprob_source_attempt": logprob_source_attempt,
+                "logprob_source": logprob_source,
+                "logprob_probe_proxy_count": selected_proxy_logprob_count,
+                "failure_reason": error_type,
+            }
+            if logprob_proxy is not None:
+                response_metadata.update(
+                    {
+                        "logprob_proxy_enabled": True,
+                        "logprob_proxy_url": f"{logprob_proxy.proxy_url.rstrip('/')}/v1",
+                        "logprob_proxy_upstream": logprob_proxy.upstream,
+                    }
+                )
+            token_entropy_stats, response_metadata = finalize_logprob_capture(
+                harness="openclaw",
+                enabled=self._logprob_capture["enabled"],
+                records=selected_logprob_records,
+                metadata=response_metadata,
+            )
+            response_body = response_json if isinstance(response_json, dict) else {}
+            if not response_body and isinstance(detail, dict):
+                response_body = detail
+            token_usage = cumulative_token_usage if any(cumulative_token_usage.values()) else {}
+            return AgentResponse(
+                answer=None,
+                trajectory=recovered_trajectory,
+                reasoning_trajectory=[],
+                raw_output=raw_output,
+                token_usage=token_usage,
+                wall_time_sec=time.time() - start,
+                token_entropy_stats=token_entropy_stats,
+                request_messages=request_messages,
+                response_json=response_body,
+                sandbox_id=runtime_info.get("sandbox_id", "") or sandbox_id,
+                gateway_url=runtime_info.get("gateway_url", "") or url,
+                metadata=response_metadata,
+                finish_reason="incomplete",
+            )
+
         for attempt in range(1, self._max_attempts + 1):
             attempt_start = time.monotonic()
             attempt_logprob_records: list[dict] = []
@@ -1647,6 +1721,7 @@ class OpenClawAgent(Agent):
                                 pass
                             else:
                                 # Successful non-streaming JSON — extract assistant content.
+                                received_done = True
                                 choices = response_json.get("choices") or []
                                 if choices:
                                     msg = choices[0].get("message", {})
@@ -1818,6 +1893,8 @@ class OpenClawAgent(Agent):
                         logprob_source = "gateway_response"
                     elif attempt_proxy_logprob_records:
                         logprob_source = "provider_proxy"
+                    else:
+                        logprob_source = ""
                     # Successful response — reset the consecutive-empty counter.
                     with self._circuit_lock:
                         self._consecutive_empty_sse = 0
@@ -1832,6 +1909,8 @@ class OpenClawAgent(Agent):
                         logprob_source = "gateway_response"
                     elif attempt_proxy_logprob_records:
                         logprob_source = "provider_proxy"
+                    else:
+                        logprob_source = ""
                     # Partial reasoning counts as a success for the circuit breaker.
                     with self._circuit_lock:
                         self._consecutive_empty_sse = 0
@@ -1845,6 +1924,11 @@ class OpenClawAgent(Agent):
                         time.monotonic() - attempt_start,
                     )
                     break
+                _remember_attempt_logprobs(
+                    attempt_number=attempt,
+                    gateway_records=attempt_logprob_records,
+                    proxy_records=attempt_proxy_logprob_records,
+                )
                 elapsed = time.monotonic() - attempt_start
                 response_body = response_json or ""
                 error_type = classify_error(
@@ -2035,6 +2119,8 @@ class OpenClawAgent(Agent):
                             logprob_source = "gateway_response"
                         elif attempt_proxy_logprob_records:
                             logprob_source = "provider_proxy"
+                        else:
+                            logprob_source = ""
                         break
                     if raw_reasoning:
                         selected_logprob_records = list(
@@ -2046,8 +2132,15 @@ class OpenClawAgent(Agent):
                             logprob_source = "gateway_response"
                         elif attempt_proxy_logprob_records:
                             logprob_source = "provider_proxy"
+                        else:
+                            logprob_source = ""
                         partial_reasoning_only = True
                         break
+                _remember_attempt_logprobs(
+                    attempt_number=attempt,
+                    gateway_records=attempt_logprob_records,
+                    proxy_records=attempt_proxy_logprob_records,
+                )
                 retry_responses.append(
                     {
                         "attempt": attempt,
@@ -2119,21 +2212,69 @@ class OpenClawAgent(Agent):
                 logger.info("Retry delay: %.1fs (error_type=%s)", delay + jitter, last_error_type)
                 time.sleep(delay + jitter)
 
+        if request_payload.get("stream") and (raw_output or partial_reasoning_only) and not received_done:
+            status_code = retry_responses[-1]["status_code"] if retry_responses else None
+            error_type = classify_error(
+                last_error,
+                response_json=response_json or None,
+                status_code=status_code,
+            )
+            if error_type == "unknown":
+                error_type = "incomplete_stream"
+            if not retry_responses:
+                retry_responses.append(
+                    {
+                        "attempt": logprob_source_attempt or 0,
+                        "status_code": status_code,
+                        "headers": {},
+                        "body": "OpenClaw stream ended before [DONE]",
+                        "elapsed_sec": time.time() - start,
+                        "error_type": error_type,
+                        "recovered_trajectory_len": len(recovered_trajectory),
+                    }
+                )
+            detail = response_json or {
+                "url": url,
+                "request": request_payload,
+                "stream_status": {
+                    "received_done": received_done,
+                    "error_type": error_type,
+                },
+            }
+            partial_response = _build_partial_error_response(
+                error_type=error_type,
+                detail=detail,
+            )
+            raise OpenClawRequestError(
+                f"OpenClaw stream ended before [DONE]: {detail}",
+                error_type=error_type,
+                request_payload=request_payload,
+                response_body=detail,
+                retry_responses=retry_responses,
+                partial_response=partial_response,
+            )
+
         if not raw_output and not partial_reasoning_only:
-            if isinstance(last_error, OpenClawRequestError):
-                raise last_error
             error_type = classify_error(
                 last_error,
                 response_json=response_json or None,
                 status_code=retry_responses[-1]["status_code"] if retry_responses else None,
             )
             detail = response_json or {"url": url, "request": request_payload}
+            partial_response = _build_partial_error_response(
+                error_type=error_type,
+                detail=detail,
+            )
+            if isinstance(last_error, OpenClawRequestError):
+                last_error.partial_response = partial_response
+                raise last_error
             raise OpenClawRequestError(
                 f"OpenClaw response did not contain assistant text: {detail}",
                 error_type=error_type,
                 request_payload=request_payload,
                 response_body=detail,
                 retry_responses=retry_responses,
+                partial_response=partial_response,
             )
 
         wall_time = time.time() - start
