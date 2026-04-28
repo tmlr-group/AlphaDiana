@@ -2,82 +2,82 @@
   "action_rates": {
     "openclaw": {
       "correct": {
-        "answer": 0.0,
-        "reason": 0.0,
-        "tool_use": 0.0,
-        "verify": 0.0,
-        "plan": 0.0,
-        "recover": 0.0,
-        "n_trajectories": 0
+        "answer": 0.9923076923076923,
+        "reason": 0.12307692307692308,
+        "tool_use": 0.2230769230769231,
+        "verify": 0.5692307692307692,
+        "plan": 0.16153846153846155,
+        "recover": 0.23076923076923078,
+        "n_trajectories": 130
       },
       "wrong": {
-        "answer": 0.0,
-        "reason": 0.0,
-        "tool_use": 0.0,
-        "verify": 0.0,
-        "plan": 0.0,
-        "recover": 0.0,
-        "n_trajectories": 0
+        "answer": 0.8507462686567164,
+        "reason": 0.19402985074626866,
+        "tool_use": 0.07462686567164178,
+        "verify": 0.582089552238806,
+        "plan": 0.31343283582089554,
+        "recover": 0.1044776119402985,
+        "n_trajectories": 67
       }
     },
     "opencode": {
       "correct": {
-        "answer": 0.0,
-        "reason": 0.0,
-        "tool_use": 0.0,
-        "verify": 0.0,
-        "plan": 0.0,
+        "answer": 1.0,
+        "reason": 0.9310344827586207,
+        "tool_use": 0.5517241379310345,
+        "verify": 0.593103448275862,
+        "plan": 0.30344827586206896,
         "recover": 0.0,
-        "n_trajectories": 0
+        "n_trajectories": 145
       },
       "wrong": {
-        "answer": 0.0,
-        "reason": 0.0,
-        "tool_use": 0.0,
-        "verify": 0.0,
-        "plan": 0.0,
+        "answer": 1.0,
+        "reason": 0.9230769230769231,
+        "tool_use": 0.15384615384615385,
+        "verify": 0.5,
+        "plan": 0.3076923076923077,
         "recover": 0.0,
-        "n_trajectories": 0
+        "n_trajectories": 52
       }
     },
     "zeroclaw": {
       "correct": {
-        "answer": 0.0,
-        "reason": 0.0,
+        "answer": 1.0,
+        "reason": 1.0,
         "tool_use": 0.0,
-        "verify": 0.0,
-        "plan": 0.0,
+        "verify": 0.6040268456375839,
+        "plan": 0.8187919463087249,
         "recover": 0.0,
-        "n_trajectories": 0
+        "n_trajectories": 149
       },
       "wrong": {
-        "answer": 0.0,
-        "reason": 0.0,
+        "answer": 1.0,
+        "reason": 1.0,
         "tool_use": 0.0,
-        "verify": 0.0,
-        "plan": 0.0,
+        "verify": 0.6176470588235294,
+        "plan": 0.7941176470588235,
         "recover": 0.0,
-        "n_trajectories": 0
+        "n_trajectories": 34
       }
     },
     "directllm": {
       "correct": {
-        "answer": 0.0,
-        "reason": 0.0,
+        "answer": 1.0,
+        "reason": 1.0,
         "tool_use": 0.0,
         "verify": 0.0,
         "plan": 0.0,
         "recover": 0.0,
-        "n_trajectories": 0
+        "n_trajectories": 159
       },
       "wrong": {
-        "answer": 0.0,
-        "reason": 0.0,
+        "answer": 1.0,
+        "reason": 1.0,
         "tool_use": 0.0,
         "verify": 0.0,
         "plan": 0.0,
         "recover": 0.0,
-        "n_trajectories": 0
+        "n_trajectories": 39
       }
     }
   },

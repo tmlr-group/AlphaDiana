@@ -823,12 +823,12 @@ def plot_fig11_tool_usage_patterns() -> None:
         traj_map[key]["all_events"].append(row)
 
     # ── LEFT panel: action rates per harness × outcome ────────────────────────
-    # outcome "correct" = correct=="1", "wrong" = correct=="0"
+    # correct field in action_events.csv uses "True"/"False" strings (not "1"/"0")
     action_rates: dict = {}  # {harness: {outcome: {action: rate, "n_trajectories": int}}}
 
     for h in HARNESSES:
         action_rates[h] = {}
-        for outcome_label, outcome_val in [("correct", "1"), ("wrong", "0")]:
+        for outcome_label, outcome_val in [("correct", "True"), ("wrong", "False")]:
             bucket_keys = [k for k, v in traj_map.items() if k[0] == h and v["correct"] == outcome_val]
             n_traj = len(bucket_keys)
             rates: dict = {}
