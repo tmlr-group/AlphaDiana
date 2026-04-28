@@ -71,6 +71,9 @@ OpenCode configs also set:
   `None`, the benchmark scorer records `score=0` / `correct=false`, and
   checkpoint resume treats the sample as completed. Structured provider errors
   and non-timeout non-zero exits such as return code `137` remain error records.
+  Legacy pre-fix OpenCode timeout error rows with explicit timeout evidence are
+  normalized on load to the same scored-zero completed status, so checkpoint
+  resume does not rerun those samples.
 
 OpenClaw configs also set:
 
@@ -100,7 +103,9 @@ OpenClaw configs also set:
   `metadata.openclaw_timeout_scored_zero: true`. Because the response answer is
   `None`, the benchmark scorer records `score=0` / `correct=false`, and
   checkpoint resume treats the sample as completed. Non-timeout incomplete
-  streams remain preserved `runtime_error` partial responses.
+  streams remain preserved `runtime_error` partial responses. Legacy pre-fix
+  OpenClaw timeout error rows with explicit timeout evidence are normalized on
+  load to scored-zero completed rows for checkpoint/report purposes.
 - Runner-side OpenClaw integrity checks reject responses before scoring when
   `metadata.received_done=false`, `metadata.session_tainted=true`,
   `finish_reason=incomplete`, or heartbeat markers appear in the trajectory or
@@ -125,7 +130,9 @@ ZeroClaw configs also set:
   checkpoint resume treats the sample as completed. Provider errors,
   non-timeout CLI errors, and empty-response cases that are not
   timeout-classified remain error records unless the agent explicitly marks
-  them as scored-zero partial-output cases.
+  them as scored-zero partial-output cases. Legacy pre-fix ZeroClaw timeout
+  rows, including runtime-only output with an `llm_request` and long wall time,
+  are normalized on load to scored-zero completed rows.
 
 AlphaDiana writes ZeroClaw's schema-supported permissive shell controls into
 the generated `config.toml`: `require_approval_for_medium_risk=false`,
