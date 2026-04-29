@@ -181,12 +181,18 @@ def test_normalized_records_prefer_task_records_and_deduplicate_valid_scored(tmp
         "run-a",
         records=[{"task_id": "jsonl_only", "sample_index": 0, "score_status": "valid_scored", "correct": True}],
         task_records={
-            "gpqa_1": [
-                {"task_id": "gpqa_1", "sample_index": 0, "score_status": "runtime_error", "correct": None},
-                {"task_id": "gpqa_1", "sample_index": 0, "score_status": "valid_scored", "correct": False},
-                {"task_id": "gpqa_2", "sample_index": 0, "score_status": "runtime_error", "correct": None},
-                {"task_id": "gpqa_2", "sample_index": 0, "score_status": "provider_error", "correct": None},
-            ]
+            "gpqa_1_attempt_1": [
+                {"task_id": "gpqa_1", "sample_index": 0, "score_status": "runtime_error", "correct": None}
+            ],
+            "gpqa_1_attempt_2": [
+                {"task_id": "gpqa_1", "sample_index": 0, "score_status": "valid_scored", "correct": False}
+            ],
+            "gpqa_2_attempt_1": [
+                {"task_id": "gpqa_2", "sample_index": 0, "score_status": "runtime_error", "correct": None}
+            ],
+            "gpqa_2_attempt_2": [
+                {"task_id": "gpqa_2", "sample_index": 0, "score_status": "provider_error", "correct": None}
+            ],
         },
     )
 
@@ -209,10 +215,12 @@ def test_inventory_corpus_reports_counts_and_excludes_backup_prefix(tmp_path):
         ],
         manifest={"run_id": "run-a", "expected_sample_count": 2},
         task_records={
-            "gpqa_1": [
-                {"task_id": "gpqa_1", "sample_index": 0, "score_status": "runtime_error", "correct": None},
-                {"task_id": "gpqa_1", "sample_index": 0, "score_status": "valid_scored", "correct": True},
-            ]
+            "gpqa_1_attempt_1": [
+                {"task_id": "gpqa_1", "sample_index": 0, "score_status": "runtime_error", "correct": None}
+            ],
+            "gpqa_1_attempt_2": [
+                {"task_id": "gpqa_1", "sample_index": 0, "score_status": "valid_scored", "correct": True}
+            ],
         },
     )
 
@@ -222,7 +230,7 @@ def test_inventory_corpus_reports_counts_and_excludes_backup_prefix(tmp_path):
     assert inventory["run_id"] == "run-a"
     assert inventory["harness"] == "opencode"
     assert inventory["jsonl_records"] == 2
-    assert inventory["task_record_files"] == 1
+    assert inventory["task_record_files"] == 2
     assert inventory["task_records"] == 2
     assert inventory["expected_sample_count"] == 2
     assert inventory["status_counts"] == {"valid_scored": 1}

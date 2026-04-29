@@ -58,7 +58,10 @@ def _load_task_record_list(path: Path) -> list[dict[str, Any]]:
     if isinstance(parsed, dict):
         return [parsed]
     if isinstance(parsed, list):
-        return [record for record in parsed if isinstance(record, dict)]
+        for record in parsed:
+            if isinstance(record, dict):
+                return [record]
+        return []
     return []
 
 
