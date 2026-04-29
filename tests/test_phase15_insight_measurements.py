@@ -7,6 +7,11 @@ from alphadiana.analysis.insight_measurements import (
     claim_low_entropy_long_collapse,
     claim_model_harness_composite,
 )
+from alphadiana.analysis.insight_cases import (
+    CASE_ANCHOR_TYPES,
+    case_anchor_id,
+    select_insight_case_anchors,
+)
 
 
 def _denominator_rows() -> list[dict]:
@@ -174,3 +179,111 @@ def test_raw_accuracy_is_not_model_capability_claim_without_tax_and_scaffold_fie
     assert {"behavioral_accuracy", "operational_tax", "deployable_accuracy"} <= set(
         operational["result"]["by_harness"][0]
     )
+
+
+def _event(
+    task_id: str,
+    action: str,
+    *,
+    harness: str = "opencode",
+    step_id: str = "0",
+    correct: bool | None = False,
+    score_status: str = "valid_scored",
+    text_span: str = "ordinary evidence",
+) -> dict:
+    return {
+        "run_id": f"run-{harness}",
+        "harness": harness,
+        "task_id": task_id,
+        "sample_index": 0,
+        "step_id": step_id,
+        "canonical_action": action,
+        "action_label_confidence": "strict",
+        "source": "trajectory",
+        "tool_subtype": "search" if action == "tool_use" else "other",
+        "observation_status": "none",
+        "recovery_context": False,
+        "text_span": text_span,
+        "score_status": score_status,
+        "correct": correct,
+    }
+
+
+def _selected_records() -> list[dict]:
+    return [
+        {"harness": "directllm", "task_id": "task_rescue", "sample_index": 0, "score_status": "valid_scored", "correct": False},
+        {"harness": "opencode", "task_id": "task_rescue", "sample_index": 0, "score_status": "valid_scored", "correct": True},
+        {"harness": "directllm", "task_id": "task_regress", "sample_index": 0, "score_status": "valid_scored", "correct": True},
+        {"harness": "opencode", "task_id": "task_regress", "sample_index": 0, "score_status": "valid_scored", "correct": False},
+        {
+            "harness": "openclaw",
+            "task_id": "task_error",
+            "sample_index": 0,
+            "score_status": "runtime_error",
+            "correct": None,
+            "error": "token sk-private-secret at /data2/private/run",
+        },
+    ]
+
+
+def test_case_anchors_are_deterministic_and_sanitized():
+    long_secret_text = "verify token sk-private-secret at /data2/private/run " + ("x" * 400)
+    event_rows = [
+        _event("task_tool", "tool_use", text_span="/home/user/work key sk-private-secret"),
+        _event("task_verify", "verify", text_span=long_secret_text),
+        _event("task_other", "answer", text_span="not selected"),
+    ]
+
+    anchors = select_insight_case_anchors(
+        event_rows=list(reversed(event_rows)),
+        selected_records=_selected_records(),
+        measurement_summary={"low_entropy_long_collapse": {"case_ids": ["opencode:task_verify:0"]}},
+        per_type=1,
+    )
+
+    assert CASE_ANCHOR_TYPES == (
+        "paired_rescue",
+        "paired_regression",
+        "low_entropy_long_wrong",
+        "verify_without_conversion",
+        "tool_without_state_shift",
+        "operational_error",
+    )
+    assert anchors == sorted(
+        anchors,
+        key=lambda case: (
+            case["anchor_type"],
+            case["harness"],
+            case["task_id"],
+            case["sample_index"],
+        ),
+    )
+    assert {case["anchor_type"] for case in anchors} >= {
+        "verify_without_conversion",
+        "tool_without_state_shift",
+        "low_entropy_long_wrong",
+        "operational_error",
+    }
+    verify_case = next(case for case in anchors if case["anchor_type"] == "verify_without_conversion")
+    assert case_anchor_id(verify_case) == verify_case["anchor_id"]
+    assert len(verify_case["evidence_snippets"][0]) <= 240
+    assert "/data2" not in verify_case["evidence_snippets"][0]
+    assert "sk-private-secret" not in verify_case["evidence_snippets"][0]
+
+
+def test_paired_rescue_and_regression_anchors_compare_directllm_to_agent():
+    anchors = select_insight_case_anchors(
+        event_rows=[],
+        selected_records=_selected_records(),
+        per_type=2,
+    )
+
+    rescue = next(case for case in anchors if case["anchor_type"] == "paired_rescue")
+    regression = next(case for case in anchors if case["anchor_type"] == "paired_regression")
+
+    assert rescue["anchor_id"] == "paired_rescue:opencode:task_rescue:0"
+    assert rescue["directllm_correct"] is False
+    assert rescue["agent_correct"] is True
+    assert regression["anchor_id"] == "paired_regression:opencode:task_regress:0"
+    assert regression["directllm_correct"] is True
+    assert regression["agent_correct"] is False
