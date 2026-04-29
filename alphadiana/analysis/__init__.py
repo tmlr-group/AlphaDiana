@@ -52,6 +52,12 @@ from alphadiana.analysis.trajectory_reports import (
     render_latex_appendix,
     write_phase14_outputs,
 )
+from alphadiana.analysis.insight_corpus import (
+    CorpusInventoryRow,
+    CorpusSpec,
+    load_phase15_corpus_specs,
+    sanitize_path_text,
+)
 
 __all__ = [
     "ACTION_LABEL_CONFIDENCES",
@@ -66,6 +72,8 @@ __all__ = [
     "TOOL_SUBTYPES",
     "ActionEvent",
     "CASE_STUDY_MOTIFS",
+    "CorpusInventoryRow",
+    "CorpusSpec",
     "ERROR_STATUSES",
     "MAIN_METRIC_NAMES",
     "build_record_feature_rows",
@@ -86,6 +94,7 @@ __all__ = [
     "inventory_corpus",
     "load_jsonl_records",
     "load_run_bundle",
+    "load_phase15_corpus_specs",
     "normalized_records",
     "observation_status_from_text",
     "render_markdown_report",
@@ -94,6 +103,7 @@ __all__ = [
     "resolve_run_relative_path",
     "select_case_studies",
     "select_directllm_baseline",
+    "sanitize_path_text",
     "summarize_event_sequence",
     "trajectory_key",
     "write_feature_csv",
