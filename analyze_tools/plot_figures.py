@@ -677,103 +677,163 @@ def _load_openclaw_outcome_csv() -> list[dict]:
 
 
 def plot_fig10_harness_outcome_2x2() -> None:
-    """2x2 grid: rows = DirectLLM / Harness-Aggregate; cols = Correct / Incorrect.
+    """Three side-by-side 2×2 paired contingency tables (one per agent harness).
 
-    Cell intensity encodes wrong-rate for that row (same intensity for both cells in
-    a row, chosen by column: Correct cell uses 1-wrong_rate, Incorrect uses wrong_rate).
+    Rows = DirectLLM outcome (Correct / Wrong)
+    Cols = Harness outcome (Correct / Wrong)
+
+    Cell semantics:
+      (Direct ✓, Harness ✓) = both_correct   → neutral blue
+      (Direct ✓, Harness ✗) = regression      → red
+      (Direct ✗, Harness ✓) = rescue          → blue
+      (Direct ✗, Harness ✗) = both_wrong      → neutral gray
+
+    Below each grid: accuracy summary strip comparing DirectLLM vs harness
+    (behavioral acc / deployable acc / operational tax).
     """
-    from matplotlib.colors import LinearSegmentedColormap
+    gain_rows = load_csv("paired_net_gain.csv")
+    tax_rows  = load_csv("operational_tax_adjusted_accuracy.csv")
+    gain_data = {r["harness"]: r for r in gain_rows}
+    tax_data  = {r["harness"]: r for r in tax_rows}
 
-    # ── load data ─────────────────────────────────────────────────────────────
-    directllm_recs   = _load_task_records_from_dir(DIRECTLLM_TASKS)
-    opencode_recs    = _load_task_records_from_dir(OPENCODE_TASKS)
-    zeroclaw_recs    = _load_task_records_from_dir(ZEROCLAW_TASKS)
-    openclaw_recs    = _load_openclaw_outcome_csv()
+    DIRECT_BEH = float(tax_data["directllm"]["behavioral_accuracy"])
+    DIRECT_DEP = float(tax_data["directllm"]["deployable_accuracy"])
 
-    # Pool harness-aggregate (openclaw + opencode + zeroclaw)
-    harness_recs = openclaw_recs + opencode_recs + zeroclaw_recs
+    harnesses      = ["openclaw",  "opencode",  "zeroclaw"]
+    harness_labels = ["OpenClaw",  "OpenCode",  "ZeroClaw"]
 
-    def _cell_stats(recs, correct_val):
-        subset = [r for r in recs if r["correct"] == correct_val]
-        n = len(subset)
-        if n == 0:
-            return {"n": 0, "mean_entropy": float("nan"), "median_tokens": float("nan"),
-                    "mean_traj_steps": float("nan")}
-        mean_h = float(np.mean([r["mean_entropy"] for r in subset]))
-        med_tok = float(np.median([r["n_tokens"] for r in subset]))
-        steps = [r["traj_steps"] for r in subset if r["traj_steps"] is not None]
-        mean_steps = float(np.mean(steps)) if steps else float("nan")
-        return {"n": n, "mean_entropy": mean_h, "median_tokens": med_tok, "mean_traj_steps": mean_steps}
+    CELL_COLORS = {
+        (0, 0): "#c6dbef",   # both_correct  — light blue
+        (0, 1): "#d6604d",   # regression    — red
+        (1, 0): "#2c7bb6",   # rescue        — blue
+        (1, 1): "#d9d9d9",   # both_wrong    — gray
+    }
+    CELL_TEXT_COLOR = {
+        (0, 0): "#1a1a1a",
+        (0, 1): "white",
+        (1, 0): "white",
+        (1, 1): "#1a1a1a",
+    }
+    CELL_LABEL = {
+        (0, 0): "Both correct",
+        (0, 1): "Regression\n(Direct ✓ / Harness ✗)",
+        (1, 0): "Rescue\n(Direct ✗ / Harness ✓)",
+        (1, 1): "Both wrong",
+    }
 
-    # rows: [directllm, harness_aggregate]; cols: [correct=1, correct=0]
-    row_data = []
-    for recs in [directllm_recs, harness_recs]:
-        n_total = len(recs)
-        n_wrong = sum(1 for r in recs if r["correct"] == 0)
-        wrong_rate = n_wrong / n_total if n_total > 0 else 0.0
-        row_data.append({
-            "wrong_rate": wrong_rate,
-            "correct_stats": _cell_stats(recs, 1),
-            "wrong_stats": _cell_stats(recs, 0),
-            "is_harness": True,  # traj_steps shown for all rows (directllm has trajectory)
-        })
+    FS = 14
+    # extra vertical space below each grid for the accuracy strip
+    fig, axes = plt.subplots(1, 3, figsize=(15, 6.2))
+    fig.subplots_adjust(wspace=0.12)
 
-    # Build intensity matrix: wrong_rate-style intensity per cell
-    # Correct cell: intensity = 1 - wrong_rate (lower wrong = less intense = lighter)
-    # Incorrect cell: intensity = wrong_rate
-    matrix = np.array([
-        [1 - row["wrong_rate"], row["wrong_rate"]]
-        for row in row_data
-    ])
+    for ax, harness, label in zip(axes, harnesses, harness_labels):
+        d  = gain_data[harness]
+        td = tax_data[harness]
+        total = int(d["paired_valid_tasks"])
+        cells = {
+            (0, 0): int(d["both_correct"]),
+            (0, 1): int(d["regression"]),
+            (1, 0): int(d["rescue"]),
+            (1, 1): int(d["both_wrong"]),
+        }
 
-    cmap = LinearSegmentedColormap.from_list("wr", ["#f7f7f7", "#fddbc7", "#d6604d", "#a50026"])
+        beh = float(td["behavioral_accuracy"])
+        dep = float(td["deployable_accuracy"])
+        tax = float(td["operational_tax"])
 
-    FS = 15
-    fig, ax = plt.subplots(figsize=(9, 5.5))
-    im = ax.imshow(matrix, cmap=cmap, vmin=0, vmax=1, aspect="auto")
+        # coordinate space: 2×2 grid occupies y=[0,2]; strip below at y=[-1.1, -0.05]
+        ax.set_xlim(0, 2)
+        ax.set_ylim(-1.15, 2)
+        ax.set_aspect("equal")
+        ax.axis("off")
 
-    cbar = fig.colorbar(im, ax=ax, fraction=0.032, pad=0.05)
-    cbar.set_label("Wrong-rate intensity", fontsize=FS - 1)
-    cbar.set_ticks([0, 0.25, 0.5, 0.75, 1.0])
-    cbar.set_ticklabels(["0%", "25%", "50%", "75%", "100%"], fontsize=FS - 3)
+        # ── 2×2 cells ─────────────────────────────────────────────────────────
+        for (ri, ci), n in cells.items():
+            x, y = ci, 1 - ri
+            rect = plt.Rectangle((x, y), 1, 1,
+                                  facecolor=CELL_COLORS[(ri, ci)],
+                                  edgecolor="white", linewidth=2)
+            ax.add_patch(rect)
 
-    ax.set_xticks([0, 1])
-    ax.set_xticklabels(["Correct", "Incorrect"], fontsize=FS)
-    ax.set_yticks([0, 1])
-    ax.set_yticklabels(["DirectLLM", "Harness-Aggregate"], fontsize=FS)
-    ax.xaxis.set_ticks_position("top")
-    ax.xaxis.set_label_position("top")
+            pct = n / total * 100
+            tc  = CELL_TEXT_COLOR[(ri, ci)]
+            ax.text(x + 0.5, y + 0.62, f"n = {n}",
+                    ha="center", va="center",
+                    fontsize=FS + 1, fontweight="bold", color=tc)
+            ax.text(x + 0.5, y + 0.38, f"{pct:.1f}%",
+                    ha="center", va="center",
+                    fontsize=FS - 1, color=tc)
+            ax.text(x + 0.5, y + 0.15, CELL_LABEL[(ri, ci)],
+                    ha="center", va="center",
+                    fontsize=FS - 5, color=tc, linespacing=1.3)
 
-    col_stats_keys = ["correct_stats", "wrong_stats"]
-    col_intensities_keys = [
-        lambda r: 1 - r["wrong_rate"],
-        lambda r: r["wrong_rate"],
-    ]
+        # ── column / row headers ───────────────────────────────────────────────
+        ax.text(0.5, 2.12, "Harness ✓", ha="center", va="bottom",
+                fontsize=FS - 1, color="#2c7bb6", fontweight="bold")
+        ax.text(1.5, 2.12, "Harness ✗", ha="center", va="bottom",
+                fontsize=FS - 1, color="#d6604d", fontweight="bold")
+        ax.text(-0.08, 1.5, "Direct ✓", ha="right", va="center",
+                fontsize=FS - 1, rotation=90, color="#555555", fontweight="bold")
+        ax.text(-0.08, 0.5, "Direct ✗", ha="right", va="center",
+                fontsize=FS - 1, rotation=90, color="#555555", fontweight="bold")
 
-    for ri, row in enumerate(row_data):
-        for ci, (stats_key, intens_fn) in enumerate(zip(col_stats_keys, col_intensities_keys)):
-            stats = row[stats_key]
-            intensity = intens_fn(row)
-            text_color = "white" if intensity > 0.55 else "#1a1a1a"
+        # ── title ─────────────────────────────────────────────────────────────
+        net = int(d["paired_net_gain"])
+        net_str = f"+{net}" if net >= 0 else str(net)
+        net_col = "#2c7bb6" if net >= 0 else "#d6604d"
+        ax.set_title(f"{label}  (n={total} paired)",
+                     fontsize=FS, pad=28, color="#1a1a1a")
 
-            n = stats["n"]
-            h = stats["mean_entropy"]
-            tok = stats["median_tokens"]
-            steps = stats["mean_traj_steps"]
+        # ── accuracy strip ─────────────────────────────────────────────────────
+        # three columns: label | value | Δ vs Direct
+        X_LABEL = 0.04   # left-align
+        X_VALUE = 1.12   # center
+        X_DELTA = 1.96   # right-align
 
-            lines = [f"n={n}"]
-            if not np.isnan(h):
-                lines.append(f"H̅={h:.3f}")
-            if not np.isnan(tok):
-                lines.append(f"med tok={int(tok):,}")
-            if not np.isnan(steps):
-                lines.append(f"steps̅={steps:.1f}")
+        strip = plt.Rectangle((0, -1.10), 2, 1.0,
+                               facecolor="#f4f4f4", edgecolor="#cccccc",
+                               linewidth=0.8)
+        ax.add_patch(strip)
+        ax.plot([0, 2], [-0.10, -0.10], color="#cccccc", linewidth=0.8)
 
-            cell_text = "\n".join(lines)
-            ax.text(ci, ri, cell_text, ha="center", va="center",
-                    fontsize=FS - 4, color=text_color, linespacing=1.5)
+        beh_delta = beh - DIRECT_BEH
+        dep_delta = dep - DIRECT_DEP
+        beh_col   = "#2c7bb6" if beh_delta >= 0 else "#d6604d"
+        dep_col   = "#2c7bb6" if dep_delta >= 0 else "#d6604d"
+        tax_col   = "#d6604d" if tax > 0.05 else "#777777"
 
-    fig.tight_layout(pad=1.5)
+        def _sign(v):
+            return f"+{v*100:.1f} pp" if v >= 0 else f"{v*100:.1f} pp"
+
+        rows_strip = [
+            (-0.30, "Behavioral acc",  f"{beh*100:.1f}%", _sign(beh_delta), beh_col),
+            (-0.57, "Operational tax", f"{tax*100:.1f}%", "",               tax_col),
+            (-0.84, "Deployable acc",  f"{dep*100:.1f}%", _sign(dep_delta), dep_col),
+        ]
+        for y_s, lbl, val, delta, col in rows_strip:
+            ax.text(X_LABEL, y_s, lbl, ha="left", va="center",
+                    fontsize=FS - 4, color="#555555")
+            ax.text(X_VALUE, y_s, val, ha="center", va="center",
+                    fontsize=FS - 3, color=col, fontweight="bold")
+            if delta:
+                ax.text(X_DELTA, y_s, delta, ha="right", va="center",
+                        fontsize=FS - 4, color=col)
+
+        ax.text(1.0, -1.08, f"net gain: {net_str}",
+                ha="center", va="center", fontsize=FS - 2,
+                color=net_col, fontweight="bold")
+
+    # DirectLLM baseline footnote
+    fig.text(0.5, -0.01,
+             f"DirectLLM baseline — behavioral acc: {DIRECT_BEH*100:.1f}%   "
+             f"deployable acc: {DIRECT_DEP*100:.1f}%   operational tax: 0.0%",
+             ha="center", va="top", fontsize=FS - 3, color="#666666",
+             style="italic")
+
+    fig.suptitle(
+        "Paired DirectLLM vs. Harness Outcome  ·  % of paired tasks",
+        fontsize=FS + 2, y=1.04,
+    )
     out = FIG_DIR / "fig10_harness_outcome_2x2.pdf"
     fig.savefig(out, dpi=300, bbox_inches="tight")
     plt.close(fig)

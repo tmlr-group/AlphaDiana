@@ -1,6 +1,7 @@
 """GPQA-Diamond benchmark loader (fingertap/GPQA-Diamond)."""
 from __future__ import annotations
 
+import ast
 import os
 import random
 
@@ -37,6 +38,8 @@ class GPQADiamondBenchmark(Benchmark):
     Config keys:
         dataset:    HuggingFace dataset path (default: "fingertap/GPQA-Diamond")
         split:      Dataset split (default: "test")
+        dataset_index: If set, only load the raw dataset row at this index
+        dataset_indices: If set, only load the listed raw dataset rows
         max_tasks:  Limit the number of tasks loaded (optional)
         seed:       Base random seed for option shuffling (default: 42)
     """
@@ -55,9 +58,16 @@ class GPQADiamondBenchmark(Benchmark):
         dataset_path = config.get("dataset", "fingertap/GPQA-Diamond")
         split = config.get("split", "test")
         max_tasks = config.get("max_tasks")
+        dataset_index = config.get("dataset_index")
+        dataset_indices = config.get("dataset_indices")
         base_seed = int(config.get("seed", 42))
         if max_tasks == 0:
             return []
+        if dataset_index is not None and dataset_indices is not None:
+            raise ValueError(
+                "GPQA benchmark config may set only one of 'dataset_index' or "
+                "'dataset_indices'."
+            )
 
         try:
             dataset = load_dataset_with_retry(dataset_path, None, split=split)
@@ -75,8 +85,30 @@ class GPQADiamondBenchmark(Benchmark):
         columns = dataset.column_names if hasattr(dataset, "column_names") else (list(dataset[0].keys()) if len(dataset) > 0 else [])
         is_fingertap_format = "question" in columns and "answer" in columns and "Question" not in columns
 
+        if isinstance(dataset_indices, str):
+            parsed_indices = ast.literal_eval(dataset_indices)
+            if isinstance(parsed_indices, int):
+                dataset_indices = [parsed_indices]
+            else:
+                dataset_indices = parsed_indices
+
+        if dataset_indices is not None:
+            iterator = []
+            for raw_idx in dataset_indices:
+                idx = int(raw_idx)
+                if idx < 0 or idx >= len(dataset):
+                    raise ValueError(f"dataset index {idx} out of range [0, {len(dataset)})")
+                iterator.append((idx, dataset[idx]))
+        elif dataset_index is not None:
+            idx = int(dataset_index)
+            if idx < 0 or idx >= len(dataset):
+                raise ValueError(f"dataset_index={idx} out of range [0, {len(dataset)})")
+            iterator = [(idx, dataset[idx])]
+        else:
+            iterator = enumerate(dataset)
+
         tasks: list[BenchmarkTask] = []
-        for idx, item in enumerate(dataset):
+        for idx, item in iterator:
             if is_fingertap_format:
                 # fingertap/GPQA-Diamond: question already contains formatted options
                 problem = item.get("question", "")
