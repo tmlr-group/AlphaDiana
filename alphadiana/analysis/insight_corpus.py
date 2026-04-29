@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import csv
+import json
 import os
 import re
-from dataclasses import dataclass
+from collections import Counter
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Mapping
+from typing import Any, Mapping, Sequence
+
+from alphadiana.analysis.action_events import normalized_records
+from alphadiana.analysis.result_reader import RunBundle, load_run_bundle
+from alphadiana.results.status import VALID_SCORE_STATUS, infer_score_status
 
 CORPUS_STATUS_VALUES = ("unavailable", "manifest_only", "validated_records")
 ENV_CORPUS_VARS = (
@@ -16,6 +23,7 @@ ENV_CORPUS_VARS = (
 )
 MODEL_LABEL_QWEN35_27B = "Qwen/Qwen3.5-27B"
 HF_ALPHADIANA_PUBLIC_REF = "T-MARS/alphadiana-benchmark-results"
+ERROR_SCORE_STATUSES = {"agent_error", "provider_error", "runtime_error", "scorer_error"}
 
 
 @dataclass(frozen=True)
@@ -174,6 +182,103 @@ def load_phase15_corpus_specs(
     return specs
 
 
+def load_selected_task_records(bundle: RunBundle) -> list[dict[str, Any]]:
+    """Return scorer-aware selected records for denominator and behavior analysis."""
+    return normalized_records(bundle)
+
+
+def inventory_corpus_spec(spec: CorpusSpec) -> CorpusInventoryRow:
+    """Build one availability and denominator row for a corpus spec."""
+    run_dir = spec.results_dir / spec.run_id
+    jsonl_path = spec.results_dir / f"{spec.run_id}.jsonl"
+    if not run_dir.exists() and not jsonl_path.exists():
+        return _empty_inventory_row(spec, status="unavailable", unavailable_reason="missing run artifacts")
+
+    bundle = load_run_bundle(spec.results_dir, spec.run_id)
+    selected_records = load_selected_task_records(bundle)
+    task_record_count = sum(len(records) for records in bundle.task_records.values())
+    expected_samples = _expected_sample_count(bundle.manifest, selected_records)
+    if not selected_records:
+        return CorpusInventoryRow(
+            corpus_label=spec.label,
+            benchmark=spec.benchmark,
+            harness=spec.harness,
+            model_label=spec.model_label,
+            source_kind=spec.source_kind,
+            public_ref=sanitize_path_text(spec.public_ref),
+            status="manifest_only",
+            expected_samples=expected_samples,
+            task_files=len(bundle.task_records),
+            task_records=task_record_count,
+            selected_records=0,
+            valid_scored=0,
+            behavioral_correct=0,
+            behavioral_wrong=0,
+            error_records=0,
+            missing_samples=expected_samples,
+            status_counts={},
+            unavailable_reason=None,
+        )
+
+    statuses = [infer_score_status(record) for record in selected_records]
+    status_counts = dict(sorted(Counter(statuses).items()))
+    valid_records = [
+        record
+        for record, status in zip(selected_records, statuses)
+        if status == VALID_SCORE_STATUS
+    ]
+    behavioral_correct = sum(1 for record in valid_records if record.get("correct") is True)
+    behavioral_wrong = sum(1 for record in valid_records if record.get("correct") is False)
+    error_records = sum(1 for status in statuses if status in ERROR_SCORE_STATUSES)
+
+    return CorpusInventoryRow(
+        corpus_label=spec.label,
+        benchmark=spec.benchmark,
+        harness=spec.harness,
+        model_label=spec.model_label,
+        source_kind=spec.source_kind,
+        public_ref=sanitize_path_text(spec.public_ref),
+        status="validated_records",
+        expected_samples=expected_samples,
+        task_files=len(bundle.task_records),
+        task_records=task_record_count,
+        selected_records=len(selected_records),
+        valid_scored=len(valid_records),
+        behavioral_correct=behavioral_correct,
+        behavioral_wrong=behavioral_wrong,
+        error_records=error_records,
+        missing_samples=max(expected_samples - len(selected_records), 0),
+        status_counts=status_counts,
+        unavailable_reason=None,
+    )
+
+
+def build_denominator_ledger(specs: Sequence[CorpusSpec]) -> list[dict[str, Any]]:
+    """Return sorted plain-dict inventory rows for corpus denominator claims."""
+    rows = [asdict(inventory_corpus_spec(spec)) for spec in specs]
+    return sorted(rows, key=lambda row: str(row["corpus_label"]))
+
+
+def write_denominator_ledger(output_dir: Path, rows: Sequence[Mapping[str, Any]]) -> dict[str, Path]:
+    """Write JSON and CSV denominator ledgers."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    json_path = output_dir / "corpus_inventory.json"
+    csv_path = output_dir / "corpus_inventory.csv"
+    serializable_rows = [dict(row) for row in rows]
+    json_path.write_text(json.dumps(serializable_rows, indent=2, sort_keys=True), encoding="utf-8")
+
+    fieldnames = _ledger_fieldnames(serializable_rows)
+    with csv_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in serializable_rows:
+            writer.writerow({
+                key: json.dumps(value, sort_keys=True) if isinstance(value, (dict, list)) else value
+                for key, value in row.items()
+            })
+    return {"json": json_path, "csv": csv_path}
+
+
 def _load_hf_synced_specs(results_dir: Path) -> list[CorpusSpec]:
     hf_root = results_dir / "hf-alphadiana-benchmark-results"
     if not hf_root.exists():
@@ -211,6 +316,50 @@ def _load_hf_synced_specs(results_dir: Path) -> list[CorpusSpec]:
             )
         )
     return specs
+
+
+def _empty_inventory_row(
+    spec: CorpusSpec,
+    *,
+    status: str,
+    unavailable_reason: str | None,
+) -> CorpusInventoryRow:
+    return CorpusInventoryRow(
+        corpus_label=spec.label,
+        benchmark=spec.benchmark,
+        harness=spec.harness,
+        model_label=spec.model_label,
+        source_kind=spec.source_kind,
+        public_ref=sanitize_path_text(spec.public_ref),
+        status=status,
+        expected_samples=0,
+        task_files=0,
+        task_records=0,
+        selected_records=0,
+        valid_scored=0,
+        behavioral_correct=0,
+        behavioral_wrong=0,
+        error_records=0,
+        missing_samples=0,
+        status_counts={},
+        unavailable_reason=unavailable_reason,
+    )
+
+
+def _expected_sample_count(manifest: Mapping[str, Any], selected_records: Sequence[Mapping[str, Any]]) -> int:
+    if manifest.get("expected_sample_count") is not None:
+        return int(manifest["expected_sample_count"])
+    expected_task_count = manifest.get("expected_task_count")
+    num_samples = manifest.get("num_samples")
+    if expected_task_count is not None and num_samples is not None:
+        return int(expected_task_count) * int(num_samples)
+    return len(selected_records)
+
+
+def _ledger_fieldnames(rows: Sequence[Mapping[str, Any]]) -> list[str]:
+    preferred = list(CorpusInventoryRow.__dataclass_fields__)
+    extras = sorted({key for row in rows for key in row if key not in preferred})
+    return preferred + extras
 
 
 def _infer_benchmark(text: str) -> str:

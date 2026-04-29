@@ -55,8 +55,12 @@ from alphadiana.analysis.trajectory_reports import (
 from alphadiana.analysis.insight_corpus import (
     CorpusInventoryRow,
     CorpusSpec,
+    build_denominator_ledger,
+    inventory_corpus_spec,
     load_phase15_corpus_specs,
+    load_selected_task_records,
     sanitize_path_text,
+    write_denominator_ledger,
 )
 
 __all__ = [
@@ -76,6 +80,7 @@ __all__ = [
     "CorpusSpec",
     "ERROR_STATUSES",
     "MAIN_METRIC_NAMES",
+    "build_denominator_ledger",
     "build_record_feature_rows",
     "classify_action_intent",
     "classify_tool_subtype",
@@ -92,9 +97,11 @@ __all__ = [
     "has_premature_answer",
     "has_tool_grounded_reasoning",
     "inventory_corpus",
+    "inventory_corpus_spec",
     "load_jsonl_records",
     "load_run_bundle",
     "load_phase15_corpus_specs",
+    "load_selected_task_records",
     "normalized_records",
     "observation_status_from_text",
     "render_markdown_report",
@@ -108,5 +115,6 @@ __all__ = [
     "trajectory_key",
     "write_feature_csv",
     "write_json",
+    "write_denominator_ledger",
     "write_phase14_outputs",
 ]
