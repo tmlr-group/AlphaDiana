@@ -15,7 +15,15 @@ MAIN_METRIC_NAMES = (
     "PrematureAnswerRate",
     "MotifOutcomeLift",
     "FailureCostRatio",
+    "LowEntropyLongCollapseRate",
+    "ConfidenceInversion",
+    "PostToolEntropySeparation",
+    "VerificationConversionRate",
+    "OperationalTaxAdjustedAccuracy",
+    "PairedNetGain",
+    "ScaffoldDominance",
 )
+ANALYZE_TOOLS_METRIC_NAMES = MAIN_METRIC_NAMES[7:]
 ERROR_STATUSES = ("agent_error", "provider_error", "runtime_error", "scorer_error")
 
 _RECOVERY_STATUSES = {"fail", "error", "timeout", "truncated"}
@@ -114,6 +122,7 @@ def has_budget_collapse(actions: Sequence[str], score_status: str) -> bool:
 def compute_outcome_conditioned_metrics(
     event_rows: Sequence[Mapping[str, Any]],
     inventory_rows: Sequence[Mapping[str, Any]] | None = None,
+    measurement_summary: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compute Phase 14 headline behavior metrics from event rows."""
     sequences = group_event_sequences(event_rows)
@@ -129,6 +138,7 @@ def compute_outcome_conditioned_metrics(
         "motif_metrics": _motif_metrics(valid_sequences),
         "motif_outcome_lift": _motif_outcome_lift(valid_sequences),
         "failure_cost": _failure_cost(sequences, inventory_rows),
+        "measurement_insights": summarize_analyze_tool_measurements(measurement_summary),
         "diagnostics": {
             "pooled_action_distribution": _pooled_action_distribution(sequences),
             "sequence_count": len(sequences),
@@ -266,6 +276,128 @@ def _pooled_action_distribution(sequences: Sequence[Mapping[str, Any]]) -> list[
     ]
 
 
+def summarize_analyze_tool_measurements(measurement_summary: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Return compact Phase 14 metrics derived from analyze_tools measurement outputs."""
+    if not measurement_summary:
+        return {
+            "source": "analyze_tools/data/measurement_summary.json",
+            "available": False,
+            "metric_names": ANALYZE_TOOLS_METRIC_NAMES,
+        }
+
+    entropy_quadrants = _mapping_rows(measurement_summary.get("entropy_token_quadrants"))
+    confidence_rows = _mapping_rows(measurement_summary.get("confidence_inversion"))
+    posttool_rows = _mapping_rows(measurement_summary.get("posttool_state_shift"))
+    verification_rows = _mapping_rows(measurement_summary.get("verification_conversion"))
+
+    return {
+        "source": "analyze_tools/data/measurement_summary.json",
+        "available": True,
+        "metric_names": ANALYZE_TOOLS_METRIC_NAMES,
+        "low_entropy_long_collapse": _low_entropy_long_collapse(entropy_quadrants),
+        "confidence_inversion": _best_confidence_inversion(confidence_rows),
+        "posttool_entropy_separation": _posttool_entropy_separation(posttool_rows),
+        "verification_conversion": _verification_conversion(verification_rows),
+        "operational_tax_adjusted_accuracy": _mapping_rows(
+            measurement_summary.get("operational_tax_adjusted_accuracy")
+        ),
+        "paired_net_gain": _mapping_rows(measurement_summary.get("paired_net_gain")),
+        "scaffold_dominance": _mapping_rows(measurement_summary.get("action_space_distance")),
+    }
+
+
+def _low_entropy_long_collapse(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    row = _find_row(rows, "bucket", "low_entropy_long")
+    if row is None:
+        return {}
+    return {
+        "bucket": "low_entropy_long",
+        "n": _int(row.get("n")),
+        "wrong_rate": _float(row.get("wrong_rate")),
+        "median_tokens": _float(row.get("median_tokens")),
+        "median_entropy": _float(row.get("median_entropy")),
+        "token_threshold_q75": _float(row.get("token_threshold_q75")),
+        "entropy_threshold_q25": _float(row.get("entropy_threshold_q25")),
+    }
+
+
+def _best_confidence_inversion(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    if not rows:
+        return {}
+    best = max(rows, key=lambda row: _float(row.get("inversion_lift")))
+    return {
+        "entropy_threshold": _float(best.get("entropy_threshold")),
+        "low_entropy_n": _int(best.get("low_entropy_n")),
+        "high_entropy_n": _int(best.get("high_entropy_n")),
+        "wrong_rate_low_entropy": _float(best.get("wrong_rate_low_entropy")),
+        "wrong_rate_high_entropy": _float(best.get("wrong_rate_high_entropy")),
+        "inversion_lift": _float(best.get("inversion_lift")),
+    }
+
+
+def _posttool_entropy_separation(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    turn_rows = [
+        {
+            "turn_label": str(row.get("turn_label") or ""),
+            "wrong_minus_correct_entropy": _float(row.get("wrong_minus_correct_entropy")),
+            "separation_gain_vs_baseline": _float(row.get("separation_gain_vs_baseline")),
+            "correct_n": _int(row.get("correct_n")),
+            "wrong_n": _int(row.get("wrong_n")),
+        }
+        for row in rows
+        if str(row.get("turn_label") or "").startswith("after_tool_")
+    ]
+    strongest = max(turn_rows, key=lambda row: row["separation_gain_vs_baseline"], default={})
+    boundary = _find_row(rows, "turn_label", "boundary_shock_integral_0_15")
+    return {
+        "turns": turn_rows,
+        "strongest_turn": strongest,
+        "boundary_shock_integral_0_15": _float(boundary.get("wrong_minus_correct_entropy")) if boundary else 0.0,
+    }
+
+
+def _verification_conversion(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    by_harness: dict[str, dict[str, Mapping[str, Any]]] = defaultdict(dict)
+    for row in rows:
+        harness = str(row.get("harness") or "")
+        correctness = str(row.get("correct") or "")
+        if harness:
+            by_harness[harness][correctness] = row
+
+    lift_rows: list[dict[str, Any]] = []
+    for harness in sorted(by_harness):
+        correct = by_harness[harness].get("True")
+        wrong = by_harness[harness].get("False")
+        if correct is None or wrong is None:
+            continue
+        lift_rows.append(
+            {
+                "harness": harness,
+                "verify_rate_lift": _float(correct.get("verify_rate")) - _float(wrong.get("verify_rate")),
+                "verify_before_answer_lift": _float(correct.get("verify_before_answer_rate"))
+                - _float(wrong.get("verify_before_answer_rate")),
+                "post_verify_action_change_lift": _float(correct.get("post_verify_action_change_rate"))
+                - _float(wrong.get("post_verify_action_change_rate")),
+                "correct_n": _int(correct.get("n")),
+                "wrong_n": _int(wrong.get("n")),
+            }
+        )
+    return {"rows": list(rows), "lifts": lift_rows}
+
+
+def _mapping_rows(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        return []
+    return [dict(row) for row in value if isinstance(row, Mapping)]
+
+
+def _find_row(rows: Sequence[Mapping[str, Any]], key: str, value: str) -> Mapping[str, Any] | None:
+    for row in rows:
+        if str(row.get(key) or "") == value:
+            return row
+    return None
+
+
 def _motif_flag(sequence: Mapping[str, Any], motif_name: str) -> bool:
     actions = sequence["actions"]
     statuses = sequence["observation_statuses"]
@@ -317,3 +449,17 @@ def _correct_rate(sequences: Sequence[Mapping[str, Any]]) -> float:
 
 def _safe_div(numerator: int | float, denominator: int | float) -> float:
     return float(numerator) / float(denominator) if denominator else 0.0
+
+
+def _float(value: Any) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _int(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--results-dir", type=Path, default=Path("results"))
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+    parser.add_argument(
+        "--measurement-summary",
+        type=Path,
+        default=Path("analyze_tools/data/measurement_summary.json"),
+        help="Optional analyze_tools measurement_summary.json to fold into trajectory metrics.",
+    )
     parser.add_argument("--stdout", action="store_true")
     return parser
 
@@ -71,7 +78,11 @@ def main(argv: list[str] | None = None) -> int:
             if key in {"candidate", "run_id", "valid_scored", "task_records", "jsonl_records"}
         },
     }
-    metrics = compute_outcome_conditioned_metrics(event_rows, inventory_rows=inventory_rows)
+    metrics = compute_outcome_conditioned_metrics(
+        event_rows,
+        inventory_rows=inventory_rows,
+        measurement_summary=_load_measurement_summary(args.measurement_summary),
+    )
     case_studies = select_case_studies(event_rows)
     output_paths = write_phase14_outputs(
         args.output_dir,
@@ -100,6 +111,12 @@ def _resolve_directllm_bundle(results_dir: Path, run_id: str, bundle):
     if packed_bundle.records or packed_bundle.task_records:
         return packed_results_dir, packed_bundle
     return results_dir, bundle
+
+
+def _load_measurement_summary(path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

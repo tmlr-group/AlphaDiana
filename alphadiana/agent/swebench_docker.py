@@ -3373,7 +3373,7 @@ RUN chmod +x /usr/local/bin/zeroclaw
         except Exception:
             pass
 
-        self._resolved_max_tokens = 65536
+        self._resolved_max_tokens = 131072
         return self._resolved_max_tokens
 
     @staticmethod

@@ -53,9 +53,107 @@ def test_outcome_conditioned_metrics_include_required_metric_names():
         "PrematureAnswerRate",
         "MotifOutcomeLift",
         "FailureCostRatio",
+        "LowEntropyLongCollapseRate",
+        "ConfidenceInversion",
+        "PostToolEntropySeparation",
+        "VerificationConversionRate",
+        "OperationalTaxAdjustedAccuracy",
+        "PairedNetGain",
+        "ScaffoldDominance",
     )
     assert metrics["metric_names"] == MAIN_METRIC_NAMES
+    assert metrics["measurement_insights"]["available"] is False
     assert "pass_power_k" not in metrics
+
+
+def test_outcome_conditioned_metrics_fold_in_analyze_tools_measurements():
+    metrics = compute_outcome_conditioned_metrics(
+        [],
+        measurement_summary={
+            "entropy_token_quadrants": [
+                {
+                    "bucket": "low_entropy_long",
+                    "n": 4,
+                    "wrong_rate": 0.75,
+                    "median_tokens": 9000,
+                    "median_entropy": 0.05,
+                    "token_threshold_q75": 5000,
+                    "entropy_threshold_q25": 0.1,
+                }
+            ],
+            "confidence_inversion": [
+                {
+                    "entropy_threshold": 0.2,
+                    "low_entropy_n": 5,
+                    "high_entropy_n": 10,
+                    "wrong_rate_low_entropy": 0.8,
+                    "wrong_rate_high_entropy": 0.3,
+                    "inversion_lift": 0.5,
+                },
+                {
+                    "entropy_threshold": 0.1,
+                    "low_entropy_n": 3,
+                    "high_entropy_n": 12,
+                    "wrong_rate_low_entropy": 1.0,
+                    "wrong_rate_high_entropy": 0.2,
+                    "inversion_lift": 0.8,
+                },
+            ],
+            "posttool_state_shift": [
+                {
+                    "turn_label": "baseline",
+                    "wrong_minus_correct_entropy": -0.01,
+                    "separation_gain_vs_baseline": 0.0,
+                },
+                {
+                    "turn_label": "after_tool_1+",
+                    "wrong_minus_correct_entropy": 0.1,
+                    "separation_gain_vs_baseline": 0.11,
+                    "correct_n": 7,
+                    "wrong_n": 2,
+                },
+                {
+                    "turn_label": "boundary_shock_integral_0_15",
+                    "wrong_minus_correct_entropy": 3.5,
+                },
+            ],
+            "verification_conversion": [
+                {
+                    "harness": "openclaw",
+                    "correct": "False",
+                    "n": 6,
+                    "verify_rate": 0.8,
+                    "verify_before_answer_rate": 0.1,
+                    "post_verify_action_change_rate": 0.2,
+                },
+                {
+                    "harness": "openclaw",
+                    "correct": "True",
+                    "n": 8,
+                    "verify_rate": 0.7,
+                    "verify_before_answer_rate": 0.4,
+                    "post_verify_action_change_rate": 0.5,
+                },
+            ],
+            "operational_tax_adjusted_accuracy": [{"harness": "openclaw", "deployable_accuracy": 0.55}],
+            "paired_net_gain": [{"harness": "openclaw", "paired_net_gain": -2}],
+            "action_space_distance": [
+                {"harness_a": "openclaw", "harness_b": "zeroclaw", "canonical_action_jsd": 0.51}
+            ],
+        },
+    )
+
+    insights = metrics["measurement_insights"]
+
+    assert insights["available"] is True
+    assert insights["low_entropy_long_collapse"]["wrong_rate"] == pytest.approx(0.75)
+    assert insights["confidence_inversion"]["entropy_threshold"] == pytest.approx(0.1)
+    assert insights["posttool_entropy_separation"]["strongest_turn"]["turn_label"] == "after_tool_1+"
+    assert insights["posttool_entropy_separation"]["boundary_shock_integral_0_15"] == pytest.approx(3.5)
+    assert insights["verification_conversion"]["lifts"][0]["verify_before_answer_lift"] == pytest.approx(0.3)
+    assert insights["operational_tax_adjusted_accuracy"][0]["harness"] == "openclaw"
+    assert insights["paired_net_gain"][0]["paired_net_gain"] == -2
+    assert insights["scaffold_dominance"][0]["canonical_action_jsd"] == pytest.approx(0.51)
 
 
 def test_outcome_conditioned_action_allocation_uses_valid_scored_outcomes():
