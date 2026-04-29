@@ -67,6 +67,11 @@ from alphadiana.analysis.insight_measurements import (
     InsightClaim,
     build_insight_claims,
 )
+from alphadiana.analysis.insight_cases import (
+    CASE_ANCHOR_TYPES,
+    case_anchor_id,
+    select_insight_case_anchors,
+)
 
 __all__ = [
     "ACTION_LABEL_CONFIDENCES",
@@ -80,6 +85,7 @@ __all__ = [
     "RunBundle",
     "TOOL_SUBTYPES",
     "ActionEvent",
+    "CASE_ANCHOR_TYPES",
     "CASE_STUDY_MOTIFS",
     "CorpusInventoryRow",
     "CorpusSpec",
@@ -116,7 +122,9 @@ __all__ = [
     "render_chinese_discussion",
     "render_latex_appendix",
     "resolve_run_relative_path",
+    "case_anchor_id",
     "select_case_studies",
+    "select_insight_case_anchors",
     "select_directllm_baseline",
     "sanitize_path_text",
     "summarize_event_sequence",
