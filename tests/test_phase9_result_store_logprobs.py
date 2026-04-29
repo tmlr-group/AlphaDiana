@@ -96,6 +96,27 @@ class TestWriteLogprobsJsonl:
 
 
 class TestAppendSerializesLogprobs:
+    def test_paths_remain_under_initial_output_dir_after_cwd_change(self, tmp_path: Path, monkeypatch):
+        root = tmp_path / "root"
+        other = tmp_path / "other"
+        root.mkdir()
+        other.mkdir()
+        monkeypatch.chdir(root)
+        store = ResultStore("results", "run_cwd")
+
+        monkeypatch.chdir(other)
+        stats = {"mean": 0.5, "max": 0.5, "p50": 0.5, "p90": 0.5, "n_tokens": 1}
+        records = [{"token_index": 0, "token": "A", "logprob": -0.1, "top_logprobs": []}]
+        store.append(_task(), _response(records, stats), _score())
+
+        expected_root = root / "results"
+        assert Path(store.path) == expected_root / "run_cwd.jsonl"
+        assert (expected_root / "run_cwd.jsonl").exists()
+        assert (expected_root / "run_cwd" / "tasks" / "t1.json").exists()
+        assert (expected_root / "run_cwd" / "artifacts" / "t1" / "agent" / "normalized_trace.json").exists()
+        assert (expected_root / "run_cwd" / "logprobs" / "t1.jsonl").exists()
+        assert not (other / "results").exists()
+
     def test_with_records(self, tmp_path: Path):
         store = ResultStore(str(tmp_path), "run_y")
         records = [
@@ -166,15 +187,31 @@ class TestAppendErrorSerializesLogprobs:
     def test_error_path_preserves_entropy(self, tmp_path: Path):
         store = ResultStore(str(tmp_path), "run_y")
         records = [
-            {"token_index": 0, "token": "X", "logprob": -2.0, "top_logprobs": []},
+            {
+                "token_index": 0,
+                "token": "X",
+                "logprob": -2.0,
+                "top_logprobs": [
+                    {"token": "X", "logprob": -2.0},
+                    {"token": "Y", "logprob": -3.0},
+                ],
+            },
         ]
         stats = {"mean": 0.0, "max": 0.0, "p50": 0.0, "p90": 0.0, "n_tokens": 1}
         resp = _response(records, stats)
         store.append_error(_task(), error={"error": "boom"}, response=resp)
 
         lp_path = tmp_path / "run_y" / "logprobs" / "t1.jsonl"
+        lp_int16_path = tmp_path / "run_y" / "logprobs_int16" / "t1.jsonl"
         assert lp_path.exists()
+        assert lp_int16_path.exists()
         rec = store.load()[0]
         assert rec["token_entropy_stats"] == stats
         assert rec["logprobs_path"] == "run_y/logprobs/t1.jsonl"
+        assert rec["logprobs_int16_path"] == "run_y/logprobs_int16/t1.jsonl"
+        assert rec["artifact_manifest"]["files"]["logprobs_float"] == "logprobs/t1.jsonl"
+        assert rec["artifact_manifest"]["files"]["logprobs_int16"] == "logprobs_int16/t1.jsonl"
         assert rec["error"] == {"error": "boom"}
+        int16_record = json.loads(lp_int16_path.read_text().strip())
+        assert int16_record["token"] == "X"
+        assert int16_record["top20"][0]["token"] == "X"

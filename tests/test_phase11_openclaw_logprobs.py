@@ -5,7 +5,7 @@ from collections.abc import Iterable
 
 import pytest
 
-from alphadiana.agent.openclaw import OpenClawAgent
+from alphadiana.agent.openclaw import OpenClawAgent, OpenClawRequestError
 from alphadiana.benchmark.base import BenchmarkTask
 
 
@@ -211,14 +211,82 @@ def test_streaming_timeout_preserves_partial_output_and_logprobs(
 
     agent = OpenClawAgent()
     agent.setup(_base_config(stream=True, max_attempts=1))
-    resp = agent.solve(_task())
 
-    assert resp.raw_output == "The answer is 4"
-    assert resp.finish_reason == ""
-    assert resp.response_json["choices"][0]["finish_reason"] == "incomplete"
-    assert resp.metadata["logprobs_capture_status"] == "captured"
-    assert resp.metadata["logprob_records"][0]["token"] == "4"
-    assert resp.token_entropy_stats["n_tokens"] == 1
+    response = agent.solve(_task())
+
+    assert response.answer is None
+    assert response.raw_output == "The answer is 4"
+    assert response.finish_reason == "timeout"
+    assert response.response_json["choices"][0]["finish_reason"] == "incomplete"
+    assert response.response_json["openclaw_error_name"] == "OpenClawTimeout"
+    assert response.metadata["received_done"] is False
+    assert response.metadata["failure_reason"] == "timeout"
+    assert response.metadata["openclaw_timeout_scored_zero"] is True
+    assert response.metadata["openclaw_error_message"] == "OpenClaw stream total timeout after 1.0s"
+    assert response.metadata["logprobs_capture_status"] == "captured"
+    assert response.metadata["logprob_records"][0]["token"] == "4"
+    assert response.token_entropy_stats["n_tokens"] == 1
+
+
+def test_streaming_timeout_without_partial_output_scores_zero(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = _TimeoutAfterFirstLineResponse(
+        headers={"content-type": "text/event-stream"},
+        sse_lines=[],
+    )
+    _patch_network(monkeypatch, [response])
+
+    agent = OpenClawAgent()
+    agent.setup(_base_config(stream=True, max_attempts=1, stream_total_timeout=1))
+
+    result = agent.solve(_task())
+
+    assert result.answer is None
+    assert result.raw_output == ""
+    assert result.finish_reason == "timeout"
+    assert result.metadata["received_done"] is False
+    assert result.metadata["failure_reason"] == "timeout"
+    assert result.metadata["openclaw_timeout_scored_zero"] is True
+    assert result.metadata["openclaw_timeout_seconds"] == 1.0
+    assert result.response_json["openclaw_error_name"] == "OpenClawTimeout"
+
+
+def test_streaming_without_done_preserves_partial_as_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chunk = {
+        "choices": [
+            {
+                "delta": {"content": "The answer is 4"},
+                "logprobs": {
+                    "content": [
+                        {"token": "4", "logprob": -0.1, "top_logprobs": [{"token": "4", "logprob": -0.1}]}
+                    ]
+                },
+            }
+        ]
+    }
+    response = _FakeResponse(
+        headers={"content-type": "text/event-stream"},
+        sse_lines=[f"data: {json.dumps(chunk)}"],
+    )
+    _patch_network(monkeypatch, [response])
+
+    agent = OpenClawAgent()
+    agent.setup(_base_config(stream=True, max_attempts=1))
+
+    with pytest.raises(OpenClawRequestError) as exc_info:
+        agent.solve(_task())
+
+    partial = exc_info.value.partial_response
+    assert partial is not None
+    assert partial.raw_output == "The answer is 4"
+    assert partial.metadata["received_done"] is False
+    assert partial.metadata["failure_reason"] == "incomplete_stream"
+    assert partial.metadata["retry_count"] == 1
+    assert partial.metadata["logprobs_capture_status"] == "captured"
+    assert partial.metadata["logprob_records"][0]["token"] == "4"
 
 
 def test_retry_uses_only_final_successful_attempt_records(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -252,6 +320,94 @@ def test_retry_uses_only_final_successful_attempt_records(monkeypatch: pytest.Mo
     assert resp.metadata["logprob_records"][0]["token"] == "X"
     assert resp.metadata["logprob_attempt_count"] == 2
     assert resp.metadata["logprob_source_attempt"] == 2
+
+
+def test_empty_assistant_error_preserves_logprob_records(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chunk = {
+        "choices": [
+            {
+                "delta": {},
+                "logprobs": {
+                    "content": [
+                        {
+                            "token": "tool",
+                            "logprob": -0.4,
+                            "top_logprobs": [{"token": "tool", "logprob": -0.4}],
+                        }
+                    ]
+                },
+            }
+        ]
+    }
+    response = _FakeResponse(
+        headers={"content-type": "text/event-stream"},
+        sse_lines=[f"data: {json.dumps(chunk)}", "data: [DONE]"],
+    )
+    _patch_network(monkeypatch, [response])
+
+    agent = OpenClawAgent()
+    agent.setup(_base_config(stream=True, max_attempts=1))
+
+    with pytest.raises(OpenClawRequestError) as exc_info:
+        agent.solve(_task())
+
+    partial = exc_info.value.partial_response
+    assert partial is not None
+    assert partial.raw_output == ""
+    assert partial.response_json["stream_status"]["received_done"] is True
+    assert partial.metadata["failure_reason"] == "empty_response"
+    assert partial.metadata["logprobs_capture_status"] == "captured"
+    assert partial.metadata["logprob_source"] == "gateway_response"
+    assert partial.metadata["logprob_records"][0]["token"] == "tool"
+    assert partial.token_entropy_stats["n_tokens"] == 1
+
+
+def test_success_after_empty_attempt_does_not_reuse_failed_logprobs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("alphadiana.agent.openclaw.time.sleep", lambda _seconds: None)
+    failed_chunk = {
+        "choices": [
+            {
+                "delta": {},
+                "logprobs": {
+                    "content": [
+                        {
+                            "token": "failed",
+                            "logprob": -0.4,
+                            "top_logprobs": [{"token": "failed", "logprob": -0.4}],
+                        }
+                    ]
+                },
+            }
+        ]
+    }
+    failed_attempt = _FakeResponse(
+        headers={"content-type": "text/event-stream"},
+        sse_lines=[f"data: {json.dumps(failed_chunk)}", "data: [DONE]"],
+    )
+    successful_attempt = _FakeResponse(
+        body_text=json.dumps(
+            {
+                "id": "resp-success",
+                "choices": [{"message": {"content": "The answer is 4"}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            }
+        )
+    )
+    _patch_network(monkeypatch, [failed_attempt, successful_attempt])
+
+    agent = OpenClawAgent()
+    agent.setup(_base_config(stream=True, max_attempts=2))
+    resp = agent.solve(_task())
+
+    assert resp.raw_output == "The answer is 4"
+    assert resp.metadata["logprobs_capture_status"] == "requested_missing"
+    assert "logprob_records" not in resp.metadata
+    assert resp.metadata["logprob_source_attempt"] == 0
+    assert resp.token_entropy_stats["n_tokens"] == 0
 
 
 def test_requested_missing_when_capture_enabled_without_provider_logprobs(

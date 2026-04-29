@@ -554,7 +554,12 @@ def test_zeroclaw_uses_logprob_proxy_records(monkeypatch) -> None:
         for path, content in sandbox.files.items()
         if path.endswith("/.zeroclaw/config.toml")
     )
-    assert "provider_max_tokens = 65536" in config_text
+    assert "provider_max_tokens" not in config_text
+    assert 'runtime_trace_mode = "full"' in config_text
+    assert "require_approval_for_medium_risk = false" in config_text
+    assert "block_high_risk_commands = false" in config_text
+    assert "shell_timeout_secs = 1200" in config_text
+    assert "[shell_tool]\ntimeout_secs = 1200" in config_text
     assert "top_p" not in config_text
     assert "logprobs" not in config_text
     assert response.metadata["logprobs_capture_status"] == "captured"

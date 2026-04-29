@@ -1,7 +1,8 @@
 FROM tmlrgroup/alphadiana:v1
 
 # --- Fix 1: Python sandbox environment ---
-# The base image has python3 but missing: python symlink, pip, sympy, numpy.
+# The base image has python3 but missing: python symlink, pip, and a common
+# Python tool layer expected by non-code benchmark agents.
 # Agents that execute code in the sandbox expect "python" to work and need
 # common math/science packages available.
 
@@ -16,8 +17,9 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
-# Install commonly needed Python packages for math/reasoning tasks
-RUN pip install --no-cache-dir --break-system-packages sympy numpy
+# Install commonly needed Python packages for math/reasoning tasks.
+RUN pip install --no-cache-dir --break-system-packages --timeout 120 \
+        requests numpy sympy scipy pandas Pillow matplotlib
 
 # Switch back to non-root user
 USER node

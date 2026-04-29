@@ -154,6 +154,29 @@ class _FakeRuntimeOnlySandbox(_FakeSandbox):
         return super().execute(command)
 
 
+class _FakeRuntimeOnlyTimeoutSandbox(_FakeSandbox):
+    def execute(self, command: str):
+        if _is_zeroclaw_agent_command(command):
+            self.commands.append(command)
+            task_path = next((path for path in self._files if path.endswith("/task.txt")), "")
+            stdout_path = command.split("> ", 1)[1].split(" 2> ", 1)[0]
+            stderr_path = command.split(" 2> ", 1)[1]
+            self._files[stdout_path] = (
+                "2026-04-28T09:14:34.123722Z  INFO zeroclaw::config::schema: Config loaded\n"
+                "2026-04-28T09:14:34.126798Z  INFO zeroclaw::agent::loop_: Memory initialized\n"
+                "2026-04-28T09:14:34.127323Z  INFO zeroclaw::security::detect: No sandbox backend available\n"
+            )
+            self._files[stderr_path] = ""
+            runtime_trace_path = str(Path(task_path).parent / "state" / "runtime-trace.jsonl")
+            self._files[runtime_trace_path] = json.dumps({
+                "event_type": "llm_request",
+                "provider": "custom:http://127.0.0.1:4567/v1",
+                "model": "Qwen/Qwen3.5-27B",
+            })
+            return type("Result", (), {"exit_code": 0, "stdout": "", "stderr": ""})()
+        return super().execute(command)
+
+
 class _FakeLoopDetectorSandbox(_FakeSandbox):
     _stderr = (
         "Error: Agent loop aborted by loop detector: Circuit breaker: "
@@ -194,6 +217,18 @@ class _FakeTimeoutWithLogprobsSandbox(_FakeSandbox):
             self._files[stderr_path] = ""
             runtime_trace_path = str(Path(task_path).parent / "state" / "runtime-trace.jsonl")
             self._files[runtime_trace_path] = ""
+            return type("Result", (), {"exit_code": 124, "stdout": "", "stderr": ""})()
+        return super().execute(command)
+
+
+class _FakeTimeoutNoOutputSandbox(_FakeSandbox):
+    def execute(self, command: str):
+        if _is_zeroclaw_agent_command(command):
+            self.commands.append(command)
+            stdout_path = command.split("> ", 1)[1].split(" 2> ", 1)[0]
+            stderr_path = command.split(" 2> ", 1)[1]
+            self._files[stdout_path] = ""
+            self._files[stderr_path] = ""
             return type("Result", (), {"exit_code": 124, "stdout": "", "stderr": ""})()
         return super().execute(command)
 
@@ -281,6 +316,10 @@ def test_zeroclaw_config_toml_uses_snake_case_fields():
     assert "max_tool_iterations = 100" in config_toml
     assert "default_temperature = 0.0" in config_toml
     assert "provider_timeout_secs = 1200" in config_toml
+    assert "require_approval_for_medium_risk = false" in config_toml
+    assert "block_high_risk_commands = false" in config_toml
+    assert "shell_timeout_secs = 1200" in config_toml
+    assert "[shell_tool]\ntimeout_secs = 1200" in config_toml
     assert 'default_provider = "custom:https://example.test/v1"' in config_toml
     assert "[provider]" not in config_toml
     assert "workspace-only" not in config_toml
@@ -295,6 +334,7 @@ def test_zeroclaw_config_toml_honors_request_controls_and_security_config():
         "api_base": "https://example.test/v1",
         "api_key": "sk-test",
         "temperature": 0.2,
+        "request_timeout": 345,
         "provider_timeout_secs": 600,
         "provider_max_tokens": 32768,
         "reasoning_enabled": True,
@@ -307,7 +347,9 @@ def test_zeroclaw_config_toml_honors_request_controls_and_security_config():
 
     assert "default_temperature = 0.2" in config_toml
     assert "provider_timeout_secs = 600" in config_toml
-    assert "provider_max_tokens = 32768" in config_toml
+    assert "shell_timeout_secs = 345" in config_toml
+    assert "[shell_tool]\ntimeout_secs = 345" in config_toml
+    assert "provider_max_tokens" not in config_toml
     assert "[runtime]" in config_toml
     assert "reasoning_enabled = true" in config_toml
     assert 'reasoning_effort = "high"' in config_toml
@@ -316,7 +358,7 @@ def test_zeroclaw_config_toml_honors_request_controls_and_security_config():
     assert 'backend = "auto"' in config_toml
 
 
-def test_zeroclaw_config_toml_maps_max_tokens_to_provider_max_tokens():
+def test_zeroclaw_config_toml_omits_unsupported_provider_max_tokens():
     agent = ZeroClawAgent()
     agent.setup({
         "model": "demo-model",
@@ -328,9 +370,10 @@ def test_zeroclaw_config_toml_maps_max_tokens_to_provider_max_tokens():
 
     config_toml = agent._build_config_toml()
 
-    assert "provider_max_tokens = 65536" in config_toml
+    assert "provider_max_tokens" not in config_toml
     assert "top_p" not in config_toml
     assert "logprobs" not in config_toml
+    assert agent._logprob_request_overrides()["max_tokens"] == 65536
 
 
 def test_zeroclaw_logprob_overrides_include_provider_extra_body():
@@ -369,8 +412,8 @@ def test_zeroclaw_provider_max_tokens_overrides_common_max_tokens():
 
     config_toml = agent._build_config_toml()
 
-    assert "provider_max_tokens = 32768" in config_toml
-    assert "provider_max_tokens = 65536" not in config_toml
+    assert "provider_max_tokens" not in config_toml
+    assert agent._logprob_request_overrides()["max_tokens"] == 32768
 
 
 @pytest.mark.parametrize(
@@ -694,6 +737,73 @@ def test_zeroclaw_timeout_with_logprobs_scores_zero(monkeypatch):
     assert response.answer is None
     assert response.finish_reason == "timeout"
     assert response.metadata["zeroclaw_timeout_preserved_partial_response"] is True
+    assert response.metadata["zeroclaw_timeout_scored_zero"] is True
     assert response.metadata["zeroclaw_timeout_seconds"] == 30
+    assert response.metadata["zeroclaw_error_name"] == "ZeroClawTimeout"
+    assert response.metadata["zeroclaw_error_message"] == "ZeroClaw agent timed out after 30s"
     assert response.metadata["zeroclaw_empty_assistant_scored_zero"] is True
     assert response.metadata["logprobs_capture_status"] == "captured"
+
+
+def test_zeroclaw_timeout_without_output_scores_zero():
+    task = BenchmarkTask(
+        task_id="imo_timeout_empty",
+        problem="Solve a long problem.",
+        ground_truth="42",
+        metadata={"execution_id": "exec-timeout-empty"},
+    )
+    sandbox = _FakeTimeoutNoOutputSandbox()
+    agent = ZeroClawAgent()
+    agent.setup({
+        "model": "Qwen/Qwen3.5-27B",
+        "api_base": "http://127.0.0.1:8011/v1",
+        "api_key": "EMPTY",
+        "capture_logprobs": False,
+        "request_timeout": 45,
+    })
+
+    response = agent.solve(task, sandbox=sandbox)
+
+    assert response.answer is None
+    assert response.finish_reason == "timeout"
+    assert response.metadata["failure_reason"] == "timeout"
+    assert response.metadata["zeroclaw_timeout_preserved_partial_response"] is True
+    assert response.metadata["zeroclaw_timeout_scored_zero"] is True
+    assert response.metadata["zeroclaw_timeout_seconds"] == 45
+    assert response.metadata["zeroclaw_error_name"] == "ZeroClawTimeout"
+    assert response.response_json["zeroclaw_error_message"] == "ZeroClaw agent timed out after 45s"
+
+
+def test_zeroclaw_runtime_only_provider_request_timeout_scores_zero(monkeypatch):
+    times = iter([1000.0, 1060.2])
+
+    def fake_time() -> float:
+        return next(times, 1060.2)
+
+    monkeypatch.setattr("alphadiana.agent.zeroclaw.time.time", fake_time)
+    task = BenchmarkTask(
+        task_id="imo_runtime_timeout",
+        problem="Solve a long problem.",
+        ground_truth="42",
+        metadata={"execution_id": "exec-runtime-timeout"},
+    )
+    sandbox = _FakeRuntimeOnlyTimeoutSandbox()
+    agent = ZeroClawAgent()
+    agent.setup({
+        "model": "Qwen/Qwen3.5-27B",
+        "api_base": "http://127.0.0.1:8011/v1",
+        "api_key": "EMPTY",
+        "capture_logprobs": False,
+        "request_timeout": 60,
+    })
+
+    response = agent.solve(task, sandbox=sandbox)
+
+    assert response.answer is None
+    assert response.finish_reason == "timeout"
+    assert response.metadata["failure_reason"] == "timeout"
+    assert response.metadata["zeroclaw_runtime_only_timeout"] is True
+    assert response.metadata["zeroclaw_empty_assistant_scored_zero"] is True
+    assert response.metadata["zeroclaw_empty_assistant_reason"] == "timeout_with_runtime_only_output"
+    assert response.metadata["zeroclaw_timeout_scored_zero"] is True
+    assert response.metadata["zeroclaw_timeout_seconds"] == 60

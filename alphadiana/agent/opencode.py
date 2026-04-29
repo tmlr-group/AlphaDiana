@@ -1311,12 +1311,20 @@ class OpenCodeAgent(Agent):
                 task.task_id,
                 stderr[:500],
             )
+        timeout_info = None
+        if returncode == -1 and error_info is None:
+            timeout_info = {
+                "name": "OpenCodeTimeout",
+                "message": "The operation timed out.",
+                "error_type": "timeout",
+            }
+            answer = None
+
         failure_info = error_info
-        if returncode != 0 and failure_info is None:
-            message = "The operation timed out." if returncode == -1 else f"OpenCode exited with return code {returncode}."
+        if returncode != 0 and returncode != -1 and failure_info is None:
             failure_info = {
                 "name": "OpenCodeNonZeroExit",
-                "message": message,
+                "message": f"OpenCode exited with return code {returncode}.",
                 "error_type": "agent_error",
             }
 
@@ -1387,15 +1395,26 @@ class OpenCodeAgent(Agent):
                 ),
             },
         )
-        if failure_info:
+        status_info = failure_info or timeout_info
+        if status_info:
             response_metadata.update({
-                "opencode_error_name": failure_info["name"],
-                "opencode_error_message": failure_info["message"],
+                "opencode_error_name": status_info["name"],
+                "opencode_error_message": status_info["message"],
             })
             response_json = {
                 **response_json,
-                "opencode_error_name": failure_info["name"],
-                "opencode_error_message": failure_info["message"],
+                "opencode_error_name": status_info["name"],
+                "opencode_error_message": status_info["message"],
+            }
+        if timeout_info:
+            response_metadata.update({
+                "opencode_timeout_scored_zero": True,
+                "opencode_timeout_seconds": self._timeout,
+            })
+            response_json = {
+                **response_json,
+                "opencode_timeout_scored_zero": True,
+                "opencode_timeout_seconds": self._timeout,
             }
 
         response = AgentResponse(
@@ -1411,6 +1430,7 @@ class OpenCodeAgent(Agent):
             artifact_manifest=artifact_manifest,
             workspace_file_contents=workspace_file_contents,
             system_prompt=str(self._system_prompt),
+            finish_reason="timeout" if timeout_info and not failure_info else "",
         )
         if failure_info:
             exc = RuntimeError(failure_info["message"])

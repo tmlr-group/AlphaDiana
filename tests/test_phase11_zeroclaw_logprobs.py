@@ -92,7 +92,7 @@ def test_zeroclaw_parser_ignores_malformed_json() -> None:
     assert records == []
 
 
-def test_zeroclaw_capture_enables_runtime_trace_mode_all() -> None:
+def test_zeroclaw_capture_enables_runtime_trace_mode_full() -> None:
     agent = ZeroClawAgent()
     agent.setup(
         {
@@ -104,7 +104,21 @@ def test_zeroclaw_capture_enables_runtime_trace_mode_all() -> None:
         }
     )
     toml = agent._build_config_toml()
-    assert 'runtime_trace_mode = "all"' in toml
+    assert 'runtime_trace_mode = "full"' in toml
+
+
+def test_zeroclaw_runtime_trace_mode_all_aliases_to_full() -> None:
+    agent = ZeroClawAgent()
+    agent.setup(
+        {
+            "model": "Qwen/Qwen3.5-27B",
+            "api_base": "http://127.0.0.1:8011/v1",
+            "api_key": "EMPTY",
+            "runtime_trace_mode": "all",
+        }
+    )
+    toml = agent._build_config_toml()
+    assert 'runtime_trace_mode = "full"' in toml
 
 
 def test_zeroclaw_requested_missing_when_no_provider_logprobs() -> None:
@@ -186,7 +200,7 @@ def test_partial_failure_preserves_logprob_records() -> None:
             "api_base": "http://127.0.0.1:8011/v1",
             "api_key": "EMPTY",
             "capture_logprobs": True,
-            "runtime_trace_mode": "all",
+            "runtime_trace_mode": "full",
         }
     )
     task = BenchmarkTask(task_id="zf", problem="2+2?", ground_truth="4", metadata={"execution_id": "zf-1"})

@@ -29,10 +29,25 @@ logger = logging.getLogger(__name__)
 _PROFILE_CACHE: dict[tuple[str, str], tuple[str, float]] = {}
 _chdir_lock = threading.Lock()
 
-CLEANUP_PATHS = [
+OPENCLAW_WORKSPACE_CLEANUP_PATHS = [
     "/root/.openclaw/workspace",
-    "/root/.openclaw/agents/main/sessions",
+    "/tmp/oc_home/.openclaw/workspace",
+    "/home/node/.openclaw/workspace",
 ]
+
+OPENCLAW_SESSION_CLEANUP_PATHS = [
+    "/root/.openclaw/agents/main/sessions",
+    "/root/.openclaw/agents/main/sessions.json",
+    "/root/.openclaw/workspace-state.json",
+    "/tmp/oc_home/.openclaw/agents/main/sessions",
+    "/tmp/oc_home/.openclaw/agents/main/sessions.json",
+    "/tmp/oc_home/.openclaw/workspace-state.json",
+    "/home/node/.openclaw/agents/main/sessions",
+    "/home/node/.openclaw/agents/main/sessions.json",
+    "/home/node/.openclaw/workspace-state.json",
+]
+
+CLEANUP_PATHS = OPENCLAW_WORKSPACE_CLEANUP_PATHS + OPENCLAW_SESSION_CLEANUP_PATHS
 
 
 def _progress(message: str) -> None:
@@ -794,16 +809,23 @@ class ROCKSession(SandboxSession):
             "command_history": self.command_history,
         }
 
+    def _remove_paths(self, paths: list[str]) -> None:
+        quoted_paths = " ".join(shlex.quote(path) for path in paths)
+        if quoted_paths:
+            self.execute(f"rm -rf {quoted_paths}")
+
     def _cleanup_workspace(self) -> None:
-        """Remove workspace and session files between tasks."""
-        if not getattr(self, "_reset_between_tasks", True):
-            return
-        paths = " ".join(CLEANUP_PATHS)
-        self.execute(f"rm -rf {paths}")
+        """Remove reusable OpenClaw state between tasks."""
+        paths = list(OPENCLAW_SESSION_CLEANUP_PATHS)
+        if getattr(self, "_reset_between_tasks", True):
+            paths = [*OPENCLAW_WORKSPACE_CLEANUP_PATHS, *paths]
+        self._remove_paths(paths)
 
     def reset(self) -> None:
         """Reset the reusable sandbox session to a clean state."""
         self._cleanup_workspace()
+        if isinstance(getattr(self, "_command_history", None), list):
+            self._command_history.clear()
 
     def close(self) -> None:
         try:

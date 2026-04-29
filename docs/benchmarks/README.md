@@ -29,6 +29,15 @@ notes: normal benchmark runs use one sandbox-only CLI path
 (`metadata.transport=zeroclaw_cli_sandbox`) for both text and image-backed
 tasks. Historical `disable_tools`, gateway, and proxy path notes remain
 useful audit evidence only.
+Generated ZeroClaw configs use `runtime_trace_mode="full"` for logprob capture
+and write ZeroClaw's schema-supported permissive shell controls; ZeroClaw
+0.6.9 does not expose a heredoc-specific allowlist setting.
+The April 28 AIME smoke `smoke_20260428_zeroclaw_shell_config_aime2` validated
+that path on one sandboxed local-Qwen task with captured logprobs and runtime
+trace artifacts.
+Use
+[`zeroclaw-local-qwen-rerun-20260428.md`](zeroclaw-local-qwen-rerun-20260428.md)
+for the five-benchmark ZeroClaw rerun parameter contract.
 
 As of April 25, 2026, local `Qwen/Qwen3.5-27B` 3-sample smokes validated
 `OpenClaw` and `ZeroClaw` on AIME 2026, IMO-AnswerBench, GPQA-Diamond, HLE,
@@ -36,6 +45,22 @@ and MMMU-Pro vision with `top_p=0.95`, `max_tokens=65536`, and stored
 logprobs. See
 [`context/phase12-harness-logprob-smokes/run_evidence.md`](../../context/phase12-harness-logprob-smokes/run_evidence.md)
 for run IDs, token counts, sidecar checks, and local-Qwen caveats.
+
+As of April 28, 2026, the non-coding OpenCode/OpenClaw/ZeroClaw harness images
+were re-probed for Python tooling and network reachability. The shared harness
+images can import the common scientific stack and can reach the local Qwen API,
+PyPI, files.pythonhosted, and `HF_ENDPOINT=https://hf-mirror.com`; direct
+`huggingface.co` timed out from this host. The same probe found generic web
+access and Bing result pages reachable, but Google Search reset the TLS
+connection and DuckDuckGo, Wikipedia, and Brave Search API timed out. OpenClaw
+native `web_search` is provider-key-backed, with Brave as the default path when
+credentials are available; no search provider credential was present in the
+April 28 audit, so only keyless `web_fetch` prerequisites and
+shell/Python-backed HTTP access were validated at the container-network level.
+For local vLLM runs, OpenClaw and ZeroClaw sandbox configs use
+`http://172.17.0.1:8011/v1` so the container can reach the host provider. See
+[`context/harness-env-audit-20260428/`](../../context/harness-env-audit-20260428/)
+for the probe output and smoke run IDs.
 
 The same April 25 evidence now includes OpenClaw thinking-on 3-sample smokes
 for GPQA-Diamond, HLE, MMMU-Pro vision, and IMO-AnswerBench in both 25K
@@ -71,6 +96,7 @@ DirectLLM `trajectory / artifacts / logprobs` upload contract, use
 Each benchmark document describes prerequisites, supported execution modes,
 example configs, and smoke-test commands:
 
+- [OpenClaw Benchmark Reliability](openclaw.md)
 - [IMO-AnswerBench](imo-answerbench.md)
 - [AIME](aime.md)
 - [HLE](hle.md)
@@ -119,7 +145,8 @@ If you know the harness first:
   `GPQA-Diamond`, and `MMMU-Pro`; for `terminal-bench-2` and
   `SWE-bench Pro`, the runbooks route you to the official external repos.
 - `openclaw`:
-  use the matching benchmark runbook for all six benchmarks.
+  start with [OpenClaw Benchmark Reliability](openclaw.md), then use the
+  matching benchmark runbook for the target benchmark.
 - `opencode`:
   use the matching benchmark runbook for all six benchmarks.
 - `zeroclaw`:
@@ -130,6 +157,7 @@ smoke recipe rather than the general runbook, start from:
 
 - [zeroclaw-minimax-smoke-20260418.md](zeroclaw-minimax-smoke-20260418.md)
 - [zeroclaw-qwen-openrouter-pilot-20260419.md](zeroclaw-qwen-openrouter-pilot-20260419.md)
+- [zeroclaw-local-qwen-rerun-20260428.md](zeroclaw-local-qwen-rerun-20260428.md)
 - [full-rollout-local-vllm-20260419.md](full-rollout-local-vllm-20260419.md)
 
 Ready-to-run full benchmark configs live in

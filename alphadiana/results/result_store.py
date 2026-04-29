@@ -22,7 +22,11 @@ from alphadiana.results.normalized_trace import (
     normalize_reasoning_trajectory,
 )
 from alphadiana.scorer.base import ScoreResult
-from alphadiana.results.status import infer_score_status, is_valid_completed_record
+from alphadiana.results.status import (
+    infer_score_status,
+    is_valid_completed_record,
+    normalize_legacy_timeout_zero_record,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +95,7 @@ class ResultStore:
         *,
         run_metadata: dict | None = None,
     ) -> None:
-        self.output_dir = Path(output_dir)
+        self.output_dir = Path(output_dir).expanduser().resolve()
         self.run_id = run_id
         self.path = str(self.output_dir / f"{run_id}.jsonl")
         self.manifest_path = self.output_dir / run_id / "run_manifest.json"
@@ -608,6 +612,7 @@ class ResultStore:
                         "Skipping malformed JSONL line %d in %s", line_num, self.path,
                     )
                     continue
+                record = normalize_legacy_timeout_zero_record(record)
                 key = (record["task_id"], record.get("sample_index", 0))
                 records[key] = record
         return list(records.values())

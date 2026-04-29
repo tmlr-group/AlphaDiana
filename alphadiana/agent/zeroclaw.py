@@ -214,6 +214,45 @@ def _classify_cli_error_output(text: str) -> str:
     return "cli_error"
 
 
+def _runtime_trace_has_llm_request(runtime_trace: str) -> bool:
+    for raw_line in (runtime_trace or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        if payload.get("event_type") == "llm_request" or payload.get("type") == "llm_request":
+            return True
+    return False
+
+
+def _runtime_only_output_indicates_timeout(
+    *,
+    raw_output: str,
+    raw_stderr: str,
+    runtime_trace: str,
+    wall_time_sec: float,
+    request_timeout_sec: int,
+) -> bool:
+    combined = f"{raw_output}\n{raw_stderr}\n{runtime_trace}".lower()
+    timeout_markers = (
+        "timed out",
+        "timeout",
+        "deadline exceeded",
+        "stream timeout",
+        "provider_timeout",
+    )
+    if any(marker in combined for marker in timeout_markers):
+        return True
+    if not _runtime_trace_has_llm_request(runtime_trace):
+        return False
+    return wall_time_sec + 1.0 >= float(request_timeout_sec)
+
+
 def _extract_patch_from_text(text: str) -> str:
     """Extract a unified diff patch from free-form agent output."""
     candidate = _extract_answer(text)
@@ -345,8 +384,10 @@ class ZeroClawAgent(Agent):
         self._top_p = None if raw_top_p in ("", None) else float(raw_top_p)
         self._provider_body_overrides = _provider_body_overrides_from_config(config)
         runtime_trace_mode = str(config.get("runtime_trace_mode", "none") or "none").strip()
+        if runtime_trace_mode.lower() == "all":
+            runtime_trace_mode = "full"
         if self._logprob_capture["enabled"] and runtime_trace_mode.lower() in {"", "none"}:
-            runtime_trace_mode = "all"
+            runtime_trace_mode = "full"
         self._runtime_trace_mode = runtime_trace_mode
         self._request_timeout = int(config.get("request_timeout", 1200))
         raw_provider_timeout = config.get("provider_timeout_secs", None)
@@ -784,9 +825,6 @@ class ZeroClawAgent(Agent):
     def _build_config_toml(self) -> str:
         workspace_only = "true" if self._workspace_only else "false"
         allowed_commands = json.dumps(self._allowed_commands, ensure_ascii=False)
-        provider_max_tokens = ""
-        if self._provider_max_tokens is not None:
-            provider_max_tokens = f"provider_max_tokens = {self._provider_max_tokens}\n"
         runtime_section = ""
         if self._reasoning_enabled is not None or self._reasoning_effort is not None:
             runtime_lines = ["[runtime]"]
@@ -819,7 +857,6 @@ class ZeroClawAgent(Agent):
             f"default_model = {_quote_toml(self._model)}\n\n"
             f"default_temperature = {self._temperature}\n"
             f"provider_timeout_secs = {self._provider_timeout_secs}\n"
-            f"{provider_max_tokens}"
             "model_routes = []\n"
             "embedding_routes = []\n\n"
             "[model_providers]\n\n"
@@ -836,7 +873,12 @@ class ZeroClawAgent(Agent):
             f"allowed_commands = {allowed_commands}\n"
             'forbidden_paths = ["/etc", "/usr", "/bin", "/sbin", "/lib", "/opt", "/boot", "/dev", "/proc", "/sys"]\n'
             f"max_actions_per_hour = {self._max_actions_per_hour}\n\n"
-            "max_cost_per_day_cents = 10000\n\n"
+            "max_cost_per_day_cents = 10000\n"
+            "require_approval_for_medium_risk = false\n"
+            "block_high_risk_commands = false\n"
+            f"shell_timeout_secs = {self._request_timeout}\n\n"
+            "[shell_tool]\n"
+            f"timeout_secs = {self._request_timeout}\n\n"
             "[agent]\n"
             f"max_tool_iterations = {self._max_tool_iterations}\n"
         )
@@ -1172,6 +1214,44 @@ class ZeroClawAgent(Agent):
         except Exception as exc:
             return f"sandbox diagnostics unavailable: {exc}"
 
+    def _timeout_response(
+        self,
+        partial_response: AgentResponse,
+        *,
+        sanitized_output: str,
+        logprob_proxy_records: list[dict],
+        empty_assistant_reason: str | None = None,
+        runtime_only_timeout: bool = False,
+    ) -> AgentResponse:
+        partial_response.answer = None
+        partial_response.finish_reason = "timeout"
+        timeout_message = f"ZeroClaw agent timed out after {self._request_timeout}s"
+        response_metadata = dict(partial_response.metadata or {})
+        response_metadata.update({
+            "failure_reason": "timeout",
+            "zeroclaw_error_name": "ZeroClawTimeout",
+            "zeroclaw_error_message": timeout_message,
+            "zeroclaw_timeout_preserved_partial_response": True,
+            "zeroclaw_timeout_scored_zero": True,
+            "zeroclaw_timeout_seconds": self._request_timeout,
+        })
+        if runtime_only_timeout:
+            response_metadata["zeroclaw_runtime_only_timeout"] = True
+        if not sanitized_output and (logprob_proxy_records or empty_assistant_reason):
+            response_metadata["zeroclaw_empty_assistant_scored_zero"] = True
+            response_metadata["zeroclaw_empty_assistant_reason"] = (
+                empty_assistant_reason or "timeout_with_provider_logprobs"
+            )
+        partial_response.metadata = response_metadata
+        partial_response.response_json = {
+            **dict(partial_response.response_json or {}),
+            "zeroclaw_error_name": "ZeroClawTimeout",
+            "zeroclaw_error_message": timeout_message,
+            "zeroclaw_timeout_scored_zero": True,
+            "zeroclaw_timeout_seconds": self._request_timeout,
+        }
+        return partial_response
+
     def _run_in_sandbox(self, task: BenchmarkTask, sandbox: Any) -> AgentResponse:
         start = time.time()
         attachment_items = self._build_attachment_items(task)
@@ -1329,28 +1409,13 @@ class ZeroClawAgent(Agent):
         )
 
         if result.exit_code == 124:
-            if sanitized_output or logprob_proxy_records:
-                partial_response.finish_reason = (
-                    "length"
-                    if self._provider_max_tokens is not None
-                    and len(logprob_proxy_records) >= self._provider_max_tokens
-                    else "timeout"
-                )
-                response_metadata = dict(partial_response.metadata or {})
-                response_metadata["zeroclaw_timeout_preserved_partial_response"] = True
-                response_metadata["zeroclaw_timeout_seconds"] = self._request_timeout
-                if not sanitized_output and logprob_proxy_records:
-                    response_metadata["zeroclaw_empty_assistant_scored_zero"] = True
-                    response_metadata["zeroclaw_empty_assistant_reason"] = (
-                        "timeout_with_provider_logprobs"
-                    )
-                partial_response.metadata = response_metadata
-                return partial_response
-            self._mark_partial_failure(partial_response, failure_reason="timeout")
-            self._raise_with_partial_response(
-                f"ZeroClaw agent timed out after {self._request_timeout}s",
+            return self._timeout_response(
                 partial_response,
-                error_type="timeout",
+                sanitized_output=sanitized_output,
+                logprob_proxy_records=logprob_proxy_records,
+                empty_assistant_reason=(
+                    "timeout_with_provider_logprobs" if logprob_proxy_records else None
+                ),
             )
         if result.exit_code != 0:
             diagnostics = self._collect_sandbox_diagnostics_safe(sandbox, paths, env)
@@ -1403,6 +1468,20 @@ class ZeroClawAgent(Agent):
             partial_response.metadata = response_metadata
             return partial_response
         if raw_output and not sanitized_output and dropped_runtime_logs:
+            if _runtime_only_output_indicates_timeout(
+                raw_output=raw_output,
+                raw_stderr=raw_stderr,
+                runtime_trace=runtime_trace,
+                wall_time_sec=partial_response.wall_time_sec,
+                request_timeout_sec=self._request_timeout,
+            ):
+                return self._timeout_response(
+                    partial_response,
+                    sanitized_output=sanitized_output,
+                    logprob_proxy_records=logprob_proxy_records,
+                    empty_assistant_reason="timeout_with_runtime_only_output",
+                    runtime_only_timeout=True,
+                )
             diagnostics = self._collect_sandbox_diagnostics_safe(sandbox, paths, env)
             self._mark_partial_failure(partial_response, failure_reason="empty_response")
             self._raise_with_partial_response(
