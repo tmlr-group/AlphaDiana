@@ -1455,8 +1455,8 @@ class OpenClawAgent(Agent):
                         return max_len
         except Exception:
             pass
-        self._resolved_max_tokens = 65536
-        return 65536
+        self._resolved_max_tokens = 131072
+        return 131072
 
     def _build_request_payload(self, messages: list[dict]) -> dict:
         """Build the request payload for chat completions."""
