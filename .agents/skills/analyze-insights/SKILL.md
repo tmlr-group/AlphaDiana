@@ -25,7 +25,7 @@ python scripts/analyze_behavior_insights.py --results-dir results --output-dir r
 - Inspect `results/phase15_behavior_insights/corpus_inventory.json`.
 - Inspect `results/phase15_behavior_insights/insight_claims.json`.
 - Inspect `results/phase15_behavior_insights/case_anchors.json`.
-- Run `rg -n "/data0|/data2|/home/|sk-[A-Za-z0-9_-]{8,}|api[_-]?key" results/phase15_behavior_insights context/phase15-insight-analysis`.
+- Run `rg -n "[/]data0|[/]data2|[/]home[/]|sk-[A-Za-z0-9_-]{8,}|api[_-]?key" results/phase15_behavior_insights context/phase15-insight-analysis`.
 
 ## Do Not
 
