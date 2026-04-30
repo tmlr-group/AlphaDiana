@@ -5,6 +5,8 @@ from pathlib import Path
 
 
 SKILL_PATH = Path(".agents/skills/analyze-insights/SKILL.md")
+CONTEXT_NOTE_PATH = Path("context/phase15-insight-analysis/skills.md")
+CONTEXT_INDEX_PATH = Path("context/README.md")
 STANDARD_COMMAND = (
     "python scripts/analyze_behavior_insights.py --results-dir results "
     "--output-dir results/phase15_behavior_insights"
@@ -60,7 +62,7 @@ def test_analyze_insights_skill_frontmatter_and_sop():
     ):
         assert artifact in text
     assert (
-        'rg -n "/data0|/data2|/home/|sk-[A-Za-z0-9_-]{8,}|api[_-]?key" '
+        'rg -n "[/]data0|[/]data2|[/]home[/]|sk-[A-Za-z0-9_-]{8,}|api[_-]?key" '
         "results/phase15_behavior_insights context/phase15-insight-analysis"
     ) in text
 
@@ -72,3 +74,19 @@ def test_analyze_insights_skill_frontmatter_and_sop():
         "Do not commit absolute paths.",
     ):
         assert forbidden in text
+
+
+def test_skill_context_note_is_indexed_and_path_safe():
+    note = CONTEXT_NOTE_PATH.read_text(encoding="utf-8")
+    index = CONTEXT_INDEX_PATH.read_text(encoding="utf-8")
+
+    assert "# Project-Local Analyze Insights Skill" in note
+    assert ".agents/skills/analyze-insights/SKILL.md" in note
+    assert STANDARD_COMMAND in note
+    assert "does not mutate" in note
+    assert "results/phase15_behavior_insights/behavior_insights.md" in note
+    assert "results/phase15_behavior_insights/insight_claims.json" in note
+    assert "context/phase15-insight-analysis/run_evidence.md" in note
+    assert "denominator ledger" in note
+    assert "phase15-insight-analysis/skills.md" in index
+    assert not re.search(r"/home/|/data0|/data2", note)
