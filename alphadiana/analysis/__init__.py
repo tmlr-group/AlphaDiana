@@ -72,6 +72,12 @@ from alphadiana.analysis.insight_cases import (
     case_anchor_id,
     select_insight_case_anchors,
 )
+from alphadiana.analysis.insight_reports import (
+    PHASE15_OUTPUT_FILENAMES,
+    render_behavior_insights_markdown,
+    render_behavior_insights_zh,
+    write_phase15_outputs,
+)
 
 __all__ = [
     "ACTION_LABEL_CONFIDENCES",
@@ -82,6 +88,7 @@ __all__ = [
     "EVENT_SOURCES",
     "OBSERVATION_STATUSES",
     "PRIMARY_CORPORA",
+    "PHASE15_OUTPUT_FILENAMES",
     "RunBundle",
     "TOOL_SUBTYPES",
     "ActionEvent",
@@ -119,6 +126,8 @@ __all__ = [
     "normalized_records",
     "observation_status_from_text",
     "render_markdown_report",
+    "render_behavior_insights_markdown",
+    "render_behavior_insights_zh",
     "render_chinese_discussion",
     "render_latex_appendix",
     "resolve_run_relative_path",
@@ -133,4 +142,5 @@ __all__ = [
     "write_json",
     "write_denominator_ledger",
     "write_phase14_outputs",
+    "write_phase15_outputs",
 ]
