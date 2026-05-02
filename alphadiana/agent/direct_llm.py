@@ -95,6 +95,12 @@ class DirectLLMAgent(Agent):
         self._top_p = config.get("top_p", None)
         self._max_tokens = config.get("max_tokens", None)
         self._max_completion_tokens = config.get("max_completion_tokens", None)
+        self._request_timeout = float(config.get("request_timeout", 600))
+        raw_stream_total_timeout = config.get("stream_total_timeout", self._request_timeout)
+        self._stream_total_timeout = (
+            None if raw_stream_total_timeout in (None, "", 0)
+            else float(raw_stream_total_timeout)
+        )
         self._max_retries = int(config.get("max_retries", 3))
         self._stream = config.get("stream", True)
         self._resolved_max_tokens: int | None = None
@@ -130,6 +136,7 @@ class DirectLLMAgent(Agent):
         return OpenAI(
             base_url=self._api_base,
             api_key=self._api_key,
+            timeout=self._request_timeout,
             http_client=httpx.Client(trust_env=False),
         )
 
@@ -286,8 +293,21 @@ class DirectLLMAgent(Agent):
             )
 
         # Extract answer: try raw_output first, fall back to reasoning
-        answer = _extract_answer(raw_output) if raw_output else ""
-        if not answer and raw_reasoning:
+        timeout_scored_zero = finish_reason == "timeout"
+        if timeout_scored_zero:
+            answer = None
+            response_metadata.update({
+                "failure_reason": "timeout",
+                "directllm_error_name": "DirectLLMTimeout",
+                "directllm_error_message": (
+                    f"DirectLLM stream total timeout after {self._stream_total_timeout}s"
+                ),
+                "directllm_timeout_seconds": self._stream_total_timeout,
+                "directllm_timeout_scored_zero": True,
+            })
+        else:
+            answer = _extract_answer(raw_output) if raw_output else ""
+        if not answer and raw_reasoning and not timeout_scored_zero:
             answer = _extract_answer(raw_reasoning)
 
         # Persist a normalized response envelope even when the provider does
@@ -414,7 +434,17 @@ class DirectLLMAgent(Agent):
         token_usage: dict = {}
         logprob_records: list[dict] = []
         token_index = 0
+        stream_started = time.monotonic()
         for chunk in stream:
+            if (
+                self._stream_total_timeout is not None
+                and time.monotonic() - stream_started >= self._stream_total_timeout
+            ):
+                close = getattr(stream, "close", None)
+                if callable(close):
+                    close()
+                finish_reason = "timeout"
+                break
             if chunk.choices:
                 delta = chunk.choices[0].delta
                 if delta:

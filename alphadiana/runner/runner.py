@@ -280,6 +280,10 @@ def _predeployed_session_failure_reason(exc: Exception, response: object | None 
         return "gateway_connection_refused"
     if "failed to connect" in text or "connecterror" in text:
         return "gateway_connect_failed"
+    if "connection reset by peer" in text or "[errno 104]" in text:
+        return "gateway_connection_reset"
+    if "peer closed connection" in text or "incomplete chunked read" in text:
+        return "gateway_stream_interrupted"
     return ""
 
 
@@ -305,16 +309,32 @@ class _OpenClawResponseRejected(RuntimeError):
         self.response_body = {"guard_reason": reason}
 
 
-def _iter_openclaw_response_text(response: object):
-    for attr in (
-        "raw_output",
-        "trajectory",
-        "reasoning_trajectory",
-        "request_messages",
-        "response_json",
-    ):
+def _iter_openclaw_taint_text(response: object):
+    """Yield response text that can prove the assistant saw the heartbeat file.
+
+    OpenClaw workspaces normally contain a ``HEARTBEAT.md`` artifact. Artifact
+    manifests and tool/workspace listings are not taint evidence by themselves;
+    only assistant-visible/output text or prompt text with the old heartbeat
+    probe should trip the guard.
+    """
+    for attr in ("raw_output", "response_json"):
         value = getattr(response, attr, None)
         if value:
+            yield _payload_text(value)
+
+    for attr in ("trajectory", "reasoning_trajectory", "request_messages"):
+        value = getattr(response, attr, None)
+        if not value:
+            continue
+        if isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    role = str(item.get("role", "") or "").lower()
+                    if role in {"assistant", "user", "system"}:
+                        yield _payload_text(item.get("content", ""))
+                else:
+                    yield _payload_text(item)
+        else:
             yield _payload_text(value)
 
 
@@ -336,8 +356,8 @@ def _openclaw_integrity_guard_reason(config: "ExperimentConfig", response: objec
     ):
         return "finish_reason_incomplete", "incomplete_stream"
 
-    for text in _iter_openclaw_response_text(response):
-        if "Read HEARTBEAT.md" in text or "HEARTBEAT_OK" in text or "HEARTBEAT.md" in text:
+    for text in _iter_openclaw_taint_text(response):
+        if "Read HEARTBEAT.md" in text or "HEARTBEAT_OK" in text:
             return "heartbeat_trace", "openclaw_heartbeat_taint"
     return "", ""
 
@@ -573,16 +593,19 @@ class Runner:
         predeployed_in_use_session_ids: set[str] = set()
         predeployed_session_reset_lock = threading.Lock()
         predeployed_session_pool_lock = threading.Lock()
-        predeployed_replacement_lock = threading.Lock()
         predeployed_replacement_state_lock = threading.Lock()
         predeployed_replenishment_threads: list[threading.Thread] = []
         predeployed_replacements_in_progress = 0
         predeployed_shutdown_event = threading.Event()
         predeployed_gateway_deployer = None
         predeployed_replacement_count = 0
+        predeployed_work_start_lock = threading.Lock()
+        predeployed_started_work_items = 0
         predeploy_partial = False
         desired_num = 1
         predeployed_active_target = 1
+        predeployed_replenish_concurrency = 1
+        predeployed_replacement_slots = threading.BoundedSemaphore(1)
         reuse_predeployed_sandboxes = _coerce_config_bool(
             self.config.agent_config.get("reuse_predeployed_sandboxes"),
             default=False,
@@ -617,6 +640,23 @@ class Runner:
             desired_num = predeployed_active_target
             if fresh_predeployed_mode:
                 desired_num += standby_sandboxes
+            explicit_replenish_concurrency = self.config.agent_config.get(
+                "predeploy_replenish_concurrency"
+            )
+            if explicit_replenish_concurrency is None:
+                default_replenish_concurrency = min(
+                    predeployed_active_target,
+                    standby_sandboxes or predeployed_active_target,
+                )
+                predeployed_replenish_concurrency = max(1, default_replenish_concurrency)
+            else:
+                predeployed_replenish_concurrency = max(
+                    1,
+                    int(explicit_replenish_concurrency or 1),
+                )
+            predeployed_replacement_slots = threading.BoundedSemaphore(
+                predeployed_replenish_concurrency
+            )
             if desired_num > 1 or fresh_predeployed_mode:
                 deployment_results = []
                 try:
@@ -756,13 +796,15 @@ class Runner:
 
                     logger.info(
                         "Predeploying %d %s sandboxes for CLI concurrency "
-                        "(max_concurrent=%d, target=%d tasks/sandbox, reuse=%s, standby=%d)",
+                        "(max_concurrent=%d, target=%d tasks/sandbox, reuse=%s, "
+                        "standby=%d, replenish_concurrency=%d)",
                         desired_num,
                         gateway_agent_label,
                         self.config.max_concurrent,
                         OPENCLAW_CONCURRENCY_PER_SANDBOX,
                         reuse_predeployed_sandboxes,
                         standby_sandboxes if fresh_predeployed_mode else 0,
+                        predeployed_replenish_concurrency if fresh_predeployed_mode else 1,
                     )
                     stagger_sec = float(self.config.agent_config.get("predeploy_stagger_seconds", 2.0) or 0.0)
                     for i in range(desired_num):
@@ -1002,6 +1044,9 @@ class Runner:
             self.result_store._run_metadata["standby_sandboxes"] = (
                 standby_sandboxes if fresh_predeployed_mode else 0
             )
+            self.result_store._run_metadata["predeploy_replenish_concurrency"] = (
+                predeployed_replenish_concurrency if fresh_predeployed_mode else 1
+            )
         manifest = self.result_store.load_manifest()
         if manifest:
             manifest["strict_isolation"] = self.config.strict_isolation
@@ -1010,6 +1055,9 @@ class Runner:
                 manifest["reuse_predeployed_sandboxes"] = reuse_predeployed_sandboxes
                 manifest["standby_sandboxes"] = (
                     standby_sandboxes if fresh_predeployed_mode else 0
+                )
+                manifest["predeploy_replenish_concurrency"] = (
+                    predeployed_replenish_concurrency if fresh_predeployed_mode else 1
                 )
             self.result_store.save_manifest(manifest)
 
@@ -1068,6 +1116,33 @@ class Runner:
         def _live_predeployed_count() -> int:
             with predeployed_session_pool_lock:
                 return len(predeployed_live_session_ids)
+
+        def _fresh_predeployed_pool_snapshot() -> dict[str, int]:
+            with predeployed_work_start_lock:
+                remaining_not_started = max(
+                    0,
+                    len(work_items) - predeployed_started_work_items,
+                )
+            with predeployed_session_pool_lock:
+                live_count = len(predeployed_live_session_ids)
+                in_use_count = len(predeployed_in_use_session_ids)
+                ready_count = max(0, live_count - in_use_count)
+            with predeployed_replacement_state_lock:
+                in_progress = predeployed_replacements_in_progress
+            target_live = min(
+                desired_num,
+                remaining_not_started + in_use_count,
+            )
+            deficit = max(0, target_live - live_count - in_progress)
+            return {
+                "remaining_not_started": remaining_not_started,
+                "live": live_count,
+                "in_use": in_use_count,
+                "ready": ready_count,
+                "in_progress": in_progress,
+                "target_live": target_live,
+                "deficit": deficit,
+            }
 
         def _drop_predeployed_agent_maps(sandbox_id: str, proxy: object | None) -> None:
             agent_gateway_map = getattr(self.agent, "_predeployed_gateway_api_base_by_sandbox_id", None)
@@ -1225,46 +1300,57 @@ class Runner:
             nonlocal predeployed_replacement_count, predeployed_replacements_in_progress, preferred_profile
             if predeployed_gateway_deployer is None or predeployed_shutdown_event.is_set():
                 return False
+            if not predeployed_replacement_slots.acquire(blocking=False):
+                logger.info(
+                    "Skipping replacement predeploy for task %s reason=%s: "
+                    "replenish concurrency limit reached (%d)",
+                    task_id,
+                    reason,
+                    predeployed_replenish_concurrency,
+                )
+                return False
             with predeployed_replacement_state_lock:
                 predeployed_replacements_in_progress += 1
             try:
-                with predeployed_replacement_lock:
-                    if predeployed_shutdown_event.is_set():
-                        return False
-                    if (
-                        fresh_predeployed_mode
-                        and require_fresh_need
-                        and not _fresh_predeployed_needs_replenishment(
-                            replacement_in_progress_offset=1,
-                        )
-                    ):
-                        return True
-                    if not fresh_predeployed_mode and not force and _live_predeployed_count() > 0:
-                        return True
+                if predeployed_shutdown_event.is_set():
+                    return False
+                if (
+                    fresh_predeployed_mode
+                    and require_fresh_need
+                    and not _fresh_predeployed_needs_replenishment()
+                ):
+                    return True
+                if not fresh_predeployed_mode and not force and _live_predeployed_count() > 0:
+                    return True
+                with predeployed_replacement_state_lock:
                     predeployed_replacement_count += 1
                     replacement_idx = desired_num + predeployed_replacement_count - 1
-                    try:
-                        deployed = predeployed_gateway_deployer(
-                            replacement_idx,
-                            label="Replacement predeploy",
-                        )
-                    except Exception as exc:
-                        logger.error(
-                            "Failed to create replacement predeployed sandbox for task %s reason=%s: %s",
-                            task_id,
-                            reason,
-                            exc,
-                        )
-                        return False
-                    session, info, profile, proxy = deployed
-                    preferred_profile = profile
-                    return _register_predeployed_replacement(session, info, proxy, reason, task_id)
+                try:
+                    deployed = predeployed_gateway_deployer(
+                        replacement_idx,
+                        label="Replacement predeploy",
+                    )
+                except Exception as exc:
+                    logger.error(
+                        "Failed to create replacement predeployed sandbox for task %s reason=%s: %s",
+                        task_id,
+                        reason,
+                        exc,
+                    )
+                    return False
+                session, info, profile, proxy = deployed
+                preferred_profile = profile
+                return _register_predeployed_replacement(session, info, proxy, reason, task_id)
             finally:
                 with predeployed_replacement_state_lock:
                     predeployed_replacements_in_progress = max(
                         0,
                         predeployed_replacements_in_progress - 1,
                     )
+                try:
+                    predeployed_replacement_slots.release()
+                except ValueError:
+                    logger.debug("Replacement predeploy slot release overflow", exc_info=True)
 
         def _start_predeployed_replacement(
             reason: str,
@@ -1292,6 +1378,40 @@ class Runner:
             predeployed_replenishment_threads.append(thread)
             thread.start()
             return True
+
+        def _start_fresh_predeployed_replenishment(reason: str, task_id: str) -> int:
+            if (
+                not fresh_predeployed_mode
+                or predeployed_gateway_deployer is None
+                or predeployed_shutdown_event.is_set()
+            ):
+                return 0
+            snapshot = _fresh_predeployed_pool_snapshot()
+            in_progress = snapshot["in_progress"]
+            available_slots = max(0, predeployed_replenish_concurrency - in_progress)
+            to_start = min(snapshot["deficit"], available_slots)
+            if to_start <= 0:
+                return 0
+            logger.info(
+                "Starting %d OpenClaw predeploy replenishment(s) for task %s "
+                "reason=%s live=%d ready=%d in_use=%d in_progress=%d "
+                "target=%d deficit=%d replenish_concurrency=%d",
+                to_start,
+                task_id,
+                reason,
+                snapshot["live"],
+                snapshot["ready"],
+                snapshot["in_use"],
+                in_progress,
+                snapshot["target_live"],
+                snapshot["deficit"],
+                predeployed_replenish_concurrency,
+            )
+            started = 0
+            for _ in range(to_start):
+                if _start_predeployed_replacement(reason, task_id, force=True):
+                    started += 1
+            return started
 
         def _probe_predeployed_session_before_lease(session: object, task_id: str) -> str:
             if (
@@ -1361,6 +1481,12 @@ class Runner:
                     resolved_sandbox_id or "<unknown>",
                     exc,
                 )
+            if (
+                fresh_predeployed_mode
+                and not predeployed_shutdown_event.is_set()
+                and not (self.cancel_event is not None and self.cancel_event.is_set())
+            ):
+                _start_fresh_predeployed_replenishment(reason, task_id)
 
         def _acquire_predeployed_session(task_id: str):
             if predeployed_session_queue is None:
@@ -1386,10 +1512,12 @@ class Runner:
                                 predeployed_in_use_session_ids.add(sandbox_id)
                     return session
                 except queue.Empty:
-                    if (
-                        fresh_predeployed_mode
-                        and _predeployed_replacement_in_progress_count() > 0
-                    ):
+                    if fresh_predeployed_mode:
+                        _start_fresh_predeployed_replenishment(
+                            "predeployed_queue_wait",
+                            task_id,
+                        )
+                    if fresh_predeployed_mode and _predeployed_replacement_in_progress_count() > 0:
                         continue
                     if _live_predeployed_count() == 0:
                         if _create_predeployed_replacement(
@@ -1410,18 +1538,12 @@ class Runner:
             *,
             replacement_in_progress_offset: int = 0,
         ) -> bool:
-            with predeployed_work_start_lock:
-                remaining_not_started = max(0, len(work_items) - predeployed_started_work_items)
-            with predeployed_session_pool_lock:
-                ready_count = max(
-                    0,
-                    len(predeployed_live_session_ids) - len(predeployed_in_use_session_ids),
-                )
-            in_progress = max(
+            snapshot = _fresh_predeployed_pool_snapshot()
+            adjusted_deficit = snapshot["target_live"] - snapshot["live"] - max(
                 0,
-                _predeployed_replacement_in_progress_count() - replacement_in_progress_offset,
+                snapshot["in_progress"] - replacement_in_progress_offset,
             )
-            return remaining_not_started > ready_count + in_progress
+            return adjusted_deficit > 0
 
         def _quarantine_predeployed_session(session: object, sandbox_id: str, reason: str, task_id: str) -> None:
             resolved_sandbox_id, proxy = _unregister_predeployed_session(session, sandbox_id)
@@ -1454,7 +1576,7 @@ class Runner:
                 )
             if not (self.cancel_event is not None and self.cancel_event.is_set()):
                 if fresh_predeployed_mode and _fresh_predeployed_needs_replenishment():
-                    _start_predeployed_replacement(reason, task_id, force=True)
+                    _start_fresh_predeployed_replenishment(reason, task_id)
                 elif not fresh_predeployed_mode:
                     _create_predeployed_replacement(reason, task_id, force=True)
 
@@ -1495,10 +1617,9 @@ class Runner:
                 and not predeployed_shutdown_event.is_set()
                 and not (self.cancel_event is not None and self.cancel_event.is_set())
             ):
-                _start_predeployed_replacement(
+                _start_fresh_predeployed_replenishment(
                     "fresh_predeployed_task_complete",
                     task_id,
-                    force=True,
                 )
 
         def _reset_predeployed_session(sandbox_id: str, task_id: str) -> bool:
@@ -1521,9 +1642,6 @@ class Runner:
                         exc,
                     )
                     return False
-
-        predeployed_work_start_lock = threading.Lock()
-        predeployed_started_work_items = 0
 
         # Create the solve function that wraps agent + sandbox + scorer.
         def solve_fn(work_item):

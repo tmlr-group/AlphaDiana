@@ -22,6 +22,7 @@ agent:
 
     num_sandboxes: 1
     standby_sandboxes: 1
+    predeploy_replenish_concurrency: 1
     reuse_predeployed_sandboxes: false
     predeployed_lease_probe: true
 
@@ -38,6 +39,7 @@ agent:
   config:
     num_sandboxes: 2
     standby_sandboxes: 2
+    predeploy_replenish_concurrency: 2
     reuse_predeployed_sandboxes: false
 ```
 
@@ -52,6 +54,12 @@ single task after agent/tool overhead.
 gateway/session. After a task writes its result, the runner closes that sandbox
 and warms a replacement standby sandbox. This prevents stale OpenClaw chat
 history from leaking into later tasks.
+
+For higher-concurrency fresh-per-task runs, set
+`predeploy_replenish_concurrency` near `num_sandboxes` so replacement
+sandbox/gateway startup can refill the active and standby pool in parallel.
+The runner still caps replenishment by the current pool deficit and by remaining
+work, so this does not change the one-task-per-fresh-sandbox result contract.
 
 The older reuse mode still exists with `reuse_predeployed_sandboxes: true`, but
 it is not the recommended full-run mode. If reuse is enabled, runner reset must

@@ -343,6 +343,46 @@ def _detect_session_pollution(
     return ratio < 0.15
 
 
+_DEAD_GATEWAY_ERROR_TYPES = {
+    "control_plane_unavailable",
+    "gateway_connect_failed",
+    "gateway_connection_refused",
+    "gateway_connection_reset",
+    "gateway_stream_interrupted",
+    "sandbox_not_alive",
+    "sandbox_not_started",
+    "sandbox_upstream_unreachable",
+}
+
+
+def _classify_transport_error_text(text: str) -> str:
+    normalized = str(text or "").lower()
+    if "connection refused" in normalized or "[errno 111]" in normalized:
+        return "gateway_connection_refused"
+    if "failed to connect" in normalized or "connecterror" in normalized:
+        return "gateway_connect_failed"
+    if "connection reset by peer" in normalized or "[errno 104]" in normalized:
+        return "gateway_connection_reset"
+    if (
+        "peer closed connection" in normalized
+        or "incomplete chunked read" in normalized
+        or "response payload is not completed" in normalized
+        or "remoteprotocolerror" in normalized
+    ):
+        return "gateway_stream_interrupted"
+    return ""
+
+
+def _retry_error_type(retry_responses: list[dict[str, Any]]) -> str:
+    if not retry_responses:
+        return ""
+    return str(retry_responses[-1].get("error_type", "") or "")
+
+
+def _should_abort_same_gateway_retry(error_type: str) -> bool:
+    return str(error_type or "") in _DEAD_GATEWAY_ERROR_TYPES
+
+
 def classify_error(
     exc: Exception | None = None,
     *,
@@ -353,10 +393,28 @@ def classify_error(
     if exc is not None:
         try:
             import httpx
+            if isinstance(exc, httpx.ConnectTimeout):
+                return "gateway_connect_failed"
+            if isinstance(exc, httpx.ConnectError):
+                classified = _classify_transport_error_text(str(exc))
+                return classified or "gateway_connect_failed"
+            if isinstance(exc, (httpx.RemoteProtocolError, httpx.ReadError)):
+                classified = _classify_transport_error_text(str(exc))
+                return classified or "gateway_stream_interrupted"
             if isinstance(exc, httpx.TimeoutException):
                 return "timeout"
         except ImportError:
             pass
+        try:
+            import httpcore
+            if isinstance(exc, (httpcore.RemoteProtocolError, httpcore.ReadError)):
+                classified = _classify_transport_error_text(str(exc))
+                return classified or "gateway_stream_interrupted"
+        except ImportError:
+            pass
+        classified = _classify_transport_error_text(str(exc))
+        if classified:
+            return classified
 
     if isinstance(response_json, dict):
         msg = response_json.get("message", "")
@@ -1563,6 +1621,7 @@ class OpenClawAgent(Agent):
             self._ensure_agent_md(sandbox)
 
         url = f"{runtime_info['api_base'].rstrip('/')}/chat/completions"
+        replaceable_gateway_session = sandbox is not None or bool(predeployed_api_base)
         actual_sandbox_id, actual_rock_sandbox_url = self._extract_sandbox_target_from_api_base(
             runtime_info.get("api_base", "")
         )
@@ -2196,6 +2255,13 @@ class OpenClawAgent(Agent):
                 # Distinguish "busy/empty" from real errors for retry delay.
                 last_retry = retry_responses[-1] if retry_responses else {}
                 last_error_type = last_retry.get("error_type", "unknown")
+                if replaceable_gateway_session and _should_abort_same_gateway_retry(last_error_type):
+                    logger.warning(
+                        "OpenClaw not retrying same replaceable gateway after %s; "
+                        "letting the runner retry on fresh infrastructure.",
+                        last_error_type,
+                    )
+                    break
                 if last_retry.get("non_retryable"):
                     logger.info(
                         "OpenClaw not retrying terminal upstream error (error_type=%s)",
@@ -2225,7 +2291,11 @@ class OpenClawAgent(Agent):
                 status_code=status_code,
             )
             if error_type == "unknown":
-                error_type = "incomplete_stream"
+                error_type = (
+                    _retry_error_type(retry_responses)
+                    or str(getattr(last_error, "error_type", "") or "")
+                    or "incomplete_stream"
+                )
             if not retry_responses:
                 retry_responses.append(
                     {
@@ -2273,6 +2343,12 @@ class OpenClawAgent(Agent):
                 response_json=response_json or None,
                 status_code=retry_responses[-1]["status_code"] if retry_responses else None,
             )
+            if error_type == "unknown":
+                error_type = (
+                    _retry_error_type(retry_responses)
+                    or str(getattr(last_error, "error_type", "") or "")
+                    or "unknown"
+                )
             detail = response_json or {"url": url, "request": request_payload}
             if error_type == "timeout":
                 timeout_scored_zero = True

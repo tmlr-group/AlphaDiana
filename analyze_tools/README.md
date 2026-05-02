@@ -116,3 +116,148 @@ It writes:
 The tool reads current task JSONs as task sample lists and uses the first sample
 record for `num_samples=1` runs. It refreshes action events from persisted artifacts
 instead of trusting previously generated Phase 14 CSVs.
+
+## AIME k=32 timeout and case analysis
+
+`aime_k32_analysis.py` analyzes local AIME 2026 Qwen3.5 k=32 full-run artifacts
+from persisted `tasks/*.json` sample lists. It is separate from the GPQA tools
+above because the AIME runs use repeated samples and the key question is whether
+high pass@32 hides timeout-scored-zero samples, and how each harness changes the
+failure mode relative to DirectLLM.
+
+```bash
+python3 analyze_tools/aime_k32_analysis.py \
+  --direct-run-dir <direct-llm-aime-run-dir> \
+  --stdout
+```
+
+It writes:
+
+- `data/aime_k32_timeout_summary.csv` — one row per harness with observed
+  samples, correct samples, ordinary wrong samples, timeout-scored-zero samples,
+  non-valid/missing samples, Avg@32, and Pass@32.
+- `data/aime_k32_timeout_by_task.csv` — per-task timeout and pass distribution.
+- `data/aime_k32_outcome_failure_modes.csv` — outcome-level medians for token
+  count, entropy, wall time, trajectory/tool counts, timeout seconds, and
+  harness-specific timeout metadata flags.
+- `data/aime_k32_paired_task_summary.csv` — one row per AIME task comparing
+  DirectLLM/OpenCode/OpenClaw/ZeroClaw correct, ordinary-wrong, timeout,
+  nonvalid, and missing-sample counts.
+- `data/aime_k32_case_studies.csv` and `data/aime_k32_case_studies.md` —
+  representative high-leverage tasks such as universal failure, direct-easy
+  harness timeout collapse, and OpenClaw pass-loss cases.
+- `data/aime_k32_timeout_summary.json` — machine-readable copy of all generated
+  tables and case-study digests.
+
+For deeper qualitative case-packet analysis, use:
+
+```bash
+python3 analyze_tools/aime_case_packets.py \
+  --direct-run-dir <direct-llm-aime-run-dir> \
+  --cases aime_28 aime_18 aime_14 aime_30 aime_8 aime_15
+```
+
+This writes `data/aime_case_packets.json`, a sanitized packet file with compact
+problem text, per-harness counts, representative sample metadata, trajectory
+heads, and truncated raw-output excerpts. `mimo_case_review.py` can optionally
+send those packets to an OpenAI-compatible endpoint; it reads the API key from
+`TOKEN_PLAN_API_KEY` or hidden stdin and never writes the key to outputs.
+
+For the rollout-distribution view used by the current AIME report:
+
+```bash
+python3 analyze_tools/aime_rollout_distribution.py \
+  --direct-run-dir <direct-llm-aime-run-dir> \
+  --stdout
+
+python3 analyze_tools/aime_rollout_audit.py \
+  --direct-run-dir <direct-llm-aime-run-dir> \
+  --stdout
+```
+
+It writes:
+
+- `data/aime_rollout_sample_features.csv` — one row per rollout with outcome,
+  wall-time band, token-count cap flags, token entropy, trajectory/tool markers,
+  final-answer markers, and compact predicted values.
+- `data/aime_rollout_harness_distribution.csv` — aggregate distributions for
+  DirectLLM, OpenCode, OpenClaw, and ZeroClaw.
+- `data/aime_rollout_task_distribution.csv` — one row per `(harness, task_id)`
+  with correct/wrong/timeout counts, outcome entropy, long-tail counts, and
+  token/entropy quantiles.
+- `data/aime_rollout_vs_direct_distribution.csv` — paired task deltas versus
+  DirectLLM, including task tags such as `wall_longtail`, `token_cap_cluster`,
+  `low_entropy_long_cluster`, `pass_masked_timeout`, and `rescue`.
+- `data/aime_rollout_longtail_samples.csv` — rollout rows selected by long wall
+  time, token cap, or low-entropy-long criteria.
+- `data/aime_rollout_distribution_summary.json` — machine-readable summary.
+- `data/aime_rollout_audit.csv` — every `(harness, task_id, sample_index)`
+  rollout with outcome, local pattern label, entropy, finalization markers,
+  tool/runtime markers, and compact trajectory/output signals.
+- `data/aime_rollout_audit_all.md` — a human-checkable per-task table listing
+  all 32 rollouts for DirectLLM, OpenCode, OpenClaw, and ZeroClaw.
+- `data/aime_rollout_audit_*_summary.csv` — harness, task, and pattern summary
+  tables derived from the per-rollout audit.
+
+The current Chinese analysis draft is
+`AIME_OPENCODE_ZEROCLAW_DEEP_REPORT.md`; despite the historical filename, it now
+includes DirectLLM, OpenCode, OpenClaw, and ZeroClaw.
+
+## AIME Appendix E publication figures
+
+`aime_appendix_e_figures.py` consumes the rollout feature/audit CSVs above and
+generates the formal Appendix E figures. The script intentionally conditions
+the first four analyses on answer-bearing rollouts (`correct` and
+`ordinary_wrong`) so the paper section focuses on reasoning-pattern differences:
+entropy-length interaction, stable wrong consensus, tool engagement versus
+final-answer conversion, repeated self-check churn, and item-level
+rescue/regression.
+
+```bash
+python3 analyze_tools/aime_appendix_e_figures.py
+```
+
+It writes:
+
+- `data/appendix_e/*.csv` and `data/appendix_e/appendix_e_summary.json` —
+  source tables for the Appendix E claims.
+- `figures/macro_analyze/figE1_entropy_length_quadrants.pdf`
+- `figures/macro_analyze/figE2_outcome_entropy_accuracy.pdf`
+- `figures/macro_analyze/figE3_tool_conversion.pdf`
+- `figures/macro_analyze/figE4_repetition_churn.pdf`
+- `figures/macro_analyze/figE5_rescue_regression_heatmap.pdf`
+
+The rewritten Appendix E source used in the paper zip is mirrored at
+`appendix_e_rewrite.tex`.
+
+## AIME harness degradation deep dive
+
+`aime_degradation_deep_dive.py` is the current analysis for the question "why
+does a harness make AIME worse?"  It reads the AIME rollout audit plus per-task
+JSON trajectories, extracts canonical action sequences for answer-bearing
+rollouts, and combines them with 32-rollout diversity/failure-mode tables.  The
+main output separates productive collapse, unproductive answer explosion, and
+non-answer collapse.
+
+```bash
+python3 analyze_tools/aime_degradation_deep_dive.py \
+  --direct-run-dir <direct-llm-aime-run-dir>
+```
+
+It writes:
+
+- `data/aime_deep_dive/*.csv` and `data/aime_deep_dive/summary.json`,
+  including `aime_verify_transition_by_task.csv`,
+  `aime_trace_microcases.csv`, and
+  `aime_zeroclaw_aime30_template_audit.csv`,
+  `aime_openclaw_coverage_audit.csv`, and
+  `aime_failure_mode_sensitivity.csv` for the task-level and sample-level
+  evidence used by the Chinese report.
+- `figures/macro_analyze/figE6_action_composition_by_outcome.{pdf,png}`
+- `figures/macro_analyze/figE7_verify_transition_by_outcome.{pdf,png}`
+- `figures/macro_analyze/figE8_verify_entropy_length.{pdf,png}`
+- `figures/macro_analyze/figE9_topic_delta_heatmap.{pdf,png}`
+- `figures/macro_analyze/figE10_rollout_diversity_by_topic.{pdf,png}`
+- `figures/macro_analyze/figE11_representative_task_diversity.{pdf,png}`
+- `figures/macro_analyze/figE12_failure_mode_taxonomy.{pdf,png}`
+- `AIME_HARNESS_DEGRADATION_DEEP_DIVE_CN.md`
