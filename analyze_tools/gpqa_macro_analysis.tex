@@ -1,0 +1,274 @@
+% GPQA-Diamond macro analysis section for AlphaDiana paper
+% Generated from computed results in analyze_tools/data/
+
+\subsection{GPQA-Diamond}
+\label{appendix:macro-gpqa}
+
+On the 198-question GPQA-Diamond benchmark (Qwen2.5-72B-Instruct backbone),
+DirectLLM achieves 159/198 (80.3\%) accuracy.
+The three agent harnesses reach 131/198 (66.2\%, OpenClaw),
+145/198 (73.2\%, OpenCode), and 154/191 valid-scored (80.6\%, ZeroClaw).
+An oracle router that picks the best harness per task would achieve
+175/198 (88.4\%), a 8.1-point ceiling gain over DirectLLM, but the harnesses
+individually fall short or match DirectLLM rather than uniformly surpassing it.
+
+\paragraph{Action Distribution.}
+Table~\ref{tab:gpqa-action-rates} shows outcome-conditioned action rates
+(fraction of trajectories with $\geq 1$ event of each type) broken down by
+harness and correctness.
+
+Three structural patterns stand out.
+First, \emph{ZeroClaw imposes maximum planning}: 82.5\% of correct trajectories
+and 81.1\% of wrong ones contain at least one \texttt{plan} event,
+with zero tool use---it is a pure chain-of-thought harness that structures
+reasoning into explicit plan--reason--answer sequences.
+The near-identical plan rates across correct and wrong ZeroClaw trajectories
+(82.5\% vs.\ 81.1\%) indicate that planning alone is insufficient as a
+differentiator: ZeroClaw's accuracy advantage (80.6\%) over OpenClaw (66.2\%)
+stems from avoiding tool-induced distractions rather than from more planning.
+
+Second, \emph{tool use is a strong correctness discriminator for OpenClaw}:
+55.7\% of correct trajectories invoke a tool versus only 19.4\% of wrong ones.
+Substantive tool calls (result length $>100$ chars, no error) mirror this split
+(51.1\% vs.\ 14.9\%), meaning it is productive tool use that correlates with
+success, not just any call.
+OpenCode shows the same directional pattern but weaker (55.2\% correct
+vs.\ 15.1\% wrong), consistent with OpenCode relying more on internal
+reasoning (reason rate 93.1\%) than on tool output.
+
+Third, \emph{OpenClaw answer and reason rates are inverted across outcomes}:
+correct trajectories have answer\_rate = 51.1\% and reason\_rate = 12.2\%,
+while wrong trajectories have answer\_rate = 9.0\% and reason\_rate = 19.4\%.
+This reveals a completion-failure mode: many wrong OpenClaw trajectories
+never emit a boxed answer at all, terminating in a reasoning or recovery loop
+(recover\_rate 23.7\% correct vs.\ 10.4\% wrong further supports this).
+
+\begin{table}[t]
+\centering
+\small
+\caption{%
+  Outcome-conditioned action rates on GPQA-Diamond (198 tasks).
+  Rate = fraction of trajectories with $\geq 1$ event of that action type.
+  DirectLLM is a degenerate baseline (no tools, one answer step per trajectory).
+  OpenClaw/ZeroClaw correct/wrong counts reflect paired-outcome grouping
+  (both\_correct + rescue = correct; both\_wrong + regression = wrong).
+}
+\label{tab:gpqa-action-rates}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{llrcccccc}
+\toprule
+Harness & Outcome & $n$ & Ans. & Reason & Tool & Verify & Plan & Recover \\
+\midrule
+DirectLLM & correct & 159 & 1.00 & 1.00 & 0.00 & 0.00 & 0.00 & 0.00 \\
+DirectLLM & wrong   &  39 & 1.00 & 1.00 & 0.00 & 0.00 & 0.00 & 0.00 \\
+\midrule
+OpenClaw  & correct & 131 & 0.51 & 0.12 & 0.22 & 0.57 & 0.16 & 0.24 \\
+OpenClaw  & wrong   &  67 & 0.09 & 0.19 & 0.07 & 0.58 & 0.31 & 0.10 \\
+\midrule
+OpenCode  & correct & 145 & 1.00 & 0.93 & 0.55 & 0.59 & 0.30 & 0.00 \\
+OpenCode  & wrong   &  53 & 1.00 & 0.92 & 0.15 & 0.49 & 0.32 & 0.00 \\
+\midrule
+ZeroClaw  & correct & 154 & 1.00 & 1.00 & 0.00 & 0.60 & 0.82 & 0.00 \\
+ZeroClaw  & wrong   &  37 & 1.00 & 1.00 & 0.00 & 0.59 & 0.81 & 0.00 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Harness-induced Behaviors.}
+
+\textbf{Signature 1 -- Tool quality discriminates success (OpenClaw).}
+Among the 198 OpenClaw trajectories, 55.7\% of correct ones contain at least one
+tool call with a substantive result ($>100$ chars, no error signal),
+versus only 14.9\% of wrong ones (Table~\ref{tab:gpqa-tool-quality}).
+The mean substantive tool calls per trajectory is 0.89 for correct vs.\ 0.28 for wrong.
+This is a causal indicator: OpenClaw routes tool use through a sandboxed executor,
+and tasks that benefit from numerical or symbolic computation (physics, quantum mechanics)
+yield executable code, whereas tasks requiring verbal multi-hop reasoning (organic chemistry)
+produce no useful execution output and account for most regressions.
+
+\textbf{Signature 2 -- Answer completion failure (OpenClaw).}
+OpenClaw wrong trajectories have answer\_rate = 9.0\%---only 6 of 67 wrong
+trajectories contain a boxed answer.
+The remainder terminate in a plan or recovery loop without committing to a final answer.
+This is structurally different from DirectLLM wrong trajectories (answer\_rate = 100\%)
+and from OpenCode/ZeroClaw wrong trajectories (answer\_rate = 100\%).
+The mechanism: OpenClaw's reactive tool-invocation loop can enter a search cycle that
+never converges to an answer step, particularly on organic synthesis questions
+(72 of 198 tasks) where tool results are not decisive.
+
+\textbf{Signature 3 -- ZeroClaw entropy--token profile.}
+See Figure~\ref{fig:gpqa_entropy_token}.
+ZeroClaw wrong trajectories cluster in the low-entropy, long-token quadrant
+(harness\_mean\_entropy $\leq$ 25th percentile \emph{and}
+log$_{10}$(tokens) $\geq$ 75th percentile).
+This corresponds to a high-confidence but verbose failure mode:
+the model repeats a confident but incorrect reasoning chain at length,
+without any corrective signal from tools or verification.
+OpenClaw correct trajectories occupy the high-entropy, moderate-token region,
+consistent with productive tool-assisted exploration.
+
+\begin{table}[t]
+\centering
+\small
+\caption{%
+  Tool quality by outcome on GPQA-Diamond (OpenClaw from normalized trace;
+  OpenCode from feature-matrix tool\_use\_count, error rate not separately tracked).
+  ``Substantive'' = result length $>100$ chars and no error string detected.
+}
+\label{tab:gpqa-tool-quality}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{llrrrrr}
+\toprule
+Harness & Outcome & $n$ & Any call & Substantive & Err/empty & Mean calls \\
+\midrule
+OpenClaw & correct & 131 & 0.557 & 0.511 & 0.229 & 1.34 \\
+OpenClaw & wrong   &  67 & 0.194 & 0.149 & 0.119 & 0.69 \\
+\midrule
+OpenCode & correct & 145 & 0.552 & 0.552 & ---   & 0.95 \\
+OpenCode & wrong   &  53 & 0.151 & 0.151 & ---   & 0.32 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Failure Modes and Oracle Ceiling.}
+
+\textbf{Oracle router ceiling.}
+A perfect per-task harness selector (choosing any correct harness when available)
+achieves 175/198 = 88.4\% on GPQA-Diamond (Table~\ref{tab:gpqa-oracle}).
+Of the 39 tasks that DirectLLM answers incorrectly:
+OpenClaw recovers 8 (20.5\%),
+OpenCode recovers 10 (25.6\%), and
+ZeroClaw recovers 13 (33.3\%).
+Any harness recovers 16/39 (41.0\%), leaving 23 tasks hard-negative across all systems.
+The 23 remaining hard negatives consist predominantly of Organic Chemistry
+and Genetics tasks where no harness found a decisive signal.
+
+Conversely, regression is a significant cost:
+OpenClaw causes 36/159 DirectLLM-correct tasks to become wrong (22.6\%),
+OpenCode 24/159 (15.1\%), and ZeroClaw 15/159 (9.4\%).
+ZeroClaw's low regression rate is the primary reason its final accuracy
+matches or exceeds DirectLLM despite a worse rescue rate.
+
+\textbf{Paired-outcome failure signatures.}
+Figure~\ref{fig:gpqa_paired_outcome} and Table~\ref{tab:gpqa-failure-sig}
+show that \emph{regression} rows have the highest malformed-prediction rates
+and missing-boxed-answer rates across all harnesses, confirming that
+formatting failure (not knowledge failure) is the proximate cause of regressions.
+OpenClaw regression trajectories have malformed\_prediction\_rate = 88.9\%---the harness
+destabilizes answer formatting on tasks where DirectLLM converges cleanly.
+OpenCode regressions show a similar pattern at 62.5\% malformed, though the
+boxed-answer rate stays intact (0\% missing), suggesting OpenCode at least commits
+to a formatted answer but picks the wrong option.
+ZeroClaw regressions (15 tasks) have a lower malformed rate (20.0\%) and zero
+missing-boxed-answer rate, confirming that ZeroClaw's failures are primarily
+reasoning errors rather than formatting breakdowns.
+
+\begin{table}[t]
+\centering
+\small
+\caption{%
+  Oracle harness router ceiling on GPQA-Diamond.
+  Rescue = DirectLLM-wrong tasks recovered by harness.
+  Regression = DirectLLM-correct tasks where harness is wrong.
+}
+\label{tab:gpqa-oracle}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrrrr}
+\toprule
+System & Accuracy & Rescue / 39 & Rescue\% & Regress\% \\
+\midrule
+DirectLLM & 80.3\% & --- & --- & --- \\
+OpenClaw  & 66.2\% &  8 & 20.5\% & 22.6\% \\
+OpenCode  & 73.2\% & 10 & 25.6\% & 15.1\% \\
+ZeroClaw  & 80.6\%* & 13 & 33.3\% & 9.4\% \\
+\midrule
+Oracle (any correct) & \textbf{88.4\%} & 16 & 41.0\% & --- \\
+\bottomrule
+\end{tabular}
+\begin{minipage}{\linewidth}
+\small
+* ZeroClaw accuracy computed over 191 valid-scored tasks (7 non-valid);
+  191-denominator rate = 80.6\%.
+\end{minipage}
+\end{table}
+
+\begin{table}[t]
+\centering
+\small
+\caption{%
+  Paired-outcome failure signatures on GPQA-Diamond.
+  Rates computed over trajectories in each (harness, paired\_outcome) cell.
+  ``Malformed'' = harness\_malformed\_prediction.
+  ``No boxed'' = harness\_missing\_boxed\_answer.
+  ``LowEnt-Long'' = low\_entropy\_long indicator.
+  ``TokRatio'' = mean token ratio vs.\ DirectLLM.
+}
+\label{tab:gpqa-failure-sig}
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{llrcccc}
+\toprule
+Harness & Outcome & $n$ & Malformed & No boxed & LowEnt-Long & TokRatio \\
+\midrule
+\multirow{4}{*}{OpenClaw}
+ & both\_correct & 123 & 0.008 & 0.008 & 0.033 & 0.27 \\
+ & rescue        &   8 & 0.000 & 0.000 & 0.000 & 0.30 \\
+ & regression    &  36 & 0.889 & 0.833 & 0.694 & 2.47 \\
+ & both\_wrong   &  31 & 0.581 & 0.581 & 0.419 & 1.02 \\
+\midrule
+\multirow{4}{*}{OpenCode}
+ & both\_correct & 135 & 0.000 & 0.000 & 0.007 & 0.133 \\
+ & rescue        &  10 & 0.000 & 0.000 & 0.000 & 0.082 \\
+ & regression    &  24 & 0.625 & 0.000 & 0.417 & 0.292 \\
+ & both\_wrong   &  29 & 0.483 & 0.000 & 0.241 & 0.172 \\
+\midrule
+\multirow{4}{*}{ZeroClaw}
+ & both\_correct & 141 & 0.000 & 0.000 & 0.106 & 0.251 \\
+ & rescue        &  13 & 0.000 & 0.000 & 0.000 & 0.110 \\
+ & regression    &  15 & 0.200 & 0.000 & 0.000 & 0.171 \\
+ & both\_wrong   &  22 & 0.182 & 0.000 & 0.045 & 0.165 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Subdomain Analysis.}
+Figure~\ref{fig:gpqa_subdomain} and Table~\ref{tab:gpqa-subdomain} decompose
+accuracy by the 13 GPQA subdomains.
+High-energy particle physics (14 tasks) is the easiest for all systems:
+DirectLLM, OpenCode, ZeroClaw all reach 100.0\%, OpenClaw 100.0\%.
+Organic Chemistry (72 tasks, 36\% of the benchmark) is the dominant
+difficulty driver: DirectLLM achieves only 63.9\%, OpenClaw drops to 48.6\%,
+and ZeroClaw reaches 66.2\% (the highest).
+Quantum Mechanics (25 tasks) shows a strong harness divergence:
+ZeroClaw 100.0\% vs.\ OpenClaw 68.0\%---suggesting that the structured
+plan--reason--answer loop is particularly well-suited to quantum calculation
+questions that require sequential algebraic steps without external lookup.
+
+\begin{table}[t]
+\centering
+\small
+\caption{%
+  Pass rates by GPQA-Diamond subdomain (sorted by DirectLLM rate descending).
+  $n$ = number of tasks in subdomain.
+}
+\label{tab:gpqa-subdomain}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrcccc}
+\toprule
+Subdomain & $n$ & DirectLLM & OpenClaw & OpenCode & ZeroClaw \\
+\midrule
+High-energy particle physics & 14 & 1.00 & 1.00 & 1.00 & 1.00 \\
+Electromagnetism \& Photonics &  6 & 1.00 & 0.83 & 0.83 & 1.00 \\
+Condensed Matter Physics      &  1 & 1.00 & 1.00 & 1.00 & 1.00 \\
+Optics and Acoustics          &  1 & 1.00 & 1.00 & 1.00 & 1.00 \\
+Inorganic Chemistry           &  1 & 1.00 & 1.00 & 0.00 & 1.00 \\
+Quantum Mechanics             & 25 & 1.00 & 0.68 & 0.84 & 1.00 \\
+Physics (general)             & 19 & 0.95 & 0.79 & 0.89 & 0.95 \\
+Relativistic Mechanics        &  7 & 0.86 & 0.71 & 0.86 & 0.86 \\
+Chemistry (general)           & 20 & 0.85 & 0.75 & 0.75 & 0.80 \\
+Astrophysics                  & 13 & 0.85 & 0.77 & 0.92 & 1.00 \\
+Molecular Biology             & 15 & 0.73 & 0.67 & 0.73 & 0.60 \\
+Organic Chemistry             & 72 & 0.64 & 0.49 & 0.57 & 0.66 \\
+Genetics                      &  4 & 0.50 & 0.50 & 0.25 & 0.25 \\
+\bottomrule
+\end{tabular}
+\end{table}

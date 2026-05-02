@@ -1,0 +1,199 @@
+task_id,subdomain,high_level_domain,match_method
+gpqa_0,Astrophysics,Physics,exact_prefix
+gpqa_1,Astrophysics,Physics,exact_prefix
+gpqa_10,Astrophysics,Physics,exact_prefix
+gpqa_100,Organic Chemistry,Chemistry,exact_prefix
+gpqa_101,Organic Chemistry,Chemistry,exact_prefix
+gpqa_102,Organic Chemistry,Chemistry,exact_prefix
+gpqa_103,Organic Chemistry,Chemistry,exact_prefix
+gpqa_104,Organic Chemistry,Chemistry,exact_prefix
+gpqa_105,Organic Chemistry,Chemistry,exact_prefix
+gpqa_106,Organic Chemistry,Chemistry,exact_prefix
+gpqa_107,Organic Chemistry,Chemistry,exact_prefix
+gpqa_108,Organic Chemistry,Chemistry,exact_prefix
+gpqa_109,Organic Chemistry,Chemistry,exact_prefix
+gpqa_11,Astrophysics,Physics,exact_prefix
+gpqa_110,Organic Chemistry,Chemistry,exact_prefix
+gpqa_111,Organic Chemistry,Chemistry,exact_prefix
+gpqa_112,Organic Chemistry,Chemistry,exact_prefix
+gpqa_113,Organic Chemistry,Chemistry,exact_prefix
+gpqa_114,Organic Chemistry,Chemistry,exact_prefix
+gpqa_115,Organic Chemistry,Chemistry,exact_prefix
+gpqa_116,Organic Chemistry,Chemistry,exact_prefix
+gpqa_117,Organic Chemistry,Chemistry,exact_prefix
+gpqa_118,Organic Chemistry,Chemistry,exact_prefix
+gpqa_119,Organic Chemistry,Chemistry,exact_prefix
+gpqa_12,Astrophysics,Physics,exact_prefix
+gpqa_120,Organic Chemistry,Chemistry,exact_prefix
+gpqa_121,Organic Chemistry,Chemistry,exact_prefix
+gpqa_122,Organic Chemistry,Chemistry,exact_prefix
+gpqa_123,Organic Chemistry,Chemistry,exact_prefix
+gpqa_124,Organic Chemistry,Chemistry,exact_prefix
+gpqa_125,Organic Chemistry,Chemistry,exact_prefix
+gpqa_126,Organic Chemistry,Chemistry,exact_prefix
+gpqa_127,Organic Chemistry,Chemistry,exact_prefix
+gpqa_128,Organic Chemistry,Chemistry,exact_prefix
+gpqa_129,Organic Chemistry,Chemistry,exact_prefix
+gpqa_13,Chemistry (general),Chemistry,exact_prefix
+gpqa_130,Organic Chemistry,Chemistry,exact_prefix
+gpqa_131,Organic Chemistry,Chemistry,exact_prefix
+gpqa_132,Organic Chemistry,Chemistry,exact_prefix
+gpqa_133,Organic Chemistry,Chemistry,exact_prefix
+gpqa_134,Organic Chemistry,Chemistry,exact_prefix
+gpqa_135,Organic Chemistry,Chemistry,exact_prefix
+gpqa_136,Organic Chemistry,Chemistry,exact_prefix
+gpqa_137,Organic Chemistry,Chemistry,exact_prefix
+gpqa_138,Organic Chemistry,Chemistry,exact_prefix
+gpqa_139,Organic Chemistry,Chemistry,exact_prefix
+gpqa_14,Chemistry (general),Chemistry,exact_prefix
+gpqa_140,Organic Chemistry,Chemistry,exact_prefix
+gpqa_141,Organic Chemistry,Chemistry,exact_prefix
+gpqa_142,Organic Chemistry,Chemistry,exact_prefix
+gpqa_143,Organic Chemistry,Chemistry,exact_prefix
+gpqa_144,Organic Chemistry,Chemistry,exact_prefix
+gpqa_145,Organic Chemistry,Chemistry,exact_prefix
+gpqa_146,Organic Chemistry,Chemistry,exact_prefix
+gpqa_147,Physics (general),Physics,exact_prefix
+gpqa_148,Physics (general),Physics,exact_prefix
+gpqa_149,Physics (general),Physics,exact_prefix
+gpqa_15,Chemistry (general),Chemistry,exact_prefix
+gpqa_150,Physics (general),Physics,exact_prefix
+gpqa_151,Physics (general),Physics,exact_prefix
+gpqa_152,Physics (general),Physics,exact_prefix
+gpqa_153,Physics (general),Physics,exact_prefix
+gpqa_154,Physics (general),Physics,exact_prefix
+gpqa_155,Physics (general),Physics,exact_prefix
+gpqa_156,Physics (general),Physics,exact_prefix
+gpqa_157,Physics (general),Physics,exact_prefix
+gpqa_158,Physics (general),Physics,exact_prefix
+gpqa_159,Physics (general),Physics,exact_prefix
+gpqa_16,Chemistry (general),Chemistry,exact_prefix
+gpqa_160,Physics (general),Physics,exact_prefix
+gpqa_161,Physics (general),Physics,exact_prefix
+gpqa_162,Physics (general),Physics,exact_prefix
+gpqa_163,Physics (general),Physics,exact_prefix
+gpqa_164,Physics (general),Physics,exact_prefix
+gpqa_165,Physics (general),Physics,fuzzy_0.995
+gpqa_166,Quantum Mechanics,Physics,exact_prefix
+gpqa_167,Quantum Mechanics,Physics,exact_prefix
+gpqa_168,Quantum Mechanics,Physics,exact_prefix
+gpqa_169,Quantum Mechanics,Physics,exact_prefix
+gpqa_17,Chemistry (general),Chemistry,exact_prefix
+gpqa_170,Quantum Mechanics,Physics,exact_prefix
+gpqa_171,Quantum Mechanics,Physics,exact_prefix
+gpqa_172,Quantum Mechanics,Physics,exact_prefix
+gpqa_173,Quantum Mechanics,Physics,exact_prefix
+gpqa_174,Quantum Mechanics,Physics,exact_prefix
+gpqa_175,Quantum Mechanics,Physics,exact_prefix
+gpqa_176,Quantum Mechanics,Physics,exact_prefix
+gpqa_177,Quantum Mechanics,Physics,exact_prefix
+gpqa_178,Quantum Mechanics,Physics,exact_prefix
+gpqa_179,Quantum Mechanics,Physics,exact_prefix
+gpqa_18,Chemistry (general),Chemistry,exact_prefix
+gpqa_180,Quantum Mechanics,Physics,exact_prefix
+gpqa_181,Quantum Mechanics,Physics,exact_prefix
+gpqa_182,Quantum Mechanics,Physics,exact_prefix
+gpqa_183,Quantum Mechanics,Physics,exact_prefix
+gpqa_184,Quantum Mechanics,Physics,exact_prefix
+gpqa_185,Quantum Mechanics,Physics,exact_prefix
+gpqa_186,Quantum Mechanics,Physics,exact_prefix
+gpqa_187,Quantum Mechanics,Physics,exact_prefix
+gpqa_188,Quantum Mechanics,Physics,exact_prefix
+gpqa_189,Quantum Mechanics,Physics,exact_prefix
+gpqa_19,Chemistry (general),Chemistry,exact_prefix
+gpqa_190,Quantum Mechanics,Physics,exact_prefix
+gpqa_191,Relativistic Mechanics,Physics,exact_prefix
+gpqa_192,Relativistic Mechanics,Physics,exact_prefix
+gpqa_193,Relativistic Mechanics,Physics,exact_prefix
+gpqa_194,Relativistic Mechanics,Physics,exact_prefix
+gpqa_195,Relativistic Mechanics,Physics,exact_prefix
+gpqa_196,Relativistic Mechanics,Physics,exact_prefix
+gpqa_197,Relativistic Mechanics,Physics,exact_prefix
+gpqa_2,Astrophysics,Physics,exact_prefix
+gpqa_20,Chemistry (general),Chemistry,exact_prefix
+gpqa_21,Chemistry (general),Chemistry,exact_prefix
+gpqa_22,Chemistry (general),Chemistry,exact_prefix
+gpqa_23,Chemistry (general),Chemistry,exact_prefix
+gpqa_24,Chemistry (general),Chemistry,exact_prefix
+gpqa_25,Chemistry (general),Chemistry,exact_prefix
+gpqa_26,Chemistry (general),Chemistry,exact_prefix
+gpqa_27,Chemistry (general),Chemistry,exact_prefix
+gpqa_28,Chemistry (general),Chemistry,exact_prefix
+gpqa_29,Chemistry (general),Chemistry,exact_prefix
+gpqa_3,Astrophysics,Physics,exact_prefix
+gpqa_30,Chemistry (general),Chemistry,exact_prefix
+gpqa_31,Chemistry (general),Chemistry,exact_prefix
+gpqa_32,Chemistry (general),Chemistry,exact_prefix
+gpqa_33,Condensed Matter Physics,Physics,exact_prefix
+gpqa_34,Electromagnetism and Photonics,Physics,exact_prefix
+gpqa_35,Electromagnetism and Photonics,Physics,exact_prefix
+gpqa_36,Electromagnetism and Photonics,Physics,exact_prefix
+gpqa_37,Electromagnetism and Photonics,Physics,exact_prefix
+gpqa_38,Electromagnetism and Photonics,Physics,exact_prefix
+gpqa_39,Electromagnetism and Photonics,Physics,exact_prefix
+gpqa_4,Astrophysics,Physics,exact_prefix
+gpqa_40,Genetics,Biology,exact_prefix
+gpqa_41,Genetics,Biology,exact_prefix
+gpqa_42,Genetics,Biology,exact_prefix
+gpqa_43,Genetics,Biology,exact_prefix
+gpqa_44,High-energy particle physics,Physics,exact_prefix
+gpqa_45,High-energy particle physics,Physics,exact_prefix
+gpqa_46,High-energy particle physics,Physics,exact_prefix
+gpqa_47,High-energy particle physics,Physics,exact_prefix
+gpqa_48,High-energy particle physics,Physics,exact_prefix
+gpqa_49,High-energy particle physics,Physics,exact_prefix
+gpqa_5,Astrophysics,Physics,exact_prefix
+gpqa_50,High-energy particle physics,Physics,exact_prefix
+gpqa_51,High-energy particle physics,Physics,exact_prefix
+gpqa_52,High-energy particle physics,Physics,exact_prefix
+gpqa_53,High-energy particle physics,Physics,exact_prefix
+gpqa_54,High-energy particle physics,Physics,exact_prefix
+gpqa_55,High-energy particle physics,Physics,exact_prefix
+gpqa_56,High-energy particle physics,Physics,exact_prefix
+gpqa_57,High-energy particle physics,Physics,exact_prefix
+gpqa_58,Inorganic Chemistry,Chemistry,exact_prefix
+gpqa_59,Molecular Biology,Biology,exact_prefix
+gpqa_6,Astrophysics,Physics,exact_prefix
+gpqa_60,Molecular Biology,Biology,exact_prefix
+gpqa_61,Molecular Biology,Biology,exact_prefix
+gpqa_62,Molecular Biology,Biology,exact_prefix
+gpqa_63,Molecular Biology,Biology,exact_prefix
+gpqa_64,Molecular Biology,Biology,exact_prefix
+gpqa_65,Molecular Biology,Biology,exact_prefix
+gpqa_66,Molecular Biology,Biology,exact_prefix
+gpqa_67,Molecular Biology,Biology,exact_prefix
+gpqa_68,Molecular Biology,Biology,exact_prefix
+gpqa_69,Molecular Biology,Biology,exact_prefix
+gpqa_7,Astrophysics,Physics,exact_prefix
+gpqa_70,Molecular Biology,Biology,exact_prefix
+gpqa_71,Molecular Biology,Biology,exact_prefix
+gpqa_72,Molecular Biology,Biology,exact_prefix
+gpqa_73,Molecular Biology,Biology,exact_prefix
+gpqa_74,Optics and Acoustics,Physics,exact_prefix
+gpqa_75,Organic Chemistry,Chemistry,exact_prefix
+gpqa_76,Organic Chemistry,Chemistry,exact_prefix
+gpqa_77,Organic Chemistry,Chemistry,exact_prefix
+gpqa_78,Organic Chemistry,Chemistry,exact_prefix
+gpqa_79,Organic Chemistry,Chemistry,exact_prefix
+gpqa_8,Astrophysics,Physics,exact_prefix
+gpqa_80,Organic Chemistry,Chemistry,exact_prefix
+gpqa_81,Organic Chemistry,Chemistry,exact_prefix
+gpqa_82,Organic Chemistry,Chemistry,exact_prefix
+gpqa_83,Organic Chemistry,Chemistry,exact_prefix
+gpqa_84,Organic Chemistry,Chemistry,exact_prefix
+gpqa_85,Organic Chemistry,Chemistry,exact_prefix
+gpqa_86,Organic Chemistry,Chemistry,exact_prefix
+gpqa_87,Organic Chemistry,Chemistry,exact_prefix
+gpqa_88,Organic Chemistry,Chemistry,exact_prefix
+gpqa_89,Organic Chemistry,Chemistry,exact_prefix
+gpqa_9,Astrophysics,Physics,exact_prefix
+gpqa_90,Organic Chemistry,Chemistry,exact_prefix
+gpqa_91,Organic Chemistry,Chemistry,exact_prefix
+gpqa_92,Organic Chemistry,Chemistry,exact_prefix
+gpqa_93,Organic Chemistry,Chemistry,exact_prefix
+gpqa_94,Organic Chemistry,Chemistry,exact_prefix
+gpqa_95,Organic Chemistry,Chemistry,exact_prefix
+gpqa_96,Organic Chemistry,Chemistry,exact_prefix
+gpqa_97,Organic Chemistry,Chemistry,exact_prefix
+gpqa_98,Organic Chemistry,Chemistry,exact_prefix
+gpqa_99,Organic Chemistry,Chemistry,exact_prefix

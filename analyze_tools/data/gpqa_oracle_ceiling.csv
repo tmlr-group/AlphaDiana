@@ -1,0 +1,14 @@
+metric,value,numerator,denominator
+openclaw_accuracy,0.6616161616161617,131,198
+openclaw_rescue_from_direct_wrong,0.20512820512820512,8,39
+opencode_accuracy,0.7323232323232324,145,198
+opencode_rescue_from_direct_wrong,0.2564102564102564,10,39
+zeroclaw_accuracy,0.806282722513089,154,191
+zeroclaw_rescue_from_direct_wrong,0.3333333333333333,13,39
+directllm_accuracy,0.803030303030303,159,198
+oracle_ceiling,0.8838383838383839,175,198
+any_harness_rescue_from_direct_wrong,0.41025641025641024,16,39
+tasks_correct_under_exactly_0_harnesses,0.14646464646464646,29,198
+tasks_correct_under_exactly_1_harnesses,0.10606060606060606,21,198
+tasks_correct_under_exactly_2_harnesses,0.17676767676767677,35,198
+tasks_correct_under_exactly_3_harnesses,0.5707070707070707,113,198
