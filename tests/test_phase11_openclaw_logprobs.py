@@ -68,6 +68,16 @@ class _TimeoutAfterFirstLineResponse(_FakeResponse):
         raise httpx.ReadTimeout("OpenClaw stream total timeout after 1.0s")
 
 
+class _BrokenStreamResponse(_FakeResponse):
+    def iter_lines(self):
+        import httpx
+
+        raise httpx.RemoteProtocolError(
+            "peer closed connection without sending complete message body "
+            "(incomplete chunked read)"
+        )
+
+
 def _base_config(**overrides) -> dict:
     config = {
         "api_base": "http://127.0.0.1:18001/v1",
@@ -287,6 +297,30 @@ def test_streaming_without_done_preserves_partial_as_error(
     assert partial.metadata["retry_count"] == 1
     assert partial.metadata["logprobs_capture_status"] == "captured"
     assert partial.metadata["logprob_records"][0]["token"] == "4"
+
+
+def test_replaceable_gateway_stream_drop_aborts_same_gateway_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("alphadiana.agent.openclaw.time.sleep", lambda _seconds: None)
+    response = _BrokenStreamResponse(headers={"content-type": "text/event-stream"})
+    _patch_network(monkeypatch, [response])
+
+    class _Sandbox:
+        sandbox_id = "sandbox-1"
+
+    agent = OpenClawAgent()
+    agent.setup(_base_config(stream=True, max_attempts=3))
+
+    with pytest.raises(OpenClawRequestError) as exc_info:
+        agent.solve(_task(), sandbox=_Sandbox())
+
+    err = exc_info.value
+    assert err.error_type == "gateway_stream_interrupted"
+    assert len(err.retry_responses) == 1
+    assert err.retry_responses[0]["error_type"] == "gateway_stream_interrupted"
+    assert err.partial_response is not None
+    assert err.partial_response.metadata["failure_reason"] == "gateway_stream_interrupted"
 
 
 def test_retry_uses_only_final_successful_attempt_records(monkeypatch: pytest.MonkeyPatch) -> None:

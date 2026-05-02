@@ -1,6 +1,8 @@
 """Tests for TaskDispatcher and Runner."""
 
 import json
+import threading
+import time
 from types import SimpleNamespace
 
 import httpx
@@ -646,6 +648,127 @@ def test_runner_fresh_predeployed_standby_sandboxes(monkeypatch, tmp_path):
     assert all(session.close_calls == 1 for session in created_sessions)
     records = runner.result_store.load()
     assert {record["standby_sandboxes"] for record in records} == {1}
+
+
+def test_runner_parallelizes_fresh_predeployed_replenishment(monkeypatch, tmp_path):
+    class _FakeBenchmark:
+        def load_tasks(self, config):
+            return [
+                BenchmarkTask(task_id=f"aime_{idx}", problem=f"Q{idx}", ground_truth="42")
+                for idx in range(12)
+            ]
+
+    class _FakePredeployedSession:
+        def __init__(self, sandbox_id: str):
+            self.sandbox_id = sandbox_id
+            self.close_calls = 0
+
+        def proxy_v1_base(self) -> str:
+            return f"http://proxy.test/apis/envs/sandbox/v1/sandboxes/{self.sandbox_id}/proxy/v1"
+
+        def metadata(self) -> dict:
+            return {
+                "sandbox_id": self.sandbox_id,
+                "proxy_base_url": self.proxy_v1_base(),
+            }
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    created_sessions: list[_FakePredeployedSession] = []
+
+    class _FakeRockSandboxBackend:
+        def setup(self, config) -> None:
+            self.config = config
+
+        def create_session(self):
+            session = _FakePredeployedSession(f"sandbox-{len(created_sessions)}")
+            created_sessions.append(session)
+            return session
+
+    replacement_lock = threading.Lock()
+    active_replacements = 0
+    max_active_replacements = 0
+
+    class _FakeGatewayRuntimeManager:
+        def ensure_ready(self, session):
+            nonlocal active_replacements, max_active_replacements
+            session_index = int(session.sandbox_id.rsplit("-", 1)[1])
+            if session_index >= 4:
+                with replacement_lock:
+                    active_replacements += 1
+                    max_active_replacements = max(
+                        max_active_replacements,
+                        active_replacements,
+                    )
+                time.sleep(0.05)
+                with replacement_lock:
+                    active_replacements -= 1
+            return {
+                "sandbox_id": session.sandbox_id,
+                "gateway_url": f"{session.proxy_v1_base()}/chat/completions",
+                "api_base": session.proxy_v1_base(),
+            }
+
+    class _FakeGatewayAgent:
+        def __init__(self):
+            self.solve_sandbox_ids: list[str | None] = []
+
+        def setup(self, config) -> None:
+            self.config = dict(config)
+
+        def solve(self, task, sandbox=None):
+            sandbox_id = getattr(sandbox, "sandbox_id", None)
+            self.solve_sandbox_ids.append(sandbox_id)
+            time.sleep(0.01)
+            return AgentResponse(answer="42", sandbox_id=sandbox_id or "", metadata={})
+
+        def teardown(self) -> None:
+            pass
+
+    monkeypatch.setattr("alphadiana.runner.runner.BenchmarkRegistry.get", lambda name: _FakeBenchmark)
+    monkeypatch.setattr("alphadiana.runner.runner.AgentRegistry.get", lambda name: _FakeGatewayAgent)
+    monkeypatch.setattr("alphadiana.runner.runner.SandboxRegistry.get", lambda name: _FakeRockSandboxBackend)
+    monkeypatch.setattr(
+        "alphadiana.runner.runner._make_gateway_runtime_manager",
+        lambda config: _FakeGatewayRuntimeManager(),
+    )
+
+    config = ExperimentConfig(
+        run_id="runner-fresh-predeployed-parallel-replenish",
+        agent_name="openclaw",
+        agent_version="2026.3.20",
+        agent_config={
+            "api_key": "sk-test",
+            "rock_agent_config_path": "openclaw_deploy/rock_agent_config.prebuilt.yaml",
+            "openclaw_config_path": "openclaw_deploy/openclaw.json",
+            "admin_base_url": "http://127.0.0.1:9000",
+            "proxy_base_url": "http://127.0.0.1:9005/apis/envs/sandbox/v1",
+            "num_sandboxes": 2,
+            "standby_sandboxes": 2,
+            "predeploy_replenish_concurrency": 2,
+            "predeploy_stagger_seconds": 0,
+        },
+        benchmark_name="aime",
+        benchmark_config={},
+        scorer_name="numeric",
+        scorer_config={},
+        max_concurrent=2,
+        output_dir=str(tmp_path),
+    )
+
+    runner = Runner(config)
+    runner.setup()
+    try:
+        summary = runner.run()
+    finally:
+        runner.teardown()
+
+    assert summary.completed == 12
+    assert len(set(runner.agent.solve_sandbox_ids)) == 12
+    assert max_active_replacements == 2
+    manifest = runner.result_store.load_manifest()
+    assert manifest["predeploy_replenish_concurrency"] == 2
 
 
 def test_runner_skips_unhealthy_fresh_predeployed_standby_on_acquire(monkeypatch, tmp_path):
@@ -1518,6 +1641,39 @@ def test_runner_rejects_tainted_openclaw_responses_before_scoring(
     assert record["error"]["error_type"] == expected_error_type
     assert record["metadata"]["openclaw_integrity_guard"] is True
     assert record["metadata"]["openclaw_integrity_guard_reason"] == expected_reason
+
+
+def test_openclaw_guard_ignores_workspace_heartbeat_listing():
+    config = ExperimentConfig(
+        run_id="runner-openclaw-heartbeat-artifact-listing",
+        agent_name="openclaw",
+        agent_version="test",
+        agent_config={},
+        benchmark_name="aime",
+        benchmark_config={},
+        sandbox_name="none",
+        sandbox_config={},
+        scorer_name="numeric",
+        scorer_config={},
+    )
+    response = AgentResponse(
+        answer="62",
+        raw_output="The answer is \\boxed{62}.",
+        metadata={"received_done": True},
+        trajectory=[
+            {"role": "user", "content": "Solve the problem."},
+            {"role": "assistant", "content": "The answer is \\boxed{62}."},
+            {
+                "role": "tool_result",
+                "content": "/home/node/.openclaw/workspace/HEARTBEAT.md",
+            },
+        ],
+        workspace_snapshot_paths=[
+            "/home/node/.openclaw/workspace/HEARTBEAT.md",
+        ],
+    )
+
+    assert _openclaw_integrity_guard_reason(config, response) == ("", "")
 
 
 def test_runner_allows_openclaw_timeout_scored_zero_response():

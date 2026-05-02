@@ -205,6 +205,22 @@ class TestDirectLLMAgentStreamingLogprobs:
         assert call_kwargs.get("logprobs") is True
         assert call_kwargs.get("top_logprobs") == 20
 
+    def test_streaming_total_timeout_returns_scored_zero_response(self):
+        agent = self._build_agent(capture=True)
+        agent._stream_total_timeout = 0.5
+        agent.agent_name = "direct_llm"
+        agent._client.chat.completions.create.return_value = _fake_stream_chunks(3)
+        task = BenchmarkTask(task_id="t1", problem="2+2?", ground_truth="4")
+
+        with patch("alphadiana.agent.direct_llm.time.monotonic", side_effect=[0.0, 0.6]):
+            resp = agent.solve(task)
+
+        assert resp.answer is None
+        assert resp.finish_reason == "timeout"
+        assert resp.metadata["directllm_timeout_scored_zero"] is True
+        assert resp.metadata["failure_reason"] == "timeout"
+        assert resp.metadata["directllm_timeout_seconds"] == 0.5
+
 
 class TestDirectLLMAgentNonStreamingLogprobs:
     def _build_agent(self):

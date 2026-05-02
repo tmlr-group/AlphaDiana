@@ -88,10 +88,13 @@ OpenClaw configs also set:
   `reuse_predeployed_sandboxes: false`. Each task gets a ready sandbox/gateway,
   results and artifacts are written, then the sandbox is closed instead of
   reset and reused. Set `standby_sandboxes: N` to keep extra ready sandboxes
-  warm while workers consume the active pool. The older reset-and-reuse mode is
-  still available with `reuse_predeployed_sandboxes: true`; that path clears
-  OpenClaw session state under the known OpenClaw home directories on every
-  reset to prevent stale chat history reuse.
+  warm while workers consume the active pool. Set
+  `predeploy_replenish_concurrency: N` on high-concurrency runs when
+  replacement sandbox/gateway startup needs to refill the fresh pool in
+  parallel. The older reset-and-reuse mode is still available with
+  `reuse_predeployed_sandboxes: true`; that path clears OpenClaw session state
+  under the known OpenClaw home directories on every reset to prevent stale chat
+  history reuse.
 - `predeployed_lease_probe: true` is enabled by default for real ROCK sessions.
   Before assigning a predeployed sandbox, the runner makes a short
   `trust_env=False` reachability probe to the sandbox's host-published gateway
