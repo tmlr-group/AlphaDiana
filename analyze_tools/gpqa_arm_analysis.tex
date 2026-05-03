@@ -1,0 +1,98 @@
+\subsection{Agentic Reasoning Mode Analysis}
+\label{appendix:macro-arm}
+
+The action-rate analysis in \S\ref{appendix:macro-gpqa} tells us \emph{what} operations each harness performs. The ARM taxonomy asks a different question: given a reasoning step, \emph{what cognitive strategy} does it represent? We classify every assistant-generated segment of every GPQA-Diamond trajectory into one of six reasoning modes plus an undifferentiated \texttt{reason} catch-all:
+
+\begin{itemize}[leftmargin=*, itemsep=1pt]
+\item \texttt{PD} (Principle-Based Deduction): derivation from physical laws, chemical mechanisms, or mathematical theorems
+\item \texttt{SE} (Systematic Elimination): explicit option-by-option comparison and rule-out
+\item \texttt{IC} (Intuitive Commitment): direct assertion without extended derivation
+\item \texttt{UN} (Uncertainty Navigation): explicit hedging, uncertainty expression, or probabilistic language
+\item \texttt{RR} (Recovery-Replanning): correction of prior reasoning, retraction, or direction change
+\item \texttt{CV} (Computational Verification): tool-mediated numerical check or code execution
+\item \texttt{reason}: generic deliberation that does not trigger any of the above classifiers
+\end{itemize}
+
+Classification is per-segment (each assistant message = one segment) via keyword heuristics with domain-specific chemistry, physics, and biology signals. Segments that trigger no ARM classifier default to \texttt{reason}. Per-trajectory ARM rates are then computed as the fraction of segments assigned to each mode.
+
+\paragraph{ARM Distribution Across Harnesses and Outcomes.}
+Table~\ref{tab:arm-mode-rates} reports the mean ARM mode rate per (harness, paired outcome) cell. Four regularities emerge.
+
+\begin{table}[t]
+\centering
+\caption{Mean ARM mode rates per (harness, paired outcome) cell on GPQA-Diamond. Each cell reports the fraction of trajectory segments classified to each ARM mode, averaged over all trajectories in the bucket. The largest per-harness $\Delta=$correct$-$wrong gap is shown in \textbf{bold}.}
+\label{tab:arm-mode-rates}
+\centering\fontsize{9}{9}\selectfont
+\renewcommand{\arraystretch}{1.15}
+\setlength{\tabcolsep}{2.5pt}
+\begin{tabular}{llrrrrrrr}
+\toprule
+Harness & Outcome & $n$ & PD & SE & IC & UN & RR & reason \\
+\midrule
+OpenClaw & correct & 131 & 0.538 & 0.007 & 0.049 & 0.016 & 0.017 & 0.372 \\
+OpenClaw & wrong   & 67  & \textbf{0.608} & 0.022 & 0.026 & \textbf{0.043} & 0.010 & \textbf{0.291} \\
+\midrule
+OpenCode & correct & 145 & 0.353 & 0.006 & 0.026 & 0.009 & 0.019 & 0.587 \\
+OpenCode & wrong   & 53  & \textbf{0.498} & 0.000 & 0.000 & \textbf{0.041} & 0.010 & \textbf{0.450} \\
+\midrule
+ZeroClaw & correct & 154 & 0.280 & 0.001 & 0.023 & 0.011 & 0.021 & 0.664 \\
+ZeroClaw & wrong   & 37  & \textbf{0.406} & 0.003 & 0.011 & \textbf{0.032} & \textbf{0.044} & \textbf{0.504} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\findingbox{Principle-based deduction is the dominant reasoning mode across all harnesses on expert-level science questions, and its over-representation is the strongest single-mode predictor of failure.}
+
+GPQA-Diamond is a hard-science benchmark; all three harnesses spend the plurality of their reasoning budget in PD. But the allocation is not outcome-neutral. Wrong trajectories allocate 7.0 to 14.5~pp \emph{more} of their reasoning segments to PD than correct trajectories do, at the expense of undifferentiated \texttt{reason} and IC. The PD/IC ratio, measuring the model's tendency to keep deriving rather than committing, is 12 to 55\% higher in wrong trajectories across all three harnesses. The interpretation is not that deduction is harmful, but that failure trajectories are trapped in a deduction spiral: the model re-derives known principles without transitioning to elimination or commitment. ZeroClaw illustrates the purest form of this dynamic: its correct trajectories run at PD=0.280 and IC=0.023, while its incorrect ones shift to PD=0.406 and IC=0.011, doubling down on deduction while halving commitment. The same pattern holds on Organic Chemistry ($n=72$), the largest subdomain: PD rates are 12 to 41\% above the benchmark-wide mean regardless of outcome, confirming that the mode baseline is question-type-dependent even when the direction of the outcome gap is universal.
+
+\findingbox{Recovery is efficacy-heterogeneous: the same RR signal that marks productive self-correction under OpenClaw and OpenCode marks confusion under ZeroClaw.}
+
+The fraction of trajectories containing at least one recovery segment tells the story. Under OpenClaw, RR appears in 9.2\% of correct vs.\ 3.0\% of wrong trajectories; under OpenCode, the split is 11.7\% vs.\ 3.8\%. Recovery is a success signal: the model catches a mistake and corrects it. Under ZeroClaw, the direction inverts: 24.0\% of correct trajectories contain RR, but 48.6\% of wrong trajectories do. ZeroClaw's harness structure (plan-reason-answer with explicit verification steps) triggers recovery attempts on nearly half of its failure trajectories, but those attempts do not lead to the correct answer. The mechanism is visible in the ARM sequence data: ZeroClaw wrong trajectories have a mean mode diversity (arm entropy) of 0.812, substantially above their correct trajectories (0.643) and above the wrong trajectories of any other harness (OpenClaw 0.395, OpenCode 0.468). Productive recovery produces a focused correction; unproductive recovery produces mode oscillation without convergence. The same RR marker is therefore not a portable quality signal across harnesses: it must be read jointly with the trajectory's mode diversity to distinguish correction from confusion.
+
+\findingbox{The relationship between deduction depth and accuracy is an inverted U: both PD under-allocation and PD over-allocation degrade performance, with a clear optimum in the second quartile.}
+
+Binning trajectories by PD rate quartile reveals a non-monotonic pattern: Q1 (lowest PD) accuracy is 78.1\%, Q2 rises to 87.8\%, Q3 drops to 65.5\%, and Q4 (highest PD) bottoms at 60.8\%. The Q2 optimum is 15.4~pp above the pooled harness mean and 27.0~pp above Q4. Within Q2, IC rates are moderate (0.030) and UN is at its lowest (0.011): the model derives enough to be rigorous but commits before entering the spiral. Q1 trajectories under-derive: they substitute IC (0.056) and UN (0.049) for deduction, producing wrong answers through guesswork rather than over-thinking. Q3 and Q4 trajectories over-derive: IC collapses to negligible levels (0.002 in Q4) while PD self-transitions accumulate. The optimal strategy on this benchmark is therefore neither pure intuition nor exhaustive derivation: it is derivation with a commitment deadline. Harnesses that provide natural exit ramps from PD (such as OpenCode's tool-use step, which forces a mode transition) benefit from this structure; harnesses that permit unbounded PD chaining (OpenClaw's reactive loop without a commit signal) suffer from it.
+
+\begin{table}[t]
+\centering
+\caption{Accuracy and ARM composition by PD-rate quartile, pooled across all three harnesses. PD rate is the fraction of segments classified as principle-based deduction.}
+\label{tab:arm-pd-quartile}
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+PD quartile & $n$ & Acc\% & IC rate & UN rate & RR rate \\
+\midrule
+Q1 (lowest PD) & 151 & 78.1\% & 0.056 & 0.049 & 0.022 \\
+Q2            & 148 & \textbf{87.8\%} & 0.030 & 0.011 & 0.015 \\
+Q3            & 145 & 65.5\% & 0.019 & 0.013 & 0.018 \\
+Q4 (highest PD) & 143 & 60.8\% & 0.002 & 0.003 & 0.020 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{ARM Transition Signatures.}
+Beyond per-mode rates, the pairwise transition structure distinguishes correct from wrong trajectories. Table~\ref{tab:arm-transitions} reports the top ARM transitions by outcome group.
+
+\begin{table}[t]
+\centering
+\caption{Dominant ARM transitions on correct vs.\ wrong trajectories, pooled across all three harnesses. Transitions shown have at least 15 trajectories with nonzero rate in the respective outcome bucket. Rates are per-trajectory means.}
+\label{tab:arm-transitions}
+\small
+\begin{tabular}{lrlr}
+\toprule
+\multicolumn{2}{c}{Correct ($n{=}430$)} & \multicolumn{2}{c}{Wrong ($n{=}157$)} \\
+Transition & Rate & Transition & Rate \\
+\midrule
+reason $\to$ reason & 0.528 & PD $\to$ PD & 0.563 \\
+PD $\to$ PD & 0.386 & reason $\to$ reason & 0.478 \\
+reason $\to$ PD & 0.290 & reason $\to$ PD & 0.456 \\
+PD $\to$ reason & 0.202 & reason $\to$ UN & 0.416 \\
+reason $\to$ IC & 0.188 & PD $\to$ reason & 0.239 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three structural differences stand out. First, the PD$\to$PD self-transition rate is 0.563 in wrong vs.\ 0.386 in correct trajectories: wrong trajectories loop in deduction, while correct trajectories exit deduction more often (PD$\to$reason at 0.202 in correct, 0.239 in wrong, but with a higher PD entry rate in wrong, the net looping effect is larger). Second, \texttt{reason}$\to$\texttt{UN} (0.416) appears as a top-5 transition only in wrong trajectories: the model shifts from generic reasoning into explicit uncertainty without resolving it. Third, \texttt{reason}$\to$\texttt{IC} (0.188) appears only in the correct top 5: confident commitment emerges from undifferentiated reasoning, not from deduction, in successful trajectories.
+
+\paragraph{Case Anchors.}
+Three trajectories on the same GPQA task (gpqa\_143, Cope rearrangement, Organic Chemistry) illustrate the ARM taxonomy at work. All three harnesses fail this task (regression), but through different ARM structures. OpenClaw produces a 2-segment trajectory: PD$\to$PD, 53K tokens of continuous deduction without a single recovery, elimination, or commitment step. The raw text cycles through repeated restatements of the aza-Cope mechanism without converging to a letter answer. OpenCode produces a 4-segment PD$\to$PD$\to$reason$\to$PD chain: two deduction segments, a brief undifferentiated reflection, and a final deduction segment before emitting the wrong option. ZeroClaw produces a 13-segment sequence with eight PD segments, one RR segment, and three reason segments: the trajectory is diverse but the single recovery attempt (\texttt{``Actually, this is more specifically an aza-Cope rearrangement since nitrogen is involved''}) corrects a terminology detail without changing the chemical reasoning, and the model re-enters PD for seven more segments before committing. The three trajectories on the same question thus exhibit a PD-spiral (OpenClaw), a truncated PD chain (OpenCode), and a diverse-but-unproductive mode oscillation (ZeroClaw), confirming that the ARM taxonomy captures harness-level failure signatures that the binary correct/wrong label aggregates away.
