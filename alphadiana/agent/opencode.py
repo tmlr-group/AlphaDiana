@@ -691,6 +691,7 @@ class OpenCodeAgent(Agent):
         raw_max_tokens = config.get("max_tokens", None)
         self._max_tokens = None if raw_max_tokens in (None, "") else int(raw_max_tokens)
         self._enable_thinking = _parse_optional_bool(config.get("enable_thinking", None))
+        self._reasoning_enabled = _parse_optional_bool(config.get("reasoning_enabled", None))
         self._variant = str(config.get("variant", "")).strip()
         self._agent_name = str(config.get("agent", "")).strip()
         self._agent_md_path = str(config.get("agent_md_path", "")).strip()
@@ -1065,6 +1066,11 @@ class OpenCodeAgent(Agent):
                             **(
                                 {"chat_template_kwargs": chat_template_kwargs}
                                 if chat_template_kwargs
+                                else {}
+                            ),
+                            **(
+                                {"reasoning": {"enabled": self._reasoning_enabled}}
+                                if self._reasoning_enabled is not None
                                 else {}
                             ),
                         },
