@@ -1,0 +1,63 @@
+# MICRO RUN: AIME 2026 x OpenClaw x Qwen/Qwen3.5-27B (memory_intra axis)
+
+run_id: "micro_aime2026_openclaw_qwen35_27b_memory_intra"
+
+agent:
+  name: openclaw
+  version: "2026.3.20"
+  config:
+    system_prompt: |
+      You are an expert problem solver. Use the write tool as scratchpad memory: AT THE START of each task, call write once to save a brief recap of the problem statement to memory/notes.md. MID-task, optionally call write again to record candidate eliminations or intermediate results. Use AT MOST 2 write calls per task. After your scratchpad notes, reason fully.
+
+      When you have reached your final answer, you MUST present it in the following format:
+
+      $$\boxed{your answer here}$$
+
+      Do not skip the boxed format.
+
+    rock_image: "tmlrgroup/alphadiana:v1"
+    rock_agent_config_path: "openclaw_deploy/rock_agent_config.prebuilt.yaml"
+    openclaw_config_path: "openclaw_deploy/openclaw.json"
+    network_mode: "host"
+    docker_host_ip: "host.docker.internal"
+    rock_memory: "4g"
+    rock_cpus: 1
+    rock_startup_timeout: 600
+    gateway_startup_timeout: 240
+    gateway_warmup_timeout: 240
+    OPENAI_BASE_URL: "${OPENAI_BASE_URL}"
+    OPENAI_API_KEY: "${OPENAI_API_KEY}"
+    OPENAI_MODEL_NAME: "Qwen/Qwen3.5-27B"
+    model: "openclaw"
+    gateway_token: "${OPENCLAW_GATEWAY_TOKEN}"
+    temperature: 0.7
+    top_p: 0.95
+    max_tokens: 131072
+    stream: true
+    request_timeout: 9300
+    stream_idle_timeout: 1800
+    stream_total_timeout: 9000
+    enable_thinking: true
+    capture_logprobs: true
+    top_logprobs: 20
+
+benchmark:
+  name: aime
+  config:
+    dataset: "MathArena/aime_2026"
+    split: "train"
+
+scorer:
+  name: numeric
+  config:
+    tolerance: 1e-6
+
+max_concurrent: 5
+task_retries: 2
+task_retry_on_recoverable_only: true
+num_samples: 4
+output_dir: "./results"
+strict_report: true
+strict_isolation: true
+metadata:
+  notes: "Micro-experiment cell: AIME 2026 x OpenClaw x Qwen/Qwen3.5-27B x memory_intra axis (pass@4)."
