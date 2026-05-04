@@ -1,0 +1,46 @@
+# FULL RUN: GPQA-Diamond x DirectLLM on moonshotai/kimi-k2.6 via OpenRouter with logprob capture.
+
+run_id: "full_gpqa_directllm_kimi_k26_logprobs"
+
+agent:
+  name: direct_llm
+  version: "1.0"
+  config:
+    model: "moonshotai/kimi-k2.6"
+    api_base: "https://openrouter.ai/api/v1"
+    api_key: "${OPENROUTER_API_KEY}"
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 131072
+    stream: true
+    enable_thinking: true
+    extra_body:
+      reasoning:
+        enabled: true
+    system_prompt: |
+      You are solving expert-level science multiple-choice questions.
+      Read the question carefully, reason step by step, and choose the single best option.
+      Your final answer must be on the last line in exactly one of these forms:
+      $$\boxed{A}$$
+      $$\boxed{B}$$
+      $$\boxed{C}$$
+      $$\boxed{D}$$
+
+benchmark:
+  name: gpqa_diamond
+  config:
+    dataset: "fingertap/GPQA-Diamond"
+    split: "test"
+    seed: 42
+
+scorer:
+  name: exact_match
+  config: {}
+
+max_concurrent: 10
+num_samples: 1
+output_dir: "./results"
+strict_report: true
+strict_isolation: true
+metadata:
+  notes: "GPQA-Diamond x DirectLLM on moonshotai/kimi-k2.6 via OpenRouter. enable_thinking=true, max_tokens=131072."

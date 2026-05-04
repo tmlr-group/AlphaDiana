@@ -1,0 +1,104 @@
+{
+  "$schema": "https://openclaw.ai/config.json",
+  "env": {
+    "OPENAI_BASE_URL": "",
+    "OPENAI_API_KEY": "EMPTY",
+    "OPENAI_MODEL_NAME": "",
+    "OPENCLAW_GATEWAY_TOKEN": "${OPENCLAW_GATEWAY_TOKEN}"
+  },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "local": {
+        "baseUrl": "${OPENAI_BASE_URL}",
+        "apiKey": "${OPENAI_API_KEY}",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "${OPENAI_MODEL_NAME}",
+            "name": "${OPENAI_MODEL_NAME}",
+            "input": [
+              "text",
+              "image"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "local/${OPENAI_MODEL_NAME}"
+      },
+      "models": {
+        "local/${OPENAI_MODEL_NAME}": {
+          "params": {
+            "maxTokens": 131072,
+            "reasoning": {
+              "enabled": true
+            }
+          }
+        }
+      },
+      "timeoutSeconds": 9300,
+      "workspace": "${HOME}/.openclaw/workspace"
+    }
+  },
+  "tools": {
+    "allow": ["group:fs", "group:runtime", "group:web"],
+    "web": {
+      "fetch": {
+        "enabled": true,
+        "maxChars": 50000,
+        "timeoutSeconds": 30
+      }
+    },
+    "media": {
+      "image": {
+        "enabled": true,
+        "models": [
+          {
+            "provider": "local",
+            "model": "${OPENAI_MODEL_NAME}"
+          }
+        ]
+      }
+    }
+  },
+  "commands": {
+    "native": "auto",
+    "nativeSkills": "auto",
+    "restart": true,
+    "ownerDisplay": "raw"
+  },
+  "gateway": {
+    "port": 8080,
+    "mode": "local",
+    "bind": "custom",
+    "customBindHost": "127.0.0.1",
+    "controlUi": {
+      "enabled": false,
+      "allowedOrigins": [
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://0.0.0.0:8080"
+      ]
+    },
+    "auth": {
+      "mode": "token",
+      "token": "${OPENCLAW_GATEWAY_TOKEN}"
+    },
+    "http": {
+      "endpoints": {
+        "chatCompletions": {
+          "enabled": true
+        }
+      }
+    }
+  },
+  "meta": {
+    "lastTouchedVersion": "2026.3.14",
+    "lastTouchedAt": "2026-05-04T00:00:00.000Z"
+  }
+}
