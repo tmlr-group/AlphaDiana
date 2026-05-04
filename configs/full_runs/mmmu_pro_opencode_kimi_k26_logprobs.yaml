@@ -20,7 +20,6 @@ agent:
     top_p: 0.95
     max_tokens: 131072
     enable_thinking: true
-    reasoning_enabled: true
     system_prompt: |
       You are an expert at multimodal multiple-choice reasoning. When given a question, actively use your available tools and skills throughout your reasoning process. Do not attempt to answer purely in your head when tools can help. Use code execution, search, or any other available capabilities to verify intermediate steps, explore approaches, and confirm your final answer.
 

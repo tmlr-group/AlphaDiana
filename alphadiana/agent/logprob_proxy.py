@@ -139,9 +139,8 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
             normalized_messages, normalized = normalize_chat_system_messages(payload.get("messages"))
             if normalized:
                 payload["messages"] = normalized_messages
-            if self.server.inject_logprobs:
-                payload["logprobs"] = True
-                payload["top_logprobs"] = self.server.top_logprobs
+            payload["logprobs"] = True
+            payload["top_logprobs"] = self.server.top_logprobs
             payload.update(self.server.request_overrides)
             body = json.dumps(payload).encode()
 
@@ -279,7 +278,6 @@ class _LogprobCaptureServer(socketserver.ThreadingMixIn, http.server.HTTPServer)
         upstream_api_key: str = "",
         proxy_api_key: str = "",
         request_overrides: dict[str, Any] | None = None,
-        inject_logprobs: bool = True,
     ) -> None:
         super().__init__((bind_host, 0), _LogprobProxyHandler)
         self.upstream = upstream
@@ -287,7 +285,6 @@ class _LogprobCaptureServer(socketserver.ThreadingMixIn, http.server.HTTPServer)
         self.upstream_api_key = upstream_api_key
         self.proxy_api_key = proxy_api_key
         self.request_overrides = dict(request_overrides or {})
-        self.inject_logprobs = inject_logprobs
         self.raw_responses: list[dict] = []
         self.streaming_logprobs: list[dict] = []
         self.lock = threading.Lock()
@@ -308,7 +305,6 @@ class LogprobCaptureProxy:
         upstream_api_key: str = "",
         proxy_api_key: str = "",
         request_overrides: dict[str, Any] | None = None,
-        inject_logprobs: bool = True,
     ) -> None:
         self._upstream = normalize_openai_proxy_upstream(upstream)
         self._top_logprobs = int(top_logprobs)
@@ -318,7 +314,6 @@ class LogprobCaptureProxy:
         self._upstream_api_key = str(upstream_api_key or "").strip()
         self._proxy_api_key = str(proxy_api_key or "").strip()
         self._request_overrides = dict(request_overrides or {})
-        self._inject_logprobs = inject_logprobs
         self._server: _LogprobCaptureServer | None = None
         self._thread: threading.Thread | None = None
 
@@ -333,7 +328,6 @@ class LogprobCaptureProxy:
             upstream_api_key=self._upstream_api_key,
             proxy_api_key=self._proxy_api_key,
             request_overrides=self._request_overrides,
-            inject_logprobs=self._inject_logprobs,
         )
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()

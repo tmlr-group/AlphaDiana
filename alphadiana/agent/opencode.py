@@ -691,7 +691,6 @@ class OpenCodeAgent(Agent):
         raw_max_tokens = config.get("max_tokens", None)
         self._max_tokens = None if raw_max_tokens in (None, "") else int(raw_max_tokens)
         self._enable_thinking = _parse_optional_bool(config.get("enable_thinking", None))
-        self._reasoning_enabled = _parse_optional_bool(config.get("reasoning_enabled", None))
         self._variant = str(config.get("variant", "")).strip()
         self._agent_name = str(config.get("agent", "")).strip()
         self._agent_md_path = str(config.get("agent_md_path", "")).strip()
@@ -1068,11 +1067,6 @@ class OpenCodeAgent(Agent):
                                 if chat_template_kwargs
                                 else {}
                             ),
-                            **(
-                                {"reasoning": {"enabled": self._reasoning_enabled}}
-                                if self._reasoning_enabled is not None
-                                else {}
-                            ),
                         },
                         "models": {provider_model_name: model_spec},
                     }
@@ -1090,8 +1084,7 @@ class OpenCodeAgent(Agent):
             effective_api_base = self._api_base
             request_overrides = {}
             logprob_proxy_client_timeout: float | None = None
-            need_proxy = self._logprob_capture["enabled"] or self._reasoning_enabled
-            if need_proxy:
+            if self._logprob_capture["enabled"]:
                 # Strip any path suffix (e.g. "/v1") from api_base before handing to proxy —
                 # OpenCode will append its own "/v1/chat/completions" to the proxy URL,
                 # and the proxy forwards that full path to upstream unchanged.
@@ -1106,15 +1099,12 @@ class OpenCodeAgent(Agent):
                     request_overrides["max_tokens"] = self._max_tokens
                 if chat_template_kwargs:
                     request_overrides["chat_template_kwargs"] = chat_template_kwargs
-                if self._reasoning_enabled:
-                    request_overrides["reasoning"] = {"enabled": True}
                 logprob_proxy_client_timeout = max(120.0, float(self._timeout))
                 proxy = LogprobCaptureProxy(
                     upstream_base,
-                    self._logprob_capture.get("top_logprobs", 0),
+                    self._logprob_capture["top_logprobs"],
                     client_timeout=logprob_proxy_client_timeout,
                     request_overrides=request_overrides or None,
-                    inject_logprobs=self._logprob_capture["enabled"],
                 )
                 proxy.start()
                 effective_api_base = proxy.proxy_url + "/v1"
