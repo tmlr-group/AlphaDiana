@@ -1090,7 +1090,8 @@ class OpenCodeAgent(Agent):
             effective_api_base = self._api_base
             request_overrides = {}
             logprob_proxy_client_timeout: float | None = None
-            if self._logprob_capture["enabled"]:
+            need_proxy = self._logprob_capture["enabled"] or self._reasoning_enabled
+            if need_proxy:
                 # Strip any path suffix (e.g. "/v1") from api_base before handing to proxy —
                 # OpenCode will append its own "/v1/chat/completions" to the proxy URL,
                 # and the proxy forwards that full path to upstream unchanged.
@@ -1105,12 +1106,15 @@ class OpenCodeAgent(Agent):
                     request_overrides["max_tokens"] = self._max_tokens
                 if chat_template_kwargs:
                     request_overrides["chat_template_kwargs"] = chat_template_kwargs
+                if self._reasoning_enabled:
+                    request_overrides["reasoning"] = {"enabled": True}
                 logprob_proxy_client_timeout = max(120.0, float(self._timeout))
                 proxy = LogprobCaptureProxy(
                     upstream_base,
-                    self._logprob_capture["top_logprobs"],
+                    self._logprob_capture.get("top_logprobs", 0),
                     client_timeout=logprob_proxy_client_timeout,
                     request_overrides=request_overrides or None,
+                    inject_logprobs=self._logprob_capture["enabled"],
                 )
                 proxy.start()
                 effective_api_base = proxy.proxy_url + "/v1"
