@@ -35,7 +35,7 @@ agent:
     max_tokens: 131072
     stream: true
     request_timeout: 9300
-    stream_idle_timeout: 1800
+    stream_idle_timeout: 9300
     stream_total_timeout: 9000
     enable_thinking: true
     capture_logprobs: true
