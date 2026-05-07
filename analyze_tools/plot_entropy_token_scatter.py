@@ -20,6 +20,7 @@ from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
 
 SKILL_DIR = Path("/home/xxx/academic-plot/scripts")
 if str(SKILL_DIR) not in sys.path:
@@ -36,6 +37,11 @@ CSV_PATH = DATA_DIR / "entropy_token_scatter.csv"
 C_CORRECT = "#2ca02c"
 C_WRONG   = "#d62728"
 
+CMAP_CORRECT = LinearSegmentedColormap.from_list("kde_correct",
+    [(1, 1, 1), (0.75, 0.93, 0.75), (0.40, 0.83, 0.40), (0.17, 0.63, 0.17)])
+CMAP_WRONG = LinearSegmentedColormap.from_list("kde_wrong",
+    [(1, 1, 1), (0.96, 0.75, 0.75), (0.88, 0.40, 0.40), (0.84, 0.15, 0.16)])
+
 HARNESS_ORDER = ["directllm", "openclaw", "zeroclaw", "opencode"]
 HARNESS_LABEL = {"directllm": "DirectLLM", "openclaw": "OpenClaw",
                  "zeroclaw": "ZeroClaw", "opencode": "OpenCode"}
@@ -43,9 +49,11 @@ BENCH_ORDER = ["GPQA", "HLE", "AIME"]
 BENCH_LABEL = {"GPQA": "GPQA-Diamond", "HLE": "HLE", "AIME": "AIME (Pass@4)"}
 
 KDE_GRID     = 100
-KDE_LEVELS   = 12
-KDE_LW       = 0.9
+KDE_LEVELS   = 10
+KDE_ALPHA    = 0.45
+KDE_LW       = 0.7
 KDE_MIN_PTS  = 10
+HPD_MASS     = 0.85   # fraction of probability mass to retain (trims low-density tails)
 
 
 def load_data(path: Path) -> list[dict]:
@@ -74,8 +82,23 @@ def compute_kde(x: np.ndarray, y: np.ndarray,
     return xi, yi, Z
 
 
+def clip_kde_tails(Z: np.ndarray, mass: float = HPD_MASS) -> np.ndarray:
+    """Mask low-density tails: keep only the region containing `mass` of probability.
+    Returns Z with below-threshold values set to NaN."""
+    z_flat = Z.ravel()
+    order = np.argsort(z_flat)[::-1]
+    z_sorted = z_flat[order]
+    cumsum = np.cumsum(z_sorted) / z_sorted.sum()
+    idx = int(np.searchsorted(cumsum, mass, side="left"))
+    idx = min(idx, len(z_sorted) - 1)
+    threshold = z_sorted[idx]
+    Zc = Z.copy()
+    Zc[Zc < threshold] = np.nan
+    return Zc
+
+
 def plot_one_model(model: str, out_name: str) -> None:
-    set_academic_style(font_size=14)
+    set_academic_style(font_size=18)
     rows_data = load_data(CSV_PATH)
 
     # Compute per-model global limits
@@ -88,8 +111,8 @@ def plot_one_model(model: str, out_name: str) -> None:
     n_rows = len(BENCH_ORDER)
     n_cols = len(HARNESS_ORDER)
 
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(22, 14))
-    fig.subplots_adjust(hspace=0.12, wspace=0.08, left=0.06, right=0.98, top=0.94, bottom=0.08)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(16, 20))
+    fig.subplots_adjust(hspace=0.15, wspace=0.10, left=0.08, right=0.98, top=0.94, bottom=0.10)
 
     for bi, benchmark in enumerate(BENCH_ORDER):
         for hi, harness in enumerate(HARNESS_ORDER):
@@ -100,7 +123,6 @@ def plot_one_model(model: str, out_name: str) -> None:
                       and r["benchmark"] == benchmark
                       and r["harness"] == harness]
 
-            # KDE density fills (behind scatter)
             cr = [r for r in subset if r["correct"] == "1"]
             wr = [r for r in subset if r["correct"] == "0"]
 
@@ -109,54 +131,48 @@ def plot_one_model(model: str, out_name: str) -> None:
                 y_c = np.array([float(r["mean_entropy"]) for r in cr])
                 xi, yi, Z = compute_kde(x_c, y_c, x_lim, y_lim)
                 if Z is not None:
-                    ax.contourf(xi, yi, Z, levels=KDE_LEVELS, cmap=CMAP_CORRECT,
+                    Zc = clip_kde_tails(Z)
+                    ax.contourf(xi, yi, Zc, levels=KDE_LEVELS, cmap=CMAP_CORRECT,
                                alpha=KDE_ALPHA)
+                    ax.contour(xi, yi, Zc, levels=KDE_LEVELS, colors=C_CORRECT,
+                              linewidths=KDE_LW, alpha=0.80)
 
             if wr:
                 x_w = np.array([np.log10(max(float(r["n_tokens"]), 1)) for r in wr])
                 y_w = np.array([float(r["mean_entropy"]) for r in wr])
                 xi, yi, Z = compute_kde(x_w, y_w, x_lim, y_lim)
                 if Z is not None:
-                    ax.contourf(xi, yi, Z, levels=KDE_LEVELS, cmap=CMAP_WRONG,
+                    Zc = clip_kde_tails(Z)
+                    ax.contourf(xi, yi, Zc, levels=KDE_LEVELS, cmap=CMAP_WRONG,
                                alpha=KDE_ALPHA)
-
-            # Scatter points (on top of KDE)
-            if cr:
-                ax.scatter(x_c, y_c, s=MARKER_SIZE, color=C_CORRECT, marker="o",
-                          alpha=ALPHA, edgecolors="none", rasterized=True)
-            if wr:
-                ax.scatter(x_w, y_w, s=MARKER_SIZE, color=C_WRONG, marker="o",
-                          alpha=ALPHA, edgecolors="none", rasterized=True)
+                    ax.contour(xi, yi, Zc, levels=KDE_LEVELS, colors=C_WRONG,
+                              linewidths=KDE_LW, alpha=0.80)
 
             ax.set_xlim(x_lim)
             ax.set_ylim(y_lim)
             ax.grid(True, alpha=0.18)
-            ax.tick_params(labelsize=12)
+            ax.tick_params(labelsize=16)
 
             if hi != 0:
                 ax.set_yticklabels([])
             if bi != n_rows - 1:
                 ax.set_xticklabels([])
 
-        # Row label
+        # Row label (vertical)
         axes[bi, 0].set_ylabel(BENCH_LABEL[benchmark],
-                                fontsize=14, rotation=0, labelpad=28,
-                                va="center", ha="right")
+                                fontsize=18, rotation=90, labelpad=18,
+                                va="center", ha="center")
 
     # Column headers
     for hi, harness in enumerate(HARNESS_ORDER):
-        fig.text((0.06 + 0.92 * (hi + 0.5) / n_cols), 0.975,
+        fig.text((0.08 + 0.90 * (hi + 0.5) / n_cols), 0.975,
                  HARNESS_LABEL[harness], ha="center", va="top",
-                 fontsize=16, fontweight="bold")
+                 fontsize=20, fontweight="bold")
 
     # Shared axis labels
-    fig.text(0.012, 0.50, "Mean token entropy (nat)", va="center",
-             rotation="vertical", fontsize=16)
-    fig.text(0.50, 0.015, "log₁₀ output tokens", ha="center", fontsize=16)
-
-    # Suptitle
-    model_display = {"Qwen3.5-27B": "Qwen3.5-27B", "Gemma4-31B": "Gemma4-31B"}
-    fig.suptitle(model_display[model], fontsize=18, fontweight="bold", y=0.995)
+    fig.text(0.018, 0.50, "Mean token entropy (nat)", va="center",
+             rotation="vertical", fontsize=20)
+    fig.text(0.50, 0.025, "log₁₀ output tokens", ha="center", fontsize=20)
 
     out_path = FIG_DIR / out_name
     fig.savefig(out_path, dpi=300, bbox_inches="tight")
