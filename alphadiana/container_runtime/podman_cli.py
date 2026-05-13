@@ -235,6 +235,15 @@ class PodmanCLI:
             args.append(str(private_port))
         return self._run(args, timeout=timeout)
 
+    def inspect(
+        self,
+        target: str,
+        *,
+        timeout: float | None = None,
+        check: bool = True,
+    ) -> PodmanResult:
+        return self._run(["inspect", target], timeout=timeout, check=check)
+
     def stop(
         self,
         container_id: str,

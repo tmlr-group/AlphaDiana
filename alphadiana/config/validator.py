@@ -81,6 +81,8 @@ class ConfigValidator:
                 and config.agent_config.get("openclaw_config_path")
             )
             has_zeroclaw_auto_deploy = bool(config.agent_config.get("rock_image"))
+            runtime_backend = str(config.agent_config.get("runtime_backend", "") or "").strip().lower()
+            has_podman_agent_runtime = runtime_backend == "podman"
 
             if config.agent_name == "openclaw" and runtime == "swebench_container":
                 if config.sandbox_name != "swebench_container":
@@ -100,14 +102,14 @@ class ConfigValidator:
                         "sandbox.name == 'swebench_container'"
                     )
             elif config.agent_name in self.OPENCLAW_RUNTIME_AGENTS:
-                if not has_api_base and not has_auto_deploy:
+                if not has_api_base and not has_auto_deploy and not has_podman_agent_runtime:
                     errors.append(
                         f"agent '{config.agent_name}' requires 'api_base' or "
                         "'rock_agent_config_path' + 'openclaw_config_path' in agent_config "
                         "(auto-deploy mode)"
                     )
             elif config.agent_name == "zeroclaw":
-                if not has_api_base and not has_zeroclaw_auto_deploy:
+                if not has_api_base and not has_zeroclaw_auto_deploy and not has_podman_agent_runtime:
                     errors.append(
                         "agent 'zeroclaw' requires 'api_base' in agent_config or "
                         "'rock_image' for ROCK auto-deploy mode"
