@@ -1,0 +1,50 @@
+run_id: "opencode-gpqa-diamond-skill-001"
+
+agent:
+  name: opencode
+  version: "1.3.2"
+  config:
+    model: "custom/qwen/qwen3.5-27b"
+    model_name: "qwen/qwen3.5-27b"
+    api_base: "${OPENAI_BASE_URL}"
+    api_key: "${OPENAI_API_KEY}"
+    controller_mode: "docker"
+    controller_image: "alphadiana/tb2-opencode-controller:latest"
+    timeout: 1800
+    streaming: false
+    tool_call: true
+
+    # Skill bundle name. Bare name resolves to alphadiana/skills/<name>/.
+    # Also accepted: a relative path (e.g. "alphadiana/skills/anthropic-bundle")
+    # or an absolute host path (e.g. "/abs/path/to/skill_dir").
+    skill_folder: "anthropic-bundle"
+
+    system_prompt: |
+      You are solving expert-level multiple-choice science questions.
+
+      You have access to a `./skills/anthropic-bundle/SKILL.md`
+      (relative path with ./, never use absolute /skills) file in your
+      working directory containing helpful techniques and references.
+      Read it before tackling hard sub-steps. Browse other files under
+      `./skills/anthropic-bundle/` if SKILL.md points to them.
+
+      At the end of your response, output only one of:
+      \boxed{A}, \boxed{B}, \boxed{C}, or \boxed{D}
+
+benchmark:
+  name: gpqa_diamond
+  config:
+    dataset: "fingertap/GPQA-Diamond"
+    split: "test"
+    seed: 42
+    # max_tasks: 100
+
+scorer:
+  name: exact_match
+  config: {}
+
+max_concurrent: 1
+num_samples: 1
+output_dir: "./results/opencode_gpqa_diamond_skill"
+metadata:
+  notes: "OpenCode x GPQA-Diamond + Skill (anthropic-bundle) smoke config"
