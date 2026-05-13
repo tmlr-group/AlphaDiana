@@ -61,6 +61,28 @@ def test_podman_cli_create_builds_argv() -> None:
     ]]
 
 
+def test_podman_cli_pull_and_build_argv() -> None:
+    runner = FakeRunner()
+    podman = PodmanCLI(runner=runner)
+
+    podman.pull("alpine:3.20")
+    podman.build(".", tag="ad-image:latest", file="Containerfile", extra_args=["--pull=false"])
+
+    assert runner.calls == [
+        ["podman", "pull", "alpine:3.20"],
+        [
+            "podman",
+            "build",
+            "-t",
+            "ad-image:latest",
+            "-f",
+            "Containerfile",
+            "--pull=false",
+            ".",
+        ],
+    ]
+
+
 def test_podman_cli_run_exec_cp_logs_port_stop_rm_argv() -> None:
     runner = FakeRunner(stdout="cid\n")
     podman = PodmanCLI(runner=runner)
