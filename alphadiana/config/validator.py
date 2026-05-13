@@ -10,7 +10,7 @@ from alphadiana.config.experiment_config import ExperimentConfig
 
 class ConfigValidator:
     SANDBOX_REQUIRED_BENCHMARKS: set[str] = {"terminal_bench", "osworld"}
-    OPENCODE_CONTROLLER_MODES: set[str] = {"host", "docker"}
+    OPENCODE_CONTROLLER_MODES: set[str] = {"host", "docker", "podman"}
     PODMAN_ROCK_SANDBOX_FIELDS: set[str] = {
         "admin_base_url",
         "proxy_base_url",
