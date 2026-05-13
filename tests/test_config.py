@@ -721,7 +721,11 @@ class TestConfigValidator:
         assert any("podman" in warning and "admin_base_url" in warning for warning in warnings)
         assert any("podman" in warning and "rock_limit_cpus" in warning for warning in warnings)
 
-    def test_opencode_podman_controller_mode_remains_phase2(self):
+    def test_opencode_podman_controller_mode_validates_without_docker_preflight(self, monkeypatch):
+        def fail_docker_preflight(*_args, **_kwargs):
+            raise AssertionError("Docker image preflight should not run for controller_mode=podman")
+
+        monkeypatch.setattr("subprocess.run", fail_docker_preflight)
         config = ExperimentConfig(
             agent_name="opencode",
             agent_version="v1.0",
@@ -732,9 +736,10 @@ class TestConfigValidator:
                 "api_key": "demo-key",
                 "model_name": "demo-model",
                 "controller_mode": "podman",
+                "controller_image": "localhost/opencode-controller:test",
             },
         )
 
         errors = ConfigValidator().validate(config)
 
-        assert any("controller_mode must be one of docker, host" in e for e in errors)
+        assert errors == []

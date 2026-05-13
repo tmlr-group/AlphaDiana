@@ -32,6 +32,7 @@ from alphadiana.agent.preservation import (
 )
 from alphadiana.agent.registry import AgentRegistry
 from alphadiana.benchmark.base import BenchmarkTask
+from alphadiana.container_runtime import PodmanCLI, PodmanError
 from alphadiana.utils.attachments import iter_binary_attachments, write_attachments
 from alphadiana.utils.math_answer import extract_answer_candidate, extract_boxed
 
@@ -57,7 +58,7 @@ def _resolve_skill_folder(raw: Any) -> str | None:
     return str(pkg_root / "skills" / text)
 
 
-_SUPPORTED_CONTROLLER_MODES = {"host", "docker"}
+_SUPPORTED_CONTROLLER_MODES = {"host", "docker", "podman"}
 
 _EXPLICIT_ANSWER_RE = re.compile(
     r"(?:\*{0,2})(?:the\s+)?(?:final\s+)?answer(?:\*{0,2})\s*(?:[:：]|is|=)\s*(.+)",
@@ -725,6 +726,8 @@ class OpenCodeAgent(Agent):
         self._logprob_capture = resolve_logprob_capture_config(config)
         self._config = dict(config)
         self._runtime_manager = None
+        self._podman_runtime = config.get("_podman_runtime") or PodmanCLI()
+        self._last_controller_metadata: dict[str, Any] = {}
 
         if not self._agent_name:
             if self._agent_md_path:
@@ -1014,6 +1017,84 @@ class OpenCodeAgent(Agent):
                     stderr = timed_out_stderr or stderr
             return raw_output, stderr, -1
 
+    def _run_in_podman(
+        self,
+        cmd: list[str],
+        workdir: str,
+        env: dict[str, str],
+    ) -> tuple[str, str, int]:
+        """Run opencode inside a Podman controller container."""
+        uid = os.getuid()
+        gid = os.getgid()
+        container_home = Path(workdir) / ".controller-home"
+        container_home.mkdir(parents=True, exist_ok=True)
+        container_name = f"alphadiana-opencode-{os.getpid()}-{time.time_ns()}"
+        self._last_controller_metadata = {
+            "container_engine": "podman",
+            "controller_mode": "podman",
+            "controller_image": self._controller_image,
+            "controller_container_id": "",
+            "container_id": "",
+        }
+        if self._skill_folder:
+            _skill_name = Path(self._skill_folder).name
+            _dst = f"{workdir}/skills/{_skill_name}"
+            os.makedirs(f"{workdir}/skills", exist_ok=True)
+            if not os.path.exists(_dst):
+                shutil.copytree(self._skill_folder, _dst)
+            logger.info(
+                "Copied skill folder %s -> %s (real files so opencode read tool indexes them)",
+                self._skill_folder, _dst,
+            )
+        container_id = ""
+        try:
+            run_result = self._podman_runtime.run(
+                self._controller_image,
+                name=container_name,
+                command=["sleep", "infinity"],
+                detach=True,
+                env={"HOME": str(container_home)},
+                workdir=workdir,
+                network=self._controller_network,
+                remove=False,
+                extra_args=[
+                    "--label", "alphadiana.component=opencode-controller",
+                    "--label", f"alphadiana.workdir={workdir}",
+                    f"--user={uid}:{gid}",
+                    "-v", f"{workdir}:{workdir}",
+                ],
+                timeout=min(max(float(self._timeout), 30.0), 120.0),
+            )
+            container_id = run_result.stdout.strip()
+            self._last_controller_metadata.update({
+                "controller_container_id": container_id,
+                "container_id": container_id,
+            })
+            exec_env = {"HOME": str(container_home)}
+            for key in ("OPENAI_API_KEY", "OPENAI_BASE_URL", "XDG_CONFIG_HOME"):
+                if key in env:
+                    exec_env[key] = env[key]
+            exec_result = self._podman_runtime.exec(
+                container_id,
+                ["node", "/usr/lib/node_modules/opencode-ai/bin/opencode", *cmd[1:]],
+                env=exec_env,
+                workdir=workdir,
+                timeout=self._timeout,
+                check=False,
+            )
+            return exec_result.stdout, exec_result.stderr, exec_result.returncode
+        except PodmanError as exc:
+            if exc.result.returncode == 124:
+                logger.warning("OpenCode Podman timed out after %ds", self._timeout)
+                return exc.result.stdout, exc.result.stderr or f"Timeout after {self._timeout}s", -1
+            raise
+        finally:
+            if container_id:
+                try:
+                    self._podman_runtime.stop(container_id, stop_timeout=5, timeout=30, check=False)
+                finally:
+                    self._podman_runtime.rm(container_id, force=True, volumes=True, timeout=30, check=False)
+
     def _force_remove_docker_container(self, container_name: str) -> None:
         """Stop an OpenCode controller container that outlived the docker client."""
         try:
@@ -1217,8 +1298,11 @@ class OpenCodeAgent(Agent):
             logger.info("Running opencode for task %s (timeout=%ds, mode=%s)",
                         task.task_id, self._timeout, self._controller_mode)
 
+            self._last_controller_metadata = {}
             if self._controller_mode == "docker":
                 raw_output, stderr, returncode = self._run_in_docker(cmd, workdir, env)
+            elif self._controller_mode == "podman":
+                raw_output, stderr, returncode = self._run_in_podman(cmd, workdir, env)
             else:
                 process: subprocess.Popen[str] | None = None
                 try:
@@ -1264,7 +1348,7 @@ class OpenCodeAgent(Agent):
         transport = (
             "opencode_cli_container"
             if self._controller_mode == "docker"
-            else "opencode_cli"
+            else ("opencode_cli_podman" if self._controller_mode == "podman" else "opencode_cli")
         )
 
         error_info = _extract_opencode_error(events)
@@ -1280,7 +1364,10 @@ class OpenCodeAgent(Agent):
             "num_attachments": len(attachment_paths),
             "controller_mode": self._controller_mode,
             "transport": transport,
+            "logprob_support": "enabled" if self._logprob_capture["enabled"] else "disabled",
         }
+        if self._controller_mode == "podman":
+            response_metadata.update(self._last_controller_metadata)
         if request_overrides:
             response_metadata["logprob_proxy_request_overrides"] = request_overrides
         if logprob_proxy_client_timeout is not None:
