@@ -96,7 +96,14 @@ def test_upload_download_use_podman_cp() -> None:
     session.upload("data/input.txt", b"hello")
     content = session.download("data/output.txt")
 
+    mkdir_calls = [
+        call
+        for call in runtime.calls
+        if call[0] == "exec" and call[2] == ["mkdir", "-p", "/workspace/data"]
+    ]
     cp_calls = [call for call in runtime.calls if call[0] == "cp"]
+    assert mkdir_calls
+    assert mkdir_calls[0][3]["check"] is True
     assert cp_calls[0][2] == "cid123:/workspace/data/input.txt"
     assert cp_calls[1][1] == "cid123:/workspace/data/output.txt"
     assert content == b"downloaded"
