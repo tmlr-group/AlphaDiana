@@ -99,6 +99,14 @@ class PodmanSession(SandboxSession):
 
     def upload(self, filename: str, content: bytes) -> None:
         rel = _safe_relpath(filename)
+        parent = posixpath.dirname(rel)
+        if parent:
+            self._runtime.exec(
+                self._container_id,
+                ["mkdir", "-p", self._container_path(parent)],
+                workdir=self._workspace,
+                check=True,
+            )
         with tempfile.NamedTemporaryFile() as tmp:
             tmp.write(content)
             tmp.flush()
