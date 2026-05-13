@@ -423,6 +423,7 @@ class Runner:
 
         # Import sandbox modules to trigger registration.
         import alphadiana.sandbox.local  # noqa: F401
+        import alphadiana.sandbox.podman  # noqa: F401
         import alphadiana.sandbox.rock  # noqa: F401
         import alphadiana.sandbox.swebench_container  # noqa: F401
 
