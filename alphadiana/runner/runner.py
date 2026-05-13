@@ -137,6 +137,8 @@ def _has_openclaw_direct_gateway(config: "ExperimentConfig") -> bool:
 
 def _is_gateway_autodeploy_agent(config: "ExperimentConfig") -> bool:
     if config.agent_name == "openclaw":
+        if str(config.agent_config.get("runtime_backend", "") or "").strip().lower() == "podman":
+            return False
         return bool(
             not _has_openclaw_direct_gateway(config)
             and
