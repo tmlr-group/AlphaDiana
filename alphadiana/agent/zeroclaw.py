@@ -38,6 +38,26 @@ from alphadiana.utils.math_answer import extract_answer_candidate
 
 logger = logging.getLogger(__name__)
 
+
+def _resolve_skill_folder(raw: Any) -> str | None:
+    """Resolve agent.config.skill_folder.
+
+    - Empty/None  -> None (skill upload disabled)
+    - Absolute path -> use as-is
+    - Path with "/" -> resolve relative to cwd
+    - Bare name like "advanced-maths" -> alphadiana/skills/<name>/
+    """
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    if os.path.isabs(text):
+        return text
+    if "/" in text or os.path.exists(text):
+        return str(Path(text).resolve())
+    pkg_root = Path(__file__).resolve().parent.parent  # alphadiana/
+    return str(pkg_root / "skills" / text)
+
+
 _DEFAULT_SYSTEM_PROMPT = (
     "You are an expert problem solver. Use the available tools when they help you "
     "verify steps or compute intermediate results. When you have reached your "
@@ -441,6 +461,7 @@ class ZeroClawAgent(Agent):
         configured_provider = str(config.get("provider", "")).strip().lower()
         self._provider = _resolve_zeroclaw_provider(configured_provider, self._provider_api_base)
         self._system_prompt = str(config.get("system_prompt", _DEFAULT_SYSTEM_PROMPT)).strip()
+        self._skill_folder = _resolve_skill_folder(config.get("skill_folder", ""))
         self._install_command = str(config.get("install_command", "")).strip()
         self._timeout_command = str(config.get("timeout_command", "timeout")).strip() or "timeout"
         raw_env = config.get("env", {})
@@ -1095,6 +1116,35 @@ class ZeroClawAgent(Agent):
             return ""
         return result.stdout.strip()
 
+    def _upload_skill_folder(self, sandbox, paths):
+        if not self._skill_folder:
+            return
+        skill_root = Path(self._skill_folder)
+        if not skill_root.is_dir():
+            raise RuntimeError(f"skill_folder not found: {skill_root}")
+        skill_name = skill_root.name
+        target_root = f"{paths['workspace_dir']}/skills/{skill_name}"
+        files_to_upload = []
+        for fp in sorted(skill_root.rglob("*")):
+            if fp.is_file():
+                rel = fp.relative_to(skill_root)
+                files_to_upload.append((fp, f"{target_root}/{rel.as_posix()}"))
+        if not files_to_upload:
+            logger.warning("skill_folder %s contained no files", skill_root)
+            return
+        parents = sorted({str(Path(t).parent) for _, t in files_to_upload})
+        mkdir_cmd = "mkdir -p " + " ".join(shlex.quote(p) for p in parents)
+        result = sandbox.execute(mkdir_cmd)
+        if result.exit_code != 0:
+            raise RuntimeError(f"mkdir for skills failed: {result.stderr.strip()}")
+        logger.info(
+            "Uploading %d skill files from %s to %s",
+            len(files_to_upload), skill_root, target_root,
+        )
+        for fp, target in files_to_upload:
+            sandbox.upload(target, fp.read_bytes())
+        logger.info("Skill upload complete: %d files (%s)", len(files_to_upload), skill_name)
+
     def _prepare_sandbox_workspace(
         self,
         sandbox: Any,
@@ -1118,6 +1168,7 @@ class ZeroClawAgent(Agent):
 
         sandbox.upload(paths["config_path"], self._build_config_toml().encode("utf-8"))
         sandbox.upload(paths["task_path"], str(task_context["prompt"]).encode("utf-8"))
+        self._upload_skill_folder(sandbox, paths)
         self._upload_sandbox_attachments(
             sandbox,
             paths["attachments_dir"],

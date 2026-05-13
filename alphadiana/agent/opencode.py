@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import signal
 import sqlite3
 import subprocess
@@ -35,6 +36,26 @@ from alphadiana.utils.attachments import iter_binary_attachments, write_attachme
 from alphadiana.utils.math_answer import extract_answer_candidate, extract_boxed
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_skill_folder(raw: Any) -> str | None:
+    """Resolve agent.config.skill_folder.
+
+    - Empty/None  -> None (skill mounting disabled)
+    - Absolute path -> use as-is
+    - Path with "/" -> resolve relative to cwd
+    - Bare name like "advanced-maths" -> alphadiana/skills/<name>/
+    """
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    if os.path.isabs(text):
+        return text
+    if "/" in text or os.path.exists(text):
+        return str(Path(text).resolve())
+    pkg_root = Path(__file__).resolve().parent.parent  # alphadiana/
+    return str(pkg_root / "skills" / text)
+
 
 _SUPPORTED_CONTROLLER_MODES = {"host", "docker"}
 
@@ -698,6 +719,7 @@ class OpenCodeAgent(Agent):
         self._print_logs = bool(config.get("print_logs", False))
         self._log_level = str(config.get("log_level", "")).strip()
         self._system_prompt = config.get("system_prompt", _DEFAULT_SYSTEM_PROMPT)
+        self._skill_folder = _resolve_skill_folder(config.get("skill_folder", ""))
         self._opencode_bin = config.get("opencode_bin", "opencode")
         self._streaming = config.get("streaming") if "streaming" in config else None
         self._logprob_capture = resolve_logprob_capture_config(config)
@@ -937,6 +959,18 @@ class OpenCodeAgent(Agent):
             f"--network={self._controller_network}",
             f"--user={uid}:{gid}",
             "-v", f"{workdir}:{workdir}",
+        ]
+        if self._skill_folder:
+            _skill_name = Path(self._skill_folder).name
+            _dst = f"{workdir}/skills/{_skill_name}"
+            os.makedirs(f"{workdir}/skills", exist_ok=True)
+            if not os.path.exists(_dst):
+                shutil.copytree(self._skill_folder, _dst)
+            logger.info(
+                "Copied skill folder %s -> %s (real files so opencode read tool indexes them)",
+                self._skill_folder, _dst,
+            )
+        docker_cmd += [
             "-w", workdir,
             "-e", f"HOME={container_home}",
         ]

@@ -1,0 +1,54 @@
+run_id: "zeroclaw_${OPENAI_MODEL_NAME}_aime_2026_skill"
+
+agent:
+  name: zeroclaw
+  version: "0.6.9"
+  config:
+    model: "${OPENAI_MODEL_NAME}"
+    api_base: "${OPENAI_BASE_URL}"
+    api_key: "${OPENAI_API_KEY}"
+    rock_image: "zeroclaw-reasoning:0.6.9"
+    rock_memory: "4g"
+    rock_cpus: 1
+    rock_startup_timeout: 600
+    admin_base_url: "${ROCK_BASE_URL}"
+    proxy_base_url: "${ROCK_PROXY_URL}"
+    request_timeout: 1200
+    max_tool_iterations: 100
+    max_actions_per_hour: 200
+
+    # Skill bundle name. Bare name resolves to alphadiana/skills/<name>/.
+    # Also accepted: a relative path (e.g. "alphadiana/skills/advanced-maths")
+    # or an absolute host path (e.g. "/abs/path/to/skill_dir").
+    skill_folder: "advanced-maths"
+
+    system_prompt: |
+      You are an expert problem solver.
+
+      You have access to a skill bundle at `~/.zeroclaw/workspace/skills/advanced-maths/SKILL.md`.
+      BEFORE you reason about the question, you MUST run the shell command
+      `cat ~/.zeroclaw/workspace/skills/advanced-maths/SKILL.md` and FOLLOW its protocol.
+      Browse subfiles under that directory if SKILL.md points to them.
+
+      When you have reached your final answer, you MUST present it in the following format:
+
+      $$\boxed{your answer here}$$
+
+benchmark:
+  name: aime
+  config:
+    dataset: "MathArena/aime_2026"
+    split: "train"
+    max_tasks: 1
+
+sandbox: null
+
+scorer:
+  name: math_verify
+  config:
+    tolerance: 1e-6
+
+max_concurrent: 1
+output_dir: "./results"
+metadata:
+  notes: "ZeroClaw + Skill (advanced-maths bundle) smoke test on AIME 2026"
