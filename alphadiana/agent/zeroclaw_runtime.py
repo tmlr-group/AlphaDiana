@@ -17,6 +17,14 @@ from typing import Any
 
 import logging as _logging
 
+from alphadiana.container_runtime import (
+    HTTPHealthcheck,
+    PodmanAgentRuntime,
+    PodmanAgentRuntimeResult,
+    PodmanAgentSpec,
+    RuntimeFile,
+)
+
 _logger = _logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -91,13 +99,15 @@ def _resolve_zeroclaw_provider(provider: str, api_base: str) -> str:
 class ZeroClawRuntimeManager:
     """Bootstraps a ZeroClaw bridge inside a live ROCK sandbox."""
 
+    requires_sandbox = True
+
     def __init__(self, config: dict) -> None:
         self._gateway_token = config.get("gateway_token", "ZEROCLAW")
         self._gateway_model = config.get("model", "zeroclaw")
         self._bridge_port = int(config.get("bridge_port", 8080))
         self._bridge_host = str(config.get("bridge_host", "0.0.0.0") or "0.0.0.0").strip()
-        self._model_api_base = str(config.get("api_base", "")).strip()
-        self._model_api_key = str(config.get("api_key", "")).strip()
+        self._model_api_base = str(config.get("api_base", config.get("provider_api_base", ""))).strip()
+        self._model_api_key = str(config.get("api_key", config.get("provider_api_key", ""))).strip()
         self._model_name = str(config.get("model", "")).strip() or self._gateway_model
         configured_provider = str(config.get("provider", "")).strip().lower()
         self._provider = _resolve_zeroclaw_provider(configured_provider, self._model_api_base)
@@ -139,6 +149,7 @@ class ZeroClawRuntimeManager:
         self._bridge_template_path = self._resolve_bridge_template_path(
             config.get("bridge_template_path", "zeroclaw_deploy/zeroclaw_bridge.py")
         )
+        self._logprob_capture: dict[str, Any] = dict(config.get("_logprob_capture", {}) or {})
         self._started_sandboxes: set[str] = set()
         self._managed_sandboxes: dict[str, Any] = {}
 
@@ -421,3 +432,205 @@ class ZeroClawRuntimeManager:
                 _logger.debug("Failed to stop ZeroClaw bridge during teardown", exc_info=True)
         self._managed_sandboxes.clear()
         self._started_sandboxes.clear()
+
+
+class ZeroClawPodmanRuntimeManager(ZeroClawRuntimeManager):
+    """Bootstraps the ZeroClaw bridge inside a Podman-managed container."""
+
+    requires_sandbox = False
+
+    def __init__(self, config: dict) -> None:
+        super().__init__(config)
+        self._podman_runtime = config.get("_podman_agent_runtime") or PodmanAgentRuntime()
+        self._podman_image = str(
+            config.get("podman_image", config.get("image", config.get("rock_image", "zeroclaw-reasoning:0.6.9")))
+            or ""
+        ).strip()
+        self._podman_workdir = str(config.get("podman_workdir", "/workspace") or "/workspace").strip()
+        self._podman_result: PodmanAgentRuntimeResult | None = None
+
+    def ensure_ready(self, sandbox: Any = None) -> dict:
+        if self._podman_result is not None:
+            return self.runtime_info(sandbox)
+        spec = self._build_podman_spec()
+        _progress(f"starting ZeroClaw Podman bridge image={spec.image}")
+        self._podman_result = self._podman_runtime.start(spec)
+        self._warmup_podman_gateway(self._podman_result.api_base)
+        return self.runtime_info(sandbox)
+
+    def runtime_info(self, sandbox: Any = None) -> dict:
+        if self._podman_result is None:
+            return {
+                "sandbox_id": "",
+                "gateway_url": "",
+                "api_base": "",
+                "gateway_token": self._gateway_token,
+                "metadata": {
+                    "container_engine": "podman",
+                    "adapter_name": "zeroclaw-podman",
+                    "logprob_support": self._logprob_support_status(),
+                },
+            }
+        api_base = self._podman_result.api_base
+        metadata = dict(self._podman_result.metadata)
+        metadata.update({
+            "container_engine": "podman",
+            "adapter_name": "zeroclaw-podman",
+            "logprob_support": self._logprob_support_status(),
+        })
+        return {
+            "sandbox_id": "",
+            "gateway_url": f"{api_base.rstrip('/')}/chat/completions",
+            "api_base": api_base,
+            "gateway_token": self._gateway_token,
+            "metadata": metadata,
+            "container_engine": "podman",
+            "adapter_name": "zeroclaw-podman",
+            "image": metadata.get("image", ""),
+            "container_id": metadata.get("container_id", ""),
+        }
+
+    def collect_artifacts(self, sandbox: Any = None) -> dict:
+        if self._podman_result is None:
+            return {
+                "artifact_manifest": {},
+                "gateway_log_excerpt": "",
+                "workspace_snapshot_paths": [],
+                "workspace_file_contents": {},
+                "sandbox_metadata": {},
+            }
+        try:
+            result = self._podman_runtime.collect_artifacts()
+            self._podman_result = result
+        except Exception:
+            result = self._podman_result
+        workspace_file_contents: dict[str, str] = {}
+        snapshot_paths: list[str] = []
+        bridge_log = result.artifacts.get(self._bridge_log_path, "") or result.logs
+        if bridge_log:
+            workspace_file_contents["zeroclaw_bridge.log"] = bridge_log
+        last_request_dir = f"{self._artifact_root.rstrip('/')}/last_request"
+        for remote_path, alias in self._last_request_artifact_paths(last_request_dir):
+            text = result.artifacts.get(remote_path, "")
+            if not text:
+                continue
+            workspace_file_contents[alias] = text
+            snapshot_paths.append(remote_path)
+        return {
+            "artifact_manifest": {
+                "files": {
+                    "bridge_log_source": self._bridge_log_path,
+                    "artifact_root": self._artifact_root,
+                    "bridge_log": "zeroclaw_bridge.log" if bridge_log else "",
+                },
+                "workspace_snapshot_paths": snapshot_paths,
+                "runtime_metadata": dict(result.metadata),
+            },
+            "gateway_log_excerpt": bridge_log,
+            "workspace_snapshot_paths": snapshot_paths,
+            "workspace_file_contents": workspace_file_contents,
+            "sandbox_metadata": dict(result.metadata),
+        }
+
+    def teardown(self) -> None:
+        try:
+            self._podman_runtime.cleanup(check=False)
+        finally:
+            self._podman_result = None
+            super().teardown()
+
+    def _build_podman_spec(self) -> PodmanAgentSpec:
+        if not self._podman_image:
+            raise RuntimeError("ZeroClaw Podman runtime requires podman_image or image")
+        if not self._bridge_template_path.exists():
+            raise FileNotFoundError(f"ZeroClaw bridge template not found: {self._bridge_template_path}")
+        env = self._runtime_env()
+        last_request_dir = f"{self._artifact_root.rstrip('/')}/last_request"
+        artifact_paths = [self._bridge_log_path]
+        artifact_paths.extend(path for path, _ in self._last_request_artifact_paths(last_request_dir))
+        return PodmanAgentSpec(
+            adapter_name="zeroclaw-podman",
+            image=self._podman_image,
+            workdir=self._podman_workdir,
+            env=env,
+            ports={self._bridge_port: None},
+            exposed_port=self._bridge_port,
+            startup_timeout=float(self._gateway_startup_timeout),
+            request_timeout=float(self._request_timeout),
+            cleanup_timeout=30.0,
+            install_commands=("command -v zeroclaw >/dev/null 2>&1 && zeroclaw --version",),
+            run_command=f"python {shlex.quote(self._remote_bridge_path)}",
+            process_log_path=self._bridge_log_path,
+            files=(RuntimeFile(self._remote_bridge_path, self._bridge_template_path.read_bytes()),),
+            artifact_paths=tuple(artifact_paths),
+            api_base_suffix="/v1",
+            healthcheck=HTTPHealthcheck(
+                path="/models",
+                token=self._gateway_token,
+                expected_statuses=(200, 404, 405),
+                interval_sec=2.0,
+                request_timeout_sec=5.0,
+            ),
+            metadata={
+                "adapter_name": "zeroclaw-podman",
+                "gateway_token": self._gateway_token,
+                "logprob_support": self._logprob_support_status(),
+                "artifact_root": self._artifact_root,
+            },
+        )
+
+    def _warmup_podman_gateway(self, api_base: str) -> None:
+        import httpx
+
+        url = f"{api_base.rstrip('/')}/chat/completions"
+        headers = {
+            "Authorization": f"bearer {self._gateway_token}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": self._gateway_model,
+            "messages": [
+                {"role": "system", "content": "Reply briefly."},
+                {"role": "user", "content": "Say READY."},
+            ],
+            "temperature": 0.0,
+            "max_tokens": 32,
+            "stream": False,
+            "disable_tools": True,
+        }
+        if self._gateway_warmup_initial_delay > 0:
+            time.sleep(self._gateway_warmup_initial_delay)
+        deadline = time.monotonic() + self._gateway_warmup_timeout
+        last_error: Exception | None = None
+        while time.monotonic() < deadline:
+            try:
+                resp = httpx.post(url, headers=headers, json=payload, timeout=120, trust_env=False)
+                body = resp.json()
+                choices = body.get("choices", [])
+                if resp.status_code == 200 and choices:
+                    message = choices[0].get("message", {})
+                    if isinstance(message, dict) and str(message.get("content", "")).strip():
+                        return
+                last_error = RuntimeError(f"warmup status={resp.status_code} body={body!r}")
+            except Exception as exc:
+                last_error = exc
+            time.sleep(2)
+        if last_error is not None:
+            raise RuntimeError(f"ZeroClaw Podman bridge warmup did not succeed: {last_error}") from last_error
+        raise RuntimeError("ZeroClaw Podman bridge warmup did not succeed before timeout")
+
+    @staticmethod
+    def _last_request_artifact_paths(last_request_dir: str) -> list[tuple[str, str]]:
+        return [
+            (f"{last_request_dir}/task.txt", "task.txt"),
+            (f"{last_request_dir}/zeroclaw_output.txt", "zeroclaw_output.txt"),
+            (f"{last_request_dir}/zeroclaw_stderr.log", "zeroclaw_stderr.log"),
+            (f"{last_request_dir}/runtime_trace.jsonl", "runtime_trace.jsonl"),
+            (f"{last_request_dir}/attachment_manifest.json", "attachment_manifest.json"),
+            (f"{last_request_dir}/status.json", "status.json"),
+        ]
+
+    def _logprob_support_status(self) -> str:
+        if self._logprob_capture.get("enabled"):
+            return "unavailable"
+        return "disabled"

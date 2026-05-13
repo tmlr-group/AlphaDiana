@@ -152,6 +152,8 @@ def _needs_auto_rock_sandbox(config: "ExperimentConfig") -> bool:
     if _is_gateway_autodeploy_agent(config):
         return True
     if config.agent_name == "zeroclaw":
+        if str(config.agent_config.get("runtime_backend", "") or "").strip().lower() == "podman":
+            return False
         return bool(config.agent_config.get("rock_image"))
     return False
 
@@ -162,6 +164,10 @@ def _make_gateway_runtime_manager(config: "ExperimentConfig"):
 
         return OpenClawRuntimeManager(config.agent_config)
     if config.agent_name == "zeroclaw":
+        if str(config.agent_config.get("runtime_backend", "") or "").strip().lower() == "podman":
+            from alphadiana.agent.zeroclaw_runtime import ZeroClawPodmanRuntimeManager
+
+            return ZeroClawPodmanRuntimeManager(config.agent_config)
         from alphadiana.agent.zeroclaw_runtime import ZeroClawRuntimeManager
 
         return ZeroClawRuntimeManager(config.agent_config)

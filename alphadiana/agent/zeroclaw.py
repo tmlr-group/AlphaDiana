@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import base64
 import logging
 import mimetypes
 import os
@@ -366,7 +367,14 @@ class ZeroClawAgent(Agent):
     name = "zeroclaw"
 
     def setup(self, config: dict) -> None:
-        unsupported = [key for key in _UNSUPPORTED_SINGLE_PATH_KEYS if key in config]
+        self._runtime_backend = str(config.get("runtime_backend", "") or "").strip().lower()
+        podman_runtime = self._runtime_backend == "podman"
+        podman_allowed_keys = {"disable_tools", "gateway_token"} if podman_runtime else set()
+        unsupported = [
+            key
+            for key in _UNSUPPORTED_SINGLE_PATH_KEYS
+            if key in config and key not in podman_allowed_keys
+        ]
         if unsupported:
             unsupported_csv = ", ".join(sorted(unsupported))
             raise ValueError(
@@ -439,6 +447,7 @@ class ZeroClawAgent(Agent):
         self._max_tool_iterations = int(config.get("max_tool_iterations", 100))
         self._max_actions_per_hour = int(config.get("max_actions_per_hour", 200))
         self._workspace_only = bool(config.get("workspace_only", False))
+        self._disable_tools = bool(config.get("disable_tools", False))
         configured_allowed_commands = config.get("allowed_commands")
         configured_extra_allowed_commands = config.get("extra_allowed_commands")
         self._allowed_commands = self._resolve_allowed_commands(
@@ -470,6 +479,14 @@ class ZeroClawAgent(Agent):
             for key, value in raw_env.items()
             if value is not None
         } if isinstance(raw_env, dict) else {}
+        self._runtime_manager = None
+        self._gateway_token = str(config.get("gateway_token", "ZEROCLAW") or "ZEROCLAW")
+        if podman_runtime:
+            from alphadiana.agent.zeroclaw_runtime import ZeroClawPodmanRuntimeManager
+
+            runtime_config = dict(config)
+            runtime_config["_logprob_capture"] = self._logprob_capture
+            self._runtime_manager = ZeroClawPodmanRuntimeManager(runtime_config)
 
     def _logprob_request_overrides(self) -> dict[str, Any]:
         overrides: dict[str, Any] = dict(self._provider_body_overrides)
@@ -1557,6 +1574,10 @@ class ZeroClawAgent(Agent):
         if not self._model:
             raise RuntimeError("ZeroClawAgent requires agent.config.model or OPENAI_MODEL_NAME.")
         self._ensure_provider_credentials("native sandbox execution")
+        if self._runtime_backend == "podman":
+            if self._runtime_manager is None or not self._runtime_manager.is_configured:
+                raise RuntimeError("ZeroClaw Podman runtime is not configured.")
+            return self._run_via_podman_runtime(task)
         if sandbox is None:
             raise RuntimeError(
                 "ZeroClawAgent now requires a live sandbox/container session. "
@@ -1565,7 +1586,106 @@ class ZeroClawAgent(Agent):
         return self._run_in_sandbox(task, sandbox)
 
     def teardown(self) -> None:
-        pass
+        if self._runtime_manager is not None:
+            try:
+                self._runtime_manager.teardown()
+            except Exception as exc:
+                logger.warning("ZeroClaw runtime manager teardown failed: %s", exc)
+
+    def _run_via_podman_runtime(self, task: BenchmarkTask) -> AgentResponse:
+        try:
+            import httpx
+        except ImportError as exc:
+            raise RuntimeError("The 'httpx' package is required for ZeroClaw Podman runtime.") from exc
+
+        start = time.time()
+        attachment_items = self._build_attachment_items(task)
+        task_context = self._build_task_context(task, attachment_items)
+        prompt = str(task_context["prompt"])
+        runtime_info = self._runtime_manager.ensure_ready(None)
+        api_base = str(runtime_info.get("api_base", "") or "").rstrip("/")
+        headers = {
+            "Authorization": f"bearer {runtime_info.get('gateway_token', self._gateway_token)}",
+            "Content-Type": "application/json",
+        }
+        payload: dict[str, Any] = {
+            "model": self._model,
+            "messages": list(task_context["request_messages"]),
+            "temperature": self._temperature,
+            "stream": False,
+        }
+        if self._top_p is not None:
+            payload["top_p"] = self._top_p
+        if self._provider_max_tokens is not None:
+            payload["max_tokens"] = self._provider_max_tokens
+        if self._disable_tools:
+            payload["disable_tools"] = True
+        if attachment_items:
+            payload["attachments"] = [
+                {
+                    "key": item["key"],
+                    "filename": item["filename"],
+                    "path": item["rel_path"],
+                    "mime": item["mime"],
+                    "data_base64": base64.b64encode(item["data"]).decode("ascii"),
+                }
+                for item in attachment_items
+            ]
+        response = httpx.post(
+            f"{api_base}/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=self._request_timeout,
+            trust_env=False,
+        )
+        try:
+            response_json = response.json()
+        except Exception:
+            response_json = {"error": {"message": response.text, "type": "non_json_response"}}
+        if response.status_code >= 400:
+            raise RuntimeError(f"ZeroClaw Podman bridge request failed: {response.status_code} {response_json!r}")
+        raw_output = ""
+        choices = response_json.get("choices", [])
+        if isinstance(choices, list) and choices:
+            message = choices[0].get("message", {})
+            if isinstance(message, dict):
+                raw_output = str(message.get("content", "") or "")
+
+        artifact_data = self._runtime_manager.collect_artifacts(None)
+        workspace_file_contents = dict(artifact_data.get("workspace_file_contents", {}) or {})
+        raw_output = workspace_file_contents.get("zeroclaw_output.txt", raw_output)
+        raw_stderr = workspace_file_contents.get("zeroclaw_stderr.log", "")
+        runtime_trace = workspace_file_contents.get("runtime_trace.jsonl", "")
+        runtime_metadata = runtime_info.get("metadata", {})
+        metadata = {
+            "model": self._model,
+            "provider_api_base": self._provider_api_base,
+            "transport": "zeroclaw_podman_bridge",
+        }
+        if isinstance(runtime_metadata, dict):
+            metadata.update(runtime_metadata)
+        if metadata.get("logprob_support") == "unavailable":
+            metadata["logprob_source"] = ""
+            metadata["logprob_unavailable_reason"] = "podman_bridge_proxy_not_configured"
+        response_obj = self._build_cli_response(
+            prompt=prompt,
+            raw_output=raw_output,
+            raw_stderr=raw_stderr,
+            runtime_trace=runtime_trace,
+            attachment_items=attachment_items,
+            metadata=metadata,
+            wall_time_sec=time.time() - start,
+            system_prompt=self._system_prompt,
+            artifact_manifest=artifact_data.get("artifact_manifest", {}),
+            request_messages=list(task_context["request_messages"]),
+        )
+        response_obj.gateway_url = str(runtime_info.get("gateway_url", "") or "")
+        response_obj.gateway_log_excerpt = artifact_data.get("gateway_log_excerpt", "")
+        response_obj.workspace_snapshot_paths = artifact_data.get("workspace_snapshot_paths", [])
+        response_obj.workspace_file_contents = workspace_file_contents
+        response_obj.sandbox_metadata = artifact_data.get("sandbox_metadata", {})
+        response_obj.response_json = response_json
+        return response_obj
 
 
 AgentRegistry.register("zeroclaw", ZeroClawAgent)
