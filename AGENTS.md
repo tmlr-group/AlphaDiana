@@ -10,6 +10,7 @@ Do not read the whole repo by default; expand context only as needed.
 - SWE-bench Pro -> `docs/benchmarks/swebench-pro.md`
 - Full runs -> `context/current_eval_status.md`, `configs/full_runs/README.md`, `context/phase12-harness-logprob-smokes/full_run_context/README.md`, then the target config
 - Results / dashboard -> `docs/dashboard.md`
+- Podman runtime migration -> `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, `.planning/ROADMAP.md`, `.planning/research/SUMMARY.md`, then `docs/plans/alphadiana-podman-merged-plan.md`
 - New milestone / reviewer evidence -> `context/README.md` + the matching `context/` folder
 - Architecture / conventions -> `.planning/codebase/*.md`
 
