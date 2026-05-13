@@ -99,6 +99,28 @@ class PodmanCLI:
     def version(self, *, timeout: float | None = None) -> PodmanResult:
         return self._run(["--version"], timeout=timeout)
 
+    def pull(self, image: str, *, timeout: float | None = None) -> PodmanResult:
+        return self._run(["pull", image], timeout=timeout)
+
+    def build(
+        self,
+        context: str,
+        *,
+        tag: str | None = None,
+        file: str | None = None,
+        extra_args: Sequence[str] | None = None,
+        timeout: float | None = None,
+    ) -> PodmanResult:
+        args = ["build"]
+        if tag:
+            args.extend(["-t", tag])
+        if file:
+            args.extend(["-f", file])
+        if extra_args:
+            args.extend(str(part) for part in extra_args)
+        args.append(context)
+        return self._run(args, timeout=timeout)
+
     def create(
         self,
         image: str,
