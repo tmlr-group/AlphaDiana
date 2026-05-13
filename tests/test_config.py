@@ -670,3 +670,71 @@ class TestConfigValidator:
         errors = ConfigValidator().validate(config)
 
         assert any("multimodal-capable" in e for e in errors)
+
+    def test_podman_sandbox_opt_in_validates_without_errors(self):
+        config = ExperimentConfig(
+            agent_name="direct_llm",
+            agent_version="v1.0",
+            benchmark_name="aime",
+            scorer_name="numeric",
+            sandbox_name="podman",
+            sandbox_config={
+                "image": "python:3.11",
+                "command": ["sleep", "infinity"],
+                "workdir": "/workspace",
+            },
+            agent_config={
+                "model": "demo-model",
+                "api_base": "http://localhost:8000/v1",
+                "api_key": "demo-key",
+            },
+        )
+
+        validator = ConfigValidator()
+
+        assert validator.validate(config) == []
+        assert validator.warnings(config) == []
+
+    def test_podman_sandbox_warns_on_rock_specific_fields(self):
+        config = ExperimentConfig(
+            agent_name="direct_llm",
+            agent_version="v1.0",
+            benchmark_name="aime",
+            scorer_name="numeric",
+            sandbox_name="podman",
+            sandbox_config={
+                "image": "python:3.11",
+                "admin_base_url": "http://localhost:9000",
+                "rock_limit_cpus": 1,
+            },
+            agent_config={
+                "model": "demo-model",
+                "api_base": "http://localhost:8000/v1",
+                "api_key": "demo-key",
+            },
+        )
+
+        validator = ConfigValidator()
+        warnings = validator.warnings(config)
+
+        assert validator.validate(config) == []
+        assert any("podman" in warning and "admin_base_url" in warning for warning in warnings)
+        assert any("podman" in warning and "rock_limit_cpus" in warning for warning in warnings)
+
+    def test_opencode_podman_controller_mode_remains_phase2(self):
+        config = ExperimentConfig(
+            agent_name="opencode",
+            agent_version="v1.0",
+            benchmark_name="hle",
+            scorer_name="exact_match",
+            agent_config={
+                "api_base": "http://localhost:8000/v1",
+                "api_key": "demo-key",
+                "model_name": "demo-model",
+                "controller_mode": "podman",
+            },
+        )
+
+        errors = ConfigValidator().validate(config)
+
+        assert any("controller_mode must be one of docker, host" in e for e in errors)
