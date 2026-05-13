@@ -113,6 +113,16 @@ sandbox:
     endpoint: string
     api_key: string
     workdir: string
+    # Podman sandbox backend (`sandbox.name: podman`)
+    command: [string]                # Container command, default: ["sleep", "infinity"]
+    env: object                      # Environment passed to the Podman container
+    ports: object                    # Container port -> host port mapping, e.g. {8080: 18080}
+    network: string                  # Optional Podman network mode/name
+    remove: boolean                  # Optional cleanup hint; AlphaDiana still owns close() cleanup
+    name_prefix: string              # Container name prefix, default: "alphadiana-podman"
+    startup_timeout: integer         # Podman create/run timeout in seconds
+    stop_timeout: integer            # Podman stop timeout in seconds
+    podman_socket: string            # Optional Unix Podman socket path for Docker API compatibility
 
 # scorer: (required) Scoring method configuration.
 scorer:

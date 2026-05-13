@@ -82,6 +82,7 @@ def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
         for error in errors:
             click.echo(f"  - {error}", err=True)
         sys.exit(1)
+    _emit_config_warnings(validator, config, err=True)
     try:
         _preflight_terminal_bench2(config)
     except Exception as exc:
@@ -176,6 +177,7 @@ def validate(config_yaml: str, override: tuple[str, ...]):
         for error in errors:
             click.echo(f"  - {error}")
         sys.exit(1)
+    _emit_config_warnings(validator, config)
     try:
         _preflight_terminal_bench2(config)
     except Exception as exc:
@@ -242,13 +244,21 @@ def batch(config_yamls: tuple[str, ...], parallel: bool, override: tuple[str, ..
         for p in config_yamls
     ]
     validation_errors: list[str] = []
+    validation_warnings: list[str] = []
     for config in configs:
         errors = validator.validate(config)
         validation_errors.extend(f"{config.run_id}: {error}" for error in errors)
+        validation_warnings.extend(
+            f"{config.run_id}: {warning}" for warning in validator.warnings(config)
+        )
     if validation_errors:
         raise click.ClickException(
             "Config validation failed:\n" + "\n".join(f"  - {error}" for error in validation_errors)
         )
+    if validation_warnings:
+        click.echo("Config validation warnings:")
+        for warning in validation_warnings:
+            click.echo(f"  - {warning}")
 
     runner = BatchRunner(configs, parallel=parallel)
     summaries = runner.run()
@@ -258,6 +268,15 @@ def batch(config_yamls: tuple[str, ...], parallel: bool, override: tuple[str, ..
             click.echo("  [FAILED]")
         else:
             click.echo(f"  {summary.run_id}: accuracy={summary.accuracy:.4f}")
+
+
+def _emit_config_warnings(validator, config, *, err: bool = False) -> None:
+    warnings = validator.warnings(config)
+    if not warnings:
+        return
+    click.echo("Config validation warnings:", err=err)
+    for warning in warnings:
+        click.echo(f"  - {warning}", err=err)
 
 
 @main.command()

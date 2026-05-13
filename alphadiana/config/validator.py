@@ -11,6 +11,13 @@ from alphadiana.config.experiment_config import ExperimentConfig
 class ConfigValidator:
     SANDBOX_REQUIRED_BENCHMARKS: set[str] = {"terminal_bench", "osworld"}
     OPENCODE_CONTROLLER_MODES: set[str] = {"host", "docker"}
+    PODMAN_ROCK_SANDBOX_FIELDS: set[str] = {
+        "admin_base_url",
+        "proxy_base_url",
+        "use_kata_runtime",
+        "limit_cpus",
+        "auto_clear_seconds",
+    }
 
     OPENCLAW_RUNTIME_AGENTS = {"openclaw"}
     API_AGENTS = OPENCLAW_RUNTIME_AGENTS | {
@@ -63,7 +70,7 @@ class ConfigValidator:
         if config.benchmark_name in self.SANDBOX_REQUIRED_BENCHMARKS and not config.sandbox_name:
             errors.append(
                 f"benchmark '{config.benchmark_name}' requires a sandbox "
-                "(set sandbox_name to 'rock' or 'local')"
+                "(set sandbox_name to 'rock', 'local', or 'podman')"
             )
 
         if config.agent_name in self.API_AGENTS:
@@ -221,6 +228,19 @@ class ConfigValidator:
             errors.append("task_retries must be >= 0")
 
         return errors
+
+    def warnings(self, config: ExperimentConfig) -> list[str]:
+        """Return non-fatal configuration warnings."""
+        warnings: list[str] = []
+        if config.sandbox_name == "podman":
+            for key in sorted(config.sandbox_config):
+                key_text = str(key)
+                if key_text in self.PODMAN_ROCK_SANDBOX_FIELDS or key_text.startswith("rock_"):
+                    warnings.append(
+                        "sandbox.name=podman ignores ROCK-specific sandbox.config."
+                        f"{key_text}; remove it or use sandbox.name=rock"
+                    )
+        return warnings
 
     def load_and_validate(self, yaml_path: str) -> ExperimentConfig:
         config = ExperimentConfig.from_yaml(yaml_path)
