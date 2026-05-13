@@ -110,6 +110,42 @@ def test_podman_agent_runtime_starts_collects_and_cleans_up() -> None:
     assert [name for name, _ in fake.calls][-2:] == ["stop", "rm"]
 
 
+def test_podman_agent_runtime_supports_controller_container_without_published_port() -> None:
+    fake = FakePodmanRuntime()
+    runtime = PodmanAgentRuntime(runtime=fake)  # type: ignore[arg-type]
+    spec = PodmanAgentSpec(
+        adapter_name="opencode-podman",
+        image="localhost/opencode:test",
+        run_command="",
+        exposed_port=None,
+        workdir="/workspace",
+        metadata={"controller_mode": "podman"},
+    )
+
+    result = runtime.start(spec)
+    exec_result = runtime.exec(["node", "opencode"], check=False)
+
+    assert result.api_base == ""
+    assert result.process_id == ""
+    assert result.metadata["published_api_base"] == ""
+    assert result.metadata["controller_mode"] == "podman"
+    assert exec_result.returncode == 0
+    call_names = [name for name, _ in fake.calls]
+    assert "port" not in call_names
+    assert any(
+        name == "run" and payload["ports"] == {}
+        for name, payload in fake.calls
+    )
+    assert any(
+        name == "exec" and payload["command"] == ["node", "opencode"]
+        for name, payload in fake.calls
+    )
+
+    runtime.cleanup()
+
+    assert [name for name, _ in fake.calls][-2:] == ["stop", "rm"]
+
+
 def test_podman_agent_runtime_healthcheck_failure_payload_and_cleanup() -> None:
     fake = FakePodmanRuntime()
     runtime = PodmanAgentRuntime(runtime=fake)  # type: ignore[arg-type]

@@ -63,7 +63,7 @@ class PodmanAgentSpec:
     adapter_name: str
     image: str
     run_command: str
-    exposed_port: int
+    exposed_port: int | None
     workdir: str = "/workspace"
     env: Mapping[str, str] = field(default_factory=dict)
     ports: Mapping[int | str, int | str | None] | None = None
@@ -84,6 +84,8 @@ class PodmanAgentSpec:
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def port_mapping(self) -> Mapping[int | str, int | str | None]:
+        if self.exposed_port is None and self.ports is None:
+            return {}
         if self.ports is not None:
             return self.ports
         return {self.exposed_port: None}
@@ -231,6 +233,30 @@ class PodmanAgentRuntime:
             self._api_base = ""
             self._process_id = ""
 
+    def exec(
+        self,
+        command: Sequence[str],
+        *,
+        env: Mapping[str, str] | None = None,
+        workdir: str | None = None,
+        timeout: float | None = None,
+        check: bool = True,
+    ) -> Any:
+        """Run a command inside the owned runtime container."""
+
+        spec = self._require_spec()
+        container_id = self._container_id
+        if not container_id:
+            raise RuntimeError("PodmanAgentRuntime has no active container")
+        return self._runtime.exec(
+            container_id,
+            command,
+            env=env,
+            workdir=workdir or spec.workdir,
+            timeout=timeout if timeout is not None else spec.request_timeout,
+            check=check,
+        )
+
     def _copy_files(self, spec: PodmanAgentSpec, container_id: str) -> None:
         for item in spec.files:
             parent = posixpath.dirname(item.container_path)
@@ -273,6 +299,8 @@ class PodmanAgentRuntime:
             )
 
     def _launch_process(self, spec: PodmanAgentSpec, container_id: str) -> str:
+        if not str(spec.run_command or "").strip():
+            return ""
         command = (
             f"nohup /bin/sh -lc {shlex.quote(spec.run_command)} "
             f">> {shlex.quote(spec.process_log_path)} 2>&1 & echo $!"
@@ -287,6 +315,8 @@ class PodmanAgentRuntime:
         return result.stdout.strip()
 
     def _resolve_api_base(self, spec: PodmanAgentSpec, container_id: str) -> str:
+        if spec.exposed_port is None:
+            return ""
         result = self._runtime.port(
             container_id,
             spec.exposed_port,
@@ -400,7 +430,7 @@ class PodmanAgentRuntime:
         port_output: str = "",
     ) -> PodmanAgentRuntimeError:
         resolved_container = container_id or self._container_id
-        if not port_output and resolved_container:
+        if not port_output and resolved_container and spec.exposed_port is not None:
             try:
                 port_output = self._runtime.port(
                     resolved_container,

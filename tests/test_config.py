@@ -743,3 +743,26 @@ class TestConfigValidator:
         errors = ConfigValidator().validate(config)
 
         assert errors == []
+
+    def test_standard_reasoning_podman_smoke_configs_validate_with_env_defaults(self, monkeypatch):
+        monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:8000/v1")
+        monkeypatch.setenv("OPENAI_API_KEY", "demo-key")
+        monkeypatch.setenv("OPENAI_MODEL_NAME", "demo-model")
+        monkeypatch.setenv("ALPHADIANA_OPENCLAW_PODMAN_IMAGE", "localhost/openclaw:test")
+        monkeypatch.setenv("ALPHADIANA_ZEROCLAW_PODMAN_IMAGE", "localhost/zeroclaw:test")
+        monkeypatch.setenv("ALPHADIANA_OPENCODE_PODMAN_IMAGE", "localhost/opencode:test")
+        paths = [
+            "configs/examples/openclaw_aime_podman_smoke.yaml",
+            "configs/examples/zeroclaw_aime_podman_smoke.yaml",
+            "configs/examples/opencode_aime_podman_smoke.yaml",
+        ]
+
+        validator = ConfigValidator()
+        loaded = [ExperimentConfig.from_yaml(path) for path in paths]
+
+        assert [config.agent_name for config in loaded] == ["openclaw", "zeroclaw", "opencode"]
+        assert loaded[0].agent_config["runtime_backend"] == "podman"
+        assert loaded[1].agent_config["runtime_backend"] == "podman"
+        assert loaded[2].agent_config["controller_mode"] == "podman"
+        for config in loaded:
+            assert validator.validate(config) == []

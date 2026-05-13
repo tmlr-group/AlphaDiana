@@ -32,7 +32,7 @@ from alphadiana.agent.preservation import (
 )
 from alphadiana.agent.registry import AgentRegistry
 from alphadiana.benchmark.base import BenchmarkTask
-from alphadiana.container_runtime import PodmanCLI, PodmanError
+from alphadiana.container_runtime import PodmanAgentRuntime, PodmanAgentSpec, PodmanCLI, PodmanError
 from alphadiana.utils.attachments import iter_binary_attachments, write_attachments
 from alphadiana.utils.math_answer import extract_answer_candidate, extract_boxed
 
@@ -1028,13 +1028,15 @@ class OpenCodeAgent(Agent):
         gid = os.getgid()
         container_home = Path(workdir) / ".controller-home"
         container_home.mkdir(parents=True, exist_ok=True)
-        container_name = f"alphadiana-opencode-{os.getpid()}-{time.time_ns()}"
         self._last_controller_metadata = {
             "container_engine": "podman",
             "controller_mode": "podman",
             "controller_image": self._controller_image,
             "controller_container_id": "",
             "container_id": "",
+            "container_logs_collected": False,
+            "container_cleanup_attempted": False,
+            "container_cleanup_status": "",
         }
         if self._skill_folder:
             _skill_name = Path(self._skill_folder).name
@@ -1047,26 +1049,36 @@ class OpenCodeAgent(Agent):
                 self._skill_folder, _dst,
             )
         container_id = ""
+        agent_runtime = PodmanAgentRuntime(runtime=self._podman_runtime)
         try:
-            run_result = self._podman_runtime.run(
-                self._controller_image,
-                name=container_name,
-                command=["sleep", "infinity"],
-                detach=True,
-                env={"HOME": str(container_home)},
+            spec = PodmanAgentSpec(
+                adapter_name="opencode-podman",
+                image=self._controller_image,
+                run_command="",
+                exposed_port=None,
                 workdir=workdir,
+                env={"HOME": str(container_home)},
                 network=self._controller_network,
-                remove=False,
+                request_timeout=float(self._timeout),
+                startup_timeout=min(max(float(self._timeout), 30.0), 120.0),
+                cleanup_timeout=30.0,
+                name_prefix="alphadiana-opencode",
                 extra_args=[
                     "--label", "alphadiana.component=opencode-controller",
                     "--label", f"alphadiana.workdir={workdir}",
                     f"--user={uid}:{gid}",
                     "-v", f"{workdir}:{workdir}",
                 ],
-                timeout=min(max(float(self._timeout), 30.0), 120.0),
+                metadata={
+                    "controller_mode": "podman",
+                    "controller_image": self._controller_image,
+                    "logprob_support": "enabled" if self._logprob_capture["enabled"] else "disabled",
+                },
             )
-            container_id = run_result.stdout.strip()
+            runtime_result = agent_runtime.start(spec)
+            container_id = runtime_result.container_id
             self._last_controller_metadata.update({
+                **runtime_result.metadata,
                 "controller_container_id": container_id,
                 "container_id": container_id,
             })
@@ -1074,8 +1086,7 @@ class OpenCodeAgent(Agent):
             for key in ("OPENAI_API_KEY", "OPENAI_BASE_URL", "XDG_CONFIG_HOME"):
                 if key in env:
                     exec_env[key] = env[key]
-            exec_result = self._podman_runtime.exec(
-                container_id,
+            exec_result = agent_runtime.exec(
                 ["node", "/usr/lib/node_modules/opencode-ai/bin/opencode", *cmd[1:]],
                 env=exec_env,
                 workdir=workdir,
@@ -1091,9 +1102,22 @@ class OpenCodeAgent(Agent):
         finally:
             if container_id:
                 try:
-                    self._podman_runtime.stop(container_id, stop_timeout=5, timeout=30, check=False)
-                finally:
-                    self._podman_runtime.rm(container_id, force=True, volumes=True, timeout=30, check=False)
+                    artifacts = agent_runtime.collect_artifacts()
+                    self._last_controller_metadata.update(artifacts.metadata)
+                    self._last_controller_metadata["controller_container_id"] = container_id
+                    self._last_controller_metadata["container_id"] = container_id
+                    self._last_controller_metadata["container_log_excerpt"] = artifacts.logs[:4000]
+                    self._last_controller_metadata["container_logs_collected"] = True
+                except Exception as exc:
+                    self._last_controller_metadata["container_log_error"] = str(exc)[:500]
+                    self._last_controller_metadata["container_logs_collected"] = False
+                self._last_controller_metadata["container_cleanup_attempted"] = True
+                try:
+                    agent_runtime.cleanup(check=False)
+                    self._last_controller_metadata["container_cleanup_status"] = "removed"
+                except Exception as exc:
+                    self._last_controller_metadata["container_cleanup_status"] = "failed"
+                    self._last_controller_metadata["container_cleanup_error"] = str(exc)[:500]
 
     def _force_remove_docker_container(self, container_name: str) -> None:
         """Stop an OpenCode controller container that outlived the docker client."""
@@ -1458,6 +1482,10 @@ class OpenCodeAgent(Agent):
         })
         if partial_output.strip():
             workspace_file_contents["opencode_partial_output.txt"] = partial_output
+        if self._controller_mode == "podman" and response_metadata.get("container_logs_collected"):
+            workspace_file_contents["opencode_podman_container.log"] = str(
+                response_metadata.get("container_log_excerpt") or ""
+            )
         if stderr:
             workspace_file_contents["opencode_stderr.log"] = stderr
         if attachment_paths:
@@ -1494,6 +1522,11 @@ class OpenCodeAgent(Agent):
             opencode_session=(
                 "opencode_session.jsonl"
                 if "opencode_session.jsonl" in workspace_file_contents
+                else None
+            ),
+            podman_container_log=(
+                "opencode_podman_container.log"
+                if "opencode_podman_container.log" in workspace_file_contents
                 else None
             ),
             stderr_log="opencode_stderr.log" if stderr else None,

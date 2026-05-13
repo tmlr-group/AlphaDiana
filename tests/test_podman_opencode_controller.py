@@ -35,6 +35,10 @@ class FakePodmanRuntime:
             "",
         )
 
+    def logs(self, container_id: str, **kwargs: Any) -> PodmanResult:
+        self.calls.append(("logs", {"container_id": container_id, **kwargs}))
+        return PodmanResult(("podman", "logs"), 0, "opencode controller log\n", "")
+
     def stop(self, container_id: str, **kwargs: Any) -> PodmanResult:
         self.calls.append(("stop", {"container_id": container_id, **kwargs}))
         return PodmanResult(("podman", "stop"), 0, "", "")
@@ -73,6 +77,10 @@ def test_opencode_podman_controller_runs_via_central_runtime() -> None:
     assert result.metadata["controller_image"] == "localhost/opencode-controller:test"
     assert result.metadata["controller_container_id"] == "opencode-podman-cid"
     assert result.metadata["logprob_support"] == "disabled"
+    assert result.metadata["adapter_name"] == "opencode-podman"
+    assert result.metadata["container_logs_collected"] is True
+    assert result.metadata["container_cleanup_status"] == "removed"
+    assert result.workspace_file_contents["opencode_podman_container.log"] == "opencode controller log\n"
 
     run_call = fake.calls[0]
     assert run_call[0] == "run"
@@ -81,12 +89,15 @@ def test_opencode_podman_controller_runs_via_central_runtime() -> None:
     assert run_call[1]["network"] == "host"
     assert any(str(item).startswith("alphadiana.component=opencode-controller") for item in run_call[1]["extra_args"])
 
-    exec_call = fake.calls[1]
-    assert exec_call[0] == "exec"
-    assert exec_call[1]["container_id"] == "opencode-podman-cid"
-    assert exec_call[1]["command"][:2] == ["node", "/usr/lib/node_modules/opencode-ai/bin/opencode"]
-    assert exec_call[1]["env"]["OPENAI_API_KEY"] == "test-key"
-    assert exec_call[1]["env"]["OPENAI_BASE_URL"] == "http://localhost:9001/v1"
+    exec_call = next(
+        payload
+        for name, payload in fake.calls
+        if name == "exec" and payload["command"][:2] == ["node", "/usr/lib/node_modules/opencode-ai/bin/opencode"]
+    )
+    assert exec_call["container_id"] == "opencode-podman-cid"
+    assert exec_call["command"][:2] == ["node", "/usr/lib/node_modules/opencode-ai/bin/opencode"]
+    assert exec_call["env"]["OPENAI_API_KEY"] == "test-key"
+    assert exec_call["env"]["OPENAI_BASE_URL"] == "http://localhost:9001/v1"
     assert [name for name, _ in fake.calls][-2:] == ["stop", "rm"]
 
 
@@ -102,6 +113,7 @@ def test_opencode_podman_controller_timeout_cleans_up() -> None:
     assert result.metadata["returncode"] == -1
     assert result.metadata["opencode_timeout_scored_zero"] is True
     assert result.metadata["transport"] == "opencode_cli_podman"
+    assert result.metadata["container_cleanup_status"] == "removed"
     assert [name for name, _ in fake.calls][-2:] == ["stop", "rm"]
 
 
