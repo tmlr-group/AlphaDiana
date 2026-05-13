@@ -1,0 +1,26 @@
+# Podman-managed OpenClaw gateway defaults for standard reasoning agents.
+# Override `agent.config.podman_image` when using a locally built image.
+image: alphadiana-openclaw:latest
+workdir: /workspace
+exposed_port: 8080
+openclaw_config_path: /tmp/openclaw.json
+process_log_path: /tmp/gateway.log
+startup_timeout: 180
+request_timeout: 600
+cleanup_timeout: 30
+healthcheck_interval_sec: 2
+healthcheck_timeout_sec: 5
+install_commands:
+  - openclaw --version
+run_command: >-
+  mkdir -p /tmp/empty-bundled /tmp/oc_home &&
+  OPENCLAW_CONFIG_PATH=/tmp/openclaw.json
+  OPENCLAW_HOME=/tmp/oc_home
+  OPENCLAW_BUNDLED_PLUGINS_DIR=/tmp/empty-bundled
+  openclaw gateway
+safe_config_paths:
+  - /tmp/openclaw.json
+artifact_paths:
+  - /tmp/gateway.log
+  - /tmp/oc_home/agents/main/sessions.json
+  - /tmp/oc_home/workspace-state.json

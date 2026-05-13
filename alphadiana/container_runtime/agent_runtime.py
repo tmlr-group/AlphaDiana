@@ -473,7 +473,11 @@ def _redact_secret_fields(value: Any) -> Any:
         redacted: dict[str, Any] = {}
         for key, item in value.items():
             normalized = str(key).strip().lower().replace("-", "_")
-            if normalized in _SECRET_FIELD_NAMES or normalized.endswith("_api_key"):
+            if (
+                normalized in _SECRET_FIELD_NAMES
+                or normalized.endswith("_api_key")
+                or normalized.endswith("_token")
+            ):
                 redacted[key] = "REDACTED"
             else:
                 redacted[key] = _redact_secret_fields(item)

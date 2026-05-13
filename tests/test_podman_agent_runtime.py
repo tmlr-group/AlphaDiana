@@ -79,7 +79,7 @@ def test_podman_agent_runtime_starts_collects_and_cleans_up() -> None:
         safe_config_paths=("/tmp/openclaw/config.json",),
         artifact_paths=("/tmp/runtime-artifact.txt",),
         healthcheck=lambda api_base: api_base == "http://127.0.0.1:18080/v1",
-        metadata={"api_key": "secret", "mode": "podman"},
+        metadata={"api_key": "secret", "gateway_token": "secret-token", "mode": "podman"},
     )
 
     result = runtime.start(spec)
@@ -93,6 +93,7 @@ def test_podman_agent_runtime_starts_collects_and_cleans_up() -> None:
     assert result.metadata["runtime_container_id"] == "fake-container"
     assert result.metadata["published_api_base"] == "http://127.0.0.1:18080/v1"
     assert result.metadata["api_key"] == "REDACTED"
+    assert result.metadata["gateway_token"] == "REDACTED"
     assert "container log line" in result.logs
     assert result.artifacts["/tmp/runtime-artifact.txt"] == "agent artifact\n"
     assert "secret" not in result.config_snapshots["/tmp/openclaw/config.json"]

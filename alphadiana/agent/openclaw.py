@@ -1007,6 +1007,12 @@ class OpenClawAgent(Agent):
                 from alphadiana.agent.openclaw_container_runtime import OpenClawContainerRuntimeManager
 
                 self._runtime_manager = OpenClawContainerRuntimeManager(config)
+            elif str(config.get("runtime_backend", "") or "").strip().lower() == "podman":
+                from alphadiana.agent.openclaw_runtime import OpenClawPodmanRuntimeManager
+
+                runtime_config = dict(config)
+                runtime_config["_logprob_capture"] = self._logprob_capture
+                self._runtime_manager = OpenClawPodmanRuntimeManager(runtime_config)
             else:
                 from alphadiana.agent.openclaw_runtime import OpenClawRuntimeManager
 
@@ -1606,7 +1612,13 @@ class OpenClawAgent(Agent):
         logprob_proxy: LogprobCaptureProxy | None = None
         if sandbox_id:
             logprob_proxy = self._predeployed_logprob_proxies.get(sandbox_id)
-        if not runtime_info["api_base"] and sandbox is not None and self._runtime_manager and self._runtime_manager.is_configured:
+        runtime_requires_sandbox = bool(getattr(self._runtime_manager, "requires_sandbox", True))
+        if (
+            not runtime_info["api_base"]
+            and self._runtime_manager
+            and self._runtime_manager.is_configured
+            and (sandbox is not None or not runtime_requires_sandbox)
+        ):
             if logprob_proxy is None:
                 logprob_proxy = self._ensure_runtime_logprob_proxy()
             runtime_info = self._runtime_manager.ensure_ready(sandbox)
@@ -2418,7 +2430,11 @@ class OpenClawAgent(Agent):
 
         # Collect artifacts from runtime manager before finalizing the transcript
         # so saved session JSONL files can recover the real agent trajectory.
-        if sandbox is not None and self._runtime_manager and self._runtime_manager.is_configured:
+        if (
+            self._runtime_manager
+            and self._runtime_manager.is_configured
+            and (sandbox is not None or not runtime_requires_sandbox)
+        ):
             try:
                 artifact_data = self._runtime_manager.collect_artifacts(sandbox)
             except Exception as exc:
@@ -2536,6 +2552,9 @@ class OpenClawAgent(Agent):
             "logprob_source": logprob_source,
             "logprob_probe_proxy_count": selected_proxy_logprob_count,
         }
+        runtime_metadata = runtime_info.get("metadata", {})
+        if isinstance(runtime_metadata, dict):
+            response_metadata.update(runtime_metadata)
         if timeout_scored_zero:
             response_metadata.update({
                 "failure_reason": "timeout",
