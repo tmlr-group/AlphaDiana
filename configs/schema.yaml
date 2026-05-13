@@ -86,7 +86,7 @@ benchmark:
 
 # sandbox: (optional) Execution environment. Set to null if not needed.
 sandbox:
-  name: string        # Sandbox name, e.g. "local", "rock", "swebench_container"
+  name: string        # Sandbox name, e.g. "local", "rock", "podman", "swebench_container"
   config:             # Sandbox-specific params
     # ROCK SDK config
     admin_base_url: string          # ROCK admin server URL (e.g. "http://localhost:9000")
@@ -95,7 +95,7 @@ sandbox:
     memory: string                  # Memory limit, e.g. "2g", "512m" (default: "2g")
     cpus: float                     # CPU limit (default: 0.5)
     limit_cpus: float               # Optional hard CPU cap passed through to ROCK
-    startup_timeout: integer        # Sandbox startup timeout in seconds (default: 300)
+    startup_timeout: integer        # Sandbox startup timeout in seconds (ROCK/Podman)
     auto_clear_seconds: integer     # Auto-cleanup timeout in seconds (default: 3600)
     start_retries: integer          # Number of startup retries (default: 1)
     reset_between_tasks: boolean    # Reset workspace between tasks (default: true)
@@ -120,7 +120,6 @@ sandbox:
     network: string                  # Optional Podman network mode/name
     remove: boolean                  # Optional cleanup hint; AlphaDiana still owns close() cleanup
     name_prefix: string              # Container name prefix, default: "alphadiana-podman"
-    startup_timeout: integer         # Podman create/run timeout in seconds
     stop_timeout: integer            # Podman stop timeout in seconds
     podman_socket: string            # Optional Unix Podman socket path for Docker API compatibility
 
