@@ -88,6 +88,7 @@ def test_opencode_podman_controller_runs_via_central_runtime() -> None:
     assert run_call[1]["command"] == ["sleep", "infinity"]
     assert run_call[1]["network"] == "host"
     assert any(str(item).startswith("alphadiana.component=opencode-controller") for item in run_call[1]["extra_args"])
+    assert not any(str(item).startswith("--user=") for item in run_call[1]["extra_args"])
 
     exec_call = next(
         payload
@@ -139,3 +140,16 @@ def test_setup_accepts_podman_and_rejects_unknown_controller_mode() -> None:
         assert "Unsupported opencode controller_mode" in str(exc)
     else:
         raise AssertionError("Expected unknown controller mode to fail")
+
+
+def test_setup_uses_podman_only_controller_image_by_default() -> None:
+    agent = OpenCodeAgent()
+    agent.setup({
+        "model_name": "test-model",
+        "api_base": "http://localhost:9001/v1",
+        "api_key": "test-key",
+        "controller_mode": "podman",
+        "_podman_runtime": FakePodmanRuntime(),
+    })
+
+    assert agent._controller_image == "alphadiana-opencode-podman:latest"

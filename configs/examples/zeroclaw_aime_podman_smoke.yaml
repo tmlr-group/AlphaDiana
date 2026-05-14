@@ -8,6 +8,7 @@ agent:
   config:
     runtime_backend: podman
     podman_image: "${ALPHADIANA_ZEROCLAW_PODMAN_IMAGE}"
+    podman_network: "slirp4netns:allow_host_loopback=true"
     api_base: "${OPENAI_BASE_URL}"
     api_key: "${OPENAI_API_KEY}"
     model: "${OPENAI_MODEL_NAME}"

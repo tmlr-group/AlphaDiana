@@ -43,7 +43,7 @@ agent:
     onboard_timeout_sec: integer
     logs_base_dir: string
     controller_mode: string          # OpenCode: "podman" preferred for standard reasoning; "host" and "docker" are legacy/baseline
-    controller_image: string         # OpenCode controller image for controller_mode=podman|docker
+    controller_image: string         # OpenCode controller image for controller_mode=podman|docker; podman default is alphadiana-opencode-podman:latest
     controller_network: string       # OpenCode controller network, e.g. "host"
     controller_mount_docker_socket: boolean
     agent_md_mode: string            # Agent.md customization: "none", "append", "override" (default: "none")

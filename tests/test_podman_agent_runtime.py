@@ -9,6 +9,7 @@ from alphadiana.container_runtime import (
     PodmanAgentRuntime,
     PodmanAgentRuntimeError,
     PodmanAgentSpec,
+    PodmanError,
     PodmanResult,
     RuntimeFile,
 )
@@ -27,7 +28,7 @@ class FakePodmanRuntime:
 
     def exec(self, container_id: str, command: list[str], **kwargs: Any) -> PodmanResult:
         self.calls.append(("exec", {"container_id": container_id, "command": command, **kwargs}))
-        shell_command = command[-1] if command[:2] == ["/bin/sh", "-lc"] else ""
+        shell_command = command[-1] if command[:2] == ["/bin/sh", "-c"] else ""
         if "cat " in shell_command:
             path = shell_command.split("cat ", 1)[1].split(" || ", 1)[0].strip("'\"")
             return PodmanResult(("podman", "exec"), 0, self.files.get(path, ""), "")
@@ -102,7 +103,7 @@ def test_podman_agent_runtime_starts_collects_and_cleans_up() -> None:
     call_names = [name for name, _ in fake.calls]
     assert call_names[:2] == ["run", "exec"]
     assert "cp" in call_names
-    assert any(name == "exec" and payload["command"] == ["/bin/sh", "-lc", "echo install"] for name, payload in fake.calls)
+    assert any(name == "exec" and payload["command"] == ["/bin/sh", "-c", "echo install"] for name, payload in fake.calls)
     assert any(name == "port" and payload["private_port"] == 8080 for name, payload in fake.calls)
 
     runtime.cleanup()
@@ -172,3 +173,25 @@ def test_podman_agent_runtime_healthcheck_failure_payload_and_cleanup() -> None:
     assert payload["metadata"]["container_engine"] == "podman"
     assert payload["metadata"]["token"] == "REDACTED"
     assert [name for name, _ in fake.calls][-2:] == ["stop", "rm"]
+
+
+def test_podman_agent_runtime_force_removes_when_stop_times_out() -> None:
+    class StopTimeoutRuntime(FakePodmanRuntime):
+        def stop(self, container_id: str, **kwargs: Any) -> PodmanResult:
+            self.calls.append(("stop", {"container_id": container_id, **kwargs}))
+            raise PodmanError(PodmanResult(("podman", "stop", container_id), 124, "", "timed out"))
+
+    fake = StopTimeoutRuntime()
+    runtime = PodmanAgentRuntime(runtime=fake)  # type: ignore[arg-type]
+    spec = PodmanAgentSpec(
+        adapter_name="opencode-podman",
+        image="localhost/opencode:test",
+        run_command="",
+        exposed_port=None,
+    )
+
+    runtime.start(spec)
+    runtime.cleanup(check=False)
+
+    assert [name for name, _ in fake.calls][-2:] == ["stop", "rm"]
+    assert runtime.container_id == ""

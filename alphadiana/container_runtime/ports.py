@@ -65,7 +65,11 @@ def first_published_port(
 ) -> PublishedPort | None:
     """Return the first parsed port matching the optional container port."""
     for published in parse_podman_port_output(output):
-        if container_port is not None and published.container_port != container_port:
+        if (
+            container_port is not None
+            and published.container_port is not None
+            and published.container_port != container_port
+        ):
             continue
         if published.protocol != protocol:
             continue

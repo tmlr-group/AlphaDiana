@@ -23,6 +23,7 @@ from alphadiana.container_runtime import (
     PodmanAgentRuntimeResult,
     PodmanAgentSpec,
     RuntimeFile,
+    podman_proxy_env,
 )
 
 _logger = _logging.getLogger(__name__)
@@ -447,6 +448,10 @@ class ZeroClawPodmanRuntimeManager(ZeroClawRuntimeManager):
             or ""
         ).strip()
         self._podman_workdir = str(config.get("podman_workdir", "/workspace") or "/workspace").strip()
+        self._podman_network = str(config.get("podman_network", "") or "").strip()
+        self._podman_host_ip = str(
+            config.get("podman_host_ip", config.get("docker_host_ip", "host.containers.internal"))
+        )
         self._podman_result: PodmanAgentRuntimeResult | None = None
 
     def ensure_ready(self, sandbox: Any = None) -> dict:
@@ -545,6 +550,7 @@ class ZeroClawPodmanRuntimeManager(ZeroClawRuntimeManager):
         if not self._bridge_template_path.exists():
             raise FileNotFoundError(f"ZeroClaw bridge template not found: {self._bridge_template_path}")
         env = self._runtime_env()
+        env.update(podman_proxy_env(os.environ, host_alias=self._podman_host_ip))
         last_request_dir = f"{self._artifact_root.rstrip('/')}/last_request"
         artifact_paths = [self._bridge_log_path]
         artifact_paths.extend(path for path, _ in self._last_request_artifact_paths(last_request_dir))
@@ -553,6 +559,7 @@ class ZeroClawPodmanRuntimeManager(ZeroClawRuntimeManager):
             image=self._podman_image,
             workdir=self._podman_workdir,
             env=env,
+            network=self._podman_network or None,
             ports={self._bridge_port: None},
             exposed_port=self._bridge_port,
             startup_timeout=float(self._gateway_startup_timeout),

@@ -94,6 +94,7 @@ def test_openclaw_podman_runtime_builds_spec_and_runtime_info(tmp_path: Path) ->
     assert spec is not None
     assert spec.adapter_name == "openclaw-podman"
     assert spec.image == "localhost/openclaw:test"
+    assert spec.network == "slirp4netns:allow_host_loopback=true"
     assert spec.exposed_port == 8080
     assert spec.api_base_suffix == "/v1"
     assert spec.healthcheck is not None

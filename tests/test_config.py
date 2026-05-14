@@ -750,7 +750,6 @@ class TestConfigValidator:
         monkeypatch.setenv("OPENAI_MODEL_NAME", "demo-model")
         monkeypatch.setenv("ALPHADIANA_OPENCLAW_PODMAN_IMAGE", "localhost/openclaw:test")
         monkeypatch.setenv("ALPHADIANA_ZEROCLAW_PODMAN_IMAGE", "localhost/zeroclaw:test")
-        monkeypatch.setenv("ALPHADIANA_OPENCODE_PODMAN_IMAGE", "localhost/opencode:test")
         paths = [
             "configs/examples/openclaw_aime_podman_smoke.yaml",
             "configs/examples/zeroclaw_aime_podman_smoke.yaml",
@@ -764,5 +763,6 @@ class TestConfigValidator:
         assert loaded[0].agent_config["runtime_backend"] == "podman"
         assert loaded[1].agent_config["runtime_backend"] == "podman"
         assert loaded[2].agent_config["controller_mode"] == "podman"
+        assert loaded[2].agent_config["controller_image"] == "alphadiana-opencode-podman:latest"
         for config in loaded:
             assert validator.validate(config) == []

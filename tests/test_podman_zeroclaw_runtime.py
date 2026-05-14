@@ -55,6 +55,7 @@ def _podman_config(fake_runtime: FakePodmanAgentRuntime) -> dict[str, Any]:
         "api_key": "sk-secret",
         "gateway_token": "ZEROCLAW_TEST",
         "request_timeout": 99,
+        "podman_network": "slirp4netns:allow_host_loopback=true",
         "provider_max_tokens": 2048,
         "top_p": 0.9,
         "enable_thinking": False,
@@ -75,6 +76,7 @@ def test_zeroclaw_podman_runtime_builds_spec_and_artifacts(monkeypatch) -> None:
     assert spec is not None
     assert spec.adapter_name == "zeroclaw-podman"
     assert spec.image == "localhost/zeroclaw:test"
+    assert spec.network == "slirp4netns:allow_host_loopback=true"
     assert spec.exposed_port == 8080
     assert spec.api_base_suffix == "/v1"
     assert spec.run_command == "python /tmp/zeroclaw_bridge.py"

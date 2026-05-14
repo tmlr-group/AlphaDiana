@@ -101,9 +101,15 @@ def test_live_podman_standard_reasoning_smoke(config_path: str) -> None:
     if adapter_name != "opencode-podman":
         assert merged_metadata.get("published_api_base") or record.get("gateway_url")
     workspace_files = record.get("workspace_file_contents") or {}
-    assert workspace_files or record.get("gateway_log_excerpt") or record.get("artifact_manifest")
+    artifact_manifest = record.get("artifact_manifest") or {}
+    artifact_files = artifact_manifest.get("files") or {}
+    assert workspace_files or record.get("gateway_log_excerpt") or artifact_manifest
     if adapter_name == "opencode-podman":
         assert merged_metadata.get("container_cleanup_status") == "removed"
         assert merged_metadata.get("container_logs_collected") is True
-        assert "opencode_podman_container.log" in workspace_files
+        assert (
+            "opencode_podman_container.log" in workspace_files
+            or "opencode_podman_container.log" in artifact_files
+            or artifact_files.get("podman_container_log")
+        )
     _assert_container_removed(str(container_id))

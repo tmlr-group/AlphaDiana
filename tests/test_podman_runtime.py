@@ -6,6 +6,7 @@ import pytest
 
 from alphadiana.container_runtime.gpu import nvidia_cdi_args
 from alphadiana.container_runtime.podman_cli import PodmanCLI, PodmanError
+from alphadiana.container_runtime.proxy_env import podman_proxy_env
 from alphadiana.container_runtime.podman_socket import podman_socket_env
 from alphadiana.container_runtime.ports import first_published_port, parse_podman_port_output
 
@@ -125,6 +126,28 @@ def test_podman_cli_nonzero_exit_raises() -> None:
     assert "bad image" in str(exc.value)
 
 
+def test_podman_cli_error_redacts_secret_env_values() -> None:
+    runner = FakeRunner(returncode=125, stderr="bad env")
+    podman = PodmanCLI(runner=runner)
+
+    with pytest.raises(PodmanError) as exc:
+        podman.run(
+            "image",
+            env={
+                "OPENAI_API_KEY": "sk-secret",
+                "OPENAI_BASE_URL": "https://example.invalid/v1",
+                "OPENCLAW_GATEWAY_TOKEN": "token-secret",
+            },
+        )
+
+    message = str(exc.value)
+    assert "OPENAI_API_KEY=<redacted>" in message
+    assert "OPENCLAW_GATEWAY_TOKEN=<redacted>" in message
+    assert "OPENAI_BASE_URL=https://example.invalid/v1" in message
+    assert "sk-secret" not in message
+    assert "token-secret" not in message
+
+
 def test_podman_cli_timeout_raises() -> None:
     def timeout_runner(*args, **kwargs):
         raise subprocess.TimeoutExpired(args[0], timeout=kwargs["timeout"])
@@ -154,6 +177,29 @@ def test_parse_podman_port_output_keeps_explicit_loopback() -> None:
     assert port is not None
     assert port.host == "127.0.0.1"
     assert port.host_port == 18080
+
+
+def test_parse_private_port_output_without_container_prefix() -> None:
+    port = first_published_port("0.0.0.0:32768\n", container_port=8080)
+
+    assert port is not None
+    assert port.container_port is None
+    assert port.api_base == "http://127.0.0.1:32768"
+
+
+def test_podman_proxy_env_rewrites_loopback_proxy_for_container() -> None:
+    env = podman_proxy_env(
+        {
+            "http_proxy": "http://127.0.0.1:17890",
+            "HTTPS_PROXY": "http://localhost:17890",
+            "NO_PROXY": "127.0.0.1,localhost",
+        },
+        host_alias="host.containers.internal",
+    )
+
+    assert env["http_proxy"] == "http://host.containers.internal:17890"
+    assert env["HTTPS_PROXY"] == "http://host.containers.internal:17890"
+    assert env["NO_PROXY"] == "127.0.0.1,localhost"
 
 
 def test_gpu_cdi_args() -> None:
