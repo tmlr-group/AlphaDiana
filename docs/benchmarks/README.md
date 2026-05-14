@@ -30,18 +30,21 @@ notes: normal benchmark runs use one sandbox-only CLI path
 tasks. Historical `disable_tools`, gateway, and proxy path notes remain
 useful audit evidence only.
 
-As of May 14, 2026, opt-in Podman standard reasoning smokes have passed for
-OpenClaw, ZeroClaw, and OpenCode on one AIME task each. Use
+As of May 14, 2026, opt-in Podman standard reasoning is implemented and cheap
+live smokes have passed for OpenClaw, ZeroClaw, and OpenCode on one AIME task
+each. Use
 `configs/examples/openclaw_aime_podman_smoke.yaml`,
 `configs/examples/zeroclaw_aime_podman_smoke.yaml`, and
 `configs/examples/opencode_aime_podman_smoke.yaml` with
 `ALPHADIANA_RUN_PODMAN_AGENT_SMOKE=1` for the cheap live smoke matrix. See
 [`context/phase02-podman-agent-smokes/README.md`](../../context/phase02-podman-agent-smokes/README.md)
 for the run IDs, image build commands, and current caveats. These paths remain
-opt-in; task-container benchmark defaults are unchanged.
+opt-in and are not default-promotion claims; task-container benchmark defaults
+are unchanged.
 
-Also as of May 14, 2026, task-container benchmark adapters have opt-in Podman
-configuration shapes but are not promoted to default or fully supported yet.
+Also as of May 14, 2026, task-container benchmark adapters have implemented
+opt-in Podman configuration shapes, but live validation is pending and blocked
+on smoke evidence.
 Use `agent.config.container_engine=podman` for `swebench_docker`,
 `terminal_bench2_*`, and `sandbox.config.container_engine=podman` for
 `swebench_container`. Example entry points are
@@ -50,9 +53,10 @@ Use `agent.config.container_engine=podman` for `swebench_docker`,
 and `configs/examples/terminal_bench2_opencode_podman_smoke.yaml`. These paths
 preserve legacy Docker/ROCK baselines and still require live task-level smoke
 evidence before being described as supported; the initial TerminalBench2 smoke
-attempt reached Podman pull but was blocked by a private/unauthorized task
-image. external_benchmark Podman work is deferred to a later phase and is not part of
-this Phase 3 scope.
+attempt reached Podman pull but was blocked by a private/unauthorized ad hoc
+task image, and the Podman smoke now selects the official `db-wal-recovery`
+task from `TERMINAL_BENCH2_DIR`. external_benchmark Podman work is deferred to a later
+phase and is not part of this Phase 3 scope.
 
 Generated ZeroClaw configs use `runtime_trace_mode="full"` for logprob capture
 and write ZeroClaw's schema-supported permissive shell controls; ZeroClaw

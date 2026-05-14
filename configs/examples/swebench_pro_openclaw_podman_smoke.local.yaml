@@ -7,6 +7,8 @@
 #   export OPENAI_MODEL_NAME=...
 #   export SWE_BENCH_PRO_EVAL_SCRIPT=/abs/path/to/swe_bench_pro_eval.py
 #   export SWE_BENCH_PRO_SCRIPTS_DIR=/abs/path/to/run_scripts
+#   test -f "$SWE_BENCH_PRO_EVAL_SCRIPT"
+#   test -d "$SWE_BENCH_PRO_SCRIPTS_DIR"
 
 run_id: "phase03_swebench_pro_openclaw_podman_smoke"
 
