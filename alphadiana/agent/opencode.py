@@ -59,6 +59,8 @@ def _resolve_skill_folder(raw: Any) -> str | None:
 
 
 _SUPPORTED_CONTROLLER_MODES = {"host", "docker", "podman"}
+_DEFAULT_DOCKER_CONTROLLER_IMAGE = "alphadiana/tb2-opencode-controller:latest"
+_DEFAULT_PODMAN_CONTROLLER_IMAGE = "alphadiana-opencode-podman:latest"
 
 _EXPLICIT_ANSWER_RE = re.compile(
     r"(?:\*{0,2})(?:the\s+)?(?:final\s+)?answer(?:\*{0,2})\s*(?:[:：]|is|=)\s*(.+)",
@@ -660,10 +662,18 @@ class OpenCodeAgent(Agent):
     """Agent that runs OpenCode CLI and supports task-container execution.
 
     Docker isolation: set ``controller_mode: docker`` to run the opencode CLI
-    inside a container instead of directly on the host.  Requires the controller
-    image (default ``alphadiana/tb2-opencode-controller:latest``).
+    inside a Docker controller container instead of directly on the host.
+    Requires the legacy/baseline controller image.
+
+    Podman isolation: set ``controller_mode: podman`` to run the opencode CLI
+    inside the Podman-only controller image built from
+    ``opencode_deploy/Containerfile.podman-controller``.
 
     Build with::
+
+        podman build \\
+          -f opencode_deploy/Containerfile.podman-controller \\
+          -t alphadiana-opencode-podman:latest .
 
         docker build --network host \\
           -f docker/terminal_bench2/Dockerfile.opencode-controller \\
@@ -682,9 +692,14 @@ class OpenCodeAgent(Agent):
                 f"Expected one of: {supported}."
             )
         self._controller_mode = controller_mode
+        default_controller_image = (
+            _DEFAULT_PODMAN_CONTROLLER_IMAGE
+            if controller_mode == "podman"
+            else _DEFAULT_DOCKER_CONTROLLER_IMAGE
+        )
         self._controller_image = str(
-            config.get("controller_image", "alphadiana/tb2-opencode-controller:latest")
-            or "alphadiana/tb2-opencode-controller:latest"
+            config.get("controller_image", default_controller_image)
+            or default_controller_image
         ).strip()
         self._controller_network = str(config.get("controller_network", "host") or "host").strip()
         self._cli_model = self._resolve_setting(config, "model", "OPENAI_MODEL_NAME")
@@ -1024,8 +1039,6 @@ class OpenCodeAgent(Agent):
         env: dict[str, str],
     ) -> tuple[str, str, int]:
         """Run opencode inside a Podman controller container."""
-        uid = os.getuid()
-        gid = os.getgid()
         container_home = Path(workdir) / ".controller-home"
         container_home.mkdir(parents=True, exist_ok=True)
         self._last_controller_metadata = {
@@ -1066,7 +1079,6 @@ class OpenCodeAgent(Agent):
                 extra_args=[
                     "--label", "alphadiana.component=opencode-controller",
                     "--label", f"alphadiana.workdir={workdir}",
-                    f"--user={uid}:{gid}",
                     "-v", f"{workdir}:{workdir}",
                 ],
                 metadata={

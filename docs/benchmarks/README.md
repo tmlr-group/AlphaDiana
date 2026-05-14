@@ -29,6 +29,17 @@ notes: normal benchmark runs use one sandbox-only CLI path
 (`metadata.transport=zeroclaw_cli_sandbox`) for both text and image-backed
 tasks. Historical `disable_tools`, gateway, and proxy path notes remain
 useful audit evidence only.
+
+As of May 14, 2026, opt-in Podman standard reasoning smokes have passed for
+OpenClaw, ZeroClaw, and OpenCode on one AIME task each. Use
+`configs/examples/openclaw_aime_podman_smoke.yaml`,
+`configs/examples/zeroclaw_aime_podman_smoke.yaml`, and
+`configs/examples/opencode_aime_podman_smoke.yaml` with
+`ALPHADIANA_RUN_PODMAN_AGENT_SMOKE=1` for the cheap live smoke matrix. See
+[`context/phase02-podman-agent-smokes/README.md`](../../context/phase02-podman-agent-smokes/README.md)
+for the run IDs, image build commands, and current caveats. These paths remain
+opt-in; task-container benchmark defaults are unchanged.
+
 Generated ZeroClaw configs use `runtime_trace_mode="full"` for logprob capture
 and write ZeroClaw's schema-supported permissive shell controls; ZeroClaw
 0.6.9 does not expose a heredoc-specific allowlist setting.

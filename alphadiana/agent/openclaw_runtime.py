@@ -28,6 +28,7 @@ from alphadiana.container_runtime import (
     PodmanAgentRuntimeResult,
     PodmanAgentSpec,
     RuntimeFile,
+    podman_proxy_env,
 )
 
 
@@ -1362,6 +1363,7 @@ class OpenClawPodmanRuntimeManager(OpenClawRuntimeManager):
             image=image,
             workdir=str(podman_cfg.get("workdir", "/workspace") or "/workspace"),
             env=env_cfg,
+            network=str(podman_cfg.get("network", "") or "").strip() or None,
             ports={exposed_port: podman_cfg.get("host_port")},
             exposed_port=exposed_port,
             startup_timeout=float(podman_cfg.get("startup_timeout", self._gateway_startup_timeout)),
@@ -1443,6 +1445,7 @@ class OpenClawPodmanRuntimeManager(OpenClawRuntimeManager):
                     f"container→proxy({proxy_url})→vLLM({upstream_base_url})"
                 )
         env_cfg["OPENCLAW_GATEWAY_TOKEN"] = str(self._gateway_token or "OPENCLAW")
+        env_cfg.update(podman_proxy_env(os.environ, host_alias=self._docker_host_ip))
         if self._undici_stream_timeout_ms is not None:
             env_cfg["OPENCLAW_UNDICI_STREAM_TIMEOUT_MS"] = str(self._undici_stream_timeout_ms)
         return env_cfg

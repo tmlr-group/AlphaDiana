@@ -1,5 +1,7 @@
 # OpenCode x AIME Podman controller smoke.
-# Requires a Podman image with the OpenCode CLI installed.
+# Build the Podman-only controller image with:
+#   podman build -f opencode_deploy/Containerfile.podman-controller \
+#     -t alphadiana-opencode-podman:latest .
 run_id: "phase02_opencode_podman_aime_smoke"
 
 agent:
@@ -7,7 +9,7 @@ agent:
   version: "1.0.0"
   config:
     controller_mode: podman
-    controller_image: "${ALPHADIANA_OPENCODE_PODMAN_IMAGE}"
+    controller_image: "alphadiana-opencode-podman:latest"
     controller_network: "host"
     api_base: "${OPENAI_BASE_URL}"
     api_key: "${OPENAI_API_KEY}"

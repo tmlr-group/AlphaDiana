@@ -28,6 +28,10 @@ class PodmanResult:
     def ok(self) -> bool:
         return self.returncode == 0
 
+    @property
+    def redacted_argv(self) -> tuple[str, ...]:
+        return tuple(_redact_argv(self.argv))
+
 
 class PodmanError(RuntimeError):
     """Raised when a Podman command fails and ``check`` is enabled."""
@@ -36,11 +40,45 @@ class PodmanError(RuntimeError):
         self.result = result
         msg = (
             f"podman command failed with exit {result.returncode}: "
-            f"{' '.join(result.argv)}"
+            f"{' '.join(result.redacted_argv)}"
         )
         if result.stderr.strip():
             msg = f"{msg}: {result.stderr.strip()}"
         super().__init__(msg)
+
+
+_SECRET_ENV_MARKERS = (
+    "API_KEY",
+    "TOKEN",
+    "AUTHORIZATION",
+    "PASSWORD",
+    "SECRET",
+)
+
+
+def _redact_argv(argv: tuple[str, ...]) -> list[str]:
+    redacted: list[str] = []
+    redact_next_env = False
+    for part in argv:
+        text = str(part)
+        if redact_next_env:
+            redacted.append(_redact_env_assignment(text))
+            redact_next_env = False
+            continue
+        redacted.append(_redact_env_assignment(text))
+        if text in {"--env", "-e"}:
+            redact_next_env = True
+    return redacted
+
+
+def _redact_env_assignment(value: str) -> str:
+    if "=" not in value:
+        return value
+    key, _raw = value.split("=", 1)
+    normalized = key.strip().upper().replace("-", "_")
+    if any(marker in normalized for marker in _SECRET_ENV_MARKERS):
+        return f"{key}=<redacted>"
+    return value
 
 
 class PodmanCLI:

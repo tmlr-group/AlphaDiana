@@ -2,6 +2,7 @@
 # Override `agent.config.podman_image` when using a locally built image.
 image: alphadiana-openclaw:latest
 workdir: /workspace
+network: slirp4netns:allow_host_loopback=true
 exposed_port: 8080
 openclaw_config_path: /tmp/openclaw.json
 process_log_path: /tmp/gateway.log

@@ -225,13 +225,18 @@ class PodmanAgentRuntime:
         if not container_id:
             return
         timeout = spec.cleanup_timeout if spec else 30.0
+        stop_error: Exception | None = None
         try:
             self._runtime.stop(container_id, stop_timeout=int(timeout), timeout=timeout, check=check)
+        except Exception as exc:
+            stop_error = exc
         finally:
             self._runtime.rm(container_id, force=True, volumes=True, timeout=timeout, check=check)
             self._container_id = ""
             self._api_base = ""
             self._process_id = ""
+        if stop_error is not None and check:
+            raise stop_error
 
     def exec(
         self,
@@ -292,7 +297,7 @@ class PodmanAgentRuntime:
                 continue
             self._runtime.exec(
                 container_id,
-                ["/bin/sh", "-lc", str(command)],
+                ["/bin/sh", "-c", str(command)],
                 workdir=spec.workdir,
                 timeout=spec.startup_timeout,
                 check=True,
@@ -302,12 +307,12 @@ class PodmanAgentRuntime:
         if not str(spec.run_command or "").strip():
             return ""
         command = (
-            f"nohup /bin/sh -lc {shlex.quote(spec.run_command)} "
+            f"nohup /bin/sh -c {shlex.quote(spec.run_command)} "
             f">> {shlex.quote(spec.process_log_path)} 2>&1 & echo $!"
         )
         result = self._runtime.exec(
             container_id,
-            ["/bin/sh", "-lc", command],
+            ["/bin/sh", "-c", command],
             workdir=spec.workdir,
             timeout=spec.startup_timeout,
             check=True,
@@ -317,28 +322,38 @@ class PodmanAgentRuntime:
     def _resolve_api_base(self, spec: PodmanAgentSpec, container_id: str) -> str:
         if spec.exposed_port is None:
             return ""
-        result = self._runtime.port(
-            container_id,
-            spec.exposed_port,
-            timeout=spec.startup_timeout,
+        deadline = time.monotonic() + float(spec.startup_timeout)
+        last_output = ""
+        last_error: Exception | None = None
+        while time.monotonic() < deadline:
+            try:
+                result = self._runtime.port(
+                    container_id,
+                    spec.exposed_port,
+                    timeout=min(5.0, max(0.1, float(spec.startup_timeout))),
+                )
+                last_output = result.stdout
+                published = first_published_port(
+                    result.stdout,
+                    container_port=spec.exposed_port,
+                    protocol="tcp",
+                )
+                if published is not None:
+                    suffix = str(spec.api_base_suffix or "").strip()
+                    if suffix and not suffix.startswith("/"):
+                        suffix = f"/{suffix}"
+                    return f"{published.api_base.rstrip('/')}{suffix}"
+            except Exception as exc:
+                last_error = exc
+            time.sleep(0.2)
+        raise self._runtime_error(
+            spec,
+            stage="port_resolution",
+            message=f"{spec.adapter_name} Podman runtime could not resolve port {spec.exposed_port}",
+            exc=last_error,
+            container_id=container_id,
+            port_output=last_output,
         )
-        published = first_published_port(
-            result.stdout,
-            container_port=spec.exposed_port,
-            protocol="tcp",
-        )
-        if published is None:
-            raise self._runtime_error(
-                spec,
-                stage="port_resolution",
-                message=f"{spec.adapter_name} Podman runtime could not resolve port {spec.exposed_port}",
-                container_id=container_id,
-                port_output=result.stdout,
-            )
-        suffix = str(spec.api_base_suffix or "").strip()
-        if suffix and not suffix.startswith("/"):
-            suffix = f"/{suffix}"
-        return f"{published.api_base.rstrip('/')}{suffix}"
 
     def _wait_until_ready(self, spec: PodmanAgentSpec, api_base: str) -> None:
         deadline = time.monotonic() + float(spec.startup_timeout)
@@ -402,7 +417,7 @@ class PodmanAgentRuntime:
         try:
             result = self._runtime.exec(
                 container_id,
-                ["/bin/sh", "-lc", f"test -f {shlex.quote(path)} && cat {shlex.quote(path)} || true"],
+                ["/bin/sh", "-c", f"test -f {shlex.quote(path)} && cat {shlex.quote(path)} || true"],
                 timeout=self._require_spec().request_timeout,
                 check=False,
             )
@@ -450,7 +465,7 @@ class PodmanAgentRuntime:
         }
         if isinstance(exc, PodmanError):
             payload["podman_result"] = {
-                "argv": list(exc.result.argv),
+                "argv": list(exc.result.redacted_argv),
                 "returncode": exc.result.returncode,
                 "stdout": exc.result.stdout,
                 "stderr": exc.result.stderr,

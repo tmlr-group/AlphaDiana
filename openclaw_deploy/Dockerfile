@@ -24,5 +24,7 @@ RUN npm config set registry https://registry.npmmirror.com \
 RUN python -m pip install --no-cache-dir --timeout 120 \
         requests numpy sympy scipy pandas Pillow matplotlib
 
+WORKDIR /workspace
+
 # Verify installation
 RUN node --version && npm --version && openclaw --version
