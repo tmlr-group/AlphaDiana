@@ -11,6 +11,7 @@ agent:
   version: string     # Pinned version tag or "latest"
   config:             # Pass-through config for the agent (model settings, etc.)
     runtime: string                  # Optional runtime selector, e.g. "swebench_container"
+    container_engine: string         # Task-container engine: "docker" legacy/baseline or opt-in "podman"
     agent_type: string               # `swebench_docker` mode: "direct_llm" | "openclaw" | "opencode" | "zeroclaw"
     model: string
     model_name: string
@@ -102,6 +103,7 @@ sandbox:
     proxy_timeout: integer          # Proxy timeout in seconds (default: 600)
     use_kata_runtime: boolean       # Enable Kata runtime instead of ROCK's default privileged Docker mode
     # SWE-bench official container backend
+    container_engine: string         # "docker" legacy/baseline or opt-in "podman" via Docker-compatible Podman socket
     namespace: string               # swebench image namespace (default: "swebench")
     force_rebuild: boolean          # Force rebuilding the official instance image
     keep_container: boolean         # Keep the task container after the run

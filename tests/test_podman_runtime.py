@@ -5,7 +5,11 @@ import subprocess
 import pytest
 
 from alphadiana.container_runtime.gpu import nvidia_cdi_args
-from alphadiana.container_runtime.podman_cli import PodmanCLI, PodmanError
+from alphadiana.container_runtime.podman_cli import (
+    PodmanCLI,
+    PodmanError,
+    normalize_podman_image_ref,
+)
 from alphadiana.container_runtime.proxy_env import podman_proxy_env
 from alphadiana.container_runtime.podman_socket import podman_socket_env
 from alphadiana.container_runtime.ports import first_published_port, parse_podman_port_output
@@ -67,7 +71,13 @@ def test_podman_cli_pull_and_build_argv() -> None:
     podman = PodmanCLI(runner=runner)
 
     podman.pull("alpine:3.20")
-    podman.build(".", tag="ad-image:latest", file="Containerfile", extra_args=["--pull=false"])
+    podman.build(
+        ".",
+        tag="ad-image:latest",
+        file="Containerfile",
+        input_text="FROM scratch\n",
+        extra_args=["--pull=false"],
+    )
 
     assert runner.calls == [
         ["podman", "pull", "alpine:3.20"],
@@ -84,6 +94,17 @@ def test_podman_cli_pull_and_build_argv() -> None:
     ]
 
 
+def test_normalize_podman_image_ref_makes_dockerhub_namespace_explicit() -> None:
+    assert normalize_podman_image_ref("alexgshaw/tb2-smoke-test:tag") == (
+        "docker.io/alexgshaw/tb2-smoke-test:tag"
+    )
+    assert normalize_podman_image_ref("docker.io/alexgshaw/tb2-smoke-test:tag") == (
+        "docker.io/alexgshaw/tb2-smoke-test:tag"
+    )
+    assert normalize_podman_image_ref("localhost/tb2:latest") == "localhost/tb2:latest"
+    assert normalize_podman_image_ref("python:3.11") == "python:3.11"
+
+
 def test_podman_cli_run_exec_cp_logs_port_stop_rm_argv() -> None:
     runner = FakeRunner(stdout="cid\n")
     podman = PodmanCLI(runner=runner)
@@ -93,6 +114,7 @@ def test_podman_cli_run_exec_cp_logs_port_stop_rm_argv() -> None:
     podman.cp("local.txt", "cid:/tmp/local.txt")
     podman.logs("cid", tail=20)
     podman.port("cid", 8080)
+    podman.wait("cid")
     podman.stop("cid", stop_timeout=3)
     podman.rm("cid", force=True, volumes=True)
 
@@ -111,8 +133,47 @@ def test_podman_cli_run_exec_cp_logs_port_stop_rm_argv() -> None:
     assert runner.calls[2] == ["podman", "cp", "local.txt", "cid:/tmp/local.txt"]
     assert runner.calls[3] == ["podman", "logs", "--tail", "20", "cid"]
     assert runner.calls[4] == ["podman", "port", "cid", "8080"]
-    assert runner.calls[5] == ["podman", "stop", "-t", "3", "cid"]
-    assert runner.calls[6] == ["podman", "rm", "-f", "-v", "cid"]
+    assert runner.calls[5] == ["podman", "wait", "cid"]
+    assert runner.calls[6] == ["podman", "stop", "-t", "3", "cid"]
+    assert runner.calls[7] == ["podman", "rm", "-f", "-v", "cid"]
+
+
+def test_podman_cli_run_accepts_task_container_options() -> None:
+    runner = FakeRunner(stdout="cid\n")
+    podman = PodmanCLI(runner=runner)
+
+    podman.run(
+        "task:latest",
+        detach=True,
+        remove=True,
+        user="1000:1000",
+        entrypoint="/bin/bash",
+        workdir="/workspace",
+        volumes=["/tmp/logs:/logs", "/tmp/task:/task:ro"],
+        extra_args=["--init"],
+        command=["-lc", "echo ok"],
+    )
+
+    assert runner.calls == [[
+        "podman",
+        "run",
+        "-d",
+        "--rm",
+        "--workdir",
+        "/workspace",
+        "--user",
+        "1000:1000",
+        "--entrypoint",
+        "/bin/bash",
+        "-v",
+        "/tmp/logs:/logs",
+        "-v",
+        "/tmp/task:/task:ro",
+        "--init",
+        "task:latest",
+        "-lc",
+        "echo ok",
+    ]]
 
 
 def test_podman_cli_nonzero_exit_raises() -> None:

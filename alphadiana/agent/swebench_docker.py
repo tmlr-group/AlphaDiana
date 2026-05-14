@@ -44,6 +44,7 @@ from alphadiana.agent.preservation import (
 )
 from alphadiana.agent.registry import register_agent
 from alphadiana.benchmark.base import BenchmarkTask
+from alphadiana.container_runtime.podman_cli import PodmanCLI, normalize_podman_image_ref
 from alphadiana.utils.openclaw_security import resolve_openclaw_gateway_token
 from alphadiana.utils.rock_runtime import PREBUILT_SANDBOX_IMAGE
 
@@ -110,6 +111,7 @@ _PROVIDER_FAILURE_MARKERS = (
     "user location is not supported for the api use",
     "vllmvalidationerror",
 )
+_CONTAINER_ENGINES = {"docker", "podman"}
 
 
 def _run(cmd: list[str], timeout: int | None = None, **kwargs: Any) -> subprocess.CompletedProcess:
@@ -227,6 +229,8 @@ class SWEBenchDockerAgent(Agent):
         self._logprob_capture: dict[str, Any] = {"enabled": False, "top_logprobs": 0}
         self._logprob_proxy_bind_host: str = "0.0.0.0"
         self._logprob_proxy_advertise_host: str = ""
+        self._container_engine: str = "docker"
+        self._podman: PodmanCLI = PodmanCLI()
 
     def setup(self, config: dict) -> None:
         self._agent_type = str(config.get("agent_type", "direct_llm")).strip() or "direct_llm"
@@ -241,6 +245,14 @@ class SWEBenchDockerAgent(Agent):
             if str(key).strip() and not _is_blank_env_value(value)
         }
         self._output_dir = str(config.get("output_dir", "./swebench_artifacts")).strip()
+        self._container_engine = str(config.get("container_engine", "docker") or "docker").strip().lower()
+        if self._container_engine not in _CONTAINER_ENGINES:
+            raise ValueError(
+                "swebench_docker agent.config.container_engine must be one of "
+                f"{', '.join(sorted(_CONTAINER_ENGINES))}"
+            )
+        injected_podman = config.get("podman_runtime")
+        self._podman = injected_podman if injected_podman is not None else PodmanCLI()
         self._model = self._resolve_setting(config, "model", "OPENAI_MODEL_NAME")
         self._api_base = self._resolve_setting(config, "api_base", "OPENAI_BASE_URL")
         self._api_key = self._resolve_setting(
@@ -271,10 +283,11 @@ class SWEBenchDockerAgent(Agent):
         ).strip() or _DEFAULT_SYSTEM_PROMPT
 
         logger.info(
-            "SWEBenchDockerAgent configured: agent_type=%s image_override=%s dockerhub_repo=%s timeout=%ds",
+            "SWEBenchDockerAgent configured: agent_type=%s image_override=%s dockerhub_repo=%s engine=%s timeout=%ds",
             self._agent_type,
             self._image_override or "<auto>",
             self._dockerhub_repo,
+            self._container_engine,
             self._timeout,
         )
 
@@ -290,9 +303,10 @@ class SWEBenchDockerAgent(Agent):
         start_time = time.monotonic()
         base_image = self._resolve_image(task)
         image = base_image
-        runtime_metadata: dict[str, Any] = {}
+        runtime_metadata: dict[str, Any] = self._container_engine_metadata()
         if self._agent_type in _IN_CONTAINER_AGENT_TYPES:
-            image, runtime_metadata = self._prepare_runtime_image(base_image)
+            image, prepared_metadata = self._prepare_runtime_image(base_image)
+            runtime_metadata.update(prepared_metadata)
         container_id = ""
         try:
             self._docker_pull(image)
@@ -376,9 +390,18 @@ class SWEBenchDockerAgent(Agent):
             )
         return f"{self._dockerhub_repo}:{dockerhub_tag}"
 
+    def _container_engine_metadata(self) -> dict[str, Any]:
+        metadata = {"container_engine": self._container_engine}
+        if self._container_engine == "podman":
+            metadata["sandbox_backend"] = "podman"
+        return metadata
+
     def _docker_pull(self, image: str) -> None:
         """Pull the required image before execution."""
         if self._docker_image_exists(image):
+            return
+        if self._container_engine == "podman":
+            self._podman.pull(image, timeout=min(self._timeout, 1800))
             return
         result = _run(["docker", "pull", image], timeout=min(self._timeout, 1800))
         if result.returncode != 0:
@@ -386,6 +409,8 @@ class SWEBenchDockerAgent(Agent):
 
     def _docker_image_exists(self, image: str) -> bool:
         """Return whether the image already exists locally."""
+        if self._container_engine == "podman":
+            return self._podman.image_exists(image, timeout=30)
         result = _run(["docker", "image", "inspect", image], timeout=30)
         return result.returncode == 0
 
@@ -398,6 +423,21 @@ class SWEBenchDockerAgent(Agent):
     ) -> None:
         """Build a Docker image from an inline Dockerfile."""
         with tempfile.TemporaryDirectory(prefix="alphadiana-swebench-build-") as context_dir:
+            if self._container_engine == "podman":
+                extra_args: list[str] = []
+                for key, value in (build_args or {}).items():
+                    if key.upper().endswith("IMAGE"):
+                        value = normalize_podman_image_ref(value)
+                    extra_args.extend(["--build-arg", f"{key}={value}"])
+                self._podman.build(
+                    context_dir,
+                    tag=image,
+                    file="-",
+                    input_text=dockerfile,
+                    extra_args=extra_args,
+                    timeout=min(self._timeout, 3600),
+                )
+                return
             cmd = ["docker", "build", "--tag", image]
             for key, value in (build_args or {}).items():
                 cmd.extend(["--build-arg", f"{key}={value}"])
@@ -413,6 +453,22 @@ class SWEBenchDockerAgent(Agent):
 
     def _docker_create(self, image: str) -> str:
         """Create a container and return its ID."""
+        if self._container_engine == "podman":
+            command: list[str] | None = None
+            entrypoint: str | None = None
+            if self._agent_type in _IN_CONTAINER_AGENT_TYPES:
+                entrypoint = "bash"
+                command = ["-lc", "trap 'exit 0' TERM INT; while true; do sleep 3600; done"]
+            container_id = self._podman.create(
+                image,
+                env=self._env,
+                entrypoint=entrypoint,
+                command=command,
+                timeout=60,
+            ).strip()
+            if not container_id:
+                raise RuntimeError(f"Podman create returned an empty container id for {image}")
+            return container_id
         cmd = ["docker", "create"]
         for key, value in self._env.items():
             cmd.extend(["-e", f"{key}={value}"])
@@ -431,6 +487,9 @@ class SWEBenchDockerAgent(Agent):
 
     def _docker_start(self, container_id: str) -> None:
         """Start a created container."""
+        if self._container_engine == "podman":
+            self._podman.start(container_id, timeout=60)
+            return
         result = _run(["docker", "start", container_id], timeout=60)
         if result.returncode != 0:
             raise RuntimeError(
@@ -439,6 +498,11 @@ class SWEBenchDockerAgent(Agent):
 
     def _docker_stop(self, container_id: str) -> None:
         """Best-effort stop for an existing container."""
+        if self._container_engine == "podman":
+            result = self._podman.stop(container_id, stop_timeout=10, timeout=30, check=False)
+            if result.returncode != 0:
+                logger.warning("Podman stop failed for %s: %s", container_id, result.stderr.strip())
+            return
         try:
             result = _run(["docker", "stop", "-t", "10", container_id], timeout=30)
         except subprocess.TimeoutExpired:
@@ -450,6 +514,11 @@ class SWEBenchDockerAgent(Agent):
 
     def _docker_rm(self, container_id: str) -> None:
         """Best-effort forced removal for a container."""
+        if self._container_engine == "podman":
+            result = self._podman.rm(container_id, force=True, timeout=30, check=False)
+            if result.returncode != 0:
+                logger.warning("Podman rm failed for %s: %s", container_id, result.stderr.strip())
+            return
         result = _run(["docker", "rm", "-f", container_id], timeout=30)
         if result.returncode != 0:
             logger.warning("docker rm failed for %s: %s", container_id, result.stderr.strip())
@@ -465,6 +534,27 @@ class SWEBenchDockerAgent(Agent):
         workdir: str | None = None,
     ) -> subprocess.CompletedProcess:
         """Execute a command inside a running container."""
+        if self._container_engine == "podman":
+            result = self._podman.exec(
+                container_id,
+                args,
+                env=env,
+                workdir=workdir,
+                timeout=timeout or self._timeout,
+                check=False,
+            )
+            completed = subprocess.CompletedProcess(
+                args=args,
+                returncode=result.returncode,
+                stdout=result.stdout,
+                stderr=result.stderr,
+            )
+            if check and completed.returncode != 0:
+                raise RuntimeError(
+                    "Podman exec failed: "
+                    f"{' '.join(args)}: {completed.stderr.strip() or completed.stdout.strip()}"
+                )
+            return completed
         cmd = ["docker", "exec"]
         if workdir:
             cmd.extend(["-w", workdir])
@@ -483,12 +573,18 @@ class SWEBenchDockerAgent(Agent):
 
     def _docker_cp_to(self, container_id: str, src: str, dst: str) -> None:
         """Copy a local file or directory into the container."""
+        if self._container_engine == "podman":
+            self._podman.cp(src, f"{container_id}:{dst}", timeout=120)
+            return
         result = _run(["docker", "cp", src, f"{container_id}:{dst}"], timeout=120)
         if result.returncode != 0:
             raise RuntimeError(f"docker cp to container failed: {result.stderr.strip()}")
 
     def _docker_cp_from(self, container_id: str, src: str, dst: str) -> None:
         """Copy a file or directory out of the container."""
+        if self._container_engine == "podman":
+            self._podman.cp(f"{container_id}:{src}", dst, timeout=120)
+            return
         result = _run(["docker", "cp", f"{container_id}:{src}", dst], timeout=120)
         if result.returncode != 0:
             raise RuntimeError(f"docker cp from container failed: {result.stderr.strip()}")
@@ -3347,6 +3443,7 @@ RUN chmod +x /usr/local/bin/zeroclaw
                 "agent_type": self._agent_type,
                 "patch_format": patch_format,
                 "container_started": True,
+                **self._container_engine_metadata(),
             },
             reasoning_trajectory=reasoning_trajectory,
             request_messages=messages,

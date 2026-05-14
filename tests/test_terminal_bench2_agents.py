@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -25,6 +26,7 @@ from alphadiana.agent.terminal_bench2_zeroclaw import (
 from alphadiana.benchmark.base import BenchmarkTask
 from alphadiana.config.experiment_config import ExperimentConfig
 from alphadiana.config.validator import ConfigValidator
+from alphadiana.container_runtime.podman_cli import PodmanCLI
 from alphadiana.results.status import infer_score_status, is_valid_completed_record
 from alphadiana.utils.rock_runtime import PREBUILT_SANDBOX_IMAGE
 
@@ -73,6 +75,47 @@ def test_terminal_bench2_helper_workspace_uses_control_side_helpers(tmp_path: Pa
     assert "Do not call `docker` directly" in helper_paths["agents"].read_text(encoding="utf-8")
     assert "do not call it during normal solving" in NATIVE_AGENT_PROMPT
     assert "manual debugging" in helper_paths["agents"].read_text(encoding="utf-8")
+
+
+def test_terminal_bench2_podman_helpers_use_runtime_shim(tmp_path: Path) -> None:
+    harness = _MixinHarness()
+    harness._setup_container_config({"container_engine": "podman"})
+    task = BenchmarkTask(task_id="tb2_demo", problem="demo task", ground_truth="1")
+
+    helper_paths = harness._write_helper_scripts(tmp_path, "demo-container", task)
+
+    exec_text = helper_paths["exec"].read_text(encoding="utf-8")
+    copy_from_text = helper_paths["copy_from"].read_text(encoding="utf-8")
+    assert "alphadiana.container_runtime.task_cli exec demo-container" in exec_text
+    assert "alphadiana.container_runtime.task_cli cp demo-container:" in copy_from_text
+    assert "docker exec" not in exec_text
+
+
+def test_terminal_bench2_podman_start_container_uses_runtime(tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+
+    def fake_runner(argv, **kwargs):
+        calls.append(list(argv))
+        if argv[1] == "run":
+            return subprocess.CompletedProcess(argv, 0, stdout="podman-cid\n", stderr="")
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    harness = _MixinHarness()
+    harness._setup_container_config({
+        "container_engine": "podman",
+        "podman_runtime": PodmanCLI(runner=fake_runner),
+    })
+    task = BenchmarkTask(task_id="tb2_demo", problem="demo", ground_truth="1")
+    logs_dir = tmp_path / "logs"
+    logs_dir.mkdir()
+
+    cid = harness._start_container("tb2-task:latest", logs_dir, task)
+
+    assert cid == "podman-cid"
+    assert calls[0][:4] == ["podman", "run", "-d", "--rm"]
+    assert "-v" in calls[0]
+    assert f"{logs_dir}:/logs" in calls[0]
+    assert calls[1][:3] == ["podman", "exec", "podman-cid"]
 
 
 def test_terminal_bench2_db_wal_task_note_mentions_workspace_snapshot(tmp_path: Path) -> None:

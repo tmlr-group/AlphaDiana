@@ -11,12 +11,14 @@ import tarfile
 import tempfile
 import time
 import uuid
+from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 from alphadiana.sandbox.base import ExecutionResult, Sandbox, SandboxSession
 from alphadiana.sandbox.registry import register_sandbox
+from alphadiana.container_runtime.podman_socket import podman_socket_env
 from alphadiana.utils.swebench import (
     build_swebench_instance,
     ensure_swebench_build_network_mode,
@@ -316,6 +318,8 @@ class SWEBenchContainerSandbox(Sandbox):
         self._config: dict[str, Any] = {}
         self._runtime: dict[str, Any] | None = None
         self._log_dir = Path("./logs/swebench_container")
+        self._container_engine = "docker"
+        self._podman_socket_path = ""
 
     @property
     def name(self) -> str:
@@ -324,6 +328,12 @@ class SWEBenchContainerSandbox(Sandbox):
     def setup(self, config: dict) -> None:
         self._config = dict(config)
         self._log_dir = Path(config.get("log_dir", "./logs/swebench_container"))
+        self._container_engine = str(config.get("container_engine", "docker") or "docker").strip().lower()
+        if self._container_engine not in {"docker", "podman"}:
+            raise ValueError(
+                "swebench_container sandbox.config.container_engine must be one of docker, podman"
+            )
+        self._podman_socket_path = str(config.get("podman_socket", "") or "").strip()
 
     def requires_task_on_create(self) -> bool:
         return True
@@ -339,6 +349,24 @@ class SWEBenchContainerSandbox(Sandbox):
             self._runtime = _load_swebench_runtime()
         ensure_swebench_build_network_mode(self._config.get("docker_build_network", "host"))
         return self._runtime
+
+    @contextmanager
+    def _container_runtime_env(self):
+        if self._container_engine != "podman":
+            yield
+            return
+
+        env = podman_socket_env(self._podman_socket_path or None)
+        previous = {key: os.environ.get(key) for key in env}
+        os.environ.update(env)
+        try:
+            yield
+        finally:
+            for key, value in previous.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
 
     def _build_test_spec(self, task: "BenchmarkTask") -> tuple[dict[str, Any], Any]:
         runtime = self._runtime_api()
@@ -366,31 +394,32 @@ class SWEBenchContainerSandbox(Sandbox):
         build_log = build_dir / "build_instance_image.log"
         build_logger = runtime["setup_logger"](instance_id, build_log)
         image_name = getattr(test_spec, "instance_image_key", "")
-        client = runtime["docker"].from_env()
+        with self._container_runtime_env():
+            client = runtime["docker"].from_env()
 
-        try:
-            if self._config.get("force_rebuild") and image_name:
-                try:
-                    client.images.remove(image_name, force=True)
-                except Exception:
-                    logger.debug("Image removal before force rebuild failed", exc_info=True)
-            runtime["build_env_images"](
-                client,
-                [instance],
-                force_rebuild=bool(self._config.get("force_rebuild", False)),
-                max_workers=1,
-                namespace=self._config.get("namespace", "swebench"),
-                instance_image_tag=self._config.get("instance_image_tag", "latest"),
-                env_image_tag=self._config.get("env_image_tag", "latest"),
-            )
-            runtime["build_instance_image"](
-                test_spec,
-                client,
-                build_logger,
-                nocache=bool(self._config.get("force_rebuild", False)),
-            )
-        finally:
-            runtime["close_logger"](build_logger)
+            try:
+                if self._config.get("force_rebuild") and image_name:
+                    try:
+                        client.images.remove(image_name, force=True)
+                    except Exception:
+                        logger.debug("Image removal before force rebuild failed", exc_info=True)
+                runtime["build_env_images"](
+                    client,
+                    [instance],
+                    force_rebuild=bool(self._config.get("force_rebuild", False)),
+                    max_workers=1,
+                    namespace=self._config.get("namespace", "swebench"),
+                    instance_image_tag=self._config.get("instance_image_tag", "latest"),
+                    env_image_tag=self._config.get("env_image_tag", "latest"),
+                )
+                runtime["build_instance_image"](
+                    test_spec,
+                    client,
+                    build_logger,
+                    nocache=bool(self._config.get("force_rebuild", False)),
+                )
+            finally:
+                runtime["close_logger"](build_logger)
 
         return build_dir
 
@@ -410,7 +439,8 @@ class SWEBenchContainerSandbox(Sandbox):
 
         runtime = self._runtime_api()
         docker = runtime["docker"]
-        client = docker.from_env()
+        with self._container_runtime_env():
+            client = docker.from_env()
         instance, test_spec = self._build_test_spec(task)
         instance_id = infer_instance_id(task)
         build_dir = self._build_image(task, test_spec)
@@ -433,19 +463,20 @@ class SWEBenchContainerSandbox(Sandbox):
         environment = _collect_forwarded_container_environment(self._config)
 
         try:
-            container = client.containers.run(
-                image_name,
-                command=["/bin/bash", "-lc", "trap : TERM INT; sleep infinity & wait"],
-                detach=True,
-                stdin_open=True,
-                tty=True,
-                name=container_name,
-                working_dir=workdir,
-                user=user,
-                ports=_build_gateway_port_bindings(container_port),
-                labels=labels,
-                environment=environment or None,
-            )
+            with self._container_runtime_env():
+                container = client.containers.run(
+                    image_name,
+                    command=["/bin/bash", "-lc", "trap : TERM INT; sleep infinity & wait"],
+                    detach=True,
+                    stdin_open=True,
+                    tty=True,
+                    name=container_name,
+                    working_dir=workdir,
+                    user=user,
+                    ports=_build_gateway_port_bindings(container_port),
+                    labels=labels,
+                    environment=environment or None,
+                )
         except Exception as exc:
             raise RuntimeError(
                 f"Failed to start SWE-bench instance container for {instance_id}: {exc}"
@@ -469,6 +500,11 @@ class SWEBenchContainerSandbox(Sandbox):
             "container_id": container.id,
             "container_name": container.name,
             "image_name": image_name,
+            "sandbox_backend": "podman" if self._container_engine == "podman" else self.name,
+            "container_engine": self._container_engine,
+            "podman_socket": podman_socket_env(self._podman_socket_path or None)["DOCKER_HOST"]
+            if self._container_engine == "podman"
+            else "",
             "repo_workdir": workdir,
             "docker_user": user,
             "build_log_dir": str(build_dir),

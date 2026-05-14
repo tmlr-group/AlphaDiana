@@ -1,0 +1,51 @@
+# Local SWE-bench Pro smoke through `swebench_docker` in OpenClaw mode using
+# Podman for the per-task container lifecycle.
+#
+# Required exports:
+#   export OPENAI_API_KEY=...
+#   export OPENAI_BASE_URL=...
+#   export OPENAI_MODEL_NAME=...
+#   export SWE_BENCH_PRO_EVAL_SCRIPT=/abs/path/to/swe_bench_pro_eval.py
+#   export SWE_BENCH_PRO_SCRIPTS_DIR=/abs/path/to/run_scripts
+
+run_id: "phase03_swebench_pro_openclaw_podman_smoke"
+
+agent:
+  name: swebench_docker
+  version: "1.0"
+  config:
+    agent_type: openclaw
+    container_engine: podman
+    request_timeout: 1200
+    output_dir: "./swebench_artifacts_openclaw_podman_smoke"
+    env:
+      OPENAI_API_KEY: "${OPENAI_API_KEY}"
+      OPENAI_BASE_URL: "${OPENAI_BASE_URL}"
+      OPENAI_MODEL_NAME: "${OPENAI_MODEL_NAME}"
+      OPENCLAW_AGENT_TIMEOUT_SEC: "900"
+      OPENCLAW_CHAT_MAX_TIME_SEC: "960"
+      OPENCLAW_REQUIRE_PATCH: "1"
+      OPENCLAW_PROMPT_PROFILE: "edit_first"
+
+benchmark:
+  name: swebench_pro_os
+  config:
+    split: test
+    subset: smoke
+    max_tasks: 1
+
+scorer:
+  name: swebench_pro
+  config:
+    eval_script_path: "${SWE_BENCH_PRO_EVAL_SCRIPT}"
+    scripts_dir: "${SWE_BENCH_PRO_SCRIPTS_DIR}"
+    dockerhub_username: "jefzda"
+    use_local_docker: true
+    num_workers: 1
+    redo: true
+
+max_concurrent: 1
+num_samples: 1
+output_dir: "./results_swebench_openclaw_podman_smoke"
+metadata:
+  notes: "Opt-in Podman SWE-bench Pro smoke; legacy Docker path remains available."

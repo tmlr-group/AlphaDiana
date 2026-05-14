@@ -766,3 +766,39 @@ class TestConfigValidator:
         assert loaded[2].agent_config["controller_image"] == "alphadiana-opencode-podman:latest"
         for config in loaded:
             assert validator.validate(config) == []
+
+    def test_task_container_podman_smoke_configs_validate_with_env_defaults(
+        self,
+        monkeypatch,
+        tmp_path,
+    ):
+        monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:8000/v1")
+        monkeypatch.setenv("OPENAI_API_KEY", "demo-key")
+        monkeypatch.setenv("OPENAI_MODEL_NAME", "demo-model")
+        monkeypatch.setenv("ALPHADIANA_PODMAN_SOCKET", "/tmp/podman.sock")
+        monkeypatch.setenv("TB2_OPENCODE_RUNTIME_IMAGE", "localhost/tb2-opencode:test")
+        tb2_dir = tmp_path / "tb2"
+        tb2_dir.mkdir()
+        eval_script = tmp_path / "swebench_pro_eval.py"
+        eval_script.write_text("print('ok')\n", encoding="utf-8")
+        scripts_dir = tmp_path / "swebench_pro_scripts"
+        scripts_dir.mkdir()
+        monkeypatch.setenv("TERMINAL_BENCH2_SMOKE_DIR", str(tb2_dir))
+        monkeypatch.setenv("SWE_BENCH_PRO_EVAL_SCRIPT", str(eval_script))
+        monkeypatch.setenv("SWE_BENCH_PRO_SCRIPTS_DIR", str(scripts_dir))
+
+        paths = [
+            "configs/examples/openclaw_swe_bench_podman_smoke.yaml",
+            "configs/examples/swebench_pro_openclaw_podman_smoke.local.yaml",
+            "configs/examples/terminal_bench2_opencode_podman_smoke.yaml",
+        ]
+
+        validator = ConfigValidator()
+        loaded = [ExperimentConfig.from_yaml(path) for path in paths]
+
+        assert loaded[0].sandbox_config["container_engine"] == "podman"
+        assert loaded[1].agent_config["container_engine"] == "podman"
+        assert loaded[2].agent_config["container_engine"] == "podman"
+        assert loaded[2].agent_config["runtime_source_image"] == "localhost/tb2-opencode:test"
+        for config in loaded:
+            assert validator.validate(config) == []

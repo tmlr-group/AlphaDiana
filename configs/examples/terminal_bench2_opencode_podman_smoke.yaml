@@ -1,0 +1,40 @@
+# TerminalBench2 OpenCode in-container smoke using Podman for task containers.
+#
+# Required:
+#   export TERMINAL_BENCH2_SMOKE_DIR=/path/to/staged-terminal-bench-smoke-root
+#   export OPENAI_API_KEY=...
+#   export OPENAI_BASE_URL=...
+#   export OPENAI_MODEL_NAME=...
+
+run_id: "phase03_terminal_bench2_opencode_podman_smoke"
+
+benchmark:
+  name: terminal_bench2
+  config:
+    tasks_dir: ${TERMINAL_BENCH2_SMOKE_DIR}
+    max_tasks: 1
+
+agent:
+  name: terminal_bench2_opencode
+  version: "1.0"
+  config:
+    container_engine: podman
+    model: "custom/${OPENAI_MODEL_NAME}"
+    model_name: ${OPENAI_MODEL_NAME}
+    api_base: ${OPENAI_BASE_URL}
+    api_key: ${OPENAI_API_KEY}
+    runtime_source_image: "${TB2_OPENCODE_RUNTIME_IMAGE}"
+    tool_call: true
+    streaming: false
+    solver_timeout_sec: 1800
+    timeout_sec: 900
+    test_timeout_sec: 1200
+
+scorer:
+  name: terminal_bench2
+
+max_concurrent: 1
+num_samples: 1
+output_dir: "./results/phase03_terminal_bench2_opencode_podman_smoke"
+metadata:
+  notes: "Opt-in Podman TerminalBench2 smoke; support requires live verifier evidence."

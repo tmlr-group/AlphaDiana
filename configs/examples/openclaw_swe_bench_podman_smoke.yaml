@@ -1,0 +1,60 @@
+# SWE-bench Verified smoke through the official task-container backend using
+# docker-py against the Podman Docker-compatible Unix socket.
+#
+# Required:
+#   systemctl --user start podman.socket
+#   export OPENAI_API_KEY=...
+#   export OPENAI_BASE_URL=...
+#   export OPENAI_MODEL_NAME=...
+
+run_id: "phase03_openclaw_swe_bench_podman_smoke"
+
+agent:
+  name: openclaw
+  version: "2026.3.20"
+  config:
+    runtime: "swebench_container"
+    openclaw_config_path: "openclaw_deploy/openclaw_swe_bench.runtime.json"
+    container_gateway_host: "127.0.0.1"
+    container_gateway_port: 8080
+    gateway_token: "OPENCLAW"
+    model: "openclaw"
+    max_tokens: 4096
+    request_timeout: 3600
+    max_attempts: 1
+
+benchmark:
+  name: swe_bench
+  config:
+    dataset: "SWE-bench/SWE-bench_Verified"
+    split: "test"
+    include_hints: false
+    max_tasks: 1
+
+sandbox:
+  name: swebench_container
+  config:
+    container_engine: podman
+    podman_socket: "${ALPHADIANA_PODMAN_SOCKET}"
+    namespace: "swebench"
+    force_rebuild: false
+    keep_container: false
+    keep_logs: true
+    log_dir: "./logs/swebench_container_podman"
+    gateway_host: "127.0.0.1"
+    gateway_port: 8080
+
+scorer:
+  name: swe_bench
+  config:
+    timeout: 1800
+    cache_level: "env"
+    namespace: "swebench"
+    force_rebuild: false
+    log_dir: "./swe_bench_logs_podman"
+
+max_concurrent: 1
+num_samples: 1
+output_dir: "./results"
+metadata:
+  notes: "Opt-in Podman SWE-bench Verified smoke; support requires live task evidence."

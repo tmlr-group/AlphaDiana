@@ -56,6 +56,17 @@ _SECRET_ENV_MARKERS = (
 )
 
 
+def normalize_podman_image_ref(image: str) -> str:
+    """Make Docker Hub namespace refs explicit for Podman hosts without search registries."""
+    ref = str(image or "").strip()
+    if not ref or "://" in ref or "/" not in ref:
+        return ref
+    first_component = ref.split("/", 1)[0]
+    if first_component == "localhost" or "." in first_component or ":" in first_component:
+        return ref
+    return f"docker.io/{ref}"
+
+
 def _redact_argv(argv: tuple[str, ...]) -> list[str]:
     redacted: list[str] = []
     redact_next_env = False
@@ -138,7 +149,7 @@ class PodmanCLI:
         return self._run(["--version"], timeout=timeout)
 
     def pull(self, image: str, *, timeout: float | None = None) -> PodmanResult:
-        return self._run(["pull", image], timeout=timeout)
+        return self._run(["pull", normalize_podman_image_ref(image)], timeout=timeout)
 
     def build(
         self,
@@ -146,6 +157,7 @@ class PodmanCLI:
         *,
         tag: str | None = None,
         file: str | None = None,
+        input_text: str | None = None,
         extra_args: Sequence[str] | None = None,
         timeout: float | None = None,
     ) -> PodmanResult:
@@ -157,7 +169,7 @@ class PodmanCLI:
         if extra_args:
             args.extend(str(part) for part in extra_args)
         args.append(context)
-        return self._run(args, timeout=timeout)
+        return self._run(args, timeout=timeout, input_text=input_text)
 
     def create(
         self,
@@ -167,6 +179,9 @@ class PodmanCLI:
         command: Sequence[str] | None = None,
         env: Mapping[str, str] | None = None,
         workdir: str | None = None,
+        user: str | None = None,
+        entrypoint: str | None = None,
+        volumes: Mapping[str, str] | Sequence[str] | None = None,
         ports: Mapping[int | str, int | str | None] | None = None,
         network: str | None = None,
         remove: bool = False,
@@ -178,12 +193,15 @@ class PodmanCLI:
             name=name,
             env=env,
             workdir=workdir,
+            user=user,
+            entrypoint=entrypoint,
+            volumes=volumes,
             ports=ports,
             network=network,
             remove=remove,
             extra_args=extra_args,
         ))
-        args.append(image)
+        args.append(normalize_podman_image_ref(image))
         if command:
             args.extend(str(part) for part in command)
         return self._run(args, timeout=timeout).stdout.strip()
@@ -197,6 +215,9 @@ class PodmanCLI:
         detach: bool = False,
         env: Mapping[str, str] | None = None,
         workdir: str | None = None,
+        user: str | None = None,
+        entrypoint: str | None = None,
+        volumes: Mapping[str, str] | Sequence[str] | None = None,
         ports: Mapping[int | str, int | str | None] | None = None,
         network: str | None = None,
         remove: bool = False,
@@ -210,12 +231,15 @@ class PodmanCLI:
             name=name,
             env=env,
             workdir=workdir,
+            user=user,
+            entrypoint=entrypoint,
+            volumes=volumes,
             ports=ports,
             network=network,
             remove=remove,
             extra_args=extra_args,
         ))
-        args.append(image)
+        args.append(normalize_podman_image_ref(image))
         if command:
             args.extend(str(part) for part in command)
         return self._run(args, timeout=timeout)
@@ -245,8 +269,15 @@ class PodmanCLI:
         args.extend(str(part) for part in command)
         return self._run(args, timeout=timeout, check=check)
 
-    def cp(self, src: str, dst: str, *, timeout: float | None = None) -> PodmanResult:
-        return self._run(["cp", src, dst], timeout=timeout)
+    def cp(
+        self,
+        src: str,
+        dst: str,
+        *,
+        timeout: float | None = None,
+        check: bool = True,
+    ) -> PodmanResult:
+        return self._run(["cp", src, dst], timeout=timeout, check=check)
 
     def logs(
         self,
@@ -281,6 +312,23 @@ class PodmanCLI:
         check: bool = True,
     ) -> PodmanResult:
         return self._run(["inspect", target], timeout=timeout, check=check)
+
+    def image_exists(self, image: str, *, timeout: float | None = None) -> bool:
+        if self._run(["image", "inspect", image], timeout=timeout, check=False).ok:
+            return True
+        normalized = normalize_podman_image_ref(image)
+        if normalized == image:
+            return False
+        return self._run(["image", "inspect", normalized], timeout=timeout, check=False).ok
+
+    def wait(
+        self,
+        container_id: str,
+        *,
+        timeout: float | None = None,
+        check: bool = True,
+    ) -> PodmanResult:
+        return self._run(["wait", container_id], timeout=timeout, check=check)
 
     def stop(
         self,
@@ -319,6 +367,9 @@ class PodmanCLI:
         name: str | None,
         env: Mapping[str, str] | None,
         workdir: str | None,
+        user: str | None,
+        entrypoint: str | None,
+        volumes: Mapping[str, str] | Sequence[str] | None,
         ports: Mapping[int | str, int | str | None] | None,
         network: str | None,
         remove: bool,
@@ -331,10 +382,21 @@ class PodmanCLI:
             args.append("--rm")
         if workdir:
             args.extend(["--workdir", workdir])
+        if user:
+            args.extend(["--user", user])
+        if entrypoint:
+            args.extend(["--entrypoint", entrypoint])
         if network:
             args.extend(["--network", network])
         for key, value in sorted((env or {}).items()):
             args.extend(["--env", f"{key}={value}"])
+        if isinstance(volumes, Mapping):
+            volume_specs = [f"{host}:{container}" for host, container in sorted(volumes.items())]
+        else:
+            volume_specs = [str(spec) for spec in (volumes or [])]
+        for spec in volume_specs:
+            if spec:
+                args.extend(["-v", spec])
         for container_port, host_port in sorted((ports or {}).items(), key=lambda item: str(item[0])):
             spec = str(container_port)
             if host_port not in (None, ""):
