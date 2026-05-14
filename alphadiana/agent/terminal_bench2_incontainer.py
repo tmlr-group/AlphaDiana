@@ -19,6 +19,7 @@ from alphadiana.agent.terminal_bench2_common import (
     TerminalBench2RuntimeContext,
 )
 from alphadiana.benchmark.base import BenchmarkTask
+from alphadiana.container_runtime.podman_cli import PodmanError, normalize_podman_image_ref
 from alphadiana.utils.rock_runtime import PREBUILT_SANDBOX_IMAGE
 
 logger = logging.getLogger(__name__)
@@ -84,6 +85,7 @@ class TerminalBench2InContainerMixin(TerminalBench2ContainerMixin):
             logs_dir=logs_dir,
             workdir=workdir,
             helper_paths={},
+            container_engine=getattr(self, "_container_engine", "docker"),
             _tempdir=tempdir,
         )
         return runtime, runtime_metadata
@@ -190,6 +192,14 @@ COPY --from=runtime /usr/local/bin/zeroclaw /usr/local/bin/zeroclaw
             )
 
         build_timeout_sec = int(float(task.metadata.get("build_timeout_sec", 600.0) or 600.0))
+        if getattr(self, "_container_engine", "docker") == "podman":
+            self._podman.build(
+                str(env_dir),
+                tag=image,
+                file=str(dockerfile_path),
+                timeout=build_timeout_sec,
+            )
+            return
         result = subprocess.run(
             ["docker", "build", "--tag", image, "-f", str(dockerfile_path), str(env_dir)],
             capture_output=True,
@@ -200,8 +210,9 @@ COPY --from=runtime /usr/local/bin/zeroclaw /usr/local/bin/zeroclaw
             detail = result.stderr.strip() or result.stdout.strip()
             raise RuntimeError(f"docker build failed for local task image {image}: {detail}")
 
-    @staticmethod
-    def _docker_image_exists(image: str) -> bool:
+    def _docker_image_exists(self, image: str) -> bool:
+        if getattr(self, "_container_engine", "docker") == "podman":
+            return self._podman.image_exists(image, timeout=30)
         result = subprocess.run(
             ["docker", "image", "inspect", image],
             capture_output=True,
@@ -210,8 +221,10 @@ COPY --from=runtime /usr/local/bin/zeroclaw /usr/local/bin/zeroclaw
         )
         return result.returncode == 0
 
-    @staticmethod
-    def _docker_pull(image: str) -> None:
+    def _docker_pull(self, image: str) -> None:
+        if getattr(self, "_container_engine", "docker") == "podman":
+            self._podman.pull(image, timeout=1800)
+            return
         result = subprocess.run(
             ["docker", "pull", image],
             capture_output=True,
@@ -221,14 +234,29 @@ COPY --from=runtime /usr/local/bin/zeroclaw /usr/local/bin/zeroclaw
         if result.returncode != 0:
             raise RuntimeError(f"docker pull failed for {image}: {result.stderr.strip()}")
 
-    @staticmethod
     def _docker_build_image(
+        self,
         image: str,
         dockerfile: str,
         *,
         build_args: dict[str, str],
     ) -> None:
         with tempfile.TemporaryDirectory(prefix="alphadiana-tb2-build-") as context_dir:
+            if getattr(self, "_container_engine", "docker") == "podman":
+                extra_args: list[str] = []
+                for key, value in sorted(build_args.items()):
+                    if key.upper().endswith("IMAGE"):
+                        value = normalize_podman_image_ref(value)
+                    extra_args.extend(["--build-arg", f"{key}={value}"])
+                self._podman.build(
+                    context_dir,
+                    tag=image,
+                    file="-",
+                    input_text=dockerfile,
+                    extra_args=extra_args,
+                    timeout=1800,
+                )
+                return
             cmd = ["docker", "build", "--tag", image]
             for key, value in sorted(build_args.items()):
                 cmd.extend(["--build-arg", f"{key}={value}"])
@@ -260,6 +288,29 @@ COPY --from=runtime /usr/local/bin/zeroclaw /usr/local/bin/zeroclaw
         if cwd:
             shell_lines.append(f"cd {shlex.quote(cwd)}")
         shell_lines.append(script)
+        if getattr(self, "_container_engine", "docker") == "podman":
+            try:
+                result = self._podman.exec(
+                    container_id,
+                    ["bash", "-lc", "\n".join(shell_lines)],
+                    timeout=timeout_sec,
+                    check=False,
+                )
+            except PodmanError as exc:
+                return LocalCommandResult(
+                    stdout=exc.result.stdout,
+                    stderr=exc.result.stderr or str(exc),
+                    returncode=exc.result.returncode,
+                )
+            exec_result = LocalCommandResult(
+                stdout=result.stdout,
+                stderr=result.stderr,
+                returncode=result.returncode,
+            )
+            if check and exec_result.returncode != 0:
+                detail = exec_result.stderr.strip() or exec_result.stdout.strip() or "unknown error"
+                raise RuntimeError(f"Podman exec failed: {detail}")
+            return exec_result
         cmd = ["docker", "exec", container_id, "bash", "-lc", "\n".join(shell_lines)]
         try:
             result = subprocess.run(
@@ -302,12 +353,20 @@ COPY --from=runtime /usr/local/bin/zeroclaw /usr/local/bin/zeroclaw
             timeout_sec=30,
             check=True,
         )
-        result = subprocess.run(
-            ["docker", "cp", str(local_path), f"{container_id}:{remote_path}"],
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
+        if getattr(self, "_container_engine", "docker") == "podman":
+            result = self._podman.cp(
+                str(local_path),
+                f"{container_id}:{remote_path}",
+                timeout=120,
+                check=False,
+            )
+        else:
+            result = subprocess.run(
+                ["docker", "cp", str(local_path), f"{container_id}:{remote_path}"],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
         if result.returncode != 0:
             raise RuntimeError(f"docker cp to container failed: {result.stderr.strip()}")
 
@@ -321,12 +380,20 @@ COPY --from=runtime /usr/local/bin/zeroclaw /usr/local/bin/zeroclaw
         if not self._docker_path_exists(container_id, remote_path):
             return False
         local_path.parent.mkdir(parents=True, exist_ok=True)
-        result = subprocess.run(
-            ["docker", "cp", f"{container_id}:{remote_path}", str(local_path)],
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
+        if getattr(self, "_container_engine", "docker") == "podman":
+            result = self._podman.cp(
+                f"{container_id}:{remote_path}",
+                str(local_path),
+                timeout=120,
+                check=False,
+            )
+        else:
+            result = subprocess.run(
+                ["docker", "cp", f"{container_id}:{remote_path}", str(local_path)],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
         if result.returncode != 0:
             raise RuntimeError(f"docker cp from container failed: {result.stderr.strip()}")
         return True

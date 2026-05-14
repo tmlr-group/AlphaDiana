@@ -40,6 +40,20 @@ OpenClaw, ZeroClaw, and OpenCode on one AIME task each. Use
 for the run IDs, image build commands, and current caveats. These paths remain
 opt-in; task-container benchmark defaults are unchanged.
 
+Also as of May 14, 2026, task-container benchmark adapters have opt-in Podman
+configuration shapes but are not promoted to default or fully supported yet.
+Use `agent.config.container_engine=podman` for `swebench_docker`,
+`terminal_bench2_*`, and `sandbox.config.container_engine=podman` for
+`swebench_container`. Example entry points are
+`configs/examples/openclaw_swe_bench_podman_smoke.yaml`,
+`configs/examples/swebench_pro_openclaw_podman_smoke.local.yaml`,
+and `configs/examples/terminal_bench2_opencode_podman_smoke.yaml`. These paths
+preserve legacy Docker/ROCK baselines and still require live task-level smoke
+evidence before being described as supported; the initial TerminalBench2 smoke
+attempt reached Podman pull but was blocked by a private/unauthorized task
+image. external_benchmark Podman work is deferred to a later phase and is not part of
+this Phase 3 scope.
+
 Generated ZeroClaw configs use `runtime_trace_mode="full"` for logprob capture
 and write ZeroClaw's schema-supported permissive shell controls; ZeroClaw
 0.6.9 does not expose a heredoc-specific allowlist setting.
