@@ -35,6 +35,7 @@ AlphaDiana does not use the ROCK/AIME flow from the root [README.md](../../READM
 Shipped configs:
 
 - `configs/examples/swebench_pro_openclaw_smoke.local.yaml`
+- `configs/examples/swebench_pro_openclaw_podman_smoke.local.yaml`
 - `configs/examples/swebench_pro_opencode_smoke.local.yaml`
 - `configs/examples/swebench_pro_zeroclaw_smoke.local.yaml`
 - `configs/examples/swebench_pro_direct_llm_smoke.local.yaml`
@@ -42,8 +43,13 @@ Shipped configs:
 - `configs/full_runs/p29_full_opencode_swebench_pro.yaml`
 - `configs/full_runs/p29_full_zeroclaw_swebench_pro.yaml`
 
-Only the first three are part of the AlphaDiana reproduction path documented here.
-The three `configs/full_runs/` files are the full benchmark entry points for the Diana-backed paths.
+The OpenClaw, OpenCode, ZeroClaw, and opt-in Podman OpenClaw configs are part
+of the AlphaDiana reproduction path documented here. The `direct_llm` config is
+separate from the Diana-managed execution modes and mirrors the official-path
+baseline shape. The three `configs/full_runs/` files are the full benchmark
+entry points for the Diana-backed paths. The Podman OpenClaw smoke is an
+opt-in container-engine variant of the OpenClaw path and is still
+evidence-gated; it is not a default-promotion claim.
 
 OpenRouter/Qwen pilot status on April 19, 2026:
 
@@ -554,6 +560,35 @@ python -m alphadiana.cli run configs/examples/swebench_pro_zeroclaw_smoke.local.
 For a single-instance smoke rerun without changing the benchmark harness,
 override `benchmark.config.instance_ids=<instance_id>`, for example
 `-o benchmark.config.instance_ids=instance_qutebrowser__...`.
+
+### Podman OpenClaw smoke status
+
+The opt-in Podman config
+`configs/examples/swebench_pro_openclaw_podman_smoke.local.yaml` currently
+requires the same official evaluator assets plus a Podman-compatible
+OpenClaw runtime-source image. It is experimental/pending validation and is
+deferred from the Phase 3 required live-validation scope. On the May 14, 2026
+validation host:
+
+- the official evaluator checkout was configured and `alphadiana validate`
+  passed
+- a writable Hugging Face cache was required because the default cache was
+  read-only
+- the task image
+  `jefzda/sweap-images:nodebb.nodebb-NodeBB__NodeBB-04998908ba6721d64eba79ae3b65a351dcfbc5b5`
+  pulled successfully
+- pulling the default `tmlrgroup/alphadiana:v1` runtime source timed out after
+  1200s, so a local validation-only compatible runtime source image was built
+  from an existing OpenClaw image
+- after image prep, OpenClaw gateway started but the embedded agent returned
+  `LLM request timed out` and empty `openclaw_output.jsonl` for
+  `openai/gpt-oss-20b`, `qwen/qwen3.5-9b`, and
+  `deepseek/deepseek-v4-flash:free`
+
+Do not treat the Podman OpenClaw SWE-bench Pro path as supported until this
+provider/runtime blocker is repaired and a task JSON completes without a
+top-level `error`. Phase 3 completion does not include a SWE-bench Pro Podman
+support claim.
 
 ## Expected Results
 

@@ -43,20 +43,26 @@ opt-in and are not default-promotion claims; task-container benchmark defaults
 are unchanged.
 
 Also as of May 14, 2026, task-container benchmark adapters have implemented
-opt-in Podman configuration shapes, but live validation is pending and blocked
-on smoke evidence.
+opt-in Podman configuration shapes. The revised Phase 3 required live-validation
+scope is TerminalBench2 plus SWE-bench Verified, and both required cells have
+completed opt-in Podman smoke evidence. SWE-bench Pro is deferred from Phase 3
+completion and remains experimental pending validation because it still blocks
+before scoring on the OpenClaw in-container provider/runtime path.
 Use `agent.config.container_engine=podman` for `swebench_docker`,
 `terminal_bench2_*`, and `sandbox.config.container_engine=podman` for
 `swebench_container`. Example entry points are
 `configs/examples/openclaw_swe_bench_podman_smoke.yaml`,
 `configs/examples/swebench_pro_openclaw_podman_smoke.local.yaml`,
 and `configs/examples/terminal_bench2_opencode_podman_smoke.yaml`. These paths
-preserve legacy Docker/ROCK baselines and still require live task-level smoke
-evidence before being described as supported; the initial TerminalBench2 smoke
-attempt reached Podman pull but was blocked by a private/unauthorized ad hoc
-task image, and the Podman smoke now selects the official `db-wal-recovery`
-task from `TERMINAL_BENCH2_DIR`. external_benchmark Podman work is deferred to a later
-phase and is not part of this Phase 3 scope.
+preserve legacy Docker/ROCK baselines and should not be described as
+default-enabled or parity-proven. Current evidence lives in
+[`context/phase03-podman-task-containers/README.md`](../../context/phase03-podman-task-containers/README.md):
+TerminalBench2 official `db-wal-recovery` and SWE-bench Verified
+`astropy__astropy-12907` completed as `valid_scored`, `score=0`, while
+SWE-bench Pro reaches Podman lifecycle but fails with `agent_error` and empty
+OpenClaw output. Do not claim SWE-bench Pro Podman support from that pending
+run. external_benchmark Podman work is deferred to a later phase and is not part of this
+Phase 3 scope.
 
 Generated ZeroClaw configs use `runtime_trace_mode="full"` for logprob capture
 and write ZeroClaw's schema-supported permissive shell controls; ZeroClaw
