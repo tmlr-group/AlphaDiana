@@ -1,17 +1,23 @@
 # TerminalBench2 OpenCode in-container smoke using Podman for task containers.
 #
 # Required:
-#   export TERMINAL_BENCH2_SMOKE_DIR=/path/to/staged-terminal-bench-smoke-root
+#   export TERMINAL_BENCH2_DIR=/path/to/official-terminal-bench-2/tasks
 #   export OPENAI_API_KEY=...
 #   export OPENAI_BASE_URL=...
 #   export OPENAI_MODEL_NAME=...
+#
+# This smoke intentionally selects the official `db-wal-recovery` task and reads
+# its docker image from that task's `task.toml` metadata. Do not point this at
+# the old ad hoc `tb2-smoke-test` fixture/image.
 
 run_id: "phase03_terminal_bench2_opencode_podman_smoke"
 
 benchmark:
   name: terminal_bench2
   config:
-    tasks_dir: ${TERMINAL_BENCH2_SMOKE_DIR}
+    tasks_dir: ${TERMINAL_BENCH2_DIR}
+    task_ids:
+      - db-wal-recovery
     max_tasks: 1
 
 agent:

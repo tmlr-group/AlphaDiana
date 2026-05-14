@@ -66,7 +66,7 @@ def _load_swebench_runtime() -> dict[str, Any]:
     except ImportError as exc:
         raise RuntimeError(
             "The 'docker' package is required for the swebench_container backend. "
-            "Install with: pip install docker"
+            "Install the SWE-bench optional dependencies with: pip install -e '.[swebench]'"
         ) from exc
 
     try:
@@ -81,7 +81,7 @@ def _load_swebench_runtime() -> dict[str, Any]:
     except ImportError as exc:
         raise RuntimeError(
             "The 'swebench' package is required for the swebench_container backend. "
-            "Install with: pip install swebench"
+            "Install the SWE-bench optional dependencies with: pip install -e '.[swebench]'"
         ) from exc
 
     return {
