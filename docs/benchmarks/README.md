@@ -6,6 +6,11 @@ Start from [`context/current_eval_status.md`](../../context/current_eval_status.
 for the current cross-benchmark support snapshot, then open the matching
 runbook here.
 
+For opt-in Podman experiments, start with
+[`podman.md`](podman.md). It covers image setup, standard-reasoning pilot
+commands, nightly validation, task-container smokes, result inspection, and the
+current no-default-promotion boundary.
+
 For paper-facing wording about whether a benchmark path is sandboxed or
 containerized, also read
 [`docs/benchmark-isolation.md`](../benchmark-isolation.md). That note keeps the
@@ -63,6 +68,39 @@ SWE-bench Pro reaches Podman lifecycle but fails with `agent_error` and empty
 OpenClaw output. Do not claim SWE-bench Pro Podman support from that pending
 run. external_benchmark Podman work is deferred to a later phase and is not part of this
 Phase 3 scope.
+
+On May 14/15, 2026, a validation-only Podman nightly campaign ran broader
+cheap coverage through
+`configs/smokes/podman_nightly_validation/` and
+`scripts/run_podman_nightly_validation.sh`. The report is
+[`context/podman-nightly-validation/README.md`](../../context/podman-nightly-validation/README.md).
+This campaign does not upgrade support claims: standard reasoning rows were
+mixed, and the original nightly found two standard-reasoning Podman error rows
+that missed `container_engine=podman`. A May 15 follow-up repaired that
+standard-reasoning metadata contract and reran the OpenClaw GPQA and ZeroClaw
+IMO repro configs with Podman provenance recorded. TerminalBench2 completed
+three official tasks as `valid_scored`/`score=0`, and SWE-bench Verified
+broader coverage still failed on scorer-image/proxy and Podman short-name image
+build issues. SWE-bench Pro and external_benchmark remained deferred, and Direct x
+SWE/TB2 remains `-`.
+
+On May 15, 2026, Phase 5 added standard-reasoning Podman scale-readiness
+configs under `configs/smokes/podman_scale_readiness/`, plus
+`scripts/run_podman_scale_readiness.sh` and
+`scripts/audit_podman_scale_readiness.py`. The matrix is restricted to
+OpenClaw, ZeroClaw, and OpenCode across AIME, GPQA-Diamond, HLE, and
+IMO-AnswerBench with three pilot tasks per cell. On this host, local vLLM
+requires Podman host networking; the runner now preflights that path and the
+shared Podman runtime cleans up owned host-network listeners. The rerun
+`podman_scale_20260515_qwen35_4b_tool_hf` used the same 36-task matrix,
+operator-provided HLE dataset credentials, and a local vLLM provider restarted
+with Qwen tool-call support. It wrote all 36 task rows, all with
+`metadata.container_engine=podman`, and the audit passed with 28 `clean` rows
+and 8 non-Podman `agent_empty_output` rows. See
+[`context/podman-scale-readiness/README.md`](../../context/podman-scale-readiness/README.md).
+This supports recommending the full-scale overnight standard-reasoning Podman
+campaign as the next action, but full-scale has not been run and no
+task-container benchmark or global Podman default status changed.
 
 Generated ZeroClaw configs use `runtime_trace_mode="full"` for logprob capture
 and write ZeroClaw's schema-supported permissive shell controls; ZeroClaw
@@ -140,6 +178,7 @@ example configs, and smoke-test commands:
 - [SWE-bench Pro](swebench-pro.md)
 - [SWE-bench Verified](swebench-verified.md)
 - [terminal-bench-2](terminal-bench-2.md)
+- [Podman Experiment Runbook](podman.md)
 - [Full Local-vLLM Rollout (2026-04-19)](full-rollout-local-vllm-20260419.md)
 - [ZeroClaw MiniMax Smoke Matrix (2026-04-18)](zeroclaw-minimax-smoke-20260418.md)
 - [ZeroClaw Qwen OpenRouter Pilot Matrix (2026-04-19)](zeroclaw-qwen-openrouter-pilot-20260419.md)
@@ -190,6 +229,7 @@ If you know the harness first:
 If you are searching for a real Qwen/OpenRouter pilot or a ZeroClaw-specific
 smoke recipe rather than the general runbook, start from:
 
+- [podman.md](podman.md)
 - [zeroclaw-minimax-smoke-20260418.md](zeroclaw-minimax-smoke-20260418.md)
 - [zeroclaw-qwen-openrouter-pilot-20260419.md](zeroclaw-qwen-openrouter-pilot-20260419.md)
 - [zeroclaw-local-qwen-rerun-20260428.md](zeroclaw-local-qwen-rerun-20260428.md)
@@ -322,6 +362,18 @@ The checked-in plain-benchmark `opencode` configs for `GPQA-Diamond`,
 `alphadiana/tb2-opencode-controller:latest` before using those configs. The
 host-process path is still available for debugging via
 `-o agent.config.controller_mode=host`.
+
+For `opencode`, answers are extracted only from assistant/model text events.
+Raw OpenCode JSONL, tool events, provider error bodies, and lifecycle metadata
+are preserved as artifacts but are not valid answer sources. A lifecycle-only
+stream is reported as `agent_empty_output` with `predicted=null` and `score=0`,
+not as a valid answer of `0`; aggregate accuracy and mean-score denominators
+still count it as a zero-contribution sample.
+
+The same answer-source rule applies to the other standard agents: OpenClaw
+provider error payloads do not become assistant text, and ZeroClaw clears
+`answer` / `answer_source` on partial failure records. ZeroClaw stderr and
+runtime traces remain artifacts, not answer-extraction input.
 
 On April 25, 2026, latest-code local `Qwen/Qwen3.5-27B` OpenCode smokes
 completed 3/3 tasks on GPQA-Diamond, IMO-AnswerBench, HLE, and MMMU-Pro vision

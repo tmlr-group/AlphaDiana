@@ -97,6 +97,28 @@ def _sanitize_success_sandbox_metadata(metadata: dict | None) -> dict:
     return _sanitize_sandbox_metadata(metadata, keep_command_history=False)
 
 
+def _agent_error_provenance_metadata(agent: object) -> dict:
+    provider = getattr(agent, "error_provenance_metadata", None)
+    if not callable(provider):
+        return {}
+    try:
+        metadata = provider()
+    except Exception:
+        logger.debug("Agent error provenance provider failed", exc_info=True)
+        return {}
+    return dict(metadata) if isinstance(metadata, dict) else {}
+
+
+def _apply_error_provenance_metadata(response: object, metadata: dict) -> None:
+    if not metadata:
+        return
+    response_metadata = dict(getattr(response, "metadata", None) or {})
+    for key, value in metadata.items():
+        if value not in (None, ""):
+            response_metadata.setdefault(key, value)
+    response.metadata = response_metadata
+
+
 def _merge_artifact_manifests(existing: dict | None, incoming: dict | None) -> dict:
     """Merge artifact manifests without dropping previously preserved file aliases."""
     merged = dict(existing or {})
@@ -1801,6 +1823,10 @@ class Runner:
                 if self.sandbox is not None:
                     sandbox_backend_name = getattr(self.sandbox, "name", type(self.sandbox).__name__)
                     error_response.metadata.setdefault("sandbox_backend", sandbox_backend_name)
+                _apply_error_provenance_metadata(
+                    error_response,
+                    _agent_error_provenance_metadata(self.agent),
+                )
                 error_response.metadata.setdefault("sample_index", sample_index)
                 error_response.metadata.setdefault(
                     "execution_id",

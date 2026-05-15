@@ -1,0 +1,41 @@
+run_id: "podman_scale_opencode_gpqa_pilot"
+
+agent:
+  name: opencode
+  version: "1.0.0"
+  config:
+    controller_mode: podman
+    controller_image: "localhost/alphadiana-opencode-podman:latest"
+    controller_network: "host"
+    api_base: "${OPENAI_BASE_URL}"
+    api_key: "${OPENAI_API_KEY}"
+    model_name: "${OPENAI_MODEL_NAME}"
+    enable_thinking: true
+    timeout: 600
+    max_tokens: 2048
+    system_prompt: |
+      You are solving expert-level science multiple-choice questions.
+      Reason carefully and put the final answer on the last line as exactly
+      one of $$\boxed{A}$$, $$\boxed{B}$$, $$\boxed{C}$$, or $$\boxed{D}$$.
+
+benchmark:
+  name: gpqa_diamond
+  config:
+    dataset: "fingertap/GPQA-Diamond"
+    split: "test"
+    max_tasks: 3
+    seed: 42
+
+sandbox: null
+
+scorer:
+  name: exact_match
+  config: {}
+
+max_concurrent: 1
+num_samples: 1
+output_dir: "./results"
+metadata:
+  validation_campaign: "podman-scale-readiness-pilot"
+  container_engine: "podman"
+  notes: "Phase 5 OpenCode Podman GPQA-Diamond 3-task pilot."

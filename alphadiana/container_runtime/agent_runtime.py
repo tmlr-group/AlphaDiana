@@ -10,8 +10,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import posixpath
+import signal
 import shlex
+import socket
 import tempfile
 import time
 import uuid
@@ -84,6 +87,8 @@ class PodmanAgentSpec:
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def port_mapping(self) -> Mapping[int | str, int | str | None]:
+        if str(self.network or "").strip() == "host":
+            return {}
         if self.exposed_port is None and self.ports is None:
             return {}
         if self.ports is not None:
@@ -121,6 +126,7 @@ class PodmanAgentRuntime:
         self._spec: PodmanAgentSpec | None = None
         self._api_base = ""
         self._process_id = ""
+        self._owned_host_port: int | None = None
 
     @property
     def container_id(self) -> str:
@@ -136,6 +142,7 @@ class PodmanAgentRuntime:
         self._spec = spec
         container_id = ""
         try:
+            self._ensure_host_network_port_available(spec)
             name = f"{spec.name_prefix}-{spec.adapter_name}-{uuid.uuid4().hex[:10]}"
             result = self._runtime.run(
                 spec.image,
@@ -156,6 +163,7 @@ class PodmanAgentRuntime:
             self._copy_files(spec, container_id)
             self._run_install_commands(spec, container_id)
             self._process_id = self._launch_process(spec, container_id)
+            self._owned_host_port = _host_network_port(spec)
             self._api_base = self._resolve_api_base(spec, container_id)
             self._wait_until_ready(spec, self._api_base)
 
@@ -227,6 +235,10 @@ class PodmanAgentRuntime:
         timeout = spec.cleanup_timeout if spec else 30.0
         stop_error: Exception | None = None
         try:
+            if spec is not None and self._process_id:
+                self._terminate_process_group(container_id, self._process_id, timeout=timeout)
+            if spec is not None and self._owned_host_port is not None:
+                self._terminate_host_port_listeners(spec, self._owned_host_port)
             self._runtime.stop(container_id, stop_timeout=int(timeout), timeout=timeout, check=check)
         except Exception as exc:
             stop_error = exc
@@ -235,6 +247,7 @@ class PodmanAgentRuntime:
             self._container_id = ""
             self._api_base = ""
             self._process_id = ""
+            self._owned_host_port = None
         if stop_error is not None and check:
             raise stop_error
 
@@ -306,8 +319,15 @@ class PodmanAgentRuntime:
     def _launch_process(self, spec: PodmanAgentSpec, container_id: str) -> str:
         if not str(spec.run_command or "").strip():
             return ""
+        launcher = (
+            "if command -v setsid >/dev/null 2>&1; then "
+            f"exec setsid /bin/sh -c {shlex.quote(spec.run_command)}; "
+            "else "
+            f"exec /bin/sh -c {shlex.quote(spec.run_command)}; "
+            "fi"
+        )
         command = (
-            f"nohup /bin/sh -c {shlex.quote(spec.run_command)} "
+            f"nohup /bin/sh -c {shlex.quote(launcher)} "
             f">> {shlex.quote(spec.process_log_path)} 2>&1 & echo $!"
         )
         result = self._runtime.exec(
@@ -319,9 +339,74 @@ class PodmanAgentRuntime:
         )
         return result.stdout.strip()
 
+    def _terminate_process_group(self, container_id: str, process_id: str, *, timeout: float) -> None:
+        pid = str(process_id or "").strip().splitlines()[-1] if str(process_id or "").strip() else ""
+        if not pid.isdigit():
+            return
+        command = (
+            f"kill -TERM -- -{pid} 2>/dev/null || true; "
+            f"kill -TERM {pid} 2>/dev/null || true; "
+            "sleep 0.5; "
+            f"kill -KILL -- -{pid} 2>/dev/null || true; "
+            f"kill -KILL {pid} 2>/dev/null || true"
+        )
+        try:
+            self._runtime.exec(
+                container_id,
+                ["/bin/sh", "-c", command],
+                timeout=min(max(float(timeout), 1.0), 10.0),
+                check=False,
+            )
+        except Exception:
+            return
+
+    def _ensure_host_network_port_available(self, spec: PodmanAgentSpec) -> None:
+        port = _host_network_port(spec)
+        if port is None:
+            return
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(0.5)
+            result = sock.connect_ex(("127.0.0.1", port))
+        if result != 0:
+            return
+        raise PodmanAgentRuntimeError(
+            f"{spec.adapter_name} Podman host-network port {port} is already in use",
+            payload={
+                "stage": "host_port_preflight",
+                "adapter_name": spec.adapter_name,
+                "container_id": "",
+                "command": spec.run_command,
+                "port": port,
+                "metadata": self._metadata(spec, "", ""),
+            },
+        )
+
+    def _terminate_host_port_listeners(self, spec: PodmanAgentSpec, port: int) -> None:
+        pids = _host_listener_pids(port)
+        if not pids:
+            return
+        owned_pids = [pid for pid in pids if _looks_like_agent_process(pid, spec)]
+        if not owned_pids:
+            return
+        for sig in (signal.SIGTERM, signal.SIGKILL):
+            for pid in owned_pids:
+                try:
+                    os.kill(pid, sig)
+                except ProcessLookupError:
+                    continue
+                except PermissionError:
+                    continue
+            if sig == signal.SIGTERM:
+                time.sleep(0.5)
+
     def _resolve_api_base(self, spec: PodmanAgentSpec, container_id: str) -> str:
         if spec.exposed_port is None:
             return ""
+        if str(spec.network or "").strip() == "host":
+            suffix = str(spec.api_base_suffix or "").strip()
+            if suffix and not suffix.startswith("/"):
+                suffix = f"/{suffix}"
+            return f"http://127.0.0.1:{spec.exposed_port}{suffix}"
         deadline = time.monotonic() + float(spec.startup_timeout)
         last_output = ""
         last_error: Exception | None = None
@@ -511,6 +596,83 @@ def _spec_digest(spec: PodmanAgentSpec) -> str:
     }
     encoded = json.dumps(safe, sort_keys=True, default=str).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()[:16]
+
+
+def _host_network_port(spec: PodmanAgentSpec) -> int | None:
+    if str(spec.network or "").strip() != "host" or spec.exposed_port is None:
+        return None
+    try:
+        return int(spec.exposed_port)
+    except (TypeError, ValueError):
+        return None
+
+
+def _host_listener_pids(port: int) -> list[int]:
+    inodes = _listening_socket_inodes(port)
+    if not inodes:
+        return []
+    pids: list[int] = []
+    proc = Path("/proc")
+    for entry in proc.iterdir():
+        if not entry.name.isdigit():
+            continue
+        fd_dir = entry / "fd"
+        try:
+            fds = list(fd_dir.iterdir())
+        except (FileNotFoundError, PermissionError, ProcessLookupError):
+            continue
+        for fd in fds:
+            try:
+                target = os.readlink(fd)
+            except (FileNotFoundError, PermissionError, ProcessLookupError):
+                continue
+            if target.startswith("socket:[") and target[8:-1] in inodes:
+                pids.append(int(entry.name))
+                break
+    return sorted(set(pids))
+
+
+def _listening_socket_inodes(port: int) -> set[str]:
+    target_port = f"{int(port):04X}"
+    inodes: set[str] = set()
+    for path in (Path("/proc/net/tcp"), Path("/proc/net/tcp6")):
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()[1:]
+        except (FileNotFoundError, PermissionError):
+            continue
+        for line in lines:
+            fields = line.split()
+            if len(fields) < 10:
+                continue
+            local_address = fields[1]
+            state = fields[3]
+            inode = fields[9]
+            if state != "0A":
+                continue
+            _, _, local_port = local_address.rpartition(":")
+            if local_port.upper() == target_port:
+                inodes.add(inode)
+    return inodes
+
+
+def _looks_like_agent_process(pid: int, spec: PodmanAgentSpec) -> bool:
+    try:
+        raw_cmdline = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except (FileNotFoundError, PermissionError, ProcessLookupError):
+        return False
+    cmdline = raw_cmdline.replace(b"\x00", b" ").decode("utf-8", errors="replace").lower()
+    marker = str(spec.adapter_name or "").split("-", 1)[0].strip().lower()
+    if marker and marker in cmdline:
+        return True
+    try:
+        run_tokens = shlex.split(str(spec.run_command or ""))
+    except ValueError:
+        run_tokens = str(spec.run_command or "").split()
+    for token in run_tokens:
+        name = Path(token).name.lower()
+        if len(name) >= 5 and name in cmdline:
+            return True
+    return False
 
 
 def _redact_secret_fields(value: Any) -> Any:

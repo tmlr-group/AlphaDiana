@@ -47,6 +47,26 @@ See [`full_runs/README.md`](full_runs/README.md) for the full file inventory.
 
 ## `smokes/` — active smoke matrices
 
+The validation-only Podman nightly matrix lives in
+[`smokes/podman_nightly_validation/`](smokes/podman_nightly_validation/).
+It contains opt-in configs for OpenClaw, ZeroClaw, and OpenCode standard
+reasoning rows across AIME, GPQA-Diamond, HLE, and IMO-AnswerBench, plus the
+already validated Podman task-container cells for TerminalBench2 and
+SWE-bench Verified. Run it with
+`bash scripts/run_podman_nightly_validation.sh [standard|task|all]`. Current
+evidence and caveats are recorded in
+[`context/podman-nightly-validation/README.md`](../context/podman-nightly-validation/README.md);
+these configs do not promote Podman defaults.
+
+The standard-reasoning Podman scale-readiness pilot matrix lives in
+[`smokes/podman_scale_readiness/`](smokes/podman_scale_readiness/). It covers
+OpenClaw, ZeroClaw, and OpenCode across AIME, GPQA-Diamond, HLE, and
+IMO-AnswerBench with three tasks per cell. Run it with
+`bash scripts/run_podman_scale_readiness.sh [validate|pilot|audit]`. Operator
+commands and support boundaries are documented in
+[`docs/benchmarks/podman.md`](../docs/benchmarks/podman.md), and evidence is in
+[`context/podman-scale-readiness/README.md`](../context/podman-scale-readiness/README.md).
+
 The current prompt-aligned local-Qwen smoke matrix lives in
 [`smokes/harness_prompt_alignment_20260425/`](smokes/harness_prompt_alignment_20260425/).
 It contains OpenClaw and ZeroClaw configs for AIME 2024, IMO-AnswerBench,

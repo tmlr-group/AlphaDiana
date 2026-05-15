@@ -488,6 +488,29 @@ class ZeroClawAgent(Agent):
             runtime_config["_logprob_capture"] = self._logprob_capture
             self._runtime_manager = ZeroClawPodmanRuntimeManager(runtime_config)
 
+    def error_provenance_metadata(self) -> dict[str, Any]:
+        if self._runtime_backend != "podman":
+            return {}
+        metadata: dict[str, Any] = {
+            "container_engine": "podman",
+            "adapter_name": "zeroclaw-podman",
+        }
+        runtime_manager = getattr(self, "_runtime_manager", None)
+        if runtime_manager is not None and hasattr(runtime_manager, "runtime_info"):
+            try:
+                info = runtime_manager.runtime_info(None)
+            except Exception:
+                info = {}
+            if isinstance(info, dict):
+                runtime_metadata = info.get("metadata", {})
+                if isinstance(runtime_metadata, dict):
+                    metadata.update(runtime_metadata)
+                for key in ("container_engine", "adapter_name", "image", "container_id"):
+                    value = info.get(key)
+                    if value not in (None, ""):
+                        metadata.setdefault(key, value)
+        return metadata
+
     def _logprob_request_overrides(self) -> dict[str, Any]:
         overrides: dict[str, Any] = dict(self._provider_body_overrides)
         overrides["temperature"] = self._temperature
@@ -849,8 +872,10 @@ class ZeroClawAgent(Agent):
         extra_metadata: dict[str, Any] | None = None,
         response_json_extra: dict[str, Any] | None = None,
     ) -> AgentResponse:
+        partial_response.answer = None
         metadata = dict(partial_response.metadata or {})
         metadata["failure_reason"] = failure_reason
+        metadata["answer_source"] = ""
         if extra_metadata:
             metadata.update(extra_metadata)
         partial_response.metadata = metadata
@@ -1643,7 +1668,51 @@ class ZeroClawAgent(Agent):
         except Exception:
             response_json = {"error": {"message": response.text, "type": "non_json_response"}}
         if response.status_code >= 400:
-            raise RuntimeError(f"ZeroClaw Podman bridge request failed: {response.status_code} {response_json!r}")
+            artifact_data = self._runtime_manager.collect_artifacts(None)
+            workspace_file_contents = dict(artifact_data.get("workspace_file_contents", {}) or {})
+            raw_output = workspace_file_contents.get("zeroclaw_output.txt", "")
+            raw_stderr = workspace_file_contents.get("zeroclaw_stderr.log", "")
+            runtime_trace = workspace_file_contents.get("runtime_trace.jsonl", "")
+            metadata = {
+                "model": self._model,
+                "provider_api_base": self._provider_api_base,
+                "transport": "zeroclaw_podman_bridge",
+            }
+            metadata.update(self.error_provenance_metadata())
+            partial_response = self._build_cli_response(
+                prompt=prompt,
+                raw_output=raw_output,
+                raw_stderr=raw_stderr,
+                runtime_trace=runtime_trace,
+                attachment_items=attachment_items,
+                metadata=metadata,
+                wall_time_sec=time.time() - start,
+                system_prompt=self._system_prompt,
+                artifact_manifest=artifact_data.get("artifact_manifest", {}),
+                request_messages=list(task_context["request_messages"]),
+            )
+            partial_response.gateway_url = str(runtime_info.get("gateway_url", "") or "")
+            partial_response.gateway_log_excerpt = artifact_data.get("gateway_log_excerpt", "")
+            partial_response.workspace_snapshot_paths = artifact_data.get("workspace_snapshot_paths", [])
+            partial_response.workspace_file_contents = workspace_file_contents
+            sandbox_metadata = dict(artifact_data.get("sandbox_metadata", {}) or {})
+            for key, value in self.error_provenance_metadata().items():
+                if key in {"container_engine", "adapter_name", "image", "container_id"}:
+                    sandbox_metadata.setdefault(key, value)
+            partial_response.sandbox_metadata = sandbox_metadata
+            partial_response.response_json = response_json
+            error_obj = response_json.get("error", {}) if isinstance(response_json, dict) else {}
+            error_type = (
+                str(error_obj.get("type", "") or "").strip()
+                if isinstance(error_obj, dict)
+                else ""
+            ) or "RuntimeError"
+            self._mark_partial_failure(partial_response, failure_reason=error_type)
+            self._raise_with_partial_response(
+                f"ZeroClaw Podman bridge request failed: {response.status_code} {response_json!r}",
+                partial_response,
+                error_type=error_type,
+            )
         raw_output = ""
         choices = response_json.get("choices", [])
         if isinstance(choices, list) and choices:

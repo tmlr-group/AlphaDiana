@@ -53,6 +53,11 @@ dump.rdb
 !/configs/examples/**
 !/configs/full_runs/
 !/configs/full_runs/**
+!/configs/smokes/
+!/configs/smokes/podman_nightly_validation/
+!/configs/smokes/podman_nightly_validation/**
+!/configs/smokes/podman_scale_readiness/
+!/configs/smokes/podman_scale_readiness/**
 /artifacts/
 
 # external_benchmark runtime artifacts

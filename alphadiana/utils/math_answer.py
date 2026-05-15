@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 
 
@@ -17,6 +18,50 @@ _NUMERIC_LITERAL_RE = re.compile(r"-?\d+(?:\.\d+)?%?")
 _NUMERIC_FRACTION_RE = re.compile(
     r"\(?-?\d+(?:\.\d+)?\)?/\(?-?\d+(?:\.\d+)?\)?"
 )
+_JSON_METADATA_KEYS = {
+    "cost",
+    "duration",
+    "elapsed",
+    "error",
+    "exit_code",
+    "prompt_tokens",
+    "status",
+    "tokens",
+}
+
+
+def _contains_json_metadata_key(value) -> bool:
+    if isinstance(value, dict):
+        if any(str(key).lower() in _JSON_METADATA_KEYS for key in value):
+            return True
+        return any(_contains_json_metadata_key(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_contains_json_metadata_key(item) for item in value)
+    return False
+
+
+def _looks_like_json_metadata(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped:
+        return False
+
+    lines = [line.strip() for line in stripped.splitlines() if line.strip()]
+    if len(lines) > 1 and all(line[0] in "[{" for line in lines):
+        parsed_lines = []
+        for line in lines:
+            try:
+                parsed_lines.append(json.loads(line))
+            except (TypeError, ValueError, json.JSONDecodeError):
+                return False
+        return any(_contains_json_metadata_key(item) for item in parsed_lines)
+
+    if stripped[0] not in "[{":
+        return False
+    try:
+        parsed = json.loads(stripped)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return False
+    return _contains_json_metadata_key(parsed)
 
 
 def extract_boxed(text: str) -> str | None:
@@ -38,8 +83,15 @@ def extract_boxed(text: str) -> str | None:
     return None
 
 
-def extract_answer_candidate(text: str) -> str:
+def extract_answer_candidate(text: str, *, source: str = "assistant_text") -> str:
     """Extract the final-answer candidate from free-form model output."""
+    if source not in {"assistant_text", "model_text"}:
+        return ""
+    if not text or not text.strip():
+        return ""
+    if _looks_like_json_metadata(text):
+        return ""
+
     boxed = extract_boxed(text)
     if boxed is not None:
         return boxed.strip()

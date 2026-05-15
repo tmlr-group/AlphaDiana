@@ -67,6 +67,7 @@ _EXPLICIT_ANSWER_RE = re.compile(
     re.IGNORECASE,
 )
 _BOXED_RE = re.compile(r"\\boxed\{", re.DOTALL)
+_LIFECYCLE_EVENT_TYPES = {"step-start", "step-finish", "step-started", "step-finished"}
 
 _DEFAULT_SYSTEM_PROMPT = (
     "You are an expert problem solver. When given a problem, actively use "
@@ -201,6 +202,27 @@ def _extract_event_texts(obj: dict[str, Any]) -> list[str]:
                 texts.append(content)
 
     return texts
+
+
+def _opencode_event_type(obj: dict[str, Any]) -> str:
+    """Return the assistant-visible OpenCode event type for diagnostics."""
+    part = obj.get("part")
+    if isinstance(part, dict) and part.get("type"):
+        return str(part.get("type", "")).strip().lower().replace("_", "-")
+    for key in ("type", "event"):
+        value = obj.get(key)
+        if value:
+            return str(value).strip().lower().replace("_", "-")
+    return ""
+
+
+def _opencode_event_types(events: list[dict[str, Any]]) -> list[str]:
+    return [event_type for event_type in (_opencode_event_type(event) for event in events) if event_type]
+
+
+def _opencode_lifecycle_only(events: list[dict[str, Any]]) -> bool:
+    event_types = _opencode_event_types(events)
+    return bool(event_types) and all(event_type in _LIFECYCLE_EVENT_TYPES for event_type in event_types)
 
 
 def _extract_strict_answer(text: str) -> str:
@@ -754,6 +776,19 @@ class OpenCodeAgent(Agent):
             from alphadiana.agent.opencode_container_runtime import OpenCodeContainerRuntimeManager
 
             self._runtime_manager = OpenCodeContainerRuntimeManager(config)
+
+    def error_provenance_metadata(self) -> dict[str, Any]:
+        if self._runtime or self._controller_mode != "podman":
+            return {}
+        metadata = {
+            "container_engine": "podman",
+            "controller_mode": "podman",
+            "controller_image": self._controller_image,
+            "transport": "opencode_cli_podman",
+            "adapter_name": "opencode-podman",
+        }
+        metadata.update(dict(self._last_controller_metadata or {}))
+        return metadata
 
     @staticmethod
     def _resolve_setting(
@@ -1436,17 +1471,30 @@ class OpenCodeAgent(Agent):
                 "partial_output_used_for_raw_output": False,
             })
 
-        full_content = assistant_text or raw_output
+        event_types = _opencode_event_types(events)
+        answer_source = "assistant_text"
+        answer_source_text = assistant_text
         if (
             partial_output.strip()
             and (returncode != 0 or error_info)
             and (
-                not assistant_text.strip()
-                or len(partial_output.strip()) > len(full_content.strip())
+                not answer_source_text.strip()
+                or len(partial_output.strip()) > len(answer_source_text.strip())
             )
         ):
-            full_content = partial_output
+            answer_source = "model_text"
+            answer_source_text = partial_output
             response_metadata["partial_output_used_for_raw_output"] = True
+        response_metadata.update({
+            "answer_source": answer_source,
+            "answer_source_text": answer_source_text,
+            "assistant_text_chars": len(assistant_text),
+            "has_assistant_text": bool(assistant_text.strip()),
+            "raw_event_count": len(events),
+            "event_types": event_types,
+        })
+
+        full_content = answer_source_text
 
         trajectory, reasoning_trajectory = build_event_trajectories(
             request_messages,
@@ -1454,14 +1502,7 @@ class OpenCodeAgent(Agent):
             final_output=full_content,
         )
 
-        if _is_swe_bench_task(task):
-            answer = _extract_patch_from_text(full_content)
-        elif returncode == -1:
-            answer = _extract_strict_answer(full_content)
-        else:
-            answer = extract_answer_candidate(full_content)
-
-        if returncode != 0 and not answer:
+        if returncode != 0 and not full_content.strip():
             logger.warning(
                 "OpenCode returned non-zero exit code %d for task %s. stderr: %s",
                 returncode,
@@ -1484,6 +1525,32 @@ class OpenCodeAgent(Agent):
                 "message": f"OpenCode exited with return code {returncode}.",
                 "error_type": "agent_error",
             }
+
+        empty_output_info = None
+        if not failure_info and not timeout_info and not full_content.strip():
+            failure_reason = (
+                "opencode_lifecycle_only_events"
+                if _opencode_lifecycle_only(events)
+                else "opencode_empty_assistant_output"
+            )
+            empty_output_info = {
+                "status": "agent_empty_output",
+                "failure_reason": failure_reason,
+            }
+            response_metadata.update({
+                "opencode_empty_assistant_output": True,
+                "score_status": "agent_empty_output",
+                "valid_scored": False,
+                "metric_contribution": 0,
+                "failure_reason": failure_reason,
+            })
+
+        if failure_info or timeout_info or empty_output_info:
+            answer = None
+        elif _is_swe_bench_task(task):
+            answer = _extract_patch_from_text(full_content)
+        else:
+            answer = extract_answer_candidate(full_content, source=answer_source)
 
         workspace_file_contents: dict[str, str] = dict(
             preserved_local_artifacts.get("workspace_file_contents", {}) or {}
@@ -1559,6 +1626,12 @@ class OpenCodeAgent(Agent):
                     "partial_output_used_for_raw_output",
                     False,
                 ),
+                "answer_source": answer_source,
+                "answer_source_text": answer_source_text,
+                "assistant_text_chars": response_metadata["assistant_text_chars"],
+                "has_assistant_text": response_metadata["has_assistant_text"],
+                "raw_event_count": response_metadata["raw_event_count"],
+                "event_types": event_types,
             },
         )
         status_info = failure_info or timeout_info
@@ -1582,6 +1655,16 @@ class OpenCodeAgent(Agent):
                 "opencode_timeout_scored_zero": True,
                 "opencode_timeout_seconds": self._timeout,
             }
+        if empty_output_info:
+            response_json = {
+                **response_json,
+                "status": empty_output_info["status"],
+                "score_status": empty_output_info["status"],
+                "valid_scored": False,
+                "metric_contribution": 0,
+                "failure_reason": empty_output_info["failure_reason"],
+                "opencode_empty_assistant_output": True,
+            }
 
         response = AgentResponse(
             answer=None if failure_info else answer,
@@ -1596,7 +1679,11 @@ class OpenCodeAgent(Agent):
             artifact_manifest=artifact_manifest,
             workspace_file_contents=workspace_file_contents,
             system_prompt=str(self._system_prompt),
-            finish_reason="timeout" if timeout_info and not failure_info else "",
+            finish_reason=(
+                "timeout"
+                if timeout_info and not failure_info
+                else ("agent_empty_output" if empty_output_info and not failure_info else "")
+            ),
         )
         if failure_info:
             exc = RuntimeError(failure_info["message"])

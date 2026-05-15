@@ -1,0 +1,41 @@
+run_id: "podman_nightly_20260514_opencode_hle"
+
+agent:
+  name: opencode
+  version: "1.0.0"
+  config:
+    controller_mode: podman
+    controller_image: "localhost/alphadiana-opencode-podman:latest"
+    controller_network: "host"
+    api_base: "${OPENAI_BASE_URL}"
+    api_key: "${OPENAI_API_KEY}"
+    model_name: "${OPENAI_MODEL_NAME}"
+    timeout: 600
+    max_tokens: 2048
+    system_prompt: |
+      Solve the multiple-choice problem carefully. The final line must be
+      $$\boxed{your answer here}$$.
+
+benchmark:
+  name: hle
+  config:
+    dataset: "cais/hle"
+    split: "test"
+    dataset_index: 1
+    answer_types:
+      - "multipleChoice"
+    max_tasks: 1
+
+sandbox: null
+
+scorer:
+  name: exact_match
+  config: {}
+
+max_concurrent: 1
+num_samples: 1
+output_dir: "./results"
+metadata:
+  validation_campaign: "podman-nightly-validation"
+  container_engine: "podman"
+  notes: "Validation-only OpenCode Podman HLE multiple-choice row."

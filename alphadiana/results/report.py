@@ -148,6 +148,16 @@ class ReportGenerator:
             r for r in results
             if status_by_key[(r["task_id"], r.get("sample_index", 0))] == VALID_SCORE_STATUS
         ]
+        metric_zero_statuses = {"agent_empty_output", "no_answer"}
+        metric_zero_results = [
+            r for r in results
+            if status_by_key[(r["task_id"], r.get("sample_index", 0))] in metric_zero_statuses
+            and isinstance(r.get("metadata"), dict)
+            and r["metadata"].get("metric_contribution") == 0
+            and r.get("score") is not None
+            and r.get("correct") is not None
+        ]
+        metric_results = valid_results + metric_zero_results
         valid_scored = len(valid_results)
         error_statuses = {"agent_error", "provider_error", "runtime_error", "scorer_error"}
         error_records = sum(
@@ -161,14 +171,15 @@ class ReportGenerator:
         completed = valid_scored
         failed = max(expected_sample_count - completed, 0)
 
-        correct_count = sum(1 for r in valid_results if r.get("correct", False))
-        accuracy = correct_count / completed if completed > 0 else 0.0
+        correct_count = sum(1 for r in metric_results if r.get("correct", False))
+        accuracy_denominator = len(metric_results)
+        accuracy = correct_count / accuracy_denominator if accuracy_denominator > 0 else 0.0
         accuracy_total = correct_count / expected_sample_count if expected_sample_count > 0 else 0.0
 
-        scores = [r.get("score", 0.0) for r in valid_results]
+        scores = [r.get("score", 0.0) for r in metric_results]
         mean_score = sum(scores) / len(scores) if scores else 0.0
 
-        wall_times = [r.get("wall_time_sec", 0.0) for r in valid_results]
+        wall_times = [r.get("wall_time_sec", 0.0) for r in metric_results]
         mean_wall_time = sum(wall_times) / len(wall_times) if wall_times else 0.0
 
         # Aggregate token usage across all results.
@@ -213,7 +224,7 @@ class ReportGenerator:
         for r in results:
             cat = _get_category(r)
             category_sample_totals[cat] = category_sample_totals.get(cat, 0) + 1
-        for r in valid_results:
+        for r in metric_results:
             cat = _manifest_category(r["task_id"], manifest)
             if cat == "default":
                 cat = _get_category(r)

@@ -1024,6 +1024,29 @@ class OpenClawAgent(Agent):
         except ImportError:
             self._runtime_manager = None
 
+    def error_provenance_metadata(self) -> dict[str, Any]:
+        if str(self._config.get("runtime_backend", "") or "").strip().lower() != "podman":
+            return {}
+        metadata: dict[str, Any] = {
+            "container_engine": "podman",
+            "adapter_name": "openclaw-podman",
+        }
+        runtime_manager = getattr(self, "_runtime_manager", None)
+        if runtime_manager is not None and hasattr(runtime_manager, "runtime_info"):
+            try:
+                info = runtime_manager.runtime_info(None)
+            except Exception:
+                info = {}
+            if isinstance(info, dict):
+                runtime_metadata = info.get("metadata", {})
+                if isinstance(runtime_metadata, dict):
+                    metadata.update(runtime_metadata)
+                for key in ("container_engine", "adapter_name", "image", "container_id"):
+                    value = info.get(key)
+                    if value not in (None, ""):
+                        metadata.setdefault(key, value)
+        return metadata
+
     def _resolve_runtime_provider_api_base(self) -> str:
         for key in ("OPENAI_BASE_URL", "openai_base_url"):
             value = str(self._config.get(key, "") or "").strip()
@@ -1716,6 +1739,7 @@ class OpenClawAgent(Agent):
                         "logprob_proxy_upstream": logprob_proxy.upstream,
                     }
                 )
+            response_metadata.update(self.error_provenance_metadata())
             token_entropy_stats, response_metadata = finalize_logprob_capture(
                 harness="openclaw",
                 enabled=self._logprob_capture["enabled"],
@@ -1726,6 +1750,10 @@ class OpenClawAgent(Agent):
             if not response_body and isinstance(detail, dict):
                 response_body = detail
             token_usage = cumulative_token_usage if any(cumulative_token_usage.values()) else {}
+            sandbox_metadata = dict(artifact_data.get("sandbox_metadata", {}) or {})
+            for key, value in self.error_provenance_metadata().items():
+                if key in {"container_engine", "adapter_name", "image", "container_id"}:
+                    sandbox_metadata.setdefault(key, value)
             return AgentResponse(
                 answer=None,
                 trajectory=recovered_trajectory,
@@ -1739,6 +1767,7 @@ class OpenClawAgent(Agent):
                 sandbox_id=runtime_info.get("sandbox_id", "") or sandbox_id,
                 gateway_url=runtime_info.get("gateway_url", "") or url,
                 metadata=response_metadata,
+                sandbox_metadata=sandbox_metadata,
                 finish_reason="incomplete",
             )
 

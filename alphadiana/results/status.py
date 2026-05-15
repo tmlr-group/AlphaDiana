@@ -8,6 +8,8 @@ VALID_SCORE_STATUS = "valid_scored"
 INVALID_SCORE_STATUSES = {
     "unscored",
     "preserved_failure",
+    "no_answer",
+    "agent_empty_output",
     "agent_error",
     "provider_error",
     "runtime_error",
@@ -174,6 +176,15 @@ def infer_score_status(record: dict[str, Any]) -> str:
 
     if finish_reason == "preserved_failure" or metadata.get("zeroclaw_preserved_failure"):
         return "preserved_failure"
+    failure_reason = str(metadata.get("failure_reason", "") or "").strip()
+    if (
+        finish_reason == "agent_empty_output"
+        or metadata.get("opencode_empty_assistant_output")
+        or failure_reason in {"opencode_lifecycle_only_events", "opencode_empty_assistant_output"}
+    ):
+        return "agent_empty_output"
+    if failure_reason == "no_answer":
+        return "no_answer"
     if zeroclaw_classification in {"cli_error"}:
         return "agent_error"
     if zeroclaw_classification in {"provider_error"}:

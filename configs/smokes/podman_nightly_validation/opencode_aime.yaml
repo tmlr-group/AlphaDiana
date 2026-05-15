@@ -1,0 +1,36 @@
+run_id: "podman_nightly_20260514_opencode_aime"
+
+agent:
+  name: opencode
+  version: "1.0.0"
+  config:
+    controller_mode: podman
+    controller_image: "localhost/alphadiana-opencode-podman:latest"
+    controller_network: "host"
+    api_base: "${OPENAI_BASE_URL}"
+    api_key: "${OPENAI_API_KEY}"
+    model_name: "${OPENAI_MODEL_NAME}"
+    timeout: 600
+    max_tokens: 2048
+
+benchmark:
+  name: aime
+  config:
+    dataset: "HuggingFaceH4/aime_2024"
+    split: "train"
+    dataset_index: 0
+
+sandbox: null
+
+scorer:
+  name: numeric
+  config:
+    tolerance: 1e-6
+
+max_concurrent: 1
+num_samples: 1
+output_dir: "./results"
+metadata:
+  validation_campaign: "podman-nightly-validation"
+  container_engine: "podman"
+  notes: "Validation-only OpenCode Podman AIME row."
