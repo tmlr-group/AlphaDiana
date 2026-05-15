@@ -46,6 +46,14 @@ def test_runner_blocks_pilot_on_podman_image_preflight() -> None:
     assert pilot_body.index("preflight_provider_from_podman || exit") < pilot_body.index("run_config")
 
 
+def test_runner_main_preserves_mode_exit_status() -> None:
+    script = RUNNER.read_text(encoding="utf-8")
+    main_body = script.split("main() {", 1)[1].split("\n}", 1)[0]
+    assert "local rc=0" in main_body
+    assert "preflight) preflight_provider_from_podman; rc=$? ;;" in main_body
+    assert "return \"$rc\"" in main_body
+
+
 def test_runner_writes_expected_logs_and_status_paths() -> None:
     script = RUNNER.read_text(encoding="utf-8")
     assert "context/podman-mmmu-pro-readiness" in script
