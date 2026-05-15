@@ -685,7 +685,7 @@ def missing_row(
     }
 
 
-def _load_preflight_status(path: Path | None) -> dict[str, Any]:
+def _load_preflight_status(path: Path | None, *, root: Path) -> dict[str, Any]:
     if path is None:
         return {
             "ok": False,
@@ -699,7 +699,7 @@ def _load_preflight_status(path: Path | None) -> dict[str, Any]:
             "ok": False,
             "status": "missing",
             "failure_taxonomy": "vlm_preflight_failed",
-            "path": str(path),
+            "path": _repo_relative(path, root),
             "error": "Preflight status file is missing.",
         }
     try:
@@ -709,13 +709,13 @@ def _load_preflight_status(path: Path | None) -> dict[str, Any]:
             "ok": False,
             "status": "invalid",
             "failure_taxonomy": "vlm_preflight_failed",
-            "path": str(path),
+            "path": _repo_relative(path, root),
             "error": str(exc),
         }
     status = _as_dict(data)
     status.setdefault("failure_taxonomy", "" if status.get("ok") else "vlm_preflight_failed")
     status.setdefault("status", "pass" if status.get("ok") else "fail")
-    status["path"] = str(path)
+    status["path"] = _repo_relative(path, root)
     return status
 
 
@@ -816,7 +816,7 @@ def audit(
                 )
 
     taxonomy_summary = Counter(row["failure_taxonomy"] for row in rows)
-    preflight = _load_preflight_status(preflight_status_file)
+    preflight = _load_preflight_status(preflight_status_file, root=root)
     preflight_ok = bool(preflight.get("ok"))
     if not preflight_ok:
         taxonomy_summary["vlm_preflight_failed"] += 1

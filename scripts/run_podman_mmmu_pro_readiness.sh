@@ -236,18 +236,20 @@ run_full() {
 }
 
 main() {
+  local rc=0
   case "$SCOPE" in
-    validate) validate_matrix ;;
-    preflight) preflight_provider_from_podman ;;
-    pilot) run_pilot ;;
-    audit) run_audit ;;
-    full) run_full ;;
+    validate) validate_matrix; rc=$? ;;
+    preflight) preflight_provider_from_podman; rc=$? ;;
+    pilot) run_pilot; rc=$? ;;
+    audit) run_audit; rc=$? ;;
+    full) run_full; rc=$? ;;
     *)
       printf 'Usage: %s [validate|preflight|pilot|audit|full]\n' "$0" >&2
       exit 2
       ;;
   esac
   printf '\nStatus file: %s\n' "${STATUS_FILE#$ROOT_DIR/}"
+  return "$rc"
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
