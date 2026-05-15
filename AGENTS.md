@@ -11,6 +11,7 @@ Do not read the whole repo by default; expand context only as needed.
 - Full runs -> `context/current_eval_status.md`, `configs/full_runs/README.md`, `context/phase12-harness-logprob-smokes/full_run_context/README.md`, then the target config
 - Results / dashboard -> `docs/dashboard.md`
 - Podman runtime migration -> `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, `.planning/ROADMAP.md`, `.planning/research/SUMMARY.md`, then `docs/plans/alphadiana-podman-merged-plan.md`
+- Add-Podman handoff / PR review -> `context/add-podman-handoff/README.md`, `docs/benchmarks/podman.md`, `context/podman-scale-readiness/README.md`, then `configs/smokes/podman_scale_readiness/README.md`
 - New milestone / reviewer evidence -> `context/README.md` + the matching `context/` folder
 - Architecture / conventions -> `.planning/codebase/*.md`
 
@@ -23,6 +24,12 @@ Skip `docs/archive/` and `context/archive/` unless the task is explicitly histor
 - `.planning/` = active plans, architecture, research
 - `configs/examples/` = smoke / debug configs
 - `configs/full_runs/` = full-run entry points
+
+## Podman handoff shortcut
+
+- For the `feat/add-podman` branch, start from `context/add-podman-handoff/README.md`. It maps how to run the Podman experiments, which files implement the runtime/config/docs/tests, which evidence is current, and what remains out of scope.
+- Current opt-in Podman standard-reasoning scale readiness is represented by `configs/smokes/podman_scale_readiness/`, `scripts/run_podman_scale_readiness.sh`, `scripts/audit_podman_scale_readiness.py`, and `context/podman-scale-readiness/README.md`.
+- Keep Podman support claims scoped: standard-reasoning pilot passed for OpenClaw, ZeroClaw, and OpenCode on AIME/GPQA/HLE/IMO; TerminalBench2 and SWE-bench Verified have focused opt-in task-container smoke evidence; SWE-bench Pro, external_benchmark, MMMU-Pro, full-scale overnight, and global default promotion are not claimed.
 
 ## Context rules
 

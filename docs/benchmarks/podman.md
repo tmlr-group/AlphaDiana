@@ -18,6 +18,38 @@ Current support boundary:
   pilot audit passes. No checked-in full-scale Podman matrix is promoted as a
   default.
 
+For coding-agent handoff and a development file map, read
+`context/add-podman-handoff/README.md`.
+
+## Development File Map
+
+- Runtime and agent code:
+  `alphadiana/container_runtime/agent_runtime.py`,
+  `alphadiana/agent/openclaw.py`, `alphadiana/agent/zeroclaw.py`,
+  `alphadiana/agent/opencode.py`, `alphadiana/runner/runner.py`,
+  `alphadiana/results/status.py`, `alphadiana/results/report.py`, and
+  `alphadiana/utils/math_answer.py`.
+- Configs and operators:
+  `configs/smokes/podman_scale_readiness/`,
+  `configs/smokes/podman_nightly_validation/`,
+  `scripts/run_podman_scale_readiness.sh`,
+  `scripts/audit_podman_scale_readiness.py`, and
+  `scripts/run_podman_nightly_validation.sh`.
+- Evidence and handoff:
+  `context/add-podman-handoff/README.md`,
+  `context/podman-scale-readiness/README.md`,
+  `context/podman-nightly-validation/README.md`,
+  `context/phase02-podman-agent-smokes/README.md`, and
+  `context/phase03-podman-task-containers/README.md`.
+- Focused tests:
+  `tests/test_podman_agent_runtime.py`,
+  `tests/test_podman_openclaw_runtime.py`,
+  `tests/test_podman_zeroclaw_runtime.py`,
+  `tests/test_podman_opencode_controller.py`,
+  `tests/test_podman_scale_readiness_configs.py`,
+  `tests/test_podman_scale_readiness_audit.py`, and
+  `tests/test_standard_podman_error_metadata.py`.
+
 ## Prerequisites
 
 From the repository root:
