@@ -1,0 +1,53 @@
+run_id: "podman_mmmu_opencode_mmmu_pro_pilot"
+
+agent:
+  name: opencode
+  version: "1.0.0"
+  config:
+    controller_mode: podman
+    controller_image: "localhost/alphadiana-opencode-podman:latest"
+    controller_network: "host"
+    api_base: "${OPENAI_BASE_URL}"
+    api_key: "${OPENAI_API_KEY}"
+    model_name: "${OPENAI_MODEL_NAME}"
+    enable_thinking: false
+    timeout: 600
+    max_tokens: 1024
+    system_prompt: |
+      Solve the MMMU-Pro vision-only multiple-choice task. Use every image
+      attachment passed by the controller. The final line must be:
+      $$\boxed{your answer here}$$
+
+benchmark:
+  name: mmmu_pro
+  config:
+    dataset: "MMMU/MMMU_Pro"
+    data_config: "vision"
+    split: "test"
+    dataset_indices:
+      - 0
+      - 1
+      - 2
+
+sandbox: null
+
+scorer:
+  name: exact_match
+  config: {}
+
+max_concurrent: 1
+num_samples: 1
+output_dir: "./results"
+metadata:
+  validation_campaign: "podman-mmmu-pro-readiness-pilot"
+  container_engine: "podman"
+  supports_multimodal: true
+  selected_dataset_indices:
+    - 0
+    - 1
+    - 2
+  selected_task_ids:
+    - "mmmu_pro_test_History_1"
+    - "mmmu_pro_test_Art_113"
+    - "mmmu_pro_validation_Design_19"
+  notes: "Phase 6 OpenCode Podman MMMU-Pro vision 3-task pilot."

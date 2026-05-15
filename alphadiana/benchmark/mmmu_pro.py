@@ -85,6 +85,8 @@ class MMMUProBenchmark(Benchmark):
         data_config: Dataset subset name — "standard" or "vision"
                      (default: "standard")
         split:       Dataset split (default: "test")
+        dataset_index: If set, only load the raw dataset row at this index
+        dataset_indices: If set, only load the listed raw dataset rows
         max_tasks:   Limit the number of tasks loaded (optional)
     """
 
@@ -102,6 +104,8 @@ class MMMUProBenchmark(Benchmark):
         dataset_path = config.get("dataset", "MMMU/MMMU_Pro")
         data_config = config.get("data_config", "standard (4 options)")
         split = config.get("split", "test")
+        dataset_index = config.get("dataset_index")
+        dataset_indices = config.get("dataset_indices")
         max_tasks = config.get("max_tasks")
         if max_tasks == 0:
             return []
@@ -111,8 +115,33 @@ class MMMUProBenchmark(Benchmark):
         except Exception as exc:
             _raise_mmmu_load_error(exc, data_config=str(data_config))
 
+        if dataset_index is not None and dataset_indices is not None:
+            raise ValueError(
+                "MMMU-Pro benchmark config may set only one of 'dataset_index' or "
+                "'dataset_indices'."
+            )
+
+        if dataset_indices is not None:
+            iterator = []
+            for raw_idx in dataset_indices:
+                idx = int(raw_idx)
+                if idx < 0 or idx >= len(dataset):
+                    raise IndexError(
+                        f"dataset_indices contains {idx} out of range [0, {len(dataset)})"
+                    )
+                iterator.append((idx, dataset[idx]))
+        elif dataset_index is not None:
+            idx = int(dataset_index)
+            if idx < 0 or idx >= len(dataset):
+                raise IndexError(
+                    f"dataset_index={idx} out of range [0, {len(dataset)})"
+                )
+            iterator = [(idx, dataset[idx])]
+        else:
+            iterator = enumerate(dataset)
+
         tasks: list[BenchmarkTask] = []
-        for idx, item in enumerate(dataset):
+        for idx, item in iterator:
             task_id = item.get("id", str(idx))
             question_text = item.get("question", "")
 
