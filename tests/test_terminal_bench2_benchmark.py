@@ -47,3 +47,33 @@ def test_terminal_bench2_task_ids_raise_when_missing(tmp_path: Path) -> None:
             "tasks_dir": str(tmp_path),
             "task_ids": ["db-wal-recovery"],
         })
+
+
+def test_terminal_bench2_task_ids_select_phase7_slice_deterministically(tmp_path: Path) -> None:
+    names = [
+        "db-wal-recovery",
+        "fix-git",
+        "overfull-hbox",
+        "adaptive-rejection-sampler",
+        "break-filter-js-from-html",
+    ]
+    for name in sorted(names):
+        _write_task(tmp_path, name, f"alexgshaw/{name}:20251031")
+    _write_task(tmp_path, "unselected-task", "example/unselected:latest")
+
+    tasks = TerminalBench2Benchmark().load_tasks({
+        "tasks_dir": str(tmp_path),
+        "task_ids": names,
+        "max_tasks": 5,
+    })
+
+    assert [task.task_id for task in tasks] == [
+        "tb2_adaptive-rejection-sampler",
+        "tb2_break-filter-js-from-html",
+        "tb2_db-wal-recovery",
+        "tb2_fix-git",
+        "tb2_overfull-hbox",
+    ]
+    assert {task.metadata["docker_image"] for task in tasks} == {
+        f"alexgshaw/{name}:20251031" for name in names
+    }
