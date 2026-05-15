@@ -1,0 +1,56 @@
+# TerminalBench2 OpenCode Podman task-container readiness pilot.
+
+run_id: "podman_tb2_terminal_bench2_opencode"
+
+benchmark:
+  name: terminal_bench2
+  config:
+    tasks_dir: ${TERMINAL_BENCH2_DIR}
+    task_ids:
+      - db-wal-recovery
+      - fix-git
+      - overfull-hbox
+      - adaptive-rejection-sampler
+      - break-filter-js-from-html
+    max_tasks: 5
+
+agent:
+  name: terminal_bench2_opencode
+  version: "1.0"
+  config:
+    container_engine: podman
+    model: "custom/${OPENAI_MODEL_NAME}"
+    model_name: ${OPENAI_MODEL_NAME}
+    api_base: ${OPENAI_BASE_URL}
+    api_key: ${OPENAI_API_KEY}
+    runtime_source_image: "${TB2_OPENCODE_RUNTIME_IMAGE}"
+    logs_base_dir: "${ALPHADIANA_TB2_LOGS_DIR}"
+    tool_call: true
+    streaming: false
+    solver_timeout_sec: 1800
+    timeout_sec: 900
+    test_timeout_sec: 1200
+
+scorer:
+  name: terminal_bench2
+
+max_concurrent: 1
+num_samples: 1
+output_dir: "./results"
+metadata:
+  validation_campaign: "podman-terminal-bench2-readiness-pilot"
+  container_engine: "podman"
+  run_suffix: "terminal_bench2_opencode"
+  selected_task_names:
+    - db-wal-recovery
+    - fix-git
+    - overfull-hbox
+    - adaptive-rejection-sampler
+    - break-filter-js-from-html
+  selected_task_ids:
+    - tb2_db-wal-recovery
+    - tb2_fix-git
+    - tb2_overfull-hbox
+    - tb2_adaptive-rejection-sampler
+    - tb2_break-filter-js-from-html
+  notes: "Phase 7 validation-only Podman TerminalBench2 row; Direct x TB2 and non-OpenCode TB2 agents remain out of scope."

@@ -12,8 +12,10 @@ Current support boundary:
   across AIME, GPQA-Diamond, HLE, and IMO-AnswerBench with three tasks per
   cell. Evidence is in
   `context/podman-scale-readiness/README.md`.
-- Task-container path: TerminalBench2 and SWE-bench Verified have focused
-  opt-in Podman smoke evidence. SWE-bench Pro and external_benchmark remain deferred.
+- Task-container path: TerminalBench2 OpenCode has a passing five-task
+  readiness audit under `context/podman-terminal-bench2-readiness/`.
+  SWE-bench Verified has focused opt-in smoke evidence. SWE-bench Pro and
+  external_benchmark remain deferred.
 - Full-scale standard-reasoning Podman runs are recommended only after the
   pilot audit passes. No checked-in full-scale Podman matrix is promoted as a
   default.
@@ -32,11 +34,15 @@ For coding-agent handoff and a development file map, read
 - Configs and operators:
   `configs/smokes/podman_scale_readiness/`,
   `configs/smokes/podman_nightly_validation/`,
+  `configs/smokes/podman_terminal_bench2/`,
   `scripts/run_podman_scale_readiness.sh`,
   `scripts/audit_podman_scale_readiness.py`, and
-  `scripts/run_podman_nightly_validation.sh`.
+  `scripts/run_podman_nightly_validation.sh`,
+  `scripts/run_podman_terminal_bench2_readiness.sh`, and
+  `scripts/audit_podman_terminal_bench2_readiness.py`.
 - Evidence and handoff:
   `context/add-podman-handoff/README.md`,
+  `context/podman-terminal-bench2-readiness/README.md`,
   `context/podman-scale-readiness/README.md`,
   `context/podman-nightly-validation/README.md`,
   `context/phase02-podman-agent-smokes/README.md`, and
@@ -48,6 +54,9 @@ For coding-agent handoff and a development file map, read
   `tests/test_podman_opencode_controller.py`,
   `tests/test_podman_scale_readiness_configs.py`,
   `tests/test_podman_scale_readiness_audit.py`, and
+  `tests/test_podman_terminal_bench2_readiness_configs.py`,
+  `tests/test_podman_terminal_bench2_readiness_audit.py`,
+  `tests/test_podman_terminal_bench2_readiness_runner.py`, and
   `tests/test_standard_podman_error_metadata.py`.
 
 ## Prerequisites
@@ -176,6 +185,25 @@ Read `context/podman-nightly-validation/README.md` before describing support
 status from those rows.
 
 ## Focused Task-Container Smokes
+
+TerminalBench2 OpenCode Podman readiness pilot:
+
+```bash
+export TERMINAL_BENCH2_DIR=<official-terminal-bench-2-task-root>
+export TB2_OPENCODE_RUNTIME_IMAGE=localhost/alphadiana/tb2-opencode-controller:latest
+export ALPHADIANA_TB2_LOGS_DIR="$PWD/logs/podman-terminal-bench2-readiness/task-logs"
+export PODMAN_TB2_RUN_PREFIX=podman_tb2_$(date +%Y%m%d_%H%M%S)
+
+bash scripts/run_podman_terminal_bench2_readiness.sh validate
+bash scripts/run_podman_terminal_bench2_readiness.sh preflight
+bash scripts/run_podman_terminal_bench2_readiness.sh pilot
+bash scripts/run_podman_terminal_bench2_readiness.sh audit
+```
+
+The May 15 Phase 7 run prefix `podman_tb2_20260515_phase7_abslogs`
+completed five official tasks and passed audit. This supports recommending a
+larger overnight TerminalBench2 OpenCode Podman campaign, but does not promote
+Direct x TB2, OpenClaw/ZeroClaw TB2, full-sweep, or default Podman status.
 
 TerminalBench2 OpenCode Podman smoke:
 

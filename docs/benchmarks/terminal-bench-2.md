@@ -20,6 +20,56 @@ below and in `context/qwen-openrouter-pilots/pilot-validation.md`.
 
 All three paths use the same local AlphaDiana `terminal_bench2` benchmark loader and scorer.
 
+## Podman Task-Container Readiness
+
+On May 15, 2026, Phase 7 validated the opt-in
+`terminal_bench2_opencode` Podman task-container path with a five-task
+official TerminalBench2 pilot.
+
+Entry points:
+
+- Config:
+  `configs/smokes/podman_terminal_bench2/terminal_bench2_opencode_pilot.yaml`
+- Runner:
+  `scripts/run_podman_terminal_bench2_readiness.sh`
+- Evidence:
+  `context/podman-terminal-bench2-readiness/README.md`
+
+Run shape:
+
+```bash
+export TERMINAL_BENCH2_DIR=<official-terminal-bench-2-task-root>
+export OPENAI_BASE_URL=<openai-compatible-base-url>
+export OPENAI_API_KEY=<api-key-or-placeholder>
+export OPENAI_MODEL_NAME=<model-name>
+export TB2_OPENCODE_RUNTIME_IMAGE=localhost/alphadiana/tb2-opencode-controller:latest
+export ALPHADIANA_TB2_LOGS_DIR="$PWD/logs/podman-terminal-bench2-readiness/task-logs"
+export PODMAN_TB2_RUN_PREFIX=podman_tb2_$(date +%Y%m%d_%H%M%S)
+
+bash scripts/run_podman_terminal_bench2_readiness.sh validate
+bash scripts/run_podman_terminal_bench2_readiness.sh preflight
+bash scripts/run_podman_terminal_bench2_readiness.sh pilot
+bash scripts/run_podman_terminal_bench2_readiness.sh audit
+```
+
+Passing evidence:
+
+- Run prefix: `podman_tb2_20260515_phase7_abslogs`
+- Pilot run:
+  `podman_tb2_20260515_phase7_abslogs_terminal_bench2_opencode`
+- Tasks:
+  `db-wal-recovery`, `fix-git`, `overfull-hbox`,
+  `adaptive-rejection-sampler`, `break-filter-js-from-html`
+- Result: 5/5 task JSON rows, all `valid_scored`, `score=0.0`,
+  `metadata.container_engine=podman`, verifier `ok`, and discoverable
+  artifacts/logs.
+- Audit: passed with five `clean` infrastructure rows.
+
+This supports recommending a larger overnight TerminalBench2 OpenCode Podman
+campaign. It does not prove Direct x TerminalBench2, OpenClaw/ZeroClaw
+TerminalBench2 Podman readiness, full-sweep readiness, Podman global default
+promotion, or any SWE-bench/external_benchmark/MMMU-Pro status.
+
 OpenRouter/Qwen pilot status on April 19, 2026:
 
 - `direct_llm` official Harbor baseline:

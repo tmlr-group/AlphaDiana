@@ -115,6 +115,20 @@ Podman, while the image `chat/completions` probe returned HTTP 400 for
 MMMU-Pro Podman multimodal readiness. See
 [`context/podman-mmmu-pro-readiness/README.md`](../../context/podman-mmmu-pro-readiness/README.md).
 
+Also on May 15, 2026, Phase 7 added a dedicated opt-in TerminalBench2
+OpenCode Podman task-container readiness pilot under
+`configs/smokes/podman_terminal_bench2/`, plus
+`scripts/run_podman_terminal_bench2_readiness.sh` and
+`scripts/audit_podman_terminal_bench2_readiness.py`. The run prefix
+`podman_tb2_20260515_phase7_abslogs` validated, passed preflight, completed
+five official tasks, and passed audit with all rows recording
+`metadata.container_engine=podman`, `score=0.0`, verifier `ok`, and
+discoverable logs/artifacts. See
+[`context/podman-terminal-bench2-readiness/README.md`](../../context/podman-terminal-bench2-readiness/README.md).
+This supports recommending a larger overnight TerminalBench2 OpenCode Podman
+campaign, but it does not change Direct x TB2, OpenClaw/ZeroClaw TB2,
+global-default, full-sweep, SWE-bench, external_benchmark, or MMMU-Pro status.
+
 Generated ZeroClaw configs use `runtime_trace_mode="full"` for logprob capture
 and write ZeroClaw's schema-supported permissive shell controls; ZeroClaw
 0.6.9 does not expose a heredoc-specific allowlist setting.
