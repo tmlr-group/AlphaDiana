@@ -149,6 +149,105 @@ def test_solve_text_only_uses_opencode_cli():
     assert result.workspace_file_contents["prompt.txt"].startswith("You are an expert problem solver.")
 
 
+def test_solve_lifecycle_only_events_do_not_extract_json_metadata():
+    agent = OpenCodeAgent()
+    agent.setup({
+        "model_name": "test-model",
+        "api_base": "http://localhost:9001/v1",
+        "api_key": "test-key",
+        "timeout": 5,
+    })
+
+    process = MagicMock()
+    process.communicate.return_value = (
+        "\n".join([
+            json.dumps({"type": "step_start", "cost": 0, "part": {"type": "step-start"}}),
+            json.dumps({"type": "step_finish", "cost": 0, "part": {"type": "step-finish"}}),
+        ]),
+        "",
+    )
+    process.returncode = 0
+
+    task = BenchmarkTask(
+        task_id="aime_60",
+        problem="Solve the problem.",
+        ground_truth="204",
+    )
+
+    with patch("subprocess.Popen", return_value=process):
+        result = agent.solve(task)
+
+    assert result.answer is None
+    assert result.raw_output == ""
+    assert result.finish_reason == "agent_empty_output"
+    assert result.metadata["score_status"] == "agent_empty_output"
+    assert result.metadata["valid_scored"] is False
+    assert result.metadata["metric_contribution"] == 0
+    assert result.metadata["failure_reason"] == "opencode_lifecycle_only_events"
+    assert result.metadata["answer_source"] == "assistant_text"
+    assert result.metadata["answer_source_text"] == ""
+    assert result.metadata["assistant_text_chars"] == 0
+    assert result.metadata["has_assistant_text"] is False
+    assert result.metadata["raw_event_count"] == 2
+    assert result.metadata["event_types"] == ["step-start", "step-finish"]
+    assert result.response_json["failure_reason"] == "opencode_lifecycle_only_events"
+    assert result.workspace_file_contents["opencode_output.jsonl"]
+
+
+def test_solve_text_event_boxed_zero_is_valid_answer():
+    agent = OpenCodeAgent()
+    agent.setup({
+        "model_name": "test-model",
+        "api_base": "http://localhost:9001/v1",
+        "api_key": "test-key",
+        "timeout": 5,
+    })
+
+    process = MagicMock()
+    process.communicate.return_value = (
+        json.dumps({"type": "text", "text": r"The answer is \boxed{0}."}) + "\n",
+        "",
+    )
+    process.returncode = 0
+
+    with patch("subprocess.Popen", return_value=process):
+        result = agent.solve(BenchmarkTask(task_id="aime_zero", problem="Solve.", ground_truth="0"))
+
+    assert result.answer == "0"
+    assert result.metadata["answer_source"] == "assistant_text"
+    assert result.metadata["has_assistant_text"] is True
+    assert "failure_reason" not in result.metadata
+
+
+def test_solve_extracts_answer_only_from_text_events_not_tool_events():
+    agent = OpenCodeAgent()
+    agent.setup({
+        "model_name": "test-model",
+        "api_base": "http://localhost:9001/v1",
+        "api_key": "test-key",
+        "timeout": 5,
+    })
+
+    process = MagicMock()
+    process.communicate.return_value = (
+        "\n".join([
+            json.dumps({"type": "step_start", "part": {"type": "step-start"}}),
+            json.dumps({"type": "message_part", "part": {"type": "tool", "text": "stdout: cost=0"}}),
+            json.dumps({"type": "step_finish", "part": {"type": "step-finish"}}),
+            json.dumps({"type": "message_part", "part": {"type": "text", "text": r"Final: \boxed{204}"}}),
+        ]),
+        "",
+    )
+    process.returncode = 0
+
+    with patch("subprocess.Popen", return_value=process):
+        result = agent.solve(BenchmarkTask(task_id="aime_60", problem="Solve.", ground_truth="204"))
+
+    assert result.answer == "204"
+    assert result.raw_output == r"Final: \boxed{204}"
+    assert "stdout: cost=0" not in result.metadata["answer_source_text"]
+
+
 def test_solve_preserves_namespaced_model_alias_in_provider_config():
     agent = OpenCodeAgent()
     agent.setup({

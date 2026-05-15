@@ -8,8 +8,9 @@ from alphadiana.container_runtime import PodmanError, PodmanResult
 
 
 class FakePodmanRuntime:
-    def __init__(self, *, timeout: bool = False) -> None:
+    def __init__(self, *, timeout: bool = False, stdout: str | None = None) -> None:
         self.timeout = timeout
+        self.stdout = stdout
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.container_id = "opencode-podman-cid"
 
@@ -31,7 +32,9 @@ class FakePodmanRuntime:
         return PodmanResult(
             ("podman", "exec"),
             0,
-            '{"type":"assistant","message":{"content":"Done.\\\\boxed{A}"}}\n',
+            self.stdout
+            if self.stdout is not None
+            else '{"type":"assistant","message":{"content":"Done.\\\\boxed{A}"}}\n',
             "",
         )
 
@@ -112,10 +115,30 @@ def test_opencode_podman_controller_timeout_cleans_up() -> None:
     assert result.answer is None
     assert result.finish_reason == "timeout"
     assert result.metadata["returncode"] == -1
+    assert result.metadata["container_engine"] == "podman"
     assert result.metadata["opencode_timeout_scored_zero"] is True
     assert result.metadata["transport"] == "opencode_cli_podman"
     assert result.metadata["container_cleanup_status"] == "removed"
     assert [name for name, _ in fake.calls][-2:] == ["stop", "rm"]
+
+
+def test_opencode_podman_agent_empty_output_records_runtime_provenance() -> None:
+    fake = FakePodmanRuntime(
+        stdout="\n".join([
+            '{"type":"step_start","part":{"type":"step-start"}}',
+            '{"type":"step_finish","part":{"type":"step-finish"}}',
+        ])
+    )
+    agent = _agent(fake)
+    task = BenchmarkTask(task_id="text_empty", problem="Which option is correct?", ground_truth="A")
+
+    result = agent.solve(task)
+
+    assert result.answer is None
+    assert result.finish_reason == "agent_empty_output"
+    assert result.metadata["score_status"] == "agent_empty_output"
+    assert result.metadata["container_engine"] == "podman"
+    assert result.metadata["transport"] == "opencode_cli_podman"
 
 
 def test_setup_accepts_podman_and_rejects_unknown_controller_mode() -> None:

@@ -5,6 +5,7 @@ import json
 from alphadiana.agent.base import AgentResponse
 from alphadiana.benchmark.base import BenchmarkTask
 from alphadiana.results.result_store import ResultStore
+from alphadiana.results.status import infer_score_status
 from alphadiana.scorer.base import ScoreResult
 
 
@@ -108,6 +109,37 @@ def test_timeout_scored_zero_is_completed(tmp_path):
     assert records[0]["finish_reason"] == "timeout"
     assert records[0]["metadata"]["opencode_error_message"] == "The operation timed out."
     assert store.completed_task_ids() == {"t1"}
+
+
+def test_opencode_empty_output_score_zero_is_not_valid_scored(tmp_path):
+    store = ResultStore(output_dir=str(tmp_path), run_id="status-opencode-empty")
+    response = AgentResponse(
+        answer=None,
+        finish_reason="agent_empty_output",
+        metadata={
+            "opencode_empty_assistant_output": True,
+            "failure_reason": "opencode_lifecycle_only_events",
+            "answer_source": "assistant_text",
+            "answer_source_text": "",
+        },
+    )
+    score = ScoreResult(
+        correct=False,
+        score=0.0,
+        expected="204",
+        predicted=None,
+        rationale="No answer produced (answer is None).",
+    )
+
+    store.append(_task("aime_60"), response, score)
+
+    records = store.load()
+    assert records[0]["predicted"] is None
+    assert records[0]["score"] == 0.0
+    assert records[0]["correct"] is False
+    assert records[0]["score_status"] == "agent_empty_output"
+    assert infer_score_status(records[0]) == "agent_empty_output"
+    assert store.completed_task_ids() == set()
 
 
 def test_completed_sample_ids_uses_valid_status(tmp_path):

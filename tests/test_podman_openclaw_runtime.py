@@ -7,8 +7,9 @@ from unittest.mock import patch
 
 import pytest
 
-from alphadiana.agent.openclaw import OpenClawAgent
+from alphadiana.agent.openclaw import OpenClawAgent, OpenClawRequestError
 from alphadiana.agent.openclaw_runtime import OpenClawPodmanRuntimeManager, OpenClawRuntimeManager
+from alphadiana.benchmark.base import BenchmarkTask
 from alphadiana.config.experiment_config import ExperimentConfig
 from alphadiana.container_runtime import PodmanAgentRuntimeResult, PodmanAgentSpec
 from alphadiana.runner.runner import _is_gateway_autodeploy_agent
@@ -173,3 +174,66 @@ def test_openclaw_podman_runtime_does_not_trigger_rock_autodeploy() -> None:
     )
 
     assert _is_gateway_autodeploy_agent(config) is False
+
+
+def test_openclaw_podman_empty_response_error_records_runtime_provenance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_runtime = FakePodmanAgentRuntime()
+    openclaw_config = _write_openclaw_config(tmp_path)
+    agent = OpenClawAgent()
+    agent.setup({
+        "runtime_backend": "podman",
+        "openclaw_config_path": str(openclaw_config),
+        "podman_image": "localhost/openclaw:test",
+        "OPENAI_BASE_URL": "http://provider.test/v1",
+        "OPENAI_API_KEY": "sk-secret",
+        "OPENAI_MODEL_NAME": "qwen-test",
+        "max_attempts": 1,
+        "_podman_agent_runtime": fake_runtime,
+    })
+    monkeypatch.setattr(agent, "_health_check", lambda *_args, **_kwargs: None)
+
+    class _Response:
+        status_code = 200
+        headers = {"content-type": "application/json"}
+        text = json.dumps({
+            "choices": [{"message": {"role": "assistant", "content": ""}}],
+            "stream_status": {"received_done": True},
+        })
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self) -> None:
+            return None
+
+    class _Client:
+        def __init__(self, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def stream(self, *_args, **_kwargs):
+            return _Response()
+
+    monkeypatch.setattr("httpx.Client", _Client)
+    task = BenchmarkTask(task_id="gpqa_0", problem="Pick D.", ground_truth="D")
+
+    with pytest.raises(OpenClawRequestError) as excinfo:
+        agent.solve(task)
+
+    partial = excinfo.value.partial_response
+    assert partial is not None
+    assert partial.metadata["failure_reason"] == "empty_response"
+    assert partial.metadata["container_engine"] == "podman"
+    assert partial.metadata["adapter_name"] == "openclaw-podman"
+    assert partial.sandbox_metadata["container_engine"] == "podman"

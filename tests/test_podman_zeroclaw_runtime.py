@@ -156,6 +156,43 @@ def test_zeroclaw_agent_can_use_podman_bridge_without_sandbox(monkeypatch) -> No
     assert response.workspace_file_contents["zeroclaw_output.txt"] == "$$\\boxed{42}$$\n"
 
 
+def test_zeroclaw_podman_bridge_error_records_runtime_provenance(monkeypatch) -> None:
+    fake_runtime = FakePodmanAgentRuntime()
+    agent = ZeroClawAgent()
+    agent.setup(_podman_config(fake_runtime))
+    monkeypatch.setattr(agent._runtime_manager, "_warmup_podman_gateway", lambda _api_base: None)
+
+    class _Response:
+        status_code = 500
+        text = ""
+
+        def json(self) -> dict[str, Any]:
+            return {
+                "error": {
+                    "message": "OpenRouter transport error while reading response body",
+                    "type": "RuntimeError",
+                }
+            }
+
+    monkeypatch.setattr("httpx.post", lambda *_args, **_kwargs: _Response())
+    task = BenchmarkTask(task_id="imo_0", problem="Solve.", ground_truth="42")
+
+    try:
+        agent.solve(task, sandbox=None)
+    except RuntimeError as exc:
+        partial = getattr(exc, "partial_response", None)
+        error_type = getattr(exc, "error_type", "")
+    else:
+        raise AssertionError("Expected ZeroClaw bridge error")
+
+    assert partial is not None
+    assert error_type == "RuntimeError"
+    assert partial.metadata["failure_reason"] == "RuntimeError"
+    assert partial.metadata["container_engine"] == "podman"
+    assert partial.metadata["adapter_name"] == "zeroclaw-podman"
+    assert partial.sandbox_metadata["container_engine"] == "podman"
+
+
 def test_zeroclaw_podman_runtime_does_not_trigger_rock_autosandbox() -> None:
     config = ExperimentConfig(
         agent_name="zeroclaw",

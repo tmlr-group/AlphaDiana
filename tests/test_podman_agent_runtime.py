@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import socket
 from pathlib import Path
 from typing import Any
 
@@ -109,6 +110,10 @@ def test_podman_agent_runtime_starts_collects_and_cleans_up() -> None:
     runtime.cleanup()
 
     assert [name for name, _ in fake.calls][-2:] == ["stop", "rm"]
+    assert any(
+        name == "exec" and "kill -TERM -- -4242" in payload["command"][-1]
+        for name, payload in fake.calls
+    )
 
 
 def test_podman_agent_runtime_supports_controller_container_without_published_port() -> None:
@@ -145,6 +150,56 @@ def test_podman_agent_runtime_supports_controller_container_without_published_po
     runtime.cleanup()
 
     assert [name for name, _ in fake.calls][-2:] == ["stop", "rm"]
+
+
+def test_podman_agent_runtime_host_network_uses_direct_localhost_base(unused_tcp_port: int) -> None:
+    fake = FakePodmanRuntime()
+    runtime = PodmanAgentRuntime(runtime=fake)  # type: ignore[arg-type]
+    spec = PodmanAgentSpec(
+        adapter_name="openclaw-podman",
+        image="localhost/openclaw:test",
+        run_command="openclaw gateway",
+        exposed_port=unused_tcp_port,
+        network="host",
+        api_base_suffix="/v1",
+        healthcheck=lambda api_base: api_base == f"http://127.0.0.1:{unused_tcp_port}/v1",
+    )
+
+    result = runtime.start(spec)
+
+    assert result.api_base == f"http://127.0.0.1:{unused_tcp_port}/v1"
+    assert any(
+        name == "run" and payload["network"] == "host" and payload["ports"] == {}
+        for name, payload in fake.calls
+    )
+    assert not any(name == "port" for name, _ in fake.calls)
+
+    runtime.cleanup()
+
+
+def test_podman_agent_runtime_host_network_fails_when_port_is_occupied(unused_tcp_port: int) -> None:
+    fake = FakePodmanRuntime()
+    runtime = PodmanAgentRuntime(runtime=fake)  # type: ignore[arg-type]
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listener.bind(("127.0.0.1", unused_tcp_port))
+        listener.listen(1)
+        spec = PodmanAgentSpec(
+            adapter_name="zeroclaw-podman",
+            image="localhost/zeroclaw:test",
+            run_command="python /tmp/zeroclaw_bridge.py",
+            exposed_port=unused_tcp_port,
+            network="host",
+        )
+
+        with pytest.raises(PodmanAgentRuntimeError) as exc_info:
+            runtime.start(spec)
+
+    payload = exc_info.value.payload
+    assert payload["stage"] == "host_port_preflight"
+    assert payload["adapter_name"] == "zeroclaw-podman"
+    assert payload["port"] == unused_tcp_port
+    assert not any(name == "run" for name, _ in fake.calls)
 
 
 def test_podman_agent_runtime_healthcheck_failure_payload_and_cleanup() -> None:

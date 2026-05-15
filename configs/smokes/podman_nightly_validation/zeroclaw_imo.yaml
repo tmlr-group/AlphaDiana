@@ -1,0 +1,44 @@
+run_id: "podman_nightly_20260514_zeroclaw_imo"
+
+agent:
+  name: zeroclaw
+  version: "0.6.9"
+  config:
+    runtime_backend: podman
+    podman_image: "${ALPHADIANA_ZEROCLAW_PODMAN_IMAGE}"
+    podman_network: "slirp4netns:allow_host_loopback=true"
+    api_base: "${OPENAI_BASE_URL}"
+    api_key: "${OPENAI_API_KEY}"
+    model: "${OPENAI_MODEL_NAME}"
+    gateway_token: "ZEROCLAW"
+    request_timeout: 600
+    gateway_startup_timeout: 180
+    gateway_warmup_timeout: 180
+    gateway_warmup_initial_delay: 0
+    provider_max_tokens: 2048
+    max_tool_iterations: 40
+    max_actions_per_hour: 100
+    system_prompt: |
+      Solve the competition math problem. The final line must be
+      $$\boxed{your answer here}$$.
+
+benchmark:
+  name: imo_answerbench
+  config:
+    dataset: "Hwilner/imo-answerbench"
+    split: "train"
+    dataset_index: 367
+    max_tasks: 1
+
+sandbox: null
+
+scorer:
+  name: imo_verify
+
+max_concurrent: 1
+num_samples: 1
+output_dir: "./results"
+metadata:
+  validation_campaign: "podman-nightly-validation"
+  container_engine: "podman"
+  notes: "Validation-only ZeroClaw Podman IMO-AnswerBench row."

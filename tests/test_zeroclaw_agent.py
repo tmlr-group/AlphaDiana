@@ -624,8 +624,10 @@ def test_zeroclaw_sandbox_provider_failures_preserve_failure_reason():
 
     partial = getattr(excinfo.value, "partial_response", None)
     assert partial is not None
+    assert partial.answer is None
     assert getattr(excinfo.value, "error_type", "") == "proxy_error"
     assert partial.metadata["failure_reason"] == "proxy_error"
+    assert partial.metadata["answer_source"] == ""
     assert partial.metadata["transport"] == "zeroclaw_cli_sandbox"
 
 
@@ -654,8 +656,10 @@ def test_zeroclaw_nonzero_sandbox_provider_failures_classify_as_provider_error()
 
     partial = getattr(excinfo.value, "partial_response", None)
     assert partial is not None
+    assert partial.answer is None
     assert getattr(excinfo.value, "error_type", "") == "provider_error"
     assert partial.metadata["failure_reason"] == "provider_error"
+    assert partial.metadata["answer_source"] == ""
     assert partial.metadata["transport"] == "zeroclaw_cli_sandbox"
 
 
