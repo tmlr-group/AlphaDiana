@@ -29,6 +29,45 @@ python -m alphadiana.cli env
 | `opencode` | smoke/debug supported | `configs/examples/opencode_mmmu_pro.yaml` | `configs/full_runs/rollout_full_opencode_mmmu_pro_vision.yaml` |
 | `zeroclaw` | smoke/debug supported | `configs/examples/zeroclaw_mmmu_pro.yaml` | `configs/full_runs/rollout_full_zeroclaw_mmmu_pro_vision.yaml` |
 
+## Podman Multimodal Readiness
+
+Phase 6 added an opt-in Podman readiness matrix for OpenClaw, ZeroClaw, and
+OpenCode on three deterministic MMMU-Pro `vision` rows:
+
+- `mmmu_pro_test_History_1`
+- `mmmu_pro_test_Art_113`
+- `mmmu_pro_validation_Design_19`
+
+Configs live under `configs/smokes/podman_mmmu_pro_readiness/`.
+
+Current status as of May 15, 2026: config validation passes, but the live
+provider preflight failed for `OPENAI_MODEL_NAME=Qwen/Qwen3.5-4B` against
+`http://localhost:8011/v1`. From inside Podman, `/v1/models` was reachable,
+but the tiny image `chat/completions` request returned HTTP 400, so the
+9-task pilot was not launched. This is not MMMU-Pro Podman multimodal
+readiness evidence.
+
+Use this sequence before any future pilot attempt:
+
+```bash
+export OPENAI_BASE_URL=<openai-compatible-vlm-base-url>
+export OPENAI_API_KEY=<secret>
+export OPENAI_MODEL_NAME=<real-vlm-model>
+export HF_HOME=<hf-cache-dir>
+export HF_DATASETS_CACHE=<hf-datasets-cache-dir>
+export PODMAN_MMMU_RUN_PREFIX=podman_mmmu_pro_$(date +%Y%m%d_%H%M%S)
+
+bash scripts/run_podman_mmmu_pro_readiness.sh validate
+bash scripts/run_podman_mmmu_pro_readiness.sh preflight
+```
+
+Only launch the Phase 6 pilot after the Podman-context image preflight passes
+with the same provider base URL and model. Evidence for the failed
+`Qwen/Qwen3.5-4B` attempt is recorded in
+[`context/podman-mmmu-pro-readiness/README.md`](../../context/podman-mmmu-pro-readiness/README.md).
+No full MMMU-Pro sweep, Podman default promotion, or legacy runtime deletion is
+claimed by this matrix.
+
 For the staged `72`-run local-vLLM campaign, use
 [full-rollout-local-vllm-20260419.md](full-rollout-local-vllm-20260419.md)
 instead of launching the four full configs manually.
