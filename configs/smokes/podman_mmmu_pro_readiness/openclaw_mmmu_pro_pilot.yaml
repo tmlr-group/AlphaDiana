@@ -1,0 +1,61 @@
+run_id: "podman_mmmu_openclaw_mmmu_pro_pilot"
+
+agent:
+  name: openclaw
+  version: "2026.3.20"
+  config:
+    runtime_backend: podman
+    podman_gateway_config_path: "configs/smokes/podman_scale_readiness/openclaw_podman_gateway_host.yaml"
+    podman_image: "${ALPHADIANA_OPENCLAW_PODMAN_IMAGE}"
+    openclaw_config_path: "openclaw_deploy/openclaw.json"
+    OPENAI_BASE_URL: "${OPENAI_BASE_URL}"
+    OPENAI_API_KEY: "${OPENAI_API_KEY}"
+    OPENAI_MODEL_NAME: "${OPENAI_MODEL_NAME}"
+    enable_thinking: false
+    model: openclaw
+    gateway_token: "OPENCLAW"
+    request_timeout: 600
+    gateway_startup_timeout: 180
+    gateway_warmup_enabled: false
+    max_tokens: 1024
+    max_attempts: 1
+    stream_total_timeout: 600
+    include_attachments: true
+    system_prompt: |
+      Solve the MMMU-Pro vision-only multiple-choice task. Use every image
+      attached to the prompt. The final line must be:
+      $$\boxed{your answer here}$$
+
+benchmark:
+  name: mmmu_pro
+  config:
+    dataset: "MMMU/MMMU_Pro"
+    data_config: "vision"
+    split: "test"
+    dataset_indices:
+      - 0
+      - 1
+      - 2
+
+sandbox: null
+
+scorer:
+  name: exact_match
+  config: {}
+
+max_concurrent: 1
+num_samples: 1
+output_dir: "./results"
+metadata:
+  validation_campaign: "podman-mmmu-pro-readiness-pilot"
+  container_engine: "podman"
+  supports_multimodal: true
+  selected_dataset_indices:
+    - 0
+    - 1
+    - 2
+  selected_task_ids:
+    - "mmmu_pro_test_History_1"
+    - "mmmu_pro_test_Art_113"
+    - "mmmu_pro_validation_Design_19"
+  notes: "Phase 6 OpenClaw Podman MMMU-Pro vision 3-task pilot."
