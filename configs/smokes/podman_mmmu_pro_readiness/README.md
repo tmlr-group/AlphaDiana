@@ -17,8 +17,8 @@ export OPENAI_BASE_URL=http://localhost:8011/v1
 export OPENAI_API_KEY=EMPTY
 export OPENAI_MODEL_NAME=<real-vlm-model>
 
-export HF_HOME=/path/to/xxx/hf_cache/
-export HF_DATASETS_CACHE=/path/to/xxx/hf_cache/
+export HF_HOME=<hf-cache-dir>
+export HF_DATASETS_CACHE=<hf-datasets-cache-dir>
 export PODMAN_MMMU_RUN_PREFIX=podman_mmmu_pro_$(date +%Y%m%d_%H%M%S)
 
 bash scripts/run_podman_mmmu_pro_readiness.sh validate

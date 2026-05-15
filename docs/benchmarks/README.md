@@ -102,6 +102,19 @@ This supports recommending the full-scale overnight standard-reasoning Podman
 campaign as the next action, but full-scale has not been run and no
 task-container benchmark or global Podman default status changed.
 
+Also on May 15, 2026, Phase 6 added the opt-in MMMU-Pro `vision` Podman
+readiness matrix under `configs/smokes/podman_mmmu_pro_readiness/`, plus
+`scripts/run_podman_mmmu_pro_readiness.sh`,
+`scripts/podman_vlm_image_preflight.py`, and
+`scripts/audit_podman_mmmu_pro_readiness.py`. The matrix is restricted to
+OpenClaw, ZeroClaw, and OpenCode on three deterministic MMMU-Pro `vision`
+tasks. The first live attempt, `podman_mmmu_pro_20260515_qwen35_4b`, validated
+all three configs but stopped at preflight: `/v1/models` was reachable from
+Podman, while the image `chat/completions` probe returned HTTP 400 for
+`Qwen/Qwen3.5-4B`. The pilot was not launched, so this does not prove
+MMMU-Pro Podman multimodal readiness. See
+[`context/podman-mmmu-pro-readiness/README.md`](../../context/podman-mmmu-pro-readiness/README.md).
+
 Generated ZeroClaw configs use `runtime_trace_mode="full"` for logprob capture
 and write ZeroClaw's schema-supported permissive shell controls; ZeroClaw
 0.6.9 does not expose a heredoc-specific allowlist setting.
