@@ -62,6 +62,17 @@ class TerminalBench2ZeroClawAgent(TerminalBench2InContainerMixin, ZeroClawAgent)
             agent_type="zeroclaw",
         )
 
+    def _build_tb2_env(self, remote_home: str, remote_zc_home: str) -> dict[str, str]:
+        local_dir = f"{remote_home}/.local"
+        return self._build_env({
+            "home_dir": remote_home,
+            "zc_home_dir": remote_zc_home,
+            "xdg_config_home": f"{remote_home}/.config",
+            "xdg_cache_home": f"{remote_home}/.cache",
+            "xdg_data_home": f"{local_dir}/share",
+            "xdg_state_home": f"{local_dir}/state",
+        })
+
     def _build_runtime_prompt(self, task: BenchmarkTask) -> tuple[str, str]:
         return self._build_incontainer_prompt(task)
 
@@ -133,9 +144,11 @@ class TerminalBench2ZeroClawAgent(TerminalBench2InContainerMixin, ZeroClawAgent)
             if prep_result.returncode != 0:
                 detail = prep_result.stderr.strip() or prep_result.stdout.strip() or "unknown error"
                 raise RuntimeError(f"Failed to prepare ZeroClaw runtime: {detail}")
-            env = self._build_env(remote_home)
+            env = self._build_tb2_env(remote_home, remote_zc_home)
             paths = {
                 "workspace_dir": container_workdir,
+                "zc_home_dir": remote_zc_home,
+                "session_state_path": f"{remote_state_dir}/zeroclaw-session-state.json",
                 "task_path": remote_prompt_path,
                 "stdout_path": remote_stdout_path,
                 "stderr_path": remote_stderr_path,

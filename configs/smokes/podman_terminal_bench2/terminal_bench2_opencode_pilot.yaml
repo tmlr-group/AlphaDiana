@@ -8,11 +8,9 @@ benchmark:
     tasks_dir: ${TERMINAL_BENCH2_DIR}
     task_ids:
       - db-wal-recovery
-      - fix-git
       - overfull-hbox
       - adaptive-rejection-sampler
-      - break-filter-js-from-html
-    max_tasks: 5
+    max_tasks: 3
 
 agent:
   name: terminal_bench2_opencode
@@ -43,14 +41,10 @@ metadata:
   run_suffix: "terminal_bench2_opencode"
   selected_task_names:
     - db-wal-recovery
-    - fix-git
     - overfull-hbox
     - adaptive-rejection-sampler
-    - break-filter-js-from-html
   selected_task_ids:
     - tb2_db-wal-recovery
-    - tb2_fix-git
     - tb2_overfull-hbox
     - tb2_adaptive-rejection-sampler
-    - tb2_break-filter-js-from-html
-  notes: "Phase 7 validation-only Podman TerminalBench2 row; Direct x TB2 and non-OpenCode TB2 agents remain out of scope."
+  notes: "Podman TerminalBench2 small-matrix row; Direct x TB2 and full-sweep TB2 remain out of scope."

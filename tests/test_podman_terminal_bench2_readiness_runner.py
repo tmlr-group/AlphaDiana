@@ -24,22 +24,23 @@ def test_python_helpers_compile() -> None:
     assert result.returncode == 0, result.stderr
 
 
-def test_runner_has_required_modes_and_single_config() -> None:
+def test_runner_has_required_modes_and_three_agent_matrix() -> None:
     script = RUNNER.read_text(encoding="utf-8")
-    for mode in ("validate", "preflight", "pilot", "audit"):
+    for mode in ("validate", "preflight", "pilot", "audit", "all|auto"):
         assert f"{mode})" in script
-    assert "terminal_bench2_opencode_pilot.yaml" in script
-    assert "openclaw" not in script.lower()
-    assert "zeroclaw" not in script.lower()
+    assert "*_pilot.yaml" in script
+    assert "TB2_OPENCODE_RUNTIME_IMAGE" in script
+    assert "TB2_OPENCLAW_RUNTIME_IMAGE" in script
+    assert "TB2_ZEROCLAW_RUNTIME_IMAGE" in script
     assert "direct_llm" not in script.lower()
 
 
 def test_runner_blocks_pilot_on_preflight() -> None:
     script = RUNNER.read_text(encoding="utf-8")
     pilot_body = script.split("run_pilot() {", 1)[1].split("\n}", 1)[0]
-    assert "validate_config || exit" in pilot_body
-    assert "run_preflight || exit" in pilot_body
-    assert pilot_body.index("run_preflight || exit") < pilot_body.index("run_config")
+    assert "validate_config || return" in pilot_body
+    assert "run_preflight || return" in pilot_body
+    assert pilot_body.index("run_preflight || return") < pilot_body.index("run_all_configs")
 
 
 def test_runner_writes_expected_logs_status_and_audit_paths() -> None:
@@ -51,6 +52,8 @@ def test_runner_writes_expected_logs_status_and_audit_paths() -> None:
     assert "preflight-${RUN_PREFIX}.json" in script
     assert "audit_podman_terminal_bench2_readiness.py" in script
     assert '*) export ALPHADIANA_TB2_LOGS_DIR="$ROOT_DIR/$ALPHADIANA_TB2_LOGS_DIR" ;;' in script
+    assert 'printf \'pilot\\t%s\\t%s\\t%s\\t%s\\n\'' in script
+    assert 'return "$rc"' in script
 
 
 def test_preflight_probes_provider_from_podman_without_secret_output() -> None:
@@ -63,3 +66,6 @@ def test_preflight_probes_provider_from_podman_without_secret_output() -> None:
     assert "OPENAI_MODEL_NAME" in source
     assert '"base_url": _sanitize_url' in source
     assert '"OPENAI_API_KEY"' not in source.split('"provider":', 1)[-1]
+    assert "--config-dir" in source
+    assert "runtime_images" in source
+    assert "PODMAN_TB2_PREFLIGHT_PROVIDER_IMAGE" in source

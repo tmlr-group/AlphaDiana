@@ -10,31 +10,30 @@ from scripts import audit_podman_terminal_bench2_readiness as audit_mod
 
 TASK_IDS = [
     "tb2_db-wal-recovery",
-    "tb2_fix-git",
     "tb2_overfull-hbox",
     "tb2_adaptive-rejection-sampler",
-    "tb2_break-filter-js-from-html",
 ]
 
 
-def _write_config(config_dir: Path) -> None:
-    data = {
-        "run_id": "template",
-        "agent": {"name": "terminal_bench2_opencode", "version": "1.0", "config": {"container_engine": "podman"}},
-        "benchmark": {"name": "terminal_bench2", "config": {"task_ids": [task.removeprefix("tb2_") for task in TASK_IDS]}},
-        "scorer": {"name": "terminal_bench2"},
-        "metadata": {
-            "run_suffix": "terminal_bench2_opencode",
-            "container_engine": "podman",
-            "selected_task_ids": TASK_IDS,
-            "selected_task_names": [task.removeprefix("tb2_") for task in TASK_IDS],
-        },
-    }
+def _write_config(config_dir: Path, agents: list[str] | None = None) -> None:
     config_dir.mkdir(parents=True, exist_ok=True)
-    (config_dir / "terminal_bench2_opencode_pilot.yaml").write_text(
-        yaml.safe_dump(data, sort_keys=False),
-        encoding="utf-8",
-    )
+    for agent in agents or ["terminal_bench2_opencode"]:
+        data = {
+            "run_id": "template",
+            "agent": {"name": agent, "version": "1.0", "config": {"container_engine": "podman"}},
+            "benchmark": {"name": "terminal_bench2", "config": {"task_ids": [task.removeprefix("tb2_") for task in TASK_IDS]}},
+            "scorer": {"name": "terminal_bench2"},
+            "metadata": {
+                "run_suffix": agent,
+                "container_engine": "podman",
+                "selected_task_ids": TASK_IDS,
+                "selected_task_names": [task.removeprefix("tb2_") for task in TASK_IDS],
+            },
+        }
+        (config_dir / f"{agent}_pilot.yaml").write_text(
+            yaml.safe_dump(data, sort_keys=False),
+            encoding="utf-8",
+        )
 
 
 def _write_preflight(path: Path, *, ok: bool = True) -> None:
@@ -57,11 +56,12 @@ def _record(
     score_status: str = "valid_scored",
     score: float | None = 0.0,
     error: dict | None = None,
+    agent_name: str = "terminal_bench2_opencode",
 ) -> dict:
     return {
         "run_id": run_id,
         "task_id": task_id,
-        "agent_name": "terminal_bench2_opencode",
+        "agent_name": agent_name,
         "benchmark_name": "terminal_bench2",
         "score_status": score_status,
         "score": score,
@@ -71,6 +71,7 @@ def _record(
             "container_engine": "podman",
             "reward": "0",
             "verifier_status": "ok",
+            "verifier_reward_observed": True,
             "runner": "opencode",
         },
         "error": error,
@@ -83,6 +84,7 @@ def _write_task(results_dir: Path, logs_dir: Path, *, run_id: str, task_id: str,
     artifact_root = results_dir / run_id / run_id / "artifacts" / task_id
     task_dir.mkdir(parents=True, exist_ok=True)
     artifact_root.mkdir(parents=True, exist_ok=True)
+    (artifact_root / "artifact.txt").write_text("artifact\n", encoding="utf-8")
     logs_dir.mkdir(parents=True, exist_ok=True)
     (logs_dir / f"{run_id}.log").write_text("pilot log\n", encoding="utf-8")
     (task_dir / f"{task_id}.json").write_text(json.dumps([record]), encoding="utf-8")
@@ -110,13 +112,14 @@ def _run_audit(tmp_path: Path, config_dir: Path, results_dir: Path, logs_dir: Pa
     )
 
 
-def test_audit_passes_score_zero_and_verifier_failure_when_rows_are_auditable(tmp_path: Path) -> None:
+def test_audit_passes_score_zero_and_skipped_duplicate_when_reward_observed(tmp_path: Path) -> None:
     config_dir, results_dir, logs_dir, preflight, run_id = _prepare(tmp_path)
     for index, task_id in enumerate(TASK_IDS):
         metadata = {
             "container_engine": "podman",
             "reward": "0",
-            "verifier_status": "failed" if index == 1 else "ok",
+            "verifier_status": "skipped_duplicate" if index == 1 else "ok",
+            "verifier_reward_observed": True,
             "runner": "opencode",
         }
         _write_task(
@@ -130,15 +133,47 @@ def test_audit_passes_score_zero_and_verifier_failure_when_rows_are_auditable(tm
     result = _run_audit(tmp_path, config_dir, results_dir, logs_dir, preflight)
 
     assert result["audit_passed"] is True
-    assert result["expected_tasks"] == 5
-    assert result["taxonomy_summary"]["verifier_failure"] == 1
+    assert result["expected_tasks"] == 3
     assert all(row["audit_status"] == "pass" for row in result["rows"])
+
+
+def test_audit_fails_verifier_failure_or_missing_reward(tmp_path: Path) -> None:
+    config_dir, results_dir, logs_dir, preflight, run_id = _prepare(tmp_path)
+    for index, task_id in enumerate(TASK_IDS):
+        metadata = {
+            "container_engine": "podman",
+            "reward": "" if index == 2 else "0",
+            "verifier_status": "failed" if index == 1 else "ok",
+            "verifier_reward_observed": index != 2,
+        }
+        _write_task(
+            results_dir,
+            logs_dir,
+            run_id=run_id,
+            task_id=task_id,
+            record=_record(run_id=run_id, task_id=task_id, metadata=metadata, score=0.0),
+        )
+
+    result = _run_audit(tmp_path, config_dir, results_dir, logs_dir, preflight)
+
+    assert result["audit_passed"] is False
+    assert result["taxonomy_summary"]["verifier_failure"] == 2
+    failed = [row for row in result["rows"] if row["audit_status"] == "fail"]
+    assert {failure for row in failed for failure in row["audit_failures"]} >= {
+        "verifier_not_ok",
+        "missing_reward",
+    }
 
 
 def test_audit_fails_missing_podman_metadata(tmp_path: Path) -> None:
     config_dir, results_dir, logs_dir, preflight, run_id = _prepare(tmp_path)
     for task_id in TASK_IDS:
-        metadata = {"container_engine": "docker", "reward": "0", "verifier_status": "ok"}
+        metadata = {
+            "container_engine": "docker",
+            "reward": "0",
+            "verifier_status": "ok",
+            "verifier_reward_observed": True,
+        }
         _write_task(
             results_dir,
             logs_dir,
@@ -150,8 +185,29 @@ def test_audit_fails_missing_podman_metadata(tmp_path: Path) -> None:
     result = _run_audit(tmp_path, config_dir, results_dir, logs_dir, preflight)
 
     assert result["audit_passed"] is False
-    assert result["taxonomy_summary"] == {"metadata_defect": 5}
+    assert result["taxonomy_summary"] == {"metadata_defect": 3}
     assert all("missing_metadata_container_engine" in row["audit_failures"] for row in result["rows"])
+
+
+def test_audit_fails_empty_artifact_directory(tmp_path: Path) -> None:
+    config_dir, results_dir, logs_dir, preflight, run_id = _prepare(tmp_path)
+    for task_id in TASK_IDS:
+        _write_task(
+            results_dir,
+            logs_dir,
+            run_id=run_id,
+            task_id=task_id,
+            record=_record(run_id=run_id, task_id=task_id),
+        )
+    empty_artifact = results_dir / run_id / run_id / "artifacts" / TASK_IDS[0] / "artifact.txt"
+    empty_artifact.unlink()
+
+    result = _run_audit(tmp_path, config_dir, results_dir, logs_dir, preflight)
+
+    assert result["audit_passed"] is False
+    failed = [row for row in result["rows"] if row["task_id"] == TASK_IDS[0]][0]
+    assert "missing_artifact" in failed["audit_failures"]
+    assert failed["artifact_file_count"] == 0
 
 
 def test_audit_fails_missing_task_json_with_explicit_no_task_row(tmp_path: Path) -> None:
@@ -193,3 +249,38 @@ def test_audit_fails_preflight_failure_even_with_complete_rows(tmp_path: Path) -
     assert result["preflight"]["ok"] is False
     assert result["audit_passed"] is False
     assert result["audit_failures"] == ["preflight_failed"]
+
+
+def test_audit_discovers_three_agent_matrix(tmp_path: Path) -> None:
+    config_dir = tmp_path / "configs"
+    results_dir = tmp_path / "results"
+    logs_dir = tmp_path / "logs"
+    preflight = tmp_path / "context" / "preflight-pilot.json"
+    agents = [
+        "terminal_bench2_openclaw",
+        "terminal_bench2_opencode",
+        "terminal_bench2_zeroclaw",
+    ]
+    _write_config(config_dir, agents=agents)
+    _write_preflight(preflight)
+    for agent in agents:
+        run_id = f"pilot_{agent}"
+        for task_id in TASK_IDS:
+            _write_task(
+                results_dir,
+                logs_dir,
+                run_id=run_id,
+                task_id=task_id,
+                record=_record(
+                    run_id=run_id,
+                    task_id=task_id,
+                    agent_name=agent,
+                ),
+            )
+
+    result = _run_audit(tmp_path, config_dir, results_dir, logs_dir, preflight)
+
+    assert result["audit_passed"] is True
+    assert result["expected_cells"] == 3
+    assert result["expected_tasks"] == 9
+    assert {row["agent"] for row in result["rows"]} == set(agents)

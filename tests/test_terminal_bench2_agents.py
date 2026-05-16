@@ -509,7 +509,7 @@ def test_terminal_bench2_zeroclaw_writes_native_prompt_and_config(tmp_path: Path
 
     task = BenchmarkTask(task_id="tb2_demo", problem="demo", ground_truth="1")
     _, prompt_text = agent._build_runtime_prompt(task)
-    env = agent._build_env("/tmp/zeroclaw-home")
+    env = agent._build_tb2_env("/tmp/zeroclaw-home", "/tmp/zeroclaw-home/.zeroclaw")
     config_text = agent._build_config_toml()
 
     assert env["OPENAI_BASE_URL"] == "http://localhost/v1"
@@ -541,6 +541,8 @@ def test_terminal_bench2_zeroclaw_agent_command_uses_local_prompt_file(tmp_path:
     })
     cmd = agent._build_run_command({
         "workspace_dir": "/app",
+        "zc_home_dir": "/tmp/zeroclaw-home/.zeroclaw",
+        "session_state_path": "/tmp/zeroclaw-home/state/zeroclaw-session-state.json",
         "task_path": str(tmp_path / "task.txt"),
         "stdout_path": str(tmp_path / "zeroclaw_output.txt"),
         "stderr_path": str(tmp_path / "zeroclaw_stderr.log"),
@@ -548,7 +550,9 @@ def test_terminal_bench2_zeroclaw_agent_command_uses_local_prompt_file(tmp_path:
 
     assert "cd /app" in cmd
     assert f"prompt=$(cat {tmp_path / 'task.txt'})" in cmd
-    assert 'timeout 321 zeroclaw agent -m "$prompt"' in cmd
+    assert "timeout 321 zeroclaw --config-dir /tmp/zeroclaw-home/.zeroclaw agent" in cmd
+    assert "--session-state-file /tmp/zeroclaw-home/state/zeroclaw-session-state.json" in cmd
+    assert '-m "$prompt"' in cmd
     assert str(tmp_path / "zeroclaw_output.txt") in cmd
 
 
