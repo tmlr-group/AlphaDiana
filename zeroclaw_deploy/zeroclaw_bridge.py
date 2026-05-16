@@ -278,6 +278,10 @@ class _BridgeVisionProxy:
     def injection_count(self) -> int:
         return self._state.injection_count
 
+    @property
+    def request_count(self) -> int:
+        return self._state.request_count
+
 
 def _normalize_api_base(api_base: str) -> str:
     return api_base.strip().rstrip("/")
@@ -316,6 +320,18 @@ _RUNTIME_LOG_SUBSTRINGS = (
     "retrying request in ",
     "retry attempt ",
 )
+
+
+def _provider_table_key(provider: str) -> str:
+    if provider.startswith("custom:"):
+        return "custom"
+    return provider or "openai"
+
+
+def _provider_base_url(provider: str) -> str:
+    if provider.startswith("custom:"):
+        return provider.split(":", 1)[1]
+    return ""
 
 
 def _is_runtime_log_line(line: str) -> bool:
@@ -373,15 +389,17 @@ def _build_config_toml(
         if REASONING_EFFORT is not None:
             runtime_lines.append(f"reasoning_effort = {_quote_toml(REASONING_EFFORT)}")
         runtime_section = "\n".join(runtime_lines) + "\n\n"
+    provider_key = _provider_table_key(PROVIDER)
+    provider_base_url = provider_base_url_override or _provider_base_url(PROVIDER)
     provider_section = "[model_providers]\n\n"
-    if provider_base_url_override:
+    if provider_base_url:
         provider_section = (
-            f"[model_providers.{PROVIDER}]\n"
-            f"name = {_quote_toml(PROVIDER)}\n"
-            f"base_url = {_quote_toml(provider_base_url_override)}\n\n"
+            f"[model_providers.{provider_key}]\n"
+            f"name = {_quote_toml(provider_key)}\n"
+            f"base_url = {_quote_toml(provider_base_url)}\n\n"
         )
     return (
-        f"default_provider = {_quote_toml(PROVIDER)}\n"
+        f"default_provider = {_quote_toml(provider_key)}\n"
         f"default_model = {_quote_toml(MODEL_NAME)}\n\n"
         f"default_temperature = {effective_temperature}\n"
         f"provider_timeout_secs = {PROVIDER_TIMEOUT_SECS}\n"
@@ -738,6 +756,9 @@ def _run_zeroclaw(
         if image_items
         else None
     )
+    vision_proxy_url = ""
+    vision_proxy_request_count = 0
+    vision_proxy_injection_count = 0
 
     with tempfile.TemporaryDirectory(prefix=f"zeroclaw_gateway_{execution_id}_") as td:
         base = Path(td)
@@ -780,15 +801,23 @@ def _run_zeroclaw(
 
         if vision_proxy_ctx is not None:
             with vision_proxy_ctx as proxy:
+                proxy_env = dict(env)
+                proxy_env.update({
+                    "OPENAI_BASE_URL": proxy.url,
+                    "ZEROCLAW_PROVIDER": f"custom:{proxy.url}",
+                })
+                vision_proxy_url = proxy.url
                 config_path.write_text(
                     _build_config_toml(temperature, provider_base_url_override=proxy.url),
                     encoding="utf-8",
                 )
                 os.chmod(config_path, 0o600)
                 result = subprocess.run(
-                    command, shell=True, cwd=str(workspace_dir), env=env,
+                    command, shell=True, cwd=str(workspace_dir), env=proxy_env,
                     capture_output=True, text=True,
                 )
+                vision_proxy_request_count = proxy.request_count
+                vision_proxy_injection_count = proxy.injection_count
         else:
             config_path.write_text(_build_config_toml(temperature), encoding="utf-8")
             os.chmod(config_path, 0o600)
@@ -813,6 +842,10 @@ def _run_zeroclaw(
             "returncode": result.returncode,
             "timed_out": result.returncode == 124,
             "error_message": "",
+            "vision_proxy_url": vision_proxy_url,
+            "vision_proxy_request_count": vision_proxy_request_count,
+            "vision_proxy_injection_count": vision_proxy_injection_count,
+            "vision_proxy_image_count": len(image_items),
         }
         sanitized_output, dropped_runtime_logs = _sanitize_output(raw_output)
         runtime_failure = _extract_runtime_failure(raw_output, raw_stderr)

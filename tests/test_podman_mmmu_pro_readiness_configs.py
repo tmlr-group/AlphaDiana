@@ -86,8 +86,13 @@ def test_podman_mmmu_pro_readiness_configs_are_vision_podman_only() -> None:
 
         agent_name = data["agent"]["name"]
         agent_config = data["agent"]["config"]
+        assert agent_config["enable_thinking"] is True
         if agent_name in {"openclaw", "zeroclaw"}:
             assert agent_config["runtime_backend"] == "podman"
+        if agent_name == "zeroclaw":
+            assert agent_config["provider_max_tokens"] >= 8192
+        else:
+            assert agent_config["max_tokens"] >= 8192
         if agent_name == "opencode":
             assert agent_config["controller_mode"] == "podman"
             assert agent_config["controller_network"] == "host"
@@ -100,3 +105,11 @@ def test_podman_mmmu_pro_readiness_configs_use_provider_env_placeholders() -> No
         assert "${OPENAI_API_KEY}" in text
         assert "${OPENAI_MODEL_NAME}" in text
         assert "Qwen/Qwen3.5-4B" not in text
+
+
+def test_podman_mmmu_pro_readiness_configs_never_disable_thinking() -> None:
+    needle = "enable" + "_thinking"
+    for path in CONFIG_DIR.glob("*_pilot.yaml"):
+        text = path.read_text(encoding="utf-8").lower()
+        assert f"{needle}: true" in text
+        assert f"{needle}: " + "false" not in text

@@ -15,6 +15,8 @@ PREFLIGHT_HELPER="$ROOT_DIR/scripts/podman_vlm_image_preflight.py"
 PROVIDER_PREFLIGHT_IMAGE="${PODMAN_MMMU_PREFLIGHT_IMAGE:-docker.io/python:3.12-slim}"
 PROVIDER_PREFLIGHT_NETWORK="${PODMAN_MMMU_PREFLIGHT_NETWORK:-host}"
 PROVIDER_PREFLIGHT_TIMEOUT_SECONDS="${PODMAN_MMMU_PREFLIGHT_TIMEOUT_SECONDS:-120}"
+PROVIDER_PREFLIGHT_MAX_TOKENS="${PODMAN_MMMU_PRO_MAX_TOKENS:-8192}"
+PROVIDER_PREFLIGHT_IMAGE_URL="${PODMAN_MMMU_PRO_VLM_IMAGE_URL:-https://qianwen-res.oss-accelerate.aliyuncs.com/Qwen3.5/demo/RealWorld/RealWorld-04.png}"
 
 cd "$ROOT_DIR" || exit 1
 
@@ -83,6 +85,15 @@ EOF
   fi
 }
 
+require_fully_qualified_image() {
+  local image="$1"
+  local registry="${image%%/*}"
+  if [[ "$image" != */* || "$registry" != *.* && "$registry" != *:* && "$registry" != "localhost" ]]; then
+    printf 'Podman preflight image must be fully qualified, got: %s\n' "$image" >&2
+    return 2
+  fi
+}
+
 append_no_proxy_host() {
   local var_name="$1"
   local host="$2"
@@ -118,6 +129,7 @@ cell_config() {
 preflight_provider_from_podman() {
   require_provider_env || return 2
   reject_loopback_provider_base || return "$?"
+  require_fully_qualified_image "$PROVIDER_PREFLIGHT_IMAGE" || return "$?"
   if ! command -v podman >/dev/null 2>&1; then
     printf 'Podman VLM preflight failed: podman command not found.\n' >&2
     return 2
@@ -128,7 +140,7 @@ preflight_provider_from_podman() {
   fi
   init_status
   extend_no_proxy_for_provider
-  printf 'Preflight: probing image chat support from Podman for model %s\n' "${OPENAI_MODEL_NAME:-<unset>}"
+  printf 'Preflight: probing thinking-mode image chat support from Podman for model %s\n' "${OPENAI_MODEL_NAME:-<unset>}"
   if ! timeout --foreground "$PROVIDER_PREFLIGHT_TIMEOUT_SECONDS" \
       podman run --rm --network "$PROVIDER_PREFLIGHT_NETWORK" \
         -e http_proxy= \
@@ -142,6 +154,12 @@ preflight_provider_from_podman() {
         -e "OPENAI_BASE_URL=${OPENAI_BASE_URL:-}" \
         -e "OPENAI_API_KEY=${OPENAI_API_KEY:-}" \
         -e "OPENAI_MODEL_NAME=${OPENAI_MODEL_NAME:-}" \
+        -e "PODMAN_MMMU_CONTAINER_ENGINE=podman" \
+        -e "PODMAN_MMMU_NETWORK_MODE=${PROVIDER_PREFLIGHT_NETWORK}" \
+        -e "PODMAN_MMMU_PRO_ENABLE_THINKING=1" \
+        -e "PODMAN_MMMU_PRO_MAX_TOKENS=${PROVIDER_PREFLIGHT_MAX_TOKENS}" \
+        -e "PODMAN_MMMU_PRO_VLM_IMAGE_URL=${PROVIDER_PREFLIGHT_IMAGE_URL}" \
+        -e "PODMAN_MMMU_PRO_TOP_K=${PODMAN_MMMU_PRO_TOP_K:-20}" \
         -e "PODMAN_MMMU_PREFLIGHT_REQUEST_TIMEOUT=${PODMAN_MMMU_PREFLIGHT_REQUEST_TIMEOUT:-30}" \
         -v "$ROOT_DIR:/workspace:ro" \
         -w /workspace \
@@ -153,11 +171,11 @@ Preflight status: ${PREFLIGHT_STATUS_FILE#$ROOT_DIR/}
 EOF
     return 2
   fi
-  printf 'Preflight passed: VLM image chat path is reachable from Podman.\n'
+  printf 'Preflight passed: thinking-mode VLM image_url and data URL paths are reachable from Podman.\n'
 }
 
 validate_matrix() {
-  require_provider_env || exit 2
+  require_provider_env || return 2
   init_status
   local agent config rc
   for agent in openclaw zeroclaw opencode; do
@@ -194,20 +212,24 @@ run_config() {
   ) | tee "$log_path"
   local rc=${PIPESTATUS[0]}
   printf '%s\t%s\t%s\t%s\t%s\n' "$group" "$run_id" "${config#$ROOT_DIR/}" "$rc" "logs/${run_id}.log" >> "$STATUS_FILE"
-  return 0
+  return "$rc"
 }
 
-run_pilot() {
-  require_provider_env || exit 2
-  preflight_provider_from_podman || exit "$?"
+run_pilot_cells() {
   extend_no_proxy_for_provider
   init_status
   local agent config run_id
   for agent in openclaw zeroclaw opencode; do
     config="$(cell_config "$agent")"
     run_id="${RUN_PREFIX}_${agent}_mmmu_pro"
-    run_config "pilot" "$config" "$run_id"
+    run_config "pilot" "$config" "$run_id" || return "$?"
   done
+}
+
+run_pilot() {
+  require_provider_env || return 2
+  preflight_provider_from_podman || return "$?"
+  run_pilot_cells
 }
 
 run_audit() {
@@ -223,6 +245,13 @@ run_audit() {
     --logs-dir "$ROOT_DIR/logs" \
     --output-dir "$STATUS_DIR" \
     --preflight-status-file "$PREFLIGHT_STATUS_FILE"
+}
+
+run_all() {
+  validate_matrix || return "$?"
+  preflight_provider_from_podman || return "$?"
+  run_pilot_cells || return "$?"
+  run_audit
 }
 
 run_full() {
@@ -242,9 +271,10 @@ main() {
     preflight) preflight_provider_from_podman; rc=$? ;;
     pilot) run_pilot; rc=$? ;;
     audit) run_audit; rc=$? ;;
+    all|auto) run_all; rc=$? ;;
     full) run_full; rc=$? ;;
     *)
-      printf 'Usage: %s [validate|preflight|pilot|audit|full]\n' "$0" >&2
+      printf 'Usage: %s [validate|preflight|pilot|audit|all|auto|full]\n' "$0" >&2
       exit 2
       ;;
   esac

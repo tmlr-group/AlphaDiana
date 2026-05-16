@@ -15,6 +15,8 @@ import yaml
 
 EXPECTED_AGENTS = ("openclaw", "zeroclaw", "opencode")
 BENCHMARK_KEY = "mmmu_pro"
+REQUIRED_TASK_COUNT = 9
+MIN_THINKING_MAX_TOKENS = 8192
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -260,6 +262,28 @@ def _artifact_file_contains_image_url(path: Path) -> tuple[str, str]:
     return "missing", ""
 
 
+def _artifact_file_zeroclaw_vision_proxy_status(path: Path) -> tuple[str, str]:
+    text = _read_artifact_text(path)
+    if "vision-proxy" in text:
+        if "[vision-proxy] injected" in text:
+            return "present", "zeroclaw_vision_proxy_injection"
+        if "[vision-proxy] shutdown:" in text and "0 injections" in text:
+            return "lost", "zeroclaw_vision_proxy_no_provider_request"
+    if path.name != "status.json":
+        return "missing", ""
+    parsed = _parse_json_text(text)
+    if not isinstance(parsed, dict):
+        return "missing", ""
+    image_count = int(parsed.get("vision_proxy_image_count") or 0)
+    request_count = int(parsed.get("vision_proxy_request_count") or 0)
+    injection_count = int(parsed.get("vision_proxy_injection_count") or 0)
+    if image_count <= 0:
+        return "missing", ""
+    if request_count > 0 and injection_count > 0:
+        return "present", "zeroclaw_vision_proxy_injection"
+    return "lost", "zeroclaw_vision_proxy_no_provider_request"
+
+
 def _artifact_base64_status(path: Path) -> str:
     if path.suffix != ".base64":
         return "missing"
@@ -315,6 +339,9 @@ def image_proof(
     task_marker_path = ""
     prompt_attachment_path = ""
     artifact_image_url_path = ""
+    zeroclaw_vision_proxy_path = ""
+    zeroclaw_vision_proxy_lost_path = ""
+    zeroclaw_vision_proxy_kind = ""
 
     for path in _iter_artifact_files(record, results_dir, run_id):
         image_url_status, image_url_kind = _artifact_file_contains_image_url(path)
@@ -326,6 +353,14 @@ def image_proof(
             }
         if image_url_status == "present" and not artifact_image_url_path:
             artifact_image_url_path = _repo_relative(path, root)
+
+        vision_proxy_status, vision_proxy_kind = _artifact_file_zeroclaw_vision_proxy_status(path)
+        if vision_proxy_status == "present" and not zeroclaw_vision_proxy_path:
+            zeroclaw_vision_proxy_path = _repo_relative(path, root)
+            zeroclaw_vision_proxy_kind = vision_proxy_kind
+        elif vision_proxy_status == "lost" and not zeroclaw_vision_proxy_lost_path:
+            zeroclaw_vision_proxy_lost_path = _repo_relative(path, root)
+            zeroclaw_vision_proxy_kind = vision_proxy_kind
 
         b64_status = _artifact_base64_status(path)
         if b64_status == "corrupt":
@@ -379,16 +414,34 @@ def image_proof(
                 "path": prompt_attachment_path,
             }
     elif agent == "zeroclaw":
-        if task_marker_path:
+        if artifact_image_url_path:
             return {
                 "status": "present",
-                "kind": "zeroclaw_image_marker",
+                "kind": "zeroclaw_provider_image_url",
+                "path": artifact_image_url_path,
+            }
+        if zeroclaw_vision_proxy_path:
+            return {
+                "status": "present",
+                "kind": zeroclaw_vision_proxy_kind or "zeroclaw_vision_proxy_injection",
+                "path": zeroclaw_vision_proxy_path,
+            }
+        if zeroclaw_vision_proxy_lost_path:
+            return {
+                "status": "lost",
+                "kind": zeroclaw_vision_proxy_kind or "zeroclaw_vision_proxy_no_provider_request",
+                "path": zeroclaw_vision_proxy_lost_path,
+            }
+        if task_marker_path:
+            return {
+                "status": "lost",
+                "kind": "zeroclaw_image_marker_without_provider_proof",
                 "path": task_marker_path,
             }
         if artifact_manifest_path or artifact_manifest_declares_attachment:
             return {
-                "status": "present",
-                "kind": "zeroclaw_bridge_attachment_manifest",
+                "status": "lost",
+                "kind": "zeroclaw_attachment_manifest_without_provider_proof",
                 "path": artifact_manifest_path or "task_json:artifact_manifest",
             }
 
@@ -423,6 +476,8 @@ def classify_failure(
         return "text_only_fallback"
     if image_proof_status == "corrupt":
         return "image_payload_corrupt"
+    if image_proof_status == "lost":
+        return "image_lost_before_provider_request"
     if image_proof_status != "present":
         return "image_payload_missing"
     if missing_artifacts:
@@ -435,6 +490,14 @@ def classify_failure(
     failure_reason = str(metadata.get("failure_reason") or "").strip().lower()
     error_type = str(error.get("error_type") or "").strip().lower()
     error_message = str(error.get("error") or error.get("message") or "").strip().lower()
+    failure_evidence = "\n".join([
+        score_status,
+        finish_reason,
+        failure_reason,
+        error_type,
+        error_message,
+        _safe_json_text(error),
+    ]).lower()
     evidence = "\n".join([
         score_status,
         finish_reason,
@@ -445,20 +508,22 @@ def classify_failure(
         _safe_json_text(metadata),
     ]).lower()
 
+    if not error and score_status in {"", "valid_scored"} and not failure_reason:
+        return "clean"
     if (
-        "image" in evidence
-        or "multimodal" in evidence
-        or "vision" in evidence
-        or "content block" in evidence
-        or "media" in evidence
+        "image" in failure_evidence
+        or "multimodal" in failure_evidence
+        or "vision" in failure_evidence
+        or "content block" in failure_evidence
+        or "media" in failure_evidence
     ) and (
-        "reject" in evidence
-        or "unsupported" in evidence
-        or "not support" in evidence
-        or "does not support" in evidence
-        or "invalid" in evidence
-        or "bad request" in evidence
-        or "400" in evidence
+        "reject" in failure_evidence
+        or "unsupported" in failure_evidence
+        or "not support" in failure_evidence
+        or "does not support" in failure_evidence
+        or "invalid" in failure_evidence
+        or "bad request" in failure_evidence
+        or "400" in failure_evidence
     ):
         return "provider_image_rejected"
     if (
@@ -497,8 +562,6 @@ def classify_failure(
         or "readtimeout" in error_message
     ):
         return "provider_timeout"
-    if not error and score_status in {"", "valid_scored"} and not failure_reason:
-        return "clean"
     if "verifier" in error_type or "evaluator" in evidence:
         return "benchmark_evaluator"
     if "scorer" in error_type or "scoring" in evidence:
@@ -509,7 +572,12 @@ def classify_failure(
 
 
 def podman_related(taxonomy: str) -> str:
-    if taxonomy in {"metadata_defect", "podman_runtime", "artifact_missing"}:
+    if taxonomy in {
+        "metadata_defect",
+        "podman_runtime",
+        "artifact_missing",
+        "image_lost_before_provider_request",
+    }:
         return "yes"
     if taxonomy in {
         "provider_error",
@@ -619,6 +687,8 @@ def row_from_record(
         audit_failures.append("missing_image_payload_proof")
     elif proof["status"] == "corrupt":
         audit_failures.append("corrupted_multimodal_payload")
+    elif proof["status"] == "lost":
+        audit_failures.append("image_lost_before_provider_request")
     if taxonomy == "provider_image_rejected":
         audit_failures.append("provider_rejected_image_input")
 
@@ -719,6 +789,31 @@ def _load_preflight_status(path: Path | None, *, root: Path) -> dict[str, Any]:
     return status
 
 
+def _preflight_gate_failures(preflight: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    remote = _as_dict(preflight.get("remote_image_url"))
+    data_url = _as_dict(preflight.get("data_url"))
+    if preflight.get("ok") is not True:
+        failures.append("preflight_status_not_ok")
+    if remote.get("ok") is not True:
+        failures.append("remote_image_url_probe_failed")
+    if data_url.get("ok") is not True:
+        failures.append("data_url_probe_failed")
+    if preflight.get("container_engine") != "podman":
+        failures.append("preflight_not_podman_runtime")
+    if preflight.get("podman_runtime_ok") is not True:
+        failures.append("preflight_podman_runtime_not_proven")
+    if preflight.get("thinking_mode") is not True:
+        failures.append("thinking_mode_not_enabled")
+    try:
+        max_tokens = int(preflight.get("max_tokens") or 0)
+    except (TypeError, ValueError):
+        max_tokens = 0
+    if max_tokens < MIN_THINKING_MAX_TOKENS:
+        failures.append("preflight_max_tokens_too_small")
+    return failures
+
+
 def audit(
     *,
     run_prefix: str,
@@ -817,24 +912,45 @@ def audit(
 
     taxonomy_summary = Counter(row["failure_taxonomy"] for row in rows)
     preflight = _load_preflight_status(preflight_status_file, root=root)
-    preflight_ok = bool(preflight.get("ok"))
-    if not preflight_ok:
+    preflight_failures = _preflight_gate_failures(preflight)
+    preflight_ok = not preflight_failures
+    if preflight_failures:
         taxonomy_summary["vlm_preflight_failed"] += 1
     expected_tasks = sum(len(cell["expected_task_ids"]) for cell in cells)
     matrix_agents = sorted(cell["agent_key"] for cell in cells)
-    matrix_complete = sorted(EXPECTED_AGENTS) == matrix_agents
+    per_cell_task_count_ok = all(len(cell["expected_task_ids"]) == 3 for cell in cells)
+    matrix_complete = (
+        sorted(EXPECTED_AGENTS) == matrix_agents
+        and expected_tasks == REQUIRED_TASK_COUNT
+        and per_cell_task_count_ok
+    )
     audit_failures = [row for row in rows if row["audit_status"] != "pass"]
+    task_count_ok = len(rows) == REQUIRED_TASK_COUNT
     return {
         "run_prefix": run_prefix,
         "expected_cells": len(cells),
         "expected_agents": list(EXPECTED_AGENTS),
         "expected_tasks": expected_tasks,
+        "required_tasks": REQUIRED_TASK_COUNT,
         "matrix_complete": matrix_complete,
+        "per_cell_task_count_ok": per_cell_task_count_ok,
         "preflight": preflight,
+        "preflight_failures": preflight_failures,
         "rows": rows,
         "taxonomy_summary": dict(sorted(taxonomy_summary.items())),
-        "audit_passed": not audit_failures and preflight_ok and matrix_complete and len(rows) == expected_tasks,
-        "audit_failure_count": len(audit_failures) + (0 if preflight_ok else 1) + (0 if matrix_complete else 1),
+        "audit_passed": (
+            not audit_failures
+            and preflight_ok
+            and matrix_complete
+            and task_count_ok
+            and len(rows) == expected_tasks
+        ),
+        "audit_failure_count": (
+            len(audit_failures)
+            + len(preflight_failures)
+            + (0 if matrix_complete else 1)
+            + (0 if task_count_ok else 1)
+        ),
     }
 
 
@@ -846,8 +962,9 @@ def render_markdown(result: dict[str, Any]) -> str:
         f"Audit passed: `{str(result['audit_passed']).lower()}`",
         f"Expected cells: `{result['expected_cells']}`",
         f"Expected tasks: `{result['expected_tasks']}`",
+        f"Required pilot tasks: `{result.get('required_tasks', REQUIRED_TASK_COUNT)}`",
         f"Audit failures: `{result['audit_failure_count']}`",
-        f"VLM preflight passed: `{str(bool(preflight.get('ok'))).lower()}`",
+        f"VLM preflight passed: `{str(not result.get('preflight_failures')).lower()}`",
         "",
         "## Rows",
         "",
@@ -884,11 +1001,30 @@ def render_markdown(result: dict[str, Any]) -> str:
         lines.append(f"| `{category}` | {count} |")
 
     lines.extend(["", "## VLM Preflight", ""])
-    lines.append(f"- Status: `{'pass' if preflight.get('ok') else 'fail'}`")
+    lines.append(f"- Status: `{'pass' if not result.get('preflight_failures') else 'fail'}`")
     if preflight.get("model"):
         lines.append(f"- Model: `{preflight['model']}`")
+    if preflight.get("base_url"):
+        lines.append(f"- Base URL: `{preflight['base_url']}`")
     if preflight.get("api_base_host"):
         lines.append(f"- API base host: `{preflight['api_base_host']}`")
+    if preflight.get("container_engine"):
+        lines.append(f"- Container engine: `{preflight['container_engine']}`")
+    if preflight.get("network_mode"):
+        lines.append(f"- Network mode: `{preflight['network_mode']}`")
+    if "thinking_mode" in preflight:
+        lines.append(f"- Thinking mode: `{str(bool(preflight.get('thinking_mode'))).lower()}`")
+    if preflight.get("max_tokens"):
+        lines.append(f"- Max tokens: `{preflight['max_tokens']}`")
+    remote = _as_dict(preflight.get("remote_image_url"))
+    data_url = _as_dict(preflight.get("data_url"))
+    if remote:
+        lines.append(f"- Remote image URL probe: `{'pass' if remote.get('ok') else 'fail'}`")
+    if data_url:
+        lines.append(f"- Data URL probe: `{'pass' if data_url.get('ok') else 'fail'}`")
+    preflight_failures = result.get("preflight_failures") or []
+    if preflight_failures:
+        lines.append(f"- Preflight gate failures: `{', '.join(preflight_failures)}`")
     if preflight.get("error_type"):
         lines.append(f"- Error type: `{preflight['error_type']}`")
     if preflight.get("error"):

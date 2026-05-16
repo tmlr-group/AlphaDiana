@@ -40,30 +40,37 @@ OpenCode on three deterministic MMMU-Pro `vision` rows:
 
 Configs live under `configs/smokes/podman_mmmu_pro_readiness/`.
 
-Current status as of May 15, 2026: config validation passes, but the live
-provider preflight failed for `OPENAI_MODEL_NAME=Qwen/Qwen3.5-4B` against
-`http://localhost:8011/v1`. From inside Podman, `/v1/models` was reachable,
-but the tiny image `chat/completions` request returned HTTP 400, so the
-9-task pilot was not launched. This is not MMMU-Pro Podman multimodal
-readiness evidence.
+Current status as of May 16, 2026: `Qwen/Qwen3.5-4B` served by the local vLLM
+endpoint at `http://127.0.0.1:8011/v1` is verified for both remote
+`image_url` and `data:image/png;base64` chat requests on the host and from
+Podman `--network host`. The repaired run prefix
+`podman_mmmu_pro_qwen35_thinking_20260516_144304` passed the automated
+`validate -> preflight -> pilot -> audit` readiness flow. It wrote all 9
+expected task rows with `metadata.container_engine=podman`; the audit passed
+with `audit_passed=true` and `audit_failure_count=0`.
 
 Use this sequence before any future pilot attempt:
 
 ```bash
-export OPENAI_BASE_URL=<openai-compatible-vlm-base-url>
-export OPENAI_API_KEY=<secret>
-export OPENAI_MODEL_NAME=<real-vlm-model>
+export OPENAI_BASE_URL=http://127.0.0.1:8011/v1
+export OPENAI_API_KEY=EMPTY
+export OPENAI_MODEL_NAME=Qwen/Qwen3.5-4B
+export PODMAN_MMMU_PRO_MAX_TOKENS=8192
+export PODMAN_MMMU_PRO_ENABLE_THINKING=1
+export PODMAN_MMMU_PRO_VLM_IMAGE_URL=https://qianwen-res.oss-accelerate.aliyuncs.com/Qwen3.5/demo/RealWorld/RealWorld-04.png
 export HF_HOME=<hf-cache-dir>
 export HF_DATASETS_CACHE=<hf-datasets-cache-dir>
 export PODMAN_MMMU_RUN_PREFIX=podman_mmmu_pro_$(date +%Y%m%d_%H%M%S)
 
-bash scripts/run_podman_mmmu_pro_readiness.sh validate
-bash scripts/run_podman_mmmu_pro_readiness.sh preflight
+bash scripts/run_podman_mmmu_pro_readiness.sh all
 ```
 
-Only launch the Phase 6 pilot after the Podman-context image preflight passes
-with the same provider base URL and model. Evidence for the failed
-`Qwen/Qwen3.5-4B` attempt is recorded in
+The patched preflight runs inside Podman, keeps thinking mode on, uses at
+least 8192 output tokens, and checks both remote `image_url` and data URL image
+inputs. The audit gate is infrastructure readiness, not accuracy: all 9 task
+rows must be written with `metadata.container_engine=podman`, image proof, logs
+and artifacts, and no text-only fallback or provider VLM rejection. Historical
+and current evidence for this readiness pilot are recorded in
 [`context/podman-mmmu-pro-readiness/README.md`](../../context/podman-mmmu-pro-readiness/README.md).
 No full MMMU-Pro sweep, Podman default promotion, or legacy runtime deletion is
 claimed by this matrix.

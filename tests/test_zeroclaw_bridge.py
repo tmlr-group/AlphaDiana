@@ -136,6 +136,10 @@ def test_zeroclaw_bridge_config_toml_uses_env_default_temperature(monkeypatch):
     assert "provider_max_tokens = 32768" in module._build_config_toml()
     assert "reasoning_enabled = true" in module._build_config_toml()
     assert 'reasoning_effort = "high"' in module._build_config_toml()
+    assert 'default_provider = "custom"' in module._build_config_toml()
+    assert "[model_providers.custom]" in module._build_config_toml()
+    assert 'base_url = "https://example.test/v1"' in module._build_config_toml()
+    assert "[model_providers.custom:https://example.test/v1]" not in module._build_config_toml()
     assert "default_temperature = 0.4" in module._build_config_toml(0.4)
 
 
@@ -320,6 +324,8 @@ def test_zeroclaw_bridge_persists_last_request_artifacts(monkeypatch, tmp_path):
     )
 
     def fake_run(command, shell, cwd, env, capture_output, text):
+        assert env["OPENAI_BASE_URL"].startswith("http://127.0.0.1:")
+        assert env["ZEROCLAW_PROVIDER"].startswith("custom:http://127.0.0.1:")
         stdout_path = command.split("> ", 1)[1].split(" 2> ", 1)[0]
         stderr_path = command.split(" 2> ", 1)[1]
         Path(stdout_path).write_text("partial reasoning", encoding="utf-8")
@@ -348,6 +354,9 @@ def test_zeroclaw_bridge_persists_last_request_artifacts(monkeypatch, tmp_path):
     assert (last_request / "task.txt").read_text(encoding="utf-8") == "Inspect attachments."
     status = json.loads((last_request / "status.json").read_text(encoding="utf-8"))
     assert status["temperature"] == 0.3
+    assert status["vision_proxy_image_count"] == 1
+    assert status["vision_proxy_request_count"] == 0
+    assert status["vision_proxy_injection_count"] == 0
     manifest = json.loads((last_request / "attachment_manifest.json").read_text(encoding="utf-8"))
     assert manifest["attachments"][0]["path"] == "attachments/image_1.png"
     assert (last_request / "zeroclaw_output.txt").read_text(encoding="utf-8") == "partial reasoning"

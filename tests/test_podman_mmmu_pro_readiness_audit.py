@@ -15,7 +15,12 @@ TINY_DATA_URL = (
 )
 
 
-def _write_config(config_dir: Path, *, agent: str, task_id: str) -> None:
+def _as_task_ids(task_id: str | list[str]) -> list[str]:
+    return task_id if isinstance(task_id, list) else [task_id]
+
+
+def _write_config(config_dir: Path, *, agent: str, task_id: str | list[str]) -> None:
+    task_ids = _as_task_ids(task_id)
     data = {
         "run_id": f"template_{agent}_mmmu_pro",
         "agent": {"name": agent, "version": "1.0.0", "config": {}},
@@ -25,7 +30,7 @@ def _write_config(config_dir: Path, *, agent: str, task_id: str) -> None:
                 "dataset": "MMMU/MMMU_Pro",
                 "data_config": "vision",
                 "split": "test",
-                "dataset_indices": [0],
+                "dataset_indices": list(range(len(task_ids))),
             },
         },
         "sandbox": None,
@@ -36,8 +41,8 @@ def _write_config(config_dir: Path, *, agent: str, task_id: str) -> None:
             "validation_campaign": "podman-mmmu-pro-readiness-pilot",
             "container_engine": "podman",
             "supports_multimodal": True,
-            "selected_dataset_indices": [0],
-            "selected_task_ids": [task_id],
+            "selected_dataset_indices": list(range(len(task_ids))),
+            "selected_task_ids": task_ids,
         },
     }
     path = config_dir / f"{agent}_mmmu_pro_pilot.yaml"
@@ -48,14 +53,32 @@ def _write_preflight(path: Path, *, ok: bool = True) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "ok": ok,
+        "base_url": "http://127.0.0.1:8011/v1",
         "models_reachable": ok,
         "chat_reachable": ok,
         "response_non_empty": ok,
         "model": "Qwen/Qwen3.5-VL",
-        "api_base_host": "localhost",
+        "api_base_host": "127.0.0.1",
         "api_base_scheme": "http",
+        "container_engine": "podman",
+        "network_mode": "host",
+        "podman_runtime_ok": ok,
+        "thinking_mode": True,
+        "max_tokens": 8192,
+        "remote_image_url": {
+            "ok": ok,
+            "http_status": 200 if ok else 400,
+            "content_chars": 2 if ok else 0,
+            "reasoning_chars": 12 if ok else 0,
+        },
+        "data_url": {
+            "ok": ok,
+            "http_status": 200 if ok else 400,
+            "content_chars": 2 if ok else 0,
+            "reasoning_chars": 12 if ok else 0,
+        },
         "error_type": "" if ok else "HTTPError",
-        "error": "" if ok else "model rejected image input",
+        "error": "" if ok else "automated preflight did not pass",
     }
     path.write_text(json.dumps(payload), encoding="utf-8")
 
@@ -105,7 +128,71 @@ def _write_task_record(results_dir: Path, logs_dir: Path, *, run_id: str, task_i
     return artifact_root
 
 
-def _prepare_matrix(tmp_path: Path, task_ids: dict[str, str]) -> tuple[Path, Path, Path, Path]:
+def _proof_record(agent: str, run_id: str, task_id: str) -> dict:
+    if agent == "openclaw":
+        return _record(
+            run_id=run_id,
+            task_id=task_id,
+            agent=agent,
+            request_messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Use this image."},
+                    {"type": "image_url", "image_url": {"url": TINY_DATA_URL}},
+                ],
+            }],
+        )
+    if agent == "opencode":
+        return _record(
+            run_id=run_id,
+            task_id=task_id,
+            agent=agent,
+            artifact_manifest={
+                "local_artifact_root": task_id,
+                "files": {"attachment_manifest": f"{task_id}/workspace/attachment_manifest.json"},
+            },
+        )
+    return _record(run_id=run_id, task_id=task_id, agent=agent)
+
+
+def _write_image_proof_artifacts(agent: str, artifact_root: Path) -> None:
+    (artifact_root / "workspace").mkdir(exist_ok=True)
+    if agent == "zeroclaw":
+        (artifact_root / "workspace" / "task.txt").write_text(
+            "Problem\n\n[IMAGE:/sandbox/work/attachments/image_1.png]\n",
+            encoding="utf-8",
+        )
+        (artifact_root / "workspace" / "attachment_manifest.json").write_text(
+            json.dumps({"attachments": [{"path": "attachments/image_1.png", "mime": "image/png"}]}),
+            encoding="utf-8",
+        )
+        (artifact_root / "workspace" / "status.json").write_text(
+            json.dumps({
+                "vision_proxy_image_count": 1,
+                "vision_proxy_request_count": 1,
+                "vision_proxy_injection_count": 1,
+            }),
+            encoding="utf-8",
+        )
+    if agent == "opencode":
+        (artifact_root / "workspace" / "attachments").mkdir(parents=True, exist_ok=True)
+        (artifact_root / "workspace" / "attachment_manifest.json").write_text(
+            json.dumps({
+                "attachments": [{
+                    "filename": "image_1.png",
+                    "path": "attachments/image_1.png",
+                    "base64_artifact": "attachments/image_1.png.base64",
+                }]
+            }),
+            encoding="utf-8",
+        )
+        (artifact_root / "workspace" / "attachments" / "image_1.png.base64").write_text(
+            "aW1hZ2U=",
+            encoding="utf-8",
+        )
+
+
+def _prepare_matrix(tmp_path: Path, task_ids: dict[str, str | list[str]]) -> tuple[Path, Path, Path, Path]:
     config_dir = tmp_path / "configs"
     results_dir = tmp_path / "results"
     logs_dir = tmp_path / "logs"
@@ -137,83 +224,23 @@ def _run_audit(
 
 def test_audit_accepts_all_three_agent_image_proofs(tmp_path: Path) -> None:
     task_ids = {
-        "openclaw": "mmmu_pro_openclaw_vision",
-        "zeroclaw": "mmmu_pro_zeroclaw_vision",
-        "opencode": "mmmu_pro_opencode_vision",
+        "openclaw": ["mmmu_pro_openclaw_vision_1", "mmmu_pro_openclaw_vision_2", "mmmu_pro_openclaw_vision_3"],
+        "zeroclaw": ["mmmu_pro_zeroclaw_vision_1", "mmmu_pro_zeroclaw_vision_2", "mmmu_pro_zeroclaw_vision_3"],
+        "opencode": ["mmmu_pro_opencode_vision_1", "mmmu_pro_opencode_vision_2", "mmmu_pro_opencode_vision_3"],
     }
     config_dir, results_dir, logs_dir, preflight = _prepare_matrix(tmp_path, task_ids)
 
-    openclaw_run = "pilot_openclaw_mmmu_pro"
-    openclaw_messages = [{
-        "role": "user",
-        "content": [
-            {"type": "text", "text": "Use this image."},
-            {"type": "image_url", "image_url": {"url": TINY_DATA_URL}},
-        ],
-    }]
-    _write_task_record(
-        results_dir,
-        logs_dir,
-        run_id=openclaw_run,
-        task_id=task_ids["openclaw"],
-        record=_record(
-            run_id=openclaw_run,
-            task_id=task_ids["openclaw"],
-            agent="openclaw",
-            request_messages=openclaw_messages,
-        ),
-    )
-
-    zeroclaw_run = "pilot_zeroclaw_mmmu_pro"
-    zeroclaw_root = _write_task_record(
-        results_dir,
-        logs_dir,
-        run_id=zeroclaw_run,
-        task_id=task_ids["zeroclaw"],
-        record=_record(run_id=zeroclaw_run, task_id=task_ids["zeroclaw"], agent="zeroclaw"),
-    )
-    (zeroclaw_root / "workspace").mkdir()
-    (zeroclaw_root / "workspace" / "task.txt").write_text(
-        "Problem\n\n[IMAGE:/sandbox/work/attachments/image_1.png]\n",
-        encoding="utf-8",
-    )
-    (zeroclaw_root / "workspace" / "attachment_manifest.json").write_text(
-        json.dumps({"attachments": [{"path": "attachments/image_1.png", "mime": "image/png"}]}),
-        encoding="utf-8",
-    )
-
-    opencode_run = "pilot_opencode_mmmu_pro"
-    opencode_record = _record(
-        run_id=opencode_run,
-        task_id=task_ids["opencode"],
-        agent="opencode",
-        artifact_manifest={
-            "local_artifact_root": task_ids["opencode"],
-            "files": {"attachment_manifest": f"{task_ids['opencode']}/workspace/attachment_manifest.json"},
-        },
-    )
-    opencode_root = _write_task_record(
-        results_dir,
-        logs_dir,
-        run_id=opencode_run,
-        task_id=task_ids["opencode"],
-        record=opencode_record,
-    )
-    (opencode_root / "workspace" / "attachments").mkdir(parents=True)
-    (opencode_root / "workspace" / "attachment_manifest.json").write_text(
-        json.dumps({
-            "attachments": [{
-                "filename": "image_1.png",
-                "path": "attachments/image_1.png",
-                "base64_artifact": "attachments/image_1.png.base64",
-            }]
-        }),
-        encoding="utf-8",
-    )
-    (opencode_root / "workspace" / "attachments" / "image_1.png.base64").write_text(
-        "aW1hZ2U=",
-        encoding="utf-8",
-    )
+    for agent, ids in task_ids.items():
+        run_id = f"pilot_{agent}_mmmu_pro"
+        for task_id in ids:
+            artifact_root = _write_task_record(
+                results_dir,
+                logs_dir,
+                run_id=run_id,
+                task_id=task_id,
+                record=_proof_record(agent, run_id, task_id),
+            )
+            _write_image_proof_artifacts(agent, artifact_root)
 
     result = _run_audit(
         tmp_path,
@@ -225,11 +252,12 @@ def test_audit_accepts_all_three_agent_image_proofs(tmp_path: Path) -> None:
 
     rows = {row["agent"]: row for row in result["rows"]}
     assert result["audit_passed"] is True
-    assert result["expected_tasks"] == 3
+    assert result["expected_tasks"] == 9
+    assert len(result["rows"]) == 9
     assert rows["openclaw"]["image_proof_kind"] == "openclaw_image_url"
     assert rows["opencode"]["image_proof_kind"] == "opencode_attachment_manifest"
-    assert rows["zeroclaw"]["image_proof_kind"] == "zeroclaw_image_marker"
-    assert result["taxonomy_summary"] == {"clean": 3}
+    assert rows["zeroclaw"]["image_proof_kind"] == "zeroclaw_vision_proxy_injection"
+    assert result["taxonomy_summary"] == {"clean": 9}
 
 
 def test_audit_fails_missing_image_proof_text_only_and_missing_task(tmp_path: Path) -> None:
@@ -356,41 +384,117 @@ def test_audit_classifies_provider_image_rejection_and_corrupt_payload(tmp_path:
     assert "corrupted_multimodal_payload" in rows[task_ids["opencode"]]["audit_failures"]
 
 
-def test_empty_answer_with_image_proof_can_pass_audit_gate(tmp_path: Path) -> None:
+def test_audit_rejects_zeroclaw_image_lost_before_provider_request(tmp_path: Path) -> None:
     task_ids = {
-        "openclaw": "mmmu_pro_empty_answer",
-        "zeroclaw": "mmmu_pro_marker",
-        "opencode": "mmmu_pro_attachment",
+        "openclaw": ["mmmu_pro_openclaw_1", "mmmu_pro_openclaw_2", "mmmu_pro_openclaw_3"],
+        "zeroclaw": ["mmmu_pro_zeroclaw_1", "mmmu_pro_zeroclaw_2", "mmmu_pro_zeroclaw_3"],
+        "opencode": ["mmmu_pro_opencode_1", "mmmu_pro_opencode_2", "mmmu_pro_opencode_3"],
     }
     config_dir, results_dir, logs_dir, preflight = _prepare_matrix(tmp_path, task_ids)
 
-    for agent, task_id in task_ids.items():
+    for agent, ids in task_ids.items():
         run_id = f"pilot_{agent}_mmmu_pro"
-        record = _record(
-            run_id=run_id,
-            task_id=task_id,
-            agent=agent,
-            score_status="agent_empty_output" if agent == "openclaw" else "valid_scored",
-            score=0.0,
-            error={"error_type": "empty_response", "error": "no assistant output"} if agent == "openclaw" else None,
-        )
-        if agent == "openclaw":
-            record["request_messages"] = [{
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": "Use this image."},
-                    {"type": "image_url", "image_url": {"url": TINY_DATA_URL}},
-                ],
-            }]
-        root = _write_task_record(results_dir, logs_dir, run_id=run_id, task_id=task_id, record=record)
-        (root / "workspace").mkdir()
-        if agent == "zeroclaw":
-            (root / "workspace" / "task.txt").write_text("[IMAGE:/tmp/image.png]\n", encoding="utf-8")
-        if agent == "opencode":
-            (root / "workspace" / "attachment_manifest.json").write_text(
-                json.dumps({"attachments": [{"path": "attachments/image_1.png"}]}),
-                encoding="utf-8",
+        for task_id in ids:
+            artifact_root = _write_task_record(
+                results_dir,
+                logs_dir,
+                run_id=run_id,
+                task_id=task_id,
+                record=_proof_record(agent, run_id, task_id),
             )
+            _write_image_proof_artifacts(agent, artifact_root)
+            if agent == "zeroclaw" and task_id.endswith("_1"):
+                (artifact_root / "workspace" / "status.json").write_text(
+                    json.dumps({
+                        "vision_proxy_image_count": 1,
+                        "vision_proxy_request_count": 0,
+                        "vision_proxy_injection_count": 0,
+                    }),
+                    encoding="utf-8",
+                )
+
+    result = _run_audit(
+        tmp_path,
+        config_dir=config_dir,
+        results_dir=results_dir,
+        logs_dir=logs_dir,
+        preflight=preflight,
+    )
+
+    bad_row = next(row for row in result["rows"] if row["task_id"] == "mmmu_pro_zeroclaw_1")
+    assert result["audit_passed"] is False
+    assert bad_row["failure_taxonomy"] == "image_lost_before_provider_request"
+    assert "image_lost_before_provider_request" in bad_row["audit_failures"]
+
+
+def test_audit_does_not_treat_answer_dates_as_image_rejection(tmp_path: Path) -> None:
+    task_ids = {
+        "openclaw": ["mmmu_pro_openclaw_1", "mmmu_pro_openclaw_2", "mmmu_pro_openclaw_3"],
+        "zeroclaw": ["mmmu_pro_zeroclaw_1", "mmmu_pro_zeroclaw_2", "mmmu_pro_zeroclaw_3"],
+        "opencode": ["mmmu_pro_opencode_1", "mmmu_pro_opencode_2", "mmmu_pro_opencode_3"],
+    }
+    config_dir, results_dir, logs_dir, preflight = _prepare_matrix(tmp_path, task_ids)
+
+    for agent, ids in task_ids.items():
+        run_id = f"pilot_{agent}_mmmu_pro"
+        for task_id in ids:
+            record = _proof_record(agent, run_id, task_id)
+            if agent == "opencode" and task_id.endswith("_1"):
+                record["rationale"] = "The answer mentions 200-400 C.E. and is still a clean wrong answer."
+                record["metadata"] = {
+                    "container_engine": "podman",
+                    "image": "localhost/alphadiana-opencode-podman:latest",
+                    "answer_source_text": "A chart spans 200-400 C.E.",
+                }
+                record["score"] = 0.0
+            artifact_root = _write_task_record(
+                results_dir,
+                logs_dir,
+                run_id=run_id,
+                task_id=task_id,
+                record=record,
+            )
+            _write_image_proof_artifacts(agent, artifact_root)
+
+    result = _run_audit(
+        tmp_path,
+        config_dir=config_dir,
+        results_dir=results_dir,
+        logs_dir=logs_dir,
+        preflight=preflight,
+    )
+
+    row = next(row for row in result["rows"] if row["task_id"] == "mmmu_pro_opencode_1")
+    assert result["audit_passed"] is True
+    assert row["failure_taxonomy"] == "clean"
+    assert row["audit_status"] == "pass"
+
+
+def test_empty_answer_with_image_proof_can_pass_audit_gate(tmp_path: Path) -> None:
+    task_ids = {
+        "openclaw": ["mmmu_pro_empty_answer_1", "mmmu_pro_empty_answer_2", "mmmu_pro_empty_answer_3"],
+        "zeroclaw": ["mmmu_pro_marker_1", "mmmu_pro_marker_2", "mmmu_pro_marker_3"],
+        "opencode": ["mmmu_pro_attachment_1", "mmmu_pro_attachment_2", "mmmu_pro_attachment_3"],
+    }
+    config_dir, results_dir, logs_dir, preflight = _prepare_matrix(tmp_path, task_ids)
+
+    for agent, ids in task_ids.items():
+        run_id = f"pilot_{agent}_mmmu_pro"
+        for task_id in ids:
+            record = _proof_record(agent, run_id, task_id)
+            record["score_status"] = "agent_empty_output" if agent == "openclaw" else "valid_scored"
+            record["score"] = 0.0
+            record["reasoning"] = "thinking trace is present"
+            if agent == "openclaw":
+                record["error"] = {"error_type": "empty_response", "error": "no assistant output"}
+            root = _write_task_record(
+                results_dir,
+                logs_dir,
+                run_id=run_id,
+                task_id=task_id,
+                record=record,
+            )
+            _write_image_proof_artifacts(agent, root)
 
     result = _run_audit(
         tmp_path,
@@ -402,8 +506,9 @@ def test_empty_answer_with_image_proof_can_pass_audit_gate(tmp_path: Path) -> No
 
     rows = {row["task_id"]: row for row in result["rows"]}
     assert result["audit_passed"] is True
-    assert rows[task_ids["openclaw"]]["failure_taxonomy"] == "agent_empty_output"
-    assert rows[task_ids["openclaw"]]["audit_status"] == "pass"
+    first_openclaw = task_ids["openclaw"][0]
+    assert rows[first_openclaw]["failure_taxonomy"] == "agent_empty_output"
+    assert rows[first_openclaw]["audit_status"] == "pass"
 
 
 def test_preflight_failure_blocks_audit(tmp_path: Path) -> None:
@@ -426,6 +531,43 @@ def test_preflight_failure_blocks_audit(tmp_path: Path) -> None:
     assert result["audit_passed"] is False
     assert result["preflight"]["ok"] is False
     assert result["taxonomy_summary"]["vlm_preflight_failed"] == 1
+
+
+def test_audit_requires_podman_container_engine_metadata(tmp_path: Path) -> None:
+    task_ids = {
+        "openclaw": ["mmmu_pro_openclaw_1", "mmmu_pro_openclaw_2", "mmmu_pro_openclaw_3"],
+        "zeroclaw": ["mmmu_pro_zeroclaw_1", "mmmu_pro_zeroclaw_2", "mmmu_pro_zeroclaw_3"],
+        "opencode": ["mmmu_pro_opencode_1", "mmmu_pro_opencode_2", "mmmu_pro_opencode_3"],
+    }
+    config_dir, results_dir, logs_dir, preflight = _prepare_matrix(tmp_path, task_ids)
+
+    for agent, ids in task_ids.items():
+        run_id = f"pilot_{agent}_mmmu_pro"
+        for task_id in ids:
+            record = _proof_record(agent, run_id, task_id)
+            if agent == "openclaw" and task_id.endswith("_1"):
+                record["metadata"] = {"container_engine": "docker"}
+            artifact_root = _write_task_record(
+                results_dir,
+                logs_dir,
+                run_id=run_id,
+                task_id=task_id,
+                record=record,
+            )
+            _write_image_proof_artifacts(agent, artifact_root)
+
+    result = _run_audit(
+        tmp_path,
+        config_dir=config_dir,
+        results_dir=results_dir,
+        logs_dir=logs_dir,
+        preflight=preflight,
+    )
+
+    bad_row = next(row for row in result["rows"] if row["task_id"] == "mmmu_pro_openclaw_1")
+    assert result["audit_passed"] is False
+    assert bad_row["failure_taxonomy"] == "metadata_defect"
+    assert "missing_metadata_container_engine" in bad_row["audit_failures"]
 
 
 def test_render_markdown_includes_image_proof_and_taxonomy() -> None:
