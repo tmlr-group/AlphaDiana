@@ -10,9 +10,9 @@ agent:
     api_base: "${OPENAI_BASE_URL}"
     api_key: "${OPENAI_API_KEY}"
     model_name: "${OPENAI_MODEL_NAME}"
-    enable_thinking: false
+    enable_thinking: true
     timeout: 600
-    max_tokens: 1024
+    max_tokens: 8192
     system_prompt: |
       Solve the MMMU-Pro vision-only multiple-choice task. Use every image
       attachment passed by the controller. The final line must be:

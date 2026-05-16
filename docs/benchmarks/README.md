@@ -102,17 +102,22 @@ This supports recommending the full-scale overnight standard-reasoning Podman
 campaign as the next action, but full-scale has not been run and no
 task-container benchmark or global Podman default status changed.
 
-Also on May 15, 2026, Phase 6 added the opt-in MMMU-Pro `vision` Podman
-readiness matrix under `configs/smokes/podman_mmmu_pro_readiness/`, plus
+Phase 6 added the opt-in MMMU-Pro `vision` Podman readiness matrix under
+`configs/smokes/podman_mmmu_pro_readiness/`, plus
 `scripts/run_podman_mmmu_pro_readiness.sh`,
 `scripts/podman_vlm_image_preflight.py`, and
 `scripts/audit_podman_mmmu_pro_readiness.py`. The matrix is restricted to
 OpenClaw, ZeroClaw, and OpenCode on three deterministic MMMU-Pro `vision`
-tasks. The first live attempt, `podman_mmmu_pro_20260515_qwen35_4b`, validated
-all three configs but stopped at preflight: `/v1/models` was reachable from
-Podman, while the image `chat/completions` probe returned HTTP 400 for
-`Qwen/Qwen3.5-4B`. The pilot was not launched, so this does not prove
-MMMU-Pro Podman multimodal readiness. See
+tasks. On May 16, 2026, manual evidence verified
+`Qwen/Qwen3.5-4B` at `http://127.0.0.1:8011/v1` for remote `image_url` and
+`data:image/png;base64` requests on both host and Podman `--network host`;
+the prior `podman_mmmu_pro_20260515_qwen35_4b` stop is now scoped as an
+automated preflight alignment gap. The patched path keeps thinking mode on,
+uses at least 8192 output tokens, and gates readiness on automated
+9-task Podman pilot/audit infrastructure evidence, not accuracy. The repaired
+run prefix `podman_mmmu_pro_qwen35_thinking_20260516_144304` passed
+validation, Podman VLM preflight, pilot, and audit with all 9 task rows written
+and `audit_failure_count=0`. See
 [`context/podman-mmmu-pro-readiness/README.md`](../../context/podman-mmmu-pro-readiness/README.md).
 
 Also on May 15, 2026, Phase 7 added a dedicated opt-in TerminalBench2
@@ -127,7 +132,8 @@ discoverable logs/artifacts. See
 [`context/podman-terminal-bench2-readiness/README.md`](../../context/podman-terminal-bench2-readiness/README.md).
 This supports recommending a larger overnight TerminalBench2 OpenCode Podman
 campaign, but it does not change Direct x TB2, OpenClaw/ZeroClaw TB2,
-global-default, full-sweep, SWE-bench, external_benchmark, or MMMU-Pro status.
+global-default, full-sweep, SWE-bench, external_benchmark, or full MMMU-Pro sweep
+status.
 
 Generated ZeroClaw configs use `runtime_trace_mode="full"` for logprob capture
 and write ZeroClaw's schema-supported permissive shell controls; ZeroClaw

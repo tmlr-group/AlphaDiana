@@ -13,27 +13,38 @@ Selected raw dataset indices:
 Run from the repository root:
 
 ```bash
-export OPENAI_BASE_URL=http://localhost:8011/v1
+export OPENAI_BASE_URL=http://127.0.0.1:8011/v1
 export OPENAI_API_KEY=EMPTY
-export OPENAI_MODEL_NAME=<real-vlm-model>
+export OPENAI_MODEL_NAME=Qwen/Qwen3.5-4B
+export PODMAN_MMMU_PRO_MAX_TOKENS=8192
+export PODMAN_MMMU_PRO_ENABLE_THINKING=1
+export PODMAN_MMMU_PRO_VLM_IMAGE_URL=https://qianwen-res.oss-accelerate.aliyuncs.com/Qwen3.5/demo/RealWorld/RealWorld-04.png
 
 export HF_HOME=<hf-cache-dir>
 export HF_DATASETS_CACHE=<hf-datasets-cache-dir>
 export PODMAN_MMMU_RUN_PREFIX=podman_mmmu_pro_$(date +%Y%m%d_%H%M%S)
 
-bash scripts/run_podman_mmmu_pro_readiness.sh validate
-bash scripts/run_podman_mmmu_pro_readiness.sh preflight
-bash scripts/run_podman_mmmu_pro_readiness.sh pilot
-bash scripts/run_podman_mmmu_pro_readiness.sh audit
+bash scripts/run_podman_mmmu_pro_readiness.sh all
 ```
 
 The preflight must pass before `pilot`. It runs from a Podman container and
-checks both `/v1/models` and one tiny OpenAI-compatible image
-`chat/completions` request using the same `OPENAI_BASE_URL`,
-`OPENAI_API_KEY`, and `OPENAI_MODEL_NAME` values that the pilot configs use.
+checks `/v1/models`, a remote `image_url` chat request, and a
+`data:image/png;base64` chat request built from a real image using the same
+`OPENAI_BASE_URL`, `OPENAI_API_KEY`, and `OPENAI_MODEL_NAME` values that the
+pilot configs use. Thinking mode remains on for the Phase 6 path, and the
+default output cap is at least 8192 tokens.
+
+`all` and `auto` are fail-fast wrappers for:
+
+```text
+validate -> preflight -> pilot -> audit
+```
 
 The pilot writes raw logs under `logs/`, task JSONs under `results/`, and
 preflight/status/audit artifacts under `context/podman-mmmu-pro-readiness/`.
+Latest passing evidence: run prefix
+`podman_mmmu_pro_qwen35_thinking_20260516_144304` wrote all 9 task rows and
+passed audit with `audit_failure_count=0`.
 
 Local image defaults can be overridden:
 

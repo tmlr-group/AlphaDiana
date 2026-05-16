@@ -10,13 +10,13 @@ agent:
     api_base: "${OPENAI_BASE_URL}"
     api_key: "${OPENAI_API_KEY}"
     model: "${OPENAI_MODEL_NAME}"
-    enable_thinking: false
+    enable_thinking: true
     gateway_token: "ZEROCLAW"
     request_timeout: 600
     gateway_startup_timeout: 180
     gateway_warmup_timeout: 180
     gateway_warmup_initial_delay: 0
-    provider_max_tokens: 1024
+    provider_max_tokens: 8192
     max_tool_iterations: 40
     max_actions_per_hour: 100
     system_prompt: |

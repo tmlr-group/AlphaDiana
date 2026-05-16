@@ -58,6 +58,8 @@ dump.rdb
 !/configs/smokes/podman_nightly_validation/**
 !/configs/smokes/podman_scale_readiness/
 !/configs/smokes/podman_scale_readiness/**
+!/configs/smokes/podman_mmmu_pro_readiness/
+!/configs/smokes/podman_mmmu_pro_readiness/**
 /artifacts/
 
 # external_benchmark runtime artifacts
@@ -69,6 +71,7 @@ external_benchmark_pipeline_*/
 
 dev/generated
 scripts/.alphadiana_env
+scripts/generated/*.resolved.yaml
 logs/
 
 .cache

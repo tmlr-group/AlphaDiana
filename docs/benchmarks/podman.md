@@ -16,6 +16,12 @@ Current support boundary:
   readiness audit under `context/podman-terminal-bench2-readiness/`.
   SWE-bench Verified has focused opt-in smoke evidence. SWE-bench Pro and
   external_benchmark remain deferred.
+- MMMU-Pro multimodal path: Phase 6 has a patched opt-in readiness matrix for
+  OpenClaw, ZeroClaw, and OpenCode on three deterministic `vision` tasks.
+  `Qwen/Qwen3.5-4B` at `http://127.0.0.1:8011/v1` has manual host and Podman
+  image_url/data-URL transport evidence. The repaired automated run
+  `podman_mmmu_pro_qwen35_thinking_20260516_144304` passed the 9-task
+  pilot/audit.
 - Full-scale standard-reasoning Podman runs are recommended only after the
   pilot audit passes. No checked-in full-scale Podman matrix is promoted as a
   default.
@@ -35,14 +41,19 @@ For coding-agent handoff and a development file map, read
   `configs/smokes/podman_scale_readiness/`,
   `configs/smokes/podman_nightly_validation/`,
   `configs/smokes/podman_terminal_bench2/`,
+  `configs/smokes/podman_mmmu_pro_readiness/`,
   `scripts/run_podman_scale_readiness.sh`,
   `scripts/audit_podman_scale_readiness.py`, and
   `scripts/run_podman_nightly_validation.sh`,
-  `scripts/run_podman_terminal_bench2_readiness.sh`, and
-  `scripts/audit_podman_terminal_bench2_readiness.py`.
+  `scripts/run_podman_terminal_bench2_readiness.sh`,
+  `scripts/audit_podman_terminal_bench2_readiness.py`,
+  `scripts/run_podman_mmmu_pro_readiness.sh`,
+  `scripts/podman_vlm_image_preflight.py`, and
+  `scripts/audit_podman_mmmu_pro_readiness.py`.
 - Evidence and handoff:
   `context/add-podman-handoff/README.md`,
   `context/podman-terminal-bench2-readiness/README.md`,
+  `context/podman-mmmu-pro-readiness/README.md`,
   `context/podman-scale-readiness/README.md`,
   `context/podman-nightly-validation/README.md`,
   `context/phase02-podman-agent-smokes/README.md`, and
@@ -57,6 +68,9 @@ For coding-agent handoff and a development file map, read
   `tests/test_podman_terminal_bench2_readiness_configs.py`,
   `tests/test_podman_terminal_bench2_readiness_audit.py`,
   `tests/test_podman_terminal_bench2_readiness_runner.py`, and
+  `tests/test_podman_mmmu_pro_readiness_configs.py`,
+  `tests/test_podman_mmmu_pro_readiness_runner.py`,
+  `tests/test_podman_mmmu_pro_readiness_audit.py`, and
   `tests/test_standard_podman_error_metadata.py`.
 
 ## Prerequisites
@@ -74,7 +88,7 @@ Set the provider variables explicitly after `source scripts/activate.sh` so a
 local `.env` does not point the run at the wrong backend:
 
 ```bash
-export OPENAI_BASE_URL=http://localhost:8011/v1
+export OPENAI_BASE_URL=http://127.0.0.1:8011/v1
 export OPENAI_API_KEY=EMPTY
 export OPENAI_MODEL_NAME=Qwen/Qwen3.5-4B
 ```
@@ -227,6 +241,31 @@ python -m alphadiana.cli run \
   -o output_dir=./results/podman_swe_verified_openclaw_smoke
 ```
 
+## MMMU-Pro Multimodal Readiness
+
+Use the Phase 6 script for the audited 9-task multimodal pilot. This path keeps
+thinking mode on and uses Podman host networking for the local VLM endpoint:
+
+```bash
+export OPENAI_BASE_URL=http://127.0.0.1:8011/v1
+export OPENAI_API_KEY=EMPTY
+export OPENAI_MODEL_NAME=Qwen/Qwen3.5-4B
+export PODMAN_MMMU_PRO_MAX_TOKENS=8192
+export PODMAN_MMMU_PRO_ENABLE_THINKING=1
+export PODMAN_MMMU_PRO_VLM_IMAGE_URL=https://qianwen-res.oss-accelerate.aliyuncs.com/Qwen3.5/demo/RealWorld/RealWorld-04.png
+export PODMAN_MMMU_RUN_PREFIX=podman_mmmu_pro_$(date +%Y%m%d_%H%M%S)
+
+bash scripts/run_podman_mmmu_pro_readiness.sh all
+```
+
+`all` is equivalent to `auto` and runs
+`validate -> preflight -> pilot -> audit` fail-fast. The readiness gate is
+infrastructure evidence: 9 task rows, `metadata.container_engine=podman`, image
+proof artifacts, no text-only fallback, and no provider VLM rejection. Accuracy
+is not the Phase 6 gate. Latest passing evidence:
+`podman_mmmu_pro_qwen35_thinking_20260516_144304`, with
+`audit_passed=true` and `audit_failure_count=0`.
+
 For task-container results, inspect both the task row and benchmark artifacts.
 For SWE-bench Verified, Podman provenance may appear in
 `artifacts/<task>/sandbox/sandbox_meta.json` in addition to the top-level task
@@ -251,7 +290,7 @@ the process is not tied to an agent-operated shell.
 ## Known Caveats
 
 - Podman remains opt-in. Do not describe these paths as global defaults.
-- Loopback provider URLs such as `http://localhost:8011/v1` work from the
+- Loopback provider URLs such as `http://127.0.0.1:8011/v1` work from the
   Phase 5 matrix because those configs use Podman host networking. Other
   Podman configs may need a non-loopback host gateway URL.
 - SWE-bench Pro Podman is not supported from current evidence.
