@@ -120,20 +120,22 @@ validation, Podman VLM preflight, pilot, and audit with all 9 task rows written
 and `audit_failure_count=0`. See
 [`context/podman-mmmu-pro-readiness/README.md`](../../context/podman-mmmu-pro-readiness/README.md).
 
-Also on May 15, 2026, Phase 7 added a dedicated opt-in TerminalBench2
-OpenCode Podman task-container readiness pilot under
+On May 16, 2026, Phase 7 was repaired into a dedicated opt-in TerminalBench2
+three-agent Podman task-container readiness small matrix under
 `configs/smokes/podman_terminal_bench2/`, plus
 `scripts/run_podman_terminal_bench2_readiness.sh` and
 `scripts/audit_podman_terminal_bench2_readiness.py`. The run prefix
-`podman_tb2_20260515_phase7_abslogs` validated, passed preflight, completed
-five official tasks, and passed audit with all rows recording
-`metadata.container_engine=podman`, `score=0.0`, verifier `ok`, and
-discoverable logs/artifacts. See
+`podman_tb2_three_agent_20260516_170725` validated/preflighted the matrix and
+wrote 9 task rows for OpenClaw, OpenCode, and ZeroClaw x `db-wal-recovery`,
+`overfull-hbox`, and `adaptive-rejection-sampler`. The audit passed with all
+rows recording `metadata.container_engine=podman`, `score=0.0`, verifier
+`ok`, reward observed, and discoverable logs/artifacts. See
 [`context/podman-terminal-bench2-readiness/README.md`](../../context/podman-terminal-bench2-readiness/README.md).
-This supports recommending a larger overnight TerminalBench2 OpenCode Podman
-campaign, but it does not change Direct x TB2, OpenClaw/ZeroClaw TB2,
-global-default, full-sweep, SWE-bench, external_benchmark, or full MMMU-Pro sweep
-status.
+This supports recommending a larger overnight three-agent TerminalBench2
+Podman campaign, but it does not change Direct x TB2, global-default,
+full-sweep, SWE-bench, external_benchmark, or full MMMU-Pro sweep status. The earlier
+May 15 `podman_tb2_20260515_phase7_abslogs` run remains historical OpenCode-
+only five-task evidence.
 
 Generated ZeroClaw configs use `runtime_trace_mode="full"` for logprob capture
 and write ZeroClaw's schema-supported permissive shell controls; ZeroClaw

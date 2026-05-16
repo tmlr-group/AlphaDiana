@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -25,9 +26,10 @@ REQUIRED_ENV = (
     "OPENAI_BASE_URL",
     "OPENAI_API_KEY",
     "OPENAI_MODEL_NAME",
-    "TB2_OPENCODE_RUNTIME_IMAGE",
     "ALPHADIANA_TB2_LOGS_DIR",
 )
+
+_ENV_PLACEHOLDER_RE = re.compile(r"^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$")
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -81,6 +83,39 @@ def _task_ids_from_config(config: dict[str, Any]) -> list[str]:
     if isinstance(task_ids, list):
         return [str(value).removeprefix("tb2_") for value in task_ids]
     return []
+
+
+def _config_paths(*, config_path: Path | None, config_dir: Path | None) -> list[Path]:
+    if config_path is not None:
+        return [config_path]
+    if config_dir is None:
+        return []
+    return sorted(config_dir.glob("*_pilot.yaml"))
+
+
+def _resolve_env_placeholder(value: str) -> str:
+    match = _ENV_PLACEHOLDER_RE.fullmatch(value.strip())
+    if match:
+        return os.environ.get(match.group(1), "").strip()
+    return value.strip()
+
+
+def _runtime_source_image(config: dict[str, Any]) -> str:
+    agent_config = _as_dict(_as_dict(config.get("agent")).get("config"))
+    configured = str(agent_config.get("runtime_source_image") or "").strip()
+    if configured:
+        return _resolve_env_placeholder(configured)
+    agent_name = str(_as_dict(config.get("agent")).get("name") or "").strip()
+    if agent_name == "terminal_bench2_openclaw":
+        return os.environ.get(
+            "TB2_OPENCLAW_RUNTIME_IMAGE",
+            "localhost/alphadiana-openclaw-swebench-runtime-source:latest",
+        )
+    if agent_name == "terminal_bench2_zeroclaw":
+        return os.environ.get("TB2_ZEROCLAW_RUNTIME_IMAGE", "localhost/zeroclaw-reasoning:0.6.9")
+    if agent_name == "terminal_bench2_opencode":
+        return os.environ.get("TB2_OPENCODE_RUNTIME_IMAGE", "localhost/alphadiana/tb2-opencode-controller:latest")
+    return ""
 
 
 def _probe_provider_from_podman(
@@ -160,19 +195,24 @@ fetch(`${base}/models`, { headers })
 
 def preflight(
     *,
-    config_path: Path,
+    config_paths: list[Path],
     output_path: Path,
     require_local_images: bool,
     provider_network: str,
     provider_timeout: int,
 ) -> dict[str, Any]:
-    config = _load_yaml(config_path)
-    task_names = _task_ids_from_config(config)
+    configs = [{"path": path, "config": _load_yaml(path)} for path in config_paths]
+    task_names = sorted({
+        task_name
+        for item in configs
+        for task_name in _task_ids_from_config(item["config"])
+    })
     tasks_dir = Path(os.environ.get("TERMINAL_BENCH2_DIR", ""))
-    runtime_image = os.environ.get("TB2_OPENCODE_RUNTIME_IMAGE", "").strip()
     missing_env = [name for name in REQUIRED_ENV if not os.environ.get(name)]
 
     failures: list[str] = []
+    if not configs:
+        failures.append("missing_config")
     if missing_env:
         failures.append("missing_required_env")
 
@@ -227,14 +267,42 @@ def preflight(
                 "failures": task_failure,
             })
 
-    runtime_image_present = _podman_image_exists(runtime_image) if runtime_image else False
-    if not runtime_image_present:
+    config_checks: list[dict[str, Any]] = []
+    runtime_image_checks: list[dict[str, Any]] = []
+    for item in configs:
+        path = item["path"]
+        config = item["config"]
+        runtime_image = _runtime_source_image(config)
+        runtime_image_present = _podman_image_exists(runtime_image) if runtime_image else False
+        agent_name = str(_as_dict(config.get("agent")).get("name") or "").strip()
+        config_checks.append({
+            "config": _repo_relative(path, Path.cwd()),
+            "agent": agent_name,
+            "selected_task_ids": [f"tb2_{name}" for name in _task_ids_from_config(config)],
+            "runtime_image": runtime_image,
+            "runtime_image_present": runtime_image_present,
+        })
+        runtime_image_checks.append({
+            "agent": agent_name,
+            "runtime_image": runtime_image,
+            "present": runtime_image_present,
+        })
+        if not runtime_image_present:
+            failures.append("runtime_image_missing")
+
+    provider_probe_image = (
+        os.environ.get("PODMAN_TB2_PREFLIGHT_PROVIDER_IMAGE", "").strip()
+        or os.environ.get("TB2_OPENCODE_RUNTIME_IMAGE", "").strip()
+        or (runtime_image_checks[0]["runtime_image"] if runtime_image_checks else "")
+    )
+    provider_probe_image_present = _podman_image_exists(provider_probe_image) if provider_probe_image else False
+    if not provider_probe_image_present:
         failures.append("runtime_image_missing")
 
     provider_probe: dict[str, Any] = {"ok": False, "skipped": True}
-    if runtime_image_present and not any(name in missing_env for name in ("OPENAI_BASE_URL", "OPENAI_API_KEY", "OPENAI_MODEL_NAME")):
+    if provider_probe_image_present and not any(name in missing_env for name in ("OPENAI_BASE_URL", "OPENAI_API_KEY", "OPENAI_MODEL_NAME")):
         provider_probe = _probe_provider_from_podman(
-            runtime_image=runtime_image,
+            runtime_image=provider_probe_image,
             network=provider_network,
             timeout=provider_timeout,
         )
@@ -246,15 +314,20 @@ def preflight(
         "ok": not unique_failures,
         "failure_taxonomy": "clean" if not unique_failures else unique_failures[0],
         "failures": unique_failures,
-        "config": _repo_relative(config_path, Path.cwd()),
+        "config": config_checks[0]["config"] if len(config_checks) == 1 else "",
+        "configs": config_checks,
+        "expected_cells": len(config_checks),
         "selected_task_ids": [f"tb2_{name}" for name in task_names],
         "selected_task_names": task_names,
         "terminal_bench2_dir_set": bool(os.environ.get("TERMINAL_BENCH2_DIR")),
         "terminal_bench2_dir_exists": tasks_dir.exists() and tasks_dir.is_dir(),
         "podman_version": podman_version,
         "podman_info_ok": podman_info_ok,
-        "runtime_image": runtime_image,
-        "runtime_image_present": runtime_image_present,
+        "runtime_image": provider_probe_image,
+        "runtime_image_present": all(item["present"] for item in runtime_image_checks) if runtime_image_checks else False,
+        "runtime_images": runtime_image_checks,
+        "provider_probe_image": provider_probe_image,
+        "provider_probe_image_present": provider_probe_image_present,
         "task_checks": task_checks,
         "task_images_missing_locally": [
             item["docker_image"]
@@ -276,7 +349,8 @@ def preflight(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", required=True, type=Path)
+    parser.add_argument("--config", type=Path)
+    parser.add_argument("--config-dir", type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--require-local-images", action="store_true")
     parser.add_argument("--provider-network", default=os.environ.get("PODMAN_TB2_PREFLIGHT_NETWORK", ""))
@@ -290,8 +364,9 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    config_paths = _config_paths(config_path=args.config, config_dir=args.config_dir)
     result = preflight(
-        config_path=args.config,
+        config_paths=config_paths,
         output_path=args.output,
         require_local_images=args.require_local_images,
         provider_network=args.provider_network,

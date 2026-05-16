@@ -96,24 +96,44 @@ def find_task_files(results_dir: Path, run_id: str) -> dict[str, Path]:
     return {}
 
 
-def _artifact_path(record: dict[str, Any], results_dir: Path, run_id: str, root: Path) -> tuple[str, bool]:
+def _count_artifact_files(path: Path) -> int:
+    if path.is_file():
+        return 1
+    if not path.is_dir():
+        return 0
+    return sum(1 for child in path.rglob("*") if child.is_file())
+
+
+def _artifact_path(record: dict[str, Any], results_dir: Path, run_id: str, root: Path) -> tuple[str, bool, int]:
     manifest = _as_dict(record.get("artifact_manifest"))
     artifacts_root = results_dir / run_id / run_id / "artifacts"
     local_root = manifest.get("local_artifact_root")
     if local_root:
         path = artifacts_root / str(local_root)
-        return _repo_relative(path, root), path.exists()
+        file_count = _count_artifact_files(path)
+        return _repo_relative(path, root), path.exists() and file_count > 0, file_count
     files = _as_dict(manifest.get("files"))
     for value in files.values():
         if isinstance(value, str) and value:
             path = artifacts_root / value
-            return _repo_relative(path, root), path.exists()
+            file_count = _count_artifact_files(path)
+            return _repo_relative(path, root), path.exists() and file_count > 0, file_count
         if isinstance(value, dict):
             for nested in value.values():
                 if isinstance(nested, str) and nested:
                     path = artifacts_root / nested
-                    return _repo_relative(path, root), path.exists()
-    return "", False
+                    file_count = _count_artifact_files(path)
+                    return _repo_relative(path, root), path.exists() and file_count > 0, file_count
+    return "", False, 0
+
+
+def _verifier_ok(metadata: dict[str, Any], reward_present: bool, score_present: bool) -> bool:
+    verifier_status = str(metadata.get("verifier_status") or "").strip().lower()
+    if verifier_status == "ok":
+        return reward_present
+    if verifier_status == "skipped_duplicate":
+        return bool(metadata.get("verifier_reward_observed")) and reward_present and score_present
+    return False
 
 
 def _evidence_text(record: dict[str, Any] | None, log_text: str = "") -> str:
@@ -163,7 +183,9 @@ def classify_failure(record: dict[str, Any] | None, *, missing_metadata: bool = 
     elif "verifier_status" in metadata:
         verifier_problem = verifier_status not in {"", "ok"}
     else:
-        verifier_problem = False
+        verifier_problem = True
+    if record.get("reward", metadata.get("reward")) in (None, ""):
+        verifier_problem = True
     evidence = _evidence_text(record, log_text)
 
     if "pull access denied" in evidence or "manifest unknown" in evidence or "error pulling image" in evidence:
@@ -235,15 +257,21 @@ def row_from_record(
     container_engine = metadata.get("container_engine")
     missing_metadata = container_engine != "podman"
     log_exists = log_path.exists()
-    artifact_path, artifact_exists = _artifact_path(record, results_dir, run_id, root)
+    artifact_path, artifact_exists, artifact_file_count = _artifact_path(record, results_dir, run_id, root)
     taxonomy = classify_failure(record, missing_metadata=missing_metadata, log_text=_read_log_tail(log_path))
     score_present = "score" in record
+    reward_value = record.get("reward", metadata.get("reward"))
+    reward_present = reward_value not in (None, "")
     audit_failures: list[str] = []
 
     if missing_metadata:
         audit_failures.append("missing_metadata_container_engine")
     if not score_present:
         audit_failures.append("missing_score_field")
+    if not reward_present:
+        audit_failures.append("missing_reward")
+    if not _verifier_ok(metadata, reward_present=reward_present, score_present=score_present):
+        audit_failures.append("verifier_not_ok")
     if not (record.get("agent_name") or cell["agent"]):
         audit_failures.append("missing_agent")
     if not (record.get("benchmark_name") or cell["benchmark"]):
@@ -255,7 +283,7 @@ def row_from_record(
     if not log_exists:
         audit_failures.append("missing_log")
     if not artifact_path or not artifact_exists:
-        audit_failures.append("missing_artifact_path")
+        audit_failures.append("missing_artifact")
 
     return {
         "config": _repo_relative(cell["config_path"], root),
@@ -265,10 +293,12 @@ def row_from_record(
         "benchmark": record.get("benchmark_name") or cell["benchmark"],
         "result_status": record.get("score_status") or record.get("status") or "",
         "score": record.get("score") if score_present else None,
-        "reward": record.get("reward", metadata.get("reward")),
+        "reward": reward_value,
         "verifier_status": metadata.get("verifier_status", ""),
+        "verifier_reward_observed": metadata.get("verifier_reward_observed"),
         "runtime": record.get("wall_time_sec"),
         "artifact_path": artifact_path,
+        "artifact_file_count": artifact_file_count,
         "task_json_path": _repo_relative(task_json_path, root),
         "log_path": _repo_relative(log_path, root),
         "container_engine": container_engine,
@@ -297,8 +327,10 @@ def missing_row(
         "score": None,
         "reward": None,
         "verifier_status": "",
+        "verifier_reward_observed": None,
         "runtime": None,
         "artifact_path": "",
+        "artifact_file_count": 0,
         "task_json_path": "",
         "log_path": _repo_relative(log_path, root),
         "container_engine": None,

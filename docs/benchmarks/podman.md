@@ -12,10 +12,10 @@ Current support boundary:
   across AIME, GPQA-Diamond, HLE, and IMO-AnswerBench with three tasks per
   cell. Evidence is in
   `context/podman-scale-readiness/README.md`.
-- Task-container path: TerminalBench2 OpenCode has a passing five-task
-  readiness audit under `context/podman-terminal-bench2-readiness/`.
-  SWE-bench Verified has focused opt-in smoke evidence. SWE-bench Pro and
-  external_benchmark remain deferred.
+- Task-container path: TerminalBench2 has a passing three-agent, three-task
+  readiness audit for OpenClaw, OpenCode, and ZeroClaw under
+  `context/podman-terminal-bench2-readiness/`. SWE-bench Verified has focused
+  opt-in smoke evidence. SWE-bench Pro and external_benchmark remain deferred.
 - MMMU-Pro multimodal path: Phase 6 has a patched opt-in readiness matrix for
   OpenClaw, ZeroClaw, and OpenCode on three deterministic `vision` tasks.
   `Qwen/Qwen3.5-4B` at `http://127.0.0.1:8011/v1` has manual host and Podman
@@ -34,7 +34,11 @@ For coding-agent handoff and a development file map, read
 - Runtime and agent code:
   `alphadiana/container_runtime/agent_runtime.py`,
   `alphadiana/agent/openclaw.py`, `alphadiana/agent/zeroclaw.py`,
-  `alphadiana/agent/opencode.py`, `alphadiana/runner/runner.py`,
+  `alphadiana/agent/opencode.py`,
+  `alphadiana/agent/terminal_bench2_openclaw.py`,
+  `alphadiana/agent/terminal_bench2_opencode.py`,
+  `alphadiana/agent/terminal_bench2_zeroclaw.py`,
+  `alphadiana/runner/runner.py`,
   `alphadiana/results/status.py`, `alphadiana/results/report.py`, and
   `alphadiana/utils/math_answer.py`.
 - Configs and operators:
@@ -46,6 +50,7 @@ For coding-agent handoff and a development file map, read
   `scripts/audit_podman_scale_readiness.py`, and
   `scripts/run_podman_nightly_validation.sh`,
   `scripts/run_podman_terminal_bench2_readiness.sh`,
+  `scripts/preflight_podman_terminal_bench2_readiness.py`,
   `scripts/audit_podman_terminal_bench2_readiness.py`,
   `scripts/run_podman_mmmu_pro_readiness.sh`,
   `scripts/podman_vlm_image_preflight.py`, and
@@ -67,7 +72,8 @@ For coding-agent handoff and a development file map, read
   `tests/test_podman_scale_readiness_audit.py`, and
   `tests/test_podman_terminal_bench2_readiness_configs.py`,
   `tests/test_podman_terminal_bench2_readiness_audit.py`,
-  `tests/test_podman_terminal_bench2_readiness_runner.py`, and
+  `tests/test_podman_terminal_bench2_readiness_runner.py`,
+  `tests/test_terminal_bench2_agents.py`, and
   `tests/test_podman_mmmu_pro_readiness_configs.py`,
   `tests/test_podman_mmmu_pro_readiness_runner.py`,
   `tests/test_podman_mmmu_pro_readiness_audit.py`, and
@@ -200,24 +206,26 @@ status from those rows.
 
 ## Focused Task-Container Smokes
 
-TerminalBench2 OpenCode Podman readiness pilot:
+TerminalBench2 three-agent Podman readiness pilot:
 
 ```bash
 export TERMINAL_BENCH2_DIR=<official-terminal-bench-2-task-root>
 export TB2_OPENCODE_RUNTIME_IMAGE=localhost/alphadiana/tb2-opencode-controller:latest
+export TB2_OPENCLAW_RUNTIME_IMAGE=localhost/alphadiana-openclaw-swebench-runtime-source:latest
+export TB2_ZEROCLAW_RUNTIME_IMAGE=localhost/zeroclaw-reasoning:0.6.9
 export ALPHADIANA_TB2_LOGS_DIR="$PWD/logs/podman-terminal-bench2-readiness/task-logs"
 export PODMAN_TB2_RUN_PREFIX=podman_tb2_$(date +%Y%m%d_%H%M%S)
 
-bash scripts/run_podman_terminal_bench2_readiness.sh validate
-bash scripts/run_podman_terminal_bench2_readiness.sh preflight
-bash scripts/run_podman_terminal_bench2_readiness.sh pilot
-bash scripts/run_podman_terminal_bench2_readiness.sh audit
+bash scripts/run_podman_terminal_bench2_readiness.sh all
 ```
 
-The May 15 Phase 7 run prefix `podman_tb2_20260515_phase7_abslogs`
-completed five official tasks and passed audit. This supports recommending a
-larger overnight TerminalBench2 OpenCode Podman campaign, but does not promote
-Direct x TB2, OpenClaw/ZeroClaw TB2, full-sweep, or default Podman status.
+`all` and `auto` run `validate -> preflight -> pilot -> audit` fail-fast. The
+May 16 Phase 7 run prefix `podman_tb2_three_agent_20260516_170725` wrote all
+9 expected task rows and passed audit for OpenClaw, OpenCode, and ZeroClaw on
+`db-wal-recovery`, `overfull-hbox`, and `adaptive-rejection-sampler`. This
+supports recommending a larger overnight three-agent TerminalBench2 Podman
+campaign, but does not promote Direct x TB2, full-sweep, or default Podman
+status.
 
 TerminalBench2 OpenCode Podman smoke:
 
