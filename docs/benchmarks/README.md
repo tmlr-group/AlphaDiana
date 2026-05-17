@@ -137,6 +137,19 @@ full-sweep, SWE-bench, MoltBench, or full MMMU-Pro sweep status. The earlier
 May 15 `podman_tb2_20260515_phase7_abslogs` run remains historical OpenCode-
 only five-task evidence.
 
+On May 16/17, 2026 +0800, Phase 8 repaired PR review findings without changing
+the Podman support boundary. Numeric answer normalization is now scoped to the
+numeric scorer path, ResultStore keeps `metadata.logprob_records` as the
+sidecar line count, and ZeroClaw Podman has an end-to-end host logprob proxy.
+OpenClaw Podman host-network logprob capture now advertises the runtime proxy
+on loopback when `network: host`. Targeted tests passed, OpenClaw live smoke
+`phase8_openclaw_podman_logprob_smoke_final` captured 1064 logprob records
+with matching float/int16 sidecars and predicted `204`, and ZeroClaw Podman
+live smoke `phase8_zeroclaw_podman_logprob_smoke_retry` captured 64 logprob
+records with matching float/int16 sidecars.
+See
+[`context/podman-pr-review-repair/README.md`](../../context/podman-pr-review-repair/README.md).
+
 Generated ZeroClaw configs use `runtime_trace_mode="full"` for logprob capture
 and write ZeroClaw's schema-supported permissive shell controls; ZeroClaw
 0.6.9 does not expose a heredoc-specific allowlist setting.

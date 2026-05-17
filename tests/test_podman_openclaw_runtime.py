@@ -15,6 +15,31 @@ from alphadiana.container_runtime import PodmanAgentRuntimeResult, PodmanAgentSp
 from alphadiana.runner.runner import _is_gateway_autodeploy_agent
 
 
+class FakeOpenClawLogprobProxy:
+    instances: list["FakeOpenClawLogprobProxy"] = []
+
+    def __init__(self, upstream: str, top_logprobs: int) -> None:
+        self.upstream = upstream
+        self.top_logprobs = top_logprobs
+        self.started = False
+        self.stopped = False
+        self.proxy_hosts: list[str] = []
+        FakeOpenClawLogprobProxy.instances.append(self)
+
+    def start(self) -> None:
+        self.started = True
+
+    def stop(self) -> None:
+        self.stopped = True
+
+    def proxy_url_for_docker(self, docker_host_ip: str = "172.17.0.1") -> str:
+        self.proxy_hosts.append(docker_host_ip)
+        return f"http://{docker_host_ip}:4567"
+
+    def captured_records(self) -> list[dict[str, Any]]:
+        return []
+
+
 class FakePodmanAgentRuntime:
     def __init__(self) -> None:
         self.started_spec: PodmanAgentSpec | None = None
@@ -74,6 +99,28 @@ def _write_rock_config(tmp_path: Path) -> Path:
     return path
 
 
+def _write_podman_gateway_config(tmp_path: Path, *, network: str) -> Path:
+    path = tmp_path / "podman_gateway.yaml"
+    path.write_text(
+        "\n".join([
+            "image: localhost/openclaw:test",
+            "workdir: /workspace",
+            f"network: {network}",
+            "exposed_port: 8080",
+            "openclaw_config_path: /tmp/openclaw.json",
+            "process_log_path: /tmp/gateway.log",
+            "run_command: openclaw gateway",
+            "safe_config_paths:",
+            "  - /tmp/openclaw.json",
+            "artifact_paths:",
+            "  - /tmp/gateway.log",
+            "",
+        ]),
+        encoding="utf-8",
+    )
+    return path
+
+
 def test_openclaw_podman_runtime_builds_spec_and_runtime_info(tmp_path: Path) -> None:
     fake_runtime = FakePodmanAgentRuntime()
     openclaw_config = _write_openclaw_config(tmp_path)
@@ -122,6 +169,45 @@ def test_openclaw_podman_runtime_builds_spec_and_runtime_info(tmp_path: Path) ->
 
     manager.teardown()
     assert fake_runtime.cleanup_called is True
+
+
+def test_openclaw_podman_logprob_proxy_uses_loopback_for_host_network(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    FakeOpenClawLogprobProxy.instances = []
+    monkeypatch.setattr(
+        "alphadiana.agent.openclaw_runtime.OpenClawLogprobProxy",
+        FakeOpenClawLogprobProxy,
+    )
+    fake_runtime = FakePodmanAgentRuntime()
+    openclaw_config = _write_openclaw_config(tmp_path)
+    gateway_config = _write_podman_gateway_config(tmp_path, network="host")
+    manager = OpenClawPodmanRuntimeManager({
+        "runtime_backend": "podman",
+        "openclaw_config_path": str(openclaw_config),
+        "podman_gateway_config_path": str(gateway_config),
+        "podman_image": "localhost/openclaw:test",
+        "OPENAI_BASE_URL": "http://provider.test/v1",
+        "OPENAI_API_KEY": "sk-secret",
+        "OPENAI_MODEL_NAME": "qwen-test",
+        "_logprob_capture": {"enabled": True, "top_logprobs": 2},
+        "_podman_agent_runtime": fake_runtime,
+    })
+
+    with patch.dict("os.environ", {}, clear=True):
+        info = manager.ensure_ready(None)
+
+    spec = fake_runtime.started_spec
+    assert spec is not None
+    assert spec.network == "host"
+    assert spec.env["OPENAI_BASE_URL"] == "http://127.0.0.1:4567/v1"
+    assert spec.metadata["logprob_proxy"] == "openclaw"
+    assert FakeOpenClawLogprobProxy.instances[0].proxy_hosts == ["127.0.0.1"]
+    assert info["metadata"]["logprob_support"] == "enabled"
+
+    manager.teardown()
+    assert FakeOpenClawLogprobProxy.instances[0].stopped is True
 
 
 def test_openclaw_podman_gateway_defaults_do_not_reference_rock_urls() -> None:

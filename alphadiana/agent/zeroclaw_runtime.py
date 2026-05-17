@@ -9,14 +9,20 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import shlex
 import signal
+import threading
 import time
 from pathlib import Path
 from typing import Any
 
 import logging as _logging
 
+from alphadiana.agent.logprob_proxy import (
+    LogprobCaptureProxy,
+    resolve_logprob_proxy_advertise_host,
+)
 from alphadiana.container_runtime import (
     HTTPHealthcheck,
     PodmanAgentRuntime,
@@ -452,6 +458,19 @@ class ZeroClawPodmanRuntimeManager(ZeroClawRuntimeManager):
         self._podman_host_ip = str(
             config.get("podman_host_ip", config.get("docker_host_ip", "host.containers.internal"))
         )
+        self._logprob_proxy_bind_host = str(
+            config.get("logprob_proxy_bind_host", "0.0.0.0") or "0.0.0.0"
+        ).strip()
+        self._logprob_proxy_advertise_host = str(
+            config.get(
+                "logprob_proxy_advertise_host",
+                config.get("logprob_proxy_host", ""),
+            )
+            or ""
+        ).strip()
+        self._logprob_proxy: LogprobCaptureProxy | None = None
+        self._logprob_proxy_api_key = ""
+        self._logprob_proxy_lock = threading.Lock()
         self._podman_result: PodmanAgentRuntimeResult | None = None
 
     def ensure_ready(self, sandbox: Any = None) -> dict:
@@ -461,6 +480,7 @@ class ZeroClawPodmanRuntimeManager(ZeroClawRuntimeManager):
         _progress(f"starting ZeroClaw Podman bridge image={spec.image}")
         self._podman_result = self._podman_runtime.start(spec)
         self._warmup_podman_gateway(self._podman_result.api_base)
+        self.drain_logprob_records()
         return self.runtime_info(sandbox)
 
     def runtime_info(self, sandbox: Any = None) -> dict:
@@ -483,6 +503,7 @@ class ZeroClawPodmanRuntimeManager(ZeroClawRuntimeManager):
             "adapter_name": "zeroclaw-podman",
             "logprob_support": self._logprob_support_status(),
         })
+        metadata.update(self._logprob_proxy_metadata())
         return {
             "sandbox_id": "",
             "gateway_url": f"{api_base.rstrip('/')}/chat/completions",
@@ -541,8 +562,94 @@ class ZeroClawPodmanRuntimeManager(ZeroClawRuntimeManager):
         try:
             self._podman_runtime.cleanup(check=False)
         finally:
+            self._stop_logprob_proxy()
             self._podman_result = None
             super().teardown()
+
+    def _logprob_request_overrides(self) -> dict[str, Any]:
+        overrides: dict[str, Any] = dict(self._provider_body_overrides)
+        overrides["temperature"] = self._temperature
+        if self._top_p is not None:
+            overrides["top_p"] = self._top_p
+        if self._provider_max_tokens is not None:
+            overrides["max_tokens"] = self._provider_max_tokens
+        return overrides
+
+    def _resolve_logprob_proxy_advertise_host(self) -> str:
+        if self._logprob_proxy_advertise_host:
+            return self._logprob_proxy_advertise_host
+        if (self._podman_network or "").strip().lower() == "host":
+            return "127.0.0.1"
+        return self._podman_host_ip or resolve_logprob_proxy_advertise_host(
+            self._model_api_base,
+            "",
+        )
+
+    def _ensure_logprob_proxy(self) -> LogprobCaptureProxy | None:
+        if not self._logprob_capture.get("enabled"):
+            return None
+        if not self._model_api_base:
+            raise RuntimeError(
+                "ZeroClaw Podman logprob capture requires api_base/provider_api_base."
+            )
+        with self._logprob_proxy_lock:
+            if self._logprob_proxy is not None:
+                return self._logprob_proxy
+            self._logprob_proxy_api_key = secrets.token_urlsafe(24)
+            proxy = LogprobCaptureProxy(
+                self._model_api_base,
+                int(self._logprob_capture.get("top_logprobs", 20)),
+                bind_host=self._logprob_proxy_bind_host,
+                advertise_host=self._resolve_logprob_proxy_advertise_host(),
+                client_timeout=max(120.0, float(self._request_timeout)),
+                upstream_api_key=self._model_api_key,
+                proxy_api_key=self._logprob_proxy_api_key,
+                request_overrides=self._logprob_request_overrides(),
+            )
+            proxy.start()
+            self._logprob_proxy = proxy
+            _logger.info(
+                "ZeroClaw Podman logprob proxy started local_url=%s advertised_url=%s upstream=%s",
+                proxy.local_url,
+                proxy.proxy_url,
+                proxy.upstream,
+            )
+            return proxy
+
+    def _stop_logprob_proxy(self) -> None:
+        with self._logprob_proxy_lock:
+            proxy = self._logprob_proxy
+            self._logprob_proxy = None
+            self._logprob_proxy_api_key = ""
+        if proxy is not None:
+            try:
+                proxy.stop()
+            except Exception:
+                _logger.debug("Failed to stop ZeroClaw Podman logprob proxy", exc_info=True)
+
+    def _logprob_proxy_metadata(self) -> dict[str, Any]:
+        proxy = self._logprob_proxy
+        if proxy is None:
+            return {}
+        return {
+            "logprob_proxy_enabled": True,
+            "logprob_proxy_url": f"{proxy.proxy_url.rstrip('/')}/v1",
+            "logprob_proxy_upstream": proxy.upstream,
+            "logprob_proxy_request_overrides": self._logprob_request_overrides(),
+        }
+
+    def drain_logprob_records(self) -> list[dict]:
+        proxy = self._logprob_proxy
+        if proxy is None:
+            return []
+        with self._logprob_proxy_lock:
+            try:
+                return proxy.drain_records()
+            except AssertionError:
+                return []
+
+    def get_proxy_logprob_records(self) -> list[dict]:
+        return self.drain_logprob_records()
 
     def _build_podman_spec(self) -> PodmanAgentSpec:
         if not self._podman_image:
@@ -550,6 +657,13 @@ class ZeroClawPodmanRuntimeManager(ZeroClawRuntimeManager):
         if not self._bridge_template_path.exists():
             raise FileNotFoundError(f"ZeroClaw bridge template not found: {self._bridge_template_path}")
         env = self._runtime_env()
+        logprob_proxy = self._ensure_logprob_proxy()
+        if logprob_proxy is not None:
+            proxy_api_base = f"{logprob_proxy.proxy_url.rstrip('/')}/v1"
+            env["OPENAI_BASE_URL"] = proxy_api_base
+            env["OPENAI_API_KEY"] = self._logprob_proxy_api_key
+            env["OPENROUTER_API_KEY"] = self._logprob_proxy_api_key
+            env["ZEROCLAW_PROVIDER"] = _resolve_zeroclaw_provider("", proxy_api_base)
         env.update(podman_proxy_env(os.environ, host_alias=self._podman_host_ip))
         last_request_dir = f"{self._artifact_root.rstrip('/')}/last_request"
         artifact_paths = [self._bridge_log_path]
@@ -639,5 +753,5 @@ class ZeroClawPodmanRuntimeManager(ZeroClawRuntimeManager):
 
     def _logprob_support_status(self) -> str:
         if self._logprob_capture.get("enabled"):
-            return "unavailable"
+            return "enabled"
         return "disabled"
