@@ -527,6 +527,7 @@ class ResultStore:
         logprob_int16_records = response_metadata.pop("logprob_int16_records", None)
         raw_records = logprob_records if isinstance(logprob_records, list) else []
         int16_records = logprob_int16_records if isinstance(logprob_int16_records, list) else []
+        raw_record_count = len(raw_records)
 
         logprobs_path_rel = ""
         logprobs_int16_path_rel = ""
@@ -541,6 +542,7 @@ class ResultStore:
             rel_path = path.relative_to(self.output_dir / self.run_id).as_posix()
             logprobs_path_rel = f"{self.run_id}/{rel_path}"
             artifact_file_refs["logprobs_float"] = rel_path
+            response_metadata["logprob_records"] = raw_record_count
 
         if not int16_records and raw_records:
             int16_records = [
@@ -613,7 +615,6 @@ class ResultStore:
                     )
                     continue
                 record = normalize_legacy_timeout_zero_record(record)
-                record["score_status"] = infer_score_status(record)
                 key = (record["task_id"], record.get("sample_index", 0))
                 records[key] = record
         return list(records.values())

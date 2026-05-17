@@ -18,6 +18,13 @@ _NUMERIC_LITERAL_RE = re.compile(r"-?\d+(?:\.\d+)?%?")
 _NUMERIC_FRACTION_RE = re.compile(
     r"\(?-?\d+(?:\.\d+)?\)?/\(?-?\d+(?:\.\d+)?\)?"
 )
+_NUMERIC_VALUE_RE = re.compile(
+    r"-?\d+(?:\.\d+)?(?:/-?\d+(?:\.\d+)?)?%?"
+)
+_LEADING_NUMERIC_RE = re.compile(
+    r"^\s*(?P<number>-?(?:\d[\d,]*)(?:\.\d+)?(?:\s*/\s*-?\d+(?:\.\d+)?)?%?)"
+    r"(?P<tail>.*)$"
+)
 _JSON_METADATA_KEYS = {
     "cost",
     "duration",
@@ -28,6 +35,78 @@ _JSON_METADATA_KEYS = {
     "status",
     "tokens",
 }
+
+
+def _has_digit(text: str) -> bool:
+    return bool(re.search(r"\d", text or ""))
+
+
+def _strip_markdown_emphasis(text: str) -> str:
+    stripped = text.strip()
+    while (
+        (stripped.startswith("**") and stripped.endswith("**") and len(stripped) >= 4)
+        or (stripped.startswith("__") and stripped.endswith("__") and len(stripped) >= 4)
+    ):
+        stripped = stripped[2:-2].strip()
+    while (
+        (stripped.startswith("*") and stripped.endswith("*") and len(stripped) >= 2)
+        or (stripped.startswith("_") and stripped.endswith("_") and len(stripped) >= 2)
+    ):
+        stripped = stripped[1:-1].strip()
+    return stripped
+
+
+def _primary_answer_clause(text: str) -> str:
+    """Keep the primary answer span before explanatory alternatives."""
+    candidate = _strip_markdown_emphasis(text)
+
+    # Markdown often leaves the closing bold marker inside the regex capture:
+    # "**Answer: 204 minutes** (or 3 hours...)" -> "204 minutes** (or ...)".
+    for marker in ("**", "__"):
+        idx = candidate.find(marker)
+        if idx > 0:
+            after = candidate[idx + len(marker) : idx + len(marker) + 1]
+            before = candidate[:idx].strip()
+            if before and _has_digit(before) and (not after or after.isspace() or after in "([{'\""):
+                candidate = before
+                break
+
+    for pattern in (r"\s*\(", r"\s+\bor\b", r"\s*;", r"\n"):
+        match = re.search(pattern, candidate, flags=re.IGNORECASE)
+        if match:
+            before = candidate[: match.start()].strip()
+            if before and _has_digit(before):
+                candidate = before
+                break
+
+    return _strip_markdown_emphasis(candidate.strip())
+
+
+def _coerce_leading_numeric_unit_answer(text: str) -> str:
+    """Return the numeric part of an answer like '204 minutes' when unambiguous."""
+    candidate = _primary_answer_clause(text).strip().rstrip(".")
+    candidate = _strip_markdown_emphasis(candidate)
+    match = _LEADING_NUMERIC_RE.match(candidate)
+    if not match:
+        return candidate
+
+    number = match.group("number").strip()
+    tail = match.group("tail").strip()
+    if not tail:
+        return number
+
+    # Only strip trailing prose/units when the tail has no other numeric or
+    # symbolic math content. This avoids turning "3 hours and 24 minutes" into
+    # the false numeric answer "3".
+    tail_without_punctuation = tail.strip(" .,!?:;*)]}'\"")
+    if (
+        tail_without_punctuation
+        and not re.search(r"\d", tail_without_punctuation)
+        and not re.search(r"[=+*/^_\\{}]", tail_without_punctuation)
+    ):
+        return number
+
+    return candidate
 
 
 def _contains_json_metadata_key(value) -> bool:
@@ -117,6 +196,20 @@ def extract_answer_candidate(text: str, *, source: str = "assistant_text") -> st
     return lines[-1] if lines else stripped
 
 
+def extract_numeric_answer_candidate(text: str, *, source: str = "assistant_text") -> str:
+    """Extract a candidate for numeric scoring without changing generic extraction.
+
+    Numeric benchmarks often want the scalar value from explicit answer spans
+    such as ``Answer: 204 minutes (or 3 hours and 24 minutes)``.  Keep this
+    separate from ``extract_answer_candidate`` so exact-match and symbolic
+    answer paths retain their historical behavior.
+    """
+    candidate = extract_answer_candidate(text, source=source)
+    if not candidate:
+        return ""
+    return _coerce_leading_numeric_unit_answer(candidate)
+
+
 def _strip_outer_pair(text: str, left: str, right: str) -> str:
     if text.startswith(left) and text.endswith(right):
         return text[len(left) : -len(right)].strip()
@@ -154,9 +247,8 @@ def _normalize_latex(text: str) -> str:
     return text
 
 
-def normalize_math_text(text: str) -> str:
+def _normalize_candidate_text(text: str) -> str:
     """Normalize common math-answer surface forms for string comparison."""
-    text = extract_answer_candidate(text)
     text = text.strip().rstrip(".")
     text = _strip_wrappers(text)
     text = _normalize_latex(text)
@@ -169,9 +261,19 @@ def normalize_math_text(text: str) -> str:
     return text.lower()
 
 
+def normalize_math_text(text: str) -> str:
+    """Normalize common math-answer surface forms for string comparison."""
+    return _normalize_candidate_text(extract_answer_candidate(text))
+
+
+def normalize_numeric_answer_text(text: str) -> str:
+    """Normalize common numeric-answer surface forms for numeric scoring."""
+    return _normalize_candidate_text(extract_numeric_answer_candidate(text))
+
+
 def parse_numeric_answer(text: str) -> float | None:
     """Parse a numeric answer from common math benchmark output formats."""
-    normalized = normalize_math_text(text)
+    normalized = normalize_numeric_answer_text(text)
     if not normalized:
         return None
 
@@ -196,10 +298,7 @@ def parse_numeric_answer(text: str) -> float | None:
     except ValueError:
         pass
 
-    matches = re.findall(
-        r"-?\d+(?:\.\d+)?(?:/-?\d+(?:\.\d+)?)?%?",
-        normalized,
-    )
+    matches = _NUMERIC_VALUE_RE.findall(normalized)
     if not matches:
         return None
 

@@ -15,8 +15,6 @@ from urllib.parse import urlparse, urlunparse
 
 import yaml
 
-from alphadiana.container_runtime.podman_cli import normalize_podman_image_ref
-
 try:
     import tomllib
 except ModuleNotFoundError:
@@ -66,12 +64,6 @@ def _podman_image_exists(image: str) -> bool:
     if not image:
         return False
     result = _run(["podman", "image", "exists", image], timeout=30)
-    if result.returncode == 0:
-        return True
-    normalized = normalize_podman_image_ref(image)
-    if normalized == image:
-        return False
-    result = _run(["podman", "image", "exists", normalized], timeout=30)
     return result.returncode == 0
 
 

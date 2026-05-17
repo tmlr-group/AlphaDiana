@@ -40,25 +40,11 @@ _DEFAULT_RUNTIME_IMAGES = {
     "zeroclaw": os.environ.get("TB2_ZEROCLAW_RUNTIME_IMAGE", "zeroclaw-reasoning:0.6.9"),
 }
 _SAFE_FRAGMENT_RE = re.compile(r"[^A-Za-z0-9._-]+")
-_PODMAN_IMAGE_INSPECT_TIMEOUT_SEC = int(os.environ.get("PODMAN_TB2_IMAGE_INSPECT_TIMEOUT_SEC", "180"))
-_PODMAN_IMAGE_INSPECT_ATTEMPTS = int(os.environ.get("PODMAN_TB2_IMAGE_INSPECT_ATTEMPTS", "3"))
-_PODMAN_BUILD_ATTEMPTS = int(os.environ.get("PODMAN_TB2_BUILD_ATTEMPTS", "2"))
-_PODMAN_EXEC_ATTEMPTS = int(os.environ.get("PODMAN_TB2_EXEC_ATTEMPTS", "3"))
 
 
 def _safe_fragment(value: str) -> str:
     fragment = _SAFE_FRAGMENT_RE.sub("-", str(value).strip()).strip("-")
     return fragment or "value"
-
-
-def _is_transient_podman_exec_error(result: LocalCommandResult) -> bool:
-    text = f"{result.stderr}\n{result.stdout}".lower()
-    return (
-        "no such file or directory" in text
-        and "overlay-containers" in text
-        and "/userdata/" in text
-        and "/exit/" in text
-    )
 
 
 class TerminalBench2InContainerMixin(TerminalBench2ContainerMixin):
@@ -226,27 +212,7 @@ COPY --from=runtime /usr/local/bin/zeroclaw /usr/local/bin/zeroclaw
 
     def _docker_image_exists(self, image: str) -> bool:
         if getattr(self, "_container_engine", "docker") == "podman":
-            last_error: PodmanError | None = None
-            attempts = max(1, _PODMAN_IMAGE_INSPECT_ATTEMPTS)
-            timeout = max(30, _PODMAN_IMAGE_INSPECT_TIMEOUT_SEC)
-            for attempt in range(1, attempts + 1):
-                try:
-                    return self._podman.image_exists(image, timeout=timeout)
-                except PodmanError as exc:
-                    last_error = exc
-                    if attempt >= attempts:
-                        break
-                    logger.warning(
-                        "Podman image inspect for %s failed on attempt %d/%d: %s",
-                        image,
-                        attempt,
-                        attempts,
-                        exc,
-                    )
-                    time.sleep(min(attempt, 5))
-            if last_error is not None:
-                raise last_error
-            return False
+            return self._podman.image_exists(image, timeout=30)
         result = subprocess.run(
             ["docker", "image", "inspect", image],
             capture_output=True,
@@ -282,33 +248,14 @@ COPY --from=runtime /usr/local/bin/zeroclaw /usr/local/bin/zeroclaw
                     if key.upper().endswith("IMAGE"):
                         value = normalize_podman_image_ref(value)
                     extra_args.extend(["--build-arg", f"{key}={value}"])
-                last_error: PodmanError | None = None
-                attempts = max(1, _PODMAN_BUILD_ATTEMPTS)
-                for attempt in range(1, attempts + 1):
-                    try:
-                        self._podman.build(
-                            context_dir,
-                            tag=image,
-                            file="-",
-                            input_text=dockerfile,
-                            extra_args=extra_args,
-                            timeout=1800,
-                        )
-                        return
-                    except PodmanError as exc:
-                        last_error = exc
-                        if attempt >= attempts:
-                            break
-                        logger.warning(
-                            "Podman build for %s failed on attempt %d/%d: %s",
-                            image,
-                            attempt,
-                            attempts,
-                            exc,
-                        )
-                        time.sleep(min(attempt, 5))
-                if last_error is not None:
-                    raise last_error
+                self._podman.build(
+                    context_dir,
+                    tag=image,
+                    file="-",
+                    input_text=dockerfile,
+                    extra_args=extra_args,
+                    timeout=1800,
+                )
                 return
             cmd = ["docker", "build", "--tag", image]
             for key, value in sorted(build_args.items()):
@@ -342,38 +289,24 @@ COPY --from=runtime /usr/local/bin/zeroclaw /usr/local/bin/zeroclaw
             shell_lines.append(f"cd {shlex.quote(cwd)}")
         shell_lines.append(script)
         if getattr(self, "_container_engine", "docker") == "podman":
-            attempts = max(1, _PODMAN_EXEC_ATTEMPTS)
-            exec_result = LocalCommandResult(stdout="", stderr="", returncode=1)
-            for attempt in range(1, attempts + 1):
-                try:
-                    result = self._podman.exec(
-                        container_id,
-                        ["bash", "-lc", "\n".join(shell_lines)],
-                        user="0:0",
-                        timeout=timeout_sec,
-                        check=False,
-                    )
-                    exec_result = LocalCommandResult(
-                        stdout=result.stdout,
-                        stderr=result.stderr,
-                        returncode=result.returncode,
-                    )
-                except PodmanError as exc:
-                    exec_result = LocalCommandResult(
-                        stdout=exc.result.stdout,
-                        stderr=exc.result.stderr or str(exc),
-                        returncode=exc.result.returncode,
-                    )
-                if not _is_transient_podman_exec_error(exec_result) or attempt >= attempts:
-                    break
-                logger.warning(
-                    "Podman exec hit transient control-plane failure for container %s "
-                    "on attempt %d/%d",
+            try:
+                result = self._podman.exec(
                     container_id,
-                    attempt,
-                    attempts,
+                    ["bash", "-lc", "\n".join(shell_lines)],
+                    timeout=timeout_sec,
+                    check=False,
                 )
-                time.sleep(min(attempt, 5))
+            except PodmanError as exc:
+                return LocalCommandResult(
+                    stdout=exc.result.stdout,
+                    stderr=exc.result.stderr or str(exc),
+                    returncode=exc.result.returncode,
+                )
+            exec_result = LocalCommandResult(
+                stdout=result.stdout,
+                stderr=result.stderr,
+                returncode=result.returncode,
+            )
             if check and exec_result.returncode != 0:
                 detail = exec_result.stderr.strip() or exec_result.stdout.strip() or "unknown error"
                 raise RuntimeError(f"Podman exec failed: {detail}")
@@ -444,43 +377,26 @@ COPY --from=runtime /usr/local/bin/zeroclaw /usr/local/bin/zeroclaw
         remote_path: str,
         local_path: Path,
     ) -> bool:
+        if not self._docker_path_exists(container_id, remote_path):
+            return False
         local_path.parent.mkdir(parents=True, exist_ok=True)
-        attempts = max(1, int(os.environ.get("PODMAN_TB2_COPY_ATTEMPTS", "3")))
-        last_error = ""
-        for attempt in range(1, attempts + 1):
-            if getattr(self, "_container_engine", "docker") == "podman":
-                result = self._podman.cp(
-                    f"{container_id}:{remote_path}",
-                    str(local_path),
-                    timeout=120,
-                    check=False,
-                )
-            else:
-                result = subprocess.run(
-                    ["docker", "cp", f"{container_id}:{remote_path}", str(local_path)],
-                    capture_output=True,
-                    text=True,
-                    timeout=120,
-                )
-            if result.returncode == 0 and local_path.exists():
-                return True
-            last_error = result.stderr.strip() or result.stdout.strip()
-
-            fallback = self._docker_exec_capture(
-                container_id,
-                f"cat {shlex.quote(remote_path)}",
-                timeout_sec=120,
+        if getattr(self, "_container_engine", "docker") == "podman":
+            result = self._podman.cp(
+                f"{container_id}:{remote_path}",
+                str(local_path),
+                timeout=120,
+                check=False,
             )
-            if fallback.returncode == 0:
-                local_path.write_text(fallback.stdout, encoding="utf-8", errors="replace")
-                return True
-            last_error = fallback.stderr.strip() or fallback.stdout.strip() or last_error
-            if attempt < attempts:
-                time.sleep(1)
-
-        if getattr(self, "_container_engine", "docker") != "podman":
-            raise RuntimeError(f"docker cp from container failed: {last_error}")
-        return False
+        else:
+            result = subprocess.run(
+                ["docker", "cp", f"{container_id}:{remote_path}", str(local_path)],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+        if result.returncode != 0:
+            raise RuntimeError(f"docker cp from container failed: {result.stderr.strip()}")
+        return True
 
     def _read_container_text(
         self,

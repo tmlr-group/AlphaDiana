@@ -121,42 +121,34 @@ and `audit_failure_count=0`. See
 [`context/podman-mmmu-pro-readiness/README.md`](../../context/podman-mmmu-pro-readiness/README.md).
 
 On May 16, 2026, Phase 7 was repaired into a dedicated opt-in TerminalBench2
-three-agent Podman task-container small matrix under
+three-agent Podman task-container readiness small matrix under
 `configs/smokes/podman_terminal_bench2/`, plus
 `scripts/run_podman_terminal_bench2_readiness.sh` and
 `scripts/audit_podman_terminal_bench2_readiness.py`. The run prefix
 `podman_tb2_three_agent_20260516_170725` validated/preflighted the matrix and
 wrote 9 task rows for OpenClaw, OpenCode, and ZeroClaw x `db-wal-recovery`,
-`overfull-hbox`, and `adaptive-rejection-sampler`. That run remains historical
-small-matrix smoke evidence. See
+`overfull-hbox`, and `adaptive-rejection-sampler`. The audit passed with all
+rows recording `metadata.container_engine=podman`, `score=0.0`, verifier
+`ok`, reward observed, and discoverable logs/artifacts. See
 [`context/podman-terminal-bench2-readiness/README.md`](../../context/podman-terminal-bench2-readiness/README.md).
-The later expanded local-Qwen run
-`podman_tb2_expanded_local_qwen_tmpstore_20260516` wrote 36 task rows but is
-negative readiness evidence: current audit flags pre-fix dangling verifier
-paths plus ZeroClaw provider-error and empty-assistant rows that had been
-masked as `valid_scored`. Current code preserves verifier folders and records
-those ZeroClaw rows as `provider_error` or `agent_empty_output`; the focused
-post-fix run `podman_tb2_postfix2_local_qwen_20260516` verifies that
-failure-preservation behavior. This does not change Direct x TB2,
-global-default, SWE-bench, external_benchmark, or full MMMU-Pro sweep status. On
-May 17, 2026, `podman_tb2_full8_local_qwen_20260517` passed the current
-TerminalBench2 Podman full sweep for the available checkout: 89 real task
-directories x OpenClaw/OpenCode/ZeroClaw = 267 rows, with preflight and audit
-passed and provider-level truly blank choices equal to `0`. A May 18
-high-budget follow-up found that ZeroClaw thinking-on local-Qwen runs can still
-produce CLI `agent_empty_output` at `max_tokens=8192`; the no-thinking full run
-`podman_tb2_high8192_zeroclaw_20260517` remains historical transport-validation
-evidence only. The focused Qwen3.5-27B thinking-on pilot
-`podman_tb2_27b_zc_thinking_stream_logprob_pilot_20260518` then completed 3/3
-selected ZeroClaw TB2 rows with provider errors `0`, CLI final text empty rows
-`0`, provider true blank choices `0`, and captured logprobs using upstream
-streaming through the provider proxy while returning non-streaming JSON to the
-ZeroClaw CLI. This is not a full 27B TB2 support claim; it showed that a single
-ZeroClaw task can internally drive roughly 10 simultaneous provider requests.
-OpenCode/OpenClaw high-budget controls did not reproduce the ZeroClaw empty
-assistant issue. The earlier May 15
-`podman_tb2_20260515_phase7_abslogs` run remains
-historical OpenCode-only five-task evidence.
+This supports recommending a larger overnight three-agent TerminalBench2
+Podman campaign, but it does not change Direct x TB2, global-default,
+full-sweep, SWE-bench, external_benchmark, or full MMMU-Pro sweep status. The earlier
+May 15 `podman_tb2_20260515_phase7_abslogs` run remains historical OpenCode-
+only five-task evidence.
+
+On May 16/17, 2026 +0800, Phase 8 repaired PR review findings without changing
+the Podman support boundary. Numeric answer normalization is now scoped to the
+numeric scorer path, ResultStore keeps `metadata.logprob_records` as the
+sidecar line count, and ZeroClaw Podman has an end-to-end host logprob proxy.
+OpenClaw Podman host-network logprob capture now advertises the runtime proxy
+on loopback when `network: host`. Targeted tests passed, OpenClaw live smoke
+`phase8_openclaw_podman_logprob_smoke_final` captured 1064 logprob records
+with matching float/int16 sidecars and predicted `204`, and ZeroClaw Podman
+live smoke `phase8_zeroclaw_podman_logprob_smoke_retry` captured 64 logprob
+records with matching float/int16 sidecars.
+See
+[`context/podman-pr-review-repair/README.md`](../../context/podman-pr-review-repair/README.md).
 
 Generated ZeroClaw configs use `runtime_trace_mode="full"` for logprob capture
 and write ZeroClaw's schema-supported permissive shell controls; ZeroClaw

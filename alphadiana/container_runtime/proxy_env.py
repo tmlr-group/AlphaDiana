@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from collections.abc import Sequence
 from urllib.parse import urlsplit, urlunsplit
 
 
@@ -24,7 +23,6 @@ def podman_proxy_env(
     source: Mapping[str, str],
     *,
     host_alias: str = "host.containers.internal",
-    no_proxy_hosts: Sequence[str] | None = None,
 ) -> dict[str, str]:
     """Return proxy env values rewritten for a Podman bridge container.
 
@@ -42,8 +40,6 @@ def podman_proxy_env(
             env[key] = _rewrite_loopback_proxy(raw_value, host_alias=host_alias)
         else:
             env[key] = raw_value
-    if no_proxy_hosts:
-        _append_no_proxy_hosts(env, no_proxy_hosts)
     return env
 
 
@@ -64,23 +60,3 @@ def _rewrite_loopback_proxy(value: str, *, host_alias: str) -> str:
     port = f":{parsed.port}" if parsed.port is not None else ""
     netloc = f"{auth}{host_alias}{port}"
     return urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment))
-
-
-def _append_no_proxy_hosts(env: dict[str, str], hosts: Sequence[str]) -> None:
-    normalized_hosts = []
-    for host in hosts:
-        value = str(host or "").strip()
-        if value and value not in normalized_hosts:
-            normalized_hosts.append(value)
-    if not normalized_hosts:
-        return
-
-    existing_keys = [key for key in ("NO_PROXY", "no_proxy") if env.get(key)]
-    if not existing_keys:
-        existing_keys = ["NO_PROXY"]
-    for key in existing_keys:
-        entries = [part.strip() for part in str(env.get(key, "") or "").split(",") if part.strip()]
-        for host in normalized_hosts:
-            if host not in entries:
-                entries.append(host)
-        env[key] = ",".join(entries)

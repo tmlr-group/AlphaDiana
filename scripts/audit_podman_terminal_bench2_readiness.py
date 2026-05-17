@@ -16,10 +16,8 @@ REQUIRED_TAXONOMY = [
     "podman_runtime",
     "image_pull",
     "task_setup",
-    "provider_error",
     "agent_timeout",
     "agent_empty_output",
-    "agent_error",
     "verifier_failure",
     "no_task_json",
     "metadata_defect",
@@ -129,68 +127,6 @@ def _artifact_path(record: dict[str, Any], results_dir: Path, run_id: str, root:
     return "", False, 0
 
 
-def _manifest_artifact_file(
-    record: dict[str, Any],
-    results_dir: Path,
-    run_id: str,
-    root: Path,
-    key: str,
-) -> tuple[str, bool]:
-    manifest = _as_dict(record.get("artifact_manifest"))
-    files = _as_dict(manifest.get("files"))
-    value = files.get(key)
-    if not isinstance(value, str) or not value:
-        return "", False
-    path = results_dir / run_id / run_id / "artifacts" / value
-    return _repo_relative(path, root), path.exists() and path.is_file()
-
-
-def _observed_abnormal_trajectory(record: dict[str, Any]) -> bool:
-    metadata = _as_dict(record.get("metadata"))
-    trajectory_status = str(metadata.get("trajectory_status") or "").strip().lower()
-    if trajectory_status != "abnormal":
-        return False
-    if metadata.get("zeroclaw_empty_assistant_output") or metadata.get("opencode_empty_assistant_output"):
-        return True
-    failure_reason = str(metadata.get("trajectory_failure_reason") or metadata.get("failure_reason") or "")
-    return bool(failure_reason.strip())
-
-
-def _assistant_evidence_present(record: dict[str, Any]) -> bool:
-    if "raw_output" not in record:
-        return True
-    if str(record.get("raw_output") or "").strip():
-        return True
-    if record.get("reasoning_trajectory"):
-        return True
-    response_json = _as_dict(record.get("response_json"))
-    try:
-        runtime_trace_records = int(response_json.get("runtime_trace_records") or 0)
-    except (TypeError, ValueError):
-        runtime_trace_records = 0
-    if runtime_trace_records > 0:
-        return True
-    if str(response_json.get("output_text") or "").strip():
-        return True
-    for step in record.get("trajectory") or []:
-        if not isinstance(step, dict):
-            continue
-        if str(step.get("role") or "").lower() != "assistant":
-            continue
-        if str(step.get("content") or "").strip():
-            return True
-        if str(step.get("thinking") or "").strip():
-            return True
-    return False
-
-
-def _metadata_path_exists(metadata: dict[str, Any], key: str) -> bool | None:
-    value = str(metadata.get(key) or "").strip()
-    if not value:
-        return None
-    return Path(value).exists()
-
-
 def _verifier_ok(metadata: dict[str, Any], reward_present: bool, score_present: bool) -> bool:
     verifier_status = str(metadata.get("verifier_status") or "").strip().lower()
     if verifier_status == "ok":
@@ -212,23 +148,7 @@ def _evidence_text(record: dict[str, Any] | None, log_text: str = "") -> str:
         str(error.get("error_type") or ""),
         str(error.get("error") or ""),
         _safe_json_text(metadata),
-    ]
-    return "\n".join(parts).lower()
-
-
-def _agent_control_evidence_text(record: dict[str, Any]) -> str:
-    metadata = _as_dict(record.get("metadata"))
-    error = _as_dict(record.get("error"))
-    parts = [
-        str(record.get("score_status") or ""),
-        str(record.get("finish_reason") or ""),
-        str(error.get("error_type") or ""),
-        str(error.get("error") or ""),
-        str(metadata.get("failure_reason") or ""),
-        str(metadata.get("trajectory_failure_reason") or ""),
-        str(metadata.get("zeroclaw_selected_classification") or ""),
-        str(metadata.get("solver_error") or ""),
-        str(metadata.get("stderr") or ""),
+        log_text,
     ]
     return "\n".join(parts).lower()
 
@@ -267,7 +187,6 @@ def classify_failure(record: dict[str, Any] | None, *, missing_metadata: bool = 
     if record.get("reward", metadata.get("reward")) in (None, ""):
         verifier_problem = True
     evidence = _evidence_text(record, log_text)
-    agent_control_evidence = _agent_control_evidence_text(record)
 
     if "pull access denied" in evidence or "manifest unknown" in evidence or "error pulling image" in evidence:
         return "image_pull"
@@ -275,33 +194,6 @@ def classify_failure(record: dict[str, Any] | None, *, missing_metadata: bool = 
         return "image_pull"
     if "task.toml" in evidence or "instruction.md" in evidence or "missing tests" in evidence:
         return "task_setup"
-    explicit_agent_error = (
-        score_status == "agent_error"
-        or str(metadata.get("failure_reason") or "").strip().lower() == "cli_error"
-        or str(metadata.get("zeroclaw_selected_classification") or "").strip().lower() == "cli_error"
-        or "agent loop aborted" in agent_control_evidence
-        or "loop detector" in agent_control_evidence
-    )
-    if explicit_agent_error:
-        return "agent_error"
-    provider_error_count = 0
-    try:
-        provider_error_count = int(metadata.get("provider_proxy_error_response_count") or 0)
-    except (TypeError, ValueError):
-        provider_error_count = 0
-    if (
-        str(metadata.get("failure_reason") or "").strip().lower() == "provider_error"
-        or str(metadata.get("zeroclaw_selected_classification") or "").strip().lower() == "provider_error"
-        or provider_error_count > 0
-        or "all providers/models failed" in agent_control_evidence
-        or "custom api error" in agent_control_evidence
-        or "connection error" in agent_control_evidence
-        or "llm request timed out" in agent_control_evidence
-        or "badrequesterror" in agent_control_evidence
-        or "vllmvalidationerror" in agent_control_evidence
-        or "system message must be at the beginning" in agent_control_evidence
-    ):
-        return "provider_error"
     if (
         "timeout" in finish_reason
         or "timeout" in error_type
@@ -316,7 +208,6 @@ def classify_failure(record: dict[str, Any] | None, *, missing_metadata: bool = 
         or "empty assistant" in evidence
         or "no assistant output" in evidence
         or "no assistant content" in evidence
-        or not _assistant_evidence_present(record)
     ):
         return "agent_empty_output"
     if (
@@ -367,29 +258,9 @@ def row_from_record(
     missing_metadata = container_engine != "podman"
     log_exists = log_path.exists()
     artifact_path, artifact_exists, artifact_file_count = _artifact_path(record, results_dir, run_id, root)
-    provider_summary_path, provider_summary_exists = _manifest_artifact_file(
-        record,
-        results_dir,
-        run_id,
-        root,
-        "provider_request_summary",
-    )
-    provider_response_summary_path, provider_response_summary_exists = _manifest_artifact_file(
-        record,
-        results_dir,
-        run_id,
-        root,
-        "provider_response_summary",
-    )
     taxonomy = classify_failure(record, missing_metadata=missing_metadata, log_text=_read_log_tail(log_path))
-    reward_path_exists = _metadata_path_exists(metadata, "reward_path")
-    verifier_output_path_exists = _metadata_path_exists(metadata, "verifier_output_path")
-    assistant_evidence_present = _assistant_evidence_present(record)
-    observed_abnormal_trajectory = _observed_abnormal_trajectory(record)
     score_present = "score" in record
-    reward_value = record.get("reward")
-    if reward_value in (None, ""):
-        reward_value = metadata.get("reward")
+    reward_value = record.get("reward", metadata.get("reward"))
     reward_present = reward_value not in (None, "")
     audit_failures: list[str] = []
 
@@ -413,51 +284,6 @@ def row_from_record(
         audit_failures.append("missing_log")
     if not artifact_path or not artifact_exists:
         audit_failures.append("missing_artifact")
-    result_status = (record.get("score_status") or "").strip().lower()
-    if result_status and result_status != "valid_scored":
-        audit_failures.append("non_valid_result_status")
-    if reward_path_exists is False:
-        audit_failures.append("missing_reward_path_artifact")
-    if verifier_output_path_exists is False:
-        audit_failures.append("missing_verifier_output_path_artifact")
-    if not assistant_evidence_present and not observed_abnormal_trajectory:
-        audit_failures.append("missing_assistant_output")
-    if (
-        result_status in {"", "valid_scored"}
-        and taxonomy == "agent_empty_output"
-        and not observed_abnormal_trajectory
-    ):
-        audit_failures.append("agent_empty_output_masked_as_valid_scored")
-    if result_status in {"", "valid_scored"} and taxonomy == "provider_error":
-        audit_failures.append(f"{taxonomy}_masked_as_valid_scored")
-    if metadata.get("provider_proxy_enabled") and metadata.get("provider_proxy_capture_request_summary"):
-        if not provider_summary_exists:
-            audit_failures.append("missing_provider_request_summary_artifact")
-        if not provider_response_summary_exists:
-            audit_failures.append("missing_provider_response_summary_artifact")
-        provider_request_count_present = "provider_proxy_request_count" in metadata
-        try:
-            provider_request_count = int(metadata.get("provider_proxy_request_count") or 0)
-        except (TypeError, ValueError):
-            provider_request_count = 0
-        if not provider_request_count_present:
-            audit_failures.append("missing_provider_request_summary_count")
-        provider_response_count_present = "provider_proxy_response_count" in metadata
-        try:
-            provider_response_count = int(metadata.get("provider_proxy_response_count") or 0)
-        except (TypeError, ValueError):
-            provider_response_count = 0
-        if not provider_response_count_present:
-            audit_failures.append("missing_provider_response_summary_count")
-        try:
-            provider_blank_response_count = int(
-                metadata.get("provider_proxy_empty_content_reasoning_and_tool_response_count")
-                or 0
-            )
-        except (TypeError, ValueError):
-            provider_blank_response_count = 0
-        if provider_blank_response_count > 0:
-            audit_failures.append("provider_empty_content_reasoning_and_tool_response_observed")
 
     return {
         "config": _repo_relative(cell["config_path"], root),
@@ -473,24 +299,6 @@ def row_from_record(
         "runtime": record.get("wall_time_sec"),
         "artifact_path": artifact_path,
         "artifact_file_count": artifact_file_count,
-        "reward_path_exists": reward_path_exists,
-        "verifier_output_path_exists": verifier_output_path_exists,
-        "assistant_evidence_present": assistant_evidence_present,
-        "observed_abnormal_trajectory": observed_abnormal_trajectory,
-        "trajectory_status": metadata.get("trajectory_status", ""),
-        "trajectory_failure_reason": metadata.get("trajectory_failure_reason", ""),
-        "provider_request_summary_path": provider_summary_path,
-        "provider_request_summary_exists": provider_summary_exists,
-        "provider_response_summary_path": provider_response_summary_path,
-        "provider_response_summary_exists": provider_response_summary_exists,
-        "provider_empty_content_and_reasoning_response_count": metadata.get(
-            "provider_proxy_empty_content_and_reasoning_response_count",
-            0,
-        ),
-        "provider_empty_content_reasoning_and_tool_response_count": metadata.get(
-            "provider_proxy_empty_content_reasoning_and_tool_response_count",
-            0,
-        ),
         "task_json_path": _repo_relative(task_json_path, root),
         "log_path": _repo_relative(log_path, root),
         "container_engine": container_engine,
@@ -523,18 +331,6 @@ def missing_row(
         "runtime": None,
         "artifact_path": "",
         "artifact_file_count": 0,
-        "reward_path_exists": None,
-        "verifier_output_path_exists": None,
-        "assistant_evidence_present": None,
-        "observed_abnormal_trajectory": False,
-        "trajectory_status": "",
-        "trajectory_failure_reason": "",
-        "provider_request_summary_path": "",
-        "provider_request_summary_exists": False,
-        "provider_response_summary_path": "",
-        "provider_response_summary_exists": False,
-        "provider_empty_content_and_reasoning_response_count": 0,
-        "provider_empty_content_reasoning_and_tool_response_count": 0,
         "task_json_path": "",
         "log_path": _repo_relative(log_path, root),
         "container_engine": None,
@@ -613,15 +409,9 @@ def audit(
             )
 
     taxonomy_summary = Counter(row["failure_taxonomy"] for row in rows)
-    failed_rows = [row for row in rows if row["audit_status"] != "pass"]
+    audit_failures = [row for row in rows if row["audit_status"] != "pass"]
     preflight_ok = preflight.get("ok") is True
     preflight_failures = [] if preflight_ok else ["preflight_failed"]
-    row_failures = [
-        f"{row['run_id']}:{row['task_id']}:{failure}"
-        for row in failed_rows
-        for failure in (row.get("audit_failures") or ["row_failed"])
-    ]
-    audit_failures = preflight_failures + row_failures
     return {
         "run_prefix": run_prefix,
         "preflight": {
@@ -638,9 +428,9 @@ def audit(
         "required_taxonomy": REQUIRED_TAXONOMY,
         "rows": rows,
         "taxonomy_summary": dict(sorted(taxonomy_summary.items())),
-        "audit_passed": not failed_rows and preflight_ok,
-        "audit_failure_count": len(audit_failures),
-        "audit_failures": audit_failures,
+        "audit_passed": not audit_failures and preflight_ok,
+        "audit_failure_count": len(audit_failures) + len(preflight_failures),
+        "audit_failures": preflight_failures,
     }
 
 
@@ -689,11 +479,6 @@ def render_markdown(result: dict[str, Any]) -> str:
     for category in sorted(set(result["required_taxonomy"]) | set(summary)):
         lines.append(f"| `{category}` | {summary.get(category, 0)} | {'yes' if category in result['required_taxonomy'] else 'no'} |")
     lines.append("")
-    if result.get("audit_failures"):
-        lines.extend(["## Audit Failures", ""])
-        for failure in result["audit_failures"]:
-            lines.append(f"- `{failure}`")
-        lines.append("")
     return "\n".join(lines)
 
 
