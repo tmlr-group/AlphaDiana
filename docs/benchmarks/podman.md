@@ -136,6 +136,14 @@ mirror such as `HF_ENDPOINT=https://hf-mirror.com` where appropriate, keep
 `HF_TOKEN` for gated datasets. Do not commit credentials, machine-specific
 cache paths, or absolute local worktree paths.
 
+Image pulls and provider wheels can have separate CN-host failure modes. If a
+Docker Hub base image such as `python:3.11` is unavailable, use an
+operator-approved mirror or preloaded local image and tag it to the image name
+expected by the smoke config. For local vLLM, install wheels compatible with
+the host driver/CUDA runtime; the PR 39 CN report saw CUDA-13-linked wheels fail
+on driver 535/CUDA 12.2 and used a tested CUDA-12-compatible vLLM environment
+instead.
+
 Build the local Podman images used by the standard-reasoning matrix:
 
 ```bash
