@@ -5,11 +5,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from alphadiana.utils.lifecycle_events import LIFECYCLE_STAGES
 
 
 REQUIRED_TAXONOMY = [
@@ -26,6 +29,7 @@ REQUIRED_TAXONOMY = [
     "provider_failure",
     "provider_empty_response",
     "reasoning_only_length",
+    "external_provider_saturated",
     "scorer_failure",
     "no_task_json",
     "metadata_missing",
@@ -141,6 +145,82 @@ def find_task_files(results_dir: Path, run_id: str) -> dict[str, Path]:
     return {}
 
 
+def find_lifecycle_file(results_dir: Path, run_id: str, task_id: str) -> Path | None:
+    candidates = [
+        results_dir / run_id / run_id / "lifecycle" / f"{task_id}.jsonl",
+        results_dir / run_id / "lifecycle" / f"{task_id}.jsonl",
+    ]
+    for path in candidates:
+        if path.exists() and path.is_file():
+            return path
+    return None
+
+
+def _read_lifecycle_events(path: Path | None) -> list[dict[str, Any]]:
+    if path is None or not path.exists():
+        return []
+    events: list[dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            events.append(payload)
+    return events
+
+
+def _infer_lifecycle_flags_from_log(log_text: str) -> dict[str, bool]:
+    text = log_text or ""
+    flags = {stage: False for stage in LIFECYCLE_STAGES}
+    if "response headers received" in text or "streaming response established" in text:
+        flags["provider_connected"] = True
+    completed_match = re.search(
+        r"completed stream: output_chars=(\d+) reasoning_chars=(\d+)",
+        text,
+    )
+    if completed_match:
+        output_chars = int(completed_match.group(1))
+        reasoning_chars = int(completed_match.group(2))
+        if output_chars > 0:
+            flags["content_seen"] = True
+            flags["first_token_seen"] = True
+        if reasoning_chars > 0:
+            flags["reasoning_seen"] = True
+            flags["first_token_seen"] = True
+    if "logprob" in text.lower() and "count=" in text.lower():
+        flags["logprobs_seen"] = True
+    if '"usage"' in text or "completion_tokens" in text:
+        flags["usage_seen"] = True
+    return flags
+
+
+def _lifecycle_summary(
+    events: list[dict[str, Any]],
+    *,
+    log_text: str,
+) -> dict[str, Any]:
+    event_stages = [str(event.get("stage") or "") for event in events if event.get("stage")]
+    flags = {stage: False for stage in LIFECYCLE_STAGES}
+    for stage in event_stages:
+        if stage in flags:
+            flags[stage] = True
+    inferred = _infer_lifecycle_flags_from_log(log_text)
+    inferred_stages: list[str] = []
+    for stage, seen in inferred.items():
+        if seen and not flags.get(stage):
+            flags[stage] = True
+            inferred_stages.append(stage)
+    flags["audit_seen"] = True
+    return {
+        "event_count": len(events),
+        "stages": event_stages,
+        "inferred_stages": inferred_stages,
+        "last_stage": event_stages[-1] if event_stages else "",
+        "stage_flags": flags,
+    }
+
+
 def _count_artifact_files(path: Path) -> int:
     if path.is_file():
         return 1
@@ -254,6 +334,10 @@ def _evidence_text(record: dict[str, Any] | None, log_text: str = "") -> str:
 def classify_failure(record: dict[str, Any] | None, *, log_text: str = "", missing_metadata: bool = False) -> str:
     if record is None:
         evidence = _evidence_text(None, log_text)
+        if "running:" in evidence and "waiting:" in evidence and "gpu kv cache usage" in evidence:
+            return "external_provider_saturated"
+        if "provider_empty_response" in evidence or "empty sse body" in evidence:
+            return "provider_empty_response"
         if "short-name" in evidence or "unqualified" in evidence or "sweb.env" in evidence:
             return "podman_short_name_image"
         if "api version" in evidence or "client version" in evidence:
@@ -279,7 +363,11 @@ def classify_failure(record: dict[str, Any] | None, *, log_text: str = "", missi
     evidence = _evidence_text(record, log_text)
 
     if (
-        int(metadata.get("provider_proxy_empty_content_reasoning_and_tool_response_count") or 0) > 0
+        metadata.get("provider_empty_response") is True
+        or "provider_empty_response" in evidence
+        or "empty_sse_body" in evidence
+        or "empty sse body" in evidence
+        or int(metadata.get("provider_proxy_empty_content_reasoning_and_tool_response_count") or 0) > 0
         or int(metadata.get("provider_proxy_empty_content_and_reasoning_response_count") or 0) > 0
     ):
         return "provider_empty_response"
@@ -301,6 +389,8 @@ def classify_failure(record: dict[str, Any] | None, *, log_text: str = "", missi
         return "scorer_failure"
     if "contextoverflow" in evidence or "vllmvalidationerror" in evidence:
         return "provider_failure"
+    if "running:" in evidence and "waiting:" in evidence and "gpu kv cache usage" in evidence:
+        return "external_provider_saturated"
     if "provider" in error_type or "provider" in evidence or "api error" in evidence:
         return "provider_failure"
     if "timeout" in finish_reason or "timeout" in error_type or "timed out" in evidence:
@@ -354,6 +444,9 @@ def audit(
         for task_id in cell["selected_task_ids"]:
             task_path = task_files.get(task_id)
             record = _read_first_record(task_path) if task_path else None
+            lifecycle_path = find_lifecycle_file(results_dir, run_id, task_id)
+            lifecycle_events = _read_lifecycle_events(lifecycle_path)
+            lifecycle = _lifecycle_summary(lifecycle_events, log_text=log_text)
             failures: list[str] = []
             result_status = "loaded" if record else "no_task_json"
             if not task_path or record is None:
@@ -419,6 +512,10 @@ def audit(
                 failure_category = "no_task_json"
                 log_failure_category = classify_failure(None, log_text=log_text)
 
+            if task_path and record is not None:
+                lifecycle["stage_flags"]["task_json_written"] = True
+            if log_exists:
+                lifecycle["stage_flags"].setdefault("raw_log_seen", True)
             taxonomy[failure_category] += 1
             row = {
                 "tier": cell["tier"],
@@ -433,6 +530,13 @@ def audit(
                 "task_json_exists": bool(task_path and task_path.exists()),
                 "raw_log_path": _repo_relative(log_path, root),
                 "raw_log_exists": log_exists,
+                "lifecycle_path": _repo_relative(lifecycle_path, root) if lifecycle_path else "",
+                "lifecycle_exists": bool(lifecycle_path and lifecycle_path.exists()),
+                "lifecycle_event_count": lifecycle["event_count"],
+                "lifecycle_stages": lifecycle["stages"],
+                "lifecycle_inferred_stages": lifecycle["inferred_stages"],
+                "last_lifecycle_stage": lifecycle["last_stage"],
+                "lifecycle_stage_flags": lifecycle["stage_flags"],
                 "score_status": str(record.get("score_status") or "") if record else "",
                 "score": record.get("score") if record else None,
                 "correct": record.get("correct") if record else None,
@@ -514,14 +618,15 @@ def _render_markdown(result: dict[str, Any]) -> str:
         "",
         "## Rows",
         "",
-        "| tier | agent | expected_task_id | status | category | gating | failures |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
+        "| tier | agent | expected_task_id | status | category | last_stage | gating | failures |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
     ])
     for row in result["rows"]:
         failures = ", ".join(row["audit_failures"]) if row["audit_failures"] else "-"
         lines.append(
             f"| {row['tier']} | {row['agent']} | {row['expected_task_id']} | "
             f"{row['audit_status']} | {row['failure_category']} | "
+            f"{row['last_lifecycle_stage'] or '-'} | "
             f"{row['gating_failure']} | {failures} |"
         )
     lines.append("")

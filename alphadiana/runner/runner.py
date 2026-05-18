@@ -29,6 +29,7 @@ from alphadiana.utils.math_answer import (
     extract_numeric_answer_candidate,
     parse_numeric_answer,
 )
+from alphadiana.utils.lifecycle_events import append_lifecycle_event
 
 if TYPE_CHECKING:
     from alphadiana.agent.base import Agent
@@ -437,6 +438,16 @@ def _bind_runtime_task(task: BenchmarkTask, sample_index: int) -> BenchmarkTask:
     return replace(task, metadata=metadata)
 
 
+def _strip_lifecycle_metadata(task: BenchmarkTask) -> BenchmarkTask:
+    """Return a task copy without runner-only lifecycle metadata."""
+    metadata = {
+        key: value
+        for key, value in dict(task.metadata or {}).items()
+        if not str(key).startswith("_lifecycle_")
+    }
+    return replace(task, metadata=metadata)
+
+
 class Runner:
     """Top-level orchestrator that loads config, initializes components,
     runs the evaluation loop, and writes results."""
@@ -624,6 +635,38 @@ class Runner:
                     )
 
         logger.info("Total work items: %d (tasks=%d, num_samples=%d)", len(work_items), len(tasks), num_samples)
+
+        def _lifecycle_path_for(task_id: str, sample_index: int) -> Path:
+            suffix = f"{task_id}.jsonl" if sample_index <= 0 else f"{task_id}.sample_{sample_index}.jsonl"
+            return self.result_store.output_dir / self.config.run_id / "lifecycle" / suffix
+
+        def _record_lifecycle(
+            task: BenchmarkTask,
+            sample_index: int,
+            stage: str,
+            metadata: dict | None = None,
+        ) -> None:
+            append_lifecycle_event(
+                _lifecycle_path_for(task.task_id, sample_index),
+                run_id=self.config.run_id,
+                task_id=task.task_id,
+                sample_index=sample_index,
+                stage=stage,
+                metadata=metadata or {},
+            )
+
+        for selected_task, selected_sample_index in work_items:
+            _record_lifecycle(
+                selected_task,
+                selected_sample_index,
+                "selected",
+                {
+                    "agent": self.config.agent_name,
+                    "benchmark": self.config.benchmark_name,
+                    "scorer": self.config.scorer_name,
+                    "max_concurrent": self.config.max_concurrent,
+                },
+            )
 
         # Initialize plain-text dashboard.
         dashboard = None
@@ -1705,9 +1748,22 @@ class Runner:
             nonlocal shared_session, predeployed_started_work_items
             task, sample_index = work_item
             runtime_task = _bind_runtime_task(task, sample_index)
+            runtime_task.metadata["_lifecycle_path"] = str(
+                _lifecycle_path_for(task.task_id, sample_index)
+            )
+            runtime_task.metadata["_lifecycle_run_id"] = self.config.run_id
             if fresh_predeployed_mode and predeployed_session_queue is not None:
                 with predeployed_work_start_lock:
                     predeployed_started_work_items += 1
+            _record_lifecycle(
+                task,
+                sample_index,
+                "launched",
+                {
+                    "agent": self.config.agent_name,
+                    "execution_id": runtime_task.metadata.get("execution_id", ""),
+                },
+            )
             # Acquire sandbox session: from pool (concurrent) or shared (sequential).
             sandbox_session = None
             used_pool = False
@@ -1727,12 +1783,41 @@ class Runner:
                     sandbox_session = self.sandbox.create_session(task=runtime_task)
                 else:
                     sandbox_session = self.sandbox.create_session()
+            if sandbox_session is not None:
+                try:
+                    lifecycle_sandbox_metadata = _sanitize_success_sandbox_metadata(
+                        sandbox_session.metadata()
+                    )
+                except Exception:
+                    lifecycle_sandbox_metadata = {}
+                _record_lifecycle(
+                    task,
+                    sample_index,
+                    "sandbox_started",
+                    {
+                        "sandbox_id": str(getattr(sandbox_session, "sandbox_id", "") or ""),
+                        "container_engine": lifecycle_sandbox_metadata.get("container_engine", ""),
+                        "sandbox_backend": getattr(self.sandbox, "name", type(self.sandbox).__name__)
+                        if self.sandbox is not None
+                        else "",
+                    },
+                )
             response_sandbox_id = ""
             start = time.monotonic()
             response = None
             try:
                 # Run the agent.
                 response = self.agent.solve(runtime_task, sandbox_session)
+                _record_lifecycle(
+                    task,
+                    sample_index,
+                    "agent_done",
+                    {
+                        "finish_reason": getattr(response, "finish_reason", ""),
+                        "answer_present": bool(getattr(response, "answer", None)),
+                        "raw_output_chars": len(str(getattr(response, "raw_output", "") or "")),
+                    },
+                )
                 response.metadata.setdefault("sample_index", sample_index)
                 response.metadata.setdefault(
                     "execution_id",
@@ -1767,9 +1852,29 @@ class Runner:
                     )
                 _normalize_numeric_response_answer(self.config, response)
                 # Score the result.
-                score = self.scorer.score(runtime_task, response)
+                _record_lifecycle(
+                    task,
+                    sample_index,
+                    "scorer_started",
+                    {"scorer": self.config.scorer_name},
+                )
+                persisted_task = _strip_lifecycle_metadata(runtime_task)
+                score = self.scorer.score(persisted_task, response)
                 # Store the result.
-                self.result_store.append(runtime_task, response, score, sample_index=sample_index)
+                self.result_store.append(persisted_task, response, score, sample_index=sample_index)
+                _record_lifecycle(
+                    task,
+                    sample_index,
+                    "task_json_written",
+                    {
+                        "task_json_path": str(
+                            self.result_store.output_dir
+                            / self.config.run_id
+                            / "tasks"
+                            / f"{task.task_id}.json"
+                        ),
+                    },
+                )
                 # Log predicted vs ground_truth comparison.
                 sample_tag = f" [sample {sample_index}]" if num_samples > 1 else ""
                 logger.info(
@@ -1892,10 +1997,24 @@ class Runner:
                 except Exception:
                     pass
                 self.result_store.append_error(
-                    runtime_task,
+                    _strip_lifecycle_metadata(runtime_task),
                     error=_build_error_info(exc),
                     response=error_response,
                     sample_index=sample_index,
+                )
+                _record_lifecycle(
+                    task,
+                    sample_index,
+                    "task_json_written",
+                    {
+                        "task_json_path": str(
+                            self.result_store.output_dir
+                            / self.config.run_id
+                            / "tasks"
+                            / f"{task.task_id}.json"
+                        ),
+                        "error_type": getattr(exc, "error_type", type(exc).__name__),
+                    },
                 )
                 raise
             finally:
