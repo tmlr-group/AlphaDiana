@@ -20,6 +20,7 @@ from alphadiana.benchmark.base import load_dataset_with_retry
 from alphadiana.container_runtime.podman_socket import (
     default_podman_socket_path,
     podman_socket_env,
+    resolve_podman_docker_api_version,
 )
 from alphadiana.utils.swebench import (
     build_swebench_instance,
@@ -347,7 +348,7 @@ def preflight(
     docker_probe: dict[str, Any]
     try:
         import docker
-        api_version = os.environ.get("ALPHADIANA_PODMAN_DOCKER_API_VERSION", "").strip()
+        api_version = resolve_podman_docker_api_version()
         with _patched_env(podman_socket_env(socket_path)):
             client = docker.from_env(version=api_version) if api_version else docker.from_env()
             docker_probe = {

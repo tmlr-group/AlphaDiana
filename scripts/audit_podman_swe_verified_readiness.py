@@ -38,6 +38,22 @@ REQUIRED_TAXONOMY = [
     "other",
 ]
 
+INFRASTRUCTURE_GATING_CATEGORIES = {
+    "podman_socket",
+    "docker_api_version",
+    "podman_short_name_image",
+    "image_pull_or_proxy",
+    "hf_dataset_access",
+    "swebench_env_build",
+    "swebench_instance_build",
+    "agent_runtime",
+    "agent_empty_output",
+    "provider_failure",
+    "provider_empty_response",
+    "external_provider_saturated",
+    "scorer_failure",
+}
+
 
 def _as_dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
@@ -200,7 +216,8 @@ def _lifecycle_summary(
     *,
     log_text: str,
 ) -> dict[str, Any]:
-    event_stages = [str(event.get("stage") or "") for event in events if event.get("stage")]
+    event_stages_all = [str(event.get("stage") or "") for event in events if event.get("stage")]
+    event_stages = list(dict.fromkeys(event_stages_all))
     flags = {stage: False for stage in LIFECYCLE_STAGES}
     for stage in event_stages:
         if stage in flags:
@@ -216,7 +233,7 @@ def _lifecycle_summary(
         "event_count": len(events),
         "stages": event_stages,
         "inferred_stages": inferred_stages,
-        "last_stage": event_stages[-1] if event_stages else "",
+        "last_stage": event_stages_all[-1] if event_stages_all else "",
         "stage_flags": flags,
     }
 
@@ -338,10 +355,10 @@ def classify_failure(record: dict[str, Any] | None, *, log_text: str = "", missi
             return "external_provider_saturated"
         if "provider_empty_response" in evidence or "empty sse body" in evidence:
             return "provider_empty_response"
-        if "short-name" in evidence or "unqualified" in evidence or "sweb.env" in evidence:
-            return "podman_short_name_image"
         if "api version" in evidence or "client version" in evidence:
             return "docker_api_version"
+        if "short-name" in evidence or "unqualified" in evidence or "sweb.env" in evidence:
+            return "podman_short_name_image"
         if "podman" in evidence and ("socket" in evidence or "connection refused" in evidence):
             return "podman_socket"
         if "buildimageerror" in evidence or "environment image" in evidence:
@@ -373,10 +390,10 @@ def classify_failure(record: dict[str, Any] | None, *, log_text: str = "", missi
         return "provider_empty_response"
     if ("length" in finish_reason or "max_tokens" in finish_reason) and record.get("reasoning_trajectory"):
         return "reasoning_only_length"
-    if "short-name" in evidence or "unqualified" in evidence or "sweb.env" in evidence:
-        return "podman_short_name_image"
     if "api version" in evidence or "client version" in evidence:
         return "docker_api_version"
+    if "short-name" in evidence or "unqualified" in evidence or "sweb.env" in evidence:
+        return "podman_short_name_image"
     if "podman" in evidence and ("socket" in evidence or "connection refused" in evidence):
         return "podman_socket"
     if "pull access denied" in evidence or "manifest unknown" in evidence or "proxyconnect" in evidence:
@@ -508,6 +525,8 @@ def audit(
                     failures.append("provider_empty_response_observed")
                 if failure_category == "podman_short_name_image":
                     failures.append("unqualified_podman_short_name_image")
+                if failure_category in INFRASTRUCTURE_GATING_CATEGORIES:
+                    failures.append(f"infrastructure_failure:{failure_category}")
             else:
                 failure_category = "no_task_json"
                 log_failure_category = classify_failure(None, log_text=log_text)

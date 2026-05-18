@@ -231,6 +231,30 @@ def test_swe_audit_keeps_missing_json_row_visible_with_lifecycle(tmp_path: Path)
     assert "no_task_json" in row["audit_failures"]
 
 
+def test_swe_audit_reports_unique_lifecycle_stage_transitions(tmp_path: Path) -> None:
+    config_dir, results_dir, logs_dir, preflight, run_id = _prepare(tmp_path)
+    _write_task(
+        results_dir,
+        logs_dir,
+        run_id=run_id,
+        task_id=TASK_IDS[0],
+        record=_record(run_id=run_id, task_id=TASK_IDS[0]),
+    )
+    _write_lifecycle(
+        results_dir,
+        run_id=run_id,
+        task_id=TASK_IDS[0],
+        stages=["selected", "launched", "content_seen", "content_seen", "task_json_written"],
+    )
+
+    result = _run_audit(tmp_path, config_dir, results_dir, logs_dir, preflight)
+
+    row = [row for row in result["rows"] if row["task_id"] == TASK_IDS[0]][0]
+    assert row["lifecycle_event_count"] == 5
+    assert row["lifecycle_stages"] == ["selected", "launched", "content_seen", "task_json_written"]
+    assert row["last_lifecycle_stage"] == "task_json_written"
+
+
 def test_swe_audit_fails_missing_podman_metadata_and_artifacts(tmp_path: Path) -> None:
     config_dir, results_dir, logs_dir, preflight, run_id = _prepare(tmp_path)
     for task_id in TASK_IDS:
@@ -278,6 +302,7 @@ def test_swe_audit_classifies_provider_empty_response_as_gating(tmp_path: Path) 
     assert result["audit_passed"] is False
     assert failed["failure_category"] == "provider_empty_response"
     assert "provider_empty_response_observed" in failed["audit_failures"]
+    assert "infrastructure_failure:provider_empty_response" in failed["audit_failures"]
 
 
 def test_swe_audit_reasoning_only_length_is_not_provider_empty(tmp_path: Path) -> None:
@@ -298,3 +323,22 @@ def test_swe_audit_reasoning_only_length_is_not_provider_empty(tmp_path: Path) -
     assert result["audit_passed"] is True
     assert row["failure_category"] == "reasoning_only_length"
     assert row["assistant_evidence_present"] is True
+
+
+def test_swe_audit_prioritizes_docker_api_version_over_env_image_text(tmp_path: Path) -> None:
+    config_dir, results_dir, logs_dir, preflight, run_id = _prepare(tmp_path)
+    record = _record(
+        run_id=run_id,
+        task_id=TASK_IDS[0],
+        error={
+            "error_type": "RuntimeError",
+            "error": "platform is not supported for API version < 1.41; FROM localhost/sweb.env.py:latest",
+        },
+    )
+    _write_task(results_dir, logs_dir, run_id=run_id, task_id=TASK_IDS[0], record=record)
+
+    result = _run_audit(tmp_path, config_dir, results_dir, logs_dir, preflight)
+
+    row = [row for row in result["rows"] if row["task_id"] == TASK_IDS[0]][0]
+    assert row["failure_category"] == "docker_api_version"
+    assert "infrastructure_failure:docker_api_version" in row["audit_failures"]

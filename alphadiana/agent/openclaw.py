@@ -1596,6 +1596,13 @@ class OpenClawAgent(Agent):
             )
 
         start = time.time()
+        lifecycle_seen_stages: set[str] = set()
+
+        def _record_task_lifecycle_once(stage: str, metadata: dict[str, Any] | None = None) -> None:
+            if stage in lifecycle_seen_stages:
+                return
+            lifecycle_seen_stages.add(stage)
+            _record_task_lifecycle(task, stage, metadata or {})
 
         # OpenClaw's gateway builds its own system prompt internally.
         # We only send the user message, optionally prefixed with a custom system prompt.
@@ -1843,8 +1850,7 @@ class OpenClawAgent(Agent):
                             status_code,
                             content_type or "<empty>",
                         )
-                        _record_task_lifecycle(
-                            task,
+                        _record_task_lifecycle_once(
                             "provider_connected",
                             {
                                 "attempt": attempt,
@@ -1880,15 +1886,13 @@ class OpenClawAgent(Agent):
                                     reasoning_content = msg.get("reasoning_content", "")
                                     if assistant_content:
                                         chunks.append(_coerce_text_content(assistant_content))
-                                        _record_task_lifecycle(
-                                            task,
+                                        _record_task_lifecycle_once(
                                             "content_seen",
                                             {"attempt": attempt, "chars": len(_coerce_text_content(assistant_content))},
                                         )
                                     elif reasoning_content:
                                         reasoning_chunks.append(_coerce_text_content(reasoning_content))
-                                        _record_task_lifecycle(
-                                            task,
+                                        _record_task_lifecycle_once(
                                             "reasoning_seen",
                                             {"attempt": attempt, "chars": len(_coerce_text_content(reasoning_content))},
                                         )
@@ -1897,15 +1901,14 @@ class OpenClawAgent(Agent):
                                     start_index=0,
                                 )
                                 if assistant_content or reasoning_content or attempt_logprob_records:
-                                    _record_task_lifecycle(task, "first_token_seen", {"attempt": attempt})
+                                    _record_task_lifecycle_once("first_token_seen", {"attempt": attempt})
                                 if attempt_logprob_records:
-                                    _record_task_lifecycle(
-                                        task,
+                                    _record_task_lifecycle_once(
                                         "logprobs_seen",
                                         {"attempt": attempt, "count": len(attempt_logprob_records)},
                                     )
                                 if response_json.get("usage"):
-                                    _record_task_lifecycle(task, "usage_seen", {"attempt": attempt})
+                                    _record_task_lifecycle_once("usage_seen", {"attempt": attempt})
                         else:
                             # SSE path (text/event-stream or unspecified Content-Type).
                             if status_code >= 400:
@@ -1977,15 +1980,13 @@ class OpenClawAgent(Agent):
                                     reasoning_content = delta.get("reasoning_content")
                                     if content:
                                         chunks.append(content)
-                                        _record_task_lifecycle(
-                                            task,
+                                        _record_task_lifecycle_once(
                                             "content_seen",
                                             {"attempt": attempt, "chars": len(_coerce_text_content(content))},
                                         )
                                     if reasoning_content:
                                         reasoning_chunks.append(_coerce_text_content(reasoning_content))
-                                        _record_task_lifecycle(
-                                            task,
+                                        _record_task_lifecycle_once(
                                             "reasoning_seen",
                                             {"attempt": attempt, "chars": len(_coerce_text_content(reasoning_content))},
                                         )
@@ -1995,16 +1996,15 @@ class OpenClawAgent(Agent):
                                     )
                                     if chunk_records:
                                         attempt_logprob_records.extend(chunk_records)
-                                        _record_task_lifecycle(
-                                            task,
+                                        _record_task_lifecycle_once(
                                             "logprobs_seen",
                                             {"attempt": attempt, "count": len(chunk_records)},
                                         )
                                     if chunk_json.get("usage"):
                                         response_json = chunk_json
-                                        _record_task_lifecycle(task, "usage_seen", {"attempt": attempt})
+                                        _record_task_lifecycle_once("usage_seen", {"attempt": attempt})
                                     if content or reasoning_content or chunk_records:
-                                        _record_task_lifecycle(task, "first_token_seen", {"attempt": attempt})
+                                        _record_task_lifecycle_once("first_token_seen", {"attempt": attempt})
 
                 if logprob_proxy is not None:
                     attempt_proxy_logprob_records = logprob_proxy.drain_records()
@@ -2080,7 +2080,7 @@ class OpenClawAgent(Agent):
                     cumulative_token_usage["completion_tokens"] += int(attempt_usage.get("completion_tokens", 0))
                     cumulative_token_usage["total_tokens"] += int(attempt_usage.get("total_tokens", 0))
                     if int(attempt_usage.get("completion_tokens", 0) or 0) > 0:
-                        _record_task_lifecycle(task, "first_token_seen", {"attempt": attempt})
+                        _record_task_lifecycle_once("first_token_seen", {"attempt": attempt})
                 provider_empty_response_current = (
                     status_code == 200
                     and not raw_output

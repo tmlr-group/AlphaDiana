@@ -7,6 +7,8 @@ import yaml
 
 from alphadiana.config.experiment_config import ExperimentConfig
 from alphadiana.config.validator import ConfigValidator
+from alphadiana.sandbox.swebench_container import SWEBenchContainerSandbox
+from alphadiana.scorer.swe_bench import SWEBenchScorer
 
 
 CONFIG_DIR = Path("configs/smokes/podman_swe_verified_readiness")
@@ -120,4 +122,29 @@ def test_podman_swe_verified_runner_mentions_required_scopes() -> None:
     assert "validate_config || return" in script
     assert "run_preflight || return" in script
     assert "run_audit \"$completed\"" in script
+    assert "audit) shift; run_audit \"$*\"" in script
     assert "preflight\\t-" in script
+
+
+def test_podman_swe_defaults_to_docker_api_141(monkeypatch) -> None:
+    monkeypatch.delenv("ALPHADIANA_PODMAN_DOCKER_API_VERSION", raising=False)
+
+    sandbox = SWEBenchContainerSandbox()
+    sandbox.setup({"container_engine": "podman"})
+    scorer = SWEBenchScorer()
+    scorer.setup({"container_engine": "podman"})
+
+    assert sandbox._docker_api_version == "1.41"
+    assert scorer._docker_api_version == "1.41"
+
+
+def test_docker_swe_keeps_api_version_unset_by_default(monkeypatch) -> None:
+    monkeypatch.delenv("ALPHADIANA_PODMAN_DOCKER_API_VERSION", raising=False)
+
+    sandbox = SWEBenchContainerSandbox()
+    sandbox.setup({"container_engine": "docker"})
+    scorer = SWEBenchScorer()
+    scorer.setup({"container_engine": "docker"})
+
+    assert sandbox._docker_api_version == ""
+    assert scorer._docker_api_version == ""
