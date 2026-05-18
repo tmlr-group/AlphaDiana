@@ -100,6 +100,15 @@ def _task() -> BenchmarkTask:
     return BenchmarkTask(task_id="t1", problem="2+2?", ground_truth="4")
 
 
+def _swe_task() -> BenchmarkTask:
+    return BenchmarkTask(
+        task_id="swe_demo__repo-1",
+        problem="Fix the bug.",
+        ground_truth={},
+        metadata={"instance_id": "demo__repo-1", "repo": "demo/repo"},
+    )
+
+
 def _patch_network(monkeypatch: pytest.MonkeyPatch, responses: list[_FakeResponse]) -> None:
     import httpx
 
@@ -397,6 +406,46 @@ def test_retry_uses_only_final_successful_attempt_records(monkeypatch: pytest.Mo
     assert resp.metadata["logprob_source_attempt"] == 2
 
 
+def test_reasoning_only_length_extracts_swe_patch_and_preserves_reasoning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reasoning = (
+        "I can repair this with the following patch.\n"
+        "diff --git a/example.py b/example.py\n"
+        "--- a/example.py\n"
+        "+++ b/example.py\n"
+        "@@ -1 +1 @@\n"
+        "-bad\n"
+        "+good\n"
+    )
+    body = {
+        "choices": [
+            {
+                "message": {"content": "", "reasoning_content": reasoning},
+                "finish_reason": "length",
+            }
+        ],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 8, "total_tokens": 9},
+    }
+    response = _FakeResponse(
+        headers={"content-type": "application/json"},
+        body_text=json.dumps(body),
+    )
+    _patch_network(monkeypatch, [response])
+
+    agent = OpenClawAgent()
+    agent.setup(_base_config(stream=False, max_attempts=1))
+
+    result = agent.solve(_swe_task())
+
+    assert result.answer.startswith("diff --git a/example.py b/example.py")
+    assert result.metadata["answer_source"] == "reasoning_content_patch"
+    assert result.metadata["raw_reasoning"] == reasoning
+    assert result.metadata["partial_reasoning_only"] is True
+    assert result.metadata["stop_reason"] == "length"
+    assert result.finish_reason == "length"
+
+
 def test_empty_assistant_error_preserves_logprob_records(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -437,6 +486,52 @@ def test_empty_assistant_error_preserves_logprob_records(
     assert partial.metadata["logprob_source"] == "gateway_response"
     assert partial.metadata["logprob_records"][0]["token"] == "tool"
     assert partial.token_entropy_stats["n_tokens"] == 1
+
+
+def test_streaming_done_only_is_provider_empty_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = _FakeResponse(
+        headers={"content-type": "text/event-stream"},
+        sse_lines=["data: [DONE]"],
+    )
+    _patch_network(monkeypatch, [response])
+
+    agent = OpenClawAgent()
+    agent.setup(_base_config(stream=True, max_attempts=1))
+
+    with pytest.raises(OpenClawRequestError) as exc_info:
+        agent.solve(_task())
+
+    partial = exc_info.value.partial_response
+    assert partial is not None
+    assert partial.metadata["failure_reason"] == "provider_empty_response"
+    assert partial.metadata["provider_empty_response"] is True
+    assert partial.metadata["provider_empty_response_no_content"] is True
+    assert partial.metadata["provider_empty_response_no_reasoning"] is True
+    assert partial.metadata["provider_empty_response_no_logprobs"] is True
+
+
+def test_streaming_empty_delta_is_provider_empty_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chunk = {"choices": [{"delta": {}, "finish_reason": "stop"}]}
+    response = _FakeResponse(
+        headers={"content-type": "text/event-stream"},
+        sse_lines=[f"data: {json.dumps(chunk)}", "data: [DONE]"],
+    )
+    _patch_network(monkeypatch, [response])
+
+    agent = OpenClawAgent()
+    agent.setup(_base_config(stream=True, max_attempts=1))
+
+    with pytest.raises(OpenClawRequestError) as exc_info:
+        agent.solve(_task())
+
+    partial = exc_info.value.partial_response
+    assert partial is not None
+    assert partial.metadata["failure_reason"] == "provider_empty_response"
+    assert partial.metadata["provider_empty_response"] is True
 
 
 def test_success_after_empty_attempt_does_not_reuse_failed_logprobs(

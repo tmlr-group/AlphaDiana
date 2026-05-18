@@ -118,6 +118,23 @@ def _write_task(results_dir: Path, logs_dir: Path, *, run_id: str, task_id: str,
     (task_dir / f"{task_id}.json").write_text(json.dumps([record]), encoding="utf-8")
 
 
+def _write_lifecycle(results_dir: Path, *, run_id: str, task_id: str, stages: list[str]) -> None:
+    lifecycle_dir = results_dir / run_id / run_id / "lifecycle"
+    lifecycle_dir.mkdir(parents=True, exist_ok=True)
+    lines = [
+        json.dumps({
+            "run_id": run_id,
+            "task_id": task_id,
+            "sample_index": 0,
+            "stage": stage,
+            "timestamp": "2026-05-19T00:00:00+00:00",
+            "metadata": {},
+        })
+        for stage in stages
+    ]
+    (lifecycle_dir / f"{task_id}.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def _prepare(tmp_path: Path, *, preflight_ok: bool = True) -> tuple[Path, Path, Path, Path, str]:
     config_dir = tmp_path / "configs"
     taskset_dir = tmp_path / "tasksets"
@@ -184,6 +201,34 @@ def test_swe_audit_fails_missing_task_json_explicitly(tmp_path: Path) -> None:
     assert missing[0]["failure_category"] == "no_task_json"
     assert missing[0]["gating_failure"] is True
     assert "no_task_json" in missing[0]["audit_failures"]
+
+
+def test_swe_audit_keeps_missing_json_row_visible_with_lifecycle(tmp_path: Path) -> None:
+    config_dir, results_dir, logs_dir, preflight, run_id = _prepare(tmp_path)
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    (logs_dir / f"{run_id}.log").write_text(
+        "OpenClaw attempt 1/1 response headers received: status=200 content_type=text/event-stream\n"
+        "OpenClaw attempt 1/1 streaming response established; waiting for SSE chunks\n",
+        encoding="utf-8",
+    )
+    _write_lifecycle(
+        results_dir,
+        run_id=run_id,
+        task_id=TASK_IDS[0],
+        stages=["selected", "launched", "sandbox_started"],
+    )
+
+    result = _run_audit(tmp_path, config_dir, results_dir, logs_dir, preflight)
+
+    row = [row for row in result["rows"] if row["task_id"] == TASK_IDS[0]][0]
+    assert result["audit_passed"] is False
+    assert row["result_status"] == "no_task_json"
+    assert row["failure_category"] == "no_task_json"
+    assert row["lifecycle_exists"] is True
+    assert row["last_lifecycle_stage"] == "sandbox_started"
+    assert row["lifecycle_stage_flags"]["provider_connected"] is True
+    assert row["lifecycle_stage_flags"]["task_json_written"] is False
+    assert "no_task_json" in row["audit_failures"]
 
 
 def test_swe_audit_fails_missing_podman_metadata_and_artifacts(tmp_path: Path) -> None:

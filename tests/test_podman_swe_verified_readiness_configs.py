@@ -103,6 +103,16 @@ def test_podman_swe_verified_readiness_configs_match_tiers() -> None:
     assert seen == {tier: EXPECTED_AGENTS for tier in EXPECTED_TIERS}
 
 
+def test_podman_swe_verified_long64_and_sample128_are_three_by_two() -> None:
+    for tier in ("long64", "sample128"):
+        payload = json.loads((TASKSET_DIR / f"{tier}.json").read_text(encoding="utf-8"))
+        configs = list(CONFIG_DIR.glob(f"*_{tier}.yaml"))
+        assert len(configs) == 3
+        assert {path.stem.removesuffix(f"_{tier}") for path in configs} == EXPECTED_AGENTS
+        assert payload["task_count"] == 2
+        assert len(payload["task_ids"]) == 2
+
+
 def test_podman_swe_verified_runner_mentions_required_scopes() -> None:
     script = Path("scripts/run_podman_swe_verified_readiness.sh").read_text(encoding="utf-8")
     for scope in ("validate", "preflight", "smoke", "pilot32", "long64", "sample128", "audit", "auto"):
