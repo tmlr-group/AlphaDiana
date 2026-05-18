@@ -137,6 +137,9 @@ def test_podman_swe_defaults_to_docker_api_141(monkeypatch) -> None:
 
     assert sandbox._docker_api_version == "1.41"
     assert scorer._docker_api_version == "1.41"
+    assert scorer._git_clone_retries == 6
+    assert scorer._git_clone_retry_sleep_sec == 10
+    assert scorer._git_clone_filter == "blob:none"
 
 
 def test_docker_swe_keeps_api_version_unset_by_default(monkeypatch) -> None:
@@ -149,6 +152,9 @@ def test_docker_swe_keeps_api_version_unset_by_default(monkeypatch) -> None:
 
     assert sandbox._docker_api_version == ""
     assert scorer._docker_api_version == ""
+    assert scorer._git_clone_retries == 3
+    assert scorer._git_clone_retry_sleep_sec == 5
+    assert scorer._git_clone_filter == ""
 
 
 def test_podman_swe_strips_from_platform_directives() -> None:
