@@ -42,6 +42,20 @@ from alphadiana.benchmark.base import BenchmarkTask
 logger = logging.getLogger(__name__)
 
 
+def _jsonl_from_stdout(raw_output: str) -> str:
+    lines: list[str] = []
+    for line in raw_output.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        lines.append(stripped)
+    return "".join(f"{line}\n" for line in lines)
+
+
 class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
     """In-container OpenCode runner for terminal-bench-2."""
 
@@ -203,6 +217,7 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
         session_id = ""
         events: list[dict[str, Any]] = []
         session_trace = ""
+        session_trace_source = ""
         test_output = ""
         verifier_result: Any | None = None
         logprob_proxy: LogprobCaptureProxy | None = None
@@ -299,6 +314,12 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
                 runtime.container_id,
                 f"{remote_home}/.opencode",
             )
+            if session_trace.strip():
+                session_trace_source = "opencode_session_files"
+            else:
+                session_trace = _jsonl_from_stdout(raw_output)
+                if session_trace.strip():
+                    session_trace_source = "stdout_jsonl_fallback"
             (runtime.workdir / "opencode_stdout.log").write_text(
                 raw_output,
                 encoding="utf-8",
@@ -390,6 +411,7 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
                 "logprob_probe_proxy_count": len(logprob_proxy_records),
                 "logprob_probe_record_count": len(logprob_records),
                 "logprob_source": logprob_source,
+                "session_trace_source": session_trace_source,
                 "session_id": session_id,
                 "test_output": test_output,
                 "verifier_status": verifier_result.status if verifier_result else "",
@@ -426,6 +448,7 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
                     "session_id": session_id,
                     "num_events": len(events),
                     "session_trace_present": bool(session_trace.strip()),
+                    "session_trace_source": session_trace_source,
                     "num_session_records": len(session_records),
                     "transport": "opencode_cli_container",
                 },

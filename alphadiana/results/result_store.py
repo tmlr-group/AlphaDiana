@@ -615,6 +615,7 @@ class ResultStore:
                     )
                     continue
                 record = normalize_legacy_timeout_zero_record(record)
+                record["score_status"] = infer_score_status(record)
                 key = (record["task_id"], record.get("sample_index", 0))
                 records[key] = record
         return list(records.values())
