@@ -407,6 +407,9 @@ class ZeroClawAgent(Agent):
             )
             or ""
         ).strip()
+        self._provider_proxy_normalize_system_messages = bool(
+            _parse_optional_bool(config.get("provider_proxy_normalize_system_messages", False))
+        )
         raw_temperature = config.get("temperature", 0.0)
         self._temperature = float(raw_temperature if raw_temperature not in ("", None) else 0.0)
         raw_top_p = config.get("top_p", None)
@@ -1441,7 +1444,11 @@ class ZeroClawAgent(Agent):
         logprob_proxy_records: list[dict] = []
         logprob_proxy_metadata: dict[str, Any] = {}
         try:
-            if self._logprob_capture["enabled"]:
+            use_provider_proxy = (
+                self._logprob_capture["enabled"]
+                or self._provider_proxy_normalize_system_messages
+            )
+            if use_provider_proxy:
                 proxy_api_key = secrets.token_urlsafe(24)
                 advertise_host = resolve_logprob_proxy_advertise_host(
                     self._provider_api_base,
@@ -1456,6 +1463,9 @@ class ZeroClawAgent(Agent):
                     upstream_api_key=self._provider_api_key,
                     proxy_api_key=proxy_api_key,
                     request_overrides=self._logprob_request_overrides(),
+                    inject_logprobs=self._logprob_capture["enabled"],
+                    normalize_system_messages=True,
+                    capture_request_summary=True,
                 )
                 logprob_proxy.start()
                 proxy_api_base = f"{logprob_proxy.proxy_url.rstrip('/')}/v1"
@@ -1470,6 +1480,8 @@ class ZeroClawAgent(Agent):
                     "logprob_proxy_url": proxy_api_base,
                     "logprob_proxy_upstream": logprob_proxy.upstream,
                     "logprob_proxy_request_overrides": self._logprob_request_overrides(),
+                    "logprob_proxy_inject_logprobs": self._logprob_capture["enabled"],
+                    "provider_proxy_normalize_system_messages": True,
                 }
             run_command = self._wrap_shell_command(self._build_run_command(paths), env)
             execute_long_running = getattr(sandbox, "execute_long_running", None)
@@ -1483,6 +1495,12 @@ class ZeroClawAgent(Agent):
                 result = sandbox.execute(run_command)
             if logprob_proxy is not None:
                 logprob_proxy_records = logprob_proxy.drain_records()
+                request_summaries = logprob_proxy.drain_request_summaries()
+                response_summaries = logprob_proxy.drain_response_summaries()
+                if request_summaries:
+                    logprob_proxy_metadata["provider_proxy_request_summaries"] = request_summaries
+                if response_summaries:
+                    logprob_proxy_metadata["provider_proxy_response_summaries"] = response_summaries
         finally:
             if logprob_proxy is not None:
                 logprob_proxy.stop()

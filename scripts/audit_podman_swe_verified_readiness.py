@@ -399,6 +399,13 @@ def classify_failure(record: dict[str, Any] | None, *, log_text: str = "", missi
         return "provider_empty_response"
     if ("length" in finish_reason or "max_tokens" in finish_reason) and record.get("reasoning_trajectory"):
         return "reasoning_only_length"
+    if (
+        score_status == "valid_scored"
+        and not error
+        and _assistant_evidence_present(record)
+        and not _observed_abnormal_trajectory(record)
+    ):
+        return "clean"
     if "api version" in evidence or "client version" in evidence:
         return "docker_api_version"
     if "buildimageerror" in evidence:
@@ -411,18 +418,18 @@ def classify_failure(record: dict[str, Any] | None, *, log_text: str = "", missi
         or re.search(r"(^|[\s:])sweb\.env", evidence)
     ):
         return "podman_short_name_image"
-    if "podman" in evidence and ("socket" in evidence or "connection refused" in evidence):
-        return "podman_socket"
-    if "pull access denied" in evidence or "manifest unknown" in evidence or "proxyconnect" in evidence:
-        return "image_pull_or_proxy"
-    if "report" in evidence and "swe-bench evaluation did not produce" in evidence:
-        return "scorer_failure"
     if "contextoverflow" in evidence or "vllmvalidationerror" in evidence:
         return "provider_failure"
     if "running:" in evidence and "waiting:" in evidence and "gpu kv cache usage" in evidence:
         return "external_provider_saturated"
     if "provider" in error_type or "provider" in evidence or "api error" in evidence:
         return "provider_failure"
+    if "podman" in evidence and ("socket" in evidence or "connection refused" in evidence):
+        return "podman_socket"
+    if "pull access denied" in evidence or "manifest unknown" in evidence or "proxyconnect" in evidence:
+        return "image_pull_or_proxy"
+    if "report" in evidence and "swe-bench evaluation did not produce" in evidence:
+        return "scorer_failure"
     if "timeout" in finish_reason or "timeout" in error_type or "timed out" in evidence:
         return "timeout"
     if not _assistant_evidence_present(record):
