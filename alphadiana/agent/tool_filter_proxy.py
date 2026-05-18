@@ -13,7 +13,7 @@ Usage:
     --api-key sk-... --model qwen \\
     --allow "" --strip-prompt-tokens "bash,Bash,shell,python,Python"
 """
-import argparse, json, re, sys, time
+import argparse, json, re, sys
 from aiohttp import web, ClientSession, ClientTimeout
 
 
@@ -33,8 +33,7 @@ def strip_prompt_mentions(text, tokens):
 
 class Proxy:
     def __init__(self, upstream, api_key, allow_patterns, block_patterns, model_rewrite,
-                 strip_prompt_tokens, strip_user_intro_tokens, harness_strip=None, ignore_providers=None,
-                 only_providers=None):
+                 strip_prompt_tokens, strip_user_intro_tokens, harness_strip=None, ignore_providers=None):
         self.upstream = upstream.rstrip("/")
         self.api_key = api_key
         self.allow = [re.compile(p, re.I) for p in (allow_patterns or [])]
@@ -43,18 +42,14 @@ class Proxy:
         self.strip_tokens = strip_prompt_tokens or []
         self.strip_user_intro_tokens = strip_user_intro_tokens or []
         self.harness_strip = harness_strip  # 'opencode' | 'openclaw' | 'zeroclaw' | None
-        self.replace_system_prompt = None  # set externally; if not None, REPLACE entire system prompt
-        self.reasoning_plain = False  # if True, merge reasoning into content WITHOUT tags (for OC AI SDK)
-        self.reasoning_tag = "reasoning"  # tag name used to wrap reasoning in delta.content (default "reasoning" for ZC; OC AI SDK expects "think")
-        self.inject_final_tool_call = False  # if True, when stream ends with finish_reason="stop", inject a synthetic tool_call chunk and change finish_reason to "tool_calls" — forces OC AI SDK to fire text-end on pure-text streams
         self.ignore_providers = ignore_providers or []  # OpenRouter provider routing
-        self.only_providers = only_providers or []      # OpenRouter provider.only=[...]
         self.reasoning_override = None  # set externally before run
         self.rename_reasoning = False  # rename OR responses message.reasoning -> message.reasoning_content
 
     def filter_tools(self, body):
         tools = body.get("tools") or []
-        n_orig = len(tools)
+        if not tools:
+            return body, 0, 0
         kept = []
         for t in tools:
             name = (t.get("function") or {}).get("name") or t.get("name") or ""
@@ -70,25 +65,9 @@ class Proxy:
         else:
             body.pop("tools", None)
             body.pop("tool_choice", None)
-        return body, n_orig, len(kept)
+        return body, len(tools), len(kept)
 
     def filter_prompt(self, body):
-        if self.replace_system_prompt is not None:
-            msgs = body.get("messages", [])
-            for m in msgs or []:
-                if m.get("role") != "system":
-                    continue
-                c = m.get("content")
-                if isinstance(c, str):
-                    before_len = len(c)
-                    m["content"] = self.replace_system_prompt
-                    return body, before_len, len(self.replace_system_prompt)
-                if isinstance(c, list):
-                    new_text = self.replace_system_prompt
-                    before_len = sum(len(p.get("text") or "") for p in c if isinstance(p, dict))
-                    m["content"] = [{"type": "text", "text": new_text}]
-                    return body, before_len, len(new_text)
-            return body, 0, 0
         if self.harness_strip:
             try:
                 from alphadiana.agent.harness_strip import strip_for_harness
@@ -179,16 +158,6 @@ class Proxy:
             body = json.loads(body_bytes)
         except json.JSONDecodeError:
             return web.Response(status=400, text="invalid JSON")
-        # Detect if this is a follow-up turn (already has assistant tool_calls in history).
-        # If so, skip --inject-final-tool-call to avoid infinite turn loop.
-        already_has_tool_history = False
-        for m in (body.get("messages") or []):
-            if m.get("role") == "assistant" and m.get("tool_calls"):
-                already_has_tool_history = True
-                break
-            if m.get("role") == "tool":  # tool_result message indicates tool was called
-                already_has_tool_history = True
-                break
         body, n_orig, n_kept = self.filter_tools(body)
         body, p_before, p_after = self.filter_prompt(body)
         body, u_before, u_after = self.filter_user_intro(body)
@@ -201,10 +170,6 @@ class Proxy:
                 if name not in ignore:
                     ignore.append(name)
             prov["ignore"] = ignore
-            body["provider"] = prov
-        if self.only_providers:
-            prov = body.get("provider") or {}
-            prov["only"] = list(self.only_providers)
             body["provider"] = prov
         if self.reasoning_override is not None:
             body["reasoning"] = dict(self.reasoning_override)
@@ -220,10 +185,8 @@ class Proxy:
             f"user-intro {u_before}->{u_after}; model={body.get('model')}\n"
         )
         body_bytes = json.dumps(body).encode()
-        timeout = ClientTimeout(total=3600)
-        # trust_env=True lets aiohttp pick up HTTPS_PROXY / HTTP_PROXY env vars,
-        # required on hosts that can only reach OpenRouter via an HTTP proxy.
-        async with ClientSession(timeout=timeout, trust_env=True) as s:
+        timeout = ClientTimeout(total=900)
+        async with ClientSession(timeout=timeout) as s:
             headers = {
                 k: v for k, v in request.headers.items()
                 if k.lower() not in ("host", "content-length", "authorization")
@@ -244,125 +207,65 @@ class Proxy:
                 )
                 ctype = (r.headers.get("Content-Type") or "").lower()
                 if not self.rename_reasoning:
-                    # pure passthrough fast path
                     await resp.prepare(request)
                     async for chunk in r.content.iter_chunked(4096):
                         await resp.write(chunk)
                     await resp.write_eof()
                     return resp
                 # rename mode = inline-think mode: convert message.reasoning into
-                # <reasoning>...</reasoning> prefix inside message.content so ZC raw_response captures it
+                # <think>...</think> prefix inside message.content so ZC raw_response captures it
                 if "text/event-stream" in ctype:
                     await resp.prepare(request)
                     # per-request state: think_state per choice index
                     # pre (no think yet) -> in (inside think) -> post (think closed)
                     think_state = {}
                     buf = b""
-                    stream_aborted = False
-                    try:
-                        async for chunk in r.content.iter_chunked(4096):
-                            buf += chunk
-                            while True:
-                                idx = buf.find(b"\n")
-                                if idx < 0: break
-                                line = buf[:idx]
-                                buf = buf[idx+1:]
-                                line_str = line.decode("utf-8", errors="replace")
-                                if line_str.startswith("data: "):
-                                    payload = line_str[6:]
-                                    if payload.strip() and payload.strip() != "[DONE]":
-                                        try:
-                                            d = json.loads(payload)
-                                            for ch in d.get("choices", []) or []:
-                                                ci = ch.get("index", 0)
-                                                st = think_state.get(ci, "pre")
-                                                for fld in ("delta", "message"):
-                                                    m = ch.get(fld)
-                                                    if not isinstance(m, dict): continue
-                                                    r_chunk = m.pop("reasoning", None) or m.pop("reasoning_content", None)
-                                                    m.pop("reasoning_details", None)
-                                                    content = m.get("content") or ""
-                                                    if self.reasoning_plain:
-                                                        # plain mode: no tags. Just merge reasoning into content.
-                                                        if r_chunk:
-                                                            m["content"] = r_chunk + (content or "")
+                    async for chunk in r.content.iter_chunked(4096):
+                        buf += chunk
+                        while True:
+                            idx = buf.find(b"\n")
+                            if idx < 0: break
+                            line = buf[:idx]
+                            buf = buf[idx+1:]
+                            line_str = line.decode("utf-8", errors="replace")
+                            if line_str.startswith("data: "):
+                                payload = line_str[6:]
+                                if payload.strip() and payload.strip() != "[DONE]":
+                                    try:
+                                        d = json.loads(payload)
+                                        for ch in d.get("choices", []) or []:
+                                            ci = ch.get("index", 0)
+                                            st = think_state.get(ci, "pre")
+                                            for fld in ("delta", "message"):
+                                                m = ch.get(fld)
+                                                if not isinstance(m, dict): continue
+                                                r_chunk = m.pop("reasoning", None) or m.pop("reasoning_content", None)
+                                                content = m.get("content") or ""
+                                                if r_chunk:
+                                                    if st == "pre":
+                                                        prefix = "<reasoning>" + r_chunk
+                                                        st = "in"
                                                     else:
-                                                        if r_chunk:
-                                                            if st == "pre":
-                                                                prefix = f"<{self.reasoning_tag}>" + r_chunk
-                                                                st = "in"
-                                                            else:
-                                                                prefix = r_chunk
-                                                            m["content"] = prefix + (content or "")
-                                                        elif content and st == "in":
-                                                            m["content"] = f"</{self.reasoning_tag}>\n" + content
-                                                            st = "post"
-                                                # close think tag on finish (only in tagged mode)
-                                                fr = ch.get("finish_reason")
-                                                if fr and st == "in" and not self.reasoning_plain:
-                                                    d_target = ch.get("delta") if isinstance(ch.get("delta"), dict) else ch.get("message")
-                                                    if isinstance(d_target, dict):
-                                                        d_target["content"] = (d_target.get("content") or "") + f"</{self.reasoning_tag}>\n"
+                                                        prefix = r_chunk
+                                                    m["content"] = prefix + (content or "")
+                                                elif content and st == "in":
+                                                    m["content"] = "</reasoning>\n" + content
                                                     st = "post"
-                                                think_state[ci] = st
-                                                # Inject synthetic tool_call before finish_reason=stop, change finish to tool_calls.
-                                                # This forces OC AI SDK to fire text-end on pure-reasoning streams that would otherwise hang.
-                                                # Skip injection on follow-up turns (already saw a tool_use in this conversation).
-                                                if self.inject_final_tool_call and fr == "stop" and not already_has_tool_history:
-                                                    # Emit synthetic tool_call chunk BEFORE current chunk
-                                                    synth_tc = {
-                                                        "id": d.get("id", "chatcmpl-synth"),
-                                                        "object": "chat.completion.chunk",
-                                                        "created": d.get("created", int(time.time())),
-                                                        "model": d.get("model", ""),
-                                                        "choices": [{
-                                                            "index": ci,
-                                                            "delta": {
-                                                                "role": "assistant",
-                                                                "tool_calls": [{
-                                                                    "index": 0,
-                                                                    "id": "call_synth_finalize",
-                                                                    "type": "function",
-                                                                    "function": {"name": "_noop", "arguments": "{}"},
-                                                                }],
-                                                            },
-                                                            "finish_reason": None,
-                                                        }],
-                                                    }
-                                                    await resp.write(b"data: " + json.dumps(synth_tc).encode("utf-8") + b"\n\n")
-                                                    # Mutate current chunk: change finish_reason to tool_calls
-                                                    ch["finish_reason"] = "tool_calls"
-                                            line = (b"data: " + json.dumps(d, ensure_ascii=False).encode("utf-8"))
-                                        except Exception as e:
-                                            pass
-                                await resp.write(line + b"\n")
-                    except Exception as e:
-                        # OR upstream stream truncated (TransferEncodingError, ClientPayloadError, etc.)
-                        # Synthesize a clean stream end so AI SDK's flush() fires and OC's run loop can terminate.
-                        stream_aborted = True
-                        sys.stderr.write(f"[stream-abort] {type(e).__name__}: {e}; synthesizing finish\n")
-                        try:
-                            # emit a synthetic finish_reason=stop chunk so AI SDK has finishReason set
-                            synth = {
-                                "id": "synthetic-abort",
-                                "object": "chat.completion.chunk",
-                                "created": int(time.time()),
-                                "choices": [{"index": 0, "delta": {"content": "", "role": "assistant"}, "finish_reason": "stop"}],
-                            }
-                            await resp.write(b"data: " + json.dumps(synth).encode("utf-8") + b"\n\n")
-                        except Exception:
-                            pass
-                    if buf and not stream_aborted:
+                                            # close think tag on finish
+                                            fr = ch.get("finish_reason")
+                                            if fr and st == "in":
+                                                d_target = ch.get("delta") if isinstance(ch.get("delta"), dict) else ch.get("message")
+                                                if isinstance(d_target, dict):
+                                                    d_target["content"] = (d_target.get("content") or "") + "</reasoning>\n"
+                                                st = "post"
+                                            think_state[ci] = st
+                                        line = (b"data: " + json.dumps(d, ensure_ascii=False).encode("utf-8"))
+                                    except Exception as e:
+                                        pass
+                            await resp.write(line + b"\n")
+                    if buf:
                         await resp.write(buf)
-                    # always emit [DONE] so SSE consumers (AI SDK) trigger flush() and finalize
-                    try:
-                        await resp.write(b"data: [DONE]\n\n")
-                    except Exception:
-                        pass
-                    try:
-                        await resp.write_eof()
-                    except Exception:
-                        pass
+                    await resp.write_eof()
                     return resp
                 # non-streaming JSON
                 full = b""
@@ -375,9 +278,8 @@ class Proxy:
                             m = ch.get(fld)
                             if not isinstance(m, dict): continue
                             r_full = m.pop("reasoning", None) or m.pop("reasoning_content", None)
-                            m.pop("reasoning_details", None)
                             if r_full:
-                                m["content"] = f"<{self.reasoning_tag}>" + r_full + f"</{self.reasoning_tag}>\n" + (m.get("content") or "")
+                                m["content"] = "<reasoning>" + r_full + "</reasoning>\n" + (m.get("content") or "")
                     full = json.dumps(d, ensure_ascii=False).encode("utf-8")
                 except Exception:
                     pass
@@ -407,7 +309,7 @@ class Proxy:
                 return web.Response(body=await r.read(), status=r.status)
 
 
-def main(proxy_cls=None):
+def main():
     p = argparse.ArgumentParser()
     p.add_argument("--port", type=int, required=True)
     p.add_argument("--upstream", required=True)
@@ -439,32 +341,18 @@ def main(proxy_cls=None):
         "--ignore-providers", default="",
         help="comma-separated OpenRouter provider names to exclude (e.g. Phala for free-tier)",
     )
-    p.add_argument(
-        "--only-providers", default="",
-        help="comma-separated OpenRouter provider names to FORCE (sets provider.only=[...])",
-    )
     p.add_argument("--reasoning-exclude", action="store_true", help="set reasoning={exclude:true} (disable reasoning)")
     p.add_argument("--reasoning-effort", choices=["low", "medium", "high"], default=None)
     p.add_argument("--reasoning-max-tokens", type=int, default=None)
     p.add_argument("--rename-reasoning", action="store_true", help="rename OR responses message.reasoning -> message.reasoning_content for ZeroClaw compatibility")
-    p.add_argument("--replace-system-prompt", default=None, help="REPLACE entire system message content with this string (overrides --strip-prompt-tokens)")
-    p.add_argument("--reasoning-plain", action="store_true", help="when --rename-reasoning, merge reasoning into content without <reasoning> tags (for OC AI SDK compat)")
-    p.add_argument("--reasoning-tag", default="reasoning", help="tag name to wrap reasoning in delta.content; default 'reasoning' for ZC, use 'think' for OC AI SDK extractReasoningMiddleware")
-    p.add_argument("--inject-final-tool-call", action="store_true", help="when stream ends with finish_reason=stop, inject synthetic tool_call chunk and change finish to tool_calls (forces OC AI SDK to fire text-end on pure-reasoning streams)")
     args = p.parse_args()
     allow = [x.strip() for x in args.allow.split(",") if x.strip()]
     block = [x.strip() for x in args.block.split(",") if x.strip()]
     strip_tokens = [x.strip() for x in args.strip_prompt_tokens.split(",") if x.strip()]
     user_intro_tokens = [x.strip() for x in args.strip_user_intro_tokens.split(",") if x.strip()]
     ignore_providers = [x.strip() for x in args.ignore_providers.split(",") if x.strip()]
-    only_providers = [x.strip() for x in args.only_providers.split(",") if x.strip()]
-    cls = proxy_cls or Proxy
-    proxy = cls(args.upstream, args.api_key, allow, block, args.model, strip_tokens, user_intro_tokens, harness_strip=args.harness_strip, ignore_providers=ignore_providers, only_providers=only_providers)
+    proxy = Proxy(args.upstream, args.api_key, allow, block, args.model, strip_tokens, user_intro_tokens, harness_strip=args.harness_strip, ignore_providers=ignore_providers)
     proxy.rename_reasoning = args.rename_reasoning
-    proxy.replace_system_prompt = args.replace_system_prompt
-    proxy.reasoning_plain = args.reasoning_plain
-    proxy.reasoning_tag = args.reasoning_tag
-    proxy.inject_final_tool_call = args.inject_final_tool_call
     if args.reasoning_exclude or args.reasoning_effort or args.reasoning_max_tokens:
         ro = {}
         if args.reasoning_exclude: ro["exclude"] = True

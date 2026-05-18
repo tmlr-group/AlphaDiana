@@ -412,41 +412,6 @@ def check_redis_slave_attack(ports: list[int]) -> list[SecurityIssue]:
 
 # ─────────────────────────────── 预检模式 ──────────────────────────────────
 
-def check_kernel_keyring_capacity() -> list[SecurityIssue]:
-    """Warn when the rootless-podman session-keyring quota is too small.
-
-    Rootless ``podman run`` allocates a session keyring per container. Under
-    high task churn (e.g. OpenCode's fresh-per-task model on short benchmarks)
-    the default per-uid quota (``kernel.keys.maxkeys=200``,
-    ``kernel.keys.maxbytes=20000``) is exhausted before old keys GC. The
-    failure surfaces as ``error during container init: unable to join session
-    keyring: disk quota exceeded`` and looks like a disk issue but is not
-    (finding #12 of the Podman PR validation note).
-    """
-    issues: list[SecurityIssue] = []
-    if sys.platform != "linux":
-        return issues
-    paths_min = {
-        "/proc/sys/kernel/keys/maxkeys": 1000,
-        "/proc/sys/kernel/keys/maxbytes": 200_000,
-    }
-    for path, minimum in paths_min.items():
-        try:
-            with open(path, encoding="utf-8") as fh:
-                value = int(fh.read().strip() or "0")
-        except (OSError, ValueError):
-            continue
-        if value < minimum:
-            issues.append(SecurityIssue(
-                "WARN",
-                f"内核 keyring 配额过低: {path} = {value}",
-                "rootless podman 在高并发场景下会触发 'disk quota exceeded' (session keyring 满)",
-                f"sudo sysctl -w kernel.keys.maxkeys=2000 kernel.keys.maxbytes=200000  "
-                f"(并写入 /etc/sysctl.d/ 持久化)",
-            ))
-    return issues
-
-
 def run_preflight_check() -> bool:
     """
     执行所有启动前安全检查。
@@ -470,9 +435,6 @@ def run_preflight_check() -> bool:
 
     info("检查 OpenClaw / ROCK 服务安全配置...")
     all_issues += check_openclaw_security()
-
-    info("检查内核 keyring 配额 (rootless podman) ...")
-    all_issues += check_kernel_keyring_capacity()
 
     if not all_issues:
         ok("所有安全检查通过，允许启动。")
