@@ -9,6 +9,88 @@ from typing import Any
 from alphadiana.benchmark.base import BenchmarkTask
 
 
+_PODMAN_TEST_SPEC_CLASS_CACHE: dict[type, type] = {}
+
+
+def _image_has_registry(image_ref: str) -> bool:
+    if "/" not in image_ref:
+        return False
+    first = image_ref.split("/", 1)[0]
+    return first == "localhost" or "." in first or ":" in first
+
+
+def qualify_swebench_podman_image_ref(image_ref: str) -> str:
+    """Qualify SWE-bench local image names for Podman's short-name policy.
+
+    The official SWE-bench harness generates local build targets such as
+    ``sweb.base...`` and ``sweb.env...``. Docker accepts those short names, but
+    Podman can reject them on hosts without search registries configured. Treat
+    unqualified SWE-bench build outputs as local images and leave already
+    qualified registry references untouched.
+    """
+    ref = str(image_ref or "").strip()
+    if not ref or "://" in ref or _image_has_registry(ref):
+        return ref
+    return f"localhost/{ref}"
+
+
+def qualify_swebench_test_spec_for_podman(test_spec: Any) -> Any:
+    """Mutate a SWE-bench TestSpec so local image refs are Podman-qualified."""
+    spec_cls = type(test_spec)
+    if not getattr(spec_cls, "_alphadiana_podman_qualified", False):
+        try:
+            qualified_cls = _PODMAN_TEST_SPEC_CLASS_CACHE.get(spec_cls)
+            if qualified_cls is None:
+
+                class PodmanQualifiedTestSpec(spec_cls):  # type: ignore[misc, valid-type]
+                    _alphadiana_podman_qualified = True
+
+                    @property
+                    def base_image_key(self):  # type: ignore[no-untyped-def]
+                        return qualify_swebench_podman_image_ref(super().base_image_key)
+
+                    @property
+                    def env_image_key(self):  # type: ignore[no-untyped-def]
+                        return qualify_swebench_podman_image_ref(super().env_image_key)
+
+                    @property
+                    def instance_image_key(self):  # type: ignore[no-untyped-def]
+                        return qualify_swebench_podman_image_ref(super().instance_image_key)
+
+                PodmanQualifiedTestSpec.__name__ = f"PodmanQualified{spec_cls.__name__}"
+                qualified_cls = PodmanQualifiedTestSpec
+                _PODMAN_TEST_SPEC_CLASS_CACHE[spec_cls] = qualified_cls
+            test_spec.__class__ = qualified_cls
+            return test_spec
+        except (TypeError, AttributeError):
+            pass
+
+    replacements: dict[str, str] = {}
+    for attr in ("base_image_key", "env_image_key", "instance_image_key"):
+        current = str(getattr(test_spec, attr, "") or "").strip()
+        qualified = qualify_swebench_podman_image_ref(current)
+        if current and qualified != current:
+            try:
+                setattr(test_spec, attr, qualified)
+                replacements[current] = qualified
+            except AttributeError:
+                replacements[current] = qualified
+
+    for attr in ("base_dockerfile", "env_dockerfile", "instance_dockerfile"):
+        value = getattr(test_spec, attr, None)
+        if not isinstance(value, str) or not value:
+            continue
+        updated = value
+        for old, new in replacements.items():
+            updated = updated.replace(old, new)
+        if updated != value:
+            try:
+                setattr(test_spec, attr, updated)
+            except AttributeError:
+                pass
+    return test_spec
+
+
 def json_field_to_string(value: Any, *, default: str = "[]") -> str:
     """Return a stable JSON-string representation expected by swebench."""
     if value is None:

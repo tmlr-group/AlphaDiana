@@ -171,6 +171,21 @@ records with matching float/int16 sidecars.
 See
 [`context/podman-pr-review-repair/README.md`](../../context/podman-pr-review-repair/README.md).
 
+On May 18, 2026 +0800, Phase 9 added a dedicated opt-in SWE-bench Verified
+Podman readiness matrix under
+`configs/smokes/podman_swe_verified_readiness/`, plus
+`scripts/run_podman_swe_verified_readiness.sh`,
+`scripts/preflight_podman_swe_verified_readiness.py`, and
+`scripts/audit_podman_swe_verified_readiness.py`. Validation and
+Podman/provider preflight passed for the local
+`Qwen/Qwen3.5-27B` endpoint using Podman host networking. The selected-task
+smoke reached the OpenClaw task container and provider transport, but it did
+not write task JSON before being stopped behind unrelated shared-provider load;
+the smoke audit failed explicitly with `no_task_json` rows. This is not a
+SWE-bench Verified Podman readiness support claim. SWE-bench Pro, external_benchmark,
+full Verified sweep, and Podman default promotion remain out of scope. See
+[`context/podman-swe-verified-readiness/README.md`](../../context/podman-swe-verified-readiness/README.md).
+
 Generated ZeroClaw configs use `runtime_trace_mode="full"` for logprob capture
 and write ZeroClaw's schema-supported permissive shell controls; ZeroClaw
 0.6.9 does not expose a heredoc-specific allowlist setting.

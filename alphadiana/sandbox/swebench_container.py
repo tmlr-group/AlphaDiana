@@ -24,6 +24,7 @@ from alphadiana.utils.swebench import (
     ensure_swebench_build_network_mode,
     harden_test_spec_repo_clone,
     infer_instance_id,
+    qualify_swebench_test_spec_for_podman,
 )
 
 if TYPE_CHECKING:
@@ -320,6 +321,8 @@ class SWEBenchContainerSandbox(Sandbox):
         self._log_dir = Path("./logs/swebench_container")
         self._container_engine = "docker"
         self._podman_socket_path = ""
+        self._docker_api_version = ""
+        self._network_mode = ""
 
     @property
     def name(self) -> str:
@@ -334,6 +337,16 @@ class SWEBenchContainerSandbox(Sandbox):
                 "swebench_container sandbox.config.container_engine must be one of docker, podman"
             )
         self._podman_socket_path = str(config.get("podman_socket", "") or "").strip()
+        self._docker_api_version = str(
+            config.get("docker_api_version")
+            or (
+                os.environ.get("ALPHADIANA_PODMAN_DOCKER_API_VERSION", "").strip()
+                if self._container_engine == "podman"
+                else ""
+            )
+            or ""
+        ).strip()
+        self._network_mode = str(config.get("network_mode", "") or "").strip()
 
     def requires_task_on_create(self) -> bool:
         return True
@@ -357,6 +370,8 @@ class SWEBenchContainerSandbox(Sandbox):
             return
 
         env = podman_socket_env(self._podman_socket_path or None)
+        if self._docker_api_version:
+            env["DOCKER_API_VERSION"] = self._docker_api_version
         previous = {key: os.environ.get(key) for key in env}
         os.environ.update(env)
         try:
@@ -367,6 +382,11 @@ class SWEBenchContainerSandbox(Sandbox):
                     os.environ.pop(key, None)
                 else:
                     os.environ[key] = value
+
+    def _docker_client(self, docker_module: Any) -> Any:
+        if self._container_engine == "podman" and self._docker_api_version:
+            return docker_module.from_env(version=self._docker_api_version)
+        return docker_module.from_env()
 
     def _build_test_spec(self, task: "BenchmarkTask") -> tuple[dict[str, Any], Any]:
         runtime = self._runtime_api()
@@ -383,6 +403,8 @@ class SWEBenchContainerSandbox(Sandbox):
             clone_retries=int(self._config.get("git_clone_retries", 3)),
             retry_sleep_sec=int(self._config.get("git_clone_retry_sleep_sec", 5)),
         )
+        if self._container_engine == "podman":
+            qualify_swebench_test_spec_for_podman(test_spec)
         return instance, test_spec
 
     def _build_image(self, task: "BenchmarkTask", test_spec: Any) -> Path:
@@ -395,7 +417,7 @@ class SWEBenchContainerSandbox(Sandbox):
         build_logger = runtime["setup_logger"](instance_id, build_log)
         image_name = getattr(test_spec, "instance_image_key", "")
         with self._container_runtime_env():
-            client = runtime["docker"].from_env()
+            client = self._docker_client(runtime["docker"])
 
             try:
                 if self._config.get("force_rebuild") and image_name:
@@ -405,7 +427,7 @@ class SWEBenchContainerSandbox(Sandbox):
                         logger.debug("Image removal before force rebuild failed", exc_info=True)
                 runtime["build_env_images"](
                     client,
-                    [instance],
+                    [test_spec] if self._container_engine == "podman" else [instance],
                     force_rebuild=bool(self._config.get("force_rebuild", False)),
                     max_workers=1,
                     namespace=self._config.get("namespace", "swebench"),
@@ -440,7 +462,7 @@ class SWEBenchContainerSandbox(Sandbox):
         runtime = self._runtime_api()
         docker = runtime["docker"]
         with self._container_runtime_env():
-            client = docker.from_env()
+            client = self._docker_client(docker)
         instance, test_spec = self._build_test_spec(task)
         instance_id = infer_instance_id(task)
         build_dir = self._build_image(task, test_spec)
@@ -450,6 +472,7 @@ class SWEBenchContainerSandbox(Sandbox):
         image_name = str(getattr(test_spec, "instance_image_key", ""))
         container_port = int(self._config.get("gateway_port", 8080))
         gateway_host = str(self._config.get("gateway_host", "127.0.0.1"))
+        network_mode = self._network_mode
         container_name = _sanitize_container_name(
             f"alphadiana-swebench-{instance_id}-{uuid.uuid4().hex[:8]}"
         )
@@ -461,21 +484,27 @@ class SWEBenchContainerSandbox(Sandbox):
             "alphadiana.repo": str(instance.get("repo", "")),
         }
         environment = _collect_forwarded_container_environment(self._config)
+        run_kwargs = {
+            "detach": True,
+            "stdin_open": True,
+            "tty": True,
+            "name": container_name,
+            "working_dir": workdir,
+            "user": user,
+            "labels": labels,
+            "environment": environment or None,
+        }
+        if network_mode:
+            run_kwargs["network_mode"] = network_mode
+        if network_mode != "host":
+            run_kwargs["ports"] = _build_gateway_port_bindings(container_port)
 
         try:
             with self._container_runtime_env():
                 container = client.containers.run(
                     image_name,
                     command=["/bin/bash", "-lc", "trap : TERM INT; sleep infinity & wait"],
-                    detach=True,
-                    stdin_open=True,
-                    tty=True,
-                    name=container_name,
-                    working_dir=workdir,
-                    user=user,
-                    ports=_build_gateway_port_bindings(container_port),
-                    labels=labels,
-                    environment=environment or None,
+                    **run_kwargs,
                 )
         except Exception as exc:
             raise RuntimeError(
@@ -483,14 +512,16 @@ class SWEBenchContainerSandbox(Sandbox):
             ) from exc
 
         container.reload()
-        published_ports = container.attrs.get("NetworkSettings", {}).get("Ports", {})
-        gateway_publish = published_ports.get(f"{container_port}/tcp") or []
-        if not gateway_publish or gateway_publish[0].get("HostIp") != "127.0.0.1":
-            raise RuntimeError(
-                f"SWE-bench gateway port {container_port} did not bind to 127.0.0.1: {gateway_publish!r}"
-            )
-
-        host_port = self._resolve_gateway_host_port(container, container_port)
+        if network_mode == "host":
+            host_port = str(container_port)
+        else:
+            published_ports = container.attrs.get("NetworkSettings", {}).get("Ports", {})
+            gateway_publish = published_ports.get(f"{container_port}/tcp") or []
+            if not gateway_publish or gateway_publish[0].get("HostIp") != "127.0.0.1":
+                raise RuntimeError(
+                    f"SWE-bench gateway port {container_port} did not bind to 127.0.0.1: {gateway_publish!r}"
+                )
+            host_port = self._resolve_gateway_host_port(container, container_port)
         metadata = {
             "session_id": container.id,
             "sandbox_id": container.id,
@@ -502,12 +533,14 @@ class SWEBenchContainerSandbox(Sandbox):
             "image_name": image_name,
             "sandbox_backend": "podman" if self._container_engine == "podman" else self.name,
             "container_engine": self._container_engine,
+            "docker_api_version": self._docker_api_version,
             "podman_socket": podman_socket_env(self._podman_socket_path or None)["DOCKER_HOST"]
             if self._container_engine == "podman"
             else "",
             "repo_workdir": workdir,
             "docker_user": user,
             "build_log_dir": str(build_dir),
+            "network_mode": network_mode,
             "gateway_host": gateway_host,
             "gateway_container_port": container_port,
             "gateway_host_port": host_port,

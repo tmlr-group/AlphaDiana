@@ -37,6 +37,9 @@ OPENCLAW_OFFLINE_REMOTE_ENTRYPOINT = f"{OPENCLAW_OFFLINE_REMOTE_DIR}/dist/index.
 OPENCLAW_OFFLINE_CACHE_DIR = PROJECT_ROOT / ".cache" / "openclaw" / OPENCLAW_OFFLINE_DIR_NAME
 OPENCLAW_OFFLINE_SOURCE_IMAGE_ENV = "OPENCLAW_OFFLINE_SOURCE_IMAGE"
 OPENCLAW_OFFLINE_SOURCE_IMAGE_PREFIXES = (
+    "localhost/alphadiana-swebench-runtime:openclaw-",
+    "localhost/alphadiana-tb2-runtime:openclaw-",
+    "localhost/alphadiana-openclaw-swebench-runtime-source:",
     "alphadiana-swebench-runtime:openclaw-",
     "alphadiana-tb2-runtime:openclaw-",
     "ghcr.io/tsrigo/openclaw-reasoning:",
@@ -191,22 +194,42 @@ def _resolve_offline_source_image() -> str | None:
     explicit = os.environ.get(OPENCLAW_OFFLINE_SOURCE_IMAGE_ENV, "").strip()
     if explicit:
         return explicit
+    for engine in ("podman", "docker"):
+        try:
+            result = subprocess.run(
+                [engine, "images", "--format", "{{.Repository}}:{{.Tag}}"],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        except Exception as exc:
+            _logger.debug("Failed to list local OpenClaw source images with %s: %s", engine, exc)
+            continue
+        for line in result.stdout.splitlines():
+            image = line.strip()
+            if image and any(image.startswith(prefix) for prefix in OPENCLAW_OFFLINE_SOURCE_IMAGE_PREFIXES):
+                return image
+    return None
+
+
+def _offline_source_engine(source_image: str) -> str:
+    explicit = os.environ.get("OPENCLAW_OFFLINE_SOURCE_ENGINE", "").strip().lower()
+    if explicit in {"docker", "podman"}:
+        return explicit
+    if source_image.startswith("localhost/"):
+        return "podman"
     try:
-        result = subprocess.run(
-            ["docker", "images", "--format", "{{.Repository}}:{{.Tag}}"],
+        subprocess.run(
+            ["podman", "image", "exists", source_image],
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,
         )
+        return "podman"
     except Exception as exc:
-        _logger.warning("Failed to list local OpenClaw source images: %s", exc)
-        return None
-    for line in result.stdout.splitlines():
-        image = line.strip()
-        if image and any(image.startswith(prefix) for prefix in OPENCLAW_OFFLINE_SOURCE_IMAGE_PREFIXES):
-            return image
-    return None
+        _logger.debug("OpenClaw offline source image not found via podman: %s", exc)
+    return "docker"
 
 
 def _ensure_offline_openclaw_payload(cache_dir: Path) -> Path | None:
@@ -222,9 +245,10 @@ def _ensure_offline_openclaw_payload(cache_dir: Path) -> Path | None:
     shutil.rmtree(tmp_dir, ignore_errors=True)
     tmp_dir.mkdir(parents=True, exist_ok=True)
     container_id = ""
+    engine = _offline_source_engine(source_image)
     try:
         container_id = subprocess.run(
-            ["docker", "create", source_image],
+            [engine, "create", source_image],
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -233,7 +257,7 @@ def _ensure_offline_openclaw_payload(cache_dir: Path) -> Path | None:
         copied = False
         for source_path in OPENCLAW_OFFLINE_SOURCE_PATH_CANDIDATES:
             result = subprocess.run(
-                ["docker", "cp", f"{container_id}:{source_path}/.", str(tmp_dir)],
+                [engine, "cp", f"{container_id}:{source_path}/.", str(tmp_dir)],
                 check=False,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -265,7 +289,7 @@ def _ensure_offline_openclaw_payload(cache_dir: Path) -> Path | None:
     finally:
         if container_id:
             subprocess.run(
-                ["docker", "rm", "-f", container_id],
+                [engine, "rm", "-f", container_id],
                 check=False,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -389,12 +413,15 @@ class OpenClawContainerRuntimeManager:
         container_name = str(metadata.get("container_name", "")).strip()
         if not container_name:
             return False
+        container_engine = str(metadata.get("container_engine", "docker") or "docker").strip().lower()
+        if container_engine not in {"docker", "podman"}:
+            container_engine = "docker"
         payload_dir = _ensure_offline_openclaw_payload(OPENCLAW_OFFLINE_CACHE_DIR)
         if payload_dir is None:
             return False
         sandbox.execute(f"rm -rf {shlex.quote(OPENCLAW_OFFLINE_REMOTE_DIR)} && mkdir -p {shlex.quote(OPENCLAW_OFFLINE_REMOTE_DIR)}")
         subprocess.run(
-            ["docker", "cp", f"{payload_dir}/.", f"{container_name}:{OPENCLAW_OFFLINE_REMOTE_DIR}"],
+            [container_engine, "cp", f"{payload_dir}/.", f"{container_name}:{OPENCLAW_OFFLINE_REMOTE_DIR}"],
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
