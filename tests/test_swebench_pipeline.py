@@ -303,6 +303,33 @@ def test_harden_test_spec_repo_clone_can_add_partial_clone_filter():
     ) in rendered
 
 
+def test_harden_test_spec_repo_clone_can_add_targeted_fetch_fallback():
+    test_spec = SimpleNamespace(
+        repo_script_list=[
+            "git clone -o origin --single-branch https://github.com/example/repo /testbed",
+            "git reset --hard abc123",
+        ]
+    )
+
+    harden_test_spec_repo_clone(
+        test_spec,
+        clone_retries=2,
+        retry_sleep_sec=3,
+        clone_filter="blob:none",
+        fallback_base_commit="abc123",
+    )
+
+    rendered = "\n".join(test_spec.repo_script_list)
+    assert "git clone failed after 2 attempts; falling back to targeted fetch of abc123" in rendered
+    assert "git remote add origin https://github.com/example/repo" in rendered
+    assert (
+        "git -c http.version=HTTP/1.1 fetch --filter=blob:none --depth=1 origin "
+        "abc123 && break"
+    ) in rendered
+    assert "git checkout -f abc123" in rendered
+    assert "git reset --hard abc123" in rendered
+
+
 def test_opencode_install_command_keeps_optional_binary_dependencies():
     assert "npm install -g opencode-ai@" in DEFAULT_INSTALL_OPENCODE_COMMAND
     assert "--omit=optional" not in DEFAULT_INSTALL_OPENCODE_COMMAND
