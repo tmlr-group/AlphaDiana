@@ -65,6 +65,34 @@ def _is_unresolved_placeholder(value: str) -> bool:
 #   3. Captures logprob data from vLLM SSE responses in real time
 # ---------------------------------------------------------------------------
 
+
+def _rename_reasoning_field_in_delta(choice: dict) -> None:
+    """Rename ``delta.reasoning`` -> ``delta.reasoning_content`` in-place.
+
+    vLLM's qwen3 reasoning parser names the thinking-mode field ``reasoning``;
+    the OpenClaw gateway parser expects ``reasoning_content``. Normalising here
+    lets the gateway forward thinking chunks to AlphaDiana without dropping
+    them (root cause of finding #11).
+    """
+    delta = choice.get("delta")
+    if isinstance(delta, dict) and "reasoning" in delta and "reasoning_content" not in delta:
+        delta["reasoning_content"] = delta.pop("reasoning")
+    message = choice.get("message")
+    if isinstance(message, dict) and "reasoning" in message and "reasoning_content" not in message:
+        message["reasoning_content"] = message.pop("reasoning")
+
+
+def _rename_reasoning_field_in_message(payload: dict) -> None:
+    """Walk an OpenAI-style response payload and apply the rename to every choice."""
+    if not isinstance(payload, dict):
+        return
+    choices = payload.get("choices")
+    if isinstance(choices, list):
+        for choice in choices:
+            if isinstance(choice, dict):
+                _rename_reasoning_field_in_delta(choice)
+
+
 class _OpenClawLogprobProxyHandler(http.server.BaseHTTPRequestHandler):
     """HTTP handler that forwards to vLLM and captures per-token logprob dicts."""
 
@@ -86,13 +114,12 @@ class _OpenClawLogprobProxyHandler(http.server.BaseHTTPRequestHandler):
         # Inject logprob request parameters
         payload["logprobs"] = True
         payload["top_logprobs"] = self.server.top_logprobs
-        # Qwen3.x outputs thinking in delta.content using a non-standard "Thinking Process:"
-        # prefix that the OpenClaw gateway cannot parse (it expects delta.reasoning_content
-        # for thinking, not embedded in delta.content). Disable thinking mode so the gateway
-        # receives clean answer content.
-        chat_kwargs = payload.get("chat_template_kwargs") or {}
-        chat_kwargs["enable_thinking"] = False
-        payload["chat_template_kwargs"] = chat_kwargs
+        # vLLM with --reasoning-parser qwen3 emits thinking content under
+        # delta.reasoning / message.reasoning, but the OpenClaw gateway expects
+        # delta.reasoning_content / message.reasoning_content. We rewrite the
+        # SSE chunks below in _strip_and_capture_event so the gateway sees
+        # reasoning_content, which lets us honour enable_thinking=true without
+        # the gateway dropping reasoning chunks on the floor (#11 root cause).
 
         upstream_url = self.server.upstream.rstrip("/") + self.path
         headers = {
@@ -116,9 +143,11 @@ class _OpenClawLogprobProxyHandler(http.server.BaseHTTPRequestHandler):
         resp = self.server.client.post(url, headers=headers, json=payload)
         resp_bytes = resp.content
 
-        # Capture logprobs
+        # Capture logprobs and rename reasoning->reasoning_content for gateway.
         try:
             resp_json = resp.json()
+            _rename_reasoning_field_in_message(resp_json)
+            resp_bytes = json.dumps(resp_json, separators=(",", ":")).encode()
             with self.server.lock:
                 self.server.raw_responses.append(resp_json)
         except Exception:
@@ -126,7 +155,7 @@ class _OpenClawLogprobProxyHandler(http.server.BaseHTTPRequestHandler):
 
         self.send_response(resp.status_code)
         for k, v in resp.headers.items():
-            if k.lower() not in ("transfer-encoding", "content-encoding"):
+            if k.lower() not in ("transfer-encoding", "content-encoding", "content-length"):
                 self.send_header(k, v)
         self.send_header("Content-Length", str(len(resp_bytes)))
         self.end_headers()
@@ -134,6 +163,10 @@ class _OpenClawLogprobProxyHandler(http.server.BaseHTTPRequestHandler):
 
     def _strip_and_capture_event(self, event_bytes: bytes) -> bytes:
         """Capture logprobs from an SSE event and return it with logprobs stripped.
+
+        Also renames vLLM's ``reasoning`` field (qwen3 reasoning parser) to the
+        ``reasoning_content`` name the OpenClaw gateway expects so thinking
+        chunks aren't dropped (finding #11).
 
         The gateway's SSE parser fails on large data: lines produced when
         top_logprobs=20 injects thousands of bytes per token. Strip logprobs
@@ -156,6 +189,7 @@ class _OpenClawLogprobProxyHandler(http.server.BaseHTTPRequestHandler):
                                 with self.server.lock:
                                     self.server.streaming_logprobs.extend(content)
                         choices[0]["logprobs"] = None
+                        _rename_reasoning_field_in_delta(choices[0])
                     out_lines.append(b"data: " + json.dumps(chunk, separators=(",", ":")).encode())
                 except Exception:
                     out_lines.append(line_bytes)
@@ -211,31 +245,52 @@ class _OpenClawLogprobServer(socketserver.ThreadingMixIn, http.server.HTTPServer
 
 
 class OpenClawLogprobProxy:
-    """Host-side MITM proxy accessible from Docker containers via host bridge IP."""
+    """Host-side MITM proxy accessible from Docker containers via host bridge IP.
+
+    ``start()`` is idempotent — repeat calls within an agent's lifetime are
+    no-ops once the server is up. This avoids the ``AssertionError: self._server
+    is not None`` race under ``max_concurrent>=2`` where a second concurrent
+    task would otherwise tear down a still-in-use proxy mid-stream (finding #8).
+    """
 
     def __init__(self, upstream: str, top_logprobs: int) -> None:
         self._upstream = upstream
         self._top_logprobs = top_logprobs
         self._server: _OpenClawLogprobServer | None = None
         self._thread: threading.Thread | None = None
+        self._lifecycle_lock = threading.Lock()
 
     def start(self) -> None:
-        self._server = _OpenClawLogprobServer(self._upstream, self._top_logprobs)
-        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
-        self._thread.start()
+        with self._lifecycle_lock:
+            if self._server is not None:
+                return
+            self._server = _OpenClawLogprobServer(self._upstream, self._top_logprobs)
+            self._thread = threading.Thread(
+                target=self._server.serve_forever, daemon=True
+            )
+            self._thread.start()
 
     def stop(self) -> None:
-        if self._server:
-            try:
-                self._server.shutdown()
-                self._server.client.close()
-            except Exception:
-                pass
+        with self._lifecycle_lock:
+            server = self._server
+            if server is None:
+                return
+            self._server = None
+            self._thread = None
+        try:
+            server.shutdown()
+            server.client.close()
+        except Exception:
+            pass
 
     @property
     def local_port(self) -> int:
-        assert self._server is not None
-        return self._server.server_address[1]
+        with self._lifecycle_lock:
+            if self._server is None:
+                raise RuntimeError(
+                    "OpenClaw logprob proxy is not running; call start() first"
+                )
+            return self._server.server_address[1]
 
     def proxy_url_for_docker(self, docker_host_ip: str = "host.docker.internal") -> str:
         """Return the URL that Docker containers can use to reach this proxy."""
@@ -298,7 +353,16 @@ def _extract_text_from_gateway_payload(payload: Any) -> str:
                 joined = "".join(parts).strip()
                 if joined:
                     return joined
-            reasoning_content = message.get("reasoning_content")
+            # Accept reasoning_content / reasoning / reasoning_detail — vLLM's
+            # qwen3 parser emits "reasoning", OpenRouter likewise; OpenAI uses
+            # reasoning_content. Without this, gateway warmups against the
+            # 200K-ctx Qwen3.5 endpoint look "empty" even when the model
+            # generated thinking tokens (#11).
+            reasoning_content = (
+                message.get("reasoning_content")
+                or message.get("reasoning")
+                or message.get("reasoning_detail")
+            )
             if isinstance(reasoning_content, str) and reasoning_content.strip():
                 return reasoning_content.strip()
             if isinstance(reasoning_content, list):
@@ -1030,19 +1094,27 @@ class OpenClawRuntimeManager:
             upstream_base_url = env_cfg.get("OPENAI_BASE_URL", "").rstrip("/")
             if upstream_base_url:
                 top_logprobs = int(self._logprob_capture.get("top_logprobs", 20))
-                # Stop any previous proxy
-                if self._logprob_proxy is not None:
-                    try:
-                        self._logprob_proxy.stop()
-                    except Exception:
-                        pass
                 # Strip trailing /v1 — proxy re-appends the full request path (which
                 # already contains /v1/...), so passing it in upstream causes double /v1.
                 upstream_no_v1 = upstream_base_url
                 if upstream_no_v1.endswith("/v1"):
                     upstream_no_v1 = upstream_no_v1[:-3]
-                self._logprob_proxy = OpenClawLogprobProxy(upstream_no_v1, top_logprobs)
-                self._logprob_proxy.start()
+                # Reuse existing proxy when upstream config matches (#8: avoid
+                # tearing down a still-in-use proxy when max_concurrent>=2).
+                existing = self._logprob_proxy
+                needs_new = (
+                    existing is None
+                    or getattr(existing, "_upstream", None) != upstream_no_v1
+                    or getattr(existing, "_top_logprobs", None) != top_logprobs
+                )
+                if needs_new:
+                    if existing is not None:
+                        try:
+                            existing.stop()
+                        except Exception:
+                            pass
+                    self._logprob_proxy = OpenClawLogprobProxy(upstream_no_v1, top_logprobs)
+                self._logprob_proxy.start()  # idempotent
                 proxy_url = self._logprob_proxy.proxy_url_for_docker(self._docker_host_ip)
                 env_cfg["OPENAI_BASE_URL"] = proxy_url + "/v1"
                 _progress(
@@ -1436,14 +1508,26 @@ class OpenClawPodmanRuntimeManager(OpenClawRuntimeManager):
             upstream_base_url = env_cfg.get("OPENAI_BASE_URL", "").rstrip("/")
             if upstream_base_url:
                 top_logprobs = int(self._logprob_capture.get("top_logprobs", 20))
-                if self._logprob_proxy is not None:
-                    try:
-                        self._logprob_proxy.stop()
-                    except Exception:
-                        pass
                 upstream_no_v1 = upstream_base_url[:-3] if upstream_base_url.endswith("/v1") else upstream_base_url
-                self._logprob_proxy = OpenClawLogprobProxy(upstream_no_v1, top_logprobs)
-                self._logprob_proxy.start()
+                # Reuse the existing proxy when the upstream and top_logprobs
+                # match; only swap it out when configuration has changed. This
+                # avoids the AssertionError race under ``max_concurrent>=2``
+                # where a second concurrent task would stop a still-in-use
+                # proxy and read torn-down ``local_port`` (finding #8).
+                existing = self._logprob_proxy
+                needs_new = (
+                    existing is None
+                    or getattr(existing, "_upstream", None) != upstream_no_v1
+                    or getattr(existing, "_top_logprobs", None) != top_logprobs
+                )
+                if needs_new:
+                    if existing is not None:
+                        try:
+                            existing.stop()
+                        except Exception:
+                            pass
+                    self._logprob_proxy = OpenClawLogprobProxy(upstream_no_v1, top_logprobs)
+                self._logprob_proxy.start()  # idempotent: safe under concurrent tasks
                 podman_host_ip = self._resolve_podman_logprob_proxy_host(podman_cfg)
                 proxy_url = self._logprob_proxy.proxy_url_for_docker(podman_host_ip)
                 env_cfg["OPENAI_BASE_URL"] = proxy_url + "/v1"
