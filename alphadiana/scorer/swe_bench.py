@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from alphadiana.container_runtime.podman_socket import podman_socket_env
 from alphadiana.scorer.base import Scorer, ScoreResult
 from alphadiana.scorer.registry import register_scorer
 from alphadiana.utils.swebench import (
@@ -15,6 +18,7 @@ from alphadiana.utils.swebench import (
     ensure_swebench_build_network_mode,
     harden_test_spec_repo_clone,
     infer_instance_id,
+    qualify_swebench_test_spec_for_podman,
 )
 
 logger = logging.getLogger(__name__)
@@ -105,6 +109,9 @@ class SWEBenchScorer(Scorer):
         self._git_clone_retries = 3
         self._git_clone_retry_sleep_sec = 5
         self._docker_build_network = "host"
+        self._container_engine = "docker"
+        self._podman_socket_path = ""
+        self._docker_api_version = ""
         self._runtime: dict[str, Any] | None = None
 
     @property
@@ -136,6 +143,21 @@ class SWEBenchScorer(Scorer):
             str(config.get("docker_build_network", self._docker_build_network)).strip()
             or self._docker_build_network
         )
+        self._container_engine = str(
+            config.get("container_engine", self._container_engine) or self._container_engine
+        ).strip().lower()
+        if self._container_engine not in {"docker", "podman"}:
+            raise ValueError("swe_bench scorer.config.container_engine must be one of docker, podman")
+        self._podman_socket_path = str(config.get("podman_socket", "") or "").strip()
+        self._docker_api_version = str(
+            config.get("docker_api_version")
+            or (
+                os.environ.get("ALPHADIANA_PODMAN_DOCKER_API_VERSION", "").strip()
+                if self._container_engine == "podman"
+                else ""
+            )
+            or ""
+        ).strip()
 
     def _runtime_api(self) -> dict[str, Any]:
         if self._runtime is None:
@@ -159,6 +181,31 @@ class SWEBenchScorer(Scorer):
     def _set_eval_log_dir(self, runtime: dict[str, Any]) -> None:
         self._log_dir.mkdir(parents=True, exist_ok=True)
         runtime["run_evaluation_module"].RUN_EVALUATION_LOG_DIR = self._log_dir
+
+    @contextmanager
+    def _container_runtime_env(self):
+        if self._container_engine != "podman":
+            yield
+            return
+
+        env = podman_socket_env(self._podman_socket_path or None)
+        if self._docker_api_version:
+            env["DOCKER_API_VERSION"] = self._docker_api_version
+        previous = {key: os.environ.get(key) for key in env}
+        os.environ.update(env)
+        try:
+            yield
+        finally:
+            for key, value in previous.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+
+    def _docker_client(self, docker_module: Any) -> Any:
+        if self._container_engine == "podman" and self._docker_api_version:
+            return docker_module.from_env(version=self._docker_api_version)
+        return docker_module.from_env()
 
     def _log_dir_for(self, runtime: dict[str, Any], run_id: str, model_name: str, instance_id: str) -> Path:
         return (
@@ -239,24 +286,27 @@ class SWEBenchScorer(Scorer):
             clone_retries=self._git_clone_retries,
             retry_sleep_sec=self._git_clone_retry_sleep_sec,
         )
-        client = runtime["docker"].from_env()
-        _, failed = runtime["build_env_images"](
-            client,
-            [instance],
-            force_rebuild=self._force_rebuild,
-            max_workers=1,
-            namespace=self._namespace,
-            instance_image_tag=self._instance_image_tag,
-            env_image_tag=self._env_image_tag,
-        )
-        if failed:
-            raise RuntimeError(f"Failed to build SWE-bench environment images: {failed}")
-        runtime["build_instance_image"](
-            test_spec,
-            client,
-            None,
-            nocache=self._force_rebuild,
-        )
+        if self._container_engine == "podman":
+            qualify_swebench_test_spec_for_podman(test_spec)
+        with self._container_runtime_env():
+            client = self._docker_client(runtime["docker"])
+            _, failed = runtime["build_env_images"](
+                client,
+                [test_spec] if self._container_engine == "podman" else [instance],
+                force_rebuild=self._force_rebuild,
+                max_workers=1,
+                namespace=self._namespace,
+                instance_image_tag=self._instance_image_tag,
+                env_image_tag=self._env_image_tag,
+            )
+            if failed:
+                raise RuntimeError(f"Failed to build SWE-bench environment images: {failed}")
+            runtime["build_instance_image"](
+                test_spec,
+                client,
+                None,
+                nocache=self._force_rebuild,
+            )
 
         model_name = self._model_name_or_path(response)
         prediction = {
@@ -265,16 +315,17 @@ class SWEBenchScorer(Scorer):
             runtime["KEY_PREDICTION"]: patch,
         }
         run_id = self._make_run_id(instance_id)
-        run_result = runtime["run_instance"](
-            test_spec,
-            prediction,
-            self._rm_image,
-            self._force_rebuild,
-            client,
-            run_id=run_id,
-            timeout=self._timeout,
-            rewrite_reports=False,
-        )
+        with self._container_runtime_env():
+            run_result = runtime["run_instance"](
+                test_spec,
+                prediction,
+                self._rm_image,
+                self._force_rebuild,
+                client,
+                run_id=run_id,
+                timeout=self._timeout,
+                rewrite_reports=False,
+            )
 
         log_dir = self._log_dir_for(runtime, run_id, model_name, instance_id)
         report_path = log_dir / runtime["LOG_REPORT"]
@@ -290,6 +341,11 @@ class SWEBenchScorer(Scorer):
             "completed": bool(run_result.get("completed", False)),
             "resolved": bool(report_entry.get("resolved", False)),
             "model_name_or_path": model_name,
+            "container_engine": self._container_engine,
+            "docker_api_version": self._docker_api_version,
+            "podman_socket": podman_socket_env(self._podman_socket_path or None)["DOCKER_HOST"]
+            if self._container_engine == "podman"
+            else "",
         }
 
         if report_entry:

@@ -1,0 +1,72 @@
+run_id: "podman_swe_verified_zeroclaw_pilot32"
+
+agent:
+  name: zeroclaw
+  version: "0.6.9"
+  config:
+    model: "${OPENAI_MODEL_NAME}"
+    api_base: "${PODMAN_SWE_CONTAINER_OPENAI_BASE_URL}"
+    provider_api_base: "${PODMAN_SWE_CONTAINER_OPENAI_BASE_URL}"
+    api_key: "${OPENAI_API_KEY}"
+    binary_source_image: "${PODMAN_SWE_ZEROCLAW_BINARY_SOURCE_IMAGE}"
+    binary_source_engine: podman
+    request_timeout: 7200
+    provider_timeout_secs: 7200
+    max_tokens: 32768
+    provider_max_tokens: 32768
+    reasoning_enabled: true
+    reasoning_effort: high
+    max_tool_iterations: 100
+    max_actions_per_hour: 200
+    workspace_only: false
+    runtime_trace_mode: "full"
+
+benchmark:
+  name: swe_bench
+  config:
+    dataset: "SWE-bench/SWE-bench_Verified"
+    split: "test"
+    include_hints: false
+    taskset_path: "context/podman-swe-verified-readiness/tasksets/pilot32.json"
+    max_tasks: 10
+
+sandbox:
+  name: swebench_container
+  config:
+    container_engine: podman
+    podman_socket: "${ALPHADIANA_PODMAN_SOCKET}"
+    docker_api_version: "${ALPHADIANA_PODMAN_DOCKER_API_VERSION}"
+    namespace: "swebench"
+    docker_build_network: "host"
+    network_mode: "host"
+    force_rebuild: false
+    keep_container: false
+    keep_logs: true
+    log_dir: "./logs/podman-swe-verified-readiness/task-containers/${PODMAN_SWE_RUN_PREFIX}/zeroclaw_pilot32"
+    gateway_host: "127.0.0.1"
+    gateway_port: 8080
+
+scorer:
+  name: swe_bench
+  config:
+    timeout: 3600
+    container_engine: podman
+    podman_socket: "${ALPHADIANA_PODMAN_SOCKET}"
+    docker_api_version: "${ALPHADIANA_PODMAN_DOCKER_API_VERSION}"
+    namespace: "swebench"
+    docker_build_network: "host"
+    force_rebuild: false
+    log_dir: "./logs/podman-swe-verified-readiness/swe-bench-eval/${PODMAN_SWE_RUN_PREFIX}/zeroclaw_pilot32"
+
+max_concurrent: 1
+num_samples: 1
+task_retries: 0
+output_dir: "./results"
+metadata:
+  validation_campaign: "podman-swe-verified-readiness"
+  container_engine: "podman"
+  tier: "pilot32"
+  run_suffix: "zeroclaw_pilot32"
+  max_output_tokens: 32768
+  taskset_path: "context/podman-swe-verified-readiness/tasksets/pilot32.json"
+  support_scope: "SWE-bench Verified selected-task Podman readiness only"

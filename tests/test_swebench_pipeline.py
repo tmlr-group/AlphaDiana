@@ -26,7 +26,11 @@ from alphadiana.sandbox.swebench_container import (
     FORWARDED_CONTAINER_ENV_KEYS,
     SWEBenchContainerSandbox,
 )
-from alphadiana.utils.swebench import harden_test_spec_repo_clone
+from alphadiana.utils.swebench import (
+    harden_test_spec_repo_clone,
+    qualify_swebench_podman_image_ref,
+    qualify_swebench_test_spec_for_podman,
+)
 
 
 def _make_task(task_id: str = "swe_demo") -> BenchmarkTask:
@@ -58,6 +62,45 @@ def test_swebench_container_podman_engine_sets_docker_host_env(monkeypatch):
         assert os.environ["DOCKER_HOST"] == "unix:///tmp/podman.sock"
 
     assert "DOCKER_HOST" not in os.environ
+
+
+def test_swebench_container_podman_engine_sets_docker_api_version(monkeypatch):
+    monkeypatch.delenv("DOCKER_HOST", raising=False)
+    monkeypatch.delenv("DOCKER_API_VERSION", raising=False)
+    sandbox = SWEBenchContainerSandbox()
+    sandbox.setup({
+        "container_engine": "podman",
+        "podman_socket": "/tmp/podman.sock",
+        "docker_api_version": "1.41",
+    })
+
+    with sandbox._container_runtime_env():
+        assert os.environ["DOCKER_HOST"] == "unix:///tmp/podman.sock"
+        assert os.environ["DOCKER_API_VERSION"] == "1.41"
+
+    assert "DOCKER_HOST" not in os.environ
+    assert "DOCKER_API_VERSION" not in os.environ
+
+
+def test_swebench_podman_image_qualification_rewrites_local_sweb_refs():
+    test_spec = SimpleNamespace(
+        base_image_key="sweb.base.py.x86_64:latest",
+        env_image_key="sweb.env.py.x86_64.abc:latest",
+        instance_image_key="swebench/sweb.eval.x86_64.demo:latest",
+        base_dockerfile="FROM python:3.11-slim\n",
+        env_dockerfile="FROM sweb.base.py.x86_64:latest\nRUN true\n",
+        instance_dockerfile="FROM sweb.env.py.x86_64.abc:latest\nRUN true\n",
+    )
+
+    qualify_swebench_test_spec_for_podman(test_spec)
+
+    assert test_spec.base_image_key == "localhost/sweb.base.py.x86_64:latest"
+    assert test_spec.env_image_key == "localhost/sweb.env.py.x86_64.abc:latest"
+    assert test_spec.instance_image_key == "localhost/swebench/sweb.eval.x86_64.demo:latest"
+    assert "FROM localhost/sweb.base.py.x86_64:latest" in test_spec.env_dockerfile
+    assert "FROM localhost/sweb.env.py.x86_64.abc:latest" in test_spec.instance_dockerfile
+    assert qualify_swebench_podman_image_ref("docker.io/library/python:3.11") == "docker.io/library/python:3.11"
+    assert qualify_swebench_podman_image_ref("localhost/sweb.env:latest") == "localhost/sweb.env:latest"
 
 
 def test_swebench_empty_patch_skips_harness(tmp_path, monkeypatch):
@@ -393,6 +436,56 @@ def test_swebench_container_skips_loopback_proxy_environment(monkeypatch, tmp_pa
     assert "HTTPS_PROXY" not in env
     assert env["NO_PROXY"] == "localhost,127.0.0.1"
     assert env["CUSTOM_ENV"] == "1"
+
+
+def test_swebench_container_host_network_skips_port_publish(monkeypatch, tmp_path):
+    captured: dict[str, object] = {}
+
+    class FakeContainer:
+        id = "container-id"
+        name = "container-name"
+        status = "running"
+        attrs: dict = {"NetworkSettings": {"Ports": {}}}
+
+        def reload(self):
+            pass
+
+    class FakeContainers:
+        def run(self, *args, **kwargs):
+            captured["args"] = args
+            captured["kwargs"] = kwargs
+            return FakeContainer()
+
+    sandbox = SWEBenchContainerSandbox()
+    sandbox.setup({"log_dir": str(tmp_path / "logs"), "network_mode": "host"})
+    fake_client = SimpleNamespace(containers=FakeContainers())
+    fake_test_spec = SimpleNamespace(
+        repo_directory="/testbed",
+        docker_user="root",
+        instance_image_key="fake:image",
+    )
+    monkeypatch.setattr(
+        sandbox,
+        "_runtime_api",
+        lambda: {
+            "docker": SimpleNamespace(from_env=lambda: fake_client),
+            "DOCKER_WORKDIR": "/testbed",
+            "DOCKER_USER": "root",
+        },
+    )
+    monkeypatch.setattr(
+        sandbox,
+        "_build_test_spec",
+        lambda _task: ({"repo": "demo/repo", "base_commit": "abc123"}, fake_test_spec),
+    )
+    monkeypatch.setattr(sandbox, "_build_image", lambda _task, _spec: tmp_path / "build")
+
+    session = sandbox.create_session(_make_task("astropy__astropy-12907"))
+
+    assert captured["kwargs"]["network_mode"] == "host"
+    assert "ports" not in captured["kwargs"]
+    assert session.metadata()["gateway_host_port"] == "8080"
+    assert session.metadata()["network_mode"] == "host"
 
 
 def test_openclaw_runtime_uploads_git_mirror_once():

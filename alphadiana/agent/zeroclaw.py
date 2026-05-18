@@ -466,6 +466,11 @@ class ZeroClawAgent(Agent):
         self._binary_source_path = str(
             config.get("binary_source_path", "/usr/local/bin/zeroclaw") or "/usr/local/bin/zeroclaw"
         ).strip()
+        self._binary_source_engine = str(
+            config.get("binary_source_engine", "docker") or "docker"
+        ).strip().lower()
+        if self._binary_source_engine not in {"docker", "podman"}:
+            raise ValueError("zeroclaw agent.config.binary_source_engine must be one of docker, podman")
         self._host_binary_cache: bytes | None = None
         configured_provider = str(config.get("provider", "")).strip().lower()
         self._provider = _resolve_zeroclaw_provider(configured_provider, self._provider_api_base)
@@ -982,7 +987,7 @@ class ZeroClawAgent(Agent):
             raise RuntimeError("No ZeroClaw binary source image configured.")
         result = subprocess.run(
             [
-                "docker",
+                self._binary_source_engine,
                 "run",
                 "--rm",
                 "--entrypoint",
