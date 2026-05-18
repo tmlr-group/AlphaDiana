@@ -1639,6 +1639,12 @@ class ZeroClawAgent(Agent):
         prompt = str(task_context["prompt"])
         runtime_info = self._runtime_manager.ensure_ready(None)
         api_base = str(runtime_info.get("api_base", "") or "").rstrip("/")
+        logprob_proxy_records: list[dict] = []
+        if self._logprob_capture["enabled"] and hasattr(self._runtime_manager, "drain_logprob_records"):
+            try:
+                self._runtime_manager.drain_logprob_records()
+            except Exception:
+                logger.debug("Failed to clear ZeroClaw Podman logprob proxy records", exc_info=True)
         headers = {
             "Authorization": f"bearer {runtime_info.get('gateway_token', self._gateway_token)}",
             "Content-Type": "application/json",
@@ -1673,6 +1679,11 @@ class ZeroClawAgent(Agent):
             timeout=self._request_timeout,
             trust_env=False,
         )
+        if self._logprob_capture["enabled"] and hasattr(self._runtime_manager, "drain_logprob_records"):
+            try:
+                logprob_proxy_records = self._runtime_manager.drain_logprob_records()
+            except Exception:
+                logger.debug("Failed to collect ZeroClaw Podman logprob proxy records", exc_info=True)
         try:
             response_json = response.json()
         except Exception:
@@ -1689,6 +1700,9 @@ class ZeroClawAgent(Agent):
                 "transport": "zeroclaw_podman_bridge",
             }
             metadata.update(self.error_provenance_metadata())
+            if logprob_proxy_records:
+                metadata["logprob_probe_proxy_count"] = len(logprob_proxy_records)
+                metadata["logprob_source"] = "provider_proxy"
             partial_response = self._build_cli_response(
                 prompt=prompt,
                 raw_output=raw_output,
@@ -1700,6 +1714,9 @@ class ZeroClawAgent(Agent):
                 system_prompt=self._system_prompt,
                 artifact_manifest=artifact_data.get("artifact_manifest", {}),
                 request_messages=list(task_context["request_messages"]),
+                logprob_records_override=(
+                    logprob_proxy_records if logprob_proxy_records else None
+                ),
             )
             partial_response.gateway_url = str(runtime_info.get("gateway_url", "") or "")
             partial_response.gateway_log_excerpt = artifact_data.get("gateway_log_excerpt", "")
@@ -1743,9 +1760,12 @@ class ZeroClawAgent(Agent):
         }
         if isinstance(runtime_metadata, dict):
             metadata.update(runtime_metadata)
-        if metadata.get("logprob_support") == "unavailable":
+        if logprob_proxy_records:
+            metadata["logprob_probe_proxy_count"] = len(logprob_proxy_records)
+            metadata["logprob_source"] = "provider_proxy"
+        elif metadata.get("logprob_support") == "enabled":
+            metadata["logprob_probe_proxy_count"] = 0
             metadata["logprob_source"] = ""
-            metadata["logprob_unavailable_reason"] = "podman_bridge_proxy_not_configured"
         response_obj = self._build_cli_response(
             prompt=prompt,
             raw_output=raw_output,
@@ -1757,6 +1777,9 @@ class ZeroClawAgent(Agent):
             system_prompt=self._system_prompt,
             artifact_manifest=artifact_data.get("artifact_manifest", {}),
             request_messages=list(task_context["request_messages"]),
+            logprob_records_override=(
+                logprob_proxy_records if logprob_proxy_records else None
+            ),
         )
         response_obj.gateway_url = str(runtime_info.get("gateway_url", "") or "")
         response_obj.gateway_log_excerpt = artifact_data.get("gateway_log_excerpt", "")

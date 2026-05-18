@@ -1230,6 +1230,9 @@ class OpenClawPodmanRuntimeManager(OpenClawRuntimeManager):
         self._docker_host_ip = str(
             config.get("podman_host_ip", config.get("docker_host_ip", "host.containers.internal"))
         )
+        self._podman_host_ip_explicit = bool(
+            config.get("podman_host_ip") or config.get("docker_host_ip")
+        )
         self._podman_runtime = config.get("_podman_agent_runtime") or PodmanAgentRuntime()
         self._podman_image_override = str(config.get("podman_image", config.get("image", "")) or "").strip()
         self._podman_result: PodmanAgentRuntimeResult | None = None
@@ -1338,7 +1341,7 @@ class OpenClawPodmanRuntimeManager(OpenClawRuntimeManager):
 
     def _build_podman_spec(self) -> PodmanAgentSpec:
         podman_cfg = self._load_podman_gateway_config()
-        env_cfg = self._resolve_podman_env()
+        env_cfg = self._resolve_podman_env(podman_cfg)
         openclaw_config = Path(self._openclaw_config_path)
         if not openclaw_config.exists():
             raise FileNotFoundError(f"openclaw_config_path not found: {openclaw_config}")
@@ -1405,7 +1408,16 @@ class OpenClawPodmanRuntimeManager(OpenClawRuntimeManager):
             raise RuntimeError(f"podman gateway config must be a mapping: {path}")
         return loaded
 
-    def _resolve_podman_env(self) -> dict[str, str]:
+    def _resolve_podman_logprob_proxy_host(self, podman_cfg: dict[str, Any]) -> str:
+        env_host = os.environ.get("ALPHADIANA_PODMAN_HOST_IP", "").strip()
+        if env_host:
+            return env_host
+        network = str(podman_cfg.get("network", "") or "").strip().lower()
+        if network == "host" and not self._podman_host_ip_explicit:
+            return "127.0.0.1"
+        return self._docker_host_ip or "host.containers.internal"
+
+    def _resolve_podman_env(self, podman_cfg: dict[str, Any]) -> dict[str, str]:
         env_cfg: dict[str, str] = {}
         for key in ("OPENAI_BASE_URL", "OPENAI_API_KEY", "OPENAI_MODEL_NAME"):
             config_val = self._provider_env.get(key, "").strip()
@@ -1432,12 +1444,7 @@ class OpenClawPodmanRuntimeManager(OpenClawRuntimeManager):
                 upstream_no_v1 = upstream_base_url[:-3] if upstream_base_url.endswith("/v1") else upstream_base_url
                 self._logprob_proxy = OpenClawLogprobProxy(upstream_no_v1, top_logprobs)
                 self._logprob_proxy.start()
-                podman_host_ip = str(
-                    os.environ.get(
-                        "ALPHADIANA_PODMAN_HOST_IP",
-                        self._docker_host_ip or "host.containers.internal",
-                    )
-                )
+                podman_host_ip = self._resolve_podman_logprob_proxy_host(podman_cfg)
                 proxy_url = self._logprob_proxy.proxy_url_for_docker(podman_host_ip)
                 env_cfg["OPENAI_BASE_URL"] = proxy_url + "/v1"
                 _progress(

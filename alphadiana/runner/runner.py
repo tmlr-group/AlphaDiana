@@ -25,6 +25,10 @@ from alphadiana.results.result_store import ResultStore
 from alphadiana.runner.task_dispatcher import TaskDispatcher
 from alphadiana.sandbox.registry import SandboxRegistry
 from alphadiana.scorer.registry import ScorerRegistry
+from alphadiana.utils.math_answer import (
+    extract_numeric_answer_candidate,
+    parse_numeric_answer,
+)
 
 if TYPE_CHECKING:
     from alphadiana.agent.base import Agent
@@ -107,6 +111,28 @@ def _agent_error_provenance_metadata(agent: object) -> dict:
         logger.debug("Agent error provenance provider failed", exc_info=True)
         return {}
     return dict(metadata) if isinstance(metadata, dict) else {}
+
+
+def _normalize_numeric_response_answer(config: "ExperimentConfig", response: object) -> None:
+    """Normalize stored predictions only for the numeric scorer path."""
+    if getattr(config, "scorer_name", "") != "numeric":
+        return
+    answer = getattr(response, "answer", None)
+    if not isinstance(answer, str) or not answer.strip():
+        return
+    normalized = extract_numeric_answer_candidate(answer)
+    if not normalized or normalized == answer:
+        return
+    if parse_numeric_answer(normalized) is None:
+        return
+    metadata = getattr(response, "metadata", None)
+    if not isinstance(metadata, dict):
+        metadata = {}
+    metadata.setdefault("numeric_answer_original", answer)
+    metadata["numeric_answer_normalized"] = True
+    metadata["numeric_answer_normalizer"] = "extract_numeric_answer_candidate"
+    response.metadata = metadata
+    response.answer = normalized
 
 
 def _apply_error_provenance_metadata(response: object, metadata: dict) -> None:
@@ -1739,6 +1765,7 @@ class Runner:
                         response,
                         error_type=guard_error_type,
                     )
+                _normalize_numeric_response_answer(self.config, response)
                 # Score the result.
                 score = self.scorer.score(runtime_task, response)
                 # Store the result.

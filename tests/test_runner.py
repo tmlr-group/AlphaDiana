@@ -16,6 +16,7 @@ from alphadiana.runner.runner import (
     _is_gateway_autodeploy_agent,
     _merge_artifact_manifests,
     _needs_auto_rock_sandbox,
+    _normalize_numeric_response_answer,
     _openclaw_integrity_guard_reason,
     _predeployed_session_failure_reason,
     _sanitize_sandbox_metadata,
@@ -23,6 +24,33 @@ from alphadiana.runner.runner import (
 )
 from alphadiana.runner.task_dispatcher import TaskDispatcher
 from alphadiana.sandbox.pool import SandboxPool
+
+
+def test_numeric_response_answer_normalization_is_scorer_scoped() -> None:
+    response = AgentResponse(
+        answer="204 minutes** (or 3 hours and 24 minutes)",
+        metadata={},
+    )
+
+    _normalize_numeric_response_answer(SimpleNamespace(scorer_name="numeric"), response)
+
+    assert response.answer == "204"
+    assert response.metadata["numeric_answer_original"] == (
+        "204 minutes** (or 3 hours and 24 minutes)"
+    )
+    assert response.metadata["numeric_answer_normalized"] is True
+
+
+def test_numeric_response_answer_normalization_skips_non_numeric_scorers() -> None:
+    response = AgentResponse(
+        answer="204 minutes** (or 3 hours and 24 minutes)",
+        metadata={},
+    )
+
+    _normalize_numeric_response_answer(SimpleNamespace(scorer_name="exact_match"), response)
+
+    assert response.answer == "204 minutes** (or 3 hours and 24 minutes)"
+    assert response.metadata == {}
 
 
 class _FakeTask:

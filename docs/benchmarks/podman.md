@@ -112,6 +112,42 @@ export HF_HOME=<writable-cache>
 export HF_DATASETS_CACHE=<writable-cache>
 ```
 
+### Container-Reachable Provider URLs
+
+Do not assume a provider URL that works from the host is reachable from a
+Podman container:
+
+- Use `http://127.0.0.1:<port>/v1` or `http://localhost:<port>/v1` only when
+  the provider runs in the same network namespace, for example with
+  `podman_network: host`.
+- For normal bridge-network containers, use a routable host/service name such
+  as `http://host.containers.internal:<port>/v1`, an explicit
+  `agent.config.podman_host_ip`, or a remote provider endpoint.
+- Validate from a Podman container, not only with host-side `curl`.
+
+For Podman logprob capture, AlphaDiana may start a short-lived host proxy.
+OpenClaw and ZeroClaw Podman advertise the runtime capture proxy as
+`127.0.0.1` when the gateway/bridge runs with Podman host networking; otherwise
+they use `agent.config.podman_host_ip` (default `host.containers.internal`).
+Task metadata records
+`logprob_proxy_url`, `logprob_proxy_upstream`, and
+`logprob_proxy_request_overrides` when this path is active.
+
+On CN or otherwise restricted networks, direct `huggingface.co` access may be
+unavailable even when a local provider is reachable. Use an operator-approved
+mirror such as `HF_ENDPOINT=https://hf-mirror.com` where appropriate, keep
+`HF_HOME` / `HF_DATASETS_CACHE` on writable cache storage, and still provide
+`HF_TOKEN` for gated datasets. Do not commit credentials, machine-specific
+cache paths, or absolute local worktree paths.
+
+Image pulls and provider wheels can have separate CN-host failure modes. If a
+Docker Hub base image such as `python:3.11` is unavailable, use an
+operator-approved mirror or preloaded local image and tag it to the image name
+expected by the smoke config. For local vLLM, install wheels compatible with
+the host driver/CUDA runtime; the PR 39 CN report saw CUDA-13-linked wheels fail
+on driver 535/CUDA 12.2 and used a tested CUDA-12-compatible vLLM environment
+instead.
+
 Build the local Podman images used by the standard-reasoning matrix:
 
 ```bash
@@ -355,6 +391,9 @@ the process is not tied to an agent-operated shell.
 ## Known Caveats
 
 - Podman remains opt-in. Do not describe these paths as global defaults.
+- OpenClaw and ZeroClaw Podman support `capture_logprobs=true` through the
+  Phase 8 provider-proxy paths. This is gated single-task smoke evidence, not a
+  full campaign.
 - Loopback provider URLs such as `http://127.0.0.1:8011/v1` work from the
   Phase 5 matrix because those configs use Podman host networking. Other
   Podman configs may need a non-loopback host gateway URL.

@@ -52,7 +52,7 @@ class TestResultStoreLogprobSidecars:
 
         refs = store.write_logprob_sidecars("t1", response_metadata)
 
-        assert response_metadata == {"other_key": "kept"}
+        assert response_metadata == {"other_key": "kept", "logprob_records": 2}
         assert refs == {
             "logprobs_path": "run_z/logprobs/t1.jsonl",
             "logprobs_int16_path": "run_z/logprobs_int16/t1.jsonl",
@@ -144,9 +144,9 @@ class TestResultStoreLogprobSidecars:
         assert record["logprobs_int16_path"] == "run_z/logprobs_int16/t1.jsonl"
         assert record["top_logprobs"] == 20
         assert record["int16_probability_scale"] == INT16_PROB_SCALE
-        assert "logprob_records" not in record["metadata"]
+        assert record["metadata"]["logprob_records"] == 2
         assert "logprob_int16_records" not in record["metadata"]
-        assert record["metadata"] == {"other_key": "kept"}
+        assert record["metadata"] == {"other_key": "kept", "logprob_records": 2}
 
         files = record["artifact_manifest"]["files"]
         assert files["response_stream"].endswith("t1/workspace/runtime_trace.jsonl")
@@ -182,7 +182,7 @@ class TestResultStoreLogprobSidecars:
         assert record["logprobs_int16_path"] == "run_z/logprobs_int16/t1.jsonl"
         assert record["top_logprobs"] == 20
         assert record["int16_probability_scale"] == INT16_PROB_SCALE
-        assert "logprob_records" not in record["metadata"]
+        assert record["metadata"]["logprob_records"] == 2
         assert "logprob_int16_records" not in record["metadata"]
         assert record["artifact_manifest"]["files"]["logprobs_float"] == "logprobs/t1.jsonl"
         assert record["artifact_manifest"]["files"]["logprobs_int16"] == "logprobs_int16/t1.jsonl"

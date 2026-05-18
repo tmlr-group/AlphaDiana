@@ -5,8 +5,11 @@ from collections.abc import Iterable
 
 import pytest
 
+from alphadiana.agent.base import AgentResponse
 from alphadiana.agent.openclaw import OpenClawAgent, OpenClawRequestError
 from alphadiana.benchmark.base import BenchmarkTask
+from alphadiana.results.result_store import ResultStore
+from alphadiana.scorer.base import ScoreResult
 
 
 class _FakeResponse:
@@ -119,6 +122,44 @@ def test_openclaw_request_payload_uses_shared_capture_config() -> None:
     payload_disabled = agent_disabled._build_request_payload([{"role": "user", "content": "x"}])
     assert "logprobs" not in payload_disabled
     assert "top_logprobs" not in payload_disabled
+
+
+def test_openclaw_sidecar_count_survives_result_store_metadata(tmp_path) -> None:
+    records = [
+        {
+            "token_index": 0,
+            "token": "4",
+            "logprob": -0.1,
+            "top_logprobs": [{"token": "4", "logprob": -0.1}],
+        },
+        {
+            "token_index": 1,
+            "token": ".",
+            "logprob": -0.2,
+            "top_logprobs": [{"token": ".", "logprob": -0.2}],
+        },
+    ]
+    response = AgentResponse(
+        answer="4",
+        metadata={
+            "logprobs_capture_status": "captured",
+            "logprob_capture_harness": "openclaw",
+            "logprob_records": records,
+        },
+    )
+    store = ResultStore(str(tmp_path), "run_openclaw")
+
+    store.append(
+        _task(),
+        response,
+        ScoreResult(correct=True, score=1.0, expected="4", predicted="4"),
+    )
+
+    record = store.load()[0]
+    assert record["metadata"]["logprob_capture_harness"] == "openclaw"
+    assert record["metadata"]["logprob_records"] == 2
+    assert record["logprobs_path"] == "run_openclaw/logprobs/t1.jsonl"
+    assert len((tmp_path / "run_openclaw" / "logprobs" / "t1.jsonl").read_text().splitlines()) == 2
 
 
 def test_non_streaming_json_collects_logprob_records(monkeypatch: pytest.MonkeyPatch) -> None:

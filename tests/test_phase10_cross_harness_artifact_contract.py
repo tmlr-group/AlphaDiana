@@ -54,6 +54,7 @@ def test_direct_llm_with_logprobs_writes_raw_and_int16_sidecars(tmp_path: Path) 
     assert record["top_logprobs"] == 20
     assert record["int16_probability_scale"] == INT16_PROB_SCALE
     assert record["metadata"]["logprobs_capture_status"] == "captured"
+    assert record["metadata"]["logprob_records"] == 1
     files = record["artifact_manifest"]["files"]
     assert files["logprobs_float"] == "logprobs/direct_llm_with_logprobs.jsonl"
     assert files["logprobs_int16"] == "logprobs_int16/direct_llm_with_logprobs.jsonl"
