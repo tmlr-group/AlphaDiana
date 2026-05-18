@@ -7,9 +7,11 @@ RUN_PREFIX="${PODMAN_TB2_RUN_PREFIX:-podman_tb2_$(date +%Y%m%d_%H%M%S)}"
 COMMAND_TIMEOUT_SECONDS="${PODMAN_TB2_COMMAND_TIMEOUT_SECONDS:-14400}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 CONFIG_DIR="${PODMAN_TB2_CONFIG_DIR:-$ROOT_DIR/configs/smokes/podman_terminal_bench2}"
+REDO_ALL="${PODMAN_TB2_REDO_ALL:-1}"
 STATUS_DIR="$ROOT_DIR/context/podman-terminal-bench2-readiness"
 STATUS_FILE="$STATUS_DIR/run-status-${RUN_PREFIX}.tsv"
 PREFLIGHT_STATUS_FILE="$STATUS_DIR/preflight-${RUN_PREFIX}.json"
+PREFETCH_IMAGE_FILE="$STATUS_DIR/prefetch-images-${RUN_PREFIX}.txt"
 PREFLIGHT_SCRIPT="$ROOT_DIR/scripts/preflight_podman_terminal_bench2_readiness.py"
 AUDIT_SCRIPT="$ROOT_DIR/scripts/audit_podman_terminal_bench2_readiness.py"
 
@@ -24,6 +26,7 @@ PRESERVE_TB2_OPENCLAW_RUNTIME_IMAGE="${TB2_OPENCLAW_RUNTIME_IMAGE:-}"
 PRESERVE_TB2_ZEROCLAW_RUNTIME_IMAGE="${TB2_ZEROCLAW_RUNTIME_IMAGE:-}"
 PRESERVE_PODMAN_TB2_PREFLIGHT_PROVIDER_IMAGE="${PODMAN_TB2_PREFLIGHT_PROVIDER_IMAGE:-}"
 PRESERVE_ALPHADIANA_TB2_LOGS_DIR="${ALPHADIANA_TB2_LOGS_DIR:-}"
+PRESERVE_PODMAN_TB2_REDO_ALL="${PODMAN_TB2_REDO_ALL:-}"
 
 if [[ -f .env ]]; then
   set -a
@@ -41,12 +44,14 @@ if [[ -n "$PRESERVE_TB2_OPENCLAW_RUNTIME_IMAGE" ]]; then export TB2_OPENCLAW_RUN
 if [[ -n "$PRESERVE_TB2_ZEROCLAW_RUNTIME_IMAGE" ]]; then export TB2_ZEROCLAW_RUNTIME_IMAGE="$PRESERVE_TB2_ZEROCLAW_RUNTIME_IMAGE"; fi
 if [[ -n "$PRESERVE_PODMAN_TB2_PREFLIGHT_PROVIDER_IMAGE" ]]; then export PODMAN_TB2_PREFLIGHT_PROVIDER_IMAGE="$PRESERVE_PODMAN_TB2_PREFLIGHT_PROVIDER_IMAGE"; fi
 if [[ -n "$PRESERVE_ALPHADIANA_TB2_LOGS_DIR" ]]; then export ALPHADIANA_TB2_LOGS_DIR="$PRESERVE_ALPHADIANA_TB2_LOGS_DIR"; fi
+if [[ -n "$PRESERVE_PODMAN_TB2_REDO_ALL" ]]; then export PODMAN_TB2_REDO_ALL="$PRESERVE_PODMAN_TB2_REDO_ALL"; fi
 
 export TB2_OPENCODE_RUNTIME_IMAGE="${TB2_OPENCODE_RUNTIME_IMAGE:-localhost/alphadiana/tb2-opencode-controller:latest}"
 export TB2_OPENCLAW_RUNTIME_IMAGE="${TB2_OPENCLAW_RUNTIME_IMAGE:-localhost/alphadiana-openclaw-swebench-runtime-source:latest}"
 export TB2_ZEROCLAW_RUNTIME_IMAGE="${TB2_ZEROCLAW_RUNTIME_IMAGE:-localhost/zeroclaw-reasoning:0.6.9}"
 export PODMAN_TB2_PREFLIGHT_PROVIDER_IMAGE="${PODMAN_TB2_PREFLIGHT_PROVIDER_IMAGE:-$TB2_OPENCODE_RUNTIME_IMAGE}"
 export ALPHADIANA_TB2_LOGS_DIR="${ALPHADIANA_TB2_LOGS_DIR:-$ROOT_DIR/logs/podman-terminal-bench2-readiness/task-logs/$RUN_PREFIX}"
+export PODMAN_TB2_REDO_ALL="${PODMAN_TB2_REDO_ALL:-$REDO_ALL}"
 case "$ALPHADIANA_TB2_LOGS_DIR" in
   /*) ;;
   *) export ALPHADIANA_TB2_LOGS_DIR="$ROOT_DIR/$ALPHADIANA_TB2_LOGS_DIR" ;;
@@ -113,18 +118,84 @@ run_preflight() {
   python "${args[@]}"
 }
 
+run_prefetch_images() {
+  init_status
+  run_preflight || return "$?"
+  python - "$PREFLIGHT_STATUS_FILE" "$PREFETCH_IMAGE_FILE" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+from alphadiana.container_runtime.podman_cli import normalize_podman_image_ref
+
+preflight_path = Path(sys.argv[1])
+output_path = Path(sys.argv[2])
+data = json.loads(preflight_path.read_text(encoding="utf-8"))
+images = sorted({
+    normalize_podman_image_ref(str(image))
+    for image in data.get("task_images_missing_locally", [])
+    if str(image).strip()
+})
+output_path.write_text("".join(f"{image}\n" for image in images), encoding="utf-8")
+print(f"Missing task images: {len(images)}")
+PY
+  local image_count
+  image_count="$(wc -l < "$PREFETCH_IMAGE_FILE" | tr -d ' ')"
+  if [[ "$image_count" == "0" ]]; then
+    printf 'All selected TerminalBench2 task images are already present locally.\n'
+    printf 'prefetch-images\t%s\t%s\t%s\t%s\n' "$RUN_PREFIX" "${PREFETCH_IMAGE_FILE#$ROOT_DIR/}" "0" "-" >> "$STATUS_FILE"
+    return 0
+  fi
+
+  local pull_concurrency="${PODMAN_TB2_IMAGE_PULL_CONCURRENCY:-4}"
+  local pull_timeout="${PODMAN_TB2_IMAGE_PULL_TIMEOUT_SECONDS:-1800}"
+  local log_path="$ROOT_DIR/logs/${RUN_PREFIX}_image_prefetch.log"
+  local rc=0
+  {
+    printf 'Image prefetch started: %s\n' "$(date -Is)"
+    printf 'Image list: %s\n' "${PREFETCH_IMAGE_FILE#$ROOT_DIR/}"
+    printf 'Concurrency: %s\n' "$pull_concurrency"
+    printf 'Per-image timeout seconds: %s\n' "$pull_timeout"
+    xargs -r -P "$pull_concurrency" -I{} sh -c '
+      image="$1"
+      echo "pull-start $(date -Is) $image"
+      timeout "$2" podman pull "$image"
+      rc=$?
+      echo "pull-end $(date -Is) rc=$rc $image"
+      exit "$rc"
+    ' sh {} "$pull_timeout" < "$PREFETCH_IMAGE_FILE"
+    rc=${PIPESTATUS[0]}
+    printf 'Image prefetch finished: %s rc=%s\n' "$(date -Is)" "$rc"
+    exit "$rc"
+  } 2>&1 | tee "$log_path"
+  rc=${PIPESTATUS[0]}
+  printf 'prefetch-images\t%s\t%s\t%s\t%s\n' "$RUN_PREFIX" "${PREFETCH_IMAGE_FILE#$ROOT_DIR/}" "$rc" "logs/${RUN_PREFIX}_image_prefetch.log" >> "$STATUS_FILE"
+  return "$rc"
+}
+
 run_config() {
   local config_path="$1"
   local run_id="$2"
   local log_path="$ROOT_DIR/logs/${run_id}.log"
   local output_dir="$ROOT_DIR/results/${run_id}"
+  local redo_args=()
+  local checkpoint_mode="redo-all"
+  case "${PODMAN_TB2_REDO_ALL:-1}" in
+    0|false|False|FALSE|no|No|NO)
+      checkpoint_mode="resume"
+      ;;
+    *)
+      redo_args+=(--redo-all)
+      ;;
+  esac
   printf '\n=== pilot :: %s ===\n' "$run_id"
   printf 'Config: %s\n' "${config_path#$ROOT_DIR/}"
+  printf 'Checkpoint mode: %s\n' "$checkpoint_mode"
   (
     cd "$ROOT_DIR" || exit 1
     timeout --foreground "$COMMAND_TIMEOUT_SECONDS" \
       python -m alphadiana.cli run "$config_path" \
-        --redo-all \
+        "${redo_args[@]}" \
         -o "run_id=$run_id" \
         -o "output_dir=$output_dir" \
         2>&1
@@ -174,11 +245,12 @@ main() {
   case "$SCOPE" in
     validate) validate_config; rc=$? ;;
     preflight) run_preflight; rc=$? ;;
+    prefetch-images) run_prefetch_images; rc=$? ;;
     pilot) run_pilot; rc=$? ;;
     audit) run_audit; rc=$? ;;
     all|auto) run_all; rc=$? ;;
     *)
-      printf 'Usage: %s [validate|preflight|pilot|audit|all|auto]\n' "$0" >&2
+      printf 'Usage: %s [validate|preflight|prefetch-images|pilot|audit|all|auto]\n' "$0" >&2
       exit 2
       ;;
   esac

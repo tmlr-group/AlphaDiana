@@ -12,10 +12,14 @@ Current support boundary:
   across AIME, GPQA-Diamond, HLE, and IMO-AnswerBench with three tasks per
   cell. Evidence is in
   `context/podman-scale-readiness/README.md`.
-- Task-container path: TerminalBench2 has a passing three-agent, three-task
-  readiness audit for OpenClaw, OpenCode, and ZeroClaw under
-  `context/podman-terminal-bench2-readiness/`. SWE-bench Verified has focused
-  opt-in smoke evidence. SWE-bench Pro and external_benchmark remain deferred.
+- Task-container path: TerminalBench2 has historical three-agent smoke
+  evidence, 128K canary evidence, a current full local-Qwen sweep, and an
+  overnight high-budget follow-up for all 89 real task directories in the
+  checked-out TerminalBench2 task root across OpenClaw, OpenCode, and ZeroClaw.
+  Treat
+  `context/podman-terminal-bench2-readiness/` as the support truth source.
+  SWE-bench Verified has focused opt-in smoke evidence. SWE-bench Pro and
+  external_benchmark remain deferred.
 - MMMU-Pro multimodal path: Phase 6 has a patched opt-in readiness matrix for
   OpenClaw, ZeroClaw, and OpenCode on three deterministic `vision` tasks.
   `Qwen/Qwen3.5-4B` at `http://127.0.0.1:8011/v1` has manual host and Podman
@@ -220,12 +224,65 @@ bash scripts/run_podman_terminal_bench2_readiness.sh all
 ```
 
 `all` and `auto` run `validate -> preflight -> pilot -> audit` fail-fast. The
-May 16 Phase 7 run prefix `podman_tb2_three_agent_20260516_170725` wrote all
-9 expected task rows and passed audit for OpenClaw, OpenCode, and ZeroClaw on
-`db-wal-recovery`, `overfull-hbox`, and `adaptive-rejection-sampler`. This
-supports recommending a larger overnight three-agent TerminalBench2 Podman
-campaign, but does not promote Direct x TB2, full-sweep, or default Podman
-status.
+May 16 Phase 7 run prefix `podman_tb2_three_agent_20260516_170725` remains
+historical small-matrix smoke evidence for OpenClaw, OpenCode, and ZeroClaw on
+`db-wal-recovery`, `overfull-hbox`, and `adaptive-rejection-sampler`.
+
+The expanded local-Qwen run
+`podman_tb2_expanded_local_qwen_tmpstore_20260516` should not be cited as
+readiness evidence. It wrote 36 task rows, but current stricter audit flags
+pre-fix dangling verifier paths plus ZeroClaw provider-error and empty-
+assistant rows that were previously masked as `valid_scored`. Current code
+preserves verifier folders and records these ZeroClaw rows as `provider_error`
+or `agent_empty_output`; `podman_tb2_postfix2_local_qwen_20260516` verifies the
+failure-preservation behavior. ZeroClaw provider-proxy runs preserve content-free
+request/response summaries, and the readiness audit fails a row if the provider
+returns a truly blank choice with empty content, empty reasoning, and no tool
+call. The 128K local-Qwen canary
+`podman_tb2_longcap3_local_qwen_20260517` passes the current audit for
+OpenClaw, OpenCode, and ZeroClaw, and current TerminalBench2 Podman task
+containers rewrite host loopback proxy environment before apt/pip commands run
+inside the task container.
+
+Current full-sweep evidence is
+`podman_tb2_full8_local_qwen_20260517`: local `Qwen/Qwen3.5-4B`, 89 available
+TerminalBench2 tasks x OpenClaw/OpenCode/ZeroClaw = 267 task rows,
+require-local-image preflight passed, all task JSONs written, and the current
+audit passed with `audit_passed=true` and `audit_failure_count=0`. The apparent
+90th task-root entry was `.git`, not a task directory with `task.toml`.
+Provider-level truly blank choices were `0`; ZeroClaw still produced many
+CLI-level empty assistant outputs, which are preserved as abnormal scored-zero
+records. The May 17 ZeroClaw follow-up
+`podman_tb2_full9_zeroclaw_no_thinking_local_qwen_20260517` reran all 89
+ZeroClaw tasks with `enable_thinking=false` and a 900s solver timeout; it
+completed 89/89 rows with `zeroclaw_empty_assistant_output=0`, provider true
+blank choices `0`, and four explicit timeout-classified rows. Treat that as
+historical transport-validation evidence, not the production-style thinking-on
+setting. See `context/podman-terminal-bench2-readiness/README.md`.
+
+For production-style local-Qwen ZeroClaw TerminalBench2 runs where thinking
+must stay enabled, use provider request/response summaries and the upstream
+streaming proxy mode instead of `enable_thinking=false`. The focused
+Qwen3.5-27B pilot
+`podman_tb2_27b_zc_thinking_stream_logprob_pilot_20260518` used
+`enable_thinking=true`, `max_tokens=131072`, `presence_penalty=1.5`, provider
+logprobs, and `provider_proxy_upstream_stream=true`; it completed 3/3 selected
+task rows with provider errors `0`, CLI final text empty rows `0`, provider
+true blank choices `0`, and captured logprobs for every row. This is not full
+27B TerminalBench2 readiness: a single ZeroClaw TB2 task can internally drive
+roughly 10 simultaneous provider requests even when harness
+`max_concurrent=1`, so full sweeps should ramp concurrency from vLLM
+`Running` / `Waiting` / KV-cache evidence. The high-budget follow-up
+`podman_tb2_zc_thinking_highbudget_canary_v2_20260517` showed that
+`enable_thinking=true`, `max_tokens=8192`, and 1800-second budgets can still
+produce ZeroClaw `agent_empty_output` without provider true blanks. The
+no-thinking full high-budget run `podman_tb2_high8192_zeroclaw_20260517`
+completed all 89 rows with `zeroclaw_empty_assistant_output=0`. OpenCode and
+OpenClaw high-budget controls
+`podman_tb2_high8192_opencode_20260517` and
+`podman_tb2_high8192_openclaw_20260517` did not reproduce the ZeroClaw empty
+assistant issue; OpenClaw's empty raw-output control rows were timeout rows
+with preserved session traces and are timeout-classified by current code.
 
 TerminalBench2 OpenCode Podman smoke:
 
