@@ -621,17 +621,25 @@ def _resolve_final_finish_reason(
     2. ``length`` if the upstream provider stopped because of the token budget
        — this is a legitimate completion that callers may still try to score
        (e.g. extract answer from partial reasoning) per finding #11 guidance.
-    3. ``incomplete`` for reasoning-only stream cut-offs without an explicit
-       upstream finish_reason.
+       The upstream marker propagates through the OpenClaw gateway only
+       intermittently; if the SSE stream cleanly ended (``received_done=True``)
+       with reasoning-only output and no content, we infer ``length`` — a
+       clean ``[DONE]`` means the model finished, and reasoning-only with no
+       content under a sufficiently large token budget is by far the
+       budget-exhausted case (the alternative of a "stop" with empty content
+       is extremely rare in practice).
+    3. ``incomplete`` for reasoning-only stream cut-offs (no ``[DONE]``).
     4. Empty string for healthy ``stop`` / ``tool_calls`` completions.
     """
     if timeout_scored_zero:
         return "timeout"
     upstream_finish = ""
+    received_done = False
     if isinstance(response_json, dict):
         stream_status = response_json.get("stream_status")
         if isinstance(stream_status, dict):
             upstream_finish = str(stream_status.get("upstream_finish_reason") or "")
+            received_done = bool(stream_status.get("received_done"))
         if not upstream_finish:
             choices = response_json.get("choices") or []
             if choices and isinstance(choices[0], dict):
@@ -639,7 +647,11 @@ def _resolve_final_finish_reason(
     if upstream_finish == "length":
         return "length"
     if partial_reasoning_only and not raw_output:
-        return "incomplete"
+        # A clean SSE [DONE] with substantial reasoning but no content is the
+        # signature of budget-exhausted thinking. Avoid the integrity guard's
+        # ``finish_reason_incomplete`` rejection so the partial-reasoning
+        # answer extraction path can salvage the response.
+        return "length" if received_done else "incomplete"
     return ""
 
 
