@@ -16,6 +16,7 @@ agent:
     provider_max_tokens: 65536
     reasoning_enabled: true
     reasoning_effort: high
+    provider_proxy_normalize_system_messages: true
     max_tool_iterations: 100
     max_actions_per_hour: 200
     workspace_only: false

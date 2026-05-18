@@ -180,6 +180,35 @@ def test_swe_audit_passes_score_zero_with_list_task_json(tmp_path: Path) -> None
     assert all(row["gating_failure"] is False for row in result["rows"])
 
 
+def test_swe_audit_does_not_treat_valid_metadata_or_prompt_as_infra_failure(tmp_path: Path) -> None:
+    config_dir, results_dir, logs_dir, preflight, run_id = _prepare(tmp_path)
+    record = _record(
+        run_id=run_id,
+        task_id=TASK_IDS[0],
+        metadata={
+            "swe_bench_eval": {
+                "container_engine": "podman",
+                "docker_api_version": "1.41",
+                "podman_socket": "unix:///run/user/1007/podman/podman.sock",
+            }
+        },
+        sandbox_metadata={
+            "container_engine": "podman",
+            "docker_api_version": "1.41",
+            "podman_socket": "unix:///run/user/1007/podman/podman.sock",
+        },
+        score=0.0,
+    )
+    record["raw_output"] = "The Kubernetes API version text appears in the model output."
+    _write_task(results_dir, logs_dir, run_id=run_id, task_id=TASK_IDS[0], record=record)
+
+    result = _run_audit(tmp_path, config_dir, results_dir, logs_dir, preflight)
+
+    row = [row for row in result["rows"] if row["task_id"] == TASK_IDS[0]][0]
+    assert row["failure_category"] == "clean"
+    assert row["audit_failures"] == []
+
+
 def test_swe_audit_fails_missing_task_json_explicitly(tmp_path: Path) -> None:
     config_dir, results_dir, logs_dir, preflight, run_id = _prepare(tmp_path)
     _write_task(
@@ -342,6 +371,30 @@ def test_swe_audit_prioritizes_docker_api_version_over_env_image_text(tmp_path: 
     row = [row for row in result["rows"] if row["task_id"] == TASK_IDS[0]][0]
     assert row["failure_category"] == "docker_api_version"
     assert "infrastructure_failure:docker_api_version" in row["audit_failures"]
+
+
+def test_swe_audit_provider_error_not_masked_by_podman_diagnostics(tmp_path: Path) -> None:
+    config_dir, results_dir, logs_dir, preflight, run_id = _prepare(tmp_path)
+    record = _record(
+        run_id=run_id,
+        task_id=TASK_IDS[0],
+        score_status="provider_error",
+        score=None,
+        error={
+            "error_type": "provider_error",
+            "error": (
+                "All providers/models failed: API error: System message must be at the beginning. "
+                "diagnostics: podman_socket=unix:///run/user/1007/podman/podman.sock"
+            ),
+        },
+    )
+    _write_task(results_dir, logs_dir, run_id=run_id, task_id=TASK_IDS[0], record=record)
+
+    result = _run_audit(tmp_path, config_dir, results_dir, logs_dir, preflight)
+
+    row = [row for row in result["rows"] if row["task_id"] == TASK_IDS[0]][0]
+    assert row["failure_category"] == "provider_failure"
+    assert "infrastructure_failure:provider_failure" in row["audit_failures"]
 
 
 def test_swe_audit_does_not_contaminate_clean_row_from_other_task_log(tmp_path: Path) -> None:

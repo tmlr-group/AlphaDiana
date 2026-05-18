@@ -234,9 +234,12 @@ class _FakeTimeoutNoOutputSandbox(_FakeSandbox):
 
 
 class _FakeLogprobProxy:
-    def __init__(self, upstream: str, top_logprobs: int, **_: object) -> None:
+    last_kwargs: dict[str, object] = {}
+
+    def __init__(self, upstream: str, top_logprobs: int, **kwargs: object) -> None:
         self.upstream = upstream
         self.top_logprobs = top_logprobs
+        type(self).last_kwargs = dict(kwargs)
         self.started = False
 
     def start(self) -> None:
@@ -259,6 +262,12 @@ class _FakeLogprobProxy:
             }
             for idx in range(5)
         ]
+
+    def drain_request_summaries(self) -> list[dict]:
+        return [{"normalized_system_messages": True}]
+
+    def drain_response_summaries(self) -> list[dict]:
+        return [{"status_code": 200}]
 
 
 def test_zeroclaw_agent_is_registered():
@@ -688,6 +697,40 @@ def test_zeroclaw_runtime_only_output_with_logprobs_scores_zero(monkeypatch):
     assert response.metadata["zeroclaw_empty_assistant_scored_zero"] is True
     assert response.metadata["logprobs_capture_status"] == "captured"
     assert response.token_entropy_stats["n_tokens"] == 5
+
+
+def test_zeroclaw_system_message_normalization_proxy_without_logprobs(monkeypatch):
+    monkeypatch.setattr("alphadiana.agent.zeroclaw.LogprobCaptureProxy", _FakeLogprobProxy)
+    task = BenchmarkTask(
+        task_id="swe_proxy_normalize",
+        problem="Fix the bug.",
+        ground_truth="diff --git a/x b/x",
+        metadata={"execution_id": "exec-proxy-normalize"},
+    )
+    sandbox = _FakeSandbox()
+    agent = ZeroClawAgent()
+    agent.setup({
+        "model": "Qwen/Qwen3.5-27B",
+        "api_base": "http://127.0.0.1:8011/v1",
+        "api_key": "EMPTY",
+        "capture_logprobs": False,
+        "provider_proxy_normalize_system_messages": True,
+    })
+
+    response = agent.solve(task, sandbox=sandbox)
+
+    assert response.metadata["logprobs_capture_status"] == "not_requested"
+    assert response.metadata["logprob_proxy_enabled"] is True
+    assert response.metadata["logprob_proxy_inject_logprobs"] is False
+    assert response.metadata["provider_proxy_normalize_system_messages"] is True
+    assert response.metadata["provider_proxy_request_summaries"] == [
+        {"normalized_system_messages": True}
+    ]
+    assert _FakeLogprobProxy.last_kwargs["inject_logprobs"] is False
+    assert _FakeLogprobProxy.last_kwargs["normalize_system_messages"] is True
+    assert _FakeLogprobProxy.last_kwargs["capture_request_summary"] is True
+    run_command = next(command for command in sandbox.commands if _is_zeroclaw_agent_command(command))
+    assert "OPENAI_BASE_URL=http://172.17.0.1:4567/v1" in run_command
 
 
 def test_zeroclaw_loop_detector_with_logprobs_scores_zero(monkeypatch):
