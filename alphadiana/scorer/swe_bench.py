@@ -293,6 +293,9 @@ class SWEBenchScorer(Scorer):
             clone_retries=self._git_clone_retries,
             retry_sleep_sec=self._git_clone_retry_sleep_sec,
             clone_filter=self._git_clone_filter,
+            fallback_base_commit=(
+                instance.get("base_commit") if self._container_engine == "podman" else None
+            ),
         )
         if self._container_engine == "podman":
             qualify_swebench_test_spec_for_podman(test_spec)

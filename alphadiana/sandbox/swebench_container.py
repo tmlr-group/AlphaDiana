@@ -414,6 +414,9 @@ class SWEBenchContainerSandbox(Sandbox):
                 self._config.get("git_clone_retry_sleep_sec", clone_retry_sleep_default)
             ),
             clone_filter=str(self._config.get("git_clone_filter", clone_filter_default) or ""),
+            fallback_base_commit=(
+                instance.get("base_commit") if self._container_engine == "podman" else None
+            ),
         )
         return instance, test_spec
 
