@@ -11,6 +11,7 @@ import re
 import secrets
 import shlex
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -985,6 +986,54 @@ class ZeroClawAgent(Agent):
             return self._host_binary_cache
         if not self._binary_source_image:
             raise RuntimeError("No ZeroClaw binary source image configured.")
+        if self._binary_source_engine == "podman":
+            container_id = ""
+            try:
+                created = subprocess.run(
+                    [
+                        self._binary_source_engine,
+                        "create",
+                        "--entrypoint",
+                        "",
+                        self._binary_source_image,
+                        "true",
+                    ],
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                container_id = created.stdout.strip().splitlines()[-1]
+                if not container_id:
+                    raise RuntimeError("podman create did not return a container id")
+                with tempfile.TemporaryDirectory(prefix="zeroclaw-binary-") as td:
+                    target = Path(td) / "zeroclaw"
+                    subprocess.run(
+                        [
+                            self._binary_source_engine,
+                            "cp",
+                            f"{container_id}:{self._binary_source_path}",
+                            str(target),
+                        ],
+                        check=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                    )
+                    payload = target.read_bytes()
+            finally:
+                if container_id:
+                    subprocess.run(
+                        [self._binary_source_engine, "rm", "-f", container_id],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        check=False,
+                    )
+            if not payload:
+                raise RuntimeError(
+                    "Resolved ZeroClaw binary source image produced an empty binary payload."
+                )
+            self._host_binary_cache = payload
+            return payload
         result = subprocess.run(
             [
                 self._binary_source_engine,

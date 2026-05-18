@@ -342,3 +342,46 @@ def test_swe_audit_prioritizes_docker_api_version_over_env_image_text(tmp_path: 
     row = [row for row in result["rows"] if row["task_id"] == TASK_IDS[0]][0]
     assert row["failure_category"] == "docker_api_version"
     assert "infrastructure_failure:docker_api_version" in row["audit_failures"]
+
+
+def test_swe_audit_does_not_contaminate_clean_row_from_other_task_log(tmp_path: Path) -> None:
+    config_dir, results_dir, logs_dir, preflight, run_id = _prepare(tmp_path)
+    _write_task(
+        results_dir,
+        logs_dir,
+        run_id=run_id,
+        task_id=TASK_IDS[0],
+        record=_record(run_id=run_id, task_id=TASK_IDS[0], score=1.0),
+    )
+    _write_task(
+        results_dir,
+        logs_dir,
+        run_id=run_id,
+        task_id=TASK_IDS[1],
+        record=_record(
+            run_id=run_id,
+            task_id=TASK_IDS[1],
+            score_status="runtime_error",
+            score=None,
+            error={
+                "error_type": "BuildImageError",
+                "error": "Error building image localhost/swebench/sweb.eval.x86_64.demo:latest: "
+                "error creating build container: localhost/sweb.env.py.x86_64.demo:latest: image not known",
+            },
+        ),
+    )
+    (logs_dir / f"{run_id}.log").write_text(
+        "Task one passed\n"
+        "Error building image localhost/swebench/sweb.eval.x86_64.demo:latest: "
+        "error creating build container: localhost/sweb.env.py.x86_64.demo:latest: image not known\n",
+        encoding="utf-8",
+    )
+
+    result = _run_audit(tmp_path, config_dir, results_dir, logs_dir, preflight)
+
+    clean = [row for row in result["rows"] if row["task_id"] == TASK_IDS[0]][0]
+    failed = [row for row in result["rows"] if row["task_id"] == TASK_IDS[1]][0]
+    assert clean["failure_category"] == "clean"
+    assert clean["audit_failures"] == []
+    assert failed["failure_category"] == "swebench_instance_build"
+    assert "infrastructure_failure:swebench_instance_build" in failed["audit_failures"]

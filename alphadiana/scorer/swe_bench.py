@@ -188,6 +188,7 @@ class SWEBenchScorer(Scorer):
             return
 
         env = podman_socket_env(self._podman_socket_path or None)
+        env["ALPHADIANA_SWEBENCH_PODMAN_BUILD"] = "1"
         if self._docker_api_version:
             env["DOCKER_API_VERSION"] = self._docker_api_version
         previous = {key: os.environ.get(key) for key in env}

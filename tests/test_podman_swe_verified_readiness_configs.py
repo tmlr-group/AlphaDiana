@@ -9,6 +9,7 @@ from alphadiana.config.experiment_config import ExperimentConfig
 from alphadiana.config.validator import ConfigValidator
 from alphadiana.sandbox.swebench_container import SWEBenchContainerSandbox
 from alphadiana.scorer.swe_bench import SWEBenchScorer
+from alphadiana.utils.swebench import strip_from_platform_directives_for_podman
 
 
 CONFIG_DIR = Path("configs/smokes/podman_swe_verified_readiness")
@@ -148,3 +149,15 @@ def test_docker_swe_keeps_api_version_unset_by_default(monkeypatch) -> None:
 
     assert sandbox._docker_api_version == ""
     assert scorer._docker_api_version == ""
+
+
+def test_podman_swe_strips_from_platform_directives() -> None:
+    dockerfile = (
+        "FROM --platform=linux/x86_64 localhost/sweb.env.py.x86_64.demo:latest\n"
+        "RUN echo ok\n"
+    )
+
+    assert strip_from_platform_directives_for_podman(dockerfile) == (
+        "FROM localhost/sweb.env.py.x86_64.demo:latest\n"
+        "RUN echo ok\n"
+    )
