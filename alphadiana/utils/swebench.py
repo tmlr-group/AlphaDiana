@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 import shlex
 from typing import Any
 
@@ -32,6 +34,11 @@ def qualify_swebench_podman_image_ref(image_ref: str) -> str:
     if not ref or "://" in ref or _image_has_registry(ref):
         return ref
     return f"localhost/{ref}"
+
+
+def strip_from_platform_directives_for_podman(dockerfile: str) -> str:
+    """Remove FROM-level platform pins that make Podman miss local images."""
+    return re.sub(r"(?m)^(FROM)\s+--platform=\S+\s+", r"\1 ", dockerfile)
 
 
 def qualify_swebench_test_spec_for_podman(test_spec: Any) -> Any:
@@ -214,24 +221,30 @@ def ensure_swebench_build_network_mode(network_mode: str | None) -> None:
                         f"Setup script {setup_script_name} may not be used in Dockerfile"
                     )
 
+            podman_compat = os.environ.get("ALPHADIANA_SWEBENCH_PODMAN_BUILD", "").strip() == "1"
+            if podman_compat:
+                dockerfile = strip_from_platform_directives_for_podman(dockerfile)
             dockerfile_path = build_dir / "Dockerfile"
             with open(dockerfile_path, "w", encoding="utf-8") as f:
                 f.write(dockerfile)
 
+            build_kwargs = {
+                "path": str(build_dir),
+                "tag": image_name,
+                "rm": True,
+                "forcerm": True,
+                "decode": True,
+                "nocache": nocache,
+                "network_mode": selected,
+            }
+            if not podman_compat:
+                build_kwargs["platform"] = platform
             logger.info(
-                f"Building docker image {image_name} in {build_dir} with platform {platform} "
+                f"Building docker image {image_name} in {build_dir} with platform "
+                f"{'omitted for Podman local image compatibility' if podman_compat else platform} "
                 f"and network_mode={selected}"
             )
-            response = client.api.build(
-                path=str(build_dir),
-                tag=image_name,
-                rm=True,
-                forcerm=True,
-                decode=True,
-                platform=platform,
-                nocache=nocache,
-                network_mode=selected,
-            )
+            response = client.api.build(**build_kwargs)
 
             buildlog = ""
             for chunk in response:

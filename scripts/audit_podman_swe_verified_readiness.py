@@ -357,12 +357,18 @@ def classify_failure(record: dict[str, Any] | None, *, log_text: str = "", missi
             return "provider_empty_response"
         if "api version" in evidence or "client version" in evidence:
             return "docker_api_version"
-        if "short-name" in evidence or "unqualified" in evidence or "sweb.env" in evidence:
+        if "buildimageerror" in evidence or "environment image" in evidence:
+            if "instance image" in evidence or "build_instance" in evidence or "sweb.eval" in evidence:
+                return "swebench_instance_build"
+            return "swebench_env_build"
+        if (
+            "short-name" in evidence
+            or "unqualified" in evidence
+            or re.search(r"(^|[\s:])sweb\.env", evidence)
+        ):
             return "podman_short_name_image"
         if "podman" in evidence and ("socket" in evidence or "connection refused" in evidence):
             return "podman_socket"
-        if "buildimageerror" in evidence or "environment image" in evidence:
-            return "swebench_env_build"
         if "huggingface" in evidence or "hf_endpoint" in evidence or "dataset" in evidence:
             return "hf_dataset_access"
         if "timeout" in evidence or "timed out" in evidence:
@@ -377,7 +383,10 @@ def classify_failure(record: dict[str, Any] | None, *, log_text: str = "", missi
     finish_reason = str(record.get("finish_reason") or "").strip().lower()
     error = _as_dict(record.get("error"))
     error_type = str(error.get("error_type") or "").strip().lower()
-    evidence = _evidence_text(record, log_text)
+    evidence = _evidence_text(
+        record,
+        log_text if error or score_status != "valid_scored" else "",
+    )
 
     if (
         metadata.get("provider_empty_response") is True
@@ -392,16 +401,20 @@ def classify_failure(record: dict[str, Any] | None, *, log_text: str = "", missi
         return "reasoning_only_length"
     if "api version" in evidence or "client version" in evidence:
         return "docker_api_version"
-    if "short-name" in evidence or "unqualified" in evidence or "sweb.env" in evidence:
+    if "buildimageerror" in evidence:
+        if "instance image" in evidence or "build_instance" in evidence or "sweb.eval" in evidence:
+            return "swebench_instance_build"
+        return "swebench_env_build"
+    if (
+        "short-name" in evidence
+        or "unqualified" in evidence
+        or re.search(r"(^|[\s:])sweb\.env", evidence)
+    ):
         return "podman_short_name_image"
     if "podman" in evidence and ("socket" in evidence or "connection refused" in evidence):
         return "podman_socket"
     if "pull access denied" in evidence or "manifest unknown" in evidence or "proxyconnect" in evidence:
         return "image_pull_or_proxy"
-    if "buildimageerror" in evidence:
-        if "instance image" in evidence or "build_instance" in evidence:
-            return "swebench_instance_build"
-        return "swebench_env_build"
     if "report" in evidence and "swe-bench evaluation did not produce" in evidence:
         return "scorer_failure"
     if "contextoverflow" in evidence or "vllmvalidationerror" in evidence:
