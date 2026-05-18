@@ -308,6 +308,12 @@ def test_harden_test_spec_repo_clone_can_add_targeted_fetch_fallback():
         repo_script_list=[
             "git clone -o origin --single-branch https://github.com/example/repo /testbed",
             "git reset --hard abc123",
+            "TARGET_TIMESTAMP=$(git show -s --format=%ci abc123)",
+            "git tag -l | while read tag; do TAG_COMMIT=$(git rev-list -n 1 \"$tag\"); done",
+            "git gc --prune=now --aggressive",
+            "AFTER_TIMESTAMP=$(date -d \"$TARGET_TIMESTAMP + 1 second\" '+%Y-%m-%d %H:%M:%S')",
+            'COMMIT_COUNT=$(git log --oneline --all --since="$AFTER_TIMESTAMP" | wc -l)',
+            '[ "$COMMIT_COUNT" -eq 0 ] || exit 1',
         ]
     )
 
@@ -321,13 +327,18 @@ def test_harden_test_spec_repo_clone_can_add_targeted_fetch_fallback():
 
     rendered = "\n".join(test_spec.repo_script_list)
     assert "git clone failed after 2 attempts; falling back to targeted fetch of abc123" in rendered
+    assert "clone --filter=blob:none --no-tags -o origin --single-branch" in rendered
     assert "git remote add origin https://github.com/example/repo" in rendered
     assert (
-        "git -c http.version=HTTP/1.1 fetch --filter=blob:none --depth=1 origin "
+        "git -c http.version=HTTP/1.1 fetch --filter=blob:none --depth=50 --no-tags origin "
         "abc123 && break"
     ) in rendered
     assert "git checkout -f abc123" in rendered
     assert "git reset --hard abc123" in rendered
+    assert "date -u '+%Y-%m-%d %H:%M:%S %z'" in rendered
+    assert "skipped tag timestamp cleanup" in rendered
+    assert "skipped git gc" in rendered
+    assert "skipped commit-count check" in rendered
 
 
 def test_opencode_install_command_keeps_optional_binary_dependencies():
