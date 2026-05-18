@@ -257,7 +257,7 @@ main() {
     validate) validate_config; rc=$? ;;
     preflight) run_preflight; rc=$? ;;
     smoke|pilot32|long64|sample128) run_tier "$SCOPE"; rc=$? ;;
-    audit) run_audit; rc=$? ;;
+    audit) shift; run_audit "$*"; rc=$? ;;
     all|auto) run_auto; rc=$? ;;
     *)
       printf 'Usage: %s [validate|preflight|smoke|pilot32|long64|sample128|audit|all|auto]\n' "$0" >&2

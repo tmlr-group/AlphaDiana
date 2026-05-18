@@ -18,7 +18,10 @@ from urllib.parse import urlparse
 
 from alphadiana.sandbox.base import ExecutionResult, Sandbox, SandboxSession
 from alphadiana.sandbox.registry import register_sandbox
-from alphadiana.container_runtime.podman_socket import podman_socket_env
+from alphadiana.container_runtime.podman_socket import (
+    podman_socket_env,
+    resolve_podman_docker_api_version,
+)
 from alphadiana.utils.swebench import (
     build_swebench_instance,
     ensure_swebench_build_network_mode,
@@ -338,13 +341,9 @@ class SWEBenchContainerSandbox(Sandbox):
             )
         self._podman_socket_path = str(config.get("podman_socket", "") or "").strip()
         self._docker_api_version = str(
-            config.get("docker_api_version")
-            or (
-                os.environ.get("ALPHADIANA_PODMAN_DOCKER_API_VERSION", "").strip()
-                if self._container_engine == "podman"
-                else ""
-            )
-            or ""
+            resolve_podman_docker_api_version(config.get("docker_api_version"))
+            if self._container_engine == "podman"
+            else (config.get("docker_api_version") or "")
         ).strip()
         self._network_mode = str(config.get("network_mode", "") or "").strip()
 

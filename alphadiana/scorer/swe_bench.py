@@ -10,7 +10,10 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from alphadiana.container_runtime.podman_socket import podman_socket_env
+from alphadiana.container_runtime.podman_socket import (
+    podman_socket_env,
+    resolve_podman_docker_api_version,
+)
 from alphadiana.scorer.base import Scorer, ScoreResult
 from alphadiana.scorer.registry import register_scorer
 from alphadiana.utils.swebench import (
@@ -150,13 +153,9 @@ class SWEBenchScorer(Scorer):
             raise ValueError("swe_bench scorer.config.container_engine must be one of docker, podman")
         self._podman_socket_path = str(config.get("podman_socket", "") or "").strip()
         self._docker_api_version = str(
-            config.get("docker_api_version")
-            or (
-                os.environ.get("ALPHADIANA_PODMAN_DOCKER_API_VERSION", "").strip()
-                if self._container_engine == "podman"
-                else ""
-            )
-            or ""
+            resolve_podman_docker_api_version(config.get("docker_api_version"))
+            if self._container_engine == "podman"
+            else (config.get("docker_api_version") or "")
         ).strip()
 
     def _runtime_api(self) -> dict[str, Any]:
