@@ -263,6 +263,20 @@ def test_podman_proxy_env_rewrites_loopback_proxy_for_container() -> None:
     assert env["NO_PROXY"] == "127.0.0.1,localhost"
 
 
+def test_podman_proxy_env_adds_provider_host_to_no_proxy() -> None:
+    env = podman_proxy_env(
+        {
+            "HTTP_PROXY": "http://127.0.0.1:17890",
+            "NO_PROXY": "127.0.0.1,localhost",
+        },
+        host_alias="host.containers.internal",
+        no_proxy_hosts=["172.17.0.1", "172.17.0.1"],
+    )
+
+    assert env["HTTP_PROXY"] == "http://host.containers.internal:17890"
+    assert env["NO_PROXY"] == "127.0.0.1,localhost,172.17.0.1"
+
+
 def test_gpu_cdi_args() -> None:
     assert nvidia_cdi_args("all") == [
         "--device",

@@ -26,7 +26,7 @@ def test_python_helpers_compile() -> None:
 
 def test_runner_has_required_modes_and_three_agent_matrix() -> None:
     script = RUNNER.read_text(encoding="utf-8")
-    for mode in ("validate", "preflight", "pilot", "audit", "all|auto"):
+    for mode in ("validate", "preflight", "prefetch-images", "pilot", "audit", "all|auto"):
         assert f"{mode})" in script
     assert "*_pilot.yaml" in script
     assert "TB2_OPENCODE_RUNTIME_IMAGE" in script
@@ -47,13 +47,36 @@ def test_runner_writes_expected_logs_status_and_audit_paths() -> None:
     script = RUNNER.read_text(encoding="utf-8")
     assert "context/podman-terminal-bench2-readiness" in script
     assert "logs/${run_id}.log" in script
+    assert 'logs/${RUN_PREFIX}_image_prefetch.log' in script
     assert "results/${run_id}" in script
     assert "run-status-${RUN_PREFIX}.tsv" in script
     assert "preflight-${RUN_PREFIX}.json" in script
+    assert "prefetch-images-${RUN_PREFIX}.txt" in script
     assert "audit_podman_terminal_bench2_readiness.py" in script
     assert '*) export ALPHADIANA_TB2_LOGS_DIR="$ROOT_DIR/$ALPHADIANA_TB2_LOGS_DIR" ;;' in script
     assert 'printf \'pilot\\t%s\\t%s\\t%s\\t%s\\n\'' in script
     assert 'return "$rc"' in script
+
+
+def test_runner_can_prefetch_missing_task_images() -> None:
+    script = RUNNER.read_text(encoding="utf-8")
+    assert "run_prefetch_images() {" in script
+    assert "run_preflight || return" in script
+    assert "normalize_podman_image_ref" in script
+    assert "task_images_missing_locally" in script
+    assert "PODMAN_TB2_IMAGE_PULL_CONCURRENCY" in script
+    assert "PODMAN_TB2_IMAGE_PULL_TIMEOUT_SECONDS" in script
+    assert 'timeout "$2" podman pull "$image"' in script
+    assert "prefetch-images\\t" in script
+
+
+def test_runner_can_use_checkpoint_resume_mode() -> None:
+    script = RUNNER.read_text(encoding="utf-8")
+    assert "PODMAN_TB2_REDO_ALL" in script
+    assert 'redo_args+=(--redo-all)' in script
+    assert 'checkpoint_mode="resume"' in script
+    assert 'printf \'Checkpoint mode: %s\\n\'' in script
+    assert '"${redo_args[@]}"' in script
 
 
 def test_preflight_probes_provider_from_podman_without_secret_output() -> None:
@@ -69,3 +92,5 @@ def test_preflight_probes_provider_from_podman_without_secret_output() -> None:
     assert "--config-dir" in source
     assert "runtime_images" in source
     assert "PODMAN_TB2_PREFLIGHT_PROVIDER_IMAGE" in source
+    assert "normalize_podman_image_ref" in source
+    assert '["podman", "image", "exists", normalized]' in source

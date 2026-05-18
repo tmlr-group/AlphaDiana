@@ -1,0 +1,57 @@
+# TerminalBench2 ZeroClaw thinking-on high-budget local-Qwen canary.
+
+run_id: "podman_tb2_zeroclaw_thinking_highbudget_canary"
+
+benchmark:
+  name: terminal_bench2
+  config:
+    tasks_dir: ${TERMINAL_BENCH2_DIR}
+    task_ids:
+      # Prior full8 empty rows whose last provider finish was tool_calls and
+      # returncode was 124.
+      - adaptive-rejection-sampler
+      - bn-fit-modify
+      - build-cython-ext
+      # Prior full8 empty rows whose last provider finish was length.
+      - break-filter-js-from-html
+      - circuit-fibsqrt
+      - cobol-modernization
+      # Prior full8 empty rows whose last provider finish was stop.
+      - cancel-async-tasks
+      - chess-best-move
+      - filter-js-from-html
+    max_tasks: 9
+
+agent:
+  name: terminal_bench2_zeroclaw
+  version: "0.6.9"
+  config:
+    container_engine: podman
+    forward_proxy_env: true
+    model: ${OPENAI_MODEL_NAME}
+    model_name: ${OPENAI_MODEL_NAME}
+    api_base: ${OPENAI_BASE_URL}
+    api_key: ${OPENAI_API_KEY}
+    runtime_source_image: "${TB2_ZEROCLAW_RUNTIME_IMAGE}"
+    logs_base_dir: "${ALPHADIANA_TB2_LOGS_DIR}"
+    zeroclaw_bin: "zeroclaw"
+    solver_timeout_sec: 1800
+    timeout_sec: 1800
+    test_timeout_sec: 1800
+    max_tokens: 8192
+    enable_thinking: true
+    normalize_provider_system_messages: true
+    provider_proxy_capture_request_summary: true
+    provider_proxy_inject_logprobs: false
+
+scorer:
+  name: terminal_bench2
+
+max_concurrent: 9
+num_samples: 1
+output_dir: "./results"
+metadata:
+  validation_campaign: "podman-terminal-bench2-overnight-highbudget-20260517"
+  container_engine: "podman"
+  run_suffix: "terminal_bench2_zeroclaw_thinking_highbudget_canary"
+  notes: "High-budget thinking-on canary for prior ZeroClaw CLI empty-output rows; intended to distinguish token/timeout limits from reasoning-only visible-output behavior."

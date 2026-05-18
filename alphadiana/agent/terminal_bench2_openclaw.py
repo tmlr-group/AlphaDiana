@@ -23,6 +23,7 @@ from alphadiana.agent.terminal_bench2_incontainer import (
     IN_CONTAINER_AGENT_PROMPT,
     TerminalBench2InContainerMixin,
 )
+from alphadiana.agent.terminal_bench2_common import _proxy_bypass_hosts_from_urls
 from alphadiana.benchmark.base import BenchmarkTask
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,80 @@ def _build_openclaw_reasoning_trajectory(trajectory: list[dict[str, Any]]) -> li
     return reasoning
 
 
+def _classify_openclaw_failure(trajectory_error: str, agent_stderr: str) -> str:
+    evidence = "\n".join([trajectory_error or "", agent_stderr or ""]).lower()
+    if not evidence.strip():
+        return ""
+    if (
+        "connection error" in evidence
+        or "llm request timed out" in evidence
+        or "all providers/models failed" in evidence
+        or "custom api error" in evidence
+        or "badrequesterror" in evidence
+        or "vllmvalidationerror" in evidence
+    ):
+        return "provider_error"
+    return ""
+
+
+def _openclaw_agent_timed_out(returncode: int, agent_stderr: str) -> bool:
+    if returncode in {-1, 124}:
+        return True
+    normalized = str(agent_stderr or "").strip().lower()
+    return "podman command timed out" in normalized or "timeout after " in normalized
+
+
+def _build_openclaw_session_fallback(
+    *,
+    prompt_text: str,
+    response_json: dict[str, Any],
+    agent_stdout: str,
+    agent_stderr: str,
+    session_id: str,
+    trajectory_error: str,
+) -> str:
+    payload_texts: list[str] = []
+    payloads = response_json.get("payloads")
+    if isinstance(payloads, list):
+        for payload in payloads:
+            if not isinstance(payload, dict):
+                continue
+            text = str(payload.get("text") or "").strip()
+            if text:
+                payload_texts.append(text)
+    assistant_text = "\n".join(payload_texts).strip() or agent_stdout.strip()
+    events = [
+        {
+            "type": "session",
+            "id": session_id,
+            "source": "alphadiana_openclaw_fallback",
+            "trajectory_error": trajectory_error,
+        },
+        {
+            "type": "message",
+            "message": {
+                "role": "user",
+                "content": [{"type": "text", "text": prompt_text}],
+            },
+        },
+        {
+            "type": "message",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": assistant_text}],
+                "errorMessage": trajectory_error,
+            },
+        },
+    ]
+    if agent_stderr.strip():
+        events.append({
+            "type": "tool_result",
+            "content": agent_stderr.strip(),
+            "isError": True,
+        })
+    return "".join(f"{json.dumps(event, ensure_ascii=False)}\n" for event in events)
+
+
 class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
     """In-container OpenClaw runner for terminal-bench-2."""
 
@@ -84,6 +159,7 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
         self._solver_timeout_sec = int(config.get("solver_timeout_sec", config.get("timeout", 1800)))
         self._onboard_timeout_sec = int(config.get("onboard_timeout_sec", min(self._solver_timeout_sec, 180)))
         self._min_context_window = int(config.get("min_context_window", 32768))
+        self._max_tokens = int(config.get("max_tokens", 0) or 0)
         self._fail_on_small_context_window = bool(config.get("fail_on_small_context_window", True))
         self._context_probe_timeout_sec = int(config.get("context_probe_timeout_sec", 10))
         self._openclaw_bin = str(config.get("openclaw_bin", "openclaw") or "openclaw").strip()
@@ -226,6 +302,16 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
         requested_model = self._normalize_model_alias(self._model_name)
         patched = False
         matched = False
+        timeout_seconds = max(1, self._solver_timeout_sec)
+
+        agent_defaults = payload.setdefault("agents", {}).setdefault("defaults", {})
+        if agent_defaults.get("timeoutSeconds") != timeout_seconds:
+            agent_defaults["timeoutSeconds"] = timeout_seconds
+            patched = True
+        tool_exec = payload.setdefault("tools", {}).setdefault("exec", {})
+        if tool_exec.get("timeoutSec") != timeout_seconds:
+            tool_exec["timeoutSec"] = timeout_seconds
+            patched = True
 
         providers = payload.setdefault("models", {}).setdefault("providers", {})
         for provider_cfg in providers.values():
@@ -256,6 +342,9 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
                 if not isinstance(current_context, int) or current_context < target_context:
                     model["contextWindow"] = target_context
                     patched = True
+                if self._max_tokens > 0 and model.get("maxTokens") != self._max_tokens:
+                    model["maxTokens"] = self._max_tokens
+                    patched = True
 
         if patched:
             config_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -265,19 +354,31 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
             "patched": patched,
             "matched": matched,
             "resolved_context_window": target_context,
+            "max_tokens": self._max_tokens or None,
+            "timeout_seconds": timeout_seconds,
         }
 
     def _build_env(self, remote_home: str, remote_plugins_dir: str) -> dict[str, str]:
-        env = os.environ.copy()
-        env["HOME"] = remote_home
-        env["OPENCLAW_HOME"] = remote_home
-        env["OPENCLAW_BUNDLED_PLUGINS_DIR"] = remote_plugins_dir
-        env["OPENAI_API_KEY"] = self._api_key
-        env["OPENAI_BASE_URL"] = self._api_base
-        env["OPENAI_MODEL_NAME"] = self._model_name
-        env["CUSTOM_API_KEY"] = self._api_key
-        for var in ("ALL_PROXY", "HTTP_PROXY", "HTTPS_PROXY", "all_proxy", "http_proxy", "https_proxy"):
-            env.pop(var, None)
+        env = {
+            "HOME": remote_home,
+            "OPENCLAW_HOME": remote_home,
+            "OPENCLAW_BUNDLED_PLUGINS_DIR": remote_plugins_dir,
+            "OPENAI_API_KEY": self._api_key,
+            "OPENAI_BASE_URL": self._api_base,
+            "OPENAI_MODEL_NAME": self._model_name,
+            "CUSTOM_API_KEY": self._api_key,
+            "OPENCLAW_UNDICI_STREAM_TIMEOUT_MS": str(max(1, self._solver_timeout_sec) * 1000),
+        }
+        bypass_hosts = _proxy_bypass_hosts_from_urls(self._api_base)
+        if bypass_hosts:
+            existing = os.environ.get("NO_PROXY") or os.environ.get("no_proxy") or ""
+            entries = [part.strip() for part in existing.split(",") if part.strip()]
+            for host in bypass_hosts:
+                if host not in entries:
+                    entries.append(host)
+            value = ",".join(entries)
+            env["NO_PROXY"] = value
+            env["no_proxy"] = value
         return env
 
     def _build_onboard_command(self, workspace_root: str) -> list[str]:
@@ -365,6 +466,7 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
         agent_stderr = ""
         agent_returncode = 0
         session_id = ""
+        session_trace_source = ""
         trajectory_error = ""
         response_json: dict[str, Any] = {}
         assistant_text = ""
@@ -483,18 +585,62 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
             )
             trajectory: list[dict[str, Any]] = []
             if remote_session_file:
-                session_file = runtime.workdir / "session.jsonl"
-                self._copy_file_from_container(
+                candidate_session_file = runtime.workdir / "session.jsonl"
+                session_id = Path(remote_session_file).stem
+                copied_session_file = self._copy_file_from_container(
                     runtime.container_id,
                     remote_path=remote_session_file,
-                    local_path=session_file,
+                    local_path=candidate_session_file,
                 )
-                session_id = Path(remote_session_file).stem
-                session_text = session_file.read_text(encoding="utf-8", errors="replace")
-                trajectory = _parse_openclaw_session(session_text)
-                assistant_text, _ = _recover_partial_output_from_trajectory(trajectory)
-                trajectory_error = _extract_trajectory_error(trajectory)
-                reasoning_trajectory = _build_openclaw_reasoning_trajectory(trajectory)
+                if copied_session_file and candidate_session_file.exists():
+                    session_file = candidate_session_file
+                    try:
+                        session_text = session_file.read_text(
+                            encoding="utf-8",
+                            errors="replace",
+                        )
+                    except OSError as exc:
+                        session_file = None
+                        trajectory_error = (
+                            "session_trace_unreadable_after_copy:"
+                            f"{remote_session_file}:{type(exc).__name__}"
+                        )
+                        logger.warning(
+                            "Task %s — OpenClaw session trace could not be read after copy: %s",
+                            task.task_id,
+                            exc,
+                        )
+                    else:
+                        trajectory = _parse_openclaw_session(session_text)
+                        assistant_text, _ = _recover_partial_output_from_trajectory(trajectory)
+                        trajectory_error = _extract_trajectory_error(trajectory)
+                        reasoning_trajectory = _build_openclaw_reasoning_trajectory(trajectory)
+                        session_trace_source = "openclaw_session_file"
+                else:
+                    trajectory_error = f"session_trace_missing_after_copy:{remote_session_file}"
+                    fallback_text = _build_openclaw_session_fallback(
+                        prompt_text=prompt_text,
+                        response_json=response_json,
+                        agent_stdout=agent_stdout,
+                        agent_stderr=agent_stderr,
+                        session_id=session_id,
+                        trajectory_error=trajectory_error,
+                    )
+                    candidate_session_file.write_text(
+                        fallback_text,
+                        encoding="utf-8",
+                        errors="replace",
+                    )
+                    session_file = candidate_session_file
+                    trajectory = _parse_openclaw_session(fallback_text)
+                    assistant_text, _ = _recover_partial_output_from_trajectory(trajectory)
+                    reasoning_trajectory = _build_openclaw_reasoning_trajectory(trajectory)
+                    session_trace_source = "stdout_jsonl_fallback"
+                    logger.warning(
+                        "Task %s — OpenClaw reported session trace %s but it was not copied",
+                        task.task_id,
+                        remote_session_file,
+                    )
             if not assistant_text:
                 assistant_text = agent_stdout.strip()
 
@@ -535,6 +681,10 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
             ]
         if not reasoning_trajectory:
             reasoning_trajectory = _extract_reasoning_trajectory_from_payload(response_json)
+        solver_failure_reason = _classify_openclaw_failure(trajectory_error, agent_stderr)
+        timed_out = _openclaw_agent_timed_out(agent_returncode, agent_stderr)
+        if timed_out:
+            solver_failure_reason = "timeout"
 
         response_summary = dict(response_json) if isinstance(response_json, dict) else {}
         if assistant_text or agent_stdout.strip():
@@ -543,10 +693,14 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
             response_summary.setdefault("stderr_text", agent_stderr.strip())
         response_summary.setdefault("returncode", agent_returncode)
         response_summary.setdefault("onboard_returncode", onboard_returncode)
+        if timed_out:
+            response_summary.setdefault("timed_out", True)
         if session_id:
             response_summary.setdefault("session_id", session_id)
         if trajectory_error:
             response_summary.setdefault("trajectory_error", trajectory_error)
+        if session_trace_source:
+            response_summary.setdefault("session_trace_source", session_trace_source)
         if context_preflight:
             response_summary.setdefault("context_preflight", context_preflight)
         if runtime_model_patch:
@@ -564,6 +718,37 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
             onboard_stderr="openclaw_onboard_stderr.log" if onboard_stderr else None,
         )
 
+        metadata_extra = {
+            "returncode": agent_returncode,
+            "onboard_returncode": onboard_returncode,
+            "stderr": agent_stderr[:2000] if agent_stderr else "",
+            "session_id": session_id,
+            "session_trace_source": session_trace_source,
+            "trajectory_error": trajectory_error,
+            "trajectory_status": "abnormal" if (timed_out or trajectory_error) else "pass",
+            "trajectory_failure_reason": "timeout" if timed_out else trajectory_error,
+            "failure_reason": solver_failure_reason,
+            "openclaw_selected_classification": solver_failure_reason,
+            "test_output": test_output,
+            "verifier_status": verifier_result.status,
+            "verifier_reward_observed": verifier_result.reward is not None,
+            "context_window": context_preflight.get("resolved_context_window"),
+            "context_window_source": context_preflight.get("source", ""),
+            "context_window_required": context_preflight.get(
+                "required_context_window",
+                self._min_context_window,
+            ),
+            "runtime_model_patch": runtime_model_patch,
+            "container_workdir": container_workdir,
+            **runtime_metadata,
+        }
+        finish_reason = ""
+        if timed_out:
+            finish_reason = "timeout"
+            metadata_extra["timed_out"] = True
+            metadata_extra["openclaw_timeout_scored_zero"] = True
+            metadata_extra["openclaw_timeout_seconds"] = self._solver_timeout_sec
+
         return AgentResponse(
             answer=reward_content,
             trajectory=trajectory,
@@ -575,31 +760,14 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
                 reward=reward_content,
                 rounds_used=1,
                 runner="openclaw",
-                extra={
-                    "returncode": agent_returncode,
-                    "onboard_returncode": onboard_returncode,
-                    "stderr": agent_stderr[:2000] if agent_stderr else "",
-                    "session_id": session_id,
-                    "trajectory_error": trajectory_error,
-                    "test_output": test_output,
-                    "verifier_status": verifier_result.status,
-                    "verifier_reward_observed": verifier_result.reward is not None,
-                    "context_window": context_preflight.get("resolved_context_window"),
-                    "context_window_source": context_preflight.get("source", ""),
-                    "context_window_required": context_preflight.get(
-                        "required_context_window",
-                        self._min_context_window,
-                    ),
-                    "runtime_model_patch": runtime_model_patch,
-                    "container_workdir": container_workdir,
-                    **runtime_metadata,
-                },
+                extra=metadata_extra,
             ),
             request_messages=[{"role": "user", "content": prompt_text}],
             response_json=response_summary,
             artifact_manifest=artifact_manifest,
             workspace_file_contents=artifact_files,
             system_prompt=IN_CONTAINER_AGENT_PROMPT,
+            finish_reason=finish_reason,
         )
 
     def teardown(self) -> None:

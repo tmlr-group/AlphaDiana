@@ -1,0 +1,42 @@
+# TerminalBench2 OpenClaw Podman local-Qwen 128K output-cap canary.
+
+run_id: "podman_tb2_longcap_local_qwen_terminal_bench2_openclaw"
+
+benchmark:
+  name: terminal_bench2
+  config:
+    tasks_dir: ${TERMINAL_BENCH2_DIR}
+    task_ids:
+      - adaptive-rejection-sampler
+      - git-multibranch
+      - sqlite-db-truncate
+    max_tasks: 3
+
+agent:
+  name: terminal_bench2_openclaw
+  version: "1.0"
+  config:
+    container_engine: podman
+    api_base: ${OPENAI_BASE_URL}
+    api_key: ${OPENAI_API_KEY}
+    model_name: ${OPENAI_MODEL_NAME}
+    runtime_source_image: "${TB2_OPENCLAW_RUNTIME_IMAGE}"
+    logs_base_dir: "${ALPHADIANA_TB2_LOGS_DIR}"
+    openclaw_bin: "openclaw"
+    onboard_timeout_sec: 180
+    solver_timeout_sec: 3600
+    timeout_sec: 3600
+    test_timeout_sec: 1200
+    max_tokens: 131072
+
+scorer:
+  name: terminal_bench2
+
+max_concurrent: 2
+num_samples: 1
+output_dir: "./results"
+metadata:
+  validation_campaign: "podman-terminal-bench2-longcap-local-qwen-20260516"
+  container_engine: "podman"
+  run_suffix: "terminal_bench2_openclaw_longcap_local_qwen"
+  notes: "Three-task 128K output-cap canary; complements the 8192-cap full sweep."

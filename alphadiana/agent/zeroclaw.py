@@ -885,7 +885,17 @@ class ZeroClawAgent(Agent):
             partial_response.response_json = merged_response_json
         return partial_response
 
-    def _build_config_toml(self) -> str:
+    def _build_config_toml(
+        self,
+        *,
+        provider: str | None = None,
+        provider_api_base: str | None = None,
+    ) -> str:
+        resolved_provider = provider
+        if resolved_provider is None and provider_api_base is not None:
+            resolved_provider = _resolve_zeroclaw_provider("", provider_api_base)
+        if resolved_provider is None:
+            resolved_provider = self._provider
         workspace_only = "true" if self._workspace_only else "false"
         allowed_commands = json.dumps(self._allowed_commands, ensure_ascii=False)
         runtime_section = ""
@@ -916,7 +926,7 @@ class ZeroClawAgent(Agent):
                 )
             security_section = "\n".join(security_lines) + "\n\n"
         return (
-            f"default_provider = {_quote_toml(self._provider)}\n"
+            f"default_provider = {_quote_toml(resolved_provider)}\n"
             f"default_model = {_quote_toml(self._model)}\n\n"
             f"default_temperature = {self._temperature}\n"
             f"provider_timeout_secs = {self._provider_timeout_secs}\n"

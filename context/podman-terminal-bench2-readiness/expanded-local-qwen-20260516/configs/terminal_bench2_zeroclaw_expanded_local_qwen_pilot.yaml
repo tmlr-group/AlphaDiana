@@ -1,0 +1,80 @@
+# TerminalBench2 ZeroClaw Podman expanded local-Qwen task-container pilot.
+
+run_id: "podman_tb2_expanded_local_qwen_terminal_bench2_zeroclaw"
+
+benchmark:
+  name: terminal_bench2
+  config:
+    tasks_dir: ${TERMINAL_BENCH2_DIR}
+    task_ids:
+      - adaptive-rejection-sampler
+      - break-filter-js-from-html
+      - cancel-async-tasks
+      - db-wal-recovery
+      - fix-git
+      - git-multibranch
+      - log-summary-date-ranges
+      - openssl-selfsigned-cert
+      - overfull-hbox
+      - query-optimize
+      - regex-log
+      - sqlite-db-truncate
+    max_tasks: 12
+
+agent:
+  name: terminal_bench2_zeroclaw
+  version: "0.6.9"
+  config:
+    container_engine: podman
+    model: ${OPENAI_MODEL_NAME}
+    model_name: ${OPENAI_MODEL_NAME}
+    api_base: ${OPENAI_BASE_URL}
+    api_key: ${OPENAI_API_KEY}
+    runtime_source_image: "${TB2_ZEROCLAW_RUNTIME_IMAGE}"
+    logs_base_dir: "${ALPHADIANA_TB2_LOGS_DIR}"
+    zeroclaw_bin: "zeroclaw"
+    solver_timeout_sec: 900
+    timeout_sec: 900
+    test_timeout_sec: 1200
+    max_tokens: 8192
+    normalize_provider_system_messages: true
+    provider_proxy_capture_request_summary: true
+    provider_proxy_inject_logprobs: false
+
+scorer:
+  name: terminal_bench2
+
+max_concurrent: 4
+num_samples: 1
+output_dir: "./results"
+metadata:
+  validation_campaign: "podman-terminal-bench2-expanded-local-qwen-20260516"
+  container_engine: "podman"
+  run_suffix: "terminal_bench2_zeroclaw_expanded_local_qwen"
+  selected_task_names:
+    - adaptive-rejection-sampler
+    - break-filter-js-from-html
+    - cancel-async-tasks
+    - db-wal-recovery
+    - fix-git
+    - git-multibranch
+    - log-summary-date-ranges
+    - openssl-selfsigned-cert
+    - overfull-hbox
+    - query-optimize
+    - regex-log
+    - sqlite-db-truncate
+  selected_task_ids:
+    - tb2_adaptive-rejection-sampler
+    - tb2_break-filter-js-from-html
+    - tb2_cancel-async-tasks
+    - tb2_db-wal-recovery
+    - tb2_fix-git
+    - tb2_git-multibranch
+    - tb2_log-summary-date-ranges
+    - tb2_openssl-selfsigned-cert
+    - tb2_overfull-hbox
+    - tb2_query-optimize
+    - tb2_regex-log
+    - tb2_sqlite-db-truncate
+  notes: "Expanded local-Qwen Podman TerminalBench2 pilot; evidence-gathering only, not a full-sweep support claim."
