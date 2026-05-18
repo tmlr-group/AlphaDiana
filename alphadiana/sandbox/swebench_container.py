@@ -398,13 +398,23 @@ class SWEBenchContainerSandbox(Sandbox):
             instance_image_tag=self._config.get("instance_image_tag", "latest"),
             arch=self._config.get("arch", "x86_64"),
         )
+        if self._container_engine == "podman":
+            clone_retries_default = 6
+            clone_retry_sleep_default = 10
+            clone_filter_default = "blob:none"
+            qualify_swebench_test_spec_for_podman(test_spec)
+        else:
+            clone_retries_default = 3
+            clone_retry_sleep_default = 5
+            clone_filter_default = ""
         harden_test_spec_repo_clone(
             test_spec,
-            clone_retries=int(self._config.get("git_clone_retries", 3)),
-            retry_sleep_sec=int(self._config.get("git_clone_retry_sleep_sec", 5)),
+            clone_retries=int(self._config.get("git_clone_retries", clone_retries_default)),
+            retry_sleep_sec=int(
+                self._config.get("git_clone_retry_sleep_sec", clone_retry_sleep_default)
+            ),
+            clone_filter=str(self._config.get("git_clone_filter", clone_filter_default) or ""),
         )
-        if self._container_engine == "podman":
-            qualify_swebench_test_spec_for_podman(test_spec)
         return instance, test_spec
 
     def _build_image(self, task: "BenchmarkTask", test_spec: Any) -> Path:

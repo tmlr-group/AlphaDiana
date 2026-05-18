@@ -111,6 +111,7 @@ class SWEBenchScorer(Scorer):
         self._log_dir = Path("./swe_bench_logs")
         self._git_clone_retries = 3
         self._git_clone_retry_sleep_sec = 5
+        self._git_clone_filter = ""
         self._docker_build_network = "host"
         self._container_engine = "docker"
         self._podman_socket_path = ""
@@ -151,6 +152,12 @@ class SWEBenchScorer(Scorer):
         ).strip().lower()
         if self._container_engine not in {"docker", "podman"}:
             raise ValueError("swe_bench scorer.config.container_engine must be one of docker, podman")
+        if self._container_engine == "podman":
+            self._git_clone_retries = int(config.get("git_clone_retries", 6))
+            self._git_clone_retry_sleep_sec = int(config.get("git_clone_retry_sleep_sec", 10))
+            self._git_clone_filter = str(config.get("git_clone_filter", "blob:none") or "").strip()
+        else:
+            self._git_clone_filter = str(config.get("git_clone_filter", self._git_clone_filter) or "").strip()
         self._podman_socket_path = str(config.get("podman_socket", "") or "").strip()
         self._docker_api_version = str(
             resolve_podman_docker_api_version(config.get("docker_api_version"))
@@ -285,6 +292,7 @@ class SWEBenchScorer(Scorer):
             test_spec,
             clone_retries=self._git_clone_retries,
             retry_sleep_sec=self._git_clone_retry_sleep_sec,
+            clone_filter=self._git_clone_filter,
         )
         if self._container_engine == "podman":
             qualify_swebench_test_spec_for_podman(test_spec)

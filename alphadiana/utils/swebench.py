@@ -143,16 +143,21 @@ def harden_test_spec_repo_clone(
     *,
     clone_retries: int = 3,
     retry_sleep_sec: int = 5,
+    clone_filter: str | None = None,
 ) -> Any:
     """Wrap the generated git-clone step with retry logic for flaky networks."""
     repo_script_list = list(getattr(test_spec, "repo_script_list", []) or [])
     updated: list[str] = []
     replaced = False
+    filter_text = str(clone_filter or "").strip()
 
     for command in repo_script_list:
         stripped = str(command).strip()
         if not replaced and stripped.startswith("git clone "):
             clone_parts = shlex.split(stripped)
+            if filter_text and not any(part.startswith("--filter") for part in clone_parts):
+                clone_parts.insert(2, f"--filter={filter_text}")
+            clone_command = shlex.join(clone_parts)
             clone_target = clone_parts[-1] if len(clone_parts) >= 2 else ""
             cleanup_target = shlex.quote(clone_target) if clone_target and not clone_target.startswith("-") else ""
             retry_count = max(1, int(clone_retries))
@@ -165,7 +170,7 @@ def harden_test_spec_repo_clone(
                 "cd /",
                 f"for attempt in $(seq 1 {retry_count}); do",
                 f"  {'rm -rf ' + cleanup_target if cleanup_target else ':'}",
-                f"  git -c http.version=HTTP/1.1 {stripped[4:]} && break",
+                f"  git -c http.version=HTTP/1.1 {clone_command[4:]} && break",
                 "  status=$?",
                 f"  echo \"git clone attempt ${{attempt}}/{retry_count} failed with exit ${{status}}; retrying...\" >&2",
                 f"  {'rm -rf ' + cleanup_target if cleanup_target else ':'}",
