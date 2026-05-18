@@ -136,12 +136,57 @@ class PodmanAgentRuntime:
     def api_base(self) -> str:
         return self._api_base
 
+    def reap_orphans(self, spec: PodmanAgentSpec) -> int:
+        """Force-remove stale containers from previous crashed runs.
+
+        ``podman stop`` followed by a SIGKILL on the parent process leaves the
+        rootless sidecar tree (slirp4netns / conmon / agent gateway / sleep
+        infinity) behind. ``podman rm --force`` is the documented way to clean
+        the network namespace and reap those sidecars. Calling this before
+        ``start()`` makes every fresh run idempotently clean up after the
+        previous one (finding #14).
+
+        Returns the number of containers removed.
+        """
+        try:
+            listing = self._runtime._run(
+                ["ps", "-a", "--format", "{{.ID}} {{.Names}}"], check=False
+            )
+        except Exception:
+            return 0
+        if listing.returncode != 0:
+            return 0
+        prefix = f"{spec.name_prefix}-{spec.adapter_name}-"
+        removed = 0
+        for line in (listing.stdout or "").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split(None, 1)
+            if len(parts) < 2:
+                continue
+            cid, name = parts
+            if not name.startswith(prefix):
+                continue
+            try:
+                self._runtime.rm(cid, force=True, volumes=True, check=False)
+                removed += 1
+            except Exception:
+                pass
+        return removed
+
     def start(self, spec: PodmanAgentSpec) -> PodmanAgentRuntimeResult:
         """Start the runtime container and wait for readiness."""
 
         self._spec = spec
         container_id = ""
         try:
+            # Reap any orphans matching this spec's name pattern before we
+            # claim a new host port (#14).
+            try:
+                self.reap_orphans(spec)
+            except Exception:
+                pass
             self._ensure_host_network_port_available(spec)
             name = f"{spec.name_prefix}-{spec.adapter_name}-{uuid.uuid4().hex[:10]}"
             result = self._runtime.run(
