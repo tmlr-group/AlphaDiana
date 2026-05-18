@@ -146,11 +146,27 @@ class PodmanAgentRuntime:
         ``start()`` makes every fresh run idempotently clean up after the
         previous one (finding #14).
 
+        Only containers whose podman state is *not* running are reaped. A
+        concurrent cell of the same agent type (e.g. three parallel OpenCode
+        full-run cells) holds a name-prefix match while still in use, and
+        force-removing it mid-task causes the controller to exit 255 with
+        ``container has already been removed``. The exited / created / dead
+        filter is the conservative scope: still cleans up the crashed-run
+        case while leaving live containers from sibling cells untouched.
+
         Returns the number of containers removed.
         """
         try:
             listing = self._runtime._run(
-                ["ps", "-a", "--format", "{{.ID}} {{.Names}}"], check=False
+                [
+                    "ps",
+                    "-a",
+                    "--filter", "status=exited",
+                    "--filter", "status=created",
+                    "--filter", "status=dead",
+                    "--format", "{{.ID}} {{.Names}}",
+                ],
+                check=False,
             )
         except Exception:
             return 0
