@@ -146,7 +146,7 @@ def harden_test_spec_repo_clone(
     clone_filter: str | None = None,
     fallback_base_commit: str | None = None,
 ) -> Any:
-    """Wrap the generated git-clone step with retry logic for flaky networks."""
+    """Wrap the generated git setup step with retry logic for flaky networks."""
     repo_script_list = list(getattr(test_spec, "repo_script_list", []) or [])
     updated: list[str] = []
     replaced = False
@@ -189,33 +189,34 @@ def harden_test_spec_repo_clone(
             retry_count = max(1, int(clone_retries))
             sleep_count = max(0, int(retry_sleep_sec))
             fetch_filter = f"--filter={filter_text} " if filter_text else ""
-            fallback_lines = []
             if fallback_commit and clone_remote and cleanup_target:
                 quoted_remote = shlex.quote(clone_remote)
                 quoted_commit = shlex.quote(fallback_commit)
-                fallback_lines = [
-                    "    echo \"git clone failed after "
-                    f"{retry_count} attempts; falling back to targeted fetch of "
-                    f"{fallback_commit}\" >&2",
-                    f"    rm -rf {cleanup_target}",
-                    f"    mkdir -p {cleanup_target}",
-                    f"    cd {cleanup_target}",
-                    "    git init",
-                    f"    git remote add origin {quoted_remote}",
-                    f"    for fetch_attempt in $(seq 1 {retry_count}); do",
-                    "      git -c http.version=HTTP/1.1 fetch "
+                updated.extend([
+                    "git config --global http.version HTTP/1.1",
+                    "git config --global http.lowSpeedLimit 0",
+                    "git config --global http.lowSpeedTime 999999",
+                    "cd /",
+                    f"rm -rf {cleanup_target}",
+                    f"mkdir -p {cleanup_target}",
+                    f"cd {cleanup_target}",
+                    "git init",
+                    f"git remote add origin {quoted_remote}",
+                    f"for fetch_attempt in $(seq 1 {retry_count}); do",
+                    "  git -c http.version=HTTP/1.1 fetch "
                     f"{fetch_filter}--depth=50 --no-tags origin {quoted_commit} && break",
-                    "      fetch_status=$?",
-                    "      echo \"git fetch attempt "
+                    "  fetch_status=$?",
+                    "  echo \"git fetch attempt "
                     f"${{fetch_attempt}}/{retry_count} failed with exit "
                     "${fetch_status}; retrying...\" >&2",
-                    f"      if [ \"$fetch_attempt\" -eq {retry_count} ]; then exit \"$fetch_status\"; fi",
-                    f"      sleep {sleep_count}",
-                    "    done",
-                    f"    git checkout -f {quoted_commit}",
-                    "    cd /",
-                    "    break",
-                ]
+                    f"  if [ \"$fetch_attempt\" -eq {retry_count} ]; then exit \"$fetch_status\"; fi",
+                    f"  sleep {sleep_count}",
+                    "done",
+                    f"git checkout -f {quoted_commit}",
+                    "cd /",
+                ])
+                replaced = True
+                continue
 
             updated.extend([
                 "git config --global http.version HTTP/1.1",
@@ -229,8 +230,7 @@ def harden_test_spec_repo_clone(
                 f"  echo \"git clone attempt ${{attempt}}/{retry_count} failed with exit ${{status}}; retrying...\" >&2",
                 f"  {'rm -rf ' + cleanup_target if cleanup_target else ':'}",
                 f"  if [ \"$attempt\" -eq {retry_count} ]; then",
-                *fallback_lines,
-                *([] if fallback_lines else ['    exit "$status"']),
+                '    exit "$status"',
                 "  fi",
                 f"  sleep {sleep_count}",
                 "done",
