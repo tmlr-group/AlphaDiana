@@ -181,6 +181,10 @@ def harden_test_spec_repo_clone(
                         "if [ -f astropy/_erfa/erfa_generator.py ]; then "
                         "python -m pip install 'jinja2<4' --verbose; fi"
                     )
+                    updated.append(
+                        "if [ -d astropy ] && [ -n \"$(find astropy -name '*.pyx' -print -quit)\" ]; then "
+                        "python -m pip install 'cython<3' --verbose; fi"
+                    )
                     updated.append(shlex.join(install_parts))
                     continue
             if stripped.startswith("TARGET_TIMESTAMP=$(git show -s --format=%ci "):
