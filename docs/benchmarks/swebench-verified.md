@@ -39,8 +39,11 @@ Phase 9 adds a separate opt-in Podman readiness path for SWE-bench Verified:
 
 This path is limited to SWE-bench Verified and the selected tasksets. It does
 not claim SWE-bench Pro support, full Verified support, or Podman default
-promotion. Current Phase 9 evidence has passed validation and Podman/provider
-preflight, but selected-task readiness has not passed audit yet.
+promotion. Current Phase 9 selected-task evidence passed validation,
+Podman/provider preflight, and all four audit gates on run prefix
+`phase9_gap_20260519_012`: `smoke` 6/6 rows, `pilot32` 30/30 rows, `long64`
+6/6 rows, and `sample128` 6/6 rows. Every expected row wrote task JSON and the
+audits reported `audit_failure_count=0`.
 
 Minimal Phase 9 command sequence:
 
@@ -54,9 +57,10 @@ bash scripts/run_podman_swe_verified_readiness.sh preflight
 bash scripts/run_podman_swe_verified_readiness.sh auto
 ```
 
-The readiness gate is task JSON plus audit pass. `score=0` is acceptable when
-the row has task JSON, raw log, Podman metadata, artifact pointers, and a clear
-failure category. Missing task JSON is an explicit audit failure.
+The readiness gate is task JSON plus audit pass. `score=0`, malformed model
+patches, and ZeroClaw agent loop-detector rows are acceptable when the row has
+task JSON, raw log, Podman metadata, artifact pointers, and a clear failure
+category. Missing task JSON is an explicit audit failure.
 
 2026-04-25 本地补充证据：
 
