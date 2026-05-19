@@ -24,6 +24,7 @@ from alphadiana.utils.swebench import (
     ensure_swebench_build_network_mode,
     harden_test_spec_repo_clone,
     infer_instance_id,
+    podman_local_image_ref,
 )
 
 if TYPE_CHECKING:
@@ -347,7 +348,10 @@ class SWEBenchContainerSandbox(Sandbox):
     def _runtime_api(self) -> dict[str, Any]:
         if self._runtime is None:
             self._runtime = _load_swebench_runtime()
-        ensure_swebench_build_network_mode(self._config.get("docker_build_network", "host"))
+        ensure_swebench_build_network_mode(
+            self._config.get("docker_build_network", "host"),
+            podman_mode=(self._container_engine == "podman"),
+        )
         return self._runtime
 
     @contextmanager
@@ -394,6 +398,8 @@ class SWEBenchContainerSandbox(Sandbox):
         build_log = build_dir / "build_instance_image.log"
         build_logger = runtime["setup_logger"](instance_id, build_log)
         image_name = getattr(test_spec, "instance_image_key", "")
+        if self._container_engine == "podman":
+            image_name = podman_local_image_ref(image_name)
         with self._container_runtime_env():
             client = runtime["docker"].from_env()
 
@@ -448,6 +454,8 @@ class SWEBenchContainerSandbox(Sandbox):
         workdir = str(getattr(test_spec, "repo_directory", runtime["DOCKER_WORKDIR"]))
         user = str(getattr(test_spec, "docker_user", runtime["DOCKER_USER"]))
         image_name = str(getattr(test_spec, "instance_image_key", ""))
+        if self._container_engine == "podman":
+            image_name = podman_local_image_ref(image_name)
         container_port = int(self._config.get("gateway_port", 8080))
         gateway_host = str(self._config.get("gateway_host", "127.0.0.1"))
         container_name = _sanitize_container_name(

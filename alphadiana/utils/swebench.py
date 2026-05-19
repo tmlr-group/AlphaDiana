@@ -93,7 +93,38 @@ def harden_test_spec_repo_clone(
     return test_spec
 
 
-def ensure_swebench_build_network_mode(network_mode: str | None) -> None:
+def podman_local_image_ref(image: str) -> str:
+    """Prefix a short-name or namespaced image reference with ``localhost/`` for Podman.
+
+    Podman in rootless mode stores every locally-built image under the
+    ``localhost/`` namespace.  Image references that lack a registry component
+    (no ``.`` or ``:`` in the first path segment, and not already ``localhost``)
+    are not resolvable through the Docker API compatibility layer unless
+    ``unqualified-search-registries`` is configured in ``containers-registries.conf``.
+
+    Pre-pending ``localhost/`` avoids that requirement, regardless of whether
+    the reference is a flat short name (``python:3.11``) or a namespaced local
+    tag (``swebench/__django__django-12345:latest``).
+    """
+    ref = str(image or "").strip()
+    if not ref:
+        return ref
+    if "/" not in ref:
+        # Flat short name: always prefix
+        return f"localhost/{ref}"
+    first_component = ref.split("/", 1)[0]
+    if first_component == "localhost" or "." in first_component or ":" in first_component:
+        # Already has a registry (localhost, docker.io, quay.io, host:port, …)
+        return ref
+    # Namespaced but no registry — e.g. swebench/__django__django-12345:latest
+    return f"localhost/{ref}"
+
+
+def ensure_swebench_build_network_mode(
+    network_mode: str | None,
+    *,
+    podman_mode: bool = False,
+) -> None:
     """Patch swebench image builds to use an explicit Docker build network."""
     selected = str(network_mode or "").strip()
     if not selected:
@@ -101,7 +132,9 @@ def ensure_swebench_build_network_mode(network_mode: str | None) -> None:
 
     import swebench.harness.docker_build as docker_build
 
-    if getattr(docker_build, "_alphadiana_build_network_mode", None) == selected:
+    prev_guard = getattr(docker_build, "_alphadiana_build_guard", None)
+    current_guard = (selected, podman_mode)
+    if prev_guard == current_guard:
         return
 
     def build_image(
@@ -113,6 +146,8 @@ def ensure_swebench_build_network_mode(network_mode: str | None) -> None:
         build_dir: Any,
         nocache: bool = False,
     ) -> None:
+        if podman_mode:
+            image_name = podman_local_image_ref(image_name)
         logger = docker_build.setup_logger(image_name, build_dir / "build_image.log")
         logger.info(
             f"Building image {image_name}\n"
@@ -173,4 +208,4 @@ def ensure_swebench_build_network_mode(network_mode: str | None) -> None:
             docker_build.close_logger(logger)
 
     docker_build.build_image = build_image
-    docker_build._alphadiana_build_network_mode = selected
+    docker_build._alphadiana_build_guard = current_guard
