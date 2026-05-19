@@ -19,9 +19,10 @@ Current support boundary:
   Treat
   `context/podman-terminal-bench2-readiness/` as the support truth source.
   SWE-bench Verified has a Phase 9 opt-in readiness path under
-  `configs/smokes/podman_swe_verified_readiness/` with validation and
-  Podman/provider preflight evidence, but selected-task readiness has not yet
-  passed audit in this checkout. SWE-bench Pro and external_benchmark remain deferred.
+  `configs/smokes/podman_swe_verified_readiness/`. The selected-task
+  readiness ladder passed validation, preflight, and audit for OpenClaw,
+  OpenCode, and ZeroClaw on run prefix `phase9_gap_20260519_012`. SWE-bench
+  Pro and external_benchmark remain deferred.
 - MMMU-Pro multimodal path: Phase 6 has a patched opt-in readiness matrix for
   OpenClaw, ZeroClaw, and OpenCode on three deterministic `vision` tasks.
   `Qwen/Qwen3.5-4B` at `http://127.0.0.1:8011/v1` has manual host and Podman
@@ -209,13 +210,21 @@ checks the Podman socket, docker-py API compatibility, SWE-bench dataset
 access, image qualification, host provider reachability, and Podman runtime
 provider reachability before any task run.
 
-Current status: validation and preflight have passed, but selected-task
-readiness has not passed audit. The first OpenClaw smoke reached the Podman
-task container and provider transport, then blocked behind unrelated
-shared-provider load before task JSON was written. The smoke audit failed with
-explicit `no_task_json` rows. Do not claim full SWE-bench Verified support,
-SWE-bench Pro support, Podman default promotion, or a full Verified run from
-this partial evidence. The readiness gate remains task JSON plus audit pass.
+Current selected-task status: run prefix `phase9_gap_20260519_012` passed the
+full Phase 9 ladder with `PODMAN_SWE_MAX_CONCURRENT=1`:
+
+- `smoke`: 6 expected rows, audit passed with `audit_failure_count=0`.
+- `pilot32`: 30 expected rows, audit passed with `audit_failure_count=0`.
+- `long64`: 6 expected rows, audit passed with `audit_failure_count=0`.
+- `sample128`: 6 expected rows, audit passed with `audit_failure_count=0`.
+
+All 48 expected rows wrote task JSON and reached
+`last_stage=task_json_written`. `score=0`, malformed model patches, and
+ZeroClaw agent loop-detector rows are still possible; those are model/agent
+behavior outcomes rather than Podman readiness failures when the audit passes.
+Do not claim full SWE-bench Verified support, SWE-bench Pro support, Podman
+default promotion, or a full Verified run from this selected-task evidence.
+The readiness gate remains task JSON plus audit pass.
 
 ## Standard Reasoning Pilot
 
