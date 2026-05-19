@@ -326,13 +326,13 @@ def test_harden_test_spec_repo_clone_can_add_targeted_fetch_fallback():
     )
 
     rendered = "\n".join(test_spec.repo_script_list)
-    assert "git clone failed after 2 attempts; falling back to targeted fetch of abc123" in rendered
-    assert "clone --filter=blob:none --no-tags -o origin --single-branch" in rendered
+    assert "git clone " not in rendered
     assert "git remote add origin https://github.com/example/repo" in rendered
     assert (
         "git -c http.version=HTTP/1.1 fetch --filter=blob:none --depth=50 --no-tags origin "
         "abc123 && break"
     ) in rendered
+    assert "git fetch attempt ${fetch_attempt}/2 failed" in rendered
     assert "git checkout -f abc123" in rendered
     assert "git reset --hard abc123" in rendered
     assert "date -u '+%Y-%m-%d %H:%M:%S %z'" in rendered
