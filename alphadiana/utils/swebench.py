@@ -6,12 +6,14 @@ import json
 import os
 import re
 import shlex
+from collections.abc import Mapping
 from typing import Any
 
 from alphadiana.benchmark.base import BenchmarkTask
 
 
 _PODMAN_TEST_SPEC_CLASS_CACHE: dict[type, type] = {}
+_PROXY_ENV_KEYS = ("http_proxy", "https_proxy", "no_proxy", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY")
 
 
 def _image_has_registry(image_ref: str) -> bool:
@@ -39,6 +41,16 @@ def qualify_swebench_podman_image_ref(image_ref: str) -> str:
 def strip_from_platform_directives_for_podman(dockerfile: str) -> str:
     """Remove FROM-level platform pins that make Podman miss local images."""
     return re.sub(r"(?m)^(FROM)\s+--platform=\S+\s+", r"\1 ", dockerfile)
+
+
+def podman_proxy_buildargs_from_env(env: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Return proxy build args safe to pass to Podman builds."""
+    source = os.environ if env is None else env
+    return {
+        key: value
+        for key in _PROXY_ENV_KEYS
+        if (value := str(source.get(key, "") or "").strip())
+    }
 
 
 def qualify_swebench_test_spec_for_podman(test_spec: Any) -> Any:
@@ -301,6 +313,14 @@ def ensure_swebench_build_network_mode(network_mode: str | None) -> None:
             }
             if not podman_compat:
                 build_kwargs["platform"] = platform
+            else:
+                proxy_buildargs = podman_proxy_buildargs_from_env()
+                if proxy_buildargs:
+                    build_kwargs["buildargs"] = proxy_buildargs
+                    logger.info(
+                        "Passing proxy build args to Podman build: "
+                        f"{', '.join(sorted(proxy_buildargs))}"
+                    )
             logger.info(
                 f"Building docker image {image_name} in {build_dir} with platform "
                 f"{'omitted for Podman local image compatibility' if podman_compat else platform} "
