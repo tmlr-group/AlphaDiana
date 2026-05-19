@@ -341,6 +341,10 @@ def test_harden_test_spec_repo_clone_can_add_targeted_fetch_fallback():
     assert "skipped git gc" in rendered
     assert "skipped commit-count check" in rendered
     assert "if [ -f astropy/_erfa/erfa_generator.py ]; then python -m pip install 'jinja2<4' --verbose; fi" in rendered
+    assert (
+        "if [ -d astropy ] && [ -n \"$(find astropy -name '*.pyx' -print -quit)\" ]; then "
+        "python -m pip install 'cython<3' --verbose; fi"
+    ) in rendered
     assert "python -m pip install --no-build-isolation -e '.[test]' --verbose" in rendered
 
 
