@@ -9,7 +9,7 @@ from typing import Any
 
 from alphadiana.analysis.reliability import ERROR_STATUSES
 from alphadiana.analysis.result_reader import RunBundle
-from alphadiana.analysis.io.status import VALID_SCORE_STATUS, infer_score_status
+from alphadiana.results.status import VALID_SCORE_STATUS, infer_score_status
 
 
 def _field_order(rows: list[dict[str, Any]]) -> list[str]:

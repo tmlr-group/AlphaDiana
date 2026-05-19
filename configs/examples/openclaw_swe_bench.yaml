@@ -5,7 +5,7 @@ agent:
   version: "2026.3.20"
   config:
     runtime: "swebench_container"
-    openclaw_config_path: "alphadiana/harness/openclaw/deploy/openclaw_swe_bench.runtime.json"
+    openclaw_config_path: "openclaw_deploy/openclaw_swe_bench.runtime.json"
     container_gateway_host: "127.0.0.1"
     container_gateway_port: 8080
     gateway_token: "OPENCLAW"

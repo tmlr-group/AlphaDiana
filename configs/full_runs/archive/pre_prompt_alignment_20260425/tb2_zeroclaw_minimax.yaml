@@ -1,0 +1,35 @@
+# FULL RUN: all local terminal-bench task directories under TERMINAL_BENCH2_DIR.
+# For a 1-task liveness check, use configs/examples/terminal_bench2_zeroclaw_minimax.yaml.
+
+run_id: "p25_full_terminal_bench2_zeroclaw_minimax"
+
+benchmark:
+  name: terminal_bench2
+  config:
+    tasks_dir: ${TERMINAL_BENCH2_DIR}
+
+agent:
+  name: terminal_bench2_zeroclaw
+  version: "0.6.9"
+  config:
+    model: ${OPENAI_MODEL_NAME}
+    api_base: ${OPENAI_BASE_URL}
+    api_key: ${OPENAI_API_KEY}
+    temperature: 0.0
+    runtime_source_image: "zeroclaw-reasoning:0.6.9"
+    zeroclaw_bin: "zeroclaw"
+    solver_timeout_sec: 1800
+    timeout_sec: 900
+    test_timeout_sec: 1200
+
+sandbox: null
+
+scorer:
+  name: terminal_bench2
+
+max_concurrent: 1
+output_dir: "./results/p25_full_terminal_bench2_zeroclaw_minimax"
+strict_report: true
+strict_isolation: true
+metadata:
+  notes: "Full ZeroClaw in-container run for terminal-bench-2 via OPENAI_MODEL_NAME. Pre-pull task Docker images first."

@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Any
 
 from alphadiana.analysis.result_reader import RunBundle, load_jsonl_records, resolve_run_relative_path
-from alphadiana.analysis.io.logprob_artifacts import entropy_stats_from_int16_records
-from alphadiana.analysis.io.status import infer_score_status
+from alphadiana.results.logprob_artifacts import entropy_stats_from_int16_records
+from alphadiana.results.status import infer_score_status
 
 
 def load_int16_records(results_dir: Path, rel_path: str) -> list[dict[str, Any]]:

@@ -179,9 +179,9 @@ curl http://localhost: 9001/health # proxy Health Check
 
 ### 5.1 Prepare deployment configuration
 
-The deployment configuration is already in the `alphadiana/harness/openclaw/deploy/` directory:
+The deployment configuration is already in the `openclaw_deploy/` directory:
 
-**`alphadiana/harness/openclaw/deploy/rock_agent_config.yaml`** — ROCK agent configuration:
+**`openclaw_deploy/rock_agent_config.yaml`** — ROCK agent configuration:
 
 
 ```yaml
@@ -210,7 +210,7 @@ env:
 ```
 
 
-**`alphadiana/harness/openclaw/deploy/openclaw.json`** — OpenClaw gateway configuration, defining model provider and gateway authentication methods.
+**`openclaw_deploy/openclaw.json`** — OpenClaw gateway configuration, defining model provider and gateway authentication methods.
 The default image used by `deploy.py` is `tmlrgroup/alphadiana:v1`. The model stays configurable through `OPENAI_MODEL_NAME`.
 
 ### 5.2 Create Sandbox and deploy

@@ -188,7 +188,7 @@ sandbox:
 
 agent:
   config:
-    podman_gateway_config_path: alphadiana/harness/openclaw/deploy/podman_gateway.yaml
+    podman_gateway_config_path: openclaw_deploy/podman_gateway.yaml
     reuse_predeployed_sandboxes: true
 ```
 
@@ -220,7 +220,7 @@ export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock
 新增：
 
 ```text
-alphadiana/harness/openclaw/deploy/podman_gateway.yaml
+openclaw_deploy/podman_gateway.yaml
 ```
 
 最小语义：
@@ -611,7 +611,7 @@ legacy:
 | SWE-bench Pro | `agent/swebench_docker.py`, `scorer/swebench_pro.py` | Docker CLI/SWE-Pro eval path 改 Podman-backed |
 | Terminal-Bench2 | `terminal_bench2_common.py`, `terminal_bench2_openclaw.py`, `terminal_bench2_opencode.py`, `terminal_bench2_zeroclaw.py`, `terminal_bench2_docker.py`, `terminal_bench2_incontainer.py` | task container + controller/in-container runtime 改 Podman |
 | external_benchmark | `agent/external_benchmark_docker.py`, `scorer/external_benchmark.py` | GPU Docker container 改 Podman CDI container |
-| Legacy cleanup | `utils/rock_ports.py`, `utils/rock_runtime.py`, `scripts/rock_env.sh`, `scripts/find_rock_ports.py`, `alphadiana/harness/openclaw/deploy/rock_agent_config*.yaml` | legacy-only 或删除；新增 `podman_gateway.yaml` |
+| Legacy cleanup | `utils/rock_ports.py`, `utils/rock_runtime.py`, `scripts/rock_env.sh`, `scripts/find_rock_ports.py`, `openclaw_deploy/rock_agent_config*.yaml` | legacy-only 或删除；新增 `podman_gateway.yaml` |
 
 ---
 

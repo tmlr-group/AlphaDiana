@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from typing import Any, Mapping, Sequence
 
-from alphadiana.analysis.io.status import VALID_SCORE_STATUS
+from alphadiana.results.status import VALID_SCORE_STATUS
 
 MAIN_METRIC_NAMES = (
     "DeltaVerifyShare",

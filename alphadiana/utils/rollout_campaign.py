@@ -12,8 +12,8 @@ from typing import Any
 
 import yaml
 
-from alphadiana.engine.config.experiment_config import ExperimentConfig
-from alphadiana.engine.config.validator import ConfigValidator
+from alphadiana.config.experiment_config import ExperimentConfig
+from alphadiana.config.validator import ConfigValidator
 from alphadiana.utils.rock_ports import check_rock_services, resolve_rock_ports_from_env
 from alphadiana.utils.rock_runtime import PREBUILT_SANDBOX_IMAGE
 

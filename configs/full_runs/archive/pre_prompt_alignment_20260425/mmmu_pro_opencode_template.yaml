@@ -1,0 +1,44 @@
+# FULL RUN: all MMMU-Pro vision tasks.
+# For smoke/debug usage, prefer configs/examples/opencode_mmmu_pro.yaml.
+
+run_id: "rollout_full_opencode_mmmu_pro_vision"
+
+agent:
+  name: opencode
+  version: "1.3.2"
+  config:
+    model: "custom/${OPENAI_MODEL_NAME}"
+    model_name: "${OPENAI_MODEL_NAME}"
+    api_base: "${OPENAI_BASE_URL}"
+    api_key: "${OPENAI_API_KEY}"
+    controller_mode: "docker"
+    controller_image: "alphadiana/tb2-opencode-controller:latest"
+    timeout: 1800
+    streaming: true
+    tool_call: true
+    system_prompt: |
+      You are an expert at multimodal multiple-choice reasoning.
+      Carefully analyze any provided images along with the question text and options.
+      Think through the problem step by step before selecting your answer.
+      Respond with the final answer on the last line as:
+      $$\boxed{X}$$
+      where X is the single correct option letter.
+
+benchmark:
+  name: mmmu_pro
+  config:
+    dataset: "MMMU/MMMU_Pro"
+    data_config: "vision"
+    split: "test"
+
+scorer:
+  name: exact_match
+  config: {}
+
+max_concurrent: 1
+num_samples: 1
+output_dir: "./results/rollout_full_opencode_mmmu_pro_vision"
+strict_report: true
+strict_isolation: true
+metadata:
+  notes: "Full OpenCode x MMMU-Pro vision config for the local-vLLM rollout matrix."

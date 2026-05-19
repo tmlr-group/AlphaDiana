@@ -22,15 +22,6 @@ try:
 except ModuleNotFoundError:
     import tomli as tomllib
 
-# security_guard.py lives alongside this script; reuse its keyring check so the
-# standard preflight surfaces the low-quota WARN (release-gate finding #12)
-# instead of letting a run fail mid-sweep with a misleading "disk quota" error.
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-try:
-    from security_guard import check_kernel_keyring_capacity
-except Exception:  # pragma: no cover - defensive: never break preflight on this
-    check_kernel_keyring_capacity = None
-
 
 REQUIRED_ENV = (
     "TERMINAL_BENCH2_DIR",
@@ -326,28 +317,11 @@ def preflight(
         if not provider_probe.get("ok"):
             failures.append("provider_unreachable_from_podman")
 
-    # Non-fatal host/infra warnings. Kept out of `failures` so they never flip
-    # `ok` or the exit code — a low keyring quota should be surfaced loudly but
-    # not block the run (release-gate finding #12: WARN, do not hard-block).
-    warnings: list[dict[str, str]] = []
-    if check_kernel_keyring_capacity is not None:
-        try:
-            for issue in check_kernel_keyring_capacity():
-                warnings.append({
-                    "severity": issue.severity,
-                    "title": issue.title,
-                    "detail": issue.detail,
-                    "fix": issue.fix,
-                })
-        except Exception:  # pragma: no cover - defensive
-            pass
-
     unique_failures = sorted(set(failures))
     result = {
         "ok": not unique_failures,
         "failure_taxonomy": "clean" if not unique_failures else unique_failures[0],
         "failures": unique_failures,
-        "warnings": warnings,
         "config": config_checks[0]["config"] if len(config_checks) == 1 else "",
         "configs": config_checks,
         "expected_cells": len(config_checks),
@@ -407,12 +381,6 @@ def main() -> int:
         provider_timeout=args.provider_timeout,
     )
     print(json.dumps(result, indent=2, ensure_ascii=True))
-    for warn in result.get("warnings", []):
-        print(
-            f"[preflight {warn['severity']}] {warn['title']} :: {warn['detail']}"
-            f" :: fix: {warn['fix']}",
-            file=sys.stderr,
-        )
     return 0 if result["ok"] else 2
 
 

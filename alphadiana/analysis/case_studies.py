@@ -14,7 +14,7 @@ from alphadiana.analysis.trajectory_metrics import (
     has_premature_answer,
     has_tool_grounded_reasoning,
 )
-from alphadiana.analysis.io.status import VALID_SCORE_STATUS
+from alphadiana.results.status import VALID_SCORE_STATUS
 
 CASE_STUDY_MOTIFS = (
     "verification_circuit",

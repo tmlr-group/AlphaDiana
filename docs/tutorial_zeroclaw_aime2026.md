@@ -191,7 +191,7 @@ For a stronger host-isolation posture, use both of these knobs together:
 #### A2. Build the ZeroClaw reasoning image
 
 ```bash
-docker build -f alphadiana/harness/zeroclaw/deploy/Dockerfile -t zeroclaw-reasoning:0.6.9 .
+docker build -f zeroclaw_deploy/Dockerfile -t zeroclaw-reasoning:0.6.9 .
 ```
 
 Quick sanity check:
@@ -238,7 +238,7 @@ sandbox: null   # auto-created by runner when rock_image is set
 ### What happens internally
 
 1. AlphaDiana calls `POST /start_async` on ROCK admin to create a sandbox.
-2. The bridge script (`alphadiana/harness/zeroclaw/deploy/zeroclaw_bridge.py`) is uploaded into
+2. The bridge script (`zeroclaw_deploy/zeroclaw_bridge.py`) is uploaded into
    the sandbox and started as a background HTTP server on port 8080.
 3. AlphaDiana routes `POST /chat/completions` through the ROCK proxy to the
    bridge. The bridge calls `zeroclaw agent -m` inside the sandbox and returns
@@ -336,8 +336,8 @@ docker run -d --restart unless-stopped \
 |------|---------|
 | [`configs/examples/zeroclaw_aime2026_local_smoke.yaml`](../configs/examples/zeroclaw_aime2026_local_smoke.yaml) | Local-mode smoke config (validated) |
 | [`configs/examples/zeroclaw_aime2026.yaml`](../configs/examples/zeroclaw_aime2026.yaml) | ROCK auto-deploy config |
-| [`alphadiana/harness/zeroclaw/deploy/Dockerfile`](../alphadiana/harness/zeroclaw/deploy/Dockerfile) | ROCK-mode sandbox image |
-| [`alphadiana/harness/zeroclaw/deploy/zeroclaw_bridge.py`](../alphadiana/harness/zeroclaw/deploy/zeroclaw_bridge.py) | HTTP bridge injected into ROCK sandbox |
+| [`zeroclaw_deploy/Dockerfile`](../zeroclaw_deploy/Dockerfile) | ROCK-mode sandbox image |
+| [`zeroclaw_deploy/zeroclaw_bridge.py`](../zeroclaw_deploy/zeroclaw_bridge.py) | HTTP bridge injected into ROCK sandbox |
 | [`scripts/start_zeroclaw.sh`](../scripts/start_zeroclaw.sh) | ROCK-mode host startup helper |
 | [`alphadiana/agent/zeroclaw.py`](../alphadiana/agent/zeroclaw.py) | ZeroClaw agent implementation |
 | [`external_benchmark/docs/zeroclaw.md`](../external_benchmark/docs/zeroclaw.md) | external_benchmark / KernelBench path |

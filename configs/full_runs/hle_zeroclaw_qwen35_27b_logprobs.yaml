@@ -1,0 +1,55 @@
+run_id: full_hle_zeroclaw_qwen35_27b_logprobs
+agent:
+  name: zeroclaw
+  version: 0.6.9
+  config:
+    model: Qwen/Qwen3.5-27B
+    api_base: http://host.docker.internal:8011/v1
+    api_key: EMPTY
+    provider_api_base: http://host.docker.internal:8011/v1
+    provider_api_key: EMPTY
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 131072
+    enable_thinking: true
+    request_timeout: 9300
+    runtime_trace_mode: full
+    capture_logprobs: true
+    top_logprobs: 20
+    max_tool_iterations: 100
+    max_actions_per_hour: 200
+    rock_image: zeroclaw-reasoning:0.6.9
+    rock_memory: 4g
+    rock_cpus: 1
+    rock_startup_timeout: 600
+    system_prompt: |-
+      You are an expert problem solver. When given a question, actively use your available tools and skills throughout your reasoning process. Do not attempt to answer purely in your head when tools can help. Use code execution, search, or any other available capabilities to verify intermediate steps, explore approaches, and confirm your final answer.
+
+      This is a multiple-choice question. Think step by step and choose the single best option.
+
+      When you have reached your final answer, you MUST present it on the last line in exactly this format:
+
+      $$\boxed{X}$$
+
+      where X is the single final option letter.
+
+      Do not skip the boxed format. The boxed answer must contain only the option letter, not the option text, explanations, or a full sentence.
+benchmark:
+  name: hle
+  config:
+    dataset: cais/hle
+    split: test
+    answer_types:
+    - multipleChoice
+sandbox: null
+scorer:
+  name: exact_match
+  config: {}
+max_concurrent: 2
+num_samples: 1
+task_retries: 2
+output_dir: ./results
+strict_report: true
+strict_isolation: true
+metadata:
+  notes: Canonical full HLE multiple-choice zeroclaw config after prompt alignment.

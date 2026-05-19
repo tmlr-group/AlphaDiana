@@ -1,0 +1,63 @@
+# FULL RUN: GPQA-Diamond x ZeroClaw on local Qwen/Qwen3.5-27B with logprob capture.
+# Prompt-aligned 2026-04-25: canonical harness system prompt from configs/PROMPTS.md.
+
+run_id: "full_gpqa_v2_zeroclaw_qwen35_27b_logprobs"
+
+agent:
+  name: zeroclaw
+  version: "0.6.9"
+  config:
+    system_prompt: |
+      You are solving expert-level science multiple-choice questions. When given a question, actively use your available tools and skills throughout your reasoning process. Do not attempt to answer purely in your head when tools can help. Use code execution, search, or any other available capabilities to verify intermediate steps, explore approaches, and confirm your final answer.
+
+      Read the question carefully, reason step by step, and choose the single best option.
+
+      When you have reached your final answer, you MUST present it on the last line in exactly one of these forms:
+
+      $$\boxed{A}$$
+      $$\boxed{B}$$
+      $$\boxed{C}$$
+      $$\boxed{D}$$
+
+      Do not skip the boxed format. The boxed answer must contain only the final option letter, not the option text, explanations, or a full sentence.
+    model: "Qwen/Qwen3.5-27B"
+    api_base: "http://host.docker.internal:8011/v1"
+    api_key: "EMPTY"
+    provider_api_base: "http://host.docker.internal:8011/v1"
+    provider_api_key: "EMPTY"
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 131072
+    enable_thinking: true
+    request_timeout: 9300
+    runtime_trace_mode: "full"
+    capture_logprobs: true
+    top_logprobs: 20
+    docker_host_ip: "host.docker.internal"
+    network_mode: "host"
+    max_tool_iterations: 100
+    max_actions_per_hour: 200
+    rock_image: "zeroclaw-reasoning:0.6.9"
+    rock_memory: "4g"
+    rock_cpus: 1
+    rock_startup_timeout: 600
+    admin_base_url: "${ROCK_BASE_URL}"
+    proxy_base_url: "${ROCK_PROXY_URL}"
+
+benchmark:
+  name: gpqa_diamond
+  config:
+    dataset: "fingertap/GPQA-Diamond"
+    split: "test"
+    seed: 42
+
+scorer:
+  name: exact_match
+  config: {}
+
+max_concurrent: 2
+num_samples: 1
+task_retries: 2
+output_dir: "./results"
+metadata:
+  notes: "Canonical full GPQA-Diamond ZeroClaw config after prompt alignment. enable_thinking=true, max_tokens=131072, top_logprobs=20."
