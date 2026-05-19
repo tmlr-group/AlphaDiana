@@ -397,6 +397,31 @@ def test_swe_audit_provider_error_not_masked_by_podman_diagnostics(tmp_path: Pat
     assert "infrastructure_failure:provider_failure" in row["audit_failures"]
 
 
+def test_swe_audit_classifies_loop_detector_as_agent_control_failure(tmp_path: Path) -> None:
+    config_dir, results_dir, logs_dir, preflight, run_id = _prepare(tmp_path)
+    record = _record(
+        run_id=run_id,
+        task_id=TASK_IDS[0],
+        score_status="runtime_error",
+        score=None,
+        error={
+            "error": (
+                "ZeroClaw agent failed in sandbox: Error: Agent loop aborted by loop "
+                "detector: Circuit breaker: tool 'content_search' called repeatedly "
+                "with identical results -- no progress"
+            )
+        },
+    )
+    _write_task(results_dir, logs_dir, run_id=run_id, task_id=TASK_IDS[0], record=record)
+
+    result = _run_audit(tmp_path, config_dir, results_dir, logs_dir, preflight)
+
+    row = [row for row in result["rows"] if row["task_id"] == TASK_IDS[0]][0]
+    assert row["failure_category"] == "agent_loop_detector"
+    assert row["gating_failure"] is False
+    assert all("infrastructure_failure" not in failure for failure in row["audit_failures"])
+
+
 def test_swe_audit_does_not_contaminate_clean_row_from_other_task_log(tmp_path: Path) -> None:
     config_dir, results_dir, logs_dir, preflight, run_id = _prepare(tmp_path)
     _write_task(

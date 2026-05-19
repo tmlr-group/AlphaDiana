@@ -25,6 +25,7 @@ REQUIRED_TAXONOMY = [
     "swebench_env_build",
     "swebench_instance_build",
     "agent_runtime",
+    "agent_loop_detector",
     "agent_empty_output",
     "provider_failure",
     "provider_empty_response",
@@ -406,6 +407,8 @@ def classify_failure(record: dict[str, Any] | None, *, log_text: str = "", missi
         and not _observed_abnormal_trajectory(record)
     ):
         return "clean"
+    if "loop detector" in evidence or ("circuit breaker" in evidence and "no progress" in evidence):
+        return "agent_loop_detector"
     if "api version" in evidence or "client version" in evidence:
         return "docker_api_version"
     if "buildimageerror" in evidence:
