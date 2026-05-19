@@ -9,7 +9,10 @@ from alphadiana.config.experiment_config import ExperimentConfig
 from alphadiana.config.validator import ConfigValidator
 from alphadiana.sandbox.swebench_container import SWEBenchContainerSandbox
 from alphadiana.scorer.swe_bench import SWEBenchScorer
-from alphadiana.utils.swebench import strip_from_platform_directives_for_podman
+from alphadiana.utils.swebench import (
+    podman_proxy_buildargs_from_env,
+    strip_from_platform_directives_for_podman,
+)
 
 
 CONFIG_DIR = Path("configs/smokes/podman_swe_verified_readiness")
@@ -167,3 +170,19 @@ def test_podman_swe_strips_from_platform_directives() -> None:
         "FROM localhost/sweb.env.py.x86_64.demo:latest\n"
         "RUN echo ok\n"
     )
+
+
+def test_podman_swe_proxy_buildargs_preserve_proxy_keys() -> None:
+    env = {
+        "http_proxy": "http://127.0.0.1:17890",
+        "https_proxy": "http://127.0.0.1:17890",
+        "NO_PROXY": "localhost,127.0.0.1",
+        "CUSTOM": "ignored",
+        "HTTP_PROXY": "",
+    }
+
+    assert podman_proxy_buildargs_from_env(env) == {
+        "http_proxy": "http://127.0.0.1:17890",
+        "https_proxy": "http://127.0.0.1:17890",
+        "NO_PROXY": "localhost,127.0.0.1",
+    }
