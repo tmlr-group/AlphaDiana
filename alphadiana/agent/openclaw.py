@@ -2657,6 +2657,9 @@ class OpenClawAgent(Agent):
             "retry_count": attempt,
             "token_usage_total": cumulative_token_usage,
             "partial_reasoning_only": partial_reasoning_only and not raw_output,
+            "reasoning_only_clean_done": (
+                partial_reasoning_only and not raw_output and bool(received_done)
+            ),
             "answer_source": answer_source,
             "received_done": received_done,
             "session_tainted": session_tainted,

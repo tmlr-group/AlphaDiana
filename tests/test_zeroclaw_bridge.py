@@ -445,3 +445,94 @@ def test_zeroclaw_bridge_server_allows_fast_rebind(monkeypatch):
 
     assert module.ReusableThreadingHTTPServer.allow_reuse_address is True
     assert module.ReusableThreadingHTTPServer.daemon_threads is True
+
+
+# ---------------------------------------------------------------------------
+# Finding #5 — non-leading system message normalizer (no system at index>0)
+# ---------------------------------------------------------------------------
+
+def test_normalize_system_messages_hoists_user_system(monkeypatch):
+    """[user, system] -> leading system, then user."""
+    module = _load_bridge_module(
+        monkeypatch,
+        OPENAI_MODEL_NAME="demo-model",
+        OPENAI_BASE_URL="https://example.test/v1",
+        OPENAI_API_KEY="sk-test",
+    )
+    out = module._normalize_system_messages(
+        [
+            {"role": "user", "content": "hi"},
+            {"role": "system", "content": "remember X"},
+        ]
+    )
+    assert out[0]["role"] == "system"
+    assert out[0]["content"] == "remember X"
+    assert out[1]["role"] == "user"
+    # Invariant: no role=system after index 0.
+    assert all(
+        not (isinstance(m, dict) and m.get("role") == "system")
+        for m in out[1:]
+    )
+
+
+def test_normalize_system_messages_merges_leading_and_trailing(monkeypatch):
+    """[system, user, system] -> [system_merged, user]."""
+    module = _load_bridge_module(
+        monkeypatch,
+        OPENAI_MODEL_NAME="demo-model",
+        OPENAI_BASE_URL="https://example.test/v1",
+        OPENAI_API_KEY="sk-test",
+    )
+    out = module._normalize_system_messages(
+        [
+            {"role": "system", "content": "rule A"},
+            {"role": "user", "content": "hi"},
+            {"role": "system", "content": "rule B"},
+        ]
+    )
+    assert len(out) == 2
+    assert out[0]["role"] == "system"
+    assert "rule A" in out[0]["content"]
+    assert "rule B" in out[0]["content"]
+    assert out[1] == {"role": "user", "content": "hi"}
+    assert all(
+        not (isinstance(m, dict) and m.get("role") == "system")
+        for m in out[1:]
+    )
+
+
+def test_normalize_system_messages_mixed_content_types(monkeypatch):
+    """system(str) + system(list) → leading system, no crash, no surviving non-leading system."""
+    module = _load_bridge_module(
+        monkeypatch,
+        OPENAI_MODEL_NAME="demo-model",
+        OPENAI_BASE_URL="https://example.test/v1",
+        OPENAI_API_KEY="sk-test",
+    )
+    out = module._normalize_system_messages(
+        [
+            {"role": "system", "content": "rule A"},
+            {"role": "user", "content": "hi"},
+            {"role": "system", "content": [{"type": "text", "text": "rule B"}]},
+        ]
+    )
+    assert out[0]["role"] == "system"
+    # Leading content is now a list because we promoted str+list union.
+    assert isinstance(out[0]["content"], list)
+    assert all(
+        not (isinstance(m, dict) and m.get("role") == "system")
+        for m in out[1:]
+    )
+
+
+def test_normalize_system_messages_no_system_or_empty(monkeypatch):
+    """No system or empty input is a no-op (no crash)."""
+    module = _load_bridge_module(
+        monkeypatch,
+        OPENAI_MODEL_NAME="demo-model",
+        OPENAI_BASE_URL="https://example.test/v1",
+        OPENAI_API_KEY="sk-test",
+    )
+    assert module._normalize_system_messages([]) == []
+    only_user = [{"role": "user", "content": "hi"}]
+    assert module._normalize_system_messages(only_user) == only_user

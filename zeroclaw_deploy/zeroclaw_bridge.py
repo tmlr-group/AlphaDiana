@@ -98,50 +98,72 @@ def _attachments_have_image(attachments: list[dict[str, Any]]) -> bool:
 def _normalize_system_messages(
     messages: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Collapse any non-leading ``system`` messages into the leading one.
+    """Hoist every ``system`` message to a single leading entry.
 
     Qwen3.5's chat template hard-rejects requests where a ``system`` message
     appears at index > 0 (HTTP 400 "System message must be at the beginning").
-    The zeroclaw CLI's agentic loop occasionally appends a fresh system reminder
-    mid-conversation; this normalizer concatenates all such reminders into the
-    leading system message so the chat template still validates (finding #5).
+    The zeroclaw CLI's agentic loop occasionally appends a fresh system
+    reminder mid-conversation; this normalizer collects **every** system
+    message — including ones that appear after user/assistant turns — and
+    emits a single merged ``role=system`` entry at index 0 (finding #5).
+
+    Invariant on the output: no ``role == "system"`` survives at index > 0.
 
     Returns a new list — the input is left untouched.
     """
     if not isinstance(messages, list):
         return messages  # type: ignore[return-value]
-    out: list[dict[str, Any]] = []
-    leading_system: dict[str, Any] | None = None
+
+    # Pass 1: pull out every system message; keep the rest in order.
+    system_msgs: list[dict[str, Any]] = []
+    rest: list[Any] = []
     for msg in messages:
-        if not isinstance(msg, dict):
-            out.append(msg)
-            continue
-        if msg.get("role") == "system":
-            if leading_system is None:
-                leading_system = dict(msg)
-                out.append(leading_system)
-            else:
-                existing = leading_system.get("content")
-                addition = msg.get("content")
-                if isinstance(existing, str) and isinstance(addition, str):
-                    if addition.strip() and addition not in existing:
-                        leading_system["content"] = (
-                            existing + "\n\n" + addition if existing else addition
-                        )
-                elif isinstance(existing, list) and isinstance(addition, list):
-                    leading_system["content"] = existing + addition
-                else:
-                    # Mixed-type content: fall back to demoting to a user note
-                    # so we don't lose information; better than 400ing the call.
-                    demoted = dict(msg)
-                    demoted["role"] = "user"
-                    demoted["content"] = (
-                        "[system-followup]: " + str(addition) if addition is not None else ""
-                    )
-                    out.append(demoted)
+        if isinstance(msg, dict) and msg.get("role") == "system":
+            system_msgs.append(msg)
         else:
-            out.append(msg)
-    return out
+            rest.append(msg)
+
+    if not system_msgs:
+        return list(rest)
+
+    # Pass 2: merge all system contents into a single leading message.
+    # Use the first system message as the seed so we keep its non-content
+    # fields (name, etc.) if any. Treat content as a union of str/list/etc.
+    leading: dict[str, Any] = dict(system_msgs[0])
+    for follow in system_msgs[1:]:
+        existing = leading.get("content")
+        addition = follow.get("content")
+        if addition is None:
+            continue
+        if isinstance(existing, str) and isinstance(addition, str):
+            if addition.strip() and addition not in existing:
+                leading["content"] = (
+                    existing + "\n\n" + addition if existing else addition
+                )
+        elif isinstance(existing, list) and isinstance(addition, list):
+            leading["content"] = list(existing) + list(addition)
+        elif isinstance(existing, list) and isinstance(addition, str):
+            if addition.strip():
+                leading["content"] = list(existing) + [
+                    {"type": "text", "text": addition}
+                ]
+        elif isinstance(existing, str) and isinstance(addition, list):
+            # Promote leading to list form so we can append structured blocks.
+            seed: list[Any] = (
+                [{"type": "text", "text": existing}] if existing else []
+            )
+            leading["content"] = seed + list(addition)
+        else:
+            # Last-ditch: stringify and append.
+            text = str(addition).strip()
+            if text:
+                if isinstance(existing, str):
+                    leading["content"] = (
+                        existing + "\n\n" + text if existing else text
+                    )
+                else:
+                    leading["content"] = text
+    return [leading, *rest]
 
 
 def _vision_inject_messages(
