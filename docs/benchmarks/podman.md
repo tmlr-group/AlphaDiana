@@ -18,11 +18,8 @@ Current support boundary:
   checked-out TerminalBench2 task root across OpenClaw, OpenCode, and ZeroClaw.
   Treat
   `context/podman-terminal-bench2-readiness/` as the support truth source.
-  SWE-bench Verified has a Phase 9 opt-in readiness path under
-  `configs/smokes/podman_swe_verified_readiness/`. The selected-task
-  readiness ladder passed validation, preflight, and audit for OpenClaw,
-  OpenCode, and ZeroClaw on run prefix `phase9_gap_20260519_012`. SWE-bench
-  Pro and external_benchmark remain deferred.
+  SWE-bench Verified has focused opt-in smoke evidence. SWE-bench Pro and
+  external_benchmark remain deferred.
 - MMMU-Pro multimodal path: Phase 6 has a patched opt-in readiness matrix for
   OpenClaw, ZeroClaw, and OpenCode on three deterministic `vision` tasks.
   `Qwen/Qwen3.5-4B` at `http://127.0.0.1:8011/v1` has manual host and Podman
@@ -53,7 +50,6 @@ For coding-agent handoff and a development file map, read
   `configs/smokes/podman_nightly_validation/`,
   `configs/smokes/podman_terminal_bench2/`,
   `configs/smokes/podman_mmmu_pro_readiness/`,
-  `configs/smokes/podman_swe_verified_readiness/`,
   `scripts/run_podman_scale_readiness.sh`,
   `scripts/audit_podman_scale_readiness.py`, and
   `scripts/run_podman_nightly_validation.sh`,
@@ -62,15 +58,11 @@ For coding-agent handoff and a development file map, read
   `scripts/audit_podman_terminal_bench2_readiness.py`,
   `scripts/run_podman_mmmu_pro_readiness.sh`,
   `scripts/podman_vlm_image_preflight.py`, and
-  `scripts/audit_podman_mmmu_pro_readiness.py`,
-  `scripts/run_podman_swe_verified_readiness.sh`,
-  `scripts/preflight_podman_swe_verified_readiness.py`, and
-  `scripts/audit_podman_swe_verified_readiness.py`.
+  `scripts/audit_podman_mmmu_pro_readiness.py`.
 - Evidence and handoff:
   `context/add-podman-handoff/README.md`,
   `context/podman-terminal-bench2-readiness/README.md`,
   `context/podman-mmmu-pro-readiness/README.md`,
-  `context/podman-swe-verified-readiness/README.md`,
   `context/podman-scale-readiness/README.md`,
   `context/podman-nightly-validation/README.md`,
   `context/phase02-podman-agent-smokes/README.md`, and
@@ -89,8 +81,6 @@ For coding-agent handoff and a development file map, read
   `tests/test_podman_mmmu_pro_readiness_configs.py`,
   `tests/test_podman_mmmu_pro_readiness_runner.py`,
   `tests/test_podman_mmmu_pro_readiness_audit.py`, and
-  `tests/test_podman_swe_verified_readiness_configs.py`,
-  `tests/test_podman_swe_verified_readiness_audit.py`, and
   `tests/test_standard_podman_error_metadata.py`.
 
 ## Prerequisites
@@ -182,49 +172,6 @@ systemctl --user start podman.socket
 export ALPHADIANA_PODMAN_SOCKET="${XDG_RUNTIME_DIR}/podman/podman.sock"
 export DOCKER_HOST="unix://${ALPHADIANA_PODMAN_SOCKET}"
 ```
-
-## SWE-bench Verified Podman Readiness
-
-Phase 9 adds a dedicated SWE-bench Verified readiness matrix:
-
-```bash
-export OPENAI_BASE_URL=http://127.0.0.1:8011/v1
-export OPENAI_API_KEY=EMPTY
-export OPENAI_MODEL_NAME=Qwen/Qwen3.5-27B
-export ALPHADIANA_PODMAN_SOCKET="${XDG_RUNTIME_DIR}/podman/podman.sock"
-
-bash scripts/run_podman_swe_verified_readiness.sh validate
-bash scripts/run_podman_swe_verified_readiness.sh preflight
-bash scripts/run_podman_swe_verified_readiness.sh auto
-```
-
-The matrix is SWE-bench Verified only and covers OpenClaw, OpenCode, and
-ZeroClaw across `smoke`, `pilot32`, `long64`, and `sample128` tiers. Tasksets
-are deterministic and force-include `astropy__astropy-12907` and
-`astropy__astropy-13033`.
-
-On this host, the local `Qwen/Qwen3.5-27B` provider at
-`http://127.0.0.1:8011/v1` is reachable from Podman with host networking, so
-the Phase 9 configs use `sandbox.config.network_mode: host`. The preflight
-checks the Podman socket, docker-py API compatibility, SWE-bench dataset
-access, image qualification, host provider reachability, and Podman runtime
-provider reachability before any task run.
-
-Current selected-task status: run prefix `phase9_gap_20260519_012` passed the
-full Phase 9 ladder with `PODMAN_SWE_MAX_CONCURRENT=1`:
-
-- `smoke`: 6 expected rows, audit passed with `audit_failure_count=0`.
-- `pilot32`: 30 expected rows, audit passed with `audit_failure_count=0`.
-- `long64`: 6 expected rows, audit passed with `audit_failure_count=0`.
-- `sample128`: 6 expected rows, audit passed with `audit_failure_count=0`.
-
-All 48 expected rows wrote task JSON and reached
-`last_stage=task_json_written`. `score=0`, malformed model patches, and
-ZeroClaw agent loop-detector rows are still possible; those are model/agent
-behavior outcomes rather than Podman readiness failures when the audit passes.
-Do not claim full SWE-bench Verified support, SWE-bench Pro support, Podman
-default promotion, or a full Verified run from this selected-task evidence.
-The readiness gate remains task JSON plus audit pass.
 
 ## Standard Reasoning Pilot
 
@@ -454,3 +401,102 @@ the process is not tied to an agent-operated shell.
 - external_benchmark Podman is deferred pending GPU/CDI validation.
 - Do not expose a public TCP Podman API. Use the Unix user socket for
   Docker-compatible clients.
+
+## Full-Run Pre-flight Checklist (China-mainland A800, May 2026)
+
+Operational notes from the China-mainland A800 validation runs against
+`Qwen/Qwen3.5-27B` at `http://127.0.0.1:8011/v1`. Apply before any 12-cell
+parallel campaign.
+
+### Provider context window vs `max_tokens`
+
+vLLM rejects `max_tokens == max_model_len` with a misleading 400 (the body
+says "prompt has N chars" instead of the real cause). Keep at least 8 K of
+headroom below the model's `max_model_len`. For a 131 072-ctx model, cap
+`max_tokens` at ~122 880. The shared 200 K Qwen3.5-27B endpoint accepts
+`max_tokens: 196608` comfortably.
+
+ZeroClaw bridges serialize tool definitions into the prompt; the resulting
+overhead can exceed 30 K tokens. If you run ZeroClaw with `max_tokens: 131072`
+against a 131 072-ctx endpoint, expect immediate `Request exceeds model context
+window` errors. Use a 200 K-ctx endpoint or lower `provider_max_tokens` to
+~96 K.
+
+### Logprob dual-write disk cost
+
+`capture_logprobs=true` writes both `results/<run_id>/logprobs/*.jsonl`
+(float) and `results/<run_id>/logprobs_int16/*.jsonl` by design. Single OpenCode
+IMO tasks generated ~120 MB combined per task. Extrapolated for OpenCode HLE
+(3 000 tasks) that is ~180–360 GB.
+
+Always set `output_dir` to a path on a large disk (`/path/to/...`) before turning
+on logprobs at scale. Never let `/home` host the logprob sidecars.
+
+### Host networking and port collisions
+
+`configs/smokes/podman_scale_readiness/` pilot configs use `network: host` with
+`exposed_port: 8080`. Only one cell can bind that port at a time, so 12-way
+parallel runs fail every cell after the first. Override to slirp4netns for
+OpenClaw / ZeroClaw cells when fanning out:
+
+```yaml
+agent:
+  config:
+    sandbox_engine:
+      podman:
+        network: slirp4netns
+```
+
+OpenCode is the exception: its controller cannot reach the host vLLM through
+slirp4netns (`Unable to connect`), so its cells must stay on `controller_network:
+host`. They do not bind a fixed published port, so they co-exist with each
+other.
+
+### Kernel keyring quota
+
+Rootless `podman run` allocates a session keyring per container. Default
+`kernel.keys.maxkeys=200`, `kernel.keys.maxbytes=20000` is exhausted under
+high task churn — the failure surfaces as
+`error during container init: unable to join session keyring: disk quota
+exceeded` (which looks like a disk issue but isn't). Bump:
+
+```bash
+sudo sysctl -w kernel.keys.maxkeys=2000 kernel.keys.maxbytes=200000
+# Persist via /etc/sysctl.d/99-podman-keyring.conf
+```
+
+`scripts/security_guard.py --check` warns when the values are below the
+recommended floor (1000 / 200 000).
+
+### Recovery from a SIGKILL'd run
+
+A `podman stop` on a still-running cell, followed by a SIGKILL on the parent
+supervisor, leaves the rootless sidecar tree
+(`slirp4netns`, `containers-rootlessport`, `conmon`, the agent process, and
+the container's `sleep infinity` keep-alive) behind. Normal teardown
+already calls `podman rm --force --volumes`; a crashed run never reaches
+that path.
+
+Restart code now reaps name-matched orphans automatically on
+`PodmanAgentRuntime.start()`. For a manual clean-up:
+
+```bash
+podman ps -a --filter name=alphadiana- --format '{{.ID}}' | xargs -r podman rm -f -v
+pkill -9 -f slirp4netns                # only your uid
+pkill -9 -f containers-rootlessport    # only your uid
+pkill -9 -f conmon                     # only your uid
+```
+
+### vLLM streaming + thinking mode
+
+The OpenClaw gateway accepts the OpenAI `delta.reasoning_content` field name,
+but vLLM with `--reasoning-parser qwen3` emits `delta.reasoning`. The host-side
+logprob proxy now rewrites the field name in-place so the gateway captures
+thinking output instead of treating it as empty. Keep `enable_thinking: true`
+in OpenClaw configs for hard tasks — disabling thinking is no longer required
+to avoid empty-stream failures.
+
+If a stream still ends with reasoning-only output and no content, that
+indicates a real token-budget exhaustion (`finish_reason=length`). The runner
+will record the answer extracted from the partial reasoning instead of marking
+the task as a transient empty-response failure.

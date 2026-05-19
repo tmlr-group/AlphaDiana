@@ -29,7 +29,6 @@ from alphadiana.utils.math_answer import (
     extract_numeric_answer_candidate,
     parse_numeric_answer,
 )
-from alphadiana.utils.lifecycle_events import append_lifecycle_event
 
 if TYPE_CHECKING:
     from alphadiana.agent.base import Agent
@@ -430,54 +429,11 @@ def _build_error_info(exc: Exception) -> dict:
     }
 
 
-def _sandbox_config_provenance_metadata(config: "ExperimentConfig") -> dict:
-    """Return runtime metadata available before a sandbox session exists."""
-    sandbox_config = dict(getattr(config, "sandbox_config", None) or {})
-    metadata: dict[str, object] = {}
-    sandbox_backend = getattr(config, "sandbox_name", "") or ""
-    if sandbox_backend:
-        metadata["sandbox_backend"] = sandbox_backend
-    container_engine = str(sandbox_config.get("container_engine", "") or "").strip()
-    if container_engine:
-        metadata["container_engine"] = container_engine
-    docker_api_version = str(sandbox_config.get("docker_api_version", "") or "").strip()
-    podman_socket = str(sandbox_config.get("podman_socket", "") or "").strip()
-    if container_engine.lower() == "podman":
-        try:
-            from alphadiana.container_runtime.podman_socket import (
-                podman_socket_env,
-                resolve_podman_docker_api_version,
-            )
-
-            docker_api_version = resolve_podman_docker_api_version(docker_api_version)
-            podman_socket = podman_socket_env(podman_socket or None)["DOCKER_HOST"]
-        except Exception:
-            logger.debug("Failed to resolve Podman provenance metadata", exc_info=True)
-    if docker_api_version:
-        metadata["docker_api_version"] = docker_api_version
-    if podman_socket:
-        metadata["podman_socket"] = podman_socket
-    network_mode = str(sandbox_config.get("network_mode", "") or "").strip()
-    if network_mode:
-        metadata["network_mode"] = network_mode
-    return metadata
-
-
 def _bind_runtime_task(task: BenchmarkTask, sample_index: int) -> BenchmarkTask:
     """Return a per-execution task copy with runtime metadata attached."""
     metadata = dict(task.metadata)
     metadata["sample_index"] = sample_index
     metadata["execution_id"] = uuid4().hex
-    return replace(task, metadata=metadata)
-
-
-def _strip_lifecycle_metadata(task: BenchmarkTask) -> BenchmarkTask:
-    """Return a task copy without runner-only lifecycle metadata."""
-    metadata = {
-        key: value
-        for key, value in dict(task.metadata or {}).items()
-        if not str(key).startswith("_lifecycle_")
-    }
     return replace(task, metadata=metadata)
 
 
@@ -668,38 +624,6 @@ class Runner:
                     )
 
         logger.info("Total work items: %d (tasks=%d, num_samples=%d)", len(work_items), len(tasks), num_samples)
-
-        def _lifecycle_path_for(task_id: str, sample_index: int) -> Path:
-            suffix = f"{task_id}.jsonl" if sample_index <= 0 else f"{task_id}.sample_{sample_index}.jsonl"
-            return self.result_store.output_dir / self.config.run_id / "lifecycle" / suffix
-
-        def _record_lifecycle(
-            task: BenchmarkTask,
-            sample_index: int,
-            stage: str,
-            metadata: dict | None = None,
-        ) -> None:
-            append_lifecycle_event(
-                _lifecycle_path_for(task.task_id, sample_index),
-                run_id=self.config.run_id,
-                task_id=task.task_id,
-                sample_index=sample_index,
-                stage=stage,
-                metadata=metadata or {},
-            )
-
-        for selected_task, selected_sample_index in work_items:
-            _record_lifecycle(
-                selected_task,
-                selected_sample_index,
-                "selected",
-                {
-                    "agent": self.config.agent_name,
-                    "benchmark": self.config.benchmark_name,
-                    "scorer": self.config.scorer_name,
-                    "max_concurrent": self.config.max_concurrent,
-                },
-            )
 
         # Initialize plain-text dashboard.
         dashboard = None
@@ -1781,131 +1705,34 @@ class Runner:
             nonlocal shared_session, predeployed_started_work_items
             task, sample_index = work_item
             runtime_task = _bind_runtime_task(task, sample_index)
-            runtime_task.metadata["_lifecycle_path"] = str(
-                _lifecycle_path_for(task.task_id, sample_index)
-            )
-            runtime_task.metadata["_lifecycle_run_id"] = self.config.run_id
             if fresh_predeployed_mode and predeployed_session_queue is not None:
                 with predeployed_work_start_lock:
                     predeployed_started_work_items += 1
-            _record_lifecycle(
-                task,
-                sample_index,
-                "launched",
-                {
-                    "agent": self.config.agent_name,
-                    "execution_id": runtime_task.metadata.get("execution_id", ""),
-                },
-            )
             # Acquire sandbox session: from pool (concurrent) or shared (sequential).
             sandbox_session = None
             used_pool = False
             used_predeployed_pool = False
             predeployed_quarantine_reason = ""
             pooled_session_replacement_reason = ""
+            if pool is not None:
+                sandbox_session = pool.acquire()
+                used_pool = True
+            elif predeployed_session_queue is not None:
+                sandbox_session = _acquire_predeployed_session(task.task_id)
+                used_predeployed_pool = True
+            elif shared_session is not None:
+                sandbox_session = shared_session
+            elif self.sandbox is not None:
+                if self.config.sandbox_name == "swebench_container":
+                    sandbox_session = self.sandbox.create_session(task=runtime_task)
+                else:
+                    sandbox_session = self.sandbox.create_session()
             response_sandbox_id = ""
             start = time.monotonic()
             response = None
             try:
-                if pool is not None:
-                    sandbox_session = pool.acquire()
-                    used_pool = True
-                elif predeployed_session_queue is not None:
-                    sandbox_session = _acquire_predeployed_session(task.task_id)
-                    used_predeployed_pool = True
-                elif shared_session is not None:
-                    sandbox_session = shared_session
-                elif self.sandbox is not None:
-                    if self.config.sandbox_name == "swebench_container":
-                        sandbox_session = self.sandbox.create_session(task=runtime_task)
-                    else:
-                        sandbox_session = self.sandbox.create_session()
-            except Exception as exc:
-                logger.error("Task %s failed before agent start: %s", task.task_id, exc)
-                from alphadiana.agent.base import AgentResponse
-
-                sandbox_provenance = _sandbox_config_provenance_metadata(self.config)
-                exception_sandbox_metadata = getattr(exc, "sandbox_metadata", None)
-                if isinstance(exception_sandbox_metadata, dict):
-                    sandbox_provenance.update(exception_sandbox_metadata)
-                error_response = AgentResponse(
-                    answer=None,
-                    wall_time_sec=time.monotonic() - start,
-                    metadata={
-                        "sample_index": sample_index,
-                        "execution_id": runtime_task.metadata.get("execution_id", ""),
-                        "sandbox_create_failed": True,
-                        "failure_stage": "sandbox_create",
-                    },
-                    sandbox_metadata=sandbox_provenance,
-                )
-                error_response.metadata.update({
-                    key: value
-                    for key, value in sandbox_provenance.items()
-                    if key in {"container_engine", "sandbox_backend", "docker_api_version", "podman_socket"}
-                    and value not in (None, "")
-                })
-                if self.sandbox is not None:
-                    sandbox_backend_name = getattr(self.sandbox, "name", type(self.sandbox).__name__)
-                    error_response.metadata.setdefault("sandbox_backend", sandbox_backend_name)
-                _apply_error_provenance_metadata(
-                    error_response,
-                    _agent_error_provenance_metadata(self.agent),
-                )
-                self.result_store.append_error(
-                    _strip_lifecycle_metadata(runtime_task),
-                    error=_build_error_info(exc),
-                    response=error_response,
-                    sample_index=sample_index,
-                )
-                _record_lifecycle(
-                    task,
-                    sample_index,
-                    "task_json_written",
-                    {
-                        "task_json_path": str(
-                            self.result_store.output_dir
-                            / self.config.run_id
-                            / "tasks"
-                            / f"{task.task_id}.json"
-                        ),
-                        "error_type": getattr(exc, "error_type", type(exc).__name__),
-                        "failure_stage": "sandbox_create",
-                    },
-                )
-                raise
-            if sandbox_session is not None:
-                try:
-                    lifecycle_sandbox_metadata = _sanitize_success_sandbox_metadata(
-                        sandbox_session.metadata()
-                    )
-                except Exception:
-                    lifecycle_sandbox_metadata = {}
-                _record_lifecycle(
-                    task,
-                    sample_index,
-                    "sandbox_started",
-                    {
-                        "sandbox_id": str(getattr(sandbox_session, "sandbox_id", "") or ""),
-                        "container_engine": lifecycle_sandbox_metadata.get("container_engine", ""),
-                        "sandbox_backend": getattr(self.sandbox, "name", type(self.sandbox).__name__)
-                        if self.sandbox is not None
-                        else "",
-                    },
-                )
-            try:
                 # Run the agent.
                 response = self.agent.solve(runtime_task, sandbox_session)
-                _record_lifecycle(
-                    task,
-                    sample_index,
-                    "agent_done",
-                    {
-                        "finish_reason": getattr(response, "finish_reason", ""),
-                        "answer_present": bool(getattr(response, "answer", None)),
-                        "raw_output_chars": len(str(getattr(response, "raw_output", "") or "")),
-                    },
-                )
                 response.metadata.setdefault("sample_index", sample_index)
                 response.metadata.setdefault(
                     "execution_id",
@@ -1940,29 +1767,9 @@ class Runner:
                     )
                 _normalize_numeric_response_answer(self.config, response)
                 # Score the result.
-                _record_lifecycle(
-                    task,
-                    sample_index,
-                    "scorer_started",
-                    {"scorer": self.config.scorer_name},
-                )
-                persisted_task = _strip_lifecycle_metadata(runtime_task)
-                score = self.scorer.score(persisted_task, response)
+                score = self.scorer.score(runtime_task, response)
                 # Store the result.
-                self.result_store.append(persisted_task, response, score, sample_index=sample_index)
-                _record_lifecycle(
-                    task,
-                    sample_index,
-                    "task_json_written",
-                    {
-                        "task_json_path": str(
-                            self.result_store.output_dir
-                            / self.config.run_id
-                            / "tasks"
-                            / f"{task.task_id}.json"
-                        ),
-                    },
-                )
+                self.result_store.append(runtime_task, response, score, sample_index=sample_index)
                 # Log predicted vs ground_truth comparison.
                 sample_tag = f" [sample {sample_index}]" if num_samples > 1 else ""
                 logger.info(
@@ -2085,24 +1892,10 @@ class Runner:
                 except Exception:
                     pass
                 self.result_store.append_error(
-                    _strip_lifecycle_metadata(runtime_task),
+                    runtime_task,
                     error=_build_error_info(exc),
                     response=error_response,
                     sample_index=sample_index,
-                )
-                _record_lifecycle(
-                    task,
-                    sample_index,
-                    "task_json_written",
-                    {
-                        "task_json_path": str(
-                            self.result_store.output_dir
-                            / self.config.run_id
-                            / "tasks"
-                            / f"{task.task_id}.json"
-                        ),
-                        "error_type": getattr(exc, "error_type", type(exc).__name__),
-                    },
                 )
                 raise
             finally:

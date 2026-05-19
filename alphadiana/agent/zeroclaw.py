@@ -11,7 +11,6 @@ import re
 import secrets
 import shlex
 import subprocess
-import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -407,9 +406,6 @@ class ZeroClawAgent(Agent):
             )
             or ""
         ).strip()
-        self._provider_proxy_normalize_system_messages = bool(
-            _parse_optional_bool(config.get("provider_proxy_normalize_system_messages", False))
-        )
         raw_temperature = config.get("temperature", 0.0)
         self._temperature = float(raw_temperature if raw_temperature not in ("", None) else 0.0)
         raw_top_p = config.get("top_p", None)
@@ -470,11 +466,6 @@ class ZeroClawAgent(Agent):
         self._binary_source_path = str(
             config.get("binary_source_path", "/usr/local/bin/zeroclaw") or "/usr/local/bin/zeroclaw"
         ).strip()
-        self._binary_source_engine = str(
-            config.get("binary_source_engine", "docker") or "docker"
-        ).strip().lower()
-        if self._binary_source_engine not in {"docker", "podman"}:
-            raise ValueError("zeroclaw agent.config.binary_source_engine must be one of docker, podman")
         self._host_binary_cache: bytes | None = None
         configured_provider = str(config.get("provider", "")).strip().lower()
         self._provider = _resolve_zeroclaw_provider(configured_provider, self._provider_api_base)
@@ -989,57 +980,9 @@ class ZeroClawAgent(Agent):
             return self._host_binary_cache
         if not self._binary_source_image:
             raise RuntimeError("No ZeroClaw binary source image configured.")
-        if self._binary_source_engine == "podman":
-            container_id = ""
-            try:
-                created = subprocess.run(
-                    [
-                        self._binary_source_engine,
-                        "create",
-                        "--entrypoint",
-                        "",
-                        self._binary_source_image,
-                        "true",
-                    ],
-                    check=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                )
-                container_id = created.stdout.strip().splitlines()[-1]
-                if not container_id:
-                    raise RuntimeError("podman create did not return a container id")
-                with tempfile.TemporaryDirectory(prefix="zeroclaw-binary-") as td:
-                    target = Path(td) / "zeroclaw"
-                    subprocess.run(
-                        [
-                            self._binary_source_engine,
-                            "cp",
-                            f"{container_id}:{self._binary_source_path}",
-                            str(target),
-                        ],
-                        check=True,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                    )
-                    payload = target.read_bytes()
-            finally:
-                if container_id:
-                    subprocess.run(
-                        [self._binary_source_engine, "rm", "-f", container_id],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                        check=False,
-                    )
-            if not payload:
-                raise RuntimeError(
-                    "Resolved ZeroClaw binary source image produced an empty binary payload."
-                )
-            self._host_binary_cache = payload
-            return payload
         result = subprocess.run(
             [
-                self._binary_source_engine,
+                "docker",
                 "run",
                 "--rm",
                 "--entrypoint",
@@ -1444,11 +1387,7 @@ class ZeroClawAgent(Agent):
         logprob_proxy_records: list[dict] = []
         logprob_proxy_metadata: dict[str, Any] = {}
         try:
-            use_provider_proxy = (
-                self._logprob_capture["enabled"]
-                or self._provider_proxy_normalize_system_messages
-            )
-            if use_provider_proxy:
+            if self._logprob_capture["enabled"]:
                 proxy_api_key = secrets.token_urlsafe(24)
                 advertise_host = resolve_logprob_proxy_advertise_host(
                     self._provider_api_base,
@@ -1463,9 +1402,6 @@ class ZeroClawAgent(Agent):
                     upstream_api_key=self._provider_api_key,
                     proxy_api_key=proxy_api_key,
                     request_overrides=self._logprob_request_overrides(),
-                    inject_logprobs=self._logprob_capture["enabled"],
-                    normalize_system_messages=True,
-                    capture_request_summary=True,
                 )
                 logprob_proxy.start()
                 proxy_api_base = f"{logprob_proxy.proxy_url.rstrip('/')}/v1"
@@ -1480,8 +1416,6 @@ class ZeroClawAgent(Agent):
                     "logprob_proxy_url": proxy_api_base,
                     "logprob_proxy_upstream": logprob_proxy.upstream,
                     "logprob_proxy_request_overrides": self._logprob_request_overrides(),
-                    "logprob_proxy_inject_logprobs": self._logprob_capture["enabled"],
-                    "provider_proxy_normalize_system_messages": True,
                 }
             run_command = self._wrap_shell_command(self._build_run_command(paths), env)
             execute_long_running = getattr(sandbox, "execute_long_running", None)
@@ -1495,12 +1429,6 @@ class ZeroClawAgent(Agent):
                 result = sandbox.execute(run_command)
             if logprob_proxy is not None:
                 logprob_proxy_records = logprob_proxy.drain_records()
-                request_summaries = logprob_proxy.drain_request_summaries()
-                response_summaries = logprob_proxy.drain_response_summaries()
-                if request_summaries:
-                    logprob_proxy_metadata["provider_proxy_request_summaries"] = request_summaries
-                if response_summaries:
-                    logprob_proxy_metadata["provider_proxy_response_summaries"] = response_summaries
         finally:
             if logprob_proxy is not None:
                 logprob_proxy.stop()

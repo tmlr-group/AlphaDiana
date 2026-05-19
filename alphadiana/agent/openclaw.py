@@ -51,7 +51,6 @@ from alphadiana.agent.preservation import add_artifact_file_refs
 from alphadiana.agent.registry import AgentRegistry
 from alphadiana.benchmark.base import BenchmarkTask
 from alphadiana.utils.attachments import build_openai_multimodal_user_content
-from alphadiana.utils.lifecycle_events import append_lifecycle_event
 from alphadiana.utils.math_answer import extract_answer_candidate
 from alphadiana.utils.rock_ports import resolve_rock_ports_from_env
 
@@ -61,22 +60,6 @@ logger = logging.getLogger(__name__)
 def _is_unresolved_placeholder(value: str) -> bool:
     stripped = str(value or "").strip()
     return stripped.startswith("${") and stripped.endswith("}")
-
-
-def _record_task_lifecycle(
-    task: BenchmarkTask,
-    stage: str,
-    metadata: dict[str, Any] | None = None,
-) -> None:
-    task_metadata = getattr(task, "metadata", {}) or {}
-    append_lifecycle_event(
-        task_metadata.get("_lifecycle_path"),
-        run_id=str(task_metadata.get("_lifecycle_run_id") or ""),
-        task_id=str(getattr(task, "task_id", "") or ""),
-        sample_index=int(task_metadata.get("sample_index", 0) or 0),
-        stage=stage,
-        metadata=metadata or {},
-    )
 
 
 def _parse_bool_like(value: Any) -> bool | None:
@@ -621,6 +604,54 @@ def _extract_trajectory_error(trajectory: list[dict]) -> str:
         error = _coerce_text_content(entry.get("error", "")).strip()
         if error:
             return error
+    return ""
+
+
+def _resolve_final_finish_reason(
+    *,
+    timeout_scored_zero: bool,
+    partial_reasoning_only: bool,
+    raw_output: str,
+    response_json: Any,
+) -> str:
+    """Map internal state + upstream finish_reason into the AgentResponse value.
+
+    Order of precedence:
+    1. ``timeout`` if the request hit our timeout classifier.
+    2. ``length`` if the upstream provider stopped because of the token budget
+       — this is a legitimate completion that callers may still try to score
+       (e.g. extract answer from partial reasoning) per finding #11 guidance.
+       The upstream marker propagates through the OpenClaw gateway only
+       intermittently; if the SSE stream cleanly ended (``received_done=True``)
+       with reasoning-only output and no content, we infer ``length`` — a
+       clean ``[DONE]`` means the model finished, and reasoning-only with no
+       content under a sufficiently large token budget is by far the
+       budget-exhausted case (the alternative of a "stop" with empty content
+       is extremely rare in practice).
+    3. ``incomplete`` for reasoning-only stream cut-offs (no ``[DONE]``).
+    4. Empty string for healthy ``stop`` / ``tool_calls`` completions.
+    """
+    if timeout_scored_zero:
+        return "timeout"
+    upstream_finish = ""
+    received_done = False
+    if isinstance(response_json, dict):
+        stream_status = response_json.get("stream_status")
+        if isinstance(stream_status, dict):
+            upstream_finish = str(stream_status.get("upstream_finish_reason") or "")
+            received_done = bool(stream_status.get("received_done"))
+        if not upstream_finish:
+            choices = response_json.get("choices") or []
+            if choices and isinstance(choices[0], dict):
+                upstream_finish = str(choices[0].get("finish_reason") or "")
+    if upstream_finish == "length":
+        return "length"
+    if partial_reasoning_only and not raw_output:
+        # A clean SSE [DONE] with substantial reasoning but no content is the
+        # signature of budget-exhausted thinking. Avoid the integrity guard's
+        # ``finish_reason_incomplete`` rejection so the partial-reasoning
+        # answer extraction path can salvage the response.
+        return "length" if received_done else "incomplete"
     return ""
 
 
@@ -1596,13 +1627,6 @@ class OpenClawAgent(Agent):
             )
 
         start = time.time()
-        lifecycle_seen_stages: set[str] = set()
-
-        def _record_task_lifecycle_once(stage: str, metadata: dict[str, Any] | None = None) -> None:
-            if stage in lifecycle_seen_stages:
-                return
-            lifecycle_seen_stages.add(stage)
-            _record_task_lifecycle(task, stage, metadata or {})
 
         # OpenClaw's gateway builds its own system prompt internally.
         # We only send the user message, optionally prefixed with a custom system prompt.
@@ -1711,7 +1735,6 @@ class OpenClawAgent(Agent):
         recovered_trajectory: list[dict] = []
         partial_reasoning_only = False
         received_done: bool = False
-        provider_finish_reason = ""
         selected_logprob_records: list[dict] = []
         logprob_source_attempt = 0
         logprob_source = ""
@@ -1748,7 +1771,6 @@ class OpenClawAgent(Agent):
                 "partial_reasoning_only": False,
                 "answer_source": "",
                 "received_done": received_done,
-                "stop_reason": provider_finish_reason,
                 "session_tainted": False,
                 "raw_reasoning": raw_reasoning,
                 "logprob_attempt_count": logprob_source_attempt or len(retry_responses),
@@ -1757,20 +1779,6 @@ class OpenClawAgent(Agent):
                 "logprob_probe_proxy_count": selected_proxy_logprob_count,
                 "failure_reason": error_type,
             }
-            if error_type in {"provider_empty_response", "empty_sse_body"}:
-                response_metadata.update(
-                    {
-                        "provider_empty_response": True,
-                        "provider_empty_response_error_type": error_type,
-                        "provider_empty_response_received_done": received_done,
-                        "provider_empty_response_no_content": not raw_output,
-                        "provider_empty_response_no_reasoning": not raw_reasoning,
-                        "provider_empty_response_no_logprobs": not bool(selected_logprob_records),
-                        "provider_empty_response_no_completion_tokens": not any(
-                            cumulative_token_usage.values()
-                        ),
-                    }
-                )
             if logprob_proxy is not None:
                 response_metadata.update(
                     {
@@ -1822,7 +1830,7 @@ class OpenClawAgent(Agent):
                 status_code: int = 0
                 resp_headers: dict = {}
                 received_done: bool = False
-                attempt_sse_data_event_count = 0
+                upstream_finish_reason: str = ""
                 if logprob_proxy is not None:
                     logprob_proxy.drain_records()
                 logger.info(
@@ -1850,14 +1858,6 @@ class OpenClawAgent(Agent):
                             status_code,
                             content_type or "<empty>",
                         )
-                        _record_task_lifecycle_once(
-                            "provider_connected",
-                            {
-                                "attempt": attempt,
-                                "status_code": status_code,
-                                "content_type": content_type or "",
-                            },
-                        )
 
                         if "application/json" in content_type:
                             # Non-SSE JSON response (error or non-streaming reply).
@@ -1874,41 +1874,28 @@ class OpenClawAgent(Agent):
                                 # Successful non-streaming JSON — extract assistant content.
                                 received_done = True
                                 choices = response_json.get("choices") or []
-                                assistant_content = ""
-                                reasoning_content = ""
                                 if choices:
-                                    choice = choices[0]
-                                    provider_finish_reason = str(
-                                        choice.get("finish_reason") or provider_finish_reason
-                                    )
-                                    msg = choice.get("message", {})
+                                    msg = choices[0].get("message", {})
                                     assistant_content = msg.get("content", "")
-                                    reasoning_content = msg.get("reasoning_content", "")
+                                    # Accept both reasoning_content (gateway) and
+                                    # reasoning (vLLM qwen3 / OpenRouter) — see #11.
+                                    reasoning_content = (
+                                        msg.get("reasoning_content")
+                                        or msg.get("reasoning")
+                                        or msg.get("reasoning_detail")
+                                        or ""
+                                    )
                                     if assistant_content:
                                         chunks.append(_coerce_text_content(assistant_content))
-                                        _record_task_lifecycle_once(
-                                            "content_seen",
-                                            {"attempt": attempt, "chars": len(_coerce_text_content(assistant_content))},
-                                        )
                                     elif reasoning_content:
                                         reasoning_chunks.append(_coerce_text_content(reasoning_content))
-                                        _record_task_lifecycle_once(
-                                            "reasoning_seen",
-                                            {"attempt": attempt, "chars": len(_coerce_text_content(reasoning_content))},
-                                        )
+                                    upstream_finish_reason = (
+                                        choices[0].get("finish_reason") or upstream_finish_reason
+                                    )
                                 attempt_logprob_records, attempt_token_index = extract_openai_logprob_records(
                                     response_json,
                                     start_index=0,
                                 )
-                                if assistant_content or reasoning_content or attempt_logprob_records:
-                                    _record_task_lifecycle_once("first_token_seen", {"attempt": attempt})
-                                if attempt_logprob_records:
-                                    _record_task_lifecycle_once(
-                                        "logprobs_seen",
-                                        {"attempt": attempt, "count": len(attempt_logprob_records)},
-                                    )
-                                if response_json.get("usage"):
-                                    _record_task_lifecycle_once("usage_seen", {"attempt": attempt})
                         else:
                             # SSE path (text/event-stream or unspecified Content-Type).
                             if status_code >= 400:
@@ -1960,7 +1947,6 @@ class OpenClawAgent(Agent):
                                                 "OpenClaw stream idle timeout while waiting for SSE data",
                                             )
                                         continue
-                                    attempt_sse_data_event_count += 1
                                     try:
                                         chunk_json = json.loads(data)
                                     except json.JSONDecodeError:
@@ -1971,40 +1957,37 @@ class OpenClawAgent(Agent):
                                         continue
                                     last_sse_progress_at = now
                                     choices = chunk_json.get("choices") or []
-                                    choice = choices[0] if choices else {}
-                                    provider_finish_reason = str(
-                                        choice.get("finish_reason") or provider_finish_reason
-                                    )
-                                    delta = choice.get("delta", {}) if isinstance(choice, dict) else {}
+                                    delta = choices[0].get("delta", {}) if choices else {}
                                     content = delta.get("content")
-                                    reasoning_content = delta.get("reasoning_content")
+                                    # vLLM's qwen3 reasoning parser emits ``reasoning``
+                                    # (without _content); OpenRouter uses the same name.
+                                    # Accept either so reasoning chunks aren't silently
+                                    # dropped (root of finding #11).
+                                    reasoning_content = (
+                                        delta.get("reasoning_content")
+                                        or delta.get("reasoning")
+                                        or delta.get("reasoning_detail")
+                                    )
                                     if content:
                                         chunks.append(content)
-                                        _record_task_lifecycle_once(
-                                            "content_seen",
-                                            {"attempt": attempt, "chars": len(_coerce_text_content(content))},
-                                        )
                                     if reasoning_content:
                                         reasoning_chunks.append(_coerce_text_content(reasoning_content))
-                                        _record_task_lifecycle_once(
-                                            "reasoning_seen",
-                                            {"attempt": attempt, "chars": len(_coerce_text_content(reasoning_content))},
-                                        )
+                                    # Capture upstream finish_reason from any chunk that
+                                    # carries one (typically the last). Used downstream
+                                    # to set finish_reason=length when token budget was
+                                    # exhausted vs. an actual ``stop``.
+                                    if choices:
+                                        chunk_finish = choices[0].get("finish_reason")
+                                        if chunk_finish:
+                                            upstream_finish_reason = chunk_finish
                                     chunk_records, attempt_token_index = extract_openai_logprob_records(
                                         chunk_json,
                                         start_index=attempt_token_index,
                                     )
                                     if chunk_records:
                                         attempt_logprob_records.extend(chunk_records)
-                                        _record_task_lifecycle_once(
-                                            "logprobs_seen",
-                                            {"attempt": attempt, "count": len(chunk_records)},
-                                        )
                                     if chunk_json.get("usage"):
                                         response_json = chunk_json
-                                        _record_task_lifecycle_once("usage_seen", {"attempt": attempt})
-                                    if content or reasoning_content or chunk_records:
-                                        _record_task_lifecycle_once("first_token_seen", {"attempt": attempt})
 
                 if logprob_proxy is not None:
                     attempt_proxy_logprob_records = logprob_proxy.drain_records()
@@ -2036,6 +2019,12 @@ class OpenClawAgent(Agent):
                         raw_output = recovered_content
                     if recovered_reasoning and not raw_reasoning:
                         raw_reasoning = recovered_reasoning
+                # Prefer the upstream-reported finish_reason (length / stop /
+                # tool_calls) over our synthetic "stop/incomplete" so callers
+                # can distinguish "length-truncated thinking" from "real stop"
+                # vs "stream cut off" (#11).
+                synthetic_finish = "stop" if received_done else "incomplete"
+                resolved_finish = upstream_finish_reason or synthetic_finish
                 if not response_json:
                     message: dict[str, Any] = {
                         "role": "assistant",
@@ -2047,12 +2036,13 @@ class OpenClawAgent(Agent):
                         "choices": [
                             {
                                 "message": message,
-                                "finish_reason": provider_finish_reason or ("stop" if received_done else "incomplete"),
+                                "finish_reason": resolved_finish,
                             }
                         ],
                         "stream_status": {
                             "received_done": received_done,
                             "status_code": status_code,
+                            "upstream_finish_reason": upstream_finish_reason,
                         },
                     }
                 else:
@@ -2066,30 +2056,20 @@ class OpenClawAgent(Agent):
                         if raw_reasoning:
                             message["reasoning_content"] = raw_reasoning
                     if "finish_reason" not in choices[0]:
-                        choices[0]["finish_reason"] = provider_finish_reason or (
-                            "stop" if received_done else "incomplete"
-                        )
+                        choices[0]["finish_reason"] = resolved_finish
                     stream_status = response_json.setdefault("stream_status", {})
                     if isinstance(stream_status, dict):
                         stream_status.setdefault("received_done", received_done)
                         stream_status.setdefault("status_code", status_code)
+                        stream_status.setdefault(
+                            "upstream_finish_reason", upstream_finish_reason
+                        )
                 # Accumulate token usage across retries.
                 attempt_usage = (response_json or {}).get("usage")
                 if attempt_usage:
                     cumulative_token_usage["prompt_tokens"] += int(attempt_usage.get("prompt_tokens", 0))
                     cumulative_token_usage["completion_tokens"] += int(attempt_usage.get("completion_tokens", 0))
                     cumulative_token_usage["total_tokens"] += int(attempt_usage.get("total_tokens", 0))
-                    if int(attempt_usage.get("completion_tokens", 0) or 0) > 0:
-                        _record_task_lifecycle_once("first_token_seen", {"attempt": attempt})
-                provider_empty_response_current = (
-                    status_code == 200
-                    and not raw_output
-                    and not raw_reasoning
-                    and not attempt_logprob_records
-                    and not attempt_proxy_logprob_records
-                    and int((attempt_usage or {}).get("completion_tokens", 0) or 0) <= 0
-                    and (received_done or attempt_sse_data_event_count > 0)
-                )
                 if raw_output:
                     selected_logprob_records = list(
                         attempt_logprob_records or attempt_proxy_logprob_records
@@ -2142,8 +2122,6 @@ class OpenClawAgent(Agent):
                     response_json=response_json,
                     status_code=status_code,
                 )
-                if provider_empty_response_current:
-                    error_type = "provider_empty_response"
                 terminal_upstream_error_type = _classify_terminal_upstream_error(
                     trajectory_error
                 )
@@ -2416,7 +2394,7 @@ class OpenClawAgent(Agent):
                         last_error_type,
                     )
                     break
-                if last_error_type in {"empty_response", "provider_empty_response"}:
+                if last_error_type == "empty_response":
                     # Agent returned a properly-structured but empty response —
                     # it may still be processing.  Wait longer before retrying.
                     delay = min(60.0 * (2 ** (attempt - 1)), 300.0)
@@ -2491,12 +2469,9 @@ class OpenClawAgent(Agent):
                 response_json=response_json or None,
                 status_code=retry_responses[-1]["status_code"] if retry_responses else None,
             )
-            retry_error_type = _retry_error_type(retry_responses)
-            if retry_error_type == "provider_empty_response":
-                error_type = retry_error_type
             if error_type == "unknown":
                 error_type = (
-                    retry_error_type
+                    _retry_error_type(retry_responses)
                     or str(getattr(last_error, "error_type", "") or "")
                     or "unknown"
                 )
@@ -2546,14 +2521,9 @@ class OpenClawAgent(Agent):
                 answer = _extract_answer(raw_output)
                 answer_source = "raw_output"
         elif raw_reasoning:
-            if _is_swe_bench_task(task):
-                answer = _extract_patch_from_text(raw_reasoning)
-                if answer:
-                    answer_source = "reasoning_content_patch"
-            if not answer:
-                answer = _extract_answer_from_partial_reasoning(raw_reasoning)
-                if answer is not None:
-                    answer_source = "reasoning_content"
+            answer = _extract_answer_from_partial_reasoning(raw_reasoning)
+            if answer is not None:
+                answer_source = "reasoning_content"
         if timeout_scored_zero:
             answer = None
             answer_source = ""
@@ -2687,9 +2657,11 @@ class OpenClawAgent(Agent):
             "retry_count": attempt,
             "token_usage_total": cumulative_token_usage,
             "partial_reasoning_only": partial_reasoning_only and not raw_output,
+            "reasoning_only_clean_done": (
+                partial_reasoning_only and not raw_output and bool(received_done)
+            ),
             "answer_source": answer_source,
             "received_done": received_done,
-            "stop_reason": provider_finish_reason,
             "session_tainted": session_tainted,
             "raw_reasoning": raw_reasoning,
             "logprob_attempt_count": attempt,
@@ -2755,14 +2727,11 @@ class OpenClawAgent(Agent):
             workspace_file_contents=preserved_workspace_files,
             sandbox_metadata=artifact_data.get("sandbox_metadata", {}),
             system_prompt=extract_system_prompt(trajectory) or self._retrieve_system_prompt_from_sandbox(sandbox),
-            finish_reason=(
-                "timeout"
-                if timeout_scored_zero
-                else (
-                    provider_finish_reason
-                    if provider_finish_reason
-                    else ("incomplete" if partial_reasoning_only and not raw_output else "")
-                )
+            finish_reason=_resolve_final_finish_reason(
+                timeout_scored_zero=timeout_scored_zero,
+                partial_reasoning_only=partial_reasoning_only,
+                raw_output=raw_output,
+                response_json=response_json,
             ),
             metadata=response_metadata,
         )

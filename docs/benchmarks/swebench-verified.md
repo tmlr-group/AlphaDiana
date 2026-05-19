@@ -29,39 +29,6 @@
 - `opencode` 在本地 `Qwen/Qwen3.5-27B` / vLLM 上已确认会把 provider-side overflow 保留成 `provider_error`，而不是再落成空 patch
 - `zeroclaw` 在同一本地 Qwen 路径上当前仍会因为上下文窗口过大写出保留的 `provider_error`；这是当前限制证据，不是“已跑通”声明
 
-Phase 9 adds a separate opt-in Podman readiness path for SWE-bench Verified:
-
-- Configs: `configs/smokes/podman_swe_verified_readiness/`
-- Runner: `scripts/run_podman_swe_verified_readiness.sh`
-- Preflight: `scripts/preflight_podman_swe_verified_readiness.py`
-- Audit: `scripts/audit_podman_swe_verified_readiness.py`
-- Evidence: `context/podman-swe-verified-readiness/README.md`
-
-This path is limited to SWE-bench Verified and the selected tasksets. It does
-not claim SWE-bench Pro support, full Verified support, or Podman default
-promotion. Current Phase 9 selected-task evidence passed validation,
-Podman/provider preflight, and all four audit gates on run prefix
-`phase9_gap_20260519_012`: `smoke` 6/6 rows, `pilot32` 30/30 rows, `long64`
-6/6 rows, and `sample128` 6/6 rows. Every expected row wrote task JSON and the
-audits reported `audit_failure_count=0`.
-
-Minimal Phase 9 command sequence:
-
-```bash
-export OPENAI_BASE_URL=http://127.0.0.1:8011/v1
-export OPENAI_API_KEY=EMPTY
-export OPENAI_MODEL_NAME=Qwen/Qwen3.5-27B
-
-bash scripts/run_podman_swe_verified_readiness.sh validate
-bash scripts/run_podman_swe_verified_readiness.sh preflight
-bash scripts/run_podman_swe_verified_readiness.sh auto
-```
-
-The readiness gate is task JSON plus audit pass. `score=0`, malformed model
-patches, and ZeroClaw agent loop-detector rows are acceptable when the row has
-task JSON, raw log, Podman metadata, artifact pointers, and a clear failure
-category. Missing task JSON is an explicit audit failure.
-
 2026-04-25 本地补充证据：
 
 - `phase12_opencode_swe_verified_mini_generic_qwen35_64k_logprobs_t3_parallel_r2_20260425`
