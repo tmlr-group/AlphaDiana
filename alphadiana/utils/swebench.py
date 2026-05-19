@@ -168,6 +168,17 @@ def harden_test_spec_repo_clone(
     for command in repo_script_list:
         stripped = str(command).strip()
         if fallback_commit:
+            if stripped.startswith("python -m pip install "):
+                install_parts = shlex.split(stripped)
+                if (
+                    len(install_parts) >= 5
+                    and install_parts[:4] == ["python", "-m", "pip", "install"]
+                    and "-e" in install_parts
+                    and "--no-build-isolation" not in install_parts
+                ):
+                    install_parts.insert(4, "--no-build-isolation")
+                    updated.append(shlex.join(install_parts))
+                    continue
             if stripped.startswith("TARGET_TIMESTAMP=$(git show -s --format=%ci "):
                 quoted_commit = shlex.quote(fallback_commit)
                 updated.append(

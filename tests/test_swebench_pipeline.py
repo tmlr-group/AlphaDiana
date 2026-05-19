@@ -314,6 +314,7 @@ def test_harden_test_spec_repo_clone_can_add_targeted_fetch_fallback():
             "AFTER_TIMESTAMP=$(date -d \"$TARGET_TIMESTAMP + 1 second\" '+%Y-%m-%d %H:%M:%S')",
             'COMMIT_COUNT=$(git log --oneline --all --since="$AFTER_TIMESTAMP" | wc -l)',
             '[ "$COMMIT_COUNT" -eq 0 ] || exit 1',
+            "python -m pip install -e .[test] --verbose",
         ]
     )
 
@@ -339,6 +340,7 @@ def test_harden_test_spec_repo_clone_can_add_targeted_fetch_fallback():
     assert "skipped tag timestamp cleanup" in rendered
     assert "skipped git gc" in rendered
     assert "skipped commit-count check" in rendered
+    assert "python -m pip install --no-build-isolation -e '.[test]' --verbose" in rendered
 
 
 def test_opencode_install_command_keeps_optional_binary_dependencies():
