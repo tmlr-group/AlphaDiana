@@ -177,6 +177,10 @@ def harden_test_spec_repo_clone(
                     and "--no-build-isolation" not in install_parts
                 ):
                     install_parts.insert(4, "--no-build-isolation")
+                    updated.append(
+                        "if [ -f astropy/_erfa/erfa_generator.py ]; then "
+                        "python -m pip install 'jinja2<4' --verbose; fi"
+                    )
                     updated.append(shlex.join(install_parts))
                     continue
             if stripped.startswith("TARGET_TIMESTAMP=$(git show -s --format=%ci "):
