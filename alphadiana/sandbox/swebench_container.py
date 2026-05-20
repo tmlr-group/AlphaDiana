@@ -359,7 +359,10 @@ class SWEBenchContainerSandbox(Sandbox):
     def _runtime_api(self) -> dict[str, Any]:
         if self._runtime is None:
             self._runtime = _load_swebench_runtime()
-        ensure_swebench_build_network_mode(self._config.get("docker_build_network", "host"))
+        ensure_swebench_build_network_mode(
+            self._config.get("docker_build_network", "host"),
+            podman_mode=(self._container_engine == "podman"),
+        )
         return self._runtime
 
     @contextmanager

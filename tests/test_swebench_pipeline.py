@@ -27,6 +27,7 @@ from alphadiana.sandbox.swebench_container import (
     SWEBenchContainerSandbox,
 )
 from alphadiana.utils.swebench import (
+    ensure_swebench_build_network_mode,
     harden_test_spec_repo_clone,
     qualify_swebench_podman_image_ref,
     qualify_swebench_test_spec_for_podman,
@@ -101,6 +102,71 @@ def test_swebench_podman_image_qualification_rewrites_local_sweb_refs():
     assert "FROM localhost/sweb.env.py.x86_64.abc:latest" in test_spec.instance_dockerfile
     assert qualify_swebench_podman_image_ref("docker.io/library/python:3.11") == "docker.io/library/python:3.11"
     assert qualify_swebench_podman_image_ref("localhost/sweb.env:latest") == "localhost/sweb.env:latest"
+
+
+def test_swebench_build_network_patch_repatches_for_podman_mode(monkeypatch, tmp_path):
+    import swebench.harness.docker_build as docker_build
+
+    original_build_image = docker_build.build_image
+    original_guard = getattr(docker_build, "_alphadiana_build_guard", None)
+    original_network_guard = getattr(docker_build, "_alphadiana_build_network_mode", None)
+    build_calls: list[dict[str, object]] = []
+
+    class FakeApi:
+        def build(self, **kwargs):
+            build_calls.append(kwargs)
+            yield {"stream": "built\n"}
+
+    class FakeClient:
+        api = FakeApi()
+
+    def restore_attr(name: str, value: object) -> None:
+        if value is None:
+            try:
+                delattr(docker_build, name)
+            except AttributeError:
+                pass
+        else:
+            setattr(docker_build, name, value)
+
+    try:
+        restore_attr("_alphadiana_build_guard", None)
+        restore_attr("_alphadiana_build_network_mode", None)
+
+        docker_build_dir = tmp_path / "docker"
+        docker_build_dir.mkdir()
+        ensure_swebench_build_network_mode("host", podman_mode=False)
+        docker_build.build_image(
+            "sweb.env.demo:latest",
+            {},
+            "FROM --platform=linux/amd64 python:3.11\n",
+            "linux/amd64",
+            FakeClient(),
+            docker_build_dir,
+        )
+        assert build_calls[-1]["tag"] == "sweb.env.demo:latest"
+        assert build_calls[-1]["platform"] == "linux/amd64"
+
+        podman_build_dir = tmp_path / "podman"
+        podman_build_dir.mkdir()
+        ensure_swebench_build_network_mode("host", podman_mode=True)
+        docker_build.build_image(
+            "sweb.env.demo:latest",
+            {},
+            "FROM --platform=linux/amd64 localhost/sweb.base.demo:latest\n",
+            "linux/amd64",
+            FakeClient(),
+            podman_build_dir,
+        )
+        assert build_calls[-1]["tag"] == "localhost/sweb.env.demo:latest"
+        assert "platform" not in build_calls[-1]
+        assert "FROM localhost/sweb.base.demo:latest" in (podman_build_dir / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+    finally:
+        docker_build.build_image = original_build_image
+        restore_attr("_alphadiana_build_guard", original_guard)
+        restore_attr("_alphadiana_build_network_mode", original_network_guard)
 
 
 def test_swebench_empty_patch_skips_harness(tmp_path, monkeypatch):

@@ -275,7 +275,11 @@ def harden_test_spec_repo_clone(
     return test_spec
 
 
-def ensure_swebench_build_network_mode(network_mode: str | None) -> None:
+def ensure_swebench_build_network_mode(
+    network_mode: str | None,
+    *,
+    podman_mode: bool = False,
+) -> None:
     """Patch swebench image builds to use an explicit Docker build network."""
     selected = str(network_mode or "").strip()
     if not selected:
@@ -283,7 +287,8 @@ def ensure_swebench_build_network_mode(network_mode: str | None) -> None:
 
     import swebench.harness.docker_build as docker_build
 
-    if getattr(docker_build, "_alphadiana_build_network_mode", None) == selected:
+    guard = (selected, bool(podman_mode))
+    if getattr(docker_build, "_alphadiana_build_guard", None) == guard:
         return
 
     def build_image(
@@ -295,6 +300,12 @@ def ensure_swebench_build_network_mode(network_mode: str | None) -> None:
         build_dir: Any,
         nocache: bool = False,
     ) -> None:
+        podman_compat = (
+            bool(podman_mode)
+            or os.environ.get("ALPHADIANA_SWEBENCH_PODMAN_BUILD", "").strip() == "1"
+        )
+        if podman_compat:
+            image_name = qualify_swebench_podman_image_ref(image_name)
         logger = docker_build.setup_logger(image_name, build_dir / "build_image.log")
         logger.info(
             f"Building image {image_name}\n"
@@ -314,7 +325,6 @@ def ensure_swebench_build_network_mode(network_mode: str | None) -> None:
                         f"Setup script {setup_script_name} may not be used in Dockerfile"
                     )
 
-            podman_compat = os.environ.get("ALPHADIANA_SWEBENCH_PODMAN_BUILD", "").strip() == "1"
             if podman_compat:
                 dockerfile = strip_from_platform_directives_for_podman(dockerfile)
             dockerfile_path = build_dir / "Dockerfile"
@@ -369,4 +379,4 @@ def ensure_swebench_build_network_mode(network_mode: str | None) -> None:
             docker_build.close_logger(logger)
 
     docker_build.build_image = build_image
-    docker_build._alphadiana_build_network_mode = selected
+    docker_build._alphadiana_build_guard = guard
