@@ -178,9 +178,10 @@ class DirectLLMAgent(Agent):
                 if data:
                     max_len = data[0].get("max_model_len")
                     if isinstance(max_len, int) and max_len > 0:
+                        safe = max(1, max_len - 8192)
                         self._max_model_len = max_len
-                        self._resolved_max_tokens = max_len
-                        return max_len
+                        self._resolved_max_tokens = safe
+                        return safe
         except Exception:
             pass
 
