@@ -168,7 +168,10 @@ class SWEBenchScorer(Scorer):
     def _runtime_api(self) -> dict[str, Any]:
         if self._runtime is None:
             self._runtime = _load_swebench_runtime()
-        ensure_swebench_build_network_mode(self._docker_build_network)
+        ensure_swebench_build_network_mode(
+            self._docker_build_network,
+            podman_mode=(self._container_engine == "podman"),
+        )
         return self._runtime
 
     def _make_run_id(self, instance_id: str) -> str:
