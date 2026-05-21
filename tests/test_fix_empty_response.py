@@ -227,8 +227,6 @@ class TestOpenClawEmptyResponseHandling:
 
     def test_sse_keepalives_trigger_idle_timeout_without_data_chunks(self):
         """Heartbeat/comment lines must not keep a stalled SSE stream alive forever."""
-        from alphadiana.agent.openclaw import OpenClawRequestError
-
         agent = self._setup_agent(max_attempts=1, stream_idle_timeout=3)
         task = BenchmarkTask(task_id="t_keepalive", problem="Hard problem", ground_truth="42")
 
@@ -253,10 +251,13 @@ class TestOpenClawEmptyResponseHandling:
                         "alphadiana.agent.openclaw.time.monotonic",
                         side_effect=lambda: next(monotonic_values, 4.2),
                     ):
-                        with pytest.raises(OpenClawRequestError) as exc_info:
-                            agent.solve(task)
+                        result = agent.solve(task)
 
-        assert exc_info.value.error_type == "timeout"
+        # The idle-timeout fires on the stalled stream (comment/heartbeat lines
+        # carry no data). The timeout is surfaced as a scored-zero result
+        # (finish_reason="timeout", no answer) rather than a raised exception.
+        assert result.finish_reason == "timeout"
+        assert result.answer is None
 
     def test_non_stream_reasoning_content_falls_back_when_final_content_missing(self):
         """Non-streaming reasoning_content should also prevent an empty-response error."""
@@ -337,12 +338,12 @@ class TestOpenClawEmptyResponseHandling:
 
         assert result.raw_output == ""
         assert result.answer is None
-        # Clean [DONE] + reasoning-only is treated as length-truncated thinking
-        # (see _resolve_final_finish_reason): avoids integrity-guard rejecting
-        # budget-exhausted thinking that the SSE stream cleanly terminated.
-        assert result.finish_reason == "length"
+        # Reasoning-only WITHOUT a clean [DONE] (empty SSE stream, reasoning
+        # recovered from the session transcript) stays "incomplete" per
+        # finding #11b — only a clean [DONE] is inferred as length-truncated.
+        assert result.finish_reason == "incomplete"
         assert result.metadata["partial_reasoning_only"] is True
-        assert result.metadata.get("reasoning_only_clean_done") is True
+        assert result.metadata.get("reasoning_only_clean_done") is False
         assert result.metadata["answer_source"] == ""
         assert result.metadata["raw_reasoning"] == "partial reasoning from transcript"
         assert result.reasoning_trajectory == [
@@ -388,12 +389,12 @@ class TestOpenClawEmptyResponseHandling:
 
         assert result.raw_output == ""
         assert result.answer == "42"
-        # Clean [DONE] + reasoning-only is treated as length-truncated thinking
-        # (see _resolve_final_finish_reason): avoids integrity-guard rejecting
-        # budget-exhausted thinking that the SSE stream cleanly terminated.
-        assert result.finish_reason == "length"
+        # Reasoning-only WITHOUT a clean [DONE] (empty SSE stream, reasoning
+        # recovered from the session transcript) stays "incomplete" per
+        # finding #11b — the answer is still salvaged from the reasoning.
+        assert result.finish_reason == "incomplete"
         assert result.metadata["partial_reasoning_only"] is True
-        assert result.metadata.get("reasoning_only_clean_done") is True
+        assert result.metadata.get("reasoning_only_clean_done") is False
         assert result.metadata["answer_source"] == "reasoning_content"
 
 
