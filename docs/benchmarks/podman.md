@@ -18,8 +18,11 @@ Current support boundary:
   checked-out TerminalBench2 task root across OpenClaw, OpenCode, and ZeroClaw.
   Treat
   `context/podman-terminal-bench2-readiness/` as the support truth source.
-  SWE-bench Verified has focused opt-in smoke evidence. SWE-bench Pro and
-  external_benchmark remain deferred.
+  SWE-bench Verified has a Phase 9 opt-in readiness path under
+  `configs/smokes/podman_swe_verified_readiness/`. The selected-task
+  readiness ladder passed validation, preflight, and audit for OpenClaw,
+  OpenCode, and ZeroClaw on run prefix `phase9_gap_20260519_012`. SWE-bench
+  Pro and external_benchmark remain deferred.
 - MMMU-Pro multimodal path: Phase 6 has a patched opt-in readiness matrix for
   OpenClaw, ZeroClaw, and OpenCode on three deterministic `vision` tasks.
   `Qwen/Qwen3.5-4B` at `http://127.0.0.1:8011/v1` has manual host and Podman
@@ -50,6 +53,7 @@ For coding-agent handoff and a development file map, read
   `configs/smokes/podman_nightly_validation/`,
   `configs/smokes/podman_terminal_bench2/`,
   `configs/smokes/podman_mmmu_pro_readiness/`,
+  `configs/smokes/podman_swe_verified_readiness/`,
   `scripts/run_podman_scale_readiness.sh`,
   `scripts/audit_podman_scale_readiness.py`, and
   `scripts/run_podman_nightly_validation.sh`,
@@ -58,11 +62,15 @@ For coding-agent handoff and a development file map, read
   `scripts/audit_podman_terminal_bench2_readiness.py`,
   `scripts/run_podman_mmmu_pro_readiness.sh`,
   `scripts/podman_vlm_image_preflight.py`, and
-  `scripts/audit_podman_mmmu_pro_readiness.py`.
+  `scripts/audit_podman_mmmu_pro_readiness.py`,
+  `scripts/run_podman_swe_verified_readiness.sh`,
+  `scripts/preflight_podman_swe_verified_readiness.py`, and
+  `scripts/audit_podman_swe_verified_readiness.py`.
 - Evidence and handoff:
   `context/add-podman-handoff/README.md`,
   `context/podman-terminal-bench2-readiness/README.md`,
   `context/podman-mmmu-pro-readiness/README.md`,
+  `context/podman-swe-verified-readiness/README.md`,
   `context/podman-scale-readiness/README.md`,
   `context/podman-nightly-validation/README.md`,
   `context/phase02-podman-agent-smokes/README.md`, and
@@ -81,6 +89,8 @@ For coding-agent handoff and a development file map, read
   `tests/test_podman_mmmu_pro_readiness_configs.py`,
   `tests/test_podman_mmmu_pro_readiness_runner.py`,
   `tests/test_podman_mmmu_pro_readiness_audit.py`, and
+  `tests/test_podman_swe_verified_readiness_configs.py`,
+  `tests/test_podman_swe_verified_readiness_audit.py`, and
   `tests/test_standard_podman_error_metadata.py`.
 
 ## Prerequisites
@@ -172,6 +182,49 @@ systemctl --user start podman.socket
 export ALPHADIANA_PODMAN_SOCKET="${XDG_RUNTIME_DIR}/podman/podman.sock"
 export DOCKER_HOST="unix://${ALPHADIANA_PODMAN_SOCKET}"
 ```
+
+## SWE-bench Verified Podman Readiness
+
+Phase 9 adds a dedicated SWE-bench Verified readiness matrix:
+
+```bash
+export OPENAI_BASE_URL=http://127.0.0.1:8011/v1
+export OPENAI_API_KEY=EMPTY
+export OPENAI_MODEL_NAME=Qwen/Qwen3.5-27B
+export ALPHADIANA_PODMAN_SOCKET="${XDG_RUNTIME_DIR}/podman/podman.sock"
+
+bash scripts/run_podman_swe_verified_readiness.sh validate
+bash scripts/run_podman_swe_verified_readiness.sh preflight
+bash scripts/run_podman_swe_verified_readiness.sh auto
+```
+
+The matrix is SWE-bench Verified only and covers OpenClaw, OpenCode, and
+ZeroClaw across `smoke`, `pilot32`, `long64`, and `sample128` tiers. Tasksets
+are deterministic and force-include `astropy__astropy-12907` and
+`astropy__astropy-13033`.
+
+On this host, the local `Qwen/Qwen3.5-27B` provider at
+`http://127.0.0.1:8011/v1` is reachable from Podman with host networking, so
+the Phase 9 configs use `sandbox.config.network_mode: host`. The preflight
+checks the Podman socket, docker-py API compatibility, SWE-bench dataset
+access, image qualification, host provider reachability, and Podman runtime
+provider reachability before any task run.
+
+Current selected-task status: run prefix `phase9_gap_20260519_012` passed the
+full Phase 9 ladder with `PODMAN_SWE_MAX_CONCURRENT=1`:
+
+- `smoke`: 6 expected rows, audit passed with `audit_failure_count=0`.
+- `pilot32`: 30 expected rows, audit passed with `audit_failure_count=0`.
+- `long64`: 6 expected rows, audit passed with `audit_failure_count=0`.
+- `sample128`: 6 expected rows, audit passed with `audit_failure_count=0`.
+
+All 48 expected rows wrote task JSON and reached
+`last_stage=task_json_written`. `score=0`, malformed model patches, and
+ZeroClaw agent loop-detector rows are still possible; those are model/agent
+behavior outcomes rather than Podman readiness failures when the audit passes.
+Do not claim full SWE-bench Verified support, SWE-bench Pro support, Podman
+default promotion, or a full Verified run from this selected-task evidence.
+The readiness gate remains task JSON plus audit pass.
 
 ## Standard Reasoning Pilot
 

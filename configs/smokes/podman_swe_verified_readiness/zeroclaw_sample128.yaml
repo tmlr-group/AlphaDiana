@@ -1,0 +1,73 @@
+run_id: "podman_swe_verified_zeroclaw_sample128"
+
+agent:
+  name: zeroclaw
+  version: "0.6.9"
+  config:
+    model: "${OPENAI_MODEL_NAME}"
+    api_base: "${PODMAN_SWE_CONTAINER_OPENAI_BASE_URL}"
+    provider_api_base: "${PODMAN_SWE_CONTAINER_OPENAI_BASE_URL}"
+    api_key: "${OPENAI_API_KEY}"
+    binary_source_image: "${PODMAN_SWE_ZEROCLAW_BINARY_SOURCE_IMAGE}"
+    binary_source_engine: podman
+    request_timeout: 21600
+    provider_timeout_secs: 21600
+    max_tokens: 131072
+    provider_max_tokens: 131072
+    reasoning_enabled: true
+    reasoning_effort: high
+    provider_proxy_normalize_system_messages: true
+    max_tool_iterations: 100
+    max_actions_per_hour: 200
+    workspace_only: false
+    runtime_trace_mode: "full"
+
+benchmark:
+  name: swe_bench
+  config:
+    dataset: "SWE-bench/SWE-bench_Verified"
+    split: "test"
+    include_hints: false
+    taskset_path: "context/podman-swe-verified-readiness/tasksets/sample128.json"
+    max_tasks: 2
+
+sandbox:
+  name: swebench_container
+  config:
+    container_engine: podman
+    podman_socket: "${ALPHADIANA_PODMAN_SOCKET}"
+    docker_api_version: "${ALPHADIANA_PODMAN_DOCKER_API_VERSION}"
+    namespace: "swebench"
+    docker_build_network: "host"
+    network_mode: "host"
+    force_rebuild: false
+    keep_container: false
+    keep_logs: true
+    log_dir: "./logs/podman-swe-verified-readiness/task-containers/${PODMAN_SWE_RUN_PREFIX}/zeroclaw_sample128"
+    gateway_host: "127.0.0.1"
+    gateway_port: 8080
+
+scorer:
+  name: swe_bench
+  config:
+    timeout: 7200
+    container_engine: podman
+    podman_socket: "${ALPHADIANA_PODMAN_SOCKET}"
+    docker_api_version: "${ALPHADIANA_PODMAN_DOCKER_API_VERSION}"
+    namespace: "swebench"
+    docker_build_network: "host"
+    force_rebuild: false
+    log_dir: "./logs/podman-swe-verified-readiness/swe-bench-eval/${PODMAN_SWE_RUN_PREFIX}/zeroclaw_sample128"
+
+max_concurrent: 1
+num_samples: 1
+task_retries: 0
+output_dir: "./results"
+metadata:
+  validation_campaign: "podman-swe-verified-readiness"
+  container_engine: "podman"
+  tier: "sample128"
+  run_suffix: "zeroclaw_sample128"
+  max_output_tokens: 131072
+  taskset_path: "context/podman-swe-verified-readiness/tasksets/sample128.json"
+  support_scope: "SWE-bench Verified selected-task Podman readiness only"
