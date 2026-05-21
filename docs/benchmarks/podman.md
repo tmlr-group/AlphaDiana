@@ -543,7 +543,12 @@ sysctl kernel.keys.maxkeys kernel.keys.maxbytes
 ```
 
 `scripts/security_guard.py --check` warns when the values are below the
-recommended floor (1000 / 200 000); it warns only — it does not block.
+recommended floor (1000 / 200 000); it warns only — it does not block. The
+TerminalBench2 readiness preflight
+(`scripts/preflight_podman_terminal_bench2_readiness.py`) reuses the same
+check and emits it under `warnings` in its JSON output and on stderr, so a
+low quota is visible from the standard `run_podman_terminal_bench2_readiness.sh`
+path without flipping the preflight to a failure.
 
 ### Recovery from a SIGKILL'd run
 
