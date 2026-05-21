@@ -2556,6 +2556,14 @@ class OpenClawAgent(Agent):
                 )
                 if isinstance(detail, dict):
                     response_json = detail
+            elif partial_reasoning_only and not raw_output:
+                # #11b: a reasoning-only completion without a clean [DONE]
+                # resolves to finish_reason="incomplete" (see
+                # _resolve_final_finish_reason) and is returned for the
+                # answer-extraction salvage path rather than raised. Raising
+                # here would discard recoverable budget-exhausted thinking;
+                # the integrity guard still sees "incomplete" downstream.
+                pass
             else:
                 partial_response = _build_partial_error_response(
                     error_type=error_type,
