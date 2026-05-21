@@ -18,8 +18,11 @@ Current support boundary:
   checked-out TerminalBench2 task root across OpenClaw, OpenCode, and ZeroClaw.
   Treat
   `context/podman-terminal-bench2-readiness/` as the support truth source.
-  SWE-bench Verified has focused opt-in smoke evidence. SWE-bench Pro and
-  external_benchmark remain deferred.
+  SWE-bench Verified has a Phase 9 opt-in readiness path under
+  `configs/smokes/podman_swe_verified_readiness/`. The selected-task
+  readiness ladder passed validation, preflight, and audit for OpenClaw,
+  OpenCode, and ZeroClaw on run prefix `phase9_gap_20260519_012`. SWE-bench
+  Pro and external_benchmark remain deferred.
 - MMMU-Pro multimodal path: Phase 6 has a patched opt-in readiness matrix for
   OpenClaw, ZeroClaw, and OpenCode on three deterministic `vision` tasks.
   `Qwen/Qwen3.5-4B` at `http://127.0.0.1:8011/v1` has manual host and Podman
@@ -50,6 +53,7 @@ For coding-agent handoff and a development file map, read
   `configs/smokes/podman_nightly_validation/`,
   `configs/smokes/podman_terminal_bench2/`,
   `configs/smokes/podman_mmmu_pro_readiness/`,
+  `configs/smokes/podman_swe_verified_readiness/`,
   `scripts/run_podman_scale_readiness.sh`,
   `scripts/audit_podman_scale_readiness.py`, and
   `scripts/run_podman_nightly_validation.sh`,
@@ -58,11 +62,15 @@ For coding-agent handoff and a development file map, read
   `scripts/audit_podman_terminal_bench2_readiness.py`,
   `scripts/run_podman_mmmu_pro_readiness.sh`,
   `scripts/podman_vlm_image_preflight.py`, and
-  `scripts/audit_podman_mmmu_pro_readiness.py`.
+  `scripts/audit_podman_mmmu_pro_readiness.py`,
+  `scripts/run_podman_swe_verified_readiness.sh`,
+  `scripts/preflight_podman_swe_verified_readiness.py`, and
+  `scripts/audit_podman_swe_verified_readiness.py`.
 - Evidence and handoff:
   `context/add-podman-handoff/README.md`,
   `context/podman-terminal-bench2-readiness/README.md`,
   `context/podman-mmmu-pro-readiness/README.md`,
+  `context/podman-swe-verified-readiness/README.md`,
   `context/podman-scale-readiness/README.md`,
   `context/podman-nightly-validation/README.md`,
   `context/phase02-podman-agent-smokes/README.md`, and
@@ -81,6 +89,8 @@ For coding-agent handoff and a development file map, read
   `tests/test_podman_mmmu_pro_readiness_configs.py`,
   `tests/test_podman_mmmu_pro_readiness_runner.py`,
   `tests/test_podman_mmmu_pro_readiness_audit.py`, and
+  `tests/test_podman_swe_verified_readiness_configs.py`,
+  `tests/test_podman_swe_verified_readiness_audit.py`, and
   `tests/test_standard_podman_error_metadata.py`.
 
 ## Prerequisites
@@ -172,6 +182,49 @@ systemctl --user start podman.socket
 export ALPHADIANA_PODMAN_SOCKET="${XDG_RUNTIME_DIR}/podman/podman.sock"
 export DOCKER_HOST="unix://${ALPHADIANA_PODMAN_SOCKET}"
 ```
+
+## SWE-bench Verified Podman Readiness
+
+Phase 9 adds a dedicated SWE-bench Verified readiness matrix:
+
+```bash
+export OPENAI_BASE_URL=http://127.0.0.1:8011/v1
+export OPENAI_API_KEY=EMPTY
+export OPENAI_MODEL_NAME=Qwen/Qwen3.5-27B
+export ALPHADIANA_PODMAN_SOCKET="${XDG_RUNTIME_DIR}/podman/podman.sock"
+
+bash scripts/run_podman_swe_verified_readiness.sh validate
+bash scripts/run_podman_swe_verified_readiness.sh preflight
+bash scripts/run_podman_swe_verified_readiness.sh auto
+```
+
+The matrix is SWE-bench Verified only and covers OpenClaw, OpenCode, and
+ZeroClaw across `smoke`, `pilot32`, `long64`, and `sample128` tiers. Tasksets
+are deterministic and force-include `astropy__astropy-12907` and
+`astropy__astropy-13033`.
+
+On this host, the local `Qwen/Qwen3.5-27B` provider at
+`http://127.0.0.1:8011/v1` is reachable from Podman with host networking, so
+the Phase 9 configs use `sandbox.config.network_mode: host`. The preflight
+checks the Podman socket, docker-py API compatibility, SWE-bench dataset
+access, image qualification, host provider reachability, and Podman runtime
+provider reachability before any task run.
+
+Current selected-task status: run prefix `phase9_gap_20260519_012` passed the
+full Phase 9 ladder with `PODMAN_SWE_MAX_CONCURRENT=1`:
+
+- `smoke`: 6 expected rows, audit passed with `audit_failure_count=0`.
+- `pilot32`: 30 expected rows, audit passed with `audit_failure_count=0`.
+- `long64`: 6 expected rows, audit passed with `audit_failure_count=0`.
+- `sample128`: 6 expected rows, audit passed with `audit_failure_count=0`.
+
+All 48 expected rows wrote task JSON and reached
+`last_stage=task_json_written`. `score=0`, malformed model patches, and
+ZeroClaw agent loop-detector rows are still possible; those are model/agent
+behavior outcomes rather than Podman readiness failures when the audit passes.
+Do not claim full SWE-bench Verified support, SWE-bench Pro support, Podman
+default promotion, or a full Verified run from this selected-task evidence.
+The readiness gate remains task JSON plus audit pass.
 
 ## Standard Reasoning Pilot
 
@@ -411,10 +464,21 @@ parallel campaign.
 ### Provider context window vs `max_tokens`
 
 vLLM rejects `max_tokens == max_model_len` with a misleading 400 (the body
-says "prompt has N chars" instead of the real cause). Keep at least 8 K of
-headroom below the model's `max_model_len`. For a 131 072-ctx model, cap
-`max_tokens` at ~122 880. The shared 200 K Qwen3.5-27B endpoint accepts
-`max_tokens: 196608` comfortably.
+says "prompt has N chars" instead of the real cause). `max_tokens` is a
+*generation* budget and shares the context window with the prompt, the
+system prompt, and (for agentic harnesses) serialized tool definitions —
+so it must leave headroom for all of those, not just a fixed 8 K margin.
+
+- **131 K-ctx model**: cap `max_tokens` at ~122 880.
+- **200 K-ctx model**: do not assume the full window is free for
+  generation. `max_tokens: 196608` only works when the prompt + tool
+  defs are tiny; for HLE / tool-heavy ZeroClaw / long-thinking runs,
+  cap at ~122 880 (or otherwise leave enough room for prompt + tools).
+
+The framework guarantee is not "never exceed the window" — it is that a
+run which legitimately exhausts its `max_tokens` budget terminates with
+`finish_reason=length` and is not rejected by the integrity guard
+(finding #11b). Sizing `max_tokens` correctly is a config responsibility.
 
 ZeroClaw bridges serialize tool definitions into the prompt; the resulting
 overhead can exceed 30 K tokens. If you run ZeroClaw with `max_tokens: 131072`
@@ -458,15 +522,33 @@ Rootless `podman run` allocates a session keyring per container. Default
 `kernel.keys.maxkeys=200`, `kernel.keys.maxbytes=20000` is exhausted under
 high task churn — the failure surfaces as
 `error during container init: unable to join session keyring: disk quota
-exceeded` (which looks like a disk issue but isn't). Bump:
+exceeded` (which looks like a disk issue but isn't).
+
+`maxkeys` / `maxbytes` are a single global per-user quota: raising them needs
+root once and then applies to every non-root user on the host. Check, then
+raise + persist:
 
 ```bash
-sudo sysctl -w kernel.keys.maxkeys=2000 kernel.keys.maxbytes=200000
-# Persist via /etc/sysctl.d/99-podman-keyring.conf
+# Check current values and your uid's usage
+cat /proc/sys/kernel/keys/maxkeys /proc/sys/kernel/keys/maxbytes
+cat /proc/key-users | grep "$(id -u)" || true
+
+# Raise + persist (root, once) — sysctl --system applies it live, no reboot
+echo -e "kernel.keys.maxkeys=2000\nkernel.keys.maxbytes=200000" | \
+  sudo tee /etc/sysctl.d/99-podman-keyring.conf
+sudo sysctl --system
+
+# Verify — expect 2000 / 200000
+sysctl kernel.keys.maxkeys kernel.keys.maxbytes
 ```
 
 `scripts/security_guard.py --check` warns when the values are below the
-recommended floor (1000 / 200 000).
+recommended floor (1000 / 200 000); it warns only — it does not block. The
+TerminalBench2 readiness preflight
+(`scripts/preflight_podman_terminal_bench2_readiness.py`) reuses the same
+check and emits it under `warnings` in its JSON output and on stderr, so a
+low quota is visible from the standard `run_podman_terminal_bench2_readiness.sh`
+path without flipping the preflight to a failure.
 
 ### Recovery from a SIGKILL'd run
 
@@ -500,3 +582,78 @@ If a stream still ends with reasoning-only output and no content, that
 indicates a real token-budget exhaustion (`finish_reason=length`). The runner
 will record the answer extracted from the partial reasoning instead of marking
 the task as a transient empty-response failure.
+
+### vLLM health and the deadlock risk
+
+A vLLM hang/deadlock under long-thinking + concurrency is the single largest
+full-run risk. It is an external dependency, not a framework bug — the runner
+retries and eventually records `agent_error`, but a wedged endpoint stalls the
+whole campaign. Mitigate operationally:
+
+- **Probe directly, not via GPU utilisation.** GPU-util readings on these
+  hosts are unreliable. Health = the endpoint answering promptly:
+
+  ```bash
+  curl -sS --max-time 30 http://127.0.0.1:8011/v1/models
+  # plus a short chat/completions probe — it must return within seconds
+  ```
+
+  Treat repeated request timeouts (not GPU idle) as the wedged signal, and
+  have a manual restart or a lightweight watchdog ready.
+
+- **Confirm the vLLM log is still being written.** If the log lives on a disk
+  that fills up, log writes stall silently while inference keeps serving — you
+  end up monitoring a frozen log against a live server. Keep the vLLM log on a
+  `/data*` mount, and during a run check its mtime is advancing, not just that
+  the process is alive.
+
+## TerminalBench2 Progressive Testing (2026-05-21)
+
+The TB2 podman task-container path was verified through a progressive 3-phase
+test across 28 tasks (3/5/20 task phases, 16K/65K/122K max_tokens) with
+OpenCode on Qwen3.5-27B (200K ctx). Evidence in
+`context/podman-terminal-bench2-readiness/2026-05-21-tb2-podman-progressive-validation.md`.
+
+### TB2 task duration
+
+Complex tasks (scientific-computing, hard difficulty) can take 30-60 minutes
+per task because the agent must install dependencies, write implementation
+code, and run tests. Plan capacity accordingly:
+
+| Task count | Approx. wall time (single agent, serial) |
+|---|---|
+| 3 tasks | 1 hour |
+| 5 tasks | 2 hours |
+| 20 tasks | 7-8 hours |
+| 89 tasks (full sweep) | 30+ hours |
+
+### Concurrency recommendation
+
+Use `max_concurrent=1` for TB2 task-container runs. Each TB2 task creates
+its own container (with full build/test lifecycle), which stresses kernel
+keyrings and podman networking more than standard-reasoning benchmarks.
+If you increase concurrency:
+
+- Pre-set `kernel.keys.maxkeys=2000` (see keyring section above)
+- Cap cell parallelism at 4-5 rather than 11
+- Avoid mixing OpenClaw (long thinking) with other agents in the same
+  parallel run — a single stuck vLLM request can delay the whole batch
+
+### Verified full-run config
+
+The following config was verified stable across 20 TB2 tasks with **zero
+empty responses** and **all logprob sidecars matching**:
+
+```yaml
+agent:
+  config:
+    max_tokens: 122880       # 200K ctx model, 8K headroom
+    capture_logprobs: true
+    top_logprobs: 20
+    logprobs_format: int16
+max_concurrent: 1
+```
+
+The framework now auto-reserves 8K headroom when resolving max_tokens from
+the model endpoint (`max_model_len - 8192`). Explicit `max_tokens` values
+in config are passed through unchanged.
