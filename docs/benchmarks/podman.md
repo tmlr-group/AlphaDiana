@@ -522,15 +522,28 @@ Rootless `podman run` allocates a session keyring per container. Default
 `kernel.keys.maxkeys=200`, `kernel.keys.maxbytes=20000` is exhausted under
 high task churn — the failure surfaces as
 `error during container init: unable to join session keyring: disk quota
-exceeded` (which looks like a disk issue but isn't). Bump:
+exceeded` (which looks like a disk issue but isn't).
+
+`maxkeys` / `maxbytes` are a single global per-user quota: raising them needs
+root once and then applies to every non-root user on the host. Check, then
+raise + persist:
 
 ```bash
-sudo sysctl -w kernel.keys.maxkeys=2000 kernel.keys.maxbytes=200000
-# Persist via /etc/sysctl.d/99-podman-keyring.conf
+# Check current values and your uid's usage
+cat /proc/sys/kernel/keys/maxkeys /proc/sys/kernel/keys/maxbytes
+cat /proc/key-users | grep "$(id -u)" || true
+
+# Raise + persist (root, once) — sysctl --system applies it live, no reboot
+echo -e "kernel.keys.maxkeys=2000\nkernel.keys.maxbytes=200000" | \
+  sudo tee /etc/sysctl.d/99-podman-keyring.conf
+sudo sysctl --system
+
+# Verify — expect 2000 / 200000
+sysctl kernel.keys.maxkeys kernel.keys.maxbytes
 ```
 
 `scripts/security_guard.py --check` warns when the values are below the
-recommended floor (1000 / 200 000).
+recommended floor (1000 / 200 000); it warns only — it does not block.
 
 ### Recovery from a SIGKILL'd run
 
@@ -564,3 +577,27 @@ If a stream still ends with reasoning-only output and no content, that
 indicates a real token-budget exhaustion (`finish_reason=length`). The runner
 will record the answer extracted from the partial reasoning instead of marking
 the task as a transient empty-response failure.
+
+### vLLM health and the deadlock risk
+
+A vLLM hang/deadlock under long-thinking + concurrency is the single largest
+full-run risk. It is an external dependency, not a framework bug — the runner
+retries and eventually records `agent_error`, but a wedged endpoint stalls the
+whole campaign. Mitigate operationally:
+
+- **Probe directly, not via GPU utilisation.** GPU-util readings on these
+  hosts are unreliable. Health = the endpoint answering promptly:
+
+  ```bash
+  curl -sS --max-time 30 http://127.0.0.1:8011/v1/models
+  # plus a short chat/completions probe — it must return within seconds
+  ```
+
+  Treat repeated request timeouts (not GPU idle) as the wedged signal, and
+  have a manual restart or a lightweight watchdog ready.
+
+- **Confirm the vLLM log is still being written.** If the log lives on a disk
+  that fills up, log writes stall silently while inference keeps serving — you
+  end up monitoring a frozen log against a live server. Keep the vLLM log on a
+  `/data*` mount, and during a run check its mtime is advancing, not just that
+  the process is alive.

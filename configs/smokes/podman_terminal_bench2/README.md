@@ -42,9 +42,10 @@ bash scripts/run_podman_terminal_bench2_readiness.sh all
 ```
 
 `output_dir` in the three pilot configs reads `${ALPHADIANA_TB2_OUTPUT_DIR}`,
-so it must be exported. See the full-run pre-flight runbook at
-`context/podman-terminal-bench2-readiness/README.md` for disk, keyring, and
-vLLM checks that must pass before a full sweep.
+so it must be exported. Before a full sweep, work through the **Full-Run
+Pre-flight Checklist** in `docs/benchmarks/podman.md` (kernel keyring quota,
+disk placement, host networking, vLLM health, post-crash cleanup) — those
+host/infra gates are not auto-enforced.
 
 Manual equivalent:
 
