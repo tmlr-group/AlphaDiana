@@ -464,10 +464,21 @@ parallel campaign.
 ### Provider context window vs `max_tokens`
 
 vLLM rejects `max_tokens == max_model_len` with a misleading 400 (the body
-says "prompt has N chars" instead of the real cause). Keep at least 8 K of
-headroom below the model's `max_model_len`. For a 131 072-ctx model, cap
-`max_tokens` at ~122 880. The shared 200 K Qwen3.5-27B endpoint accepts
-`max_tokens: 196608` comfortably.
+says "prompt has N chars" instead of the real cause). `max_tokens` is a
+*generation* budget and shares the context window with the prompt, the
+system prompt, and (for agentic harnesses) serialized tool definitions —
+so it must leave headroom for all of those, not just a fixed 8 K margin.
+
+- **131 K-ctx model**: cap `max_tokens` at ~122 880.
+- **200 K-ctx model**: do not assume the full window is free for
+  generation. `max_tokens: 196608` only works when the prompt + tool
+  defs are tiny; for HLE / tool-heavy ZeroClaw / long-thinking runs,
+  cap at ~122 880 (or otherwise leave enough room for prompt + tools).
+
+The framework guarantee is not "never exceed the window" — it is that a
+run which legitimately exhausts its `max_tokens` budget terminates with
+`finish_reason=length` and is not rejected by the integrity guard
+(finding #11b). Sizing `max_tokens` correctly is a config responsibility.
 
 ZeroClaw bridges serialize tool definitions into the prompt; the resulting
 overhead can exceed 30 K tokens. If you run ZeroClaw with `max_tokens: 131072`
