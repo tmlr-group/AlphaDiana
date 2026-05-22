@@ -11,6 +11,14 @@ from pathlib import Path
 from typing import Any, Optional
 
 from alphadiana.agent.base import Agent, AgentResponse
+from alphadiana.agent.logprob_capture import (
+    finalize_logprob_capture,
+    resolve_logprob_capture_config,
+)
+from alphadiana.agent.logprob_proxy import (
+    LogprobCaptureProxy,
+    resolve_logprob_proxy_advertise_host,
+)
 from alphadiana.agent.openclaw import (
     _extract_trajectory_error,
     _extract_reasoning_trajectory_from_payload,
@@ -160,6 +168,7 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
         self._onboard_timeout_sec = int(config.get("onboard_timeout_sec", min(self._solver_timeout_sec, 180)))
         self._min_context_window = int(config.get("min_context_window", 32768))
         self._max_tokens = int(config.get("max_tokens", 0) or 0)
+        self._logprob_capture = resolve_logprob_capture_config(config)
         self._fail_on_small_context_window = bool(config.get("fail_on_small_context_window", True))
         self._context_probe_timeout_sec = int(config.get("context_probe_timeout_sec", 10))
         self._openclaw_bin = str(config.get("openclaw_bin", "openclaw") or "openclaw").strip()
@@ -285,6 +294,7 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
         config_path: Path,
         *,
         resolved_context_window: int | None,
+        proxy_base_url: str = "",
     ) -> dict[str, Any]:
         if not config_path.exists():
             return {"config_path": str(config_path), "patched": False, "reason": "missing_config"}
@@ -344,6 +354,15 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
                     patched = True
                 if self._max_tokens > 0 and model.get("maxTokens") != self._max_tokens:
                     model["maxTokens"] = self._max_tokens
+                    patched = True
+
+        if proxy_base_url:
+            for provider_cfg in providers.values():
+                if not isinstance(provider_cfg, dict):
+                    continue
+                base_url = provider_cfg.get("baseURL") or provider_cfg.get("baseUrl") or ""
+                if base_url and self._api_base.rstrip("/") in str(base_url).rstrip("/"):
+                    provider_cfg["baseURL"] = proxy_base_url
                     patched = True
 
         if patched:
@@ -473,6 +492,9 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
         reasoning_trajectory: list[dict[str, Any]] = []
         session_file: Path | None = None
         context_preflight: dict[str, Any] = {}
+        logprob_proxy: LogprobCaptureProxy | None = None
+        logprob_proxy_records: list[dict] = []
+        logprob_proxy_metadata: dict[str, Any] = {}
         runtime_model_patch: dict[str, Any] = {}
         task_path = Path()
         prompt_path = Path()
@@ -541,9 +563,32 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
                 remote_path=remote_config_path,
                 local_path=local_config_path,
             )
+            proxy_base_url = ""
+            if self._logprob_capture["enabled"]:
+                upstream = self._api_base.rstrip("/")
+                advertise_host = resolve_logprob_proxy_advertise_host(
+                    self._api_base,
+                    "",
+                )
+                logprob_proxy = LogprobCaptureProxy(
+                    upstream,
+                    self._logprob_capture["top_logprobs"],
+                    bind_host="0.0.0.0",
+                    advertise_host=advertise_host,
+                    client_timeout=max(120.0, float(self._solver_timeout_sec)),
+                    upstream_api_key=self._api_key,
+                )
+                logprob_proxy.start()
+                proxy_base_url = f"{logprob_proxy.proxy_url.rstrip('/')}/v1"
+                logprob_proxy_metadata = {
+                    "logprob_proxy_enabled": True,
+                    "logprob_proxy_url": proxy_base_url,
+                    "logprob_proxy_upstream": logprob_proxy.upstream,
+                }
             runtime_model_patch = self._patch_runtime_model_contract(
                 local_config_path,
                 resolved_context_window=context_preflight.get("resolved_context_window"),
+                proxy_base_url=proxy_base_url,
             )
             if runtime_model_patch.get("patched"):
                 self._stage_file_into_container(
@@ -706,6 +751,27 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
         if runtime_model_patch:
             response_summary.setdefault("runtime_model_patch", runtime_model_patch)
 
+        if logprob_proxy is not None:
+            try:
+                remaining = logprob_proxy.drain_records()
+                if remaining:
+                    logprob_proxy_records.extend(remaining)
+            except Exception:
+                pass
+            try:
+                logprob_proxy.stop()
+            except Exception:
+                pass
+            logprob_proxy_metadata["provider_proxy_logprob_record_count"] = len(
+                logprob_proxy_records
+            )
+        token_entropy_stats, logprob_response_metadata = finalize_logprob_capture(
+            harness="openclaw",
+            enabled=self._logprob_capture["enabled"],
+            records=logprob_proxy_records,
+            metadata={},
+        )
+
         artifact_manifest = add_artifact_file_refs(
             {},
             response_stream="openclaw_stdout.log" if agent_stdout else None,
@@ -740,6 +806,8 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
             ),
             "runtime_model_patch": runtime_model_patch,
             "container_workdir": container_workdir,
+            **logprob_proxy_metadata,
+            **logprob_response_metadata,
             **runtime_metadata,
         }
         finish_reason = ""
