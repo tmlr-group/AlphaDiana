@@ -107,7 +107,7 @@ class TerminalBench2ZeroClawAgent(TerminalBench2InContainerMixin, ZeroClawAgent)
         )
         inject_logprobs_configured = _config_bool(
             config.get("provider_proxy_inject_logprobs"),
-            default=False,
+            default=_config_bool(config.get("capture_logprobs"), default=False),
         )
         upstream_stream_configured = _config_bool(
             config.get("provider_proxy_upstream_stream"),
