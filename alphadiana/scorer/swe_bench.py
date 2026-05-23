@@ -105,6 +105,7 @@ class SWEBenchScorer(Scorer):
         self._git_clone_retries = 3
         self._git_clone_retry_sleep_sec = 5
         self._docker_build_network = "host"
+        self._docker_api_version: str = ""
         self._runtime: dict[str, Any] | None = None
 
     @property
@@ -136,6 +137,9 @@ class SWEBenchScorer(Scorer):
             str(config.get("docker_build_network", self._docker_build_network)).strip()
             or self._docker_build_network
         )
+        self._docker_api_version = str(
+            config.get("docker_api_version", self._docker_api_version)
+        ).strip() or self._docker_api_version
 
     def _runtime_api(self) -> dict[str, Any]:
         if self._runtime is None:
@@ -239,7 +243,7 @@ class SWEBenchScorer(Scorer):
             clone_retries=self._git_clone_retries,
             retry_sleep_sec=self._git_clone_retry_sleep_sec,
         )
-        client = runtime["docker"].from_env()
+        client = runtime["docker"].from_env(version=self._docker_api_version or None)
         _, failed = runtime["build_env_images"](
             client,
             [instance],
