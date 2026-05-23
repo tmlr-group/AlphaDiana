@@ -361,8 +361,14 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
                 if not isinstance(provider_cfg, dict):
                     continue
                 base_url = provider_cfg.get("baseURL") or provider_cfg.get("baseUrl") or ""
-                if base_url and self._api_base.rstrip("/") in str(base_url).rstrip("/"):
-                    provider_cfg["baseURL"] = proxy_base_url
+                if not base_url:
+                    continue
+                normalized_cfg = str(base_url).rstrip("/").removesuffix("/v1")
+                normalized_api = self._api_base.rstrip("/").removesuffix("/v1")
+                if normalized_api in normalized_cfg or normalized_cfg in normalized_api:
+                    # Use the original key name to avoid unrecognized-key errors
+                    original_key = "baseURL" if "baseURL" in provider_cfg else "baseUrl"
+                    provider_cfg[original_key] = proxy_base_url
                     patched = True
 
         if patched:
