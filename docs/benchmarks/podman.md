@@ -657,3 +657,102 @@ max_concurrent: 1
 The framework now auto-reserves 8K headroom when resolving max_tokens from
 the model endpoint (`max_model_len - 8192`). Explicit `max_tokens` values
 in config are passed through unchanged.
+## SWE-bench Verified Podman Bring-up
+
+Operational checklist for taking a host from zero to a passing SWE-bench
+Verified Podman smoke. Use the Phase 9 configs and scripts under
+`configs/smokes/podman_swe_verified_readiness/` and
+`scripts/run_podman_swe_verified_readiness.sh` — they are the canonical
+entry point.
+
+### Host prerequisites
+
+1. **Podman 3.4.4+** with the user socket enabled:
+   ```bash
+   systemctl --user enable --now podman.socket
+   export ALPHADIANA_PODMAN_SOCKET="/run/user/$(id -u)/podman/podman.sock"
+   export ALPHADIANA_PODMAN_DOCKER_API_VERSION=1.41
+   ```
+2. **Kernel keyring raised** (root once, persistent):
+   ```bash
+   echo -e "kernel.keys.maxkeys=2000\nkernel.keys.maxbytes=200000" | \
+     sudo tee /etc/sysctl.d/99-podman-keyring.conf
+   sudo sysctl --system
+   ```
+   The default `200/20000` exhausts mid-run and surfaces as
+   `unable to join session keyring: disk quota exceeded`.
+3. **Podman storage off `/home`.** An astropy + django + sympy pilot pulls
+   ~25–40 GB of layers; point `graphroot` at a large disk via
+   `~/.config/containers/storage.conf`.
+4. **`localhost/zeroclaw-reasoning:0.6.9` loaded** (`podman load -i …`).
+   The ZeroClaw smoke copies the binary into the task container from this
+   image; if it is missing the binary copy produces an empty file and the
+   in-container `--version` fails.
+5. **vLLM endpoint reachable** at `OPENAI_BASE_URL`. The Phase 9 smoke
+   configs use `sandbox.config.network_mode: host`; the runner rewrites
+   `127.0.0.1` to `host.containers.internal` automatically for non-loopback
+   bases.
+
+### Run order
+
+```bash
+export OPENAI_BASE_URL=http://127.0.0.1:8011/v1
+export OPENAI_API_KEY=EMPTY
+export OPENAI_MODEL_NAME=Qwen/Qwen3.5-27B
+export PODMAN_SWE_MAX_CONCURRENT=1
+
+bash scripts/run_podman_swe_verified_readiness.sh validate    # configs parse
+bash scripts/run_podman_swe_verified_readiness.sh preflight   # must be ok=true
+bash scripts/run_podman_swe_verified_readiness.sh auto        # smoke→pilot32→long64→sample128
+```
+
+Audit pass means `audit_passed: true` and `audit_failure_count: 0` in the
+`audit-<run_prefix>-<tier>.md` reports under
+`context/podman-swe-verified-readiness/`. `score=0`, malformed model
+patches, and ZeroClaw `agent_loop_detector` rows are model/agent behaviour,
+not readiness failures, as long as the audit closes clean.
+
+### Failure modes that look like environment limits but are not
+
+| Symptom | Real cause | Fix |
+| --- | --- | --- |
+| ZeroClaw HTTP 400 `System message must be at the beginning` | Agent-side provider proxy normalizer not active. SWE-bench mode talks to vLLM directly from inside the task container and bypasses the bridge, so `_normalize_system_messages` in `zeroclaw_deploy/zeroclaw_bridge.py` alone is not enough. | Use the Phase 9 ZeroClaw smoke config — it sets `agent.config.provider_proxy_normalize_system_messages: true`. |
+| ZeroClaw binary extracts but `--version` fails inside the task container | `binary_source_image` not loaded on this host, so the in-container copy lands an empty file. | `podman load -i` the matching tar and verify with `podman images \| grep zeroclaw-reasoning`. |
+| OpenClaw "Patch Apply Failed" / "model only analyzes, no patch block" | `max_tokens` too low (legacy `4096` truncates the reasoning + patch); or a stale `openclaw_swe_bench.runtime.json`. | Use the Phase 9 OpenClaw smoke config (`max_tokens: 32768`, `request_timeout: 7200`, current runtime JSON). |
+| `image not found: sweb.env.py.x86_64.*:latest` or similar short-name miss | Rootless Podman cannot resolve swebench short-name / namespaced refs without a `localhost/` prefix. | `alphadiana/utils/swebench.py:podman_local_image_ref` handles this; the preflight's `image_qualification.unqualified` list must be empty. |
+| vLLM returns `400 prompt has N chars` for every request | `_resolve_max_tokens()` fell through to the `/v1/models` auto-detect branch and requested `max_tokens == max_model_len`. | Set `max_tokens` explicitly in the YAML (the Phase 9 configs do this); the agent also reserves an 8 K headroom on auto-detect. |
+| `unable to join session keyring: disk quota exceeded` mid-run | Kernel keyring quota at the default 200/20000. Misleading wording — not a disk issue. | Prerequisite 2 above. |
+| `BuildImageError` building an astropy env image on an offline/proxied host | The astropy SWE env install runs `pip install -e .` and a Cython rebuild and cannot reach PyPI. | Ensure host-level `HTTP_PROXY` / `HTTPS_PROXY` are honoured by the podman build network. |
+| Scorer fails with `docker: command not found` although the task ran | `alphadiana/scorer/swe_bench.py` did not pick up `container_engine: podman`. | The Phase 9 scorer block sets `container_engine`, `podman_socket`, `docker_api_version`, `docker_build_network` explicitly — copy those four fields verbatim into any new SWE config. |
+
+The framework guarantees needed for these to fail cleanly already live on
+`feat/add-podman`. The bring-up flow is therefore: merge latest
+`feat/add-podman` into the working branch → load `zeroclaw-reasoning:0.6.9`
+→ raise keyring → run the three commands above. The preflight pass is the
+portable gate for "runs on another machine."
+
+### Reference evidence
+
+Canonical audited run: prefix `phase9_gap_20260519_012` against local
+`Qwen/Qwen3.5-27B` at `http://127.0.0.1:8011/v1` with
+`PODMAN_SWE_MAX_CONCURRENT=1`. All four tiers
+(`smoke` / `pilot32` / `long64` / `sample128`) closed with
+`audit_passed: true` and `audit_failure_count: 0`; 48 expected rows
+reached `last_stage=task_json_written`. Per-agent astropy smoke task JSON
+(under `results/phase9_gap_20260519_012_*/`) shows OpenClaw, OpenCode, and
+ZeroClaw all scoring 1.0 on `astropy__astropy-12907` with a 501-char
+unified diff. See `context/podman-swe-verified-readiness/README.md` for
+the full record.
+
+Merge-verification evidence: a working branch that had reported ZeroClaw
+HTTP 400 `System message must be at the beginning` and OpenClaw
+"Patch Apply Failed" was rebased onto this branch state and re-run on
+2026-05-24. Result prefix `mergeverify_20260524_1715`, same host, same
+local `Qwen/Qwen3.5-27B`, same `PODMAN_SWE_MAX_CONCURRENT=1`. Smoke audit
+closed with `audit_passed: true`, `audit_failure_count: 0`, taxonomy
+`clean: 6`. Per-row scores: OpenClaw `1.0 / 0.0`, OpenCode `1.0 / 0.0`,
+ZeroClaw `1.0 / 0.0` across the two astropy tasks; every row wrote a
+unified diff (501–5623 chars). The previously-reported ZeroClaw 400 did
+not recur. Artifacts:
+`context/podman-swe-verified-readiness/audit-mergeverify_20260524_1715-smoke.{json,md}`,
+`preflight-mergeverify_20260524_1715.json`.

@@ -34,7 +34,7 @@ scorer:
 
 max_concurrent: 1
 num_samples: 1
-output_dir: "./results"
+output_dir: "${ALPHADIANA_TB2_OUTPUT_DIR}"
 metadata:
   validation_campaign: "podman-terminal-bench2-readiness-pilot"
   container_engine: "podman"
