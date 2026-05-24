@@ -171,6 +171,21 @@ records with matching float/int16 sidecars.
 See
 [`context/podman-pr-review-repair/README.md`](../../context/podman-pr-review-repair/README.md).
 
+On May 18, 2026 +0800, Phase 9 added a dedicated opt-in SWE-bench Verified
+Podman readiness matrix under
+`configs/smokes/podman_swe_verified_readiness/`, plus
+`scripts/run_podman_swe_verified_readiness.sh`,
+`scripts/preflight_podman_swe_verified_readiness.py`, and
+`scripts/audit_podman_swe_verified_readiness.py`. On May 20, 2026 +0800,
+run prefix `phase9_gap_20260519_012` passed validation, Podman/provider
+preflight, and the selected-task ladder for OpenClaw, OpenCode, and ZeroClaw:
+`smoke` 6 rows, `pilot32` 30 rows, `long64` 6 rows, and `sample128` 6 rows.
+All four audits passed with `audit_failure_count=0`, and every expected row
+wrote task JSON. This is selected-task SWE-bench Verified Podman readiness
+evidence, not full Verified sweep evidence. SWE-bench Pro, external_benchmark, full
+Verified sweep, and Podman default promotion remain out of scope. See
+[`context/podman-swe-verified-readiness/README.md`](../../context/podman-swe-verified-readiness/README.md).
+
 Generated ZeroClaw configs use `runtime_trace_mode="full"` for logprob capture
 and write ZeroClaw's schema-supported permissive shell controls; ZeroClaw
 0.6.9 does not expose a heredoc-specific allowlist setting.

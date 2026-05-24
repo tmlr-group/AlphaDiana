@@ -1,0 +1,68 @@
+run_id: "podman_swe_verified_opencode_sample128"
+
+agent:
+  name: opencode
+  version: "1.0.0"
+  config:
+    runtime: "swebench_container"
+    api_base: "${PODMAN_SWE_CONTAINER_OPENAI_BASE_URL}"
+    api_key: "${OPENAI_API_KEY}"
+    model_name: "${OPENAI_MODEL_NAME}"
+    max_tokens: 131072
+    enable_thinking: true
+    tool_call: true
+    streaming: false
+    timeout: 21600
+    permission:
+      edit: "deny"
+      bash: "allow"
+
+benchmark:
+  name: swe_bench
+  config:
+    dataset: "SWE-bench/SWE-bench_Verified"
+    split: "test"
+    include_hints: false
+    taskset_path: "context/podman-swe-verified-readiness/tasksets/sample128.json"
+    max_tasks: 2
+
+sandbox:
+  name: swebench_container
+  config:
+    container_engine: podman
+    podman_socket: "${ALPHADIANA_PODMAN_SOCKET}"
+    docker_api_version: "${ALPHADIANA_PODMAN_DOCKER_API_VERSION}"
+    namespace: "swebench"
+    docker_build_network: "host"
+    network_mode: "host"
+    force_rebuild: false
+    keep_container: false
+    keep_logs: true
+    log_dir: "./logs/podman-swe-verified-readiness/task-containers/${PODMAN_SWE_RUN_PREFIX}/opencode_sample128"
+    gateway_host: "127.0.0.1"
+    gateway_port: 8080
+
+scorer:
+  name: swe_bench
+  config:
+    timeout: 7200
+    container_engine: podman
+    podman_socket: "${ALPHADIANA_PODMAN_SOCKET}"
+    docker_api_version: "${ALPHADIANA_PODMAN_DOCKER_API_VERSION}"
+    namespace: "swebench"
+    docker_build_network: "host"
+    force_rebuild: false
+    log_dir: "./logs/podman-swe-verified-readiness/swe-bench-eval/${PODMAN_SWE_RUN_PREFIX}/opencode_sample128"
+
+max_concurrent: 1
+num_samples: 1
+task_retries: 0
+output_dir: "./results"
+metadata:
+  validation_campaign: "podman-swe-verified-readiness"
+  container_engine: "podman"
+  tier: "sample128"
+  run_suffix: "opencode_sample128"
+  max_output_tokens: 131072
+  taskset_path: "context/podman-swe-verified-readiness/tasksets/sample128.json"
+  support_scope: "SWE-bench Verified selected-task Podman readiness only"
