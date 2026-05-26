@@ -17,7 +17,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-from alphadiana.agent._logprobs import INT16_PROB_SCALE, quantize_records_int16
+from alphadiana.analysis.logprobs import INT16_PROB_SCALE, quantize_records_int16
 from alphadiana.harness.proxies.logprob_capture import (
     apply_openai_logprob_request,
     extract_openai_logprob_records,

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
-from alphadiana.results.status import VALID_SCORE_STATUS, infer_score_status
+from alphadiana.analysis.io.status import VALID_SCORE_STATUS, infer_score_status
 
 ERROR_STATUSES = {"agent_error", "provider_error", "runtime_error", "scorer_error"}
 

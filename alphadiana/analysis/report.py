@@ -7,11 +7,11 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from alphadiana.results.status import INVALID_SCORE_STATUSES, VALID_SCORE_STATUS, infer_score_status
+from alphadiana.analysis.io.status import INVALID_SCORE_STATUSES, VALID_SCORE_STATUS, infer_score_status
 
 if TYPE_CHECKING:
     from alphadiana.engine.config.experiment_config import ExperimentConfig
-    from alphadiana.results.result_store import ResultStore
+    from alphadiana.analysis.io.result_store import ResultStore
 
 
 @dataclass

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from alphadiana.analysis.result_reader import RunBundle, load_run_bundle, resolve_run_relative_path
-from alphadiana.results.status import VALID_SCORE_STATUS, infer_score_status
+from alphadiana.analysis.io.status import VALID_SCORE_STATUS, infer_score_status
 
 CANONICAL_ACTIONS = ("plan", "reason", "tool_use", "verify", "recover", "answer")
 ACTION_PRIORITY = ("answer", "recover", "verify", "tool_use", "plan", "reason")
