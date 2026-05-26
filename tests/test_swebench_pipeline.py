@@ -26,7 +26,12 @@ from alphadiana.sandbox.swebench_container import (
     FORWARDED_CONTAINER_ENV_KEYS,
     SWEBenchContainerSandbox,
 )
-from alphadiana.utils.swebench import harden_test_spec_repo_clone
+from alphadiana.utils.swebench import (
+    ensure_swebench_build_network_mode,
+    harden_test_spec_repo_clone,
+    qualify_swebench_podman_image_ref,
+    qualify_swebench_test_spec_for_podman,
+)
 
 
 def _make_task(task_id: str = "swe_demo") -> BenchmarkTask:
@@ -58,6 +63,110 @@ def test_swebench_container_podman_engine_sets_docker_host_env(monkeypatch):
         assert os.environ["DOCKER_HOST"] == "unix:///tmp/podman.sock"
 
     assert "DOCKER_HOST" not in os.environ
+
+
+def test_swebench_container_podman_engine_sets_docker_api_version(monkeypatch):
+    monkeypatch.delenv("DOCKER_HOST", raising=False)
+    monkeypatch.delenv("DOCKER_API_VERSION", raising=False)
+    sandbox = SWEBenchContainerSandbox()
+    sandbox.setup({
+        "container_engine": "podman",
+        "podman_socket": "/tmp/podman.sock",
+        "docker_api_version": "1.41",
+    })
+
+    with sandbox._container_runtime_env():
+        assert os.environ["DOCKER_HOST"] == "unix:///tmp/podman.sock"
+        assert os.environ["DOCKER_API_VERSION"] == "1.41"
+
+    assert "DOCKER_HOST" not in os.environ
+    assert "DOCKER_API_VERSION" not in os.environ
+
+
+def test_swebench_podman_image_qualification_rewrites_local_sweb_refs():
+    test_spec = SimpleNamespace(
+        base_image_key="sweb.base.py.x86_64:latest",
+        env_image_key="sweb.env.py.x86_64.abc:latest",
+        instance_image_key="swebench/sweb.eval.x86_64.demo:latest",
+        base_dockerfile="FROM python:3.11-slim\n",
+        env_dockerfile="FROM sweb.base.py.x86_64:latest\nRUN true\n",
+        instance_dockerfile="FROM sweb.env.py.x86_64.abc:latest\nRUN true\n",
+    )
+
+    qualify_swebench_test_spec_for_podman(test_spec)
+
+    assert test_spec.base_image_key == "localhost/sweb.base.py.x86_64:latest"
+    assert test_spec.env_image_key == "localhost/sweb.env.py.x86_64.abc:latest"
+    assert test_spec.instance_image_key == "localhost/swebench/sweb.eval.x86_64.demo:latest"
+    assert "FROM localhost/sweb.base.py.x86_64:latest" in test_spec.env_dockerfile
+    assert "FROM localhost/sweb.env.py.x86_64.abc:latest" in test_spec.instance_dockerfile
+    assert qualify_swebench_podman_image_ref("docker.io/library/python:3.11") == "docker.io/library/python:3.11"
+    assert qualify_swebench_podman_image_ref("localhost/sweb.env:latest") == "localhost/sweb.env:latest"
+
+
+def test_swebench_build_network_patch_repatches_for_podman_mode(monkeypatch, tmp_path):
+    import swebench.harness.docker_build as docker_build
+
+    original_build_image = docker_build.build_image
+    original_guard = getattr(docker_build, "_alphadiana_build_guard", None)
+    original_network_guard = getattr(docker_build, "_alphadiana_build_network_mode", None)
+    build_calls: list[dict[str, object]] = []
+
+    class FakeApi:
+        def build(self, **kwargs):
+            build_calls.append(kwargs)
+            yield {"stream": "built\n"}
+
+    class FakeClient:
+        api = FakeApi()
+
+    def restore_attr(name: str, value: object) -> None:
+        if value is None:
+            try:
+                delattr(docker_build, name)
+            except AttributeError:
+                pass
+        else:
+            setattr(docker_build, name, value)
+
+    try:
+        restore_attr("_alphadiana_build_guard", None)
+        restore_attr("_alphadiana_build_network_mode", None)
+
+        docker_build_dir = tmp_path / "docker"
+        docker_build_dir.mkdir()
+        ensure_swebench_build_network_mode("host", podman_mode=False)
+        docker_build.build_image(
+            "sweb.env.demo:latest",
+            {},
+            "FROM --platform=linux/amd64 python:3.11\n",
+            "linux/amd64",
+            FakeClient(),
+            docker_build_dir,
+        )
+        assert build_calls[-1]["tag"] == "sweb.env.demo:latest"
+        assert build_calls[-1]["platform"] == "linux/amd64"
+
+        podman_build_dir = tmp_path / "podman"
+        podman_build_dir.mkdir()
+        ensure_swebench_build_network_mode("host", podman_mode=True)
+        docker_build.build_image(
+            "sweb.env.demo:latest",
+            {},
+            "FROM --platform=linux/amd64 localhost/sweb.base.demo:latest\n",
+            "linux/amd64",
+            FakeClient(),
+            podman_build_dir,
+        )
+        assert build_calls[-1]["tag"] == "localhost/sweb.env.demo:latest"
+        assert "platform" not in build_calls[-1]
+        assert "FROM localhost/sweb.base.demo:latest" in (podman_build_dir / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+    finally:
+        docker_build.build_image = original_build_image
+        restore_attr("_alphadiana_build_guard", original_guard)
+        restore_attr("_alphadiana_build_network_mode", original_network_guard)
 
 
 def test_swebench_empty_patch_skips_harness(tmp_path, monkeypatch):
@@ -244,6 +353,67 @@ def test_harden_test_spec_repo_clone_wraps_git_clone():
     assert "git -c http.version=HTTP/1.1 clone -o origin --single-branch https://github.com/example/repo /testbed && break" in rendered
 
 
+def test_harden_test_spec_repo_clone_can_add_partial_clone_filter():
+    test_spec = SimpleNamespace(
+        repo_script_list=[
+            "git clone -o origin --single-branch https://github.com/example/repo /testbed",
+        ]
+    )
+
+    harden_test_spec_repo_clone(test_spec, clone_filter="blob:none")
+
+    rendered = "\n".join(test_spec.repo_script_list)
+    assert (
+        "git -c http.version=HTTP/1.1 clone --filter=blob:none -o origin "
+        "--single-branch https://github.com/example/repo /testbed && break"
+    ) in rendered
+
+
+def test_harden_test_spec_repo_clone_can_add_targeted_fetch_fallback():
+    test_spec = SimpleNamespace(
+        repo_script_list=[
+            "git clone -o origin --single-branch https://github.com/example/repo /testbed",
+            "git reset --hard abc123",
+            "TARGET_TIMESTAMP=$(git show -s --format=%ci abc123)",
+            "git tag -l | while read tag; do TAG_COMMIT=$(git rev-list -n 1 \"$tag\"); done",
+            "git gc --prune=now --aggressive",
+            "AFTER_TIMESTAMP=$(date -d \"$TARGET_TIMESTAMP + 1 second\" '+%Y-%m-%d %H:%M:%S')",
+            'COMMIT_COUNT=$(git log --oneline --all --since="$AFTER_TIMESTAMP" | wc -l)',
+            '[ "$COMMIT_COUNT" -eq 0 ] || exit 1',
+            "python -m pip install -e .[test] --verbose",
+        ]
+    )
+
+    harden_test_spec_repo_clone(
+        test_spec,
+        clone_retries=2,
+        retry_sleep_sec=3,
+        clone_filter="blob:none",
+        fallback_base_commit="abc123",
+    )
+
+    rendered = "\n".join(test_spec.repo_script_list)
+    assert "git clone " not in rendered
+    assert "git remote add origin https://github.com/example/repo" in rendered
+    assert (
+        "git -c http.version=HTTP/1.1 fetch --filter=blob:none --depth=50 --no-tags origin "
+        "abc123 && break"
+    ) in rendered
+    assert "git fetch attempt ${fetch_attempt}/2 failed" in rendered
+    assert "git checkout -f abc123" in rendered
+    assert "git reset --hard abc123" in rendered
+    assert "date -u '+%Y-%m-%d %H:%M:%S %z'" in rendered
+    assert "skipped tag timestamp cleanup" in rendered
+    assert "skipped git gc" in rendered
+    assert "skipped commit-count check" in rendered
+    assert "if [ -f astropy/_erfa/erfa_generator.py ]; then python -m pip install 'jinja2<4' --verbose; fi" in rendered
+    assert (
+        "if [ -d astropy ] && [ -n \"$(find astropy -name '*.pyx' -print -quit)\" ]; then "
+        "python -m pip install 'cython<3' --verbose; fi"
+    ) in rendered
+    assert "python -m pip install --no-build-isolation -e '.[test]' --verbose" in rendered
+
+
 def test_opencode_install_command_keeps_optional_binary_dependencies():
     assert "npm install -g opencode-ai@" in DEFAULT_INSTALL_OPENCODE_COMMAND
     assert "--omit=optional" not in DEFAULT_INSTALL_OPENCODE_COMMAND
@@ -393,6 +563,56 @@ def test_swebench_container_skips_loopback_proxy_environment(monkeypatch, tmp_pa
     assert "HTTPS_PROXY" not in env
     assert env["NO_PROXY"] == "localhost,127.0.0.1"
     assert env["CUSTOM_ENV"] == "1"
+
+
+def test_swebench_container_host_network_skips_port_publish(monkeypatch, tmp_path):
+    captured: dict[str, object] = {}
+
+    class FakeContainer:
+        id = "container-id"
+        name = "container-name"
+        status = "running"
+        attrs: dict = {"NetworkSettings": {"Ports": {}}}
+
+        def reload(self):
+            pass
+
+    class FakeContainers:
+        def run(self, *args, **kwargs):
+            captured["args"] = args
+            captured["kwargs"] = kwargs
+            return FakeContainer()
+
+    sandbox = SWEBenchContainerSandbox()
+    sandbox.setup({"log_dir": str(tmp_path / "logs"), "network_mode": "host"})
+    fake_client = SimpleNamespace(containers=FakeContainers())
+    fake_test_spec = SimpleNamespace(
+        repo_directory="/testbed",
+        docker_user="root",
+        instance_image_key="fake:image",
+    )
+    monkeypatch.setattr(
+        sandbox,
+        "_runtime_api",
+        lambda: {
+            "docker": SimpleNamespace(from_env=lambda: fake_client),
+            "DOCKER_WORKDIR": "/testbed",
+            "DOCKER_USER": "root",
+        },
+    )
+    monkeypatch.setattr(
+        sandbox,
+        "_build_test_spec",
+        lambda _task: ({"repo": "demo/repo", "base_commit": "abc123"}, fake_test_spec),
+    )
+    monkeypatch.setattr(sandbox, "_build_image", lambda _task, _spec: tmp_path / "build")
+
+    session = sandbox.create_session(_make_task("astropy__astropy-12907"))
+
+    assert captured["kwargs"]["network_mode"] == "host"
+    assert "ports" not in captured["kwargs"]
+    assert session.metadata()["gateway_host_port"] == "8080"
+    assert session.metadata()["network_mode"] == "host"
 
 
 def test_openclaw_runtime_uploads_git_mirror_once():
