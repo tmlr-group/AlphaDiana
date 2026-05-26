@@ -6,8 +6,8 @@ import os
 import time
 from typing import Any, Optional
 
-from alphadiana.agent.base import Agent, AgentResponse
-from alphadiana.agent.registry import AgentRegistry
+from alphadiana.harness.base import Agent, AgentResponse
+from alphadiana.harness.registry import AgentRegistry
 from alphadiana.agent.terminal_bench2_common import (
     SYSTEM_PROMPT,
     TerminalBench2ContainerMixin,

@@ -35,20 +35,20 @@ from collections import deque
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
-from alphadiana.agent.logprob_capture import (
+from alphadiana.harness.proxies.logprob_capture import (
     apply_openai_logprob_request,
     extract_openai_logprob_records,
     finalize_logprob_capture,
     resolve_logprob_capture_config,
 )
-from alphadiana.agent.logprob_proxy import (
+from alphadiana.harness.proxies.logprob_proxy import (
     LogprobCaptureProxy,
     normalize_openai_proxy_upstream,
     resolve_logprob_proxy_advertise_host,
 )
-from alphadiana.agent.base import Agent, AgentResponse
-from alphadiana.agent.preservation import add_artifact_file_refs
-from alphadiana.agent.registry import AgentRegistry
+from alphadiana.harness.base import Agent, AgentResponse
+from alphadiana.harness.proxies.preservation import add_artifact_file_refs
+from alphadiana.harness.registry import AgentRegistry
 from alphadiana.benchmark.base import BenchmarkTask
 from alphadiana.utils.attachments import build_openai_multimodal_user_content
 from alphadiana.utils.lifecycle_events import append_lifecycle_event
@@ -1069,17 +1069,17 @@ class OpenClawAgent(Agent):
         self._runtime_manager = None
         try:
             if self._runtime == "swebench_container":
-                from alphadiana.agent.openclaw_container_runtime import OpenClawContainerRuntimeManager
+                from alphadiana.harness.openclaw.container_runtime import OpenClawContainerRuntimeManager
 
                 self._runtime_manager = OpenClawContainerRuntimeManager(config)
             elif str(config.get("runtime_backend", "") or "").strip().lower() == "podman":
-                from alphadiana.agent.openclaw_runtime import OpenClawPodmanRuntimeManager
+                from alphadiana.harness.openclaw.runtime import OpenClawPodmanRuntimeManager
 
                 runtime_config = dict(config)
                 runtime_config["_logprob_capture"] = self._logprob_capture
                 self._runtime_manager = OpenClawPodmanRuntimeManager(runtime_config)
             else:
-                from alphadiana.agent.openclaw_runtime import OpenClawRuntimeManager
+                from alphadiana.harness.openclaw.runtime import OpenClawRuntimeManager
 
                 # Pass logprob capture config to runtime manager so it can
                 # start the Docker-accessible MITM proxy when enabled.

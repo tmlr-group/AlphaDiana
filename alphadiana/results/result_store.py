@@ -11,8 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from alphadiana.agent.base import AgentResponse
-from alphadiana.agent.preservation import add_artifact_file_refs
+from alphadiana.harness.base import AgentResponse
+from alphadiana.harness.proxies.preservation import add_artifact_file_refs
 from alphadiana.benchmark.base import BenchmarkTask
 from alphadiana.results.logprob_artifacts import INT16_PROB_SCALE, raw_record_to_int16_record
 from alphadiana.results.normalized_trace import (

@@ -16,21 +16,21 @@ import time
 from pathlib import Path
 from typing import Any
 
-from alphadiana.agent.logprob_capture import (
+from alphadiana.harness.proxies.logprob_capture import (
     apply_openai_logprob_request,
     extract_openai_logprob_records,
     finalize_logprob_capture,
     raw_token_logprob_dict_to_record,
     resolve_logprob_capture_config,
 )
-from alphadiana.agent.logprob_proxy import LogprobCaptureProxy
-from alphadiana.agent.base import Agent, AgentResponse
-from alphadiana.agent.preservation import (
+from alphadiana.harness.proxies.logprob_proxy import LogprobCaptureProxy
+from alphadiana.harness.base import Agent, AgentResponse
+from alphadiana.harness.proxies.preservation import (
     add_artifact_file_refs,
     build_event_trajectories,
     build_runtime_trace_summary,
 )
-from alphadiana.agent.registry import AgentRegistry
+from alphadiana.harness.registry import AgentRegistry
 from alphadiana.benchmark.base import BenchmarkTask
 from alphadiana.container_runtime import PodmanAgentRuntime, PodmanAgentSpec, PodmanCLI, PodmanError
 from alphadiana.utils.attachments import iter_binary_attachments, write_attachments
@@ -689,12 +689,12 @@ class OpenCodeAgent(Agent):
 
     Podman isolation: set ``controller_mode: podman`` to run the opencode CLI
     inside the Podman-only controller image built from
-    ``opencode_deploy/Containerfile.podman-controller``.
+    ``alphadiana/harness/opencode/deploy/Containerfile.podman-controller``.
 
     Build with::
 
         podman build \\
-          -f opencode_deploy/Containerfile.podman-controller \\
+          -f alphadiana/harness/opencode/deploy/Containerfile.podman-controller \\
           -t alphadiana-opencode-podman:latest .
 
         docker build --network host \\
@@ -773,7 +773,7 @@ class OpenCodeAgent(Agent):
                 self._agent_name = "custom-agent"
 
         if self._runtime == "swebench_container":
-            from alphadiana.agent.opencode_container_runtime import OpenCodeContainerRuntimeManager
+            from alphadiana.harness.opencode.container_runtime import OpenCodeContainerRuntimeManager
 
             self._runtime_manager = OpenCodeContainerRuntimeManager(config)
 

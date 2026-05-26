@@ -21,8 +21,8 @@ from pathlib import Path
 from typing import Any, Optional
 from uuid import uuid4
 
-from alphadiana.agent.base import Agent, AgentResponse
-from alphadiana.agent.registry import register_agent
+from alphadiana.harness.base import Agent, AgentResponse
+from alphadiana.harness.registry import register_agent
 from alphadiana.benchmark.base import BenchmarkTask
 from alphadiana.benchmark.moltbench_utils import (
     parse_results_json,

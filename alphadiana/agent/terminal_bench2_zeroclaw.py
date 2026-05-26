@@ -10,26 +10,26 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-from alphadiana.agent.logprob_capture import finalize_logprob_capture
-from alphadiana.agent.logprob_proxy import (
+from alphadiana.harness.proxies.logprob_capture import finalize_logprob_capture
+from alphadiana.harness.proxies.logprob_proxy import (
     LogprobCaptureProxy,
     resolve_logprob_proxy_advertise_host,
 )
-from alphadiana.agent.preservation import (
+from alphadiana.harness.proxies.preservation import (
     add_artifact_file_refs,
     build_event_trajectories,
     build_text_step_trajectories,
     build_runtime_trace_summary,
     parse_jsonl_records,
 )
-from alphadiana.agent.base import AgentResponse
-from alphadiana.agent.registry import AgentRegistry
+from alphadiana.harness.base import AgentResponse
+from alphadiana.harness.registry import AgentRegistry
 from alphadiana.agent.terminal_bench2_incontainer import (
     IN_CONTAINER_AGENT_PROMPT,
     TerminalBench2InContainerMixin,
 )
-from alphadiana.agent.zeroclaw_runtime import _resolve_zeroclaw_provider
-from alphadiana.agent.zeroclaw import (
+from alphadiana.harness.zeroclaw.runtime import _resolve_zeroclaw_provider
+from alphadiana.harness.zeroclaw.agent import (
     ZeroClawAgent,
     _classify_cli_error_output,
     _sanitize_cli_output,

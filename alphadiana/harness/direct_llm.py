@@ -18,14 +18,14 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 from alphadiana.agent._logprobs import INT16_PROB_SCALE, quantize_records_int16
-from alphadiana.agent.logprob_capture import (
+from alphadiana.harness.proxies.logprob_capture import (
     apply_openai_logprob_request,
     extract_openai_logprob_records,
     finalize_logprob_capture,
     resolve_logprob_capture_config,
 )
-from alphadiana.agent.base import Agent, AgentResponse
-from alphadiana.agent.registry import AgentRegistry
+from alphadiana.harness.base import Agent, AgentResponse
+from alphadiana.harness.registry import AgentRegistry
 from alphadiana.benchmark.base import BenchmarkTask
 from alphadiana.utils.math_answer import extract_answer_candidate
 

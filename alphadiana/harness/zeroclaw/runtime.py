@@ -19,7 +19,7 @@ from typing import Any
 
 import logging as _logging
 
-from alphadiana.agent.logprob_proxy import (
+from alphadiana.harness.proxies.logprob_proxy import (
     LogprobCaptureProxy,
     resolve_logprob_proxy_advertise_host,
 )
@@ -154,7 +154,7 @@ class ZeroClawRuntimeManager:
         self._workspace_only = bool(config.get("workspace_only", False))
         self._disable_tools = bool(config.get("disable_tools", False))
         self._bridge_template_path = self._resolve_bridge_template_path(
-            config.get("bridge_template_path", "zeroclaw_deploy/zeroclaw_bridge.py")
+            config.get("bridge_template_path", "alphadiana/harness/zeroclaw/deploy/zeroclaw_bridge.py")
         )
         self._logprob_capture: dict[str, Any] = dict(config.get("_logprob_capture", {}) or {})
         self._started_sandboxes: set[str] = set()

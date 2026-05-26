@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Type
 
-from alphadiana.agent.base import Agent
+from alphadiana.harness.base import Agent
 
 
 class AgentRegistry:

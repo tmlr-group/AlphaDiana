@@ -31,7 +31,7 @@ from alphadiana.utils.openclaw_security import is_weak_openclaw_gateway_token
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DEPLOY_DIR = PROJECT_ROOT / "openclaw_deploy"
+DEPLOY_DIR = PROJECT_ROOT / "alphadiana/harness/openclaw/deploy"
 
 
 ROCK_PORTS_ENV_FILE = RESOLVED_ROCK_PORTS_ENV_FILE

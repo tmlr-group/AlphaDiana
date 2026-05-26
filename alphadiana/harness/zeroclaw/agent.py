@@ -16,25 +16,25 @@ import time
 from pathlib import Path
 from typing import Any
 
-from alphadiana.agent.logprob_capture import (
+from alphadiana.harness.proxies.logprob_capture import (
     extract_openai_logprob_records,
     finalize_logprob_capture,
     resolve_logprob_capture_config,
 )
-from alphadiana.agent.logprob_proxy import (
+from alphadiana.harness.proxies.logprob_proxy import (
     LogprobCaptureProxy,
     resolve_logprob_proxy_advertise_host,
 )
-from alphadiana.agent.base import Agent, AgentResponse
-from alphadiana.agent.preservation import (
+from alphadiana.harness.base import Agent, AgentResponse
+from alphadiana.harness.proxies.preservation import (
     add_artifact_file_refs,
     build_event_trajectories,
     build_runtime_trace_summary,
     build_text_step_trajectories,
     parse_jsonl_records,
 )
-from alphadiana.agent.registry import AgentRegistry
-from alphadiana.agent.zeroclaw_runtime import _resolve_zeroclaw_provider
+from alphadiana.harness.registry import AgentRegistry
+from alphadiana.harness.zeroclaw.runtime import _resolve_zeroclaw_provider
 from alphadiana.benchmark.base import BenchmarkTask
 from alphadiana.utils.math_answer import extract_answer_candidate
 
@@ -491,7 +491,7 @@ class ZeroClawAgent(Agent):
         self._runtime_manager = None
         self._gateway_token = str(config.get("gateway_token", "ZEROCLAW") or "ZEROCLAW")
         if podman_runtime:
-            from alphadiana.agent.zeroclaw_runtime import ZeroClawPodmanRuntimeManager
+            from alphadiana.harness.zeroclaw.runtime import ZeroClawPodmanRuntimeManager
 
             runtime_config = dict(config)
             runtime_config["_logprob_capture"] = self._logprob_capture
