@@ -5,7 +5,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from alphadiana.config.experiment_config import ExperimentConfig
+from alphadiana.engine.config.experiment_config import ExperimentConfig
 
 
 class ConfigValidator:

@@ -6,10 +6,10 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import TYPE_CHECKING
 
-from alphadiana.runner.runner import Runner
+from alphadiana.engine.runner import Runner
 
 if TYPE_CHECKING:
-    from alphadiana.config.experiment_config import ExperimentConfig
+    from alphadiana.engine.config.experiment_config import ExperimentConfig
 
 logger = logging.getLogger(__name__)
 

@@ -1,7 +1,7 @@
 """Container runtime helpers for AlphaDiana."""
 
-from alphadiana.container_runtime.gpu import nvidia_cdi_args
-from alphadiana.container_runtime.agent_runtime import (
+from alphadiana.engine.container_runtime.gpu import nvidia_cdi_args
+from alphadiana.engine.container_runtime.agent_runtime import (
     HTTPHealthcheck,
     PodmanAgentRuntime,
     PodmanAgentRuntimeError,
@@ -9,15 +9,15 @@ from alphadiana.container_runtime.agent_runtime import (
     PodmanAgentSpec,
     RuntimeFile,
 )
-from alphadiana.container_runtime.podman_cli import (
+from alphadiana.engine.container_runtime.podman_cli import (
     PodmanCLI,
     PodmanError,
     PodmanResult,
     normalize_podman_image_ref,
 )
-from alphadiana.container_runtime.ports import PublishedPort, parse_podman_port_output
-from alphadiana.container_runtime.proxy_env import podman_proxy_env
-from alphadiana.container_runtime.podman_socket import PodmanSocketInfo, podman_socket_env
+from alphadiana.engine.container_runtime.ports import PublishedPort, parse_podman_port_output
+from alphadiana.engine.container_runtime.proxy_env import podman_proxy_env
+from alphadiana.engine.container_runtime.podman_socket import PodmanSocketInfo, podman_socket_env
 
 __all__ = [
     "PodmanCLI",

@@ -720,8 +720,8 @@ class JobManager:
 
     def _run_job(self, job_id: str, run_id: str, req: CreateJobRequest, *, _skip_log_setup: bool = False) -> None:
         """Execute the evaluation in a background thread."""
-        from alphadiana.config.experiment_config import ExperimentConfig
-        from alphadiana.runner.runner import Runner
+        from alphadiana.engine.config.experiment_config import ExperimentConfig
+        from alphadiana.engine.runner import Runner
 
         # Tag this thread (and future ThreadPoolExecutor children) with the job ID
         # so that _JobLogCapture only captures logs belonging to this job.

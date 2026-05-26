@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Type
 
-from alphadiana.sandbox.base import Sandbox
+from alphadiana.engine.sandbox.base import Sandbox
 
 
 class SandboxRegistry:

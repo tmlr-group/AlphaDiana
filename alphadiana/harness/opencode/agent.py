@@ -32,7 +32,7 @@ from alphadiana.harness.proxies.preservation import (
 )
 from alphadiana.harness.registry import AgentRegistry
 from alphadiana.benchmark.base import BenchmarkTask
-from alphadiana.container_runtime import PodmanAgentRuntime, PodmanAgentSpec, PodmanCLI, PodmanError
+from alphadiana.engine.container_runtime import PodmanAgentRuntime, PodmanAgentSpec, PodmanCLI, PodmanError
 from alphadiana.utils.attachments import iter_binary_attachments, write_attachments
 from alphadiana.utils.math_answer import extract_answer_candidate, extract_boxed
 
