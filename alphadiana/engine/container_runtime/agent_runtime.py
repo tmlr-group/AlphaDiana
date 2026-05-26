@@ -1,6 +1,6 @@
 """Shared Podman-managed lifecycle for standard reasoning agent runtimes.
 
-This module stays inside ``alphadiana.container_runtime`` because it is the
+This module stays inside ``alphadiana.engine.container_runtime`` because it is the
 approved boundary for Podman lifecycle operations. Agent modules supply narrow
 specs; this runtime owns container startup, file injection, process launch,
 published-port resolution, readiness polling, artifact collection, and cleanup.
@@ -23,8 +23,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from alphadiana.container_runtime.podman_cli import PodmanCLI, PodmanError
-from alphadiana.container_runtime.ports import first_published_port
+from alphadiana.engine.container_runtime.podman_cli import PodmanCLI, PodmanError
+from alphadiana.engine.container_runtime.ports import first_published_port
 
 
 _SECRET_FIELD_NAMES = frozenset({

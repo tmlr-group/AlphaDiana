@@ -22,8 +22,8 @@ from alphadiana.utils.rock_ports import resolve_rock_ports_from_env
 from alphadiana.benchmark.registry import BenchmarkRegistry
 from alphadiana.results.report import ReportGenerator, RunSummary
 from alphadiana.results.result_store import ResultStore
-from alphadiana.runner.task_dispatcher import TaskDispatcher
-from alphadiana.sandbox.registry import SandboxRegistry
+from alphadiana.engine.task_dispatcher import TaskDispatcher
+from alphadiana.engine.sandbox.registry import SandboxRegistry
 from alphadiana.scorer.registry import ScorerRegistry
 from alphadiana.utils.math_answer import (
     extract_numeric_answer_candidate,
@@ -34,8 +34,8 @@ from alphadiana.utils.lifecycle_events import append_lifecycle_event
 if TYPE_CHECKING:
     from alphadiana.harness.base import Agent
     from alphadiana.benchmark.base import Benchmark
-    from alphadiana.config.experiment_config import ExperimentConfig
-    from alphadiana.sandbox.base import Sandbox
+    from alphadiana.engine.config.experiment_config import ExperimentConfig
+    from alphadiana.engine.sandbox.base import Sandbox
     from alphadiana.scorer.base import Scorer
 
 logger = logging.getLogger(__name__)
@@ -444,7 +444,7 @@ def _sandbox_config_provenance_metadata(config: "ExperimentConfig") -> dict:
     podman_socket = str(sandbox_config.get("podman_socket", "") or "").strip()
     if container_engine.lower() == "podman":
         try:
-            from alphadiana.container_runtime.podman_socket import (
+            from alphadiana.engine.container_runtime.podman_socket import (
                 podman_socket_env,
                 resolve_podman_docker_api_version,
             )
@@ -522,10 +522,10 @@ class Runner:
         import alphadiana.harness.zeroclaw.agent  # noqa: F401
 
         # Import sandbox modules to trigger registration.
-        import alphadiana.sandbox.local  # noqa: F401
-        import alphadiana.sandbox.podman  # noqa: F401
-        import alphadiana.sandbox.rock  # noqa: F401
-        import alphadiana.sandbox.swebench_container  # noqa: F401
+        import alphadiana.engine.sandbox.local  # noqa: F401
+        import alphadiana.engine.sandbox.podman  # noqa: F401
+        import alphadiana.engine.sandbox.rock  # noqa: F401
+        import alphadiana.engine.sandbox.swebench_container  # noqa: F401
 
         # Import scorer modules to trigger registration.
         import alphadiana.scorer.exact_match  # noqa: F401
@@ -704,7 +704,7 @@ class Runner:
         # Initialize plain-text dashboard.
         dashboard = None
         try:
-            from alphadiana.runner.dashboard import PlainTextDashboard
+            from alphadiana.engine.dashboard import PlainTextDashboard
             status_dir = self.result_store.output_dir / self.config.run_id / "status"
             status_dir.mkdir(parents=True, exist_ok=True)
             dashboard = PlainTextDashboard(
@@ -793,8 +793,8 @@ class Runner:
             if desired_num > 1 or fresh_predeployed_mode:
                 deployment_results = []
                 try:
-                    import alphadiana.sandbox.rock  # noqa: F401 — trigger registration
-                    from alphadiana.sandbox.registry import SandboxRegistry
+                    import alphadiana.engine.sandbox.rock  # noqa: F401 — trigger registration
+                    from alphadiana.engine.sandbox.registry import SandboxRegistry
 
                     auto_sandbox_config = {
                         "admin_base_url": self.config.agent_config.get(
@@ -1075,8 +1075,8 @@ class Runner:
             and _needs_auto_rock_sandbox(self.config)
         ):
             try:
-                import alphadiana.sandbox.rock  # noqa: F401 — trigger registration
-                from alphadiana.sandbox.registry import SandboxRegistry
+                import alphadiana.engine.sandbox.rock  # noqa: F401 — trigger registration
+                from alphadiana.engine.sandbox.registry import SandboxRegistry
                 rock_cls = SandboxRegistry.get("rock")
                 _auto_sandbox = rock_cls()
                 # Build sandbox config from agent config, with gateway-friendly defaults.
@@ -1211,7 +1211,7 @@ class Runner:
             and sandbox_supports_pooling
             and self.config.agent_name != "openclaw"
         ):
-            from alphadiana.sandbox.pool import SandboxPool
+            from alphadiana.engine.sandbox.pool import SandboxPool
             pool_size = self.config.max_concurrent
             logger.info("Creating SandboxPool with %d sessions", pool_size)
             pool = SandboxPool(self.sandbox, pool_size)

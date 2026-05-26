@@ -19,8 +19,8 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from alphadiana.benchmark.base import BenchmarkTask
-from alphadiana.container_runtime.podman_cli import PodmanCLI, PodmanError
-from alphadiana.container_runtime.proxy_env import podman_proxy_env
+from alphadiana.engine.container_runtime.podman_cli import PodmanCLI, PodmanError
+from alphadiana.engine.container_runtime.proxy_env import podman_proxy_env
 
 logger = logging.getLogger(__name__)
 _SAFE_CONTAINER_NAME_RE = re.compile(r"[^A-Za-z0-9_.-]+")
@@ -420,22 +420,22 @@ class TerminalBench2ContainerMixin:
         if container_engine == "podman":
             exec_command = (
                 f"{runtime_env}\n"
-                f"exec {runtime_python} -m alphadiana.container_runtime.task_cli "
+                f"exec {runtime_python} -m alphadiana.engine.container_runtime.task_cli "
                 f"exec {quoted_container} bash -lc \"$*\""
             )
             copy_from_command = (
                 f"{runtime_env}\n"
-                f"exec {runtime_python} -m alphadiana.container_runtime.task_cli "
+                f"exec {runtime_python} -m alphadiana.engine.container_runtime.task_cli "
                 f"cp {quoted_container}:\"$1\" \"$2\""
             )
             copy_to_command = (
                 f"{runtime_env}\n"
-                f"exec {runtime_python} -m alphadiana.container_runtime.task_cli "
+                f"exec {runtime_python} -m alphadiana.engine.container_runtime.task_cli "
                 f"cp \"$1\" {quoted_container}:\"$2\""
             )
             test_command = (
                 f"{runtime_env}\n"
-                f"exec {runtime_python} -m alphadiana.container_runtime.task_cli "
+                f"exec {runtime_python} -m alphadiana.engine.container_runtime.task_cli "
                 f"exec {quoted_container} bash /tests/test.sh"
             )
         else:

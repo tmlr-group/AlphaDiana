@@ -23,7 +23,7 @@ from alphadiana.harness.proxies.logprob_proxy import (
     LogprobCaptureProxy,
     resolve_logprob_proxy_advertise_host,
 )
-from alphadiana.container_runtime import (
+from alphadiana.engine.container_runtime import (
     HTTPHealthcheck,
     PodmanAgentRuntime,
     PodmanAgentRuntimeResult,

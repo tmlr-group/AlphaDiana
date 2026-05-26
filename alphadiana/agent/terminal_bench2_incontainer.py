@@ -19,7 +19,7 @@ from alphadiana.agent.terminal_bench2_common import (
     TerminalBench2RuntimeContext,
 )
 from alphadiana.benchmark.base import BenchmarkTask
-from alphadiana.container_runtime.podman_cli import PodmanError, normalize_podman_image_ref
+from alphadiana.engine.container_runtime.podman_cli import PodmanError, normalize_podman_image_ref
 from alphadiana.utils.rock_runtime import PREBUILT_SANDBOX_IMAGE
 
 logger = logging.getLogger(__name__)

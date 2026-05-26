@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from alphadiana.container_runtime.podman_cli import PodmanCLI, PodmanError
+from alphadiana.engine.container_runtime.podman_cli import PodmanCLI, PodmanError
 
 
 def _write_streams(stdout: str, stderr: str) -> None:
@@ -16,7 +16,7 @@ def _write_streams(stdout: str, stderr: str) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="python -m alphadiana.container_runtime.task_cli")
+    parser = argparse.ArgumentParser(prog="python -m alphadiana.engine.container_runtime.task_cli")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     exec_parser = subparsers.add_parser("exec")

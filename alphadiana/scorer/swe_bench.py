@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from alphadiana.container_runtime.podman_socket import (
+from alphadiana.engine.container_runtime.podman_socket import (
     podman_socket_env,
     resolve_podman_docker_api_version,
 )

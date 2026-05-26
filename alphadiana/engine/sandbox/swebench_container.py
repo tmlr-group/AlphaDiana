@@ -16,9 +16,9 @@ from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
-from alphadiana.sandbox.base import ExecutionResult, Sandbox, SandboxSession
-from alphadiana.sandbox.registry import register_sandbox
-from alphadiana.container_runtime.podman_socket import (
+from alphadiana.engine.sandbox.base import ExecutionResult, Sandbox, SandboxSession
+from alphadiana.engine.sandbox.registry import register_sandbox
+from alphadiana.engine.container_runtime.podman_socket import (
     podman_socket_env,
     resolve_podman_docker_api_version,
 )
