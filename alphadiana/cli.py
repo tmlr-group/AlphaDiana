@@ -190,8 +190,8 @@ def validate(config_yaml: str, override: tuple[str, ...]):
 @click.argument("results_dir", type=click.Path(exists=True))
 def report(results_dir: str):
     """Generate reports from existing result files in a directory."""
-    from alphadiana.results.report import ReportGenerator
-    from alphadiana.results.result_store import ResultStore
+    from alphadiana.analysis.report import ReportGenerator
+    from alphadiana.analysis.io.result_store import ResultStore
 
     jsonl_files = [
         f for f in os.listdir(results_dir) if f.endswith(".jsonl")

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
-from alphadiana.dashboard.backend.data_loader import DataLoader
-from alphadiana.dashboard.backend.job_manager import JobManager
-from alphadiana.dashboard.backend.models import (
+from alphadiana.analysis.dashboard.backend.data_loader import DataLoader
+from alphadiana.analysis.dashboard.backend.job_manager import JobManager
+from alphadiana.analysis.dashboard.backend.models import (
     CompareRunEntry,
     CreateJobRequest,
     DeployAndRunRequest,
@@ -15,7 +15,7 @@ from alphadiana.dashboard.backend.models import (
     RunSummaryResponse,
     TaskResult,
 )
-from alphadiana.dashboard.backend.sandbox_manager import SandboxManager
+from alphadiana.analysis.dashboard.backend.sandbox_manager import SandboxManager
 
 router = APIRouter(prefix="/api")
 

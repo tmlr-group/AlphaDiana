@@ -7,7 +7,7 @@ from typing import Any, Mapping, Sequence
 
 from alphadiana.analysis.insight_corpus import sanitize_path_text
 from alphadiana.analysis.trajectory_metrics import group_event_sequences, has_answer_after_verification
-from alphadiana.results.status import VALID_SCORE_STATUS
+from alphadiana.analysis.io.status import VALID_SCORE_STATUS
 
 CASE_ANCHOR_TYPES = (
     "paired_rescue",

@@ -14,15 +14,15 @@ from typing import Any
 from alphadiana.harness.base import AgentResponse
 from alphadiana.harness.proxies.preservation import add_artifact_file_refs
 from alphadiana.benchmark.base import BenchmarkTask
-from alphadiana.results.logprob_artifacts import INT16_PROB_SCALE, raw_record_to_int16_record
-from alphadiana.results.normalized_trace import (
+from alphadiana.analysis.io.logprob_artifacts import INT16_PROB_SCALE, raw_record_to_int16_record
+from alphadiana.analysis.io.normalized_trace import (
     TRACE_ARTIFACT_NAME,
     build_normalized_trace,
     normalize_persisted_trajectory,
     normalize_reasoning_trajectory,
 )
 from alphadiana.scorer.base import ScoreResult
-from alphadiana.results.status import (
+from alphadiana.analysis.io.status import (
     infer_score_status,
     is_valid_completed_record,
     normalize_legacy_timeout_zero_record,

@@ -14,7 +14,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from alphadiana.dashboard.backend.models import CreateJobRequest, JobStatus
+from alphadiana.analysis.dashboard.backend.models import CreateJobRequest, JobStatus
 
 logger = logging.getLogger(__name__)
 

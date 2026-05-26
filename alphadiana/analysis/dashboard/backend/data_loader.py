@@ -10,7 +10,7 @@ from typing import Any
 
 import yaml
 
-from alphadiana.dashboard.backend.models import (
+from alphadiana.analysis.dashboard.backend.models import (
     CompareRunEntry,
     RunDetailResponse,
     RunSummaryResponse,

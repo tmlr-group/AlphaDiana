@@ -21,7 +21,7 @@ from typing import Any
 
 from alphadiana.analysis.action_events import extract_action_event_rows
 from alphadiana.analysis.result_reader import RunBundle, load_run_bundle
-from alphadiana.results.status import VALID_SCORE_STATUS, infer_score_status
+from alphadiana.analysis.io.status import VALID_SCORE_STATUS, infer_score_status
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_RESULTS_DIR = ROOT / "results"

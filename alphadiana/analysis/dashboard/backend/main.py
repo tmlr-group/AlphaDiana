@@ -10,10 +10,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from alphadiana.dashboard.backend.api import init_job_manager, init_loader, init_sandbox_manager, router
-from alphadiana.dashboard.backend.data_loader import DataLoader
-from alphadiana.dashboard.backend.job_manager import JobManager
-from alphadiana.dashboard.backend.sandbox_manager import SandboxManager
+from alphadiana.analysis.dashboard.backend.api import init_job_manager, init_loader, init_sandbox_manager, router
+from alphadiana.analysis.dashboard.backend.data_loader import DataLoader
+from alphadiana.analysis.dashboard.backend.job_manager import JobManager
+from alphadiana.analysis.dashboard.backend.sandbox_manager import SandboxManager
 
 app = FastAPI(title="AlphaDiana Dashboard", version="1.0.0")
 
