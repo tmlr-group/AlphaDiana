@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from alphadiana.benchmark.base import BenchmarkTask
+from alphadiana.benchmarks.base import BenchmarkTask
 
 
 @dataclass
