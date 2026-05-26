@@ -206,8 +206,12 @@ class TestOpenClawEmptyResponseHandling:
 
         assert result.raw_output == ""
         assert result.answer is None
-        assert result.finish_reason == "incomplete"
+        # Clean [DONE] + reasoning-only is treated as length-truncated thinking
+        # (see _resolve_final_finish_reason): avoids integrity-guard rejecting
+        # budget-exhausted thinking that the SSE stream cleanly terminated.
+        assert result.finish_reason == "length"
         assert result.metadata["partial_reasoning_only"] is True
+        assert result.metadata.get("reasoning_only_clean_done") is True
         assert result.metadata["answer_source"] == ""
         assert result.metadata["raw_reasoning"] == "Reasoning: step 1; step 2"
         assert result.reasoning_trajectory == [
@@ -281,8 +285,12 @@ class TestOpenClawEmptyResponseHandling:
 
         assert result.raw_output == ""
         assert result.answer is None
-        assert result.finish_reason == "incomplete"
+        # Clean [DONE] + reasoning-only is treated as length-truncated thinking
+        # (see _resolve_final_finish_reason): avoids integrity-guard rejecting
+        # budget-exhausted thinking that the SSE stream cleanly terminated.
+        assert result.finish_reason == "length"
         assert result.metadata["partial_reasoning_only"] is True
+        assert result.metadata.get("reasoning_only_clean_done") is True
         assert result.metadata["answer_source"] == ""
         assert result.metadata["raw_reasoning"] == "Reasoning only"
         assert result.reasoning_trajectory == [
@@ -329,8 +337,12 @@ class TestOpenClawEmptyResponseHandling:
 
         assert result.raw_output == ""
         assert result.answer is None
-        assert result.finish_reason == "incomplete"
+        # Clean [DONE] + reasoning-only is treated as length-truncated thinking
+        # (see _resolve_final_finish_reason): avoids integrity-guard rejecting
+        # budget-exhausted thinking that the SSE stream cleanly terminated.
+        assert result.finish_reason == "length"
         assert result.metadata["partial_reasoning_only"] is True
+        assert result.metadata.get("reasoning_only_clean_done") is True
         assert result.metadata["answer_source"] == ""
         assert result.metadata["raw_reasoning"] == "partial reasoning from transcript"
         assert result.reasoning_trajectory == [
@@ -376,8 +388,12 @@ class TestOpenClawEmptyResponseHandling:
 
         assert result.raw_output == ""
         assert result.answer == "42"
-        assert result.finish_reason == "incomplete"
+        # Clean [DONE] + reasoning-only is treated as length-truncated thinking
+        # (see _resolve_final_finish_reason): avoids integrity-guard rejecting
+        # budget-exhausted thinking that the SSE stream cleanly terminated.
+        assert result.finish_reason == "length"
         assert result.metadata["partial_reasoning_only"] is True
+        assert result.metadata.get("reasoning_only_clean_done") is True
         assert result.metadata["answer_source"] == "reasoning_content"
 
 

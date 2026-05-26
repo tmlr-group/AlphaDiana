@@ -18,6 +18,9 @@ Use this directory as a user-facing entry point. The canonical split is:
   Dashboard usage and deployment.
 - [Benchmark Runbooks](benchmarks/README.md)
   User-facing runbooks for supported benchmark paths.
+- [Podman Experiment Runbook](benchmarks/podman.md)
+  Opt-in Podman setup, smoke/pilot commands, result inspection, and current
+  support boundary.
 - [Benchmark Isolation Notes](benchmark-isolation.md)
   Paper-safe summary of which benchmark paths are task-scoped sandboxes or
   containers today.
@@ -39,6 +42,8 @@ Use this directory as a user-facing entry point. The canonical split is:
 - [OpenCode Docker Isolation](opencode-docker-isolation.md)
   Focused note on the Docker-controller isolation posture for the checked-in
   OpenCode benchmark paths.
+- [Podman Experiment Runbook](benchmarks/podman.md)
+  Command-first guide for running current opt-in Podman experiments and audits.
 
 ## Canonical Benchmark Docs
 
@@ -49,6 +54,7 @@ Use this directory as a user-facing entry point. The canonical split is:
 - [SWE-bench Pro](benchmarks/swebench-pro.md)
 - [SWE-bench Verified](benchmarks/swebench-verified.md)
 - [terminal-bench-2](benchmarks/terminal-bench-2.md)
+- [Podman Experiment Runbook](benchmarks/podman.md)
 - [Full Local-vLLM Rollout (2026-04-19)](benchmarks/full-rollout-local-vllm-20260419.md)
 
 If you are trying to run a benchmark, start from `context/current_eval_status.md`

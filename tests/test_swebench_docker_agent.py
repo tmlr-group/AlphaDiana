@@ -12,6 +12,7 @@ import pytest
 import alphadiana.agent.swebench_docker  # noqa: F401
 from alphadiana.agent.registry import AgentRegistry
 from alphadiana.benchmark.base import BenchmarkTask
+from alphadiana.container_runtime.podman_cli import PodmanCLI
 from alphadiana.runner.runner import Runner
 from alphadiana.agent.swebench_docker import SWEBenchDockerAgent
 
@@ -180,6 +181,47 @@ class TestSWEBenchDockerLifecycle:
         assert response.answer == "diff --git a/x b/x"
         docker_actions = [cmd[1] for cmd in commands if cmd[:2] != ["docker", "image"]]
         assert docker_actions == ["pull", "create", "start", "stop", "rm"]
+
+    def test_podman_engine_routes_lifecycle_through_podman_runtime(self, monkeypatch):
+        calls: list[list[str]] = []
+
+        def fake_runner(argv, **kwargs):
+            calls.append(list(argv))
+            if argv[1:3] == ["image", "inspect"]:
+                return subprocess.CompletedProcess(argv, 1, stdout="", stderr="missing")
+            if argv[1] == "create":
+                return subprocess.CompletedProcess(argv, 0, stdout="podman-container\n", stderr="")
+            return subprocess.CompletedProcess(argv, 0, stdout="ok\n", stderr="")
+
+        agent = SWEBenchDockerAgent()
+        agent.setup({
+            "agent_type": "direct_llm",
+            "model": "m",
+            "api_base": "http://x/v1",
+            "api_key": "k",
+            "container_engine": "podman",
+            "podman_runtime": PodmanCLI(runner=fake_runner),
+        })
+        monkeypatch.setattr(
+            agent,
+            "_solve_direct_llm",
+            lambda task, image, container_id, start_time: SimpleNamespace(
+                answer="diff --git a/x b/x",
+                metadata=agent._container_engine_metadata(),
+            ),
+        )
+
+        response = agent.solve(_task())
+
+        assert response.metadata["container_engine"] == "podman"
+        assert response.metadata["sandbox_backend"] == "podman"
+        assert [cmd[1] for cmd in calls if cmd[1:3] != ["image", "inspect"]] == [
+            "pull",
+            "create",
+            "start",
+            "stop",
+            "rm",
+        ]
 
     def test_cleanup_still_runs_after_failure(self, monkeypatch):
         commands: list[list[str]] = []

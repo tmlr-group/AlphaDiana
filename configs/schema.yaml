@@ -11,6 +11,7 @@ agent:
   version: string     # Pinned version tag or "latest"
   config:             # Pass-through config for the agent (model settings, etc.)
     runtime: string                  # Optional runtime selector, e.g. "swebench_container"
+    container_engine: string         # Task-container engine: "docker" legacy/baseline or opt-in "podman"
     agent_type: string               # `swebench_docker` mode: "direct_llm" | "openclaw" | "opencode" | "zeroclaw"
     model: string
     model_name: string
@@ -42,9 +43,9 @@ agent:
     solver_timeout_sec: integer
     onboard_timeout_sec: integer
     logs_base_dir: string
-    controller_mode: string
-    controller_image: string
-    controller_network: string
+    controller_mode: string          # OpenCode: "podman" preferred for standard reasoning; "host" and "docker" are legacy/baseline
+    controller_image: string         # OpenCode controller image for controller_mode=podman|docker; podman default is alphadiana-opencode-podman:latest
+    controller_network: string       # OpenCode controller network, e.g. "host"
     controller_mount_docker_socket: boolean
     agent_md_mode: string            # Agent.md customization: "none", "append", "override" (default: "none")
     agent_md_content: string         # Content for agent.md injection
@@ -86,7 +87,7 @@ benchmark:
 
 # sandbox: (optional) Execution environment. Set to null if not needed.
 sandbox:
-  name: string        # Sandbox name, e.g. "local", "rock", "swebench_container"
+  name: string        # Sandbox name, e.g. "local", "rock", "podman", "swebench_container"
   config:             # Sandbox-specific params
     # ROCK SDK config
     admin_base_url: string          # ROCK admin server URL (e.g. "http://localhost:9000")
@@ -95,13 +96,14 @@ sandbox:
     memory: string                  # Memory limit, e.g. "2g", "512m" (default: "2g")
     cpus: float                     # CPU limit (default: 0.5)
     limit_cpus: float               # Optional hard CPU cap passed through to ROCK
-    startup_timeout: integer        # Sandbox startup timeout in seconds (default: 300)
+    startup_timeout: integer        # Sandbox startup timeout in seconds (ROCK/Podman)
     auto_clear_seconds: integer     # Auto-cleanup timeout in seconds (default: 3600)
     start_retries: integer          # Number of startup retries (default: 1)
     reset_between_tasks: boolean    # Reset workspace between tasks (default: true)
     proxy_timeout: integer          # Proxy timeout in seconds (default: 600)
     use_kata_runtime: boolean       # Enable Kata runtime instead of ROCK's default privileged Docker mode
     # SWE-bench official container backend
+    container_engine: string         # "docker" legacy/baseline or opt-in "podman" via Docker-compatible Podman socket
     namespace: string               # swebench image namespace (default: "swebench")
     force_rebuild: boolean          # Force rebuilding the official instance image
     keep_container: boolean         # Keep the task container after the run
@@ -113,6 +115,15 @@ sandbox:
     endpoint: string
     api_key: string
     workdir: string
+    # Podman sandbox backend (`sandbox.name: podman`)
+    command: [string]                # Container command, default: ["sleep", "infinity"]
+    env: object                      # Environment passed to the Podman container
+    ports: object                    # Container port -> host port mapping, e.g. {8080: 18080}
+    network: string                  # Optional Podman network mode/name
+    remove: boolean                  # Optional cleanup hint; AlphaDiana still owns close() cleanup
+    name_prefix: string              # Container name prefix, default: "alphadiana-podman"
+    stop_timeout: integer            # Podman stop timeout in seconds
+    podman_socket: string            # Optional Unix Podman socket path for Docker API compatibility
 
 # scorer: (required) Scoring method configuration.
 scorer:

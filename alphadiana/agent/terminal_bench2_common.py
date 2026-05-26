@@ -3,20 +3,42 @@
 from __future__ import annotations
 
 import logging
+import json
 import os
+import re
 import shlex
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from alphadiana.benchmark.base import BenchmarkTask
+from alphadiana.container_runtime.podman_cli import PodmanCLI, PodmanError
+from alphadiana.container_runtime.proxy_env import podman_proxy_env
 
 logger = logging.getLogger(__name__)
+_SAFE_CONTAINER_NAME_RE = re.compile(r"[^A-Za-z0-9_.-]+")
+_PODMAN_START_TIMEOUT_SEC = int(os.environ.get("PODMAN_TB2_START_TIMEOUT_SEC", "180"))
+_PODMAN_START_ATTEMPTS = int(os.environ.get("PODMAN_TB2_START_ATTEMPTS", "3"))
+
+
+def _proxy_bypass_hosts_from_urls(*urls: str) -> list[str]:
+    hosts: list[str] = []
+    for raw_url in urls:
+        value = str(raw_url or "").strip()
+        if not value:
+            continue
+        parsed = urlsplit(value)
+        host = parsed.hostname
+        if host and host not in hosts:
+            hosts.append(host)
+    return hosts
 
 SYSTEM_PROMPT = (
     "You are an expert software engineer working from a local control workspace "
@@ -70,6 +92,7 @@ class TerminalBench2RuntimeContext:
     workdir: Path
     helper_paths: dict[str, Path]
     _tempdir: tempfile.TemporaryDirectory[str] = field(repr=False)
+    container_engine: str = "docker"
 
     def cleanup(self) -> None:
         self._tempdir.cleanup()
@@ -114,7 +137,31 @@ class TerminalBench2ContainerMixin:
     def _setup_container_config(self, config: dict) -> None:
         self._timeout_sec = int(config.get("timeout_sec", 300))
         self._test_timeout_sec = int(config.get("test_timeout_sec", 120))
-        self._logs_base_dir = Path(config.get("logs_base_dir", "/tmp/tb2_logs"))
+        self._logs_base_dir = Path(config.get("logs_base_dir", "/tmp/tb2_logs")).expanduser().resolve()
+        self._container_engine = str(config.get("container_engine", "docker") or "docker").strip().lower()
+        if self._container_engine not in {"docker", "podman"}:
+            raise ValueError(
+                "terminal_bench2 agent.config.container_engine must be one of docker, podman"
+            )
+        injected_podman = config.get("podman_runtime")
+        self._podman = injected_podman if injected_podman is not None else PodmanCLI()
+        self._podman_proxy_host_alias = str(
+            config.get("podman_proxy_host_alias", "host.containers.internal")
+            or "host.containers.internal"
+        ).strip()
+        self._podman_network = str(
+            config.get("podman_network", "slirp4netns:allow_host_loopback=true") or ""
+        ).strip()
+        forward_proxy_env = config.get("forward_proxy_env", config.get("podman_forward_proxy_env", True))
+        if isinstance(forward_proxy_env, str):
+            self._forward_proxy_env = forward_proxy_env.strip().lower() not in {
+                "0",
+                "false",
+                "no",
+                "off",
+            }
+        else:
+            self._forward_proxy_env = bool(forward_proxy_env)
 
     def _setup_controller_config(
         self,
@@ -169,10 +216,93 @@ class TerminalBench2ContainerMixin:
         task_dir = task.metadata.get("task_dir", "")
         tests_host_dir = str(Path(task_dir) / "tests") if task_dir else ""
 
-        cmd = ["docker", "run", "-d", "--rm", "-v", f"{logs_dir}:/logs"]
+        volumes = [f"{logs_dir}:/logs"]
+        if tests_host_dir and Path(tests_host_dir).is_dir():
+            volumes.append(f"{tests_host_dir}:/tests:ro")
+
+        if self._container_engine == "podman":
+            logger.info("Task %s — starting Podman container: %s", task.task_id, docker_image)
+            container_env: dict[str, str] = {}
+            if self._forward_proxy_env:
+                no_proxy_hosts = _proxy_bypass_hosts_from_urls(
+                    str(getattr(self, "_api_base", "") or ""),
+                    os.environ.get("OPENAI_BASE_URL", ""),
+                    os.environ.get("OPENAI_API_BASE", ""),
+                    os.environ.get("CUSTOM_API_BASE", ""),
+                )
+                container_env = podman_proxy_env(
+                    os.environ,
+                    host_alias=self._podman_proxy_host_alias,
+                    no_proxy_hosts=no_proxy_hosts,
+                )
+            container_name = self._podman_container_name(task)
+            container_id = ""
+            last_error: PodmanError | None = None
+            attempts = max(1, _PODMAN_START_ATTEMPTS)
+            timeout = max(60, _PODMAN_START_TIMEOUT_SEC)
+            for attempt in range(1, attempts + 1):
+                try:
+                    result = self._podman.run(
+                        docker_image,
+                        detach=True,
+                        remove=True,
+                        network=self._podman_network or None,
+                        volumes=volumes,
+                        env=container_env,
+                        entrypoint="/bin/sh",
+                        extra_args=["--http-proxy=false", "--name", container_name],
+                        command=["-lc", "sleep infinity"],
+                        timeout=timeout,
+                    )
+                    container_id = result.stdout.strip()
+                    break
+                except PodmanError as exc:
+                    last_error = exc
+                    container_id = self._find_podman_container_id(container_name)
+                    if container_id:
+                        logger.warning(
+                            "Task %s — recovered Podman container %s after start error: %s",
+                            task.task_id,
+                            container_id[:12],
+                            exc,
+                        )
+                        break
+                    if attempt >= attempts:
+                        break
+                    logger.warning(
+                        "Task %s — Podman container start failed on attempt %d/%d: %s",
+                        task.task_id,
+                        attempt,
+                        attempts,
+                        exc,
+                    )
+                    time.sleep(min(attempt, 5))
+            if not container_id:
+                if last_error is not None:
+                    raise last_error
+                raise RuntimeError(f"Podman container start produced no container ID for task {task.task_id}")
+            self._podman.exec(
+                container_id,
+                ["mkdir", "-p", "/logs/verifier"],
+                user="0:0",
+                timeout=10,
+                check=False,
+            )
+            return container_id
+
+        cmd = [
+            "docker",
+            "run",
+            "-d",
+            "--rm",
+            "--entrypoint",
+            "/bin/sh",
+            "-v",
+            f"{logs_dir}:/logs",
+        ]
         if tests_host_dir and Path(tests_host_dir).is_dir():
             cmd += ["-v", f"{tests_host_dir}:/tests:ro"]
-        cmd += [docker_image, "sleep", "infinity"]
+        cmd += [docker_image, "-lc", "sleep infinity"]
 
         logger.info("Task %s — starting container: %s", task.task_id, docker_image)
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
@@ -191,6 +321,39 @@ class TerminalBench2ContainerMixin:
             timeout=10,
         )
         return container_id
+
+    def _podman_container_name(self, task: BenchmarkTask) -> str:
+        sample = str(task.metadata.get("sample_index", "0") or "0")
+        execution_id = str(task.metadata.get("execution_id", "") or "")[:12]
+        raw_name = f"alphadiana-{task.task_id}-s{sample}-{execution_id}"
+        name = _SAFE_CONTAINER_NAME_RE.sub("-", raw_name).strip("-").lower()
+        return name[:120] or "alphadiana-tb2-task"
+
+    def _find_podman_container_id(self, container_name: str) -> str:
+        try:
+            result = self._podman.inspect(container_name, timeout=30, check=False)
+        except PodmanError:
+            return ""
+        if not result.ok:
+            return ""
+        try:
+            payload = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            return ""
+        if isinstance(payload, dict):
+            records = [payload]
+        elif isinstance(payload, list):
+            records = [item for item in payload if isinstance(item, dict)]
+        else:
+            records = []
+        for item in records:
+            container_id = str(item.get("Id") or "").strip()
+            state = item.get("State") if isinstance(item.get("State"), dict) else {}
+            running = state.get("Running")
+            status = str(state.get("Status") or "").strip().lower()
+            if container_id and (running is True or status == "running"):
+                return container_id
+        return ""
 
     def _prepare_runtime(
         self,
@@ -221,6 +384,7 @@ class TerminalBench2ContainerMixin:
             logs_dir=logs_dir,
             workdir=workdir,
             helper_paths=helper_paths,
+            container_engine=self._container_engine,
             _tempdir=tempdir,
         )
 
@@ -228,7 +392,6 @@ class TerminalBench2ContainerMixin:
         try:
             self._stop_container(runtime.container_id, runtime.task.task_id)
         finally:
-            self._cleanup_logs_dir(runtime.logs_dir)
             try:
                 runtime.cleanup()
             except Exception as exc:
@@ -250,6 +413,36 @@ class TerminalBench2ContainerMixin:
         task_note: str = "",
     ) -> dict[str, Path]:
         quoted_container = shlex.quote(container_id)
+        container_engine = getattr(self, "_container_engine", "docker")
+        runtime_pythonpath = shlex.quote(str(Path(__file__).resolve().parents[2]))
+        runtime_python = shlex.quote(sys.executable or "python3")
+        runtime_env = f"export PYTHONPATH={runtime_pythonpath}:\"${{PYTHONPATH:-}}\""
+        if container_engine == "podman":
+            exec_command = (
+                f"{runtime_env}\n"
+                f"exec {runtime_python} -m alphadiana.container_runtime.task_cli "
+                f"exec {quoted_container} bash -lc \"$*\""
+            )
+            copy_from_command = (
+                f"{runtime_env}\n"
+                f"exec {runtime_python} -m alphadiana.container_runtime.task_cli "
+                f"cp {quoted_container}:\"$1\" \"$2\""
+            )
+            copy_to_command = (
+                f"{runtime_env}\n"
+                f"exec {runtime_python} -m alphadiana.container_runtime.task_cli "
+                f"cp \"$1\" {quoted_container}:\"$2\""
+            )
+            test_command = (
+                f"{runtime_env}\n"
+                f"exec {runtime_python} -m alphadiana.container_runtime.task_cli "
+                f"exec {quoted_container} bash /tests/test.sh"
+            )
+        else:
+            exec_command = f"docker exec {quoted_container} bash -lc \"$*\""
+            copy_from_command = f"docker cp {quoted_container}:\"$1\" \"$2\""
+            copy_to_command = f"docker cp \"$1\" {quoted_container}:\"$2\""
+            test_command = f"docker exec {quoted_container} bash /tests/test.sh"
         helper_paths = {
             "task": workdir / "TASK.md",
             "prompt": workdir / "PROMPT.txt",
@@ -270,7 +463,7 @@ class TerminalBench2ContainerMixin:
             "\n".join([
                 "#!/usr/bin/env bash",
                 "set -euo pipefail",
-                f"docker exec {quoted_container} bash -lc \"$*\"",
+                exec_command,
             ]),
             encoding="utf-8",
         )
@@ -278,7 +471,7 @@ class TerminalBench2ContainerMixin:
             "\n".join([
                 "#!/usr/bin/env bash",
                 "set -euo pipefail",
-                f"docker cp {quoted_container}:\"$1\" \"$2\"",
+                copy_from_command,
             ]),
             encoding="utf-8",
         )
@@ -286,7 +479,7 @@ class TerminalBench2ContainerMixin:
             "\n".join([
                 "#!/usr/bin/env bash",
                 "set -euo pipefail",
-                f"docker cp \"$1\" {quoted_container}:\"$2\"",
+                copy_to_command,
             ]),
             encoding="utf-8",
         )
@@ -294,7 +487,7 @@ class TerminalBench2ContainerMixin:
             "\n".join([
                 "#!/usr/bin/env bash",
                 "set -euo pipefail",
-                f"docker exec {quoted_container} bash /tests/test.sh",
+                test_command,
             ]),
             encoding="utf-8",
         )
@@ -366,12 +559,20 @@ class TerminalBench2ContainerMixin:
             ("/app/main.db-wal", "main.db-wal"),
         ):
             snapshot_path = snapshot_dir / local_name
-            result = subprocess.run(
-                ["docker", "cp", f"{container_id}:{remote_path}", str(snapshot_path)],
-                capture_output=True,
-                text=True,
-                timeout=20,
-            )
+            if getattr(self, "_container_engine", "docker") == "podman":
+                result = self._podman.cp(
+                    f"{container_id}:{remote_path}",
+                    str(snapshot_path),
+                    timeout=20,
+                    check=False,
+                )
+            else:
+                result = subprocess.run(
+                    ["docker", "cp", f"{container_id}:{remote_path}", str(snapshot_path)],
+                    capture_output=True,
+                    text=True,
+                    timeout=20,
+                )
             if result.returncode != 0:
                 logger.warning(
                     "Task %s — failed to snapshot %s into workspace bootstrap: %s",
@@ -493,7 +694,8 @@ class TerminalBench2ContainerMixin:
         progress_paths: list[Path] | None = None,
         idle_timeout_sec: int | None = None,
     ) -> LocalCommandResult:
-        if getattr(self, "_controller_mode", "host") != "docker":
+        controller_mode = getattr(self, "_controller_mode", "host")
+        if controller_mode not in {"docker", "podman"}:
             return self._run_local_process(
                 cmd,
                 cwd=cwd,
@@ -507,7 +709,7 @@ class TerminalBench2ContainerMixin:
         if not image:
             return LocalCommandResult(
                 stdout="",
-                stderr="controller_mode=docker requires controller_image",
+                stderr=f"controller_mode={controller_mode} requires controller_image",
                 returncode=2,
             )
 
@@ -528,9 +730,38 @@ class TerminalBench2ContainerMixin:
         controller_env.setdefault("TMP", controller_env["TMPDIR"])
         controller_env.setdefault("TEMP", controller_env["TMPDIR"])
 
+        network = str(getattr(self, "_controller_network", "") or "").strip()
+        if controller_mode == "podman":
+            extra_args = ["--init"]
+            volumes = [f"{cwd}:{cwd}", f"{controller_home}:{container_home}"]
+            try:
+                result = self._podman.run(
+                    image,
+                    remove=True,
+                    user=f"{os.getuid()}:{os.getgid()}",
+                    network=network or None,
+                    volumes=volumes,
+                    workdir=str(cwd),
+                    env=controller_env,
+                    entrypoint="/bin/bash",
+                    command=["-lc", shlex.join(cmd)],
+                    extra_args=extra_args,
+                    timeout=timeout_sec,
+                )
+                return LocalCommandResult(
+                    stdout=result.stdout,
+                    stderr=result.stderr,
+                    returncode=result.returncode,
+                )
+            except PodmanError as exc:
+                return LocalCommandResult(
+                    stdout=exc.result.stdout,
+                    stderr=exc.result.stderr or str(exc),
+                    returncode=exc.result.returncode,
+                )
+
         docker_cmd = ["docker", "run", "--rm", "--init"]
         docker_cmd.extend(["--user", f"{os.getuid()}:{os.getgid()}"])
-        network = str(getattr(self, "_controller_network", "") or "").strip()
         if network:
             docker_cmd.extend(["--network", network])
         if getattr(self, "_mount_docker_socket", False):
@@ -584,6 +815,21 @@ class TerminalBench2ContainerMixin:
 
     def _exec_command(self, container_id: str, cmd: str, timeout_sec: int | None = None) -> str:
         timeout = timeout_sec if timeout_sec is not None else self._timeout_sec
+        if getattr(self, "_container_engine", "docker") == "podman":
+            try:
+                result = self._podman.exec(
+                    container_id,
+                    ["bash", "-c", cmd],
+                    user="0:0",
+                    timeout=timeout,
+                    check=False,
+                )
+                output = result.stdout
+                if result.stderr:
+                    output += result.stderr
+                return output.strip()
+            except PodmanError as exc:
+                return f"[ERROR: {exc}]"
         exec_cmd = ["docker", "exec", container_id, "bash", "-c", cmd]
         try:
             result = subprocess.run(exec_cmd, capture_output=True, text=True, timeout=timeout)
@@ -601,6 +847,25 @@ class TerminalBench2ContainerMixin:
     def _run_tests(self, container_id: str, timeout_sec: int | None = None) -> str:
         timeout = timeout_sec if timeout_sec is not None else self._test_timeout_sec
         self._ensure_verifier_tooling(container_id)
+        if getattr(self, "_container_engine", "docker") == "podman":
+            try:
+                result = self._podman.exec(
+                    container_id,
+                    ["bash", "/tests/test.sh"],
+                    user="0:0",
+                    timeout=timeout,
+                    check=False,
+                )
+                output = result.stdout
+                if result.stderr:
+                    output += result.stderr
+                return output.strip()
+            except PodmanError as exc:
+                if exc.result.returncode == 124:
+                    logger.warning("tests/test.sh timed out after %ds", timeout)
+                    return f"[TIMEOUT after {timeout}s]"
+                logger.warning("tests/test.sh exec error: %s", exc)
+                return f"[ERROR: {exc}]"
         exec_cmd = ["docker", "exec", container_id, "bash", "/tests/test.sh"]
         try:
             result = subprocess.run(exec_cmd, capture_output=True, text=True, timeout=timeout)
@@ -681,6 +946,15 @@ EOF
 chmod +x /usr/local/bin/uvx /root/.local/bin/env
 """.strip()
         try:
+            if getattr(self, "_container_engine", "docker") == "podman":
+                self._podman.exec(
+                    container_id,
+                    ["bash", "-lc", bootstrap],
+                    user="0:0",
+                    timeout=30,
+                    check=False,
+                )
+                return
             subprocess.run(
                 ["docker", "exec", container_id, "bash", "-lc", bootstrap],
                 capture_output=True,
@@ -773,6 +1047,8 @@ chmod +x /usr/local/bin/uvx /root/.local/bin/env
     ) -> dict[str, Any]:
         metadata = {
             "docker_image": runtime.docker_image,
+            "container_engine": runtime.container_engine,
+            "container_id": runtime.container_id,
             "category": runtime.task.metadata.get("category", ""),
             "difficulty": runtime.task.metadata.get("difficulty", ""),
             "reward": reward,
@@ -782,6 +1058,8 @@ chmod +x /usr/local/bin/uvx /root/.local/bin/env
             "verifier_output_path": str(runtime.logs_dir / "verifier"),
             "test_timeout_sec": self._test_timeout_sec,
         }
+        if runtime.container_engine == "podman":
+            metadata["sandbox_backend"] = "podman"
         if extra:
             metadata.update(extra)
         return metadata
@@ -814,12 +1092,21 @@ done
 exit 1
 """.strip()
         try:
-            result = subprocess.run(
-                ["docker", "exec", container_id, "bash", "-lc", probe],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
+            if getattr(self, "_container_engine", "docker") == "podman":
+                result = self._podman.exec(
+                    container_id,
+                    ["bash", "-lc", probe],
+                    user="0:0",
+                    timeout=10,
+                    check=False,
+                )
+            else:
+                result = subprocess.run(
+                    ["docker", "exec", container_id, "bash", "-lc", probe],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
         except subprocess.TimeoutExpired:
             logger.warning("Verifier probe timed out for container %s", container_id[:12])
             return False, "probe_error"
@@ -882,6 +1169,11 @@ exit 1
 
     def _stop_container(self, container_id: str, task_id: str) -> None:
         try:
+            if getattr(self, "_container_engine", "docker") == "podman":
+                result = self._podman.stop(container_id, stop_timeout=10, timeout=120, check=False)
+                if not result.ok:
+                    self._podman.rm(container_id, force=True, timeout=120, check=False)
+                return
             subprocess.run(
                 ["docker", "stop", container_id],
                 capture_output=True,

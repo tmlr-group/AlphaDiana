@@ -169,6 +169,47 @@ def test_legacy_timeout_error_counts_as_valid_zero_in_report(tmp_path):
     assert summary.mean_score == 0.5
 
 
+def test_agent_empty_output_contributes_zero_to_accuracy_denominator(tmp_path):
+    store = ResultStore(output_dir=str(tmp_path), run_id="manifest-agent-empty")
+    store.save_manifest({
+        "run_id": "manifest-agent-empty",
+        "num_samples": 1,
+        "expected_task_count": 2,
+        "expected_sample_count": 2,
+        "expected_task_ids": ["t1", "t2"],
+    })
+    store.append(_task("t1"), AgentResponse(answer="42"), _score(True))
+    store.append(
+        _task("t2"),
+        AgentResponse(
+            answer=None,
+            finish_reason="agent_empty_output",
+            metadata={
+                "opencode_empty_assistant_output": True,
+                "failure_reason": "opencode_lifecycle_only_events",
+                "metric_contribution": 0,
+            },
+        ),
+        ScoreResult(
+            correct=False,
+            score=0.0,
+            expected="42",
+            predicted=None,
+            rationale="No answer produced.",
+        ),
+    )
+
+    summary = ReportGenerator().generate(store, _cfg("manifest-agent-empty"))
+
+    assert summary.valid_scored == 1
+    assert summary.invalid_scored == 1
+    assert summary.completed == 1
+    assert summary.failed == 1
+    assert summary.accuracy == 0.5
+    assert summary.accuracy_total == 0.5
+    assert summary.mean_score == 0.5
+
+
 def test_preserved_failure_counts_invalid_not_valid_scored(tmp_path):
     store = ResultStore(output_dir=str(tmp_path), run_id="manifest-preserved")
     store.save_manifest({

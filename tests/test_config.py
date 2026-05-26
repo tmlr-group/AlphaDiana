@@ -670,3 +670,136 @@ class TestConfigValidator:
         errors = ConfigValidator().validate(config)
 
         assert any("multimodal-capable" in e for e in errors)
+
+    def test_podman_sandbox_opt_in_validates_without_errors(self):
+        config = ExperimentConfig(
+            agent_name="direct_llm",
+            agent_version="v1.0",
+            benchmark_name="aime",
+            scorer_name="numeric",
+            sandbox_name="podman",
+            sandbox_config={
+                "image": "python:3.11",
+                "command": ["sleep", "infinity"],
+                "workdir": "/workspace",
+            },
+            agent_config={
+                "model": "demo-model",
+                "api_base": "http://localhost:8000/v1",
+                "api_key": "demo-key",
+            },
+        )
+
+        validator = ConfigValidator()
+
+        assert validator.validate(config) == []
+        assert validator.warnings(config) == []
+
+    def test_podman_sandbox_warns_on_rock_specific_fields(self):
+        config = ExperimentConfig(
+            agent_name="direct_llm",
+            agent_version="v1.0",
+            benchmark_name="aime",
+            scorer_name="numeric",
+            sandbox_name="podman",
+            sandbox_config={
+                "image": "python:3.11",
+                "admin_base_url": "http://localhost:9000",
+                "rock_limit_cpus": 1,
+            },
+            agent_config={
+                "model": "demo-model",
+                "api_base": "http://localhost:8000/v1",
+                "api_key": "demo-key",
+            },
+        )
+
+        validator = ConfigValidator()
+        warnings = validator.warnings(config)
+
+        assert validator.validate(config) == []
+        assert any("podman" in warning and "admin_base_url" in warning for warning in warnings)
+        assert any("podman" in warning and "rock_limit_cpus" in warning for warning in warnings)
+
+    def test_opencode_podman_controller_mode_validates_without_docker_preflight(self, monkeypatch):
+        def fail_docker_preflight(*_args, **_kwargs):
+            raise AssertionError("Docker image preflight should not run for controller_mode=podman")
+
+        monkeypatch.setattr("subprocess.run", fail_docker_preflight)
+        config = ExperimentConfig(
+            agent_name="opencode",
+            agent_version="v1.0",
+            benchmark_name="hle",
+            scorer_name="exact_match",
+            agent_config={
+                "api_base": "http://localhost:8000/v1",
+                "api_key": "demo-key",
+                "model_name": "demo-model",
+                "controller_mode": "podman",
+                "controller_image": "localhost/opencode-controller:test",
+            },
+        )
+
+        errors = ConfigValidator().validate(config)
+
+        assert errors == []
+
+    def test_standard_reasoning_podman_smoke_configs_validate_with_env_defaults(self, monkeypatch):
+        monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:8000/v1")
+        monkeypatch.setenv("OPENAI_API_KEY", "demo-key")
+        monkeypatch.setenv("OPENAI_MODEL_NAME", "demo-model")
+        monkeypatch.setenv("ALPHADIANA_OPENCLAW_PODMAN_IMAGE", "localhost/openclaw:test")
+        monkeypatch.setenv("ALPHADIANA_ZEROCLAW_PODMAN_IMAGE", "localhost/zeroclaw:test")
+        paths = [
+            "configs/examples/openclaw_aime_podman_smoke.yaml",
+            "configs/examples/zeroclaw_aime_podman_smoke.yaml",
+            "configs/examples/opencode_aime_podman_smoke.yaml",
+        ]
+
+        validator = ConfigValidator()
+        loaded = [ExperimentConfig.from_yaml(path) for path in paths]
+
+        assert [config.agent_name for config in loaded] == ["openclaw", "zeroclaw", "opencode"]
+        assert loaded[0].agent_config["runtime_backend"] == "podman"
+        assert loaded[1].agent_config["runtime_backend"] == "podman"
+        assert loaded[2].agent_config["controller_mode"] == "podman"
+        assert loaded[2].agent_config["controller_image"] == "alphadiana-opencode-podman:latest"
+        for config in loaded:
+            assert validator.validate(config) == []
+
+    def test_task_container_podman_smoke_configs_validate_with_env_defaults(
+        self,
+        monkeypatch,
+        tmp_path,
+    ):
+        monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:8000/v1")
+        monkeypatch.setenv("OPENAI_API_KEY", "demo-key")
+        monkeypatch.setenv("OPENAI_MODEL_NAME", "demo-model")
+        monkeypatch.setenv("ALPHADIANA_PODMAN_SOCKET", "/tmp/podman.sock")
+        monkeypatch.setenv("TB2_OPENCODE_RUNTIME_IMAGE", "localhost/tb2-opencode:test")
+        tb2_dir = tmp_path / "tb2"
+        tb2_dir.mkdir()
+        eval_script = tmp_path / "swebench_pro_eval.py"
+        eval_script.write_text("print('ok')\n", encoding="utf-8")
+        scripts_dir = tmp_path / "swebench_pro_scripts"
+        scripts_dir.mkdir()
+        monkeypatch.setenv("TERMINAL_BENCH2_DIR", str(tb2_dir))
+        monkeypatch.setenv("SWE_BENCH_PRO_EVAL_SCRIPT", str(eval_script))
+        monkeypatch.setenv("SWE_BENCH_PRO_SCRIPTS_DIR", str(scripts_dir))
+
+        paths = [
+            "configs/examples/openclaw_swe_bench_podman_smoke.yaml",
+            "configs/examples/swebench_pro_openclaw_podman_smoke.local.yaml",
+            "configs/examples/terminal_bench2_opencode_podman_smoke.yaml",
+        ]
+
+        validator = ConfigValidator()
+        loaded = [ExperimentConfig.from_yaml(path) for path in paths]
+
+        assert loaded[0].sandbox_config["container_engine"] == "podman"
+        assert loaded[1].agent_config["container_engine"] == "podman"
+        assert loaded[2].agent_config["container_engine"] == "podman"
+        assert loaded[2].benchmark_config["task_ids"] == ["db-wal-recovery"]
+        assert loaded[2].agent_config["runtime_source_image"] == "localhost/tb2-opencode:test"
+        for config in loaded:
+            assert validator.validate(config) == []

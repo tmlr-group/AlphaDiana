@@ -32,6 +32,7 @@ from alphadiana.agent.preservation import (
 )
 from alphadiana.agent.registry import AgentRegistry
 from alphadiana.benchmark.base import BenchmarkTask
+from alphadiana.container_runtime import PodmanAgentRuntime, PodmanAgentSpec, PodmanCLI, PodmanError
 from alphadiana.utils.attachments import iter_binary_attachments, write_attachments
 from alphadiana.utils.math_answer import extract_answer_candidate, extract_boxed
 
@@ -57,13 +58,16 @@ def _resolve_skill_folder(raw: Any) -> str | None:
     return str(pkg_root / "skills" / text)
 
 
-_SUPPORTED_CONTROLLER_MODES = {"host", "docker"}
+_SUPPORTED_CONTROLLER_MODES = {"host", "docker", "podman"}
+_DEFAULT_DOCKER_CONTROLLER_IMAGE = "alphadiana/tb2-opencode-controller:latest"
+_DEFAULT_PODMAN_CONTROLLER_IMAGE = "alphadiana-opencode-podman:latest"
 
 _EXPLICIT_ANSWER_RE = re.compile(
     r"(?:\*{0,2})(?:the\s+)?(?:final\s+)?answer(?:\*{0,2})\s*(?:[:：]|is|=)\s*(.+)",
     re.IGNORECASE,
 )
 _BOXED_RE = re.compile(r"\\boxed\{", re.DOTALL)
+_LIFECYCLE_EVENT_TYPES = {"step-start", "step-finish", "step-started", "step-finished"}
 
 _DEFAULT_SYSTEM_PROMPT = (
     "You are an expert problem solver. When given a problem, actively use "
@@ -198,6 +202,27 @@ def _extract_event_texts(obj: dict[str, Any]) -> list[str]:
                 texts.append(content)
 
     return texts
+
+
+def _opencode_event_type(obj: dict[str, Any]) -> str:
+    """Return the assistant-visible OpenCode event type for diagnostics."""
+    part = obj.get("part")
+    if isinstance(part, dict) and part.get("type"):
+        return str(part.get("type", "")).strip().lower().replace("_", "-")
+    for key in ("type", "event"):
+        value = obj.get(key)
+        if value:
+            return str(value).strip().lower().replace("_", "-")
+    return ""
+
+
+def _opencode_event_types(events: list[dict[str, Any]]) -> list[str]:
+    return [event_type for event_type in (_opencode_event_type(event) for event in events) if event_type]
+
+
+def _opencode_lifecycle_only(events: list[dict[str, Any]]) -> bool:
+    event_types = _opencode_event_types(events)
+    return bool(event_types) and all(event_type in _LIFECYCLE_EVENT_TYPES for event_type in event_types)
 
 
 def _extract_strict_answer(text: str) -> str:
@@ -659,10 +684,18 @@ class OpenCodeAgent(Agent):
     """Agent that runs OpenCode CLI and supports task-container execution.
 
     Docker isolation: set ``controller_mode: docker`` to run the opencode CLI
-    inside a container instead of directly on the host.  Requires the controller
-    image (default ``alphadiana/tb2-opencode-controller:latest``).
+    inside a Docker controller container instead of directly on the host.
+    Requires the legacy/baseline controller image.
+
+    Podman isolation: set ``controller_mode: podman`` to run the opencode CLI
+    inside the Podman-only controller image built from
+    ``opencode_deploy/Containerfile.podman-controller``.
 
     Build with::
+
+        podman build \\
+          -f opencode_deploy/Containerfile.podman-controller \\
+          -t alphadiana-opencode-podman:latest .
 
         docker build --network host \\
           -f docker/terminal_bench2/Dockerfile.opencode-controller \\
@@ -681,9 +714,14 @@ class OpenCodeAgent(Agent):
                 f"Expected one of: {supported}."
             )
         self._controller_mode = controller_mode
+        default_controller_image = (
+            _DEFAULT_PODMAN_CONTROLLER_IMAGE
+            if controller_mode == "podman"
+            else _DEFAULT_DOCKER_CONTROLLER_IMAGE
+        )
         self._controller_image = str(
-            config.get("controller_image", "alphadiana/tb2-opencode-controller:latest")
-            or "alphadiana/tb2-opencode-controller:latest"
+            config.get("controller_image", default_controller_image)
+            or default_controller_image
         ).strip()
         self._controller_network = str(config.get("controller_network", "host") or "host").strip()
         self._cli_model = self._resolve_setting(config, "model", "OPENAI_MODEL_NAME")
@@ -725,6 +763,8 @@ class OpenCodeAgent(Agent):
         self._logprob_capture = resolve_logprob_capture_config(config)
         self._config = dict(config)
         self._runtime_manager = None
+        self._podman_runtime = config.get("_podman_runtime") or PodmanCLI()
+        self._last_controller_metadata: dict[str, Any] = {}
 
         if not self._agent_name:
             if self._agent_md_path:
@@ -736,6 +776,19 @@ class OpenCodeAgent(Agent):
             from alphadiana.agent.opencode_container_runtime import OpenCodeContainerRuntimeManager
 
             self._runtime_manager = OpenCodeContainerRuntimeManager(config)
+
+    def error_provenance_metadata(self) -> dict[str, Any]:
+        if self._runtime or self._controller_mode != "podman":
+            return {}
+        metadata = {
+            "container_engine": "podman",
+            "controller_mode": "podman",
+            "controller_image": self._controller_image,
+            "transport": "opencode_cli_podman",
+            "adapter_name": "opencode-podman",
+        }
+        metadata.update(dict(self._last_controller_metadata or {}))
+        return metadata
 
     @staticmethod
     def _resolve_setting(
@@ -1014,6 +1067,105 @@ class OpenCodeAgent(Agent):
                     stderr = timed_out_stderr or stderr
             return raw_output, stderr, -1
 
+    def _run_in_podman(
+        self,
+        cmd: list[str],
+        workdir: str,
+        env: dict[str, str],
+    ) -> tuple[str, str, int]:
+        """Run opencode inside a Podman controller container."""
+        container_home = Path(workdir) / ".controller-home"
+        container_home.mkdir(parents=True, exist_ok=True)
+        self._last_controller_metadata = {
+            "container_engine": "podman",
+            "controller_mode": "podman",
+            "controller_image": self._controller_image,
+            "controller_container_id": "",
+            "container_id": "",
+            "container_logs_collected": False,
+            "container_cleanup_attempted": False,
+            "container_cleanup_status": "",
+        }
+        if self._skill_folder:
+            _skill_name = Path(self._skill_folder).name
+            _dst = f"{workdir}/skills/{_skill_name}"
+            os.makedirs(f"{workdir}/skills", exist_ok=True)
+            if not os.path.exists(_dst):
+                shutil.copytree(self._skill_folder, _dst)
+            logger.info(
+                "Copied skill folder %s -> %s (real files so opencode read tool indexes them)",
+                self._skill_folder, _dst,
+            )
+        container_id = ""
+        agent_runtime = PodmanAgentRuntime(runtime=self._podman_runtime)
+        try:
+            spec = PodmanAgentSpec(
+                adapter_name="opencode-podman",
+                image=self._controller_image,
+                run_command="",
+                exposed_port=None,
+                workdir=workdir,
+                env={"HOME": str(container_home)},
+                network=self._controller_network,
+                request_timeout=float(self._timeout),
+                startup_timeout=min(max(float(self._timeout), 30.0), 120.0),
+                cleanup_timeout=30.0,
+                name_prefix="alphadiana-opencode",
+                extra_args=[
+                    "--label", "alphadiana.component=opencode-controller",
+                    "--label", f"alphadiana.workdir={workdir}",
+                    "-v", f"{workdir}:{workdir}",
+                ],
+                metadata={
+                    "controller_mode": "podman",
+                    "controller_image": self._controller_image,
+                    "logprob_support": "enabled" if self._logprob_capture["enabled"] else "disabled",
+                },
+            )
+            runtime_result = agent_runtime.start(spec)
+            container_id = runtime_result.container_id
+            self._last_controller_metadata.update({
+                **runtime_result.metadata,
+                "controller_container_id": container_id,
+                "container_id": container_id,
+            })
+            exec_env = {"HOME": str(container_home)}
+            for key in ("OPENAI_API_KEY", "OPENAI_BASE_URL", "XDG_CONFIG_HOME"):
+                if key in env:
+                    exec_env[key] = env[key]
+            exec_result = agent_runtime.exec(
+                ["node", "/usr/lib/node_modules/opencode-ai/bin/opencode", *cmd[1:]],
+                env=exec_env,
+                workdir=workdir,
+                timeout=self._timeout,
+                check=False,
+            )
+            return exec_result.stdout, exec_result.stderr, exec_result.returncode
+        except PodmanError as exc:
+            if exc.result.returncode == 124:
+                logger.warning("OpenCode Podman timed out after %ds", self._timeout)
+                return exc.result.stdout, exc.result.stderr or f"Timeout after {self._timeout}s", -1
+            raise
+        finally:
+            if container_id:
+                try:
+                    artifacts = agent_runtime.collect_artifacts()
+                    self._last_controller_metadata.update(artifacts.metadata)
+                    self._last_controller_metadata["controller_container_id"] = container_id
+                    self._last_controller_metadata["container_id"] = container_id
+                    self._last_controller_metadata["container_log_excerpt"] = artifacts.logs[:4000]
+                    self._last_controller_metadata["container_logs_collected"] = True
+                except Exception as exc:
+                    self._last_controller_metadata["container_log_error"] = str(exc)[:500]
+                    self._last_controller_metadata["container_logs_collected"] = False
+                self._last_controller_metadata["container_cleanup_attempted"] = True
+                try:
+                    agent_runtime.cleanup(check=False)
+                    self._last_controller_metadata["container_cleanup_status"] = "removed"
+                except Exception as exc:
+                    self._last_controller_metadata["container_cleanup_status"] = "failed"
+                    self._last_controller_metadata["container_cleanup_error"] = str(exc)[:500]
+
     def _force_remove_docker_container(self, container_name: str) -> None:
         """Stop an OpenCode controller container that outlived the docker client."""
         try:
@@ -1217,8 +1369,11 @@ class OpenCodeAgent(Agent):
             logger.info("Running opencode for task %s (timeout=%ds, mode=%s)",
                         task.task_id, self._timeout, self._controller_mode)
 
+            self._last_controller_metadata = {}
             if self._controller_mode == "docker":
                 raw_output, stderr, returncode = self._run_in_docker(cmd, workdir, env)
+            elif self._controller_mode == "podman":
+                raw_output, stderr, returncode = self._run_in_podman(cmd, workdir, env)
             else:
                 process: subprocess.Popen[str] | None = None
                 try:
@@ -1264,7 +1419,7 @@ class OpenCodeAgent(Agent):
         transport = (
             "opencode_cli_container"
             if self._controller_mode == "docker"
-            else "opencode_cli"
+            else ("opencode_cli_podman" if self._controller_mode == "podman" else "opencode_cli")
         )
 
         error_info = _extract_opencode_error(events)
@@ -1280,7 +1435,10 @@ class OpenCodeAgent(Agent):
             "num_attachments": len(attachment_paths),
             "controller_mode": self._controller_mode,
             "transport": transport,
+            "logprob_support": "enabled" if self._logprob_capture["enabled"] else "disabled",
         }
+        if self._controller_mode == "podman":
+            response_metadata.update(self._last_controller_metadata)
         if request_overrides:
             response_metadata["logprob_proxy_request_overrides"] = request_overrides
         if logprob_proxy_client_timeout is not None:
@@ -1313,17 +1471,30 @@ class OpenCodeAgent(Agent):
                 "partial_output_used_for_raw_output": False,
             })
 
-        full_content = assistant_text or raw_output
+        event_types = _opencode_event_types(events)
+        answer_source = "assistant_text"
+        answer_source_text = assistant_text
         if (
             partial_output.strip()
             and (returncode != 0 or error_info)
             and (
-                not assistant_text.strip()
-                or len(partial_output.strip()) > len(full_content.strip())
+                not answer_source_text.strip()
+                or len(partial_output.strip()) > len(answer_source_text.strip())
             )
         ):
-            full_content = partial_output
+            answer_source = "model_text"
+            answer_source_text = partial_output
             response_metadata["partial_output_used_for_raw_output"] = True
+        response_metadata.update({
+            "answer_source": answer_source,
+            "answer_source_text": answer_source_text,
+            "assistant_text_chars": len(assistant_text),
+            "has_assistant_text": bool(assistant_text.strip()),
+            "raw_event_count": len(events),
+            "event_types": event_types,
+        })
+
+        full_content = answer_source_text
 
         trajectory, reasoning_trajectory = build_event_trajectories(
             request_messages,
@@ -1331,14 +1502,7 @@ class OpenCodeAgent(Agent):
             final_output=full_content,
         )
 
-        if _is_swe_bench_task(task):
-            answer = _extract_patch_from_text(full_content)
-        elif returncode == -1:
-            answer = _extract_strict_answer(full_content)
-        else:
-            answer = extract_answer_candidate(full_content)
-
-        if returncode != 0 and not answer:
+        if returncode != 0 and not full_content.strip():
             logger.warning(
                 "OpenCode returned non-zero exit code %d for task %s. stderr: %s",
                 returncode,
@@ -1362,6 +1526,32 @@ class OpenCodeAgent(Agent):
                 "error_type": "agent_error",
             }
 
+        empty_output_info = None
+        if not failure_info and not timeout_info and not full_content.strip():
+            failure_reason = (
+                "opencode_lifecycle_only_events"
+                if _opencode_lifecycle_only(events)
+                else "opencode_empty_assistant_output"
+            )
+            empty_output_info = {
+                "status": "agent_empty_output",
+                "failure_reason": failure_reason,
+            }
+            response_metadata.update({
+                "opencode_empty_assistant_output": True,
+                "score_status": "agent_empty_output",
+                "valid_scored": False,
+                "metric_contribution": 0,
+                "failure_reason": failure_reason,
+            })
+
+        if failure_info or timeout_info or empty_output_info:
+            answer = None
+        elif _is_swe_bench_task(task):
+            answer = _extract_patch_from_text(full_content)
+        else:
+            answer = extract_answer_candidate(full_content, source=answer_source)
+
         workspace_file_contents: dict[str, str] = dict(
             preserved_local_artifacts.get("workspace_file_contents", {}) or {}
         )
@@ -1371,6 +1561,10 @@ class OpenCodeAgent(Agent):
         })
         if partial_output.strip():
             workspace_file_contents["opencode_partial_output.txt"] = partial_output
+        if self._controller_mode == "podman" and response_metadata.get("container_logs_collected"):
+            workspace_file_contents["opencode_podman_container.log"] = str(
+                response_metadata.get("container_log_excerpt") or ""
+            )
         if stderr:
             workspace_file_contents["opencode_stderr.log"] = stderr
         if attachment_paths:
@@ -1409,6 +1603,11 @@ class OpenCodeAgent(Agent):
                 if "opencode_session.jsonl" in workspace_file_contents
                 else None
             ),
+            podman_container_log=(
+                "opencode_podman_container.log"
+                if "opencode_podman_container.log" in workspace_file_contents
+                else None
+            ),
             stderr_log="opencode_stderr.log" if stderr else None,
             prompt_text="prompt.txt",
             attachment_manifest="attachment_manifest.json" if attachment_paths else None,
@@ -1427,6 +1626,12 @@ class OpenCodeAgent(Agent):
                     "partial_output_used_for_raw_output",
                     False,
                 ),
+                "answer_source": answer_source,
+                "answer_source_text": answer_source_text,
+                "assistant_text_chars": response_metadata["assistant_text_chars"],
+                "has_assistant_text": response_metadata["has_assistant_text"],
+                "raw_event_count": response_metadata["raw_event_count"],
+                "event_types": event_types,
             },
         )
         status_info = failure_info or timeout_info
@@ -1450,6 +1655,16 @@ class OpenCodeAgent(Agent):
                 "opencode_timeout_scored_zero": True,
                 "opencode_timeout_seconds": self._timeout,
             }
+        if empty_output_info:
+            response_json = {
+                **response_json,
+                "status": empty_output_info["status"],
+                "score_status": empty_output_info["status"],
+                "valid_scored": False,
+                "metric_contribution": 0,
+                "failure_reason": empty_output_info["failure_reason"],
+                "opencode_empty_assistant_output": True,
+            }
 
         response = AgentResponse(
             answer=None if failure_info else answer,
@@ -1464,7 +1679,11 @@ class OpenCodeAgent(Agent):
             artifact_manifest=artifact_manifest,
             workspace_file_contents=workspace_file_contents,
             system_prompt=str(self._system_prompt),
-            finish_reason="timeout" if timeout_info and not failure_info else "",
+            finish_reason=(
+                "timeout"
+                if timeout_info and not failure_info
+                else ("agent_empty_output" if empty_output_info and not failure_info else "")
+            ),
         )
         if failure_info:
             exc = RuntimeError(failure_info["message"])

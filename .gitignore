@@ -53,6 +53,13 @@ dump.rdb
 !/configs/examples/**
 !/configs/full_runs/
 !/configs/full_runs/**
+!/configs/smokes/
+!/configs/smokes/podman_nightly_validation/
+!/configs/smokes/podman_nightly_validation/**
+!/configs/smokes/podman_scale_readiness/
+!/configs/smokes/podman_scale_readiness/**
+!/configs/smokes/podman_mmmu_pro_readiness/
+!/configs/smokes/podman_mmmu_pro_readiness/**
 /artifacts/
 
 # MoltBench runtime artifacts
@@ -64,6 +71,7 @@ moltbench_pipeline_*/
 
 dev/generated
 scripts/.alphadiana_env
+scripts/generated/*.resolved.yaml
 logs/
 
 .cache

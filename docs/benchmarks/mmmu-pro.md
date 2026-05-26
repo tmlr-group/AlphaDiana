@@ -29,6 +29,52 @@ python -m alphadiana.cli env
 | `opencode` | smoke/debug supported | `configs/examples/opencode_mmmu_pro.yaml` | `configs/full_runs/rollout_full_opencode_mmmu_pro_vision.yaml` |
 | `zeroclaw` | smoke/debug supported | `configs/examples/zeroclaw_mmmu_pro.yaml` | `configs/full_runs/rollout_full_zeroclaw_mmmu_pro_vision.yaml` |
 
+## Podman Multimodal Readiness
+
+Phase 6 added an opt-in Podman readiness matrix for OpenClaw, ZeroClaw, and
+OpenCode on three deterministic MMMU-Pro `vision` rows:
+
+- `mmmu_pro_test_History_1`
+- `mmmu_pro_test_Art_113`
+- `mmmu_pro_validation_Design_19`
+
+Configs live under `configs/smokes/podman_mmmu_pro_readiness/`.
+
+Current status as of May 16, 2026: `Qwen/Qwen3.5-4B` served by the local vLLM
+endpoint at `http://127.0.0.1:8011/v1` is verified for both remote
+`image_url` and `data:image/png;base64` chat requests on the host and from
+Podman `--network host`. The repaired run prefix
+`podman_mmmu_pro_qwen35_thinking_20260516_144304` passed the automated
+`validate -> preflight -> pilot -> audit` readiness flow. It wrote all 9
+expected task rows with `metadata.container_engine=podman`; the audit passed
+with `audit_passed=true` and `audit_failure_count=0`.
+
+Use this sequence before any future pilot attempt:
+
+```bash
+export OPENAI_BASE_URL=http://127.0.0.1:8011/v1
+export OPENAI_API_KEY=EMPTY
+export OPENAI_MODEL_NAME=Qwen/Qwen3.5-4B
+export PODMAN_MMMU_PRO_MAX_TOKENS=8192
+export PODMAN_MMMU_PRO_ENABLE_THINKING=1
+export PODMAN_MMMU_PRO_VLM_IMAGE_URL=https://qianwen-res.oss-accelerate.aliyuncs.com/Qwen3.5/demo/RealWorld/RealWorld-04.png
+export HF_HOME=<hf-cache-dir>
+export HF_DATASETS_CACHE=<hf-datasets-cache-dir>
+export PODMAN_MMMU_RUN_PREFIX=podman_mmmu_pro_$(date +%Y%m%d_%H%M%S)
+
+bash scripts/run_podman_mmmu_pro_readiness.sh all
+```
+
+The patched preflight runs inside Podman, keeps thinking mode on, uses at
+least 8192 output tokens, and checks both remote `image_url` and data URL image
+inputs. The audit gate is infrastructure readiness, not accuracy: all 9 task
+rows must be written with `metadata.container_engine=podman`, image proof, logs
+and artifacts, and no text-only fallback or provider VLM rejection. Historical
+and current evidence for this readiness pilot are recorded in
+[`context/podman-mmmu-pro-readiness/README.md`](../../context/podman-mmmu-pro-readiness/README.md).
+No full MMMU-Pro sweep, Podman default promotion, or legacy runtime deletion is
+claimed by this matrix.
+
 For the staged `72`-run local-vLLM campaign, use
 [full-rollout-local-vllm-20260419.md](full-rollout-local-vllm-20260419.md)
 instead of launching the four full configs manually.

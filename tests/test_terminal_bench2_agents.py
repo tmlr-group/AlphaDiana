@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -16,7 +17,10 @@ from alphadiana.agent.terminal_bench2_incontainer import (
     IN_CONTAINER_AGENT_PROMPT,
     TerminalBench2InContainerMixin,
 )
-from alphadiana.agent.terminal_bench2_opencode import TerminalBench2OpenCodeAgent
+from alphadiana.agent.terminal_bench2_opencode import (
+    TerminalBench2OpenCodeAgent,
+    _jsonl_from_stdout,
+)
 from alphadiana.agent.terminal_bench2_openclaw import TerminalBench2OpenClawAgent
 from alphadiana.agent.terminal_bench2_zeroclaw import (
     TerminalBench2ZeroClawAgent,
@@ -25,6 +29,7 @@ from alphadiana.agent.terminal_bench2_zeroclaw import (
 from alphadiana.benchmark.base import BenchmarkTask
 from alphadiana.config.experiment_config import ExperimentConfig
 from alphadiana.config.validator import ConfigValidator
+from alphadiana.container_runtime.podman_cli import PodmanCLI
 from alphadiana.results.status import infer_score_status, is_valid_completed_record
 from alphadiana.utils.rock_runtime import PREBUILT_SANDBOX_IMAGE
 
@@ -52,6 +57,26 @@ def test_logs_dir_isolated_by_sample_and_execution_id(tmp_path: Path) -> None:
     assert logs_dir == tmp_path / "tb2_demo_s2_abc12345"
 
 
+def test_logs_base_dir_relative_config_resolves_to_absolute_bind_source(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    harness = _MixinHarness()
+    harness._setup_container_config({"logs_base_dir": "logs/tb2-runtime"})
+    task = BenchmarkTask(
+        task_id="tb2_demo",
+        problem="demo",
+        ground_truth="1",
+        metadata={"sample_index": 0, "execution_id": "abcdef123456"},
+    )
+
+    logs_dir = harness._logs_dir_for_task(task)
+
+    assert logs_dir == (tmp_path / "logs/tb2-runtime/tb2_demo_s0_abcdef12").resolve()
+    assert logs_dir.is_absolute()
+
+
 def test_terminal_bench2_helper_workspace_uses_control_side_helpers(tmp_path: Path) -> None:
     harness = _MixinHarness()
     task = BenchmarkTask(task_id="tb2_demo", problem="demo task", ground_truth="1")
@@ -73,6 +98,336 @@ def test_terminal_bench2_helper_workspace_uses_control_side_helpers(tmp_path: Pa
     assert "Do not call `docker` directly" in helper_paths["agents"].read_text(encoding="utf-8")
     assert "do not call it during normal solving" in NATIVE_AGENT_PROMPT
     assert "manual debugging" in helper_paths["agents"].read_text(encoding="utf-8")
+
+
+def test_terminal_bench2_podman_helpers_use_runtime_shim(tmp_path: Path) -> None:
+    harness = _MixinHarness()
+    harness._setup_container_config({"container_engine": "podman"})
+    task = BenchmarkTask(task_id="tb2_demo", problem="demo task", ground_truth="1")
+
+    helper_paths = harness._write_helper_scripts(tmp_path, "demo-container", task)
+
+    exec_text = helper_paths["exec"].read_text(encoding="utf-8")
+    copy_from_text = helper_paths["copy_from"].read_text(encoding="utf-8")
+    assert "alphadiana.container_runtime.task_cli exec demo-container" in exec_text
+    assert "alphadiana.container_runtime.task_cli cp demo-container:" in copy_from_text
+    assert "docker exec" not in exec_text
+
+
+def test_terminal_bench2_podman_start_container_uses_runtime(tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+
+    def fake_runner(argv, **kwargs):
+        calls.append(list(argv))
+        if argv[1] == "run":
+            return subprocess.CompletedProcess(argv, 0, stdout="podman-cid\n", stderr="")
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    harness = _MixinHarness()
+    harness._setup_container_config({
+        "container_engine": "podman",
+        "podman_runtime": PodmanCLI(runner=fake_runner),
+    })
+    task = BenchmarkTask(task_id="tb2_demo", problem="demo", ground_truth="1")
+    logs_dir = tmp_path / "logs"
+    logs_dir.mkdir()
+
+    cid = harness._start_container("tb2-task:latest", logs_dir, task)
+
+    assert cid == "podman-cid"
+    assert calls[0][:4] == ["podman", "run", "-d", "--rm"]
+    assert "--entrypoint" in calls[0]
+    assert "/bin/sh" in calls[0]
+    assert "--network" in calls[0]
+    assert "slirp4netns:allow_host_loopback=true" in calls[0]
+    assert "-v" in calls[0]
+    assert f"{logs_dir}:/logs" in calls[0]
+    assert calls[0][-3:] == ["tb2-task:latest", "-lc", "sleep infinity"]
+    assert calls[1][:5] == ["podman", "exec", "--user", "0:0", "podman-cid"]
+
+
+def test_terminal_bench2_podman_start_container_allows_network_override(tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+
+    def fake_runner(argv, **kwargs):
+        calls.append(list(argv))
+        if argv[1] == "run":
+            return subprocess.CompletedProcess(argv, 0, stdout="podman-cid\n", stderr="")
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    harness = _MixinHarness()
+    harness._setup_container_config({
+        "container_engine": "podman",
+        "podman_network": "",
+        "podman_runtime": PodmanCLI(runner=fake_runner),
+    })
+    task = BenchmarkTask(task_id="tb2_demo", problem="demo", ground_truth="1")
+    logs_dir = tmp_path / "logs"
+    logs_dir.mkdir()
+
+    harness._start_container("tb2-task:latest", logs_dir, task)
+
+    assert "--network" not in calls[0]
+
+
+def test_terminal_bench2_podman_start_container_rewrites_loopback_proxy(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    for key in (
+        "ALL_PROXY",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "NO_PROXY",
+        "all_proxy",
+        "http_proxy",
+        "https_proxy",
+        "no_proxy",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:17890")
+    monkeypatch.setenv("HTTPS_PROXY", "http://localhost:17890")
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
+
+    calls: list[list[str]] = []
+
+    def fake_runner(argv, **kwargs):
+        calls.append(list(argv))
+        if argv[1] == "run":
+            return subprocess.CompletedProcess(argv, 0, stdout="podman-cid\n", stderr="")
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    harness = _MixinHarness()
+    harness._setup_container_config({
+        "container_engine": "podman",
+        "podman_runtime": PodmanCLI(runner=fake_runner),
+    })
+    task = BenchmarkTask(task_id="tb2_demo", problem="demo", ground_truth="1")
+    logs_dir = tmp_path / "logs"
+    logs_dir.mkdir()
+
+    harness._start_container("tb2-task:latest", logs_dir, task)
+
+    run_argv = calls[0]
+    assert "--http-proxy=false" in run_argv
+    assert "HTTP_PROXY=http://host.containers.internal:17890" in run_argv
+    assert "HTTPS_PROXY=http://host.containers.internal:17890" in run_argv
+    assert "NO_PROXY=127.0.0.1,localhost" in run_argv
+    assert "HTTP_PROXY=http://127.0.0.1:17890" not in run_argv
+    assert "HTTPS_PROXY=http://localhost:17890" not in run_argv
+
+
+def test_terminal_bench2_podman_start_container_bypasses_provider_proxy(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    for key in (
+        "ALL_PROXY",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "NO_PROXY",
+        "all_proxy",
+        "http_proxy",
+        "https_proxy",
+        "no_proxy",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:17890")
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://172.17.0.1:8011/v1")
+    calls: list[list[str]] = []
+
+    def fake_runner(argv, **kwargs):
+        calls.append(list(argv))
+        if argv[1] == "run":
+            return subprocess.CompletedProcess(argv, 0, stdout="podman-cid\n", stderr="")
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    harness = _MixinHarness()
+    harness._setup_container_config({
+        "container_engine": "podman",
+        "podman_runtime": PodmanCLI(runner=fake_runner),
+    })
+    task = BenchmarkTask(task_id="tb2_demo", problem="demo", ground_truth="1")
+    logs_dir = tmp_path / "logs"
+    logs_dir.mkdir()
+
+    harness._start_container("tb2-task:latest", logs_dir, task)
+
+    run_argv = calls[0]
+    assert "HTTP_PROXY=http://host.containers.internal:17890" in run_argv
+    assert "NO_PROXY=127.0.0.1,localhost,172.17.0.1" in run_argv
+
+
+def test_terminal_bench2_podman_start_container_can_disable_proxy_forwarding(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:17890")
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
+    calls: list[list[str]] = []
+
+    def fake_runner(argv, **kwargs):
+        calls.append(list(argv))
+        if argv[1] == "run":
+            return subprocess.CompletedProcess(argv, 0, stdout="podman-cid\n", stderr="")
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    harness = _MixinHarness()
+    harness._setup_container_config({
+        "container_engine": "podman",
+        "forward_proxy_env": False,
+        "podman_runtime": PodmanCLI(runner=fake_runner),
+    })
+    task = BenchmarkTask(task_id="tb2_demo", problem="demo", ground_truth="1")
+    logs_dir = tmp_path / "logs"
+    logs_dir.mkdir()
+
+    harness._start_container("tb2-task:latest", logs_dir, task)
+
+    run_argv = calls[0]
+    assert not any(arg.startswith("HTTP_PROXY=") for arg in run_argv)
+    assert not any(arg.startswith("NO_PROXY=") for arg in run_argv)
+
+
+def test_terminal_bench2_podman_start_recovers_container_after_timeout(tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+
+    def fake_runner(argv, **kwargs):
+        calls.append(list(argv))
+        if argv[1] == "run":
+            raise subprocess.TimeoutExpired(argv, timeout=kwargs.get("timeout"))
+        if argv[1] == "inspect":
+            payload = [{"Id": "recovered-cid", "State": {"Running": True, "Status": "running"}}]
+            return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(payload), stderr="")
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    harness = _MixinHarness()
+    harness._setup_container_config({
+        "container_engine": "podman",
+        "podman_runtime": PodmanCLI(runner=fake_runner),
+    })
+    task = BenchmarkTask(
+        task_id="tb2_fix-code-vulnerability",
+        problem="demo",
+        ground_truth="1",
+        metadata={"sample_index": 0, "execution_id": "abc123456789"},
+    )
+    logs_dir = tmp_path / "logs"
+    logs_dir.mkdir()
+
+    cid = harness._start_container("tb2-task:latest", logs_dir, task)
+
+    assert cid == "recovered-cid"
+    run_argv = calls[0]
+    assert "--name" in run_argv
+    assert "alphadiana-tb2_fix-code-vulnerability-s0-abc123456789" in run_argv
+    assert calls[1][1:3] == ["inspect", "alphadiana-tb2_fix-code-vulnerability-s0-abc123456789"]
+    assert calls[2][:5] == ["podman", "exec", "--user", "0:0", "recovered-cid"]
+
+
+def test_terminal_bench2_podman_image_exists_retries_transient_timeout() -> None:
+    calls: list[list[str]] = []
+
+    def fake_runner(argv, **kwargs):
+        calls.append(list(argv))
+        if len(calls) == 1:
+            raise subprocess.TimeoutExpired(argv, timeout=kwargs.get("timeout"))
+        return subprocess.CompletedProcess(argv, 0, stdout="[]\n", stderr="")
+
+    harness = _InContainerHarness()
+    harness._setup_container_config({
+        "container_engine": "podman",
+        "podman_runtime": PodmanCLI(runner=fake_runner),
+    })
+
+    assert harness._docker_image_exists("alexgshaw/configure-git-webserver:20251031") is True
+    assert [call[1:3] for call in calls] == [["image", "inspect"], ["image", "inspect"]]
+
+
+def test_terminal_bench2_podman_build_retries_transient_failure() -> None:
+    calls: list[list[str]] = []
+
+    def fake_runner(argv, **kwargs):
+        calls.append(list(argv))
+        if len(calls) == 1:
+            return subprocess.CompletedProcess(argv, 125, stdout="", stderr="transient storage lock")
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    harness = _InContainerHarness()
+    harness._setup_container_config({
+        "container_engine": "podman",
+        "podman_runtime": PodmanCLI(runner=fake_runner),
+    })
+
+    harness._docker_build_image(
+        "alphadiana-tb2-runtime:demo",
+        "FROM scratch\n",
+        build_args={"BASE_IMAGE": "alexgshaw/demo:latest"},
+    )
+
+    assert [call[1] for call in calls] == ["build", "build"]
+    assert "BASE_IMAGE=docker.io/alexgshaw/demo:latest" in calls[0]
+
+
+def test_terminal_bench2_podman_exec_retries_transient_storage_error() -> None:
+    calls: list[list[str]] = []
+    transient = (
+        "Error: open /tmp/alphadiana-podman-data/containers/storage/"
+        "overlay-containers/demo/userdata/abc/exit/demo: no such file or directory"
+    )
+
+    def fake_runner(argv, **kwargs):
+        calls.append(list(argv))
+        if len(calls) == 1:
+            return subprocess.CompletedProcess(argv, 125, stdout="", stderr=transient)
+        return subprocess.CompletedProcess(argv, 0, stdout="ok\n", stderr="")
+
+    harness = _InContainerHarness()
+    harness._setup_container_config({
+        "container_engine": "podman",
+        "podman_runtime": PodmanCLI(runner=fake_runner),
+    })
+
+    result = harness._docker_exec_capture("demo", "echo ok", timeout_sec=30, check=True)
+
+    assert result.returncode == 0
+    assert result.stdout == "ok\n"
+    assert [call[1] for call in calls] == ["exec", "exec"]
+
+
+def test_terminal_bench2_podman_copy_from_falls_back_to_exec_cat(tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+
+    def fake_runner(argv, **kwargs):
+        calls.append(list(argv))
+        if argv[1] == "cp":
+            return subprocess.CompletedProcess(
+                argv,
+                125,
+                stdout="",
+                stderr='error determining run uid: user: unknown user error looking up user "root"',
+            )
+        if argv[1] == "exec" and "cat /tmp/session.jsonl" in argv[-1]:
+            return subprocess.CompletedProcess(argv, 0, stdout='{"type":"session"}\n', stderr="")
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    harness = _InContainerHarness()
+    harness._setup_container_config({
+        "container_engine": "podman",
+        "podman_runtime": PodmanCLI(runner=fake_runner),
+    })
+    local_path = tmp_path / "session.jsonl"
+
+    copied = harness._copy_file_from_container(
+        "demo",
+        remote_path="/tmp/session.jsonl",
+        local_path=local_path,
+    )
+
+    assert copied is True
+    assert local_path.read_text(encoding="utf-8") == '{"type":"session"}\n'
+    assert [call[1] for call in calls] == ["cp", "exec"]
 
 
 def test_terminal_bench2_db_wal_task_note_mentions_workspace_snapshot(tmp_path: Path) -> None:
@@ -289,7 +644,9 @@ scorer:
     assert config.agent_config["api_key"] == "secret"
 
 
-def test_terminal_bench2_openclaw_builds_local_cli_env() -> None:
+def test_terminal_bench2_openclaw_builds_local_cli_env(monkeypatch) -> None:
+    monkeypatch.delenv("NO_PROXY", raising=False)
+    monkeypatch.delenv("no_proxy", raising=False)
     agent = TerminalBench2OpenClawAgent()
     agent.setup({
         "api_base": "http://localhost/v1",
@@ -303,12 +660,27 @@ def test_terminal_bench2_openclaw_builds_local_cli_env() -> None:
 
     env = agent._build_env("/tmp/openclaw-home", "/tmp/openclaw-plugins")
 
+    assert set(env) == {
+        "CUSTOM_API_KEY",
+        "HOME",
+        "NO_PROXY",
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+        "OPENAI_MODEL_NAME",
+        "OPENCLAW_BUNDLED_PLUGINS_DIR",
+        "OPENCLAW_HOME",
+        "OPENCLAW_UNDICI_STREAM_TIMEOUT_MS",
+        "no_proxy",
+    }
     assert env["HOME"] == "/tmp/openclaw-home"
     assert env["OPENCLAW_HOME"] == "/tmp/openclaw-home"
     assert env["OPENCLAW_BUNDLED_PLUGINS_DIR"] == "/tmp/openclaw-plugins"
     assert env["OPENAI_BASE_URL"] == "http://localhost/v1"
     assert env["OPENAI_MODEL_NAME"] == "minimax-m2.5"
     assert env["CUSTOM_API_KEY"] == "secret"
+    assert env["OPENCLAW_UNDICI_STREAM_TIMEOUT_MS"] == "1800000"
+    assert env["NO_PROXY"] == "localhost"
+    assert env["no_proxy"] == "localhost"
 
 
 def test_terminal_bench2_openclaw_onboard_uses_noninteractive_local_mode() -> None:
@@ -406,6 +778,48 @@ def test_terminal_bench2_openclaw_context_preflight_rejects_small_window(tmp_pat
     assert '"resolved_context_window": 16000' in preflight
 
 
+def test_terminal_bench2_openclaw_patches_runtime_max_tokens(tmp_path: Path) -> None:
+    agent = TerminalBench2OpenClawAgent()
+    agent.setup({
+        "api_base": "http://localhost/v1",
+        "api_key": "secret",
+        "model_name": "Qwen/Qwen3.5-4B",
+        "max_tokens": 131072,
+    })
+    config_path = tmp_path / "openclaw.json"
+    config_path.write_text(
+        json.dumps({
+            "models": {
+                "providers": {
+                    "custom": {
+                        "models": [
+                            {
+                                "id": "Qwen/Qwen3.5-4B",
+                                "name": "Qwen/Qwen3.5-4B",
+                                "contextWindow": 32768,
+                                "maxTokens": 4096,
+                            }
+                        ]
+                    }
+                }
+            }
+        }),
+        encoding="utf-8",
+    )
+
+    patch = agent._patch_runtime_model_contract(config_path, resolved_context_window=262144)
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    model = payload["models"]["providers"]["custom"]["models"][0]
+
+    assert patch["patched"] is True
+    assert patch["max_tokens"] == 131072
+    assert patch["timeout_seconds"] == 1800
+    assert model["contextWindow"] == 262144
+    assert model["maxTokens"] == 131072
+    assert payload["agents"]["defaults"]["timeoutSeconds"] == 1800
+    assert payload["tools"]["exec"]["timeoutSec"] == 1800
+
+
 def test_terminal_bench2_opencode_writes_native_prompt_and_provider_config(tmp_path: Path) -> None:
     agent = TerminalBench2OpenCodeAgent()
     agent.setup({
@@ -466,7 +880,7 @@ def test_terminal_bench2_zeroclaw_writes_native_prompt_and_config(tmp_path: Path
 
     task = BenchmarkTask(task_id="tb2_demo", problem="demo", ground_truth="1")
     _, prompt_text = agent._build_runtime_prompt(task)
-    env = agent._build_env("/tmp/zeroclaw-home")
+    env = agent._build_tb2_env("/tmp/zeroclaw-home", "/tmp/zeroclaw-home/.zeroclaw")
     config_text = agent._build_config_toml()
 
     assert env["OPENAI_BASE_URL"] == "http://localhost/v1"
@@ -475,6 +889,7 @@ def test_terminal_bench2_zeroclaw_writes_native_prompt_and_config(tmp_path: Path
     assert 'default_provider = "custom:http://localhost/v1"' in config_text
     assert "[security.sandbox]" in config_text
     assert "enabled = false" in config_text
+    assert 'runtime_trace_mode = "full"' in config_text
     assert "workspace_only = false" in config_text
     assert '"./tb2-exec"' not in config_text
     assert '"./tb2-copy-from"' not in config_text
@@ -498,6 +913,8 @@ def test_terminal_bench2_zeroclaw_agent_command_uses_local_prompt_file(tmp_path:
     })
     cmd = agent._build_run_command({
         "workspace_dir": "/app",
+        "zc_home_dir": "/tmp/zeroclaw-home/.zeroclaw",
+        "session_state_path": "/tmp/zeroclaw-home/state/zeroclaw-session-state.json",
         "task_path": str(tmp_path / "task.txt"),
         "stdout_path": str(tmp_path / "zeroclaw_output.txt"),
         "stderr_path": str(tmp_path / "zeroclaw_stderr.log"),
@@ -505,8 +922,211 @@ def test_terminal_bench2_zeroclaw_agent_command_uses_local_prompt_file(tmp_path:
 
     assert "cd /app" in cmd
     assert f"prompt=$(cat {tmp_path / 'task.txt'})" in cmd
-    assert 'timeout 321 zeroclaw agent -m "$prompt"' in cmd
+    assert "timeout 321 zeroclaw --config-dir /tmp/zeroclaw-home/.zeroclaw agent" in cmd
+    assert "--session-state-file /tmp/zeroclaw-home/state/zeroclaw-session-state.json" in cmd
+    assert '-m "$prompt"' in cmd
     assert str(tmp_path / "zeroclaw_output.txt") in cmd
+
+
+def test_terminal_bench2_zeroclaw_provider_proxy_is_preserved(tmp_path: Path) -> None:
+    proxy_instances = []
+
+    class _FakeProxy:
+        def __init__(self, upstream, top_logprobs, **kwargs):
+            self.upstream = upstream.rstrip("/")
+            self.top_logprobs = top_logprobs
+            self.kwargs = kwargs
+            self.proxy_url = "http://172.17.0.1:4567"
+            self.stopped = False
+            self._records_drained = False
+            proxy_instances.append(self)
+
+        def start(self):
+            return None
+
+        def stop(self):
+            self.stopped = True
+
+        def drain_request_summaries(self):
+            return [
+                {
+                    "path": "/v1/chat/completions",
+                    "model": "minimax-m2.5",
+                    "message_roles_before": ["user", "system"],
+                    "message_roles_after": ["system", "user"],
+                    "system_indices_before": [1],
+                    "system_indices_after": [0],
+                    "normalized_system_messages": True,
+                    "max_tokens": 4096,
+                    "logprobs": None,
+                    "top_logprobs": None,
+                    "has_tools": True,
+                    "tool_count": 1,
+                }
+            ]
+
+        def drain_response_summaries(self):
+            return [
+                {
+                    "path": "/v1/chat/completions",
+                    "status_code": 200,
+                    "model": "minimax-m2.5",
+                    "choice_count": 1,
+                    "finish_reasons": ["tool_calls"],
+                    "content_lengths": [0],
+                    "reasoning_lengths": [11],
+                    "tool_call_counts": [1],
+                    "empty_content_choice_count": 1,
+                    "empty_reasoning_choice_count": 0,
+                    "empty_content_and_reasoning_choice_count": 0,
+                    "empty_content_and_reasoning_choice_indices": [],
+                    "empty_content_reasoning_and_tool_choice_count": 0,
+                    "empty_content_reasoning_and_tool_choice_indices": [],
+                    "prompt_tokens": 10,
+                    "completion_tokens": 20,
+                    "total_tokens": 30,
+                }
+            ]
+
+        def drain_records(self):
+            if self._records_drained:
+                return []
+            self._records_drained = True
+            return [
+                {
+                    "token_index": 0,
+                    "token": "answer",
+                    "logprob": -0.1,
+                    "top_logprobs": [{"token": "answer", "logprob": -0.1}],
+                }
+            ]
+
+    agent = TerminalBench2ZeroClawAgent()
+    agent.setup({
+        "api_base": "http://localhost/v1",
+        "api_key": "secret",
+        "model": "minimax-m2.5",
+        "solver_timeout_sec": 321,
+        "max_tokens": 4096,
+        "capture_logprobs": True,
+        "top_logprobs": 7,
+        "normalize_provider_system_messages": True,
+        "provider_proxy_capture_request_summary": True,
+        "provider_proxy_inject_logprobs": True,
+        "provider_proxy_upstream_stream": True,
+    })
+    task = BenchmarkTask(
+        task_id="tb2_demo",
+        problem="demo task",
+        ground_truth="1",
+        metadata={"task_dir": str(tmp_path)},
+    )
+    runtime = _make_incontainer_runtime(tmp_path, task, "tb2-zeroclaw-proxy-")
+
+    try:
+        with patch.object(
+            agent,
+            "_prepare_incontainer_runtime",
+            return_value=(runtime, {"runtime_injected": True}),
+        ), patch.object(
+            agent,
+            "_detect_container_workspace",
+            return_value="/app",
+        ), patch.object(
+            agent,
+            "_stage_file_into_container",
+            return_value=None,
+        ), patch.object(
+            agent,
+            "_docker_exec_capture",
+            side_effect=[
+                LocalCommandResult(stdout="", stderr="", returncode=0),
+                LocalCommandResult(stdout="", stderr="", returncode=0),
+            ],
+        ) as mock_exec, patch.object(
+            agent,
+            "_read_container_text",
+            side_effect=lambda _container_id, remote_path, **_kwargs: (
+                "assistant output" if remote_path.endswith("zeroclaw_output.txt") else ""
+            ),
+        ), patch.object(
+            agent,
+            "_run_verifier_and_read_reward",
+            return_value=VerifierResult(
+                test_output="verifier output",
+                reward="0",
+                status="ok",
+                reward_path="/tmp/reward.txt",
+                verifier_output_path="/tmp/verifier",
+            ),
+        ), patch(
+            "alphadiana.agent.terminal_bench2_zeroclaw.LogprobCaptureProxy",
+            _FakeProxy,
+        ), patch(
+            "alphadiana.agent.terminal_bench2_zeroclaw.secrets.token_urlsafe",
+            lambda _: "proxy-token",
+        ), patch.object(
+            agent,
+            "_cleanup_runtime",
+            return_value=None,
+        ):
+            response = agent.solve(task)
+
+        proxy = proxy_instances[0]
+        assert proxy.upstream == "http://localhost/v1"
+        assert proxy.kwargs["inject_logprobs"] is True
+        assert proxy.top_logprobs == 7
+        assert proxy.kwargs["normalize_system_messages"] is True
+        assert proxy.kwargs["capture_request_summary"] is True
+        assert proxy.kwargs["upstream_stream"] is True
+        assert proxy.kwargs["request_overrides"]["max_tokens"] == 4096
+        assert proxy.stopped is True
+
+        config_text = (
+            runtime.workdir / ".zeroclaw-home" / ".zeroclaw" / "config.toml"
+        ).read_text(encoding="utf-8")
+        assert 'default_provider = "custom:http://172.17.0.1:4567/v1"' in config_text
+        exec_env = mock_exec.call_args_list[1].kwargs["env"]
+        assert exec_env["OPENAI_BASE_URL"] == "http://172.17.0.1:4567/v1"
+        assert exec_env["OPENAI_API_KEY"] == "proxy-token"
+        assert exec_env["ZEROCLAW_PROVIDER"] == "custom:http://172.17.0.1:4567/v1"
+
+        summary_text = response.workspace_file_contents[
+            "/terminal_bench2/zeroclaw/provider_request_summary.jsonl"
+        ]
+        assert "demo task" not in summary_text
+        assert '"normalized_system_messages": true' in summary_text
+        assert response.artifact_manifest["files"]["provider_request_summary"] == (
+            "provider_request_summary.jsonl"
+        )
+        response_summary_text = response.workspace_file_contents[
+            "/terminal_bench2/zeroclaw/provider_response_summary.jsonl"
+        ]
+        assert "thinking" not in response_summary_text
+        assert '"reasoning_lengths": [11]' in response_summary_text
+        assert response.artifact_manifest["files"]["provider_response_summary"] == (
+            "provider_response_summary.jsonl"
+        )
+        assert response.metadata["provider_proxy_request_count"] == 1
+        assert response.metadata["provider_proxy_response_count"] == 1
+        assert response.metadata["provider_proxy_normalized_request_count"] == 1
+        assert response.metadata["provider_proxy_empty_content_response_count"] == 1
+        assert response.metadata["provider_proxy_error_response_count"] == 0
+        assert response.metadata["provider_proxy_upstream_stream"] is True
+        assert response.metadata[
+            "provider_proxy_empty_content_and_reasoning_response_count"
+        ] == 0
+        assert response.metadata[
+            "provider_proxy_empty_content_reasoning_and_tool_response_count"
+        ] == 0
+        assert response.metadata["provider_proxy_logprob_record_count"] == 1
+        assert response.metadata["logprobs_capture_status"] == "captured"
+        assert response.metadata["logprob_capture_harness"] == "zeroclaw"
+        assert response.metadata["logprob_source"] == "provider_proxy"
+        assert response.token_entropy_stats["n_tokens"] == 1
+        assert response.metadata["logprob_records"][0]["token"] == "answer"
+    finally:
+        runtime.cleanup()
 
 
 def test_terminal_bench2_zeroclaw_solve_preserves_nonzero_solver_result(tmp_path: Path) -> None:
@@ -645,6 +1265,291 @@ def _make_incontainer_runtime(tmp_path: Path, task: BenchmarkTask, prefix: str) 
     return runtime
 
 
+def test_terminal_bench2_cleanup_preserves_verifier_logs_dir(tmp_path: Path) -> None:
+    harness = _MixinHarness()
+    tempdir = tempfile.TemporaryDirectory(prefix="tb2-cleanup-")
+    logs_dir = tmp_path / "logs"
+    verifier_dir = logs_dir / "verifier"
+    verifier_dir.mkdir(parents=True)
+    reward_path = verifier_dir / "reward.txt"
+    reward_path.write_text("0", encoding="utf-8")
+    task = BenchmarkTask(task_id="tb2_demo", problem="demo task", ground_truth="1")
+    runtime = TerminalBench2RuntimeContext(
+        task=task,
+        docker_image="demo:latest",
+        container_id="demo-container",
+        logs_dir=logs_dir,
+        workdir=Path(tempdir.name),
+        helper_paths={},
+        _tempdir=tempdir,
+    )
+
+    with patch.object(harness, "_stop_container", return_value=None):
+        harness._cleanup_runtime(runtime)
+
+    assert reward_path.read_text(encoding="utf-8") == "0"
+    assert not runtime.workdir.exists()
+
+
+def test_terminal_bench2_zeroclaw_timeout_returncode_marks_timeout(tmp_path: Path) -> None:
+    agent = TerminalBench2ZeroClawAgent()
+    agent.setup({
+        "api_base": "http://localhost/v1",
+        "api_key": "secret",
+        "model": "minimax-m2.5",
+    })
+
+    task = BenchmarkTask(
+        task_id="tb2_demo",
+        problem="demo task",
+        ground_truth="1",
+        metadata={"task_dir": str(tmp_path)},
+    )
+    runtime = _make_incontainer_runtime(tmp_path, task, "tb2-zeroclaw-empty-")
+    runtime_logs = (
+        "2026-04-20T06:17:59.498566Z  INFO zeroclaw::config::schema: Config loaded\n"
+        "2026-04-20T06:17:59.498566Z  INFO zeroclaw::agent::loop_: Memory initialized\n"
+    )
+
+    try:
+        with patch.object(
+            agent,
+            "_prepare_incontainer_runtime",
+            return_value=(runtime, {"runtime_injected": True}),
+        ), patch.object(
+            agent,
+            "_detect_container_workspace",
+            return_value="/app",
+        ), patch.object(
+            agent,
+            "_stage_file_into_container",
+            return_value=None,
+        ), patch.object(
+            agent,
+            "_docker_exec_capture",
+            side_effect=[
+                LocalCommandResult(stdout="", stderr="", returncode=0),
+                LocalCommandResult(stdout="", stderr="", returncode=124),
+            ],
+        ), patch.object(
+            agent,
+            "_read_container_text",
+            side_effect=lambda _container_id, remote_path, **_kwargs: (
+                runtime_logs if remote_path.endswith("zeroclaw_output.txt") else ""
+            ),
+        ), patch.object(
+            agent,
+            "_run_verifier_and_read_reward",
+            return_value=VerifierResult(
+                test_output="verifier output",
+                reward="0",
+                status="ok",
+                reward_path="/tmp/reward.txt",
+                verifier_output_path="/tmp/verifier",
+            ),
+        ), patch.object(
+            agent,
+            "_cleanup_runtime",
+            return_value=None,
+        ):
+            response = agent.solve(task)
+    finally:
+        runtime.cleanup()
+
+    assert response.answer == "0"
+    assert response.raw_output == ""
+    assert response.finish_reason == "timeout"
+    assert response.metadata["failure_reason"] == "timeout"
+    assert response.metadata["timed_out"] is True
+    assert response.metadata["zeroclaw_timeout_scored_zero"] is True
+    assert response.metadata["zeroclaw_timeout_seconds"] == 1800
+    assert "zeroclaw_empty_assistant_output" not in response.metadata
+    assert response.metadata["trajectory_status"] == "abnormal"
+    assert response.metadata["trajectory_failure_reason"] == "timeout"
+    assert response.metadata["solver_error"] == "exit code 124"
+    assert response.metadata["raw_output_sanitized"] is True
+    assert response.metadata["runtime_logs_dropped_from_output"]
+    assert response.artifact_manifest["files"]["response_stream"] == "zeroclaw_output.txt"
+    assert infer_score_status({
+        "benchmark_name": "terminal_bench2",
+        "scorer_name": "terminal_bench2",
+        "finish_reason": response.finish_reason,
+        "metadata": response.metadata,
+        "score": 0.0,
+        "correct": False,
+    }) == "valid_scored"
+    assert infer_score_status({
+        "finish_reason": response.finish_reason,
+        "metadata": response.metadata,
+        "score": 0.0,
+        "correct": False,
+    }) == "valid_scored"
+
+
+def test_terminal_bench2_zeroclaw_runtime_only_success_marks_agent_empty(
+    tmp_path: Path,
+) -> None:
+    agent = TerminalBench2ZeroClawAgent()
+    agent.setup({
+        "api_base": "http://localhost/v1",
+        "api_key": "secret",
+        "model": "minimax-m2.5",
+    })
+
+    task = BenchmarkTask(
+        task_id="tb2_demo",
+        problem="demo task",
+        ground_truth="1",
+        metadata={"task_dir": str(tmp_path)},
+    )
+    runtime = _make_incontainer_runtime(tmp_path, task, "tb2-zeroclaw-empty-success-")
+    runtime_logs = (
+        "2026-04-20T06:17:59.498566Z  INFO zeroclaw::config::schema: Config loaded\n"
+        "2026-04-20T06:17:59.498566Z  INFO zeroclaw::agent::loop_: Memory initialized\n"
+    )
+
+    try:
+        with patch.object(
+            agent,
+            "_prepare_incontainer_runtime",
+            return_value=(runtime, {"runtime_injected": True}),
+        ), patch.object(
+            agent,
+            "_detect_container_workspace",
+            return_value="/app",
+        ), patch.object(
+            agent,
+            "_stage_file_into_container",
+            return_value=None,
+        ), patch.object(
+            agent,
+            "_docker_exec_capture",
+            side_effect=[
+                LocalCommandResult(stdout="", stderr="", returncode=0),
+                LocalCommandResult(stdout="", stderr="", returncode=0),
+            ],
+        ), patch.object(
+            agent,
+            "_read_container_text",
+            side_effect=lambda _container_id, remote_path, **_kwargs: (
+                runtime_logs if remote_path.endswith("zeroclaw_output.txt") else ""
+            ),
+        ), patch.object(
+            agent,
+            "_run_verifier_and_read_reward",
+            return_value=VerifierResult(
+                test_output="verifier output",
+                reward="0",
+                status="ok",
+                reward_path="/tmp/reward.txt",
+                verifier_output_path="/tmp/verifier",
+            ),
+        ), patch.object(
+            agent,
+            "_cleanup_runtime",
+            return_value=None,
+        ):
+            response = agent.solve(task)
+    finally:
+        runtime.cleanup()
+
+    assert response.answer == "0"
+    assert response.raw_output == ""
+    assert response.finish_reason == "agent_empty_output"
+    assert response.metadata["failure_reason"] == "zeroclaw_empty_assistant_output"
+    assert response.metadata["zeroclaw_empty_assistant_output"] is True
+    assert response.metadata["timed_out"] is False
+    assert response.metadata["trajectory_status"] == "abnormal"
+    assert response.metadata["trajectory_failure_reason"] == "zeroclaw_empty_assistant_output"
+    assert "solver_error" not in response.metadata
+    assert response.metadata["raw_output_sanitized"] is True
+    assert response.metadata["runtime_logs_dropped_from_output"]
+
+
+def test_terminal_bench2_zeroclaw_provider_error_not_masked_by_verifier(tmp_path: Path) -> None:
+    agent = TerminalBench2ZeroClawAgent()
+    agent.setup({
+        "api_base": "http://localhost/v1",
+        "api_key": "secret",
+        "model": "minimax-m2.5",
+    })
+
+    task = BenchmarkTask(
+        task_id="tb2_demo",
+        problem="demo task",
+        ground_truth="1",
+        metadata={"task_dir": str(tmp_path)},
+    )
+    runtime = _make_incontainer_runtime(tmp_path, task, "tb2-zeroclaw-provider-")
+    runtime_logs = (
+        "2026-04-20T06:17:59.498566Z  INFO zeroclaw::config::schema: Config loaded\n"
+    )
+    provider_error = (
+        "Error: All providers/models failed. Attempts:\n"
+        "provider=custom:http://localhost/v1 model=minimax-m2.5 attempt 1/3: "
+        "non_retryable; error=Custom API error (400 Bad Request): "
+        "System message must be at the beginning."
+    )
+
+    try:
+        with patch.object(
+            agent,
+            "_prepare_incontainer_runtime",
+            return_value=(runtime, {"runtime_injected": True}),
+        ), patch.object(
+            agent,
+            "_detect_container_workspace",
+            return_value="/app",
+        ), patch.object(
+            agent,
+            "_stage_file_into_container",
+            return_value=None,
+        ), patch.object(
+            agent,
+            "_docker_exec_capture",
+            side_effect=[
+                LocalCommandResult(stdout="", stderr="", returncode=0),
+                LocalCommandResult(stdout="", stderr=provider_error, returncode=1),
+            ],
+        ), patch.object(
+            agent,
+            "_read_container_text",
+            side_effect=lambda _container_id, remote_path, **_kwargs: (
+                runtime_logs
+                if remote_path.endswith("zeroclaw_output.txt")
+                else (provider_error if remote_path.endswith("zeroclaw_stderr.log") else "")
+            ),
+        ), patch.object(
+            agent,
+            "_run_verifier_and_read_reward",
+            return_value=VerifierResult(
+                test_output="verifier output",
+                reward="0",
+                status="ok",
+                reward_path="/tmp/reward.txt",
+                verifier_output_path="/tmp/verifier",
+            ),
+        ), patch.object(
+            agent,
+            "_cleanup_runtime",
+            return_value=None,
+        ):
+            response = agent.solve(task)
+    finally:
+        runtime.cleanup()
+
+    assert response.answer == "0"
+    assert response.raw_output == provider_error
+    assert response.metadata["failure_reason"] == "provider_error"
+    assert response.metadata["zeroclaw_selected_classification"] == "provider_error"
+    assert response.metadata["solver_error"] == provider_error
+    assert infer_score_status({
+        "metadata": response.metadata,
+        "score": 0.0,
+        "correct": False,
+    }) == "provider_error"
+
+
 def test_terminal_bench2_openclaw_solve_preserves_session_trace_and_summary(tmp_path: Path) -> None:
     agent = TerminalBench2OpenClawAgent()
     agent.setup({
@@ -750,6 +1655,210 @@ def test_terminal_bench2_openclaw_solve_preserves_session_trace_and_summary(tmp_
         for step in response.trajectory
         if step.get("role") == "assistant"
     )
+
+
+def test_terminal_bench2_openclaw_timeout_returncode_marks_timeout(tmp_path: Path) -> None:
+    agent = TerminalBench2OpenClawAgent()
+    agent.setup({
+        "api_base": "http://localhost/v1",
+        "api_key": "secret",
+        "model_name": "minimax-m2.5",
+    })
+
+    task = BenchmarkTask(
+        task_id="tb2_demo",
+        problem="demo task",
+        ground_truth="1",
+        metadata={"task_dir": str(tmp_path)},
+    )
+    runtime = _make_incontainer_runtime(tmp_path, task, "tb2-openclaw-timeout-")
+    session_jsonl = "\n".join([
+        json.dumps({
+            "type": "message",
+            "message": {
+                "role": "user",
+                "content": [{"type": "text", "text": "demo task"}],
+            },
+        }),
+        json.dumps({
+            "type": "message",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "thinking", "thinking": "still working"}],
+            },
+        }),
+    ])
+
+    try:
+        with patch.object(
+            agent,
+            "_prepare_incontainer_runtime",
+            return_value=(runtime, {"runtime_injected": True}),
+        ), patch.object(
+            agent,
+            "_detect_container_workspace",
+            return_value="/app",
+        ), patch.object(
+            agent,
+            "_write_context_preflight",
+            return_value={"resolved_context_window": 131072, "source": "models_endpoint"},
+        ), patch.object(
+            agent,
+            "_stage_file_into_container",
+            return_value=None,
+        ), patch.object(
+            agent,
+            "_copy_file_from_container",
+            side_effect=lambda _container_id, remote_path, local_path, **_kwargs: local_path.write_text(
+                session_jsonl if str(remote_path).endswith("session.jsonl") else "{\"models\":{}}",
+                encoding="utf-8",
+            ),
+        ), patch.object(
+            agent,
+            "_patch_runtime_model_contract",
+            return_value={"patched": False, "resolved_context_window": 131072},
+        ), patch.object(
+            agent,
+            "_find_latest_remote_session_file",
+            return_value="/tmp/openclaw/home/.openclaw/agents/main/sessions/demo-session.jsonl",
+        ), patch.object(
+            agent,
+            "_docker_exec_capture",
+            side_effect=[
+                LocalCommandResult(stdout='{"status":"ok"}\n', stderr="", returncode=0),
+                LocalCommandResult(
+                    stdout="",
+                    stderr="podman command timed out after 1830s",
+                    returncode=124,
+                ),
+            ],
+        ), patch.object(
+            agent,
+            "_run_verifier_and_read_reward",
+            return_value=VerifierResult(
+                test_output="verifier output",
+                reward="0",
+                status="ok",
+                reward_path="/tmp/reward.txt",
+                verifier_output_path="/tmp/verifier",
+            ),
+        ), patch.object(
+            agent,
+            "_cleanup_runtime",
+            return_value=None,
+        ):
+            response = agent.solve(task)
+    finally:
+        runtime.cleanup()
+
+    assert response.answer == "0"
+    assert response.finish_reason == "timeout"
+    assert response.metadata["failure_reason"] == "timeout"
+    assert response.metadata["openclaw_selected_classification"] == "timeout"
+    assert response.metadata["openclaw_timeout_scored_zero"] is True
+    assert response.metadata["openclaw_timeout_seconds"] == 1800
+    assert response.metadata["timed_out"] is True
+    assert response.metadata["trajectory_status"] == "abnormal"
+    assert response.metadata["trajectory_failure_reason"] == "timeout"
+    assert response.response_json["timed_out"] is True
+    assert response.artifact_manifest["files"]["session_trace"] == "session.jsonl"
+    assert "response_stream" not in response.artifact_manifest["files"]
+    assert "openclaw_empty_assistant_output" not in response.metadata
+    assert infer_score_status({
+        "benchmark_name": "terminal_bench2",
+        "scorer_name": "terminal_bench2",
+        "finish_reason": response.finish_reason,
+        "metadata": response.metadata,
+        "score": 0.0,
+        "correct": False,
+    }) == "valid_scored"
+
+
+def test_terminal_bench2_openclaw_solve_marks_missing_session_trace_abnormal(tmp_path: Path) -> None:
+    agent = TerminalBench2OpenClawAgent()
+    agent.setup({
+        "api_base": "http://localhost/v1",
+        "api_key": "secret",
+        "model_name": "minimax-m2.5",
+    })
+
+    task = BenchmarkTask(
+        task_id="tb2_demo",
+        problem="demo task",
+        ground_truth="1",
+        metadata={"task_dir": str(tmp_path)},
+    )
+    runtime = _make_incontainer_runtime(tmp_path, task, "tb2-openclaw-missing-session-")
+
+    def copy_side_effect(_container_id: str, remote_path: str, local_path: Path, **_kwargs: object) -> bool:
+        if str(remote_path).endswith("openclaw.json"):
+            local_path.write_text("{\"models\":{}}", encoding="utf-8")
+            return True
+        return False
+
+    try:
+        with patch.object(
+            agent,
+            "_prepare_incontainer_runtime",
+            return_value=(runtime, {"runtime_injected": True}),
+        ), patch.object(
+            agent,
+            "_detect_container_workspace",
+            return_value="/app",
+        ), patch.object(
+            agent,
+            "_write_context_preflight",
+            return_value={"resolved_context_window": 131072, "source": "models_endpoint"},
+        ), patch.object(
+            agent,
+            "_stage_file_into_container",
+            return_value=None,
+        ), patch.object(
+            agent,
+            "_copy_file_from_container",
+            side_effect=copy_side_effect,
+        ), patch.object(
+            agent,
+            "_patch_runtime_model_contract",
+            return_value={"patched": False, "resolved_context_window": 131072},
+        ), patch.object(
+            agent,
+            "_find_latest_remote_session_file",
+            return_value="/tmp/openclaw/home/.openclaw/agents/main/sessions/demo-session.jsonl",
+        ), patch.object(
+            agent,
+            "_docker_exec_capture",
+            side_effect=[
+                LocalCommandResult(stdout='{"status":"ok"}\n', stderr="", returncode=0),
+                LocalCommandResult(stdout='{"output_text":"partial"}\n', stderr="", returncode=0),
+            ],
+        ), patch.object(
+            agent,
+            "_run_verifier_and_read_reward",
+            return_value=VerifierResult(
+                test_output="verifier output",
+                reward="1",
+                status="ok",
+                reward_path="/tmp/reward.txt",
+                verifier_output_path="/tmp/verifier",
+            ),
+        ), patch.object(
+            agent,
+            "_cleanup_runtime",
+            return_value=None,
+        ):
+            response = agent.solve(task)
+    finally:
+        runtime.cleanup()
+
+    assert response.answer == "1"
+    assert response.metadata["trajectory_status"] == "abnormal"
+    assert response.metadata["trajectory_failure_reason"].startswith("session_trace_missing_after_copy:")
+    assert response.response_json["trajectory_error"].startswith("session_trace_missing_after_copy:")
+    assert response.metadata["session_trace_source"] == "stdout_jsonl_fallback"
+    assert response.artifact_manifest["files"]["session_trace"] == "session.jsonl"
+    assert "/terminal_bench2/openclaw/session.jsonl" in response.workspace_file_contents
+    assert response.raw_output.strip()
 
 
 def test_terminal_bench2_opencode_solve_preserves_stream_and_session_trace(tmp_path: Path) -> None:
@@ -867,6 +1976,7 @@ def test_terminal_bench2_opencode_solve_preserves_stream_and_session_trace(tmp_p
     assert response.metadata["logprob_capture_harness"] == "opencode"
     assert response.metadata["logprob_probe_proxy_count"] == 1
     assert response.metadata["logprob_source"] == "provider_proxy"
+    assert response.metadata["session_trace_source"] == "opencode_session_files"
     assert response.token_entropy_stats["n_tokens"] == 1
     assert proxy_instances[0].top_logprobs == 7
     assert proxy_instances[0].kwargs["request_overrides"]["max_tokens"] == 4096
@@ -874,6 +1984,21 @@ def test_terminal_bench2_opencode_solve_preserves_stream_and_session_trace(tmp_p
     exec_script = mock_exec.call_args.args[1]
     assert "timeout --kill-after=15s 1800s opencode run" in exec_script
     assert mock_exec.call_args.kwargs["timeout_sec"] == 1830
+
+
+def test_terminal_bench2_opencode_session_trace_falls_back_to_stdout_jsonl() -> None:
+    raw_output = "\n".join([
+        "non-json line",
+        json.dumps({"type": "text", "text": "hello"}),
+        "",
+        "{not json",
+        json.dumps({"type": "step_finish", "reason": "stop"}),
+    ])
+
+    assert _jsonl_from_stdout(raw_output) == (
+        f"{json.dumps({'type': 'text', 'text': 'hello'})}\n"
+        f"{json.dumps({'type': 'step_finish', 'reason': 'stop'})}\n"
+    )
 
 
 def test_terminal_bench2_opencode_host_mode_keeps_configured_binary() -> None:
@@ -1087,6 +2212,29 @@ def test_terminal_bench2_reward_zero_with_verifier_ok_is_valid_scored() -> None:
         "metadata": {
             "verifier_status": "ok",
             "reward": "0",
+        },
+    }
+
+    assert infer_score_status(record) == "valid_scored"
+    assert is_valid_completed_record(record, scorer_name="terminal_bench2") is True
+
+
+def test_terminal_bench2_observed_agent_abnormality_with_reward_is_valid_scored() -> None:
+    record = {
+        "task_id": "tb2_demo",
+        "benchmark_name": "terminal_bench2",
+        "scorer_name": "terminal_bench2",
+        "score": 0.0,
+        "correct": False,
+        "finish_reason": "agent_empty_output",
+        "metadata": {
+            "verifier_status": "ok",
+            "reward": "0",
+            "verifier_reward_observed": True,
+            "failure_reason": "zeroclaw_empty_assistant_output",
+            "zeroclaw_empty_assistant_output": True,
+            "trajectory_status": "abnormal",
+            "trajectory_failure_reason": "zeroclaw_empty_assistant_output",
         },
     }
 

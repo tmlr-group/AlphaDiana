@@ -25,6 +25,10 @@ from alphadiana.results.result_store import ResultStore
 from alphadiana.runner.task_dispatcher import TaskDispatcher
 from alphadiana.sandbox.registry import SandboxRegistry
 from alphadiana.scorer.registry import ScorerRegistry
+from alphadiana.utils.math_answer import (
+    extract_numeric_answer_candidate,
+    parse_numeric_answer,
+)
 
 if TYPE_CHECKING:
     from alphadiana.agent.base import Agent
@@ -97,6 +101,50 @@ def _sanitize_success_sandbox_metadata(metadata: dict | None) -> dict:
     return _sanitize_sandbox_metadata(metadata, keep_command_history=False)
 
 
+def _agent_error_provenance_metadata(agent: object) -> dict:
+    provider = getattr(agent, "error_provenance_metadata", None)
+    if not callable(provider):
+        return {}
+    try:
+        metadata = provider()
+    except Exception:
+        logger.debug("Agent error provenance provider failed", exc_info=True)
+        return {}
+    return dict(metadata) if isinstance(metadata, dict) else {}
+
+
+def _normalize_numeric_response_answer(config: "ExperimentConfig", response: object) -> None:
+    """Normalize stored predictions only for the numeric scorer path."""
+    if getattr(config, "scorer_name", "") != "numeric":
+        return
+    answer = getattr(response, "answer", None)
+    if not isinstance(answer, str) or not answer.strip():
+        return
+    normalized = extract_numeric_answer_candidate(answer)
+    if not normalized or normalized == answer:
+        return
+    if parse_numeric_answer(normalized) is None:
+        return
+    metadata = getattr(response, "metadata", None)
+    if not isinstance(metadata, dict):
+        metadata = {}
+    metadata.setdefault("numeric_answer_original", answer)
+    metadata["numeric_answer_normalized"] = True
+    metadata["numeric_answer_normalizer"] = "extract_numeric_answer_candidate"
+    response.metadata = metadata
+    response.answer = normalized
+
+
+def _apply_error_provenance_metadata(response: object, metadata: dict) -> None:
+    if not metadata:
+        return
+    response_metadata = dict(getattr(response, "metadata", None) or {})
+    for key, value in metadata.items():
+        if value not in (None, ""):
+            response_metadata.setdefault(key, value)
+    response.metadata = response_metadata
+
+
 def _merge_artifact_manifests(existing: dict | None, incoming: dict | None) -> dict:
     """Merge artifact manifests without dropping previously preserved file aliases."""
     merged = dict(existing or {})
@@ -137,6 +185,8 @@ def _has_openclaw_direct_gateway(config: "ExperimentConfig") -> bool:
 
 def _is_gateway_autodeploy_agent(config: "ExperimentConfig") -> bool:
     if config.agent_name == "openclaw":
+        if str(config.agent_config.get("runtime_backend", "") or "").strip().lower() == "podman":
+            return False
         return bool(
             not _has_openclaw_direct_gateway(config)
             and
@@ -150,6 +200,8 @@ def _needs_auto_rock_sandbox(config: "ExperimentConfig") -> bool:
     if _is_gateway_autodeploy_agent(config):
         return True
     if config.agent_name == "zeroclaw":
+        if str(config.agent_config.get("runtime_backend", "") or "").strip().lower() == "podman":
+            return False
         return bool(config.agent_config.get("rock_image"))
     return False
 
@@ -160,6 +212,10 @@ def _make_gateway_runtime_manager(config: "ExperimentConfig"):
 
         return OpenClawRuntimeManager(config.agent_config)
     if config.agent_name == "zeroclaw":
+        if str(config.agent_config.get("runtime_backend", "") or "").strip().lower() == "podman":
+            from alphadiana.agent.zeroclaw_runtime import ZeroClawPodmanRuntimeManager
+
+            return ZeroClawPodmanRuntimeManager(config.agent_config)
         from alphadiana.agent.zeroclaw_runtime import ZeroClawRuntimeManager
 
         return ZeroClawRuntimeManager(config.agent_config)
@@ -423,6 +479,7 @@ class Runner:
 
         # Import sandbox modules to trigger registration.
         import alphadiana.sandbox.local  # noqa: F401
+        import alphadiana.sandbox.podman  # noqa: F401
         import alphadiana.sandbox.rock  # noqa: F401
         import alphadiana.sandbox.swebench_container  # noqa: F401
 
@@ -1708,6 +1765,7 @@ class Runner:
                         response,
                         error_type=guard_error_type,
                     )
+                _normalize_numeric_response_answer(self.config, response)
                 # Score the result.
                 score = self.scorer.score(runtime_task, response)
                 # Store the result.
@@ -1792,6 +1850,10 @@ class Runner:
                 if self.sandbox is not None:
                     sandbox_backend_name = getattr(self.sandbox, "name", type(self.sandbox).__name__)
                     error_response.metadata.setdefault("sandbox_backend", sandbox_backend_name)
+                _apply_error_provenance_metadata(
+                    error_response,
+                    _agent_error_provenance_metadata(self.agent),
+                )
                 error_response.metadata.setdefault("sample_index", sample_index)
                 error_response.metadata.setdefault(
                     "execution_id",

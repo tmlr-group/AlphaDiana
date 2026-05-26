@@ -137,7 +137,7 @@ class TestAppendSerializesLogprobs:
         rec = loaded[0]
         assert rec["token_entropy_stats"] == stats
         assert rec["logprobs_path"] == "run_y/logprobs/t1.jsonl"
-        assert "logprob_records" not in rec.get("metadata", {})
+        assert rec["metadata"]["logprob_records"] == 1
         assert rec["metadata"].get("other_key") == "keep"
 
         # Per-task JSON

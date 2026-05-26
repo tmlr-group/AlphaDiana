@@ -7,7 +7,12 @@ from unittest.mock import MagicMock, patch
 import yaml
 import pytest
 
-from alphadiana.agent.openclaw import OpenClawAgent, _detect_session_pollution
+from alphadiana.agent.openclaw import (
+    OpenClawAgent,
+    _detect_session_pollution,
+    _extract_answer,
+    _extract_raw_output_from_payload,
+)
 from alphadiana.agent.openclaw_container_runtime import OpenClawContainerRuntimeManager
 from alphadiana.agent.openclaw_runtime import OpenClawRuntimeManager
 from alphadiana.benchmark.base import BenchmarkTask
@@ -56,6 +61,13 @@ def test_openclaw_session_pollution_heuristic_flags_near_total_mismatch() -> Non
     )
 
     assert _detect_session_pollution(problem, raw_output, "") is True
+
+
+def test_openclaw_provider_error_payload_is_not_answer_text() -> None:
+    payload = {"error": {"message": "400 Bad Request: cost=0", "type": "BadRequestError"}}
+
+    assert _extract_raw_output_from_payload(payload) == ""
+    assert _extract_answer(json.dumps(payload)) == ""
 
 
 def test_openclaw_runtime_uses_agent_config_provider_env(tmp_path: Path) -> None:

@@ -5,6 +5,7 @@ import json
 from alphadiana.agent.base import AgentResponse
 from alphadiana.benchmark.base import BenchmarkTask
 from alphadiana.results.result_store import ResultStore
+from alphadiana.results.status import infer_score_status
 from alphadiana.scorer.base import ScoreResult
 
 
@@ -81,6 +82,80 @@ def test_append_error_not_completed(tmp_path):
     assert store.completed_task_ids() == set()
 
 
+def test_podman_control_timeout_error_is_not_scored_zero(tmp_path):
+    store = ResultStore(output_dir=str(tmp_path), run_id="status-podman-timeout")
+    store.append_error(
+        _task("tb2_configure-git-webserver"),
+        error={
+            "error": (
+                "podman command failed with exit 124: podman image inspect "
+                "alexgshaw/configure-git-webserver:20251031: "
+                "podman command timed out after 30s"
+            ),
+            "error_type": "PodmanError",
+        },
+        response=AgentResponse(answer=None),
+    )
+
+    records = store.load()
+
+    assert records[0]["score_status"] == "runtime_error"
+    assert records[0]["score"] is None
+    assert store.completed_task_ids() == set()
+
+
+def test_explicit_valid_scored_podman_error_is_reclassified_on_load(tmp_path):
+    store = ResultStore(output_dir=str(tmp_path), run_id="status-bad-explicit")
+    with open(store.path, "w", encoding="utf-8") as handle:
+        handle.write(json.dumps({
+            "task_id": "tb2_configure-git-webserver",
+            "sample_index": 0,
+            "benchmark_name": "terminal_bench2",
+            "predicted": None,
+            "correct": None,
+            "score": None,
+            "rationale": "podman command timed out after 30s",
+            "metadata": {},
+            "error": {
+                "error": "podman command failed with exit 124: podman image inspect image",
+                "error_type": "PodmanError",
+            },
+            "score_status": "valid_scored",
+        }) + "\n")
+
+    records = store.load()
+
+    assert records[0]["score_status"] == "runtime_error"
+    assert store.completed_task_ids() == set()
+
+
+def test_explicit_valid_scored_provider_failure_is_reclassified_on_load(tmp_path):
+    store = ResultStore(output_dir=str(tmp_path), run_id="status-provider-explicit")
+    with open(store.path, "w", encoding="utf-8") as handle:
+        handle.write(json.dumps({
+            "task_id": "tb2_adaptive-rejection-sampler",
+            "sample_index": 0,
+            "benchmark_name": "terminal_bench2",
+            "scorer_name": "terminal_bench2",
+            "predicted": "0",
+            "correct": False,
+            "score": 0.0,
+            "metadata": {
+                "reward": "0",
+                "verifier_status": "ok",
+                "verifier_reward_observed": True,
+                "failure_reason": "provider_error",
+                "trajectory_error": "Connection error.",
+            },
+            "score_status": "valid_scored",
+        }) + "\n")
+
+    records = store.load()
+
+    assert records[0]["score_status"] == "provider_error"
+    assert store.completed_task_ids(scorer_name="terminal_bench2") == set()
+
+
 def test_timeout_scored_zero_is_completed(tmp_path):
     store = ResultStore(output_dir=str(tmp_path), run_id="status-timeout-zero")
     response = AgentResponse(
@@ -108,6 +183,37 @@ def test_timeout_scored_zero_is_completed(tmp_path):
     assert records[0]["finish_reason"] == "timeout"
     assert records[0]["metadata"]["opencode_error_message"] == "The operation timed out."
     assert store.completed_task_ids() == {"t1"}
+
+
+def test_opencode_empty_output_score_zero_is_not_valid_scored(tmp_path):
+    store = ResultStore(output_dir=str(tmp_path), run_id="status-opencode-empty")
+    response = AgentResponse(
+        answer=None,
+        finish_reason="agent_empty_output",
+        metadata={
+            "opencode_empty_assistant_output": True,
+            "failure_reason": "opencode_lifecycle_only_events",
+            "answer_source": "assistant_text",
+            "answer_source_text": "",
+        },
+    )
+    score = ScoreResult(
+        correct=False,
+        score=0.0,
+        expected="204",
+        predicted=None,
+        rationale="No answer produced (answer is None).",
+    )
+
+    store.append(_task("aime_60"), response, score)
+
+    records = store.load()
+    assert records[0]["predicted"] is None
+    assert records[0]["score"] == 0.0
+    assert records[0]["correct"] is False
+    assert records[0]["score_status"] == "agent_empty_output"
+    assert infer_score_status(records[0]) == "agent_empty_output"
+    assert store.completed_task_ids() == set()
 
 
 def test_completed_sample_ids_uses_valid_status(tmp_path):

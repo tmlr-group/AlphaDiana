@@ -32,6 +32,7 @@ class TerminalBench2Benchmark(Benchmark):
     Config keys:
         tasks_dir   : Path to local task root (required)
         categories  : List of metadata category names to include (optional)
+        task_ids    : List of task directory names or `tb2_` task ids to include (optional)
         max_tasks   : Maximum number of tasks to load (optional)
     """
 
@@ -64,11 +65,15 @@ class TerminalBench2Benchmark(Benchmark):
 
         categories: list[str] | None = config.get("categories")
         max_tasks: int | None = config.get("max_tasks")
+        requested_task_names = self._normalize_task_ids(config.get("task_ids"))
 
         task_dirs = sorted(d for d in tasks_dir.iterdir() if d.is_dir())
         tasks: list[BenchmarkTask] = []
 
         for task_dir in task_dirs:
+            if requested_task_names is not None and task_dir.name not in requested_task_names:
+                continue
+
             toml_path = task_dir / "task.toml"
             instruction_path = task_dir / "instruction.md"
 
@@ -127,10 +132,31 @@ class TerminalBench2Benchmark(Benchmark):
             if max_tasks is not None and len(tasks) >= max_tasks:
                 break
 
+        if requested_task_names is not None and not tasks:
+            requested = ", ".join(sorted(requested_task_names))
+            raise ValueError(
+                f"TerminalBench2Benchmark found no loadable tasks matching task_ids: {requested}"
+            )
+
         return tasks
 
     def default_scorer(self) -> str:
         return "terminal_bench2"
+
+    @staticmethod
+    def _normalize_task_ids(raw_task_ids: object) -> set[str] | None:
+        if raw_task_ids in (None, "", []):
+            return None
+        if isinstance(raw_task_ids, str):
+            values = [raw_task_ids]
+        else:
+            values = list(raw_task_ids)  # type: ignore[arg-type]
+        normalized = {
+            str(value).strip().removeprefix("tb2_")
+            for value in values
+            if str(value).strip()
+        }
+        return normalized or None
 
 
 BenchmarkRegistry.register("terminal_bench2", TerminalBench2Benchmark)

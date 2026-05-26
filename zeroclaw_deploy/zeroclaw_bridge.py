@@ -95,6 +95,77 @@ def _attachments_have_image(attachments: list[dict[str, Any]]) -> bool:
     return False
 
 
+def _normalize_system_messages(
+    messages: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Hoist every ``system`` message to a single leading entry.
+
+    Qwen3.5's chat template hard-rejects requests where a ``system`` message
+    appears at index > 0 (HTTP 400 "System message must be at the beginning").
+    The zeroclaw CLI's agentic loop occasionally appends a fresh system
+    reminder mid-conversation; this normalizer collects **every** system
+    message — including ones that appear after user/assistant turns — and
+    emits a single merged ``role=system`` entry at index 0 (finding #5).
+
+    Invariant on the output: no ``role == "system"`` survives at index > 0.
+
+    Returns a new list — the input is left untouched.
+    """
+    if not isinstance(messages, list):
+        return messages  # type: ignore[return-value]
+
+    # Pass 1: pull out every system message; keep the rest in order.
+    system_msgs: list[dict[str, Any]] = []
+    rest: list[Any] = []
+    for msg in messages:
+        if isinstance(msg, dict) and msg.get("role") == "system":
+            system_msgs.append(msg)
+        else:
+            rest.append(msg)
+
+    if not system_msgs:
+        return list(rest)
+
+    # Pass 2: merge all system contents into a single leading message.
+    # Use the first system message as the seed so we keep its non-content
+    # fields (name, etc.) if any. Treat content as a union of str/list/etc.
+    leading: dict[str, Any] = dict(system_msgs[0])
+    for follow in system_msgs[1:]:
+        existing = leading.get("content")
+        addition = follow.get("content")
+        if addition is None:
+            continue
+        if isinstance(existing, str) and isinstance(addition, str):
+            if addition.strip() and addition not in existing:
+                leading["content"] = (
+                    existing + "\n\n" + addition if existing else addition
+                )
+        elif isinstance(existing, list) and isinstance(addition, list):
+            leading["content"] = list(existing) + list(addition)
+        elif isinstance(existing, list) and isinstance(addition, str):
+            if addition.strip():
+                leading["content"] = list(existing) + [
+                    {"type": "text", "text": addition}
+                ]
+        elif isinstance(existing, str) and isinstance(addition, list):
+            # Promote leading to list form so we can append structured blocks.
+            seed: list[Any] = (
+                [{"type": "text", "text": existing}] if existing else []
+            )
+            leading["content"] = seed + list(addition)
+        else:
+            # Last-ditch: stringify and append.
+            text = str(addition).strip()
+            if text:
+                if isinstance(existing, str):
+                    leading["content"] = (
+                        existing + "\n\n" + text if existing else text
+                    )
+                else:
+                    leading["content"] = text
+    return [leading, *rest]
+
+
 def _vision_inject_messages(
     messages: list[dict[str, Any]],
     image_items: list[dict[str, Any]],
@@ -196,13 +267,19 @@ def _make_vision_proxy_handler(state: _BridgeVisionProxyState):
             state.request_count += 1
             is_chat = self.path.endswith("/chat/completions")
             has_images = bool(state.image_items)
-            if is_chat and (has_images or state.upstream_model or state.request_overrides):
+            if is_chat:
                 try:
                     payload = json.loads(body.decode("utf-8"))
                     if state.upstream_model:
                         payload["model"] = state.upstream_model
-                    payload.update(state.request_overrides)
+                    if state.request_overrides:
+                        payload.update(state.request_overrides)
                     messages = payload.get("messages")
+                    # Always collapse non-leading system messages to satisfy
+                    # Qwen3.5's chat template (#5).
+                    if isinstance(messages, list):
+                        messages = _normalize_system_messages(messages)
+                        payload["messages"] = messages
                     if has_images and isinstance(messages, list):
                         new_messages, injected = _vision_inject_messages(
                             messages, state.image_items, state.target_text,
@@ -278,6 +355,10 @@ class _BridgeVisionProxy:
     def injection_count(self) -> int:
         return self._state.injection_count
 
+    @property
+    def request_count(self) -> int:
+        return self._state.request_count
+
 
 def _normalize_api_base(api_base: str) -> str:
     return api_base.strip().rstrip("/")
@@ -316,6 +397,18 @@ _RUNTIME_LOG_SUBSTRINGS = (
     "retrying request in ",
     "retry attempt ",
 )
+
+
+def _provider_table_key(provider: str) -> str:
+    if provider.startswith("custom:"):
+        return "custom"
+    return provider or "openai"
+
+
+def _provider_base_url(provider: str) -> str:
+    if provider.startswith("custom:"):
+        return provider.split(":", 1)[1]
+    return ""
 
 
 def _is_runtime_log_line(line: str) -> bool:
@@ -373,15 +466,17 @@ def _build_config_toml(
         if REASONING_EFFORT is not None:
             runtime_lines.append(f"reasoning_effort = {_quote_toml(REASONING_EFFORT)}")
         runtime_section = "\n".join(runtime_lines) + "\n\n"
+    provider_key = _provider_table_key(PROVIDER)
+    provider_base_url = provider_base_url_override or _provider_base_url(PROVIDER)
     provider_section = "[model_providers]\n\n"
-    if provider_base_url_override:
+    if provider_base_url:
         provider_section = (
-            f"[model_providers.{PROVIDER}]\n"
-            f"name = {_quote_toml(PROVIDER)}\n"
-            f"base_url = {_quote_toml(provider_base_url_override)}\n\n"
+            f"[model_providers.{provider_key}]\n"
+            f"name = {_quote_toml(provider_key)}\n"
+            f"base_url = {_quote_toml(provider_base_url)}\n\n"
         )
     return (
-        f"default_provider = {_quote_toml(PROVIDER)}\n"
+        f"default_provider = {_quote_toml(provider_key)}\n"
         f"default_model = {_quote_toml(MODEL_NAME)}\n\n"
         f"default_temperature = {effective_temperature}\n"
         f"provider_timeout_secs = {PROVIDER_TIMEOUT_SECS}\n"
@@ -548,6 +643,7 @@ def _build_provider_messages(
     attachments: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     normalized_messages = [dict(message) for message in messages]
+    normalized_messages = _normalize_system_messages(normalized_messages)
     if not _attachments_have_image(attachments):
         return normalized_messages
     updated_messages, _ = _vision_inject_messages(normalized_messages, attachments, "")
@@ -726,18 +822,21 @@ def _run_zeroclaw(
                    if str(item.get("mime", "") or "").lower().startswith("image/")
                    and item.get("data")]
     provider_request_overrides = _provider_request_overrides()
-    vision_proxy_ctx = (
-        _BridgeVisionProxy(
-            upstream_base=API_BASE,
-            upstream_api_key=API_KEY,
-            image_items=image_items,
-            target_text=prompt,
-            upstream_model=MODEL_NAME,
-            request_overrides=provider_request_overrides,
-        )
-        if image_items
-        else None
+    # Always wrap the zeroclaw CLI's outbound calls through the bridge proxy.
+    # When images are present, this injects them. When they aren't, the proxy
+    # still normalizes non-leading system messages so Qwen3.5's chat template
+    # doesn't 400 mid-conversation (finding #5).
+    vision_proxy_ctx = _BridgeVisionProxy(
+        upstream_base=API_BASE,
+        upstream_api_key=API_KEY,
+        image_items=image_items,
+        target_text=prompt,
+        upstream_model=MODEL_NAME,
+        request_overrides=provider_request_overrides,
     )
+    vision_proxy_url = ""
+    vision_proxy_request_count = 0
+    vision_proxy_injection_count = 0
 
     with tempfile.TemporaryDirectory(prefix=f"zeroclaw_gateway_{execution_id}_") as td:
         base = Path(td)
@@ -780,15 +879,23 @@ def _run_zeroclaw(
 
         if vision_proxy_ctx is not None:
             with vision_proxy_ctx as proxy:
+                proxy_env = dict(env)
+                proxy_env.update({
+                    "OPENAI_BASE_URL": proxy.url,
+                    "ZEROCLAW_PROVIDER": f"custom:{proxy.url}",
+                })
+                vision_proxy_url = proxy.url
                 config_path.write_text(
                     _build_config_toml(temperature, provider_base_url_override=proxy.url),
                     encoding="utf-8",
                 )
                 os.chmod(config_path, 0o600)
                 result = subprocess.run(
-                    command, shell=True, cwd=str(workspace_dir), env=env,
+                    command, shell=True, cwd=str(workspace_dir), env=proxy_env,
                     capture_output=True, text=True,
                 )
+                vision_proxy_request_count = proxy.request_count
+                vision_proxy_injection_count = proxy.injection_count
         else:
             config_path.write_text(_build_config_toml(temperature), encoding="utf-8")
             os.chmod(config_path, 0o600)
@@ -813,6 +920,10 @@ def _run_zeroclaw(
             "returncode": result.returncode,
             "timed_out": result.returncode == 124,
             "error_message": "",
+            "vision_proxy_url": vision_proxy_url,
+            "vision_proxy_request_count": vision_proxy_request_count,
+            "vision_proxy_injection_count": vision_proxy_injection_count,
+            "vision_proxy_image_count": len(image_items),
         }
         sanitized_output, dropped_runtime_logs = _sanitize_output(raw_output)
         runtime_failure = _extract_runtime_failure(raw_output, raw_stderr)

@@ -5,13 +5,18 @@ import http.server
 import json
 import threading
 import time
+import urllib.error
 import urllib.request
 
 import alphadiana.agent.logprob_proxy as logprob_proxy_module
 from alphadiana.agent.logprob_proxy import (
     LogprobCaptureProxy,
+    ensure_chat_has_user_message,
+    finalize_chat_completion_stream_summary,
     normalize_openai_proxy_upstream,
     resolve_logprob_proxy_advertise_host,
+    summarize_chat_completion_response,
+    update_chat_completion_stream_summary,
 )
 from alphadiana.agent.openclaw import OpenClawAgent
 from alphadiana.agent.zeroclaw import ZeroClawAgent
@@ -163,6 +168,595 @@ def test_logprob_proxy_hoists_late_system_messages_for_strict_templates() -> Non
         ]
         assert seen["payload"]["logprobs"] is True
         assert seen["payload"]["top_logprobs"] == 20
+    finally:
+        proxy.stop()
+        upstream.shutdown()
+        upstream.server_close()
+
+
+def test_logprob_proxy_inserts_user_turn_for_tool_only_history() -> None:
+    messages = [
+        {"role": "system", "content": "base"},
+        {"role": "tool", "content": "tool output"},
+    ]
+
+    normalized, inserted = ensure_chat_has_user_message(messages)
+
+    assert inserted is True
+    assert normalized == [
+        {"role": "system", "content": "base"},
+        {"role": "user", "content": "Continue with the task."},
+        {"role": "tool", "content": "tool output"},
+    ]
+
+
+def test_logprob_proxy_marks_inserted_user_turn_in_request_summary() -> None:
+    seen: dict = {}
+
+    class _CaptureHandler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            length = int(self.headers.get("Content-Length", 0))
+            seen["payload"] = json.loads(self.rfile.read(length))
+            body = {
+                "model": "qwen",
+                "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
+            }
+            raw = json.dumps(body).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
+        def log_message(self, *args: object) -> None:
+            pass
+
+    upstream = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _CaptureHandler)
+    thread = threading.Thread(target=upstream.serve_forever, daemon=True)
+    thread.start()
+    proxy = LogprobCaptureProxy(
+        f"http://127.0.0.1:{upstream.server_address[1]}",
+        0,
+        inject_logprobs=False,
+        capture_request_summary=True,
+    )
+    proxy.start()
+    try:
+        payload = json.dumps(
+            {
+                "model": "qwen",
+                "messages": [
+                    {"role": "system", "content": "base"},
+                    {"role": "tool", "content": "tool output"},
+                ],
+            }
+        ).encode("utf-8")
+        req = urllib.request.Request(
+            f"{proxy.proxy_url}/v1/chat/completions",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            assert resp.status == 200
+            resp.read()
+
+        assert [item["role"] for item in seen["payload"]["messages"]] == [
+            "system",
+            "user",
+            "tool",
+        ]
+        summaries = proxy.drain_request_summaries()
+        assert summaries[0]["message_roles_before"] == ["system", "tool"]
+        assert summaries[0]["message_roles_after"] == ["system", "user", "tool"]
+        assert summaries[0]["inserted_user_message"] is True
+    finally:
+        proxy.stop()
+        upstream.shutdown()
+        upstream.server_close()
+
+
+def test_logprob_proxy_can_summarize_without_logprob_injection() -> None:
+    seen: dict = {}
+
+    class _CaptureHandler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            length = int(self.headers.get("Content-Length", 0))
+            seen["payload"] = json.loads(self.rfile.read(length))
+            body = {
+                "model": "qwen",
+                "choices": [
+                    {
+                        "message": {"content": None, "reasoning": "thinking"},
+                        "finish_reason": "length",
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 3,
+                    "completion_tokens": 4,
+                    "total_tokens": 7,
+                },
+            }
+            raw = json.dumps(body).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
+        def log_message(self, *args: object) -> None:
+            pass
+
+    upstream = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _CaptureHandler)
+    thread = threading.Thread(target=upstream.serve_forever, daemon=True)
+    thread.start()
+    proxy = LogprobCaptureProxy(
+        f"http://127.0.0.1:{upstream.server_address[1]}",
+        0,
+        request_overrides={"max_tokens": 4096},
+        inject_logprobs=False,
+        normalize_system_messages=True,
+        capture_request_summary=True,
+    )
+    proxy.start()
+    try:
+        payload = json.dumps(
+            {
+                "model": "qwen",
+                "messages": [
+                    {"role": "user", "content": "question"},
+                    {"role": "system", "content": "late instruction"},
+                ],
+            }
+        ).encode("utf-8")
+        req = urllib.request.Request(
+            f"{proxy.proxy_url}/v1/chat/completions",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            assert resp.status == 200
+            resp.read()
+
+        assert "logprobs" not in seen["payload"]
+        assert seen["payload"]["max_tokens"] == 4096
+        assert [item["role"] for item in seen["payload"]["messages"]] == ["system", "user"]
+        summaries = proxy.drain_request_summaries()
+        assert summaries == [
+            {
+                "path": "/v1/chat/completions",
+                "model": "qwen",
+                "stream": False,
+                "message_count": 2,
+                "message_roles_before": ["user", "system"],
+                "message_roles_after": ["system", "user"],
+                "system_indices_before": [1],
+                "system_indices_after": [0],
+                "normalized_system_messages": True,
+                "inserted_user_message": False,
+                "message_content_lengths_after": [16, 8],
+                "max_tokens": 4096,
+                "temperature": None,
+                "top_p": None,
+                "presence_penalty": None,
+                "frequency_penalty": None,
+                "logprobs": None,
+                "top_logprobs": None,
+                "chat_template_kwargs": None,
+                "reasoning": None,
+                "stream_options": None,
+                "has_tools": False,
+                "tool_count": 0,
+            }
+        ]
+        response_summaries = proxy.drain_response_summaries()
+        assert response_summaries == [
+            {
+                "path": "/v1/chat/completions",
+                "status_code": 200,
+                "model": "qwen",
+                "choice_count": 1,
+                "finish_reasons": ["length"],
+                "content_lengths": [0],
+                "reasoning_lengths": [8],
+                "tool_call_counts": [0],
+                "empty_content_choice_count": 1,
+                "empty_reasoning_choice_count": 0,
+                "empty_content_and_reasoning_choice_count": 0,
+                "empty_content_and_reasoning_choice_indices": [],
+                "empty_content_reasoning_and_tool_choice_count": 0,
+                "empty_content_reasoning_and_tool_choice_indices": [],
+                "prompt_tokens": 3,
+                "completion_tokens": 4,
+                "total_tokens": 7,
+            }
+        ]
+        assert proxy.drain_request_summaries() == []
+        assert proxy.drain_response_summaries() == []
+    finally:
+        proxy.stop()
+        upstream.shutdown()
+        upstream.server_close()
+
+
+def test_logprob_response_summary_distinguishes_tool_only_from_blank() -> None:
+    summary = summarize_chat_completion_response(
+        path="/v1/chat/completions",
+        status_code=200,
+        payload={
+            "model": "qwen",
+            "choices": [
+                {
+                    "message": {
+                        "content": None,
+                        "reasoning": None,
+                        "tool_calls": [{"id": "call_1"}],
+                    },
+                    "finish_reason": "tool_calls",
+                },
+                {
+                    "message": {"content": "", "reasoning_content": ""},
+                    "finish_reason": "stop",
+                },
+            ],
+        },
+    )
+
+    assert summary["empty_content_and_reasoning_choice_count"] == 2
+    assert summary["empty_content_and_reasoning_choice_indices"] == [0, 1]
+    assert summary["empty_content_reasoning_and_tool_choice_count"] == 1
+    assert summary["empty_content_reasoning_and_tool_choice_indices"] == [1]
+
+
+def test_logprob_stream_summary_distinguishes_reasoning_tool_and_blank() -> None:
+    summary = {
+        "path": "/v1/chat/completions",
+        "status_code": 200,
+        "model": "qwen",
+        "stream": True,
+        "choice_count": 0,
+        "finish_reasons": [],
+        "content_lengths": [],
+        "reasoning_lengths": [],
+        "tool_call_counts": [],
+        "empty_content_choice_count": 0,
+        "empty_reasoning_choice_count": 0,
+        "empty_content_and_reasoning_choice_count": 0,
+        "empty_content_and_reasoning_choice_indices": [],
+        "empty_content_reasoning_and_tool_choice_count": 0,
+        "empty_content_reasoning_and_tool_choice_indices": [],
+        "prompt_tokens": None,
+        "completion_tokens": None,
+        "total_tokens": None,
+    }
+
+    update_chat_completion_stream_summary(
+        summary,
+        "data: " + json.dumps({
+            "model": "qwen",
+            "choices": [
+                {"index": 0, "delta": {"reasoning_content": "think"}},
+                {
+                    "index": 1,
+                    "delta": {"tool_calls": [{"index": 0, "id": "call_1"}]},
+                },
+                {"index": 2, "delta": {}},
+            ],
+        }),
+    )
+    update_chat_completion_stream_summary(
+        summary,
+        "data: " + json.dumps({
+            "choices": [
+                {"index": 0, "delta": {"content": "answer"}, "finish_reason": "stop"},
+                {"index": 1, "delta": {}, "finish_reason": "tool_calls"},
+                {"index": 2, "delta": {}, "finish_reason": "stop"},
+            ],
+            "usage": {"prompt_tokens": 3, "completion_tokens": 4, "total_tokens": 7},
+        }),
+    )
+
+    finalized = finalize_chat_completion_stream_summary(summary)
+
+    assert finalized["choice_count"] == 3
+    assert finalized["finish_reasons"] == ["stop", "tool_calls", "stop"]
+    assert finalized["content_lengths"] == [6, 0, 0]
+    assert finalized["reasoning_lengths"] == [5, 0, 0]
+    assert finalized["tool_call_counts"] == [0, 1, 0]
+    assert finalized["empty_content_and_reasoning_choice_indices"] == [1, 2]
+    assert finalized["empty_content_reasoning_and_tool_choice_indices"] == [2]
+    assert finalized["prompt_tokens"] == 3
+    assert finalized["completion_tokens"] == 4
+    assert finalized["total_tokens"] == 7
+
+
+def test_logprob_proxy_records_streaming_response_summary() -> None:
+    seen: dict = {}
+
+    class _SseHandler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            length = int(self.headers.get("Content-Length", 0))
+            seen["payload"] = json.loads(self.rfile.read(length))
+            events = [
+                {
+                    "model": "qwen",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"reasoning_content": "think"},
+                            "logprobs": {
+                                "content": [
+                                    {
+                                        "token": "think",
+                                        "logprob": -0.2,
+                                        "top_logprobs": [{"token": "think", "logprob": -0.2}],
+                                    }
+                                ]
+                            },
+                        }
+                    ],
+                },
+                {
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"content": "answer"},
+                            "finish_reason": "stop",
+                        }
+                    ],
+                    "usage": {"prompt_tokens": 3, "completion_tokens": 4, "total_tokens": 7},
+                },
+            ]
+            body = "".join(f"data: {json.dumps(event)}\n\n" for event in events)
+            body += "data: [DONE]\n\n"
+            raw = body.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.end_headers()
+            self.wfile.write(raw)
+            self.wfile.flush()
+
+        def log_message(self, *args: object) -> None:
+            pass
+
+    upstream = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _SseHandler)
+    thread = threading.Thread(target=upstream.serve_forever, daemon=True)
+    thread.start()
+    proxy = LogprobCaptureProxy(
+        f"http://127.0.0.1:{upstream.server_address[1]}",
+        5,
+        request_overrides={
+            "stream": True,
+            "presence_penalty": 1.5,
+            "chat_template_kwargs": {"enable_thinking": True},
+        },
+        capture_request_summary=True,
+    )
+    proxy.start()
+    try:
+        payload = json.dumps(
+            {
+                "model": "qwen",
+                "messages": [{"role": "user", "content": "x"}],
+            }
+        ).encode("utf-8")
+        req = urllib.request.Request(
+            f"{proxy.proxy_url}/v1/chat/completions",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            assert resp.status == 200
+            resp.read()
+
+        assert seen["payload"]["stream"] is True
+        assert seen["payload"]["presence_penalty"] == 1.5
+        assert seen["payload"]["chat_template_kwargs"] == {"enable_thinking": True}
+        request_summary = proxy.drain_request_summaries()[0]
+        assert request_summary["stream"] is True
+        assert request_summary["presence_penalty"] == 1.5
+        assert request_summary["chat_template_kwargs"] == {"enable_thinking": True}
+        response_summary = proxy.drain_response_summaries()[0]
+        assert response_summary["stream"] is True
+        assert response_summary["choice_count"] == 1
+        assert response_summary["content_lengths"] == [6]
+        assert response_summary["reasoning_lengths"] == [5]
+        assert response_summary["tool_call_counts"] == [0]
+        assert response_summary["empty_content_reasoning_and_tool_choice_count"] == 0
+        assert response_summary["prompt_tokens"] == 3
+        assert proxy.captured_records()[0]["token"] == "think"
+    finally:
+        proxy.stop()
+        upstream.shutdown()
+        upstream.server_close()
+
+
+def test_logprob_proxy_can_stream_upstream_and_return_json_downstream() -> None:
+    seen: dict = {}
+
+    class _SseHandler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            length = int(self.headers.get("Content-Length", 0))
+            seen["payload"] = json.loads(self.rfile.read(length))
+            events = [
+                {
+                    "id": "chatcmpl-test",
+                    "object": "chat.completion.chunk",
+                    "created": 123,
+                    "model": "qwen",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"role": "assistant", "reasoning": "think"},
+                            "logprobs": {
+                                "content": [
+                                    {
+                                        "token": "think",
+                                        "logprob": -0.2,
+                                        "top_logprobs": [{"token": "think", "logprob": -0.2}],
+                                    }
+                                ]
+                            },
+                        }
+                    ],
+                },
+                {
+                    "id": "chatcmpl-test",
+                    "object": "chat.completion.chunk",
+                    "created": 123,
+                    "model": "qwen",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"content": "answer"},
+                            "finish_reason": "stop",
+                        }
+                    ],
+                    "usage": {"prompt_tokens": 3, "completion_tokens": 4, "total_tokens": 7},
+                },
+            ]
+            body = "".join(f"data: {json.dumps(event)}\n\n" for event in events)
+            body += "data: [DONE]\n\n"
+            raw = body.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.end_headers()
+            self.wfile.write(raw)
+            self.wfile.flush()
+
+        def log_message(self, *args: object) -> None:
+            pass
+
+    upstream = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _SseHandler)
+    thread = threading.Thread(target=upstream.serve_forever, daemon=True)
+    thread.start()
+    proxy = LogprobCaptureProxy(
+        f"http://127.0.0.1:{upstream.server_address[1]}",
+        5,
+        request_overrides={"chat_template_kwargs": {"enable_thinking": True}},
+        capture_request_summary=True,
+        upstream_stream=True,
+    )
+    proxy.start()
+    try:
+        payload = json.dumps(
+            {
+                "model": "qwen",
+                "messages": [{"role": "user", "content": "x"}],
+            }
+        ).encode("utf-8")
+        req = urllib.request.Request(
+            f"{proxy.proxy_url}/v1/chat/completions",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            assert resp.status == 200
+            assert resp.headers["Content-Type"] == "application/json"
+            response_payload = json.loads(resp.read())
+
+        assert seen["payload"]["stream"] is True
+        assert seen["payload"]["stream_options"]["include_usage"] is True
+        assert seen["payload"]["chat_template_kwargs"] == {"enable_thinking": True}
+        assert response_payload["object"] == "chat.completion"
+        assert response_payload["choices"][0]["message"]["content"] == "answer"
+        assert response_payload["choices"][0]["message"]["reasoning"] == "think"
+        assert response_payload["choices"][0]["finish_reason"] == "stop"
+        assert response_payload["usage"]["total_tokens"] == 7
+
+        request_summary = proxy.drain_request_summaries()[0]
+        assert request_summary["stream"] is True
+        assert request_summary["downstream_stream"] is False
+        assert request_summary["upstream_stream_forced"] is True
+        response_summary = proxy.drain_response_summaries()[0]
+        assert response_summary["stream"] is True
+        assert response_summary["choice_count"] == 1
+        assert response_summary["content_lengths"] == [6]
+        assert response_summary["reasoning_lengths"] == [5]
+        assert response_summary["prompt_tokens"] == 3
+        assert proxy.captured_records()[0]["token"] == "think"
+    finally:
+        proxy.stop()
+        upstream.shutdown()
+        upstream.server_close()
+
+
+def test_logprob_proxy_error_summary_is_content_free(caplog) -> None:
+    error_body = json.dumps({"error": {"message": "bad request"}}).encode("utf-8")
+
+    class _ErrorHandler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(error_body)))
+            self.end_headers()
+            self.wfile.write(error_body)
+
+        def log_message(self, *args: object) -> None:
+            pass
+
+    upstream = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _ErrorHandler)
+    thread = threading.Thread(target=upstream.serve_forever, daemon=True)
+    thread.start()
+    proxy = LogprobCaptureProxy(
+        f"http://127.0.0.1:{upstream.server_address[1]}",
+        0,
+        capture_request_summary=True,
+        inject_logprobs=False,
+        request_overrides={"max_tokens": 128},
+    )
+    proxy.start()
+    caplog.set_level("WARNING", logger="alphadiana.agent.logprob_proxy")
+    try:
+        payload = json.dumps(
+            {
+                "model": "qwen",
+                "messages": [{"role": "user", "content": "SECRET_PROMPT"}],
+            }
+        ).encode("utf-8")
+        req = urllib.request.Request(
+            f"{proxy.proxy_url}/v1/chat/completions",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            urllib.request.urlopen(req, timeout=5)
+            raise AssertionError("expected HTTPError")
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 400
+            exc.read()
+
+        assert proxy.drain_response_summaries() == [
+            {
+                "path": "/v1/chat/completions",
+                "status_code": 400,
+                "model": "qwen",
+                "choice_count": 0,
+                "finish_reasons": [],
+                "content_lengths": [],
+                "reasoning_lengths": [],
+                "tool_call_counts": [],
+                "empty_content_choice_count": 0,
+                "empty_reasoning_choice_count": 0,
+                "empty_content_and_reasoning_choice_count": 0,
+                "empty_content_and_reasoning_choice_indices": [],
+                "empty_content_reasoning_and_tool_choice_count": 0,
+                "empty_content_reasoning_and_tool_choice_indices": [],
+                "prompt_tokens": None,
+                "completion_tokens": None,
+                "total_tokens": None,
+                "error_response": True,
+                "response_body_length": len(error_body),
+            }
+        ]
+        assert "SECRET_PROMPT" not in caplog.text
+        assert "request_bytes=" in caplog.text
+        assert "response_bytes=" in caplog.text
     finally:
         proxy.stop()
         upstream.shutdown()

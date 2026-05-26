@@ -1,0 +1,50 @@
+# TerminalBench2 ZeroClaw Podman local-Qwen post-fix probe.
+
+run_id: "podman_tb2_postfix_local_qwen_terminal_bench2_zeroclaw"
+
+benchmark:
+  name: terminal_bench2
+  config:
+    tasks_dir: ${TERMINAL_BENCH2_DIR}
+    task_ids:
+      - adaptive-rejection-sampler
+      - break-filter-js-from-html
+    max_tasks: 2
+
+agent:
+  name: terminal_bench2_zeroclaw
+  version: "0.6.9"
+  config:
+    container_engine: podman
+    model: ${OPENAI_MODEL_NAME}
+    model_name: ${OPENAI_MODEL_NAME}
+    api_base: ${OPENAI_BASE_URL}
+    api_key: ${OPENAI_API_KEY}
+    runtime_source_image: "${TB2_ZEROCLAW_RUNTIME_IMAGE}"
+    logs_base_dir: "${ALPHADIANA_TB2_LOGS_DIR}"
+    zeroclaw_bin: "zeroclaw"
+    solver_timeout_sec: 300
+    timeout_sec: 300
+    test_timeout_sec: 1200
+    max_tokens: 8192
+    normalize_provider_system_messages: true
+    provider_proxy_capture_request_summary: true
+    provider_proxy_inject_logprobs: false
+
+scorer:
+  name: terminal_bench2
+
+max_concurrent: 2
+num_samples: 1
+output_dir: "./results"
+metadata:
+  validation_campaign: "podman-terminal-bench2-zeroclaw-postfix-local-qwen-20260516"
+  container_engine: "podman"
+  run_suffix: "terminal_bench2_zeroclaw_postfix_local_qwen"
+  selected_task_names:
+    - adaptive-rejection-sampler
+    - break-filter-js-from-html
+  selected_task_ids:
+    - tb2_adaptive-rejection-sampler
+    - tb2_break-filter-js-from-html
+  notes: "Focused post-fix probe for ZeroClaw provider proxy normalization, request-summary preservation, provider-error classification, empty-assistant classification, and verifier-log preservation."

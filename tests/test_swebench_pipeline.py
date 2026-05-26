@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -43,6 +44,20 @@ def _make_task(task_id: str = "swe_demo") -> BenchmarkTask:
             "test_patch": "",
         },
     )
+
+
+def test_swebench_container_podman_engine_sets_docker_host_env(monkeypatch):
+    monkeypatch.delenv("DOCKER_HOST", raising=False)
+    sandbox = SWEBenchContainerSandbox()
+    sandbox.setup({
+        "container_engine": "podman",
+        "podman_socket": "/tmp/podman.sock",
+    })
+
+    with sandbox._container_runtime_env():
+        assert os.environ["DOCKER_HOST"] == "unix:///tmp/podman.sock"
+
+    assert "DOCKER_HOST" not in os.environ
 
 
 def test_swebench_empty_patch_skips_harness(tmp_path, monkeypatch):
