@@ -21,28 +21,28 @@ from pathlib import Path
 from typing import Any, Optional
 from uuid import uuid4
 
-from alphadiana.agent.base import Agent, AgentResponse
-from alphadiana.agent.logprob_capture import (
+from alphadiana.harness.base import Agent, AgentResponse
+from alphadiana.harness.proxies.logprob_capture import (
     finalize_logprob_capture,
     resolve_logprob_capture_config,
 )
-from alphadiana.agent.logprob_proxy import (
+from alphadiana.harness.proxies.logprob_proxy import (
     LogprobCaptureProxy,
     normalize_openai_proxy_upstream,
     resolve_logprob_proxy_advertise_host,
 )
-from alphadiana.agent.opencode import (
+from alphadiana.harness.opencode.agent import (
     _count_json_objects,
     extract_opencode_logprob_records,
 )
-from alphadiana.agent.preservation import (
+from alphadiana.harness.proxies.preservation import (
     add_artifact_file_refs,
     build_event_trajectories,
     build_text_step_trajectories,
     build_runtime_trace_summary,
     parse_jsonl_records,
 )
-from alphadiana.agent.registry import register_agent
+from alphadiana.harness.registry import register_agent
 from alphadiana.benchmark.base import BenchmarkTask
 from alphadiana.container_runtime.podman_cli import PodmanCLI, normalize_podman_image_ref
 from alphadiana.utils.openclaw_security import resolve_openclaw_gateway_token
@@ -1906,7 +1906,7 @@ RUN chmod +x /usr/local/bin/zeroclaw
         )
         if openclaw_session_text:
             try:
-                from alphadiana.agent.openclaw import _parse_openclaw_session
+                from alphadiana.harness.openclaw.agent import _parse_openclaw_session
 
                 trajectory = _parse_openclaw_session(openclaw_session_text)
             except Exception:

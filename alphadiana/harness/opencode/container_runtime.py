@@ -20,11 +20,11 @@ import time
 from pathlib import Path
 from typing import Any
 
-from alphadiana.agent.logprob_capture import (
+from alphadiana.harness.proxies.logprob_capture import (
     apply_openai_logprob_request,
     resolve_logprob_capture_config,
 )
-from alphadiana.agent.logprob_proxy import (
+from alphadiana.harness.proxies.logprob_proxy import (
     LogprobCaptureProxy,
     normalize_openai_proxy_upstream,
     resolve_logprob_proxy_advertise_host,

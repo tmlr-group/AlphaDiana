@@ -300,7 +300,7 @@ class OpenClawLogprobProxy:
         """Return all captured per-token logprob dicts (SSE preferred over buffered)."""
         if self._server is None:
             return []
-        from alphadiana.agent.logprob_capture import raw_token_logprob_dict_to_record, extract_openai_logprob_records
+        from alphadiana.harness.proxies.logprob_capture import raw_token_logprob_dict_to_record, extract_openai_logprob_records
         records: list[dict] = []
         token_index = 0
         with self._server.lock:
@@ -1292,11 +1292,11 @@ class OpenClawPodmanRuntimeManager(OpenClawRuntimeManager):
 
     def __init__(self, config: dict) -> None:
         config = dict(config)
-        config.setdefault("openclaw_config_path", "openclaw_deploy/openclaw.json")
+        config.setdefault("openclaw_config_path", "alphadiana/harness/openclaw/deploy/openclaw.json")
         super().__init__(config)
         self._podman_gateway_config_path = str(
             self._resolve_config_path(
-                config.get("podman_gateway_config_path", "openclaw_deploy/podman_gateway.yaml")
+                config.get("podman_gateway_config_path", "alphadiana/harness/openclaw/deploy/podman_gateway.yaml")
             )
         )
         self._docker_host_ip = str(

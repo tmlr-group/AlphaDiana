@@ -91,7 +91,7 @@ class Proxy:
             return body, 0, 0
         if self.harness_strip:
             try:
-                from alphadiana.agent.harness_strip import strip_for_harness
+                from alphadiana.harness.proxies.harness_strip import strip_for_harness
             except ImportError:
                 # proxy may run from /tmp without package; load sibling file
                 import importlib.util, os as _os

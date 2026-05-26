@@ -16,7 +16,7 @@ from uuid import uuid4
 
 import httpx
 
-from alphadiana.agent.registry import AgentRegistry
+from alphadiana.harness.registry import AgentRegistry
 from alphadiana.benchmark.base import BenchmarkTask
 from alphadiana.utils.rock_ports import resolve_rock_ports_from_env
 from alphadiana.benchmark.registry import BenchmarkRegistry
@@ -32,7 +32,7 @@ from alphadiana.utils.math_answer import (
 from alphadiana.utils.lifecycle_events import append_lifecycle_event
 
 if TYPE_CHECKING:
-    from alphadiana.agent.base import Agent
+    from alphadiana.harness.base import Agent
     from alphadiana.benchmark.base import Benchmark
     from alphadiana.config.experiment_config import ExperimentConfig
     from alphadiana.sandbox.base import Sandbox
@@ -209,15 +209,15 @@ def _needs_auto_rock_sandbox(config: "ExperimentConfig") -> bool:
 
 def _make_gateway_runtime_manager(config: "ExperimentConfig"):
     if config.agent_name == "openclaw":
-        from alphadiana.agent.openclaw_runtime import OpenClawRuntimeManager
+        from alphadiana.harness.openclaw.runtime import OpenClawRuntimeManager
 
         return OpenClawRuntimeManager(config.agent_config)
     if config.agent_name == "zeroclaw":
         if str(config.agent_config.get("runtime_backend", "") or "").strip().lower() == "podman":
-            from alphadiana.agent.zeroclaw_runtime import ZeroClawPodmanRuntimeManager
+            from alphadiana.harness.zeroclaw.runtime import ZeroClawPodmanRuntimeManager
 
             return ZeroClawPodmanRuntimeManager(config.agent_config)
-        from alphadiana.agent.zeroclaw_runtime import ZeroClawRuntimeManager
+        from alphadiana.harness.zeroclaw.runtime import ZeroClawRuntimeManager
 
         return ZeroClawRuntimeManager(config.agent_config)
     raise RuntimeError(f"Unsupported gateway auto-deploy agent: {config.agent_name}")
@@ -510,16 +510,16 @@ class Runner:
         import alphadiana.benchmark.terminal_bench2  # noqa: F401
 
         # Import agent modules to trigger registration.
-        import alphadiana.agent.direct_llm  # noqa: F401
+        import alphadiana.harness.direct_llm  # noqa: F401
         import alphadiana.agent.external_benchmark_docker  # noqa: F401
-        import alphadiana.agent.openclaw  # noqa: F401
-        import alphadiana.agent.opencode  # noqa: F401
+        import alphadiana.harness.openclaw.agent  # noqa: F401
+        import alphadiana.harness.opencode.agent  # noqa: F401
         import alphadiana.agent.swebench_docker  # noqa: F401
         import alphadiana.agent.terminal_bench2_docker  # noqa: F401
         import alphadiana.agent.terminal_bench2_openclaw  # noqa: F401
         import alphadiana.agent.terminal_bench2_opencode  # noqa: F401
         import alphadiana.agent.terminal_bench2_zeroclaw  # noqa: F401
-        import alphadiana.agent.zeroclaw  # noqa: F401
+        import alphadiana.harness.zeroclaw.agent  # noqa: F401
 
         # Import sandbox modules to trigger registration.
         import alphadiana.sandbox.local  # noqa: F401
@@ -1822,7 +1822,7 @@ class Runner:
                         sandbox_session = self.sandbox.create_session()
             except Exception as exc:
                 logger.error("Task %s failed before agent start: %s", task.task_id, exc)
-                from alphadiana.agent.base import AgentResponse
+                from alphadiana.harness.base import AgentResponse
 
                 sandbox_provenance = _sandbox_config_provenance_metadata(self.config)
                 exception_sandbox_metadata = getattr(exc, "sandbox_metadata", None)
@@ -1989,7 +1989,7 @@ class Runner:
                 # Build a partial response for error recording.
                 error_response = getattr(exc, "partial_response", None) or response
                 if error_response is None:
-                    from alphadiana.agent.base import AgentResponse
+                    from alphadiana.harness.base import AgentResponse
                     error_response = AgentResponse(
                         answer=None,
                         wall_time_sec=time.monotonic() - start,

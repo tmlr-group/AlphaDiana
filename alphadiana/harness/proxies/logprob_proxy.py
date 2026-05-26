@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from alphadiana.agent.logprob_capture import (
+from alphadiana.harness.proxies.logprob_capture import (
     extract_openai_logprob_records,
     raw_token_logprob_dict_to_record,
 )

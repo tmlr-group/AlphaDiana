@@ -10,29 +10,29 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-from alphadiana.agent.base import Agent, AgentResponse
-from alphadiana.agent.logprob_capture import (
+from alphadiana.harness.base import Agent, AgentResponse
+from alphadiana.harness.proxies.logprob_capture import (
     apply_openai_logprob_request,
     finalize_logprob_capture,
     resolve_logprob_capture_config,
 )
-from alphadiana.agent.logprob_proxy import (
+from alphadiana.harness.proxies.logprob_proxy import (
     LogprobCaptureProxy,
     normalize_openai_proxy_upstream,
     resolve_logprob_proxy_advertise_host,
 )
-from alphadiana.agent.opencode import (
+from alphadiana.harness.opencode.agent import (
     _count_json_objects,
     _extract_event_texts,
     extract_opencode_logprob_records,
 )
-from alphadiana.agent.preservation import (
+from alphadiana.harness.proxies.preservation import (
     add_artifact_file_refs,
     build_event_trajectories,
     build_runtime_trace_summary,
     parse_jsonl_records,
 )
-from alphadiana.agent.registry import AgentRegistry
+from alphadiana.harness.registry import AgentRegistry
 from alphadiana.agent.terminal_bench2_incontainer import (
     IN_CONTAINER_AGENT_PROMPT,
     TerminalBench2InContainerMixin,

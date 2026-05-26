@@ -10,15 +10,15 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-from alphadiana.agent.base import Agent, AgentResponse
-from alphadiana.agent.openclaw import (
+from alphadiana.harness.base import Agent, AgentResponse
+from alphadiana.harness.openclaw.agent import (
     _extract_trajectory_error,
     _extract_reasoning_trajectory_from_payload,
     _parse_openclaw_session,
     _recover_partial_output_from_trajectory,
 )
-from alphadiana.agent.preservation import add_artifact_file_refs
-from alphadiana.agent.registry import AgentRegistry
+from alphadiana.harness.proxies.preservation import add_artifact_file_refs
+from alphadiana.harness.registry import AgentRegistry
 from alphadiana.agent.terminal_bench2_incontainer import (
     IN_CONTAINER_AGENT_PROMPT,
     TerminalBench2InContainerMixin,
