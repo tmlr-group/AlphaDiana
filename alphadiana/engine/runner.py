@@ -17,9 +17,9 @@ from uuid import uuid4
 import httpx
 
 from alphadiana.harness.registry import AgentRegistry
-from alphadiana.benchmark.base import BenchmarkTask
+from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.utils.rock_ports import resolve_rock_ports_from_env
-from alphadiana.benchmark.registry import BenchmarkRegistry
+from alphadiana.benchmarks.registry import BenchmarkRegistry
 from alphadiana.analysis.report import ReportGenerator, RunSummary
 from alphadiana.analysis.io.result_store import ResultStore
 from alphadiana.engine.task_dispatcher import TaskDispatcher
@@ -33,7 +33,7 @@ from alphadiana.utils.lifecycle_events import append_lifecycle_event
 
 if TYPE_CHECKING:
     from alphadiana.harness.base import Agent
-    from alphadiana.benchmark.base import Benchmark
+    from alphadiana.benchmarks.base import Benchmark
     from alphadiana.engine.config.experiment_config import ExperimentConfig
     from alphadiana.engine.sandbox.base import Sandbox
     from alphadiana.scorer.base import Scorer
@@ -498,27 +498,27 @@ class Runner:
     def setup(self) -> None:
         """Resolve and instantiate all components from their registries."""
         # Import all benchmark/agent/sandbox/scorer modules to trigger registration.
-        import alphadiana.benchmark.aime  # noqa: F401
-        import alphadiana.benchmark.custom  # noqa: F401
-        import alphadiana.benchmark.swe_bench  # noqa: F401
-        import alphadiana.benchmark.gpqa  # noqa: F401
-        import alphadiana.benchmark.hle  # noqa: F401
-        import alphadiana.benchmark.imo_answerbench  # noqa: F401
-        import alphadiana.benchmark.mmmu_pro  # noqa: F401
-        import alphadiana.benchmark.external_benchmark  # noqa: F401
-        import alphadiana.benchmark.swebench_pro  # noqa: F401
-        import alphadiana.benchmark.terminal_bench2  # noqa: F401
+        import alphadiana.benchmarks.aime.benchmark  # noqa: F401
+        import alphadiana.benchmarks.custom.benchmark  # noqa: F401
+        import alphadiana.benchmarks.swe_bench.benchmark  # noqa: F401
+        import alphadiana.benchmarks.gpqa.benchmark  # noqa: F401
+        import alphadiana.benchmarks.hle.benchmark  # noqa: F401
+        import alphadiana.benchmarks.imo.benchmark  # noqa: F401
+        import alphadiana.benchmarks.mmmu_pro.benchmark  # noqa: F401
+        import alphadiana.benchmarks.external_benchmark.benchmark  # noqa: F401
+        import alphadiana.benchmarks.swebench_pro.benchmark  # noqa: F401
+        import alphadiana.benchmarks.terminal_bench2.benchmark  # noqa: F401
 
         # Import agent modules to trigger registration.
         import alphadiana.harness.direct_llm  # noqa: F401
-        import alphadiana.agent.external_benchmark_docker  # noqa: F401
+        import alphadiana.benchmarks.external_benchmark.harness  # noqa: F401
         import alphadiana.harness.openclaw.agent  # noqa: F401
         import alphadiana.harness.opencode.agent  # noqa: F401
-        import alphadiana.agent.swebench_docker  # noqa: F401
-        import alphadiana.agent.terminal_bench2_docker  # noqa: F401
-        import alphadiana.agent.terminal_bench2_openclaw  # noqa: F401
-        import alphadiana.agent.terminal_bench2_opencode  # noqa: F401
-        import alphadiana.agent.terminal_bench2_zeroclaw  # noqa: F401
+        import alphadiana.benchmarks.swe_bench.harness  # noqa: F401
+        import alphadiana.benchmarks.terminal_bench2.harness.docker  # noqa: F401
+        import alphadiana.benchmarks.terminal_bench2.harness.openclaw  # noqa: F401
+        import alphadiana.benchmarks.terminal_bench2.harness.opencode  # noqa: F401
+        import alphadiana.benchmarks.terminal_bench2.harness.zeroclaw  # noqa: F401
         import alphadiana.harness.zeroclaw.agent  # noqa: F401
 
         # Import sandbox modules to trigger registration.
@@ -529,14 +529,14 @@ class Runner:
 
         # Import scorer modules to trigger registration.
         import alphadiana.scorer.exact_match  # noqa: F401
-        import alphadiana.scorer.imo_verify_scorer  # noqa: F401
+        import alphadiana.benchmarks.imo.verify  # noqa: F401
         import alphadiana.scorer.llm_judge  # noqa: F401
         import alphadiana.scorer.math_verify_scorer  # noqa: F401
-        import alphadiana.scorer.external_benchmark  # noqa: F401
+        import alphadiana.benchmarks.external_benchmark.scorer  # noqa: F401
         import alphadiana.scorer.numeric  # noqa: F401
-        import alphadiana.scorer.swe_bench  # noqa: F401
-        import alphadiana.scorer.swebench_pro  # noqa: F401
-        import alphadiana.scorer.terminal_bench2_scorer  # noqa: F401
+        import alphadiana.benchmarks.swe_bench.scorer  # noqa: F401
+        import alphadiana.benchmarks.swebench_pro.scorer  # noqa: F401
+        import alphadiana.benchmarks.terminal_bench2.scorer  # noqa: F401
 
         try:
             # Resolve and instantiate benchmark.

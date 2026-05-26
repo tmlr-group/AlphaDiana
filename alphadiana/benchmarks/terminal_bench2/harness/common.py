@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from alphadiana.benchmark.base import BenchmarkTask
+from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.engine.container_runtime.podman_cli import PodmanCLI, PodmanError
 from alphadiana.engine.container_runtime.proxy_env import podman_proxy_env
 

@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import re
 
-from alphadiana.benchmark.base import Benchmark, BenchmarkTask, load_dataset_with_retry
-from alphadiana.benchmark.registry import BenchmarkRegistry
+from alphadiana.benchmarks.base import Benchmark, BenchmarkTask, load_dataset_with_retry
+from alphadiana.benchmarks.registry import BenchmarkRegistry
 
 # Letters used for option labeling (MMMU-Pro has up to 10 options)
 _OPTION_LABELS = list("ABCDEFGHIJ")

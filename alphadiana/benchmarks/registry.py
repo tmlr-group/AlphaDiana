@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Type
 
-from alphadiana.benchmark.base import Benchmark
+from alphadiana.benchmarks.base import Benchmark
 
 
 class BenchmarkRegistry:

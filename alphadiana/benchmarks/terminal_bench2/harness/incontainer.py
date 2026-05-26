@@ -13,12 +13,12 @@ import time
 from pathlib import Path
 from typing import Any
 
-from alphadiana.agent.terminal_bench2_common import (
+from alphadiana.benchmarks.terminal_bench2.harness.common import (
     LocalCommandResult,
     TerminalBench2ContainerMixin,
     TerminalBench2RuntimeContext,
 )
-from alphadiana.benchmark.base import BenchmarkTask
+from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.engine.container_runtime.podman_cli import PodmanError, normalize_podman_image_ref
 from alphadiana.utils.rock_runtime import PREBUILT_SANDBOX_IMAGE
 

@@ -35,7 +35,7 @@ from alphadiana.harness.proxies.preservation import (
 )
 from alphadiana.harness.registry import AgentRegistry
 from alphadiana.harness.zeroclaw.runtime import _resolve_zeroclaw_provider
-from alphadiana.benchmark.base import BenchmarkTask
+from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.utils.math_answer import extract_answer_candidate
 
 logger = logging.getLogger(__name__)

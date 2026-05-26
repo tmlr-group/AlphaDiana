@@ -8,13 +8,13 @@ from typing import Any, Optional
 
 from alphadiana.harness.base import Agent, AgentResponse
 from alphadiana.harness.registry import AgentRegistry
-from alphadiana.agent.terminal_bench2_common import (
+from alphadiana.benchmarks.terminal_bench2.harness.common import (
     SYSTEM_PROMPT,
     TerminalBench2ContainerMixin,
     is_done,
     parse_commands,
 )
-from alphadiana.benchmark.base import BenchmarkTask
+from alphadiana.benchmarks.base import BenchmarkTask
 
 logger = logging.getLogger(__name__)
 

@@ -26,7 +26,7 @@ from alphadiana.harness.proxies.logprob_capture import (
 )
 from alphadiana.harness.base import Agent, AgentResponse
 from alphadiana.harness.registry import AgentRegistry
-from alphadiana.benchmark.base import BenchmarkTask
+from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.utils.math_answer import extract_answer_candidate
 
 _DEFAULT_SYSTEM_PROMPT = (

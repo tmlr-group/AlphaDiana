@@ -31,7 +31,7 @@ from alphadiana.utils.swebench import (
 )
 
 if TYPE_CHECKING:
-    from alphadiana.benchmark.base import BenchmarkTask
+    from alphadiana.benchmarks.base import BenchmarkTask
 
 logger = logging.getLogger(__name__)
 

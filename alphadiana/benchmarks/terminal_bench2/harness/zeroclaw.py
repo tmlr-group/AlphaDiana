@@ -24,7 +24,7 @@ from alphadiana.harness.proxies.preservation import (
 )
 from alphadiana.harness.base import AgentResponse
 from alphadiana.harness.registry import AgentRegistry
-from alphadiana.agent.terminal_bench2_incontainer import (
+from alphadiana.benchmarks.terminal_bench2.harness.incontainer import (
     IN_CONTAINER_AGENT_PROMPT,
     TerminalBench2InContainerMixin,
 )
@@ -35,7 +35,7 @@ from alphadiana.harness.zeroclaw.agent import (
     _sanitize_cli_output,
     extract_zeroclaw_logprob_records,
 )
-from alphadiana.benchmark.base import BenchmarkTask
+from alphadiana.benchmarks.base import BenchmarkTask
 
 logger = logging.getLogger(__name__)
 

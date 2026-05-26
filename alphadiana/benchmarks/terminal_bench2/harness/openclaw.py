@@ -19,12 +19,12 @@ from alphadiana.harness.openclaw.agent import (
 )
 from alphadiana.harness.proxies.preservation import add_artifact_file_refs
 from alphadiana.harness.registry import AgentRegistry
-from alphadiana.agent.terminal_bench2_incontainer import (
+from alphadiana.benchmarks.terminal_bench2.harness.incontainer import (
     IN_CONTAINER_AGENT_PROMPT,
     TerminalBench2InContainerMixin,
 )
-from alphadiana.agent.terminal_bench2_common import _proxy_bypass_hosts_from_urls
-from alphadiana.benchmark.base import BenchmarkTask
+from alphadiana.benchmarks.terminal_bench2.harness.common import _proxy_bypass_hosts_from_urls
+from alphadiana.benchmarks.base import BenchmarkTask
 
 logger = logging.getLogger(__name__)
 

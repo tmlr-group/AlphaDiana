@@ -1,8 +1,8 @@
 """Custom benchmark: define problems directly in YAML config."""
 from __future__ import annotations
 
-from alphadiana.benchmark.base import Benchmark, BenchmarkTask
-from alphadiana.benchmark.registry import BenchmarkRegistry
+from alphadiana.benchmarks.base import Benchmark, BenchmarkTask
+from alphadiana.benchmarks.registry import BenchmarkRegistry
 
 
 class CustomBenchmark(Benchmark):

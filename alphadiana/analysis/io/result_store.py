@@ -13,7 +13,7 @@ from typing import Any
 
 from alphadiana.harness.base import AgentResponse
 from alphadiana.harness.proxies.preservation import add_artifact_file_refs
-from alphadiana.benchmark.base import BenchmarkTask
+from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.analysis.io.logprob_artifacts import INT16_PROB_SCALE, raw_record_to_int16_record
 from alphadiana.analysis.io.normalized_trace import (
     TRACE_ARTIFACT_NAME,

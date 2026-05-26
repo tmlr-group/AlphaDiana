@@ -5,8 +5,8 @@ import base64
 import io
 import os
 
-from alphadiana.benchmark.base import Benchmark, BenchmarkTask, load_dataset_with_retry
-from alphadiana.benchmark.registry import BenchmarkRegistry
+from alphadiana.benchmarks.base import Benchmark, BenchmarkTask, load_dataset_with_retry
+from alphadiana.benchmarks.registry import BenchmarkRegistry
 
 
 class HLEBenchmark(Benchmark):

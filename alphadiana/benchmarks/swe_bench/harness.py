@@ -43,7 +43,7 @@ from alphadiana.harness.proxies.preservation import (
     parse_jsonl_records,
 )
 from alphadiana.harness.registry import register_agent
-from alphadiana.benchmark.base import BenchmarkTask
+from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.engine.container_runtime.podman_cli import PodmanCLI, normalize_podman_image_ref
 from alphadiana.utils.openclaw_security import resolve_openclaw_gateway_token
 from alphadiana.utils.rock_runtime import PREBUILT_SANDBOX_IMAGE

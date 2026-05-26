@@ -40,7 +40,7 @@ def _warn_proxy() -> bool:
 def _preflight_terminal_bench2(config) -> None:
     if getattr(config, "benchmark_name", "") != "terminal_bench2":
         return
-    from alphadiana.benchmark.terminal_bench2 import TerminalBench2Benchmark
+    from alphadiana.benchmarks.terminal_bench2.benchmark import TerminalBench2Benchmark
 
     tasks = TerminalBench2Benchmark().load_tasks(config.benchmark_config)
     click.echo(f"Terminal-Bench-2 tasks loaded: {len(tasks)}")
@@ -382,14 +382,14 @@ LOCALHOST = "127.0.0.1"
 def list_benchmarks():
     """List all registered benchmarks."""
     # Import benchmark modules to trigger registration.
-    import alphadiana.benchmark.aime  # noqa: F401
-    import alphadiana.benchmark.custom  # noqa: F401
-    import alphadiana.benchmark.swe_bench  # noqa: F401
-    import alphadiana.benchmark.external_benchmark  # noqa: F401
-    import alphadiana.benchmark.swebench_pro  # noqa: F401
-    import alphadiana.benchmark.terminal_bench2  # noqa: F401
+    import alphadiana.benchmarks.aime.benchmark  # noqa: F401
+    import alphadiana.benchmarks.custom.benchmark  # noqa: F401
+    import alphadiana.benchmarks.swe_bench.benchmark  # noqa: F401
+    import alphadiana.benchmarks.external_benchmark.benchmark  # noqa: F401
+    import alphadiana.benchmarks.swebench_pro.benchmark  # noqa: F401
+    import alphadiana.benchmarks.terminal_bench2.benchmark  # noqa: F401
 
-    from alphadiana.benchmark.registry import BenchmarkRegistry
+    from alphadiana.benchmarks.registry import BenchmarkRegistry
 
     benchmarks = BenchmarkRegistry.list()
     if benchmarks:
