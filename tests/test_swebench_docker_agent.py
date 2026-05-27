@@ -388,6 +388,8 @@ class TestSWEBenchDockerInContainerModes:
         }
         assert "COPY --from=runtime /app /opt/openclaw" in builds[0][1]
         assert "COPY --from=runtime /usr/local/bin/node /usr/local/bin/node" in builds[0][1]
+        assert "/opt/openclaw/node_modules/openclaw/openclaw.mjs" in builds[0][1]
+        assert "/opt/openclaw/openclaw.mjs" in builds[0][1]
 
     def test_prepare_runtime_image_builds_opencode_overlay_from_official_source(self, monkeypatch):
         agent = SWEBenchDockerAgent()

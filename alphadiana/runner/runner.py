@@ -259,6 +259,13 @@ def _load_cached_openclaw_profile(cache_key: str) -> tuple[str, float] | None:
         return None
 
 
+def _should_load_cached_openclaw_profile(config: "ExperimentConfig", requested_cpus: float) -> bool:
+    """Return whether a persisted OpenClaw startup profile may override config."""
+    if requested_cpus <= 0:
+        return False
+    return bool(config.agent_config.get("use_cached_predeploy_startup_profile", True))
+
+
 def _save_cached_openclaw_profile(cache_key: str, memory: str, cpus: float) -> None:
     try:
         _OPENCLAW_PROFILE_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -302,6 +309,57 @@ def _payload_text(value: object) -> str:
         return json.dumps(value, ensure_ascii=True, sort_keys=True, default=str)
     except Exception:
         return str(value)
+
+
+def _normalize_openclaw_request_text(value: object) -> str:
+    return _payload_text(value).replace("\r\n", "\n").strip()
+
+
+def _openclaw_request_content(response: object) -> str:
+    request_messages = getattr(response, "request_messages", None)
+    if not isinstance(request_messages, list):
+        return ""
+    for message in request_messages:
+        if not isinstance(message, dict):
+            continue
+        if str(message.get("role", "") or "").lower() != "user":
+            continue
+        return _normalize_openclaw_request_text(message.get("content", ""))
+    return ""
+
+
+def _slice_openclaw_trajectory_to_request(
+    trajectory: list[dict], expected_user_content: str,
+) -> list[dict]:
+    expected = _normalize_openclaw_request_text(expected_user_content)
+    if not expected or not isinstance(trajectory, list):
+        return trajectory
+
+    start: int | None = None
+    for index, entry in enumerate(trajectory):
+        if not isinstance(entry, dict):
+            continue
+        if str(entry.get("role", "") or "").lower() != "user":
+            continue
+        candidate = _normalize_openclaw_request_text(entry.get("content", ""))
+        if candidate == expected:
+            start = index
+            break
+    if start is None:
+        return trajectory
+
+    end = len(trajectory)
+    for index in range(start + 1, len(trajectory)):
+        entry = trajectory[index]
+        if not isinstance(entry, dict):
+            continue
+        if str(entry.get("role", "") or "").lower() != "user":
+            continue
+        candidate = _normalize_openclaw_request_text(entry.get("content", ""))
+        if candidate != expected:
+            end = index
+            break
+    return trajectory[start:end]
 
 
 def _predeployed_session_failure_reason(exc: Exception, response: object | None = None) -> str:
@@ -379,10 +437,13 @@ def _iter_openclaw_taint_text(response: object):
         if value:
             yield _payload_text(value)
 
+    expected_user_content = _openclaw_request_content(response)
     for attr in ("trajectory", "reasoning_trajectory", "request_messages"):
         value = getattr(response, attr, None)
         if not value:
             continue
+        if attr == "trajectory" and expected_user_content and isinstance(value, list):
+            value = _slice_openclaw_trajectory_to_request(value, expected_user_content)
         if isinstance(value, list):
             for item in value:
                 if isinstance(item, dict):
@@ -838,7 +899,12 @@ class Runner:
                         self.config,
                         str(auto_sandbox_config["admin_base_url"]),
                     )
-                    cached_profile = _load_cached_openclaw_profile(cache_key)
+                    cached_profile = None
+                    if _should_load_cached_openclaw_profile(
+                        self.config,
+                        float(auto_sandbox_config["cpus"]),
+                    ):
+                        cached_profile = _load_cached_openclaw_profile(cache_key)
                     if cached_profile is not None:
                         auto_sandbox_config["memory"] = cached_profile[0]
                         auto_sandbox_config["cpus"] = cached_profile[1]

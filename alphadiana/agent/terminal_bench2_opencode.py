@@ -455,6 +455,7 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
             ),
             artifact_manifest=artifact_manifest,
             workspace_file_contents=artifact_files,
+            sandbox_metadata=self._build_incontainer_sandbox_metadata(runtime),
             system_prompt=IN_CONTAINER_AGENT_PROMPT,
         )
 

@@ -29,6 +29,7 @@ from alphadiana.sandbox.swebench_container import (
 from alphadiana.utils.swebench import (
     ensure_swebench_build_network_mode,
     harden_test_spec_repo_clone,
+    harden_swebench_podman_setup_script,
     qualify_swebench_podman_image_ref,
     qualify_swebench_test_spec_for_podman,
 )
@@ -167,6 +168,156 @@ def test_swebench_build_network_patch_repatches_for_podman_mode(monkeypatch, tmp
         docker_build.build_image = original_build_image
         restore_attr("_alphadiana_build_guard", original_guard)
         restore_attr("_alphadiana_build_network_mode", original_network_guard)
+
+
+def test_swebench_podman_build_retries_transient_build_error(monkeypatch, tmp_path):
+    import swebench.harness.docker_build as docker_build
+
+    original_build_image = docker_build.build_image
+    original_guard = getattr(docker_build, "_alphadiana_build_guard", None)
+    build_calls: list[dict[str, object]] = []
+
+    class FakeApi:
+        def build(self, **kwargs):
+            build_calls.append(kwargs)
+            if len(build_calls) == 1:
+                yield {"errorDetail": {"message": "CondaHTTPError: HTTP 000 CONNECTION FAILED"}}
+            else:
+                yield {"stream": "built\n"}
+
+    class FakeClient:
+        api = FakeApi()
+
+    def restore_attr(name: str, value: object) -> None:
+        if value is None:
+            try:
+                delattr(docker_build, name)
+            except AttributeError:
+                pass
+        else:
+            setattr(docker_build, name, value)
+
+    try:
+        restore_attr("_alphadiana_build_guard", None)
+        monkeypatch.setenv("ALPHADIANA_SWEBENCH_BUILD_ATTEMPTS", "2")
+        monkeypatch.setenv("ALPHADIANA_SWEBENCH_BUILD_RETRY_SLEEP_SEC", "0")
+        build_dir = tmp_path / "podman"
+        build_dir.mkdir()
+
+        ensure_swebench_build_network_mode("host", podman_mode=True)
+        docker_build.build_image(
+            "sweb.env.demo:latest",
+            {},
+            "FROM localhost/sweb.base.demo:latest\n",
+            "linux/amd64",
+            FakeClient(),
+            build_dir,
+        )
+
+        assert len(build_calls) == 2
+        assert build_calls[0]["tag"] == "localhost/sweb.env.demo:latest"
+        assert build_calls[1]["tag"] == "localhost/sweb.env.demo:latest"
+    finally:
+        docker_build.build_image = original_build_image
+        restore_attr("_alphadiana_build_guard", original_guard)
+
+
+def test_swebench_podman_setup_script_bounds_conda_and_pip_network_steps(monkeypatch):
+    monkeypatch.setenv("ALPHADIANA_SWEBENCH_SETUP_ATTEMPTS", "3")
+    monkeypatch.setenv("ALPHADIANA_SWEBENCH_SETUP_TIMEOUT_SEC", "123")
+    monkeypatch.setenv("ALPHADIANA_SWEBENCH_SETUP_RETRY_SLEEP_SEC", "4")
+    setup_script = "\n".join([
+        "#!/bin/bash",
+        "set -euxo pipefail",
+        "source /opt/miniconda3/bin/activate",
+        "conda create -n testbed python=3.6 -y",
+        "conda activate testbed && python -m pip install -r $HOME/requirements.txt",
+        "python -m pip install mpmath==1.3.0 flake8-comprehensions",
+        "conda activate testbed",
+    ])
+
+    wrapped = harden_swebench_podman_setup_script(setup_script)
+
+    assert "AlphaDiana Podman network retry: conda create" in wrapped
+    assert "AlphaDiana Podman network retry: pip install requirements" in wrapped
+    assert "AlphaDiana Podman network retry: pip install" in wrapped
+    assert "for setup_attempt in $(seq 1 3); do" in wrapped
+    assert "timeout 123 bash -lc" in wrapped
+    assert "sleep 4" in wrapped
+    assert "source /opt/miniconda3/bin/activate && conda create -n testbed python=3.6 -y" in wrapped
+    assert (
+        "source /opt/miniconda3/bin/activate testbed && "
+        "python -m pip install -r $HOME/requirements.txt"
+    ) in wrapped
+    assert (
+        "source /opt/miniconda3/bin/activate testbed && "
+        "python -m pip install mpmath==1.3.0 flake8-comprehensions"
+    ) in wrapped
+    assert wrapped.count("conda activate testbed") >= 1
+
+
+def test_swebench_podman_setup_script_hardening_only_applies_to_env_images(
+    monkeypatch,
+    tmp_path,
+):
+    import swebench.harness.docker_build as docker_build
+
+    original_build_image = docker_build.build_image
+    original_guard = getattr(docker_build, "_alphadiana_build_guard", None)
+    build_calls: list[dict[str, object]] = []
+
+    class FakeApi:
+        def build(self, **kwargs):
+            build_calls.append(kwargs)
+            yield {"stream": "built\n"}
+
+    class FakeClient:
+        api = FakeApi()
+
+    def restore_attr(name: str, value: object) -> None:
+        if value is None:
+            try:
+                delattr(docker_build, name)
+            except AttributeError:
+                pass
+        else:
+            setattr(docker_build, name, value)
+
+    try:
+        restore_attr("_alphadiana_build_guard", None)
+        monkeypatch.setenv("ALPHADIANA_SWEBENCH_SETUP_TIMEOUT_SEC", "123")
+        env_dir = tmp_path / "env"
+        env_dir.mkdir()
+        inst_dir = tmp_path / "instance"
+        inst_dir.mkdir()
+
+        ensure_swebench_build_network_mode("host", podman_mode=True)
+        docker_build.build_image(
+            "sweb.env.demo:latest",
+            {"setup_env.sh": "python -m pip install mpmath==1.3.0\n"},
+            "FROM localhost/sweb.base.demo:latest\nCOPY ./setup_env.sh /root/\n",
+            "linux/amd64",
+            FakeClient(),
+            env_dir,
+        )
+        docker_build.build_image(
+            "swebench/sweb.eval.x86_64.demo:latest",
+            {"setup_repo.sh": "python -m pip install -e .\n"},
+            "FROM localhost/sweb.env.demo:latest\nCOPY ./setup_repo.sh /root/\n",
+            "linux/amd64",
+            FakeClient(),
+            inst_dir,
+        )
+
+        assert "AlphaDiana Podman network retry" in (env_dir / "setup_env.sh").read_text(
+            encoding="utf-8"
+        )
+        assert "AlphaDiana Podman network retry" not in (inst_dir / "setup_repo.sh").read_text(
+            encoding="utf-8"
+        )
+    finally:
+        docker_build.build_image = original_build_image
+        restore_attr("_alphadiana_build_guard", original_guard)
 
 
 def test_swebench_empty_patch_skips_harness(tmp_path, monkeypatch):
@@ -400,13 +551,19 @@ def test_harden_test_spec_repo_clone_can_add_targeted_fetch_fallback():
         "abc123 && break"
     ) in rendered
     assert "git fetch attempt ${fetch_attempt}/2 failed" in rendered
-    assert "git checkout -f abc123" in rendered
+    assert "timeout 180 git checkout -f abc123 && break" in rendered
+    assert "git checkout attempt ${checkout_attempt}/2 failed" in rendered
+    assert "git -c http.version=HTTP/1.1 fetch --depth=50 --no-tags origin abc123 || true" in rendered
     assert "git reset --hard abc123" in rendered
     assert "date -u '+%Y-%m-%d %H:%M:%S %z'" in rendered
     assert "skipped tag timestamp cleanup" in rendered
     assert "skipped git gc" in rendered
     assert "skipped commit-count check" in rendered
     assert "if [ -f astropy/_erfa/erfa_generator.py ]; then python -m pip install 'jinja2<4' --verbose; fi" in rendered
+    assert (
+        "if [ -f pyproject.toml ] && grep -q 'extension-helpers' pyproject.toml; then "
+        "python -m pip install 'extension-helpers' --verbose; fi"
+    ) in rendered
     assert (
         "if [ -d astropy ] && [ -n \"$(find astropy -name '*.pyx' -print -quit)\" ]; then "
         "python -m pip install 'cython<3' --verbose; fi"

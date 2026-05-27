@@ -12,10 +12,12 @@ from alphadiana.agent.openclaw import (
     _detect_session_pollution,
     _extract_answer,
     _extract_raw_output_from_payload,
+    _recover_openclaw_session_artifacts,
 )
 from alphadiana.agent.openclaw_container_runtime import OpenClawContainerRuntimeManager
-from alphadiana.agent.openclaw_runtime import OpenClawRuntimeManager
+from alphadiana.agent.openclaw_runtime import OpenClawPodmanRuntimeManager, OpenClawRuntimeManager
 from alphadiana.benchmark.base import BenchmarkTask
+from alphadiana.container_runtime import PodmanAgentRuntimeResult
 
 
 def _write_runtime_templates(tmp_path: Path) -> tuple[Path, Path]:
@@ -61,6 +63,37 @@ def test_openclaw_session_pollution_heuristic_flags_near_total_mismatch() -> Non
     )
 
     assert _detect_session_pollution(problem, raw_output, "") is True
+
+
+def test_openclaw_session_pollution_heuristic_matches_reasoning_token_markup() -> None:
+    problem = (
+        "A standard fair six-sided die is rolled repeatedly. Each time the die "
+        "reads 1 or 2, Alice gets a coin; each time it reads 3 or 4, Bob gets "
+        "a coin; and each time it reads 5 or 6, Carol gets a coin. The "
+        "probability that Alice and Bob each receive at least two coins before "
+        "Carol receives any coins can be written as $\\tfrac{m}{n}.$ Find 100m+n."
+    )
+    raw_reasoning = (
+        "Reasoning: _A_ standard fair _six_-sided die is _rolled_ repeatedly. "
+        "_Alice_ and Bob need to _receive_ two _coins_ before _Carol_ receives "
+        "any coins. The _probability_ can be written with 100m+n. The same "
+        "token markup may split words like bin_omial or numbers like 5_0_3."
+    )
+
+    assert _detect_session_pollution(problem, "", raw_reasoning) is False
+
+
+def test_openclaw_session_pollution_heuristic_matches_split_math_tokens() -> None:
+    problem = (
+        "Let S_r be the sum of binomial coefficients binom(10000, 502n+r). "
+        "Find how many values are divisible by 503."
+    )
+    raw_reasoning = (
+        "Reasoning: _This_ is_ about_ bin_omial_ coefficients_ modulo_ "
+        "5_0_3_._ The_ index_ has_ 5_0_2_n+r_ and_ total_ 1_0_0_0_0_."
+    )
+
+    assert _detect_session_pollution(problem, "", raw_reasoning) is False
 
 
 def test_openclaw_provider_error_payload_is_not_answer_text() -> None:
@@ -110,6 +143,64 @@ def test_openclaw_runtime_accepts_lowercase_provider_overrides(tmp_path: Path) -
     assert generated["env"]["OPENAI_BASE_URL"] == "http://127.0.0.1:8011/v1"
     assert generated["env"]["OPENAI_API_KEY"] == "LOCAL_DUMMY"
     assert generated["env"]["OPENAI_MODEL_NAME"] == "Qwen/Qwen3.5-27B"
+
+
+def test_openclaw_runtime_defaults_blank_gateway_token(tmp_path: Path) -> None:
+    rock_cfg, openclaw_cfg = _write_runtime_templates(tmp_path)
+    agent = OpenClawAgent()
+
+    agent.setup({
+        "gateway_token": "",
+        "rock_agent_config_path": str(rock_cfg),
+        "openclaw_config_path": str(openclaw_cfg),
+        "OPENAI_BASE_URL": "http://127.0.0.1:8011/v1",
+        "OPENAI_API_KEY": "EMPTY",
+        "OPENAI_MODEL_NAME": "Qwen/Qwen3.5-27B",
+    })
+
+    assert agent._gateway_token == "OPENCLAW"
+    assert isinstance(agent._runtime_manager, OpenClawRuntimeManager)
+    assert agent._runtime_manager._gateway_token == "OPENCLAW"
+
+    with patch.dict("os.environ", {}, clear=True):
+        config_dir = agent._runtime_manager._prepare_runtime_files(MagicMock())
+
+    generated = yaml.safe_load((config_dir / "rock_agent_config.yaml").read_text(encoding="utf-8"))
+    assert generated["env"]["OPENCLAW_GATEWAY_TOKEN"] == "OPENCLAW"
+
+
+def test_openclaw_runtime_gateway_probe_uses_resolved_default_token(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rock_cfg, openclaw_cfg = _write_runtime_templates(tmp_path)
+    mgr = OpenClawRuntimeManager({
+        "gateway_token": "${OPENCLAW_GATEWAY_TOKEN}",
+        "rock_agent_config_path": str(rock_cfg),
+        "openclaw_config_path": str(openclaw_cfg),
+    })
+    calls: list[dict] = []
+
+    class _Sandbox:
+        sandbox_id = "sandbox-token-default"
+
+        def published_base(self, port: int) -> str:
+            assert port == 8080
+            return "http://127.0.0.1:18080"
+
+    class _Response:
+        status_code = 200
+
+    def fake_get(url: str, *, headers: dict, timeout: float, trust_env: bool) -> _Response:
+        calls.append({"url": url, "headers": headers, "timeout": timeout, "trust_env": trust_env})
+        return _Response()
+
+    monkeypatch.setattr("httpx.get", fake_get)
+
+    mgr._wait_for_gateway(_Sandbox())
+
+    assert calls
+    assert calls[0]["headers"]["Authorization"] == "bearer OPENCLAW"
 
 
 def test_openclaw_runtime_rejects_unresolved_placeholder_provider_env(tmp_path: Path) -> None:
@@ -466,8 +557,6 @@ def test_openclaw_runtime_collect_artifacts_preserves_session_trace_and_response
 
 
 def test_recover_openclaw_session_artifacts_prefers_saved_session_trace() -> None:
-    from alphadiana.agent.openclaw import _recover_openclaw_session_artifacts
-
     session_text = "\n".join([
         json.dumps({
             "type": "message",
@@ -500,6 +589,58 @@ def test_recover_openclaw_session_artifacts_prefers_saved_session_trace() -> Non
     assert trajectory[1]["tool_calls"][0]["tool"] == "ls"
     assert reasoning[0]["type"] == "reasoning"
     assert reasoning[1]["type"] == "tool_call"
+
+
+def test_recover_openclaw_session_artifacts_truncates_post_answer_heartbeat() -> None:
+    request = "solve demo"
+    session_text = "\n".join([
+        json.dumps({
+            "type": "message",
+            "message": {
+                "role": "user",
+                "content": [{"type": "text", "text": request}],
+            },
+        }),
+        json.dumps({
+            "type": "message",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {"type": "thinking", "thinking": "solve"},
+                    {"type": "text", "text": "$$\\boxed{62}$$"},
+                ],
+            },
+        }),
+        json.dumps({
+            "type": "message",
+            "message": {
+                "role": "user",
+                "content": (
+                    "System: Exec completed.\n\n"
+                    "Read HEARTBEAT.md if it exists. If nothing needs attention, "
+                    "reply HEARTBEAT_OK."
+                ),
+            },
+        }),
+        json.dumps({
+            "type": "message",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "HEARTBEAT_OK"}],
+            },
+        }),
+    ])
+
+    trajectory, reasoning, recovered_text = _recover_openclaw_session_artifacts(
+        {"openclaw_session.jsonl": session_text},
+        expected_user_content=request,
+    )
+
+    assert recovered_text == session_text
+    assert [entry["role"] for entry in trajectory] == ["user", "assistant"]
+    assert trajectory[1]["content"] == "$$\\boxed{62}$$"
+    assert all("HEARTBEAT" not in json.dumps(entry) for entry in trajectory)
+    assert all("HEARTBEAT" not in json.dumps(entry) for entry in reasoning)
 
 
 def test_openclaw_sandbox_session_retrieval_discards_unmatched_fallback() -> None:
@@ -606,6 +747,123 @@ def test_openclaw_container_runtime_collect_artifacts_exposes_stable_aliases() -
     assert artifacts["workspace_file_contents"]["openclaw_workspace_state.json"] == '{"active":"session-demo"}\n'
     assert artifacts["workspace_file_contents"]["openclaw_sessions_index.json"] == '{"latest":"session-demo"}\n'
     assert "REDACTED" in artifacts["workspace_file_contents"]["openclaw_runtime_config.json"]
+
+
+def test_openclaw_podman_runtime_collect_artifacts_mirrors_rock_aliases(tmp_path: Path) -> None:
+    class _ExecResult:
+        def __init__(self, stdout: str = "", returncode: int = 0) -> None:
+            self.stdout = stdout
+            self.returncode = returncode
+            self.stderr = ""
+
+    session_path = "/tmp/oc_home/agents/main/sessions/abc.jsonl"
+    workspace_output_path = "/tmp/oc_home/.openclaw/workspace/openclaw_output.jsonl"
+    workspace_note_path = "/tmp/oc_home/.openclaw/workspace/note.txt"
+    agents_path = "/tmp/oc_home/.openclaw/workspace/AGENTS.md"
+    file_text = {
+        session_path: (
+            '{"role":"assistant","tool_calls":[{"name":"python","arguments":"print(1)"}]}\n'
+            '{"role":"tool","tool_call_id":"x","content":"1\\n"}\n'
+        ),
+        workspace_output_path: '{"choices":[{"delta":{"content":"hi"}}]}\n',
+        workspace_note_path: "a note\n",
+        agents_path: "You are a solver.\n",
+    }
+
+    class _FakeRuntime:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def start(self, _spec) -> PodmanAgentRuntimeResult:
+            return PodmanAgentRuntimeResult(
+                container_id="cid",
+                api_base="http://127.0.0.1:8080/v1",
+                metadata={"image": "alphadiana-openclaw:latest"},
+                logs="gateway boot log\n",
+                config_snapshots={"/tmp/openclaw.json": '{"env":{"OPENAI_API_KEY":"REDACTED"}}\n'},
+                artifacts={
+                    "/tmp/gateway.log": "[gateway] started\n",
+                    "/tmp/oc_home/agents/main/sessions.json": '{"latest":"abc"}\n',
+                    "/tmp/oc_home/workspace-state.json": '{"active":"abc"}\n',
+                },
+            )
+
+        def collect_artifacts(self) -> PodmanAgentRuntimeResult:
+            return self.start(None)
+
+        def cleanup(self, *, check: bool = False) -> None:
+            pass
+
+        def exec(
+            self,
+            command,
+            *,
+            env=None,
+            workdir=None,
+            timeout=None,
+            check: bool = True,
+        ) -> _ExecResult:
+            shell = command[-1] if isinstance(command, list) and command else str(command)
+            self.calls.append(shell)
+            if "find " in shell and "-maxdepth" in shell:
+                return _ExecResult(
+                    f"{workspace_output_path}\n"
+                    f"{workspace_note_path}\n"
+                    f"{agents_path}\n"
+                )
+            if "/agents/main/sessions/*.jsonl" in shell:
+                return _ExecResult(f"{session_path}\n")
+            if shell.startswith("stat -c %s "):
+                path = shell.split()[3]
+                if path in file_text:
+                    return _ExecResult(f"{len(file_text[path].encode('utf-8'))}\n")
+                return _ExecResult("-1\n")
+            if shell.startswith("cat "):
+                path = shell.split()[1]
+                return _ExecResult(file_text.get(path, ""))
+            return _ExecResult("")
+
+    fake_rt = _FakeRuntime()
+    openclaw_cfg = tmp_path / "openclaw.json"
+    gateway_cfg = tmp_path / "podman_gateway.yaml"
+    openclaw_cfg.write_text('{"meta":{}}', encoding="utf-8")
+    gateway_cfg.write_text(
+        "image: alphadiana-openclaw:latest\n"
+        "run_command: openclaw gateway\n"
+        "exposed_port: 8080\n",
+        encoding="utf-8",
+    )
+    mgr = OpenClawPodmanRuntimeManager({
+        "openclaw_config_path": str(openclaw_cfg),
+        "podman_gateway_config_path": str(gateway_cfg),
+        "_podman_agent_runtime": fake_rt,
+        "OPENAI_BASE_URL": "http://localhost:8011/v1",
+        "OPENAI_API_KEY": "test",
+        "OPENAI_MODEL_NAME": "test-model",
+    })
+    mgr._podman_result = fake_rt.start(None)
+
+    artifacts = mgr.collect_artifacts(None)
+
+    files = artifacts["artifact_manifest"]["files"]
+    contents = artifacts["workspace_file_contents"]
+
+    assert files["gateway_log"] == "openclaw_gateway.log"
+    assert files["workspace_listing"] == "openclaw_workspace_listing.txt"
+    assert files["openclaw_session"] == "openclaw_session.jsonl"
+    assert files["session_trace"] == "openclaw_session.jsonl"
+    assert files["openclaw_output"] == "openclaw_output.jsonl"
+    assert files["response_stream"] == "openclaw_output.jsonl"
+    assert files["runtime_config"] == "openclaw_runtime_config.json"
+    assert files["workspace_state"] == "openclaw_workspace_state.json"
+    assert files["session_index"] == "openclaw_sessions_index.json"
+    assert files["system_prompt"] == agents_path
+    assert "tool_calls" in contents["openclaw_session.jsonl"]
+    assert "tool_call_id" in contents["openclaw_session.jsonl"]
+    assert "openclaw_output.jsonl" in contents["openclaw_workspace_listing.txt"]
+    assert "note.txt" in contents["openclaw_workspace_listing.txt"]
+    assert contents["openclaw_workspace_state.json"] == '{"active":"abc"}\n'
+    assert contents["openclaw_sessions_index.json"] == '{"latest":"abc"}\n'
 
 
 def test_openclaw_container_runtime_applies_max_tokens_override_to_rendered_config(tmp_path: Path) -> None:

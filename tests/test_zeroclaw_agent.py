@@ -136,6 +136,13 @@ class _FakeNonZeroProviderSandbox(_FakeSandbox):
         return super().execute(command)
 
 
+class _FakeHostNetworkSandbox(_FakeSandbox):
+    name = "swebench_container"
+
+    def metadata(self) -> dict:
+        return {"sandbox_id": self.sandbox_id, "network_mode": "host"}
+
+
 class _FakeRuntimeOnlySandbox(_FakeSandbox):
     def execute(self, command: str):
         if _is_zeroclaw_agent_command(command):
@@ -250,7 +257,8 @@ class _FakeLogprobProxy:
 
     @property
     def proxy_url(self) -> str:
-        return "http://172.17.0.1:4567"
+        host = str(type(self).last_kwargs.get("advertise_host") or "172.17.0.1")
+        return f"http://{host}:4567"
 
     def drain_records(self) -> list[dict]:
         return [
@@ -731,6 +739,34 @@ def test_zeroclaw_system_message_normalization_proxy_without_logprobs(monkeypatc
     assert _FakeLogprobProxy.last_kwargs["capture_request_summary"] is True
     run_command = next(command for command in sandbox.commands if _is_zeroclaw_agent_command(command))
     assert "OPENAI_BASE_URL=http://172.17.0.1:4567/v1" in run_command
+
+
+def test_zeroclaw_system_message_proxy_uses_loopback_for_host_network_sandbox(monkeypatch):
+    monkeypatch.setattr("alphadiana.agent.zeroclaw.LogprobCaptureProxy", _FakeLogprobProxy)
+    task = BenchmarkTask(
+        task_id="swe_proxy_normalize_host_network",
+        problem="Fix the bug.",
+        ground_truth="diff --git a/x b/x",
+        metadata={"execution_id": "exec-proxy-host-network"},
+    )
+    sandbox = _FakeHostNetworkSandbox()
+    agent = ZeroClawAgent()
+    agent.setup({
+        "model": "Qwen/Qwen3.5-27B",
+        "api_base": "http://127.0.0.1:8011/v1",
+        "api_key": "EMPTY",
+        "capture_logprobs": False,
+        "provider_proxy_normalize_system_messages": True,
+    })
+
+    response = agent.solve(task, sandbox=sandbox)
+
+    assert response.metadata["logprob_proxy_url"] == "http://127.0.0.1:4567/v1"
+    assert response.artifact_manifest["files"]["config_path"] == "config.toml"
+    assert response.artifact_manifest["files"]["runtime_config"] == "config.toml"
+    assert "config.toml" in response.workspace_file_contents
+    run_command = next(command for command in sandbox.commands if _is_zeroclaw_agent_command(command))
+    assert "OPENAI_BASE_URL=http://127.0.0.1:4567/v1" in run_command
 
 
 def test_zeroclaw_loop_detector_with_logprobs_scores_zero(monkeypatch):

@@ -314,6 +314,61 @@ def test_zeroclaw_bridge_provider_path_sends_top_p_and_max_tokens(monkeypatch, t
     assert seen["payload"]["chat_template_kwargs"] == {"enable_thinking": False}
 
 
+def test_zeroclaw_bridge_summarizes_provider_exchange(monkeypatch):
+    module = _load_bridge_module(
+        monkeypatch,
+        OPENAI_MODEL_NAME="demo-model",
+        OPENAI_BASE_URL="https://example.test/v1",
+        OPENAI_API_KEY="sk-test",
+    )
+    state = module._BridgeVisionProxyState(
+        "https://example.test/v1",
+        "sk-test",
+        [],
+        "",
+        "demo-model",
+        {"chat_template_kwargs": {"enable_thinking": True}},
+    )
+
+    module._record_provider_exchange(
+        state,
+        url="https://example.test/v1/chat/completions",
+        method="POST",
+        request_payload={
+            "model": "demo-model",
+            "messages": [{"role": "user", "content": "Pick A."}],
+            "temperature": 0.0,
+            "max_tokens": 8192,
+            "stream": False,
+            "chat_template_kwargs": {"enable_thinking": True},
+        },
+        response_status=200,
+        response_payload={
+            "choices": [
+                {
+                    "finish_reason": "stop",
+                    "message": {
+                        "content": "$$\\boxed{A}$$",
+                        "reasoning_content": "hidden reasoning",
+                    },
+                }
+            ],
+            "usage": {"completion_tokens": 123},
+        },
+    )
+
+    exchange = state.provider_exchanges[0]
+    assert exchange["request"]["max_tokens"] == 8192
+    assert exchange["request"]["chat_template_kwargs"] == {"enable_thinking": True}
+    assert exchange["request"]["messages"][0]["text_preview"] == "Pick A."
+    assert exchange["response_status"] == 200
+    choice = exchange["response"]["choices"][0]
+    assert choice["finish_reason"] == "stop"
+    assert choice["content_length"] == len("$$\\boxed{A}$$")
+    assert choice["reasoning_content_length"] == len("hidden reasoning")
+    assert "sk-test" not in json.dumps(exchange)
+
+
 def test_zeroclaw_bridge_persists_last_request_artifacts(monkeypatch, tmp_path):
     module = _load_bridge_module(
         monkeypatch,
@@ -357,6 +412,7 @@ def test_zeroclaw_bridge_persists_last_request_artifacts(monkeypatch, tmp_path):
     assert status["vision_proxy_image_count"] == 1
     assert status["vision_proxy_request_count"] == 0
     assert status["vision_proxy_injection_count"] == 0
+    assert status["provider_exchange_count"] == 0
     manifest = json.loads((last_request / "attachment_manifest.json").read_text(encoding="utf-8"))
     assert manifest["attachments"][0]["path"] == "attachments/image_1.png"
     assert (last_request / "zeroclaw_output.txt").read_text(encoding="utf-8") == "partial reasoning"
