@@ -50,6 +50,19 @@ export TB2_OPENCODE_RUNTIME_IMAGE="${TB2_OPENCODE_RUNTIME_IMAGE:-localhost/alpha
 export TB2_OPENCLAW_RUNTIME_IMAGE="${TB2_OPENCLAW_RUNTIME_IMAGE:-localhost/alphadiana-openclaw-swebench-runtime-source:latest}"
 export TB2_ZEROCLAW_RUNTIME_IMAGE="${TB2_ZEROCLAW_RUNTIME_IMAGE:-localhost/zeroclaw-reasoning:0.6.9}"
 export PODMAN_TB2_PREFLIGHT_PROVIDER_IMAGE="${PODMAN_TB2_PREFLIGHT_PROVIDER_IMAGE:-$TB2_OPENCODE_RUNTIME_IMAGE}"
+# The TB2 pilot YAMLs all set agent.config.podman_network=host so loopback
+# OPENAI_BASE_URL values work from inside the task container. The preflight
+# provider probe defaults to bridge networking and would fail for loopback
+# URLs (127.0.0.1 inside a bridge container is the container itself). Match
+# the pilot's host-network mode when the base URL is host-local, unless the
+# operator has explicitly overridden PODMAN_TB2_PREFLIGHT_NETWORK.
+if [[ -z "${PODMAN_TB2_PREFLIGHT_NETWORK:-}" ]]; then
+  case "${OPENAI_BASE_URL:-}" in
+    *://127.0.0.1[:/]*|*://localhost[:/]*|*://127.0.0.1|*://localhost)
+      export PODMAN_TB2_PREFLIGHT_NETWORK="host"
+      ;;
+  esac
+fi
 export ALPHADIANA_TB2_LOGS_DIR="${ALPHADIANA_TB2_LOGS_DIR:-$ROOT_DIR/logs/podman-terminal-bench2-readiness/task-logs/$RUN_PREFIX}"
 export PODMAN_TB2_REDO_ALL="${PODMAN_TB2_REDO_ALL:-$REDO_ALL}"
 case "$ALPHADIANA_TB2_LOGS_DIR" in
