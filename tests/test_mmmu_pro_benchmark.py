@@ -100,6 +100,22 @@ def test_mmmu_pro_dataset_indices_select_rows_in_order(monkeypatch) -> None:
     assert [task.attachments["image_1"] for task in tasks] == [b"fake-png", b"fake-png"]
 
 
+def test_mmmu_pro_dataset_indices_accept_cli_string(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "alphadiana.benchmark.mmmu_pro.load_dataset_with_retry",
+        lambda *args, **kwargs: _fake_rows(),
+    )
+
+    tasks = MMMUProBenchmark().load_tasks({
+        "dataset": "MMMU/MMMU_Pro",
+        "data_config": "vision",
+        "split": "test",
+        "dataset_indices": "[2, 0]",
+    })
+
+    assert [task.task_id for task in tasks] == ["mmmu_pro_demo2", "mmmu_pro_demo0"]
+
+
 def test_mmmu_pro_rejects_dataset_index_and_indices_together(monkeypatch) -> None:
     monkeypatch.setattr(
         "alphadiana.benchmark.mmmu_pro.load_dataset_with_retry",

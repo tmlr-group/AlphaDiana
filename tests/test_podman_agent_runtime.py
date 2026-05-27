@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 
+from alphadiana.container_runtime import agent_runtime
 from alphadiana.container_runtime import (
     PodmanAgentRuntime,
     PodmanAgentRuntimeError,
@@ -250,3 +251,40 @@ def test_podman_agent_runtime_force_removes_when_stop_times_out() -> None:
 
     assert [name for name, _ in fake.calls][-2:] == ["stop", "rm"]
     assert runtime.container_id == ""
+
+
+def test_podman_agent_runtime_cleanup_reaps_owned_process_tree(monkeypatch: pytest.MonkeyPatch, unused_tcp_port: int) -> None:
+    fake = FakePodmanRuntime()
+    runtime = PodmanAgentRuntime(runtime=fake)  # type: ignore[arg-type]
+    calls: list[tuple[str, bool]] = []
+
+    def fake_terminate(container_id: str, *, include_supervisors: bool) -> None:
+        calls.append((container_id, include_supervisors))
+
+    monkeypatch.setattr(agent_runtime, "_terminate_container_process_tree", fake_terminate)
+    spec = PodmanAgentSpec(
+        adapter_name="openclaw-podman",
+        image="localhost/openclaw:test",
+        run_command="openclaw gateway",
+        exposed_port=unused_tcp_port,
+        network="host",
+        healthcheck=lambda _api_base: True,
+    )
+
+    runtime.start(spec)
+    runtime.cleanup(check=False)
+
+    assert ("fake-container", False) in calls
+    assert ("fake-container", True) in calls
+
+
+def test_descendant_pids_walks_process_tree() -> None:
+    rows = {
+        10: (1, "conmon"),
+        11: (10, "sleep infinity"),
+        12: (11, "openclaw gateway"),
+        13: (12, "openclaw worker"),
+        20: (1, "unrelated"),
+    }
+
+    assert agent_runtime._descendant_pids(rows, [10]) == [11, 12, 13]

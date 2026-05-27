@@ -19,6 +19,7 @@ from alphadiana.runner.runner import (
     _normalize_numeric_response_answer,
     _openclaw_integrity_guard_reason,
     _predeployed_session_failure_reason,
+    _should_load_cached_openclaw_profile,
     _sanitize_sandbox_metadata,
     _sanitize_success_sandbox_metadata,
 )
@@ -51,6 +52,19 @@ def test_numeric_response_answer_normalization_skips_non_numeric_scorers() -> No
 
     assert response.answer == "204 minutes** (or 3 hours and 24 minutes)"
     assert response.metadata == {}
+
+
+def test_openclaw_profile_cache_disabled_for_zero_cpus() -> None:
+    config = SimpleNamespace(agent_config={})
+
+    assert _should_load_cached_openclaw_profile(config, 1.0) is True
+    assert _should_load_cached_openclaw_profile(config, 0.0) is False
+
+
+def test_openclaw_profile_cache_can_be_disabled() -> None:
+    config = SimpleNamespace(agent_config={"use_cached_predeploy_startup_profile": False})
+
+    assert _should_load_cached_openclaw_profile(config, 1.0) is False
 
 
 class _FakeTask:
@@ -1698,6 +1712,43 @@ def test_openclaw_guard_ignores_workspace_heartbeat_listing():
         ],
         workspace_snapshot_paths=[
             "/home/node/.openclaw/workspace/HEARTBEAT.md",
+        ],
+    )
+
+    assert _openclaw_integrity_guard_reason(config, response) == ("", "")
+
+
+def test_openclaw_guard_ignores_post_answer_heartbeat_poll():
+    config = ExperimentConfig(
+        run_id="runner-openclaw-post-answer-heartbeat",
+        agent_name="openclaw",
+        agent_version="test",
+        agent_config={},
+        benchmark_name="aime",
+        benchmark_config={},
+        sandbox_name="none",
+        sandbox_config={},
+        scorer_name="numeric",
+        scorer_config={},
+    )
+    request = "Solve the problem and end with a boxed answer."
+    response = AgentResponse(
+        answer="62",
+        raw_output="The answer is $$\\boxed{62}$$.",
+        metadata={"received_done": True},
+        request_messages=[{"role": "user", "content": request}],
+        trajectory=[
+            {"role": "user", "content": request},
+            {"role": "assistant", "content": "The answer is $$\\boxed{62}$$."},
+            {
+                "role": "user",
+                "content": (
+                    "System: Exec completed.\n\n"
+                    "Read HEARTBEAT.md if it exists. If nothing needs attention, "
+                    "reply HEARTBEAT_OK."
+                ),
+            },
+            {"role": "assistant", "content": "HEARTBEAT_OK"},
         ],
     )
 

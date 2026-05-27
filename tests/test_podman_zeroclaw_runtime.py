@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+
+from dataclasses import replace
 from typing import Any
 
 from alphadiana.agent.zeroclaw import ZeroClawAgent
@@ -28,6 +31,7 @@ class FakePodmanAgentRuntime:
                 "/tmp/zeroclaw-bridge-artifacts/last_request/zeroclaw_output.txt": "$$\\boxed{42}$$\n",
                 "/tmp/zeroclaw-bridge-artifacts/last_request/runtime_trace.jsonl": '{"event_type":"llm_request"}\n',
                 "/tmp/zeroclaw-bridge-artifacts/last_request/status.json": '{"ok":true}\n',
+                "/tmp/zeroclaw-bridge-artifacts/last_request/provider_exchange_summary.json": '{"exchanges":[]}\n',
             },
             metadata={
                 "container_engine": "podman",
@@ -151,6 +155,7 @@ def test_zeroclaw_podman_runtime_builds_spec_and_artifacts(monkeypatch) -> None:
     assert spec.env["OPENAI_API_KEY"] == "sk-secret"
     assert "/tmp/zeroclaw-gateway.log" in spec.artifact_paths
     assert "/tmp/zeroclaw-bridge-artifacts/last_request/status.json" in spec.artifact_paths
+    assert "/tmp/zeroclaw-bridge-artifacts/last_request/provider_exchange_summary.json" in spec.artifact_paths
     assert getattr(spec.healthcheck, "token") == "ZEROCLAW_TEST"
     assert info["api_base"] == "http://127.0.0.1:18081/v1"
     assert info["gateway_url"] == "http://127.0.0.1:18081/v1/chat/completions"
@@ -161,6 +166,7 @@ def test_zeroclaw_podman_runtime_builds_spec_and_artifacts(monkeypatch) -> None:
     assert artifacts["gateway_log_excerpt"] == "bridge ready\n"
     assert artifacts["workspace_file_contents"]["zeroclaw_output.txt"] == "$$\\boxed{42}$$\n"
     assert artifacts["workspace_file_contents"]["status.json"] == '{"ok":true}\n'
+    assert artifacts["workspace_file_contents"]["provider_exchange_summary.json"] == '{"exchanges":[]}\n'
     assert artifacts["sandbox_metadata"]["container_engine"] == "podman"
 
     manager.teardown()
@@ -322,6 +328,72 @@ def test_zeroclaw_podman_bridge_error_records_runtime_provenance(monkeypatch) ->
     assert partial.metadata["container_engine"] == "podman"
     assert partial.metadata["adapter_name"] == "zeroclaw-podman"
     assert partial.sandbox_metadata["container_engine"] == "podman"
+
+
+def test_zeroclaw_podman_bridge_length_empty_output_scores_zero(monkeypatch) -> None:
+    fake_runtime = FakePodmanAgentRuntime()
+    fake_runtime.result = replace(fake_runtime.result, artifacts={
+        "/tmp/zeroclaw-gateway.log": "bridge ready\n",
+        "/tmp/zeroclaw-bridge-artifacts/last_request/task.txt": "Problem\n",
+        "/tmp/zeroclaw-bridge-artifacts/last_request/zeroclaw_output.txt": (
+            "2026-05-26T20:07:19Z INFO zeroclaw::agent::loop_: Memory initialized\n"
+        ),
+        "/tmp/zeroclaw-bridge-artifacts/last_request/status.json": (
+            '{"returncode":0,"timed_out":false,"provider_exchange_count":1}\n'
+        ),
+        "/tmp/zeroclaw-bridge-artifacts/last_request/provider_exchange_summary.json": (
+            json.dumps({
+                "exchanges": [
+                    {
+                        "response_status": 200,
+                        "response": {
+                            "choices": [
+                                {
+                                    "finish_reason": "length",
+                                    "content_length": 0,
+                                    "tool_call_count": 0,
+                                }
+                            ],
+                            "usage": {
+                                "prompt_tokens": 13054,
+                                "completion_tokens": 8192,
+                                "total_tokens": 21246,
+                            },
+                        },
+                    }
+                ]
+            })
+            + "\n"
+        ),
+    })
+    agent = ZeroClawAgent()
+    agent.setup(_podman_config(fake_runtime))
+    monkeypatch.setattr(agent._runtime_manager, "_warmup_podman_gateway", lambda _api_base: None)
+
+    class _Response:
+        status_code = 500
+        text = ""
+
+        def json(self) -> dict[str, Any]:
+            return {
+                "error": {
+                    "message": "ZeroClaw produced no assistant output; stdout contained only runtime/provider logs.",
+                    "type": "RuntimeError",
+                }
+            }
+
+    monkeypatch.setattr("httpx.post", lambda *_args, **_kwargs: _Response())
+    task = BenchmarkTask(task_id="gpqa_6", problem="Solve.", ground_truth="C")
+
+    response = agent.solve(task, sandbox=None)
+
+    assert response.answer is None
+    assert response.finish_reason == "length"
+    assert response.metadata["failure_reason"] == "token_budget_exhausted"
+    assert response.metadata["zeroclaw_empty_assistant_scored_zero"] is True
+    assert response.metadata["zeroclaw_provider_completion_tokens"] == 8192
+    assert response.token_usage["completion_tokens"] == 8192
+    assert "provider_exchange_summary.json" in response.workspace_file_contents
 
 
 def test_zeroclaw_podman_capture_logprobs_config_validates() -> None:

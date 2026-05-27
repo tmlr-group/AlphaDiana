@@ -63,6 +63,13 @@ def _is_unresolved_placeholder(value: str) -> bool:
     return stripped.startswith("${") and stripped.endswith("}")
 
 
+def _resolve_gateway_token(value: Any) -> str:
+    token = str(value or "").strip()
+    if not token or _is_unresolved_placeholder(token):
+        return "OPENCLAW"
+    return token
+
+
 def _record_task_lifecycle(
     task: BenchmarkTask,
     stage: str,
@@ -316,6 +323,11 @@ _DISTINCTIVE_TOKEN_RE = re.compile(
 )
 
 
+def _normalize_session_pollution_text(text: str) -> str:
+    """Normalize OpenClaw token-marked text before fingerprint matching."""
+    return re.sub(r"[_\\]+", "", text).lower()
+
+
 def _detect_session_pollution(
     problem: str,
     raw_output: str,
@@ -329,7 +341,7 @@ def _detect_session_pollution(
 
     Returns True if pollution is suspected, False otherwise.
     """
-    model_text = f"{raw_reasoning} {raw_output}".lower()
+    model_text = _normalize_session_pollution_text(f"{raw_reasoning} {raw_output}")
     if len(model_text.strip()) < 100:
         # Too short to judge reliably.
         return False
@@ -716,6 +728,38 @@ def _trajectory_matches_request(
     return False
 
 
+def _slice_trajectory_to_request(
+    trajectory: list[dict], expected_user_content: str,
+) -> list[dict]:
+    """Return the OpenClaw session segment for the current benchmark request."""
+    expected = _normalize_request_content(expected_user_content)
+    if not expected or not isinstance(trajectory, list):
+        return trajectory
+
+    start: int | None = None
+    for index, entry in enumerate(trajectory):
+        if not isinstance(entry, dict) or entry.get("role") != "user":
+            continue
+        candidate = _normalize_request_content(_coerce_text_content(entry.get("content", "")))
+        if candidate == expected:
+            start = index
+            break
+    if start is None:
+        return trajectory
+
+    end = len(trajectory)
+    for index in range(start + 1, len(trajectory)):
+        entry = trajectory[index]
+        if not isinstance(entry, dict) or entry.get("role") != "user":
+            continue
+        candidate = _normalize_request_content(_coerce_text_content(entry.get("content", "")))
+        if candidate != expected:
+            end = index
+            break
+
+    return trajectory[start:end]
+
+
 def _parse_openclaw_session(session_jsonl: str) -> list[dict]:
     """Parse an OpenClaw session JSONL file into a trajectory list.
 
@@ -897,6 +941,7 @@ def _recover_openclaw_session_artifacts(
             trajectory,
             expected_user_content,
         ):
+            trajectory = _slice_trajectory_to_request(trajectory, expected_user_content)
             return (
                 trajectory,
                 _extract_reasoning_trajectory_from_openclaw_trajectory(trajectory),
@@ -939,7 +984,7 @@ class OpenClawAgent(Agent):
         self._runtime = str(config.get("runtime", "")).strip()
         self._api_base = config.get("api_base", "")
         self._model = config.get("model", "openclaw")
-        self._gateway_token = config.get("gateway_token", "OPENCLAW")
+        self._gateway_token = _resolve_gateway_token(config.get("gateway_token", "OPENCLAW"))
         self._temperature = config.get("temperature", 0.7)
         self._top_p = config.get("top_p", None)
         self._max_tokens = config.get("max_tokens", None)
@@ -1387,7 +1432,7 @@ class OpenClawAgent(Agent):
                     trajectory,
                     expected_user_content,
                 ):
-                    return trajectory
+                    return _slice_trajectory_to_request(trajectory, expected_user_content)
 
             # Do NOT return an unmatched fallback trajectory: it likely belongs
             # to a different task/run on the same sandbox and would cause the
@@ -1500,7 +1545,7 @@ class OpenClawAgent(Agent):
                     trajectory,
                     expected_user_content,
                 ):
-                    return trajectory
+                    return _slice_trajectory_to_request(trajectory, expected_user_content)
 
             # Match the stricter async retrieval path: if the caller provided
             # expected content, an unmatched fallback is stale state from a

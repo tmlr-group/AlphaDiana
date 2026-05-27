@@ -76,6 +76,19 @@ class TestExactMatchScorer:
         result = scorer.score(_FakeTask("42"), _FakeResponse("Final Answer: 42"))
         assert result.correct is True
 
+    def test_single_choice_parentheses_normalization(self):
+        """Multiple-choice labels match when the prediction wraps the label."""
+        scorer = ExactMatchScorer()
+        result = scorer.score(_FakeTask("I"), _FakeResponse("(I)"))
+        assert result.correct is True
+        assert result.score == 1.0
+
+    def test_single_choice_parentheses_does_not_strip_multi_label(self):
+        """Choice-label normalization only applies to a single A-J label."""
+        scorer = ExactMatchScorer()
+        result = scorer.score(_FakeTask("AB"), _FakeResponse("(AB)"))
+        assert result.correct is False
+
     def test_scorer_name(self):
         """scorer name is 'exact_match'."""
         scorer = ExactMatchScorer()

@@ -65,6 +65,7 @@ def test_podman_terminal_bench2_readiness_config_validates(tmp_path: Path, monke
             "terminal_bench2_zeroclaw",
         }
         assert config.agent_config["container_engine"] == "podman"
+        assert config.agent_config["podman_network"] == "host"
         assert config.benchmark_config["task_ids"] == SELECTED_TASK_NAMES
 
 
@@ -82,6 +83,7 @@ def test_podman_terminal_bench2_readiness_configs_are_three_agent_tb2_only() -> 
         assert data["benchmark"]["config"]["task_ids"] == SELECTED_TASK_NAMES
         assert data["benchmark"]["config"]["max_tasks"] == 3
         assert data["agent"]["config"]["container_engine"] == "podman"
+        assert data["agent"]["config"]["podman_network"] == "host"
         assert data["scorer"]["name"] == "terminal_bench2"
         assert data["num_samples"] == 1
         assert data["max_concurrent"] == 1

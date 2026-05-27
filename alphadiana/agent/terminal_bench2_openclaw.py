@@ -840,6 +840,7 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
             response_json=response_summary,
             artifact_manifest=artifact_manifest,
             workspace_file_contents=artifact_files,
+            sandbox_metadata=self._build_incontainer_sandbox_metadata(runtime),
             system_prompt=IN_CONTAINER_AGENT_PROMPT,
             finish_reason=finish_reason,
         )

@@ -509,11 +509,50 @@ def test_terminal_bench2_incontainer_workspace_detection_prefers_app_from_root()
     assert workspace == "/app"
 
 
+def test_terminal_bench2_incontainer_sandbox_metadata_contract(tmp_path: Path) -> None:
+    harness = _InContainerHarness()
+    task = BenchmarkTask(task_id="tb2_demo", problem="demo", ground_truth="1")
+    tempdir = tempfile.TemporaryDirectory(prefix="tb2-sandbox-meta-")
+    runtime = TerminalBench2RuntimeContext(
+        task=task,
+        docker_image="localhost/tb2-runtime:demo",
+        container_id="podman-cid",
+        logs_dir=tmp_path / "logs",
+        workdir=tmp_path,
+        helper_paths={},
+        container_engine="podman",
+        _tempdir=tempdir,
+    )
+
+    try:
+        metadata = harness._build_incontainer_sandbox_metadata(runtime)
+    finally:
+        tempdir.cleanup()
+
+    assert metadata == {
+        "sandbox_backend": "podman",
+        "container_engine": "podman",
+        "container_id": "podman-cid",
+        "image": "localhost/tb2-runtime:demo",
+        "docker_image": "localhost/tb2-runtime:demo",
+        "task_id": "tb2_demo",
+        "transport": "terminal_bench2_incontainer",
+    }
+
+
 def test_terminal_bench2_incontainer_zeroclaw_overlay_uses_direct_binary_copy() -> None:
     dockerfile = _InContainerHarness._build_runtime_overlay_dockerfile("zeroclaw")
 
     assert "COPY --from=runtime /usr/local/bin/zeroclaw /usr/local/bin/zeroclaw" in dockerfile
     assert "ld-linux-x86-64.so.2" not in dockerfile
+
+
+def test_terminal_bench2_incontainer_openclaw_overlay_prefers_packaged_cli() -> None:
+    dockerfile = _InContainerHarness._build_runtime_overlay_dockerfile("openclaw")
+
+    assert "COPY --from=runtime /app /opt/openclaw" in dockerfile
+    assert "/opt/openclaw/node_modules/openclaw/openclaw.mjs" in dockerfile
+    assert "/opt/openclaw/openclaw.mjs" in dockerfile
 
 
 def test_terminal_bench2_incontainer_builds_local_task_images_from_environment_dir(
@@ -1129,6 +1168,20 @@ def test_terminal_bench2_zeroclaw_provider_proxy_is_preserved(tmp_path: Path) ->
         runtime.cleanup()
 
 
+def test_terminal_bench2_zeroclaw_provider_proxy_uses_loopback_for_podman_host_network() -> None:
+    agent = TerminalBench2ZeroClawAgent()
+    agent.setup({
+        "api_base": "http://127.0.0.1:8011/v1",
+        "api_key": "secret",
+        "model": "Qwen/Qwen3.5-27B",
+        "container_engine": "podman",
+        "podman_network": "host",
+        "provider_proxy_enabled": True,
+    })
+
+    assert agent._resolve_provider_proxy_advertise_host() == "127.0.0.1"
+
+
 def test_terminal_bench2_zeroclaw_solve_preserves_nonzero_solver_result(tmp_path: Path) -> None:
     agent = TerminalBench2ZeroClawAgent()
     agent.setup({
@@ -1240,6 +1293,8 @@ def test_terminal_bench2_zeroclaw_solve_preserves_nonzero_solver_result(tmp_path
     assert response.artifact_manifest["files"]["response_stream"] == "runtime_trace.jsonl"
     assert response.artifact_manifest["files"]["stdout_log"] == "zeroclaw_output.txt"
     assert response.artifact_manifest["files"]["stderr_log"] == "zeroclaw_stderr.log"
+    assert response.artifact_manifest["files"]["config_path"] == "config.toml"
+    assert response.artifact_manifest["files"]["runtime_config"] == "config.toml"
     assert len(response.reasoning_trajectory) >= 1
 
 
