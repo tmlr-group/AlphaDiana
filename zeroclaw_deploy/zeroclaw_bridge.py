@@ -219,6 +219,126 @@ class _BridgeVisionProxyState:
         self.request_overrides = dict(request_overrides or {})
         self.request_count = 0
         self.injection_count = 0
+        self.provider_exchanges: list[dict[str, Any]] = []
+
+
+def _preview_text(value: Any, limit: int = 500) -> str:
+    text = value if isinstance(value, str) else ""
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "...<truncated>"
+
+
+def _summarize_messages(messages: Any) -> list[dict[str, Any]]:
+    if not isinstance(messages, list):
+        return []
+    summaries: list[dict[str, Any]] = []
+    for index, message in enumerate(messages):
+        if not isinstance(message, dict):
+            summaries.append({"index": index, "type": type(message).__name__})
+            continue
+        content = message.get("content", "")
+        text = _coerce_text_content(content)
+        image_blocks = 0
+        if isinstance(content, list):
+            image_blocks = sum(
+                1
+                for item in content
+                if isinstance(item, dict) and item.get("type") == "image_url"
+            )
+        summaries.append({
+            "index": index,
+            "role": message.get("role", ""),
+            "content_type": type(content).__name__,
+            "text_length": len(text),
+            "text_preview": _preview_text(text, 240),
+            "image_blocks": image_blocks,
+        })
+    return summaries
+
+
+def _summarize_provider_request(payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {"payload_type": type(payload).__name__}
+    summary = {
+        "model": payload.get("model", ""),
+        "temperature": payload.get("temperature"),
+        "top_p": payload.get("top_p"),
+        "max_tokens": payload.get("max_tokens"),
+        "stream": payload.get("stream"),
+        "chat_template_kwargs": payload.get("chat_template_kwargs"),
+        "reasoning": payload.get("reasoning"),
+        "message_count": len(payload.get("messages", []))
+        if isinstance(payload.get("messages"), list)
+        else 0,
+        "messages": _summarize_messages(payload.get("messages")),
+    }
+    if "tools" in payload:
+        tools = payload.get("tools")
+        summary["tool_count"] = len(tools) if isinstance(tools, list) else 0
+    return summary
+
+
+def _summarize_chat_response(payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {"payload_type": type(payload).__name__}
+    summary: dict[str, Any] = {
+        "usage": payload.get("usage"),
+    }
+    error = payload.get("error")
+    if isinstance(error, dict):
+        summary["error"] = {
+            "message": _preview_text(error.get("message"), 500),
+            "type": error.get("type", ""),
+        }
+    choices = payload.get("choices")
+    if isinstance(choices, list):
+        summary["choice_count"] = len(choices)
+        summarized_choices: list[dict[str, Any]] = []
+        for index, choice in enumerate(choices[:3]):
+            if not isinstance(choice, dict):
+                summarized_choices.append({"index": index, "type": type(choice).__name__})
+                continue
+            message = choice.get("message", {})
+            content = ""
+            reasoning_content = ""
+            tool_call_count = 0
+            if isinstance(message, dict):
+                content = _coerce_text_content(message.get("content", ""))
+                reasoning_content = str(message.get("reasoning_content", "") or "")
+                tool_calls = message.get("tool_calls", [])
+                tool_call_count = len(tool_calls) if isinstance(tool_calls, list) else 0
+            summarized_choices.append({
+                "index": index,
+                "finish_reason": choice.get("finish_reason", ""),
+                "content_length": len(content),
+                "content_preview": _preview_text(content),
+                "reasoning_content_length": len(reasoning_content),
+                "tool_call_count": tool_call_count,
+            })
+        summary["choices"] = summarized_choices
+    return summary
+
+
+def _record_provider_exchange(
+    state: _BridgeVisionProxyState,
+    *,
+    url: str,
+    method: str,
+    request_payload: Any,
+    response_status: int | None = None,
+    response_payload: Any = None,
+    error: str = "",
+) -> None:
+    state.provider_exchanges.append({
+        "request_index": state.request_count,
+        "url": url,
+        "method": method,
+        "request": _summarize_provider_request(request_payload),
+        "response_status": response_status,
+        "response": _summarize_chat_response(response_payload),
+        "error": error,
+    })
 
 
 def _make_vision_proxy_handler(state: _BridgeVisionProxyState):
@@ -239,9 +359,29 @@ def _make_vision_proxy_handler(state: _BridgeVisionProxyState):
             if state.upstream_api_key:
                 headers["Authorization"] = f"Bearer {state.upstream_api_key}"
             req = Request(url, data=body, headers=headers, method=self.command)
+            request_payload: Any = None
+            if self.command == "POST" and self.path.endswith("/chat/completions"):
+                try:
+                    request_payload = json.loads(body.decode("utf-8"))
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    request_payload = None
             try:
                 with urlopen(req, timeout=600) as resp:
                     payload = resp.read()
+                    response_payload: Any = None
+                    try:
+                        response_payload = json.loads(payload.decode("utf-8"))
+                    except (json.JSONDecodeError, UnicodeDecodeError):
+                        response_payload = None
+                    if request_payload is not None:
+                        _record_provider_exchange(
+                            state,
+                            url=url,
+                            method=self.command,
+                            request_payload=request_payload,
+                            response_status=getattr(resp, "status", None),
+                            response_payload=response_payload,
+                        )
                     self.send_response(resp.status)
                     for hk, hv in resp.headers.items():
                         if hk.lower() in {"transfer-encoding", "connection", "content-length"}:
@@ -251,6 +391,14 @@ def _make_vision_proxy_handler(state: _BridgeVisionProxyState):
                     self.end_headers()
                     self.wfile.write(payload)
             except Exception as exc:
+                if request_payload is not None:
+                    _record_provider_exchange(
+                        state,
+                        url=url,
+                        method=self.command,
+                        request_payload=request_payload,
+                        error=str(exc),
+                    )
                 err = json.dumps({"error": {"message": str(exc), "type": "proxy_error"}}).encode()
                 self.send_response(502)
                 self.send_header("Content-Type", "application/json")
@@ -358,6 +506,10 @@ class _BridgeVisionProxy:
     @property
     def request_count(self) -> int:
         return self._state.request_count
+
+    @property
+    def provider_exchanges(self) -> list[dict[str, Any]]:
+        return list(self._state.provider_exchanges)
 
 
 def _normalize_api_base(api_base: str) -> str:
@@ -775,6 +927,7 @@ def _persist_last_request(
     stderr_text: str,
     runtime_trace_text: str,
     status_payload: dict[str, Any],
+    provider_exchange_text: str = "",
 ) -> None:
     last_request_dir = ARTIFACT_ROOT / "last_request"
     last_request_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -808,6 +961,12 @@ def _persist_last_request(
             encoding="utf-8",
             errors="replace",
         )
+    if provider_exchange_text:
+        (last_request_dir / "provider_exchange_summary.json").write_text(
+            provider_exchange_text,
+            encoding="utf-8",
+            errors="replace",
+        )
 
 
 def _run_zeroclaw(
@@ -837,6 +996,7 @@ def _run_zeroclaw(
     vision_proxy_url = ""
     vision_proxy_request_count = 0
     vision_proxy_injection_count = 0
+    provider_exchanges: list[dict[str, Any]] = []
 
     with tempfile.TemporaryDirectory(prefix=f"zeroclaw_gateway_{execution_id}_") as td:
         base = Path(td)
@@ -896,6 +1056,7 @@ def _run_zeroclaw(
                 )
                 vision_proxy_request_count = proxy.request_count
                 vision_proxy_injection_count = proxy.injection_count
+                provider_exchanges = proxy.provider_exchanges
         else:
             config_path.write_text(_build_config_toml(temperature), encoding="utf-8")
             os.chmod(config_path, 0o600)
@@ -924,6 +1085,7 @@ def _run_zeroclaw(
             "vision_proxy_request_count": vision_proxy_request_count,
             "vision_proxy_injection_count": vision_proxy_injection_count,
             "vision_proxy_image_count": len(image_items),
+            "provider_exchange_count": len(provider_exchanges),
         }
         sanitized_output, dropped_runtime_logs = _sanitize_output(raw_output)
         runtime_failure = _extract_runtime_failure(raw_output, raw_stderr)
@@ -948,6 +1110,16 @@ def _run_zeroclaw(
             stderr_text=raw_stderr,
             runtime_trace_text=runtime_trace,
             status_payload=status_payload,
+            provider_exchange_text=(
+                json.dumps(
+                    {"exchanges": provider_exchanges},
+                    ensure_ascii=False,
+                    indent=2,
+                    sort_keys=True,
+                )
+                if provider_exchanges
+                else ""
+            ),
         )
 
         if result.returncode == 124:

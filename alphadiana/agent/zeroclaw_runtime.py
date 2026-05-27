@@ -405,6 +405,7 @@ class ZeroClawRuntimeManager:
             "runtime_trace.jsonl",
             "attachment_manifest.json",
             "status.json",
+            "provider_exchange_summary.json",
         ]:
             remote_path = f"{last_request_dir}/{relative_name}"
             text = _read_text(remote_path)
@@ -749,6 +750,7 @@ class ZeroClawPodmanRuntimeManager(ZeroClawRuntimeManager):
             (f"{last_request_dir}/runtime_trace.jsonl", "runtime_trace.jsonl"),
             (f"{last_request_dir}/attachment_manifest.json", "attachment_manifest.json"),
             (f"{last_request_dir}/status.json", "status.json"),
+            (f"{last_request_dir}/provider_exchange_summary.json", "provider_exchange_summary.json"),
         ]
 
     def _logprob_support_status(self) -> str:

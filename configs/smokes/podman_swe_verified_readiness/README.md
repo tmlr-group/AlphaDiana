@@ -11,6 +11,10 @@ export OPENAI_BASE_URL=http://127.0.0.1:8011/v1
 export OPENAI_API_KEY=EMPTY
 export OPENAI_MODEL_NAME=Qwen/Qwen3.5-27B
 export ALPHADIANA_PODMAN_SOCKET="${ALPHADIANA_PODMAN_SOCKET:-/run/user/$(id -u)/podman/podman.sock}"
+# If GitHub egress requires a local proxy, export it before launch so Podman
+# instance-image builds can fetch task repositories.
+# export http_proxy=http://127.0.0.1:<proxy-port>
+# export https_proxy=http://127.0.0.1:<proxy-port>
 
 bash scripts/run_podman_swe_verified_readiness.sh validate
 bash scripts/run_podman_swe_verified_readiness.sh preflight

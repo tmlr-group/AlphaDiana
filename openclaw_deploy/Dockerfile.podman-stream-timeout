@@ -1,0 +1,58 @@
+# Patched OpenClaw *Podman* image — adds the OpenAI-SDK stream-timeout fix
+# and forwards hidden reasoning through the OpenAI-compatible gateway stream.
+#
+# The base Podman image (openclaw_deploy/Dockerfile) is now ROCK-aligned and
+# already includes the OpenAI SDK constructor stream-timeout patch. This overlay
+# is retained for older fixed-image workflows that also need the reasoning SSE
+# and chat max-token patches below.
+#
+# Fix 1: pass `timeout: 1800000` to the OpenAI client so the SDK manages its own
+# timeout via AbortController, bypassing the undici bodyTimeout. Same fix the
+# ROCK path bakes in.
+#
+# Fix 2: the gateway's OpenAI-compatible SSE endpoint must request OpenClaw's
+# internal reasoning stream and forward `thinking` events as
+# `delta.reasoning_content`. Without this, long Qwen thinking-only periods leave
+# external clients with no SSE data until the agent returns a blank response.
+#
+# Fix 3: the OpenAI-compatible chat-completions path must pass request
+# `max_tokens` / `max_completion_tokens` into OpenClaw `streamParams.maxTokens`.
+# The OpenResponses path already did this for `max_output_tokens`; without the
+# chat equivalent, long local-Qwen AIME turns can still terminate as
+# reasoning-only `length` rows around the old residual limit.
+#
+# Network-free build (FROM the existing local image).
+#
+# Build:
+#   podman build --network none \
+#     -f openclaw_deploy/Dockerfile.podman-stream-timeout \
+#     -t localhost/alphadiana-openclaw-fixed:latest .
+FROM localhost/alphadiana-openclaw:latest
+
+USER root
+
+RUN node -e " \
+const fs = require('fs'); \
+const paths = [ \
+  '/app/node_modules/@mariozechner/pi-ai/dist/providers/openai-completions.js', \
+  '/app/node_modules/openclaw/node_modules/@mariozechner/pi-ai/dist/providers/openai-completions.js', \
+]; \
+const OLD = '    return new OpenAI({\n        apiKey,\n        baseURL: model.baseUrl,\n        dangerouslyAllowBrowser: true,\n        defaultHeaders: headers,\n    });'; \
+const NEW = '    return new OpenAI({\n        apiKey,\n        baseURL: model.baseUrl,\n        dangerouslyAllowBrowser: true,\n        defaultHeaders: headers,\n        timeout: 1800000,\n    });'; \
+let patched = 0; \
+for (const p of paths) { \
+  if (!fs.existsSync(p)) { console.log('SKIP:', p); continue; } \
+  const src = fs.readFileSync(p, 'utf8'); \
+  if (src.includes('timeout: 1800000')) { console.log('ALREADY PATCHED:', p); patched++; continue; } \
+  if (!src.includes(OLD)) { console.error('PATTERN NOT FOUND:', p); process.exit(1); } \
+  fs.writeFileSync(p, src.replace(OLD, NEW), 'utf8'); \
+  console.log('PATCHED:', p); patched++; \
+} \
+if (patched === 0) { console.error('ERROR: no openai-completions.js found to patch'); process.exit(1); } \
+console.log('stream-timeout patch done; files patched/confirmed:', patched); \
+"
+
+COPY openclaw_deploy/patch_podman_openclaw_reasoning.js /tmp/patch_podman_openclaw_reasoning.js
+RUN node /tmp/patch_podman_openclaw_reasoning.js
+
+USER node

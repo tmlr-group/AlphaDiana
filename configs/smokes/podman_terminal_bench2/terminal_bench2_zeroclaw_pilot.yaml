@@ -23,6 +23,7 @@ agent:
     api_key: ${OPENAI_API_KEY}
     runtime_source_image: "${TB2_ZEROCLAW_RUNTIME_IMAGE}"
     logs_base_dir: "${ALPHADIANA_TB2_LOGS_DIR}"
+    podman_network: "host"
     zeroclaw_bin: "zeroclaw"
     solver_timeout_sec: 1800
     timeout_sec: 900

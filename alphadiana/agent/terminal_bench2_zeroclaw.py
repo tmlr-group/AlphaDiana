@@ -140,6 +140,22 @@ class TerminalBench2ZeroClawAgent(TerminalBench2InContainerMixin, ZeroClawAgent)
             default=False,
         )
 
+    def _resolve_provider_proxy_advertise_host(self) -> str:
+        if self._logprob_proxy_advertise_host:
+            return resolve_logprob_proxy_advertise_host(
+                self._provider_api_base,
+                self._logprob_proxy_advertise_host,
+            )
+        if (
+            getattr(self, "_container_engine", "") == "podman"
+            and str(getattr(self, "_podman_network", "") or "").strip().lower() == "host"
+        ):
+            return "127.0.0.1"
+        return resolve_logprob_proxy_advertise_host(
+            self._provider_api_base,
+            self._logprob_proxy_advertise_host,
+        )
+
     def _build_tb2_env(self, remote_home: str, remote_zc_home: str) -> dict[str, str]:
         local_dir = f"{remote_home}/.local"
         return self._build_env({
@@ -210,10 +226,7 @@ class TerminalBench2ZeroClawAgent(TerminalBench2InContainerMixin, ZeroClawAgent)
             container_workdir = self._detect_container_workspace(runtime.container_id)
             if self._provider_proxy_enabled:
                 proxy_api_key = secrets.token_urlsafe(24)
-                advertise_host = resolve_logprob_proxy_advertise_host(
-                    self._provider_api_base,
-                    self._logprob_proxy_advertise_host,
-                )
+                advertise_host = self._resolve_provider_proxy_advertise_host()
                 provider_proxy = LogprobCaptureProxy(
                     self._provider_api_base,
                     self._logprob_capture["top_logprobs"],
@@ -407,6 +420,7 @@ class TerminalBench2ZeroClawAgent(TerminalBench2InContainerMixin, ZeroClawAgent)
                 artifact_manifest={"files": {"runtime_trace_source": remote_runtime_trace_path}},
                 request_messages=request_messages,
             )
+            partial_response.sandbox_metadata = self._build_incontainer_sandbox_metadata(runtime)
             try:
                 verifier_result = self._run_verifier_and_read_reward(
                     runtime,
@@ -497,6 +511,7 @@ class TerminalBench2ZeroClawAgent(TerminalBench2InContainerMixin, ZeroClawAgent)
             stderr_log="zeroclaw_stderr.log" if (raw_stderr or returncode != 0) else None,
             prompt_text="PROMPT.txt",
             config_path="config.toml",
+            runtime_config="config.toml",
             provider_request_summary=(
                 "provider_request_summary.jsonl"
                 if provider_request_summary_present
@@ -592,6 +607,7 @@ class TerminalBench2ZeroClawAgent(TerminalBench2InContainerMixin, ZeroClawAgent)
             ),
             artifact_manifest=artifact_manifest,
             workspace_file_contents=artifact_files,
+            sandbox_metadata=self._build_incontainer_sandbox_metadata(runtime),
             system_prompt=_ZEROCLAW_SYSTEM_PROMPT,
             finish_reason=finish_reason,
         )

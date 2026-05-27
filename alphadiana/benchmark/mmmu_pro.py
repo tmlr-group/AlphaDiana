@@ -1,6 +1,7 @@
 """MMMU-Pro benchmark loader (MMMU/MMMU_Pro)."""
 from __future__ import annotations
 
+import ast
 import re
 
 from alphadiana.benchmark.base import Benchmark, BenchmarkTask, load_dataset_with_retry
@@ -121,6 +122,10 @@ class MMMUProBenchmark(Benchmark):
                 "'dataset_indices'."
             )
 
+        if isinstance(dataset_indices, str):
+            parsed_indices = ast.literal_eval(dataset_indices)
+            dataset_indices = [parsed_indices] if isinstance(parsed_indices, int) else parsed_indices
+
         if dataset_indices is not None:
             iterator = []
             for raw_idx in dataset_indices:
@@ -148,7 +153,6 @@ class MMMUProBenchmark(Benchmark):
             # options may be a list, a JSON string, or a Python-literal string
             raw_options = item.get("options", [])
             if isinstance(raw_options, str):
-                import ast
                 import json
                 try:
                     raw_options = json.loads(raw_options)

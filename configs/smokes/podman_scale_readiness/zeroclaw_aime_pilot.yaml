@@ -12,11 +12,11 @@ agent:
     model: "${OPENAI_MODEL_NAME}"
     enable_thinking: true
     gateway_token: "ZEROCLAW"
-    request_timeout: 600
+    request_timeout: 1200
     gateway_startup_timeout: 180
     gateway_warmup_timeout: 180
     gateway_warmup_initial_delay: 0
-    provider_max_tokens: 2048
+    provider_max_tokens: 8192
     max_tool_iterations: 40
     max_actions_per_hour: 100
 

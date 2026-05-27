@@ -72,6 +72,7 @@ TESTBED_PATH_SEGMENTS = (
     "/sbin",
     "/bin",
 )
+_UNRESOLVED_PLACEHOLDER_RE = re.compile(r"^\$\{.+\}$")
 TESTBED_TOOL_PATH = ":".join(dict.fromkeys(TESTBED_PATH_SEGMENTS))
 
 DEFAULT_INSTALL_OPENCLAW_COMMAND = "\n".join(
@@ -313,6 +314,17 @@ def _redact_secret_fields(value: Any) -> Any:
     return value
 
 
+def _is_unresolved_placeholder(value: str) -> bool:
+    return bool(_UNRESOLVED_PLACEHOLDER_RE.match(value.strip()))
+
+
+def _resolve_gateway_token(value: Any) -> str:
+    token = str(value or "").strip()
+    if not token or _is_unresolved_placeholder(token):
+        return "OPENCLAW"
+    return token
+
+
 def _sanitize_json_text(raw_text: str) -> str:
     try:
         payload = json.loads(raw_text)
@@ -326,7 +338,7 @@ class OpenClawContainerRuntimeManager:
 
     def __init__(self, config: dict) -> None:
         self._config = dict(config)
-        self._gateway_token = str(config.get("gateway_token", "OPENCLAW"))
+        self._gateway_token = _resolve_gateway_token(config.get("gateway_token", "OPENCLAW"))
         if self._gateway_token and not re.fullmatch(r"[A-Za-z0-9_\-]+", self._gateway_token):
             raise ValueError("Invalid gateway token charset; allowed [A-Za-z0-9_-]")
         self._gateway_model = config.get("model", "openclaw")

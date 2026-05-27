@@ -733,7 +733,11 @@ COPY --from=runtime /usr/local/bin/node /usr/local/bin/node
 COPY --from=runtime /usr/local/bin/npm /usr/local/bin/npm
 COPY --from=runtime /usr/local/bin/npx /usr/local/bin/npx
 COPY --from=runtime /usr/local/lib/node_modules /usr/local/lib/node_modules
-RUN ln -sfn /opt/openclaw/openclaw.mjs /usr/local/bin/openclaw \\
+RUN if [ -f /opt/openclaw/node_modules/openclaw/openclaw.mjs ]; then \\
+      ln -sfn /opt/openclaw/node_modules/openclaw/openclaw.mjs /usr/local/bin/openclaw; \\
+    else \\
+      ln -sfn /opt/openclaw/openclaw.mjs /usr/local/bin/openclaw; \\
+    fi \\
  && mkdir -p /tmp/empty-bundled
 """.strip()
         if self._agent_type == "opencode":

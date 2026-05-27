@@ -47,6 +47,11 @@ Pre-flight Checklist** in `docs/benchmarks/podman.md` (kernel keyring quota,
 disk placement, host networking, vLLM health, post-crash cleanup) — those
 host/infra gates are not auto-enforced.
 
+The three pilot configs set `agent.config.podman_network: host`, matching the
+local-vLLM readiness path where `OPENAI_BASE_URL=http://127.0.0.1:<port>/v1`.
+If you point at a remote provider or another container-reachable endpoint,
+verify reachability from a Podman container before changing the network mode.
+
 Manual equivalent:
 
 ```bash

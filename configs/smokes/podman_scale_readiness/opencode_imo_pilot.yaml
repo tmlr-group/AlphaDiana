@@ -11,8 +11,8 @@ agent:
     api_key: "${OPENAI_API_KEY}"
     model_name: "${OPENAI_MODEL_NAME}"
     enable_thinking: true
-    timeout: 600
-    max_tokens: 2048
+    timeout: 1200
+    max_tokens: 8192
     system_prompt: |
       Solve the competition math problem. The final line must be
       $$\boxed{your answer here}$$.

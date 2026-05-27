@@ -12,6 +12,10 @@ Current support boundary:
   across AIME, GPQA-Diamond, HLE, and IMO-AnswerBench with three tasks per
   cell. Evidence is in
   `context/podman-scale-readiness/README.md`.
+- Replacement-parity diagnostics: `context/podman-replacement-parity/` records
+  a 2026-05-27 representative probe across GPQA, MMMU-Pro, HLE image tasks,
+  SWE-bench Verified, and TerminalBench2. It is a diagnostic evidence bundle,
+  not a default-promotion gate.
 - Task-container path: TerminalBench2 has historical three-agent smoke
   evidence, 128K canary evidence, a current full local-Qwen sweep, and an
   overnight high-budget follow-up for all 89 real task directories in the
@@ -28,7 +32,9 @@ Current support boundary:
   `Qwen/Qwen3.5-4B` at `http://127.0.0.1:8011/v1` has manual host and Podman
   image_url/data-URL transport evidence. The repaired automated run
   `podman_mmmu_pro_qwen35_thinking_20260516_144304` passed the 9-task
-  pilot/audit.
+  pilot/audit. The May 27 replacement probe also expanded the deterministic
+  image slice to 9 tasks per agent on local `Qwen/Qwen3.5-27B`, with 27/27
+  `valid_scored` rows and no artifact-format gaps.
 - Full-scale standard-reasoning Podman runs are recommended only after the
   pilot audit passes. No checked-in full-scale Podman matrix is promoted as a
   default.
@@ -139,6 +145,9 @@ For Podman logprob capture, AlphaDiana may start a short-lived host proxy.
 OpenClaw and ZeroClaw Podman advertise the runtime capture proxy as
 `127.0.0.1` when the gateway/bridge runs with Podman host networking; otherwise
 they use `agent.config.podman_host_ip` (default `host.containers.internal`).
+TerminalBench2 ZeroClaw uses the same loopback rule for its provider proxy
+when `agent.config.podman_network: host`, so the stock ZeroClaw CLI inside the
+task container can reach the normalizing proxy on the host.
 Task metadata records
 `logprob_proxy_url`, `logprob_proxy_upstream`, and
 `logprob_proxy_request_overrides` when this path is active.
@@ -161,9 +170,16 @@ instead.
 Build the local Podman images used by the standard-reasoning matrix:
 
 ```bash
-podman build -f openclaw_deploy/Dockerfile \
+podman pull docker.io/tmlrgroup/alphadiana:v1
+podman build --network host -f openclaw_deploy/Dockerfile \
   -t localhost/alphadiana-openclaw:latest .
 podman tag localhost/alphadiana-openclaw:latest alphadiana-openclaw:latest
+
+podman build --network none \
+  -f openclaw_deploy/Dockerfile.podman-stream-timeout \
+  -t localhost/alphadiana-openclaw-fixed:latest .
+podman tag localhost/alphadiana-openclaw-fixed:latest \
+  localhost/alphadiana-openclaw-fixed:chat-max-tokens-20260524
 
 podman build -f zeroclaw_deploy/Dockerfile \
   -t localhost/zeroclaw-reasoning:0.6.9 .
@@ -173,6 +189,71 @@ podman build -f opencode_deploy/Containerfile.podman-controller \
 podman tag localhost/alphadiana-opencode-podman:latest \
   alphadiana-opencode-podman:latest
 ```
+
+`openclaw_deploy/Dockerfile` uses the fully qualified
+`docker.io/tmlrgroup/alphadiana:v1` ROCK-aligned base so Podman hosts without
+unqualified-search registries do not fail short-name resolution. The resulting
+`alphadiana-openclaw:latest` image should report the same `openclaw --version`
+as the ROCK runtime (`2026.3.7`) and includes the OpenAI SDK stream-timeout
+patch. The Dockerfile unpacks the OpenClaw package and matching `pi-*` packages
+directly into the ROCK-aligned base so npm does not prune gateway dependencies
+from the base image. The optional `Dockerfile.podman-stream-timeout` overlay
+remains for fixed-image workflows that also need the reasoning-SSE and chat
+`max_tokens` gateway patches; tag it with the dated name above when replaying
+older AIME configs that still reference that image.
+
+Current artifact-parity smoke evidence is in
+`context/podman-rock-parity/README.md`. Run
+`podman_rock_parity_aime_smoke_20260526_174735` completed `aime_7` with
+`valid_scored`, `score=1.0`, and captured `openclaw_session.jsonl`,
+`openclaw_workspace_listing.txt`, `openclaw_runtime_config.json`,
+`openclaw_workspace_state.json`, `AGENTS.md`, and the gateway log under the
+stable ROCK-style manifest aliases. The preserved session JSONL contains
+`toolCall` and `toolResult` records.
+
+The same workstream also contains an AIME 2026 N=10 x 4-sample paired analysis
+against the available historical same-task ROCK run. Fresh Podman run
+`podman_rock_parity_aime_n10_mc4_20260526` reached 40/40 `valid_scored`,
+0 errors, pass@4 `1.0000`, avg@4 `0.8750`, and no missing ROCK-style artifact
+aliases. The paired ROCK arm had pass@4 `1.0000` and avg@4 `0.8500`. Do not
+use that result to claim complete ROCK replacement yet: Podman recorded 111
+tool calls vs ROCK 81 (ratio `1.3704`), outside the tentative +/-20%
+tool-count parity gate. The detailed evidence and caveats are in
+`context/podman-rock-parity/aime_n10_pair_20260526.md`.
+
+For the broader replacement probe across other representative benchmark
+classes, see `context/podman-replacement-parity/README.md`. The fresh
+2026-05-27 checks found no artifact-format gaps on GPQA, MMMU-Pro, or the HLE
+image task across OpenClaw, ZeroClaw, and OpenCode; TerminalBench2 completed
+official `db-wal-recovery` across OpenCode, OpenClaw, and ZeroClaw on the
+Podman host-network task-container path with durable verifier logs,
+current-code `sandbox_metadata`, and no required artifact alias gaps. MMMU-Pro
+was expanded to 9 deterministic image
+tasks per agent and wrote 27/27
+`valid_scored` rows. The raw full-run score rates were 6/9 OpenClaw, 5/9
+OpenCode, and 6/9 ZeroClaw; two misses were scoring false negatives caused by
+parenthesized single choice labels like `(I)`. Exact-match scoring now accepts
+that wrapper only for single A-J multiple-choice labels, and targeted OpenCode
+and ZeroClaw real reruns reproduced `(I)` and scored the rows correct. The
+fresh SWE-bench OpenClaw no-proxy rerun first preserved a bounded GitHub fetch
+failure as a `runtime_error`; a follow-up with explicit `http_proxy` and
+`https_proxy` env completed `swe_astropy__astropy-12907` as `valid_scored`,
+`score=0`, `error=null`, preserving runtime, request/response, sandbox,
+workspace, and evaluator artifacts. The zero score was a malformed model patch,
+not a Podman infrastructure failure. The same proxy-enabled SWE task then
+completed for OpenCode and ZeroClaw as `valid_scored`, `score=1`,
+`error=null`, and the three-agent summary reported no missing required aliases
+for `request_messages`, `response_json`, `runtime_config`, `workspace_files`,
+or `sandbox_metadata`. A current-code ZeroClaw SWE rerun then completed the
+same deterministic 10-task pilot slice as 10/10 `valid_scored`, `error=null`
+rows with the same required artifacts present; the 0/10 score in that local
+8K run is patch quality, not a runtime/provider failure. The GPQA follow-up
+expanded to 10 tasks for all three
+agents: OpenClaw and OpenCode each wrote
+10/10 `valid_scored` and 9/10 correct, while ZeroClaw wrote 10/10
+`valid_scored` and 7/10 correct with three scored-zero `finish_reason=length`
+token-budget rows. The long `gpqa_6` case was recovered across all three
+agents with 8192-token / 1200-second simple-text budgets.
 
 For SWE-bench Verified paths that still use a Docker-compatible client
 boundary, start the user Podman socket and point compatibility clients at it:
@@ -210,6 +291,22 @@ checks the Podman socket, docker-py API compatibility, SWE-bench dataset
 access, image qualification, host provider reachability, and Podman runtime
 provider reachability before any task run.
 
+If the instance image setup must fetch from GitHub through a local proxy, export
+`http_proxy` and `https_proxy` before launching the run. The May 27 OpenClaw
+spot-check failed without those proxy env vars at the Astropy fetch step, then
+completed the same task once the proxy env was explicitly present. The May 27
+follow-up also completed that official task for OpenCode and ZeroClaw. For
+host-network SWE containers, generic ZeroClaw now advertises its provider proxy
+as `127.0.0.1` and records `config.toml` as both `config_path` and
+`runtime_config`, matching the replacement artifact contract.
+
+Current SWE-bench Podman env-image setup bounds transient network stalls:
+Podman-compatible builds retry `ALPHADIANA_SWEBENCH_BUILD_ATTEMPTS` times
+(default `2`), and env-image `conda create` / `pip install` setup commands
+are wrapped by `ALPHADIANA_SWEBENCH_SETUP_TIMEOUT_SEC` with
+`ALPHADIANA_SWEBENCH_SETUP_ATTEMPTS` retries. These guards apply to
+`sweb.env.*` images only; instance-image setup scripts are not rewritten.
+
 Current selected-task status: run prefix `phase9_gap_20260519_012` passed the
 full Phase 9 ladder with `PODMAN_SWE_MAX_CONCURRENT=1`:
 
@@ -244,6 +341,15 @@ The script runs:
 - OpenClaw, ZeroClaw, and OpenCode.
 - AIME, GPQA-Diamond, HLE, and IMO-AnswerBench.
 - Three tasks per agent x benchmark cell.
+
+The AIME/GPQA/IMO simple-text pilot configs use 8192-token and 1200-second
+agent/provider budgets. That default came from the 2026-05-27 GPQA replacement
+probe: a 4096-token OpenClaw N=10 run produced one length-capped score-zero
+row on `gpqa_6`, while targeted 8192-token reruns recovered the same task
+across OpenClaw, ZeroClaw, and OpenCode. OpenCode and ZeroClaw were then
+expanded to 10-task GPQA runs under the updated config. Some long AIME
+production-style rows can still need larger caps; treat `finish_reason=length`
+rows as token-budget evidence rather than Podman runtime failure by default.
 
 This host's validated local-vLLM path uses Podman host networking. The script
 preflights `/v1/models` from a small Podman container before launching the
@@ -317,6 +423,11 @@ May 16 Phase 7 run prefix `podman_tb2_three_agent_20260516_170725` remains
 historical small-matrix smoke evidence for OpenClaw, OpenCode, and ZeroClaw on
 `db-wal-recovery`, `overfull-hbox`, and `adaptive-rejection-sampler`.
 
+The three current TB2 pilot YAMLs set `agent.config.podman_network: host`.
+This is the validated local-vLLM path for loopback provider URLs such as
+`http://127.0.0.1:8011/v1`. Use a routable provider endpoint before switching
+these task-container pilots back to bridge/slirp networking.
+
 The expanded local-Qwen run
 `podman_tb2_expanded_local_qwen_tmpstore_20260516` should not be cited as
 readiness evidence. It wrote 36 task rows, but current stricter audit flags
@@ -372,6 +483,18 @@ OpenClaw high-budget controls
 `podman_tb2_high8192_openclaw_20260517` did not reproduce the ZeroClaw empty
 assistant issue; OpenClaw's empty raw-output control rows were timeout rows
 with preserved session traces and are timeout-classified by current code.
+
+Current-code replacement spot-checks on May 27, 2026 repeated official
+`db-wal-recovery` across OpenCode, OpenClaw, and ZeroClaw under Podman
+host-network task containers:
+`podman_repl_tb2_opencode_dbwal_sandboxmeta_20260527_0802`,
+`podman_repl_tb2_openclaw_dbwal_sandboxmeta_20260527_0804`, and
+`podman_repl_tb2_zeroclaw_dbwal_sandboxmeta_proxyfix_20260527_0814`. All three
+rows are `valid_scored`, `score=0`, `error=null`, verifier status `ok`, reward
+observed, and preserve `request_messages`, `response_json`, `runtime_config`,
+`workspace_files`, and `sandbox_metadata`. The ZeroClaw row used the provider
+proxy normalizer plus upstream streaming; current code advertises that proxy as
+`127.0.0.1` when `agent.config.podman_network: host`.
 
 TerminalBench2 OpenCode Podman smoke:
 
@@ -578,10 +701,55 @@ thinking output instead of treating it as empty. Keep `enable_thinking: true`
 in OpenClaw configs for hard tasks — disabling thinking is no longer required
 to avoid empty-stream failures.
 
-If a stream still ends with reasoning-only output and no content, that
-indicates a real token-budget exhaustion (`finish_reason=length`). The runner
-will record the answer extracted from the partial reasoning instead of marking
-the task as a transient empty-response failure.
+For Podman OpenClaw standard-reasoning runs against long-thinking local Qwen,
+use `localhost/alphadiana-openclaw-fixed:latest` built from
+`openclaw_deploy/Dockerfile.podman-stream-timeout`; tag the same image as
+`localhost/alphadiana-openclaw-fixed:chat-max-tokens-20260524` only for legacy
+configs that still reference the dated name. The fixed image includes the
+OpenAI SDK stream-timeout hardening, a gateway patch that requests OpenClaw's
+internal reasoning stream and forwards `thinking` events as OpenAI-compatible
+`delta.reasoning_content`, and chat-completions `max_tokens` /
+`max_completion_tokens` passthrough into OpenClaw `streamParams.maxTokens`.
+Historical May 2026 evidence used image digest
+`031bfc42004c224cedeba7b89391c0a8531c723789a80b57b9d2084f64b614b0`; a fresh
+local rebuild will have a different image ID. A 2026-05-23 `aime_22`
+diagnostic changed from a 0-event blank gateway stream to 3,460 SSE data events
+with first reasoning at 1.407 seconds and a nonblank boxed answer.
+
+The first five-task blank-prone subset after that patch removed the old
+zero-event `provider_empty_response` mode but still exposed a session-taint
+false positive on token-marked reasoning-only rows. The guard now strips
+OpenClaw token markers before fingerprint matching, so split tokens such as
+`bin_omial` and `5_0_3` match problem tokens such as `binomial` and `503`. The
+follow-up five-task subset reached 5/5 `valid_scored`, 0
+`provider_empty_response`, and 0 `runtime_error`. This passes the diagnostic
+subset stability gate. The subsequent full AIME 2026 x 4-sample rerun
+(`ab_aime2026_openclaw_podman_reasoning_guardstrip_full_20260523`) reached
+120/120 `valid_scored`, 0 `provider_empty_response`, 0 `runtime_error`, and
+pass@4 `0.8333`, but it remains diagnostic-only: 45/120 rows were
+reasoning-only `length` completions, and post-run inspection found the
+chat-completions gateway patch had not passed request `max_tokens` /
+`max_completion_tokens` into OpenClaw `streamParams`. The fixed image was
+rebuilt as `031bfc42004c...`. A focused `aime_28` validation run on that image
+crossed the old 173 s cutoff, ran 905.79 s, returned 1,961 visible content
+chars plus 167,245 reasoning chars, and wrote `valid_scored` with no
+provider/runtime/session error.
+
+The final 031bfc full rerun
+(`ab_aime2026_openclaw_podman_chatmax_full_20260524`) completed 120/120
+`valid_scored` samples with 0 `provider_empty_response`, 0 `runtime_error`, and
+0 `openclaw_session_tainted`. Current OpenClaw Podman AIME 2026 evidence is
+pass@4 `0.9333` (28/30) and avg@4 `0.7333` (88/120). Seventeen rows ended as
+reasoning-only `length` completions under `max_tokens=131072`; treat those as
+max-token-cap scored-zero rows, not empty-response failures. Do not claim
+old-sandbox/ROCK parity from this result: the comparable old-sandbox artifacts
+are not present in the current checkout.
+
+If a stream still ends with reasoning-only output and no content at the
+configured token cap, that is scored as a diagnostic partial
+(`finish_reason=length`) rather than a transient empty-response failure. Treat
+a high rate of these rows as model/token-budget evidence, not as Podman runtime
+breakage by itself.
 
 ### vLLM health and the deadlock risk
 
@@ -657,6 +825,7 @@ max_concurrent: 1
 The framework now auto-reserves 8K headroom when resolving max_tokens from
 the model endpoint (`max_model_len - 8192`). Explicit `max_tokens` values
 in config are passed through unchanged.
+
 ## SWE-bench Verified Podman Bring-up
 
 Operational checklist for taking a host from zero to a passing SWE-bench
@@ -717,6 +886,7 @@ not readiness failures, as long as the audit closes clean.
 | Symptom | Real cause | Fix |
 | --- | --- | --- |
 | ZeroClaw HTTP 400 `System message must be at the beginning` | Agent-side provider proxy normalizer not active. SWE-bench mode talks to vLLM directly from inside the task container and bypasses the bridge, so `_normalize_system_messages` in `zeroclaw_deploy/zeroclaw_bridge.py` alone is not enough. | Use the Phase 9 ZeroClaw smoke config — it sets `agent.config.provider_proxy_normalize_system_messages: true`. |
+| TerminalBench2 ZeroClaw reports `error sending request` to `host.docker.internal:<port>` | The provider proxy was advertised as a Docker-bridge host while the Podman task container is using host networking. | Use current code with `agent.config.podman_network: host`; `TerminalBench2ZeroClawAgent` now advertises the provider proxy as `127.0.0.1` for that mode. |
 | ZeroClaw binary extracts but `--version` fails inside the task container | `binary_source_image` not loaded on this host, so the in-container copy lands an empty file. | `podman load -i` the matching tar and verify with `podman images \| grep zeroclaw-reasoning`. |
 | OpenClaw "Patch Apply Failed" / "model only analyzes, no patch block" | `max_tokens` too low (legacy `4096` truncates the reasoning + patch); or a stale `openclaw_swe_bench.runtime.json`. | Use the Phase 9 OpenClaw smoke config (`max_tokens: 32768`, `request_timeout: 7200`, current runtime JSON). |
 | `image not found: sweb.env.py.x86_64.*:latest` or similar short-name miss | Rootless Podman cannot resolve swebench short-name / namespaced refs without a `localhost/` prefix. | `alphadiana/utils/swebench.py:podman_local_image_ref` handles this; the preflight's `image_qualification.unqualified` list must be empty. |

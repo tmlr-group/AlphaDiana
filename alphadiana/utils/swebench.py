@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shlex
+import time
 from collections.abc import Mapping
 from typing import Any
 
@@ -51,6 +52,107 @@ def podman_proxy_buildargs_from_env(env: Mapping[str, str] | None = None) -> dic
         for key in _PROXY_ENV_KEYS
         if (value := str(source.get(key, "") or "").strip())
     }
+
+
+def _positive_env_int(name: str, default: int) -> int:
+    try:
+        return max(1, int(str(os.environ.get(name, default)).strip()))
+    except (TypeError, ValueError):
+        return default
+
+
+def _podman_setup_network_retry_block(
+    *,
+    label: str,
+    shell_command: str,
+    attempts: int,
+    timeout_sec: int,
+    sleep_sec: int,
+) -> str:
+    quoted_command = shlex.quote(shell_command)
+    return "\n".join([
+        f"# AlphaDiana Podman network retry: {label}",
+        f"for setup_attempt in $(seq 1 {attempts}); do",
+        "  set +e",
+        "  if command -v timeout >/dev/null 2>&1; then",
+        f"    timeout {timeout_sec} bash -lc {quoted_command}",
+        "  else",
+        f"    bash -lc {quoted_command}",
+        "  fi",
+        "  setup_status=$?",
+        "  set -e",
+        '  if [ "$setup_status" -eq 0 ]; then break; fi',
+        f"  echo \"{label} attempt ${{setup_attempt}}/{attempts} failed or timed out with exit "
+        "${setup_status}; retrying...\" >&2",
+        f"  if [ \"$setup_attempt\" -eq {attempts} ]; then exit \"$setup_status\"; fi",
+        f"  sleep {max(0, sleep_sec)}",
+        "done",
+    ])
+
+
+def harden_swebench_podman_setup_script(setup_script: str) -> str:
+    """Bound conda/pip network setup in SWE-bench Podman image builds."""
+    script = str(setup_script)
+    if "AlphaDiana Podman network retry:" in script:
+        return script
+
+    attempts = _positive_env_int("ALPHADIANA_SWEBENCH_SETUP_ATTEMPTS", 2)
+    timeout_sec = _positive_env_int("ALPHADIANA_SWEBENCH_SETUP_TIMEOUT_SEC", 300)
+    sleep_sec = _positive_env_int("ALPHADIANA_SWEBENCH_SETUP_RETRY_SLEEP_SEC", 5)
+    updated: list[str] = []
+    for line in script.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("conda create "):
+            updated.append(
+                _podman_setup_network_retry_block(
+                    label="conda create",
+                    shell_command=f"source /opt/miniconda3/bin/activate && {stripped}",
+                    attempts=attempts,
+                    timeout_sec=timeout_sec,
+                    sleep_sec=sleep_sec,
+                )
+            )
+            continue
+        if stripped.startswith("conda activate testbed && python -m pip install "):
+            pip_command = stripped.split("&&", 1)[1].strip()
+            updated.append(
+                _podman_setup_network_retry_block(
+                    label="pip install requirements",
+                    shell_command=(
+                        "source /opt/miniconda3/bin/activate testbed && "
+                        f"{pip_command}"
+                    ),
+                    attempts=attempts,
+                    timeout_sec=timeout_sec,
+                    sleep_sec=sleep_sec,
+                )
+            )
+            continue
+        if stripped.startswith("python -m pip install "):
+            updated.append(
+                _podman_setup_network_retry_block(
+                    label="pip install",
+                    shell_command=(
+                        "source /opt/miniconda3/bin/activate testbed && "
+                        f"{stripped}"
+                    ),
+                    attempts=attempts,
+                    timeout_sec=timeout_sec,
+                    sleep_sec=sleep_sec,
+                )
+            )
+            continue
+        updated.append(line)
+    return "\n".join(updated)
+
+
+def _is_swebench_env_image(image_name: str) -> bool:
+    normalized = str(image_name or "").strip()
+    return (
+        normalized.startswith("sweb.env.")
+        or normalized.startswith("localhost/sweb.env.")
+        or "/sweb.env." in normalized
+    )
 
 
 def qualify_swebench_test_spec_for_podman(test_spec: Any) -> Any:
@@ -182,6 +284,10 @@ def harden_test_spec_repo_clone(
                         "python -m pip install 'jinja2<4' --verbose; fi"
                     )
                     updated.append(
+                        "if [ -f pyproject.toml ] && grep -q 'extension-helpers' pyproject.toml; then "
+                        "python -m pip install 'extension-helpers' --verbose; fi"
+                    )
+                    updated.append(
                         "if [ -d astropy ] && [ -n \"$(find astropy -name '*.pyx' -print -quit)\" ]; then "
                         "python -m pip install 'cython<3' --verbose; fi"
                     )
@@ -243,7 +349,20 @@ def harden_test_spec_repo_clone(
                     f"  if [ \"$fetch_attempt\" -eq {retry_count} ]; then exit \"$fetch_status\"; fi",
                     f"  sleep {sleep_count}",
                     "done",
-                    f"git checkout -f {quoted_commit}",
+                    f"for checkout_attempt in $(seq 1 {retry_count}); do",
+                    "  if command -v timeout >/dev/null 2>&1; then",
+                    f"    timeout 180 git checkout -f {quoted_commit} && break",
+                    "  else",
+                    f"    git checkout -f {quoted_commit} && break",
+                    "  fi",
+                    "  checkout_status=$?",
+                    "  echo \"git checkout attempt "
+                    f"${{checkout_attempt}}/{retry_count} failed with exit "
+                    "${checkout_status}; hydrating blobs and retrying...\" >&2",
+                    f"  git -c http.version=HTTP/1.1 fetch --depth=50 --no-tags origin {quoted_commit} || true",
+                    f"  if [ \"$checkout_attempt\" -eq {retry_count} ]; then exit \"$checkout_status\"; fi",
+                    f"  sleep {sleep_count}",
+                    "done",
                     "cd /",
                 ])
                 replaced = True
@@ -306,6 +425,11 @@ def ensure_swebench_build_network_mode(
         )
         if podman_compat:
             image_name = qualify_swebench_podman_image_ref(image_name)
+            if _is_swebench_env_image(image_name):
+                setup_scripts = {
+                    name: harden_swebench_podman_setup_script(script)
+                    for name, script in setup_scripts.items()
+                }
         logger = docker_build.setup_logger(image_name, build_dir / "build_image.log")
         logger.info(
             f"Building image {image_name}\n"
@@ -355,20 +479,50 @@ def ensure_swebench_build_network_mode(
                 f"{'omitted for Podman local image compatibility' if podman_compat else platform} "
                 f"and network_mode={selected}"
             )
-            response = client.api.build(**build_kwargs)
+            build_attempts = 1
+            if podman_compat:
+                build_attempts = max(
+                    1,
+                    int(os.environ.get("ALPHADIANA_SWEBENCH_BUILD_ATTEMPTS", "2")),
+                )
+            retry_sleep_sec = max(
+                0.0,
+                float(os.environ.get("ALPHADIANA_SWEBENCH_BUILD_RETRY_SLEEP_SEC", "5")),
+            )
+            for attempt in range(1, build_attempts + 1):
+                try:
+                    if build_attempts > 1:
+                        logger.info(f"Build attempt {attempt}/{build_attempts}")
+                    response = client.api.build(**build_kwargs)
 
-            buildlog = ""
-            for chunk in response:
-                if "stream" in chunk:
-                    chunk_stream = docker_build.ansi_escape(chunk["stream"])
-                    logger.info(chunk_stream.strip())
-                    buildlog += chunk_stream
-                elif "errorDetail" in chunk:
-                    logger.error(f"Error: {docker_build.ansi_escape(chunk['errorDetail']['message'])}")
-                    raise docker_build.docker.errors.BuildError(
-                        chunk["errorDetail"]["message"], buildlog
+                    buildlog = ""
+                    for chunk in response:
+                        if "stream" in chunk:
+                            chunk_stream = docker_build.ansi_escape(chunk["stream"])
+                            logger.info(chunk_stream.strip())
+                            buildlog += chunk_stream
+                        elif "errorDetail" in chunk:
+                            logger.error(
+                                "Error: "
+                                f"{docker_build.ansi_escape(chunk['errorDetail']['message'])}"
+                            )
+                            raise docker_build.docker.errors.BuildError(
+                                chunk["errorDetail"]["message"], buildlog
+                            )
+                    logger.info("Image built successfully!")
+                    return
+                except docker_build.docker.errors.BuildError as exc:
+                    if attempt >= build_attempts:
+                        raise
+                    logger.warning(
+                        "Build attempt %s/%s for %s failed: %s; retrying",
+                        attempt,
+                        build_attempts,
+                        image_name,
+                        exc,
                     )
-            logger.info("Image built successfully!")
+                    if retry_sleep_sec:
+                        time.sleep(retry_sleep_sec)
         except docker_build.docker.errors.BuildError as exc:
             logger.error(f"docker.errors.BuildError during {image_name}: {exc}")
             raise docker_build.BuildImageError(image_name, str(exc), logger) from exc

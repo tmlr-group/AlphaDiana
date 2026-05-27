@@ -275,6 +275,74 @@ def _runtime_only_output_indicates_timeout(
     return wall_time_sec + 1.0 >= float(request_timeout_sec)
 
 
+def _json_object_from_text(text: str) -> dict[str, Any]:
+    if not text:
+        return {}
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _provider_exchange_length_without_content(
+    workspace_file_contents: dict[str, str],
+) -> dict[str, Any]:
+    """Return provider length evidence for CLI-empty ZeroClaw bridge responses."""
+    status = _json_object_from_text(workspace_file_contents.get("status.json", ""))
+    exchanges_doc = _json_object_from_text(
+        workspace_file_contents.get("provider_exchange_summary.json", "")
+    )
+    exchanges = exchanges_doc.get("exchanges", [])
+    if not isinstance(exchanges, list) or not exchanges:
+        return {}
+    if status:
+        if status.get("timed_out") is True:
+            return {}
+        returncode = status.get("returncode")
+        if returncode not in (0, "0", None):
+            return {}
+
+    for raw_exchange in reversed(exchanges):
+        if not isinstance(raw_exchange, dict):
+            continue
+        if raw_exchange.get("response_status") != 200:
+            continue
+        response = raw_exchange.get("response", {})
+        if not isinstance(response, dict):
+            continue
+        choices = response.get("choices", [])
+        if not isinstance(choices, list) or not choices:
+            continue
+        choice = choices[0]
+        if not isinstance(choice, dict):
+            continue
+        finish_reason = str(choice.get("finish_reason", "") or "").strip().lower()
+        content_length = int(choice.get("content_length", 0) or 0)
+        tool_call_count = int(choice.get("tool_call_count", 0) or 0)
+        if finish_reason not in {"length", "max_tokens"}:
+            continue
+        if content_length != 0 or tool_call_count != 0:
+            continue
+        usage = response.get("usage", {})
+        return {
+            "finish_reason": "length",
+            "provider_finish_reason": finish_reason,
+            "provider_usage": usage if isinstance(usage, dict) else {},
+            "provider_exchange_count": len(exchanges),
+            "provider_prompt_tokens": (
+                usage.get("prompt_tokens") if isinstance(usage, dict) else None
+            ),
+            "provider_completion_tokens": (
+                usage.get("completion_tokens") if isinstance(usage, dict) else None
+            ),
+            "provider_total_tokens": (
+                usage.get("total_tokens") if isinstance(usage, dict) else None
+            ),
+        }
+    return {}
+
+
 def _extract_patch_from_text(text: str) -> str:
     """Extract a unified diff patch from free-form agent output."""
     candidate = _extract_answer(text)
@@ -519,6 +587,23 @@ class ZeroClawAgent(Agent):
                     if value not in (None, ""):
                         metadata.setdefault(key, value)
         return metadata
+
+    def _resolve_logprob_proxy_advertise_host_for_sandbox(self, sandbox: Any) -> str:
+        if self._logprob_proxy_advertise_host:
+            return resolve_logprob_proxy_advertise_host(
+                self._provider_api_base,
+                self._logprob_proxy_advertise_host,
+            )
+        try:
+            sandbox_metadata = sandbox.metadata() if hasattr(sandbox, "metadata") else {}
+        except Exception:
+            sandbox_metadata = {}
+        if str((sandbox_metadata or {}).get("network_mode", "") or "").strip().lower() == "host":
+            return "127.0.0.1"
+        return resolve_logprob_proxy_advertise_host(
+            self._provider_api_base,
+            self._logprob_proxy_advertise_host,
+        )
 
     def _logprob_request_overrides(self) -> dict[str, Any]:
         overrides: dict[str, Any] = dict(self._provider_body_overrides)
@@ -1450,10 +1535,7 @@ class ZeroClawAgent(Agent):
             )
             if use_provider_proxy:
                 proxy_api_key = secrets.token_urlsafe(24)
-                advertise_host = resolve_logprob_proxy_advertise_host(
-                    self._provider_api_base,
-                    self._logprob_proxy_advertise_host,
-                )
+                advertise_host = self._resolve_logprob_proxy_advertise_host_for_sandbox(sandbox)
                 logprob_proxy = LogprobCaptureProxy(
                     self._provider_api_base,
                     self._logprob_capture["top_logprobs"],
@@ -1561,6 +1643,14 @@ class ZeroClawAgent(Agent):
             answer_override=patch_answer,
             logprob_records_override=logprob_proxy_records if logprob_proxy_records else None,
         )
+        config_text = self._read_sandbox_file(sandbox, paths["config_path"]).strip()
+        if config_text:
+            partial_response.workspace_file_contents["config.toml"] = config_text
+            partial_response.artifact_manifest = add_artifact_file_refs(
+                partial_response.artifact_manifest,
+                config_path="config.toml",
+                runtime_config="config.toml",
+            )
         partial_response.workspace_snapshot_paths = [
             path
             for path in [
@@ -1800,6 +1890,52 @@ class ZeroClawAgent(Agent):
                     sandbox_metadata.setdefault(key, value)
             partial_response.sandbox_metadata = sandbox_metadata
             partial_response.response_json = response_json
+            length_evidence = _provider_exchange_length_without_content(
+                workspace_file_contents
+            )
+            if length_evidence:
+                response_metadata = dict(partial_response.metadata or {})
+                response_metadata.update({
+                    "failure_reason": "token_budget_exhausted",
+                    "answer_source": "",
+                    "zeroclaw_empty_assistant_scored_zero": True,
+                    "zeroclaw_empty_assistant_reason": (
+                        "provider_length_without_cli_assistant_output"
+                    ),
+                    "zeroclaw_bridge_status_code": response.status_code,
+                    "zeroclaw_provider_finish_reason": (
+                        length_evidence.get("provider_finish_reason") or "length"
+                    ),
+                    "zeroclaw_provider_exchange_count": (
+                        length_evidence.get("provider_exchange_count") or 0
+                    ),
+                })
+                for key in (
+                    "provider_prompt_tokens",
+                    "provider_completion_tokens",
+                    "provider_total_tokens",
+                ):
+                    value = length_evidence.get(key)
+                    if value is not None:
+                        response_metadata[f"zeroclaw_{key}"] = value
+                partial_response.metadata = response_metadata
+                partial_response.finish_reason = str(
+                    length_evidence.get("finish_reason") or "length"
+                )
+                provider_usage = length_evidence.get("provider_usage")
+                if isinstance(provider_usage, dict) and provider_usage:
+                    partial_response.token_usage = provider_usage
+                partial_response.response_json = {
+                    **dict(partial_response.response_json or {}),
+                    "zeroclaw_empty_assistant_scored_zero": True,
+                    "zeroclaw_empty_assistant_reason": (
+                        "provider_length_without_cli_assistant_output"
+                    ),
+                    "zeroclaw_provider_finish_reason": (
+                        length_evidence.get("provider_finish_reason") or "length"
+                    ),
+                }
+                return partial_response
             error_obj = response_json.get("error", {}) if isinstance(response_json, dict) else {}
             error_type = (
                 str(error_obj.get("type", "") or "").strip()

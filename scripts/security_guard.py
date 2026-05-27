@@ -103,6 +103,30 @@ def is_port_bound_public(port_bindings: dict, container_port: str = "6379/tcp") 
     return False
 
 
+def is_loopback_host_ip(host_ip: str) -> bool:
+    return host_ip in ("127.0.0.1", "localhost", "::1", "[::1]") or host_ip.startswith("127.")
+
+
+def is_redis_host_port_loopback_published(port: int) -> bool:
+    """Return True when Redis is Docker-published only on a loopback host IP."""
+    matched = False
+    for c in get_docker_containers():
+        ports = c.get("Ports", "")
+        if "6379" not in ports:
+            continue
+        inspect = get_container_inspect(c.get("ID", ""))
+        if not inspect:
+            continue
+        port_bindings = inspect.get("HostConfig", {}).get("PortBindings", {}) or {}
+        for binding in (port_bindings.get("6379/tcp") or []):
+            if str(binding.get("HostPort", "")) != str(port):
+                continue
+            matched = True
+            if not is_loopback_host_ip(binding.get("HostIp", "")):
+                return False
+    return matched
+
+
 def get_redis_config(port: int, key: str) -> str:
     ok_flag, out = redis_cmd(port, "CONFIG", "GET", key)
     if not ok_flag or not out:
@@ -155,7 +179,12 @@ class SecurityIssue:
         return "\n".join(lines)
 
 
-def check_redis_security(port: int, container_name: str = "") -> list[SecurityIssue]:
+def check_redis_security(
+    port: int,
+    container_name: str = "",
+    *,
+    loopback_only_docker_publish: bool = False,
+) -> list[SecurityIssue]:
     issues = []
     label = f"Redis(:{port})" + (f" [{container_name}]" if container_name else "")
 
@@ -168,7 +197,7 @@ def check_redis_security(port: int, container_name: str = "") -> list[SecurityIs
 
     # 1. 无密码
     password = get_redis_config(port, "requirepass")
-    if not password:
+    if not password and not loopback_only_docker_publish:
         issues.append(SecurityIssue(
             "CRITICAL",
             f"{label} 未设置密码",
@@ -178,7 +207,7 @@ def check_redis_security(port: int, container_name: str = "") -> list[SecurityIs
 
     # 2. protected-mode 关闭
     pmode = get_redis_config(port, "protected-mode")
-    if pmode == "no":
+    if pmode == "no" and not loopback_only_docker_publish:
         issues.append(SecurityIssue(
             "HIGH",
             f"{label} protected-mode 已关闭",
@@ -188,7 +217,11 @@ def check_redis_security(port: int, container_name: str = "") -> list[SecurityIs
 
     # 3. bind 包含公网接口
     bind = get_redis_config(port, "bind")
-    if bind and ("0.0.0.0" in bind or bind.startswith("*") or "* " in bind):
+    if (
+        bind
+        and ("0.0.0.0" in bind or bind.startswith("*") or "* " in bind)
+        and not loopback_only_docker_publish
+    ):
         issues.append(SecurityIssue(
             "HIGH",
             f"{label} 绑定到所有网络接口 (bind={bind!r})",
@@ -460,7 +493,10 @@ def run_preflight_check() -> bool:
     all_issues: list[SecurityIssue] = []
 
     info(f"检查 Redis(:{redis_port}) 安全配置...")
-    all_issues += check_redis_security(redis_port)
+    all_issues += check_redis_security(
+        redis_port,
+        loopback_only_docker_publish=is_redis_host_port_loopback_published(redis_port),
+    )
 
     info("检查 Docker 容器 Redis 暴露情况...")
     all_issues += check_docker_redis_exposure()
