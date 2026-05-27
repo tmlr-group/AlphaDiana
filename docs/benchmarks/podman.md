@@ -261,6 +261,20 @@ podman tag localhost/alphadiana-opencode-podman:latest \
   alphadiana-opencode-podman:latest
 ```
 
+For the **TerminalBench2** task-container path, the pilot YAMLs default to the
+thinner controllers under `docker/terminal_bench2/`. Build them with the
+expected tags (or override `TB2_OPENCLAW_RUNTIME_IMAGE` /
+`TB2_OPENCODE_RUNTIME_IMAGE` to reuse the fatter images above; both shapes
+have passing readiness evidence under host networking):
+
+```bash
+podman build -f docker/terminal_bench2/Dockerfile.openclaw-controller \
+  -t localhost/alphadiana-openclaw-swebench-runtime-source:latest .
+podman build -f docker/terminal_bench2/Dockerfile.opencode-controller \
+  -t localhost/alphadiana/tb2-opencode-controller:latest .
+# zeroclaw-reasoning:0.6.9 above already matches the TB2 ZeroClaw default.
+```
+
 `openclaw_deploy/Dockerfile` uses the fully qualified
 `docker.io/tmlrgroup/alphadiana:v1` ROCK-aligned base so Podman hosts without
 unqualified-search registries do not fail short-name resolution. The resulting

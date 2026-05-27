@@ -319,7 +319,7 @@ def test_openclaw_podman_empty_response_error_records_runtime_provenance(
 
     partial = excinfo.value.partial_response
     assert partial is not None
-    assert partial.metadata["failure_reason"] == "empty_response"
+    assert partial.metadata["failure_reason"] == "provider_empty_response"
     assert partial.metadata["container_engine"] == "podman"
     assert partial.metadata["adapter_name"] == "openclaw-podman"
     assert partial.sandbox_metadata["container_engine"] == "podman"

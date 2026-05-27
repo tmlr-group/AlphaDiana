@@ -183,6 +183,9 @@ def test_terminal_bench2_podman_start_container_rewrites_loopback_proxy(
         "http_proxy",
         "https_proxy",
         "no_proxy",
+        "OPENAI_BASE_URL",
+        "OPENAI_API_BASE",
+        "CUSTOM_API_BASE",
     ):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:17890")

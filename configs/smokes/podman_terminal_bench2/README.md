@@ -49,8 +49,29 @@ host/infra gates are not auto-enforced.
 
 The three pilot configs set `agent.config.podman_network: host`, matching the
 local-vLLM readiness path where `OPENAI_BASE_URL=http://127.0.0.1:<port>/v1`.
-If you point at a remote provider or another container-reachable endpoint,
-verify reachability from a Podman container before changing the network mode.
+The runner script also detects loopback `OPENAI_BASE_URL` values and exports
+`PODMAN_TB2_PREFLIGHT_NETWORK=host` so the preflight provider probe matches
+the pilot's network mode. For a non-loopback provider URL, leave that variable
+unset (the probe defaults to Podman bridge networking) or set it explicitly to
+`host`/`slirp4netns`/`none`.
+
+The three default runtime images expected by the pilot YAMLs are built from
+the thin TB2 controller Dockerfiles in `docker/terminal_bench2/`:
+
+```bash
+podman build -f docker/terminal_bench2/Dockerfile.openclaw-controller \
+  -t localhost/alphadiana-openclaw-swebench-runtime-source:latest .
+podman build -f docker/terminal_bench2/Dockerfile.opencode-controller \
+  -t localhost/alphadiana/tb2-opencode-controller:latest .
+podman build -f docker/terminal_bench2/Dockerfile.zeroclaw-controller \
+  -t localhost/zeroclaw-reasoning:0.6.9 .
+```
+
+Alternatively, override `TB2_OPENCLAW_RUNTIME_IMAGE` /
+`TB2_OPENCODE_RUNTIME_IMAGE` to reuse the fatter images built per
+`docs/benchmarks/podman.md` (`localhost/alphadiana-openclaw-fixed:latest`,
+`localhost/alphadiana-opencode-podman:latest`); both have passing TB2 readiness
+evidence under host networking.
 
 Manual equivalent:
 
