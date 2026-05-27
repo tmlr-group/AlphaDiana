@@ -42,6 +42,77 @@ Current support boundary:
 For coding-agent handoff and a development file map, read
 `context/add-podman-handoff/README.md`.
 
+## Full-Run Stability Handoff (Germany team, May 2026)
+
+Status snapshot for the team about to launch full-run experiments at
+`max_tokens=131072` against a 131 K-ctx local Qwen endpoint. This section is a
+sanity index over the detailed sub-sections below; do not skip the linked
+detail.
+
+### Is the code ready for full-run?
+
+Yes, **conditional on the operational pre-flight below**. Phase 9 evidence
+(`phase9_gap_20260519_012`, 48 SWE-bench rows across smoke / pilot32 / long64 /
+sample128 tiers) closes clean for OpenClaw, OpenCode, and ZeroClaw on
+podman 3.4.4 + Qwen3.5-27B. AIME 2026 N=10 x 4-sample replacement-parity
+(`ab_aime2026_openclaw_podman_chatmax_full_20260524`) is 120/120 `valid_scored`
+with 0 `provider_empty_response`. The remaining framework bug that blocked
+full-run at the auto-detected `max_model_len` was closed by PR #43
+(`41d0e6d`): `_resolve_max_tokens()` now reserves an 8 K headroom on
+auto-detect for both `direct_llm.py` and `openclaw.py`.
+
+### Risk classification
+
+| Class | Risk | Status |
+|---|---|---|
+| **Framework bug** | `_resolve_max_tokens()` requested `max_tokens == max_model_len` → vLLM 400 | **Fixed.** 8 K auto-headroom in `alphadiana/agent/openclaw.py:1651` and `alphadiana/agent/direct_llm.py:181`. |
+| **Framework bug** | TB2 ZeroClaw advertised provider proxy on Docker bridge IP under host networking → `error sending request to host.docker.internal:<port>` | **Fixed.** `TerminalBench2ZeroClawAgent._resolve_provider_proxy_advertise_host()` returns `127.0.0.1` under `podman_network: host`. |
+| **Framework bug** | TB2 OpenClaw lacked logprob capture proxy wiring | **Fixed.** PR #43 added `LogprobCaptureProxy` wiring at `alphadiana/agent/terminal_bench2_openclaw.py:579`. |
+| **Framework bug** | TB2 ZeroClaw did not auto-enable `provider_proxy_inject_logprobs` when `capture_logprobs=true` | **Fixed.** PR #43, `alphadiana/agent/terminal_bench2_zeroclaw.py:110/136`. |
+| **Framework bug** | OpenClaw reasoning-only no-`[DONE]` raised instead of returning `incomplete` | **Fixed** (`c6b6f45`). |
+| **Framework bug** | SWE-bench scorer ignored `docker_api_version` from config | **Fixed** (`2647069`). |
+| **Framework bug** | vLLM `delta.reasoning` not rewritten to `delta.reasoning_content` for OpenClaw gateway | **Fixed** in the logprob proxy and in `localhost/alphadiana-openclaw-fixed:latest`. |
+| **Framework bug** | Rootless orphan sidecars (slirp4netns, conmon) left from crashed runs | **Fixed.** `PodmanAgentRuntime.start()` reaps name-matched orphans (`823a08c`, `39d6ffe`). |
+| **Config / runbook** | `max_tokens` for 131 K-ctx model must leave room for prompt + tools | See "Provider context window vs `max_tokens`". `131072 → ~122 880`. ZeroClaw with 30 K+ tool overhead needs a 200 K-ctx endpoint OR `provider_max_tokens` ≤ ~96 K. |
+| **Config / runbook** | Logprob dual-write can hit 180–360 GB at OpenCode HLE scale | See "Logprob dual-write disk cost". `output_dir` MUST be on a large disk; never `/home`. |
+| **Config / runbook** | 12-way parallel cells collide on `exposed_port: 8080` under `network: host` | See "Host networking and port collisions". Override OpenClaw / ZeroClaw cells to `slirp4netns`; keep OpenCode on `host`. |
+| **Config / runbook** | Default `kernel.keys.maxkeys=200` exhausts under task churn | See "Kernel keyring quota". One-time `sysctl` to `2000 / 200000`. |
+| **Infra** | Podman storage on `/home` fills up on SWE-bench builds (~25–40 GB layers) | Point `graphroot` at a large disk in `~/.config/containers/storage.conf`. |
+| **External — vLLM** | Long-thinking + concurrency can deadlock vLLM (single largest full-run risk) | See "vLLM health and the deadlock risk". Operator standby + watchdog; do NOT trust GPU-util; probe `/v1/models` with `curl --max-time 30`. |
+| **External — vLLM** | `--reasoning-parser qwen3` emits `delta.reasoning` not `delta.reasoning_content` | Mitigated framework-side; keep `enable_thinking: true`. |
+| **External — registry** | `docker.io/tmlrgroup/alphadiana:v1` pulls can time out at 1200 s on CN hosts | See "Prerequisites" Docker Hub mirror notes. |
+| **External — HF** | Gated datasets need `HF_TOKEN`; CN hosts need `HF_ENDPOINT=https://hf-mirror.com` | Set both before `run_podman_*.sh`. |
+
+### Pre-flight before starting a full-run
+
+Run in order; do not start the campaign if any step fails.
+
+1. **Smoke-compile the merged agent files** (catches Python import regressions):
+   ```bash
+   python -m py_compile \
+     alphadiana/agent/openclaw.py \
+     alphadiana/agent/direct_llm.py \
+     alphadiana/agent/terminal_bench2_openclaw.py \
+     alphadiana/agent/terminal_bench2_zeroclaw.py
+   ```
+2. **Confirm framework fixes are present**: `grep -n "max_len - 8192" alphadiana/agent/openclaw.py alphadiana/agent/direct_llm.py` — must show two hits at lines 181 / 1651.
+3. **Confirm `max_tokens` in your YAML** is set explicitly. For a 131 K-ctx endpoint cap at 122 880; for a 200 K-ctx endpoint cap at ≤ 122 880 unless prompts and tool defs are tiny. Leaving the field blank now triggers the 8 K auto-headroom fallback but explicit > implicit.
+4. **Confirm `output_dir`** is NOT under `/home` and the target disk has ≥ 400 GB free if `capture_logprobs=true`.
+5. **Confirm kernel keyring** is raised on the host: `sysctl kernel.keys.maxkeys kernel.keys.maxbytes` must show `2000 / 200000` (or higher).
+6. **Probe vLLM** before kicking off: `curl -sS --max-time 30 $OPENAI_BASE_URL/models` then a tiny chat-completions probe. Confirm the log lives on a `/data*` mount and its mtime is advancing.
+7. **Run the readiness preflight**:
+   ```bash
+   bash scripts/run_podman_swe_verified_readiness.sh preflight   # ok=true
+   bash scripts/run_podman_terminal_bench2_readiness.sh preflight # ok=true
+   ```
+   Both must show `ok: true`. Kernel-keyring WARN under `warnings` is acceptable only if step 5 reports the raised values.
+8. **For 12-way parallel cells**: ensure OpenClaw / ZeroClaw cells override `sandbox_engine.podman.network` to `slirp4netns`; OpenCode cells stay on `host`.
+
+When all 8 steps pass, the framework side is clean and remaining failure
+modes are operational (vLLM health, disk fill, network) — keep the watchdog
+and restart procedure (see "vLLM health and the deadlock risk" and "Recovery
+from a SIGKILL'd run") ready.
+
 ## Development File Map
 
 - Runtime and agent code:
