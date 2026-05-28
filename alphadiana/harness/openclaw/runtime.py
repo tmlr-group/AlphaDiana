@@ -54,6 +54,13 @@ def _is_unresolved_placeholder(value: str) -> bool:
     return bool(_UNRESOLVED_PLACEHOLDER_RE.match(value.strip()))
 
 
+def _resolve_gateway_token(value: Any) -> str:
+    token = str(value or "").strip()
+    if not token or _is_unresolved_placeholder(token):
+        return "OPENCLAW"
+    return token
+
+
 # ---------------------------------------------------------------------------
 # MITM logprob capture proxy for Docker-backed OpenClaw sandboxes
 #
@@ -404,6 +411,16 @@ _OPENCLAW_HOME_CANDIDATES = (
 _OPENCLAW_WORKSPACE_CANDIDATES = tuple(
     f"{home}/workspace" for home in _OPENCLAW_HOME_CANDIDATES
 )
+_OPENCLAW_PODMAN_HOME_CANDIDATES = (
+    "/tmp/oc_home/.openclaw",
+    "/tmp/oc_home",
+    "/root/.openclaw",
+    "/home/node/.openclaw",
+)
+_OPENCLAW_PODMAN_WORKSPACE_CANDIDATES = tuple(
+    f"{home}/workspace" for home in _OPENCLAW_PODMAN_HOME_CANDIDATES
+)
+_PODMAN_WORKSPACE_FILE_SIZE_LIMIT = 5_000_000
 _SECRET_FIELD_NAMES = frozenset({
     "api_key",
     "apikey",
@@ -441,7 +458,7 @@ class OpenClawRuntimeManager:
     requires_sandbox = True
 
     def __init__(self, config: dict) -> None:
-        self._gateway_token = config.get("gateway_token", "OPENCLAW")
+        self._gateway_token = _resolve_gateway_token(config.get("gateway_token", "OPENCLAW"))
         self._gateway_model = config.get("model", "openclaw")
         self._gateway_port = int(config.get("gateway_port", 8080))
         self._rock_agent_config_path = str(self._resolve_config_path(config.get("rock_agent_config_path", ""))) if config.get("rock_agent_config_path") else ""
@@ -1377,32 +1394,253 @@ class OpenClawPodmanRuntimeManager(OpenClawRuntimeManager):
             self._podman_result = result
         except Exception:
             result = self._podman_result
+
+        rt = self._podman_runtime
         workspace_file_contents: dict[str, str] = {}
         manifest_files: dict[str, str] = {}
+        state_files: list[str] = []
+        collected_snapshot_paths: list[str] = []
+
+        # Declared artifacts from podman_gateway.yaml: gateway log, runtime
+        # config, and any simple fixed paths the runtime can collect directly.
         gateway_log = result.artifacts.get(self._gateway_log_path, "") or result.logs
         if gateway_log:
             workspace_file_contents["openclaw_gateway.log"] = gateway_log
             manifest_files["gateway_log"] = "openclaw_gateway.log"
+        manifest_files["gateway_log_source"] = self._gateway_log_path
+
         for path, text in result.config_snapshots.items():
             workspace_file_contents[path] = text
             if path == self._remote_openclaw_config_path:
                 workspace_file_contents["openclaw_runtime_config.json"] = text
                 manifest_files["runtime_config"] = "openclaw_runtime_config.json"
+                state_files.append("openclaw_runtime_config.json")
         for path, text in result.artifacts.items():
             if path == self._gateway_log_path:
                 continue
             workspace_file_contents[path] = text
-        return {
-            "artifact_manifest": {
-                "files": manifest_files,
-                "workspace_snapshot_paths": list(workspace_file_contents),
-                "runtime_metadata": dict(result.metadata),
+
+        workspace_roots: list[str] = []
+        for candidate in (
+            self._workspace_path,
+            *_OPENCLAW_PODMAN_WORKSPACE_CANDIDATES,
+        ):
+            candidate = str(candidate or "").strip()
+            if candidate and candidate not in workspace_roots:
+                workspace_roots.append(candidate)
+
+        manifest_files["workspace_root"] = next(iter(workspace_roots), self._workspace_path)
+        workspace_listing_shell = " ; ".join(
+            f'if [ -d {shlex.quote(root)} ] && [ -r {shlex.quote(root)} ]; then '
+            f'find {shlex.quote(root)} -maxdepth 4 -type f; fi'
+            for root in workspace_roots
+        )
+        workspace_paths: list[str] = []
+        if workspace_listing_shell:
+            listing_stdout = self._podman_exec_stdout(
+                rt,
+                f"({workspace_listing_shell}) | sort -u",
+                timeout=30.0,
+            )
+            workspace_paths = [
+                line.strip()
+                for line in listing_stdout.splitlines()
+                if line.strip().startswith("/")
+            ]
+        if workspace_paths:
+            listing_text = "\n".join(dict.fromkeys(workspace_paths)) + "\n"
+            workspace_file_contents["openclaw_workspace_listing.txt"] = listing_text
+            manifest_files["workspace_listing"] = "openclaw_workspace_listing.txt"
+            collected_snapshot_paths.extend(workspace_paths)
+
+        for remote_path in workspace_paths:
+            text = self._podman_read_text_capped(
+                rt,
+                remote_path,
+                size_limit=_PODMAN_WORKSPACE_FILE_SIZE_LIMIT,
+            )
+            if text.strip():
+                workspace_file_contents[remote_path] = text
+
+        session_listing_shell = (
+            "ls -t "
+            + " ".join(
+                f"{home}/agents/main/sessions/*.jsonl"
+                for home in _OPENCLAW_PODMAN_HOME_CANDIDATES
+            )
+            + " 2>/dev/null | head -10"
+        )
+        session_stdout = self._podman_exec_stdout(rt, session_listing_shell, timeout=20.0)
+        session_paths = [
+            line.strip()
+            for line in session_stdout.splitlines()
+            if line.strip().endswith(".jsonl")
+        ]
+
+        session_alias_path = ""
+        for remote_path in session_paths[:3]:
+            text = workspace_file_contents.get(remote_path) or self._podman_read_text_capped(
+                rt,
+                remote_path,
+                size_limit=_PODMAN_WORKSPACE_FILE_SIZE_LIMIT,
+            )
+            if not text.strip():
+                continue
+            workspace_file_contents[remote_path] = text
+            if not session_alias_path:
+                session_alias_path = "openclaw_session.jsonl"
+                workspace_file_contents.setdefault(session_alias_path, text)
+                state_files.append(session_alias_path)
+
+        response_stream_alias = ""
+        for remote_path in workspace_paths:
+            if Path(remote_path).name != "openclaw_output.jsonl":
+                continue
+            text = workspace_file_contents.get(remote_path) or self._podman_read_text_capped(
+                rt,
+                remote_path,
+                size_limit=_PODMAN_WORKSPACE_FILE_SIZE_LIMIT,
+            )
+            if not text.strip():
+                continue
+            response_stream_alias = "openclaw_output.jsonl"
+            workspace_file_contents[remote_path] = text
+            workspace_file_contents.setdefault(response_stream_alias, text)
+            break
+        if not response_stream_alias and session_alias_path:
+            response_stream_alias = session_alias_path
+
+        system_prompt_candidates = [
+            f"{self._workspace_path}/AGENTS.md",
+            f"{self._workspace_path}/SOUL.md",
+            *(
+                f"{workspace}/AGENTS.md"
+                for workspace in _OPENCLAW_PODMAN_WORKSPACE_CANDIDATES
+            ),
+            *(
+                f"{workspace}/SOUL.md"
+                for workspace in _OPENCLAW_PODMAN_WORKSPACE_CANDIDATES
+            ),
+        ]
+        system_prompt_paths: list[str] = []
+        for remote_path in system_prompt_candidates:
+            content = self._podman_read_text_capped(rt, remote_path, size_limit=1_000_000)
+            if not content.strip():
+                continue
+            workspace_file_contents.setdefault(remote_path, content)
+            system_prompt_paths.append(remote_path)
+
+        sidecar_candidates: list[tuple[str, str, str]] = []
+        for workspace_root in workspace_roots:
+            workspace_root = str(workspace_root or "").strip()
+            if workspace_root:
+                sidecar_candidates.append((
+                    f"{workspace_root}/.openclaw/workspace-state.json",
+                    "openclaw_workspace_state.json",
+                    "workspace_state",
+                ))
+        for home in _OPENCLAW_PODMAN_HOME_CANDIDATES:
+            sidecar_candidates.extend([
+                (
+                    f"{home}/workspace-state.json",
+                    "openclaw_workspace_state.json",
+                    "workspace_state",
+                ),
+                (
+                    f"{home}/agents/main/sessions.json",
+                    "openclaw_sessions_index.json",
+                    "session_index",
+                ),
+            ])
+        for remote_path, alias, manifest_key in sidecar_candidates:
+            if alias in workspace_file_contents:
+                continue
+            content = workspace_file_contents.get(remote_path) or self._podman_read_text_capped(
+                rt,
+                remote_path,
+                size_limit=2_000_000,
+            )
+            if not content.strip():
+                continue
+            workspace_file_contents[remote_path] = content
+            workspace_file_contents[alias] = content
+            manifest_files[manifest_key] = alias
+            state_files.append(alias)
+            if remote_path not in collected_snapshot_paths:
+                collected_snapshot_paths.append(remote_path)
+
+        artifact_manifest = {
+            "files": {
+                **manifest_files,
+                "response_stream": response_stream_alias,
+                "session_trace": session_alias_path or (session_paths[0] if session_paths else ""),
+                "openclaw_output": response_stream_alias,
+                "openclaw_session": session_alias_path or (session_paths[0] if session_paths else ""),
+                "system_prompt": system_prompt_paths[0] if system_prompt_paths else "",
             },
+            "workspace_snapshot_paths": list(dict.fromkeys(collected_snapshot_paths)),
+            "session_paths": session_paths,
+            "system_prompt_paths": system_prompt_paths,
+            "runtime_metadata": dict(result.metadata),
+        }
+        if state_files:
+            artifact_manifest["state_files"] = list(dict.fromkeys(state_files))
+
+        return {
+            "artifact_manifest": artifact_manifest,
             "gateway_log_excerpt": gateway_log,
-            "workspace_snapshot_paths": list(workspace_file_contents),
+            "workspace_snapshot_paths": list(dict.fromkeys(collected_snapshot_paths)),
             "workspace_file_contents": workspace_file_contents,
             "sandbox_metadata": dict(result.metadata),
         }
+
+    def _podman_exec_stdout(
+        self,
+        rt: PodmanAgentRuntime,
+        shell_command: str,
+        *,
+        timeout: float,
+    ) -> str:
+        try:
+            res = rt.exec(
+                ["/bin/sh", "-c", shell_command],
+                timeout=timeout,
+                check=False,
+            )
+        except Exception:
+            return ""
+        return res.stdout if isinstance(getattr(res, "stdout", ""), str) else ""
+
+    def _podman_read_text_capped(
+        self,
+        rt: PodmanAgentRuntime,
+        remote_path: str,
+        *,
+        size_limit: int,
+    ) -> str:
+        path = str(remote_path or "").strip()
+        if not path:
+            return ""
+
+        stat_stdout = self._podman_exec_stdout(
+            rt,
+            f"stat -c %s {shlex.quote(path)} 2>/dev/null || echo -1",
+            timeout=10.0,
+        )
+        try:
+            size = int((stat_stdout.strip().splitlines() or ["-1"])[-1])
+        except (TypeError, ValueError):
+            size = -1
+        if size < 0:
+            return ""
+        if size > size_limit:
+            return f"[truncated: file size {size} bytes exceeds {size_limit} byte cap]\n"
+
+        return self._podman_exec_stdout(
+            rt,
+            f"cat {shlex.quote(path)} 2>/dev/null || true",
+            timeout=30.0,
+        )
 
     def teardown(self) -> None:
         try:

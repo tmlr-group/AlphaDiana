@@ -22,6 +22,7 @@ agent:
     model_name: ${OPENAI_MODEL_NAME}
     runtime_source_image: "${TB2_OPENCLAW_RUNTIME_IMAGE}"
     logs_base_dir: "${ALPHADIANA_TB2_LOGS_DIR}"
+    podman_network: "host"
     openclaw_bin: "openclaw"
     onboard_timeout_sec: 180
     solver_timeout_sec: 1800

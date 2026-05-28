@@ -298,13 +298,19 @@ class PodmanAgentRuntime:
         try:
             if spec is not None and self._process_id:
                 self._terminate_process_group(container_id, self._process_id, timeout=timeout)
+            _terminate_container_process_tree(container_id, include_supervisors=False)
             if spec is not None and self._owned_host_port is not None:
                 self._terminate_host_port_listeners(spec, self._owned_host_port)
             self._runtime.stop(container_id, stop_timeout=int(timeout), timeout=timeout, check=check)
         except Exception as exc:
             stop_error = exc
         finally:
-            self._runtime.rm(container_id, force=True, volumes=True, timeout=timeout, check=check)
+            try:
+                self._runtime.rm(container_id, force=True, volumes=True, timeout=timeout, check=check)
+            finally:
+                if spec is not None and self._owned_host_port is not None:
+                    self._terminate_host_port_listeners(spec, self._owned_host_port)
+                _terminate_container_process_tree(container_id, include_supervisors=True)
             self._container_id = ""
             self._api_base = ""
             self._process_id = ""
@@ -734,6 +740,85 @@ def _looks_like_agent_process(pid: int, spec: PodmanAgentSpec) -> bool:
         if len(name) >= 5 and name in cmdline:
             return True
     return False
+
+
+def _terminate_container_process_tree(container_id: str, *, include_supervisors: bool) -> None:
+    """Terminate host processes that are provably owned by one Podman container.
+
+    Host-network agent gateways can keep listening after a normal ``podman rm``
+    path if rootless Podman leaves a conmon/container sidecar orphan. The
+    conservative anchor is the exact container id in the conmon command line;
+    only descendants of that process tree are signalled, and conmon itself is
+    killed only in the final post-rm cleanup pass.
+    """
+
+    cid = str(container_id or "").strip()
+    if len(cid) < 12:
+        return
+    proc_rows = _proc_rows()
+    supervisor_pids = [
+        pid
+        for pid, (_ppid, cmdline) in proc_rows.items()
+        if cid in cmdline and "conmon" in Path(cmdline.split(" ", 1)[0]).name
+    ]
+    if not supervisor_pids:
+        return
+    target_pids = _descendant_pids(proc_rows, supervisor_pids)
+    if include_supervisors:
+        target_pids.extend(supervisor_pids)
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        for pid in sorted(set(target_pids), reverse=True):
+            if pid == os.getpid():
+                continue
+            try:
+                os.kill(pid, sig)
+            except ProcessLookupError:
+                continue
+            except PermissionError:
+                continue
+        if sig == signal.SIGTERM:
+            time.sleep(0.5)
+
+
+def _proc_rows() -> dict[int, tuple[int, str]]:
+    rows: dict[int, tuple[int, str]] = {}
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        pid = int(entry.name)
+        try:
+            stat = (entry / "stat").read_text(encoding="utf-8", errors="replace")
+            cmdline_bytes = (entry / "cmdline").read_bytes()
+        except (FileNotFoundError, PermissionError, ProcessLookupError):
+            continue
+        try:
+            ppid = int(stat.rsplit(") ", 1)[1].split()[1])
+        except (IndexError, ValueError):
+            continue
+        cmdline = cmdline_bytes.replace(b"\x00", b" ").decode("utf-8", errors="replace").strip()
+        rows[pid] = (ppid, cmdline)
+    return rows
+
+
+def _descendant_pids(
+    proc_rows: Mapping[int, tuple[int, str]],
+    root_pids: Sequence[int],
+) -> list[int]:
+    children: dict[int, list[int]] = {}
+    for pid, (ppid, _cmdline) in proc_rows.items():
+        children.setdefault(ppid, []).append(pid)
+    descendants: list[int] = []
+    stack = list(root_pids)
+    seen = set(stack)
+    while stack:
+        parent = stack.pop()
+        for child in children.get(parent, []):
+            if child in seen:
+                continue
+            seen.add(child)
+            descendants.append(child)
+            stack.append(child)
+    return descendants
 
 
 def _redact_secret_fields(value: Any) -> Any:
