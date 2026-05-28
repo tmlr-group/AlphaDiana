@@ -27,7 +27,7 @@ DEFAULT_BASE_URL = os.environ.get("ROCK_BASE_URL", DEFAULT_PORTS.base_url)
 DEFAULT_PROXY_URL = os.environ.get("ROCK_PROXY_URL", DEFAULT_PORTS.proxy_api_url)
 DEFAULT_REDIS_PORT = DEFAULT_PORTS.redis_port
 DEPLOY_DIR = Path(__file__).resolve().parent
-REPO_ROOT = DEPLOY_DIR.parent
+REPO_ROOT = DEPLOY_DIR.parents[3]
 INVOKE_CWD = Path.cwd().resolve()
 ROCK_ROOT = REPO_ROOT / "ref/ROCK"
 

@@ -15,7 +15,7 @@ from alphadiana.utils.rock_ports import resolve_rock_ports_from_env
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_CONFIG = REPO_ROOT / "configs/examples/openclaw_aime2024.yaml"
-DEPLOY_TEMPLATE = REPO_ROOT / "openclaw_deploy/rock_agent_config.yaml"
+DEPLOY_TEMPLATE = REPO_ROOT / "alphadiana/harness/openclaw/deploy/rock_agent_config.yaml"
 GENERATED_DIR = REPO_ROOT / "dev/generated"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 MODEL_NAME = "qwen/qwen-2.5-7b-instruct"
@@ -135,7 +135,7 @@ def main() -> int:
     print(f"Generated ROCK agent config: {deploy_path}")
     print(
         "Deploy command: "
-        f"python openclaw_deploy/deploy.py --agent-config {deploy_path}"
+        f"python alphadiana/harness/openclaw/deploy/deploy.py --agent-config {deploy_path}"
     )
 
     # Resolve sandbox IDs: --sandbox-ids takes precedence over --sandbox-id
