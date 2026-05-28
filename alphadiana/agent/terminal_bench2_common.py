@@ -281,13 +281,38 @@ class TerminalBench2ContainerMixin:
                 if last_error is not None:
                     raise last_error
                 raise RuntimeError(f"Podman container start produced no container ID for task {task.task_id}")
-            self._podman.exec(
-                container_id,
-                ["mkdir", "-p", "/logs/verifier"],
-                user="0:0",
-                timeout=10,
-                check=False,
-            )
+            # First exec on a freshly-started container occasionally takes
+            # several seconds under podman + slirp4netns/host-network setup
+            # contention. Give it a generous window and retry once on a
+            # transient timeout; the container is already known to be up.
+            mkdir_attempts = 2
+            mkdir_timeout = 30
+            last_mkdir_error: PodmanError | None = None
+            for mkdir_attempt in range(1, mkdir_attempts + 1):
+                try:
+                    self._podman.exec(
+                        container_id,
+                        ["mkdir", "-p", "/logs/verifier"],
+                        user="0:0",
+                        timeout=mkdir_timeout,
+                        check=False,
+                    )
+                    last_mkdir_error = None
+                    break
+                except PodmanError as mkdir_exc:
+                    last_mkdir_error = mkdir_exc
+                    logger.warning(
+                        "Task %s — mkdir /logs/verifier attempt %d/%d failed on container %s: %s",
+                        task.task_id,
+                        mkdir_attempt,
+                        mkdir_attempts,
+                        container_id[:12],
+                        mkdir_exc,
+                    )
+                    if mkdir_attempt < mkdir_attempts:
+                        time.sleep(2)
+            if last_mkdir_error is not None:
+                raise last_mkdir_error
             return container_id
 
         cmd = [
