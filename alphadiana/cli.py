@@ -381,11 +381,17 @@ LOCALHOST = "127.0.0.1"
 @main.command("list-benchmarks")
 def list_benchmarks():
     """List all registered benchmarks."""
-    # Import benchmark modules to trigger registration.
+    # Import benchmark modules to trigger registration. Keep this list in
+    # sync with alphadiana/runner/runner.py — otherwise list-benchmarks
+    # silently hides supported benchmarks.
     import alphadiana.benchmark.aime  # noqa: F401
     import alphadiana.benchmark.custom  # noqa: F401
-    import alphadiana.benchmark.swe_bench  # noqa: F401
+    import alphadiana.benchmark.gpqa  # noqa: F401
+    import alphadiana.benchmark.hle  # noqa: F401
+    import alphadiana.benchmark.imo_answerbench  # noqa: F401
+    import alphadiana.benchmark.mmmu_pro  # noqa: F401
     import alphadiana.benchmark.moltbench  # noqa: F401
+    import alphadiana.benchmark.swe_bench  # noqa: F401
     import alphadiana.benchmark.swebench_pro  # noqa: F401
     import alphadiana.benchmark.terminal_bench2  # noqa: F401
 
