@@ -264,6 +264,14 @@ example configs, and smoke-test commands:
 - [terminal-bench-2](terminal-bench-2.md)
 - [Podman Experiment Runbook](podman.md)
 - [Full Local-vLLM Rollout (2026-04-19)](full-rollout-local-vllm-20260419.md)
+- Self-contained operator runbooks for full benchmark sweeps on local
+  `Qwen/Qwen3.5-27B` + vLLM:
+  - [TerminalBench2 (full, 89 tasks, Podman)](runbook-terminal-bench-2-full-podman-qwen35-27b.md)
+  - [SWE-bench Verified Mini (50 tasks, Docker + SWE-agent)](runbook-swebench-verified-mini-docker-qwen35-27b.md)
+  - [AIME 2024 (full, 30 tasks, DirectLLM)](runbook-aime-2024-full-directllm-qwen35-27b.md)
+  - [GPQA-Diamond (full, 198 tasks, DirectLLM)](runbook-gpqa-diamond-full-directllm-qwen35-27b.md)
+  - [HLE multipleChoice (full, DirectLLM)](runbook-hle-full-directllm-qwen35-27b.md)
+  - [MMMU-Pro vision (full, DirectLLM)](runbook-mmmu-pro-full-directllm-qwen35-27b.md)
 - [ZeroClaw MiniMax Smoke Matrix (2026-04-18)](zeroclaw-minimax-smoke-20260418.md)
 - [ZeroClaw Qwen OpenRouter Pilot Matrix (2026-04-19)](zeroclaw-qwen-openrouter-pilot-20260419.md)
 
