@@ -1,0 +1,41 @@
+run_id: "test-openclaw-quick"
+
+agent:
+  name: openclaw
+  version: "2026.3.20"
+  config:
+    rock_image: "tmlrgroup/alphadiana:v1"
+    rock_agent_config_path: "alphadiana/harness/openclaw/deploy/rock_agent_config.prebuilt.yaml"
+    openclaw_config_path: "alphadiana/harness/openclaw/deploy/openclaw.json"
+    rock_memory: "4g"
+    rock_cpus: 1
+    rock_startup_timeout: 600
+    model: openclaw
+    gateway_token: "2ee4379b65cc62714b31c1b93b56bf47505ec8a2f51f26f3"
+    max_tokens: 8192
+    request_timeout: 600
+    max_attempts: 2
+    system_prompt: |
+      You are an expert problem solver. Use available tools as needed. When you reach the final answer, present it as:
+
+      $$\boxed{your answer here}$$
+
+benchmark:
+  name: custom
+  config:
+    problems:
+      - id: "smoke_1"
+        problem: "What is 17 + 25?"
+        answer: "42"
+
+sandbox: null
+
+scorer:
+  name: numeric
+  config:
+    tolerance: 1e-6
+
+max_concurrent: 1
+output_dir: "./results"
+metadata:
+  notes: "README quickstart smoke test"

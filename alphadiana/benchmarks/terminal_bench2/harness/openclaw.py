@@ -10,29 +10,29 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-from alphadiana.agent.base import Agent, AgentResponse
-from alphadiana.agent.logprob_capture import (
+from alphadiana.harness.base import Agent, AgentResponse
+from alphadiana.harness.proxies.logprob_capture import (
     finalize_logprob_capture,
     resolve_logprob_capture_config,
 )
-from alphadiana.agent.logprob_proxy import (
+from alphadiana.harness.proxies.logprob_proxy import (
     LogprobCaptureProxy,
     resolve_logprob_proxy_advertise_host,
 )
-from alphadiana.agent.openclaw import (
+from alphadiana.harness.openclaw.agent import (
     _extract_trajectory_error,
     _extract_reasoning_trajectory_from_payload,
     _parse_openclaw_session,
     _recover_partial_output_from_trajectory,
 )
-from alphadiana.agent.preservation import add_artifact_file_refs
-from alphadiana.agent.registry import AgentRegistry
-from alphadiana.agent.terminal_bench2_incontainer import (
+from alphadiana.harness.proxies.preservation import add_artifact_file_refs
+from alphadiana.harness.registry import AgentRegistry
+from alphadiana.benchmarks.terminal_bench2.harness.incontainer import (
     IN_CONTAINER_AGENT_PROMPT,
     TerminalBench2InContainerMixin,
 )
-from alphadiana.agent.terminal_bench2_common import _proxy_bypass_hosts_from_urls
-from alphadiana.benchmark.base import BenchmarkTask
+from alphadiana.benchmarks.terminal_bench2.harness.common import _proxy_bypass_hosts_from_urls
+from alphadiana.benchmarks.base import BenchmarkTask
 
 logger = logging.getLogger(__name__)
 
