@@ -68,7 +68,7 @@ docker pull tmlrgroup/alphadiana:v1
 > **Note:** You can also build it locally:
 >
 > ```bash
-> docker build -t openclaw-reasoning:v1 -f openclaw_deploy/Dockerfile.patched .
+> docker build -t openclaw-reasoning:v1 -f alphadiana/harness/openclaw/deploy/Dockerfile.patched .
 > ```
 >
 > Then reference `openclaw-reasoning:v1` in your config's `rock_image` field instead of the base image.
@@ -160,8 +160,8 @@ agent:
   name: openclaw
   config:
     rock_image: "tmlrgroup/alphadiana:v1"
-    rock_agent_config_path: "openclaw_deploy/rock_agent_config.prebuilt.yaml"
-    openclaw_config_path: "openclaw_deploy/openclaw.json"
+    rock_agent_config_path: "alphadiana/harness/openclaw/deploy/rock_agent_config.prebuilt.yaml"
+    openclaw_config_path: "alphadiana/harness/openclaw/deploy/openclaw.json"
     rock_memory: "4g"
     rock_cpus: 1
     system_prompt: You are an expert problem solver. ...
@@ -374,7 +374,7 @@ AlphaDiana/
 │   ├── config/                   # Config parsing and validation
 │   └── dashboard/                # Web UI (FastAPI + React)
 ├── configs/examples/             # Ready-made experiment configs
-├── openclaw_deploy/              # OpenClaw deployment configs
+├── alphadiana/harness/openclaw/deploy/              # OpenClaw deployment configs
 ├── scripts/                      # Setup and utility scripts
 ├── docs/                         # Documentation
 └── tests/                        # Test suite
@@ -432,7 +432,7 @@ SECURITY_GUARD_BYPASS=1 python3 scripts/security_guard.py --check
 | Redis has no password | `redis-cli -p <port> CONFIG SET requirepass 'strong-password'` |
 | `protected-mode` off | `redis-cli -p <port> CONFIG SET protected-mode yes` |
 | Redis bound to `0.0.0.0` | Restart container with `-p 127.0.0.1:<port>:6379` |
-| Weak OpenClaw token | Edit `OPENCLAW_GATEWAY_TOKEN` in `openclaw_deploy/rock_agent_config.yaml` |
+| Weak OpenClaw token | Edit `OPENCLAW_GATEWAY_TOKEN` in `alphadiana/harness/openclaw/deploy/rock_agent_config.yaml` |
 | ROCK services on public interface | Set `ROCK_BIND_HOST=127.0.0.1` before starting |
 
 ## Dashboard

@@ -175,7 +175,7 @@ export HF_ENDPOINT=https://hf-mirror.com
 
 - `agent.name: openclaw`
 - `agent.config.runtime: swebench_container`
-- `agent.config.openclaw_config_path: openclaw_deploy/openclaw_swe_bench.runtime.json`
+- `agent.config.openclaw_config_path: alphadiana/harness/openclaw/deploy/openclaw_swe_bench.runtime.json`
 - `sandbox.name: swebench_container`
 - `benchmark.name: swe_bench`
 - `benchmark.config.dataset: SWE-bench/SWE-bench_Verified`
@@ -200,7 +200,7 @@ export HF_ENDPOINT=https://hf-mirror.com
 | `max_tokens` / `request_timeout` / `max_attempts` | 控制请求长度、超时和重试 |
 | `system_prompt` | 发给 OpenClaw 的用户消息前缀，告诉它要输出最小 patch |
 
-`openclaw_deploy/openclaw_swe_bench.runtime.json` 里定义的是 OpenClaw gateway 的基础行为，包括：
+`alphadiana/harness/openclaw/deploy/openclaw_swe_bench.runtime.json` 里定义的是 OpenClaw gateway 的基础行为，包括：
 
 - provider 如何读取 `${OPENAI_BASE_URL}`、`${OPENAI_API_KEY}`、`${OPENAI_MODEL_NAME}`
 - 默认 agent model 是 `local/${OPENAI_MODEL_NAME}`
@@ -530,7 +530,7 @@ python -m alphadiana.cli run configs/examples/zeroclaw_swe_bench.yaml \
 - `configs/examples/openclaw_swe_bench.yaml`
 - `configs/examples/opencode_swe_bench.yaml`
 - `configs/examples/zeroclaw_swe_bench.yaml`
-- `openclaw_deploy/openclaw_swe_bench.runtime.json`
+- `alphadiana/harness/openclaw/deploy/openclaw_swe_bench.runtime.json`
 
 执行入口：
 

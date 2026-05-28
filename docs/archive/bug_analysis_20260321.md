@@ -47,10 +47,10 @@ The committed default is `4g` / `1 CPU` — consistent with the README statement
 
 ### Bug 2 — Hardcoded wrong model and exposed API key in `rock_agent_config.yaml`
 
-**File:** `openclaw_deploy/rock_agent_config.yaml`
+**File:** `alphadiana/harness/openclaw/deploy/rock_agent_config.yaml`
 
-**Symptom:** When using the manual deploy path (`python openclaw_deploy/deploy.py
---agent-config openclaw_deploy/rock_agent_config.yaml`), the sandbox starts OpenClaw
+**Symptom:** When using the manual deploy path (`python alphadiana/harness/openclaw/deploy/deploy.py
+--agent-config alphadiana/harness/openclaw/deploy/rock_agent_config.yaml`), the sandbox starts OpenClaw
 configured for `z-ai/glm-5` instead of the exported `qwen/qwen3-235b-a22b-2507`.
 Additionally, the real API key is stored in a tracked file — a security risk.
 
@@ -67,7 +67,7 @@ the template placeholders that the committed version uses:
 ```
 
 Note: for the `alphadiana run` path the default flow uses
-`openclaw_deploy/rock_agent_config.prebuilt.yaml` (not this file), and
+`alphadiana/harness/openclaw/deploy/rock_agent_config.prebuilt.yaml` (not this file), and
 `openclaw_runtime._prepare_runtime_files` overwrites the env section with the locally
 exported env vars anyway. So this bug only directly breaks the **manual** deploy flow.
 However, leaking credentials into a tracked file is independently harmful.
@@ -78,7 +78,7 @@ However, leaking credentials into a tracked file is independently harmful.
 
 ### Bug 3 — `openclaw.json` env section carries stale local-vLLM defaults into the sandbox
 
-**File:** `openclaw_deploy/openclaw.json`
+**File:** `alphadiana/harness/openclaw/deploy/openclaw.json`
 **Code fix:** `alphadiana/agent/openclaw_runtime.py` → `_prepare_runtime_files`
 
 **Symptom:** The OpenClaw gateway starts successfully but all model calls return errors
@@ -150,7 +150,7 @@ alphadiana run
 | File | Change |
 |------|--------|
 | `configs/examples/openclaw_aime2024.yaml` | `rock_memory: "765m"` → `"4g"`, `rock_cpus: 0.5` → `1` |
-| `openclaw_deploy/rock_agent_config.yaml` | Removed hardcoded credentials; restored `""` / `"EMPTY"` placeholders |
+| `alphadiana/harness/openclaw/deploy/rock_agent_config.yaml` | Removed hardcoded credentials; restored `""` / `"EMPTY"` placeholders |
 | `alphadiana/agent/openclaw_runtime.py` | `_prepare_runtime_files`: also patch `openclaw.json`'s `env` section |
 
 ---

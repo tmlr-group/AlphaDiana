@@ -161,14 +161,14 @@ instead.
 Build the local Podman images used by the standard-reasoning matrix:
 
 ```bash
-podman build -f openclaw_deploy/Dockerfile \
+podman build -f alphadiana/harness/openclaw/deploy/Dockerfile \
   -t localhost/alphadiana-openclaw:latest .
 podman tag localhost/alphadiana-openclaw:latest alphadiana-openclaw:latest
 
-podman build -f zeroclaw_deploy/Dockerfile \
+podman build -f alphadiana/harness/zeroclaw/deploy/Dockerfile \
   -t localhost/zeroclaw-reasoning:0.6.9 .
 
-podman build -f opencode_deploy/Containerfile.podman-controller \
+podman build -f alphadiana/harness/opencode/deploy/Containerfile.podman-controller \
   -t localhost/alphadiana-opencode-podman:latest .
 podman tag localhost/alphadiana-opencode-podman:latest \
   alphadiana-opencode-podman:latest

@@ -14,9 +14,9 @@ Goal:
 - AlphaDiana branch: the current checked-out branch in this repository
 - Default image: `ghcr.io/tsrigo/openclaw-reasoning:20260320`
 - Default deploy entry:
-  - `openclaw_deploy/deploy.py`
-  - `openclaw_deploy/rock_agent_config.yaml`
-  - `openclaw_deploy/openclaw.json`
+  - `alphadiana/harness/openclaw/deploy/deploy.py`
+  - `alphadiana/harness/openclaw/deploy/rock_agent_config.yaml`
+  - `alphadiana/harness/openclaw/deploy/openclaw.json`
 
 The image is expected to contain:
 
@@ -98,14 +98,14 @@ bash repro/run_openclaw_reasoning_image.sh
 3. Verifies that the configured image exists locally or can be pulled
 4. Creates a temporary deploy working directory
 5. Copies:
-   - `openclaw_deploy/openclaw.json`
-   - `openclaw_deploy/rock_agent_config.yaml`
+   - `alphadiana/harness/openclaw/deploy/openclaw.json`
+   - `alphadiana/harness/openclaw/deploy/rock_agent_config.yaml`
 6. Rewrites only the runtime model fields in the temporary copy:
    - `OPENAI_BASE_URL`
    - `OPENAI_API_KEY`
    - `OPENAI_MODEL_NAME`
 7. Deploys the sandbox through:
-   - `openclaw_deploy/deploy.py`
+   - `alphadiana/harness/openclaw/deploy/deploy.py`
 8. Prints:
    - `SANDBOX_ID`
    - the final ROCK proxy base URL
@@ -174,18 +174,18 @@ Without them:
 
 ## Files Involved
 
-- `openclaw_deploy/deploy.py`
-- `openclaw_deploy/rock_agent_config.yaml`
-- `openclaw_deploy/openclaw.json`
+- `alphadiana/harness/openclaw/deploy/deploy.py`
+- `alphadiana/harness/openclaw/deploy/rock_agent_config.yaml`
+- `alphadiana/harness/openclaw/deploy/openclaw.json`
 - `alphadiana/agent/openclaw.py`
 - `tests/test_fix_empty_response.py`
 
 
-If you prefer the manual deploy flow, use `openclaw_deploy/rock_agent_config.prebuilt.yaml` with the reasoning image, then create your own evaluation YAML that points `agent.config.api_base` at the deployed `SANDBOX_ID`.
+If you prefer the manual deploy flow, use `alphadiana/harness/openclaw/deploy/rock_agent_config.prebuilt.yaml` with the reasoning image, then create your own evaluation YAML that points `agent.config.api_base` at the deployed `SANDBOX_ID`.
 
-> **Important:** `openclaw_deploy/rock_agent_config.prebuilt.yaml` is the right config for the pre-built reasoning image. `openclaw_deploy/rock_agent_config.yaml` is the fallback path for a bare image that installs `openclaw@2026.3.7` at runtime, which is slower and not the recommended flow.
+> **Important:** `alphadiana/harness/openclaw/deploy/rock_agent_config.prebuilt.yaml` is the right config for the pre-built reasoning image. `alphadiana/harness/openclaw/deploy/rock_agent_config.yaml` is the fallback path for a bare image that installs `openclaw@2026.3.7` at runtime, which is slower and not the recommended flow.
 
-> **Note:** Default configs are provided in `openclaw_deploy/`. At minimum, set `OPENAI_BASE_URL`, `OPENAI_API_KEY`, and `OPENAI_MODEL_NAME` before running OpenClaw. For timeout tuning and other details, see [`configs/schema.yaml`](../configs/schema.yaml).
+> **Note:** Default configs are provided in `alphadiana/harness/openclaw/deploy/`. At minimum, set `OPENAI_BASE_URL`, `OPENAI_API_KEY`, and `OPENAI_MODEL_NAME` before running OpenClaw. For timeout tuning and other details, see [`configs/schema.yaml`](../configs/schema.yaml).
 
 The deploy flow uses `DEFAULT_SANDBOX_IMAGE` from `alphadiana/utils/rock_runtime.py`. The current default is:
 
@@ -225,7 +225,7 @@ If you are testing long reasoning runs, also watch for infrastructure-side failu
 
 #### Pre-built Image (Faster Deploy)
 
-`bash dev/quickstart.sh` sets up Python, Ray, ROCK admin/proxy, and Redis, but it does not deploy OpenClaw. To get a working sandbox, run `bash dev/start_openclaw.sh` or `python openclaw_deploy/deploy.py ...` afterward.
+`bash dev/quickstart.sh` sets up Python, Ray, ROCK admin/proxy, and Redis, but it does not deploy OpenClaw. To get a working sandbox, run `bash dev/start_openclaw.sh` or `python alphadiana/harness/openclaw/deploy/deploy.py ...` afterward.
 
 Pull the image once (~2.6 GB):
 

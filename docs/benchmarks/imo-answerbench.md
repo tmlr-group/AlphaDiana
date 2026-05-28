@@ -189,7 +189,7 @@ reproduction guide live in `docs/opencode-docker-isolation.md`.
 
 ## OpenClaw
 
-OpenClaw uses ROCK auto-deploy and the gateway config in `openclaw_deploy/`.
+OpenClaw uses ROCK auto-deploy and the gateway config in `alphadiana/harness/openclaw/deploy/`.
 Benchmark fairness now requires a fresh ROCK sandbox session per task for
 `openclaw`; do not treat older sequential runs that reused one shared session
 across tasks as comparable evidence. Current main also skips the OpenClaw
