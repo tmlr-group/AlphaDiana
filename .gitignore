@@ -49,6 +49,7 @@ dump.rdb
 /results/
 !alphadiana/results/
 /configs/*
+!/configs/test_openclaw_quick.yaml
 !/configs/examples/
 !/configs/examples/**
 !/configs/full_runs/
