@@ -10,7 +10,7 @@ import time
 from collections.abc import Mapping
 from typing import Any
 
-from alphadiana.benchmark.base import BenchmarkTask
+from alphadiana.benchmarks.base import BenchmarkTask
 
 
 _PODMAN_TEST_SPEC_CLASS_CACHE: dict[type, type] = {}

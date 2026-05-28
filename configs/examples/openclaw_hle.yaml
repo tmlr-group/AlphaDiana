@@ -5,8 +5,8 @@ agent:
   version: "2026.3.20"          # OpenClaw version
   config:
     rock_image: "tmlrgroup/alphadiana:v1"
-    rock_agent_config_path: "openclaw_deploy/rock_agent_config.prebuilt.yaml"
-    openclaw_config_path: "openclaw_deploy/openclaw.json"
+    rock_agent_config_path: "alphadiana/harness/openclaw/deploy/rock_agent_config.prebuilt.yaml"
+    openclaw_config_path: "alphadiana/harness/openclaw/deploy/openclaw.json"
     rock_memory: "4g"
     rock_cpus: 1
     rock_startup_timeout: 600

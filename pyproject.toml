@@ -43,6 +43,7 @@ alphadiana = "alphadiana.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
+include = ["alphadiana*"]
 
 [tool.pytest.ini_options]
 markers = [

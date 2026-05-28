@@ -348,7 +348,7 @@ fi
 if ! docker image inspect "${ZEROCLAW_IMAGE}" >/dev/null 2>&1; then
     echo "ERROR: ZeroClaw sandbox image not found: ${ZEROCLAW_IMAGE}"
     echo "       Build it with:"
-    echo "         docker build -f zeroclaw_deploy/Dockerfile -t ${ZEROCLAW_IMAGE} ."
+    echo "         docker build -f alphadiana/harness/zeroclaw/deploy/Dockerfile -t ${ZEROCLAW_IMAGE} ."
     exit 1
 fi
 "${PYTHON}" -m alphadiana.cli validate "${ZEROCLAW_CONFIG}"

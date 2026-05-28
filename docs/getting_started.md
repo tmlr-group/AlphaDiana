@@ -380,7 +380,7 @@ OpenClaw is an Agent framework that is installed into the ROCK sandbox via npm. 
 
 ### 5.1 Configuring OpenClaw
 
-Edit `openclaw_deploy/rock_agent_config.yaml`:
+Edit `alphadiana/harness/openclaw/deploy/rock_agent_config.yaml`:
 
 
 ```yaml
@@ -815,7 +815,7 @@ AlphaDiana-dev/
 │       ├── experiment_config.py # ExperimentConfig data class
 │       └── validator.py # Configure Validator
 ├── configs/examples/# Sample configuration
-├── openclaw_deploy/# OpenClaw deployment configuration
+├── alphadiana/harness/openclaw/deploy/# OpenClaw deployment configuration
 │   ├── deploy.py # Deployment script
 │   ├── rock_agent_config.yaml # rock agent configuration
 │   └── openclaw.json # OpenClaw gateway configuration

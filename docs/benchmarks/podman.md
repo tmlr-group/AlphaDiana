@@ -242,20 +242,20 @@ Build the local Podman images used by the standard-reasoning matrix:
 
 ```bash
 podman pull docker.io/tmlrgroup/alphadiana:v1
-podman build --network host -f openclaw_deploy/Dockerfile \
+podman build --network host -f alphadiana/harness/openclaw/deploy/Dockerfile \
   -t localhost/alphadiana-openclaw:latest .
 podman tag localhost/alphadiana-openclaw:latest alphadiana-openclaw:latest
 
 podman build --network none \
-  -f openclaw_deploy/Dockerfile.podman-stream-timeout \
+  -f alphadiana/harness/openclaw/deploy/Dockerfile.podman-stream-timeout \
   -t localhost/alphadiana-openclaw-fixed:latest .
 podman tag localhost/alphadiana-openclaw-fixed:latest \
   localhost/alphadiana-openclaw-fixed:chat-max-tokens-20260524
 
-podman build -f zeroclaw_deploy/Dockerfile \
+podman build -f alphadiana/harness/zeroclaw/deploy/Dockerfile \
   -t localhost/zeroclaw-reasoning:0.6.9 .
 
-podman build -f opencode_deploy/Containerfile.podman-controller \
+podman build -f alphadiana/harness/opencode/deploy/Containerfile.podman-controller \
   -t localhost/alphadiana-opencode-podman:latest .
 podman tag localhost/alphadiana-opencode-podman:latest \
   alphadiana-opencode-podman:latest
@@ -275,7 +275,7 @@ podman build -f docker/terminal_bench2/Dockerfile.opencode-controller \
 # zeroclaw-reasoning:0.6.9 above already matches the TB2 ZeroClaw default.
 ```
 
-`openclaw_deploy/Dockerfile` uses the fully qualified
+`alphadiana/harness/openclaw/deploy/Dockerfile` uses the fully qualified
 `docker.io/tmlrgroup/alphadiana:v1` ROCK-aligned base so Podman hosts without
 unqualified-search registries do not fail short-name resolution. The resulting
 `alphadiana-openclaw:latest` image should report the same `openclaw --version`
@@ -788,7 +788,7 @@ to avoid empty-stream failures.
 
 For Podman OpenClaw standard-reasoning runs against long-thinking local Qwen,
 use `localhost/alphadiana-openclaw-fixed:latest` built from
-`openclaw_deploy/Dockerfile.podman-stream-timeout`; tag the same image as
+`alphadiana/harness/openclaw/deploy/Dockerfile.podman-stream-timeout`; tag the same image as
 `localhost/alphadiana-openclaw-fixed:chat-max-tokens-20260524` only for legacy
 configs that still reference the dated name. The fixed image includes the
 OpenAI SDK stream-timeout hardening, a gateway patch that requests OpenClaw's
@@ -970,7 +970,7 @@ not readiness failures, as long as the audit closes clean.
 
 | Symptom | Real cause | Fix |
 | --- | --- | --- |
-| ZeroClaw HTTP 400 `System message must be at the beginning` | Agent-side provider proxy normalizer not active. SWE-bench mode talks to vLLM directly from inside the task container and bypasses the bridge, so `_normalize_system_messages` in `zeroclaw_deploy/zeroclaw_bridge.py` alone is not enough. | Use the Phase 9 ZeroClaw smoke config — it sets `agent.config.provider_proxy_normalize_system_messages: true`. |
+| ZeroClaw HTTP 400 `System message must be at the beginning` | Agent-side provider proxy normalizer not active. SWE-bench mode talks to vLLM directly from inside the task container and bypasses the bridge, so `_normalize_system_messages` in `alphadiana/harness/zeroclaw/deploy/zeroclaw_bridge.py` alone is not enough. | Use the Phase 9 ZeroClaw smoke config — it sets `agent.config.provider_proxy_normalize_system_messages: true`. |
 | TerminalBench2 ZeroClaw reports `error sending request` to `host.docker.internal:<port>` | The provider proxy was advertised as a Docker-bridge host while the Podman task container is using host networking. | Use current code with `agent.config.podman_network: host`; `TerminalBench2ZeroClawAgent` now advertises the provider proxy as `127.0.0.1` for that mode. |
 | ZeroClaw binary extracts but `--version` fails inside the task container | `binary_source_image` not loaded on this host, so the in-container copy lands an empty file. | `podman load -i` the matching tar and verify with `podman images \| grep zeroclaw-reasoning`. |
 | OpenClaw "Patch Apply Failed" / "model only analyzes, no patch block" | `max_tokens` too low (legacy `4096` truncates the reasoning + patch); or a stale `openclaw_swe_bench.runtime.json`. | Use the Phase 9 OpenClaw smoke config (`max_tokens: 32768`, `request_timeout: 7200`, current runtime JSON). |

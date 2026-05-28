@@ -40,7 +40,7 @@ def _warn_proxy() -> bool:
 def _preflight_terminal_bench2(config) -> None:
     if getattr(config, "benchmark_name", "") != "terminal_bench2":
         return
-    from alphadiana.benchmark.terminal_bench2 import TerminalBench2Benchmark
+    from alphadiana.benchmarks.terminal_bench2.benchmark import TerminalBench2Benchmark
 
     tasks = TerminalBench2Benchmark().load_tasks(config.benchmark_config)
     click.echo(f"Terminal-Bench-2 tasks loaded: {len(tasks)}")
@@ -62,8 +62,8 @@ def main():
 @click.option("--redo-all", is_flag=True, default=False, help="Ignore checkpoint and redo all tasks.")
 def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
     """Run an evaluation experiment from a YAML config file."""
-    from alphadiana.config.experiment_config import ExperimentConfig, deep_merge, parse_override
-    from alphadiana.runner.runner import Runner, _is_gateway_autodeploy_agent
+    from alphadiana.engine.config.experiment_config import ExperimentConfig, deep_merge, parse_override
+    from alphadiana.engine.runner import Runner, _is_gateway_autodeploy_agent
 
     overrides: dict = {}
     for ov in override:
@@ -74,7 +74,7 @@ def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
     config = ExperimentConfig.from_yaml(config_yaml, overrides=overrides or None)
 
     # Validate config before running.
-    from alphadiana.config.validator import ConfigValidator
+    from alphadiana.engine.config.validator import ConfigValidator
     validator = ConfigValidator()
     errors = validator.validate(config)
     if errors:
@@ -161,8 +161,8 @@ def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
 )
 def validate(config_yaml: str, override: tuple[str, ...]):
     """Validate a YAML config file without running an experiment."""
-    from alphadiana.config.experiment_config import ExperimentConfig, deep_merge, parse_override
-    from alphadiana.config.validator import ConfigValidator
+    from alphadiana.engine.config.experiment_config import ExperimentConfig, deep_merge, parse_override
+    from alphadiana.engine.config.validator import ConfigValidator
 
     overrides: dict = {}
     for ov in override:
@@ -190,8 +190,8 @@ def validate(config_yaml: str, override: tuple[str, ...]):
 @click.argument("results_dir", type=click.Path(exists=True))
 def report(results_dir: str):
     """Generate reports from existing result files in a directory."""
-    from alphadiana.results.report import ReportGenerator
-    from alphadiana.results.result_store import ResultStore
+    from alphadiana.analysis.report import ReportGenerator
+    from alphadiana.analysis.io.result_store import ResultStore
 
     jsonl_files = [
         f for f in os.listdir(results_dir) if f.endswith(".jsonl")
@@ -230,9 +230,9 @@ def report(results_dir: str):
 )
 def batch(config_yamls: tuple[str, ...], parallel: bool, override: tuple[str, ...]):
     """Run multiple experiment configs sequentially or in parallel."""
-    from alphadiana.config.experiment_config import ExperimentConfig, deep_merge, parse_override
-    from alphadiana.config.validator import ConfigValidator
-    from alphadiana.runner.batch_runner import BatchRunner
+    from alphadiana.engine.config.experiment_config import ExperimentConfig, deep_merge, parse_override
+    from alphadiana.engine.config.validator import ConfigValidator
+    from alphadiana.engine.batch_runner import BatchRunner
 
     overrides: dict = {}
     for ov in override:
@@ -382,14 +382,14 @@ LOCALHOST = "127.0.0.1"
 def list_benchmarks():
     """List all registered benchmarks."""
     # Import benchmark modules to trigger registration.
-    import alphadiana.benchmark.aime  # noqa: F401
-    import alphadiana.benchmark.custom  # noqa: F401
-    import alphadiana.benchmark.swe_bench  # noqa: F401
-    import alphadiana.benchmark.external_benchmark  # noqa: F401
-    import alphadiana.benchmark.swebench_pro  # noqa: F401
-    import alphadiana.benchmark.terminal_bench2  # noqa: F401
+    import alphadiana.benchmarks.aime.benchmark  # noqa: F401
+    import alphadiana.benchmarks.custom.benchmark  # noqa: F401
+    import alphadiana.benchmarks.swe_bench.benchmark  # noqa: F401
+    import alphadiana.benchmarks.external_benchmark.benchmark  # noqa: F401
+    import alphadiana.benchmarks.swebench_pro.benchmark  # noqa: F401
+    import alphadiana.benchmarks.terminal_bench2.benchmark  # noqa: F401
 
-    from alphadiana.benchmark.registry import BenchmarkRegistry
+    from alphadiana.benchmarks.registry import BenchmarkRegistry
 
     benchmarks = BenchmarkRegistry.list()
     if benchmarks:
