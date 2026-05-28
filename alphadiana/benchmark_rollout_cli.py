@@ -288,3 +288,7 @@ def _script_body(run, command: str, *, label: str) -> str:
         f"# risk: {run.risk}\n\n"
         f"{command}\n"
     )
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
