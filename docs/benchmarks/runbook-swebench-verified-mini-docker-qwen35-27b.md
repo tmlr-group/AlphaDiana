@@ -36,7 +36,32 @@ campaigns can share a host but do not share a container runtime.
 
 ## 1. Host prerequisites (one-time)
 
-### 1.1 Docker engine + read access
+### 1.1 Choose a work root (everything else hangs off this)
+
+Pick **one** filesystem path that has ≥ 200 GB free and is **not** under
+`/home`. The runbook never assumes a specific mount name like `/data*` or
+`/scratch` — it only needs a path you can write to that won't fill up the
+home partition. Common shapes:
+
+| Host shape | Sensible `WORK_ROOT` |
+| --- | --- |
+| Dedicated data disk(s) under `/data0`, `/data1`, … | `/path/to/$USER/alphadiana` |
+| Single NVMe under `/mnt/nvme` or `/srv/scratch` | `/mnt/nvme/$USER/alphadiana` |
+| `/opt` is a separate large mount | `/opt/$USER/alphadiana` |
+| Just one big root partition (no dedicated data disk) | `/var/lib/alphadiana` (root once) |
+
+```bash
+# Pick the path that matches your host
+export WORK_ROOT=/path/to/large/disk/$USER/alphadiana
+mkdir -p "$WORK_ROOT"
+df -h "$WORK_ROOT" | tail -1     # must show ≥ 200 GB free
+```
+
+All later steps create subdirectories under `$WORK_ROOT`:
+`$WORK_ROOT/swe-verified-mini/{.venv, SWE-agent, sweagent_results}` and
+`$WORK_ROOT/logs/vllm_qwen3.5_27b.log`.
+
+### 1.2 Docker engine + read access
 
 ```bash
 docker --version              # any 20.10+
@@ -47,27 +72,43 @@ docker run --rm hello-world   # smoke
 If `docker ps` requires `sudo`, add yourself to the `docker` group and
 re-login (or set `DOCKER_HOST` for a rootless docker daemon).
 
-### 1.2 Output / log + cache directory on a `/data*` mount (NOT `/home`)
+### 1.3 SWE-agent root under `$WORK_ROOT`
 
-A full mini run plus the per-instance evaluation containers, traj files,
-patch files, and logprob sidecars can easily exceed 100 GB. Keep everything
-off `/home`:
+The campaign renderer and SWE-agent CLI share a fixed layout (set up in
+§4); reserve its top-level path now:
 
 ```bash
-export DIRECTLLM_SWE_VERIFIED_ROOT=/path/to/$USER/swe-verified-mini
+export DIRECTLLM_SWE_VERIFIED_ROOT="$WORK_ROOT/swe-verified-mini"
 mkdir -p "$DIRECTLLM_SWE_VERIFIED_ROOT"
-df -h "$DIRECTLLM_SWE_VERIFIED_ROOT"   # confirm ≥ 150 GB free
+df -h "$DIRECTLLM_SWE_VERIFIED_ROOT" | tail -1   # double-check ≥ 150 GB free
 ```
 
-### 1.3 Python toolchain
+A full mini run plus the per-instance evaluation containers, traj files,
+patch files, and logprob sidecars can easily exceed 100 GB. The harness
+will also build Docker images per instance — Docker's own graph driver
+needs space too (see §1.2).
+
+### 1.4 Python toolchain
+
+SWE-agent and the swebench harness need Python 3.10 or 3.11 in a venv.
+Pick whichever interpreter your host has — the runbook calls it
+`$PYTHON_BIN` from here on:
 
 ```bash
-python3.11 --version          # SWE-agent supports 3.10+; 3.11 is the tested baseline
+# Pick one that exists on your host (run `which python3.11` etc. to check)
+export PYTHON_BIN=python3.11        # or python3.10, or just python3
+"$PYTHON_BIN" --version             # must report 3.10.x or 3.11.x
+
 pip install --user huggingface_hub[cli]   # provides huggingface-cli
 huggingface-cli --version
 ```
 
-### 1.4 Hugging Face credentials
+Python 3.12+ is **not** recommended: some sweagent/swebench deps still
+ship 3.10/3.11 wheels and source-build under 3.12 has been flaky in
+practice. If your distro only has 3.12 system-wide, install miniconda
+(§3) and create a 3.11 env there for the SWE-agent venv in §4.
+
+### 1.5 Hugging Face credentials
 
 The Verified-Mini dataset is public, but the `datasets` library still wants a
 token to avoid rate limits:
@@ -85,23 +126,48 @@ that repo as well.
 
 ## 2. vLLM endpoint
 
-Launch (adjust GPU indices and port to your setup):
+Pick the port + the GPUs you want to dedicate to this model. The runbook
+uses `8011` and the host's first two GPUs by example; adjust to whatever
+your hardware allows. The only **hard** constraints are the
+`--max-model-len 262144` (the renderer assumes the 256K window for SWE-bench's
+long problem statements + 128K output budget) and the two
+generation-config flags below.
 
 ```bash
+# Operator choices — adjust to your hardware/preference
+export VLLM_PORT=8011
+export VLLM_GPUS=0,1                         # comma-separated CUDA device IDs
+export VLLM_TENSOR_PARALLEL=2                # must equal number of GPUs in $VLLM_GPUS
+export VLLM_GPU_MEM_UTIL=0.9                 # raise on dedicated nodes, lower if you share
+mkdir -p "$WORK_ROOT/logs"
+
+CUDA_VISIBLE_DEVICES="$VLLM_GPUS" \
 python -m vllm.entrypoints.openai.api_server \
   --model Qwen/Qwen3.5-27B \
-  --host 0.0.0.0 --port 8011 \
+  --host 0.0.0.0 --port "$VLLM_PORT" \
   --trust-remote-code \
   --enable-auto-tool-choice \
   --tool-call-parser qwen3_coder \
-  --tensor-parallel-size 2 \
-  --gpu-memory-utilization 0.9 \
+  --tensor-parallel-size "$VLLM_TENSOR_PARALLEL" \
+  --gpu-memory-utilization "$VLLM_GPU_MEM_UTIL" \
   --max-model-len 262144 \
   --generation-config vllm \
   --override-generation-config '{"presence_penalty": 1.5}' \
   --served-model-name qwen3.5-27b Qwen/Qwen3.5-27B \
-  2>&1 | tee /path/to/$USER/vllm_qwen3.5_27b.log
+  2>&1 | tee "$WORK_ROOT/logs/vllm_qwen3.5_27b.log"
 ```
+
+Sizing notes:
+
+- A single 24 GB GPU is **not** enough for Qwen3.5-27B at 256K context.
+  Expect at least 2 × 80 GB (A100/H100) or 4 × 48 GB (RTX 6000 Ada / L40)
+  for tensor-parallel sharding.
+- If you only have one large GPU (e.g. 1 × H100 80 GB), set
+  `VLLM_TENSOR_PARALLEL=1` and lower `--max-model-len` to whatever fits
+  (e.g. `131072`); but then `max_output_tokens=131072` against that
+  endpoint will fail because there is no headroom for the SWE-bench
+  problem statement plus tool defs. The runbook's 256K assumption is
+  load-bearing.
 
 Why these flags matter:
 
@@ -125,7 +191,7 @@ Why these flags matter:
 Confirm the endpoint is reachable:
 
 ```bash
-export QWEN_VLLM_API_BASE=http://127.0.0.1:8011/v1
+export QWEN_VLLM_API_BASE="http://127.0.0.1:${VLLM_PORT}/v1"
 export QWEN_VLLM_API_KEY=EMPTY
 
 curl -sS --max-time 30 "$QWEN_VLLM_API_BASE/models" | python -m json.tool | head -20
@@ -140,10 +206,22 @@ curl -sS --max-time 30 "$QWEN_VLLM_API_BASE/models" | python -m json.tool | head
 git clone <your-fork-or-origin> alphadiana
 cd alphadiana
 git checkout main
-
-source scripts/activate.sh    # creates / activates the project venv
-python -c "import alphadiana; print(alphadiana.__file__)"  # sanity
 ```
+
+`scripts/activate.sh` expects a **conda** install (it runs `conda activate
+<env>`). If you don't already have Miniconda/Anaconda, install it first:
+https://docs.conda.io/projects/miniconda/. Then bootstrap the project
+environment:
+
+```bash
+bash scripts/quickstart.sh        # creates the conda env from project files
+source scripts/activate.sh        # activates it + sources .env
+python -c "import alphadiana; print(alphadiana.__file__)"   # sanity
+```
+
+This conda env is the **AlphaDiana orchestrator** environment — it runs
+`alphadiana.benchmark_rollout_cli`. SWE-agent itself runs in a separate
+venv created in §4 under `$DIRECTLLM_SWE_VERIFIED_ROOT/.venv`.
 
 ---
 
@@ -165,7 +243,7 @@ One-shot setup:
 cd "$DIRECTLLM_SWE_VERIFIED_ROOT"
 
 git clone https://github.com/SWE-agent/SWE-agent
-python3.11 -m venv .venv
+"$PYTHON_BIN" -m venv .venv
 ./.venv/bin/pip install -U pip
 ./.venv/bin/pip install -e SWE-agent
 ./.venv/bin/pip install swebench            # official harness
@@ -238,12 +316,12 @@ Knobs you might want to tweak:
 ## 6. Export the runtime environment
 
 ```bash
-# vLLM provider
-export QWEN_VLLM_API_BASE=http://127.0.0.1:8011/v1
+# vLLM provider (uses the port you picked in §2)
+export QWEN_VLLM_API_BASE="http://127.0.0.1:${VLLM_PORT}/v1"
 export QWEN_VLLM_API_KEY=EMPTY
 
-# SWE-agent root (the layout from §4)
-export DIRECTLLM_SWE_VERIFIED_ROOT=/path/to/$USER/swe-verified-mini
+# SWE-agent root (the layout from §4, already created in §1.3)
+export DIRECTLLM_SWE_VERIFIED_ROOT="$WORK_ROOT/swe-verified-mini"
 
 # Tag for this attempt — used only to scope the materialized-shell folder
 # under generated/. The sweagent run_id baked into the shell itself is
@@ -419,7 +497,7 @@ Anything close to that range is operationally aligned.
 | Risk | Symptom | Mitigation |
 | --- | --- | --- |
 | vLLM long-thinking deadlock | every request times out, log mtime stops advancing | Restart vLLM; sweagent retries in-flight instances. Monitor `/v1/models`, not GPU-util. |
-| `/data*` mount fills up | predictions / harness containers fail with ENOSPC | §1.2 — pick a mount with ≥ 150 GB free, recheck with `df -h` every 6 hours. |
+| `$WORK_ROOT` fills up | predictions / harness containers fail with ENOSPC | §1.1 — pick a mount with ≥ 200 GB free, recheck with `df -h "$WORK_ROOT"` every 6 hours. |
 | Docker daemon left zombies after an abort | `docker ps` lists `swebench-eval-*` containers | `docker ps -a --filter name=swebench- --format '{{.ID}}' \| xargs -r docker rm -f` |
 | `per_instance_call_limit` hit on a long-tail instance | instance writes no patch and is recorded as unresolved | Acceptable as long as the rate is ≲ 7/50; raise the limit only if patches are clearly converging at step ≈80. |
 | Stale `generation_config.json` defaults | non-greedy sampling, score drift across replicas | §2 — make sure `--generation-config vllm` is in the vllm launch flags. |

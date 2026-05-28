@@ -33,7 +33,33 @@ Wall-clock estimate: **30+ hours per agent at `max_concurrent=1`** (89 tasks ×
 
 ## 1. Host prerequisites (one-time)
 
-### 1.1 Podman 3.4.4+ and the user socket
+### 1.1 Choose a work root (everything else hangs off this)
+
+Pick **one** filesystem path that has ≥ 300 GB free and is **not** under
+`/home`. The runbook never assumes a specific mount name like `/data*` or
+`/scratch` — it only needs a path you can write to that won't fill up the
+home partition. Common shapes:
+
+| Host shape | Sensible `WORK_ROOT` |
+| --- | --- |
+| Dedicated data disk(s) under `/data0`, `/data1`, … | `/path/to/$USER/alphadiana` |
+| Single NVMe under `/mnt/nvme` or `/srv/scratch` | `/mnt/nvme/$USER/alphadiana` |
+| `/opt` is a separate large mount | `/opt/$USER/alphadiana` |
+| Just one big root partition (no dedicated data disk) | `/var/lib/alphadiana` (root once) |
+
+```bash
+# Pick the path that matches your host
+export WORK_ROOT=/path/to/large/disk/$USER/alphadiana
+mkdir -p "$WORK_ROOT"
+df -h "$WORK_ROOT" | tail -1     # must show ≥ 300 GB free
+```
+
+All later steps create subdirectories under `$WORK_ROOT`:
+`$WORK_ROOT/podman-storage`, `$WORK_ROOT/terminal-bench-2`,
+`$WORK_ROOT/tb2-full/results`, `$WORK_ROOT/tb2-full/task-logs`,
+`$WORK_ROOT/logs/vllm_qwen3.5_27b.log`.
+
+### 1.2 Podman 3.4.4+ and the user socket
 
 ```bash
 podman --version              # expect ≥ 3.4.4
@@ -42,7 +68,7 @@ export ALPHADIANA_PODMAN_SOCKET="/run/user/$(id -u)/podman/podman.sock"
 ls "$ALPHADIANA_PODMAN_SOCKET"  # must exist
 ```
 
-### 1.2 Kernel keyring quota (root, once)
+### 1.3 Kernel keyring quota (root, once)
 
 Rootless Podman allocates a session keyring per container. The default
 `maxkeys=200` is exhausted under TB2 task churn and surfaces as the misleading
@@ -57,27 +83,27 @@ sudo sysctl --system
 sysctl kernel.keys.maxkeys kernel.keys.maxbytes  # must show 2000 / 200000
 ```
 
-### 1.3 Podman storage off `/home`
+### 1.4 Point Podman storage at `$WORK_ROOT`
 
-A full TB2 sweep can pull dozens of task images. Make sure `graphroot`
-points at a large disk (≥ 200 GB free recommended):
+A full TB2 sweep pulls dozens of task images. Move the rootless Podman
+graph root off `/home`:
 
 ```bash
-mkdir -p ~/.config/containers
+mkdir -p ~/.config/containers "$WORK_ROOT/podman-storage"
 cat > ~/.config/containers/storage.conf <<EOF
 [storage]
 driver = "overlay"
-graphroot = "/path/to/$USER/podman-storage"  # adjust to a large mount
+graphroot = "$WORK_ROOT/podman-storage"
 EOF
-podman info --format '{{.Store.GraphRoot}}'  # confirm location
+podman info --format '{{.Store.GraphRoot}}'   # must echo $WORK_ROOT/podman-storage
 ```
 
-### 1.4 Output / log directory on a `/data*` mount (NOT `/home`)
+### 1.5 Create output / log subdirs under `$WORK_ROOT`
 
 ```bash
-export TB2_FULL_OUTPUT_ROOT=/path/to/$USER/alphadiana/tb2-full
+export TB2_FULL_OUTPUT_ROOT="$WORK_ROOT/tb2-full"
 mkdir -p "$TB2_FULL_OUTPUT_ROOT"
-df -h "$TB2_FULL_OUTPUT_ROOT"   # confirm ≥ 200 GB free (more if logprobs are on)
+df -h "$TB2_FULL_OUTPUT_ROOT" | tail -1   # double-check ≥ 200 GB free
 ```
 
 `/home` typically fills up: a single TB2 full sweep can produce tens of GB of
@@ -87,30 +113,53 @@ task logs, and turning on logprob dual-write multiplies that.
 
 ## 2. vLLM endpoint
 
-Launch (adjust GPU indices and port to your setup):
+Pick the port + the GPUs you want to dedicate to this model. The runbook
+uses `8011` and the host's first two GPUs by example; adjust these to
+whatever your hardware allows. The only **hard** constraints are
+`--max-model-len 200000` (the agents assume the 200K window) and the two
+generation-config flags below.
 
 ```bash
+# Operator choices — adjust to your hardware/preference
+export VLLM_PORT=8011
+export VLLM_GPUS=0,1                         # comma-separated CUDA device IDs
+export VLLM_TENSOR_PARALLEL=2                # must equal number of GPUs in $VLLM_GPUS
+export VLLM_GPU_MEM_UTIL=0.9                 # raise on dedicated nodes, lower if you share
+mkdir -p "$WORK_ROOT/logs"
+
+CUDA_VISIBLE_DEVICES="$VLLM_GPUS" \
 python -m vllm.entrypoints.openai.api_server \
   --model Qwen/Qwen3.5-27B \
-  --host 0.0.0.0 --port 8011 \
+  --host 0.0.0.0 --port "$VLLM_PORT" \
   --trust-remote-code \
   --enable-auto-tool-choice \
   --tool-call-parser qwen3_coder \
-  --tensor-parallel-size 2 \
-  --gpu-memory-utilization 0.9 \
+  --tensor-parallel-size "$VLLM_TENSOR_PARALLEL" \
+  --gpu-memory-utilization "$VLLM_GPU_MEM_UTIL" \
   --max-model-len 200000 \
   --generation-config vllm \
   --override-generation-config '{"presence_penalty": 1.5}' \
   --reasoning-parser qwen3 \
   --served-model-name Qwen/Qwen3.5-27B \
-  2>&1 | tee /path/to/$USER/vllm_qwen3.5_27b.log
+  2>&1 | tee "$WORK_ROOT/logs/vllm_qwen3.5_27b.log"
 ```
+
+Sizing notes:
+
+- A single 24 GB GPU is **not** enough for Qwen3.5-27B at 200K context.
+  Expect at least 2 × 80 GB (A100/H100) or 4 × 48 GB (RTX 6000 Ada / L40)
+  for tensor-parallel sharding.
+- If you only have one large GPU (e.g. 1 × H100 80 GB), set
+  `VLLM_TENSOR_PARALLEL=1` and lower `--max-model-len` to whatever fits
+  (e.g. `131072`); but then `max_tokens=131072` against that endpoint
+  will fail for ZeroClaw because the agent serializes ~30 K of tool defs
+  into the prompt. The runbook's 200 K assumption is load-bearing.
 
 Confirm the endpoint is reachable from the host **and** from a Podman host-network
 container:
 
 ```bash
-export OPENAI_BASE_URL=http://127.0.0.1:8011/v1
+export OPENAI_BASE_URL="http://127.0.0.1:${VLLM_PORT}/v1"
 export OPENAI_API_KEY=EMPTY
 export OPENAI_MODEL_NAME=Qwen/Qwen3.5-27B
 
@@ -145,10 +194,26 @@ Why these flags matter:
 git clone <your-fork-or-origin> alphadiana
 cd alphadiana
 git checkout main
-
-source scripts/activate.sh    # creates / activates the project venv
-python -c "import alphadiana; print(alphadiana.__file__)"  # sanity
 ```
+
+`scripts/activate.sh` expects a **conda** install (it runs `conda activate
+<env>`). If you don't already have Miniconda/Anaconda, install it first:
+https://docs.conda.io/projects/miniconda/. Then bootstrap the project
+environment:
+
+```bash
+bash scripts/quickstart.sh        # creates the conda env from project files
+source scripts/activate.sh        # activates it + sources .env
+python -c "import alphadiana; print(alphadiana.__file__)"   # sanity
+```
+
+If you maintain your own non-conda Python environment, you can skip the
+two scripts and `pip install -e .` instead, but you'll need to export the
+runtime env vars yourself (the activate script handles that for you).
+`scripts/activate.sh` also sources `.env` — create one at the repo root
+with `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL_NAME` if you want
+those values picked up automatically; otherwise §6 below sets them
+explicitly.
 
 ---
 
@@ -191,9 +256,9 @@ podman images | grep -E "openclaw|opencode|zeroclaw"
 ## 5. Get the TerminalBench2 task tree
 
 ```bash
+export TERMINAL_BENCH2_DIR="$WORK_ROOT/terminal-bench-2"
 git clone --depth=1 https://github.com/laude-institute/terminal-bench.git \
-  /path/to/$USER/terminal-bench-2
-export TERMINAL_BENCH2_DIR=/path/to/$USER/terminal-bench-2
+  "$TERMINAL_BENCH2_DIR"
 ls "$TERMINAL_BENCH2_DIR" | head    # expect task subdirs (db-wal-recovery, etc.)
 find "$TERMINAL_BENCH2_DIR" -maxdepth 2 -name task.toml | wc -l   # 89 in 2026-04 checkout, 90 in 2026-05 upstream
 ```
@@ -223,25 +288,25 @@ campaign.
 ## 6. Export the runtime environment
 
 ```bash
-# Provider
-export OPENAI_BASE_URL=http://127.0.0.1:8011/v1
+# Provider (uses the port you picked in §2)
+export OPENAI_BASE_URL="http://127.0.0.1:${VLLM_PORT}/v1"
 export OPENAI_API_KEY=EMPTY
 export OPENAI_MODEL_NAME=Qwen/Qwen3.5-27B
 
 # Podman socket
 export ALPHADIANA_PODMAN_SOCKET="/run/user/$(id -u)/podman/podman.sock"
 
-# TB2 task tree
-export TERMINAL_BENCH2_DIR=/path/to/$USER/terminal-bench-2
+# TB2 task tree (from §5)
+export TERMINAL_BENCH2_DIR="$WORK_ROOT/terminal-bench-2"
 
 # Runtime images (skip if you built the default tags in §4)
 # export TB2_OPENCLAW_RUNTIME_IMAGE=localhost/alphadiana-openclaw-fixed:latest
 # export TB2_OPENCODE_RUNTIME_IMAGE=localhost/alphadiana-opencode-podman:latest
 # export TB2_ZEROCLAW_RUNTIME_IMAGE=localhost/zeroclaw-reasoning:0.6.9
 
-# Output / logs on a large disk
-export ALPHADIANA_TB2_OUTPUT_DIR=/path/to/$USER/alphadiana/tb2-full/results
-export ALPHADIANA_TB2_LOGS_DIR=/path/to/$USER/alphadiana/tb2-full/task-logs
+# Output / logs land under $WORK_ROOT, not /home
+export ALPHADIANA_TB2_OUTPUT_DIR="$WORK_ROOT/tb2-full/results"
+export ALPHADIANA_TB2_LOGS_DIR="$WORK_ROOT/tb2-full/task-logs"
 mkdir -p "$ALPHADIANA_TB2_OUTPUT_DIR" "$ALPHADIANA_TB2_LOGS_DIR"
 
 # Run id and concurrency
@@ -419,9 +484,9 @@ done
 
 | Risk | Symptom | Mitigation |
 | --- | --- | --- |
-| vLLM long-thinking deadlock | every request times out, log mtime stops advancing | Restart vLLM; in-flight tasks retry. Monitor `/v1/models` (not GPU-util). |
+| vLLM long-thinking deadlock | every request times out, `$WORK_ROOT/logs/vllm_qwen3.5_27b.log` mtime stops advancing | Restart vLLM; in-flight tasks retry. Monitor `/v1/models` (not GPU-util). |
 | Kernel keyring exhaustion mid-run | "unable to join session keyring: disk quota exceeded" | Raised in §1.2 — verify with `sysctl kernel.keys.maxkeys`. |
-| `/data*` mount fills up | task JSON writes start to fail mid-run | §1.4 — check `df -h` before each agent and again every ~6 hours. |
+| `$WORK_ROOT` fills up | task JSON writes start to fail mid-run | §1.5 — check `df -h "$WORK_ROOT"` before each agent and every ~6 hours. |
 | Podman crash leaves orphan sidecars | `podman ps` shows zombie `alphadiana-*` containers | Cleanup commands in §9; next `start()` reaps name-matched orphans. |
 | ZeroClaw produces empty assistant output | many `agent_empty_output` rows, but provider blank-choice count is 0 | Known behaviour on long-tail tasks; counted as scored-zero, not framework failure. The audit will still pass. |
 
