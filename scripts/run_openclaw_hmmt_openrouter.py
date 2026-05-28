@@ -13,7 +13,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_CONFIG = REPO_ROOT / "configs/examples/openclaw_hmmt_nov2025_openrouter_gpt_oss_120b.yaml"
-DEPLOY_TEMPLATE = REPO_ROOT / "openclaw_deploy/rock_agent_config.yaml"
+DEPLOY_TEMPLATE = REPO_ROOT / "alphadiana/harness/openclaw/deploy/rock_agent_config.yaml"
 GENERATED_DIR = REPO_ROOT / "dev/generated"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 MODEL_NAME = "openai/gpt-oss-120b:free"
@@ -99,7 +99,7 @@ def main() -> int:
 
     print(f"Generated eval config: {eval_path}")
     print(f"Generated ROCK agent config: {deploy_path}")
-    print(f"OpenClaw config template: {REPO_ROOT / 'openclaw_deploy/openclaw.json'}")
+    print(f"OpenClaw config template: {REPO_ROOT / 'alphadiana/harness/openclaw/deploy/openclaw.json'}")
     print(f"Run command: alphadiana run {eval_path}")
 
     if not args.run:
