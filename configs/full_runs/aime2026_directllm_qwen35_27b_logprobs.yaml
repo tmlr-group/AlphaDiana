@@ -1,0 +1,49 @@
+# FULL RUN: AIME 2026 x DirectLLM on local Qwen/Qwen3.5-27B with logprob capture.
+# Parameter contract: T=0.6, K=4, top_p=0.95, max_tokens=131072,
+# max_concurrent=4, request_timeout=3600 (per context/runbook/README.md).
+
+run_id: "full_aime2026_directllm_qwen35_27b_logprobs"
+
+agent:
+  name: direct_llm
+  version: "1.0"
+  config:
+    model: "Qwen/Qwen3.5-27B"
+    api_base: "http://127.0.0.1:8011/v1"
+    api_key: "EMPTY"
+    temperature: 0.6
+    top_p: 0.95
+    max_tokens: 131072
+    request_timeout: 3600
+    stream: true
+    capture_logprobs: true
+    top_logprobs: 20
+    logprobs_format: "int16"
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: true
+    system_prompt: |
+      You are solving AIME-style competition mathematics problems.
+      Reason carefully and show the derivation clearly.
+
+      The final line must be exactly:
+      \boxed{your integer answer}
+
+benchmark:
+  name: aime
+  config:
+    dataset: "MathArena/aime_2026"
+    split: "train"
+
+scorer:
+  name: numeric
+  config:
+    tolerance: 1e-6
+
+max_concurrent: 4
+num_samples: 4
+output_dir: "./results"
+strict_report: true
+strict_isolation: true
+metadata:
+  notes: "AIME 2026 DirectLLM under the 2026-05-28 parameter contract (T=0.6, K=4, max_concurrent=4, request_timeout=3600)."
