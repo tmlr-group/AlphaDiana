@@ -1,0 +1,49 @@
+# FULL RUN: all GPQA-Diamond test tasks.
+# For smoke/debug usage, prefer configs/examples/zeroclaw_gpqa_diamond.yaml.
+
+run_id: "rollout_full_zeroclaw_gpqa_diamond"
+
+agent:
+  name: zeroclaw
+  version: "0.6.9"
+  config:
+    model: "${OPENAI_MODEL_NAME}"
+    api_base: "${OPENAI_BASE_URL}"
+    api_key: "${OPENAI_API_KEY}"
+    temperature: 0.0
+    rock_image: "zeroclaw-reasoning:0.6.9"
+    rock_memory: "4g"
+    rock_cpus: 1
+    rock_startup_timeout: 600
+    admin_base_url: "${ROCK_BASE_URL}"
+    proxy_base_url: "${ROCK_PROXY_URL}"
+    request_timeout: 1800
+    max_tool_iterations: 100
+    max_actions_per_hour: 200
+    system_prompt: |
+      You are solving expert-level science multiple-choice questions.
+      Read the question carefully, reason step by step, and choose the single best option.
+      Your final answer must be on the last line in exactly one of these forms:
+      $$\boxed{A}$$
+      $$\boxed{B}$$
+      $$\boxed{C}$$
+      $$\boxed{D}$$
+benchmark:
+  name: gpqa_diamond
+  config:
+    dataset: "fingertap/GPQA-Diamond"
+    split: "test"
+    seed: 42
+
+sandbox: null
+
+scorer:
+  name: exact_match
+
+max_concurrent: 1
+num_samples: 1
+output_dir: "./results/rollout_full_zeroclaw_gpqa_diamond"
+strict_report: true
+strict_isolation: true
+metadata:
+  notes: "Full ZeroClaw x GPQA-Diamond config for the local-vLLM rollout matrix."

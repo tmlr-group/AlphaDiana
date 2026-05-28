@@ -1,0 +1,40 @@
+# FULL RUN: all supported HLE multiple-choice tasks.
+# For a 1-task liveness check, use configs/examples/directllm_minimax_hle.yaml.
+
+run_id: "p25_full_directllm_minimax_hle"
+
+agent:
+  name: direct_llm
+  version: "1.0"
+  config:
+    model: "minimax-m2.5"
+    api_base: ${OPENAI_BASE_URL}
+    api_key: ${OPENAI_API_KEY}
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 131072
+    stream: true
+    system_prompt: |
+      You are an expert problem solver. Think step by step.
+      This is a multiple-choice question. After your reasoning, output ONLY the
+      single option letter of your final answer inside \boxed{}. Example:
+      \boxed{B}. Do not put the option text, full sentence, or anything else
+      inside the box — only the letter.
+benchmark:
+  name: hle
+  config:
+    dataset: "cais/hle"
+    split: "test"
+    answer_types:
+      - "multipleChoice"
+
+scorer:
+  name: exact_match
+  config: {}
+
+max_concurrent: 20
+output_dir: "./results/p25_full_directllm_minimax_hle"
+strict_report: true
+strict_isolation: true
+metadata:
+  notes: "Full supported DirectLLM x HLE multiple-choice run via minimax-m2.5. Requires HF_TOKEN on fresh machines."

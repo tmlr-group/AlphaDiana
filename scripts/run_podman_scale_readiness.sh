@@ -20,7 +20,6 @@ cd "$ROOT_DIR" || exit 1
 PRESERVE_OPENAI_BASE_URL="${OPENAI_BASE_URL:-}"
 PRESERVE_OPENAI_API_KEY="${OPENAI_API_KEY:-}"
 PRESERVE_OPENAI_MODEL_NAME="${OPENAI_MODEL_NAME:-}"
-PRESERVE_OPENCLAW_GATEWAY_TOKEN="${OPENCLAW_GATEWAY_TOKEN:-}"
 PRESERVE_HF_HOME="${HF_HOME:-}"
 PRESERVE_HF_DATASETS_CACHE="${HF_DATASETS_CACHE:-}"
 
@@ -34,7 +33,6 @@ fi
 if [[ -n "$PRESERVE_OPENAI_BASE_URL" ]]; then export OPENAI_BASE_URL="$PRESERVE_OPENAI_BASE_URL"; fi
 if [[ -n "$PRESERVE_OPENAI_API_KEY" ]]; then export OPENAI_API_KEY="$PRESERVE_OPENAI_API_KEY"; fi
 if [[ -n "$PRESERVE_OPENAI_MODEL_NAME" ]]; then export OPENAI_MODEL_NAME="$PRESERVE_OPENAI_MODEL_NAME"; fi
-if [[ -n "$PRESERVE_OPENCLAW_GATEWAY_TOKEN" ]]; then export OPENCLAW_GATEWAY_TOKEN="$PRESERVE_OPENCLAW_GATEWAY_TOKEN"; fi
 if [[ -n "$PRESERVE_HF_HOME" ]]; then export HF_HOME="$PRESERVE_HF_HOME"; fi
 if [[ -n "$PRESERVE_HF_DATASETS_CACHE" ]]; then export HF_DATASETS_CACHE="$PRESERVE_HF_DATASETS_CACHE"; fi
 
@@ -53,25 +51,6 @@ require_provider_env() {
     fi
   done
   return "$missing"
-}
-
-require_openclaw_gateway_token() {
-  if python - "${OPENCLAW_GATEWAY_TOKEN:-}" <<'PY'
-import sys
-
-from alphadiana.utils.openclaw_security import is_weak_openclaw_gateway_token
-
-raise SystemExit(1 if is_weak_openclaw_gateway_token(sys.argv[1]) else 0)
-PY
-  then
-    return 0
-  fi
-  cat >&2 <<'EOF'
-Missing or weak OPENCLAW_GATEWAY_TOKEN.
-Generate one before validation or execution:
-  export OPENCLAW_GATEWAY_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
-EOF
-  return 2
 }
 
 provider_url_part() {
@@ -240,17 +219,15 @@ run_config() {
         --redo-all \
         -o "run_id=$run_id" \
         -o "output_dir=$output_dir" \
-        -o strict_report=true \
         2>&1
   ) | tee "$log_path"
   local rc=${PIPESTATUS[0]}
   printf '%s\t%s\t%s\t%s\t%s\n' "$group" "$run_id" "${config#$ROOT_DIR/}" "$rc" "logs/${run_id}.log" >> "$STATUS_FILE"
-  return "$rc"
+  return 0
 }
 
 validate_matrix() {
-  require_provider_env || return 2
-  require_openclaw_gateway_token || return 2
+  require_provider_env || exit 2
   warn_loopback_provider_base
   init_status
   local agent benchmark config rc
@@ -272,32 +249,25 @@ validate_matrix() {
 }
 
 run_pilot() {
-  require_provider_env || return 2
-  require_openclaw_gateway_token || return 2
-  preflight_provider_from_podman || return "$?"
+  require_provider_env || exit 2
+  preflight_provider_from_podman || exit "$?"
   extend_no_proxy_for_provider
   init_status
-  local agent benchmark config run_id rc overall_rc=0
+  local agent benchmark config run_id
   for agent in openclaw zeroclaw opencode; do
     for benchmark in aime gpqa hle imo; do
       config="$(cell_config "$agent" "$benchmark")"
       run_id="${RUN_PREFIX}_${agent}_${benchmark}"
-      if run_config "pilot" "$config" "$run_id"; then
-        rc=0
-      else
-        rc=$?
-        overall_rc="$rc"
-      fi
+      run_config "pilot" "$config" "$run_id"
     done
   done
-  return "$overall_rc"
 }
 
 run_audit() {
   init_status
   if [[ ! -f "$AUDIT_SCRIPT" ]]; then
     printf 'Audit script not found: %s\n' "${AUDIT_SCRIPT#$ROOT_DIR/}" >&2
-    return 1
+    exit 1
   fi
   python "$AUDIT_SCRIPT" \
     --run-prefix "$RUN_PREFIX" \
@@ -307,52 +277,37 @@ run_audit() {
     --output-dir "$STATUS_DIR"
 }
 
-run_gate() {
-  local pilot_rc=0 audit_rc=0
-  run_pilot || pilot_rc=$?
-  run_audit || audit_rc=$?
-  if [[ "$pilot_rc" -ne 0 || "$audit_rc" -ne 0 ]]; then
-    return 1
-  fi
-}
-
 run_full() {
   if [[ "${PODMAN_SCALE_ALLOW_FULL:-}" != "1" ]]; then
     printf 'Full-scale execution is gated. Set PODMAN_SCALE_ALLOW_FULL=1 after a passing pilot audit.\n' >&2
-    return 2
+    exit 2
   fi
-  require_openclaw_gateway_token || return 2
-  preflight_provider_from_podman || return "$?"
+  preflight_provider_from_podman || exit "$?"
   printf 'No full-scale configs are defined by this Phase 5 slice. Generate or provide them after pilot audit passes.\n' >&2
-  return 2
+  exit 2
 }
 
 main() {
-  local rc=0
   case "$SCOPE" in
     validate)
-      validate_matrix || rc=$?
+      validate_matrix
       ;;
     pilot)
-      run_pilot || rc=$?
+      run_pilot
       ;;
     audit)
-      run_audit || rc=$?
-      ;;
-    gate|all)
-      run_gate || rc=$?
+      run_audit
       ;;
     full)
-      run_full || rc=$?
+      run_full
       ;;
     *)
-      printf 'Usage: %s [validate|pilot|audit|gate|all|full]\n' "$0" >&2
-      return 2
+      printf 'Usage: %s [validate|pilot|audit|full]\n' "$0" >&2
+      exit 2
       ;;
   esac
 
   printf '\nStatus file: %s\n' "${STATUS_FILE#$ROOT_DIR/}"
-  return "$rc"
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then

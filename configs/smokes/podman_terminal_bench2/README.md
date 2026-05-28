@@ -34,8 +34,8 @@ export TB2_OPENCLAW_RUNTIME_IMAGE=localhost/alphadiana-openclaw-swebench-runtime
 export TB2_ZEROCLAW_RUNTIME_IMAGE=localhost/zeroclaw-reasoning:0.6.9
 # Output + task logs MUST live on a large disk, NOT /home (logprob dual-write
 # alone can reach hundreds of GB). Point both at a /data* mount.
-export ALPHADIANA_TB2_OUTPUT_DIR=/path/to/xxx/alphadiana/podman-tb2/results
-export ALPHADIANA_TB2_LOGS_DIR=/path/to/xxx/alphadiana/podman-tb2/task-logs
+export ALPHADIANA_TB2_OUTPUT_DIR=/path/to/<user>/alphadiana/podman-tb2/results
+export ALPHADIANA_TB2_LOGS_DIR=/path/to/<user>/alphadiana/podman-tb2/task-logs
 export PODMAN_TB2_RUN_PREFIX=podman_tb2_$(date +%Y%m%d_%H%M%S)
 
 bash scripts/run_podman_terminal_bench2_readiness.sh all
@@ -43,7 +43,7 @@ bash scripts/run_podman_terminal_bench2_readiness.sh all
 
 `output_dir` in the three pilot configs reads `${ALPHADIANA_TB2_OUTPUT_DIR}`,
 so it must be exported. Before a full sweep, work through the **Full-Run
-Pre-flight Checklist** in `website/docs/benchmarks/podman.md` (kernel keyring quota,
+Pre-flight Checklist** in `docs/benchmarks/podman.md` (kernel keyring quota,
 disk placement, host networking, vLLM health, post-crash cleanup) — those
 host/infra gates are not auto-enforced.
 
@@ -69,7 +69,7 @@ podman build -f docker/terminal_bench2/Dockerfile.zeroclaw-controller \
 
 Alternatively, override `TB2_OPENCLAW_RUNTIME_IMAGE` /
 `TB2_OPENCODE_RUNTIME_IMAGE` to reuse the fatter images built per
-`website/docs/benchmarks/podman.md` (`localhost/alphadiana-openclaw-fixed:latest`,
+`docs/benchmarks/podman.md` (`localhost/alphadiana-openclaw-fixed:latest`,
 `localhost/alphadiana-opencode-podman:latest`); both have passing TB2 readiness
 evidence under host networking.
 
@@ -93,5 +93,5 @@ Scope boundaries:
 - `terminal_bench2_openclaw`, `terminal_bench2_opencode`, and
   `terminal_bench2_zeroclaw` only.
 - Direct x TerminalBench2 remains out of scope.
-- SWE-bench, MMMU-Pro, standard-reasoning reruns,
+- SWE-bench, SWE-bench Pro, external_benchmark, MMMU-Pro, standard-reasoning reruns,
   Podman global default promotion, and ROCK/Docker deletion are out of scope.

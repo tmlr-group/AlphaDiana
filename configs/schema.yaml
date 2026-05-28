@@ -8,16 +8,15 @@ run_id: string
 # agent: (required) Agent system configuration.
 agent:
   name: string        # Agent name, e.g. "openclaw", "direct_llm", "zeroclaw", "swebench_docker"
-  version: string     # Required label containing at least one digit, e.g. "1.0" or "0.6.9"
+  version: string     # Pinned version tag or "latest"
   config:             # Pass-through config for the agent (model settings, etc.)
     runtime: string                  # Optional runtime selector, e.g. "swebench_container"
     container_engine: string         # Task-container engine: "docker" legacy/baseline or opt-in "podman"
-    container_engine_binary: string  # Optional explicit Docker/Podman executable path
     agent_type: string               # `swebench_docker` mode: "direct_llm" | "openclaw" | "opencode" | "zeroclaw"
     model: string
     model_name: string
     api_base: string
-    gateway_token: string            # OpenClaw gateway auth token; set a strong value (the legacy "OPENCLAW" default fails security preflight)
+    gateway_token: string            # OpenClaw gateway auth token (default: "OPENCLAW")
     rock_agent_config_path: string   # Path to ROCK agent config YAML
     openclaw_config_path: string     # Path to OpenClaw gateway config JSON
     rock_use_kata_runtime: boolean   # Auto-deployed ROCK sandboxes: enable Kata runtime instead of --privileged
@@ -34,14 +33,9 @@ agent:
     output_dir: string               # Local artifact directory for Docker-backed agents
     temperature: float
     max_tokens: integer
-    max_attempts: integer            # Retry attempts; generic OpenClaw default: 5
-    request_timeout: float           # Harness-specific: DirectLLM 600s, OpenClaw 1800s, ZeroClaw 1200s
-    bridge_port: integer             # ZeroClaw Podman bridge listener, exposure, probe, and API port
+    max_attempts: integer            # Retry attempts for OpenClaw (default: 3)
+    request_timeout: float           # HTTP request timeout in seconds (default: 600)
     runtime_trace_mode: string       # ZeroClaw trace mode (default: "none")
-    memory_scope: string             # "intra_task" | "cross_sample" | "cross_task"
-    persistent_memory: boolean       # False for intra_task; true for stateful scopes
-    memory_enabled: boolean          # Enable the harness-native memory path
-    strict_memory: boolean           # Fail when native memory cannot be verified
     max_tool_iterations: integer     # ZeroClaw max tool iterations (default: 100)
     max_actions_per_hour: integer    # ZeroClaw autonomy action budget (default: 200)
     timeout_sec: integer
@@ -84,22 +78,16 @@ agent:
 
 # benchmark: (required) Benchmark configuration.
 benchmark:
-  name: string        # e.g. "aime", "gpqa_diamond", "hle", "mmmu_pro", "imo_answerbench", "swe_bench", "swebench_pro_os", "terminal_bench2", "custom"
+  name: string        # Benchmark name, e.g. "aime", "math", "hle", "frontier_math", "terminal_bench", "osworld"
   config:             # Benchmark-specific params
     split: string
     year: string
     subset: string
     data_path: string
-    baseline_json_path: string
-    distortion_threshold: float
-    retention_threshold: float
-    max_attempts: integer
-    attempt_timeout_sec: integer
-    total_timeout_sec: integer
 
 # sandbox: (optional) Execution environment. Set to null if not needed.
 sandbox:
-  name: string        # "local", "rock", "podman", or "swebench_container"
+  name: string        # Sandbox name, e.g. "local", "rock", "podman", "swebench_container"
   config:             # Sandbox-specific params
     # ROCK SDK config
     admin_base_url: string          # ROCK admin server URL (e.g. "http://localhost:9000")
@@ -165,14 +153,6 @@ num_samples: integer
 
 # output_dir: (optional, default="./results") Directory for result output.
 output_dir: string
-
-# Run-control fields.
-redo_all: boolean                         # default false; bypass checkpoint when true
-sandbox_retries: integer                  # default 1; sandbox startup retry budget
-task_retries: integer                     # YAML-loader default 0; per-item retry budget
-task_retry_on_recoverable_only: boolean   # default false
-strict_report: boolean                    # default false; non-zero exit for incomplete/invalid reports
-strict_isolation: boolean                 # default false; fail closed on supported ROCK setup failures
 
 # metadata: (optional) Free-form tags for tracking experiments.
 metadata:

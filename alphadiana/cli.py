@@ -40,7 +40,7 @@ def _warn_proxy() -> bool:
 def _preflight_terminal_bench2(config) -> None:
     if getattr(config, "benchmark_name", "") != "terminal_bench2":
         return
-    from alphadiana.benchmarks.terminal_bench2.benchmark import TerminalBench2Benchmark
+    from alphadiana.benchmark.terminal_bench2 import TerminalBench2Benchmark
 
     tasks = TerminalBench2Benchmark().load_tasks(config.benchmark_config)
     click.echo(f"Terminal-Bench-2 tasks loaded: {len(tasks)}")
@@ -62,8 +62,8 @@ def main():
 @click.option("--redo-all", is_flag=True, default=False, help="Ignore checkpoint and redo all tasks.")
 def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
     """Run an evaluation experiment from a YAML config file."""
-    from alphadiana.engine.config.experiment_config import ExperimentConfig, deep_merge, parse_override
-    from alphadiana.engine.runner import Runner, _is_gateway_autodeploy_agent
+    from alphadiana.config.experiment_config import ExperimentConfig, deep_merge, parse_override
+    from alphadiana.runner.runner import Runner, _is_gateway_autodeploy_agent
 
     overrides: dict = {}
     for ov in override:
@@ -74,7 +74,7 @@ def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
     config = ExperimentConfig.from_yaml(config_yaml, overrides=overrides or None)
 
     # Validate config before running.
-    from alphadiana.engine.config.validator import ConfigValidator
+    from alphadiana.config.validator import ConfigValidator
     validator = ConfigValidator()
     errors = validator.validate(config)
     if errors:
@@ -135,10 +135,8 @@ def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
         click.echo(f"\nRun completed: {summary.run_id}")
         click.echo(f"  Accuracy:   {summary.accuracy:.4f}")
         click.echo(f"  Mean Score: {summary.mean_score:.4f}")
-        pass_label = "Pass" if summary.samples_independent else "Sequential Any"
-        avg_label = "Avg" if summary.samples_independent else "Sequential Mean"
-        click.echo(f"  {pass_label}@{summary.num_samples}:    {summary.pass_at_k:.4f}")
-        click.echo(f"  {avg_label}@{summary.num_samples}:     {summary.avg_at_k:.4f}")
+        click.echo(f"  Pass@{summary.num_samples}:    {summary.pass_at_k:.4f}")
+        click.echo(f"  Avg@{summary.num_samples}:     {summary.avg_at_k:.4f}")
         click.echo(f"  Tasks:      {summary.completed}/{summary.total_tasks} completed")
         if config.strict_report and summary.strict_report_failed:
             click.echo(
@@ -163,8 +161,8 @@ def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
 )
 def validate(config_yaml: str, override: tuple[str, ...]):
     """Validate a YAML config file without running an experiment."""
-    from alphadiana.engine.config.experiment_config import ExperimentConfig, deep_merge, parse_override
-    from alphadiana.engine.config.validator import ConfigValidator
+    from alphadiana.config.experiment_config import ExperimentConfig, deep_merge, parse_override
+    from alphadiana.config.validator import ConfigValidator
 
     overrides: dict = {}
     for ov in override:
@@ -192,8 +190,8 @@ def validate(config_yaml: str, override: tuple[str, ...]):
 @click.argument("results_dir", type=click.Path(exists=True))
 def report(results_dir: str):
     """Generate reports from existing result files in a directory."""
-    from alphadiana.analysis.report import ReportGenerator
-    from alphadiana.analysis.io.result_store import ResultStore
+    from alphadiana.results.report import ReportGenerator
+    from alphadiana.results.result_store import ResultStore
 
     jsonl_files = [
         f for f in os.listdir(results_dir) if f.endswith(".jsonl")
@@ -232,9 +230,9 @@ def report(results_dir: str):
 )
 def batch(config_yamls: tuple[str, ...], parallel: bool, override: tuple[str, ...]):
     """Run multiple experiment configs sequentially or in parallel."""
-    from alphadiana.engine.config.experiment_config import ExperimentConfig, deep_merge, parse_override
-    from alphadiana.engine.config.validator import ConfigValidator
-    from alphadiana.engine.batch_runner import BatchRunner
+    from alphadiana.config.experiment_config import ExperimentConfig, deep_merge, parse_override
+    from alphadiana.config.validator import ConfigValidator
+    from alphadiana.runner.batch_runner import BatchRunner
 
     overrides: dict = {}
     for ov in override:
@@ -354,22 +352,22 @@ def env():
         click.echo("  # both paths run scripts/security_guard.py --check first")
         click.echo()
         click.echo("Or start manually (remember to run scripts/security_guard.py --check first):")
-        click.echo("  # Redis")
+        click.echo(f"  # Redis")
         click.echo(
             f"  docker run -d --name {redis_container} -p 127.0.0.1:{ports.redis_port}:6379 "
             "redis/redis-stack-server:latest"
         )
-        click.echo("  # Ray")
+        click.echo(f"  # Ray")
         click.echo(
             f"  cd {rock_root} && ray start --head --port={ports.ray_port} "
             f"--dashboard-port={ports.ray_dashboard_port} --disable-usage-stats"
         )
-        click.echo("  # Admin")
+        click.echo(f"  # Admin")
         click.echo(
             f"  cd {rock_root} && python -m rock.admin.main --env local-proxy --role admin "
             f"--port {ports.admin_port} &"
         )
-        click.echo("  # Proxy")
+        click.echo(f"  # Proxy")
         click.echo(
             f"  cd {rock_root} && python -m rock.admin.main --env local-proxy --role proxy "
             f"--port {ports.proxy_port} &"
@@ -383,17 +381,21 @@ LOCALHOST = "127.0.0.1"
 @main.command("list-benchmarks")
 def list_benchmarks():
     """List all registered benchmarks."""
-    # Import benchmark modules to trigger registration.
-    import alphadiana.benchmarks.aime.benchmark  # noqa: F401
-    import alphadiana.benchmarks.custom.benchmark  # noqa: F401
-    import alphadiana.benchmarks.gpqa.benchmark  # noqa: F401
-    import alphadiana.benchmarks.hle.benchmark  # noqa: F401
-    import alphadiana.benchmarks.imo.benchmark  # noqa: F401
-    import alphadiana.benchmarks.mmmu_pro.benchmark  # noqa: F401
-    import alphadiana.benchmarks.swe_bench.benchmark  # noqa: F401
-    import alphadiana.benchmarks.terminal_bench2.benchmark  # noqa: F401
+    # Import benchmark modules to trigger registration. Keep this list in
+    # sync with alphadiana/runner/runner.py — otherwise list-benchmarks
+    # silently hides supported benchmarks.
+    import alphadiana.benchmark.aime  # noqa: F401
+    import alphadiana.benchmark.custom  # noqa: F401
+    import alphadiana.benchmark.gpqa  # noqa: F401
+    import alphadiana.benchmark.hle  # noqa: F401
+    import alphadiana.benchmark.imo_answerbench  # noqa: F401
+    import alphadiana.benchmark.mmmu_pro  # noqa: F401
+    import alphadiana.benchmark.external_benchmark  # noqa: F401
+    import alphadiana.benchmark.swe_bench  # noqa: F401
+    import alphadiana.benchmark.swebench_pro  # noqa: F401
+    import alphadiana.benchmark.terminal_bench2  # noqa: F401
 
-    from alphadiana.benchmarks.registry import BenchmarkRegistry
+    from alphadiana.benchmark.registry import BenchmarkRegistry
 
     benchmarks = BenchmarkRegistry.list()
     if benchmarks:

@@ -1,0 +1,40 @@
+# SMOKE ONLY: deterministic 1-task config for path validation.
+# Full supported HLE multiple-choice config: configs/full_runs/p25_full_opencode_minimax_hle.yaml.
+
+run_id: "opencode_minimax_hle_smoke"
+
+agent:
+  name: opencode
+  version: "1.3.2"
+  config:
+    model: ${OPENAI_MODEL_NAME}
+    model_name: ${OPENAI_MODEL_NAME}
+    api_base: ${OPENAI_BASE_URL}
+    api_key: ${OPENAI_API_KEY}
+    controller_mode: "docker"
+    controller_image: "alphadiana/tb2-opencode-controller:latest"
+    timeout: 1800
+    streaming: false
+    tool_call: true
+    system_prompt: |
+      Solve carefully and keep the final answer concise.
+      The final line must be $$\boxed{your answer here}$$.
+
+benchmark:
+  name: hle
+  config:
+    dataset: "cais/hle"
+    split: "test"
+    dataset_index: 1
+    answer_types:
+      - "multipleChoice"
+    max_tasks: 1
+
+scorer:
+  name: exact_match
+  config: {}
+
+max_concurrent: 1
+output_dir: "./results/opencode_minimax_hle_smoke"
+metadata:
+  notes: "OpenCode x HLE smoke via minimax-m2.5. Requires HF_TOKEN."

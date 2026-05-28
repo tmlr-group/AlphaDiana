@@ -31,6 +31,6 @@ scorer:
   config: {}
 
 max_concurrent: 3
-output_dir: "./results/opencode_qwen35_27b_hle_pilot"
+output_dir: "./results/opencode_minimax_hle_smoke"
 metadata:
   notes: "Qwen/Qwen3.5-27B x OpenRouter x HLE 3-task pilot via opencode. Requires HF_TOKEN."

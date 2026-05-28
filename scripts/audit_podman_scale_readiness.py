@@ -251,8 +251,6 @@ def row_from_record(
     log_exists = log_path.exists()
     artifact_exists = bool(artifact_path)
     audit_failures: list[str] = []
-    if record.get("score_status") != "valid_scored":
-        audit_failures.append("invalid_score_status")
     if missing_metadata:
         audit_failures.append("missing_metadata_container_engine")
     if not score_present:

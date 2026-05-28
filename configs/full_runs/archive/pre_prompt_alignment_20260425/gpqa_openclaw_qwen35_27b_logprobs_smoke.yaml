@@ -1,0 +1,53 @@
+# Phase 11: OpenClaw 1-task GPQA-Diamond smoke for shared top-20 logprob capture.
+
+run_id: "phase11_openclaw_gpqa_diamond_qwen35_27b_logprobs_smoke"
+
+agent:
+  name: openclaw
+  version: "2026.3.20"
+  config:
+    system_prompt: |
+      You are solving expert-level science multiple-choice questions.
+      Read the question carefully, reason step by step, and choose the single best option.
+      Your final answer must be on the last line in exactly one of these forms:
+      $$\boxed{A}$$
+      $$\boxed{B}$$
+      $$\boxed{C}$$
+      $$\boxed{D}$$
+    rock_image: "tmlrgroup/alphadiana:v1"
+    rock_agent_config_path: "openclaw_deploy/rock_agent_config.prebuilt.yaml"
+    openclaw_config_path: "openclaw_deploy/openclaw.json"
+    rock_memory: "4g"
+    rock_cpus: 1
+    rock_startup_timeout: 600
+    gateway_startup_timeout: 240
+    gateway_warmup_timeout: 240
+    OPENAI_BASE_URL: "http://127.0.0.1:8011/v1"
+    OPENAI_API_KEY: "EMPTY"
+    OPENAI_MODEL_NAME: "Qwen/Qwen3.5-27B"
+    model: "openclaw"
+    gateway_token: "${OPENCLAW_GATEWAY_TOKEN}"
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 131072
+    stream: true
+    request_timeout: 3600
+    stream_idle_timeout: 1200
+    capture_logprobs: true
+    top_logprobs: 20
+
+benchmark:
+  name: gpqa_diamond
+  config:
+    dataset: "fingertap/GPQA-Diamond"
+    split: "test"
+    seed: 42
+    max_tasks: 1
+
+scorer:
+  name: exact_match
+  config: {}
+
+max_concurrent: 10
+num_samples: 1
+output_dir: "./results"

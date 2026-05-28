@@ -1,0 +1,448 @@
+campaign_id: "rollout_local_vllm_20260419"
+title: "Full 5-benchmark x 4-harness x 3-model local-vLLM rollout"
+defaults:
+  run_id_prefix: "full_20260419"
+  logs_dir: "logs"
+  results_dir: "./results"
+  rollout_semantics:
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 131072
+    streaming: true
+    timeout_sec: 1800
+    thinking: true
+excluded_benchmarks:
+  - benchmark: "swebench_pro"
+    reason: "SWE-bench Pro scorer/evaluator health is out of scope for the current rollout"
+
+models:
+  - id: "qwen35_27b"
+    model_name: "Qwen/Qwen3.5-27B"
+    api_base_env: "QWEN_VLLM_API_BASE"
+    api_key_env: "QWEN_VLLM_API_KEY"
+    official_model_name: "openai/Qwen/Qwen3.5-27B"
+    supports_multimodal: true
+  - id: "gemma4_31b_it"
+    model_name: "google/gemma-4-31B-it"
+    api_base_env: "GEMMA4_VLLM_API_BASE"
+    api_key_env: "GEMMA4_VLLM_API_KEY"
+    official_model_name: "openai/google/gemma-4-31B-it"
+    supports_multimodal: true
+  - id: "nemotron_30b_a3b"
+    model_name: "nvidia/nemotron-3-nano-30b-a3b"
+    api_base_env: "NEMOTRON_VLLM_API_BASE"
+    api_key_env: "NEMOTRON_VLLM_API_KEY"
+    official_model_name: "openai/nvidia/nemotron-3-nano-30b-a3b"
+    supports_multimodal: false
+
+path_templates:
+  - id: "imo_answerbench_direct_llm"
+    benchmark: "imo_answerbench"
+    harness: "direct_llm"
+    backend: "alphadiana"
+    config_path: "configs/full_runs/p25_full_directllm_minimax_imo_answerbench.yaml"
+    max_concurrent: 10
+    base_wave: "wave_a_mainline"
+    base_risk: "mainline"
+    config_gaps:
+      - "thinking knob not forwarded on the direct_llm path"
+    overrides:
+      run_id: "{run_id}"
+      output_dir: "./results/{run_id}"
+      max_concurrent: 10
+      agent.config.model: "{model_name}"
+      agent.config.api_base: "{api_base_env_ref}"
+      agent.config.api_key: "{api_key_env_ref}"
+      agent.config.temperature: 0.0
+      agent.config.top_p: 0.95
+      agent.config.max_tokens: 131072
+      agent.config.stream: true
+
+  - id: "imo_answerbench_openclaw"
+    benchmark: "imo_answerbench"
+    harness: "openclaw"
+    backend: "alphadiana"
+    config_path: "configs/full_runs/p25_full_openclaw_minimax_imo_answerbench.yaml"
+    max_concurrent: 1
+    base_wave: "wave_a_mainline"
+    base_risk: "mainline"
+    config_gaps:
+      - "no explicit thinking knob on the generic openclaw path"
+    overrides:
+      run_id: "{run_id}"
+      output_dir: "./results/{run_id}"
+      max_concurrent: 1
+      agent.config.OPENAI_BASE_URL: "{api_base_env_ref}"
+      agent.config.OPENAI_API_KEY: "{api_key_env_ref}"
+      agent.config.OPENAI_MODEL_NAME: "{model_name}"
+      agent.config.temperature: 0.0
+      agent.config.top_p: 0.95
+      agent.config.max_tokens: 131072
+      agent.config.request_timeout: 1800
+      agent.config.stream_idle_timeout: 600
+
+  - id: "imo_answerbench_opencode"
+    benchmark: "imo_answerbench"
+    harness: "opencode"
+    backend: "alphadiana"
+    config_path: "configs/full_runs/p25_full_opencode_minimax_imo_answerbench.yaml"
+    max_concurrent: 10
+    base_wave: "wave_a_mainline"
+    base_risk: "mainline"
+    config_gaps:
+      - "thinking knob is not exposed on the opencode path"
+    overrides:
+      run_id: "{run_id}"
+      output_dir: "./results/{run_id}"
+      max_concurrent: 10
+      agent.config.model: "custom/{model_name}"
+      agent.config.model_name: "{model_name}"
+      agent.config.api_base: "{api_base_env_ref}"
+      agent.config.api_key: "{api_key_env_ref}"
+      agent.config.temperature: 0.0
+      agent.config.top_p: 0.95
+      agent.config.max_tokens: 131072
+      agent.config.timeout: 1800
+      agent.config.streaming: true
+
+  - id: "imo_answerbench_zeroclaw"
+    benchmark: "imo_answerbench"
+    harness: "zeroclaw"
+    backend: "alphadiana"
+    config_path: "configs/full_runs/p25_full_zeroclaw_minimax_imo_answerbench.yaml"
+    max_concurrent: 1
+    base_wave: "wave_a_mainline"
+    base_risk: "mainline"
+    config_gaps:
+      - "top_p is not exposed on the zeroclaw path"
+      - "max_tokens is not exposed on the zeroclaw path"
+      - "streaming knob is not exposed on the zeroclaw path"
+      - "thinking knob is not exposed on the zeroclaw path"
+    overrides:
+      run_id: "{run_id}"
+      output_dir: "./results/{run_id}"
+      max_concurrent: 1
+      agent.config.model: "{model_name}"
+      agent.config.api_base: "{api_base_env_ref}"
+      agent.config.api_key: "{api_key_env_ref}"
+      agent.config.temperature: 0.0
+      agent.config.request_timeout: 1800
+
+  - id: "gpqa_diamond_direct_llm"
+    benchmark: "gpqa_diamond"
+    harness: "direct_llm"
+    backend: "alphadiana"
+    config_path: "configs/full_runs/rollout_full_directllm_gpqa_diamond.yaml"
+    max_concurrent: 10
+    base_wave: "wave_a_mainline"
+    base_risk: "mainline"
+    config_gaps:
+      - "thinking knob not forwarded on the direct_llm path"
+    overrides:
+      run_id: "{run_id}"
+      output_dir: "./results/{run_id}"
+      max_concurrent: 10
+      agent.config.model: "{model_name}"
+      agent.config.api_base: "{api_base_env_ref}"
+      agent.config.api_key: "{api_key_env_ref}"
+
+  - id: "gpqa_diamond_openclaw"
+    benchmark: "gpqa_diamond"
+    harness: "openclaw"
+    backend: "alphadiana"
+    config_path: "configs/full_runs/rollout_full_openclaw_gpqa_diamond.yaml"
+    max_concurrent: 1
+    base_wave: "wave_a_mainline"
+    base_risk: "mainline"
+    config_gaps:
+      - "no explicit thinking knob on the generic openclaw path"
+    overrides:
+      run_id: "{run_id}"
+      output_dir: "./results/{run_id}"
+      max_concurrent: 1
+      agent.config.OPENAI_BASE_URL: "{api_base_env_ref}"
+      agent.config.OPENAI_API_KEY: "{api_key_env_ref}"
+      agent.config.OPENAI_MODEL_NAME: "{model_name}"
+
+  - id: "gpqa_diamond_opencode"
+    benchmark: "gpqa_diamond"
+    harness: "opencode"
+    backend: "alphadiana"
+    config_path: "configs/full_runs/rollout_full_opencode_gpqa_diamond.yaml"
+    max_concurrent: 10
+    base_wave: "wave_a_mainline"
+    base_risk: "mainline"
+    config_gaps:
+      - "thinking knob is not exposed on the opencode path"
+    overrides:
+      run_id: "{run_id}"
+      output_dir: "./results/{run_id}"
+      max_concurrent: 10
+      agent.config.model: "custom/{model_name}"
+      agent.config.model_name: "{model_name}"
+      agent.config.api_base: "{api_base_env_ref}"
+      agent.config.api_key: "{api_key_env_ref}"
+      agent.config.temperature: 0.0
+      agent.config.top_p: 0.95
+      agent.config.max_tokens: 131072
+
+  - id: "gpqa_diamond_zeroclaw"
+    benchmark: "gpqa_diamond"
+    harness: "zeroclaw"
+    backend: "alphadiana"
+    config_path: "configs/full_runs/rollout_full_zeroclaw_gpqa_diamond.yaml"
+    max_concurrent: 1
+    base_wave: "wave_a_mainline"
+    base_risk: "mainline"
+    config_gaps:
+      - "top_p is not exposed on the zeroclaw path"
+      - "max_tokens is not exposed on the zeroclaw path"
+      - "streaming knob is not exposed on the zeroclaw path"
+      - "thinking knob is not exposed on the zeroclaw path"
+    overrides:
+      run_id: "{run_id}"
+      output_dir: "./results/{run_id}"
+      max_concurrent: 1
+      agent.config.model: "{model_name}"
+      agent.config.api_base: "{api_base_env_ref}"
+      agent.config.api_key: "{api_key_env_ref}"
+
+  - id: "hle_direct_llm"
+    benchmark: "hle"
+    harness: "direct_llm"
+    backend: "alphadiana"
+    config_path: "configs/full_runs/p25_full_directllm_minimax_hle.yaml"
+    max_concurrent: 10
+    base_wave: "wave_a_mainline"
+    base_risk: "mainline"
+    config_gaps:
+      - "thinking knob not forwarded on the direct_llm path"
+    overrides:
+      run_id: "{run_id}"
+      output_dir: "./results/{run_id}"
+      max_concurrent: 10
+      agent.config.model: "{model_name}"
+      agent.config.api_base: "{api_base_env_ref}"
+      agent.config.api_key: "{api_key_env_ref}"
+      agent.config.temperature: 0.0
+      agent.config.top_p: 0.95
+      agent.config.max_tokens: 131072
+      agent.config.stream: true
+
+  - id: "hle_openclaw"
+    benchmark: "hle"
+    harness: "openclaw"
+    backend: "alphadiana"
+    config_path: "configs/full_runs/p25_full_openclaw_minimax_hle.yaml"
+    max_concurrent: 1
+    base_wave: "wave_a_mainline"
+    base_risk: "mainline"
+    config_gaps:
+      - "no explicit thinking knob on the generic openclaw path"
+    overrides:
+      run_id: "{run_id}"
+      output_dir: "./results/{run_id}"
+      max_concurrent: 1
+      agent.config.OPENAI_BASE_URL: "{api_base_env_ref}"
+      agent.config.OPENAI_API_KEY: "{api_key_env_ref}"
+      agent.config.OPENAI_MODEL_NAME: "{model_name}"
+      agent.config.temperature: 0.0
+      agent.config.top_p: 0.95
+      agent.config.max_tokens: 131072
+      agent.config.request_timeout: 1800
+      agent.config.stream_idle_timeout: 600
+
+  - id: "hle_opencode"
+    benchmark: "hle"
+    harness: "opencode"
+    backend: "alphadiana"
+    config_path: "configs/full_runs/p25_full_opencode_minimax_hle.yaml"
+    max_concurrent: 10
+    base_wave: "wave_a_mainline"
+    base_risk: "mainline"
+    config_gaps:
+      - "thinking knob is not exposed on the opencode path"
+    overrides:
+      run_id: "{run_id}"
+      output_dir: "./results/{run_id}"
+      max_concurrent: 10
+      agent.config.model: "custom/{model_name}"
+      agent.config.model_name: "{model_name}"
+      agent.config.api_base: "{api_base_env_ref}"
+      agent.config.api_key: "{api_key_env_ref}"
+      agent.config.temperature: 0.0
+      agent.config.top_p: 0.95
+      agent.config.max_tokens: 131072
+      agent.config.timeout: 1800
+      agent.config.streaming: true
+
+  - id: "hle_zeroclaw"
+    benchmark: "hle"
+    harness: "zeroclaw"
+    backend: "alphadiana"
+    config_path: "configs/full_runs/p25_full_zeroclaw_minimax_hle.yaml"
+    max_concurrent: 1
+    base_wave: "wave_a_mainline"
+    base_risk: "mainline"
+    config_gaps:
+      - "top_p is not exposed on the zeroclaw path"
+      - "max_tokens is not exposed on the zeroclaw path"
+      - "streaming knob is not exposed on the zeroclaw path"
+      - "thinking knob is not exposed on the zeroclaw path"
+    overrides:
+      run_id: "{run_id}"
+      output_dir: "./results/{run_id}"
+      max_concurrent: 1
+      agent.config.model: "{model_name}"
+      agent.config.api_base: "{api_base_env_ref}"
+      agent.config.api_key: "{api_key_env_ref}"
+      agent.config.temperature: 0.0
+      agent.config.request_timeout: 1800
+
+  - id: "mmmu_pro_direct_llm"
+    benchmark: "mmmu_pro"
+    harness: "direct_llm"
+    backend: "alphadiana"
+    config_path: "configs/full_runs/rollout_full_directllm_mmmu_pro_vision.yaml"
+    max_concurrent: 5
+    base_wave: "wave_a_mainline"
+    base_risk: "mainline"
+    config_gaps:
+      - "thinking knob not forwarded on the direct_llm path"
+    overrides:
+      run_id: "{run_id}"
+      output_dir: "./results/{run_id}"
+      max_concurrent: 5
+      agent.config.model: "{model_name}"
+      agent.config.api_base: "{api_base_env_ref}"
+      agent.config.api_key: "{api_key_env_ref}"
+
+  - id: "mmmu_pro_openclaw"
+    benchmark: "mmmu_pro"
+    harness: "openclaw"
+    backend: "alphadiana"
+    config_path: "configs/full_runs/rollout_full_openclaw_mmmu_pro_vision.yaml"
+    max_concurrent: 1
+    base_wave: "wave_a_mainline"
+    base_risk: "mainline"
+    config_gaps:
+      - "no explicit thinking knob on the generic openclaw path"
+    overrides:
+      run_id: "{run_id}"
+      output_dir: "./results/{run_id}"
+      max_concurrent: 1
+      agent.config.OPENAI_BASE_URL: "{api_base_env_ref}"
+      agent.config.OPENAI_API_KEY: "{api_key_env_ref}"
+      agent.config.OPENAI_MODEL_NAME: "{model_name}"
+
+  - id: "mmmu_pro_opencode"
+    benchmark: "mmmu_pro"
+    harness: "opencode"
+    backend: "alphadiana"
+    config_path: "configs/full_runs/rollout_full_opencode_mmmu_pro_vision.yaml"
+    max_concurrent: 5
+    base_wave: "wave_a_mainline"
+    base_risk: "mainline"
+    config_gaps:
+      - "thinking knob is not exposed on the opencode path"
+    overrides:
+      run_id: "{run_id}"
+      output_dir: "./results/{run_id}"
+      max_concurrent: 5
+      agent.config.model: "custom/{model_name}"
+      agent.config.model_name: "{model_name}"
+      agent.config.api_base: "{api_base_env_ref}"
+      agent.config.api_key: "{api_key_env_ref}"
+      agent.config.temperature: 0.0
+      agent.config.top_p: 0.95
+      agent.config.max_tokens: 131072
+
+  - id: "mmmu_pro_zeroclaw"
+    benchmark: "mmmu_pro"
+    harness: "zeroclaw"
+    backend: "alphadiana"
+    config_path: "configs/full_runs/rollout_full_zeroclaw_mmmu_pro_vision.yaml"
+    max_concurrent: 1
+    base_wave: "wave_a_mainline"
+    base_risk: "mainline"
+    config_gaps:
+      - "top_p is not exposed on the zeroclaw path"
+      - "max_tokens is not exposed on the zeroclaw path"
+      - "streaming knob is not exposed on the zeroclaw path"
+      - "thinking knob is not exposed on the zeroclaw path"
+    overrides:
+      run_id: "{run_id}"
+      output_dir: "./results/{run_id}"
+      max_concurrent: 1
+      agent.config.model: "{model_name}"
+      agent.config.api_base: "{api_base_env_ref}"
+      agent.config.api_key: "{api_key_env_ref}"
+
+  - id: "terminal_bench2_direct_llm"
+    benchmark: "terminal_bench2"
+    harness: "direct_llm"
+    backend: "official_terminal_bench_2"
+    max_concurrent: 3
+    base_wave: "wave_b_official"
+    base_risk: "official_checkout"
+    config_gaps: []
+
+  - id: "terminal_bench2_openclaw"
+    benchmark: "terminal_bench2"
+    harness: "openclaw"
+    backend: "alphadiana"
+    config_path: "configs/full_runs/p25_full_terminal_bench2_openclaw_minimax.yaml"
+    max_concurrent: 1
+    base_wave: "wave_d_blocked"
+    base_risk: "blocked_but_requested"
+    config_gaps:
+      - "this path is still experimental and needed manual watchdog intervention in the latest pilot"
+    overrides:
+      run_id: "{run_id}"
+      output_dir: "./results/{run_id}"
+      max_concurrent: 1
+      agent.config.api_base: "{api_base_env_ref}"
+      agent.config.api_key: "{api_key_env_ref}"
+      agent.config.model_name: "{model_name}"
+      agent.config.thinking: "high"
+
+  - id: "terminal_bench2_opencode"
+    benchmark: "terminal_bench2"
+    harness: "opencode"
+    backend: "alphadiana"
+    config_path: "configs/full_runs/p25_full_terminal_bench2_opencode_minimax.yaml"
+    max_concurrent: 2
+    base_wave: "wave_a_mainline"
+    base_risk: "mainline"
+    config_gaps:
+      - "top_p is not exposed on the opencode terminal-bench path"
+      - "thinking knob is not exposed on the opencode terminal-bench path"
+    overrides:
+      run_id: "{run_id}"
+      output_dir: "./results/{run_id}"
+      max_concurrent: 2
+      agent.config.model: "custom/{model_name}"
+      agent.config.model_name: "{model_name}"
+      agent.config.api_base: "{api_base_env_ref}"
+      agent.config.api_key: "{api_key_env_ref}"
+      agent.config.streaming: true
+
+  - id: "terminal_bench2_zeroclaw"
+    benchmark: "terminal_bench2"
+    harness: "zeroclaw"
+    backend: "alphadiana"
+    config_path: "configs/full_runs/p25_full_terminal_bench2_zeroclaw_minimax.yaml"
+    max_concurrent: 1
+    base_wave: "wave_a_mainline"
+    base_risk: "mainline"
+    config_gaps:
+      - "top_p is not exposed on the zeroclaw terminal-bench path"
+      - "max_tokens is not exposed on the zeroclaw terminal-bench path"
+      - "streaming knob is not exposed on the zeroclaw terminal-bench path"
+    overrides:
+      run_id: "{run_id}"
+      output_dir: "./results/{run_id}"
+      max_concurrent: 1
+      agent.config.model: "{model_name}"
+      agent.config.api_base: "{api_base_env_ref}"
+      agent.config.api_key: "{api_key_env_ref}"

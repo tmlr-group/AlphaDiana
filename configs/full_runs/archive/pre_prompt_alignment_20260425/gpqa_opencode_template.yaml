@@ -1,0 +1,46 @@
+# FULL RUN: all GPQA-Diamond test tasks.
+# For smoke/debug usage, prefer configs/examples/opencode_gpqa_diamond.yaml.
+
+run_id: "rollout_full_opencode_gpqa_diamond"
+
+agent:
+  name: opencode
+  version: "1.3.2"
+  config:
+    model: "custom/${OPENAI_MODEL_NAME}"
+    model_name: "${OPENAI_MODEL_NAME}"
+    api_base: "${OPENAI_BASE_URL}"
+    api_key: "${OPENAI_API_KEY}"
+    controller_mode: "docker"
+    controller_image: "alphadiana/tb2-opencode-controller:latest"
+    timeout: 1800
+    streaming: true
+    tool_call: true
+    system_prompt: |
+      You are solving expert-level science multiple-choice questions.
+      Read the question carefully, reason step by step, and choose the single best option.
+
+      Your final answer must be on the last line in exactly one of these forms:
+      $$\boxed{A}$$
+      $$\boxed{B}$$
+      $$\boxed{C}$$
+      $$\boxed{D}$$
+
+benchmark:
+  name: gpqa_diamond
+  config:
+    dataset: "fingertap/GPQA-Diamond"
+    split: "test"
+    seed: 42
+
+scorer:
+  name: exact_match
+  config: {}
+
+max_concurrent: 1
+num_samples: 1
+output_dir: "./results/rollout_full_opencode_gpqa_diamond"
+strict_report: true
+strict_isolation: true
+metadata:
+  notes: "Full OpenCode x GPQA-Diamond config for the local-vLLM rollout matrix."

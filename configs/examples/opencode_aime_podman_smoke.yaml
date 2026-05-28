@@ -1,6 +1,6 @@
 # OpenCode x AIME Podman controller smoke.
 # Build the Podman-only controller image with:
-#   podman build -f alphadiana/harness/opencode/deploy/Containerfile.podman-controller \
+#   podman build -f opencode_deploy/Containerfile.podman-controller \
 #     -t alphadiana-opencode-podman:latest .
 run_id: "phase02_opencode_podman_aime_smoke"
 

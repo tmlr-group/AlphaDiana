@@ -53,12 +53,6 @@ dump.rdb
 !/configs/examples/**
 !/configs/full_runs/
 !/configs/full_runs/**
-!/configs/macro_runs/
-!/configs/macro_runs/**
-!/configs/micro_runs/
-!/configs/micro_runs/README.md
-!/configs/micro_runs/Memory/
-!/configs/micro_runs/Memory/**
 !/configs/smokes/
 !/configs/smokes/podman_nightly_validation/
 !/configs/smokes/podman_nightly_validation/**
@@ -67,17 +61,16 @@ dump.rdb
 !/configs/smokes/podman_mmmu_pro_readiness/
 !/configs/smokes/podman_mmmu_pro_readiness/**
 /artifacts/
-/.podman-storage/
-/.podman-run/
 
-# Runtime artifacts
+# external_benchmark runtime artifacts
+external_benchmark_artifacts_*/
 swebench_artifacts_*/
 swe_bench_logs/
 results_*/
+external_benchmark_pipeline_*/
 
 dev/generated
 scripts/.alphadiana_env
-scripts/.rock_ports.env
 scripts/generated/*.resolved.yaml
 logs/
 
@@ -87,12 +80,3 @@ node_modules/
 .openclaw
 .env
 .codex
-
-# Docusaurus website
-/node_modules
-/build
-/.docusaurus
-.docusaurus/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*

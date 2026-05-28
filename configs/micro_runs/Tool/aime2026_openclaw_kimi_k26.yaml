@@ -16,8 +16,8 @@ agent:
       Do not skip the boxed format. The boxed answer must appear at the very end of your response and contain only the final answer, not explanations.
 
     rock_image: "tmlrgroup/alphadiana:v1"
-    rock_agent_config_path: "alphadiana/harness/openclaw/deploy/rock_agent_config.prebuilt.yaml"
-    openclaw_config_path: "alphadiana/harness/openclaw/deploy/openclaw.json"
+    rock_agent_config_path: "openclaw_deploy/rock_agent_config.prebuilt.yaml"
+    openclaw_config_path: "openclaw_deploy/openclaw.json"
     network_mode: "host"
     docker_host_ip: "host.docker.internal"
     rock_memory: "4g"

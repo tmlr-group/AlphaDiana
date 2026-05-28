@@ -1,0 +1,37 @@
+# OpenClaw native smoke for terminal-bench-2.
+# Requires:
+#   source scripts/activate.sh
+#   export TERMINAL_BENCH2_SMOKE_DIR=/path/to/staged-terminal-bench-smoke-root
+#   docker pull tmlrgroup/alphadiana:v1
+
+run_id: "terminal_bench2_openclaw_minimax_smoke"
+
+benchmark:
+  name: terminal_bench2
+  config:
+    tasks_dir: ${TERMINAL_BENCH2_SMOKE_DIR}
+    max_tasks: 1
+
+agent:
+  name: terminal_bench2_openclaw
+  version: "1.0"
+  config:
+    api_base: ${OPENAI_BASE_URL}
+    api_key: ${OPENAI_API_KEY}
+    model_name: ${OPENAI_MODEL_NAME}
+    runtime_source_image: "tmlrgroup/alphadiana:v1"
+    openclaw_bin: "openclaw"
+    onboard_timeout_sec: 180
+    solver_timeout_sec: 1800
+    timeout_sec: 900
+    test_timeout_sec: 1200
+
+sandbox: null
+
+scorer:
+  name: terminal_bench2
+
+max_concurrent: 1
+output_dir: "./results/terminal_bench2_openclaw_minimax_smoke"
+metadata:
+  notes: "OpenClaw in-container smoke for terminal-bench-2 on a staged single-task root via OPENAI_MODEL_NAME."

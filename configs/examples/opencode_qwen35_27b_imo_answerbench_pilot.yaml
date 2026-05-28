@@ -13,8 +13,8 @@ agent:
     timeout: 1800
     streaming: false
     tool_call: true
-    agent: "imo-answer"
-    agent_md_path: "alphadiana/context/opencode_imo_answer.md"
+    agent: "lean-math"
+    agent_md_path: "context/opencode_lean_math.md"
     system_prompt: |
       Solve efficiently and keep the response short.
       The final line must be $$\boxed{your answer here}$$.
@@ -30,6 +30,6 @@ scorer:
   name: imo_verify
 
 max_concurrent: 3
-output_dir: "./results/opencode_qwen35_27b_imo_answerbench_pilot"
+output_dir: "./results/opencode_minimax_imo_smoke"
 metadata:
   notes: "Qwen/Qwen3.5-27B x OpenRouter x IMO-AnswerBench 3-task pilot via opencode."

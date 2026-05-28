@@ -1,0 +1,49 @@
+# FULL RUN: SWE-bench Verified-Mini via `swebench_docker` in ZeroClaw mode.
+# Dataset: MariusHobbhahn/swe-bench-verified-mini (50 tasks).
+# For the upstream / leaderboard-aligned path, use the `swe_verified_mini.yaml`
+# campaign manifest with backend=official_swebench_verified instead.
+
+run_id: "full_swe_verified_mini_zeroclaw_qwen35_27b_logprobs"
+
+agent:
+  name: swebench_docker
+  version: "1.0"
+  config:
+    agent_type: zeroclaw
+    system_prompt: "You are a helpful assistant that can interact with a computer to solve tasks."
+    request_timeout: 3600
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 131072
+    capture_logprobs: true
+    top_logprobs: 20
+    output_dir: "./swebench_artifacts_zeroclaw_verified_mini"
+    env:
+      OPENAI_API_KEY: "EMPTY"
+      OPENAI_BASE_URL: "http://127.0.0.1:8011/v1"
+      OPENAI_MODEL_NAME: "Qwen/Qwen3.5-27B"
+      ZEROCLAW_TIMEOUT_SEC: "1800"
+      ZEROCLAW_PROMPT_PROFILE: "swebench"
+      ZEROCLAW_REQUIRE_PATCH: "true"
+      ZEROCLAW_MAX_TOOL_CALLS_WITHOUT_EDIT: "30"
+
+benchmark:
+  name: swe_bench
+  config:
+    dataset: "MariusHobbhahn/swe-bench-verified-mini"
+    split: test
+
+scorer:
+  name: swe_bench
+  config:
+    timeout: 3600
+    namespace: swebench
+    arch: x86_64
+
+max_concurrent: 10
+num_samples: 1
+output_dir: "./results/full_swe_verified_mini_zeroclaw_qwen35_27b_logprobs"
+strict_report: true
+strict_isolation: true
+metadata:
+  notes: "Full SWE-bench Verified-Mini ZeroClaw run on local Qwen3.5-27B vLLM with top-20 int16 logprob capture."

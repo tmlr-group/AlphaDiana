@@ -340,10 +340,9 @@ def check_openclaw_security() -> list[SecurityIssue]:
         ))
 
     # 也检查 rock_agent_config.yaml 中是否还是默认值
-    deploy_dir = Path(__file__).parent.parent / "alphadiana" / "harness" / "openclaw" / "deploy"
     _config_paths = [
-        deploy_dir / "rock_agent_config.yaml",
-        deploy_dir / "rock_agent_config.prebuilt.yaml",
+        Path(__file__).parent.parent / "openclaw_deploy" / "rock_agent_config.yaml",
+        Path(__file__).parent.parent / "openclaw_deploy" / "rock_agent_config.prebuilt.yaml",
     ]
     for cfg_path in _config_paths:
         if cfg_path.exists():

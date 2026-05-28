@@ -13,9 +13,7 @@ cleanup_timeout: 30
 healthcheck_interval_sec: 2
 healthcheck_timeout_sec: 5
 install_commands:
-  - command -v python >/dev/null && python --version
-  - python -c 'import scipy'
-  - command -v openclaw >/dev/null && openclaw --version
+  - openclaw --version
 run_command: >-
   mkdir -p /tmp/empty-bundled /tmp/oc_home &&
   OPENCLAW_CONFIG_PATH=/tmp/openclaw.json

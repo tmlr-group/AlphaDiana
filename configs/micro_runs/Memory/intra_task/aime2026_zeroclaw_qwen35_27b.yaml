@@ -6,14 +6,10 @@ agent:
   name: zeroclaw
   version: "0.6.9"
   config:
-    memory_scope: "intra_task"
-    persistent_memory: false
-    memory_enabled: true
-    strict_memory: true
     system_prompt: |
       You are an expert problem solver.
 
-      While reasoning, proactively use the memory tools (memory_store, memory_search) to save key intermediate findings or candidate eliminations so you can recall them later.
+      While reasoning, proactively use the memory tools (memory_store, memory_recall) to save key intermediate findings or candidate eliminations so you can recall them later.
 
       When you have reached your final answer, you MUST present it in the following format:
 
@@ -28,7 +24,7 @@ agent:
     provider_api_key: "${OPENAI_API_KEY}"
     temperature: 0.0
     top_p: 0.95
-    max_tokens: 32768
+    max_tokens: 131072
     request_timeout: 9300
     runtime_trace_mode: "full"
     enable_thinking: true
@@ -56,7 +52,7 @@ scorer:
   config:
     tolerance: 1e-6
 
-max_concurrent: 1
+max_concurrent: 5
 num_samples: 4
 task_retries: 2
 output_dir: "./results"

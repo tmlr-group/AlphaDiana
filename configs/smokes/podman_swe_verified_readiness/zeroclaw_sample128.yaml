@@ -28,7 +28,7 @@ benchmark:
     dataset: "SWE-bench/SWE-bench_Verified"
     split: "test"
     include_hints: false
-    taskset_path: "alphadiana/context/podman-swe-verified-readiness/tasksets/sample128.json"
+    taskset_path: "context/podman-swe-verified-readiness/tasksets/sample128.json"
     max_tasks: 2
 
 sandbox:
@@ -69,5 +69,5 @@ metadata:
   tier: "sample128"
   run_suffix: "zeroclaw_sample128"
   max_output_tokens: 131072
-  taskset_path: "alphadiana/context/podman-swe-verified-readiness/tasksets/sample128.json"
+  taskset_path: "context/podman-swe-verified-readiness/tasksets/sample128.json"
   support_scope: "SWE-bench Verified selected-task Podman readiness only"

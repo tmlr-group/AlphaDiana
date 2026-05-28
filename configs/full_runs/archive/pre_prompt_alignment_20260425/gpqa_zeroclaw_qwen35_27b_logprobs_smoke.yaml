@@ -1,0 +1,52 @@
+# Phase 11: ZeroClaw 1-task GPQA-Diamond smoke for shared top-20 logprob capture.
+
+run_id: "phase11_zeroclaw_gpqa_diamond_qwen35_27b_logprobs_smoke"
+
+agent:
+  name: zeroclaw
+  version: "0.6.9"
+  config:
+    system_prompt: |
+      You are solving expert-level science multiple-choice questions.
+      Read the question carefully, reason step by step, and choose the single best option.
+      Your final answer must be on the last line in exactly one of these forms:
+      $$\boxed{A}$$
+      $$\boxed{B}$$
+      $$\boxed{C}$$
+      $$\boxed{D}$$
+    model: "Qwen/Qwen3.5-27B"
+    api_base: "http://127.0.0.1:8011/v1"
+    api_key: "EMPTY"
+    provider_api_base: "http://127.0.0.1:8011/v1"
+    provider_api_key: "EMPTY"
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 131072
+    request_timeout: 3600
+    runtime_trace_mode: "all"
+    capture_logprobs: true
+    top_logprobs: 20
+    max_tool_iterations: 100
+    max_actions_per_hour: 200
+    rock_image: "zeroclaw-reasoning:0.6.9"
+    rock_memory: "4g"
+    rock_cpus: 1
+    rock_startup_timeout: 600
+    admin_base_url: "${ROCK_BASE_URL}"
+    proxy_base_url: "${ROCK_PROXY_URL}"
+
+benchmark:
+  name: gpqa_diamond
+  config:
+    dataset: "fingertap/GPQA-Diamond"
+    split: "test"
+    seed: 42
+    max_tasks: 1
+
+scorer:
+  name: exact_match
+  config: {}
+
+max_concurrent: 10
+num_samples: 1
+output_dir: "./results"

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from alphadiana.analysis.result_reader import RunBundle, load_run_bundle, resolve_run_relative_path
-from alphadiana.analysis.io.status import VALID_SCORE_STATUS, infer_score_status
+from alphadiana.results.status import VALID_SCORE_STATUS, infer_score_status
 
 CANONICAL_ACTIONS = ("plan", "reason", "tool_use", "verify", "recover", "answer")
 ACTION_PRIORITY = ("answer", "recover", "verify", "tool_use", "plan", "reason")
@@ -36,7 +36,7 @@ PRIMARY_CORPORA = {
 DIRECTLLM_CANDIDATES = (
     "phase9_directllm_gpqa_diamond_qwen35_27b_logprobs",
     "hf-alphadiana-benchmark-results/pilot_run/pilot_20260418_qwen35_27b_gpqa_diamond_directllm_t3",
-    "/path/to/xxx/hub/datasets--T-MARS--alphadiana-benchmark-results/snapshots/751f852c58f6e6f9ba7b0242817ed458fa30572f/pilot_run/pilot_20260418_qwen35_27b_gpqa_diamond_directllm_t3",
+    "/path/to/models/hub/datasets--T-MARS--alphadiana-benchmark-results/snapshots/751f852c58f6e6f9ba7b0242817ed458fa30572f/pilot_run/pilot_20260418_qwen35_27b_gpqa_diamond_directllm_t3",
 )
 BACKUP_EXCLUDE_PREFIX = "bkp_gpqa_20260425"
 

@@ -1,0 +1,38 @@
+# SMOKE ONLY: deterministic 1-task config for path validation.
+# Full benchmark config: configs/full_runs/p25_full_terminal_bench2_opencode_minimax.yaml.
+#
+# OpenCode native smoke for terminal-bench-2.
+# Requires:
+#   export TERMINAL_BENCH2_SMOKE_DIR=/path/to/staged-terminal-bench-smoke-root
+#   docker image inspect alphadiana/tb2-opencode-controller:latest >/dev/null
+
+run_id: "terminal_bench2_opencode_minimax_smoke"
+
+benchmark:
+  name: terminal_bench2
+  config:
+    tasks_dir: ${TERMINAL_BENCH2_SMOKE_DIR}
+    max_tasks: 1
+
+agent:
+  name: terminal_bench2_opencode
+  version: "1.0"
+  config:
+    model: "custom/${OPENAI_MODEL_NAME}"
+    model_name: ${OPENAI_MODEL_NAME}
+    api_base: ${OPENAI_BASE_URL}
+    api_key: ${OPENAI_API_KEY}
+    runtime_source_image: "alphadiana/tb2-opencode-controller:latest"
+    tool_call: true
+    streaming: false
+    solver_timeout_sec: 1800
+    timeout_sec: 900
+    test_timeout_sec: 1200
+
+scorer:
+  name: terminal_bench2
+
+max_concurrent: 1
+output_dir: "./results/terminal_bench2_opencode_minimax_smoke"
+metadata:
+  notes: "OpenCode in-container smoke for terminal-bench-2 on a staged single-task root via OPENAI_MODEL_NAME."

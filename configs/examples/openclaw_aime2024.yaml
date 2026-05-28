@@ -1,0 +1,45 @@
+run_id: "openclaw_${OPENAI_MODEL_NAME}_aime_2024"  # Unique identifier for this evaluation run
+
+agent:
+  name: openclaw                # Agent type: openclaw
+  version: "2026.3.20"          # OpenClaw version
+  config:
+    rock_image: "tmlrgroup/alphadiana:v1"
+    rock_agent_config_path: "openclaw_deploy/rock_agent_config.prebuilt.yaml"
+    openclaw_config_path: "openclaw_deploy/openclaw.json"  # Exposed through the ROCK proxy
+    rock_memory: "4g"           # Memory per sandbox container
+    rock_cpus: 1                # CPUs per sandbox container
+    rock_startup_timeout: 600   # Sandbox startup timeout in seconds
+    model: openclaw             # Model name as seen by the gateway (always "openclaw")
+    gateway_token: "OPENCLAW"   # Must match OPENCLAW_GATEWAY_TOKEN in rock_agent_config.yaml
+    max_tokens: 65536           # Maximum tokens per response
+    request_timeout: 1800       # Request timeout in seconds (increase for complex tasks)
+    max_attempts: 5             # Max retry attempts per task on failure
+    system_prompt: |
+      You are an expert problem solver. When given a problem, actively use your available tools and skills throughout your reasoning process. Do not attempt to solve problems purely in your head when tools can help. Use code execution, search, or any other available capabilities to verify intermediate steps, explore approaches, and confirm your final answer.
+
+      When you have reached your final answer, you MUST present it in the following format:
+
+      $$\boxed{your answer here}$$
+
+      Do not skip the boxed format. The boxed answer must appear at the very end of your response and contain only the final answer, not explanations.
+
+benchmark:
+  name: aime                    # Benchmark name (aime, math, etc.)
+  config:
+    dataset: "HuggingFaceH4/aime_2024"  # HuggingFace dataset identifier
+    split: "train"              # Dataset split to evaluate on
+
+sandbox: null                   # OpenClaw already runs inside ROCK; no extra sandbox needed
+
+scorer:
+  name: math_verify             # Scorer type for answer verification
+  config:
+    tolerance: 1e-6             # Numerical tolerance for math answer comparison
+
+max_concurrent: 1               # Number of tasks to run in parallel
+output_dir: "./results"         # Directory for output JSONL files
+metadata:
+  author: "zjk"                 # Author of this evaluation run
+  gpu: "A800"                   # GPU used for inference
+  notes: "OpenClaw + Qwen3-8B on AIME 2024"  # Free-form notes
