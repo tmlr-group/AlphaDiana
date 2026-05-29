@@ -1,0 +1,52 @@
+# Experiment: MMMU-Pro vision × OpenCode × google/gemma-4-31B-it
+# Parameter contract: T=0.0, K=1, top_p=0.95, max_tokens=131072,
+# max_concurrent=4, timeout=3600.
+
+run_id: "mmmu_pro_vision_opencode_gemma_4_31b_it_cell"
+
+agent:
+  name: opencode
+  version: "1.3.2"
+  config:
+    model: "custom/google/gemma-4-31B-it"
+    model_name: "google/gemma-4-31B-it"
+    api_base: "http://127.0.0.1:8011/v1"
+    api_key: "EMPTY"
+    controller_mode: "docker"
+    controller_network: "host"
+    controller_image: "alphadiana/tb2-opencode-controller:latest"
+    timeout: 3600
+    streaming: true
+    tool_call: true
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 131072
+    enable_thinking: true
+    capture_logprobs: true
+    top_logprobs: 20
+    system_prompt: |
+      You are an expert at multimodal multiple-choice reasoning.
+      Carefully analyze any provided images along with the question text and options.
+      Think through the problem step by step before selecting your answer.
+      Respond with the final answer on the last line as:
+      $$\boxed{X}$$
+      where X is the single correct option letter.
+
+benchmark:
+  name: mmmu_pro
+  config:
+    dataset: "MMMU/MMMU_Pro"
+    data_config: "vision"
+    split: "test"
+
+scorer:
+  name: exact_match
+  config: {}
+
+max_concurrent: 4
+num_samples: 1
+output_dir: "./results"
+strict_report: true
+strict_isolation: true
+metadata:
+  experiment: "mmmu_pro_vision-opencode-gemma-4-31b-it"

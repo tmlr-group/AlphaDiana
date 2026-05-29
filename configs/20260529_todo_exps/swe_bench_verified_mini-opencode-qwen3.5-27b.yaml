@@ -1,0 +1,70 @@
+# Experiment: SWE-Bench Verified Mini × OpenCode × Qwen/Qwen3.5-27B
+# Parameter contract: T=0.0, K=1, top_p=0.95, max_tokens=131072,
+# max_concurrent=4, timeout=3600.
+
+run_id: "swe_bench_verified_mini_opencode_qwen3_5_27b_cell"
+
+agent:
+  name: opencode
+  version: "1.3.2"
+  config:
+    runtime: "swebench_container"
+    model: "custom/Qwen/Qwen3.5-27B"
+    model_name: "Qwen/Qwen3.5-27B"
+    api_base: "http://host.docker.internal:8011/v1"
+    api_key: "EMPTY"
+    tool_call: true
+    permission:
+      edit: "deny"
+      bash: "allow"
+    timeout: 3600
+    streaming: true
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 131072
+    enable_thinking: true
+    capture_logprobs: true
+    top_logprobs: 20
+    system_prompt: |
+      You are an expert software engineer. You will be given a GitHub issue
+      description for a Python repository. Fix the issue with the minimal
+      necessary code changes.
+
+      Guidelines:
+      - Use file reading and bash tools to inspect and modify the repo.
+      - Avoid the edit tool; use bash-based edits instead.
+      - Do not modify test files.
+      - Format your final answer as a unified diff starting with "diff --git".
+
+benchmark:
+  name: swe_bench
+  config:
+    dataset: "MariusHobbhahn/swe-bench-verified-mini"
+    split: "test"
+    include_hints: false
+
+sandbox:
+  name: swebench_container
+  config:
+    namespace: "swebench"
+    force_rebuild: false
+    keep_container: false
+    keep_logs: true
+    log_dir: "./logs/swebench_container"
+    gateway_host: "127.0.0.1"
+    gateway_port: 8080
+
+scorer:
+  name: swe_bench
+  config:
+    timeout: 3600
+    cache_level: "env"
+    namespace: "swebench"
+    force_rebuild: false
+    log_dir: "./swe_bench_logs"
+
+max_concurrent: 4
+num_samples: 1
+output_dir: "./results"
+metadata:
+  experiment: "swe_bench_verified_mini-opencode-qwen3.5-27b"

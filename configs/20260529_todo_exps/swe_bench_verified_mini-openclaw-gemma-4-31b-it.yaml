@@ -1,0 +1,76 @@
+# Experiment: SWE-Bench Verified Mini × OpenClaw × google/gemma-4-31B-it
+# Parameter contract: T=0.0, K=1, top_p=0.95, max_tokens=131072,
+# max_concurrent=4, request_timeout=3600.
+
+run_id: "swe_bench_verified_mini_openclaw_gemma_4_31b_it_cell"
+
+agent:
+  name: openclaw
+  version: "2026.3.20"
+  config:
+    runtime: "swebench_container"
+    openclaw_config_path: "openclaw_deploy/openclaw_swe_bench.runtime.json"
+    container_gateway_host: "127.0.0.1"
+    container_gateway_port: 8080
+    gateway_token: "${OPENCLAW_GATEWAY_TOKEN:-OPENCLAW}"
+    model: "openclaw"
+    OPENAI_BASE_URL: "http://host.docker.internal:8011/v1"
+    OPENAI_API_KEY: "EMPTY"
+    OPENAI_MODEL_NAME: "google/gemma-4-31B-it"
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 131072
+    stream: true
+    request_timeout: 3600
+    stream_idle_timeout: 3600
+    stream_total_timeout: 3600
+    max_attempts: 3
+    enable_thinking: true
+    capture_logprobs: true
+    top_logprobs: 20
+    system_prompt: |
+      You are an expert software engineer. You will be given a GitHub issue description for a Python repository.
+      Your task is to produce a minimal unified diff patch that resolves the issue.
+
+      Use your code execution tools inside the provided SWE-bench task container to inspect and modify the repository.
+      Make the smallest correct change needed; avoid unrelated refactoring.
+
+      Format your final answer as:
+      $$\boxed{
+      <your unified diff patch here>
+      }$$
+
+      The boxed content must contain only the patch, nothing else.
+
+benchmark:
+  name: swe_bench
+  config:
+    dataset: "MariusHobbhahn/swe-bench-verified-mini"
+    split: "test"
+    include_hints: false
+
+sandbox:
+  name: swebench_container
+  config:
+    namespace: "swebench"
+    force_rebuild: false
+    keep_container: false
+    keep_logs: true
+    log_dir: "./logs/swebench_container"
+    gateway_host: "127.0.0.1"
+    gateway_port: 8080
+
+scorer:
+  name: swe_bench
+  config:
+    timeout: 3600
+    cache_level: "env"
+    namespace: "swebench"
+    force_rebuild: false
+    log_dir: "./swe_bench_logs"
+
+max_concurrent: 4
+num_samples: 1
+output_dir: "./results"
+metadata:
+  experiment: "swe_bench_verified_mini-openclaw-gemma-4-31b-it"

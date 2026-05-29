@@ -1,0 +1,43 @@
+# Experiment: Terminal-Bench V2 × OpenClaw × google/gemma-4-31B-it
+# Parameter contract: T=0.0, K=1, top_p=0.95, max_tokens=131072,
+# max_concurrent=4, request_timeout=3600.
+
+run_id: "terminal_bench2_opencode_gemma_4_31b_it_cell"
+
+benchmark:
+  name: terminal_bench2
+  config:
+    tasks_dir: ${TERMINAL_BENCH2_DIR}
+
+agent:
+  name: terminal_bench2_opencode
+  version: "1.3.2"
+  config:
+    controller_mode: docker
+    model: "google/gemma-4-31B-it"
+    model_name: "google/gemma-4-31B-it"
+    api_base: ${OPENAI_BASE_URL}
+    api_key: ${OPENAI_API_KEY}
+    controller_image: "${TB2_OPENCODE_RUNTIME_IMAGE:-alphadiana/tb2-opencode-controller:latest}"
+    logs_base_dir: "${ALPHADIANA_TB2_LOGS_DIR}"
+    controller_network: "host"
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 131072
+    request_timeout: 3600
+    stream_idle_timeout: 3600
+    stream_total_timeout: 3600
+    enable_thinking: true
+    solver_timeout_sec: 3600
+    timeout_sec: 900
+    test_timeout_sec: 1200
+
+scorer:
+  name: terminal_bench2
+
+max_concurrent: 4
+num_samples: 1
+output_dir: "${ALPHADIANA_TB2_OUTPUT_DIR:-./results/terminal_bench2_opencode_gemma_4_31b_it}"
+metadata:
+  experiment: "terminal_bench2-opencode-gemma-4-31b-it"
+  container_engine: "podman"

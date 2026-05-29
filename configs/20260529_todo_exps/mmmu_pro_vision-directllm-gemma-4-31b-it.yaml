@@ -1,0 +1,53 @@
+# Experiment: MMMU-Pro vision × DirectLLM × google/gemma-4-31B-it
+# Parameter contract: T=0.0, K=1, top_p=0.95, max_tokens=131072,
+# max_concurrent=4, request_timeout=3600.
+# Inherits from configs/full_runs/mmmu_pro_directllm_gemma4_31b_logprobs.yaml
+# and applies the contract overrides.
+
+run_id: "mmmu_pro_vision_directllm_gemma_4_31b_it_cell"
+
+agent:
+  name: direct_llm
+  version: "1.0"
+  config:
+    model: "google/gemma-4-31B-it"
+    api_base: "http://127.0.0.1:8011/v1"
+    api_key: "EMPTY"
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 131072
+    request_timeout: 3600
+    stream: true
+    capture_logprobs: true
+    top_logprobs: 20
+    logprobs_format: "int16"
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: true
+    system_prompt: |
+      You are an expert at multimodal multiple-choice reasoning.
+      Carefully analyze any provided images along with the question text and options.
+      Think through the problem step by step before selecting your answer.
+      Respond with the final answer on the last line as:
+      $$\boxed{X}$$
+      where X is the single correct option letter.
+
+benchmark:
+  name: mmmu_pro
+  config:
+    dataset: "MMMU/MMMU_Pro"
+    data_config: "vision"
+    split: "test"
+
+scorer:
+  name: exact_match
+  config: {}
+
+max_concurrent: 4
+num_samples: 1
+output_dir: "./results"
+strict_report: true
+strict_isolation: true
+metadata:
+  experiment: "mmmu_pro_vision-directllm-gemma-4-31b-it"
+  notes: "Per-cell config aligned with the 2026-05-28 parameter contract."

@@ -1,0 +1,41 @@
+# Experiment: Terminal-Bench V2 × DirectLLM × google/gemma-4-31B-it
+# Parameter contract: T=0.0, K=1, top_p=0.95, max_tokens=131072,
+# max_concurrent=4, request_timeout=3600.
+#
+# Uses the shared `terminal_bench2_docker` control-side harness from
+# alphadiana.agent.terminal_bench2_docker — model serves via the
+# host vLLM through Docker bridge networking from inside each TB2
+# task container.
+
+run_id: "terminal_bench2_directllm_gemma_4_31b_it_cell"
+
+benchmark:
+  name: terminal_bench2
+  config:
+    tasks_dir: ${TERMINAL_BENCH2_DIR}
+
+agent:
+  name: terminal_bench2_docker
+  version: "1.0"
+  config:
+    model: "google/gemma-4-31B-it"
+    api_base: "http://127.0.0.1:8011/v1"
+    api_key: "EMPTY"
+    max_rounds: 8
+    max_tokens: 131072
+    timeout_sec: 3600
+    test_timeout_sec: 1200
+    temperature: 0.0
+    top_p: 0.95
+    streaming: true
+    enable_thinking: true
+
+scorer:
+  name: terminal_bench2
+
+max_concurrent: 4
+num_samples: 1
+output_dir: "${ALPHADIANA_TB2_OUTPUT_DIR:-./results/terminal_bench2_directllm_gemma_4_31b_it}"
+metadata:
+  experiment: "terminal_bench2-directllm-gemma-4-31b-it"
+  notes: "DirectLLM × TB2 via the terminal_bench2_docker control-side harness."

@@ -60,6 +60,8 @@ dump.rdb
 !/configs/smokes/podman_scale_readiness/**
 !/configs/smokes/podman_mmmu_pro_readiness/
 !/configs/smokes/podman_mmmu_pro_readiness/**
+!/configs/20260529_todo_exps/
+!/configs/20260529_todo_exps/**
 /artifacts/
 
 # external_benchmark runtime artifacts
