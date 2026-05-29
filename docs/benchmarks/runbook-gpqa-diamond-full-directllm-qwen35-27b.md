@@ -410,7 +410,7 @@ $WORK_ROOT/logs/vllm_qwen3.5_27b.log  # vllm server log
   (128K output budget).
 - Does not cover OpenRouter pilots, Kimi K2.6, the full
   `Idavidrein/gpqa` superset, or any non-loopback endpoint.
-- For AIME 2024, HLE, or MMMU-Pro, use their dedicated runbooks:
-  - [`runbook-aime-2024-full-directllm-qwen35-27b.md`](runbook-aime-2024-full-directllm-qwen35-27b.md)
+- For AIME 2026, HLE, or MMMU-Pro, use their dedicated runbooks:
+  - [`runbook-aime-2026-full-directllm-qwen35-27b.md`](runbook-aime-2026-full-directllm-qwen35-27b.md)
   - [`runbook-hle-full-directllm-qwen35-27b.md`](runbook-hle-full-directllm-qwen35-27b.md)
   - [`runbook-mmmu-pro-full-directllm-qwen35-27b.md`](runbook-mmmu-pro-full-directllm-qwen35-27b.md)

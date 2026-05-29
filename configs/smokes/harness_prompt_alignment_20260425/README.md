@@ -7,7 +7,7 @@ Active 3-task local-Qwen smoke matrix for OpenClaw and ZeroClaw.
 | Dimension | Values |
 |---|---|
 | Agents | `openclaw`, `zeroclaw` |
-| Benchmarks | AIME 2024, IMO-AnswerBench, GPQA-Diamond, HLE multiple-choice, MMMU-Pro vision |
+| Benchmarks | AIME 2026, IMO-AnswerBench, GPQA-Diamond, HLE multiple-choice, MMMU-Pro vision |
 | Token caps | `trunc5k` (`max_tokens: 5120`), `long64k` (`max_tokens: 65536`) |
 | Samples | `num_samples: 1` |
 | Tasks | `benchmark.config.max_tasks: 3` |

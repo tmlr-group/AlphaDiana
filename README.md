@@ -154,7 +154,7 @@ AlphaDiana is configured with a YAML file. At a high level, you specify:
 Example:
 
 ```yaml
-run_id: "openclaw-qwen3-8b-aime2024-001"
+run_id: "openclaw-qwen3-8b-aime2026-001"
 
 agent:
   name: openclaw
@@ -169,7 +169,7 @@ agent:
 benchmark:
   name: aime
   config:
-    dataset: "HuggingFaceH4/aime_2024"
+    dataset: "MathArena/aime_2026"
     split: "train"
 
 scorer:
@@ -190,7 +190,7 @@ Ready-to-run examples are provided in [`configs/examples/`](configs/examples/).
 The recommended starting point is the **single-sandbox** configuration. In this mode, AlphaDiana automatically creates a ROCK sandbox, runs the evaluation, and removes the sandbox afterward.
 
 ```bash
-alphadiana run configs/examples/openclaw_aime2024.yaml
+alphadiana run configs/examples/openclaw_aime2026.yaml
 ```
 
 This configuration uses one sandbox by default with `4g` memory and `1` CPU.
@@ -204,7 +204,7 @@ max_concurrent: 4
 A multi-sandbox example is provided in:
 
 ```text
-configs/examples/openclaw_aime2024_multisandbox.yaml
+configs/examples/openclaw_aime2026_multisandbox.yaml
 ```
 
 ### Run a ZeroClaw agent
@@ -333,13 +333,13 @@ results/<run_id>.jsonl
 
 ## Results
 
-We evaluate agentic reasoning on **AIME 2024, 2025, and 2026** using two backbone models: **Qwen2.5-14B-Instruct** and **GLM-5**. Each configuration is compared under a direct LLM baseline and the OpenClaw agent, with **avg@32** and **pass@32** as evaluation metrics (32 samples per problem).
+We evaluate agentic reasoning on **AIME 2026, 2025, and 2026** using two backbone models: **Qwen2.5-14B-Instruct** and **GLM-5**. Each configuration is compared under a direct LLM baseline and the OpenClaw agent, with **avg@32** and **pass@32** as evaluation metrics (32 samples per problem).
 
 **Qwen2.5-14B-Instruct**
 
 | Benchmark | Avg@32 (Base) | Avg@32 (OpenClaw) | Pass@32 (Base) | Pass@32 (OpenClaw) |
 |-----------|--------------|-------------------|---------------|-------------------|
-| AIME 2024 | 0.1521 | 0.1271 | 0.4333 | 0.4000 |
+| AIME 2026 | 0.1521 | 0.1271 | 0.4333 | 0.4000 |
 | AIME 2025 | 0.1229 | 0.1469 | 0.4000 | 0.4333 |
 | AIME 2026 | 0.1115 | 0.1250 | 0.4333 | 0.4333 |
 
@@ -347,7 +347,7 @@ We evaluate agentic reasoning on **AIME 2024, 2025, and 2026** using two backbon
 
 | Benchmark | Avg@32 (Base) | Avg@32 (OpenClaw) | Pass@32 (Base) | Pass@32 (OpenClaw) |
 |-----------|--------------|-------------------|---------------|-------------------|
-| AIME 2024 | 0.9000 | 0.8300 | 0.9330 | 1.0000 |
+| AIME 2026 | 0.9000 | 0.8300 | 0.9330 | 1.0000 |
 | AIME 2025 | 0.6300 | 0.7600 | 0.9300 | 1.0000 |
 | AIME 2026 | 0.5719 | 0.3896 | 0.9000 | 0.9667 |
 

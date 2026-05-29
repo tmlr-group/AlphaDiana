@@ -189,7 +189,7 @@ class TestFix5ExampleYaml:
 
     @pytest.fixture(autouse=True)
     def _check_yaml_exists(self):
-        self.yaml_path = Path("configs/examples/openclaw_aime2024.yaml")
+        self.yaml_path = Path("configs/examples/openclaw_aime2026.yaml")
         if not self.yaml_path.exists():
             pytest.skip("Example YAML not found")
 
@@ -425,7 +425,7 @@ class TestFix10TimeoutDocs:
 
     @pytest.fixture(autouse=True)
     def _check_yaml_exists(self):
-        self.yaml_path = Path("configs/examples/openclaw_aime2024.yaml")
+        self.yaml_path = Path("configs/examples/openclaw_aime2026.yaml")
         if not self.yaml_path.exists():
             pytest.skip("Example YAML not found")
 

@@ -14,7 +14,7 @@ class AIMEBenchmark(Benchmark):
     """Loads AIME competition problems. Numeric answers.
 
     Config keys:
-        dataset: HuggingFace dataset path (required, e.g. "HuggingFaceH4/aime_2024")
+        dataset: HuggingFace dataset path (required, e.g. "MathArena/aime_2026")
         data_config: Dataset config name for multi-config datasets (e.g. "AIME2025-I")
         split: Dataset split (default: "train")
         problem_field: Column name for problem text (default: "problem")
@@ -40,7 +40,7 @@ class AIMEBenchmark(Benchmark):
         if not dataset_path:
             raise ValueError(
                 "AIME benchmark requires 'dataset' in config "
-                "(e.g. 'HuggingFaceH4/aime_2024')"
+                "(e.g. 'MathArena/aime_2026')"
             )
 
         split = config.get("split", "train")

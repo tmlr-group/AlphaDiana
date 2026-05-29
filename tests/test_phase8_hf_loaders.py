@@ -360,7 +360,7 @@ def test_aime_uses_problem_idx_when_present(mock_load):
     ])
     from alphadiana.benchmark.aime import AIMEBenchmark
 
-    task = AIMEBenchmark().load_tasks({"dataset": "HuggingFaceH4/aime_2024"})[0]
+    task = AIMEBenchmark().load_tasks({"dataset": "MathArena/aime_2026"})[0]
 
     assert task.task_id == "aime_7"
 
@@ -370,7 +370,7 @@ def test_aime_max_tasks_zero_returns_empty(mock_load):
     mock_load.return_value = _make_mock_dataset([{"problem": "P", "answer": "A", "problem_idx": 1}])
     from alphadiana.benchmark.aime import AIMEBenchmark
 
-    assert AIMEBenchmark().load_tasks({"dataset": "HuggingFaceH4/aime_2024", "max_tasks": 0}) == []
+    assert AIMEBenchmark().load_tasks({"dataset": "MathArena/aime_2026", "max_tasks": 0}) == []
 
 
 @patch("alphadiana.benchmark.aime.load_dataset_with_retry")

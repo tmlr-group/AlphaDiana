@@ -747,7 +747,7 @@ class TestAIMEDataConfig:
         ]
 
         with patch("datasets.load_dataset", return_value=mock_dataset) as mock_ld:
-            config = {"dataset": "HuggingFaceH4/aime_2024", "split": "train"}
+            config = {"dataset": "MathArena/aime_2026", "split": "train"}
             tasks = bench.load_tasks(config)
 
         call_args = mock_ld.call_args

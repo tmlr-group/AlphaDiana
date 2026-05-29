@@ -33,7 +33,7 @@ agent:
 benchmark:
   name: aime
   config:
-    dataset: HuggingFaceH4/aime_2024
+    dataset: MathArena/aime_2026
     split: train
     max_tasks: 3
 sandbox: null
@@ -47,6 +47,6 @@ output_dir: ./results
 strict_report: true
 strict_isolation: true
 metadata:
-  notes: 3-task AIME 2024 zeroclaw smoke with thinking on, long64k, logprob capture.
+  notes: 3-task AIME 2026 zeroclaw smoke with thinking on, long64k, logprob capture.
   smoke_setting: long64k
   expected_task_count: 3

@@ -184,7 +184,7 @@ class TestOpenClawAgentSingleTask:
 
 
 # ---------------------------------------------------------------------------
-# 5.3 Test with the real first AIME 2024 problem
+# 5.3 Test with the real first AIME 2026 problem
 # ---------------------------------------------------------------------------
 
 @pytest.mark.skipif(
@@ -192,7 +192,7 @@ class TestOpenClawAgentSingleTask:
     reason="OPENCLAW_SANDBOX_ID not set."
 )
 class TestOpenClawOnRealAIMETask:
-    """Test the full pipeline with a real AIME 2024 problem."""
+    """Test the full pipeline with a real AIME 2026 problem."""
 
     @pytest.fixture
     def agent(self):
@@ -209,13 +209,13 @@ class TestOpenClawOnRealAIMETask:
         return a
 
     def test_solve_first_aime_task(self, agent):
-        """Load and solve the first AIME 2024 problem to validate the full pipeline."""
+        """Load and solve the first AIME 2026 problem to validate the full pipeline."""
         from alphadiana.benchmark.aime import AIMEBenchmark
         from alphadiana.scorer.numeric import NumericScorer
 
         benchmark = AIMEBenchmark()
         tasks = benchmark.load_tasks({
-            "dataset": "HuggingFaceH4/aime_2024",
+            "dataset": "MathArena/aime_2026",
             "split": "train",
         })
         assert len(tasks) > 0

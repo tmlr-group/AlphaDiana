@@ -454,8 +454,8 @@ $WORK_ROOT/logs/vllm_qwen3.5_27b.log  # vllm server log
 - Does not cover the multimodal validation history (see
   [`docs/benchmarks/hle.md`](hle.md)), OpenRouter VL pilots, ZeroClaw
   sandbox path, or any non-loopback endpoint.
-- For AIME 2024, GPQA-Diamond, or MMMU-Pro, use their dedicated
+- For AIME 2026, GPQA-Diamond, or MMMU-Pro, use their dedicated
   runbooks:
-  - [`runbook-aime-2024-full-directllm-qwen35-27b.md`](runbook-aime-2024-full-directllm-qwen35-27b.md)
+  - [`runbook-aime-2026-full-directllm-qwen35-27b.md`](runbook-aime-2026-full-directllm-qwen35-27b.md)
   - [`runbook-gpqa-diamond-full-directllm-qwen35-27b.md`](runbook-gpqa-diamond-full-directllm-qwen35-27b.md)
   - [`runbook-mmmu-pro-full-directllm-qwen35-27b.md`](runbook-mmmu-pro-full-directllm-qwen35-27b.md)

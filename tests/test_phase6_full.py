@@ -1,4 +1,4 @@
-"""Phase 6: run the full AIME 2024 evaluation and obtain accuracy
+"""Phase 6: run the full AIME 2026 evaluation and obtain accuracy
 
 Checks:
 - All 30 problems complete (completed=30, failed=0)
@@ -12,7 +12,7 @@ Requires:
   - OPENCLAW_SANDBOX_ID environment variable
 
 You can also run it directly with the CLI:
-  alphadiana run configs/examples/openclaw_aime2024.yaml
+  alphadiana run configs/examples/openclaw_aime2026.yaml
 
 Run these tests with pytest -m integration.
 """
@@ -41,17 +41,17 @@ def _get_openclaw_api_base() -> str:
     reason="OPENCLAW_SANDBOX_ID not set."
 )
 class TestFullAIME2024Evaluation:
-    """Run the full AIME 2024 evaluation."""
+    """Run the full AIME 2026 evaluation."""
 
     @pytest.fixture(scope="class")
     def run_result(self, tmp_path_factory):
-        """Run the full AIME 2024 evaluation and return (summary, result_store, output_dir)."""
+        """Run the full AIME 2026 evaluation and return (summary, result_store, output_dir)."""
         from alphadiana.config.experiment_config import ExperimentConfig
         from alphadiana.runner.runner import Runner
 
         output_dir = str(tmp_path_factory.mktemp("results"))
         config = ExperimentConfig(
-            run_id="test-openclaw-qwen3-8b-aime2024",
+            run_id="test-openclaw-qwen3-8b-aime2026",
             agent_name="openclaw",
             agent_version="latest",
             agent_config={
@@ -63,7 +63,7 @@ class TestFullAIME2024Evaluation:
             },
             benchmark_name="aime",
             benchmark_config={
-                "dataset": "HuggingFaceH4/aime_2024",
+                "dataset": "MathArena/aime_2026",
                 "split": "train",
             },
             scorer_name="numeric",
@@ -92,7 +92,7 @@ class TestFullAIME2024Evaluation:
         """Accuracy stays within a reasonable range (0.0 - 1.0)."""
         summary, _, _ = run_result
         assert 0.0 <= summary.accuracy <= 1.0
-        print(f"\n=== AIME 2024 Results ===")
+        print(f"\n=== AIME 2026 Results ===")
         print(f"Accuracy: {summary.accuracy:.4f} ({int(summary.accuracy * 30)}/30)")
         print(f"Mean Score: {summary.mean_score:.4f}")
         print(f"Mean Wall Time: {summary.mean_wall_time_sec:.1f}s")
@@ -152,7 +152,7 @@ class TestFullAIME2024Evaluation:
         gen = ReportGenerator()
 
         config = ExperimentConfig(
-            run_id="test-openclaw-qwen3-8b-aime2024",
+            run_id="test-openclaw-qwen3-8b-aime2026",
             agent_name="openclaw",
             agent_version="latest",
             benchmark_name="aime",

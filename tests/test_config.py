@@ -24,7 +24,7 @@ class TestExperimentConfigFromYAML:
                 model: deepseek-r1
                 temperature: 0.0
             benchmark:
-              name: aime2024
+              name: aime2026
               config:
                 split: test
             sandbox: null
@@ -47,7 +47,7 @@ class TestExperimentConfigFromYAML:
         assert config.agent_version == "v0.3.1"
         assert config.agent_config["model"] == "deepseek-r1"
         assert config.agent_config["temperature"] == 0.0
-        assert config.benchmark_name == "aime2024"
+        assert config.benchmark_name == "aime2026"
         assert config.benchmark_config["split"] == "test"
         assert config.sandbox_name is None
         assert config.scorer_name == "numeric"
@@ -199,7 +199,7 @@ class TestConfigValidator:
         config = ExperimentConfig(
             agent_name="openclaw",
             agent_version="v0.3.1",
-            benchmark_name="aime2024",
+            benchmark_name="aime2026",
             scorer_name="numeric",
             agent_config={"api_base": "http://localhost:8000/v1"},
         )
@@ -212,7 +212,7 @@ class TestConfigValidator:
         config = ExperimentConfig(
             agent_name="",
             agent_version="v0.3.1",
-            benchmark_name="aime2024",
+            benchmark_name="aime2026",
             scorer_name="numeric",
         )
         validator = ConfigValidator()
@@ -224,7 +224,7 @@ class TestConfigValidator:
         config = ExperimentConfig(
             agent_name="openclaw",
             agent_version="",
-            benchmark_name="aime2024",
+            benchmark_name="aime2026",
             scorer_name="numeric",
         )
         validator = ConfigValidator()
@@ -236,7 +236,7 @@ class TestConfigValidator:
         config = ExperimentConfig(
             agent_name="openclaw",
             agent_version="latest",
-            benchmark_name="aime2024",
+            benchmark_name="aime2026",
             scorer_name="numeric",
         )
         validator = ConfigValidator()

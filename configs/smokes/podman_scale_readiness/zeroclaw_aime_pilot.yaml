@@ -23,7 +23,7 @@ agent:
 benchmark:
   name: aime
   config:
-    dataset: "HuggingFaceH4/aime_2024"
+    dataset: "MathArena/aime_2026"
     split: "train"
     max_tasks: 3
 

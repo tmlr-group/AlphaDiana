@@ -1,4 +1,4 @@
-"""Generate local OpenClaw/OpenRouter configs for AIME 2024 and optionally run them."""
+"""Generate local OpenClaw/OpenRouter configs for AIME 2026 and optionally run them."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from alphadiana.utils.rock_ports import resolve_rock_ports_from_env
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-TEMPLATE_CONFIG = REPO_ROOT / "configs/examples/openclaw_aime2024.yaml"
+TEMPLATE_CONFIG = REPO_ROOT / "configs/examples/openclaw_aime2026.yaml"
 DEPLOY_TEMPLATE = REPO_ROOT / "openclaw_deploy/rock_agent_config.yaml"
 GENERATED_DIR = REPO_ROOT / "dev/generated"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
@@ -68,13 +68,13 @@ def _build_eval_config(
             for sid in sandbox_ids
         ]
         data["max_concurrent"] = len(sandbox_ids)
-        data["run_id"] = f"openclaw-qwen-2.5-7b-instruct-openrouter-aime2024-concurrent{len(sandbox_ids)}"
+        data["run_id"] = f"openclaw-qwen-2.5-7b-instruct-openrouter-aime2026-concurrent{len(sandbox_ids)}"
     else:
         # Single sandbox ID: sequential mode, no contention possible.
         data["agent"]["config"]["api_base"] = (
             f"{proxy_api_base}/sandboxes/{sandbox_id}/proxy/v1"
         )
-        data["run_id"] = "openclaw-qwen-2.5-7b-instruct-openrouter-aime2024"
+        data["run_id"] = "openclaw-qwen-2.5-7b-instruct-openrouter-aime2026"
 
     data.setdefault("metadata", {})
     data["metadata"]["author"] = author
@@ -153,7 +153,7 @@ def main() -> int:
             sandbox_ids=sandbox_ids if len(sandbox_ids) > 1 else None,
         )
         suffix = f"_concurrent{len(sandbox_ids)}" if len(sandbox_ids) > 1 else ""
-        eval_path = GENERATED_DIR / f"openclaw_qwen25_7b_openrouter_aime2024{suffix}.resolved.yaml"
+        eval_path = GENERATED_DIR / f"openclaw_qwen25_7b_openrouter_aime2026{suffix}.resolved.yaml"
         _write_yaml(eval_path, eval_config)
         print(f"Generated eval config: {eval_path}")
         print(f"Run command: alphadiana run {eval_path}")

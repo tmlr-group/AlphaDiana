@@ -1,7 +1,7 @@
-# Runbook — AIME 2024 full run on local Qwen3.5-27B + DirectLLM
+# Runbook — AIME 2026 full run on local Qwen3.5-27B + DirectLLM
 
-Self-contained operator runbook for completing the **AIME 2024** benchmark
-(30 problems from `HuggingFaceH4/aime_2024`) against a local
+Self-contained operator runbook for completing the **AIME 2026** benchmark
+(30 problems from `MathArena/aime_2026`) against a local
 `Qwen/Qwen3.5-27B` vLLM endpoint via the DirectLLM agent.
 
 > This is the "I want to run the benchmark" runbook. It deliberately
@@ -21,7 +21,7 @@ the vLLM endpoint. No Docker, no Podman, no ROCK sandbox.
 
 ## 0. What "full run" means here
 
-- Dataset: `HuggingFaceH4/aime_2024` on Hugging Face — 30 integer-answer
+- Dataset: `MathArena/aime_2026` on Hugging Face — 30 integer-answer
   competition math problems, all in the `train` split.
 - Agent: `direct_llm` (single OpenAI-compatible chat-completions call per
   sample; no tool use, no sandbox).
@@ -29,7 +29,7 @@ the vLLM endpoint. No Docker, no Podman, no ROCK sandbox.
   (pass@K-style). Lower to 1 for a smoke or a single-pass pass@1 run.
 - Scoring: integer match via the `numeric` scorer (`tolerance=1e-6`).
 - Reference yardstick: this exact config has been used as the canonical
-  AIME 2024 DirectLLM full-run baseline (see `metadata.notes` in the YAML).
+  AIME 2026 DirectLLM full-run baseline (see `metadata.notes` in the YAML).
 
 ---
 
@@ -75,7 +75,7 @@ https://docs.conda.io/projects/miniconda/
 
 ### 1.3 Hugging Face access
 
-`HuggingFaceH4/aime_2024` is **public** — no token required. If you have
+`MathArena/aime_2026` is **public** — no token required. If you have
 `HF_TOKEN` set anyway, it's harmless. If you hit rate-limit errors during
 the first dataset load, run `huggingface-cli login` with a read token to
 authenticate.
@@ -190,7 +190,7 @@ mkdir -p "$HF_HOME" "$HF_DATASETS_CACHE" "$HUGGINGFACE_HUB_CACHE"
 
 # Run id and output root
 export AIME_FULL_OUTPUT_ROOT="$WORK_ROOT/results"
-export AIME_RUN_ID=aime2024_full_$(date +%Y%m%d_%H%M%S)
+export AIME_RUN_ID=aime2026_full_$(date +%Y%m%d_%H%M%S)
 mkdir -p "$AIME_FULL_OUTPUT_ROOT"
 ```
 
@@ -206,14 +206,14 @@ your vLLM is on `8011` or another port.
 ```bash
 # Static validation (no live vLLM call, no dataset download)
 python -m alphadiana.cli validate \
-  configs/full_runs/aime_directllm_qwen35_27b_logprobs.yaml
+  configs/full_runs/aime2026_directllm_qwen35_27b_logprobs.yaml
 # expect: Config is valid.
 
 # Live preflight — small dataset load + 1 vLLM round-trip
 python -c "
 from datasets import load_dataset
-ds = load_dataset('HuggingFaceH4/aime_2024', split='train')
-print(f'AIME 2024 task count: {len(ds)}')        # expect 30
+ds = load_dataset('MathArena/aime_2026', split='train')
+print(f'AIME 2026 task count: {len(ds)}')        # expect 30
 "
 
 curl -sS --max-time 30 "$QWEN_VLLM_API_BASE/models" >/dev/null \
@@ -231,7 +231,7 @@ endpoint misconfiguration without burning a 24-hour run.
 
 ```bash
 python -m alphadiana.cli run \
-  configs/full_runs/aime_directllm_qwen35_27b_logprobs.yaml \
+  configs/full_runs/aime2026_directllm_qwen35_27b_logprobs.yaml \
   --redo-all \
   -o run_id=${AIME_RUN_ID}_smoke \
   -o output_dir=$AIME_FULL_OUTPUT_ROOT \
@@ -246,7 +246,7 @@ python -m alphadiana.cli run \
 
 Expected output (final line):
 ```
-Run completed: aime2024_full_...._smoke
+Run completed: aime2026_full_...._smoke
   Tasks: 1/1 completed
 ```
 
@@ -267,10 +267,10 @@ Expected artifacts:
 Detach from the smoke. Then run the full 30 × 32 sweep in `tmux`:
 
 ```bash
-tmux new -d -s aime2024 "
+tmux new -d -s aime2026 "
   set -eux
   python -m alphadiana.cli run \
-    configs/full_runs/aime_directllm_qwen35_27b_logprobs.yaml \
+    configs/full_runs/aime2026_directllm_qwen35_27b_logprobs.yaml \
     --redo-all \
     -o run_id=${AIME_RUN_ID} \
     -o output_dir=$AIME_FULL_OUTPUT_ROOT \
@@ -278,7 +278,7 @@ tmux new -d -s aime2024 "
     2>&1 | tee $WORK_ROOT/logs/${AIME_RUN_ID}.log
 "
 
-tmux attach -t aime2024            # Ctrl-B D to detach
+tmux attach -t aime2026            # Ctrl-B D to detach
 ```
 
 The checked-in defaults baked into the YAML:
@@ -374,7 +374,7 @@ PY
 | vLLM long-thinking deadlock | every request times out, `$WORK_ROOT/logs/vllm_qwen3.5_27b.log` mtime stops advancing | Restart vLLM; in-flight tasks retry. Monitor `/v1/models` (not GPU-util). |
 | `$WORK_ROOT` fills up | task JSON writes start to fail mid-run | §1.1 — pick a mount with ≥ 50 GB free, recheck with `df -h "$WORK_ROOT"` every 6 hours. |
 | Stale `generation_config.json` defaults | non-greedy sampling, score drift across replicas | §2 — make sure `--generation-config vllm` is in the vllm launch flags. |
-| HF rate limit on dataset download | dataset load errors on first run | `huggingface-cli login` with a read token; pre-cache: `python -c 'from datasets import load_dataset; load_dataset("HuggingFaceH4/aime_2024", split="train")'` |
+| HF rate limit on dataset download | dataset load errors on first run | `huggingface-cli login` with a read token; pre-cache: `python -c 'from datasets import load_dataset; load_dataset("MathArena/aime_2026", split="train")'` |
 | Provider 429 / token budget exhaustion mid-run | repeated 429s, dispatcher backs off | Pause, wait for the provider's documented recovery window, then re-run the same `run_id` **without** `--redo-all`. Completed `sample_index` rows are skipped. |
 | Long-thinking truncation at `max_tokens` | many tasks have `score_status=parse_failed`, model never wrote `\boxed{...}` | Raise `agent.config.max_tokens` (up to `--max-model-len - 10K`) or drop `enable_thinking=false` for a non-thinking pass. |
 
@@ -388,7 +388,7 @@ combinations are skipped:
 
 ```bash
 python -m alphadiana.cli run \
-  configs/full_runs/aime_directllm_qwen35_27b_logprobs.yaml \
+  configs/full_runs/aime2026_directllm_qwen35_27b_logprobs.yaml \
   -o run_id=${AIME_RUN_ID} \
   -o output_dir=$AIME_FULL_OUTPUT_ROOT \
   -o agent.config.api_base=$QWEN_VLLM_API_BASE
@@ -404,7 +404,7 @@ it for resume mode).
 ```
 $AIME_FULL_OUTPUT_ROOT/
 └── ${AIME_RUN_ID}/
-    └── full_aime2024_directllm_qwen35_27b_logprobs/
+    └── full_aime2026_directllm_qwen35_27b_logprobs/
         ├── tasks/
         │   ├── aime_1.json      # 32 records per file (one per sample_index)
         │   ├── aime_2.json
@@ -423,7 +423,7 @@ $WORK_ROOT/logs/vllm_qwen3.5_27b.log  # vllm server log
 
 ## 13. Scope of this runbook
 
-- AIME 2024 only (`HuggingFaceH4/aime_2024`, 30 problems, `train` split).
+- AIME 2026 only (`MathArena/aime_2026`, 30 problems, `train` split).
 - DirectLLM agent (`direct_llm`) only — no OpenClaw / OpenCode / ZeroClaw.
 - Local Qwen3.5-27B via vLLM on a 200K context; `max_tokens=131072`
   (128K output budget).

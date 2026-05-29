@@ -495,7 +495,7 @@ $WORK_ROOT/logs/vllm_*.log            # vllm server log
   text-only slices (use `data_config="standard (4 options)"`),
   OpenRouter VL pilots, ZeroClaw sandbox path, or any non-loopback
   endpoint.
-- For AIME 2024, GPQA-Diamond, or HLE, use their dedicated runbooks:
-  - [`runbook-aime-2024-full-directllm-qwen35-27b.md`](runbook-aime-2024-full-directllm-qwen35-27b.md)
+- For AIME 2026, GPQA-Diamond, or HLE, use their dedicated runbooks:
+  - [`runbook-aime-2026-full-directllm-qwen35-27b.md`](runbook-aime-2026-full-directllm-qwen35-27b.md)
   - [`runbook-gpqa-diamond-full-directllm-qwen35-27b.md`](runbook-gpqa-diamond-full-directllm-qwen35-27b.md)
   - [`runbook-hle-full-directllm-qwen35-27b.md`](runbook-hle-full-directllm-qwen35-27b.md)

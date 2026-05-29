@@ -1,7 +1,7 @@
 """Phase 1: data loading and scoring validation
 
 Checks:
-- Load 30 questions from HuggingFaceH4/aime_2024 (split="train")
+- Load 30 questions from MathArena/aime_2026 (split="train")
 - Each question has a problem field and an answer field (a 3-digit numeric string)
 - The dataset path comes from config rather than being hardcoded
 - NumericScorer compares integer answers correctly
@@ -24,23 +24,23 @@ from alphadiana.scorer.numeric import NumericScorer
 
 
 # ---------------------------------------------------------------------------
-# 1.1 AIME 2024 dataset loading
+# 1.1 AIME 2026 dataset loading
 # ---------------------------------------------------------------------------
 
 class TestAIMEDatasetLoading:
-    """Verify that the data is loaded correctly from HuggingFaceH4/aime_2024."""
+    """Verify that the data is loaded correctly from MathArena/aime_2026."""
 
     @pytest.fixture(scope="class")
     def aime_tasks(self):
         benchmark = AIMEBenchmark()
         config = {
-            "dataset": "HuggingFaceH4/aime_2024",
+            "dataset": "MathArena/aime_2026",
             "split": "train",
         }
         return benchmark.load_tasks(config)
 
     def test_loads_30_tasks(self, aime_tasks):
-        """AIME 2024 consists of 30 questions (15 for AIME I + 15 for AIME II)."""
+        """AIME 2026 consists of 30 questions (15 for AIME I + 15 for AIME II)."""
         assert len(aime_tasks) == 30
 
     def test_task_has_problem(self, aime_tasks):
@@ -69,7 +69,7 @@ class TestAIMEDatasetLoading:
         """Each question has metadata (source, index, etc.)."""
         for task in aime_tasks:
             assert "source" in task.metadata
-            assert task.metadata["source"] == "HuggingFaceH4/aime_2024"
+            assert task.metadata["source"] == "MathArena/aime_2026"
             assert "index" in task.metadata
 
     def test_dataset_path_from_config(self):
