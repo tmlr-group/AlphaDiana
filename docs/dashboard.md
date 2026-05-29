@@ -182,7 +182,7 @@ Good for quick baseline testing, no ROCK sandbox required.
 
 | Field | Description |
 |------|------|
-| Benchmark | Choose preset benchmark or customize (AIME 2024/2025/2026, HMMT, SMT, CMIMC, BRUMO, etc.) |
+| Benchmark | Choose preset benchmark or customize (AIME 2026/2025/2026, HMMT, SMT, CMIMC, BRUMO, etc.) |
 | Model | OpenAI API-compatible model name (such as `moonshotai/kimi-k2.5`) |
 | API Base URL | Model service address (such as `https://openrouter.ai/api/v1/`) |
 | API Key | Paste directly, or enter `$VARIABLE_NAME` to reference the key in `.env`. Quick-fill tags auto-suggest based on the API Base URL domain. |

@@ -19,25 +19,25 @@ agent:
     rock_agent_config_path: "openclaw_deploy/rock_agent_config.prebuilt.yaml"
     openclaw_config_path: "openclaw_deploy/openclaw.json"
     network_mode: "host"
-    docker_host_ip: "127.0.0.1"
+    docker_host_ip: "host.docker.internal"
     rock_memory: "4g"
     rock_cpus: 1
     rock_startup_timeout: 600
     gateway_startup_timeout: 240
     gateway_warmup_timeout: 240
-    OPENAI_BASE_URL: "http://127.0.0.1:8011/v1"
+    OPENAI_BASE_URL: "http://host.docker.internal:8011/v1"
     OPENAI_API_KEY: "EMPTY"
     OPENAI_MODEL_NAME: "Qwen/Qwen3.5-27B"
     model: "openclaw"
     gateway_token: "${OPENCLAW_GATEWAY_TOKEN}"
-    temperature: 0.0
+    temperature: 0.6
     top_p: 0.95
     max_tokens: 131072
     stream: true
-    request_timeout: 9300
-    stream_idle_timeout: 9300
-    stream_total_timeout: 9000
-    num_sandboxes: 1
+    request_timeout: 3600
+    stream_idle_timeout: 3600
+    stream_total_timeout: 3600
+    num_sandboxes: 4
     standby_sandboxes: 1
     reuse_predeployed_sandboxes: false
     enable_thinking: true
@@ -55,12 +55,12 @@ scorer:
   config:
     tolerance: 1e-6
 
-max_concurrent: 1
+max_concurrent: 4
 task_retries: 2
 task_retry_on_recoverable_only: true
-num_samples: 32
+num_samples: 4
 output_dir: "./results"
 strict_report: true
 strict_isolation: true
 metadata:
-  notes: "AIME 2026 x OpenClaw x local vLLM Qwen3.5-27B with k=32, max_tokens=131072, conservative max_concurrent=1 fresh-per-task ROCK sandboxes plus one standby sandbox, and logprob capture."
+  notes: "AIME 2026 x OpenClaw x local vLLM Qwen3.5-27B aligned with the 2026-05-29 parameter contract: T=0.6, K=4, max_concurrent=4, request_timeout=3600, max_tokens=131072. Provider URL is the docker bridge gateway (host.docker.internal) so the in-container OpenClaw can reach the host vLLM."

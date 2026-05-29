@@ -16,19 +16,20 @@ agent:
       Do not skip the boxed format. The boxed answer must appear at the very end of your response and contain only the final answer, not explanations.
 
     model: "Qwen/Qwen3.5-27B"
-    api_base: "http://127.0.0.1:8011/v1"
+    api_base: "http://host.docker.internal:8011/v1"
     api_key: "EMPTY"
-    provider_api_base: "http://127.0.0.1:8011/v1"
+    provider_api_base: "http://host.docker.internal:8011/v1"
     provider_api_key: "EMPTY"
-    temperature: 0.0
+    temperature: 0.6
     top_p: 0.95
     max_tokens: 131072
-    request_timeout: 9300
+    request_timeout: 3600
+    provider_timeout_secs: 3600
     runtime_trace_mode: "full"
     enable_thinking: true
     capture_logprobs: true
     top_logprobs: 20
-    docker_host_ip: "127.0.0.1"
+    docker_host_ip: "host.docker.internal"
     max_tool_iterations: 100
     max_actions_per_hour: 200
     network_mode: "host"
@@ -50,11 +51,11 @@ scorer:
   config:
     tolerance: 1e-6
 
-max_concurrent: 2
-num_samples: 32
+max_concurrent: 4
+num_samples: 4
 task_retries: 2
 output_dir: "./results"
 strict_report: true
 strict_isolation: true
 metadata:
-  notes: "AIME 2026 x ZeroClaw x local vLLM Qwen3.5-27B with k=32, OpenCode-aligned harness prompt and inference parameters, ROCK sandbox auto-deploy, and logprob capture."
+  notes: "AIME 2026 x ZeroClaw x local vLLM Qwen3.5-27B aligned with the 2026-05-29 parameter contract: T=0.6, K=4, max_concurrent=4, request_timeout=3600, max_tokens=131072."

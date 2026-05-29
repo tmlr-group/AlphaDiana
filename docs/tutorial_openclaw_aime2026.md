@@ -1,11 +1,11 @@
-# AlphaDiana Evaluation Tutorial: OpenClaw + Qwen3-8B + AIME 2024
+# AlphaDiana Evaluation Tutorial: OpenClaw + Qwen3-8B + AIME 2026
 
 This is a historical tutorial kept for reference.
 
 For the current onboarding path, use `README.md`, `docs/README.md`, and
 `docs/getting_started.md`.
 
-This tutorial takes **OpenClaw agent + Qwen3-8B model + AIME 2024 data set** as an example to demonstrate how to use the AlphaDiana evaluation framework to complete a complete end-to-end evaluation.
+This tutorial takes **OpenClaw agent + Qwen3-8B model + AIME 2026 data set** as an example to demonstrate how to use the AlphaDiana evaluation framework to complete a complete end-to-end evaluation.
 
 ## Architecture Overview
 
@@ -253,11 +253,11 @@ curl -X POST \
 
 ## Step 6: Write evaluation configuration
 
-Create YAML configuration file `configs/openclaw_aime2024.yaml`:
+Create YAML configuration file `configs/openclaw_aime2026.yaml`:
 
 
 ```yaml
-run_id: "openclaw-qwen3-8b-aime2024-001"
+run_id: "openclaw-qwen3-8b-aime2026-001"
 
 agent:
   name: openclaw
@@ -272,7 +272,7 @@ agent:
 benchmark:
   name: aime
   config:
-    dataset: "HuggingFaceH4/aime_2024"
+    dataset: "MathArena/aime_2026"
     split: "train"
 
 sandbox: null # OpenClaw is already running in rock, no extra sandbox required
@@ -287,7 +287,7 @@ output_dir: "./results"
 metadata:
   author: "your_name"
   gpu: "A800"
-  notes: "OpenClaw + Qwen3-8B on AIME 2024"
+  notes: "OpenClaw + Qwen3-8B on AIME 2026"
 ```
 
 
@@ -313,10 +313,10 @@ metadata:
 
 ```bash
 # Validate the configuration first
-alphadiana validate configs/openclaw_aime2024.yaml
+alphadiana validate configs/openclaw_aime2026.yaml
 
 Run assessment
-alphadiana run configs/openclaw_aime2024.yaml
+alphadiana run configs/openclaw_aime2026.yaml
 ```
 
 
@@ -324,7 +324,7 @@ Output example:
 
 
 ```
-Run completed: openclaw-qwen3-8b-aime2024-001
+Run completed: openclaw-qwen3-8b-aime2026-001
   Accuracy:   0.2333
   Mean Score: 0.2333
   Tasks:      30/30 completed
@@ -338,7 +338,7 @@ Run completed: openclaw-qwen3-8b-aime2024-001
 from alphadiana.config.experiment_config import ExperimentConfig
 from alphadiana.runner.runner import Runner
 
-config = ExperimentConfig.from_yaml("configs/openclaw_aime2024.yaml")
+config = ExperimentConfig.from_yaml("configs/openclaw_aime2026.yaml")
 runner = Runner(config)
 
 runner.setup()
@@ -373,7 +373,7 @@ config = ExperimentConfig(
     },
     benchmark_name="aime",
     benchmark_config={
-        "dataset": "HuggingFaceH4/aime_2024",
+        "dataset": "MathArena/aime_2026",
         "split": "train",
     },
     scorer_name="numeric",
@@ -399,7 +399,7 @@ The evaluation results are saved in `{output_dir}/{run_id}.jsonl`, with one JSON
 
 
 ```bash
-cat results/openclaw-qwen3-8b-aime2024-001.jsonl | python -m json.tool | head -30
+cat results/openclaw-qwen3-8b-aime2026-001.jsonl | python -m json.tool | head -30
 ```
 
 
@@ -442,7 +442,7 @@ Or in Python:
 from alphadiana.results.report import ReportGenerator
 from alphadiana.results.result_store import ResultStore
 
-store = ResultStore(output_dir="./results", run_id="openclaw-qwen3-8b-aime2024-001")
+store = ResultStore(output_dir="./results", run_id="openclaw-qwen3-8b-aime2026-001")
 gen = ReportGenerator()
 summary = gen.generate(store, config)
 print(gen.to_markdown(summary))
@@ -455,7 +455,7 @@ print(gen.to_markdown(summary))
 ```python
 import json
 
-with open("results/openclaw-qwen3-8b-aime2024-001.jsonl") as f:
+with open("results/openclaw-qwen3-8b-aime2026-001.jsonl") as f:
     results = [json.loads(line) for line in f]
 
 correct = sum(1 for r in results if r["correct"])
@@ -490,7 +490,7 @@ OPENCLAW_SANDBOX_ID=<your_id> python -m pytest tests/test_phase4_openclaw.py -v 
 # Phase5: Single Question Validation
 OPENCLAW_SANDBOX_ID=<your_id> python -m pytest tests/test_phase5_single.py -v
 
-# Phase 6: Full AIME 2024 assessment (30 questions, time consuming)
+# Phase 6: Full AIME 2026 assessment (30 questions, time consuming)
 OPENCLAW_SANDBOX_ID=<your_id> python -m pytest tests/test_phase6_full.py -v -m integration
 
 # Run all at once (without integration testing)

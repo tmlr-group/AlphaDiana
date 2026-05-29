@@ -2,7 +2,7 @@
 
 AlphaDiana is an evaluation framework for Foundation Model and Agent systems, supporting the evaluation of different Agents on multiple Benchmarks (AIME, MATH, HLE, etc.).
 
-This tutorial takes **Qwen3-8B + AIME 2024** as an example to start from scratch and build and run the evaluation step by step.
+This tutorial takes **Qwen3-8B + AIME 2026** as an example to start from scratch and build and run the evaluation step by step.
 
 ## Directory
 
@@ -195,7 +195,7 @@ Create `configs/my_first_run.yaml`:
 
 
 ```yaml
-run_id: "direct-llm-qwen3-8b-aime2024"
+run_id: "direct-llm-qwen3-8b-aime2026"
 
 agent:
   name: direct_llm
@@ -210,7 +210,7 @@ agent:
 benchmark:
   name: aime
   config:
-    dataset: "HuggingFaceH4/aime_2024"
+    dataset: "MathArena/aime_2026"
     split: "train"
 
 scorer:
@@ -243,16 +243,16 @@ alphadiana run configs/my_first_run.yaml
 
 
 This will:
-1. Load the AIME 2024 dataset from HuggingFace (30 questions)
+1. Load the AIME 2026 dataset from HuggingFace (30 questions)
 2. Send the questions to vLLM one by one to get answers.
 3. Score with NumericScorer
-4. Write the result to `results/direct-llm-qwen3-8b-aime2024.jsonl`
+4. Write the result to `results/direct-llm-qwen3-8b-aime2026.jsonl`
 
 Output example:
 
 
 ```
-Run completed: direct-llm-qwen3-8b-aime2024
+Run completed: direct-llm-qwen3-8b-aime2026
   Accuracy:   0.1333
   Mean Score: 0.1333
   Tasks:      30/30 completed
@@ -460,11 +460,11 @@ A JSON response containing the answer "5" should be returned.
 
 ### 6.1 Writing configuration files
 
-Create `configs/openclaw_aime2024.yaml`:
+Create `configs/openclaw_aime2026.yaml`:
 
 
 ```yaml
-run_id: "openclaw-qwen3-8b-aime2024"
+run_id: "openclaw-qwen3-8b-aime2026"
 
 agent:
   name: openclaw
@@ -479,7 +479,7 @@ agent:
 benchmark:
   name: aime
   config:
-    dataset: "HuggingFaceH4/aime_2024"
+    dataset: "MathArena/aime_2026"
     split: "train"
 
 sandbox: null # OpenClaw is already running in rock, no extra sandbox required
@@ -500,7 +500,7 @@ output_dir: "./results"
 
 
 ```bash
-alphadiana run configs/openclaw_aime2024.yaml
+alphadiana run configs/openclaw_aime2026.yaml
 ```
 
 
@@ -516,7 +516,7 @@ from alphadiana.scorer.numeric import NumericScorer
 
 Is loading data
 benchmark = AIMEBenchmark()
-tasks = benchmark.load_tasks({"dataset": "HuggingFaceH4/aime_2024", "split": "train"})
+tasks = benchmark.load_tasks({"dataset": "MathArena/aime_2026", "split": "train"})
 task = tasks[0]
 
 # Initialize Agent
@@ -594,7 +594,7 @@ evidence needed for replay and audit:
 ```python
 import json
 
-with open("results/openclaw-qwen3-8b-aime2024.jsonl") as f:
+with open("results/openclaw-qwen3-8b-aime2026.jsonl") as f:
     results = [json.loads(line) for line in f]
 
 correct = sum(1 for r in results if r["correct"])
@@ -713,11 +713,11 @@ agent:
 
 
 ```yaml
-# AIME 2024
+# AIME 2026
 benchmark:
   name: aime
   config:
-    dataset: "HuggingFaceH4/aime_2024"
+    dataset: "MathArena/aime_2026"
     split: "train"
 
 # MATH

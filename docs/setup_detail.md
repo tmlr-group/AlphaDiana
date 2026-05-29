@@ -152,7 +152,7 @@ alphadiana run config.yaml --redo-all
 Experiments are defined by a single YAML file. See [`configs/schema.yaml`](../configs/schema.yaml) for the full schema.
 
 ```yaml
-run_id: "openclaw-qwen3-8b-aime2024-001"   # auto-generated if omitted
+run_id: "openclaw-qwen3-8b-aime2026-001"   # auto-generated if omitted
 
 agent:
   name: openclaw                  # openclaw | direct_llm
@@ -169,7 +169,7 @@ agent:
 benchmark:
   name: aime
   config:
-    dataset: "HuggingFaceH4/aime_2024"
+    dataset: "MathArena/aime_2026"
     split: "train"
 
 sandbox: null                     # null | rock | local | boxlite

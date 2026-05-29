@@ -65,7 +65,7 @@ and then the matching file in `docs/benchmarks/`.
 These references are kept for deep dives, but they are not the primary runbook
 entry points:
 
-- [tutorial_openclaw_aime2024.md](tutorial_openclaw_aime2024.md)
+- [tutorial_openclaw_aime2026.md](tutorial_openclaw_aime2026.md)
   Historical AIME/OpenClaw tutorial. Prefer `README.md` and
   `docs/getting_started.md`.
 - [quickstart_commands.md](quickstart_commands.md)

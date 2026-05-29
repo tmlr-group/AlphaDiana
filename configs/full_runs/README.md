@@ -21,7 +21,7 @@ below uses the matching Direct or Harness prompt from that file.
 
 | Benchmark | DirectLLM | OpenCode | OpenClaw | ZeroClaw |
 |---|---|---|---|---|
-| AIME 2024 | [`aime_directllm_qwen35_27b_logprobs.yaml`](aime_directllm_qwen35_27b_logprobs.yaml) | [`aime_opencode_qwen35_27b_logprobs.yaml`](aime_opencode_qwen35_27b_logprobs.yaml) | [`aime_openclaw_qwen35_27b_logprobs.yaml`](aime_openclaw_qwen35_27b_logprobs.yaml) | [`aime_zeroclaw_qwen35_27b_logprobs.yaml`](aime_zeroclaw_qwen35_27b_logprobs.yaml) |
+| AIME 2026 | [`aime_directllm_qwen35_27b_logprobs.yaml`](aime_directllm_qwen35_27b_logprobs.yaml) | [`aime_opencode_qwen35_27b_logprobs.yaml`](aime_opencode_qwen35_27b_logprobs.yaml) | [`aime_openclaw_qwen35_27b_logprobs.yaml`](aime_openclaw_qwen35_27b_logprobs.yaml) | [`aime_zeroclaw_qwen35_27b_logprobs.yaml`](aime_zeroclaw_qwen35_27b_logprobs.yaml) |
 | IMO-AnswerBench | [`imo_directllm_qwen35_27b_logprobs.yaml`](imo_directllm_qwen35_27b_logprobs.yaml) | [`imo_opencode_qwen35_27b_logprobs.yaml`](imo_opencode_qwen35_27b_logprobs.yaml) | [`imo_openclaw_qwen35_27b_logprobs.yaml`](imo_openclaw_qwen35_27b_logprobs.yaml) | [`imo_zeroclaw_qwen35_27b_logprobs.yaml`](imo_zeroclaw_qwen35_27b_logprobs.yaml) |
 | GPQA-Diamond | [`gpqa_directllm_qwen35_27b_logprobs.yaml`](gpqa_directllm_qwen35_27b_logprobs.yaml) | [`gpqa_opencode_qwen35_27b_logprobs.yaml`](gpqa_opencode_qwen35_27b_logprobs.yaml) | [`gpqa_openclaw_qwen35_27b_logprobs.yaml`](gpqa_openclaw_qwen35_27b_logprobs.yaml) | [`gpqa_zeroclaw_qwen35_27b_logprobs.yaml`](gpqa_zeroclaw_qwen35_27b_logprobs.yaml) |
 | HLE multiple-choice | [`hle_directllm_qwen35_27b_logprobs.yaml`](hle_directllm_qwen35_27b_logprobs.yaml) | [`hle_opencode_qwen35_27b_logprobs.yaml`](hle_opencode_qwen35_27b_logprobs.yaml) | [`hle_openclaw_qwen35_27b_logprobs.yaml`](hle_openclaw_qwen35_27b_logprobs.yaml) | [`hle_zeroclaw_qwen35_27b_logprobs.yaml`](hle_zeroclaw_qwen35_27b_logprobs.yaml) |
@@ -42,7 +42,7 @@ All active configs align on:
 | Thinking | enabled |
 | Streaming | enabled |
 | Logprobs | `capture_logprobs: true`, `top_logprobs: 20` |
-| Samples | `num_samples: 1`; AIME 2024 uses `num_samples: 32` |
+| Samples | `num_samples: 1`; AIME 2026 uses `num_samples: 32` |
 | Task concurrency | Harness-specific; current ZeroClaw local-Qwen full reruns use `max_concurrent: 2` |
 | Output root | `./results` |
 
@@ -176,7 +176,7 @@ captured logprobs normally.
 
 | Benchmark | Dataset config |
 |---|---|
-| AIME 2024 | `HuggingFaceH4/aime_2024`, split `train`, `num_samples: 32` |
+| AIME 2026 | `MathArena/aime_2026`, split `train`, `num_samples: 32` |
 | IMO-AnswerBench | `Hwilner/imo-answerbench`, split `train`, scorer `imo_verify` |
 | GPQA-Diamond | `fingertap/GPQA-Diamond`, split `test`, seed `42` |
 | HLE | `cais/hle`, split `test`, `answer_types: [multipleChoice]` |
