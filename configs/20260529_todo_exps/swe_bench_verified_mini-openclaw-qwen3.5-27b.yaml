@@ -1,8 +1,8 @@
-# Cell: SWE-Bench Verified Mini × OpenClaw × google/gemma-4-31B-it
+# Experiment: SWE-Bench Verified Mini × OpenClaw × Qwen/Qwen3.5-27B
 # Parameter contract: T=0.0, K=1, top_p=0.95, max_tokens=131072,
 # max_concurrent=4, request_timeout=3600.
 
-run_id: "swe_bench_verified_mini_openclaw_gemma_4_31b_it_cell"
+run_id: "swe_bench_verified_mini_openclaw_qwen3_5_27b_cell"
 
 agent:
   name: openclaw
@@ -16,7 +16,7 @@ agent:
     model: "openclaw"
     OPENAI_BASE_URL: "http://172.17.0.1:8011/v1"
     OPENAI_API_KEY: "EMPTY"
-    OPENAI_MODEL_NAME: "google/gemma-4-31B-it"
+    OPENAI_MODEL_NAME: "Qwen/Qwen3.5-27B"
     temperature: 0.0
     top_p: 0.95
     max_tokens: 131072
@@ -73,4 +73,4 @@ max_concurrent: 4
 num_samples: 1
 output_dir: "./results"
 metadata:
-  cell: "swe_bench_verified_mini-openclaw-gemma-4-31b-it"
+  experiment: "swe_bench_verified_mini-openclaw-qwen3.5-27b"

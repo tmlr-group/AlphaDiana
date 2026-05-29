@@ -1,4 +1,4 @@
-# Cell: SWE-Bench Verified Mini × OpenCode × google/gemma-4-31B-it
+# Experiment: SWE-Bench Verified Mini × OpenCode × google/gemma-4-31B-it
 # Parameter contract: T=0.0, K=1, top_p=0.95, max_tokens=131072,
 # max_concurrent=4, timeout=3600.
 
@@ -67,4 +67,4 @@ max_concurrent: 4
 num_samples: 1
 output_dir: "./results"
 metadata:
-  cell: "swe_bench_verified_mini-opencode-gemma-4-31b-it"
+  experiment: "swe_bench_verified_mini-opencode-gemma-4-31b-it"

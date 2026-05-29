@@ -1,29 +1,36 @@
-# Cell: MMMU-Pro vision × DirectLLM × google/gemma-4-31B-it
+# Experiment: MMMU-Pro vision × ZeroClaw × google/gemma-4-31B-it
 # Parameter contract: T=0.0, K=1, top_p=0.95, max_tokens=131072,
 # max_concurrent=4, request_timeout=3600.
-# Inherits from configs/full_runs/mmmu_pro_directllm_gemma4_31b_logprobs.yaml
-# and applies the contract overrides.
 
-run_id: "mmmu_pro_vision_directllm_gemma_4_31b_it_cell"
+run_id: "mmmu_pro_vision_zeroclaw_gemma_4_31b_it_cell"
 
 agent:
-  name: direct_llm
-  version: "1.0"
+  name: zeroclaw
+  version: "0.6.9"
   config:
     model: "google/gemma-4-31B-it"
-    api_base: "http://127.0.0.1:8011/v1"
+    api_base: "http://172.17.0.1:8011/v1"
     api_key: "EMPTY"
+    provider_api_base: "http://172.17.0.1:8011/v1"
+    provider_api_key: "EMPTY"
     temperature: 0.0
     top_p: 0.95
     max_tokens: 131072
     request_timeout: 3600
-    stream: true
+    enable_thinking: true
+    runtime_trace_mode: "full"
     capture_logprobs: true
     top_logprobs: 20
-    logprobs_format: "int16"
-    extra_body:
-      chat_template_kwargs:
-        enable_thinking: true
+    docker_host_ip: "172.17.0.1"
+    network_mode: "host"
+    max_tool_iterations: 100
+    max_actions_per_hour: 200
+    rock_image: "zeroclaw-reasoning:0.6.9"
+    rock_memory: "4g"
+    rock_cpus: 1
+    rock_startup_timeout: 600
+    admin_base_url: "${ROCK_BASE_URL}"
+    proxy_base_url: "${ROCK_PROXY_URL}"
     system_prompt: |
       You are an expert at multimodal multiple-choice reasoning.
       Carefully analyze any provided images along with the question text and options.
@@ -45,9 +52,7 @@ scorer:
 
 max_concurrent: 4
 num_samples: 1
+task_retries: 2
 output_dir: "./results"
-strict_report: true
-strict_isolation: true
 metadata:
-  cell: "mmmu_pro_vision-directllm-gemma-4-31b-it"
-  notes: "Per-cell config aligned with the 2026-05-28 parameter contract."
+  experiment: "mmmu_pro_vision-zeroclaw-gemma-4-31b-it"

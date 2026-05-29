@@ -1,4 +1,4 @@
-# Cell: Terminal-Bench V2 × DirectLLM × google/gemma-4-31B-it
+# Experiment: Terminal-Bench V2 × DirectLLM × google/gemma-4-31B-it
 # Parameter contract: T=0.0, K=1, top_p=0.95, max_tokens=131072,
 # max_concurrent=4, request_timeout=3600.
 #
@@ -37,5 +37,5 @@ max_concurrent: 4
 num_samples: 1
 output_dir: "${ALPHADIANA_TB2_OUTPUT_DIR:-./results/terminal_bench2_directllm_gemma_4_31b_it}"
 metadata:
-  cell: "terminal_bench2-directllm-gemma-4-31b-it"
+  experiment: "terminal_bench2-directllm-gemma-4-31b-it"
   notes: "DirectLLM × TB2 via the terminal_bench2_docker control-side harness."

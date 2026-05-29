@@ -1,14 +1,14 @@
-# Cell: SWE-Bench Verified Mini × ZeroClaw × google/gemma-4-31B-it
+# Experiment: SWE-Bench Verified Mini × ZeroClaw × Qwen/Qwen3.5-27B
 # Parameter contract: T=0.0, K=1, top_p=0.95, max_tokens=131072,
 # max_concurrent=4, request_timeout=3600.
 
-run_id: "swe_bench_verified_mini_zeroclaw_gemma_4_31b_it_cell"
+run_id: "swe_bench_verified_mini_zeroclaw_qwen3_5_27b_cell"
 
 agent:
   name: zeroclaw
   version: "0.6.9"
   config:
-    model: "google/gemma-4-31B-it"
+    model: "Qwen/Qwen3.5-27B"
     api_base: "http://172.17.0.1:8011/v1"
     provider_api_base: "http://172.17.0.1:8011/v1"
     api_key: "EMPTY"
@@ -68,4 +68,4 @@ max_concurrent: 4
 num_samples: 1
 output_dir: "./results"
 metadata:
-  cell: "swe_bench_verified_mini-zeroclaw-gemma-4-31b-it"
+  experiment: "swe_bench_verified_mini-zeroclaw-qwen3.5-27b"
