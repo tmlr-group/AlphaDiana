@@ -439,9 +439,10 @@ SECURITY_GUARD_BYPASS=1 python3 scripts/security_guard.py --check
 
 AlphaDiana includes a web dashboard for launching, monitoring, and comparing evaluation runs without manually editing YAML or inspecting raw JSONL files.
 
-<img width="1268" height="1029" alt="1c8e4a71d97731bd30285665e4725fbd" src="https://github.com/user-attachments/assets/d1b53945-ddbc-43a9-a79b-2a8f51524360" />
-
-<img width="2536" height="2844" alt="image" src="https://github.com/user-attachments/assets/fadd6496-5c5b-40fb-be0b-2309c321f791" />
+<p align="center">
+  <img src="./assets/dashboard_0.png" width="50%" alt="Dashboard — Results view">
+  <img src="./assets/dashboard_2.png" width="47%" alt="Dashboard — New Evaluation">
+</p>
 
 
 
