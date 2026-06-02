@@ -25,7 +25,7 @@ benchmark:
     dataset: "SWE-bench/SWE-bench_Verified"
     split: "test"
     include_hints: false
-    taskset_path: "context/podman-swe-verified-readiness/tasksets/long64.json"
+    taskset_path: "alphadiana/context/podman-swe-verified-readiness/tasksets/long64.json"
     max_tasks: 2
 
 sandbox:
@@ -66,5 +66,5 @@ metadata:
   tier: "long64"
   run_suffix: "openclaw_long64"
   max_output_tokens: 65536
-  taskset_path: "context/podman-swe-verified-readiness/tasksets/long64.json"
+  taskset_path: "alphadiana/context/podman-swe-verified-readiness/tasksets/long64.json"
   support_scope: "SWE-bench Verified selected-task Podman readiness only"

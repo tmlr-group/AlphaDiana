@@ -41,7 +41,7 @@ validate -> preflight -> pilot -> audit
 ```
 
 The pilot writes raw logs under `logs/`, task JSONs under `results/`, and
-preflight/status/audit artifacts under `context/podman-mmmu-pro-readiness/`.
+preflight/status/audit artifacts under `alphadiana/context/podman-mmmu-pro-readiness/`.
 Latest passing evidence: run prefix
 `podman_mmmu_pro_qwen35_thinking_20260516_144304` wrote all 9 task rows and
 passed audit with `audit_failure_count=0`.

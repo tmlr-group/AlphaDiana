@@ -55,7 +55,7 @@ already validated Podman task-container cells for TerminalBench2 and
 SWE-bench Verified. Run it with
 `bash scripts/run_podman_nightly_validation.sh [standard|task|all]`. Current
 evidence and caveats are recorded in
-[`context/podman-nightly-validation/README.md`](../context/podman-nightly-validation/README.md);
+[`alphadiana/context/podman-nightly-validation/README.md`](../alphadiana/context/podman-nightly-validation/README.md);
 these configs do not promote Podman defaults.
 
 The standard-reasoning Podman scale-readiness pilot matrix lives in
@@ -65,7 +65,7 @@ IMO-AnswerBench with three tasks per cell. Run it with
 `bash scripts/run_podman_scale_readiness.sh [validate|pilot|audit]`. Operator
 commands and support boundaries are documented in
 [`docs/benchmarks/podman.md`](../docs/benchmarks/podman.md), and evidence is in
-[`context/podman-scale-readiness/README.md`](../context/podman-scale-readiness/README.md).
+[`alphadiana/context/podman-scale-readiness/README.md`](../alphadiana/context/podman-scale-readiness/README.md).
 
 The current prompt-aligned local-Qwen smoke matrix lives in
 [`smokes/harness_prompt_alignment_20260425/`](smokes/harness_prompt_alignment_20260425/).

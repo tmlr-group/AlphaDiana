@@ -25,7 +25,7 @@ benchmark:
     dataset: "SWE-bench/SWE-bench_Verified"
     split: "test"
     include_hints: false
-    taskset_path: "context/podman-swe-verified-readiness/tasksets/pilot32.json"
+    taskset_path: "alphadiana/context/podman-swe-verified-readiness/tasksets/pilot32.json"
     max_tasks: 10
 
 sandbox:
@@ -66,5 +66,5 @@ metadata:
   tier: "pilot32"
   run_suffix: "openclaw_pilot32"
   max_output_tokens: 32768
-  taskset_path: "context/podman-swe-verified-readiness/tasksets/pilot32.json"
+  taskset_path: "alphadiana/context/podman-swe-verified-readiness/tasksets/pilot32.json"
   support_scope: "SWE-bench Verified selected-task Podman readiness only"

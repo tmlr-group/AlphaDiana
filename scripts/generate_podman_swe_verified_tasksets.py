@@ -93,7 +93,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("context/podman-swe-verified-readiness/tasksets"),
+        default=Path("alphadiana/context/podman-swe-verified-readiness/tasksets"),
     )
     parser.add_argument(
         "--force-include",
