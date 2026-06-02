@@ -491,7 +491,6 @@ For detailed instructions, see [`docs/dashboard.md`](docs/dashboard.md).
 | [`docs/getting_started.md`](docs/getting_started.md) | End-to-end tutorial for a first evaluation run |
 | [`docs/setup_detail.md`](docs/setup_detail.md) | Manual setup, troubleshooting, and shared-host ROCK isolation notes |
 | [`docs/dashboard.md`](docs/dashboard.md) | Dashboard usage guide |
-| [`context/README.md`](context/README.md) | Reviewer-facing index for current status snapshots, evidence bundles, and dated debug trails |
 
 ## Acknowledgements
 

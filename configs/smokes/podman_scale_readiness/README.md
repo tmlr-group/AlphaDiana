@@ -26,8 +26,8 @@ local images unless overridden:
 - `localhost/alphadiana-opencode-podman:latest`
 
 The pilot writes raw logs under `logs/`, task JSONs under `results/`, and audit
-artifacts under `context/podman-scale-readiness/`.
+artifacts under `alphadiana/context/podman-scale-readiness/`.
 
 For the operator runbook and support boundary, see
 `docs/benchmarks/podman.md`. For the latest evidence, see
-`context/podman-scale-readiness/README.md`.
+`alphadiana/context/podman-scale-readiness/README.md`.

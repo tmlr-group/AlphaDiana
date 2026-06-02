@@ -29,7 +29,7 @@ default Podman networking did not reach the same loopback provider. Override
 `PODMAN_SWE_TASK_NETWORK_MODE` only after a fresh preflight proves the alternate
 network can reach the provider from a Podman container.
 
-Tasksets live in `context/podman-swe-verified-readiness/tasksets/` and are
+Tasksets live in `alphadiana/context/podman-swe-verified-readiness/tasksets/` and are
 generated deterministically by:
 
 ```bash

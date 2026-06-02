@@ -14,7 +14,7 @@ agent:
     streaming: false
     tool_call: true
     agent: "lean-math"
-    agent_md_path: "context/opencode_lean_math.md"
+    agent_md_path: "alphadiana/context/opencode_lean_math.md"
     system_prompt: |
       Solve efficiently and keep the response short.
       The final line must be $$\boxed{your answer here}$$.
