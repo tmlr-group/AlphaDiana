@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -30,6 +31,8 @@ from alphadiana.benchmarks.moltbench.utils import (
 )
 
 logger = logging.getLogger(__name__)
+_CONTAINER_ENGINES = {"docker", "podman"}
+_DEFAULT_PODMAN_GPU_ARGS = ["--device", "nvidia.com/gpu=all"]
 
 
 def _run(cmd: list[str], timeout: int | None = None, **kwargs) -> subprocess.CompletedProcess:
@@ -73,6 +76,14 @@ def _prepare_task_payload(task: BenchmarkTask, task_dir: str) -> dict[str, Any]:
     return task_json
 
 
+def _parse_results_or_error(artifacts_dir: str | Path) -> dict[str, Any]:
+    try:
+        return parse_results_json(artifacts_dir)
+    except Exception as exc:
+        logger.warning("Failed to parse MoltBench results from %s: %s", artifacts_dir, exc)
+        return {"correctness": "MISSING", "speedup": 0.0, "error": str(exc)}
+
+
 def _is_kernelbench_setup_cmd(cmd: Any) -> bool:
     """Return True when setup_cmd is the standard bridge.py setup invocation."""
     return (
@@ -99,6 +110,13 @@ class MoltBenchDockerAgent(Agent):
         network_mode: str | None — Docker network mode, e.g. "host" (optional)
         env: dict — extra environment variables to pass to container
         output_dir: str — local directory for artifacts (default: "./moltbench_artifacts")
+        container_engine: str — "docker" (default) or "podman"
+        container_engine_binary: str | None — explicit Docker/Podman executable (optional)
+        podman_gpu_args: list[str] — Podman GPU flags (default: CDI nvidia all)
+        extra_volumes: list[str] — additional -v mount specs
+        shm_size: str | None — optional --shm-size value
+        ipc_mode: str | None — container IPC namespace mode (optional)
+        container_runtime: str | None — OCI runtime override, e.g. "runc" (optional)
     """
 
     name = "moltbench_docker"
@@ -112,6 +130,13 @@ class MoltBenchDockerAgent(Agent):
         self._mount_claude_auth: bool = True
         self._env: dict[str, str] = {}
         self._output_dir: str = "./moltbench_artifacts"
+        self._container_engine: str = "docker"
+        self._container_engine_binary: str = "docker"
+        self._podman_gpu_args: list[str] = list(_DEFAULT_PODMAN_GPU_ARGS)
+        self._extra_volumes: list[str] = []
+        self._shm_size: str | None = None
+        self._ipc_mode: str | None = None
+        self._container_runtime: str | None = None
 
     def setup(self, config: dict) -> None:
         self._agent_type = config.get("agent_type", "claude-code")
@@ -122,6 +147,32 @@ class MoltBenchDockerAgent(Agent):
         self._network_mode = config.get("network_mode")
         self._mount_claude_auth = bool(config.get("mount_claude_auth", True))
         self._output_dir = config.get("output_dir", "./moltbench_artifacts")
+        self._container_engine = str(config.get("container_engine", "docker") or "docker").strip().lower()
+        if self._container_engine not in _CONTAINER_ENGINES:
+            raise ValueError(
+                "moltbench_docker agent.config.container_engine must be one of "
+                f"{sorted(_CONTAINER_ENGINES)}"
+            )
+        self._container_engine_binary = str(
+            config.get("container_engine_binary", self._container_engine)
+            or self._container_engine
+        ).strip()
+        self._podman_gpu_args = self._coerce_args_list(
+            config.get("podman_gpu_args", _DEFAULT_PODMAN_GPU_ARGS),
+            key="podman_gpu_args",
+        )
+        self._extra_volumes = self._coerce_args_list(config.get("extra_volumes", []), key="extra_volumes")
+        self._shm_size = config.get("shm_size")
+        self._ipc_mode = str(config.get("ipc_mode", "") or "").strip() or None
+        self._container_runtime = str(config.get("container_runtime", "") or "").strip() or None
+        if self._shm_size and self._ipc_mode == "host":
+            raise ValueError(
+                "moltbench_docker agent.config.shm_size cannot be combined with ipc_mode=host"
+            )
+        if self._container_engine == "podman" and self._shm_size and not self._ipc_mode:
+            # Podman may inherit ipcns=host from containers.conf, which conflicts
+            # with --shm-size. Make the requested shared-memory size deterministic.
+            self._ipc_mode = "private"
 
         # Collect environment variables to pass into container
         self._env = dict(config.get("env", {}))
@@ -146,8 +197,10 @@ class MoltBenchDockerAgent(Agent):
                 self._env[key] = os.environ[key]
 
         logger.info(
-            "MoltBenchDockerAgent configured: image=%s, agent_type=%s, timeout=%ds",
-            self._image, self._agent_type, self._timeout,
+            "MoltBenchDockerAgent configured: image=%s, agent_type=%s, engine=%s, "
+            "engine_binary=%s, timeout=%ds",
+            self._image, self._agent_type, self._container_engine,
+            self._container_engine_binary, self._timeout,
         )
 
     def solve(self, task: BenchmarkTask, sandbox: Optional[Any] = None) -> AgentResponse:
@@ -173,11 +226,11 @@ class MoltBenchDockerAgent(Agent):
         container_id = ""
         try:
             # 2. Start container
-            container_id = self._docker_run(task_dir)
+            container_id = self._container_run(task_dir)
             logger.info("Task %s: container %s started", task.task_id, container_id[:12])
 
             # 3. Wait for container to finish
-            exit_code = self._docker_wait(container_id)
+            exit_code = self._container_wait(container_id)
             wall_time = time.monotonic() - start_time
             logger.info(
                 "Task %s: container exited with code %d after %.1fs",
@@ -185,10 +238,10 @@ class MoltBenchDockerAgent(Agent):
             )
 
             # 4. Extract artifacts
-            self._docker_cp(container_id, "/workspace/artifacts/.", str(artifacts_local))
+            self._container_cp(container_id, "/workspace/artifacts/.", str(artifacts_local))
 
             # Also grab container logs
-            logs_result = _run(["docker", "logs", container_id], timeout=30)
+            logs_result = _run([self._container_engine_binary, "logs", container_id], timeout=30)
             (artifacts_local / "container_stdout.log").write_text(
                 logs_result.stdout, encoding="utf-8",
             )
@@ -202,7 +255,7 @@ class MoltBenchDockerAgent(Agent):
             )
 
             # 5. Parse results
-            results = parse_results_json(artifacts_local)
+            results = _parse_results_or_error(artifacts_local)
             trajectory = parse_trajectory(artifacts_local)
 
             return AgentResponse(
@@ -219,6 +272,8 @@ class MoltBenchDockerAgent(Agent):
                     "execution_id": execution_id,
                     "agent_type": self._agent_type,
                     "image": self._image,
+                    "container_engine": self._container_engine,
+                    "container_engine_binary": self._container_engine_binary,
                 },
             )
 
@@ -228,10 +283,10 @@ class MoltBenchDockerAgent(Agent):
 
             # Try to extract partial artifacts
             if container_id:
-                _run(["docker", "stop", "-t", "10", container_id], timeout=30)
-                self._docker_cp(container_id, "/workspace/artifacts/.", str(artifacts_local))
+                _run([self._container_engine_binary, "stop", "-t", "10", container_id], timeout=30)
+                self._container_cp(container_id, "/workspace/artifacts/.", str(artifacts_local))
 
-            results = parse_results_json(artifacts_local)
+            results = _parse_results_or_error(artifacts_local)
             return AgentResponse(
                 answer=results,
                 wall_time_sec=wall_time,
@@ -242,22 +297,47 @@ class MoltBenchDockerAgent(Agent):
                     "sample_index": sample_index,
                     "execution_id": execution_id,
                     "agent_type": self._agent_type,
+                    "container_engine": self._container_engine,
+                    "container_engine_binary": self._container_engine_binary,
                 },
             )
 
         finally:
             # 6. Cleanup
             if container_id:
-                _run(["docker", "rm", "-f", container_id], timeout=30)
+                _run([self._container_engine_binary, "rm", "-f", container_id], timeout=30)
             shutil.rmtree(task_dir, ignore_errors=True)
 
-    def _docker_run(self, task_dir: str) -> str:
-        """Start a Docker container and return its ID."""
+    def _container_run(self, task_dir: str) -> str:
+        """Start a task container and return its ID."""
+        cmd = self._build_run_command(task_dir)
+        result = _run(cmd, timeout=60)
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"{self._container_engine} run failed (exit {result.returncode}): {result.stderr}"
+            )
+        return result.stdout.strip()
+
+    def _build_run_command(self, task_dir: str) -> list[str]:
+        """Build the container run command without executing it."""
         cmd = [
-            "docker", "run", "-d",
-            "--gpus", self._gpus,
-            "-v", f"{task_dir}:/workspace/task:ro",
+            self._container_engine_binary, "run", "-d",
         ]
+        if self._container_runtime:
+            cmd.extend(["--runtime", self._container_runtime])
+        if self._container_engine == "podman":
+            cmd.extend(self._podman_gpu_args)
+        else:
+            cmd.extend(["--gpus", self._gpus])
+        cmd.extend([
+            "-v", f"{task_dir}:/workspace/task:ro",
+        ])
+        if self._shm_size:
+            cmd.extend(["--shm-size", str(self._shm_size)])
+        if self._ipc_mode:
+            cmd.extend(["--ipc", self._ipc_mode])
+        for volume in self._extra_volumes:
+            cmd.extend(["-v", volume])
         if self._agent_type == "claude-code" and self._mount_claude_auth:
             claude_dir = Path.home() / ".claude"
             claude_json = Path.home() / ".claude.json"
@@ -274,32 +354,36 @@ class MoltBenchDockerAgent(Agent):
             cmd.extend(["-e", f"{key}={val}"])
 
         cmd.append(self._image)
+        return cmd
 
-        result = _run(cmd, timeout=60)
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"docker run failed (exit {result.returncode}): {result.stderr}"
-            )
-        return result.stdout.strip()
-
-    def _docker_wait(self, container_id: str) -> int:
+    def _container_wait(self, container_id: str) -> int:
         """Wait for a container to exit. Returns exit code."""
         result = _run(
-            ["docker", "wait", container_id],
+            [self._container_engine_binary, "wait", container_id],
             timeout=self._timeout + 60,  # extra buffer
         )
         if result.returncode != 0:
-            raise RuntimeError(f"docker wait failed: {result.stderr}")
+            raise RuntimeError(f"{self._container_engine} wait failed: {result.stderr}")
         return int(result.stdout.strip())
 
-    def _docker_cp(self, container_id: str, src: str, dst: str) -> None:
+    def _container_cp(self, container_id: str, src: str, dst: str) -> None:
         """Copy files from container to local filesystem."""
         result = _run(
-            ["docker", "cp", f"{container_id}:{src}", dst],
+            [self._container_engine_binary, "cp", f"{container_id}:{src}", dst],
             timeout=120,
         )
         if result.returncode != 0:
-            logger.warning("docker cp failed: %s", result.stderr)
+            logger.warning("%s cp failed: %s", self._container_engine, result.stderr)
+
+    @staticmethod
+    def _coerce_args_list(value: Any, *, key: str) -> list[str]:
+        if value in (None, ""):
+            return []
+        if isinstance(value, str):
+            return shlex.split(value)
+        if isinstance(value, (list, tuple)):
+            return [str(item) for item in value]
+        raise ValueError(f"moltbench_docker agent.config.{key} must be a list or string")
 
     @staticmethod
     def _sample_index(task: BenchmarkTask) -> int:

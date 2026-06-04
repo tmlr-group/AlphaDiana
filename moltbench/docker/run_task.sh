@@ -54,6 +54,7 @@ read_task() {
     BENCH_LOG_PATH=$(python3 -c "import json; t=json.load(open('$TASK_FILE')); print(t.get('bench_log_path', 'run.log'))")
     SNAPSHOT_DIR=$(python3 -c "import json; t=json.load(open('$TASK_FILE')); print(t.get('snapshot_dir', 'workspace'))")
     RESULT_PARSER=$(python3 -c "import json; t=json.load(open('$TASK_FILE')); print(t.get('result_parser', 'bench_kb'))")
+    ROUND_GUARD_TARGET=$(python3 -c "import json; t=json.load(open('$TASK_FILE')); print(t.get('round_guard_target', ''))")
     RESULT_JSON_PATH=$(python3 -c "import json; t=json.load(open('$TASK_FILE')); print(t.get('result_json_path', ''))")
     SETUP_CMD=$(python3 - <<'PY' "$TASK_FILE"
 import json
@@ -115,12 +116,17 @@ setup_problem() {
 }
 
 install_round_guard() {
-    # Replace bench_kb.py with a round-counting wrapper.
+    # Replace the eval script with a round-counting wrapper.
     # After MAX_ROUNDS benchmark invocations the wrapper refuses to run,
     # forcing the agent to stop regardless of its own planning.
     cd "$WORKDIR"
-    local bench_py="kernelbench/bench_kb.py"
-    local impl_py="kernelbench/_bench_kb_impl.py"
+    local bench_py="${ROUND_GUARD_TARGET:-kernelbench/bench_kb.py}"
+    local bench_dir
+    bench_dir=$(dirname "$bench_py")
+    local bench_name
+    bench_name=$(basename "$bench_py")
+    local impl_name="_${bench_name%.*}_impl.${bench_name##*.}"
+    local impl_py="${bench_dir}/${impl_name}"
 
     if [[ ! -f "$bench_py" ]]; then
         log "WARNING: $bench_py not found, skipping round guard"
@@ -128,7 +134,7 @@ install_round_guard() {
     fi
 
     mv "$bench_py" "$impl_py"
-    cat > "$bench_py" << 'GUARD'
+    cat > "$bench_py" << GUARD
 #!/usr/bin/env python3
 """Round-counting wrapper — transparently limits benchmark invocations."""
 import os, sys, subprocess
@@ -155,8 +161,8 @@ if n > _MAX:
     print('speedup: 0.000x')
     sys.exit(1)
 
-# Delegate to real bench_kb.py
-_impl = os.path.join(os.path.dirname(os.path.abspath(__file__)), '_bench_kb_impl.py')
+# Delegate to real implementation
+_impl = os.path.join(os.path.dirname(os.path.abspath(__file__)), '${impl_name}')
 os.execv(sys.executable, [sys.executable, _impl] + sys.argv[1:])
 GUARD
     chmod +x "$bench_py"
@@ -240,8 +246,16 @@ run_final_verification() {
     local verify_cmd="$VERIFY_CMD"
     local verification_results_path="$ARTIFACTS_DIR/final_verification_results.json"
     # Bypass the round guard wrapper for final verification.
-    # If verify_cmd references bench_kb.py and the real impl exists, use it.
-    if [[ -f "kernelbench/_bench_kb_impl.py" ]]; then
+    # If the round guard created an _impl backup, use that instead.
+    if [[ -n "$ROUND_GUARD_TARGET" ]]; then
+        local guard_dir guard_name impl_name_final
+        guard_dir=$(dirname "$ROUND_GUARD_TARGET")
+        guard_name=$(basename "$ROUND_GUARD_TARGET")
+        impl_name_final="_${guard_name%.*}_impl.${guard_name##*.}"
+        if [[ -f "${guard_dir}/${impl_name_final}" ]]; then
+            verify_cmd="${verify_cmd//$guard_name/$impl_name_final}"
+        fi
+    elif [[ -f "kernelbench/_bench_kb_impl.py" ]]; then
         verify_cmd="${verify_cmd//bench_kb.py/_bench_kb_impl.py}"
     fi
     if [[ -z "$verify_cmd" ]]; then
@@ -255,12 +269,19 @@ run_final_verification() {
         verify_cmd="uv run ${verify_cmd}"
     fi
 
-    if bash -lc "$verify_cmd" > "$ARTIFACTS_DIR/final_bench.log" 2>&1; then
-        if [[ -n "$RESULT_JSON_PATH" && -f "$RESULT_JSON_PATH" ]]; then
-            cp -f "$RESULT_JSON_PATH" "$verification_results_path"
-        elif [[ "$RESULT_PARSER" == "bench_kb" ]]; then
-            # Parse results into structured JSON
-            python3 -c "
+    set +e
+    bash -lc "$verify_cmd" > "$ARTIFACTS_DIR/final_bench.log" 2>&1
+    local verify_status=$?
+    set -e
+    if [[ $verify_status -ne 0 ]]; then
+        log "Final verification command exited with status $verify_status; parsing any emitted metrics"
+    fi
+
+    if [[ -n "$RESULT_JSON_PATH" && -f "$RESULT_JSON_PATH" ]]; then
+        cp -f "$RESULT_JSON_PATH" "$verification_results_path"
+    elif [[ "$RESULT_PARSER" == "bench_kb" ]]; then
+        # Parse results into structured JSON
+        python3 -c "
 import re, json, sys
 
 log_path = '$ARTIFACTS_DIR/final_bench.log'
@@ -298,15 +319,45 @@ with open('$verification_results_path', 'w') as f:
     json.dump(results, f, indent=2)
 print(json.dumps(results, indent=2))
 "
-        else  # unknown result_parser
-            log "WARNING: Unknown result parser '$RESULT_PARSER', defaulting to ERROR result"
-            echo '{"correctness": "ERROR", "speedup": 0.0}' > "$verification_results_path"
-        fi
-        log "Final verification complete"
+    elif [[ "$RESULT_PARSER" == "qjl" ]]; then
+        # Parse QJL bench_cuda.py JSON output.
+        python3 -c "
+import json
+
+log_path = '$ARTIFACTS_DIR/final_bench.log'
+with open(log_path, encoding='utf-8', errors='replace') as f:
+    text = f.read()
+
+result = None
+for line in reversed(text.strip().splitlines()):
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        obj = json.loads(line)
+    except (json.JSONDecodeError, ValueError):
+        continue
+    if isinstance(obj, dict) and 'runtime_ms' in obj:
+        result = obj
+        break
+
+if result is None:
+    result = {
+        'runtime_ms': 0.0,
+        'distortion': 1.0,
+        'correctness_pass': False,
+        'error': 'parse_failed',
+    }
+
+with open('$verification_results_path', 'w') as f:
+    json.dump(result, f, indent=2)
+print(json.dumps(result, indent=2))
+"
     else
-        log "WARNING: Final verification failed (bench_kb.py error)"
+        log "WARNING: Unknown result parser '$RESULT_PARSER', defaulting to ERROR result"
         echo '{"correctness": "ERROR", "speedup": 0.0}' > "$verification_results_path"
     fi
+    log "Final verification complete"
 
     if [[ "$RUN_INVALID" -eq 1 ]]; then
         INVALID_REASON_ENV="$RUN_INVALID_REASON" python3 - <<'PY'

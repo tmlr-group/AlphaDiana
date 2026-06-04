@@ -233,7 +233,7 @@ commit pinned in `moltbench/seeds.yaml`.
 | Seed | Repo | Task | Status |
 |------|------|------|--------|
 | **AutoKernel** | `RightNow-AI/autokernel` @ `7843582` | **KernelBench** L1-L4 (270 problems) — optimize `kernel.py` | Verified |
-| QJL | `amirzandieh/QJL` @ `648b364` | CUDA C++ kernels — minimize runtime | Planned |
+| QJL | `amirzandieh/QJL` @ `648b364` | CUDA C++ kernels — minimize runtime | Supported |
 | Mini-SGLang | `sgl-project/mini-sglang` | Scheduler optimization — maximize throughput | Planned |
 
 ### How to Add a New Seed Project
@@ -286,6 +286,48 @@ commit pinned in `moltbench/seeds.yaml`.
        -t tmlrgroup/alphadiana:my-project-base .
    # Then build agent layers on top and run a smoke test
    ```
+
+### QJL Evaluation with OpenClaw and Podman
+
+QJL is supported as a full MoltBench CUDA optimization task. The evaluation
+builds the pinned QJL source, runs OpenClaw in a Podman-managed GPU container,
+and scores the final CUDA implementation using runtime and distortion.
+
+Configure an OpenAI-compatible provider with a fully qualified model ID:
+
+```bash
+export OPENAI_API_KEY="..."
+export OPENAI_BASE_URL="https://openrouter.ai/api/v1"
+export OPENAI_MODEL_NAME="deepseek/deepseek-v4-flash"
+```
+
+Build the QJL images:
+
+```bash
+podman build --network host \
+  -f moltbench/docker/Dockerfile.qjl-base \
+  -t localhost/alphadiana:qjl-base .
+
+podman build --network host \
+  -f moltbench/docker/Dockerfile.qjl-openclaw \
+  -t localhost/alphadiana:qjl-openclaw .
+```
+
+Run the evaluation:
+
+```bash
+python3 -m alphadiana.cli run \
+  configs/examples/moltbench_qjl_openclaw_podman.yaml
+```
+
+The configuration inherits `OPENAI_API_KEY`, `OPENAI_BASE_URL`, and
+`OPENAI_MODEL_NAME` from the host environment. Artifacts are written to
+`moltbench_artifacts_qjl_podman/`, and scored results are written to
+`results_qjl_podman/`. Both generated directories are ignored by Git.
+
+The configured distortion acceptance threshold is `0.8`. Runtime improvement
+is scored as baseline runtime divided by optimized runtime, and a result is
+accepted only when it also satisfies the configured distortion threshold.
 
 ## Output Structure
 

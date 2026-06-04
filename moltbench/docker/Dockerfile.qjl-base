@@ -1,0 +1,86 @@
+# MoltBench QJL Base Image
+# Contains: CUDA 12.1 + Python 3 + PyTorch 2.4.1 + QJL repo (pre-compiled CUDA extensions)
+#
+# Build (from AlphaDiana repo root, requires network for git clone):
+#   podman build --network host -f moltbench/docker/Dockerfile.qjl-base -t localhost/alphadiana:qjl-base .
+#
+# QJL is cloned at build time (not vendored). Pin the commit in
+# seeds.yaml and here to ensure reproducibility.
+
+FROM nvcr.io/nvidia/cuda:12.1.0-devel-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# System packages
+RUN sed 's|^deb |deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] |' \
+        /etc/apt/sources.list > /tmp/sources.list && \
+    cp /tmp/sources.list /etc/apt/sources.list && \
+    apt-get update && apt-get install -y --no-install-recommends \
+        python3 python3-pip python3-dev git wget build-essential libgomp1 \
+        curl ca-certificates && \
+    ln -sf /usr/bin/python3 /usr/bin/python && \
+    rm -rf /var/lib/apt/lists/*
+
+# Clone QJL at pinned commit (see moltbench/seeds.yaml)
+ARG QJL_REPO=https://github.com/amirzandieh/QJL.git
+ARG QJL_COMMIT=648b364
+RUN git clone "$QJL_REPO" /workspace/repo && \
+    cd /workspace/repo && \
+    git checkout "$QJL_COMMIT"
+WORKDIR /workspace/repo
+
+# Install PyTorch with CUDA 12.1
+RUN pip install --no-cache-dir \
+        torch==2.4.1+cu121 \
+        --index-url https://download.pytorch.org/whl/cu121
+
+# flash-attn (optional; synthetic eval does not require it)
+RUN pip install --no-cache-dir flash-attn==2.6.3 --no-build-isolation \
+    || echo "WARN: flash-attn build failed – skipping (not required for synthetic eval)"
+
+# Remaining Python dependencies
+RUN pip install --no-cache-dir \
+        transformers==4.46.3 \
+        triton==3.0.0 \
+        numpy==1.26.4 \
+        scipy==1.13.0 \
+        accelerate==0.29.3 \
+        safetensors==0.4.3 \
+        tqdm==4.65.0 \
+        pyyaml==6.0.1
+
+# Pre-compile CUDA extensions (sm_80 for A100/A800)
+ARG TORCH_CUDA_ARCH_LIST="8.0"
+ENV TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH_LIST}
+ENV NVCC_THREADS=8
+RUN cd /workspace/repo/qjl_kernel && python setup.py build_ext --inplace
+
+# Verify all 4 .so files were built
+RUN ls /workspace/repo/qjl_kernel/cuda_qjl_score*.so \
+       /workspace/repo/qjl_kernel/cuda_qjl_quant*.so \
+       /workspace/repo/qjl_kernel/cuda_qjl_gqa_score*.so \
+       /workspace/repo/qjl_kernel/quantization*.so \
+    && echo "OK: all 4 CUDA extensions built"
+
+# Verify torch + CUDA
+RUN python3 -c "import torch; print(f'PyTorch {torch.__version__}, CUDA available: {torch.cuda.is_available()}')"
+
+# Copy eval scripts
+RUN mkdir -p /eval
+COPY moltbench/seeds/qjl/bench_cuda.py /eval/bench_cuda.py
+COPY moltbench/seeds/qjl/prepare_kv.py /eval/prepare_kv.py
+
+# Copy run_eval wrapper (agent-callable)
+COPY moltbench/docker/run_eval_qjl.sh /eval/run_eval
+RUN chmod +x /eval/run_eval
+
+# Artifacts output directory
+RUN mkdir -p /workspace/artifacts
+
+# Copy entrypoint
+COPY moltbench/docker/run_task.sh /workspace/run_task.sh
+RUN chmod +x /workspace/run_task.sh
+
+ENV PYTHONPATH="/workspace/repo:${PYTHONPATH}"
+
+ENTRYPOINT ["/workspace/run_task.sh"]
