@@ -69,8 +69,15 @@ The patched preflight runs inside Podman, keeps thinking mode on, uses at
 least 8192 output tokens, and checks both remote `image_url` and data URL image
 inputs. The audit gate is infrastructure readiness, not accuracy: all 9 task
 rows must be written with `metadata.container_engine=podman`, image proof, logs
-and artifacts, and no text-only fallback or provider VLM rejection. No full MMMU-Pro sweep, Podman default promotion, or legacy runtime deletion is
+and artifacts, and no text-only fallback or provider VLM rejection. Historical
+and current evidence for this readiness pilot are recorded in
+[`context/podman-mmmu-pro-readiness/README.md`](../../context/podman-mmmu-pro-readiness/README.md).
+No full MMMU-Pro sweep, Podman default promotion, or legacy runtime deletion is
 claimed by this matrix.
+
+For the staged `72`-run local-vLLM campaign, use
+[full-rollout-local-vllm-20260419.md](full-rollout-local-vllm-20260419.md)
+instead of launching the four full configs manually.
 
 ## Data Configs
 
@@ -121,7 +128,8 @@ python -m alphadiana.cli validate configs/full_runs/rollout_full_zeroclaw_mmmu_p
 
 ## DirectLLM
 
-Config: `configs/examples/direct_llm_mmmu_pro.yaml`
+Config:
+[configs/examples/direct_llm_mmmu_pro.yaml](../../configs/examples/direct_llm_mmmu_pro.yaml)
 
 ```bash
 python -m alphadiana.cli validate configs/examples/direct_llm_mmmu_pro.yaml
@@ -130,7 +138,8 @@ python -m alphadiana.cli run configs/examples/direct_llm_mmmu_pro.yaml
 
 ## OpenClaw
 
-Config: `configs/examples/openclaw_mmmu_pro.yaml`
+Config:
+[configs/examples/openclaw_mmmu_pro.yaml](../../configs/examples/openclaw_mmmu_pro.yaml)
 
 ```bash
 python -m alphadiana.cli validate configs/examples/openclaw_mmmu_pro.yaml
@@ -139,7 +148,8 @@ python -m alphadiana.cli run configs/examples/openclaw_mmmu_pro.yaml
 
 ## OpenCode
 
-Config: `configs/examples/opencode_mmmu_pro.yaml`
+Config:
+[configs/examples/opencode_mmmu_pro.yaml](../../configs/examples/opencode_mmmu_pro.yaml)
 
 ```bash
 python -m alphadiana.cli validate configs/examples/opencode_mmmu_pro.yaml
@@ -201,7 +211,8 @@ python -m alphadiana.cli run configs/examples/opencode_mmmu_pro.yaml \
 
 ## ZeroClaw
 
-Config: `configs/examples/zeroclaw_mmmu_pro.yaml`
+Config:
+[configs/examples/zeroclaw_mmmu_pro.yaml](../../configs/examples/zeroclaw_mmmu_pro.yaml)
 
 ZeroClaw benchmark smoke is documented only for sandboxed execution:
 

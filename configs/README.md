@@ -26,7 +26,6 @@ configs/
 | Run a full benchmark | `full_runs/` |
 | Run the active local-Qwen harness smoke matrix | `smokes/` |
 | Smoke-test a new model or harness ad hoc (1–5 tasks) | `examples/` |
-| Run external_benchmark with Podman | `examples/external_benchmark_*_podman_smoke.yaml` |
 | Understand what fields are valid | `schema.yaml` |
 | Check which system prompt to use | `PROMPTS.md` |
 | Quick one-off sanity check | root-level `test_*.yaml` |

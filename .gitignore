@@ -62,6 +62,8 @@ dump.rdb
 !/configs/smokes/podman_mmmu_pro_readiness/
 !/configs/smokes/podman_mmmu_pro_readiness/**
 /artifacts/
+/.podman-storage/
+/.podman-run/
 
 # external_benchmark runtime artifacts
 external_benchmark_artifacts_*/
@@ -81,12 +83,3 @@ node_modules/
 .openclaw
 .env
 .codex
-
-# Docusaurus website
-/node_modules
-/build
-/.docusaurus
-.docusaurus/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*

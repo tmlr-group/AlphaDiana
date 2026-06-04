@@ -12,6 +12,8 @@ agent:
   config:             # Pass-through config for the agent (model settings, etc.)
     runtime: string                  # Optional runtime selector, e.g. "swebench_container"
     container_engine: string         # Task-container engine: "docker" legacy/baseline or opt-in "podman"
+    container_engine_binary: string  # Optional explicit Docker/Podman executable path
+    podman_gpu_args: [string]        # `external_benchmark_docker` Podman GPU flags, default ["--device", "nvidia.com/gpu=all"]
     agent_type: string               # `swebench_docker` mode: "direct_llm" | "openclaw" | "opencode" | "zeroclaw"
     model: string
     model_name: string
@@ -31,6 +33,10 @@ agent:
     dockerhub_repo: string           # `swebench_docker` image repo prefix (default: "jefzda/sweap-images")
     image: string                    # Explicit SWE-bench image override
     output_dir: string               # Local artifact directory for Docker-backed agents
+    extra_volumes: [string]          # Additional `external_benchmark_docker` container -v mount specs
+    shm_size: string                 # Optional `external_benchmark_docker` --shm-size value
+    ipc_mode: string                 # Optional `external_benchmark_docker` --ipc value; incompatible with shm_size when host
+    container_runtime: string        # Optional `external_benchmark_docker` OCI runtime override, e.g. "runc"
     temperature: float
     max_tokens: integer
     max_attempts: integer            # Retry attempts for OpenClaw (default: 3)

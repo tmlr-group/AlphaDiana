@@ -550,18 +550,6 @@ class ZeroClawAgent(Agent):
         self._skill_folder = _resolve_skill_folder(config.get("skill_folder", ""))
         self._install_command = str(config.get("install_command", "")).strip()
         self._timeout_command = str(config.get("timeout_command", "timeout")).strip() or "timeout"
-        self._persistent_memory = bool(config.get("persistent_memory", False))
-        # exp3-v2 oracle-feedback: when True, the build-mode store turn is shown the
-        # ground-truth answer and asked to self-grade and store a (problem, own
-        # solution, correct answer, feedback) four-tuple instead of a bare insight.
-        # Default False keeps exp3-v1 (raw-insight) behavior bit-for-bit identical.
-        self._oracle_feedback = bool(config.get("oracle_feedback", False))
-        # Optional embedding-based memory recall. When embedding_base_url is set,
-        # the generated config.toml gets a [memory] section pointing zeroclaw's
-        # native memory at an OpenAI-compatible embedding endpoint (vector/hybrid
-        # search instead of FTS-only). embeddings.rs: provider "custom:<url>".
-        _emb = config.get("memory_embedding") or {}
-        self._memory_embedding = _emb if isinstance(_emb, dict) else {}
         raw_env = config.get("env", {})
         self._env = {
             str(key): str(value)
@@ -991,26 +979,6 @@ class ZeroClawAgent(Agent):
             partial_response.response_json = merged_response_json
         return partial_response
 
-    def _build_memory_section(self) -> str:
-        """Emit a [memory] TOML section enabling embedding-based recall when
-        memory_embedding.base_url is configured; otherwise empty (FTS-only)."""
-        emb = self._memory_embedding
-        base_url = str(emb.get("base_url") or "").strip()
-        if not (self._persistent_memory and base_url):
-            return ""
-        model = str(emb.get("model") or "qwen3-embed-0.6b")
-        dims = int(emb.get("dimensions") or 1024)
-        search_mode = str(emb.get("search_mode") or "hybrid")
-        return (
-            "[memory]\n"
-            'backend = "sqlite"\n'
-            "auto_save = true\n"
-            f"embedding_provider = {_quote_toml('custom:' + base_url)}\n"
-            f"embedding_model = {_quote_toml(model)}\n"
-            f"embedding_dimensions = {dims}\n"
-            f"search_mode = {_quote_toml(search_mode)}\n\n"
-        )
-
     def _build_config_toml(
         self,
         *,
@@ -1061,7 +1029,6 @@ class ZeroClawAgent(Agent):
             "[model_providers]\n\n"
             f"{runtime_section}"
             f"{security_section}"
-            f"{self._build_memory_section()}"
             "[observability]\n"
             'backend = "none"\n'
             f"runtime_trace_mode = {_quote_toml(self._runtime_trace_mode)}\n"
@@ -1291,10 +1258,7 @@ class ZeroClawAgent(Agent):
     def _prepare_paths(self, root_dir: str, execution_id: str) -> dict[str, str]:
         base_dir = str(Path(root_dir) / ".alphadiana_zeroclaw" / execution_id)
         workspace_dir = str(Path(base_dir) / "workspace")
-        if self._persistent_memory:
-            home_dir = str(Path(root_dir) / ".alphadiana_zeroclaw" / "_shared" / "home")
-        else:
-            home_dir = str(Path(base_dir) / "home")
+        home_dir = str(Path(base_dir) / "home")
         zc_home_dir = str(Path(home_dir) / ".zeroclaw")
         state_dir = str(Path(workspace_dir) / "state")
         attachments_dir = str(Path(workspace_dir) / "attachments")
@@ -1381,27 +1345,14 @@ class ZeroClawAgent(Agent):
         paths: dict[str, str],
         task_context: dict[str, Any],
     ) -> None:
-        workspace_link_target = paths['workspace_dir']
-        if self._persistent_memory:
-            shared_workspace = str(Path(paths['zc_home_dir']) / '_persistent_workspace')
-            prep_command = (
-                f"mkdir -p {shlex.quote(paths['workspace_dir'])} {shlex.quote(paths['zc_home_dir'])} "
-                f"{shlex.quote(paths['state_dir'])} {shlex.quote(paths['attachments_dir'])} "
-                f"{shlex.quote(paths['xdg_config_home'])} {shlex.quote(paths['xdg_cache_home'])} "
-                f"{shlex.quote(paths['xdg_data_home'])} {shlex.quote(paths['xdg_state_home'])} "
-                f"{shlex.quote(shared_workspace)} "
-                f"&& ln -sfn {shlex.quote(shared_workspace)} "
-                f"{shlex.quote(str(Path(paths['zc_home_dir']) / 'workspace'))}"
-            )
-        else:
-            prep_command = (
-                f"mkdir -p {shlex.quote(paths['workspace_dir'])} {shlex.quote(paths['zc_home_dir'])} "
-                f"{shlex.quote(paths['state_dir'])} {shlex.quote(paths['attachments_dir'])} "
-                f"{shlex.quote(paths['xdg_config_home'])} {shlex.quote(paths['xdg_cache_home'])} "
-                f"{shlex.quote(paths['xdg_data_home'])} {shlex.quote(paths['xdg_state_home'])} "
-                f"&& ln -sfn {shlex.quote(paths['workspace_dir'])} "
-                f"{shlex.quote(str(Path(paths['zc_home_dir']) / 'workspace'))}"
-            )
+        prep_command = (
+            f"mkdir -p {shlex.quote(paths['workspace_dir'])} {shlex.quote(paths['zc_home_dir'])} "
+            f"{shlex.quote(paths['state_dir'])} {shlex.quote(paths['attachments_dir'])} "
+            f"{shlex.quote(paths['xdg_config_home'])} {shlex.quote(paths['xdg_cache_home'])} "
+            f"{shlex.quote(paths['xdg_data_home'])} {shlex.quote(paths['xdg_state_home'])} "
+            f"&& ln -sfn {shlex.quote(paths['workspace_dir'])} "
+            f"{shlex.quote(str(Path(paths['zc_home_dir']) / 'workspace'))}"
+        )
         prep_result = sandbox.execute(prep_command)
         if prep_result.exit_code != 0:
             raise RuntimeError(
@@ -1546,102 +1497,6 @@ class ZeroClawAgent(Agent):
         }
         return partial_response
 
-    def _memory_store_via_agent(
-        self, sandbox: Any, paths: dict[str, str], env: dict[str, str],
-        task: BenchmarkTask, raw_output: str,
-    ) -> None:
-        if not self._persistent_memory:
-            return
-        # Memory-mode gating (transfer experiments): "frozen" tasks (e.g. test
-        # phase) recall prior memory but must NOT write new memory, so later
-        # test problems don't learn from each other. Defaults to "build".
-        if str((task.metadata or {}).get("memory_mode", "build")) == "frozen":
-            logger.info(
-                "memory_store via agent SKIPPED task=%s (memory_mode=frozen)",
-                task.task_id,
-            )
-            return
-        if self._oracle_feedback:
-            # exp3-v2: self-grade against the official answer, then store the full
-            # four-tuple. A wrong attempt is always stored LABELED wrong with the
-            # correct answer, so it becomes a negative example, not silent pollution.
-            store_prompt = (
-                "You just attempted a competition problem. Below are the problem, "
-                "your full solution attempt, and the OFFICIAL correct answer.\n\n"
-                f"Problem:\n{task.problem}\n\n"
-                f"Your solution attempt:\n{raw_output}\n\n"
-                f"OFFICIAL CORRECT ANSWER: {task.ground_truth}\n\n"
-                "First, compare your final answer with the official answer and state "
-                "plainly whether you were CORRECT or WRONG. Then write a brief feedback "
-                "note: if WRONG, pinpoint the step where you went astray and the correct "
-                "approach; if CORRECT, name the key technique that worked. Finally, make "
-                "a single memory_store call whose text contains all four parts together "
-                "so you can learn from it on future problems: (1) the problem, (2) your "
-                "answer and whether it was correct, (3) the official correct answer, "
-                "(4) your feedback/lesson."
-            )
-        else:
-            store_prompt = (
-                "You are reviewing a problem you just solved. "
-                "Store the key insight, technique, or formula using the memory_store tool "
-                "so you can use it in future problems.\n\n"
-                f"Problem:\n{task.problem}\n\n"
-                f"Your solution:\n{raw_output}\n\n"
-                "Store the most useful insight from this solution using memory_store."
-            )
-        store_task_path = str(Path(paths["base_dir"]) / "memory_store_prompt.txt")
-        sandbox.upload(store_task_path, store_prompt.encode("utf-8"))
-        store_stdout = str(Path(paths["base_dir"]) / "memory_store_stdout.txt")
-        store_stderr = str(Path(paths["base_dir"]) / "memory_store_stderr.txt")
-        # The store run reuses the same config-dir, so zeroclaw would truncate the
-        # solve run's runtime trace; stash it and keep the store trace separately.
-        trace_path = paths["runtime_trace_path"]
-        solve_trace = f"{trace_path}.solve"
-        store_trace = f"{trace_path}.store"
-        store_cmd = (
-            f"cd {shlex.quote(paths['workspace_dir'])} && "
-            f"cp {shlex.quote(trace_path)} {shlex.quote(solve_trace)} 2>/dev/null; "
-            f"prompt=$(cat {shlex.quote(store_task_path)}) && "
-            f"{self._timeout_command} 120 "
-            f"zeroclaw --config-dir {shlex.quote(paths['zc_home_dir'])} "
-            f"agent --model {shlex.quote(self._model)} "
-            f"-m \"$prompt\" "
-            f"> {shlex.quote(store_stdout)} "
-            f"2> {shlex.quote(store_stderr)}; rc=$?; "
-            f"cp {shlex.quote(trace_path)} {shlex.quote(store_trace)} 2>/dev/null; "
-            f"cp {shlex.quote(solve_trace)} {shlex.quote(trace_path)} 2>/dev/null; "
-            f"exit $rc"
-        )
-        store_cmd = self._wrap_shell_command(store_cmd, env)
-        result = sandbox.execute(store_cmd)
-        if result.exit_code == 0:
-            self._memory_task_count += 1
-            stdout_tail = self._read_sandbox_file(sandbox, store_stdout).strip()[-600:]
-            logger.info(
-                "memory_store via agent: task=%s completed (total=%d) stdout_tail=%s",
-                task.task_id, self._memory_task_count, stdout_tail,
-            )
-            verify_cmd = self._wrap_shell_command(
-                f"cd {shlex.quote(paths['workspace_dir'])} && "
-                f"zeroclaw --config-dir {shlex.quote(paths['zc_home_dir'])} memory stats 2>&1 && "
-                f"zeroclaw --config-dir {shlex.quote(paths['zc_home_dir'])} memory list 2>&1 | head -40",
-                env,
-            )
-            vres = sandbox.execute(verify_cmd)
-            logger.info(
-                "memory after store (task=%s):\n%s",
-                task.task_id, (vres.stdout or vres.stderr or "")[:2000],
-            )
-        else:
-            stderr_text = self._read_sandbox_file(sandbox, store_stderr).strip()
-            logger.warning("memory_store via agent failed (exit %d): %s",
-                           result.exit_code, stderr_text[:200])
-
-    _memory_task_count: int = 0
-
-    def _has_memories(self) -> bool:
-        return self._persistent_memory and self._memory_task_count > 0
-
     def _run_in_sandbox(self, task: BenchmarkTask, sandbox: Any) -> AgentResponse:
         start = time.time()
         attachment_items = self._build_attachment_items(task)
@@ -1659,23 +1514,11 @@ class ZeroClawAgent(Agent):
             for item in attachment_items
             if bool(item.get("is_image"))
         ]
-        has_memories = self._has_memories()
-        original_system_prompt = self._system_prompt
-        if has_memories:
-            self._system_prompt = (
-                self._system_prompt + "\n\n"
-                "You have memories from previous problems. "
-                "Use memory_search to check for relevant knowledge before solving."
-            )
-        # Capture what the model actually receives so the recorded
-        # system_prompt matches request_messages even after the restore below.
-        effective_system_prompt = self._system_prompt
         task_context = self._build_task_context(
             task,
             attachment_items,
             image_marker_paths=image_marker_paths,
         )
-        self._system_prompt = original_system_prompt
         prompt = str(task_context["prompt"])
 
         self._prepare_sandbox_workspace(sandbox, paths, task_context)
@@ -1788,7 +1631,7 @@ class ZeroClawAgent(Agent):
             attachment_items=attachment_items,
             metadata=metadata,
             wall_time_sec=time.time() - start,
-            system_prompt=effective_system_prompt,
+            system_prompt=self._system_prompt,
             artifact_manifest={
                 "files": {
                     "stdout_source": paths["stdout_path"],
@@ -1922,23 +1765,6 @@ class ZeroClawAgent(Agent):
                 error_type="empty_response",
             )
 
-        # Best-effort: a failure in the post-solve memory store (e.g. the ROCK
-        # sandbox getting auto-cleared/unreachable after a long solve, which
-        # surfaces as run_in_session raising) must NOT discard an already-solved
-        # answer. Previously an unhandled store failure voided the whole task
-        # (predicted=None, score_status=runtime_error) even though the solve had
-        # succeeded -- the cause of the exp1 ZeroClaw None tasks.
-        try:
-            self._memory_store_via_agent(
-                sandbox, paths, env, task, sanitized_output,
-            )
-        except Exception as exc:  # noqa: BLE001 - store is best-effort
-            logger.warning(
-                "memory_store via agent raised for task=%s (best-effort, "
-                "keeping solved answer): %s",
-                task.task_id,
-                exc,
-            )
         return partial_response
 
     def solve(self, task: BenchmarkTask, sandbox: Any = None) -> AgentResponse:

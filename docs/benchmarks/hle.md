@@ -347,3 +347,11 @@ Observed on April 19/20, 2026:
   - April 20 default-Docker confirmation rerun:
     `pilot_20260420_qwen35_27b_hle_opencode_t3_docker_default`
     wrote `3/3` normal task records on the same task trio with scores `1/0/0`
+  - April 20 rerun中三条 task JSON 都记录了
+    `metadata.controller_mode=docker` 和
+    `metadata.transport=opencode_cli_container`
+
+Reviewer-facing evidence:
+
+- `context/qwen-openrouter-pilots/pilot-validation.md`
+- `context/qwen-openrouter-pilots/status-matrix.md`

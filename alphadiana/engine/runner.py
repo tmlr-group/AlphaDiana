@@ -567,6 +567,7 @@ class Runner:
         import alphadiana.benchmarks.imo.benchmark  # noqa: F401
         import alphadiana.benchmarks.mmmu_pro.benchmark  # noqa: F401
         import alphadiana.benchmarks.external_benchmark.benchmark  # noqa: F401
+        import alphadiana.benchmarks.external_benchmark.qjl  # noqa: F401
         import alphadiana.benchmarks.swebench_pro.benchmark  # noqa: F401
         import alphadiana.benchmarks.terminal_bench2.benchmark  # noqa: F401
 
@@ -594,6 +595,7 @@ class Runner:
         import alphadiana.scorer.llm_judge  # noqa: F401
         import alphadiana.scorer.math_verify_scorer  # noqa: F401
         import alphadiana.benchmarks.external_benchmark.scorer  # noqa: F401
+        import alphadiana.scorer.external_benchmark_qjl  # noqa: F401
         import alphadiana.scorer.numeric  # noqa: F401
         import alphadiana.benchmarks.swe_bench.scorer  # noqa: F401
         import alphadiana.benchmarks.swebench_pro.scorer  # noqa: F401
@@ -1294,12 +1296,11 @@ class Runner:
             supports_shared_session = getattr(self.sandbox, "supports_shared_session", None)
             if callable(supports_shared_session):
                 sandbox_supports_shared_session = bool(supports_shared_session())
-        _persistent_memory = bool(self.config.agent_config.get("persistent_memory", False))
         if (
             self.sandbox is not None
             and pool is None
             and sandbox_supports_shared_session
-            and (self.config.agent_name != "openclaw" or _persistent_memory)
+            and self.config.agent_name != "openclaw"
         ):
             logger.info("Creating shared sandbox session for sequential execution")
             shared_session = self.sandbox.create_session()

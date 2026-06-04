@@ -33,7 +33,6 @@ class CustomBenchmark(Benchmark):
                 task_id=task_id,
                 problem=problem,
                 ground_truth=answer,
-                metadata={"memory_mode": str(item.get("memory_mode", "build"))},
             ))
         return tasks
 
