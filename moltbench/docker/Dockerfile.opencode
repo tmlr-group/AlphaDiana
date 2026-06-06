@@ -4,7 +4,10 @@
 # in the workspace without a gateway server.
 #
 # Build (from AlphaDiana repo root):
+#   # Docker:
 #   docker build -f moltbench/docker/Dockerfile.opencode -t tmlrgroup/alphadiana:opencode .
+#   # Podman:
+#   podman build -f moltbench/docker/Containerfile.opencode -t tmlrgroup/alphadiana:opencode .
 #
 # Uses the same run_task.sh entrypoint; MOLTBENCH_AGENT=opencode selects
 # the launch_opencode() path.

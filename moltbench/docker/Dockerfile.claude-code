@@ -1,6 +1,9 @@
 # MoltBench + Claude Code
 # Build (from AlphaDiana repo root):
+#   # Docker:
 #   docker build -f moltbench/docker/Dockerfile.claude-code -t tmlrgroup/alphadiana:claude-code .
+#   # Podman:
+#   podman build -f moltbench/docker/Containerfile.claude-code -t tmlrgroup/alphadiana:claude-code .
 
 FROM tmlrgroup/alphadiana:gpu-base
 

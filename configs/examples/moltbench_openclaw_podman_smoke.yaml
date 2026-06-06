@@ -1,0 +1,46 @@
+# MoltBench evaluation config — OpenClaw agent via Podman
+#
+# Usage:
+#   alphadiana run configs/examples/moltbench_openclaw_podman_smoke.yaml
+#
+# Prerequisites:
+#   1. Build Podman images:
+#      cd <repo_root>
+#      podman build -f moltbench/docker/Containerfile.base -t tmlrgroup/alphadiana:gpu-base .
+#      podman build -f moltbench/docker/Containerfile.openclaw -t tmlrgroup/alphadiana:openclaw .
+#   2. Set OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL_NAME in environment
+
+task: kernelbench
+run_id: "moltbench-podman-openclaw-smoke"
+
+agent:
+  name: moltbench_podman
+  version: "1.0"
+  config:
+    agent_type: openclaw
+    image_prefix: tmlrgroup/alphadiana
+    container_engine: podman
+    request_timeout: 1800
+    gpus: "all"
+    podman_gpu_mode: auto
+    network_mode: "host"
+    output_dir: "./moltbench_artifacts_podman_openclaw_smoke"
+
+benchmark:
+  name: moltbench
+  config:
+    levels: [1]
+    problems: "1"
+    max_rounds: 3
+    backend: triton
+
+scorer:
+  name: moltbench
+  config:
+    thresholds: [1.0, 1.5, 2.0, 3.0, 5.0]
+    score_mode: "final"
+
+max_concurrent: 1
+output_dir: "./results"
+metadata:
+  notes: "Podman smoke test: OpenClaw agent, 1 problem, 3 rounds"

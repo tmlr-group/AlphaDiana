@@ -4,7 +4,10 @@
 # This container runs ZeroClaw in single-shot agent CLI mode.
 #
 # Build (from AlphaDiana repo root):
+#   # Docker:
 #   docker build -f moltbench/docker/Dockerfile.zeroclaw -t tmlrgroup/alphadiana:zeroclaw .
+#   # Podman:
+#   podman build -f moltbench/docker/Containerfile.zeroclaw -t tmlrgroup/alphadiana:zeroclaw .
 #
 # The container runs ZeroClaw in agent CLI mode:
 #   1. Configures ZeroClaw with an OpenAI-compatible provider via ~/.zeroclaw/config.toml

@@ -5,7 +5,10 @@
 #   Stage 2: MoltBench GPU base + OpenClaw binaries
 #
 # Build (from AlphaDiana repo root):
+#   # Docker:
 #   docker build -f moltbench/docker/Dockerfile.openclaw -t tmlrgroup/alphadiana:openclaw .
+#   # Podman:
+#   podman build -f moltbench/docker/Containerfile.openclaw -t tmlrgroup/alphadiana:openclaw .
 #
 # The container runs OpenClaw in gateway mode:
 #   1. Starts `openclaw gateway` as background process (port 8080)
