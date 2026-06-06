@@ -136,11 +136,47 @@ agent:
     podman_disable_selinux_label: true  # default
 ```
 
-## Validated Runs
+## Validated on This System
 
-| Date | Agent | Model | Config | Result |
-|------|-------|-------|--------|--------|
-| 2026-06-06 | Claude Code | mimo-v2.5-pro | podman smoke | PASS (score=0.861) |
-| 2026-06-06 | OpenClaw | mimo-v2.5-pro | podman smoke | PASS (score=0.988) |
-| 2026-06-06 | OpenCode | mimo-v2.5-pro | podman smoke | PASS (score=1.007) |
-| 2026-06-06 | ZeroClaw | mimo-v2.5-pro | podman smoke | timeout (infra OK) |
+The following was verified on the development system (2026-06-06):
+
+```bash
+# 1. Images available
+podman images | grep tmlrgroup/alphadiana
+# docker.io/tmlrgroup/alphadiana  gpu-base, claude-code, openclaw, opencode, zeroclaw
+
+# 2. GPU accessible via legacy device mode (CDI not configured on this host)
+podman run --rm --device /dev/nvidia0 --device /dev/nvidiactl --device /dev/nvidia-uvm \
+    --security-opt label=disable tmlrgroup/alphadiana:gpu-base \
+    python3 -c "import torch; print(torch.cuda.is_available())"
+# True
+
+# 3. Anthropic API reachable via proxy
+curl -sS "${ANTHROPIC_BASE_URL}/v1/messages" \
+    -H "x-api-key: ${ANTHROPIC_AUTH_TOKEN}" -H "anthropic-version: 2023-06-01" \
+    -H "content-type: application/json" \
+    -d '{"model":"mimo-v2.5-pro","max_tokens":16,"messages":[{"role":"user","content":"Hi"}]}'
+# Returns valid response with model "mimo-v2.5-pro"
+
+# 4. OpenAI-compatible endpoint reachable
+curl -sS "https://token-plan-sgp.xiaomimimo.com/v1/chat/completions" \
+    -H "Authorization: Bearer ${OPENAI_API_KEY}" \
+    -H "Content-Type: application/json" \
+    -d '{"model":"mimo-v2.5-pro","max_tokens":16,"messages":[{"role":"user","content":"Hi"}]}'
+# Returns valid chat.completion response
+
+# 5. Pipeline launches (creates results directory, starts container)
+python3 -m alphadiana.cli run configs/examples/moltbench_claude_code_podman_smoke.yaml
+# Creates results/moltbench-podman-claude-code-smoke/
+# Full run takes 10-20 min per KernelBench problem
+```
+
+| Check | Status |
+|-------|--------|
+| Podman images built | ✅ |
+| GPU via legacy device mounts | ✅ |
+| Anthropic API (mimo-v2.5-pro via proxy) | ✅ |
+| OpenAI-compatible API (mimo-v2.5-pro) | ✅ |
+| Config validation (both Claude/OpenClaw) | ✅ |
+| Pipeline container launch | ✅ |
+| CDI auto-fallback to legacy | ✅ |
