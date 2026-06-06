@@ -25,6 +25,8 @@ agent:
     podman_gpu_mode: auto
     network_mode: "host"
     output_dir: "./moltbench_artifacts_podman_openclaw_smoke"
+    env:
+      OPENAI_MODEL_NAME: "mimo-v2.5-pro"
 
 benchmark:
   name: moltbench

@@ -27,7 +27,8 @@ agent:
     network_mode: "host"
     output_dir: "./moltbench_artifacts_podman_claude_code_smoke"
     env:
-      ANTHROPIC_MODEL: "claude-sonnet-4-6"
+      # Override with your model; mimo-v2.5-pro works with the Xiaomi token proxy
+      ANTHROPIC_MODEL: "mimo-v2.5-pro"
 
 benchmark:
   name: moltbench

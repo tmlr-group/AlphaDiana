@@ -540,10 +540,21 @@ class MoltBenchDockerAgent(Agent):
         return int(result.stdout.strip())
 
     def _container_cp(self, container_id: str, src: str, dst: str) -> None:
-        """Copy files from container to local filesystem."""
+        """Copy files from container to local filesystem.
+
+        Podman cp does not support the trailing-dot convention that Docker
+        uses to copy directory *contents* into a destination.  Strip the
+        trailing ``/.`` and ensure the destination directory exists first.
+        """
         if self._container_engine == "podman":
+            # podman cp doesn't support trailing /. like docker cp does.
+            # Use /workspace/artifacts instead of /workspace/artifacts/.
+            podman_src = src.rstrip("/")
+            if podman_src.endswith("."):
+                podman_src = podman_src[:-1].rstrip("/")
+            Path(dst).mkdir(parents=True, exist_ok=True)
             result = self._podman.cp(
-                f"{container_id}:{src}",
+                f"{container_id}:{podman_src}",
                 dst,
                 timeout=120,
                 check=False,
