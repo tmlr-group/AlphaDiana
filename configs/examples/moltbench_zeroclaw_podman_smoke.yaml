@@ -23,7 +23,7 @@ benchmark:
   name: moltbench
   config:
     levels: [1]
-    num_problems: 1
+    problems: "1"
     source: hf
 
 max_concurrent: 1
