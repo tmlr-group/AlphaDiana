@@ -1,0 +1,57 @@
+{
+  "throughput_tok_per_s": 4703.69,
+  "throughput_tok_per_s_mean": 4703.69,
+  "throughput_tok_per_s_min": 4696.2,
+  "throughput_tok_per_s_max": 4711.19,
+  "throughput_tok_per_s_stdev": 10.6,
+  "throughput_tok_per_s_ci95": 14.69,
+  "p50_ttft_ms": 4362.3,
+  "correct": true,
+  "num_success": 128,
+  "num_error": 0,
+  "warmup_passes": 1,
+  "measured_passes": 2,
+  "cold_throughput_tok_per_s": 4523.33,
+  "per_pass_throughput": [
+    4523.33,
+    4711.19,
+    4696.2
+  ]
+}
+{
+  "attempt": 0,
+  "stage_id": "improvement",
+  "correct": true,
+  "score": 1.1301,
+  "metric": {
+    "baseline_throughput": 4162.32,
+    "candidate_throughput": 4703.69,
+    "optimization_gain": 1.1301,
+    "ttft_p50_ms": 4362.3,
+    "cold_throughput": 4523.33,
+    "throughput_ci95": 14.69,
+    "throughput_stdev": 10.6,
+    "per_pass_throughput": [
+      4523.33,
+      4711.19,
+      4696.2
+    ],
+    "num_success": 128,
+    "num_error": 0
+  },
+  "cost": {
+    "attempts_used": 0,
+    "max_attempts": 3,
+    "wall_time_sec": 46.0,
+    "model_calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "total_tokens": 0,
+    "token_source": "none",
+    "cost_per_improvement": 353.7
+  },
+  "wall_time_sec": 46.0,
+  "verifier_status": "PASS",
+  "feedback": "Official: candidate=4703.7 tok/s, baseline=4162.3, OG=1.130x.",
+  "error": null
+}

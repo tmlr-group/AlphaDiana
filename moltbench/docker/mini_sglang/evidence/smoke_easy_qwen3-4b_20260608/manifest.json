@@ -1,0 +1,53 @@
+{
+  "task": "mini_sglang",
+  "difficulty": "easy",
+  "moltbench_task_level": "optimization_only",
+  "scoring": {
+    "correctness_metric": "num_error==0",
+    "gain_metric": "OG=candidate/baseline",
+    "stability_metric": "N/A",
+    "memory_metric": "N/A",
+    "drift_metric": "N/A",
+    "cost_metric": "attempts+wall_time+tokens"
+  },
+  "config_lock": {
+    "benchmark_version": "moltbench-mini_sglang",
+    "verifier_version": "1.1.0",
+    "run_eval_version": "1.1.0",
+    "scoring_version": "1.1.0",
+    "seed_commit": "20fcd7f",
+    "seed_repo_head": "4a41ab25131fda6caeeac3453233fe539103bc85",
+    "image_ref": "localhost/mini-sglang-agents:l3",
+    "image_digest": "",
+    "model_name": "qwen3-4b",
+    "model_path": "/data0/models/hub/models--Qwen--Qwen3-4B/snapshots/1cfa9a7208912126459214e8b04321603b3df60c",
+    "model_revision": "1cfa9a7208912126459214e8b04321603b3df60c",
+    "agent_adapter": "none",
+    "verifier_hashes": {
+      "/eval/eval_runner.py": "b78b783ddc616d99371c268b62c7c0adf638b27ac648134fb63bbe1ca277c003",
+      "/eval/bench_serving.py": "17bbcf8a8a8f1dbb4cbb81eee1ecec3aa1f5335632c240963f8057f584a9742c",
+      "/eval/run_eval": "9a7cf3d8bac134cca3f3de07c2fd89d23863ce75e703f7e298589fa2d2d8787e",
+      "/eval/call_gateway.py": "da1038f7709514be3ae585bd4941e944c85c5445dc9cb456ef2271ae2a26f03e"
+    },
+    "hardware_fingerprint": "NVIDIA A800-SXM4-80GB, 535.183.01, 81920 MiB"
+  },
+  "model_path": "/data0/models/hub/models--Qwen--Qwen3-4B/snapshots/1cfa9a7208912126459214e8b04321603b3df60c",
+  "agent": "none",
+  "max_attempts": 3,
+  "memory_ratio": "0.2",
+  "trace": {
+    "num_prompts": "128",
+    "input_len": "128",
+    "output_len": "256",
+    "warmup": "1",
+    "repeats": "2"
+  },
+  "baseline_throughput": 4162.32,
+  "versions": {
+    "python": "3.10.20",
+    "torch": "2.9.1+cu128",
+    "flashinfer": "0.6.3",
+    "nvcc": "Cuda compilation tools, release 12.2, V12.2.91",
+    "gpu": "NVIDIA A800-SXM4-80GB, 535.183.01"
+  }
+}

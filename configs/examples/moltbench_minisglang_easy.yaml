@@ -1,0 +1,89 @@
+# mini-SGLang Easy — Agent receives optimization PR references and guidance.
+#
+# Runs the mini-SGLang serving-throughput optimization task under PODMAN through
+# AlphaDiana (MoltBench). The agent (OpenClaw) edits /workspace/repo and calls
+# /eval/run_eval (one "attempt"); the hidden harness measures warmup-excluded
+# steady-state throughput and scores OG = candidate / in-situ-baseline.
+#
+# GPU on podman 3.4.x is injected via nvidia-container-runtime (gpu_mode below),
+# not CDI (CDI needs podman >= 4.1). The minisgl conda env, CUDA toolkit, and the
+# shared model dir are mounted read-only; nothing is baked for the dev image.
+#
+# Host prereqs (A800): localhost/mini-sglang-openclaw:dev image built, GPU free,
+# OPENAI_API_KEY exported (OpenRouter). Run WITHOUT http(s)_proxy env set.
+
+run_id: "mini-sglang-easy-v1"
+
+agent:
+  name: moltbench_docker
+  version: "1.0"
+  config:
+    agent_type: openclaw
+    image: "localhost/mini-sglang-openclaw:dev"
+    container_engine: podman
+    gpu_mode: nvidia-runtime          # podman 3.4.x: --runtime nvidia-container-runtime
+    gpus: "5"                         # ⚠️ EXAMPLE id — set to a FREE GPU (check `nvidia-smi` first).
+                                      # Two runs (e.g. easy + hard) on the SAME id contend for the
+                                      # KV cache and bias throughput — give each run its own free GPU,
+                                      # or pin NUM_PAGES (env below) so both see identical KV pressure.
+    network_mode: host                # gateway -> OpenRouter + localhost minisgl server
+    memory: "48g"
+    request_timeout: 3600
+    mount_claude_auth: false
+    # ⚠️ EXAMPLE paths below are for OUR A800 cluster — REPLACE the host (left) side
+    # with your own. The thick `:repro` image bakes the env, so for it you only need
+    # the cuda + models mounts (drop the env mount). See moltbench/docs/mini-sglang-reproduce.md.
+    volume_mounts:
+      - "/data3/jinbo/envs/mini_sglang:/opt/minisgl-env:ro"   # host conda env -> stable in-container path (dev image only)
+      - "/usr/local/cuda:/usr/local/cuda:ro"                  # host CUDA toolkit (nvcc for flashinfer JIT)
+      - "/data0/models:/data0/models:ro"                      # host HF/model cache (replace with yours)
+    output_dir: "./mini_sglang_artifacts_easy_v1"
+    env:
+      # Serve Qwen3-4B (not 0.6B): a 4B model actually pressures the KV cache, so
+      # scheduler/admission optimizations have a measurable effect (0.6B never saturates).
+      # Pluggable: use a friendly MODEL alias resolved under MODELS_HUB (the HF cache
+      # "hub" dir), OR set MODEL_PATH to an absolute model dir. Replace MODELS_HUB with yours.
+      MODEL: "qwen3-4b"                  # qwen3-0.6b | qwen3-1.7b | qwen3-4b | qwen3-8b
+      MODELS_HUB: "/data0/models/hub"    # ⚠️ replace with your HF cache hub dir
+      SERVED_MODEL_NAME: "Qwen3-4B"      # shown in the agent prompt (else auto-derived)
+      MEMORY_RATIO: "0.3"
+      # KV-pool / scheduler knobs (pluggable — pin these for a FAIR A/B across models
+      # or GPUs; empty/unset = engine default). NUM_PAGES pins the KV pool to an
+      # identical size regardless of shared-GPU free-mem drift.
+      # NUM_PAGES: "67410"
+      # MAX_RUNNING_REQUESTS: "4096"
+      EVAL_NUM_PROMPTS: "256"
+      EVAL_INPUT_LEN: "128"
+      EVAL_OUTPUT_LEN: "512"
+      EVAL_WARMUP: "1"
+      EVAL_REPEATS: "2"
+      FAST_WARMUP: "1"
+      FAST_REPEATS: "1"
+      OPENAI_BASE_URL: "https://openrouter.ai/api/v1"
+      OPENAI_MODEL_NAME: "qwen/qwen3-235b-a22b-2507"
+      OPENCLAW_GATEWAY_TOKEN: "MOLTBENCH"
+      # OPENAI_API_KEY is auto-injected from the host environment at runtime.
+
+benchmark:
+  name: moltbench
+  config:
+    task: mini_sglang
+    difficulty: "easy"
+    model_name: "Qwen3-4B"            # friendly name shown in the agent prompt only
+    max_attempts: 3                   # attempts budget (one /eval/run_eval call = 1 attempt; not "rounds")
+    baseline_throughput: 4813.0       # hint only; official baseline is measured in-situ
+    # ── Scope (MoltBench Design-4 §3/§9): single-stage serving optimization.
+    # No drift / memory stages, so S and M are N/A (declared, not omitted).
+    moltbench_task_level: "optimization_only"
+    stability_metric: "N/A"
+    memory_metric: "N/A"
+    drift_metric: "N/A"
+
+scorer:
+  name: moltbench
+  config:
+    thresholds: [1.0, 1.05, 1.1, 1.2, 1.5]
+    score_mode: "final"
+
+max_concurrent: 1
+output_dir: "./results_mini_sglang_easy_v1"

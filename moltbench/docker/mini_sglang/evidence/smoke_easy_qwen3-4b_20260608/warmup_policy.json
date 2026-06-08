@@ -1,0 +1,13 @@
+{
+  "warmup_passes": 1,
+  "measured_passes": 2,
+  "reported_statistic": "median over measured passes (warmup excluded)",
+  "num_prompts": "128",
+  "input_len": "128",
+  "output_len": "256",
+  "memory_ratio": "0.2",
+  "num_pages": "8000",
+  "max_running_requests": "engine-default",
+  "model_path": "/data0/models/hub/models--Qwen--Qwen3-4B/snapshots/1cfa9a7208912126459214e8b04321603b3df60c",
+  "token_count": "approx chars/4 (relative; biased across tokenizers/languages)"
+}

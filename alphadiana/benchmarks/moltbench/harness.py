@@ -28,6 +28,8 @@ from alphadiana.benchmarks.moltbench.utils import (
     parse_results_json,
     parse_trajectory,
 )
+from alphadiana.engine.container_runtime.gpu import nvidia_cdi_args
+from alphadiana.engine.container_runtime.podman_cli import PodmanCLI, PodmanError
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +98,8 @@ class MoltBenchDockerAgent(Agent):
         image: str — full image name override (optional, overrides agent_type + image_prefix)
         request_timeout: int — max seconds to wait for container (default: 3600)
         gpus: str — GPU allocation (default: "all")
+        container_engine: str — "docker" (default) or "podman". Podman injects GPUs
+            via NVIDIA CDI (--device nvidia.com/gpu=...) instead of --gpus.
         network_mode: str | None — Docker network mode, e.g. "host" (optional)
         env: dict — extra environment variables to pass to container
         output_dir: str — local directory for artifacts (default: "./moltbench_artifacts")
@@ -112,6 +116,12 @@ class MoltBenchDockerAgent(Agent):
         self._mount_claude_auth: bool = True
         self._env: dict[str, str] = {}
         self._output_dir: str = "./moltbench_artifacts"
+        self._container_engine: str = "docker"
+        self._podman: PodmanCLI | None = None
+        self._volume_mounts: list[str] = []
+        self._memory: str | None = None
+        self._gpu_mode: str = "cdi"
+        self._nvidia_runtime: str = "/usr/bin/nvidia-container-runtime"
 
     def setup(self, config: dict) -> None:
         self._agent_type = config.get("agent_type", "claude-code")
@@ -122,6 +132,27 @@ class MoltBenchDockerAgent(Agent):
         self._network_mode = config.get("network_mode")
         self._mount_claude_auth = bool(config.get("mount_claude_auth", True))
         self._output_dir = config.get("output_dir", "./moltbench_artifacts")
+        # Extra read-only/data mounts (e.g. model dir, conda env, CUDA toolkit) as
+        # "host:container[:opts]" specs, and an optional memory cap (e.g. "64g").
+        self._volume_mounts = [str(v) for v in (config.get("volume_mounts") or [])]
+        self._memory = config.get("memory")
+        # Podman GPU injection: "cdi" (--device nvidia.com/gpu=N, needs podman>=4.1)
+        # or "nvidia-runtime" (--runtime nvidia-container-runtime + NVIDIA_VISIBLE_DEVICES,
+        # works on podman 3.4.x). Docker path always uses --gpus.
+        self._gpu_mode = str(config.get("gpu_mode", "cdi") or "cdi").strip().lower()
+        self._nvidia_runtime = str(
+            config.get("nvidia_runtime_path", "/usr/bin/nvidia-container-runtime")
+        )
+
+        self._container_engine = str(
+            config.get("container_engine", "docker") or "docker"
+        ).strip().lower()
+        if self._container_engine not in {"docker", "podman"}:
+            raise ValueError(
+                "moltbench_docker agent.config.container_engine must be one of "
+                "docker, podman"
+            )
+        self._podman = PodmanCLI() if self._container_engine == "podman" else None
 
         # Collect environment variables to pass into container
         self._env = dict(config.get("env", {}))
@@ -146,8 +177,8 @@ class MoltBenchDockerAgent(Agent):
                 self._env[key] = os.environ[key]
 
         logger.info(
-            "MoltBenchDockerAgent configured: image=%s, agent_type=%s, timeout=%ds",
-            self._image, self._agent_type, self._timeout,
+            "MoltBenchDockerAgent configured: image=%s, agent_type=%s, timeout=%ds, engine=%s",
+            self._image, self._agent_type, self._timeout, self._container_engine,
         )
 
     def solve(self, task: BenchmarkTask, sandbox: Optional[Any] = None) -> AgentResponse:
@@ -188,17 +219,17 @@ class MoltBenchDockerAgent(Agent):
             self._docker_cp(container_id, "/workspace/artifacts/.", str(artifacts_local))
 
             # Also grab container logs
-            logs_result = _run(["docker", "logs", container_id], timeout=30)
+            logs_stdout, logs_stderr = self._container_logs(container_id)
             (artifacts_local / "container_stdout.log").write_text(
-                logs_result.stdout, encoding="utf-8",
+                logs_stdout, encoding="utf-8",
             )
             (artifacts_local / "container_stderr.log").write_text(
-                logs_result.stderr, encoding="utf-8",
+                logs_stderr, encoding="utf-8",
             )
             exit_benign = (
                 exit_code != 0
                 and self._agent_type == "claude-code"
-                and "Reached max turns" in (logs_result.stdout or "")
+                and "Reached max turns" in (logs_stdout or "")
             )
 
             # 5. Parse results
@@ -208,7 +239,7 @@ class MoltBenchDockerAgent(Agent):
             return AgentResponse(
                 answer=results,
                 trajectory=trajectory,
-                raw_output=logs_result.stdout[-10000:] if logs_result.stdout else "",
+                raw_output=logs_stdout[-10000:] if logs_stdout else "",
                 wall_time_sec=wall_time,
                 metadata={
                     "artifacts_dir": str(artifacts_local),
@@ -228,7 +259,7 @@ class MoltBenchDockerAgent(Agent):
 
             # Try to extract partial artifacts
             if container_id:
-                _run(["docker", "stop", "-t", "10", container_id], timeout=30)
+                self._container_stop(container_id)
                 self._docker_cp(container_id, "/workspace/artifacts/.", str(artifacts_local))
 
             results = parse_results_json(artifacts_local)
@@ -248,11 +279,17 @@ class MoltBenchDockerAgent(Agent):
         finally:
             # 6. Cleanup
             if container_id:
-                _run(["docker", "rm", "-f", container_id], timeout=30)
+                self._container_rm(container_id)
             shutil.rmtree(task_dir, ignore_errors=True)
 
     def _docker_run(self, task_dir: str) -> str:
-        """Start a Docker container and return its ID."""
+        """Start a container and return its ID."""
+        if self._container_engine == "podman":
+            return self._podman_run(task_dir)
+        # NOTE: intentionally NO --rm. Artifacts and logs are extracted via `docker cp` /
+        # `docker logs` AFTER the container exits (see solve()), which requires the stopped
+        # container to persist; --rm would delete it on exit and lose the artifact suitcase.
+        # Cleanup is guaranteed by the finally: _container_rm() block instead.
         cmd = [
             "docker", "run", "-d",
             "--gpus", self._gpus,
@@ -265,6 +302,10 @@ class MoltBenchDockerAgent(Agent):
                 cmd.extend(["-v", f"{claude_dir}:/root/.claude:ro"])
             if claude_json.exists():
                 cmd.extend(["-v", f"{claude_json}:/root/.claude.json:ro"])
+        for spec in self._volume_mounts:
+            cmd.extend(["-v", spec])
+        if self._memory:
+            cmd.extend(["--memory", str(self._memory)])
         if self._network_mode:
             cmd.extend(["--network", self._network_mode])
 
@@ -284,6 +325,8 @@ class MoltBenchDockerAgent(Agent):
 
     def _docker_wait(self, container_id: str) -> int:
         """Wait for a container to exit. Returns exit code."""
+        if self._container_engine == "podman":
+            return self._podman_wait(container_id)
         result = _run(
             ["docker", "wait", container_id],
             timeout=self._timeout + 60,  # extra buffer
@@ -294,12 +337,113 @@ class MoltBenchDockerAgent(Agent):
 
     def _docker_cp(self, container_id: str, src: str, dst: str) -> None:
         """Copy files from container to local filesystem."""
+        if self._container_engine == "podman":
+            assert self._podman is not None
+            self._podman.cp(f"{container_id}:{src}", dst, timeout=120, check=False)
+            return
         result = _run(
             ["docker", "cp", f"{container_id}:{src}", dst],
             timeout=120,
         )
         if result.returncode != 0:
             logger.warning("docker cp failed: %s", result.stderr)
+
+    # ── Podman lifecycle ──────────────────────────────────────────────────────
+
+    def _cdi_devices(self) -> str | list[str]:
+        """Map docker --gpus syntax to NVIDIA CDI device id(s).
+
+        "all" -> "all"; "7" -> "7"; "device=7" -> "7"; "device=0,1" -> ["0", "1"].
+        nvidia_cdi_args() adds the "nvidia.com/gpu=" prefix.
+        """
+        raw = str(self._gpus or "all").strip()
+        if raw in ("", "all"):
+            return "all"
+        if raw.startswith("device="):
+            raw = raw[len("device="):]
+        ids = [d.strip() for d in raw.split(",") if d.strip()]
+        return ids if len(ids) > 1 else ids[0]
+
+    def _podman_run(self, task_dir: str) -> str:
+        """Start a Podman container (GPU via CDI) and return its ID."""
+        assert self._podman is not None
+        volumes = [f"{task_dir}:/workspace/task:ro"]
+        if self._agent_type == "claude-code" and self._mount_claude_auth:
+            claude_dir = Path.home() / ".claude"
+            claude_json = Path.home() / ".claude.json"
+            if claude_dir.exists():
+                volumes.append(f"{claude_dir}:/root/.claude:ro")
+            if claude_json.exists():
+                volumes.append(f"{claude_json}:/root/.claude.json:ro")
+        volumes.extend(self._volume_mounts)
+
+        env = {**self._env, "MOLTBENCH_AGENT": self._agent_type}
+        if self._gpu_mode == "nvidia-runtime":
+            # podman 3.4.x: GPU via the nvidia OCI runtime + NVIDIA_VISIBLE_DEVICES.
+            dev = self._cdi_devices()
+            env["NVIDIA_VISIBLE_DEVICES"] = ",".join(dev) if isinstance(dev, list) else str(dev)
+            env.setdefault("NVIDIA_DRIVER_CAPABILITIES", "all")
+            extra_args = ["--runtime", self._nvidia_runtime, "--security-opt", "label=disable"]
+        else:
+            extra_args = nvidia_cdi_args(self._cdi_devices())  # podman >=4.1 CDI
+        if self._memory:
+            extra_args = [*extra_args, "--memory", str(self._memory)]
+        try:
+            result = self._podman.run(
+                self._image,
+                detach=True,
+                env=env,
+                volumes=volumes,
+                network=self._network_mode or None,
+                extra_args=extra_args,
+                timeout=60,
+            )
+        except PodmanError as exc:
+            raise RuntimeError(
+                f"podman run failed (exit {exc.result.returncode}): {exc.result.stderr}"
+            ) from exc
+        return result.stdout.strip()
+
+    def _podman_wait(self, container_id: str) -> int:
+        """Wait for a Podman container to exit. Returns exit code."""
+        assert self._podman is not None
+        try:
+            result = self._podman.wait(container_id, timeout=self._timeout + 60)
+        except PodmanError as exc:
+            if exc.result.returncode == 124:
+                # Re-raise as TimeoutExpired so solve()'s timeout handler runs.
+                raise subprocess.TimeoutExpired(
+                    cmd="podman wait", timeout=self._timeout + 60
+                ) from exc
+            raise RuntimeError(f"podman wait failed: {exc.result.stderr}") from exc
+        return int(result.stdout.strip())
+
+    # ── Engine-agnostic helpers ───────────────────────────────────────────────
+
+    def _container_logs(self, container_id: str) -> tuple[str, str]:
+        """Return (stdout, stderr) of container logs for either engine."""
+        if self._container_engine == "podman":
+            assert self._podman is not None
+            result = self._podman.logs(container_id, timeout=30)
+            return result.stdout, result.stderr
+        result = _run(["docker", "logs", container_id], timeout=30)
+        return result.stdout, result.stderr
+
+    def _container_stop(self, container_id: str) -> None:
+        """Stop a container (best effort) for either engine."""
+        if self._container_engine == "podman":
+            assert self._podman is not None
+            self._podman.stop(container_id, stop_timeout=10, timeout=30)
+            return
+        _run(["docker", "stop", "-t", "10", container_id], timeout=30)
+
+    def _container_rm(self, container_id: str) -> None:
+        """Force-remove a container (best effort) for either engine."""
+        if self._container_engine == "podman":
+            assert self._podman is not None
+            self._podman.rm(container_id, force=True, timeout=30)
+            return
+        _run(["docker", "rm", "-f", container_id], timeout=30)
 
     @staticmethod
     def _sample_index(task: BenchmarkTask) -> int:

@@ -90,6 +90,11 @@ PY
 
 # Set up KernelBench problem
 setup_problem() {
+    if [[ "$BENCHMARK_ID" == "mini_sglang" ]]; then
+        log "mini-SGLang: source already installed in /workspace/repo, skipping setup"
+        WORKDIR="/workspace/repo"
+        return
+    fi
     cd "$WORKDIR"
     if [[ -n "$SETUP_CMD" ]]; then
         log "Running setup command for $BENCHMARK_ID..."
@@ -298,6 +303,42 @@ with open('$verification_results_path', 'w') as f:
     json.dump(results, f, indent=2)
 print(json.dumps(results, indent=2))
 "
+        elif [[ "$RESULT_PARSER" == "mini_sglang" ]]; then
+            # Parse mini-SGLang run_eval output into MoltBench results format
+            BASELINE_THROUGHPUT_ENV="${BASELINE_THROUGHPUT:-5026.0}" python3 -c "
+import json, os
+
+log_path = '$ARTIFACTS_DIR/final_bench.log'
+baseline = float(os.environ.get('BASELINE_THROUGHPUT_ENV', '5026.0'))
+results = {}
+
+# Try to read the eval result JSON (run_eval outputs JSON to stdout)
+try:
+    with open(log_path) as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith('{'):
+                data = json.loads(line)
+                throughput = float(data.get('throughput_tok_per_s', 0))
+                correct = data.get('correct', False)
+                results = {
+                    'correctness': 'PASS' if correct else 'FAIL',
+                    'speedup': round(throughput / baseline, 4) if baseline > 0 else 0.0,
+                    'throughput_tok_per_s': throughput,
+                    'baseline_throughput': baseline,
+                    'og': round(throughput / baseline, 4) if baseline > 0 else 0.0,
+                }
+                break
+except Exception as e:
+    results = {'correctness': 'ERROR', 'speedup': 0.0, 'error': str(e)}
+
+if not results:
+    results = {'correctness': 'ERROR', 'speedup': 0.0}
+
+with open('$verification_results_path', 'w') as f:
+    json.dump(results, f, indent=2)
+print(json.dumps(results, indent=2))
+"
         else  # unknown result_parser
             log "WARNING: Unknown result parser '$RESULT_PARSER', defaulting to ERROR result"
             echo '{"correctness": "ERROR", "speedup": 0.0}' > "$verification_results_path"
@@ -368,8 +409,11 @@ launch_openclaw() {
     log "Launching OpenClaw agent (gateway mode)..."
     cd "$WORKDIR"
 
-    install_round_guard
-    init_task_repo
+    # mini_sglang manages its own rounds via /eval/run_eval; skip KernelBench guards.
+    if [[ "$BENCHMARK_ID" != "mini_sglang" ]]; then
+        install_round_guard
+        init_task_repo
+    fi
 
     # ── Configure OpenClaw ──
     local gateway_token="${OPENCLAW_GATEWAY_TOKEN:-MOLTBENCH}"
@@ -392,7 +436,42 @@ PY
     export OPENCLAW_GATEWAY_TOKEN="$gateway_token"
     export OPENCLAW_GATEWAY_PORT="$gateway_port"
 
-    cp /workspace/openclaw.json.template "$WORKDIR/openclaw.json"
+    if [[ -f /workspace/openclaw.json.template ]]; then
+        cp /workspace/openclaw.json.template "$WORKDIR/openclaw.json"
+    else
+        # Generate minimal OpenClaw config for mini_sglang (no template in image)
+        cat > "$WORKDIR/openclaw.json" << OCEOF
+{
+  "\$schema": "https://openclaw.ai/config.json",
+  "env": {
+    "OPENAI_BASE_URL": "${OPENAI_BASE_URL}",
+    "OPENAI_API_KEY": "${OPENAI_API_KEY}",
+    "OPENAI_MODEL_NAME": "${OPENAI_MODEL_NAME}",
+    "OPENCLAW_GATEWAY_TOKEN": "${gateway_token}"
+  },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "local": {
+        "baseUrl": "\${OPENAI_BASE_URL}",
+        "apiKey": "\${OPENAI_API_KEY}",
+        "api": "openai-completions",
+        "models": [{"id": "\${OPENAI_MODEL_NAME}", "name": "\${OPENAI_MODEL_NAME}"}]
+      }
+    }
+  },
+  "agents": {"defaults": {"model": {"primary": "local/\${OPENAI_MODEL_NAME}"}, "timeoutSeconds": 3600}},
+  "gateway": {
+    "port": ${gateway_port},
+    "mode": "local",
+    "bind": "custom",
+    "customBindHost": "0.0.0.0",
+    "auth": {"mode": "token", "token": "\${OPENCLAW_GATEWAY_TOKEN}"},
+    "http": {"endpoints": {"chatCompletions": {"enabled": true}}}
+  }
+}
+OCEOF
+    fi
     export WORKDIR
     python3 - <<'PY'
 import json
@@ -452,7 +531,31 @@ PY
     done
     log "Gateway ready (${waited}s, probe_status=$probe_code)"
 
-    # ── Build optimization prompt ──
+    # ── mini-SGLang: use call_gateway.py for difficulty-aware prompts ──
+    if [[ "$BENCHMARK_ID" == "mini_sglang" && -f /eval/call_gateway.py ]]; then
+        local difficulty
+        difficulty=$(python3 -c "import json; t=json.load(open('$TASK_FILE')); print(t.get('difficulty','easy'))" 2>/dev/null || echo "easy")
+        local baseline_throughput
+        baseline_throughput=$(python3 -c "import json; t=json.load(open('$TASK_FILE')); print(t.get('baseline_throughput', 4813.0))" 2>/dev/null || echo "4813.0")
+        export BASELINE_THROUGHPUT="$baseline_throughput"
+
+        log "mini-SGLang mode: difficulty=$difficulty baseline=${baseline_throughput} tok/s max_rounds=$MAX_ROUNDS"
+        python3 /eval/call_gateway.py \
+            --url "$gateway_url" \
+            --token "$gateway_token" \
+            --baseline "$baseline_throughput" \
+            --max-rounds "$MAX_ROUNDS" \
+            --difficulty "$difficulty" \
+            --timeout "$chat_timeout_sec" \
+            --output "$ARTIFACTS_DIR/agent_response.json" || true
+
+        # Kill gateway after agent finishes
+        kill "$gw_pid" 2>/dev/null || true
+        log "mini-SGLang agent finished."
+        return
+    fi
+
+    # ── Build optimization prompt (KernelBench / QJL / other tasks) ──
     local prompt="$TASK_PROMPT"
     if [[ -z "$prompt" ]]; then
         prompt="Read kernelbench/program_kb.md for full optimization instructions.

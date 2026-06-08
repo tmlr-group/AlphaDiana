@@ -37,16 +37,18 @@ seeds:
   #   build_time: ~10 min
   #   eval_time: ~3.5 min per round (nvcc compile + bench)
 
-  # mini_sglang:
-  #   repo: https://github.com/sgl-project/mini-sglang.git
-  #   commit: TBD
-  #   description: >
-  #     Simplified SGLang LLM serving engine.
-  #     Agent optimizes scheduler/engine/core Python code
-  #     to maximize throughput (req/s).
-  #   benchmark_id: mini_sglang
-  #   workdir: /workspace/mini-sglang
-  #   eval_script: bench_serving.py
-  #   base_image: lmsysorg/sglang:latest
-  #   build_time: ~10 min
-  #   eval_time: ~6-11 min per round (server restart + bench)
+  mini_sglang:
+    repo: https://github.com/sgl-project/mini-sglang.git
+    commit: "main"
+    description: >
+      Simplified SGLang LLM serving engine (mini-sglang).
+      Agent optimizes scheduler/engine/core Python code to maximize
+      inference throughput (tokens/second) for Qwen3-4B.
+      Uses flashinfer attention backend. Server restarts between rounds.
+      Verified: OG=3.72x with qwen3-235b on A800 GPU.
+    benchmark_id: mini_sglang
+    workdir: /workspace/repo
+    eval_script: /eval/run_eval
+    base_image: jinbo/mini-sglang:clean
+    build_time: ~5 min (base) + ~3 min (openclaw layer)
+    eval_time: ~2 min per round (server restart + benchmark)
