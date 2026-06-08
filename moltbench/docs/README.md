@@ -3,8 +3,8 @@
 MoltBench evaluates LLM coding agents on long-horizon, stateful GPU kernel
 optimization tasks. The current evaluation task is **KernelBench** (270
 problems across 4 difficulty levels). Agents are given a seed project inside
-an ephemeral Docker container and must iteratively edit code, benchmark, and
-keep or revert changes — all autonomously.
+an ephemeral container (Docker or Podman) and must iteratively edit code,
+benchmark, and keep or revert changes — all autonomously.
 
 ---
 
@@ -12,26 +12,38 @@ keep or revert changes — all autonomously.
 
 ### Prerequisites
 
-- Docker 28+ with [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
+- **Docker 28+** or **Podman 4+** with [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
 - NVIDIA GPU with Driver 570+ (CUDA 12.8; RTX 5880 Ada 48 GB verified)
 - LLM API access — see [Supported Agents](#supported-agents) for which keys you need
 - Python 3.11+ on host (for AlphaDiana CLI)
 
-### Step 1: Build Docker Images
+### Step 1: Build Container Images
 
 ```bash
 cd /path/to/AlphaDiana
 
+# ─── Docker ───
 # GPU base image — clones AutoKernel at build time (~15 min)
-# Includes Python 3.10 + 3.11 dev headers for Triton JIT compilation
 docker build --network host -f moltbench/docker/Dockerfile.base -t tmlrgroup/alphadiana:gpu-base .
-
-# Pick one or more agent layers:
+# Agent layers:
 docker build --network host -f moltbench/docker/Dockerfile.openclaw    -t tmlrgroup/alphadiana:openclaw .     # ~5 min
 docker build --network host -f moltbench/docker/Dockerfile.opencode    -t tmlrgroup/alphadiana:opencode .     # ~2 min
 docker build --network host -f moltbench/docker/Dockerfile.claude-code -t tmlrgroup/alphadiana:claude-code .  # ~2 min
 docker build --network host -f moltbench/docker/Dockerfile.zeroclaw   -t tmlrgroup/alphadiana:zeroclaw .    # ~5-10 min
+
+# ─── Podman ───
+# (identical commands, uses Containerfile symlinks)
+podman build --network host -f moltbench/docker/Containerfile.base -t tmlrgroup/alphadiana:gpu-base .
+podman build --network host -f moltbench/docker/Containerfile.openclaw    -t tmlrgroup/alphadiana:openclaw .
+podman build --network host -f moltbench/docker/Containerfile.opencode    -t tmlrgroup/alphadiana:opencode .
+podman build --network host -f moltbench/docker/Containerfile.claude-code -t tmlrgroup/alphadiana:claude-code .
+podman build --network host -f moltbench/docker/Containerfile.zeroclaw   -t tmlrgroup/alphadiana:zeroclaw .
 ```
+
+**Podman vs Docker**: Use `agent.name: moltbench_podman` (or set
+`container_engine: podman` in agent config) to run with Podman. Podman
+supports NVIDIA GPU injection via CDI with automatic fallback to direct
+device mounts for older runtimes.
 
 ### Step 2: Configure API Keys
 
@@ -59,17 +71,21 @@ If you already use Claude Code on the host, MoltBench can mount
 ### Step 3: Run a Smoke Test — KernelBench Single Problem (~5-20 min)
 
 ```bash
+# ─── Docker ───
 # Claude Code (works with host ~/.claude auth or ANTHROPIC_API_KEY)
 python3 -m alphadiana.cli run configs/examples/moltbench_claude_code_codex.yaml
-
 # OpenClaw (requires OPENAI_* keys)
 python3 -m alphadiana.cli run configs/examples/moltbench_openclaw_smoke.local.yaml
-
 # OpenCode (requires OPENAI_* keys)
 python3 -m alphadiana.cli run configs/examples/moltbench_opencode_smoke.local.yaml
-
 # ZeroClaw (requires OPENAI_* keys)
 python3 -m alphadiana.cli run configs/examples/moltbench_zeroclaw_smoke.local.yaml
+
+# ─── Podman ───
+# Claude Code via Podman
+python3 -m alphadiana.cli run configs/examples/moltbench_claude_code_podman_smoke.yaml
+# OpenClaw via Podman
+python3 -m alphadiana.cli run configs/examples/moltbench_openclaw_podman_smoke.yaml
 ```
 
 This runs **KernelBench L1 P001** (square matrix multiplication). Expected
@@ -147,20 +163,24 @@ entrypoint — the only difference is the thin Docker layer and the agent CLI.
 ```
 AlphaDiana CLI  (python3 -m alphadiana.cli run config.yaml)
   |
-  +-- MoltBenchDockerAgent.solve()        # alphadiana/agent/moltbench_docker.py
-  |     |
+  +-- MoltBenchDockerAgent.solve()        # alphadiana/benchmarks/moltbench/harness.py
+  |     |                                 # (also MoltBenchPodmanAgent for podman)
   |     +-- 1. Write task.json to temp dir
-  |     +-- 2. docker run -d --gpus ...
+  |     +-- 2. {engine} run -d --gpus ...
   |     |       -v task_dir:/workspace/task:ro
   |     |       -e MOLTBENCH_AGENT={agent_type}
   |     |       tmlrgroup/alphadiana:{agent_type}
-  |     +-- 3. docker wait (block until container exits)
-  |     +-- 4. docker cp /workspace/artifacts/ -> host
+  |     +-- 3. {engine} wait (block until container exits)
+  |     +-- 4. {engine} cp /workspace/artifacts/ -> host
   |     +-- 5. parse_results_json() + parse_trajectory()
   |
-  +-- Scorer                              # alphadiana/scorer/moltbench.py
-        +-- correctness, speedup, fast_p@{1.0, 1.1, 1.25, 1.5, 2.0, 3.0, 5.0}
+  +-- Scorer                              # alphadiana/benchmarks/moltbench/scorer.py
+        +-- correctness, speedup, fast_p@{1.0, 1.5, 2.0, 3.0, 5.0}
 ```
+
+The `container_engine` config key selects `docker` (default for `moltbench_docker`)
+or `podman` (default for `moltbench_podman`). Podman GPU injection uses CDI
+with automatic fallback to direct `/dev/nvidia*` device mounts.
 
 Inside the container:
 
@@ -390,10 +410,14 @@ introduce measurement bias.
 ```
 AlphaDiana/
   +-- alphadiana/
-  |     +-- agent/moltbench_docker.py      # Docker container lifecycle
-  |     +-- benchmark/moltbench.py         # Task loading (KernelBench problems)
-  |     +-- benchmark/moltbench_utils.py   # Prompt builder, result parser
-  |     +-- scorer/moltbench.py            # Correctness + fast_p scoring
+  |     +-- benchmarks/moltbench/
+  |     |     +-- benchmark.py             # Task loading (KernelBench problems)
+  |     |     +-- harness.py               # Container lifecycle (Docker + Podman)
+  |     |     +-- scorer.py                # Correctness + fast_p scoring
+  |     |     +-- utils.py                 # Prompt builder, result parser
+  |     +-- engine/container_runtime/
+  |           +-- podman_cli.py            # Thin Podman CLI wrapper
+  |           +-- gpu.py                   # NVIDIA CDI GPU args
   |
   +-- moltbench/
   |     +-- docker/
@@ -401,6 +425,8 @@ AlphaDiana/
   |     |     +-- Dockerfile.claude-code   # + Claude Code CLI
   |     |     +-- Dockerfile.openclaw      # + OpenClaw gateway
   |     |     +-- Dockerfile.opencode      # + OpenCode CLI
+  |     |     +-- Dockerfile.zeroclaw      # + ZeroClaw CLI
+  |     |     +-- Containerfile.*          # Symlinks for Podman
   |     |     +-- run_task.sh              # Shared entrypoint
   |     |     +-- openclaw.json            # OpenClaw config template
   |     |     +-- opencode.json.template   # OpenCode config template
@@ -412,6 +438,8 @@ AlphaDiana/
         +-- moltbench_openclaw_L1_batch_v2.yaml
         +-- moltbench_opencode_L1_batch.yaml
         +-- moltbench_openclaw_smoke.yaml
+        +-- moltbench_claude_code_podman_smoke.yaml
+        +-- moltbench_openclaw_podman_smoke.yaml
         +-- ...
 ```
 

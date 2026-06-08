@@ -1,0 +1,50 @@
+# MoltBench evaluation config — Claude Code agent via Podman
+#
+# Usage:
+#   alphadiana run configs/examples/moltbench_claude_code_podman_smoke.yaml
+#
+# Prerequisites:
+#   1. Build Podman images:
+#      cd <repo_root>
+#      podman build -f moltbench/docker/Containerfile.base -t tmlrgroup/alphadiana:gpu-base .
+#      podman build -f moltbench/docker/Containerfile.claude-code -t tmlrgroup/alphadiana:claude-code .
+#   2. Set ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN in environment
+
+task: kernelbench
+run_id: "moltbench-podman-claude-code-smoke"
+
+agent:
+  name: moltbench_podman
+  version: "1.0"
+  config:
+    agent_type: claude-code
+    image_prefix: tmlrgroup/alphadiana
+    container_engine: podman
+    mount_claude_auth: false  # Avoid OAuth interference in CI
+    request_timeout: 1800
+    gpus: "all"
+    podman_gpu_mode: auto
+    network_mode: "host"
+    output_dir: "./moltbench_artifacts_podman_claude_code_smoke"
+    env:
+      # Override with your model; mimo-v2.5-pro works with the Xiaomi token proxy
+      ANTHROPIC_MODEL: "mimo-v2.5-pro"
+
+benchmark:
+  name: moltbench
+  config:
+    levels: [1]
+    problems: "1"           # Single problem for smoke test
+    max_rounds: 3
+    backend: triton
+
+scorer:
+  name: moltbench
+  config:
+    thresholds: [1.0, 1.5, 2.0, 3.0, 5.0]
+    score_mode: "final"
+
+max_concurrent: 1
+output_dir: "./results"
+metadata:
+  notes: "Podman smoke test: Claude Code agent, 1 problem, 3 rounds"

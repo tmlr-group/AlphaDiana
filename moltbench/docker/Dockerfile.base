@@ -2,7 +2,10 @@
 # Contains: CUDA 12.8 + Python 3.11 + PyTorch + Triton + AutoKernel + KernelBench datasets
 #
 # Build (from AlphaDiana repo root, requires network for git clone):
+#   # Docker:
 #   docker build --network host -f moltbench/docker/Dockerfile.base -t tmlrgroup/alphadiana:gpu-base .
+#   # Podman:
+#   podman build --network host -f moltbench/docker/Containerfile.base -t tmlrgroup/alphadiana:gpu-base .
 #
 # AutoKernel is cloned at build time (not vendored). Pin the commit in
 # seeds.yaml and here to ensure reproducibility.
@@ -12,10 +15,12 @@ FROM nvidia/cuda:12.8.0-devel-ubuntu22.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 # System packages
+# gcc/g++ are required for Triton JIT compilation of CUDA kernels.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         python3.11 python3.11-venv python3.11-dev \
         python3.10 python3.10-dev \
         python3-pip \
+        gcc g++ \
         curl git ca-certificates && \
     ln -sf /usr/bin/python3.11 /usr/bin/python3 && \
     ln -sf /usr/bin/python3.11 /usr/bin/python && \

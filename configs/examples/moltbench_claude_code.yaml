@@ -4,11 +4,18 @@
 #   alphadiana run configs/examples/moltbench_claude_code.yaml
 #
 # Prerequisites:
-#   1. Build Docker images:
+#   1. Build container images (Docker or Podman):
 #      cd <repo_root>
-#      docker build -f docker/moltbench/Dockerfile.base -t moltbench/gpu-base .
-#      docker build -f docker/moltbench/Dockerfile.claude-code -t moltbench/claude-code .
+#      # Docker:
+#      docker build -f moltbench/docker/Dockerfile.base -t tmlrgroup/alphadiana:gpu-base .
+#      docker build -f moltbench/docker/Dockerfile.claude-code -t tmlrgroup/alphadiana:claude-code .
+#      # Podman:
+#      podman build -f moltbench/docker/Containerfile.base -t tmlrgroup/alphadiana:gpu-base .
+#      podman build -f moltbench/docker/Containerfile.claude-code -t tmlrgroup/alphadiana:claude-code .
 #   2. Set ANTHROPIC_API_KEY in environment
+#
+# To use Podman instead of Docker, change agent.name to "moltbench_podman"
+# or set agent.config.container_engine to "podman".
 
 task: kernelbench
 run_id: "moltbench-claude-code-L1-001"
