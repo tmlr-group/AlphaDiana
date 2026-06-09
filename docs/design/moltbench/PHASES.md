@@ -1,66 +1,106 @@
 # MoltBench Implementation Phases
 
-**Status:** Draft v0.1  
-**Date:** 2026-06-09
+**Status:** Draft v0.2  
+**Date:** 2026-06-09  
+**Revision note:** Updated after repository evidence showed the AutoKernel/KernelBench Docker harness, scorer, docs, configs, and tests are already implemented. This plan is brownfield hardening, not greenfield build-out.
 
-This phase plan starts after the existing AlphaDiana planning history. Phase numbers intentionally start at 17.
+## Current Baseline
+
+The repository already contains:
+
+- `alphadiana/benchmark/moltbench.py` — registered MoltBench benchmark loader for KernelBench/AutoKernel tasks.
+- `alphadiana/benchmark/moltbench_utils.py` — task loading, prompt/task JSON construction, artifact parsing, and `fast_p_*` helpers.
+- `alphadiana/agent/moltbench_docker.py` — shared Docker GPU harness adapter for Claude Code, OpenClaw, OpenCode, and ZeroClaw agent containers.
+- `alphadiana/scorer/moltbench.py` — correctness/speedup scorer with threshold flags and artifact metadata.
+- `moltbench/docker/` — base and agent leaf Dockerfiles plus manifest-driven `run_task.sh`.
+- `moltbench/seeds.yaml` — AutoKernel pinned seed metadata plus planned QJL/Mini-SGLang entries.
+- `configs/examples/moltbench_*.yaml` — smoke and batch configs.
+- `moltbench/docs/README.md` and `moltbench/docs/zeroclaw.md` — current user docs.
+- `tests/test_moltbench_pipeline.py` and `tests/test_moltbench_regressions.py` — focused regression tests.
+
+Focused validation on 2026-06-09:
+
+```bash
+python -m pytest tests/test_moltbench_pipeline.py tests/test_moltbench_regressions.py -q
+# 33 passed in 0.88s
+```
 
 ## Cross-Cutting Gates
 
-Run on every phase:
+Run on every future MoltBench phase:
 
-- Hidden verifier files are not mounted into writable workspaces.
-- `EvaluationSuitcase` completeness audit passes for every real run.
-- Budget records match observed model/tool/eval usage.
-- Snapshot restore reproduces best-state metric.
-- No agent path bypasses `run_eval` to call verifier internals.
-- No official run gives the agent internet/retrieval access to inspect latest upstream seed repos unless explicitly marked non-leaderboard.
-- Docs/context support claims are updated only after real evidence exists.
+- Do not break existing AutoKernel smoke/batch config compatibility.
+- Preserve per-task/per-sample/per-execution artifact isolation.
+- Preserve final independent verification before score extraction.
+- Keep API keys and agent auth out of committed docs and public artifacts.
+- Do not claim live support changes from static tests alone; support requires real runs and task-level artifact inspection.
+- Do not claim hidden-verifier/private-test protection unless hidden files are structurally outside the writable workspace.
+- Do not allow official agents to retrieve latest upstream seed repositories unless the run is explicitly non-leaderboard/debug.
+- Keep docs/context support boundaries in sync with evidence.
 
-## Phase 17 — Contracts, Registries, and Suitcase Schema
+## Phase 17 — Existing AutoKernel Harness Baseline · Complete
 
-**Goal:** Freeze the MoltBench schema bus before runtime logic.
+**Goal:** Reconcile planning with the already implemented MoltBench AutoKernel path.
 
-**Builds:** `alphadiana/moltbench/schema`, registry skeletons, JSON-schema export, contract tests.
+**Implemented evidence:** benchmark loader, task JSON/prompt utilities, Docker harness adapter, Docker images/entrypoint, scorer, configs, docs, focused tests.
 
-**Exit gate:** ProjectEpisode, EvalAttempt, AttemptBudget, MoltEvent, EvaluationSuitcase, ContaminationPolicy, and C/G/S/M/K metric records round-trip losslessly and export stable JSON schemas.
+**Exit gate:** planning docs updated and focused tests pass.
 
-## Phase 18 — Workspace, Snapshot, Sandbox, and run_eval Kernel
+**Status:** Complete on 2026-06-09.
 
-**Goal:** Materialize isolated seed workspaces and expose a safe `run_eval` loop.
+## Phase 18 — Audit, Suitcase, and Contract Hardening
 
-**Builds:** workspace manager, snapshot manager, sandbox adapter boundary, RunEvalManager, AttemptRunner, budget controller.
+**Goal:** Add an additive audit/suitcase layer around the current harness without replacing it.
 
-**Exit gate:** DummyAgent can run a toy episode, call `run_eval`, exhaust budget, rollback to best snapshot, and export a complete suitcase.
+**Builds:**
 
-## Phase 19 — Agent Adapters and Event Recording
+- Per-run MoltBench audit manifest / suitcase index.
+- Native metric -> C/G/S/M/K mapping.
+- Explicit budget-field report for enforced vs unenforced dimensions.
+- Optional formal contract wrappers around existing AlphaDiana result records.
+- ContaminationPolicy metadata for official/debug modes.
 
-**Goal:** Run real agent systems through a standardized adapter boundary while recording observable events.
+**Exit gate:** a current AutoKernel smoke writes existing artifacts plus the new manifest/index, and an audit script fails when required files/fields are missing.
 
-**Builds:** DummyAgent, DirectLLM, OpenClaw-style, OpenCode-style adapters; TraceRecorder; model/tool/file/memory event stores.
+## Phase 19 — Live Evidence and Support Boundary Refresh
 
-**Exit gate:** Two non-dummy adapters complete a toy episode in sandbox/container runtime and write model/tool/file/verifier/budget events with content hashes.
+**Goal:** Refresh current live evidence for the AutoKernel-only support boundary.
 
-## Phase 20 — AutoKernel MVP Family
+**Builds:**
 
-**Goal:** Prove the first real seed-project evolution benchmark family.
+- Current smoke command and raw log.
+- Task JSON inspection notes.
+- Artifact inspection notes.
+- Context/status update that separates static regression coverage from live support evidence.
 
-**Builds:** AutoKernel seed loader, public task, hidden verifier wrapper, fast/official eval split if needed, metric mapping, smoke configs, audit script, context report.
+**Exit gate:** either a live smoke passes and is documented, or the blocker is documented without changing support status.
 
-**Exit gate:** baseline and at least one agent run complete with task-level artifacts, reproducible suitcases, and C/G/S/M/K metrics.
+## Phase 20 — QJL and Mini-SGLang Family Expansion
 
-## Phase 21 — Retrosynthesis Planning Family Design and Pilot
+**Goal:** Promote planned seeds into implemented families using the current/hardened MoltBench harness contract.
 
-**Goal:** Add chemistry retrosynthesis as a principled task-family pilot without claiming leaderboard readiness.
+**Builds:**
 
-**Builds:** Syntheseus-compatible seed package, route output schema, hidden-stock verifier, call counter, reward-hack fixtures, smoke and pilot configs.
+- Seed manifests with pinned commits and license/dependency metadata.
+- Docker/runtime assets.
+- Setup/eval commands.
+- Output parsers and scorer mappings.
+- Example configs.
+- Focused tests and at least one smoke per family.
 
-**Exit gate:** public smoke and hidden mini-pilot complete; hidden stock/targets are protected; route validity/cycle/duplicate/call-budget checks are enforced; suitcase audit passes.
+**Exit gate:** QJL and Mini-SGLang each produce auditable task artifacts and family-specific metric records without regressing AutoKernel.
 
-## Phase 22 — QJL / Mini-SGLang Expansion and Reporting
+## Phase 21 — Retrosynthesis Planning Family Pilot
 
-**Goal:** Expand beyond the first family and produce comparable reports.
+**Goal:** Add a chemistry retrosynthesis task family where agents improve planner code under fixed call/search/runtime budgets.
 
-**Builds:** QJL and Mini-SGLang seed manifests, family runbooks, verifier wrappers, dashboard/report additions, compare/replay CLI.
+**Builds:**
 
-**Exit gate:** at least two families can be compared through the same CLI/report path, with support boundaries documented and no training/eval data leakage.
+- Syntheseus-compatible seed package.
+- Locked public/hidden targets and stock split.
+- One-step model/call counter wrapper.
+- Route output schema.
+- Hidden verifier metrics.
+- Reward-hacking fixtures.
+
+**Exit gate:** public smoke and hidden mini-pilot complete with no hidden stock/target leakage and with cycle/invalid/duplicate/call-budget failures labeled.
