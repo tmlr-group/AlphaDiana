@@ -24,6 +24,8 @@ Use this directory as a user-facing entry point. The canonical split is:
 - [Benchmark Isolation Notes](benchmark-isolation.md)
   Paper-safe summary of which benchmark paths are task-scoped sandboxes or
   containers today.
+- [external_benchmark Design Docs](design/external_benchmark/HLD.md)
+  Draft internal design, phases, and task-family runbook for stateful seed-project evolution benchmarks.
 - [Full Local-vLLM Rollout (2026-04-19)](benchmarks/full-rollout-local-vllm-20260419.md)
   Staged `72`-run rollout manifest, preflight flow, and command generator for the local-vLLM campaign.
 
