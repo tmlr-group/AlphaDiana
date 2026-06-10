@@ -37,6 +37,8 @@ agent:
     shm_size: string                 # Optional `external_benchmark_docker` --shm-size value
     ipc_mode: string                 # Optional `external_benchmark_docker` --ipc value; incompatible with shm_size when host
     container_runtime: string        # Optional `external_benchmark_docker` OCI runtime override, e.g. "runc"
+    verifier_image: string           # Host-only verifier image for protected external_benchmark tasks
+    verifier_startup_timeout: integer
     temperature: float
     max_tokens: integer
     max_attempts: integer            # Retry attempts for OpenClaw (default: 3)
@@ -90,6 +92,13 @@ benchmark:
     year: string
     subset: string
     data_path: string
+    seed_config_path: string
+    baseline_json_path: string
+    distortion_threshold: float
+    retention_threshold: float
+    max_attempts: integer
+    attempt_timeout_sec: integer
+    total_timeout_sec: integer
 
 # sandbox: (optional) Execution environment. Set to null if not needed.
 sandbox:
