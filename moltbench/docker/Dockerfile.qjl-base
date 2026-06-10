@@ -34,10 +34,6 @@ RUN pip install --no-cache-dir \
         torch==2.4.1+cu121 \
         --index-url https://download.pytorch.org/whl/cu121
 
-# flash-attn (optional; synthetic eval does not require it)
-RUN pip install --no-cache-dir flash-attn==2.6.3 --no-build-isolation \
-    || echo "WARN: flash-attn build failed – skipping (not required for synthetic eval)"
-
 # Remaining Python dependencies
 RUN pip install --no-cache-dir \
         transformers==4.46.3 \
@@ -64,15 +60,11 @@ RUN ls /workspace/repo/qjl_kernel/cuda_qjl_score*.so \
 
 # Verify torch + CUDA
 RUN python3 -c "import torch; print(f'PyTorch {torch.__version__}, CUDA available: {torch.cuda.is_available()}')"
+RUN python3 --version && pip --version && gcc --version | head -1 && nvcc --version
 
-# Copy eval scripts
+# The agent image contains no benchmark, hidden input, official scorer, or
+# attempt counter. The host mounts only the public /eval/run_eval client.
 RUN mkdir -p /eval
-COPY moltbench/seeds/qjl/bench_cuda.py /eval/bench_cuda.py
-COPY moltbench/seeds/qjl/prepare_kv.py /eval/prepare_kv.py
-
-# Copy run_eval wrapper (agent-callable)
-COPY moltbench/docker/run_eval_qjl.sh /eval/run_eval
-RUN chmod +x /eval/run_eval
 
 # Artifacts output directory
 RUN mkdir -p /workspace/artifacts

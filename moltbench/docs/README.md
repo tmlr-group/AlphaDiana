@@ -289,7 +289,8 @@ commit pinned in `moltbench/seeds.yaml`.
 
 ### QJL Evaluation with OpenClaw and Podman
 
-QJL is supported as a full MoltBench CUDA optimization task. The evaluation
+QJL is supported as a MoltBench CUDA optimization task pending revised GPU
+admission. The evaluation
 builds the pinned QJL source, runs OpenClaw in a Podman-managed GPU container,
 and scores the final CUDA implementation using runtime and distortion.
 
@@ -305,8 +306,13 @@ Build the QJL images:
 
 ```bash
 podman build --network host \
+  --build-arg TORCH_CUDA_ARCH_LIST=8.0 \
   -f moltbench/docker/Dockerfile.qjl-base \
   -t localhost/alphadiana:qjl-base .
+
+podman build --network host \
+  -f moltbench/docker/Dockerfile.qjl-verifier \
+  -t localhost/alphadiana:qjl-verifier .
 
 podman build --network host \
   -f moltbench/docker/Dockerfile.qjl-openclaw \
@@ -325,9 +331,35 @@ The configuration inherits `OPENAI_API_KEY`, `OPENAI_BASE_URL`, and
 `moltbench_artifacts_qjl_podman/`, and scored results are written to
 `results_qjl_podman/`. Both generated directories are ignored by Git.
 
-The configured distortion acceptance threshold is `0.8`. Runtime improvement
-is scored as baseline runtime divided by optimized runtime, and a result is
-accepted only when it also satisfies the configured distortion threshold.
+QJL is a Level 2 `optimization_only` task pending post-hardening GPU
+revalidation, with `bootstrap` and `improvement`
+stages. Each `/eval/run_eval` call is one `EvalAttempt`; the host verifier
+enforces the attempt and timeout budgets.
+
+The agent image contains neither hidden inputs nor verifier/scoring code.
+`/eval/run_eval` is a mounted client that submits only
+`qjl_kernel/csrc/*.cu` to a separate verifier container. Candidate build and
+benchmark subprocesses run as an unprivileged user. After the agent exits, the
+host runs baseline, episode-best, and final evaluation in a fresh networkless
+container; this official result is the only score source. Agent-written
+`results.json` files are ignored.
+
+The locked distortion threshold is `0.52`, based on an A800 clean validation
+baseline over seeds 42/1234/2025 (maximum distortion `0.495494`, aggregate
+runtime `3.486 ms`). Feedback and official episodes use disjoint host-generated
+seeds recorded only in the host-owned suitcase. Official runtime gain compares
+the candidate with a baseline measured on the same official seeds. Stability
+compares the final and episode-best candidates under those same conditions.
+Memory and drift are `N/A`.
+
+Each QJL run writes an evaluation suitcase containing task/config snapshots,
+initial/final/best CUDA snapshots, attempts/events/verifier JSONL logs,
+tool/model logs when available, patch and changed-file records, build/test
+logs, `official_eval.json`, `score.json`, and `audit_report.md`. These are
+finalized on success, compile failure, invalid candidate, and timeout.
+
+Official baseline evidence currently covers NVIDIA A800 (`sm_80`) only. Other
+GPU architectures require separate committed baseline evidence.
 
 ## Output Structure
 

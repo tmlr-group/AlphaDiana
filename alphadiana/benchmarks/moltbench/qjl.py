@@ -1,4 +1,4 @@
-"""MoltBench QJL benchmark: CUDA optimization for QJL KV-cache quantization."""
+"""MoltBench QJL CUDA optimization task pending Level 3 GPU revalidation."""
 
 from __future__ import annotations
 
@@ -8,6 +8,13 @@ from pathlib import Path
 from typing import Any
 
 from alphadiana.benchmarks.base import Benchmark, BenchmarkTask
+from alphadiana.benchmarks.moltbench.qjl_contract import (
+    QJL_COMMIT,
+    QJL_DISTORTION_THRESHOLD,
+    QJL_EDITABLE_GLOB,
+    QJL_REPOSITORY,
+    QJL_RETENTION_THRESHOLD,
+)
 from alphadiana.benchmarks.registry import BenchmarkRegistry
 
 logger = logging.getLogger(__name__)
@@ -17,41 +24,39 @@ _DEFAULT_PROBLEM_TEMPLATE = """\
 You are optimizing CUDA kernels for QJL (Quantized JL Transform), a KV-cache
 compression method used in LLM inference.
 
-## Workspace layout
-
-```
-/workspace/repo/
-  qjl_kernel/
-    csrc/
-      qjl_score.cu        # CUDA kernel: quantized attention scoring
-      qjl_quant.cu        # CUDA kernel: JL-transform quantization
-      qjl_gqa_score.cu    # CUDA kernel: grouped-query attention scoring
-      quantization.cu     # CUDA kernel: low-level quantization primitives
-  bench_cuda.py           # Evaluation harness (DO NOT MODIFY)
-  requirements.txt
-```
-
 ## Goal
 
-Reduce `runtime_ms` (median latency of quantize + attention_score) while keeping
-`distortion < {distortion_threshold}`. You may modify CUDA kernel files in
-`qjl_kernel/csrc/`. Do not modify `/eval/bench_cuda.py`.
+Reduce official `runtime_ms` while preserving numerical correctness. The
+official correctness gate requires hidden-input distortion below
+`{distortion_threshold}`.
 
-## Baseline metrics
+You may edit only:
+
+```text
+qjl_kernel/csrc/*.cu
+```
+
+All verifier code, benchmark inputs, score files, and `/eval/run_eval` are
+protected. Changes outside the editable path are rejected by official
+evaluation.
+
+## Episode
+
+- `stage_01_bootstrap`: inspect the pinned QJL seed and establish a strategy.
+- `stage_02_improvement`: make candidate edits and request feedback.
+- Each `/eval/run_eval` call is one `EvalAttempt`.
+- Maximum EvalAttempts: {max_attempts}.
+
+`/eval/run_eval` sends only the editable CUDA sources to a verifier outside
+the agent container. It returns limited structured feedback. The final score
+comes from a separate `official_eval` after the agent exits, using a clean
+workspace and hidden inputs.
+
+## Baseline
 
 - runtime_ms: {baseline_runtime_ms}
 - distortion: {baseline_distortion}
-
-## Build & Evaluate
-
-Use the protected evaluator:
-
-```bash
-/eval/run_eval
-```
-
-`/eval/run_eval` rebuilds the CUDA extension, runs `/eval/bench_cuda.py`, writes
-structured verifier artifacts, and enforces the round limit.
+- gain formula: baseline_runtime_ms / candidate_runtime_ms
 
 ## Seed configuration
 
@@ -70,25 +75,109 @@ def _load_json_file(path: str | Path) -> dict[str, Any]:
     return payload
 
 
-def build_qjl_task_json(max_rounds: int = 5, prompt: str | None = None) -> dict[str, Any]:
-    """Build the task.json mounted into the MoltBench container."""
+def build_qjl_task_json(
+    *,
+    max_attempts: int = 5,
+    attempt_timeout_sec: int = 1200,
+    total_timeout_sec: int = 3600,
+    prompt: str | None = None,
+) -> dict[str, Any]:
+    """Build the public task contract mounted into the agent container."""
     task: dict[str, Any] = {
+        "task_id": "moltbench_qjl_optimize",
+        "family": "cuda_kernel_optimization",
+        "task_name": "QJL KV-cache CUDA optimization",
         "benchmark_id": "qjl",
+        "moltbench_task_level": "optimization_only",
         "workdir": "/workspace/repo",
+        "seed_project": {
+            "source": QJL_REPOSITORY,
+            "commit_or_version": QJL_COMMIT,
+            "license": "Apache-2.0",
+            "baseline_command": "official_eval --candidate seed",
+            "environment_lockfile": "moltbench/tasks/qjl/environment.lock.json",
+        },
+        "stages": [
+            {"stage_id": "stage_01_bootstrap", "type": "bootstrap"},
+            {"stage_id": "stage_02_improvement", "type": "improvement"},
+        ],
+        "workspace": {
+            "editable_paths": [QJL_EDITABLE_GLOB],
+            "protected_paths": [
+                "/eval/run_eval",
+                "/verifier",
+                "/hidden_tests",
+                "/scoring",
+                "/official_eval",
+            ],
+        },
+        "editable_paths": [QJL_EDITABLE_GLOB],
+        "protected_eval_paths": [
+            "/eval/run_eval",
+            "/verifier",
+            "/hidden_tests",
+            "/official_eval",
+        ],
         "setup_cmd": [
             "bash",
             "-lc",
-            "cd /workspace/repo/qjl_kernel && python setup.py build_ext --inplace",
+            "test -d /workspace/repo/qjl_kernel/csrc",
         ],
-        "verify_cmd": ["python3", "/eval/bench_cuda.py"],
         "agent_eval_cmd": "/eval/run_eval",
-        "protected_eval_paths": ["/eval/run_eval", "/eval/bench_cuda.py"],
-        "result_parser": "qjl",
-        "result_json_path": "",
-        "primary_edit_file": "qjl_kernel/csrc/qjl_score.cu",
-        "bench_log_path": "/tmp/build.log",
+        "official_eval_external": True,
+        "external_verifier": "qjl",
+        "primary_edit_file": "qjl_kernel/csrc/qjl_score_kernel.cu",
         "snapshot_dir": "qjl_kernel/csrc",
-        "max_rounds": max_rounds,
+        "budget": {
+            "max_stages": 2,
+            "max_attempts_per_stage": max_attempts,
+            "attempt_timeout_sec": attempt_timeout_sec,
+            "total_timeout_sec": total_timeout_sec,
+            "max_tool_calls": 200,
+            "max_model_calls": 100,
+            "max_tokens": 65536,
+            "max_cost_usd": None,
+        },
+        "max_attempts": max_attempts,
+        "max_rounds": 100,
+        "artifacts": {
+            "required_outputs": [
+                "manifest.json",
+                "score.json",
+                "patch.diff",
+                "changed_files.json",
+                "audit_report.md",
+            ],
+            "required_logs": [
+                "attempts.jsonl",
+                "events.jsonl",
+                "verifier_results.jsonl",
+                "tool_calls.jsonl",
+                "model_calls.jsonl",
+                "file_diffs.jsonl",
+            ],
+            "required_snapshots": [
+                "initial_workspace_snapshot",
+                "final_workspace_snapshot",
+                "best_workspace_snapshot",
+            ],
+        },
+        "contamination": {
+            "training_allowed": False,
+            "hidden_data_exposed": False,
+            "retrieval_allowed": True,
+            "network_allowed": True,
+            "network_policy": (
+                "agent network is deployment-controlled; official verifier uses no "
+                "network and feedback seeds are disjoint from official seeds"
+            ),
+        },
+        "hardware": {
+            "validated_gpu_arches": ["sm_80"],
+            "validated_gpu": "NVIDIA A800 80GB",
+            "torch_cuda_arch_list": ["8.0"],
+            "cuda": "12.1",
+        },
     }
     if prompt:
         task["prompt"] = prompt
@@ -96,16 +185,7 @@ def build_qjl_task_json(max_rounds: int = 5, prompt: str | None = None) -> dict[
 
 
 class MoltBenchQJLBenchmark(Benchmark):
-    """Benchmark for optimizing QJL CUDA kernels.
-
-    Config keys:
-        seed_config_path: path to seed_config.json (optional)
-        baseline: dict with runtime_ms/distortion/correctness_pass
-        baseline_json_path: path to baseline JSON, alternative to baseline
-        distortion_threshold: max allowable distortion (default: 0.15)
-        max_rounds: max evaluator invocations (default: 5)
-        problem_template: prompt template override (optional)
-    """
+    """Load the QJL optimization-only episode."""
 
     name = "moltbench_qjl"
 
@@ -115,28 +195,59 @@ class MoltBenchQJLBenchmark(Benchmark):
         if seed_config_path:
             path = Path(seed_config_path)
             if not path.exists():
-                logger.warning("seed_config_path %s not found; using empty seed config", path)
-            else:
-                seed_config = _load_json_file(path)
-                logger.info("Loaded QJL seed config from %s", path)
+                raise FileNotFoundError(f"seed_config_path {path} not found")
+            seed_config = _load_json_file(path)
 
-        baseline = config.get("baseline") or {}
+        baseline = dict(config.get("baseline") or {})
         baseline_json_path = config.get("baseline_json_path")
         if not baseline and baseline_json_path:
-            path = Path(baseline_json_path)
-            if not path.exists():
-                raise FileNotFoundError(f"baseline_json_path {path} not found")
-            baseline = _load_json_file(path)
-            logger.info("Loaded QJL baseline from %s", path)
-
-        if not baseline:
+            baseline = _load_json_file(baseline_json_path)
+        if not baseline or float(baseline.get("runtime_ms", 0.0)) <= 0:
             raise ValueError(
-                "MoltBench QJL requires a 'baseline' dict or 'baseline_json_path' "
-                "with at least runtime_ms."
+                "MoltBench QJL requires a reproducible baseline with runtime_ms > 0."
             )
 
-        distortion_threshold = float(config.get("distortion_threshold", 0.15))
-        max_rounds = int(config.get("max_rounds", 5))
+        distortion_threshold = float(
+            config.get("distortion_threshold", QJL_DISTORTION_THRESHOLD)
+        )
+        if distortion_threshold != QJL_DISTORTION_THRESHOLD:
+            raise ValueError(
+                "QJL distortion_threshold must match the locked task contract: "
+                f"{QJL_DISTORTION_THRESHOLD}"
+            )
+        baseline_distortion = float(baseline.get("distortion", float("inf")))
+        if baseline_distortion >= distortion_threshold:
+            raise ValueError(
+                "MoltBench QJL baseline must pass the locked distortion threshold."
+            )
+        baseline_threshold = baseline.get("distortion_threshold")
+        if (
+            baseline_threshold is not None
+            and float(baseline_threshold) != distortion_threshold
+        ):
+            raise ValueError(
+                "MoltBench QJL baseline distortion_threshold does not match "
+                "the locked task contract."
+            )
+        max_attempts = int(config.get("max_attempts", 5))
+        attempt_timeout_sec = int(config.get("attempt_timeout_sec", 1200))
+        total_timeout_sec = int(config.get("total_timeout_sec", 3600))
+        retention_threshold = float(
+            config.get("retention_threshold", QJL_RETENTION_THRESHOLD)
+        )
+        if max_attempts <= 0:
+            raise ValueError("MoltBench QJL max_attempts must be positive.")
+        if attempt_timeout_sec <= 0:
+            raise ValueError("MoltBench QJL attempt_timeout_sec must be positive.")
+        if total_timeout_sec < attempt_timeout_sec:
+            raise ValueError(
+                "MoltBench QJL total_timeout_sec must be at least "
+                "attempt_timeout_sec."
+            )
+        if not 0 < retention_threshold <= 1:
+            raise ValueError(
+                "MoltBench QJL retention_threshold must be in the interval (0, 1]."
+            )
         template = config.get("problem_template", _DEFAULT_PROBLEM_TEMPLATE)
 
         optimization_hints = seed_config.get("optimization_hints", [])
@@ -145,28 +256,58 @@ class MoltBenchQJLBenchmark(Benchmark):
             if optimization_hints
             else "None provided."
         )
-
         problem = template.format(
             distortion_threshold=distortion_threshold,
-            baseline_runtime_ms=baseline.get("runtime_ms", "unknown"),
+            max_attempts=max_attempts,
+            baseline_runtime_ms=baseline["runtime_ms"],
             baseline_distortion=baseline.get("distortion", "unknown"),
             seed_config_json=json.dumps(seed_config.get("seed_config", {}), indent=2),
             optimization_hints=hints_text,
         )
-        task_json = build_qjl_task_json(max_rounds=max_rounds, prompt=problem)
+        task_json = build_qjl_task_json(
+            max_attempts=max_attempts,
+            attempt_timeout_sec=attempt_timeout_sec,
+            total_timeout_sec=total_timeout_sec,
+            prompt=problem,
+        )
+        task_json["seed_project"]["baseline_score"] = baseline
+        task_json["verifier"] = {
+            "run_eval_command": "/eval/run_eval",
+            "official_eval_command": "host:official_eval",
+            "hidden_files": ["/verifier/bench_cuda.py", "/hidden_tests/qjl_inputs"],
+            "timeout_sec": attempt_timeout_sec,
+            "hidden_seeds_sha256": "host-owned",
+        }
+        task_json["scoring"] = {
+            "correctness_metric": f"distortion < {distortion_threshold}",
+            "gain_metric": "baseline_runtime_ms / candidate_runtime_ms",
+            "stability_metric": (
+                "final_valid_gain / episode_best_valid_gain "
+                f">= {retention_threshold}"
+            ),
+            "memory_metric": "N/A",
+            "drift_metric": "N/A",
+            "cost_metric": (
+                "attempts, verifier calls, wall time, GPU time, model/tool calls, "
+                "tokens, and cost when available"
+            ),
+        }
 
+        metadata = {
+            "task_json": task_json,
+            "seed_config": seed_config,
+            "max_attempts": max_attempts,
+            "distortion_threshold": distortion_threshold,
+            "retention_threshold": retention_threshold,
+            "hidden_seeds": "generated by the host per episode",
+            "external_verifier": "qjl",
+        }
         return [
             BenchmarkTask(
                 task_id="moltbench_qjl_optimize",
                 problem=problem,
                 ground_truth=baseline,
-                metadata={
-                    "task_json": task_json,
-                    "seed_config": seed_config,
-                    "max_rounds": max_rounds,
-                    "distortion_threshold": distortion_threshold,
-                    "result_parser": "qjl",
-                },
+                metadata=metadata,
             )
         ]
 

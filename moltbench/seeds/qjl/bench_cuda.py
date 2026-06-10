@@ -23,7 +23,7 @@ import sys
 import numpy as np
 import torch
 
-sys.path.insert(0, "/workspace/repo")
+sys.path.insert(0, os.environ.get("QJL_WORKSPACE_ROOT", "/workspace/repo"))
 from models.llama2_utils_qjl import QJLKeyQuantizer, QJLSketch
 
 
@@ -58,7 +58,7 @@ def parse_args():
     # --- benchmark control ---
     p.add_argument("--warmup", type=int, default=5)
     p.add_argument("--repeats", type=int, default=20)
-    p.add_argument("--distortion-threshold", type=float, default=0.8)
+    p.add_argument("--distortion-threshold", type=float, default=0.52)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--dtype", choices=["float16", "bfloat16"], default="bfloat16")
 

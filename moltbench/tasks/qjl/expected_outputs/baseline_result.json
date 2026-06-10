@@ -1,0 +1,26 @@
+{
+  "runtime_ms": 3.486,
+  "distortion": 0.495494,
+  "correctness_pass": true,
+  "distortion_threshold": 0.52,
+  "seed_project": {
+    "source": "https://github.com/amirzandieh/QJL.git",
+    "commit": "648b364",
+    "license": "Apache-2.0"
+  },
+  "measurement": {
+    "gpu": "NVIDIA A800 80GB",
+    "gpu_arch": "sm_80",
+    "cuda": "12.1",
+    "pytorch": "2.4.1+cu121",
+    "driver": "575.57.08",
+    "measured_at": "2026-06-08",
+    "validation_seeds": [42, 1234, 2025],
+    "per_seed_distortion": [0.492585, 0.491858, 0.495494],
+    "per_seed_runtime_ms": [3.443, 3.486, 3.845],
+    "benchmark_warmup_runs": 5,
+    "benchmark_timed_runs": 20,
+    "runtime_relative_tolerance": 0.2,
+    "distortion_absolute_tolerance": 0.01
+  }
+}

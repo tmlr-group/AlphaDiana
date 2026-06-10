@@ -2,6 +2,7 @@
 #
 # Build images first:
 #   podman build --network host -f moltbench/docker/Dockerfile.qjl-base -t localhost/alphadiana:qjl-base .
+#   podman build --network host -f moltbench/docker/Dockerfile.qjl-verifier -t localhost/alphadiana:qjl-verifier .
 #   podman build --network host -f moltbench/docker/Dockerfile.qjl-openclaw -t localhost/alphadiana:qjl-openclaw .
 #
 # Run:
@@ -19,9 +20,10 @@ agent:
     container_engine_binary: "podman"
     container_runtime: runc
     image: localhost/alphadiana:qjl-openclaw
+    verifier_image: localhost/alphadiana:qjl-verifier
     request_timeout: 3600
     network_mode: "host"
-    podman_gpu_args: ["--device", "nvidia.com/gpu=all"]
+    podman_gpu_args: ["--device", "nvidia.com/gpu=0"]
     shm_size: "1g"
     ipc_mode: "private"
     output_dir: "./moltbench_artifacts_qjl_podman"
@@ -36,18 +38,16 @@ benchmark:
   name: moltbench_qjl
   config:
     seed_config_path: "moltbench/seeds/qjl/seed_config.json"
-    distortion_threshold: 0.8
-    max_rounds: 5
-    baseline:
-      runtime_ms: 2.493
-      distortion: 0.159359
-      correctness_pass: true
+    baseline_json_path: "moltbench/tasks/qjl/expected_outputs/baseline_result.json"
+    distortion_threshold: 0.52
+    max_attempts: 5
+    attempt_timeout_sec: 1200
+    total_timeout_sec: 3600
+    retention_threshold: 0.90
 
 scorer:
   name: moltbench_qjl
-  config:
-    distortion_threshold: 0.8
-    min_og_for_correct: 1.0
+  config: {}
 
 max_concurrent: 1
 output_dir: "./results_qjl_podman"

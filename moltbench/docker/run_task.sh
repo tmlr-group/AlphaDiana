@@ -56,6 +56,7 @@ read_task() {
     RESULT_PARSER=$(python3 -c "import json; t=json.load(open('$TASK_FILE')); print(t.get('result_parser', 'bench_kb'))")
     ROUND_GUARD_TARGET=$(python3 -c "import json; t=json.load(open('$TASK_FILE')); print(t.get('round_guard_target', ''))")
     RESULT_JSON_PATH=$(python3 -c "import json; t=json.load(open('$TASK_FILE')); print(t.get('result_json_path', ''))")
+    OFFICIAL_EVAL_EXTERNAL=$(python3 -c "import json; t=json.load(open('$TASK_FILE')); print(str(t.get('official_eval_external', False)).lower())")
     SETUP_CMD=$(python3 - <<'PY' "$TASK_FILE"
 import json
 import shlex
@@ -116,6 +117,10 @@ setup_problem() {
 }
 
 install_round_guard() {
+    if [[ "$OFFICIAL_EVAL_EXTERNAL" == "true" ]]; then
+        log "External verifier controls EvalAttempt budget"
+        return
+    fi
     # Replace the eval script with a round-counting wrapper.
     # After MAX_ROUNDS benchmark invocations the wrapper refuses to run,
     # forcing the agent to stop regardless of its own planning.
@@ -215,12 +220,16 @@ collect_artifacts() {
         done
     fi
 
-    # Agent trajectory (Claude Code sessions, OpenClaw JSONL)
+    # Agent trajectory sources. Concatenated session logs retain all records
+    # without relying on whichever file `find` happens to return last.
     cp -f /root/.claude/projects/*/memory/*.md "$ARTIFACTS_DIR/" 2>/dev/null || true
+    find /root/.claude/projects -name "*.jsonl" -type f -exec cat {} + \
+        > "$ARTIFACTS_DIR/claude_sessions.jsonl" 2>/dev/null || true
     # OpenClaw session files may be in OPENCLAW_HOME or default location
     for oc_dir in /root/.openclaw /tmp/oc_home; do
         if [[ -d "$oc_dir" ]]; then
-            find "$oc_dir" -name "*.jsonl" -exec cp {} "$ARTIFACTS_DIR/" \; 2>/dev/null || true
+            find "$oc_dir" -name "*.jsonl" -type f -exec cat {} + \
+                >> "$ARTIFACTS_DIR/openclaw_sessions.jsonl" 2>/dev/null || true
         fi
     done
     # ZeroClaw session files
@@ -232,8 +241,11 @@ collect_artifacts() {
         fi
     done
 
-    # Run a final independent benchmark for scorer verification
-    run_final_verification
+    if [[ "$OFFICIAL_EVAL_EXTERNAL" != "true" ]]; then
+        run_final_verification
+    else
+        log "Official evaluation is host-controlled; no local score file produced"
+    fi
 
     log "Artifacts collected at $ARTIFACTS_DIR"
     ls -la "$ARTIFACTS_DIR/"
@@ -411,8 +423,10 @@ You have ${MAX_ROUNDS} optimization rounds. Backend: ${BACKEND}."
         claude_args+=(--dangerously-skip-permissions)
     fi
 
-    # Run Claude Code in non-interactive mode
-    claude "${claude_args[@]}" "$prompt"
+    # Run Claude Code in non-interactive structured-output mode.
+    claude "${claude_args[@]}" --verbose --output-format stream-json "$prompt" \
+        > "$ARTIFACTS_DIR/claude_output.jsonl" \
+        2> "$ARTIFACTS_DIR/claude_stderr.log"
 }
 
 launch_openclaw() {
@@ -610,7 +624,8 @@ PY
 
     # ── Collect OpenClaw session trajectory ──
     if [[ -d "$OPENCLAW_HOME" ]]; then
-        find "$OPENCLAW_HOME" -name "*.jsonl" -exec cp {} "$ARTIFACTS_DIR/trajectory.jsonl" \; 2>/dev/null || true
+        find "$OPENCLAW_HOME" -name "*.jsonl" -type f -exec cat {} + \
+            > "$ARTIFACTS_DIR/openclaw_sessions.jsonl" 2>/dev/null || true
     fi
 
     # ── Shutdown gateway ──
@@ -726,7 +741,8 @@ PY
 
     # ── Collect OpenCode session files ──
     if [[ -d "$HOME/.opencode" ]]; then
-        find "$HOME/.opencode" -name "*.jsonl" -exec cp {} "$ARTIFACTS_DIR/" \; 2>/dev/null || true
+        find "$HOME/.opencode" -name "*.jsonl" -type f -exec cat {} + \
+            > "$ARTIFACTS_DIR/opencode_sessions.jsonl" 2>/dev/null || true
     fi
 
     log "OpenCode agent finished"
@@ -837,6 +853,16 @@ You have ${MAX_ROUNDS} optimization rounds. Backend: ${BACKEND}."
 
     log "ZeroClaw agent finished ($(wc -c < "$ARTIFACTS_DIR/zeroclaw_output.txt") bytes output)"
 }
+
+launch_smoke() {
+    log "Launching deterministic verifier smoke client..."
+    cd "$WORKDIR"
+    init_task_repo
+    /eval/run_eval > "$ARTIFACTS_DIR/smoke_run_eval.json" \
+        2> "$ARTIFACTS_DIR/smoke_run_eval.err"
+    log "Verifier smoke client finished"
+}
+
 # ──────────────────────────────────────────────
 # Main
 # ──────────────────────────────────────────────
@@ -862,6 +888,9 @@ case "$AGENT" in
         ;;
     zeroclaw)
         launch_zeroclaw
+        ;;
+    smoke)
+        launch_smoke
         ;;
     *)
         die "Unknown agent: $AGENT"

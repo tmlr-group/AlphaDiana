@@ -1,144 +1,91 @@
-"""MoltBench QJL scorer: computes optimization gain from verifier artifacts."""
+"""QJL scorer that consumes only host-owned official evaluation artifacts."""
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
-import math
 from pathlib import Path
 from typing import Any
 
-from alphadiana.benchmarks.moltbench.utils import parse_results_json
 from alphadiana.scorer.base import Scorer, ScoreResult
 from alphadiana.scorer.registry import register_scorer
 
 logger = logging.getLogger(__name__)
 
 
-def _as_float(value: Any, default: float = 0.0) -> float:
-    try:
-        result = float(value)
-    except (TypeError, ValueError):
-        return default
-    return result if math.isfinite(result) else default
-
-
-def _load_results(response: Any) -> dict[str, Any]:
-    artifacts_dir = getattr(response, "metadata", {}).get("artifacts_dir", "")
-    if artifacts_dir:
-        try:
-            return parse_results_json(Path(artifacts_dir))
-        except Exception as exc:
-            logger.warning("Failed to load QJL results from %s: %s", artifacts_dir, exc)
-    answer = getattr(response, "answer", None)
-    return answer if isinstance(answer, dict) else {}
+def _load_official_score(response: Any) -> dict[str, Any]:
+    metadata = getattr(response, "metadata", {})
+    if metadata.get("official_eval_host_owned") is not True:
+        raise ValueError("response is not marked as host-owned official evaluation")
+    raw_artifacts_dir = str(
+        metadata.get("artifacts_dir", "")
+    ).strip()
+    if not raw_artifacts_dir:
+        raise FileNotFoundError("missing host artifacts_dir")
+    artifacts_dir = Path(raw_artifacts_dir)
+    manifest = json.loads((artifacts_dir / "manifest.json").read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict) or manifest.get("host_owned") is not True:
+        raise ValueError("invalid or untrusted QJL manifest")
+    if manifest.get("execution_id") != metadata.get("execution_id"):
+        raise ValueError("QJL manifest execution_id mismatch")
+    if not manifest.get("artifact_validation", {}).get("complete"):
+        raise ValueError("QJL evaluation suitcase is incomplete")
+    score_path = artifacts_dir / "score.json"
+    expected_hash = manifest.get("artifact_hashes", {}).get("score.json")
+    actual_hash = hashlib.sha256(score_path.read_bytes()).hexdigest()
+    if not expected_hash or actual_hash != expected_hash:
+        raise ValueError("QJL score.json hash mismatch")
+    payload = json.loads(score_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict) or payload.get("schema_version") != "moltbench.score.v3":
+        raise ValueError("invalid or untrusted QJL score.json")
+    return payload
 
 
 @register_scorer("moltbench_qjl")
 class MoltBenchQJLScorer(Scorer):
-    """Score QJL runs with OG = baseline_runtime_ms / optimized_runtime_ms."""
-
-    def __init__(self) -> None:
-        self._distortion_threshold = 0.15
-        self._min_og_for_correct = 1.0
-        self._baseline: dict[str, Any] = {}
+    """Expose the official C/G/S/M/K vector through AlphaDiana ScoreResult."""
 
     @property
     def name(self) -> str:
         return "moltbench_qjl"
 
     def setup(self, config: dict) -> None:
-        self._distortion_threshold = float(config.get("distortion_threshold", 0.15))
-        self._min_og_for_correct = float(config.get("min_og_for_correct", 1.0))
-        self._baseline = dict(config.get("baseline", {}) or {})
+        del config
 
     def score(self, task: Any, response: Any) -> ScoreResult:
-        baseline = self._baseline
-        if not baseline and isinstance(getattr(task, "ground_truth", None), dict):
-            baseline = task.ground_truth
-
-        baseline_runtime = _as_float(baseline.get("runtime_ms"), 0.0)
-        if baseline_runtime <= 0:
+        try:
+            score = _load_official_score(response)
+        except Exception as exc:
+            logger.warning("QJL official score unavailable: %s", exc)
             return ScoreResult(
                 correct=False,
                 score=0.0,
-                expected=str(baseline),
+                expected=str(getattr(task, "ground_truth", {})),
                 predicted=None,
-                rationale="Invalid QJL baseline: runtime_ms must be > 0.",
-                metadata={"baseline_runtime_ms": baseline_runtime},
+                rationale=f"Missing valid host-owned official score: {exc}",
+                metadata={"official_score_missing": True},
             )
 
-        results = _load_results(response)
-        metadata = dict(getattr(response, "metadata", {}) or {})
-        exit_code = metadata.get("exit_code")
-        exit_benign = bool(metadata.get("exit_benign"))
-        timed_out = bool(metadata.get("timeout"))
-
-        optimized_runtime = _as_float(results.get("runtime_ms"), 0.0)
-        distortion = _as_float(results.get("distortion"), float("inf"))
-        if "correctness_pass" in results:
-            correctness_pass = bool(results.get("correctness_pass"))
-        else:
-            correctness_pass = distortion < self._distortion_threshold
-        distortion_ok = distortion < self._distortion_threshold
-        og = baseline_runtime / optimized_runtime if optimized_runtime > 0 else 0.0
-        has_metrics = optimized_runtime > 0 or "runtime_ms" in results
-
-        score_meta: dict[str, Any] = {
-            "og": og,
-            "baseline_runtime_ms": baseline_runtime,
-            "optimized_runtime_ms": optimized_runtime,
-            "distortion": distortion,
-            "distortion_threshold": self._distortion_threshold,
-            "correctness_pass": correctness_pass,
-            "distortion_ok": distortion_ok,
-            "timed_out": timed_out,
-            "exit_benign": exit_benign,
-        }
-        if exit_code is not None:
-            score_meta["exit_code"] = exit_code
-        if metadata.get("artifacts_dir"):
-            score_meta["artifacts_dir"] = metadata["artifacts_dir"]
-        if results:
-            score_meta["bench_result"] = results
-
-        if timed_out or (
-            exit_code is not None
-            and int(exit_code) != 0
-            and not exit_benign
-            and not has_metrics
-        ):
-            status = "timed out" if timed_out else f"exited with code {exit_code}"
-            return ScoreResult(
-                correct=False,
-                score=0.0,
-                expected=str(baseline),
-                predicted=f"{status}; OG={og:.4f}, distortion={distortion:.6f}",
-                rationale=(
-                    f"Container {status}. No valid QJL verifier metrics were available "
-                    "for scoring."
-                ),
-                metadata=score_meta,
-            )
-
-        is_correct = (
-            bool(correctness_pass)
-            and distortion_ok
-            and optimized_runtime > 0
-            and og >= self._min_og_for_correct
-        )
+        correct = bool(score.get("correct"))
+        gain = float(score.get("score", 0.0)) if correct else 0.0
+        official = dict(score.get("official_result", {}))
+        metrics = dict(official.get("metrics", {}))
         return ScoreResult(
-            correct=is_correct,
-            score=og if is_correct else 0.0,
-            expected=str(baseline),
+            correct=correct,
+            score=gain,
+            expected=str(getattr(task, "ground_truth", {})),
             predicted=(
-                f"OG={og:.4f}, runtime={optimized_runtime:.2f}ms, "
-                f"distortion={distortion:.6f}"
+                f"C={correct}, G={score.get('G', {}).get('value', 0.0):.4f}, "
+                f"S={score.get('S', {}).get('value', 0.0):.4f}"
             ),
             rationale=(
-                f"OG={og:.4f} (baseline={baseline_runtime:.2f}ms, "
-                f"optimized={optimized_runtime:.2f}ms). "
-                f"Distortion={distortion:.6f} "
-                f"(threshold={self._distortion_threshold})."
+                "Scored from host-owned official_eval.json after a clean rebuild; "
+                "agent-written results were ignored."
             ),
-            metadata=score_meta,
+            metadata={
+                "score_vector": score,
+                "official_metrics": metrics,
+                "artifacts_dir": getattr(response, "metadata", {}).get("artifacts_dir", ""),
+            },
         )

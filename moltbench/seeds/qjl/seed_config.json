@@ -2,7 +2,7 @@
     "name": "qjl",
     "display_name": "QJL KV-Cache Quantization",
     "description": "Quantized JL Transform for KV cache compression with 4 custom CUDA kernels (qjl_score, qjl_quant, qjl_gqa_score, quantization)",
-    "repo": "https://github.com/amirgholami/QJL",
+    "repo": "https://github.com/amirzandieh/QJL",
     "commit": "648b364",
     "docker_image": "moltbench-qjl:648b364",
     "eval_command": "python bench_cuda.py",
@@ -31,7 +31,7 @@
         "dtype": "bfloat16"
     },
     "optimization_hints": [
-        "Reduce key_quant_bits from 256 to 128-160 (paper optimal range) while keeping distortion < 0.15",
+        "Tune CUDA execution without changing the protected benchmark parameters; official hidden-input distortion must remain below 0.52",
         "Modify CUDA kernels in qjl_kernel/csrc/*.cu for better throughput (e.g. shared memory, warp-level primitives)",
         "Optimize memory access patterns in QJLKeyQuantizer.build_sketch()"
     ]

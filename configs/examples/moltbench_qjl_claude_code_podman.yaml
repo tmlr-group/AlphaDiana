@@ -1,0 +1,37 @@
+task: qjl
+run_id: "moltbench-qjl-claude-code-podman"
+
+agent:
+  name: moltbench_docker
+  version: "1.0"
+  config:
+    agent_type: claude-code
+    container_engine: podman
+    container_engine_binary: podman
+    container_runtime: runc
+    image: localhost/alphadiana:qjl-claude-code
+    verifier_image: localhost/alphadiana:qjl-verifier
+    request_timeout: 3600
+    network_mode: host
+    podman_gpu_args: ["--device", "nvidia.com/gpu=0"]
+    shm_size: "1g"
+    ipc_mode: private
+    output_dir: "./moltbench_artifacts_qjl_podman"
+
+benchmark:
+  name: moltbench_qjl
+  config:
+    seed_config_path: "moltbench/seeds/qjl/seed_config.json"
+    baseline_json_path: "moltbench/tasks/qjl/expected_outputs/baseline_result.json"
+    distortion_threshold: 0.52
+    max_attempts: 5
+    attempt_timeout_sec: 1200
+    total_timeout_sec: 3600
+    retention_threshold: 0.90
+
+scorer:
+  name: moltbench_qjl
+  config: {}
+
+max_concurrent: 1
+output_dir: "./results_qjl_podman"
