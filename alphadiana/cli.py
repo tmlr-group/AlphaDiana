@@ -386,6 +386,7 @@ def list_benchmarks():
     import alphadiana.benchmarks.custom.benchmark  # noqa: F401
     import alphadiana.benchmarks.swe_bench.benchmark  # noqa: F401
     import alphadiana.benchmarks.moltbench.benchmark  # noqa: F401
+    import alphadiana.benchmarks.moltbench.qjl  # noqa: F401
     import alphadiana.benchmarks.swebench_pro.benchmark  # noqa: F401
     import alphadiana.benchmarks.terminal_bench2.benchmark  # noqa: F401
 

@@ -54,7 +54,9 @@ read_task() {
     BENCH_LOG_PATH=$(python3 -c "import json; t=json.load(open('$TASK_FILE')); print(t.get('bench_log_path', 'run.log'))")
     SNAPSHOT_DIR=$(python3 -c "import json; t=json.load(open('$TASK_FILE')); print(t.get('snapshot_dir', 'workspace'))")
     RESULT_PARSER=$(python3 -c "import json; t=json.load(open('$TASK_FILE')); print(t.get('result_parser', 'bench_kb'))")
+    ROUND_GUARD_TARGET=$(python3 -c "import json; t=json.load(open('$TASK_FILE')); print(t.get('round_guard_target', ''))")
     RESULT_JSON_PATH=$(python3 -c "import json; t=json.load(open('$TASK_FILE')); print(t.get('result_json_path', ''))")
+    OFFICIAL_EVAL_EXTERNAL=$(python3 -c "import json; t=json.load(open('$TASK_FILE')); print(str(t.get('official_eval_external', False)).lower())")
     SETUP_CMD=$(python3 - <<'PY' "$TASK_FILE"
 import json
 import shlex
@@ -115,12 +117,21 @@ setup_problem() {
 }
 
 install_round_guard() {
-    # Replace bench_kb.py with a round-counting wrapper.
+    if [[ "$OFFICIAL_EVAL_EXTERNAL" == "true" ]]; then
+        log "External verifier controls EvalAttempt budget"
+        return
+    fi
+    # Replace the eval script with a round-counting wrapper.
     # After MAX_ROUNDS benchmark invocations the wrapper refuses to run,
     # forcing the agent to stop regardless of its own planning.
     cd "$WORKDIR"
-    local bench_py="kernelbench/bench_kb.py"
-    local impl_py="kernelbench/_bench_kb_impl.py"
+    local bench_py="${ROUND_GUARD_TARGET:-kernelbench/bench_kb.py}"
+    local bench_dir
+    bench_dir=$(dirname "$bench_py")
+    local bench_name
+    bench_name=$(basename "$bench_py")
+    local impl_name="_${bench_name%.*}_impl.${bench_name##*.}"
+    local impl_py="${bench_dir}/${impl_name}"
 
     if [[ ! -f "$bench_py" ]]; then
         log "WARNING: $bench_py not found, skipping round guard"
@@ -128,7 +139,7 @@ install_round_guard() {
     fi
 
     mv "$bench_py" "$impl_py"
-    cat > "$bench_py" << 'GUARD'
+    cat > "$bench_py" << GUARD
 #!/usr/bin/env python3
 """Round-counting wrapper — transparently limits benchmark invocations."""
 import os, sys, subprocess
@@ -155,8 +166,8 @@ if n > _MAX:
     print('speedup: 0.000x')
     sys.exit(1)
 
-# Delegate to real bench_kb.py
-_impl = os.path.join(os.path.dirname(os.path.abspath(__file__)), '_bench_kb_impl.py')
+# Delegate to real implementation
+_impl = os.path.join(os.path.dirname(os.path.abspath(__file__)), '${impl_name}')
 os.execv(sys.executable, [sys.executable, _impl] + sys.argv[1:])
 GUARD
     chmod +x "$bench_py"
@@ -209,12 +220,16 @@ collect_artifacts() {
         done
     fi
 
-    # Agent trajectory (Claude Code sessions, OpenClaw JSONL)
+    # Agent trajectory sources. Concatenated session logs retain all records
+    # without relying on whichever file `find` happens to return last.
     cp -f /root/.claude/projects/*/memory/*.md "$ARTIFACTS_DIR/" 2>/dev/null || true
+    find /root/.claude/projects -name "*.jsonl" -type f -exec cat {} + \
+        > "$ARTIFACTS_DIR/claude_sessions.jsonl" 2>/dev/null || true
     # OpenClaw session files may be in OPENCLAW_HOME or default location
     for oc_dir in /root/.openclaw /tmp/oc_home; do
         if [[ -d "$oc_dir" ]]; then
-            find "$oc_dir" -name "*.jsonl" -exec cp {} "$ARTIFACTS_DIR/" \; 2>/dev/null || true
+            find "$oc_dir" -name "*.jsonl" -type f -exec cat {} + \
+                >> "$ARTIFACTS_DIR/openclaw_sessions.jsonl" 2>/dev/null || true
         fi
     done
     # ZeroClaw session files
@@ -226,8 +241,11 @@ collect_artifacts() {
         fi
     done
 
-    # Run a final independent benchmark for scorer verification
-    run_final_verification
+    if [[ "$OFFICIAL_EVAL_EXTERNAL" != "true" ]]; then
+        run_final_verification
+    else
+        log "Official evaluation is host-controlled; no local score file produced"
+    fi
 
     log "Artifacts collected at $ARTIFACTS_DIR"
     ls -la "$ARTIFACTS_DIR/"
@@ -240,8 +258,16 @@ run_final_verification() {
     local verify_cmd="$VERIFY_CMD"
     local verification_results_path="$ARTIFACTS_DIR/final_verification_results.json"
     # Bypass the round guard wrapper for final verification.
-    # If verify_cmd references bench_kb.py and the real impl exists, use it.
-    if [[ -f "kernelbench/_bench_kb_impl.py" ]]; then
+    # If the round guard created an _impl backup, use that instead.
+    if [[ -n "$ROUND_GUARD_TARGET" ]]; then
+        local guard_dir guard_name impl_name_final
+        guard_dir=$(dirname "$ROUND_GUARD_TARGET")
+        guard_name=$(basename "$ROUND_GUARD_TARGET")
+        impl_name_final="_${guard_name%.*}_impl.${guard_name##*.}"
+        if [[ -f "${guard_dir}/${impl_name_final}" ]]; then
+            verify_cmd="${verify_cmd//$guard_name/$impl_name_final}"
+        fi
+    elif [[ -f "kernelbench/_bench_kb_impl.py" ]]; then
         verify_cmd="${verify_cmd//bench_kb.py/_bench_kb_impl.py}"
     fi
     if [[ -z "$verify_cmd" ]]; then
@@ -255,12 +281,19 @@ run_final_verification() {
         verify_cmd="uv run ${verify_cmd}"
     fi
 
-    if bash -lc "$verify_cmd" > "$ARTIFACTS_DIR/final_bench.log" 2>&1; then
-        if [[ -n "$RESULT_JSON_PATH" && -f "$RESULT_JSON_PATH" ]]; then
-            cp -f "$RESULT_JSON_PATH" "$verification_results_path"
-        elif [[ "$RESULT_PARSER" == "bench_kb" ]]; then
-            # Parse results into structured JSON
-            python3 -c "
+    set +e
+    bash -lc "$verify_cmd" > "$ARTIFACTS_DIR/final_bench.log" 2>&1
+    local verify_status=$?
+    set -e
+    if [[ $verify_status -ne 0 ]]; then
+        log "Final verification command exited with status $verify_status; parsing any emitted metrics"
+    fi
+
+    if [[ -n "$RESULT_JSON_PATH" && -f "$RESULT_JSON_PATH" ]]; then
+        cp -f "$RESULT_JSON_PATH" "$verification_results_path"
+    elif [[ "$RESULT_PARSER" == "bench_kb" ]]; then
+        # Parse results into structured JSON
+        python3 -c "
 import re, json, sys
 
 log_path = '$ARTIFACTS_DIR/final_bench.log'
@@ -298,15 +331,45 @@ with open('$verification_results_path', 'w') as f:
     json.dump(results, f, indent=2)
 print(json.dumps(results, indent=2))
 "
-        else  # unknown result_parser
-            log "WARNING: Unknown result parser '$RESULT_PARSER', defaulting to ERROR result"
-            echo '{"correctness": "ERROR", "speedup": 0.0}' > "$verification_results_path"
-        fi
-        log "Final verification complete"
+    elif [[ "$RESULT_PARSER" == "qjl" ]]; then
+        # Parse QJL bench_cuda.py JSON output.
+        python3 -c "
+import json
+
+log_path = '$ARTIFACTS_DIR/final_bench.log'
+with open(log_path, encoding='utf-8', errors='replace') as f:
+    text = f.read()
+
+result = None
+for line in reversed(text.strip().splitlines()):
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        obj = json.loads(line)
+    except (json.JSONDecodeError, ValueError):
+        continue
+    if isinstance(obj, dict) and 'runtime_ms' in obj:
+        result = obj
+        break
+
+if result is None:
+    result = {
+        'runtime_ms': 0.0,
+        'distortion': 1.0,
+        'correctness_pass': False,
+        'error': 'parse_failed',
+    }
+
+with open('$verification_results_path', 'w') as f:
+    json.dump(result, f, indent=2)
+print(json.dumps(result, indent=2))
+"
     else
-        log "WARNING: Final verification failed (bench_kb.py error)"
+        log "WARNING: Unknown result parser '$RESULT_PARSER', defaulting to ERROR result"
         echo '{"correctness": "ERROR", "speedup": 0.0}' > "$verification_results_path"
     fi
+    log "Final verification complete"
 
     if [[ "$RUN_INVALID" -eq 1 ]]; then
         INVALID_REASON_ENV="$RUN_INVALID_REASON" python3 - <<'PY'
@@ -360,8 +423,10 @@ You have ${MAX_ROUNDS} optimization rounds. Backend: ${BACKEND}."
         claude_args+=(--dangerously-skip-permissions)
     fi
 
-    # Run Claude Code in non-interactive mode
-    claude "${claude_args[@]}" "$prompt"
+    # Run Claude Code in non-interactive structured-output mode.
+    claude "${claude_args[@]}" --verbose --output-format stream-json "$prompt" \
+        > "$ARTIFACTS_DIR/claude_output.jsonl" \
+        2> "$ARTIFACTS_DIR/claude_stderr.log"
 }
 
 launch_openclaw() {
@@ -559,7 +624,8 @@ PY
 
     # ── Collect OpenClaw session trajectory ──
     if [[ -d "$OPENCLAW_HOME" ]]; then
-        find "$OPENCLAW_HOME" -name "*.jsonl" -exec cp {} "$ARTIFACTS_DIR/trajectory.jsonl" \; 2>/dev/null || true
+        find "$OPENCLAW_HOME" -name "*.jsonl" -type f -exec cat {} + \
+            > "$ARTIFACTS_DIR/openclaw_sessions.jsonl" 2>/dev/null || true
     fi
 
     # ── Shutdown gateway ──
@@ -675,7 +741,8 @@ PY
 
     # ── Collect OpenCode session files ──
     if [[ -d "$HOME/.opencode" ]]; then
-        find "$HOME/.opencode" -name "*.jsonl" -exec cp {} "$ARTIFACTS_DIR/" \; 2>/dev/null || true
+        find "$HOME/.opencode" -name "*.jsonl" -type f -exec cat {} + \
+            > "$ARTIFACTS_DIR/opencode_sessions.jsonl" 2>/dev/null || true
     fi
 
     log "OpenCode agent finished"
@@ -786,6 +853,16 @@ You have ${MAX_ROUNDS} optimization rounds. Backend: ${BACKEND}."
 
     log "ZeroClaw agent finished ($(wc -c < "$ARTIFACTS_DIR/zeroclaw_output.txt") bytes output)"
 }
+
+launch_smoke() {
+    log "Launching deterministic verifier smoke client..."
+    cd "$WORKDIR"
+    init_task_repo
+    /eval/run_eval > "$ARTIFACTS_DIR/smoke_run_eval.json" \
+        2> "$ARTIFACTS_DIR/smoke_run_eval.err"
+    log "Verifier smoke client finished"
+}
+
 # ──────────────────────────────────────────────
 # Main
 # ──────────────────────────────────────────────
@@ -811,6 +888,9 @@ case "$AGENT" in
         ;;
     zeroclaw)
         launch_zeroclaw
+        ;;
+    smoke)
+        launch_smoke
         ;;
     *)
         die "Unknown agent: $AGENT"

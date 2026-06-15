@@ -253,7 +253,7 @@ commit pinned in `moltbench/seeds.yaml`.
 | Seed | Repo | Task | Status |
 |------|------|------|--------|
 | **AutoKernel** | `RightNow-AI/autokernel` @ `7843582` | **KernelBench** L1-L4 (270 problems) — optimize `kernel.py` | Verified |
-| QJL | `amirzandieh/QJL` @ `648b364` | CUDA C++ kernels — minimize runtime | Planned |
+| QJL | `amirzandieh/QJL` @ `648b364` | CUDA C++ kernels — minimize runtime | Supported |
 | Mini-SGLang | `sgl-project/mini-sglang` | Scheduler optimization — maximize throughput | Planned |
 
 ### How to Add a New Seed Project
@@ -306,6 +306,80 @@ commit pinned in `moltbench/seeds.yaml`.
        -t tmlrgroup/alphadiana:my-project-base .
    # Then build agent layers on top and run a smoke test
    ```
+
+### QJL Evaluation with OpenClaw and Podman
+
+QJL is supported as a MoltBench CUDA optimization task pending revised GPU
+admission. The evaluation
+builds the pinned QJL source, runs OpenClaw in a Podman-managed GPU container,
+and scores the final CUDA implementation using runtime and distortion.
+
+Configure an OpenAI-compatible provider with a fully qualified model ID:
+
+```bash
+export OPENAI_API_KEY="..."
+export OPENAI_BASE_URL="https://openrouter.ai/api/v1"
+export OPENAI_MODEL_NAME="deepseek/deepseek-v4-flash"
+```
+
+Build the QJL images:
+
+```bash
+podman build --network host \
+  --build-arg TORCH_CUDA_ARCH_LIST=8.0 \
+  -f moltbench/docker/Dockerfile.qjl-base \
+  -t localhost/alphadiana:qjl-base .
+
+podman build --network host \
+  -f moltbench/docker/Dockerfile.qjl-verifier \
+  -t localhost/alphadiana:qjl-verifier .
+
+podman build --network host \
+  -f moltbench/docker/Dockerfile.qjl-openclaw \
+  -t localhost/alphadiana:qjl-openclaw .
+```
+
+Run the evaluation:
+
+```bash
+python3 -m alphadiana.cli run \
+  configs/examples/moltbench_qjl_openclaw_podman.yaml
+```
+
+The configuration inherits `OPENAI_API_KEY`, `OPENAI_BASE_URL`, and
+`OPENAI_MODEL_NAME` from the host environment. Artifacts are written to
+`moltbench_artifacts_qjl_podman/`, and scored results are written to
+`results_qjl_podman/`. Both generated directories are ignored by Git.
+
+QJL is a Level 2 `optimization_only` task pending post-hardening GPU
+revalidation, with `bootstrap` and `improvement`
+stages. Each `/eval/run_eval` call is one `EvalAttempt`; the host verifier
+enforces the attempt and timeout budgets.
+
+The agent image contains neither hidden inputs nor verifier/scoring code.
+`/eval/run_eval` is a mounted client that submits only
+`qjl_kernel/csrc/*.cu` to a separate verifier container. Candidate build and
+benchmark subprocesses run as an unprivileged user. After the agent exits, the
+host runs baseline, episode-best, and final evaluation in a fresh networkless
+container; this official result is the only score source. Agent-written
+`results.json` files are ignored.
+
+The locked distortion threshold is `0.52`, based on an A800 clean validation
+baseline over seeds 42/1234/2025 (maximum distortion `0.495494`, aggregate
+runtime `3.486 ms`). Feedback and official episodes use disjoint host-generated
+seeds recorded only in the host-owned suitcase. Official runtime gain compares
+the candidate with a baseline measured on the same official seeds. Stability
+compares the final and episode-best candidates under those same conditions.
+Memory and drift are `N/A`.
+
+Each QJL run writes an evaluation suitcase containing task/config snapshots,
+initial/final/best CUDA snapshots, attempts/events/verifier JSONL logs,
+tool/model logs when available, patch and changed-file records, build/test
+logs, `official_eval.json`, `score.json`, and `audit_report.md`. These are
+finalized on success, compile failure, invalid candidate, and timeout.
+
+Official baseline evidence currently covers NVIDIA A800 (`sm_80`) only. Other
+GPU architectures require separate committed baseline evidence.
 
 ## Output Structure
 

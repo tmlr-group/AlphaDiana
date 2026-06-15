@@ -567,6 +567,7 @@ class Runner:
         import alphadiana.benchmarks.imo.benchmark  # noqa: F401
         import alphadiana.benchmarks.mmmu_pro.benchmark  # noqa: F401
         import alphadiana.benchmarks.moltbench.benchmark  # noqa: F401
+        import alphadiana.benchmarks.moltbench.qjl  # noqa: F401
         import alphadiana.benchmarks.swebench_pro.benchmark  # noqa: F401
         import alphadiana.benchmarks.terminal_bench2.benchmark  # noqa: F401
 
@@ -594,6 +595,7 @@ class Runner:
         import alphadiana.scorer.llm_judge  # noqa: F401
         import alphadiana.scorer.math_verify_scorer  # noqa: F401
         import alphadiana.benchmarks.moltbench.scorer  # noqa: F401
+        import alphadiana.scorer.moltbench_qjl  # noqa: F401
         import alphadiana.scorer.numeric  # noqa: F401
         import alphadiana.benchmarks.swe_bench.scorer  # noqa: F401
         import alphadiana.benchmarks.swebench_pro.scorer  # noqa: F401

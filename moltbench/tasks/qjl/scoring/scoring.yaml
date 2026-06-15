@@ -1,0 +1,16 @@
+schema_version: moltbench.score.v3
+distortion_threshold: 0.52
+retention_threshold: 0.90
+C: build_success and hidden_distortion_below_threshold
+G: baseline_runtime_ms / candidate_runtime_ms if C else 0
+S: final_valid_gain / episode_best_valid_gain
+M: N/A
+K:
+  - attempts
+  - verifier_calls
+  - wall_time_sec
+  - gpu_time_sec
+  - model_calls
+  - tool_calls
+  - tokens
+  - cost_usd

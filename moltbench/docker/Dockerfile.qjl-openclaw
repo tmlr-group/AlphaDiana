@@ -1,0 +1,69 @@
+# MoltBench QJL + OpenClaw (Gateway Mode)
+#
+# Two-stage build:
+#   Stage 1: Pre-built OpenClaw image with stream timeout patch
+#   Stage 2: QJL base + OpenClaw binaries
+#
+# Build (from AlphaDiana repo root):
+#   podman build --network host -f moltbench/docker/Dockerfile.qjl-openclaw -t localhost/alphadiana:qjl-openclaw .
+
+# --- Stage 1: Patch the pre-built OpenClaw image ---
+FROM ghcr.io/tsrigo/openclaw-reasoning:20260320 AS openclaw-src
+
+USER root
+
+# Fix: python symlink
+RUN ln -sf /usr/bin/python3 /usr/bin/python
+
+# Fix: install pip + common packages agents need
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3-pip \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir --break-system-packages sympy numpy
+
+# Fix: OpenAI SDK stream timeout (30-min instead of default 5-min)
+RUN node -e " \
+const fs = require('fs'); \
+const paths = [ \
+  '/app/node_modules/@mariozechner/pi-ai/dist/providers/openai-completions.js', \
+  '/app/node_modules/openclaw/node_modules/@mariozechner/pi-ai/dist/providers/openai-completions.js', \
+]; \
+const OLD = '    return new OpenAI({\n        apiKey,\n        baseURL: model.baseUrl,\n        dangerouslyAllowBrowser: true,\n        defaultHeaders: headers,\n    });'; \
+const NEW = '    return new OpenAI({\n        apiKey,\n        baseURL: model.baseUrl,\n        dangerouslyAllowBrowser: true,\n        defaultHeaders: headers,\n        timeout: 1800000,\n    });'; \
+for (const p of paths) { \
+  if (!fs.existsSync(p)) { console.log('SKIP:', p); continue; } \
+  const src = fs.readFileSync(p, 'utf8'); \
+  if (src.includes('timeout: 1800000')) { console.log('ALREADY PATCHED:', p); continue; } \
+  if (!src.includes(OLD)) { console.error('PATTERN NOT FOUND:', p); process.exit(1); } \
+  fs.writeFileSync(p, src.replace(OLD, NEW), 'utf8'); \
+  console.log('PATCHED:', p); \
+} \
+console.log('All done.'); \
+"
+
+# --- Stage 2: QJL base + OpenClaw ---
+FROM localhost/alphadiana:qjl-base
+
+# Node.js runtime (required by OpenClaw)
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy OpenClaw from pre-built image (node_modules + binary)
+COPY --from=openclaw-src /app /opt/openclaw
+RUN ln -sf /opt/openclaw/node_modules/.bin/openclaw /usr/local/bin/openclaw
+
+# Git config (required for kernel versioning)
+RUN git config --global user.email "moltbench@eval" && \
+    git config --global user.name "MoltBench"
+
+# Copy OpenClaw config template (QJL workspace)
+COPY moltbench/docker/openclaw_qjl.json /workspace/openclaw.json.template
+
+# Keep the task runner in the leaf image so OpenClaw builds don't depend on
+# rebuilding qjl-base just to pick up entrypoint/script changes.
+COPY moltbench/docker/run_task.sh /workspace/run_task.sh
+RUN chmod +x /workspace/run_task.sh
+
+# Verify openclaw is available
+RUN openclaw --version || echo "openclaw binary check (may require runtime)"

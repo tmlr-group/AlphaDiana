@@ -244,17 +244,45 @@ def parse_trajectory(artifacts_dir: str | Path) -> list[dict]:
     """Parse agent trajectory from artifacts directory."""
     artifacts = Path(artifacts_dir)
     trajectory: list[dict] = []
-
-    # OpenClaw JSONL trajectory
-    traj_path = artifacts / "trajectory.jsonl"
-    if traj_path.exists():
+    seen: set[str] = set()
+    preferred = (
+        "trajectory.jsonl",
+        "claude_output.jsonl",
+        "claude_sessions.jsonl",
+        "opencode_output.jsonl",
+        "opencode_sessions.jsonl",
+        "openclaw_output.jsonl",
+        "openclaw_sessions.jsonl",
+    )
+    paths = [artifacts / name for name in preferred]
+    paths.extend(
+        path
+        for path in sorted(artifacts.glob("*.jsonl"))
+        if path.name not in preferred
+    )
+    for traj_path in paths:
+        if not traj_path.exists():
+            continue
         try:
             for line in traj_path.read_text(encoding="utf-8").splitlines():
                 line = line.strip()
-                if line:
-                    trajectory.append(json.loads(line))
+                if not line:
+                    continue
+                if line.startswith("data: "):
+                    line = line[6:]
+                if line == "[DONE]":
+                    continue
+                payload = json.loads(line)
+                if not isinstance(payload, dict):
+                    continue
+                fingerprint = json.dumps(payload, sort_keys=True)
+                if fingerprint in seen:
+                    continue
+                seen.add(fingerprint)
+                payload.setdefault("_trajectory_source", traj_path.name)
+                trajectory.append(payload)
         except Exception as exc:
-            logger.warning("Failed to parse trajectory.jsonl: %s", exc)
+            logger.warning("Failed to parse %s: %s", traj_path, exc)
 
     return trajectory
 
