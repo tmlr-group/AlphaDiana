@@ -365,6 +365,42 @@ with open('$verification_results_path', 'w') as f:
     json.dump(result, f, indent=2)
 print(json.dumps(result, indent=2))
 "
+    elif [[ "$RESULT_PARSER" == "mini_sglang" ]]; then
+        # Parse mini-SGLang run_eval output into MoltBench results format.
+        BASELINE_THROUGHPUT_ENV="${BASELINE_THROUGHPUT:-5026.0}" python3 -c "
+import json, os
+
+log_path = '$ARTIFACTS_DIR/final_bench.log'
+baseline = float(os.environ.get('BASELINE_THROUGHPUT_ENV', '5026.0'))
+results = {}
+
+try:
+    with open(log_path) as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith('{'):
+                data = json.loads(line)
+                throughput = float(data.get('throughput_tok_per_s', 0))
+                correct = data.get('correct', False)
+                og = round(throughput / baseline, 4) if baseline > 0 else 0.0
+                results = {
+                    'correctness': 'PASS' if correct else 'FAIL',
+                    'speedup': og,
+                    'throughput_tok_per_s': throughput,
+                    'baseline_throughput': baseline,
+                    'og': og,
+                }
+                break
+except Exception as e:
+    results = {'correctness': 'ERROR', 'speedup': 0.0, 'error': str(e)}
+
+if not results:
+    results = {'correctness': 'ERROR', 'speedup': 0.0}
+
+with open('$verification_results_path', 'w') as f:
+    json.dump(results, f, indent=2)
+print(json.dumps(results, indent=2))
+"
     else
         log "WARNING: Unknown result parser '$RESULT_PARSER', defaulting to ERROR result"
         echo '{"correctness": "ERROR", "speedup": 0.0}' > "$verification_results_path"

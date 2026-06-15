@@ -251,7 +251,7 @@ class MoltBenchDockerAgent(Agent):
         self._agent_type: str = "claude-code"
         self._image: str = ""
         self._container_engine: str = self.default_container_engine
-        self._podman: PodmanCLI = PodmanCLI()
+        self._podman: PodmanCLI | None = None
         self._container_engine_binary: str = self.default_container_engine
         self._timeout: int = 3600
         self._gpus: str = "all"
@@ -270,6 +270,9 @@ class MoltBenchDockerAgent(Agent):
         self._shm_size: str | None = None
         self._ipc_mode: str | None = None
         self._container_runtime: str | None = None
+        self._memory: str | None = None
+        self._gpu_mode: str = "cdi"
+        self._nvidia_runtime: str = "/usr/bin/nvidia-container-runtime"
         self._verifier_image: str = "localhost/alphadiana:qjl-verifier"
         self._verifier_startup_timeout: int = 120
 
@@ -291,11 +294,13 @@ class MoltBenchDockerAgent(Agent):
             or self._container_engine
         ).strip()
         injected_podman = config.get("podman_runtime")
-        self._podman = (
-            injected_podman
-            if injected_podman is not None
-            else PodmanCLI(binary=self._container_engine_binary)
-        )
+        self._podman = None
+        if self._container_engine == "podman":
+            self._podman = (
+                injected_podman
+                if injected_podman is not None
+                else PodmanCLI(binary=self._container_engine_binary)
+            )
         self._timeout = int(config.get("request_timeout", 3600))
         self._gpus = config.get("gpus", "all")
         if "podman_devices" in config:
@@ -321,10 +326,21 @@ class MoltBenchDockerAgent(Agent):
             config.get("podman_gpu_args", _DEFAULT_PODMAN_GPU_ARGS),
             key="podman_gpu_args",
         )
-        self._extra_volumes = self._coerce_args_list(config.get("extra_volumes", []), key="extra_volumes")
+        self._extra_volumes = [
+            *self._coerce_args_list(config.get("extra_volumes", []), key="extra_volumes"),
+            *self._coerce_args_list(config.get("volume_mounts", []), key="volume_mounts"),
+        ]
         self._shm_size = config.get("shm_size")
         self._ipc_mode = str(config.get("ipc_mode", "") or "").strip() or None
         self._container_runtime = str(config.get("container_runtime", "") or "").strip() or None
+        self._memory = config.get("memory")
+        self._gpu_mode = str(config.get("gpu_mode", "cdi") or "cdi").strip().lower()
+        self._nvidia_runtime = str(
+            config.get("nvidia_runtime_path", "/usr/bin/nvidia-container-runtime")
+        )
+        if self._container_engine == "podman" and self._gpu_mode == "nvidia-runtime":
+            self._container_runtime = self._container_runtime or self._nvidia_runtime
+            self._podman_gpu_mode = "none"
         self._verifier_image = str(
             config.get("verifier_image", "localhost/alphadiana:qjl-verifier")
         )
@@ -533,6 +549,8 @@ class MoltBenchDockerAgent(Agent):
             cmd.extend(["--shm-size", str(self._shm_size)])
         if self._ipc_mode:
             cmd.extend(["--ipc", self._ipc_mode])
+        if self._memory:
+            cmd.extend(["--memory", str(self._memory)])
         for volume in self._extra_volumes:
             cmd.extend(["-v", volume])
         for volume in extra_mounts or []:
@@ -559,12 +577,15 @@ class MoltBenchDockerAgent(Agent):
 
     def _docker_run(
         self,
-        volumes: list[str],
-        env: dict[str, str],
+        volumes: list[str] | str,
+        env: dict[str, str] | None = None,
         *,
         network: str | None = None,
     ) -> str:
         """Start a container using Docker."""
+        if isinstance(volumes, str):
+            volumes = [f"{volumes}:/workspace/task:ro"]
+        env = {**self._env, "MOLTBENCH_AGENT": self._agent_type} if env is None else env
         cmd = [self._container_engine_binary, "run", "-d", "--gpus", self._gpus]
         if self._container_runtime:
             cmd.extend(["--runtime", self._container_runtime])
@@ -574,6 +595,8 @@ class MoltBenchDockerAgent(Agent):
             cmd.extend(["--shm-size", str(self._shm_size)])
         if self._ipc_mode:
             cmd.extend(["--ipc", self._ipc_mode])
+        if self._memory:
+            cmd.extend(["--memory", str(self._memory)])
         if network:
             cmd.extend(["--network", network])
         for key, val in env.items():
@@ -589,12 +612,17 @@ class MoltBenchDockerAgent(Agent):
 
     def _podman_run(
         self,
-        volumes: list[str],
-        env: dict[str, str],
+        volumes: list[str] | str,
+        env: dict[str, str] | None = None,
         *,
         network: str | None = None,
     ) -> str:
         """Start a container using Podman with GPU support."""
+        if self._podman is None:
+            raise RuntimeError("podman runtime is not configured")
+        if isinstance(volumes, str):
+            volumes = [f"{volumes}:/workspace/task:ro"]
+        env = {**self._env, "MOLTBENCH_AGENT": self._agent_type} if env is None else env
         base_extra_args: list[str] = []
         if self._container_runtime:
             base_extra_args.extend(["--runtime", self._container_runtime])
@@ -602,6 +630,8 @@ class MoltBenchDockerAgent(Agent):
             base_extra_args.extend(["--shm-size", str(self._shm_size)])
         if self._ipc_mode:
             base_extra_args.extend(["--ipc", self._ipc_mode])
+        if self._memory:
+            base_extra_args.extend(["--memory", str(self._memory)])
 
         attempted_gpu_mode = self._initial_podman_gpu_mode()
         extra_args, podman_env = self._podman_runtime_args_and_env(attempted_gpu_mode, env)
@@ -644,6 +674,8 @@ class MoltBenchDockerAgent(Agent):
         wait_timeout = self._timeout if timeout is None else timeout
         if self._container_engine == "podman":
             try:
+                if self._podman is None:
+                    raise RuntimeError("podman runtime is not configured")
                 result = self._podman.wait(container_id, timeout=wait_timeout + 60)
             except PodmanError as exc:
                 if exc.result.returncode == 124:
@@ -667,6 +699,8 @@ class MoltBenchDockerAgent(Agent):
     def _container_cp(self, container_id: str, src: str, dst: str) -> None:
         """Copy files from container to local filesystem."""
         if self._container_engine == "podman":
+            if self._podman is None:
+                raise RuntimeError("podman runtime is not configured")
             podman_src = src.rstrip("/")
             if podman_src.endswith("."):
                 podman_src = podman_src[:-1].rstrip("/")
@@ -1430,6 +1464,8 @@ class MoltBenchDockerAgent(Agent):
         """Return captured container logs using the configured engine."""
         if self._container_engine == "podman":
             try:
+                if self._podman is None:
+                    raise RuntimeError("podman runtime is not configured")
                 return self._podman.logs(container_id, timeout=30)
             except PodmanError as exc:
                 logger.warning("podman logs failed: %s", exc.result.stderr)
@@ -1444,6 +1480,8 @@ class MoltBenchDockerAgent(Agent):
     def _container_stop(self, container_id: str) -> None:
         """Best-effort stop using the configured engine."""
         if self._container_engine == "podman":
+            if self._podman is None:
+                raise RuntimeError("podman runtime is not configured")
             result = self._podman.stop(container_id, stop_timeout=10, timeout=30, check=False)
             if result.returncode != 0:
                 logger.warning("podman stop failed: %s", result.stderr)
@@ -1453,6 +1491,8 @@ class MoltBenchDockerAgent(Agent):
     def _container_rm(self, container_id: str) -> None:
         """Best-effort container removal using the configured engine."""
         if self._container_engine == "podman":
+            if self._podman is None:
+                raise RuntimeError("podman runtime is not configured")
             result = self._podman.rm(container_id, force=True, timeout=30, check=False)
             if result.returncode != 0:
                 logger.warning("podman rm failed: %s", result.stderr)
@@ -1466,6 +1506,14 @@ class MoltBenchDockerAgent(Agent):
             metadata["podman_devices"] = self._podman_devices
             metadata["podman_gpu_mode"] = self._resolved_podman_gpu_mode or self._podman_gpu_mode
         return metadata
+
+    def _podman_wait(self, container_id: str) -> int:
+        """Backward-compatible test/helper alias for Podman wait."""
+        return self._container_wait(container_id)
+
+    def _cdi_devices(self) -> str | list[str]:
+        """Return the Podman CDI device selector derived from Docker-style gpus."""
+        return self._podman_devices or "all"
 
     # ------------------------------------------------------------------
     # Podman GPU helpers

@@ -56,6 +56,11 @@ class MoltBenchScorer(Scorer):
             results = {"correctness": "MISSING", "speedup": 0.0}
 
         correctness = results.get("correctness", "MISSING")
+        # `speedup` is the generic MoltBench Gain (G) field shared across task families.
+        # For KernelBench it is a kernel speedup (ref_time/candidate_time); for the
+        # mini-SGLang serving task it is the optimization gain OG = candidate_throughput
+        # / in-situ baseline_throughput. Same ratio semantics (>1 is better), different
+        # underlying quantity — both are emitted by the task verifier as "speedup".
         speedup = float(results.get("speedup", 0.0))
         kernel_time_ms = results.get("kernel_time_ms")
         reference_time_ms = results.get("reference_time_ms", results.get("pytorch_time_ms"))
