@@ -1,0 +1,9 @@
+{
+  "label": "Configuration",
+  "position": 7,
+  "link": {
+    "type": "generated-index",
+    "title": "Configuration",
+    "description": "The run YAML schema, the CLI and dotted -o override syntax, and run-id conventions."
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "label": "Concepts & Design",
+  "position": 3,
+  "link": {
+    "type": "generated-index",
+    "title": "Concepts & Design",
+    "description": "The ideas behind AlphaDiana: harness-aware evaluation, the agent scaffold tax, the Tool/Skill/Memory axes, and isolation for fair comparison."
+  }
+}

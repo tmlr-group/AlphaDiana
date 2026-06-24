@@ -1,0 +1,9 @@
+{
+  "label": "Contributing",
+  "position": 9,
+  "link": {
+    "type": "generated-index",
+    "title": "Contributing",
+    "description": "Extend AlphaDiana: add a harness, add a benchmark, and follow the engineering conventions."
+  }
+}
