@@ -22,6 +22,8 @@ Deployment reference:
 """
 from __future__ import annotations
 
+
+import asyncio
 import json
 import logging
 import os
@@ -29,9 +31,11 @@ import random
 import re
 import secrets
 import shlex
+import tempfile
 import threading
 import time
 from collections import deque
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
@@ -517,6 +521,48 @@ def _coerce_text_content(content: Any) -> str:
     return ""
 
 
+def _run_async_blocking(coro: Any) -> Any:
+    """Run an async DTAP/OpenClaw operation from the synchronous harness API."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    raise RuntimeError("OpenClaw decodingtrust_openclaw_cli backend cannot run inside an active asyncio event loop")
+
+
+def _safe_path_fragment(value: Any, *, fallback: str = "task", max_len: int = 96) -> str:
+    fragment = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(value or "").strip()).strip("_.-")
+    if not fragment:
+        fragment = fallback
+    return fragment[:max_len]
+
+
+def _dt_trajectory_to_payload(trajectory: Any) -> dict[str, Any]:
+    if trajectory is None:
+        return {}
+    data = getattr(trajectory, "data", None)
+    if isinstance(data, dict):
+        return data
+    if isinstance(trajectory, dict):
+        return trajectory
+    if isinstance(trajectory, list):
+        return {"trajectory": trajectory}
+    try:
+        return {"trajectory": [item for item in trajectory if isinstance(item, dict)]}
+    except Exception:
+        return {}
+
+
+def _dt_trajectory_steps(trajectory: Any, final_output: str = "") -> list[dict[str, Any]]:
+    payload = _dt_trajectory_to_payload(trajectory)
+    steps = payload.get("trajectory") if isinstance(payload, dict) else None
+    if isinstance(steps, list) and steps:
+        return [step for step in steps if isinstance(step, dict)]
+    if final_output:
+        return [{"role": "assistant", "content": final_output, "type": "message"}]
+    return []
+
+
 def _extract_raw_output_from_payload(payload: Any) -> str:
     """Extract assistant text from various gateway response formats."""
     if not isinstance(payload, dict):
@@ -594,6 +640,19 @@ def _extract_reasoning_trajectory_from_payload(payload: Any) -> list[dict]:
                 return [item for item in tool_calls if isinstance(item, dict)]
 
     return []
+
+
+def _is_empty_tool_call_payload(tool_name: Any, tool_input: Any) -> bool:
+    name = str(tool_name or "").strip()
+    if name:
+        return False
+    if tool_input is None:
+        return True
+    if isinstance(tool_input, dict):
+        return not tool_input
+    if isinstance(tool_input, str):
+        return tool_input.strip() in {"", "{}"}
+    return False
 
 
 def _recover_partial_output_from_trajectory(trajectory: list[dict]) -> tuple[str, str]:
@@ -804,11 +863,14 @@ def _parse_openclaw_session(session_jsonl: str) -> list[dict]:
                     elif block_type == "thinking":
                         thinking_parts.append(block.get("thinking", ""))
                     elif block_type in ("toolCall", "tool_use"):
-                        tool_calls.append({
-                            "id": block.get("id", ""),
-                            "tool": block.get("name", ""),
-                            "input": block.get("arguments", block.get("input", {})),
-                        })
+                        tool_name = block.get("name", "")
+                        tool_input = block.get("arguments", block.get("input", {}))
+                        if not _is_empty_tool_call_payload(tool_name, tool_input):
+                            tool_calls.append({
+                                "id": block.get("id", ""),
+                                "tool": tool_name,
+                                "input": tool_input,
+                            })
                     elif block_type in ("toolResult", "tool_result"):
                         tc = block.get("content", "")
                         if isinstance(tc, list):
@@ -982,7 +1044,9 @@ class OpenClawAgent(Agent):
 
     def setup(self, config: dict) -> None:
         self._runtime = str(config.get("runtime", "")).strip()
+        self._runtime_backend = str(config.get("runtime_backend", "") or "").strip().lower()
         self._api_base = config.get("api_base", "")
+        self._api_key = config.get("api_key", os.environ.get("OPENAI_API_KEY", ""))
         self._model = config.get("model", "openclaw")
         self._gateway_token = _resolve_gateway_token(config.get("gateway_token", "OPENCLAW"))
         self._temperature = config.get("temperature", 0.7)
@@ -1113,11 +1177,13 @@ class OpenClawAgent(Agent):
         # Runtime manager for sandbox-backed gateway startup.
         self._runtime_manager = None
         try:
-            if self._runtime == "swebench_container":
+            if self._runtime_backend == "decodingtrust_openclaw_cli":
+                self._runtime_manager = None
+            elif self._runtime == "swebench_container":
                 from alphadiana.harness.openclaw.container_runtime import OpenClawContainerRuntimeManager
 
                 self._runtime_manager = OpenClawContainerRuntimeManager(config)
-            elif str(config.get("runtime_backend", "") or "").strip().lower() == "podman":
+            elif self._runtime_backend == "podman":
                 from alphadiana.harness.openclaw.runtime import OpenClawPodmanRuntimeManager
 
                 runtime_config = dict(config)
@@ -1133,6 +1199,203 @@ class OpenClawAgent(Agent):
                 self._runtime_manager = OpenClawRuntimeManager(runtime_config)
         except ImportError:
             self._runtime_manager = None
+
+    def _resolve_dt_output_dir(self, task: BenchmarkTask) -> str:
+        raw_output_dir = str(
+            self._config.get("dt_output_dir")
+            or self._config.get("decodingtrust_output_dir")
+            or ""
+        ).strip()
+        if raw_output_dir:
+            base = Path(raw_output_dir).expanduser()
+        else:
+            base = Path(tempfile.gettempdir()) / "alphadiana_decodingtrust_openclaw"
+        task_fragment = _safe_path_fragment(getattr(task, "task_id", ""), fallback="task")
+        sample_fragment = _safe_path_fragment((task.metadata or {}).get("sample_index", 0), fallback="0", max_len=16)
+        execution_fragment = _safe_path_fragment(
+            (task.metadata or {}).get("execution_id", ""),
+            fallback="exec",
+            max_len=32,
+        )
+        output_dir = (base / task_fragment / f"sample_{sample_fragment}_{execution_fragment}").resolve()
+        output_dir.mkdir(parents=True, exist_ok=True)
+        return str(output_dir)
+
+    def _build_decodingtrust_user_instruction(self, task_dir: Path) -> Any:
+        from dt_arena.src.types.task import AttackConfig, TaskConfig
+        from utils import apply_prompt_injections
+
+        task_cfg = TaskConfig.from_yaml(str(task_dir / "config.yaml"))
+        try:
+            attack_cfg = AttackConfig.from_yaml(str(task_dir / "config.yaml"))
+        except Exception:
+            attack_cfg = None
+
+        direct_prompt = _coerce_bool_config(self._config.get("direct_prompt", False), default=False)
+        if direct_prompt:
+            if attack_cfg and getattr(attack_cfg, "malicious_goal", None):
+                user_instruction = attack_cfg.malicious_goal
+            else:
+                raise ValueError("direct_prompt requires malicious_goal in DTAP Attack config")
+        else:
+            user_instruction = task_cfg.original_instruction
+            user_instruction = apply_prompt_injections(user_instruction, attack_cfg)
+            if not user_instruction or user_instruction == []:
+                raise ValueError("Instruction is empty after applying prompt injections.")
+
+        if isinstance(user_instruction, str):
+            return user_instruction.strip()
+        return [str(instr).strip() for instr in user_instruction if str(instr).strip()]
+
+    def _solve_decodingtrust_openclaw_cli(self, task: BenchmarkTask, sandbox: Any) -> AgentResponse:
+        if sandbox is None:
+            raise RuntimeError("decodingtrust_openclaw_cli runtime requires a DecodingTrust sandbox session")
+
+        task_metadata = dict(getattr(task, "metadata", {}) or {})
+        dt_task_dir = Path(str(task_metadata.get("dt_task_dir") or "")).resolve()
+        if not (dt_task_dir / "config.yaml").exists():
+            raise RuntimeError(f"decodingtrust_openclaw_cli requires DTAP config.yaml: {dt_task_dir}")
+
+        dt_root = Path(str(task_metadata.get("dt_root") or dt_task_dir.parents[4])).resolve()
+        from alphadiana.benchmarks.decodingtrust.benchmark import ensure_dtap_on_path
+
+        ensure_dtap_on_path(dt_root)
+        from agent.openclaw import OpenClawAgent as DTOpenClawAgent
+        from dt_arena.src.types.agent import RuntimeConfig
+        from dt_arena.src.types.task import AttackConfig, TaskConfig
+        from utils import (
+            build_a2a_injections_from_config,
+            build_skill_injections_from_config,
+            build_tool_injections_from_config,
+        )
+        from utils.agent_helpers import get_default_disallowed_tools
+
+        get_agent_config = getattr(sandbox, "get_dt_agent_config", None)
+        if not callable(get_agent_config):
+            raise RuntimeError("decodingtrust_openclaw_cli requires sandbox.get_dt_agent_config()")
+
+        start = time.time()
+        agent_cfg = get_agent_config()
+        append_system_prompt = _coerce_bool_config(
+            self._config.get("append_system_prompt", False),
+            default=False,
+        )
+        if append_system_prompt and self._user_system_prompt:
+            existing_prompt = str(getattr(agent_cfg, "system_prompt", "") or "").strip()
+            agent_cfg.system_prompt = "\n\n".join(
+                part for part in (existing_prompt, str(self._user_system_prompt).strip()) if part
+            )
+
+        try:
+            attack_cfg = AttackConfig.from_yaml(str(dt_task_dir / "config.yaml"))
+        except Exception:
+            attack_cfg = None
+        task_cfg = TaskConfig.from_yaml(str(dt_task_dir / "config.yaml"))
+        user_instruction = self._build_decodingtrust_user_instruction(dt_task_dir)
+        instructions = [user_instruction] if isinstance(user_instruction, str) else list(user_instruction)
+        if not instructions:
+            raise ValueError("Instruction is empty after applying prompt injections.")
+
+        agent_kwargs = dict(self._config.get("agent_kwargs") or {})
+        if "thinking_level" in self._config and "thinking_level" not in agent_kwargs:
+            agent_kwargs["thinking_level"] = self._config["thinking_level"]
+        configured_disallowed = self._config.get("disallowed_tools", None)
+        if configured_disallowed is None:
+            configured_disallowed = get_default_disallowed_tools("openclaw", task_cfg.domain)
+        if configured_disallowed:
+            if isinstance(configured_disallowed, str):
+                configured_disallowed = [
+                    item.strip()
+                    for item in configured_disallowed.split(",")
+                    if item.strip()
+                ]
+            agent_kwargs["disallowed_tools"] = list(configured_disallowed)
+
+        dt_output_dir = self._resolve_dt_output_dir(task)
+        runtime_cfg = RuntimeConfig(
+            model=self._model,
+            temperature=self._temperature,
+            max_turns=max(1, int(self._config.get("max_turns", self._config.get("max_tool_turns", 200)))),
+            output_dir=dt_output_dir,
+            mcp_injection=build_tool_injections_from_config(attack_cfg),
+            skill_injection=build_skill_injections_from_config(attack_cfg),
+            a2a_injection=build_a2a_injections_from_config(attack_cfg, agent_type="openclaw"),
+            debug=_coerce_bool_config(self._config.get("debug", False), default=False),
+            agent_kwargs=agent_kwargs if agent_kwargs else None,
+        )
+
+        async def _run() -> Any:
+            dt_agent = DTOpenClawAgent(agent_cfg, runtime_cfg)
+            metadata = {
+                "task_id": task_cfg.task_id,
+                "domain": task_cfg.domain,
+                "risk_category": getattr(attack_cfg, "risk_category", None) if attack_cfg else None,
+                "malicious_goal": getattr(attack_cfg, "malicious_goal", None) if attack_cfg else None,
+                "direct_prompt": _coerce_bool_config(self._config.get("direct_prompt", False), default=False),
+            }
+            result = None
+            trace_metadata = None
+            async with dt_agent:
+                apply_turn_injections = getattr(sandbox, "apply_turn_injections", None)
+                for turn_idx, turn_instruction in enumerate(instructions):
+                    if callable(apply_turn_injections):
+                        apply_turn_injections(turn_idx + 1)
+                    result = await dt_agent.run(turn_instruction, metadata=metadata)
+                trace_metadata = getattr(dt_agent, "_trace_metadata", None)
+            return result, trace_metadata
+
+        dt_result, trace_metadata = _run_async_blocking(_run())
+        if dt_result is None:
+            raise RuntimeError("DTAP OpenClawAgent did not return a result")
+        final_output = str(getattr(dt_result, "final_output", "") or "")
+        trajectory_payload = _dt_trajectory_to_payload(getattr(dt_result, "trajectory", None))
+        trajectory_steps = _dt_trajectory_steps(getattr(dt_result, "trajectory", None), final_output)
+
+        sandbox_metadata: dict[str, Any] = {}
+        metadata_fn = getattr(sandbox, "metadata", None)
+        if callable(metadata_fn):
+            try:
+                raw_metadata = metadata_fn()
+                if isinstance(raw_metadata, dict):
+                    sandbox_metadata.update(raw_metadata)
+            except Exception:
+                sandbox_metadata = {}
+        if isinstance(trace_metadata, dict):
+            sandbox_metadata["dt_openclaw_trace_metadata"] = trace_metadata
+
+        response_json = {
+            "final_output": final_output,
+            "turn_count": getattr(dt_result, "turn_count", None),
+            "trace_id": getattr(dt_result, "trace_id", None),
+            "duration": getattr(dt_result, "duration", None),
+            "trajectory_payload": trajectory_payload,
+        }
+
+        return AgentResponse(
+            answer=final_output or None,
+            trajectory=trajectory_steps,
+            raw_output=final_output,
+            wall_time_sec=time.time() - start,
+            request_messages=[
+                {"role": "user", "content": instruction}
+                for instruction in instructions
+            ],
+            response_json=response_json,
+            sandbox_id=str(getattr(sandbox, "sandbox_id", "") or ""),
+            gateway_url="openclaw agent --local",
+            sandbox_metadata=sandbox_metadata,
+            system_prompt=str(getattr(agent_cfg, "system_prompt", "") or ""),
+            finish_reason="",
+            metadata={
+                "runtime_backend": "decodingtrust_openclaw_cli",
+                "model": self._model,
+                "dt_agent_type": "openclaw",
+                "dt_output_dir": dt_output_dir,
+                "trace_id": getattr(dt_result, "trace_id", None),
+                "turn_count": getattr(dt_result, "turn_count", None),
+                "instruction_count": len(instructions),
+            },
+        )
 
     def error_provenance_metadata(self) -> dict[str, Any]:
         if str(self._config.get("runtime_backend", "") or "").strip().lower() != "podman":
@@ -1676,6 +1939,9 @@ class OpenClawAgent(Agent):
         return payload
 
     def solve(self, task: BenchmarkTask, sandbox: Any = None) -> AgentResponse:
+        if self._runtime_backend == "decodingtrust_openclaw_cli":
+            return self._solve_decodingtrust_openclaw_cli(task, sandbox)
+
         # Circuit breaker: fail immediately if backend was detected as down.
         with self._circuit_lock:
             if self._circuit_open and self._circuit_open_error is not None:

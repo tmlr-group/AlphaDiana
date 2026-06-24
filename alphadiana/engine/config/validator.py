@@ -62,6 +62,9 @@ class ConfigValidator:
                 errors.append("max_concurrent must be >= 1")
             if max_concurrent > 64:
                 errors.append("max_concurrent should be <= 64 to avoid resource exhaustion")
+        process_shards = self._validate_int_field(errors, "process_shards", config.process_shards)
+        if process_shards is not None and process_shards < 1:
+            errors.append("process_shards must be >= 1")
         if config.benchmark_name == "imo_answerbench" and config.scorer_name != "imo_verify":
             errors.append(
                 "benchmark 'imo_answerbench' must use scorer 'imo_verify'; "
@@ -83,6 +86,7 @@ class ConfigValidator:
             has_zeroclaw_auto_deploy = bool(config.agent_config.get("rock_image"))
             runtime_backend = str(config.agent_config.get("runtime_backend", "") or "").strip().lower()
             has_podman_agent_runtime = runtime_backend == "podman"
+            has_decodingtrust_runtime = runtime_backend == "decodingtrust_openclaw_cli"
 
             if config.agent_name == "openclaw" and runtime == "swebench_container":
                 if config.sandbox_name != "swebench_container":
@@ -102,7 +106,12 @@ class ConfigValidator:
                         "sandbox.name == 'swebench_container'"
                     )
             elif config.agent_name in self.OPENCLAW_RUNTIME_AGENTS:
-                if not has_api_base and not has_auto_deploy and not has_podman_agent_runtime:
+                if (
+                    not has_api_base
+                    and not has_auto_deploy
+                    and not has_podman_agent_runtime
+                    and not has_decodingtrust_runtime
+                ):
                     errors.append(
                         f"agent '{config.agent_name}' requires 'api_base' or "
                         "'rock_agent_config_path' + 'openclaw_config_path' in agent_config "

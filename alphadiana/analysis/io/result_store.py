@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -455,6 +456,7 @@ class ResultStore:
                     break
             if not replaced:
                 existing.append(record)
+            path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8")
 
     def _add_missing_artifact_file_refs(
@@ -636,3 +638,189 @@ class ResultStore:
             logger.warning("Failed to read run manifest: %s", self.manifest_path)
             return {}
         return payload if isinstance(payload, dict) else {}
+
+    @staticmethod
+    def _copy_tree_contents(src: Path, dst: Path) -> None:
+        if not src.exists():
+            return
+        for path in src.rglob("*"):
+            rel = path.relative_to(src)
+            target = dst / rel
+            if path.is_dir():
+                target.mkdir(parents=True, exist_ok=True)
+            else:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(path, target)
+
+    @staticmethod
+    def _record_score_rank(record: dict) -> int:
+        if infer_score_status(record) == VALID_SCORE_STATUS:
+            return 2
+        if record.get("score") is not None and record.get("correct") is not None:
+            return 1
+        return 0
+
+    @staticmethod
+    def _annotate_shard_record(record: dict, *, target_run_id: str, shard_run_id: str, shard_index: int) -> dict:
+        annotated = dict(record)
+        annotated["run_id"] = target_run_id
+        annotated["shard_run_id"] = shard_run_id
+        annotated["shard_index"] = shard_index
+        for path_key in ("logprobs_path", "logprobs_int16_path"):
+            value = annotated.get(path_key)
+            if isinstance(value, str) and value.startswith(f"{shard_run_id}/"):
+                annotated[path_key] = f"{target_run_id}/{value[len(shard_run_id) + 1:]}"
+        metadata = annotated.get("metadata")
+        if isinstance(metadata, dict):
+            metadata = dict(metadata)
+        else:
+            metadata = {}
+        metadata.setdefault("shard_run_id", shard_run_id)
+        metadata.setdefault("shard_index", shard_index)
+        annotated["metadata"] = metadata
+        annotated["score_status"] = infer_score_status(annotated)
+        return annotated
+
+    def _merge_task_json_record(
+        self,
+        *,
+        target_path: Path,
+        incoming: dict,
+    ) -> None:
+        existing: list[dict] = []
+        if target_path.exists():
+            try:
+                payload = json.loads(target_path.read_text(encoding="utf-8"))
+                if isinstance(payload, list):
+                    existing = [item for item in payload if isinstance(item, dict)]
+                elif isinstance(payload, dict):
+                    existing = [payload]
+            except (OSError, json.JSONDecodeError):
+                existing = []
+        sample_index = incoming.get("sample_index", 0)
+        replaced = False
+        for index, record in enumerate(existing):
+            if record.get("sample_index", 0) == sample_index:
+                if self._record_score_rank(incoming) >= self._record_score_rank(record):
+                    existing[index] = incoming
+                replaced = True
+                break
+        if not replaced:
+            existing.append(incoming)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_text(
+            json.dumps(existing, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+    def merge_result_stores(
+        self,
+        *,
+        target_run_id: str,
+        shard_run_ids: list[str],
+        expected_tasks: list[Any],
+        num_samples: int,
+        config_metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Merge shard ResultStore outputs into this store's target run."""
+        self._ensure_dirs()
+        target_jsonl = self.output_dir / f"{target_run_id}.jsonl"
+        target_run_dir = self.output_dir / target_run_id
+        target_tasks_dir = target_run_dir / "tasks"
+        target_jsonl.parent.mkdir(parents=True, exist_ok=True)
+        target_run_dir.mkdir(parents=True, exist_ok=True)
+        target_tasks_dir.mkdir(parents=True, exist_ok=True)
+
+        records_by_key: dict[tuple[str, int], dict] = {}
+        shard_manifests: dict[str, dict[str, Any]] = {}
+
+        for shard_index, shard_run_id in enumerate(shard_run_ids):
+            shard_jsonl = self.output_dir / f"{shard_run_id}.jsonl"
+            shard_dir = self.output_dir / shard_run_id
+            shard_manifest_path = shard_dir / "run_manifest.json"
+            if shard_manifest_path.exists():
+                try:
+                    payload = json.loads(shard_manifest_path.read_text(encoding="utf-8"))
+                    if isinstance(payload, dict):
+                        shard_manifests[shard_run_id] = payload
+                except (OSError, json.JSONDecodeError):
+                    logger.warning("Failed to read shard manifest: %s", shard_manifest_path)
+
+            if shard_jsonl.exists():
+                with shard_jsonl.open("r", encoding="utf-8") as handle:
+                    for line_num, raw in enumerate(handle, 1):
+                        line = raw.strip()
+                        if not line:
+                            continue
+                        try:
+                            record = json.loads(line)
+                        except json.JSONDecodeError:
+                            logger.warning("Skipping malformed shard JSONL line %s:%d", shard_jsonl, line_num)
+                            continue
+                        if not isinstance(record, dict) or not record.get("task_id"):
+                            continue
+                        annotated = self._annotate_shard_record(
+                            record,
+                            target_run_id=target_run_id,
+                            shard_run_id=shard_run_id,
+                            shard_index=shard_index,
+                        )
+                        key = (str(annotated["task_id"]), int(annotated.get("sample_index", 0) or 0))
+                        existing = records_by_key.get(key)
+                        if existing is None or self._record_score_rank(annotated) >= self._record_score_rank(existing):
+                            records_by_key[key] = annotated
+
+            shard_tasks_dir = shard_dir / "tasks"
+            if shard_tasks_dir.exists():
+                for task_json in sorted(shard_tasks_dir.rglob("*.json")):
+                    try:
+                        payload = json.loads(task_json.read_text(encoding="utf-8"))
+                    except (OSError, json.JSONDecodeError):
+                        logger.warning("Skipping unreadable shard task JSON: %s", task_json)
+                        continue
+                    rows = payload if isinstance(payload, list) else [payload]
+                    target_path = target_tasks_dir / task_json.relative_to(shard_tasks_dir)
+                    for row in rows:
+                        if not isinstance(row, dict):
+                            continue
+                        annotated = self._annotate_shard_record(
+                            row,
+                            target_run_id=target_run_id,
+                            shard_run_id=shard_run_id,
+                            shard_index=shard_index,
+                        )
+                        self._merge_task_json_record(target_path=target_path, incoming=annotated)
+
+            for dirname in ("artifacts", "lifecycle", "status", "logprobs", "logprobs_int16"):
+                self._copy_tree_contents(shard_dir / dirname, target_run_dir / dirname)
+
+        ordered_records = sorted(
+            records_by_key.values(),
+            key=lambda record: (str(record.get("task_id", "")), int(record.get("sample_index", 0) or 0)),
+        )
+        tmp_jsonl = target_jsonl.with_suffix(target_jsonl.suffix + ".tmp")
+        with tmp_jsonl.open("w", encoding="utf-8") as handle:
+            for record in ordered_records:
+                handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+        tmp_jsonl.replace(target_jsonl)
+
+        expected_task_ids = [str(getattr(task, "task_id", "")) for task in expected_tasks]
+        task_metadata_by_id = {
+            str(getattr(task, "task_id", "")): getattr(task, "metadata", {})
+            for task in expected_tasks
+        }
+        self.save_manifest(
+            {
+                "run_id": target_run_id,
+                **self._run_metadata,
+                "num_samples": num_samples,
+                "expected_task_count": len(expected_task_ids),
+                "expected_sample_count": len(expected_task_ids) * num_samples,
+                "expected_task_ids": expected_task_ids,
+                "task_metadata_by_id": task_metadata_by_id,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "config_metadata": config_metadata or {},
+                "merged_from_shards": shard_run_ids,
+                "shard_manifests": shard_manifests,
+            }
+        )
