@@ -168,7 +168,7 @@ scorer:
 
 ```bash
 # List registered benchmarks (imports modules, then BenchmarkRegistry.list())
-python -m alphadiana.cli benchmarks
+python -m alphadiana.cli list-benchmarks
 
 # Run it
 python -m alphadiana.cli run config.yaml -o run_id=smoke -o output_dir=./results

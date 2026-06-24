@@ -130,7 +130,7 @@ export PYTHONPATH=$PWD
 export QWEN_VLLM_API_BASE=http://127.0.0.1:8011/v1
 export QWEN_VLLM_API_KEY=sk-EMPTY
 
-python -m alphadiana.cli run configs/full_runs/p25_full_directllm_minimax_imo_answerbench.yaml \
+python -m alphadiana.cli run configs/examples/directllm_minimax_imo_answerbench.yaml \
   -o run_id=imo_answerbench_direct_llm_qwen35_27b_localvllm_r1 \
   -o agent.config.model='Qwen/Qwen3.5-27B' \
   -o agent.config.api_base="$QWEN_VLLM_API_BASE" \

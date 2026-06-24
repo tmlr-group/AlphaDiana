@@ -18,12 +18,12 @@ full coding agent running inside a sandboxed container.
 
 Each harness has its own page:
 
-- [direct_llm](./direct_llm) — the no-framework baseline.
+- [direct_llm](./direct-llm) — the no-framework baseline.
 - [opencode](./opencode) — the `opencode` CLI controller (host/docker/podman) plus memory experiments.
 - [openclaw](./openclaw) — ROCK gateway agent with lancedb memory.
 - [zeroclaw](./zeroclaw) — native Rust CLI agent with sqlite memory.
 
-The shared [Skills](../skills) bundles (file bundles mounted into a harness
+The shared [Skills](./skills) bundles (file bundles mounted into a harness
 sandbox) are documented separately.
 
 ## The `Agent` contract
@@ -46,8 +46,9 @@ class Agent(ABC):
 ```
 
 The runner drives one instance per run: it sets `agent.version`, calls
-`setup(config)` once, then `solve(task, sandbox)` per task
-(`alphadiana/engine/runner.py:609-611`). A sandbox is passed only for harnesses
+`setup(config)` once (`alphadiana/engine/runner.py:608-611`), then
+`solve(task, sandbox)` per task (`alphadiana/engine/runner.py:1965`). A sandbox
+is passed only for harnesses
 that need one (OpenClaw, ZeroClaw, SWE-bench container runs); `direct_llm`
 ignores it.
 
@@ -215,4 +216,4 @@ top-level `SKILL.md`. They are selected with `agent.config.skill_folder` (a bare
 name resolves to the shipped bundle; a path is used as-is) and mounted into the
 sandbox per harness. They are **not** auto-injected into context; the system
 prompt must instruct the model to read the mounted `SKILL.md`. See
-[Skills](../skills) for the full reference.
+[Skills](./skills) for the full reference.

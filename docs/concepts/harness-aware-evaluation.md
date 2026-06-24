@@ -162,7 +162,7 @@ AlphaDiana supports two complementary modes of harness-aware study:
   memory mechanism, the system-prompt tool documentation) and toggle just that
   axis. Micro studies need surgical control over the request stream, which is
   what the proxies provide (below). The
-  [Tool / Skill / Memory axes](./tool-skill-memory-axes) page covers the ablation
+  [Tool / Skill / Memory axes](./evaluation-axes) page covers the ablation
   design.
 
 ### Proxies for micro intervention
@@ -221,6 +221,6 @@ prompt-level concern, which makes it a clean micro axis to ablate.
 
 ## See also
 
-- [Tool / Skill / Memory axes](./tool-skill-memory-axes) — the micro ablation design.
+- [Tool / Skill / Memory axes](./evaluation-axes) — the micro ablation design.
 - [Direct LLM, OpenCode, OpenClaw, ZeroClaw](../harnesses/) — per-harness reference pages.
 - [Benchmark isolation](../benchmark-isolation.md) — keeping comparisons fair across harnesses.

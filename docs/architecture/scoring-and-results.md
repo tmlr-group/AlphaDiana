@@ -19,7 +19,7 @@ agent.solve(task) -> AgentResponse
 ## Scorers
 
 Scorers live under `alphadiana/scorer/`. The base contract is in
-[`alphadiana/scorer/base.py`](https://github.com/) and the registry in `alphadiana/scorer/registry.py`.
+`alphadiana/scorer/base.py` and the registry in `alphadiana/scorer/registry.py`.
 
 `Scorer` is an `ABC` with a `name` property, an optional `setup(config)`, and the abstract
 `score(task, response) -> ScoreResult`. The returned `ScoreResult` is a dataclass:
@@ -52,7 +52,7 @@ is `None`.
 | **`llm_judge`** | Open-ended or descriptive answers | Calls an OpenAI-compatible chat endpoint and parses JSON `{correct, rationale}` at `temperature 0.0`, retrying on 429/5xx. Reads `JUDGE_MODEL` / `JUDGE_API_BASE` env or `scorer_config` keys `api_base` / `api_key` / `judge_model` / `timeout`. |
 
 The `scorer_name` config field selects the scorer; `scorer_config` is passed verbatim to
-`scorer.setup()`. See the [config schema](../getting-started/configuration) for where these
+`scorer.setup()`. See the [config schema](../configuration/config-schema) for where these
 keys sit in a run YAML.
 
 ### Benchmark-specific scorers
@@ -61,10 +61,10 @@ Benchmark scorers register the same way and live next to their benchmark code:
 
 | Scorer | Location | Notes |
 |--------|----------|-------|
-| `swe_bench` | `benchmarks/swe_bench/scorer.py:98` | Wraps the official SWE-bench harness. |
-| `swebench_pro` | `benchmarks/swebench_pro/scorer.py:53` | Wraps the official evaluator; empty patch maps to `predicted='unresolved'`; sets `metadata.resolved`. Reports an extra **Resolve Rate** row. |
-| `terminal_bench2` | `benchmarks/terminal_bench2/scorer.py:8` | Reward only counts when the verifier observed it (see validity model below). |
-| `external_benchmark` | `benchmarks/external_benchmark/scorer.py:24` | Molecule benchmark verifier. |
+| `swe_bench` | `alphadiana/benchmarks/swe_bench/scorer.py:98` | Wraps the official SWE-bench harness. |
+| `swebench_pro` | `alphadiana/benchmarks/swebench_pro/scorer.py:53` | Wraps the official evaluator; empty patch maps to `predicted='unresolved'`; sets `metadata.resolved`. Reports an extra **Resolve Rate** row. |
+| `terminal_bench2` | `alphadiana/benchmarks/terminal_bench2/scorer.py:8` | Reward only counts when the verifier observed it (see validity model below). |
+| `external_benchmark` | `alphadiana/benchmarks/external_benchmark/scorer.py:24` | Molecule benchmark verifier. |
 
 For SWE benchmarks, `direct_llm` is intentionally not a Diana path; see
 [../benchmarks/swebench-pro](../benchmarks/swebench-pro). For the agent harnesses, see
@@ -87,8 +87,12 @@ per-artifact-key locks elsewhere.
   {run_id}/
     run_manifest.json                  # run metadata
     tasks/{task_id}.json               # LIST of sample records (one per sample_index)
-    artifacts/{task_id}/...            # gateway.log, response.json, request_messages.json,
-                                       #   system_prompt.txt, normalized_trace.json, workspace files
+    artifacts/{task_id}/
+      agent/                           # gateway.log, response.json, request_messages.json,
+                                       #   system_prompt.txt, normalized_trace.json
+      sandbox/                         # sandbox_meta.json
+      workspace/                       # workspace files
+                                       # (sample>0 nests all of the above under sample_<N>/)
     logprobs/{task_id}.jsonl           # sample 0 (flat); sample>0 nests as {task_id}/sample_<N>.jsonl
     logprobs_int16/...                 # compact Int16 form
 ```
@@ -118,10 +122,12 @@ The persisted `trajectory` is a **normalized** summary with stable step types
 
 ### Logprob sidecars
 
-`write_logprob_sidecars` (`alphadiana/analysis/io/logprob_artifacts.py`) pops
+`ResultStore.write_logprob_sidecars` (`alphadiana/analysis/io/result_store.py`) pops
 `logprob_records` / `logprob_int16_records` from `response.metadata` and writes a raw float
-JSONL plus a compact Int16 form (`INT16_PROB_SCALE=32767`, `DEFAULT_TOP_LOGPROBS=20`, softmax
-via log-sum-exp, per-token `entropy_nats`). Sample 0 uses the flat path `logprobs/{task_id}.jsonl`;
+JSONL plus a compact Int16 form, using the constants and helpers in
+`alphadiana/analysis/io/logprob_artifacts.py` (`INT16_PROB_SCALE=32767`,
+`DEFAULT_TOP_LOGPROBS=20`, softmax via log-sum-exp, per-token `entropy_nats`,
+`raw_record_to_int16_record`). Sample 0 uses the flat path `logprobs/{task_id}.jsonl`;
 samples `>0` nest under `logprobs/{task_id}/sample_<N>.jsonl`.
 
 ### Redaction

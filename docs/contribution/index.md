@@ -66,8 +66,10 @@ A benchmark turns a dataset into a list of `BenchmarkTask` objects. The
 `ground_truth`, `metadata`, and `attachments` (for multimodal inputs).
 
 Subclass `Benchmark` and implement `load_tasks(config)`. The optional
-`default_scorer()` method suggests a scorer name when the config does not set
-one explicitly.
+`default_scorer()` method is a convention/hint only: it documents which scorer a
+benchmark expects, but nothing calls it at runtime (it has zero callers). The
+runner does **not** fall back to it. An unnamed scorer becomes `""`, and
+`ScorerRegistry.get("")` raises, so `scorer.name` is always required in config.
 
 ```python
 from alphadiana.benchmarks.base import Benchmark, BenchmarkTask
@@ -171,8 +173,11 @@ scorer:
 ```
 
 The runner reads `scorer.name` into `scorer_name` and resolves it with
-`ScorerRegistry.get(...)` (`runner.py:620`); a benchmark's `default_scorer()` is
-the suggested fallback when no scorer is named.
+`ScorerRegistry.get(...)` (`runner.py:620`). `scorer.name` is always required:
+if it is omitted, `scorer_name` becomes `""` and `ScorerRegistry.get("")` raises
+(the config validator also rejects an empty `scorer_name`). A benchmark's
+`default_scorer()` is **not** consulted as a fallback; it is a convention/hint
+only, with zero callers in the runtime path.
 
 ## Don't forget the import line
 

@@ -54,7 +54,7 @@ and stash it on `self`. By convention, treat the literal API key `EMPTY`
 (case-insensitive) as *unset* and fall back to the environment, and use
 `sk-EMPTY` in configs for keyless local vLLM (the validator rejects literal
 `EMPTY`). The shared logprob helper `resolve_logprob_capture_config(config)`
-(`alphadiana/harness/logprob_capture.py`) gives you a consistent
+(`alphadiana/harness/proxies/logprob_capture.py`) gives you a consistent
 `{enabled, top_logprobs}` if you want observability parity with the other
 harnesses.
 

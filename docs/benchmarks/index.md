@@ -78,7 +78,7 @@ the shipped benchmarks use the explicit `.register()` call form instead.
 List the registered names at any time:
 
 ```bash
-python -m alphadiana.cli benchmarks
+python -m alphadiana.cli list-benchmarks
 ```
 
 ## How a benchmark is selected

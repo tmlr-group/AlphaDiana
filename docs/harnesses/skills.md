@@ -12,7 +12,7 @@ workspace; the model reaches it with its normal file tools.
 
 Skills are consumed by the [OpenCode](../harnesses/opencode) and
 [ZeroClaw](../harnesses/zeroclaw) harnesses through the single config key
-`agent.config.skill_folder`. The [direct_llm](../harnesses/direct_llm) baseline
+`agent.config.skill_folder`. The [direct_llm](../harnesses/direct-llm) baseline
 has no sandbox and ignores skills.
 
 ## Bundle layout
@@ -42,7 +42,7 @@ Two bundles live under `alphadiana/harness/skills/`:
 | Bundle | Size | What it is |
 | --- | --- | --- |
 | `advanced-maths` | ~384 KB | A 7-step symbolic + numeric reasoning protocol (restate, tool-pick, step-out, unit audit, magnitude sanity-check, second-route verification, commit), plus a `references/` tree. Adapted from `rand/cc-polymath/skills/math`. |
-| `anthropic-bundle` | ~15 MB | Anthropic's official Skills SDK content: 18 sub-skills under `skills/` (`pdf`, `xlsx`, `pptx`, `canvas-design`, `webapp-testing`, `mcp-builder`, `skill-creator`, and more). The top-level `SKILL.md` is an index pointing to each sub-skill. Source: https://github.com/anthropics/skills |
+| `anthropic-bundle` | ~10 MB | Anthropic's official Skills SDK content: 17 sub-skills under `skills/` (`pdf`, `xlsx`, `pptx`, `canvas-design`, `webapp-testing`, `mcp-builder`, `skill-creator`, and more). The top-level `SKILL.md` is an index pointing to each sub-skill. Source: https://github.com/anthropics/skills |
 
 See `anthropic-bundle/THIRD_PARTY_NOTICES.md` for license details on bundled
 third-party assets (ImageIO, FFmpeg, OOXML schemas, fonts).
@@ -129,6 +129,6 @@ model at it. Set the instruction with `agent.config.system_prompt` (see
 3. Add the read instruction to `agent.config.system_prompt`.
 
 No registration step is needed — skills are loaded by path, not through the
-[AgentRegistry](../harnesses/overview). Captured trajectories and answers land
+[AgentRegistry](../harnesses/index). Captured trajectories and answers land
 in the result store (`alphadiana/analysis/io/result_store.py`) like any other
 run.

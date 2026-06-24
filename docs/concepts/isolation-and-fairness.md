@@ -88,7 +88,7 @@ These benchmark paths preserve readable, task-scoped runtime artifacts in the re
 
 - `openclaw` preserves stable aliases such as `openclaw_session.jsonl`, `openclaw_workspace_listing.txt`, `openclaw_workspace_state.json`, `openclaw_runtime_config.json`, `openclaw_request_payload.json`, and `openclaw_selected_response.json`.
 - `opencode` preserves the main event/session stream plus task-local state under aliases such as `opencode_session.jsonl`, `opencode_workspace_listing.txt`, `opencode_config.json`, `memory/opencode_db_files.json`, and `memory/opencode.db.summary.json`.
-- `zeroclaw` preserves the equivalent task-local CLI evidence: `config.toml`, `workspace_listing.txt`, readable `state/*` files, and `memory/brain.db.summary.json` when the runtime creates a memory database.
+- `zeroclaw` preserves the equivalent task-local CLI evidence: `config.toml`, readable `state/*` files, and runtime artifacts such as `status.json`, `runtime_trace.jsonl`, and `provider_exchange_summary.json`.
 
 Credential-bearing JSON artifacts are redacted before they are persisted into the result payload.
 

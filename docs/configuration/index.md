@@ -19,7 +19,10 @@ points but not production settings.
 ## The four sections
 
 A config has four blocks plus top-level run controls. The minimal, env-driven
-`direct_llm` example (`configs/examples/direct_llm.yaml`) shows the shape:
+`direct_llm` example (`configs/examples/direct_llm.yaml`) is the basis for the shape
+below; the `sandbox: null` and `num_samples: 1` lines are shown here for
+illustration (both are optional and default to those values when omitted, so the
+on-disk example leaves them out):
 
 ```yaml
 run_id: ""
@@ -67,7 +70,7 @@ These are the values the validator and registries accept. Unknown keys inside an
 
 | Block | Accepted `name` values |
 | --- | --- |
-| `agent.name` | `direct_llm`, `openclaw`, `opencode`, `zeroclaw`, `swebench_docker`, `sweagent`, `terminal_bench2_*` |
+| `agent.name` | `direct_llm`, `openclaw`, `opencode`, `zeroclaw`, `swebench_docker`, `external_benchmark_docker`, `external_benchmark_podman`, `terminal_bench2_*` |
 | `scorer.name` | `numeric`, `math_verify`, `exact_match`, `llm_judge`, `swebench_pro` |
 | `sandbox.name` | `null`, `local`, `rock`, `podman`, `swebench_container` |
 
@@ -85,7 +88,7 @@ run starts; non-ROCK runs skip it.
 | `max_concurrent` | `1` | parallel task executions; validated to the range `1..64` |
 | `num_samples` | `1` | independent samples per task for pass@k (AIME uses 4, GPQA always 1) |
 | `output_dir` | `./results` | where result files and the run report land |
-| `task_retries` | `1` | per-task retry budget (must be `>= 0`) |
+| `task_retries` | `0` | per-task retry budget (must be `>= 0`); the `from_yaml` path defaults to `0` when the key is absent, though the dataclass default is `1` |
 | `strict_report`, `strict_isolation` | `false` | stricter reporting / isolation gates |
 | `metadata` | `{}` | free-form `author` / `gpu` / `notes` tags |
 

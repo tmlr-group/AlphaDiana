@@ -20,7 +20,7 @@ There are two solve paths in the same harness:
 For operational doctrine (defaults, retry semantics, the validity contract),
 the benchmark runbook at [../benchmarks/openclaw](../benchmarks/openclaw) is the
 canonical reference; this page describes how the harness works internally. See
-also the sibling harnesses [direct_llm](./direct_llm),
+also the sibling harnesses [direct_llm](./direct-llm),
 [opencode](./opencode), and [zeroclaw](./zeroclaw).
 
 ## Topology
@@ -60,12 +60,16 @@ The agent reaches the gateway through the proxy at
 on failure, and overrides `sandbox.url` to the proxy URL.
 `proxy_v1_base()` returns `<proxy>/sandboxes/<sandbox_id>/proxy/v1`. `execute(cmd)`
 runs a command in the sandbox bash `default` session through the SDK.
-`proxy_timeout` defaults to 1800s; `auto_clear` defaults to 7200s.
+`proxy_timeout` defaults to 1800s. The `ROCKSandbox.setup()` wrapper
+(`rock.py:891`) defaults `auto_clear_seconds` to 3600s; the OpenClaw predeploy
+path (`runner.py:886`, `runner.py:1176`) raises this to 7200s via
+`rock_auto_clear_seconds`.
 
 `setup()` selects a runtime manager from
 `alphadiana/harness/openclaw/runtime.py` based on config:
 `OpenClawRuntimeManager` for ROCK/Docker, `OpenClawPodmanRuntimeManager` for
-podman, and `OpenClawContainerRuntimeManager` for `runtime == 'swebench_container'`.
+podman (both in `runtime.py`), and `OpenClawContainerRuntimeManager`
+(in `container_runtime.py`) for `runtime == 'swebench_container'`.
 The manager owns gateway lifecycle (`ensure_ready`, `_wait_for_gateway`,
 `_warmup_gateway`, `collect_artifacts`).
 
@@ -110,7 +114,7 @@ Before scoring, the runner runs `_openclaw_integrity_guard_reason`
 - `metadata.session_tainted is True`
 - `finish_reason == "incomplete"`
 - the trajectory, request/response payloads, or raw output contain
-  `Read HEARTBEAT.md`, `HEARTBEAT.md`, or `HEARTBEAT_OK`
+  `Read HEARTBEAT.md` or `HEARTBEAT_OK`
 
 A valid scored result therefore requires all of:
 
@@ -120,7 +124,6 @@ A valid scored result therefore requires all of:
 | `metadata.received_done` | `True` |
 | `metadata.session_tainted` | not `True` |
 | heartbeat markers in trajectory / payload | absent |
-| logprob sidecars (when logprobs enabled) | both float and int16 present |
 
 Rejected responses still preserve the partial raw output, trajectory, response
 JSON, sandbox artifacts, and logprob sidecars, and `runtime_error` records remain
