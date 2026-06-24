@@ -5,7 +5,7 @@ agent:
   version: "decodingtrust-openclaw-cli-v1"
   config:
     runtime_backend: decodingtrust_openclaw_cli
-    model: "deepseek/deepseek-v4-pro"
+    model: "${OPENAI_MODEL_NAME}"
     temperature: 0
     max_turns: 10
     system_prompt: ""
