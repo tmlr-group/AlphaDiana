@@ -1,4 +1,4 @@
-run_id: "openclaw_decodingtrust_direct_finance_cli"
+run_id: "openclaw_decodingtrust_finance_cli"
 
 agent:
   name: openclaw
@@ -17,7 +17,16 @@ benchmark:
   config:
     domain: finance
     task_types:
+      - benign
       - direct
+      - indirect
+    # One task per type so the smoke run covers benign/direct/indirect evenly
+    # (a global `limit` would otherwise be spent entirely on the first type).
+    limit_per_type: 1
+    # Reproducibility: pin the DecodingTrust-Agent submodule commit.
+    # Set require_pinned_commit: true to hard-fail on a mismatched checkout.
+    pinned_commit: "6586b3b695b19c6b4d0b591e1739135404f5cce4"
+    require_pinned_commit: false
 
 sandbox:
   name: decodingtrust

@@ -473,9 +473,10 @@ class ReportGenerator:
             f"| Mean Score | {summary.mean_score:.4f} |",
             *(
                 [
+                    "| _DT note_ | Accuracy/Mean Score above are AlphaDiana's blended pass/score, NOT the DTAP task-success rate. The DTAP headline metrics are the rows below. |",
                     f"| DT Valid Records | {summary.dt_valid_records} |",
-                    f"| DT Task Success | {summary.dt_task_success_count}/{summary.dt_task_success_denominator} = {summary.dt_task_success_rate:.4f} |",
-                    f"| DT Attack Success | {summary.dt_attack_success_count}/{summary.dt_attack_success_denominator} = {summary.dt_attack_success_rate:.4f} |",
+                    f"| DT Task Success (utility) | {summary.dt_task_success_count}/{summary.dt_task_success_denominator} = {summary.dt_task_success_rate:.4f} |",
+                    f"| DT Attack Success (ASR) | {summary.dt_attack_success_count}/{summary.dt_attack_success_denominator} = {summary.dt_attack_success_rate:.4f} |",
                 ]
                 if summary.benchmark == "decodingtrust" or summary.dt_valid_records
                 else []

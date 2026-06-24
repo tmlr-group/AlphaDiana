@@ -49,6 +49,29 @@ def _dt_commit(dt_root: Path) -> str:
         return DEFAULT_DT_COMMIT
 
 
+def _validate_pinned_commit(dt_root: Path, actual_commit: str, config: dict[str, Any]) -> None:
+    """Enforce a pinned DecodingTrust-Agent commit for reproducibility.
+
+    `pinned_commit` defaults to DEFAULT_DT_COMMIT. When `require_pinned_commit`
+    is true, the checked-out submodule commit must match (full or prefix);
+    otherwise the run is rejected so results are tied to a known dataset/judge
+    version.
+    """
+    if not bool(config.get("require_pinned_commit", False)):
+        return
+    pinned = str(config.get("pinned_commit") or DEFAULT_DT_COMMIT)
+    if not actual_commit or actual_commit == DEFAULT_DT_COMMIT and not (dt_root / ".git").exists():
+        raise ValueError(
+            f"require_pinned_commit is set but the DecodingTrust-Agent commit at {dt_root} "
+            "could not be determined (submodule not initialized?)."
+        )
+    if not (actual_commit == pinned or actual_commit.startswith(pinned) or pinned.startswith(actual_commit)):
+        raise ValueError(
+            f"DecodingTrust-Agent commit mismatch: checked out {actual_commit!r}, "
+            f"pinned {pinned!r}. Check out the pinned commit or clear require_pinned_commit."
+        )
+
+
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     with path.open("r", encoding="utf-8") as handle:
@@ -164,64 +187,91 @@ class DecodingTrustBenchmark(Benchmark):
     def load_tasks(self, config: dict[str, Any]) -> list[BenchmarkTask]:
         dt_root = resolve_dt_root(config)
         ensure_dtap_on_path(dt_root)
-        domain = str(config.get("domain", "finance"))
+
+        # Domains: accept `domains` (list) or single `domain` (back-compat).
+        domains = config.get("domains")
+        if domains is None:
+            domains = [str(config.get("domain", "finance"))]
+        elif isinstance(domains, str):
+            domains = [domains]
+        else:
+            domains = [str(item) for item in domains]
+
         task_types = config.get("task_types", config.get("task_type", ["benign", "direct", "indirect"]))
         if isinstance(task_types, str):
             task_types = [task_types]
-        limit = int(config.get("limit", 0) or 0)
+
+        # Filters.
+        threat_models_filter = {str(item).lower() for item in config.get("threat_models", []) or []}
         task_ids_filter = {str(item) for item in config.get("task_ids", []) or []}
         risk_filter = {str(item) for item in config.get("risk_categories", []) or []}
 
+        # Limits: `limit` is a global cap; `limit_per_type` caps each
+        # (domain, task_type) cell independently so a multi-type run keeps
+        # balanced coverage instead of exhausting the cap on the first type.
+        limit = int(config.get("limit", 0) or 0)
+        limit_per_type = int(config.get("limit_per_type", 0) or 0)
+
         tasks: list[BenchmarkTask] = []
         commit = _dt_commit(dt_root)
+        _validate_pinned_commit(dt_root, commit, config)
 
-        for task_type in task_types:
-            index_name = str(task_type)
-            jsonl_path = dt_root / "benchmark" / domain / f"{index_name}.jsonl"
-            if not jsonl_path.exists():
-                raise FileNotFoundError(f"DTAP task index not found: {jsonl_path}")
-            for row in _read_jsonl(jsonl_path):
-                task_id = _task_identifier(row)
-                if task_ids_filter and str(row.get("task_id")) not in task_ids_filter and task_id not in task_ids_filter:
-                    continue
-                if risk_filter and str(row.get("risk_category")) not in risk_filter:
-                    continue
-                task_dir = _build_task_dir(dt_root, row)
-                task_config = _load_task_config(task_dir)
-                for required in ("setup.sh", "judge.py"):
-                    if not (task_dir / required).exists():
-                        raise FileNotFoundError(f"DTAP task missing {required}: {task_dir}")
+        for domain in domains:
+            for task_type in task_types:
+                index_name = str(task_type)
+                jsonl_path = dt_root / "benchmark" / domain / f"{index_name}.jsonl"
+                if not jsonl_path.exists():
+                    raise FileNotFoundError(f"DTAP task index not found: {jsonl_path}")
+                per_type_count = 0
+                for row in _read_jsonl(jsonl_path):
+                    task_id = _task_identifier(row)
+                    if task_ids_filter and str(row.get("task_id")) not in task_ids_filter and task_id not in task_ids_filter:
+                        continue
+                    if risk_filter and str(row.get("risk_category")) not in risk_filter:
+                        continue
+                    if threat_models_filter:
+                        row_threat = str(row.get("threat_model") or row.get("type") or "").lower()
+                        if row_threat not in threat_models_filter:
+                            continue
+                    if limit_per_type and per_type_count >= limit_per_type:
+                        break
+                    task_dir = _build_task_dir(dt_root, row)
+                    task_config = _load_task_config(task_dir)
+                    for required in ("setup.sh", "judge.py"):
+                        if not (task_dir / required).exists():
+                            raise FileNotFoundError(f"DTAP task missing {required}: {task_dir}")
 
-                task_section = task_config.get("Task", {}) if isinstance(task_config.get("Task"), dict) else {}
-                attack_section = task_config.get("Attack", {}) if isinstance(task_config.get("Attack"), dict) else {}
-                problem = _load_instruction(task_dir, task_config, row)
+                    task_section = task_config.get("Task", {}) if isinstance(task_config.get("Task"), dict) else {}
+                    attack_section = task_config.get("Attack", {}) if isinstance(task_config.get("Attack"), dict) else {}
+                    problem = _load_instruction(task_dir, task_config, row)
 
-                metadata = {
-                    "dt_root": str(dt_root),
-                    "dt_task_dir": str(task_dir),
-                    "dt_task_id": task_section.get("task_id") or row.get("task_id"),
-                    "domain": row.get("domain"),
-                    "task_type": row.get("type"),
-                    "threat_model": row.get("threat_model") or ("benign" if row.get("type") == "benign" else row.get("type")),
-                    "risk_category": row.get("risk_category"),
-                    "dt_commit": commit,
-                    "dt_index_row": row,
-                    "dt_config_task_id": task_section.get("task_id"),
-                    "dt_agent_system_prompt": (
-                        task_config.get("Agent", {}).get("system_prompt", "")
-                        if isinstance(task_config.get("Agent"), dict)
-                        else ""
-                    ),
-                    "dt_attack": attack_section,
-                }
-                tasks.append(
-                    BenchmarkTask(
-                        task_id=task_id,
-                        problem=problem,
-                        ground_truth=None,
-                        metadata=metadata,
+                    metadata = {
+                        "dt_root": str(dt_root),
+                        "dt_task_dir": str(task_dir),
+                        "dt_task_id": task_section.get("task_id") or row.get("task_id"),
+                        "domain": row.get("domain"),
+                        "task_type": row.get("type"),
+                        "threat_model": row.get("threat_model") or ("benign" if row.get("type") == "benign" else row.get("type")),
+                        "risk_category": row.get("risk_category"),
+                        "dt_commit": commit,
+                        "dt_index_row": row,
+                        "dt_config_task_id": task_section.get("task_id"),
+                        "dt_agent_system_prompt": (
+                            task_config.get("Agent", {}).get("system_prompt", "")
+                            if isinstance(task_config.get("Agent"), dict)
+                            else ""
+                        ),
+                        "dt_attack": attack_section,
+                    }
+                    tasks.append(
+                        BenchmarkTask(
+                            task_id=task_id,
+                            problem=problem,
+                            ground_truth=None,
+                            metadata=metadata,
+                        )
                     )
-                )
-                if limit and len(tasks) >= limit:
-                    return tasks
+                    per_type_count += 1
+                    if limit and len(tasks) >= limit:
+                        return tasks
         return tasks
