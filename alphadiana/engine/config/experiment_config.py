@@ -5,9 +5,12 @@ import os
 import re
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import yaml
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _ENV_PLACEHOLDER_RE = re.compile(
     r"^\s*(?:\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$[A-Za-z_][A-Za-z0-9_]*)\s*$"
@@ -50,6 +53,14 @@ def _is_blank_config_value(value: Any) -> bool:
     return False
 
 
+def _resolve_output_dir(value: Any) -> str:
+    raw = "./results" if _is_blank_config_value(value) else str(value)
+    path = Path(raw).expanduser()
+    if not path.is_absolute():
+        path = REPO_ROOT / path
+    return str(path.resolve())
+
+
 def _apply_agent_env_defaults(agent_name: str, agent_config: Any) -> dict:
     """Populate agent config fields from environment when the YAML leaves them blank."""
     if not isinstance(agent_config, dict):
@@ -59,6 +70,7 @@ def _apply_agent_env_defaults(agent_name: str, agent_config: Any) -> dict:
 
     if agent_name in {
         "direct_llm",
+        "openclaw",
         "zeroclaw",
         "opencode",
         "terminal_bench2_docker",
@@ -72,6 +84,7 @@ def _apply_agent_env_defaults(agent_name: str, agent_config: Any) -> dict:
         }
         if agent_name in {
             "direct_llm",
+            "openclaw",
             "zeroclaw",
             "terminal_bench2_docker",
             "terminal_bench2_zeroclaw",
@@ -192,6 +205,8 @@ class ExperimentConfig:
     task_retry_on_recoverable_only: bool = False
     strict_report: bool = False
     strict_isolation: bool = False
+    parallel_strategy: str = ""
+    process_shards: int = 1
     metadata: dict = field(default_factory=dict)
 
     def __post_init__(self):
@@ -239,7 +254,7 @@ class ExperimentConfig:
             scorer_name=scorer.get("name", ""),
             scorer_config=scorer.get("config", {}),
             max_concurrent=data.get("max_concurrent", 1),
-            output_dir=data.get("output_dir", "./results"),
+            output_dir=_resolve_output_dir(data.get("output_dir", "./results")),
             redo_all=data.get("redo_all", False),
             sandbox_retries=data.get("sandbox_retries", 1),
             num_samples=data.get("num_samples", 1),
@@ -247,5 +262,7 @@ class ExperimentConfig:
             task_retry_on_recoverable_only=data.get("task_retry_on_recoverable_only", False),
             strict_report=data.get("strict_report", False),
             strict_isolation=data.get("strict_isolation", False),
+            parallel_strategy=str(data.get("parallel_strategy", "") or ""),
+            process_shards=int(data.get("process_shards", 1) or 1),
             metadata=data.get("metadata", {}),
         )
