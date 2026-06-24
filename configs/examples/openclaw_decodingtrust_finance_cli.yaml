@@ -1,0 +1,36 @@
+run_id: "openclaw_decodingtrust_direct_finance_cli"
+
+agent:
+  name: openclaw
+  version: "decodingtrust-openclaw-cli-v1"
+  config:
+    runtime_backend: decodingtrust_openclaw_cli
+    model: "deepseek/deepseek-v4-pro"
+    temperature: 0
+    max_turns: 10
+    system_prompt: ""
+    debug: false
+    
+
+benchmark:
+  name: decodingtrust
+  config:
+    domain: finance
+    task_types:
+      - direct
+
+sandbox:
+  name: decodingtrust
+  config:
+    setup_timeout: 900
+
+scorer:
+  name: decodingtrust
+  config: {}
+
+max_concurrent: 1
+num_samples: 1
+task_retries: 0
+output_dir: "./results"
+metadata:
+  notes: "Runs DTAP OpenClawAgent/OpenClaw CLI in-process while AlphaDiana owns scheduling, sandbox, result JSONL, and scoring."

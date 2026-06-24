@@ -47,6 +47,13 @@ class RunSummary:
     missing_tasks: int = 0
     strict_report_failed: bool = False
     strict_report_issues: list[str] = field(default_factory=list)
+    dt_valid_records: int = 0
+    dt_task_success_count: int = 0
+    dt_task_success_rate: float = 0.0
+    dt_task_success_denominator: int = 0
+    dt_attack_success_count: int = 0
+    dt_attack_success_rate: float = 0.0
+    dt_attack_success_denominator: int = 0
     timestamp: str = ""
 
 
@@ -68,6 +75,64 @@ def _manifest_category(task_id: str, manifest: dict) -> str:
         if isinstance(task_data, dict) and task_data.get("category"):
             return str(task_data["category"])
     return "default"
+
+
+def _bool_metric(value: object) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "y"}:
+            return True
+        if normalized in {"false", "0", "no", "n"}:
+            return False
+    return None
+
+
+def _aggregate_decodingtrust_metrics(valid_results: list[dict]) -> dict[str, int | float]:
+    task_success_count = 0
+    task_success_denominator = 0
+    attack_success_count = 0
+    attack_success_denominator = 0
+
+    for record in valid_results:
+        metadata = record.get("score_metadata", {})
+        if not isinstance(metadata, dict):
+            continue
+
+        task_success = _bool_metric(metadata.get("task_success"))
+        if task_success is not None:
+            task_success_denominator += 1
+            if task_success:
+                task_success_count += 1
+
+        attack_success = _bool_metric(metadata.get("attack_success"))
+        if attack_success is not None:
+            attack_success_denominator += 1
+            if attack_success:
+                attack_success_count += 1
+
+    return {
+        "dt_valid_records": len(valid_results),
+        "dt_task_success_count": task_success_count,
+        "dt_task_success_denominator": task_success_denominator,
+        "dt_task_success_rate": (
+            task_success_count / task_success_denominator
+            if task_success_denominator
+            else 0.0
+        ),
+        "dt_attack_success_count": attack_success_count,
+        "dt_attack_success_denominator": attack_success_denominator,
+        "dt_attack_success_rate": (
+            attack_success_count / attack_success_denominator
+            if attack_success_denominator
+            else 0.0
+        ),
+    }
 
 
 class ReportGenerator:
@@ -325,6 +390,13 @@ class ReportGenerator:
         if error_records > 0:
             strict_report_issues.append(f"error_records={error_records}")
 
+        scorer_name = self._infer_from_results(results, "scorer_name")
+        dt_metrics = (
+            _aggregate_decodingtrust_metrics(valid_results)
+            if benchmark_name == "decodingtrust" or scorer_name == "decodingtrust"
+            else {}
+        )
+
         return RunSummary(
             run_id=run_id,
             agent=agent_name,
@@ -355,6 +427,7 @@ class ReportGenerator:
             missing_tasks=missing_tasks,
             strict_report_failed=bool(strict_report_issues),
             strict_report_issues=strict_report_issues,
+            **dt_metrics,
             timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
@@ -398,6 +471,15 @@ class ReportGenerator:
             f"| Pass@{summary.num_samples} | {summary.pass_at_k:.4f} |",
             f"| Avg@{summary.num_samples} | {summary.avg_at_k:.4f} |",
             f"| Mean Score | {summary.mean_score:.4f} |",
+            *(
+                [
+                    f"| DT Valid Records | {summary.dt_valid_records} |",
+                    f"| DT Task Success | {summary.dt_task_success_count}/{summary.dt_task_success_denominator} = {summary.dt_task_success_rate:.4f} |",
+                    f"| DT Attack Success | {summary.dt_attack_success_count}/{summary.dt_attack_success_denominator} = {summary.dt_attack_success_rate:.4f} |",
+                ]
+                if summary.benchmark == "decodingtrust" or summary.dt_valid_records
+                else []
+            ),
             f"| Mean Wall Time (s) | {summary.mean_wall_time_sec:.2f} |",
             f"| Prompt Tokens | {summary.total_tokens.get('prompt_tokens', 0)} |",
             f"| Completion Tokens | {summary.total_tokens.get('completion_tokens', 0)} |",
