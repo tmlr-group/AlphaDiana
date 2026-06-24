@@ -1,0 +1,9 @@
+{
+  "label": "Harnesses",
+  "position": 5,
+  "link": {
+    "type": "generated-index",
+    "title": "Harnesses",
+    "description": "The agents AlphaDiana can run: the direct_llm baseline and the opencode, openclaw, and zeroclaw harnesses, plus the skill-bundle mechanism."
+  }
+}
