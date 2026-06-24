@@ -228,14 +228,17 @@ Memory keys:
 
 ROCK-mode keys:
 
-| Key | Example / default |
-|-----|-------------------|
+| Key | Example |
+|-----|---------|
 | `rock_image` | `zeroclaw-reasoning:0.6.9` |
 | `rock_memory` | `4g` |
 | `rock_cpus` | unset |
 | `rock_startup_timeout` | `600` |
 | `admin_base_url` | `${ROCK_BASE_URL}` |
 | `proxy_base_url` | `${ROCK_PROXY_URL}` |
+
+The values above are illustrative examples, not code defaults. The runner's
+actual fallbacks are `rock_memory = "2g"` and `rock_startup_timeout = 300`.
 
 The runner auto-creates the sandbox when `rock_image` is set, so `sandbox: null`
 is correct. Binary sourcing is controlled by `binary_source_image` (default

@@ -55,7 +55,7 @@ when clean. Use this in CI or before launching a long sweep.
 ### `report`
 
 ```bash
-alphadiana report results/my-run-id
+alphadiana report results/
 ```
 
 Rebuilds the `RunSummary` (accuracy, mean score, Pass@N, Avg@N, per-category breakdowns)
@@ -160,7 +160,7 @@ results/
 
 Each JSONL record embeds the problem, `ground_truth`, `predicted` (the response answer),
 `correct`, `score`, the (normalized) trajectory, token usage, and a `score_status`. See the
-[Result Store](./result-store) page for the full record shape, and [Dashboard](../dashboard)
+[Result Store](../architecture/scoring-and-results) page for the full record shape, and [Dashboard](../dashboard)
 for `status/dashboard.txt`.
 
 ## `num_samples` conventions
@@ -202,7 +202,7 @@ agent:
     temperature: 0.6
 
 benchmark:
-  name: aime2024
+  name: aime
   config: {}
 
 sandbox: null                # or {name: rock, config: {...}}

@@ -301,7 +301,7 @@ All default off, so a normal run is unchanged:
 ```bash
 # 1. Build the docker controller image (one-time)
 docker build --network host \
-  -f docker/terminal_bench2/Dockerfile.opencode-controller \
+  -f alphadiana/benchmarks/terminal_bench2/deploy/dockerfiles/Dockerfile.opencode-controller \
   -t alphadiana/tb2-opencode-controller:latest .
 
 # 2. Run any opencode config with docker isolation
@@ -382,7 +382,7 @@ calling does not work with opencode at all.
 | `alphadiana/harness/opencode/agent.py` | `OpenCodeAgent`, controller dispatch, memory levers |
 | `alphadiana/harness/opencode/container_runtime.py` | `OpenCodeContainerRuntimeManager` (SWE-bench) |
 | `alphadiana/harness/opencode/deploy/Containerfile.podman-controller` | podman controller image spec |
-| `docker/terminal_bench2/Dockerfile.opencode-controller` | docker controller image |
+| `alphadiana/benchmarks/terminal_bench2/deploy/dockerfiles/Dockerfile.opencode-controller` | docker controller image |
 
 See also: [direct_llm](../harnesses/direct-llm),
 [OpenClaw](../harnesses/openclaw), [ZeroClaw](../harnesses/zeroclaw),

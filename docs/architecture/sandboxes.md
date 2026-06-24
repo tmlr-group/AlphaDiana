@@ -104,13 +104,13 @@ which is where the server-side TTL becomes the safety net.
 
 ### Startup window and the ~85s run cap
 
-ROCK startup is the flaky part of the lifecycle. In practice a sandbox needs on
-the order of 85 seconds to spin up and become responsive before the bash session
-is usable; under a contended host that window stretches and the SDK can hang,
-which is why `startup_timeout` defaults to 300 seconds and `_start_sandbox`
-wraps `sandbox.start()` in its own `attempt_timeout + 10s` guard. Treat that
-~85s as the empirical per-session run cap to budget for: cells launched with too
-many concurrent sandboxes against one ROCK admin can lose samples to startup
+ROCK startup is the flaky part of the lifecycle. Under a contended host the
+startup window stretches and the SDK can hang, which is why `startup_timeout`
+defaults to 300 seconds and `_start_sandbox` wraps `sandbox.start()` in its own
+`attempt_timeout + 10s` guard. Separately, ROCK's synchronous `run_in_session`
+caps each individual call at ~85 seconds; treat that ~85s as the per-call
+synchronous run cap to budget for, not sandbox spin-up time. Cells launched with
+too many concurrent sandboxes against one ROCK admin can lose samples to startup
 flakiness rather than to model error. When a sandbox is abandoned (for example a
 `close()` timeout during pool teardown) `auto_clear_seconds` is the
 server-side TTL that lets ROCK eventually reclaim it.
@@ -225,18 +225,18 @@ What actually runs where, per harness:
 
 | Benchmark | `openclaw` | `opencode` | `zeroclaw` |
 |---|---|---|---|
-| `terminal-bench-2` | Docker task container + Dockerized controller | Docker task container + Dockerized controller | Docker task container + Dockerized controller |
-| `SWE-bench Pro` | official per-task SWE container (`swebench_docker`) | official per-task SWE container (`swebench_docker`) | official per-task SWE container (`swebench_docker`) |
-| `MMMU-Pro` | ROCK sandbox | Dockerized controller | ROCK sandbox |
-| `IMO-AnswerBench` | ROCK sandbox | Dockerized controller | ROCK sandbox |
-| `GPQA-Diamond` | ROCK sandbox | Dockerized controller | ROCK sandbox |
-| `HLE` | ROCK sandbox | Dockerized controller | ROCK sandbox |
+| `terminal-bench-2` | Docker task container + Dockerized controller | Docker task container + controller process (host/docker/podman) | Docker task container + Dockerized controller |
+| `SWE-bench Pro` | official per-task SWE container (`swebench_container` backend, `swebench_docker` agent) | official per-task SWE container (`swebench_container` backend, `swebench_docker` agent) | official per-task SWE container (`swebench_container` backend, `swebench_docker` agent) |
+| `MMMU-Pro` | ROCK sandbox | controller process (host/docker/podman) | ROCK sandbox |
+| `IMO-AnswerBench` | ROCK sandbox | controller process (host/docker/podman) | ROCK sandbox |
+| `GPQA-Diamond` | ROCK sandbox | controller process (host/docker/podman) | ROCK sandbox |
+| `HLE` | ROCK sandbox | controller process (host/docker/podman) | ROCK sandbox |
 
-`opencode` runs its CLI inside a disposable Docker controller container by
-default (`controller_mode: docker`); it still supports `controller_mode: host`
-for local debugging. This is a process and filesystem boundary, not ROCK-level
-resource isolation. The checked-in plain benchmark configs default to the Docker
-controller path.
+`opencode` runs its CLI via a controller process whose mode defaults to `host`;
+set `controller_mode: docker` or `controller_mode: podman` for a disposable
+container controller. The container modes are a process and filesystem boundary,
+not ROCK-level resource isolation. The checked-in opencode configs use
+`controller_mode: podman`; the schema marks podman preferred, docker legacy.
 
 ### Paper-safe wording
 

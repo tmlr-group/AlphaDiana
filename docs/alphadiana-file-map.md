@@ -12,7 +12,7 @@ A quick orientation to where things live. Paths are relative to the repository r
 |---|---|
 | `alphadiana/cli.py` | The `alphadiana` Click CLI: `run`, `validate`, `report`, `batch`, `env`, `list-benchmarks`. |
 | `alphadiana/engine/runner.py` | `Runner`, the top-level orchestrator (load tasks, dispatch, score, persist, report). |
-| `alphadiana/engine/experiment_config.py` | `ExperimentConfig` dataclass + `from_yaml` (env expansion, override merge, agent env defaults). |
+| `alphadiana/engine/config/experiment_config.py` | `ExperimentConfig` dataclass + `from_yaml` (env expansion, override merge, agent env defaults). |
 | `alphadiana/engine/config/validator.py` | `ConfigValidator`: hard errors vs warnings before a run starts. |
 | `alphadiana/engine/task_dispatcher.py` | Sequential vs `ThreadPoolExecutor` dispatch, task retries with backoff. |
 | `alphadiana/engine/sandbox/` | Sandbox backends: `base.py` (ABCs), `local.py`, `rock.py`, `podman`, `swebench_container`, plus `pool.py`. |

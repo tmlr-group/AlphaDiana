@@ -120,7 +120,8 @@ An unresolved placeholder becomes a blank string, and for `direct_llm` a blank
 | Key | Meaning | Default |
 |---|---|---|
 | `model` / `api_base` / `api_key` | OpenAI-compatible target; blank → env fallback | env |
-| `temperature` / `top_p` | Sampling controls | `0.7` |
+| `temperature` | Sampling temperature | `0.7` |
+| `top_p` | Nucleus sampling; only sent when explicitly set | unset (`None`) |
 | `max_tokens` | Output cap; if unset, auto-resolved from the server's `max_model_len - 8192` | auto |
 | `stream` | Stream the completion | `true` |
 | `max_retries` | Retries on rate-limit / timeout / 5xx with exponential backoff | `3` |

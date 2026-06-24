@@ -7,7 +7,7 @@ sidebar_position: 2
 Every AlphaDiana run is defined by a single YAML file. The CLI parses it into the
 `ExperimentConfig` dataclass (`alphadiana/engine/config/experiment_config.py`), validates
 it, and hands the four blocks (agent / benchmark / sandbox / scorer) to the runner. The
-fully commented field reference lives at [`configs/schema.yaml`](https://github.com/) and
+fully commented field reference lives at `configs/schema.yaml` and
 this page summarizes it.
 
 ## Top-level shape
@@ -49,7 +49,7 @@ These map one-to-one onto `ExperimentConfig` (`experiment_config.py:174`).
 | `agent.name` | string | required | e.g. `direct_llm`, `openclaw`, `opencode`, `zeroclaw`, `swebench_docker`. |
 | `agent.version` | string | required | Pinned tag or `"latest"`. |
 | `agent.config` | dict | `{}` | Open pass-through to the harness (see below). |
-| `benchmark.name` | string | required | e.g. `aime`, `gpqa`, `hle`, `mmmu_pro`, `terminal_bench2`, `swe_bench`. |
+| `benchmark.name` | string | required | e.g. `aime`, `gpqa_diamond`, `hle`, `mmmu_pro`, `terminal_bench2`, `swe_bench`. |
 | `benchmark.config` | dict | `{}` | `split`, `year`, `subset`, `data_path`, etc. |
 | `sandbox` | null \| object | `null` | `{ name, config }`; name in `local` / `rock` / `podman` / `swebench_container`. |
 | `scorer.name` | string | required | `math_verify`, `numeric`, `exact_match`, `llm_judge`, `swebench_pro`. |

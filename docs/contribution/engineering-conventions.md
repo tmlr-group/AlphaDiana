@@ -7,7 +7,7 @@ sidebar_position: 3
 Practical rules for editing configs, launching runs, and resuming work without
 surprises. Each item below maps to a real behavior in the AlphaDiana codebase,
 not a style preference. For the full configuration reference see the
-[run guide](../getting-started/running-evaluations) and the per-harness pages
+[run guide](../getting-started/quick-start) and the per-harness pages
 under [harnesses](../harnesses/zeroclaw).
 
 ## Edit YAML configs with `sed`, not a YAML dumper
@@ -135,7 +135,7 @@ scorer does not silently mix results.
 
 `--redo-all` bypasses the checkpoint and recomputes everything. It is exact
 sugar for `-o redo_all=true` (cli.py:72), which sets the
-[`ExperimentConfig.redo_all`](../getting-started/running-evaluations) flag
+[`ExperimentConfig.redo_all`](../configuration/config-schema) flag
 (`experiment_config.py:188`).
 
 ```bash

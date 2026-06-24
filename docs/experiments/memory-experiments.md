@@ -72,8 +72,10 @@ Treat the signs, not the third decimal, as load-bearing.
 ### What is robust
 
 - **Cross-Sample repetition is the only clean positive effect.** On the *same*
-  problem, seeing prior attempts lifts OpenCode (0.733 → 0.933 across attempts s0→s3)
-  and OpenClaw (+0.133); ZeroClaw stays flat.
+  problem, seeing prior attempts lifts OpenCode (0.733 → 0.933 across attempts s0→s3);
+  OpenClaw climbs +0.133 across attempts (the within-run s0→s3 slope) even though its
+  net avg@4 delta stays slightly negative (-0.092 vs the Full cell in the table above);
+  ZeroClaw stays flat.
 - **Across *different* problems there is no clean positive.** OpenClaw and ZeroClaw
   are slightly negative; OpenCode reaches the raw-LLM ceiling only with same-year
   chaining (≈0.900).

@@ -113,7 +113,7 @@ Resume is built on the result JSONL itself, not a separate state file. A work it
 
 ### Isolation modes
 
-The `Runner` records an `isolation_mode` in the run metadata: `shared_gateway` (no sandbox), `explicit_sandbox`, `auto_single_sandbox`, `predeployed_pool` / `partial_predeploy`, and `fresh_predeployed_pool`. `strict_isolation` is a fail-closed switch: any auto-create or predeploy failure becomes a hard `RuntimeError` rather than silently degrading to a shared gateway (which would cause cross-task workspace contention). See [Sandboxes & Isolation](./sandboxes) and the [benchmark isolation](../benchmark-isolation) statement for the paper-safe wording.
+The `Runner` records an `isolation_mode` in the run metadata: `shared_gateway` (no sandbox), `explicit_sandbox`, `auto_single_sandbox`, `predeployed_pool` / `partial_predeploy`, `fresh_predeployed_pool`, and `partial_fresh_predeployed_pool`. `strict_isolation` is a fail-closed switch: any auto-create or predeploy failure becomes a hard `RuntimeError` rather than silently degrading to a shared gateway (which would cause cross-task workspace contention). See [Sandboxes & Isolation](./sandboxes) and the [benchmark isolation](../benchmark-isolation) statement for the paper-safe wording.
 
 ## Result store and report
 

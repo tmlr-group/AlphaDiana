@@ -8,7 +8,7 @@ This page covers installing AlphaDiana, optionally bringing up the ROCK
 services that the sandboxed harnesses depend on, and setting the model-provider
 environment variables that every run reads.
 
-For the first end-to-end evaluation, continue to [Quickstart](./quickstart).
+For the first end-to-end evaluation, continue to [Quickstart](./quick-start).
 For per-harness configuration, see the harness pages such as
 [direct_llm](../harnesses/direct-llm), [openclaw](../harnesses/openclaw),
 [opencode](../harnesses/opencode), and [zeroclaw](../harnesses/zeroclaw).
@@ -226,7 +226,7 @@ alphadiana report results/
 
 ## Next steps
 
-- [Quickstart](./quickstart) — run your first evaluation end to end.
+- [Quickstart](./quick-start) — run your first evaluation end to end.
 - [direct_llm](../harnesses/direct-llm) — single-turn baseline, no sandbox.
 - [openclaw](../harnesses/openclaw) — ROCK-sandboxed agent harness.
 - [zeroclaw](../harnesses/zeroclaw) — local CLI or ROCK auto-deploy modes.

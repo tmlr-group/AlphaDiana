@@ -101,7 +101,7 @@ results/<run_id>/
 2. `_expand_env_vars` — recursively expand `$VAR` / `${VAR}` in string values via `os.path.expandvars`.
 3. `deep_merge(data, overrides)` — non-mutating deep merge of CLI overrides on top.
 4. `_clear_unresolved_env_placeholders` — any value still left as a bare `$VAR` placeholder becomes `""`.
-5. `_apply_agent_env_defaults` — for API agents (`direct_llm`, `zeroclaw`, `opencode`, the `terminal_bench2_*` family, and `swebench_docker`), fill blank `api_base` / `api_key` / `model` from `OPENAI_BASE_URL` / `OPENAI_API_KEY` / `OPENAI_MODEL_NAME`. A field counts as blank when empty, the literal `EMPTY`, or an unresolved placeholder.
+5. `_apply_agent_env_defaults` — for API agents (`direct_llm`, `zeroclaw`, `opencode`, the `terminal_bench2_*` family, and `swebench_docker`), fill blank `api_base` / `api_key` from `OPENAI_BASE_URL` / `OPENAI_API_KEY`, plus the model field from `OPENAI_MODEL_NAME`. The model field is named `model` for `direct_llm` / `zeroclaw` but `model_name` for `opencode` (both sourced from `OPENAI_MODEL_NAME`). A field counts as blank when empty, the literal `EMPTY`, or an unresolved placeholder.
 
 The YAML shape is:
 
@@ -112,7 +112,7 @@ agent:
   version: v0.3.1
   config: { ... }               # → agent_config
 benchmark:
-  name: aime_2024
+  name: aime
   config: { ... }               # → benchmark_config
 sandbox: null                   # or { name: rock, config: { ... } }
 scorer:
@@ -177,7 +177,7 @@ submission and collection early. Each item produces an outcome dict:
 
 `max_concurrent` is an upper bound, not a guarantee: after sandbox predeploy the
 runner may lower it to the available sandbox capacity. See
-[Sandboxes & Isolation](../sandbox/isolation) for how concurrency interacts with
+[Sandboxes & Isolation](./sandboxes) for how concurrency interacts with
 pooled and predeployed sandboxes, and the
 [OpenClaw](../harnesses/openclaw) harness for its self-managed gateway pool.
 
@@ -260,10 +260,10 @@ before persistence.
 `ReportGenerator.generate` produces a `RunSummary` with accuracy
 (`correct / scored`), accuracy over the expected sample count, mean score,
 pass@k (fraction of unique tasks with at least one correct sample), avg@k, and
-per-category variants. See the [Dashboard](../operations/dashboard) page for the
+per-category variants. See the [Dashboard](./observability) page for the
 live status file and report views.
 
 ## See also
 
-- [Sandboxes & Isolation](../sandbox/isolation) — isolation modes, pools, and predeploy.
-- [DirectLLM](../harnesses/directllm), [OpenCode](../harnesses/opencode), [OpenClaw](../harnesses/openclaw), [ZeroClaw](../harnesses/zeroclaw) — the registered agents.
+- [Sandboxes & Isolation](./sandboxes) — isolation modes, pools, and predeploy.
+- [DirectLLM](../harnesses/direct-llm), [OpenCode](../harnesses/opencode), [OpenClaw](../harnesses/openclaw), [ZeroClaw](../harnesses/zeroclaw) — the registered agents.

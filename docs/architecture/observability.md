@@ -206,7 +206,8 @@ stored per token so downstream analyses don't recompute it.
 
 :::note Lossy, one-way
 The int16 transform discards the float logprob values. If you need the raw
-floats later, keep `logprobs_format: "float"` (the default).
+floats later, set `logprobs_format: "float"` to keep raw floats; the default
+`int16` is lossy/one-way.
 :::
 
 ### Entropy aggregate
