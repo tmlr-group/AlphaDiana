@@ -195,6 +195,7 @@ and special-case `"frozen"` to suppress the post-task memory store. See
 - [MMMU-Pro](./mmmu-pro.md)
 - [IMO-AnswerBench](./imo-answerbench.md)
 - [SWE-bench Verified](./swebench-verified.md)
+- [SWE-bench Verified Mini](./swebench-verified-mini.md)
 - [SWE-bench Pro](./swebench-pro.md)
 - [Terminal-Bench 2](./terminal-bench-2.md)
 
@@ -204,5 +205,5 @@ Scored results are written by `ResultStore`
 (`alphadiana/analysis/io/result_store.py`): one redacted JSON record per
 `(task_id, sample_index)` appended to `{run_id}.jsonl`, plus per-task JSON,
 artifacts, and logprob sidecars under `{run_id}/`. See the
-[Dashboard](../dashboard.md) page and the per-benchmark runbooks for reading and
+[Dashboard](../dashboard.md) page and the per-benchmark pages for reading and
 reporting on a run.

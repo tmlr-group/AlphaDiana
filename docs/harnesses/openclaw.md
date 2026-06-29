@@ -17,11 +17,10 @@ There are two solve paths in the same harness:
   `openclaw agent --local` turns so the lancedb memory plugin's recall/capture
   hooks actually fire.
 
-For operational doctrine (defaults, retry semantics, the validity contract),
-the benchmark runbook at [../benchmarks/openclaw](../benchmarks/openclaw) is the
-canonical reference; this page describes how the harness works internally. See
-also the sibling harnesses [direct_llm](./direct-llm),
-[opencode](./opencode), and [zeroclaw](./zeroclaw).
+This page also covers the operational doctrine: recommended defaults, retry
+semantics, and the result-integrity contract (see the sections below). See also
+the sibling harnesses [direct_llm](./direct-llm), [opencode](./opencode), and
+[zeroclaw](./zeroclaw).
 
 ## Topology
 
@@ -403,10 +402,3 @@ Before launch, run the security gate:
 ```bash
 python scripts/security_guard.py --check
 ```
-
-:::note Historical tutorial
-The end-to-end walkthrough in `docs/tutorial_openclaw_aime2024.md` predates the
-runtime managers and the fresh-per-task predeploy pool. Use it for the
-architecture/curl intuition, but follow this page and
-[../benchmarks/openclaw](../benchmarks/openclaw) for current configuration.
-:::

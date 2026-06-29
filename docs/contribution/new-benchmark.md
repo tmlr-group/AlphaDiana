@@ -1,5 +1,5 @@
 ---
-sidebar_position: 20
+sidebar_position: 3
 ---
 
 # Adding a Benchmark
@@ -179,6 +179,6 @@ wrote scored results. It does not mean the model answered correctly.
 
 ## See also
 
-- [Benchmark index](./index) — per-benchmark one-liners and runbooks.
+- [Benchmark index](../benchmarks/) — the registered benchmarks and per-benchmark pages.
 - [Harnesses overview](../harnesses/) — the `Agent` contract that consumes a `BenchmarkTask`.
 - [Benchmark isolation](../concepts/isolation-and-fairness) — sandbox / containerization wording.

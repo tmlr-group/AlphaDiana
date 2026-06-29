@@ -55,8 +55,7 @@ deliberate counterexample to the framework's monotonicity thesis.
 ### Scopes
 
 Memory is studied at three increasing scopes on Qwen3.5-27B / AIME 2026,
-mapping to the three columns of the paper's memory table. See
-[Memory experiments](../experiments/) for the full study, numbers, and figures.
+mapping to the three columns of the paper's memory table.
 
 | Scope | What persists | n | Boundary |
 |---|---|---|---|
@@ -133,9 +132,7 @@ after every problem.
 Memory results land through the result store at
 `alphadiana/analysis/io/result_store.py`; the run loop lives under
 `alphadiana/engine/` (`alphadiana/engine/runner.py`). The plots and the scope
-ladder are regenerated from the recorded results — see the
-[Memory experiments](../experiments/) page for the figures, the n=1 vs n=4
-caveats, and the oracle-feedback v2 control.
+ladder are regenerated from the recorded results.
 
 When reading a single-sample cell, treat Cross-Task and Transfer as n=1: their
 variance is roughly +/-0.2, so per-cell gaps should be read as directional, not

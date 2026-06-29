@@ -78,5 +78,4 @@ can plug into AlphaDiana as one candidate agent and have its solves scored here.
 - **[Harnesses](./harnesses/)**: `direct_llm`, `opencode`, `openclaw`, `zeroclaw`, and skills.
 - **[Benchmarks](./benchmarks/)**: the supported task sets and how to add one.
 - **[Configuration](./configuration/)**: the YAML schema, CLI overrides, and run-id conventions.
-- **[Experiments](./experiments/)**: the Tool / Skill / Memory micro-studies.
 - **[Contributing](./contribution/)**: adding harnesses and benchmarks, engineering conventions.

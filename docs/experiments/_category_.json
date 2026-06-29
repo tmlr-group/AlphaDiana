@@ -1,9 +1,0 @@
-{
-  "label": "Experiments",
-  "position": 8,
-  "link": {
-    "type": "generated-index",
-    "title": "Experiments",
-    "description": "The micro-studies that vary one harness capability at a time: Tool exposure, Skill loading, and Memory (Cross-Sample / Cross-Task / Transfer, plus oracle-feedback)."
-  }
-}

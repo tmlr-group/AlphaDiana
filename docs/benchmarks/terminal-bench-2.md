@@ -239,6 +239,56 @@ Local repair follow-up in the same official checkout:
 Treat that repaired bundle as the current local smoke-valid signal for the
 official `direct_llm` path on OpenRouter/Qwen.
 
+## Official leaderboard path (Harbor + Terminus-2)
+
+The sections above are the AlphaDiana container-agent path. To run the
+*official/leaderboard* configuration instead (standalone Harbor CLI + the
+upstream `terminus-2` agent, orchestrated by `alphadiana.benchmark_rollout_cli`
+with backend `official_terminal_bench_2`), use the path below. Harbor owns the
+system prompt; `alphadiana/agent/terminal_bench2_docker.py` is not on this path.
+
+vLLM endpoint (Qwen3.5-27B; the serve-side flags match the official spec):
+
+```bash
+python -m vllm.entrypoints.openai.api_server \
+  --model Qwen/Qwen3.5-27B --host 0.0.0.0 --port <port> \
+  --trust-remote-code --enable-auto-tool-choice --tool-call-parser qwen3_coder \
+  --tensor-parallel-size 2 --gpu-memory-utilization 0.9 \
+  --max-model-len 262144 --generation-config vllm \
+  --override-generation-config '{"presence_penalty": 1.5}' \
+  --served-model-name qwen3.5-27b Qwen/Qwen3.5-27B
+```
+
+`--enable-auto-tool-choice --tool-call-parser qwen3_coder` is required for
+`terminus-2` to issue tool calls; `--generation-config vllm` ignores the model's
+shipped sampling defaults; omitting `--reasoning-parser` keeps thinking tokens in
+`message.content`.
+
+Install Harbor + Terminus-2:
+
+```bash
+export DIRECTLLM_TB2_ROOT=/path/to/terminal-bench-2
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv tool install harbor          # installs the `harbor` binary
+```
+
+Run (manifest checked in at `configs/full_runs/terminal_bench_v2.yaml`):
+
+```bash
+python -m alphadiana.benchmark_rollout_cli summary     --manifest configs/full_runs/terminal_bench_v2.yaml
+python -m alphadiana.benchmark_rollout_cli preflight   --manifest configs/full_runs/terminal_bench_v2.yaml --probe-vllm --check-docker
+python -m alphadiana.benchmark_rollout_cli materialize --manifest configs/full_runs/terminal_bench_v2.yaml --output-dir generated/terminal_bench_v2
+bash generated/terminal_bench_v2/*.run.sh
+```
+
+The generated shell runs `harbor run --dataset terminal-bench@2.0 --agent
+terminus-2 --model openai/qwen3.5-27b ...` at `temperature=0.0`,
+`reasoning_effort=high`, `top_p=0.95`, `max_tokens=131072`, `--n-concurrent 10`
+(pass@1). Outputs land in `$DIRECTLLM_TB2_ROOT/jobs/<run_id>/`. Renderer and
+dispatch live in `alphadiana/utils/rollout_campaign.py`
+(`_render_official_tb2_command`, `render_run_command`); Harbor upstream is
+<https://github.com/laude-institute/harbor>.
+
 ## Prepare Tasks
 
 Clone a local task checkout:
