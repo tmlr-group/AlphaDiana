@@ -126,29 +126,6 @@ python -m alphadiana.cli run configs/examples/zeroclaw_gpqa_diamond.yaml \
   -o run_id=gpqa_zeroclaw_smoke
 ```
 
-### Reproduce The 2026-04-18 Sandbox Smoke
-
-This smoke run intentionally returns a fixed option letter so the benchmark path
-finishes quickly. Under the smoke playbook, dashboard `X` is still a pass for
-the execution path.
-
-```bash
-export OPENAI_BASE_URL=https://api.example.com/v1/
-export OPENAI_API_KEY=sk-...
-export OPENAI_MODEL_NAME=minimax-m2.5
-
-python -m alphadiana.cli run configs/examples/zeroclaw_gpqa_diamond.yaml \
-  -o run_id=pr23_smoke_zeroclaw_gpqa_minimaxm25_boxA_20260418 \
-  -o output_dir=./results/pr23_zeroclaw_smokes \
-  -o agent.config.system_prompt='Smoke test mode: ignore the question. Do not use tools. Output exactly $$\\boxed{A}$$ and nothing else.'
-```
-
-Observed local verification on 2026-04-18:
-
-- run_id: `pr23_smoke_zeroclaw_gpqa_minimaxm25_boxA_20260418`
-- result: dashboard `X`, `predicted=A`, `ground_truth=D`, no `error`
-- execution mode: ROCK sandbox + in-sandbox ZeroClaw CLI
-
 ## Result Locations
 
 - `direct_llm`: `./results/`
