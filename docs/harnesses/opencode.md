@@ -312,7 +312,11 @@ python -m alphadiana.cli run configs/examples/opencode_minimax_imo_answerbench.y
 ```
 
 The docker image installs Ubuntu 22.04, Node.js 22, `opencode-ai` 1.3.2, and
-standard shell tools. For the podman controller:
+standard shell tools. If Docker Hub is blocked (e.g. behind a proxy), the
+`--network host` flag above lets the build reach the host's network, but you
+must also configure a transparent proxy or mirror for `archive.ubuntu.com`
+(apt) and `registry.npmjs.org` (npm) so the apt and `npm install` layers can
+resolve. For the podman controller:
 
 ```bash
 podman build \

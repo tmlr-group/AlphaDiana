@@ -77,6 +77,12 @@ CUDA_VISIBLE_DEVICES=0 python -m vllm.entrypoints.openai.api_server \
     --trust-remote-code
 ```
 
+Harnesses that use tool calling (`openclaw`, and the SWE / terminal-bench
+agents) need the server started with `--enable-auto-tool-choice
+--tool-call-parser <parser>`, where `<parser>` matches the model (for example
+`qwen3_coder` for Qwen3.5, `hermes` for Qwen3). `direct_llm` does not require it.
+See [openclaw](../harnesses/openclaw) for details.
+
 ## ROCK bring-up (optional, for openclaw / zeroclaw)
 
 `direct_llm` and the host/Docker-controller harnesses (`opencode`, plus

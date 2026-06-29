@@ -174,7 +174,13 @@ immediately:
 
 - `ROCK_PROJECT_ROOT` is not set (Ray workers need it; restart Ray after
   setting it).
-- The `.venv` symlink does not point at a valid Python environment.
+- The `.venv` symlink does not point at a valid Python environment. Repoint it
+  at the active interpreter:
+
+  ```bash
+  ln -sfn "$(python -c 'import sys; print(sys.prefix)')" ref/ROCK/.venv
+  ```
+
 - The `gem-llm` dependency is not installed.
 
 If the pre-flight reports a port-ownership mismatch, resolve the actual ports
@@ -187,6 +193,87 @@ python scripts/find_rock_ports.py --write-env scripts/.rock_ports.env
 See [../harnesses/openclaw](../harnesses/openclaw) for the OpenClaw reliability
 contract and [../harnesses/zeroclaw](../harnesses/zeroclaw) for the
 sandbox-only ZeroClaw path.
+
+### Docker socket `permission denied`
+
+Sandbox and ROCK containers talk to the Docker daemon over its socket. If the
+current shell is not in the `docker` group, container operations fail with
+`permission denied`. Pick up the group membership without logging out:
+
+```bash
+newgrp docker   # or re-login
+```
+
+After `newgrp docker` the shell is fresh, so re-run `conda activate`,
+`source scripts/rock_env.sh`, and `source scripts/.rock_ports.env`.
+
+### Stale Ray session metadata in the checkout Redis
+
+If `ray start --head` aborts with `Session name ... does not match persisted
+value ... Perhaps there was an error connecting to Redis`, this checkout's
+isolated Redis still holds stale Ray session metadata. Recreate that checkout's
+`ROCK_REDIS_CONTAINER` and clear its `RAY_TMPDIR` before retrying the Ray
+startup. The start scripts (`scripts/start_zeroclaw.sh`,
+`scripts/start_openclaw.sh`) also restart an unhealthy local Ray head instead of
+reusing any listener on the GCS port, so re-running them is the simplest fix.
+
+### `alphadiana env` loses `admin` while the GCS port is still open
+
+A stale Ray head can keep listening on the GCS port (e.g. `6380`) while being
+unhealthy, so `alphadiana env` reports the `admin` endpoint as down. Restart the
+Ray head by re-running `bash scripts/start_zeroclaw.sh` or
+`bash scripts/start_openclaw.sh`.
+
+### `start_async` returns `404`
+
+ROCK admin and proxy bind to different ports, and `/start_async` is served by
+the admin. A `404` usually means the request hit the proxy port instead. The
+admin and proxy ports default to `9000` and `9001`
+(`alphadiana/utils/rock_ports.py`, overridable via `ROCK_ADMIN_PORT` /
+`ROCK_PROXY_PORT`). Disambiguate which process owns which port:
+
+```bash
+ss -ltnp | grep ':9000\|:9001'   # or your configured ROCK_ADMIN_PORT / ROCK_PROXY_PORT
+```
+
+- admin port (default `9000`) -> `rock.admin.main --role admin`
+- proxy port (default `9001`) -> `rock.admin.main --role proxy`
+
+### `alphadiana run` fails with `ROCK proxy failed` after about 120s
+
+Either an old ROCK proxy path still hardcodes a `120s` stream read timeout, or
+this checkout is sharing stale ports/env with another instance. Fix it with a
+dedicated env, dedicated ports, and the current `ref/ROCK` patch active (the
+patched proxy uses a connect-only timeout from `ProxyServiceConfig.timeout`, so
+long model calls are no longer cut off at two minutes).
+
+### `OPENAI_BASE_URL` keeps the old provider silently
+
+`source scripts/activate.sh` loads `.env` into the current shell. A wrapper that
+sets defaults with shell-default syntax such as
+`OPENAI_BASE_URL="${OPENAI_BASE_URL:-http://localhost:8011/v1}"` lets any
+existing `.env` or parent-shell `OPENAI_*` value win, so the wrapper silently
+keeps the old provider. For local-model runs, either export `OPENAI_BASE_URL`,
+`OPENAI_API_KEY`, and `OPENAI_MODEL_NAME` explicitly after activation, or unset
+them first before applying local defaults. When in doubt, verify the effective
+provider from the final `alphadiana.cli run ...` argv or `/proc/<pid>/environ`.
+
+### Long-lived services and stale env files
+
+`scripts/quickstart.sh` is a bootstrap helper, not a daemon supervisor. If your
+shell runner reaps background children after a command exits, keep
+`ray start --head --block`, ROCK admin, and ROCK proxy in dedicated long-lived
+terminal sessions for the duration of the run. If you start ROCK admin manually,
+use a runtime `ROCK_CONFIG` whose `ray.address` points at this checkout's active
+Ray GCS port; otherwise admin falls back to a local default Ray init and later
+exits with `GCS unavailable` even though the intended Ray head is healthy.
+
+`scripts/.alphadiana_env` is local, git-ignored state. If it points at a missing
+checkout or the wrong ROCK root, regenerate it:
+
+```bash
+bash scripts/setup_alphadiana_rock.sh   # or: bash scripts/quickstart.sh
+```
 
 ## vLLM transient crashes producing `None` records
 
@@ -252,5 +339,12 @@ the full entry points live under `configs/full_runs/`.
 | Agent requests fail oddly | Proxy vars leaking into sandbox | `source scripts/rock_env.sh` |
 | `api_key` rejected at validation | Literal `EMPTY` value | use `sk-EMPTY` |
 | Pre-flight fails for OpenClaw/ROCK | ROCK services down or wrong ports | `alphadiana env`, then start/repair ROCK |
+| Docker socket `permission denied` | Shell lacks `docker` group | `newgrp docker` (then re-activate env) |
+| Sandbox container exits immediately | `ref/ROCK/.venv` missing/invalid | `ln -sfn "$(python -c 'import sys; print(sys.prefix)')" ref/ROCK/.venv` |
+| `ray start --head` aborts with `Session name ... does not match persisted value` | Stale Ray metadata in checkout Redis | recreate `ROCK_REDIS_CONTAINER`, clear `RAY_TMPDIR` |
+| `start_async` returns `404` | Hit proxy port instead of admin | `ss -ltnp \| grep ':9000\|:9001'` (admin 9000, proxy 9001 by default) |
+| `ROCK proxy failed` after ~120s | Old proxy stream timeout or shared stale ports/env | dedicated env + ports, current `ref/ROCK` patch active |
+| Wrong provider despite exported vars | `OPENAI_BASE_URL:-` default kept stale `.env` value | export `OPENAI_*` explicitly or unset first; check argv |
+| Stale `scripts/.alphadiana_env` | Points at missing checkout/wrong ROCK root | `bash scripts/setup_alphadiana_rock.sh` |
 | Records have `predicted: null` | vLLM transient crash | check `/v1/models`, drop bad records, re-run |
 | Run completes with 0 tasks | `max_tasks: 0` | omit `max_tasks` or use a positive count |

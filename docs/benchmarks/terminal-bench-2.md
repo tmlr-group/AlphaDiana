@@ -139,6 +139,29 @@ export OPENAI_BASE_URL=https://openrouter.ai/api/v1
 export OPENAI_MODEL_NAME=qwen/qwen3.5-27b
 ```
 
+### Model-Pin Caveat
+
+The general "some smoke configs pin the model in YAML" rule lives in
+`benchmarks/index.md`. This is the concrete tb2 case.
+
+`configs/examples/terminal_bench2_directllm_minimax.yaml` hard-pins
+`agent.config.model: "minimax-m2.5"`, so it ignores `OPENAI_MODEL_NAME`
+(it still reads `api_base` / `api_key` from `OPENAI_BASE_URL` /
+`OPENAI_API_KEY`). To run a different model on that config, override the
+agent config explicitly:
+
+```bash
+python -m alphadiana.cli run configs/examples/terminal_bench2_directllm_minimax.yaml \
+  -o agent.config.model=... \
+  -o agent.config.api_base=... \
+  -o agent.config.api_key=...
+```
+
+The `opencode`, `openclaw`, and `zeroclaw` tb2 example configs read the model
+from the environment (`${OPENAI_MODEL_NAME}`), so for those switching the env
+vars is enough. The `zeroclaw` config additionally accepts
+`-o agent.config.logs_base_dir=...` when redirecting log output.
+
 You also need:
 
 - Docker
