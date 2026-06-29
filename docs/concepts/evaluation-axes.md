@@ -41,7 +41,8 @@ correct baseline for measuring memory's contribution. Conversely **Tool-on**
 (harness default) and **Memory-off** are the same data point reported under two
 names for table self-containment.
 
-For the Skill axis mechanics see [Skill bundles](../harnesses/skills). The rest
+For the Skill axis mechanics (skill bundles mounted via `agent.config.skill_folder`),
+see the [Harnesses overview](../harnesses/). The rest
 of this page covers the Memory axis, the only axis that adds a second dimension
 (scope) on top of on/off.
 

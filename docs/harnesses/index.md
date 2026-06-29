@@ -23,8 +23,8 @@ Each harness has its own page:
 - [openclaw](./openclaw) — ROCK gateway agent with lancedb memory.
 - [zeroclaw](./zeroclaw) — native Rust CLI agent with sqlite memory.
 
-The shared [Skills](./skills) bundles (file bundles mounted into a harness
-sandbox) are documented separately.
+Shared skill bundles (file bundles mounted into a harness sandbox) are described
+in [Skills](#skills) below.
 
 ## The `Agent` contract
 
@@ -215,5 +215,4 @@ Skills are file bundles under `alphadiana/harness/skills/<name>/`, each with a
 top-level `SKILL.md`. They are selected with `agent.config.skill_folder` (a bare
 name resolves to the shipped bundle; a path is used as-is) and mounted into the
 sandbox per harness. They are **not** auto-injected into context; the system
-prompt must instruct the model to read the mounted `SKILL.md`. See
-[Skills](./skills) for the full reference.
+prompt must instruct the model to read the mounted `SKILL.md`.

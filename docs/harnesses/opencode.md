@@ -277,7 +277,7 @@ Read by `OpenCodeAgent.setup()` (`agent.py:708`):
 | `enable_thinking` | — | via `options.chat_template_kwargs` |
 | `variant` / `agent` / `agent_md_path` / `agent_md_content` | — | opencode agent selection |
 | `system_prompt` | — | prepended system text |
-| `skill_folder` | — | mounted skill bundle (see [Skills](../harnesses/skills)) |
+| `skill_folder` | — | mounted skill bundle |
 | `opencode_bin` | `opencode` | CLI binary name |
 | `streaming` | — | provider streaming |
 | `print_logs` / `log_level` | — | diagnostics |
@@ -389,5 +389,4 @@ calling does not work with opencode at all.
 | `alphadiana/benchmarks/terminal_bench2/deploy/dockerfiles/Dockerfile.opencode-controller` | docker controller image |
 
 See also: [direct_llm](../harnesses/direct-llm),
-[OpenClaw](../harnesses/openclaw), [ZeroClaw](../harnesses/zeroclaw),
-[Skills](../harnesses/skills).
+[OpenClaw](../harnesses/openclaw), and [ZeroClaw](../harnesses/zeroclaw).

@@ -132,7 +132,7 @@ logprob-capture proxies, and the per-harness internals, start at the
 [direct_llm](../harnesses/direct-llm), [opencode](../harnesses/opencode),
 [openclaw](../harnesses/openclaw), [zeroclaw](../harnesses/zeroclaw). File
 bundles a harness can mount into its sandbox are covered in
-[Skills](../harnesses/skills).
+[Adding a Harness](./new-harness).
 
 ## Add a scorer
 
