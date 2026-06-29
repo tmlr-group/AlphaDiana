@@ -204,6 +204,6 @@ and special-case `"frozen"` to suppress the post-task memory store. See
 Scored results are written by `ResultStore`
 (`alphadiana/analysis/io/result_store.py`): one redacted JSON record per
 `(task_id, sample_index)` appended to `{run_id}.jsonl`, plus per-task JSON,
-artifacts, and logprob sidecars under `{run_id}/`. See the
-[Dashboard](../dashboard.md) page and the per-benchmark pages for reading and
-reporting on a run.
+artifacts, and logprob sidecars under `{run_id}/`. See
+[Scoring & Results](../architecture/scoring-and-results) and the per-benchmark pages
+for reading and reporting on a run.

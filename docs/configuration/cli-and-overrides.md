@@ -160,8 +160,7 @@ results/
 
 Each JSONL record embeds the problem, `ground_truth`, `predicted` (the response answer),
 `correct`, `score`, the (normalized) trajectory, token usage, and a `score_status`. See the
-[Result Store](../architecture/scoring-and-results) page for the full record shape, and [Dashboard](../dashboard)
-for `status/dashboard.txt`.
+[Result Store](../architecture/scoring-and-results) page for the full record shape.
 
 ## `num_samples` conventions
 

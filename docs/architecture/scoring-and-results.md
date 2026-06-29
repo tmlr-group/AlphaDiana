@@ -204,8 +204,7 @@ alphadiana report <results_dir>
 
 `alphadiana report` iterates every `*.jsonl` in the directory, builds a
 `ResultStore(output_dir=results_dir, run_id=<file stem>)`, prints `to_markdown()`, and warns
-on `strict_report_issues`. The same numbers surface in the
-[dashboard Run Detail view](../dashboard).
+on `strict_report_issues`.
 
 ## Reading & analyzing results
 
