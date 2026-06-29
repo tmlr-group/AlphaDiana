@@ -329,6 +329,42 @@ queue is healthy: long thinking-on samples can run near 30 tokens/sec, so a
 | `oracle_feedback` | `False` | self-grading four-tuple store |
 | `capture_logprobs` / `top_logprobs` | — | logprob capture |
 
+## vLLM tool-calling & timeout layers
+
+### vLLM serving requirement
+
+OpenClaw drives multi-round inference through tool calling, so the vLLM server
+must be started with `--enable-auto-tool-choice --tool-call-parser <parser>`.
+Without it, vLLM returns HTTP 400
+`auto tool choice requires --enable-auto-tool-choice` on the first tool-bearing
+request.
+
+The `<parser>` value is parser- and model-specific: older Qwen3-8B configs use
+`hermes`, while current `Qwen3.5-27B` configs use `qwen3_coder`. Use the parser
+named by your model card / config, not a fixed value.
+
+### Layered timeouts for empty/timeout responses
+
+An empty or timed-out OpenClaw response can be cut off at any one of several
+layers. Check them in order:
+
+1. **Gateway agent timeout.** `openclaw.json -> agents.defaults.timeoutSeconds`.
+   AlphaDiana derives this from `agent.config.request_timeout` and writes it into
+   **both** `agents.defaults.timeoutSeconds` and `tools.exec.timeoutSec`, and
+   also sets ROCK `agent_run_timeout` (`runtime.py:484`, `633`, `650`, `1085`).
+2. **ROCK proxy.** `proxy_service.timeout` (raise via the ROCK YAML / `ROCK_CONFIG`,
+   e.g. `proxy_service.timeout: 600`). Older external ROCK checkouts hardcode
+   `timeout=120` in `rock/sandbox/service/sandbox_proxy_service.py`; patch the
+   per-request timeout to use `read=None` plus a bounded connect timeout.
+3. **Client.** `agent.config.request_timeout` (default `1800`s; `agent.py:996`).
+4. **undici stream watchdog.** The prebuilt embedded provider is patched via
+   `OPENCLAW_UNDICI_STREAM_TIMEOUT_MS` (`runtime.py:677`). When diagnosing
+   `~1800s` empty-response retries, inspect the sandbox `openclaw.json` and the
+   generated ROCK `run_cmd` patch for `opts?.timeoutMs ?? 18e5`.
+5. **`max_tokens`.** Set `65536`+ so thinking models do not exhaust the budget
+   before emitting output. AlphaDiana auto-retries empty responses (~5 attempts;
+   `empty_response` backoff starts ~60s).
+
 ## Logprob capture
 
 `OpenClawLogprobProxy` (`runtime.py:254`) is a host-side MITM HTTP proxy reachable

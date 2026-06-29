@@ -14,9 +14,8 @@ The key idea: the agent tool loop lives entirely inside the Rust binary.
 AlphaDiana sets the ceiling (`max_tool_iterations` is a TOML knob, not a Python
 loop) and reads back the result. It never counts tool calls itself.
 
-For the AIME 2026 walkthrough, see the
-[ZeroClaw + AIME 2026 tutorial](../tutorial_zeroclaw_aime2026) and the
-[runbook](../zeroclaw_aime2026_runbook). Sibling harnesses:
+For the AIME 2026 walkthrough, see the [AIME benchmark page](../benchmarks/aime).
+Sibling harnesses:
 [direct_llm](./direct-llm), [opencode](./opencode), [openclaw](./openclaw).
 
 ## Registration and dispatch
@@ -284,6 +283,80 @@ records are drained into token-entropy stats via
 `runtime_trace_mode` to `"full"`.
 
 ## Running
+
+### Installing the binary
+
+The harness expects `zeroclaw` on `PATH` (in the image for ROCK, or on the host
+for local mode). To build it from source you need a Rust toolchain:
+
+```bash
+cargo install zeroclawlabs
+```
+
+The agent also accepts an in-config fallback. When `command -v zeroclaw` fails
+in the sandbox and no `binary_source_image` upload succeeds,
+`_ensure_sandbox_binary` raises and points you at `agent.config.install_command`;
+set it so the agent runs the install itself:
+
+```yaml
+agent:
+  config:
+    install_command: "cargo install zeroclawlabs"
+```
+
+### Local mode (no ROCK)
+
+For a no-infra smoke run (no Docker image, no `start_zeroclaw.sh`, no ROCK
+services) use the `local` sandbox. `LocalSession` shells `zeroclaw` directly on
+the host via `subprocess` in a `tempfile.mkdtemp(prefix="alphadiana_local_")`
+workspace.
+
+A dedicated example config exists at
+`configs/examples/zeroclaw_aime2026_local_smoke.yaml`. Note: `ZeroClawAgent.solve`
+raises without a live sandbox, and a zeroclaw config with no `rock_image` does
+**not** auto-create a ROCK sandbox (`_needs_auto_rock_sandbox` returns false), so
+local mode must request the `local` sandbox explicitly rather than leaving
+`sandbox: null`:
+
+```yaml
+sandbox:
+  name: local
+```
+
+Then validate and run:
+
+```bash
+source scripts/activate.sh
+
+export OPENAI_BASE_URL=https://api.example.com/v1/
+export OPENAI_API_KEY=sk-...
+export OPENAI_MODEL_NAME=minimax-m2.5
+
+alphadiana validate configs/examples/zeroclaw_aime2026_local_smoke.yaml
+alphadiana run      configs/examples/zeroclaw_aime2026_local_smoke.yaml
+```
+
+### Stronger host isolation
+
+By default the ROCK worker can mount the host project tree and `.venv` into the
+sandbox. To keep the host tree out, set both knobs together:
+
+```bash
+# before starting ROCK: pip (or uv) worker env instead of the default 'local'
+export ROCK_WORKER_ENV_TYPE=pip
+bash scripts/start_zeroclaw.sh
+```
+
+```yaml
+agent:
+  config:
+    rock_use_kata_runtime: true   # ROCK uses Kata instead of privileged Docker
+```
+
+`rock_use_kata_runtime` maps to the sandbox's `use_kata_runtime` flag in the
+runner's auto-sandbox config.
+
+### ROCK mode
 
 ROCK mode prerequisites:
 
