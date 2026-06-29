@@ -94,14 +94,15 @@ bottom of the module (e.g. `benchmarks/aime/benchmark.py:153`,
 `benchmarks/gpqa/benchmark.py:154`); a `register_benchmark(name)` decorator also
 exists in `registry.py`. For network datasets, prefer
 `load_dataset_with_retry(...)` from `benchmarks/base.py`, which handles HF hub
-rate limits and read-only cache errors. See the existing
-[Benchmarks](../benchmarks/) for per-dataset examples.
+rate limits and read-only cache errors. See [Adding a Benchmark](./new-benchmark)
+for the full walkthrough, and the existing [Benchmarks](../benchmarks/) for
+per-dataset examples.
 
 ## Add a harness
 
 A harness is an `Agent`: the code that takes a `BenchmarkTask` and produces an
 answer. This is the most involved extension point and has its own dedicated
-documentation, but the contract is small. Subclass `Agent`, set `name`, and
+walkthrough ([Adding a Harness](./new-harness)), but the contract is small. Subclass `Agent`, set `name`, and
 implement `setup(config)` and `solve(task, sandbox=None) -> AgentResponse`
 (plus an optional `teardown()`):
 

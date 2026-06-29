@@ -3,11 +3,6 @@
 AIME benchmark runs use `benchmark.name: aime` with numeric scoring on
 `MathArena/aime_2026`.
 
-For the older ZeroClaw-specific AIME walkthroughs, use:
-
-- `docs/zeroclaw_aime2026_runbook.md`
-- `docs/tutorial_zeroclaw_aime2026.md`
-
 ## Prerequisites
 
 Run from the repository root:
