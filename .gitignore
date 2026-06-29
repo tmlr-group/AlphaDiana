@@ -81,3 +81,12 @@ node_modules/
 .openclaw
 .env
 .codex
+
+# Docusaurus website
+/node_modules
+/build
+/.docusaurus
+.docusaurus/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
