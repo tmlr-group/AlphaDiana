@@ -307,9 +307,6 @@ Observed on April 18/19/20, 2026:
   - April 20 default-Docker confirmation rerun:
     `pilot_20260420_qwen35_27b_imo_answerbench_opencode_t3_docker_default`
     wrote `3/3` normal task records with scores `1/0/0`
-  - April 20 rerun中三条 task JSON 都记录了
-    `metadata.controller_mode=docker` 和
-    `metadata.transport=opencode_cli_container`
 
 Local follow-up on April 19, 2026:
 
