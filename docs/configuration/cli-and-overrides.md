@@ -79,7 +79,7 @@ alphadiana env
 ```
 
 Reports ROCK service status (admin, proxy, redis, docker) and ownership, and prints the
-commands to start anything that is down. See [Quickstart Commands](../quickstart_commands)
+commands to start anything that is down. See [Quickstart Commands](../getting-started/quick-start)
 for the full bring-up sequence.
 
 ### `list-benchmarks`
@@ -228,4 +228,4 @@ vLLM use `sk-EMPTY` or any other non-`EMPTY` string.
 For agent-specific config blocks see the harness pages
 ([direct_llm](../harnesses/direct-llm), [zeroclaw](../harnesses/zeroclaw),
 [opencode](../harnesses/opencode), [openclaw](../harnesses/openclaw)). For sandbox and
-isolation modes see [Benchmark Isolation](../benchmark-isolation).
+isolation modes see [Benchmark Isolation](../concepts/isolation-and-fairness).

@@ -26,7 +26,7 @@ A run is the product of three independent choices:
 - the **harness** (an `Agent`) selected by `agent.name`.
 
 Every harness implements the same contract: the `Agent` abstract base class in
-[`alphadiana/harness/base.py`](../alphadiana-file-map.md). It defines
+[`alphadiana/harness/base.py`](../architecture/). It defines
 `setup(config: dict)`, `solve(task: BenchmarkTask, sandbox=None) -> AgentResponse`,
 and a no-op `teardown()`, plus class attributes `name` and `version`. The engine
 sets `agent.version`, then calls `setup()` once and `solve()` per task
@@ -42,7 +42,7 @@ extended observability fields such as `reasoning_trajectory`, `request_messages`
 two harnesses are compared on an identical record schema. Raw harness runtime
 artifacts are normalized into these fields by
 `alphadiana/harness/proxies/preservation.py`, and the result store at
-[`alphadiana/analysis/io/result_store.py`](../alphadiana-file-map.md) writes them
+[`alphadiana/analysis/io/result_store.py`](../architecture/) writes them
 to disk.
 
 ### The registry
@@ -223,4 +223,4 @@ prompt-level concern, which makes it a clean micro axis to ablate.
 
 - [Tool / Skill / Memory axes](./evaluation-axes) — the micro ablation design.
 - [Direct LLM, OpenCode, OpenClaw, ZeroClaw](../harnesses/) — per-harness reference pages.
-- [Benchmark isolation](../benchmark-isolation.md) — keeping comparisons fair across harnesses.
+- [Benchmark isolation](./isolation-and-fairness) — keeping comparisons fair across harnesses.

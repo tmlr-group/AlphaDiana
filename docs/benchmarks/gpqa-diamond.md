@@ -43,10 +43,6 @@ rate limits.
 | `opencode` | smoke/debug supported | `configs/examples/opencode_gpqa_diamond.yaml` | `configs/full_runs/rollout_full_opencode_gpqa_diamond.yaml` |
 | `zeroclaw` | smoke/debug supported | `configs/examples/zeroclaw_gpqa_diamond.yaml` | `configs/full_runs/rollout_full_zeroclaw_gpqa_diamond.yaml` |
 
-For the staged `72`-run local-vLLM campaign, use
-[full-rollout-local-vllm-20260419.md](full-rollout-local-vllm-20260419.md)
-instead of launching the four full configs manually.
-
 For local-vLLM `Qwen/Qwen3.5-27B` logprob smoke checks, the checked-in
 Phase 11 configs cover OpenCode, OpenClaw, and ZeroClaw:
 
@@ -58,8 +54,7 @@ python -m alphadiana.cli run configs/full_runs/phase11_zeroclaw_gpqa_diamond_qwe
 
 OpenClaw and ZeroClaw use a host-side provider proxy for logprob capture on the
 ROCK path. The proxy injects the logprob request fields and uses a random
-per-proxy bearer token for sandbox access. Current validation evidence is in
-[`context/phase12-harness-logprob-smokes/run_evidence.md`](../../context/phase12-harness-logprob-smokes/run_evidence.md).
+per-proxy bearer token for sandbox access.
 
 ## Full Run
 
