@@ -1,0 +1,72 @@
+/**
+ * Any CSS included here will be global. The classic template
+ * bundles Infima by default. Infima is a CSS framework designed to
+ * work well for content-centric websites.
+ *
+ * AlphaDiana identity: teal primary + amber accent (distinct from the
+ * AlphaApollo blue family). Typography pairs Space Grotesk (display) with
+ * Inter (body) for a more deliberate, less "default Infima" feel.
+ */
+
+:root {
+  /* Brand palette — teal */
+  --ifm-color-primary: #0d9488;
+  --ifm-color-primary-dark: #0c857a;
+  --ifm-color-primary-darker: #0b7d72;
+  --ifm-color-primary-darkest: #09675e;
+  --ifm-color-primary-light: #14b8a6;
+  --ifm-color-primary-lighter: #2dd4bf;
+  --ifm-color-primary-lightest: #5eead4;
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(13, 148, 136, 0.10);
+
+  /* Typography: inherit the default Docusaurus/Infima system font stack to
+     match AlphaApollo (which adds no custom fonts). */
+
+  /* AlphaDiana design tokens */
+  --diana-primary: #0d9488;
+  --diana-primary-dark: #0c857a;
+  --diana-secondary: #f59e0b;   /* amber accent */
+  --diana-accent: #f97316;      /* warm orange highlight */
+  --diana-night: #0f172a;       /* slate-900 surface */
+  --diana-gray-50: #f9fafb;
+  --diana-gray-100: #f3f4f6;
+  --diana-gray-200: #e5e7eb;
+  --diana-gray-800: #1f2937;
+  --diana-gray-900: #111827;
+  --diana-section-padding: 4rem 0;
+  --diana-card-padding: 2rem;
+  --diana-border-radius: 12px;
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #2dd4bf;
+  --ifm-color-primary-dark: #14b8a6;
+  --ifm-color-primary-darker: #0d9488;
+  --ifm-color-primary-darkest: #0c857a;
+  --ifm-color-primary-light: #5eead4;
+  --ifm-color-primary-lighter: #99f6e4;
+  --ifm-color-primary-lightest: #ccfbf1;
+  --docusaurus-highlighted-code-line-bg: rgba(45, 212, 191, 0.16);
+}
+
+/* Shared section helpers */
+.section-white {
+  background: #fff;
+}
+
+.section-gray {
+  background: var(--diana-gray-50);
+}
+
+[data-theme='dark'] .section-white {
+  background: var(--ifm-background-color);
+}
+
+[data-theme='dark'] .section-gray {
+  background: var(--ifm-background-surface-color);
+}
+
+.button--primary {
+  box-shadow: 0 12px 30px rgba(13, 148, 136, 0.25);
+}
