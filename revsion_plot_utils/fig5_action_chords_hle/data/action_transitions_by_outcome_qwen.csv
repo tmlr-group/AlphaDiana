@@ -1,0 +1,839 @@
+benchmark,harness,outcome,from_action,to_action,transition_count,transition_total,transition_fraction
+AIMEPass4,DirectLLM,failure,Answer Delivery,Result Auditing,5,19852,0.00025186
+AIMEPass4,DirectLLM,failure,Answer Delivery,Solution Execution,4,19852,0.00020149
+AIMEPass4,DirectLLM,failure,Answer Delivery,__END__,11,19852,0.00055410
+AIMEPass4,DirectLLM,failure,Plan Formation,Answer Delivery,1,19852,0.00005037
+AIMEPass4,DirectLLM,failure,Plan Formation,Plan Formation,1395,19852,0.07027000
+AIMEPass4,DirectLLM,failure,Plan Formation,Problem Framing,29,19852,0.00146081
+AIMEPass4,DirectLLM,failure,Plan Formation,Result Auditing,251,19852,0.01264356
+AIMEPass4,DirectLLM,failure,Plan Formation,Solution Execution,2066,19852,0.10407012
+AIMEPass4,DirectLLM,failure,Problem Framing,Plan Formation,22,19852,0.00110820
+AIMEPass4,DirectLLM,failure,Problem Framing,Problem Framing,1,19852,0.00005037
+AIMEPass4,DirectLLM,failure,Problem Framing,Result Auditing,10,19852,0.00050373
+AIMEPass4,DirectLLM,failure,Problem Framing,Solution Execution,122,19852,0.00614548
+AIMEPass4,DirectLLM,failure,Result Auditing,Answer Delivery,3,19852,0.00015112
+AIMEPass4,DirectLLM,failure,Result Auditing,Plan Formation,325,19852,0.01637115
+AIMEPass4,DirectLLM,failure,Result Auditing,Problem Framing,14,19852,0.00070522
+AIMEPass4,DirectLLM,failure,Result Auditing,Result Auditing,225,19852,0.01133387
+AIMEPass4,DirectLLM,failure,Result Auditing,Solution Execution,1324,19852,0.06669353
+AIMEPass4,DirectLLM,failure,Solution Execution,Answer Delivery,16,19852,0.00080596
+AIMEPass4,DirectLLM,failure,Solution Execution,Plan Formation,2000,19852,0.10074552
+AIMEPass4,DirectLLM,failure,Solution Execution,Problem Framing,111,19852,0.00559138
+AIMEPass4,DirectLLM,failure,Solution Execution,Result Auditing,1397,19852,0.07037074
+AIMEPass4,DirectLLM,failure,Solution Execution,Solution Execution,10509,19852,0.52936732
+AIMEPass4,DirectLLM,failure,__START__,Result Auditing,3,19852,0.00015112
+AIMEPass4,DirectLLM,failure,__START__,Solution Execution,8,19852,0.00040298
+AIMEPass4,DirectLLM,success,Answer Delivery,Answer Delivery,1,56207,0.00001779
+AIMEPass4,DirectLLM,success,Answer Delivery,Plan Formation,2,56207,0.00003558
+AIMEPass4,DirectLLM,success,Answer Delivery,Result Auditing,26,56207,0.00046258
+AIMEPass4,DirectLLM,success,Answer Delivery,Solution Execution,67,56207,0.00119202
+AIMEPass4,DirectLLM,success,Answer Delivery,__END__,109,56207,0.00193926
+AIMEPass4,DirectLLM,success,Plan Formation,Answer Delivery,16,56207,0.00028466
+AIMEPass4,DirectLLM,success,Plan Formation,Plan Formation,2015,56207,0.03584963
+AIMEPass4,DirectLLM,success,Plan Formation,Problem Framing,57,56207,0.00101411
+AIMEPass4,DirectLLM,success,Plan Formation,Result Auditing,378,56207,0.00672514
+AIMEPass4,DirectLLM,success,Plan Formation,Solution Execution,4729,56207,0.08413543
+AIMEPass4,DirectLLM,success,Problem Framing,Answer Delivery,2,56207,0.00003558
+AIMEPass4,DirectLLM,success,Problem Framing,Plan Formation,47,56207,0.00083619
+AIMEPass4,DirectLLM,success,Problem Framing,Problem Framing,6,56207,0.00010675
+AIMEPass4,DirectLLM,success,Problem Framing,Result Auditing,47,56207,0.00083619
+AIMEPass4,DirectLLM,success,Problem Framing,Solution Execution,267,56207,0.00475030
+AIMEPass4,DirectLLM,success,Result Auditing,Answer Delivery,19,56207,0.00033804
+AIMEPass4,DirectLLM,success,Result Auditing,Plan Formation,566,56207,0.01006992
+AIMEPass4,DirectLLM,success,Result Auditing,Problem Framing,33,56207,0.00058712
+AIMEPass4,DirectLLM,success,Result Auditing,Result Auditing,695,56207,0.01236501
+AIMEPass4,DirectLLM,success,Result Auditing,Solution Execution,4185,56207,0.07445692
+AIMEPass4,DirectLLM,success,Solution Execution,Answer Delivery,167,56207,0.00297116
+AIMEPass4,DirectLLM,success,Solution Execution,Plan Formation,4563,56207,0.08118206
+AIMEPass4,DirectLLM,success,Solution Execution,Problem Framing,269,56207,0.00478588
+AIMEPass4,DirectLLM,success,Solution Execution,Result Auditing,4340,56207,0.07721458
+AIMEPass4,DirectLLM,success,Solution Execution,Solution Execution,33492,56207,0.59586884
+AIMEPass4,DirectLLM,success,__START__,Plan Formation,2,56207,0.00003558
+AIMEPass4,DirectLLM,success,__START__,Problem Framing,4,56207,0.00007117
+AIMEPass4,DirectLLM,success,__START__,Result Auditing,12,56207,0.00021350
+AIMEPass4,DirectLLM,success,__START__,Solution Execution,91,56207,0.00161902
+AIMEPass4,OpenClaw,failure,Answer Delivery,__END__,8,13446,0.00059497
+AIMEPass4,OpenClaw,failure,Plan Formation,Plan Formation,27,13446,0.00200803
+AIMEPass4,OpenClaw,failure,Plan Formation,Problem Framing,1,13446,0.00007437
+AIMEPass4,OpenClaw,failure,Plan Formation,Result Auditing,10,13446,0.00074372
+AIMEPass4,OpenClaw,failure,Plan Formation,Solution Execution,1200,13446,0.08924587
+AIMEPass4,OpenClaw,failure,Problem Framing,Plan Formation,797,13446,0.05927413
+AIMEPass4,OpenClaw,failure,Problem Framing,Result Auditing,1,13446,0.00007437
+AIMEPass4,OpenClaw,failure,Problem Framing,Solution Execution,88,13446,0.00654470
+AIMEPass4,OpenClaw,failure,Result Auditing,Plan Formation,8,13446,0.00059497
+AIMEPass4,OpenClaw,failure,Result Auditing,Problem Framing,4,13446,0.00029749
+AIMEPass4,OpenClaw,failure,Result Auditing,Result Auditing,45,13446,0.00334672
+AIMEPass4,OpenClaw,failure,Result Auditing,Solution Execution,225,13446,0.01673360
+AIMEPass4,OpenClaw,failure,Solution Execution,Answer Delivery,8,13446,0.00059497
+AIMEPass4,OpenClaw,failure,Solution Execution,Plan Formation,398,13446,0.02959988
+AIMEPass4,OpenClaw,failure,Solution Execution,Problem Framing,878,13446,0.06529823
+AIMEPass4,OpenClaw,failure,Solution Execution,Result Auditing,226,13446,0.01680797
+AIMEPass4,OpenClaw,failure,Solution Execution,Solution Execution,9486,13446,0.70548862
+AIMEPass4,OpenClaw,failure,Solution Execution,__END__,7,13446,0.00052060
+AIMEPass4,OpenClaw,failure,Tool Grounding,Solution Execution,2,13446,0.00014874
+AIMEPass4,OpenClaw,failure,Tool Grounding,Tool Grounding,12,13446,0.00089246
+AIMEPass4,OpenClaw,failure,__START__,Plan Formation,8,13446,0.00059497
+AIMEPass4,OpenClaw,failure,__START__,Problem Framing,3,13446,0.00022311
+AIMEPass4,OpenClaw,failure,__START__,Solution Execution,2,13446,0.00014874
+AIMEPass4,OpenClaw,failure,__START__,Tool Grounding,2,13446,0.00014874
+AIMEPass4,OpenClaw,success,Answer Delivery,Answer Delivery,3,4510,0.00066519
+AIMEPass4,OpenClaw,success,Answer Delivery,Plan Formation,2,4510,0.00044346
+AIMEPass4,OpenClaw,success,Answer Delivery,Problem Framing,2,4510,0.00044346
+AIMEPass4,OpenClaw,success,Answer Delivery,Result Auditing,4,4510,0.00088692
+AIMEPass4,OpenClaw,success,Answer Delivery,Solution Execution,3,4510,0.00066519
+AIMEPass4,OpenClaw,success,Answer Delivery,Tool Grounding,6,4510,0.00133038
+AIMEPass4,OpenClaw,success,Answer Delivery,__END__,77,4510,0.01707317
+AIMEPass4,OpenClaw,success,Plan Formation,Answer Delivery,4,4510,0.00088692
+AIMEPass4,OpenClaw,success,Plan Formation,Plan Formation,24,4510,0.00532151
+AIMEPass4,OpenClaw,success,Plan Formation,Problem Framing,1,4510,0.00022173
+AIMEPass4,OpenClaw,success,Plan Formation,Result Auditing,23,4510,0.00509978
+AIMEPass4,OpenClaw,success,Plan Formation,Solution Execution,189,4510,0.04190687
+AIMEPass4,OpenClaw,success,Problem Framing,Plan Formation,7,4510,0.00155211
+AIMEPass4,OpenClaw,success,Problem Framing,Problem Framing,2,4510,0.00044346
+AIMEPass4,OpenClaw,success,Problem Framing,Result Auditing,2,4510,0.00044346
+AIMEPass4,OpenClaw,success,Problem Framing,Solution Execution,31,4510,0.00687361
+AIMEPass4,OpenClaw,success,Result Auditing,Answer Delivery,2,4510,0.00044346
+AIMEPass4,OpenClaw,success,Result Auditing,Plan Formation,18,4510,0.00399113
+AIMEPass4,OpenClaw,success,Result Auditing,Problem Framing,6,4510,0.00133038
+AIMEPass4,OpenClaw,success,Result Auditing,Result Auditing,50,4510,0.01108647
+AIMEPass4,OpenClaw,success,Result Auditing,Solution Execution,285,4510,0.06319290
+AIMEPass4,OpenClaw,success,Solution Execution,Answer Delivery,81,4510,0.01796009
+AIMEPass4,OpenClaw,success,Solution Execution,Plan Formation,159,4510,0.03525499
+AIMEPass4,OpenClaw,success,Solution Execution,Problem Framing,31,4510,0.00687361
+AIMEPass4,OpenClaw,success,Solution Execution,Result Auditing,275,4510,0.06097561
+AIMEPass4,OpenClaw,success,Solution Execution,Solution Execution,2924,4510,0.64833703
+AIMEPass4,OpenClaw,success,Tool Grounding,Answer Delivery,4,4510,0.00088692
+AIMEPass4,OpenClaw,success,Tool Grounding,Plan Formation,11,4510,0.00243902
+AIMEPass4,OpenClaw,success,Tool Grounding,Result Auditing,7,4510,0.00155211
+AIMEPass4,OpenClaw,success,Tool Grounding,Solution Execution,36,4510,0.00798226
+AIMEPass4,OpenClaw,success,Tool Grounding,Tool Grounding,164,4510,0.03636364
+AIMEPass4,OpenClaw,success,__START__,Answer Delivery,3,4510,0.00066519
+AIMEPass4,OpenClaw,success,__START__,Plan Formation,20,4510,0.00443459
+AIMEPass4,OpenClaw,success,__START__,Solution Execution,2,4510,0.00044346
+AIMEPass4,OpenClaw,success,__START__,Tool Grounding,52,4510,0.01152993
+AIMEPass4,OpenCode,failure,Answer Delivery,Answer Delivery,2,16380,0.00012210
+AIMEPass4,OpenCode,failure,Answer Delivery,Plan Formation,25,16380,0.00152625
+AIMEPass4,OpenCode,failure,Answer Delivery,Problem Framing,8,16380,0.00048840
+AIMEPass4,OpenCode,failure,Answer Delivery,Result Auditing,6,16380,0.00036630
+AIMEPass4,OpenCode,failure,Answer Delivery,Solution Execution,11,16380,0.00067155
+AIMEPass4,OpenCode,failure,Answer Delivery,__END__,24,16380,0.00146520
+AIMEPass4,OpenCode,failure,Plan Formation,Answer Delivery,4,16380,0.00024420
+AIMEPass4,OpenCode,failure,Plan Formation,Plan Formation,96,16380,0.00586081
+AIMEPass4,OpenCode,failure,Plan Formation,Problem Framing,12,16380,0.00073260
+AIMEPass4,OpenCode,failure,Plan Formation,Result Auditing,152,16380,0.00927961
+AIMEPass4,OpenCode,failure,Plan Formation,Solution Execution,372,16380,0.02271062
+AIMEPass4,OpenCode,failure,Problem Framing,Plan Formation,11,16380,0.00067155
+AIMEPass4,OpenCode,failure,Problem Framing,Problem Framing,130,16380,0.00793651
+AIMEPass4,OpenCode,failure,Problem Framing,Result Auditing,61,16380,0.00372405
+AIMEPass4,OpenCode,failure,Problem Framing,Solution Execution,219,16380,0.01336996
+AIMEPass4,OpenCode,failure,Problem Framing,__END__,2,16380,0.00012210
+AIMEPass4,OpenCode,failure,Result Auditing,Answer Delivery,4,16380,0.00024420
+AIMEPass4,OpenCode,failure,Result Auditing,Plan Formation,46,16380,0.00280830
+AIMEPass4,OpenCode,failure,Result Auditing,Problem Framing,54,16380,0.00329670
+AIMEPass4,OpenCode,failure,Result Auditing,Result Auditing,674,16380,0.04114774
+AIMEPass4,OpenCode,failure,Result Auditing,Solution Execution,1740,16380,0.10622711
+AIMEPass4,OpenCode,failure,Result Auditing,Tool Grounding,3,16380,0.00018315
+AIMEPass4,OpenCode,failure,Result Auditing,__END__,2,16380,0.00012210
+AIMEPass4,OpenCode,failure,Solution Execution,Answer Delivery,66,16380,0.00402930
+AIMEPass4,OpenCode,failure,Solution Execution,Plan Formation,431,16380,0.02631258
+AIMEPass4,OpenCode,failure,Solution Execution,Problem Framing,217,16380,0.01324786
+AIMEPass4,OpenCode,failure,Solution Execution,Result Auditing,1629,16380,0.09945055
+AIMEPass4,OpenCode,failure,Solution Execution,Solution Execution,10322,16380,0.63015873
+AIMEPass4,OpenCode,failure,Solution Execution,Tool Grounding,4,16380,0.00024420
+AIMEPass4,OpenCode,failure,Solution Execution,__END__,7,16380,0.00042735
+AIMEPass4,OpenCode,failure,Tool Grounding,Problem Framing,1,16380,0.00006105
+AIMEPass4,OpenCode,failure,Tool Grounding,Result Auditing,1,16380,0.00006105
+AIMEPass4,OpenCode,failure,Tool Grounding,Solution Execution,5,16380,0.00030525
+AIMEPass4,OpenCode,failure,Tool Grounding,Tool Grounding,4,16380,0.00024420
+AIMEPass4,OpenCode,failure,__START__,Plan Formation,27,16380,0.00164835
+AIMEPass4,OpenCode,failure,__START__,Problem Framing,1,16380,0.00006105
+AIMEPass4,OpenCode,failure,__START__,Solution Execution,7,16380,0.00042735
+AIMEPass4,OpenCode,success,Answer Delivery,Answer Delivery,8,15896,0.00050327
+AIMEPass4,OpenCode,success,Answer Delivery,Plan Formation,71,15896,0.00446653
+AIMEPass4,OpenCode,success,Answer Delivery,Problem Framing,6,15896,0.00037745
+AIMEPass4,OpenCode,success,Answer Delivery,Result Auditing,12,15896,0.00075491
+AIMEPass4,OpenCode,success,Answer Delivery,Solution Execution,20,15896,0.00125818
+AIMEPass4,OpenCode,success,Answer Delivery,__END__,79,15896,0.00496980
+AIMEPass4,OpenCode,success,Plan Formation,Answer Delivery,15,15896,0.00094363
+AIMEPass4,OpenCode,success,Plan Formation,Plan Formation,16,15896,0.00100654
+AIMEPass4,OpenCode,success,Plan Formation,Problem Framing,22,15896,0.00138400
+AIMEPass4,OpenCode,success,Plan Formation,Result Auditing,41,15896,0.00257927
+AIMEPass4,OpenCode,success,Plan Formation,Solution Execution,364,15896,0.02289884
+AIMEPass4,OpenCode,success,Plan Formation,Tool Grounding,10,15896,0.00062909
+AIMEPass4,OpenCode,success,Problem Framing,Plan Formation,4,15896,0.00025164
+AIMEPass4,OpenCode,success,Problem Framing,Problem Framing,2,15896,0.00012582
+AIMEPass4,OpenCode,success,Problem Framing,Result Auditing,33,15896,0.00207599
+AIMEPass4,OpenCode,success,Problem Framing,Solution Execution,167,15896,0.01050579
+AIMEPass4,OpenCode,success,Problem Framing,Tool Grounding,5,15896,0.00031454
+AIMEPass4,OpenCode,success,Result Auditing,Answer Delivery,15,15896,0.00094363
+AIMEPass4,OpenCode,success,Result Auditing,Plan Formation,42,15896,0.00264217
+AIMEPass4,OpenCode,success,Result Auditing,Problem Framing,30,15896,0.00188727
+AIMEPass4,OpenCode,success,Result Auditing,Result Auditing,654,15896,0.04114243
+AIMEPass4,OpenCode,success,Result Auditing,Solution Execution,1391,15896,0.08750629
+AIMEPass4,OpenCode,success,Result Auditing,Tool Grounding,52,15896,0.00327126
+AIMEPass4,OpenCode,success,Result Auditing,__END__,1,15896,0.00006291
+AIMEPass4,OpenCode,success,Solution Execution,Answer Delivery,157,15896,0.00987670
+AIMEPass4,OpenCode,success,Solution Execution,Plan Formation,258,15896,0.01623050
+AIMEPass4,OpenCode,success,Solution Execution,Problem Framing,143,15896,0.00899597
+AIMEPass4,OpenCode,success,Solution Execution,Result Auditing,1405,15896,0.08838702
+AIMEPass4,OpenCode,success,Solution Execution,Solution Execution,10573,15896,0.66513588
+AIMEPass4,OpenCode,success,Solution Execution,Tool Grounding,73,15896,0.00459235
+AIMEPass4,OpenCode,success,Tool Grounding,Answer Delivery,1,15896,0.00006291
+AIMEPass4,OpenCode,success,Tool Grounding,Plan Formation,10,15896,0.00062909
+AIMEPass4,OpenCode,success,Tool Grounding,Problem Framing,3,15896,0.00018873
+AIMEPass4,OpenCode,success,Tool Grounding,Result Auditing,40,15896,0.00251636
+AIMEPass4,OpenCode,success,Tool Grounding,Solution Execution,88,15896,0.00553598
+AIMEPass4,OpenCode,success,Tool Grounding,Tool Grounding,5,15896,0.00031454
+AIMEPass4,OpenCode,success,__START__,Plan Formation,67,15896,0.00421490
+AIMEPass4,OpenCode,success,__START__,Problem Framing,5,15896,0.00031454
+AIMEPass4,OpenCode,success,__START__,Solution Execution,6,15896,0.00037745
+AIMEPass4,OpenCode,success,__START__,Tool Grounding,2,15896,0.00012582
+AIMEPass4,OpenCode,unknown,Plan Formation,Result Auditing,2,5942,0.00033659
+AIMEPass4,OpenCode,unknown,Plan Formation,Solution Execution,68,5942,0.01144396
+AIMEPass4,OpenCode,unknown,Problem Framing,Problem Framing,1,5942,0.00016829
+AIMEPass4,OpenCode,unknown,Problem Framing,Result Auditing,5,5942,0.00084147
+AIMEPass4,OpenCode,unknown,Problem Framing,Solution Execution,202,5942,0.03399529
+AIMEPass4,OpenCode,unknown,Problem Framing,__END__,1,5942,0.00016829
+AIMEPass4,OpenCode,unknown,Result Auditing,Plan Formation,64,5942,0.01077078
+AIMEPass4,OpenCode,unknown,Result Auditing,Problem Framing,8,5942,0.00134635
+AIMEPass4,OpenCode,unknown,Result Auditing,Result Auditing,271,5942,0.04560754
+AIMEPass4,OpenCode,unknown,Result Auditing,Solution Execution,903,5942,0.15196903
+AIMEPass4,OpenCode,unknown,Solution Execution,Plan Formation,6,5942,0.00100976
+AIMEPass4,OpenCode,unknown,Solution Execution,Problem Framing,200,5942,0.03365870
+AIMEPass4,OpenCode,unknown,Solution Execution,Result Auditing,963,5942,0.16206664
+AIMEPass4,OpenCode,unknown,Solution Execution,Solution Execution,3239,5942,0.54510266
+AIMEPass4,OpenCode,unknown,Solution Execution,__END__,4,5942,0.00067317
+AIMEPass4,OpenCode,unknown,__START__,Result Auditing,5,5942,0.00084147
+AIMEPass4,ZeroClaw,failure,Answer Delivery,Solution Execution,2,3639,0.00054960
+AIMEPass4,ZeroClaw,failure,Answer Delivery,__END__,6,3639,0.00164880
+AIMEPass4,ZeroClaw,failure,Plan Formation,Answer Delivery,1,3639,0.00027480
+AIMEPass4,ZeroClaw,failure,Plan Formation,Plan Formation,12,3639,0.00329761
+AIMEPass4,ZeroClaw,failure,Plan Formation,Problem Framing,2,3639,0.00054960
+AIMEPass4,ZeroClaw,failure,Plan Formation,Result Auditing,14,3639,0.00384721
+AIMEPass4,ZeroClaw,failure,Plan Formation,Solution Execution,94,3639,0.02583127
+AIMEPass4,ZeroClaw,failure,Plan Formation,__END__,1,3639,0.00027480
+AIMEPass4,ZeroClaw,failure,Problem Framing,Answer Delivery,1,3639,0.00027480
+AIMEPass4,ZeroClaw,failure,Problem Framing,Plan Formation,2,3639,0.00054960
+AIMEPass4,ZeroClaw,failure,Problem Framing,Result Auditing,9,3639,0.00247321
+AIMEPass4,ZeroClaw,failure,Problem Framing,Solution Execution,18,3639,0.00494641
+AIMEPass4,ZeroClaw,failure,Result Auditing,Problem Framing,4,3639,0.00109920
+AIMEPass4,ZeroClaw,failure,Result Auditing,Result Auditing,29,3639,0.00796922
+AIMEPass4,ZeroClaw,failure,Result Auditing,Solution Execution,417,3639,0.11459192
+AIMEPass4,ZeroClaw,failure,Result Auditing,__END__,4,3639,0.00109920
+AIMEPass4,ZeroClaw,failure,Solution Execution,Answer Delivery,6,3639,0.00164880
+AIMEPass4,ZeroClaw,failure,Solution Execution,Plan Formation,100,3639,0.02748008
+AIMEPass4,ZeroClaw,failure,Solution Execution,Problem Framing,24,3639,0.00659522
+AIMEPass4,ZeroClaw,failure,Solution Execution,Result Auditing,402,3639,0.11046991
+AIMEPass4,ZeroClaw,failure,Solution Execution,Solution Execution,2428,3639,0.66721627
+AIMEPass4,ZeroClaw,failure,Solution Execution,__END__,26,3639,0.00714482
+AIMEPass4,ZeroClaw,failure,__START__,Plan Formation,10,3639,0.00274801
+AIMEPass4,ZeroClaw,failure,__START__,Solution Execution,27,3639,0.00741962
+AIMEPass4,ZeroClaw,success,Answer Delivery,Answer Delivery,6,7843,0.00076501
+AIMEPass4,ZeroClaw,success,Answer Delivery,Plan Formation,1,7843,0.00012750
+AIMEPass4,ZeroClaw,success,Answer Delivery,Result Auditing,1,7843,0.00012750
+AIMEPass4,ZeroClaw,success,Answer Delivery,__END__,82,7843,0.01045518
+AIMEPass4,ZeroClaw,success,Plan Formation,Answer Delivery,10,7843,0.00127502
+AIMEPass4,ZeroClaw,success,Plan Formation,Plan Formation,32,7843,0.00408007
+AIMEPass4,ZeroClaw,success,Plan Formation,Problem Framing,10,7843,0.00127502
+AIMEPass4,ZeroClaw,success,Plan Formation,Result Auditing,38,7843,0.00484508
+AIMEPass4,ZeroClaw,success,Plan Formation,Solution Execution,277,7843,0.03531812
+AIMEPass4,ZeroClaw,success,Problem Framing,Plan Formation,5,7843,0.00063751
+AIMEPass4,ZeroClaw,success,Problem Framing,Problem Framing,1,7843,0.00012750
+AIMEPass4,ZeroClaw,success,Problem Framing,Result Auditing,3,7843,0.00038251
+AIMEPass4,ZeroClaw,success,Problem Framing,Solution Execution,100,7843,0.01275022
+AIMEPass4,ZeroClaw,success,Result Auditing,Answer Delivery,1,7843,0.00012750
+AIMEPass4,ZeroClaw,success,Result Auditing,Plan Formation,25,7843,0.00318756
+AIMEPass4,ZeroClaw,success,Result Auditing,Problem Framing,6,7843,0.00076501
+AIMEPass4,ZeroClaw,success,Result Auditing,Result Auditing,151,7843,0.01925284
+AIMEPass4,ZeroClaw,success,Result Auditing,Solution Execution,571,7843,0.07280377
+AIMEPass4,ZeroClaw,success,Solution Execution,Answer Delivery,73,7843,0.00930766
+AIMEPass4,ZeroClaw,success,Solution Execution,Plan Formation,253,7843,0.03225806
+AIMEPass4,ZeroClaw,success,Solution Execution,Problem Framing,88,7843,0.01122020
+AIMEPass4,ZeroClaw,success,Solution Execution,Result Auditing,561,7843,0.07152875
+AIMEPass4,ZeroClaw,success,Solution Execution,Solution Execution,5464,7843,0.69667219
+AIMEPass4,ZeroClaw,success,Solution Execution,__END__,1,7843,0.00012750
+AIMEPass4,ZeroClaw,success,__START__,Plan Formation,51,7843,0.00650261
+AIMEPass4,ZeroClaw,success,__START__,Problem Framing,4,7843,0.00051001
+AIMEPass4,ZeroClaw,success,__START__,Solution Execution,28,7843,0.00357006
+GPQA,DirectLLM,failure,Answer Delivery,Problem Framing,1,33473,0.00002987
+GPQA,DirectLLM,failure,Answer Delivery,Result Auditing,1,33473,0.00002987
+GPQA,DirectLLM,failure,Answer Delivery,Solution Execution,2,33473,0.00005975
+GPQA,DirectLLM,failure,Answer Delivery,__END__,26,33473,0.00077675
+GPQA,DirectLLM,failure,Plan Formation,Plan Formation,3659,33473,0.10931198
+GPQA,DirectLLM,failure,Plan Formation,Problem Framing,23,33473,0.00068712
+GPQA,DirectLLM,failure,Plan Formation,Result Auditing,286,33473,0.00854420
+GPQA,DirectLLM,failure,Plan Formation,Solution Execution,2806,33473,0.08382876
+GPQA,DirectLLM,failure,Plan Formation,__END__,4,33473,0.00011950
+GPQA,DirectLLM,failure,Problem Framing,Plan Formation,15,33473,0.00044812
+GPQA,DirectLLM,failure,Problem Framing,Problem Framing,7,33473,0.00020912
+GPQA,DirectLLM,failure,Problem Framing,Result Auditing,13,33473,0.00038837
+GPQA,DirectLLM,failure,Problem Framing,Solution Execution,177,33473,0.00528784
+GPQA,DirectLLM,failure,Result Auditing,Answer Delivery,1,33473,0.00002987
+GPQA,DirectLLM,failure,Result Auditing,Plan Formation,298,33473,0.00890270
+GPQA,DirectLLM,failure,Result Auditing,Problem Framing,13,33473,0.00038837
+GPQA,DirectLLM,failure,Result Auditing,Result Auditing,725,33473,0.02165925
+GPQA,DirectLLM,failure,Result Auditing,Solution Execution,1997,33473,0.05966002
+GPQA,DirectLLM,failure,Result Auditing,__END__,2,33473,0.00005975
+GPQA,DirectLLM,failure,Solution Execution,Answer Delivery,29,33473,0.00086637
+GPQA,DirectLLM,failure,Solution Execution,Plan Formation,2806,33473,0.08382876
+GPQA,DirectLLM,failure,Solution Execution,Problem Framing,166,33473,0.00495922
+GPQA,DirectLLM,failure,Solution Execution,Result Auditing,2011,33473,0.06007827
+GPQA,DirectLLM,failure,Solution Execution,Solution Execution,18359,33473,0.54847190
+GPQA,DirectLLM,failure,Solution Execution,__END__,7,33473,0.00020912
+GPQA,DirectLLM,failure,__START__,Problem Framing,2,33473,0.00005975
+GPQA,DirectLLM,failure,__START__,Solution Execution,37,33473,0.00110537
+GPQA,DirectLLM,success,Answer Delivery,Answer Delivery,3,33245,0.00009024
+GPQA,DirectLLM,success,Answer Delivery,Plan Formation,1,33245,0.00003008
+GPQA,DirectLLM,success,Answer Delivery,Result Auditing,5,33245,0.00015040
+GPQA,DirectLLM,success,Answer Delivery,Solution Execution,17,33245,0.00051136
+GPQA,DirectLLM,success,Answer Delivery,__END__,159,33245,0.00478267
+GPQA,DirectLLM,success,Plan Formation,Answer Delivery,9,33245,0.00027072
+GPQA,DirectLLM,success,Plan Formation,Plan Formation,1888,33245,0.05679049
+GPQA,DirectLLM,success,Plan Formation,Problem Framing,48,33245,0.00144383
+GPQA,DirectLLM,success,Plan Formation,Result Auditing,232,33245,0.00697849
+GPQA,DirectLLM,success,Plan Formation,Solution Execution,2800,33245,0.08422319
+GPQA,DirectLLM,success,Problem Framing,Answer Delivery,1,33245,0.00003008
+GPQA,DirectLLM,success,Problem Framing,Plan Formation,33,33245,0.00099263
+GPQA,DirectLLM,success,Problem Framing,Problem Framing,20,33245,0.00060159
+GPQA,DirectLLM,success,Problem Framing,Result Auditing,33,33245,0.00099263
+GPQA,DirectLLM,success,Problem Framing,Solution Execution,333,33245,0.01001654
+GPQA,DirectLLM,success,Result Auditing,Answer Delivery,4,33245,0.00012032
+GPQA,DirectLLM,success,Result Auditing,Plan Formation,446,33245,0.01341555
+GPQA,DirectLLM,success,Result Auditing,Problem Framing,20,33245,0.00060159
+GPQA,DirectLLM,success,Result Auditing,Result Auditing,365,33245,0.01097909
+GPQA,DirectLLM,success,Result Auditing,Solution Execution,2082,33245,0.06262596
+GPQA,DirectLLM,success,Solution Execution,Answer Delivery,168,33245,0.00505339
+GPQA,DirectLLM,success,Solution Execution,Plan Formation,2609,33245,0.07847797
+GPQA,DirectLLM,success,Solution Execution,Problem Framing,328,33245,0.00986615
+GPQA,DirectLLM,success,Solution Execution,Result Auditing,2282,33245,0.06864190
+GPQA,DirectLLM,success,Solution Execution,Solution Execution,19200,33245,0.57753046
+GPQA,DirectLLM,success,__START__,Problem Framing,4,33245,0.00012032
+GPQA,DirectLLM,success,__START__,Solution Execution,155,33245,0.00466236
+GPQA,OpenClaw,failure,Answer Delivery,Result Auditing,9,20642,0.00043600
+GPQA,OpenClaw,failure,Answer Delivery,Solution Execution,4,20642,0.00019378
+GPQA,OpenClaw,failure,Answer Delivery,__END__,19,20642,0.00092045
+GPQA,OpenClaw,failure,Plan Formation,Answer Delivery,1,20642,0.00004844
+GPQA,OpenClaw,failure,Plan Formation,Plan Formation,20,20642,0.00096890
+GPQA,OpenClaw,failure,Plan Formation,Problem Framing,5,20642,0.00024222
+GPQA,OpenClaw,failure,Plan Formation,Result Auditing,21,20642,0.00101734
+GPQA,OpenClaw,failure,Plan Formation,Solution Execution,537,20642,0.02601492
+GPQA,OpenClaw,failure,Plan Formation,__END__,1,20642,0.00004844
+GPQA,OpenClaw,failure,Problem Framing,Answer Delivery,3,20642,0.00014533
+GPQA,OpenClaw,failure,Problem Framing,Plan Formation,3,20642,0.00014533
+GPQA,OpenClaw,failure,Problem Framing,Problem Framing,213,20642,0.01031877
+GPQA,OpenClaw,failure,Problem Framing,Result Auditing,212,20642,0.01027032
+GPQA,OpenClaw,failure,Problem Framing,Solution Execution,1436,20642,0.06956690
+GPQA,OpenClaw,failure,Problem Framing,__END__,5,20642,0.00024222
+GPQA,OpenClaw,failure,Result Auditing,Answer Delivery,2,20642,0.00009689
+GPQA,OpenClaw,failure,Result Auditing,Plan Formation,119,20642,0.00576495
+GPQA,OpenClaw,failure,Result Auditing,Problem Framing,9,20642,0.00043600
+GPQA,OpenClaw,failure,Result Auditing,Result Auditing,1406,20642,0.06811355
+GPQA,OpenClaw,failure,Result Auditing,Solution Execution,2341,20642,0.11340955
+GPQA,OpenClaw,failure,Result Auditing,__END__,12,20642,0.00058134
+GPQA,OpenClaw,failure,Solution Execution,Answer Delivery,26,20642,0.00125957
+GPQA,OpenClaw,failure,Solution Execution,Plan Formation,411,20642,0.01991086
+GPQA,OpenClaw,failure,Solution Execution,Problem Framing,1642,20642,0.07954656
+GPQA,OpenClaw,failure,Solution Execution,Result Auditing,2236,20642,0.10832284
+GPQA,OpenClaw,failure,Solution Execution,Solution Execution,9816,20642,0.47553532
+GPQA,OpenClaw,failure,Solution Execution,__END__,27,20642,0.00130801
+GPQA,OpenClaw,failure,Tool Grounding,Plan Formation,2,20642,0.00009689
+GPQA,OpenClaw,failure,Tool Grounding,Result Auditing,3,20642,0.00014533
+GPQA,OpenClaw,failure,Tool Grounding,Solution Execution,5,20642,0.00024222
+GPQA,OpenClaw,failure,Tool Grounding,Tool Grounding,26,20642,0.00125957
+GPQA,OpenClaw,failure,Tool Grounding,__END__,3,20642,0.00014533
+GPQA,OpenClaw,failure,__START__,Plan Formation,30,20642,0.00145335
+GPQA,OpenClaw,failure,__START__,Problem Framing,3,20642,0.00014533
+GPQA,OpenClaw,failure,__START__,Result Auditing,2,20642,0.00009689
+GPQA,OpenClaw,failure,__START__,Solution Execution,19,20642,0.00092045
+GPQA,OpenClaw,failure,__START__,Tool Grounding,13,20642,0.00062978
+GPQA,OpenClaw,success,Answer Delivery,Plan Formation,2,3577,0.00055913
+GPQA,OpenClaw,success,Answer Delivery,Problem Framing,1,3577,0.00027956
+GPQA,OpenClaw,success,Answer Delivery,Result Auditing,3,3577,0.00083869
+GPQA,OpenClaw,success,Answer Delivery,Solution Execution,3,3577,0.00083869
+GPQA,OpenClaw,success,Answer Delivery,Tool Grounding,1,3577,0.00027956
+GPQA,OpenClaw,success,Answer Delivery,__END__,131,3577,0.03662287
+GPQA,OpenClaw,success,Plan Formation,Answer Delivery,4,3577,0.00111826
+GPQA,OpenClaw,success,Plan Formation,Plan Formation,59,3577,0.01649427
+GPQA,OpenClaw,success,Plan Formation,Problem Framing,9,3577,0.00251607
+GPQA,OpenClaw,success,Plan Formation,Result Auditing,18,3577,0.00503215
+GPQA,OpenClaw,success,Plan Formation,Solution Execution,304,3577,0.08498742
+GPQA,OpenClaw,success,Problem Framing,Plan Formation,8,3577,0.00223651
+GPQA,OpenClaw,success,Problem Framing,Problem Framing,1,3577,0.00027956
+GPQA,OpenClaw,success,Problem Framing,Result Auditing,8,3577,0.00223651
+GPQA,OpenClaw,success,Problem Framing,Solution Execution,50,3577,0.01397819
+GPQA,OpenClaw,success,Result Auditing,Answer Delivery,6,3577,0.00167738
+GPQA,OpenClaw,success,Result Auditing,Plan Formation,15,3577,0.00419346
+GPQA,OpenClaw,success,Result Auditing,Problem Framing,6,3577,0.00167738
+GPQA,OpenClaw,success,Result Auditing,Result Auditing,35,3577,0.00978474
+GPQA,OpenClaw,success,Result Auditing,Solution Execution,159,3577,0.04445066
+GPQA,OpenClaw,success,Solution Execution,Answer Delivery,129,3577,0.03606374
+GPQA,OpenClaw,success,Solution Execution,Plan Formation,273,3577,0.07632094
+GPQA,OpenClaw,success,Solution Execution,Problem Framing,44,3577,0.01230081
+GPQA,OpenClaw,success,Solution Execution,Result Auditing,145,3577,0.04053676
+GPQA,OpenClaw,success,Solution Execution,Solution Execution,1809,3577,0.50573106
+GPQA,OpenClaw,success,Tool Grounding,Answer Delivery,1,3577,0.00027956
+GPQA,OpenClaw,success,Tool Grounding,Plan Formation,9,3577,0.00251607
+GPQA,OpenClaw,success,Tool Grounding,Problem Framing,1,3577,0.00027956
+GPQA,OpenClaw,success,Tool Grounding,Result Auditing,12,3577,0.00335477
+GPQA,OpenClaw,success,Tool Grounding,Solution Execution,50,3577,0.01397819
+GPQA,OpenClaw,success,Tool Grounding,Tool Grounding,150,3577,0.04193458
+GPQA,OpenClaw,success,__START__,Answer Delivery,1,3577,0.00027956
+GPQA,OpenClaw,success,__START__,Plan Formation,28,3577,0.00782779
+GPQA,OpenClaw,success,__START__,Problem Framing,5,3577,0.00139782
+GPQA,OpenClaw,success,__START__,Solution Execution,25,3577,0.00698910
+GPQA,OpenClaw,success,__START__,Tool Grounding,72,3577,0.02012860
+GPQA,OpenCode,failure,Answer Delivery,Plan Formation,15,3463,0.00433150
+GPQA,OpenCode,failure,Answer Delivery,Problem Framing,1,3463,0.00028877
+GPQA,OpenCode,failure,Answer Delivery,Solution Execution,10,3463,0.00288767
+GPQA,OpenCode,failure,Answer Delivery,__END__,24,3463,0.00693041
+GPQA,OpenCode,failure,Plan Formation,Answer Delivery,4,3463,0.00115507
+GPQA,OpenCode,failure,Plan Formation,Plan Formation,32,3463,0.00924054
+GPQA,OpenCode,failure,Plan Formation,Problem Framing,14,3463,0.00404274
+GPQA,OpenCode,failure,Plan Formation,Result Auditing,8,3463,0.00231014
+GPQA,OpenCode,failure,Plan Formation,Solution Execution,155,3463,0.04475888
+GPQA,OpenCode,failure,Plan Formation,Tool Grounding,3,3463,0.00086630
+GPQA,OpenCode,failure,Plan Formation,__END__,7,3463,0.00202137
+GPQA,OpenCode,failure,Problem Framing,Answer Delivery,2,3463,0.00057753
+GPQA,OpenCode,failure,Problem Framing,Plan Formation,10,3463,0.00288767
+GPQA,OpenCode,failure,Problem Framing,Problem Framing,11,3463,0.00317644
+GPQA,OpenCode,failure,Problem Framing,Result Auditing,37,3463,0.01068438
+GPQA,OpenCode,failure,Problem Framing,Solution Execution,89,3463,0.02570026
+GPQA,OpenCode,failure,Result Auditing,Answer Delivery,2,3463,0.00057753
+GPQA,OpenCode,failure,Result Auditing,Plan Formation,11,3463,0.00317644
+GPQA,OpenCode,failure,Result Auditing,Problem Framing,7,3463,0.00202137
+GPQA,OpenCode,failure,Result Auditing,Result Auditing,123,3463,0.03551834
+GPQA,OpenCode,failure,Result Auditing,Solution Execution,440,3463,0.12705746
+GPQA,OpenCode,failure,Result Auditing,Tool Grounding,2,3463,0.00057753
+GPQA,OpenCode,failure,Result Auditing,__END__,6,3463,0.00173260
+GPQA,OpenCode,failure,Solution Execution,Answer Delivery,42,3463,0.01212821
+GPQA,OpenCode,failure,Solution Execution,Plan Formation,118,3463,0.03407450
+GPQA,OpenCode,failure,Solution Execution,Problem Framing,110,3463,0.03176437
+GPQA,OpenCode,failure,Solution Execution,Result Auditing,422,3463,0.12185966
+GPQA,OpenCode,failure,Solution Execution,Solution Execution,1668,3463,0.48166330
+GPQA,OpenCode,failure,Solution Execution,Tool Grounding,10,3463,0.00288767
+GPQA,OpenCode,failure,Solution Execution,__END__,13,3463,0.00375397
+GPQA,OpenCode,failure,Tool Grounding,Plan Formation,6,3463,0.00173260
+GPQA,OpenCode,failure,Tool Grounding,Problem Framing,1,3463,0.00028877
+GPQA,OpenCode,failure,Tool Grounding,Result Auditing,1,3463,0.00028877
+GPQA,OpenCode,failure,Tool Grounding,Solution Execution,8,3463,0.00231014
+GPQA,OpenCode,failure,Tool Grounding,Tool Grounding,1,3463,0.00028877
+GPQA,OpenCode,failure,__START__,Plan Formation,31,3463,0.00895178
+GPQA,OpenCode,failure,__START__,Problem Framing,5,3463,0.00144383
+GPQA,OpenCode,failure,__START__,Solution Execution,13,3463,0.00375397
+GPQA,OpenCode,failure,__START__,Tool Grounding,1,3463,0.00028877
+GPQA,OpenCode,success,Answer Delivery,Plan Formation,73,7244,0.01007731
+GPQA,OpenCode,success,Answer Delivery,Problem Framing,18,7244,0.00248482
+GPQA,OpenCode,success,Answer Delivery,Result Auditing,1,7244,0.00013805
+GPQA,OpenCode,success,Answer Delivery,Solution Execution,61,7244,0.00842076
+GPQA,OpenCode,success,Answer Delivery,__END__,145,7244,0.02001657
+GPQA,OpenCode,success,Plan Formation,Answer Delivery,14,7244,0.00193263
+GPQA,OpenCode,success,Plan Formation,Plan Formation,42,7244,0.00579790
+GPQA,OpenCode,success,Plan Formation,Problem Framing,20,7244,0.00276091
+GPQA,OpenCode,success,Plan Formation,Result Auditing,18,7244,0.00248482
+GPQA,OpenCode,success,Plan Formation,Solution Execution,469,7244,0.06474324
+GPQA,OpenCode,success,Plan Formation,Tool Grounding,12,7244,0.00165654
+GPQA,OpenCode,success,Problem Framing,Answer Delivery,2,7244,0.00027609
+GPQA,OpenCode,success,Problem Framing,Plan Formation,35,7244,0.00483158
+GPQA,OpenCode,success,Problem Framing,Problem Framing,4,7244,0.00055218
+GPQA,OpenCode,success,Problem Framing,Result Auditing,8,7244,0.00110436
+GPQA,OpenCode,success,Problem Framing,Solution Execution,130,7244,0.01794589
+GPQA,OpenCode,success,Problem Framing,Tool Grounding,6,7244,0.00082827
+GPQA,OpenCode,success,Result Auditing,Answer Delivery,9,7244,0.00124241
+GPQA,OpenCode,success,Result Auditing,Plan Formation,25,7244,0.00345113
+GPQA,OpenCode,success,Result Auditing,Problem Framing,16,7244,0.00220872
+GPQA,OpenCode,success,Result Auditing,Result Auditing,67,7244,0.00924903
+GPQA,OpenCode,success,Result Auditing,Solution Execution,266,7244,0.03672004
+GPQA,OpenCode,success,Result Auditing,Tool Grounding,15,7244,0.00207068
+GPQA,OpenCode,success,Solution Execution,Answer Delivery,272,7244,0.03754832
+GPQA,OpenCode,success,Solution Execution,Plan Formation,316,7244,0.04362231
+GPQA,OpenCode,success,Solution Execution,Problem Framing,106,7244,0.01463280
+GPQA,OpenCode,success,Solution Execution,Result Auditing,291,7244,0.04017118
+GPQA,OpenCode,success,Solution Execution,Solution Execution,4422,7244,0.61043622
+GPQA,OpenCode,success,Solution Execution,Tool Grounding,98,7244,0.01352844
+GPQA,OpenCode,success,Tool Grounding,Answer Delivery,1,7244,0.00013805
+GPQA,OpenCode,success,Tool Grounding,Plan Formation,14,7244,0.00193263
+GPQA,OpenCode,success,Tool Grounding,Problem Framing,4,7244,0.00055218
+GPQA,OpenCode,success,Tool Grounding,Result Auditing,13,7244,0.00179459
+GPQA,OpenCode,success,Tool Grounding,Solution Execution,103,7244,0.01421866
+GPQA,OpenCode,success,Tool Grounding,Tool Grounding,3,7244,0.00041414
+GPQA,OpenCode,success,__START__,Plan Formation,70,7244,0.00966317
+GPQA,OpenCode,success,__START__,Problem Framing,17,7244,0.00234677
+GPQA,OpenCode,success,__START__,Solution Execution,54,7244,0.00745445
+GPQA,OpenCode,success,__START__,Tool Grounding,4,7244,0.00055218
+GPQA,OpenCode,unknown,Plan Formation,Solution Execution,2,274,0.00729927
+GPQA,OpenCode,unknown,Result Auditing,Solution Execution,42,274,0.15328467
+GPQA,OpenCode,unknown,Solution Execution,Plan Formation,2,274,0.00729927
+GPQA,OpenCode,unknown,Solution Execution,Result Auditing,42,274,0.15328467
+GPQA,OpenCode,unknown,Solution Execution,Solution Execution,184,274,0.67153285
+GPQA,OpenCode,unknown,Solution Execution,__END__,1,274,0.00364964
+GPQA,OpenCode,unknown,__START__,Solution Execution,1,274,0.00364964
+GPQA,ZeroClaw,failure,Answer Delivery,Solution Execution,2,1477,0.00135410
+GPQA,ZeroClaw,failure,Answer Delivery,__END__,30,1477,0.02031144
+GPQA,ZeroClaw,failure,Plan Formation,Answer Delivery,1,1477,0.00067705
+GPQA,ZeroClaw,failure,Plan Formation,Plan Formation,12,1477,0.00812458
+GPQA,ZeroClaw,failure,Plan Formation,Problem Framing,3,1477,0.00203114
+GPQA,ZeroClaw,failure,Plan Formation,Result Auditing,10,1477,0.00677048
+GPQA,ZeroClaw,failure,Plan Formation,Solution Execution,108,1477,0.07312119
+GPQA,ZeroClaw,failure,Problem Framing,Plan Formation,6,1477,0.00406229
+GPQA,ZeroClaw,failure,Problem Framing,Problem Framing,1,1477,0.00067705
+GPQA,ZeroClaw,failure,Problem Framing,Result Auditing,6,1477,0.00406229
+GPQA,ZeroClaw,failure,Problem Framing,Solution Execution,33,1477,0.02234259
+GPQA,ZeroClaw,failure,Result Auditing,Answer Delivery,6,1477,0.00406229
+GPQA,ZeroClaw,failure,Result Auditing,Plan Formation,6,1477,0.00406229
+GPQA,ZeroClaw,failure,Result Auditing,Problem Framing,9,1477,0.00609343
+GPQA,ZeroClaw,failure,Result Auditing,Result Auditing,38,1477,0.02572783
+GPQA,ZeroClaw,failure,Result Auditing,Solution Execution,108,1477,0.07312119
+GPQA,ZeroClaw,failure,Result Auditing,__END__,1,1477,0.00067705
+GPQA,ZeroClaw,failure,Solution Execution,Answer Delivery,25,1477,0.01692620
+GPQA,ZeroClaw,failure,Solution Execution,Plan Formation,94,1477,0.06364252
+GPQA,ZeroClaw,failure,Solution Execution,Problem Framing,27,1477,0.01828030
+GPQA,ZeroClaw,failure,Solution Execution,Result Auditing,114,1477,0.07718348
+GPQA,ZeroClaw,failure,Solution Execution,Solution Execution,794,1477,0.53757617
+GPQA,ZeroClaw,failure,Solution Execution,__END__,6,1477,0.00406229
+GPQA,ZeroClaw,failure,__START__,Plan Formation,16,1477,0.01083277
+GPQA,ZeroClaw,failure,__START__,Problem Framing,6,1477,0.00406229
+GPQA,ZeroClaw,failure,__START__,Solution Execution,15,1477,0.01015572
+GPQA,ZeroClaw,success,Answer Delivery,Problem Framing,1,6227,0.00016059
+GPQA,ZeroClaw,success,Answer Delivery,Solution Execution,4,6227,0.00064236
+GPQA,ZeroClaw,success,Answer Delivery,__END__,154,6227,0.02473101
+GPQA,ZeroClaw,success,Plan Formation,Answer Delivery,7,6227,0.00112414
+GPQA,ZeroClaw,success,Plan Formation,Plan Formation,39,6227,0.00626305
+GPQA,ZeroClaw,success,Plan Formation,Problem Framing,24,6227,0.00385418
+GPQA,ZeroClaw,success,Plan Formation,Result Auditing,12,6227,0.00192709
+GPQA,ZeroClaw,success,Plan Formation,Solution Execution,405,6227,0.06503934
+GPQA,ZeroClaw,success,Problem Framing,Plan Formation,15,6227,0.00240886
+GPQA,ZeroClaw,success,Problem Framing,Problem Framing,4,6227,0.00064236
+GPQA,ZeroClaw,success,Problem Framing,Result Auditing,10,6227,0.00160591
+GPQA,ZeroClaw,success,Problem Framing,Solution Execution,108,6227,0.01734383
+GPQA,ZeroClaw,success,Result Auditing,Answer Delivery,6,6227,0.00096355
+GPQA,ZeroClaw,success,Result Auditing,Plan Formation,13,6227,0.00208768
+GPQA,ZeroClaw,success,Result Auditing,Problem Framing,15,6227,0.00240886
+GPQA,ZeroClaw,success,Result Auditing,Result Auditing,75,6227,0.01204432
+GPQA,ZeroClaw,success,Result Auditing,Solution Execution,322,6227,0.05171029
+GPQA,ZeroClaw,success,Solution Execution,Answer Delivery,146,6227,0.02344628
+GPQA,ZeroClaw,success,Solution Execution,Plan Formation,326,6227,0.05235266
+GPQA,ZeroClaw,success,Solution Execution,Problem Framing,82,6227,0.01316846
+GPQA,ZeroClaw,success,Solution Execution,Result Auditing,334,6227,0.05363739
+GPQA,ZeroClaw,success,Solution Execution,Solution Execution,3971,6227,0.63770676
+GPQA,ZeroClaw,success,__START__,Plan Formation,94,6227,0.01509555
+GPQA,ZeroClaw,success,__START__,Problem Framing,11,6227,0.00176650
+GPQA,ZeroClaw,success,__START__,Solution Execution,49,6227,0.00786896
+HLE,DirectLLM,failure,Answer Delivery,Answer Delivery,14,251286,0.00005571
+HLE,DirectLLM,failure,Answer Delivery,Plan Formation,12,251286,0.00004775
+HLE,DirectLLM,failure,Answer Delivery,Problem Framing,3,251286,0.00001194
+HLE,DirectLLM,failure,Answer Delivery,Result Auditing,72,251286,0.00028653
+HLE,DirectLLM,failure,Answer Delivery,Solution Execution,81,251286,0.00032234
+HLE,DirectLLM,failure,Answer Delivery,__END__,427,251286,0.00169926
+HLE,DirectLLM,failure,Plan Formation,Answer Delivery,23,251286,0.00009153
+HLE,DirectLLM,failure,Plan Formation,Plan Formation,43106,251286,0.17154159
+HLE,DirectLLM,failure,Plan Formation,Problem Framing,148,251286,0.00058897
+HLE,DirectLLM,failure,Plan Formation,Result Auditing,9267,251286,0.03687830
+HLE,DirectLLM,failure,Plan Formation,Solution Execution,15605,251286,0.06210055
+HLE,DirectLLM,failure,Plan Formation,__END__,13,251286,0.00005173
+HLE,DirectLLM,failure,Problem Framing,Answer Delivery,13,251286,0.00005173
+HLE,DirectLLM,failure,Problem Framing,Plan Formation,144,251286,0.00057305
+HLE,DirectLLM,failure,Problem Framing,Problem Framing,67,251286,0.00026663
+HLE,DirectLLM,failure,Problem Framing,Result Auditing,200,251286,0.00079591
+HLE,DirectLLM,failure,Problem Framing,Solution Execution,1334,251286,0.00530869
+HLE,DirectLLM,failure,Result Auditing,Answer Delivery,68,251286,0.00027061
+HLE,DirectLLM,failure,Result Auditing,Plan Formation,10196,251286,0.04057528
+HLE,DirectLLM,failure,Result Auditing,Problem Framing,195,251286,0.00077601
+HLE,DirectLLM,failure,Result Auditing,Result Auditing,7597,251286,0.03023248
+HLE,DirectLLM,failure,Result Auditing,Solution Execution,15877,251286,0.06318299
+HLE,DirectLLM,failure,Result Auditing,__END__,4,251286,0.00001592
+HLE,DirectLLM,failure,Solution Execution,Answer Delivery,491,251286,0.00195395
+HLE,DirectLLM,failure,Solution Execution,Plan Formation,14692,251286,0.05846724
+HLE,DirectLLM,failure,Solution Execution,Problem Framing,1307,251286,0.00520124
+HLE,DirectLLM,failure,Solution Execution,Result Auditing,16788,251286,0.06680834
+HLE,DirectLLM,failure,Solution Execution,Solution Execution,113076,251286,0.44998926
+HLE,DirectLLM,failure,Solution Execution,__END__,11,251286,0.00004377
+HLE,DirectLLM,failure,__START__,Plan Formation,12,251286,0.00004775
+HLE,DirectLLM,failure,__START__,Problem Framing,38,251286,0.00015122
+HLE,DirectLLM,failure,__START__,Result Auditing,13,251286,0.00005173
+HLE,DirectLLM,failure,__START__,Solution Execution,392,251286,0.00155998
+HLE,DirectLLM,success,Answer Delivery,Answer Delivery,2,55628,0.00003595
+HLE,DirectLLM,success,Answer Delivery,Problem Framing,1,55628,0.00001798
+HLE,DirectLLM,success,Answer Delivery,Result Auditing,6,55628,0.00010786
+HLE,DirectLLM,success,Answer Delivery,Solution Execution,10,55628,0.00017977
+HLE,DirectLLM,success,Answer Delivery,__END__,135,55628,0.00242684
+HLE,DirectLLM,success,Plan Formation,Answer Delivery,10,55628,0.00017977
+HLE,DirectLLM,success,Plan Formation,Plan Formation,3693,55628,0.06638743
+HLE,DirectLLM,success,Plan Formation,Problem Framing,50,55628,0.00089883
+HLE,DirectLLM,success,Plan Formation,Result Auditing,860,55628,0.01545984
+HLE,DirectLLM,success,Plan Formation,Solution Execution,4196,55628,0.07542964
+HLE,DirectLLM,success,Plan Formation,__END__,1,55628,0.00001798
+HLE,DirectLLM,success,Problem Framing,Answer Delivery,2,55628,0.00003595
+HLE,DirectLLM,success,Problem Framing,Plan Formation,54,55628,0.00097073
+HLE,DirectLLM,success,Problem Framing,Problem Framing,31,55628,0.00055727
+HLE,DirectLLM,success,Problem Framing,Result Auditing,67,55628,0.00120443
+HLE,DirectLLM,success,Problem Framing,Solution Execution,451,55628,0.00810743
+HLE,DirectLLM,success,Result Auditing,Answer Delivery,7,55628,0.00012584
+HLE,DirectLLM,success,Result Auditing,Plan Formation,762,55628,0.01369814
+HLE,DirectLLM,success,Result Auditing,Problem Framing,61,55628,0.00109657
+HLE,DirectLLM,success,Result Auditing,Result Auditing,1571,55628,0.02824117
+HLE,DirectLLM,success,Result Auditing,Solution Execution,5139,55628,0.09238153
+HLE,DirectLLM,success,Solution Execution,Answer Delivery,133,55628,0.00239088
+HLE,DirectLLM,success,Solution Execution,Plan Formation,4297,55628,0.07724527
+HLE,DirectLLM,success,Solution Execution,Problem Framing,448,55628,0.00805350
+HLE,DirectLLM,success,Solution Execution,Result Auditing,5033,55628,0.09047602
+HLE,DirectLLM,success,Solution Execution,Solution Execution,28472,55628,0.51182858
+HLE,DirectLLM,success,__START__,Plan Formation,4,55628,0.00007191
+HLE,DirectLLM,success,__START__,Problem Framing,14,55628,0.00025167
+HLE,DirectLLM,success,__START__,Result Auditing,3,55628,0.00005393
+HLE,DirectLLM,success,__START__,Solution Execution,115,55628,0.00206730
+HLE,OpenClaw,failure,Answer Delivery,Answer Delivery,7,71540,0.00009785
+HLE,OpenClaw,failure,Answer Delivery,Plan Formation,2,71540,0.00002796
+HLE,OpenClaw,failure,Answer Delivery,Problem Framing,9,71540,0.00012580
+HLE,OpenClaw,failure,Answer Delivery,Result Auditing,364,71540,0.00508806
+HLE,OpenClaw,failure,Answer Delivery,Solution Execution,15,71540,0.00020967
+HLE,OpenClaw,failure,Answer Delivery,Tool Grounding,1,71540,0.00001398
+HLE,OpenClaw,failure,Answer Delivery,__END__,285,71540,0.00398379
+HLE,OpenClaw,failure,Plan Formation,Answer Delivery,22,71540,0.00030752
+HLE,OpenClaw,failure,Plan Formation,Plan Formation,551,71540,0.00770198
+HLE,OpenClaw,failure,Plan Formation,Problem Framing,93,71540,0.00129997
+HLE,OpenClaw,failure,Plan Formation,Result Auditing,671,71540,0.00937937
+HLE,OpenClaw,failure,Plan Formation,Solution Execution,2758,71540,0.03855186
+HLE,OpenClaw,failure,Plan Formation,__END__,20,71540,0.00027956
+HLE,OpenClaw,failure,Problem Framing,Answer Delivery,97,71540,0.00135588
+HLE,OpenClaw,failure,Problem Framing,Plan Formation,123,71540,0.00171932
+HLE,OpenClaw,failure,Problem Framing,Problem Framing,372,71540,0.00519989
+HLE,OpenClaw,failure,Problem Framing,Result Auditing,664,71540,0.00928152
+HLE,OpenClaw,failure,Problem Framing,Solution Execution,1579,71540,0.02207157
+HLE,OpenClaw,failure,Problem Framing,__END__,16,71540,0.00022365
+HLE,OpenClaw,failure,Result Auditing,Answer Delivery,33,71540,0.00046128
+HLE,OpenClaw,failure,Result Auditing,Plan Formation,527,71540,0.00736651
+HLE,OpenClaw,failure,Result Auditing,Problem Framing,693,71540,0.00968689
+HLE,OpenClaw,failure,Result Auditing,Result Auditing,2845,71540,0.03976796
+HLE,OpenClaw,failure,Result Auditing,Solution Execution,8871,71540,0.12400056
+HLE,OpenClaw,failure,Result Auditing,__END__,34,71540,0.00047526
+HLE,OpenClaw,failure,Solution Execution,Answer Delivery,523,71540,0.00731060
+HLE,OpenClaw,failure,Solution Execution,Plan Formation,2758,71540,0.03855186
+HLE,OpenClaw,failure,Solution Execution,Problem Framing,1652,71540,0.02309198
+HLE,OpenClaw,failure,Solution Execution,Result Auditing,8443,71540,0.11801789
+HLE,OpenClaw,failure,Solution Execution,Solution Execution,31539,71540,0.44085826
+HLE,OpenClaw,failure,Solution Execution,__END__,87,71540,0.00121610
+HLE,OpenClaw,failure,Tool Grounding,Answer Delivery,1,71540,0.00001398
+HLE,OpenClaw,failure,Tool Grounding,Plan Formation,17,71540,0.00023763
+HLE,OpenClaw,failure,Tool Grounding,Problem Framing,1,71540,0.00001398
+HLE,OpenClaw,failure,Tool Grounding,Result Auditing,14,71540,0.00019569
+HLE,OpenClaw,failure,Tool Grounding,Solution Execution,66,71540,0.00092256
+HLE,OpenClaw,failure,Tool Grounding,Tool Grounding,5211,71540,0.07284037
+HLE,OpenClaw,failure,Tool Grounding,__END__,67,71540,0.00093654
+HLE,OpenClaw,failure,__START__,Plan Formation,137,71540,0.00191501
+HLE,OpenClaw,failure,__START__,Problem Framing,31,71540,0.00043332
+HLE,OpenClaw,failure,__START__,Result Auditing,2,71540,0.00002796
+HLE,OpenClaw,failure,__START__,Solution Execution,174,71540,0.00243221
+HLE,OpenClaw,failure,__START__,Tool Grounding,165,71540,0.00230640
+HLE,OpenClaw,success,Answer Delivery,Answer Delivery,1,4391,0.00022774
+HLE,OpenClaw,success,Answer Delivery,Plan Formation,1,4391,0.00022774
+HLE,OpenClaw,success,Answer Delivery,Problem Framing,2,4391,0.00045548
+HLE,OpenClaw,success,Answer Delivery,Result Auditing,4,4391,0.00091095
+HLE,OpenClaw,success,Answer Delivery,Solution Execution,5,4391,0.00113869
+HLE,OpenClaw,success,Answer Delivery,__END__,79,4391,0.01799135
+HLE,OpenClaw,success,Plan Formation,Answer Delivery,2,4391,0.00045548
+HLE,OpenClaw,success,Plan Formation,Plan Formation,28,4391,0.00637668
+HLE,OpenClaw,success,Plan Formation,Problem Framing,14,4391,0.00318834
+HLE,OpenClaw,success,Plan Formation,Result Auditing,13,4391,0.00296060
+HLE,OpenClaw,success,Plan Formation,Solution Execution,229,4391,0.05215213
+HLE,OpenClaw,success,Problem Framing,Answer Delivery,3,4391,0.00068322
+HLE,OpenClaw,success,Problem Framing,Plan Formation,23,4391,0.00523799
+HLE,OpenClaw,success,Problem Framing,Problem Framing,10,4391,0.00227739
+HLE,OpenClaw,success,Problem Framing,Result Auditing,34,4391,0.00774311
+HLE,OpenClaw,success,Problem Framing,Solution Execution,115,4391,0.02618993
+HLE,OpenClaw,success,Result Auditing,Answer Delivery,5,4391,0.00113869
+HLE,OpenClaw,success,Result Auditing,Plan Formation,18,4391,0.00409929
+HLE,OpenClaw,success,Result Auditing,Problem Framing,18,4391,0.00409929
+HLE,OpenClaw,success,Result Auditing,Result Auditing,70,4391,0.01594170
+HLE,OpenClaw,success,Result Auditing,Solution Execution,350,4391,0.07970849
+HLE,OpenClaw,success,Solution Execution,Answer Delivery,81,4391,0.01844682
+HLE,OpenClaw,success,Solution Execution,Plan Formation,199,4391,0.04531997
+HLE,OpenClaw,success,Solution Execution,Problem Framing,134,4391,0.03051697
+HLE,OpenClaw,success,Solution Execution,Result Auditing,335,4391,0.07629242
+HLE,OpenClaw,success,Solution Execution,Solution Execution,2292,4391,0.52197677
+HLE,OpenClaw,success,Tool Grounding,Plan Formation,4,4391,0.00091095
+HLE,OpenClaw,success,Tool Grounding,Problem Framing,2,4391,0.00045548
+HLE,OpenClaw,success,Tool Grounding,Result Auditing,4,4391,0.00091095
+HLE,OpenClaw,success,Tool Grounding,Solution Execution,19,4391,0.00432703
+HLE,OpenClaw,success,Tool Grounding,Tool Grounding,218,4391,0.04964701
+HLE,OpenClaw,success,__START__,Plan Formation,13,4391,0.00296060
+HLE,OpenClaw,success,__START__,Problem Framing,5,4391,0.00113869
+HLE,OpenClaw,success,__START__,Result Auditing,1,4391,0.00022774
+HLE,OpenClaw,success,__START__,Solution Execution,31,4391,0.00705990
+HLE,OpenClaw,success,__START__,Tool Grounding,29,4391,0.00660442
+HLE,OpenClaw,unknown,Answer Delivery,Tool Grounding,1,466,0.00214592
+HLE,OpenClaw,unknown,Plan Formation,Problem Framing,1,466,0.00214592
+HLE,OpenClaw,unknown,Plan Formation,Solution Execution,6,466,0.01287554
+HLE,OpenClaw,unknown,Problem Framing,Plan Formation,1,466,0.00214592
+HLE,OpenClaw,unknown,Problem Framing,Result Auditing,1,466,0.00214592
+HLE,OpenClaw,unknown,Result Auditing,Result Auditing,6,466,0.01287554
+HLE,OpenClaw,unknown,Result Auditing,Solution Execution,121,466,0.25965665
+HLE,OpenClaw,unknown,Solution Execution,Answer Delivery,1,466,0.00214592
+HLE,OpenClaw,unknown,Solution Execution,Plan Formation,6,466,0.01287554
+HLE,OpenClaw,unknown,Solution Execution,Problem Framing,1,466,0.00214592
+HLE,OpenClaw,unknown,Solution Execution,Result Auditing,120,466,0.25751073
+HLE,OpenClaw,unknown,Solution Execution,Solution Execution,133,466,0.28540773
+HLE,OpenClaw,unknown,Solution Execution,__END__,1,466,0.00214592
+HLE,OpenClaw,unknown,Tool Grounding,Solution Execution,1,466,0.00214592
+HLE,OpenClaw,unknown,Tool Grounding,Tool Grounding,61,466,0.13090129
+HLE,OpenClaw,unknown,Tool Grounding,__END__,2,466,0.00429185
+HLE,OpenClaw,unknown,__START__,Solution Execution,1,466,0.00214592
+HLE,OpenClaw,unknown,__START__,Tool Grounding,2,466,0.00429185
+HLE,OpenCode,failure,Answer Delivery,Plan Formation,125,83630,0.00149468
+HLE,OpenCode,failure,Answer Delivery,Problem Framing,55,83630,0.00065766
+HLE,OpenCode,failure,Answer Delivery,Result Auditing,12,83630,0.00014349
+HLE,OpenCode,failure,Answer Delivery,Solution Execution,195,83630,0.00233170
+HLE,OpenCode,failure,Answer Delivery,__END__,359,83630,0.00429272
+HLE,OpenCode,failure,Plan Formation,Answer Delivery,28,83630,0.00033481
+HLE,OpenCode,failure,Plan Formation,Plan Formation,406,83630,0.00485472
+HLE,OpenCode,failure,Plan Formation,Problem Framing,116,83630,0.00138706
+HLE,OpenCode,failure,Plan Formation,Result Auditing,280,83630,0.00334808
+HLE,OpenCode,failure,Plan Formation,Solution Execution,2827,83630,0.03380366
+HLE,OpenCode,failure,Plan Formation,Tool Grounding,324,83630,0.00387421
+HLE,OpenCode,failure,Plan Formation,__END__,50,83630,0.00059787
+HLE,OpenCode,failure,Problem Framing,Answer Delivery,26,83630,0.00031089
+HLE,OpenCode,failure,Problem Framing,Plan Formation,214,83630,0.00255889
+HLE,OpenCode,failure,Problem Framing,Problem Framing,82,83630,0.00098051
+HLE,OpenCode,failure,Problem Framing,Result Auditing,366,83630,0.00437642
+HLE,OpenCode,failure,Problem Framing,Solution Execution,2020,83630,0.02415401
+HLE,OpenCode,failure,Problem Framing,Tool Grounding,26,83630,0.00031089
+HLE,OpenCode,failure,Problem Framing,__END__,6,83630,0.00007174
+HLE,OpenCode,failure,Result Auditing,Answer Delivery,34,83630,0.00040655
+HLE,OpenCode,failure,Result Auditing,Plan Formation,151,83630,0.00180557
+HLE,OpenCode,failure,Result Auditing,Problem Framing,713,83630,0.00852565
+HLE,OpenCode,failure,Result Auditing,Result Auditing,2535,83630,0.03031209
+HLE,OpenCode,failure,Result Auditing,Solution Execution,10997,83630,0.13149587
+HLE,OpenCode,failure,Result Auditing,Tool Grounding,70,83630,0.00083702
+HLE,OpenCode,failure,Result Auditing,__END__,27,83630,0.00032285
+HLE,OpenCode,failure,Solution Execution,Answer Delivery,658,83630,0.00786799
+HLE,OpenCode,failure,Solution Execution,Plan Formation,2400,83630,0.02869784
+HLE,OpenCode,failure,Solution Execution,Problem Framing,1671,83630,0.01998087
+HLE,OpenCode,failure,Solution Execution,Result Auditing,11297,83630,0.13508310
+HLE,OpenCode,failure,Solution Execution,Solution Execution,42325,83630,0.50609829
+HLE,OpenCode,failure,Solution Execution,Tool Grounding,902,83630,0.01078560
+HLE,OpenCode,failure,Solution Execution,__END__,66,83630,0.00078919
+HLE,OpenCode,failure,Tool Grounding,Plan Formation,545,83630,0.00651680
+HLE,OpenCode,failure,Tool Grounding,Problem Framing,36,83630,0.00043047
+HLE,OpenCode,failure,Tool Grounding,Result Auditing,31,83630,0.00037068
+HLE,OpenCode,failure,Tool Grounding,Solution Execution,733,83630,0.00876480
+HLE,OpenCode,failure,Tool Grounding,Tool Grounding,414,83630,0.00495038
+HLE,OpenCode,failure,__START__,Plan Formation,190,83630,0.00227191
+HLE,OpenCode,failure,__START__,Problem Framing,67,83630,0.00080115
+HLE,OpenCode,failure,__START__,Result Auditing,6,83630,0.00007174
+HLE,OpenCode,failure,__START__,Solution Execution,222,83630,0.00265455
+HLE,OpenCode,failure,__START__,Tool Grounding,23,83630,0.00027502
+HLE,OpenCode,success,Answer Delivery,Plan Formation,24,5421,0.00442723
+HLE,OpenCode,success,Answer Delivery,Problem Framing,12,5421,0.00221361
+HLE,OpenCode,success,Answer Delivery,Result Auditing,4,5421,0.00073787
+HLE,OpenCode,success,Answer Delivery,Solution Execution,54,5421,0.00996126
+HLE,OpenCode,success,Answer Delivery,__END__,82,5421,0.01512636
+HLE,OpenCode,success,Plan Formation,Answer Delivery,8,5421,0.00147574
+HLE,OpenCode,success,Plan Formation,Plan Formation,33,5421,0.00608744
+HLE,OpenCode,success,Plan Formation,Problem Framing,30,5421,0.00553403
+HLE,OpenCode,success,Plan Formation,Result Auditing,28,5421,0.00516510
+HLE,OpenCode,success,Plan Formation,Solution Execution,294,5421,0.05423354
+HLE,OpenCode,success,Plan Formation,Tool Grounding,8,5421,0.00147574
+HLE,OpenCode,success,Problem Framing,Answer Delivery,6,5421,0.00110681
+HLE,OpenCode,success,Problem Framing,Plan Formation,29,5421,0.00534957
+HLE,OpenCode,success,Problem Framing,Problem Framing,15,5421,0.00276702
+HLE,OpenCode,success,Problem Framing,Result Auditing,34,5421,0.00627191
+HLE,OpenCode,success,Problem Framing,Solution Execution,166,5421,0.03062166
+HLE,OpenCode,success,Problem Framing,Tool Grounding,1,5421,0.00018447
+HLE,OpenCode,success,Result Auditing,Answer Delivery,12,5421,0.00221361
+HLE,OpenCode,success,Result Auditing,Plan Formation,26,5421,0.00479616
+HLE,OpenCode,success,Result Auditing,Problem Framing,24,5421,0.00442723
+HLE,OpenCode,success,Result Auditing,Result Auditing,100,5421,0.01844678
+HLE,OpenCode,success,Result Auditing,Solution Execution,373,5421,0.06880649
+HLE,OpenCode,success,Result Auditing,Tool Grounding,14,5421,0.00258255
+HLE,OpenCode,success,Solution Execution,Answer Delivery,150,5421,0.02767017
+HLE,OpenCode,success,Solution Execution,Plan Formation,249,5421,0.04593248
+HLE,OpenCode,success,Solution Execution,Problem Framing,157,5421,0.02896145
+HLE,OpenCode,success,Solution Execution,Result Auditing,374,5421,0.06899096
+HLE,OpenCode,success,Solution Execution,Solution Execution,2842,5421,0.52425752
+HLE,OpenCode,success,Solution Execution,Tool Grounding,68,5421,0.01254381
+HLE,OpenCode,success,Tool Grounding,Plan Formation,16,5421,0.00295148
+HLE,OpenCode,success,Tool Grounding,Problem Framing,5,5421,0.00092234
+HLE,OpenCode,success,Tool Grounding,Result Auditing,8,5421,0.00147574
+HLE,OpenCode,success,Tool Grounding,Solution Execution,64,5421,0.01180594
+HLE,OpenCode,success,Tool Grounding,Tool Grounding,29,5421,0.00534957
+HLE,OpenCode,success,__START__,Plan Formation,24,5421,0.00442723
+HLE,OpenCode,success,__START__,Problem Framing,8,5421,0.00147574
+HLE,OpenCode,success,__START__,Result Auditing,1,5421,0.00018447
+HLE,OpenCode,success,__START__,Solution Execution,47,5421,0.00866999
+HLE,OpenCode,success,__START__,Tool Grounding,2,5421,0.00036894
+HLE,OpenCode,unknown,Problem Framing,Result Auditing,1,93,0.01075269
+HLE,OpenCode,unknown,Problem Framing,Tool Grounding,1,93,0.01075269
+HLE,OpenCode,unknown,Result Auditing,Result Auditing,13,93,0.13978495
+HLE,OpenCode,unknown,Result Auditing,Solution Execution,16,93,0.17204301
+HLE,OpenCode,unknown,Result Auditing,Tool Grounding,2,93,0.02150538
+HLE,OpenCode,unknown,Solution Execution,Problem Framing,2,93,0.02150538
+HLE,OpenCode,unknown,Solution Execution,Result Auditing,15,93,0.16129032
+HLE,OpenCode,unknown,Solution Execution,Solution Execution,36,93,0.38709677
+HLE,OpenCode,unknown,Solution Execution,Tool Grounding,1,93,0.01075269
+HLE,OpenCode,unknown,Solution Execution,__END__,1,93,0.01075269
+HLE,OpenCode,unknown,Tool Grounding,Result Auditing,1,93,0.01075269
+HLE,OpenCode,unknown,Tool Grounding,Solution Execution,3,93,0.03225806
+HLE,OpenCode,unknown,__START__,Result Auditing,1,93,0.01075269
+HLE,ZeroClaw,failure,Answer Delivery,Answer Delivery,2,21807,0.00009171
+HLE,ZeroClaw,failure,Answer Delivery,Plan Formation,4,21807,0.00018343
+HLE,ZeroClaw,failure,Answer Delivery,Problem Framing,11,21807,0.00050443
+HLE,ZeroClaw,failure,Answer Delivery,Result Auditing,40,21807,0.00183427
+HLE,ZeroClaw,failure,Answer Delivery,Solution Execution,14,21807,0.00064200
+HLE,ZeroClaw,failure,Answer Delivery,__END__,366,21807,0.01678360
+HLE,ZeroClaw,failure,Plan Formation,Answer Delivery,14,21807,0.00064200
+HLE,ZeroClaw,failure,Plan Formation,Plan Formation,318,21807,0.01458247
+HLE,ZeroClaw,failure,Plan Formation,Problem Framing,98,21807,0.00449397
+HLE,ZeroClaw,failure,Plan Formation,Result Auditing,156,21807,0.00715367
+HLE,ZeroClaw,failure,Plan Formation,Solution Execution,1232,21807,0.05649562
+HLE,ZeroClaw,failure,Plan Formation,__END__,28,21807,0.00128399
+HLE,ZeroClaw,failure,Problem Framing,Answer Delivery,28,21807,0.00128399
+HLE,ZeroClaw,failure,Problem Framing,Plan Formation,107,21807,0.00490668
+HLE,ZeroClaw,failure,Problem Framing,Problem Framing,57,21807,0.00261384
+HLE,ZeroClaw,failure,Problem Framing,Result Auditing,151,21807,0.00692438
+HLE,ZeroClaw,failure,Problem Framing,Solution Execution,651,21807,0.02985280
+HLE,ZeroClaw,failure,Problem Framing,__END__,2,21807,0.00009171
+HLE,ZeroClaw,failure,Result Auditing,Answer Delivery,24,21807,0.00110056
+HLE,ZeroClaw,failure,Result Auditing,Plan Formation,209,21807,0.00958408
+HLE,ZeroClaw,failure,Result Auditing,Problem Framing,153,21807,0.00701610
+HLE,ZeroClaw,failure,Result Auditing,Result Auditing,1169,21807,0.05360664
+HLE,ZeroClaw,failure,Result Auditing,Solution Execution,1827,21807,0.08378044
+HLE,ZeroClaw,failure,Result Auditing,__END__,27,21807,0.00123813
+HLE,ZeroClaw,failure,Solution Execution,Answer Delivery,369,21807,0.01692117
+HLE,ZeroClaw,failure,Solution Execution,Plan Formation,1104,21807,0.05062595
+HLE,ZeroClaw,failure,Solution Execution,Problem Framing,650,21807,0.02980694
+HLE,ZeroClaw,failure,Solution Execution,Result Auditing,1737,21807,0.07965332
+HLE,ZeroClaw,failure,Solution Execution,Solution Execution,10676,21807,0.48956757
+HLE,ZeroClaw,failure,Solution Execution,__END__,80,21807,0.00366855
+HLE,ZeroClaw,failure,__START__,Plan Formation,104,21807,0.00476911
+HLE,ZeroClaw,failure,__START__,Problem Framing,27,21807,0.00123813
+HLE,ZeroClaw,failure,__START__,Result Auditing,156,21807,0.00715367
+HLE,ZeroClaw,failure,__START__,Solution Execution,216,21807,0.00990508
+HLE,ZeroClaw,success,Answer Delivery,Plan Formation,1,5032,0.00019873
+HLE,ZeroClaw,success,Answer Delivery,Problem Framing,4,5032,0.00079491
+HLE,ZeroClaw,success,Answer Delivery,Result Auditing,32,5032,0.00635930
+HLE,ZeroClaw,success,Answer Delivery,Solution Execution,11,5032,0.00218601
+HLE,ZeroClaw,success,Answer Delivery,__END__,87,5032,0.01728935
+HLE,ZeroClaw,success,Plan Formation,Answer Delivery,6,5032,0.00119237
+HLE,ZeroClaw,success,Plan Formation,Plan Formation,49,5032,0.00973768
+HLE,ZeroClaw,success,Plan Formation,Problem Framing,7,5032,0.00139110
+HLE,ZeroClaw,success,Plan Formation,Result Auditing,26,5032,0.00516693
+HLE,ZeroClaw,success,Plan Formation,Solution Execution,258,5032,0.05127186
+HLE,ZeroClaw,success,Problem Framing,Answer Delivery,7,5032,0.00139110
+HLE,ZeroClaw,success,Problem Framing,Plan Formation,31,5032,0.00616057
+HLE,ZeroClaw,success,Problem Framing,Problem Framing,10,5032,0.00198728
+HLE,ZeroClaw,success,Problem Framing,Result Auditing,28,5032,0.00556439
+HLE,ZeroClaw,success,Problem Framing,Solution Execution,102,5032,0.02027027
+HLE,ZeroClaw,success,Result Auditing,Answer Delivery,18,5032,0.00357711
+HLE,ZeroClaw,success,Result Auditing,Plan Formation,17,5032,0.00337838
+HLE,ZeroClaw,success,Result Auditing,Problem Framing,31,5032,0.00616057
+HLE,ZeroClaw,success,Result Auditing,Result Auditing,176,5032,0.03497615
+HLE,ZeroClaw,success,Result Auditing,Solution Execution,505,5032,0.10035771
+HLE,ZeroClaw,success,Solution Execution,Answer Delivery,104,5032,0.02066773
+HLE,ZeroClaw,success,Solution Execution,Plan Formation,222,5032,0.04411765
+HLE,ZeroClaw,success,Solution Execution,Problem Framing,122,5032,0.02424483
+HLE,ZeroClaw,success,Solution Execution,Result Auditing,460,5032,0.09141494
+HLE,ZeroClaw,success,Solution Execution,Solution Execution,2629,5032,0.52245628
+HLE,ZeroClaw,success,Solution Execution,__END__,1,5032,0.00019873
+HLE,ZeroClaw,success,__START__,Plan Formation,26,5032,0.00516693
+HLE,ZeroClaw,success,__START__,Problem Framing,4,5032,0.00079491
+HLE,ZeroClaw,success,__START__,Result Auditing,25,5032,0.00496820
+HLE,ZeroClaw,success,__START__,Solution Execution,33,5032,0.00655803

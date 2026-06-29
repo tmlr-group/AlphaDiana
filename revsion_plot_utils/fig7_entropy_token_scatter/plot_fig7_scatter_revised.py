@@ -79,13 +79,50 @@ def conf_ellipse(ax, x, y, color):
     ax.plot(cx, cy, marker="o", color=color, ms=5, mec="white", mew=0.6, zorder=6)
 
 
+def ellipse_extent(x, y):
+    """Axis-aligned bounding box of the 2-std covariance ellipse for one cloud.
+
+    Returns (xmin, xmax, ymin, ymax) covering both the points and the drawn ellipse,
+    so global limits can contain the ellipses (which extend past the raw point range).
+    """
+    if len(x) == 0:
+        return None
+    xmin, xmax, ymin, ymax = x.min(), x.max(), y.min(), y.max()
+    if len(x) >= MIN_ELLIPSE:
+        cov = np.cov(x, y)
+        if np.all(np.isfinite(cov)):
+            vals, vecs = np.linalg.eigh(cov)
+            order = vals.argsort()[::-1]
+            vals, vecs = vals[order], vecs[:, order]
+            angle = np.arctan2(vecs[1, 0], vecs[0, 0])
+            a, b = N_STD * np.sqrt(np.maximum(vals, 0))     # semi-axes (major, minor)
+            dx = np.hypot(a * np.cos(angle), b * np.sin(angle))
+            dy = np.hypot(a * np.sin(angle), b * np.cos(angle))
+            cx, cy = x.mean(), y.mean()
+            xmin, xmax = min(xmin, cx - dx), max(xmax, cx + dx)
+            ymin, ymax = min(ymin, cy - dy), max(ymax, cy + dy)
+    return xmin, xmax, ymin, ymax
+
+
 def global_limits(rows):
-    """One shared scale for every panel so left (Qwen) and right (Gemma) align."""
-    lx = [np.log10(float(r["n_tokens"])) for r in rows if float(r["n_tokens"]) > 0]
-    ly = [float(r["mean_entropy"]) for r in rows
-          if np.isfinite(float(r["mean_entropy"]))]
-    return ((min(lx) - 0.15, max(lx) + 0.15),
-            (-0.02, min(1.02, max(ly) + 0.05)))
+    """One shared scale for every panel so left (Qwen) and right (Gemma) align.
+
+    Limits contain every cloud's 2-std ellipse (not just the points), so no ellipse
+    is clipped at the spine.
+    """
+    xmin, xmax = np.inf, -np.inf
+    ymin, ymax = np.inf, -np.inf
+    for model in MODEL_ORDER:
+        for bench in BENCH_ORDER:
+            for harness in HARNESS_ORDER:
+                for correct in ("0", "1"):
+                    ext = ellipse_extent(*pts(rows, model, bench, harness, correct))
+                    if ext is None:
+                        continue
+                    xmin, xmax = min(xmin, ext[0]), max(xmax, ext[1])
+                    ymin, ymax = min(ymin, ext[2]), max(ymax, ext[3])
+    return ((xmin - 0.10, xmax + 0.10),
+            (min(-0.02, ymin - 0.02), ymax + 0.04))
 
 
 def plot_one(model, rows, x_lim, y_lim, slug):

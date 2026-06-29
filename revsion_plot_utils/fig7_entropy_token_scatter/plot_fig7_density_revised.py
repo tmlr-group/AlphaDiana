@@ -117,8 +117,11 @@ def model_limits(rows, model):
           if r["model"] == model and float(r["n_tokens"]) > 0]
     ly = [float(r["mean_entropy"]) for r in rows
           if r["model"] == model and np.isfinite(float(r["mean_entropy"]))]
-    return ((min(lx) - 0.15, max(lx) + 0.15),
-            (-0.02, min(1.02, max(ly) + 0.05)))
+    # Generous padding so the KDE density (smoothed past the data range) fully closes
+    # inside the axes instead of being cut at the spine. The wrong/long-output bulk
+    # sits near max(lx), so the right side needs the most headroom.
+    return ((min(lx) - 0.30, max(lx) + 0.75),
+            (-0.04, min(1.05, max(ly) + 0.10)))
 
 
 def main():
