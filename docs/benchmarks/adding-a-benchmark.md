@@ -179,6 +179,6 @@ wrote scored results. It does not mean the model answered correctly.
 
 ## See also
 
-- [Benchmark index](./README) — per-benchmark one-liners and runbooks.
+- [Benchmark index](./index) — per-benchmark one-liners and runbooks.
 - [Harnesses overview](../harnesses/) — the `Agent` contract that consumes a `BenchmarkTask`.
-- [Benchmark isolation](../benchmark-isolation) — sandbox / containerization wording.
+- [Benchmark isolation](../concepts/isolation-and-fairness) — sandbox / containerization wording.
