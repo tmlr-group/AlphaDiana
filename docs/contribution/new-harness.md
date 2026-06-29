@@ -161,5 +161,4 @@ sandbox. The existing agents resolve it with a per-harness `_resolve_skill_folde
 path is used as-is; a value with `/` resolves against the cwd; a bare name
 resolves to `alphadiana/harness/skills/<name>/` (for example `advanced-maths`).
 Skills are **not** auto-injected into context, so your system prompt must instruct
-the model to read the mounted `SKILL.md`. See [Skills](../harnesses/skills) for
-the bundle format and how OpenCode and ZeroClaw mount them.
+the model to read the mounted `SKILL.md`.
