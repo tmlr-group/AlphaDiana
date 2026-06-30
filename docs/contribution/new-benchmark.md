@@ -50,7 +50,7 @@ hands to a harness and the scorer:
 | --- | --- | --- |
 | `task_id` | `str` | Stable id, e.g. `aime_3`, `gpqa_12`. |
 | `problem` | `str` | The prompt text shown to the agent. |
-| `ground_truth` | `Any` | Polymorphic — see below. |
+| `ground_truth` | `Any` | Polymorphic: see below. |
 | `metadata` | `dict` | Default `{}`. Surfaced in results and the manifest. |
 | `attachments` | `dict[str, bytes]` | Default `{}`. Image bytes for multimodal tasks. |
 
@@ -179,6 +179,6 @@ wrote scored results. It does not mean the model answered correctly.
 
 ## See also
 
-- [Benchmark index](../benchmarks/) — the registered benchmarks and per-benchmark pages.
-- [Harnesses overview](../harnesses/) — the `Agent` contract that consumes a `BenchmarkTask`.
-- [Benchmark isolation](../concepts/isolation-and-fairness) — sandbox / containerization wording.
+- [Benchmark index](../benchmarks/): the registered benchmarks and per-benchmark pages.
+- [Harnesses overview](../harnesses/): the `Agent` contract that consumes a `BenchmarkTask`.
+- [Benchmark isolation](../concepts/isolation-and-fairness): sandbox / containerization wording.

@@ -18,8 +18,8 @@ that govern where results land and how many samples each task produces.
 | `validate` | `<config.yaml>` | Load and validate a config without running. |
 | `report` | `<results_dir>` | Regenerate a `RunSummary` from an existing results directory. |
 | `batch` | `<config1.yaml> <config2.yaml> ...` | Run several configs sequentially (or with `--parallel`). |
-| `env` | — | Check ROCK service health and ownership; print start instructions. |
-| `list-benchmarks` | — | List the benchmarks registered in the `BenchmarkRegistry`. |
+| `env` | none | Check ROCK service health and ownership; print start instructions. |
+| `list-benchmarks` | none | List the benchmarks registered in the `BenchmarkRegistry`. |
 
 All commands that take a config accept `-o`/`--override` (see below). The `run` and `batch`
 commands additionally accept run-control flags.

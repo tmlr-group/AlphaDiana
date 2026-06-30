@@ -4,7 +4,7 @@ Run Qwen3.5-27B on `MariusHobbhahn/swe-bench-verified-mini` (50 tasks) via the
 standalone SWE-agent CLI, orchestrated by `alphadiana.benchmark_rollout_cli`
 with backend `official_swebench_verified`.
 
-Wall time estimate: 8–15 h at `max_concurrent=10`.
+Wall time estimate: 8-15 h at `max_concurrent=10`.
 
 Reference run for parity: `T-MARS/alphadiana-benchmark-results/full_run/YYYYMMDD-swe-bench-verified-mini-sweagent-qwen35-27b-local-v1`
 (23 / 50 = 46 % resolved).
@@ -29,7 +29,7 @@ Reference run for parity: `T-MARS/alphadiana-benchmark-results/full_run/YYYYMMDD
 
 Both serve-side params must be set in the vLLM launch command.
 
-System prompt: **unchanged** — uses SWE-agent upstream's own config (default
+System prompt: **unchanged**. Uses SWE-agent upstream's own config (default
 `config/default.yaml`, swap via `sweagent_config` override). `alphadiana`'s
 `swebench_docker._DEFAULT_SYSTEM_PROMPT` does not apply on this path; the
 sweagent CLI owns its own prompting.
@@ -206,7 +206,7 @@ huggingface-cli upload-large-folder \
   --path-in-repo "$TARGET"
 ```
 
-Use `upload-large-folder`, not plain `upload` — sweagent produces 5k+ small files
+Use `upload-large-folder`, not plain `upload`: sweagent produces 5k+ small files
 which time out the single-shot uploader.
 
 ---
@@ -232,7 +232,7 @@ which time out the single-shot uploader.
   helper (`python helper_code/gather_patches.py` if present in your checkout) or
   roll a small script that joins per-instance `.pred` files.
 - **Long-tail instances.** A handful of instances hit `per_instance_call_limit`
-  and never submit a patch — they count as unresolved. Reference run saw ~7
+  and never submit a patch; they count as unresolved. Reference run saw ~7
   such cases out of 50.
 - **GPU contention.** If another run is already using the same vLLM endpoint,
   drop `max_concurrent` or wait for it to finish.

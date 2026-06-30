@@ -95,15 +95,15 @@ three connection fields (`OPENAI_MODEL_NAME`, `OPENAI_BASE_URL`,
 | `api_base` | `OPENAI_BASE_URL` | OpenAI-compatible base URL |
 | `api_key` | `OPENAI_API_KEY` / `EMPTY` | use `sk-EMPTY`, not the literal `EMPTY` |
 | `temperature` | `0.7` | |
-| `top_p` | — | |
+| `top_p` | none | |
 | `max_tokens` | auto | if unset, GETs `{api_base}/models`, uses `max_model_len - 8192` (fallback `131072`) |
 | `request_timeout` | `600` | per-request seconds |
 | `stream` | `True` | |
-| `stream_total_timeout` | — | on hit, `answer=None`, `finish_reason="timeout"` |
+| `stream_total_timeout` | none | on hit, `answer=None`, `finish_reason="timeout"` |
 | `max_retries` | `3` | exponential backoff with jitter |
 | `system_prompt` | boxed-answer prompt | |
-| `enable_thinking` | — | |
-| `extra_body` | — | passthrough to the request body |
+| `enable_thinking` | none | |
+| `extra_body` | none | passthrough to the request body |
 | `capture_logprobs` | `True` | |
 | `top_logprobs` | `20` | |
 | `logprobs_format` | `int16` | `int16` or `float` |
@@ -153,12 +153,12 @@ number hides which side of zero you are on.
 
 AlphaDiana supports two complementary modes of harness-aware study:
 
-- **Macro** — swap whole harnesses (`direct_llm` vs `opencode` vs `openclaw` vs
+- **Macro**: swap whole harnesses (`direct_llm` vs `opencode` vs `openclaw` vs
   `zeroclaw`) on a fixed model and benchmark, then compare end-to-end accuracy.
   This answers "how much does this agent improve over the base model, and at what
   cost?" It is a pure `agent.name` change with everything else held constant.
 
-- **Micro** — isolate one scaffold ingredient at a time (a tool, a skill, a
+- **Micro**: isolate one scaffold ingredient at a time (a tool, a skill, a
   memory mechanism, the system-prompt tool documentation) and toggle just that
   axis. Micro studies need surgical control over the request stream, which is
   what the proxies provide (below). The
@@ -221,6 +221,6 @@ prompt-level concern, which makes it a clean micro axis to ablate.
 
 ## See also
 
-- [Tool / Skill / Memory axes](./evaluation-axes) — the micro ablation design.
-- [Direct LLM, OpenCode, OpenClaw, ZeroClaw](../harnesses/) — per-harness reference pages.
-- [Benchmark isolation](./isolation-and-fairness) — keeping comparisons fair across harnesses.
+- [Tool / Skill / Memory axes](./evaluation-axes): the micro ablation design.
+- [Direct LLM, OpenCode, OpenClaw, ZeroClaw](../harnesses/): per-harness reference pages.
+- [Benchmark isolation](./isolation-and-fairness): keeping comparisons fair across harnesses.

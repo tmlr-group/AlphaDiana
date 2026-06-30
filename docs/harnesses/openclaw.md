@@ -255,7 +255,7 @@ The predeploy pool is configured from `agent.config`
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `num_sandboxes` | auto | active target (else `ceil(max_concurrent / per-sandbox)`) |
-| `standby_sandboxes` | — | extra fresh-per-task replacements |
+| `standby_sandboxes` | none | extra fresh-per-task replacements |
 | `reuse_predeployed_sandboxes` | `false` | fresh-per-task contract |
 | `reset_predeployed_between_tasks` | `true` | clear session state on reuse |
 | `predeployed_lease_probe` | `true` | probe sandbox liveness before lease |
@@ -272,7 +272,7 @@ guard actively rejects any response whose trajectory or payload contains
 `HEARTBEAT` markers. Operational heartbeats belong in a separate monitor log:
 
 ```text
-logs/<run_id>.monitor.log      # operator/wrapper heartbeats — never the model session
+logs/<run_id>.monitor.log      # operator/wrapper heartbeats, never the model session
 logs/<run_id>.log              # the benchmark shell log
 ```
 
@@ -313,11 +313,11 @@ queue is healthy: long thinking-on samples can run near 30 tokens/sec, so a
 | Key | Default | Notes |
 | --- | --- | --- |
 | `runtime` / `runtime_backend` | `''` / `''` | `''`, `podman`, or `swebench_container` |
-| `api_base` | — | gateway / proxy base |
+| `api_base` | none | gateway / proxy base |
 | `model` | `openclaw` | served model name |
 | `gateway_token` | `OPENCLAW` | bearer token |
 | `temperature` | `0.7` | |
-| `max_tokens` | — | per-request cap |
+| `max_tokens` | none | per-request cap |
 | `stream` / `streaming` | `True` | |
 | `max_attempts` | `5` | retry loop |
 | `request_timeout` | `1800` | |
@@ -326,7 +326,7 @@ queue is healthy: long thinking-on samples can run near 30 tokens/sec, so a
 | `backend_down_threshold` | `5` | circuit breaker threshold |
 | `persistent_memory` | `False` | enables local-agent path |
 | `oracle_feedback` | `False` | self-grading four-tuple store |
-| `capture_logprobs` / `top_logprobs` | — | logprob capture |
+| `capture_logprobs` / `top_logprobs` | none | logprob capture |
 
 ## vLLM tool-calling & timeout layers
 
