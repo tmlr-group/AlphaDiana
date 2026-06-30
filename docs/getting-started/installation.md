@@ -18,7 +18,7 @@ For per-harness configuration, see the harness pages such as
 | Requirement | Notes |
 |---|---|
 | OS | Linux |
-| Python | >= 3.10, 3.11/3.12 recommended. Do **not** use 3.13 — ROCK depends on a library that supports only <= 3.12. |
+| Python | >= 3.10, 3.11/3.12 recommended. Do **not** use 3.13: ROCK depends on a library that supports only <= 3.12. |
 | Conda | Used to create an isolated, checkout-local environment. |
 | NVIDIA GPU | One card with 40GB+ VRAM (A100/A800) to serve a local model via vLLM. Not required when targeting a hosted API. |
 | Docker | Required for the ROCK-backed harnesses (`openclaw`, `zeroclaw`). The current user must be in the `docker` group. |
@@ -232,8 +232,8 @@ alphadiana report results/
 
 ## Next steps
 
-- [Quickstart](./quick-start) — run your first evaluation end to end.
-- [direct_llm](../harnesses/direct-llm) — single-turn baseline, no sandbox.
-- [openclaw](../harnesses/openclaw) — ROCK-sandboxed agent harness.
-- [zeroclaw](../harnesses/zeroclaw) — local CLI or ROCK auto-deploy modes.
-- [opencode](../harnesses/opencode) — host or Docker controller modes.
+- [Quickstart](./quick-start): run your first evaluation end to end.
+- [direct_llm](../harnesses/direct-llm): single-turn baseline, no sandbox.
+- [openclaw](../harnesses/openclaw): ROCK-sandboxed agent harness.
+- [zeroclaw](../harnesses/zeroclaw): local CLI or ROCK auto-deploy modes.
+- [opencode](../harnesses/opencode): host or Docker controller modes.

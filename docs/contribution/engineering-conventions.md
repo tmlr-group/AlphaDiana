@@ -125,8 +125,8 @@ that already completed under the matching scorer
 
 | `num_samples` | Skip granularity | Source |
 | --- | --- | --- |
-| `> 1` (e.g. AIME pass@4) | `completed_sample_ids` — per `(task_id, sample_index)` | runner.py:704 |
-| `1` (e.g. GPQA pass@1) | `completed_task_ids` — per `task_id` | runner.py:719 |
+| `> 1` (e.g. AIME pass@4) | `completed_sample_ids`: per `(task_id, sample_index)` | runner.py:704 |
+| `1` (e.g. GPQA pass@1) | `completed_task_ids`: per `task_id` | runner.py:719 |
 
 Per-sample artifacts use the suffix `{task_id}.jsonl` for sample 0 and
 `{task_id}.sample_{N}.jsonl` for later samples (runner.py:734). A scorer

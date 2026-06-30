@@ -130,9 +130,9 @@ ROCK-backed runs.
 
 `from_yaml` (`experiment_config.py:202`) resolves the environment in two phases:
 
-1. **Expand** — `_expand_env_vars` runs `os.path.expandvars` on every string in the document,
+1. **Expand**: `_expand_env_vars` runs `os.path.expandvars` on every string in the document,
    so `$VAR` and `${VAR}` are substituted from the shell before CLI overrides are merged.
-2. **Clear** — `_clear_unresolved_env_placeholders` blanks any string that is *wholly* an
+2. **Clear**: `_clear_unresolved_env_placeholders` blanks any string that is *wholly* an
    unresolved `${VAR}`. A missing variable degrades to `""` rather than leaking a literal
    placeholder.
 
@@ -166,7 +166,7 @@ export OPENAI_MODEL_NAME=Qwen/Qwen3.5-27B
 :::note The `EMPTY` sentinel
 `_has_nonempty_value` (`validator.py:257`) treats `None`, `""`, `EMPTY` (case-insensitive),
 and a lone `$VAR` / `${VAR}` placeholder as **not populated**. For local vLLM, set
-`api_key: "EMPTY"` or `"sk-EMPTY"` — any non-literal-`EMPTY` string passes.
+`api_key: "EMPTY"` or `"sk-EMPTY"`. Any non-literal-`EMPTY` string passes.
 :::
 
 ## CLI overrides
@@ -175,7 +175,7 @@ and a lone `$VAR` / `${VAR}` placeholder as **not populated**. For local vLLM, s
 override is parsed by `parse_override` (`experiment_config.py:141`): it splits on the first
 `=`, builds a nested dict from the dotted key path, and deep-merges it after env expansion.
 
-Value coercion is automatic and order-sensitive — `true`/`false` to bool, then int, then
+Value coercion is automatic and order-sensitive: `true`/`false` to bool, then int, then
 float, else string. There is no quoting escape hatch, so a string that looks numeric will be
 coerced.
 
@@ -222,6 +222,6 @@ given. The result store lives under `output_dir/<run_id>/`
 
 ## Editing configs
 
-Edit YAML with `sed`, not a `yaml.safe_dump` round-trip — PyYAML drops comments and block
+Edit YAML with `sed`, not a `yaml.safe_dump` round-trip. PyYAML drops comments and block
 scalars and produces huge spurious diffs. When committing under `configs/`, list named files
 in `git add` (or use `git add -u`); never use wildcards.

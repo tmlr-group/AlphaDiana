@@ -22,10 +22,10 @@ class-level `_registry: dict[str, Type[...]]`:
 
 Each registry exposes the same classmethod API:
 
-- `register(name, cls)` — register a class under a name.
-- `get(name)` — look up by name; raises `KeyError` with the available names
+- `register(name, cls)`: register a class under a name.
+- `get(name)`: look up by name; raises `KeyError` with the available names
   embedded in the message when missing.
-- `list()` — sorted list of registered names.
+- `list()`: sorted list of registered names.
 
 The key thing to understand is that **registration is not auto-discovery**. A
 class is only registered when its module is imported and the module-level

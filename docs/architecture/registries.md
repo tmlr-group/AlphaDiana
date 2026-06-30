@@ -129,6 +129,6 @@ The `name` is the registry key; everything under `config` is passed straight to 
 
 ## Related pages
 
-- [Engine & Runner](./engine-and-runner.md) — where `setup()` runs the imports and resolves the four classes.
-- [Architecture Overview](./index.md) — the end-to-end `solve` -> `score` -> `append` flow.
-- [Harnesses](../harnesses/) — the agents behind the `agent.name` keys: `direct_llm`, [opencode](../harnesses/opencode.md), [openclaw](../harnesses/openclaw.md), and [zeroclaw](../harnesses/zeroclaw.md).
+- [Engine & Runner](./engine-and-runner.md): where `setup()` runs the imports and resolves the four classes.
+- [Architecture Overview](./index.md): the end-to-end `solve` -> `score` -> `append` flow.
+- [Harnesses](../harnesses/): the agents behind the `agent.name` keys (`direct_llm`, [opencode](../harnesses/opencode.md), [openclaw](../harnesses/openclaw.md), and [zeroclaw](../harnesses/zeroclaw.md)).

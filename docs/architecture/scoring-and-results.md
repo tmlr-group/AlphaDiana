@@ -46,7 +46,7 @@ is `None`.
 
 | Scorer | When to use | Notes |
 |--------|-------------|-------|
-| **`math_verify`** | Math competition problems (AIME, HMMT, etc.) — **recommended default** | Symbolic equivalence via math-verify/SymPy (wraps answers in `\boxed{}`). Handles LaTeX, fractions, equivalent expressions. Falls back to normalized-string then numeric compare; `metadata.method` is one of `math_verify` / `normalized_string` / `numeric`. Requires `pip install math-verify`. |
+| **`math_verify`** | Math competition problems (AIME, HMMT, etc.), **recommended default** | Symbolic equivalence via math-verify/SymPy (wraps answers in `\boxed{}`). Handles LaTeX, fractions, equivalent expressions. Falls back to normalized-string then numeric compare; `metadata.method` is one of `math_verify` / `normalized_string` / `numeric`. Requires `pip install math-verify`. |
 | **`numeric`** | Integer or decimal answers only | Compares numeric values with configurable absolute + relative `tolerance` (default `1e-6`) via `parse_numeric_answer`. Fails if the prediction cannot be parsed as a number. |
 | **`exact_match`** | String answers where reformulation should not count | Math-aware normalization (`utils.math_answer.normalize_math_text`) plus single-choice label coercion (`(A)` -> `A`), then strict equality. Does **not** equate `1/2` and `0.5`. |
 | **`llm_judge`** | Open-ended or descriptive answers | Calls an OpenAI-compatible chat endpoint and parses JSON `{correct, rationale}` at `temperature 0.0`, retrying on 429/5xx. Reads `JUDGE_MODEL` / `JUDGE_API_BASE` env or `scorer_config` keys `api_base` / `api_key` / `judge_model` / `timeout`. |
@@ -179,7 +179,7 @@ as wrong answers.
 | Metric | Definition |
 |--------|------------|
 | `accuracy` | `correct / len(metric_results)`, where `metric_results` = valid_scored records plus metric-zero records |
-| `accuracy_total` | `correct / expected_sample_count` — denominator is what the run *should* have produced, so incomplete runs cannot silently inflate accuracy |
+| `accuracy_total` | `correct / expected_sample_count`: denominator is what the run *should* have produced, so incomplete runs cannot silently inflate accuracy |
 | **Pass@k** | fraction of tasks with at least one correct valid sample |
 | **Avg@k** | mean over tasks of `(correct valid samples / num_samples)` |
 | per-category | accuracy grouped by `task_metadata.category` (or the manifest's `task_metadata_by_id`) |
@@ -226,7 +226,7 @@ bundles stay portable.
 
 ### Behavioral / trajectory metrics
 
-`alphadiana/analysis/trajectory_metrics.py` defines `MAIN_METRIC_NAMES` — 14
+`alphadiana/analysis/trajectory_metrics.py` defines `MAIN_METRIC_NAMES`: 14
 outcome-conditioned metrics including `DeltaVerifyShare`, `AnswerAfterVerificationRate`,
 `ErrorRecoveryRate`, `PrematureAnswerRate`, `VerificationConversionRate`, and
 `OperationalTaxAdjustedAccuracy`. `compute_outcome_conditioned_metrics` and predicate helpers
@@ -239,7 +239,7 @@ over canonical actions classified by `action_events.py`
 The chord-diagram and action-frequency pipeline lives in
 `alphadiana/analysis/scripts/analyze_tools/`. It consumes the result-store layout above
 (`tasks/*.json`, optional `logprobs/`, `artifacts/{task}/agent/normalized_trace.json`) and
-needs only `matplotlib`, `numpy`, `pandas` — no API keys.
+needs only `matplotlib`, `numpy`, `pandas` (no API keys).
 
 ```bash
 # Extract action events from raw trajectories (one --spec per harness).
@@ -266,6 +266,6 @@ By design. `accuracy` divides correct answers by completed (valid) records, whil
 `accuracy_total` divides by the expected sample count. Missing samples are surfaced rather
 than counted as failures, so an incomplete run cannot inflate `accuracy`.
 
-**Q: Re-running the same config restarts everything — why not?**
+**Q: Re-running the same config restarts everything. Why not?**
 It resumes. `alphadiana run` loads the existing `{run_id}.jsonl`, skips already
 `valid_scored` samples, and only re-evaluates when the scorer changes or `--redo-all` is set.
