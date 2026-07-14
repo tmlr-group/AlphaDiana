@@ -23,7 +23,7 @@ normalizers) and `alphadiana/analysis/` (the offline metrics).
 | Stack | threaded `http.server` (`_LogprobCaptureServer` = `ThreadingMixIn` + `HTTPServer`) | `aiohttp` (`Proxy` class) |
 | Lifecycle | in-process, started by the harness agent | out-of-process CLI launched manually |
 | Purpose | observability (capture logprobs) | experimental intervention (mutate the request) |
-| `trust_env` | none | `trust_env=True` (honors `HTTP(S)_PROXY`) |
+| `trust_env` | n/a | `trust_env=True` (honors `HTTP(S)_PROXY`) |
 | Wired into agents | yes (zeroclaw / openclaw / opencode) | no (only `scripts/oc_capture_to_alphadiana.py`) |
 
 The two are never wired together. `LogprobCaptureProxy` is a passive observer;
@@ -40,10 +40,10 @@ upstream streaming, and capture request/response summaries.
 
 It exposes:
 
-- `proxy_url` / `local_url`: the advertised vs loopback URLs. The advertise
+- `proxy_url` / `local_url` — the advertised vs loopback URLs. The advertise
   host rewrites `0.0.0.0` to `127.0.0.1`; ZeroClaw binds it at `agent.py:1696`
   with `bind_host` / `advertise_host` resolved per sandbox.
-- `captured_records()` / `drain_records()`: the accumulated per-token records.
+- `captured_records()` / `drain_records()` — the accumulated per-token records.
 - `request_summaries` / `response_summaries`.
 
 The runner can also pre-deploy one proxy per gateway sandbox via
@@ -85,21 +85,21 @@ Each captured record has the shape:
 ## tool_filter_proxy (experimental intervention)
 
 `tool_filter_proxy` is a standalone `aiohttp` CLI proxy. It is **not imported by
-any agent**. You launch it manually, point a harness at it, and it mutates
+any agent** — you launch it manually, point a harness at it, and it mutates
 `POST /v1/chat/completions` (and `/chat/completions`); every other path is
 passthrough. It is the request-side knob for the micro-experiments described in
 [Evaluation Axes](../concepts/evaluation-axes).
 
 It performs four kinds of mutation:
 
-1. **Tool filtering**: `--allow` / `--block` regexes match `function.name`.
+1. **Tool filtering** — `--allow` / `--block` regexes match `function.name`.
    Block wins over allow; an empty allow list means no whitelist.
-2. **Prompt filtering**: strip or replace the system message via
+2. **Prompt filtering** — strip or replace the system message via
    `--strip-prompt-tokens`, `--replace-system-prompt`, or the section-aware
    `--harness-strip` (see below).
-3. **User-intro filtering**: `--strip-user-intro-tokens` strips AlphaDiana's
+3. **User-intro filtering** — `--strip-user-intro-tokens` strips AlphaDiana's
    prepended block before the `--- Problem ---` marker only.
-4. **OpenRouter routing + reasoning override**: provider routing
+4. **OpenRouter routing + reasoning override** — provider routing
    (`--ignore-providers` / `--only-providers`), reasoning control
    (`--reasoning-exclude` / `--reasoning-effort` / `--reasoning-max-tokens`),
    and reasoning re-tagging (`--rename-reasoning`, `--reasoning-plain`,
@@ -132,7 +132,7 @@ dedicated micro-experiment cell with its own run_id.
 ## harness_strip: the no_tools cell
 
 `alphadiana/harness/proxies/harness_strip.py` implements the section-aware
-`--harness-strip` used to build the `no_tools` micro-cell: a harness with its
+`--harness-strip` used to build the `no_tools` micro-cell — a harness with its
 tool-documentation surgically removed from the system prompt, so you can measure
 how much of a harness's effect is the scaffolding text versus the tools
 themselves.

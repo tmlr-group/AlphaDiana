@@ -4,7 +4,7 @@ import { themes as prismThemes } from 'prism-react-renderer';
 
 const config: Config = {
   title: 'AlphaDiana',
-  tagline: 'Harness-Aware Evaluation of Open Agents on Verifiable Reasoning Tasks',
+  tagline: 'A System for Evaluating Reasoning Agents',
   favicon: 'img/TMLR.ico',
 
   future: {
@@ -18,10 +18,7 @@ const config: Config = {
   organizationName: 'tmlr-group',
   projectName: 'AlphaDiana',
 
-  // Docs link to repo source files (e.g. ../../configs/examples/*.yaml) that are
-  // not Docusaurus pages, so they resolve on GitHub but not in the built site.
-  // Warn rather than fail the build, and leave the docs content untouched.
-  onBrokenLinks: 'warn',
+  onBrokenLinks: 'throw',
   // Navbar "Results"/"Dashboard" link to homepage anchors; the navbar renders on
   // every page, so per-page anchor checking false-positives. Ignore anchors only.
   onBrokenAnchors: 'ignore',
@@ -57,10 +54,6 @@ const config: Config = {
   themes: ['@docusaurus/theme-mermaid'],
 
   markdown: {
-    // Parse docs as CommonMark (not MDX) so technical prose like "<= 3.12" and
-    // "<https://...>" isn't interpreted as JSX. Keeps the docs build without
-    // editing their content.
-    format: 'md',
     mermaid: true,
   },
 

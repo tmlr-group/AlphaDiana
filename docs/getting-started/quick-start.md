@@ -249,8 +249,8 @@ The report metrics come from `ReportGenerator.generate`
 
 | Metric | Definition |
 |---|---|
-| **Accuracy** | `correct / scored`: fraction correct among records that were actually scored |
-| **Accuracy (total)** | `correct / expected_sample_count`: denominator is the planned count, so unfinished or errored samples count against it |
+| **Accuracy** | `correct / scored` — fraction correct among records that were actually scored |
+| **Accuracy (total)** | `correct / expected_sample_count` — denominator is the planned count, so unfinished or errored samples count against it |
 | **Mean Score** | Mean of the `score` field over scored records (equals accuracy for binary scorers) |
 | **Pass@N** | Fraction of unique tasks with at least one correct sample (`N = num_samples`) |
 | **Avg@N** | Per task, the correct-sample rate `n_correct / num_samples`, then averaged across tasks |

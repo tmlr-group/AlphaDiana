@@ -89,7 +89,7 @@ the CLI is invoked.
 | top level | `default_provider`, `default_model`, `default_temperature`, `provider_timeout_secs` |
 | `[runtime]` | `reasoning_enabled`, `reasoning_effort` (only when set) |
 | `[security.sandbox]` | `enabled`, `backend` (only when set) |
-| `[memory]` | sqlite + embedding recall (only when enabled, see [Memory](#memory)) |
+| `[memory]` | sqlite + embedding recall (only when enabled — see [Memory](#memory)) |
 | `[observability]` | `runtime_trace_mode`, `runtime_trace_path = "state/runtime-trace.jsonl"`, `runtime_trace_max_entries = 200` |
 | `[autonomy]` | `level = "full"`, `workspace_only`, `allowed_commands`, hardcoded `forbidden_paths`, `max_actions_per_hour`, `max_cost_per_day_cents = 10000`, `block_high_risk_commands = false`, `shell_timeout_secs` |
 | `[shell_tool]` | `timeout_secs` |

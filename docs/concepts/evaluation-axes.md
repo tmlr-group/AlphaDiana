@@ -8,9 +8,9 @@ AlphaDiana measures how a single harness capability changes a model's score by
 varying that capability **one at a time** and holding everything else fixed.
 There are three axes:
 
-- **Tool**: whether the harness exposes its native tools (file, bash, sandbox).
-- **Skill**: whether a skill bundle is loaded into the harness.
-- **Memory**: whether the harness keeps a persistent memory store, and at what
+- **Tool** — whether the harness exposes its native tools (file, bash, sandbox).
+- **Skill** — whether a skill bundle is loaded into the harness.
+- **Memory** — whether the harness keeps a persistent memory store, and at what
   scope.
 
 Each axis is a harness-level on/off knob. The model weights, prompt template,
@@ -30,12 +30,12 @@ adds to it). See [Harnesses](../harnesses/) for the four harnesses themselves.
 
 | Axis | "On" | "Off" |
 |---|---|---|
-| Tool | Harness exposes its native tools; default system prompt | All tools stripped, system prompt replaced (pure chain-of-thought), the lower bound on harness behavior |
+| Tool | Harness exposes its native tools; default system prompt | All tools stripped, system prompt replaced — pure chain-of-thought, the lower bound on harness behavior |
 | Skill | A skill bundle is mounted and named in the prompt | No skill bundle loaded |
 | Memory | Harness's native memory backend is enabled (`persistent_memory: true`) | Harness defaults with no memory store and no memory-encouraging prompt |
 
 Note that **Tool-off** and **Memory-off** are not the same configuration.
-Tool-off strips every tool and rewrites the system prompt. It is the floor on
+Tool-off strips every tool and rewrites the system prompt — it is the floor on
 what the harness can do. Memory-off keeps the harness's native tools and is the
 correct baseline for measuring memory's contribution. Conversely **Tool-on**
 (harness default) and **Memory-off** are the same data point reported under two
@@ -80,7 +80,7 @@ ZeroClaw).
 
 | Harness | Backend | Mechanism |
 |---|---|---|
-| [OpenCode](../harnesses/opencode) | OpenCode session chain + per-task `/compact`; persistent HOME (`opencode.db` sqlite) bind-mounted at `{workdir}/.controller-home` | Compaction summaries carry the agent's own prior clean solves as a behavioral template (anchoring, not knowledge transfer) |
+| [OpenCode](../harnesses/opencode) | OpenCode session chain + per-task `/compact`; persistent HOME (`opencode.db` sqlite) bind-mounted at `{workdir}/.controller-home` | Compaction summaries carry the agent's own prior clean solves as a behavioral template — anchoring, not knowledge transfer |
 | [OpenClaw](../harnesses/openclaw) | `memory-lancedb` vector plugin, embedding endpoint :10087 | One distilled `[fact]` sentence per problem via a forced store-turn; recall injected under a `<relevant-memories>` "untrusted historical data" guard |
 | [ZeroClaw](../harnesses/zeroclaw) | sqlite + vector (embed :10088), `memory_store` / `memory_search` | Keyed `[math]` insights; self-pollutes by also storing its own system prompt as a `[conversation]` memory and recalling it as junk |
 

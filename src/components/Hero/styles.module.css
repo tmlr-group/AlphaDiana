@@ -1,7 +1,7 @@
 .hero {
   padding: var(--diana-section-padding, 4rem 0);
-  background: radial-gradient(circle at 10% 10%, rgba(13, 148, 136, 0.10), transparent),
-    radial-gradient(circle at 90% 20%, rgba(245, 158, 11, 0.10), transparent),
+  background: radial-gradient(circle at 10% 10%, rgba(37, 99, 235, 0.10), transparent),
+    radial-gradient(circle at 90% 20%, rgba(14, 165, 233, 0.10), transparent),
     #fff;
 }
 
@@ -22,7 +22,7 @@
 
 .kicker {
   font-weight: 700;
-  color: var(--diana-primary, #0d9488);
+  color: var(--diana-primary, #2563eb);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   margin: 0;
@@ -62,8 +62,8 @@
 }
 
 :global([data-theme='dark']) .hero {
-  background: radial-gradient(circle at 10% 10%, rgba(45, 212, 191, 0.16), transparent),
-    radial-gradient(circle at 90% 20%, rgba(245, 158, 11, 0.12), transparent),
+  background: radial-gradient(circle at 10% 10%, rgba(96, 165, 250, 0.16), transparent),
+    radial-gradient(circle at 90% 20%, rgba(34, 211, 238, 0.12), transparent),
     #0b1220;
 }
 
@@ -76,5 +76,5 @@
 }
 
 :global([data-theme='dark']) .kicker {
-  color: #5eead4;
+  color: #93c5fd;
 }

@@ -40,11 +40,11 @@
   width: 48px;
   height: 48px;
   border-radius: 12px;
-  background: linear-gradient(135deg, rgba(13, 148, 136, 0.12), rgba(245, 158, 11, 0.12));
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(14, 165, 233, 0.12));
   display: grid;
   place-items: center;
   font-size: 1.4rem;
-  color: var(--diana-primary, #0d9488);
+  color: var(--diana-primary, #2563eb);
   margin-bottom: 0.75rem;
 }
 

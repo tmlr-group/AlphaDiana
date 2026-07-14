@@ -14,13 +14,13 @@ comparisons fair and reproducible.
 
 ## The pages
 
-- **[Harness-Aware Evaluation](./harness-aware-evaluation)**: why the harness
+- **[Harness-Aware Evaluation](./harness-aware-evaluation)** — why the harness
   is a measured variable, the `Agent` contract every harness implements, and
   how the registry plugs them in.
-- **[Evaluation Axes](./evaluation-axes)**: the dimensions AlphaDiana varies
+- **[Evaluation Axes](./evaluation-axes)** — the dimensions AlphaDiana varies
   and holds fixed (tools, memory, reasoning, logprob capture) and the proxies
   that let you toggle them without forking a harness.
-- **[Isolation & Fairness](./isolation-and-fairness)**: task-scoped sandbox and
+- **[Isolation & Fairness](./isolation-and-fairness)** — task-scoped sandbox and
   container runtimes, what "isolated" does and does not mean, and the controls
   that keep two runs comparable.
 
@@ -116,7 +116,7 @@ Selected `agent.config` keys:
 | `capture_logprobs` | `True` | logprob capture is on by default |
 | `top_logprobs` | `20` | top-k logprobs per token |
 | `logprobs_format` | `int16` | `int16` (quantized) or `float` |
-| `system_prompt` / `enable_thinking` / `extra_body` | none | prompt and provider passthrough |
+| `system_prompt` / `enable_thinking` / `extra_body` | — | prompt and provider passthrough |
 
 Answers are extracted via `\boxed{}` parsing; reasoning is recovered from
 provider-specific `reasoning_content` / `reasoning` fields or `<think>...</think>`

@@ -200,7 +200,7 @@ mode memory is carried forward via the bank only (`agent.py:2092`).
 no-ops elsewhere, `agent.py:1156`). It spins a short-lived
 `opencode serve --port <4100+rand>` container, polls `/session`, then POSTs
 `/session/<id>/summarize` with body `{providerID: "custom", modelID: <model>,
-auto: false}`, the backing API for the `/compact` slash command. It only fires
+auto: false}` — the backing API for the `/compact` slash command. It only fires
 when not `fresh_session`.
 
 ### memory_freeze (build / frozen snapshot)
@@ -213,7 +213,7 @@ when not `fresh_session`.
   `<workdir>/.controller-home` -> `.frozen-home-snapshot`.
 - `frozen` tasks call `_restore_persistent_home` (`agent.py:1228`) **before**
   running (so they fork from the train-phase memory) and are **not** chained
-  forward, compacted, or snapshotted. Frozen test tasks stay independent of
+  forward, compacted, or snapshotted — frozen test tasks stay independent of
   each other.
 
 The build/frozen labels come from the `custom` benchmark: each problem item
@@ -269,18 +269,18 @@ Read by `OpenCodeAgent.setup()` (`agent.py:708`):
 
 | Key | Default | Notes |
 |-----|---------|-------|
-| `model` / `model_name` / `api_model` | none | provider model name |
-| `api_base` / `api_key` | none | use `sk-EMPTY`, not literal `EMPTY` |
+| `model` / `model_name` / `api_model` | — | provider model name |
+| `api_base` / `api_key` | — | use `sk-EMPTY`, not literal `EMPTY` |
 | `tool_call` | `true` | opencode requires tool calling |
 | `timeout` | `1200` | seconds; written to provider as ms |
-| `temperature` / `top_p` / `max_tokens` | none | sampling |
-| `enable_thinking` | none | via `options.chat_template_kwargs` |
-| `variant` / `agent` / `agent_md_path` / `agent_md_content` | none | opencode agent selection |
-| `system_prompt` | none | prepended system text |
-| `skill_folder` | none | mounted skill bundle |
+| `temperature` / `top_p` / `max_tokens` | — | sampling |
+| `enable_thinking` | — | via `options.chat_template_kwargs` |
+| `variant` / `agent` / `agent_md_path` / `agent_md_content` | — | opencode agent selection |
+| `system_prompt` | — | prepended system text |
+| `skill_folder` | — | mounted skill bundle |
 | `opencode_bin` | `opencode` | CLI binary name |
-| `streaming` | none | provider streaming |
-| `print_logs` / `log_level` | none | diagnostics |
+| `streaming` | — | provider streaming |
+| `print_logs` / `log_level` | — | diagnostics |
 
 ### Memory-experiment keys
 
@@ -293,8 +293,8 @@ All default off, so a normal run is unchanged:
 | `fresh_session` | `false` | keep bank, drop `--session` chaining |
 | `memory_freeze` | `false` | build/frozen HOME snapshot-restore |
 | `oracle_feedback` | `false` | self-grading reflection turn (reveals ground truth) |
-| `context_limit` | none | provider `model.limit.context` (autocompact margin) |
-| `output_limit` | none | provider `model.limit.output` (default `32000`) |
+| `context_limit` | — | provider `model.limit.context` (autocompact margin) |
+| `output_limit` | — | provider `model.limit.output` (default `32000`) |
 
 ## Quick Start
 
