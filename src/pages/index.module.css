@@ -321,7 +321,7 @@
   color: var(--ifm-font-color-secondary);
 }
 
-/* ── AlphaDiana landing sections ───────────────────────────── */
+/* AlphaDiana landing sections */
 
 .kicker {
   font-family: var(--ifm-heading-font-family);
@@ -441,12 +441,7 @@
   height: auto;
 }
 
-.dashboardActions {
-  display: flex;
-  justify-content: center;
-}
-
-/* ── Motivation band ───────────────────────────────────────── */
+/* Motivation band */
 .motivationBand {
   padding: 2.5rem 0 1rem;
   background: var(--ifm-background-color);
@@ -475,7 +470,7 @@
   color: var(--ifm-font-color-secondary);
 }
 
-/* ── Experimental scope ────────────────────────────────────── */
+/* Experimental scope */
 .scopeSection {
   padding: 2.5rem 0 3rem;
   background: var(--ifm-background-color);
@@ -539,7 +534,7 @@
   background: var(--ifm-color-emphasis-100);
 }
 
-/* ── Findings ──────────────────────────────────────────────── */
+/* Findings */
 .findingsSection {
   padding: var(--diana-section-padding, 4rem 0);
   background: var(--diana-gray-50);
@@ -613,7 +608,113 @@
   color: var(--ifm-font-color-secondary);
 }
 
-/* ── Dashboard screenshots ─────────────────────────────────── */
+/* Analysis figures */
+.analysisSection {
+  padding: var(--diana-section-padding, 4rem 0);
+  background: var(--ifm-background-color);
+}
+
+.analysisInner {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+  text-align: center;
+}
+
+.analysisInner h2,
+.microInner h2 {
+  font-size: clamp(1.8rem, 1.4rem + 1.2vw, 2.4rem);
+  margin: 0 0 0.75rem;
+  color: var(--ifm-heading-color);
+}
+
+.figureGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+  margin-top: 2rem;
+  text-align: left;
+}
+
+@media (max-width: 900px) {
+  .figureGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.analysisFigure {
+  margin: 0;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: var(--diana-border-radius, 8px);
+  background: var(--ifm-background-surface-color);
+  overflow: hidden;
+}
+
+.analysisFigure img {
+  display: block;
+  width: 100%;
+  height: 360px;
+  object-fit: contain;
+  background: #fff;
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.analysisFigure figcaption,
+.microFigure figcaption {
+  padding: 0.85rem 1rem 1rem;
+  font-size: 0.86rem;
+  line-height: 1.55;
+  color: var(--ifm-font-color-secondary);
+}
+
+.analysisFigure figcaption strong,
+.microFigure figcaption strong {
+  color: var(--ifm-heading-color);
+}
+
+/* Micro ablations */
+.microSection {
+  padding: var(--diana-section-padding, 4rem 0);
+  background: var(--diana-gray-50);
+}
+
+:global([data-theme='dark']) .microSection {
+  background: var(--ifm-background-surface-color);
+}
+
+.microInner {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+  text-align: center;
+}
+
+.microFigureGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 1rem;
+  margin-top: 2rem;
+  text-align: left;
+}
+
+.microFigure {
+  margin: 0;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: var(--diana-border-radius, 8px);
+  background: var(--ifm-background-color);
+  overflow: hidden;
+}
+
+.microFigure img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  background: #fff;
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+}
+
+/* Dashboard screenshots */
 .dashboardGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -1,7 +1,7 @@
 import React, { ReactNode } from 'react';
 
 /**
- * Minimal line icons for the Key Features grid — stroke-based, inherit
+ * Minimal line icons for the Key Features grid: stroke-based, inherit
  * currentColor, no emoji. Deliberately quiet so the Scoreboard stays the
  * page's one bold element (frontend-design skill: spend the boldness budget once).
  */

@@ -21,83 +21,129 @@ const features = [
   {
     icon: BalanceIcon,
     title: 'Harness-Aware Evaluation',
-    description: 'Score the full model-harness system, not the model alone — with Direct (no-harness) as a control.',
+    description: 'Treat the evaluated unit as model plus harness, with Direct inference as the control.',
   },
   {
     icon: TargetIcon,
     title: 'Controlled Comparison',
-    description: 'Pair the same task, scorer, sandbox, and budget with different agents — turning leaderboards into experiments.',
+    description: 'Hold the task, scorer, sandbox, and budget fixed while swapping the harness layer.',
   },
   {
     icon: AgentIcon,
-    title: 'Open Harnesses + Direct',
-    description: 'OpenClaw, ZeroClaw, and OpenCode, plus a no-harness baseline for every model.',
+    title: 'Open Harness Interfaces',
+    description: 'Run direct inference and reasoning agent harnesses through one shared result schema.',
   },
   {
     icon: StandardizedIcon,
-    title: 'Verifiable Benchmarks',
-    description: 'IMO-AnswerBench, HLE-Verifiable, AIME 26, GPQA-Diamond, and MMMU-Pro — clean correctness signals.',
+    title: 'Verifiable Reasoning Tasks',
+    description: 'Use deterministic or programmatic scorers for math, science, multimodal, and coding tasks.',
   },
   {
     icon: TraceIcon,
     title: 'Trajectory Attribution',
-    description: 'Full trace logging attributes success and failure to reasoning, tool use, verification, and budget.',
+    description: 'Log actions, observations, resource use, termination states, and scoring metadata.',
   },
   {
     icon: SandboxIcon,
     title: 'Sandboxed Execution',
-    description: 'Isolated environments with resource limits, reset semantics, and provenance logging.',
+    description: 'Run tool-using agents in isolated environments with explicit resource and reset policies.',
   },
   {
     icon: ConcurrencyIcon,
-    title: 'Macro + Micro Studies',
-    description: 'Outcome comparisons of direct vs. agentic execution, plus ablations of tools, skills, and memory.',
+    title: 'Macro And Micro Studies',
+    description: 'Compare whole harnesses, then ablate tools, skills, and memory to explain the score shifts.',
   },
   {
     icon: DashboardIcon,
-    title: 'Reproducible & Auditable',
-    description: 'Reports regenerate from saved records; an interactive dashboard makes the whole loop inspectable.',
+    title: 'Reproducible Reports',
+    description: 'Regenerate summaries from saved records and inspect the evaluation loop in the dashboard.',
   },
 ];
 
-// Architecture diagram (hidden for now — see the "One run, fully factorized"
-// note below to re-enable):
-// const archChart = `flowchart TD
-//   C["Config — budgets, policies"] --> U["Runner"] ...`;
-
-const scope = [
-  {
-    count: '3',
-    label: 'Open models',
-    items: ['Qwen3.5-27B', 'Gemma-4-31B-IT', 'Kimi-K2.6'],
-  },
-  {
-    count: '3 + 1',
-    label: 'Harnesses + Direct',
-    items: ['OpenClaw', 'ZeroClaw', 'OpenCode', 'Direct (no harness)'],
-  },
-  {
-    count: '5',
-    label: 'Verifiable benchmarks',
-    items: ['IMO-AnswerBench', 'HLE-Verifiable', 'AIME 26', 'GPQA-Diamond', 'MMMU-Pro'],
-  },
-];
-
-const findings = [
+const macroFindings = [
   {
     tag: 'Model',
     title: 'Harnessing is not model-agnostic',
-    body: 'The same agent layer consistently degrades Qwen3.5-27B, consistently benefits Gemma-4-31B-IT, and yields mixed outcomes for Kimi-K2.6.',
+    body: 'The same harness layer can degrade Qwen3.5-27B, benefit Gemma-4-31B-IT, and produce mixed outcomes for Kimi-K2.6. Scores should be read as properties of model-harness-task triples.',
   },
   {
     tag: 'Task',
-    title: 'Benefits are task-dependent',
-    body: 'Harnesses help most when a task rewards stable computation or answer selection, but become unstable on knowledge-intensive tasks where they distract from the model’s own knowledge.',
+    title: 'Benefits depend on task structure',
+    body: 'Harnesses help most when a task rewards stable computation or answer selection. They become unstable when tool use distracts from internal knowledge.',
   },
   {
     tag: 'Harness',
     title: 'No harness is uniformly best',
-    body: 'ZeroClaw and OpenCode give more stable gains across compatible settings, while OpenClaw has the widest envelope — both the strongest improvements and the most severe drops.',
+    body: 'ZeroClaw and OpenCode provide more stable gains in compatible settings, while OpenClaw has the widest envelope of improvements and failures.',
+  },
+];
+
+const macroFigures = [
+  {
+    src: '/img/analysis/action-composition-qwen.png',
+    title: 'Qwen3.5 action composition',
+    caption: 'Correct and wrong trajectories allocate effort differently across reasoning, tool use, verification, and finalization.',
+  },
+  {
+    src: '/img/analysis/action-composition-gemma.png',
+    title: 'Gemma action composition',
+    caption: 'The same action taxonomy makes outcome-conditioned process shifts comparable across model-harness cells.',
+  },
+  {
+    src: '/img/analysis/post-tool-entropy-qwen.png',
+    title: 'Qwen3.5 post-tool entropy',
+    caption: 'Tool feedback is useful only when it reduces uncertainty instead of extending an unstable trajectory.',
+  },
+  {
+    src: '/img/analysis/post-tool-entropy-gemma.png',
+    title: 'Gemma post-tool entropy',
+    caption: 'Entropy after tool calls helps separate productive feedback loops from long-tail failures.',
+  },
+];
+
+const microFindings = [
+  {
+    tag: 'Tool',
+    title: 'Tool access is harness-conditioned',
+    body: 'Stripping the tool registry hurts ZeroClaw in most reference cells but improves OpenCode in most reference cells. Tool exposure is not a universal upgrade.',
+  },
+  {
+    tag: 'Skill',
+    title: 'Skill loading depends on selection behavior',
+    body: 'Qwen3.5 preferentially reads the math skill set over the general skill set, and the harness changes how sharply that preference appears.',
+  },
+  {
+    tag: 'Memory',
+    title: 'Memory changes sign by harness',
+    body: 'On Qwen3.5 AIME 26, memory helps OpenCode across scopes, but hurts OpenClaw and ZeroClaw as stored notes accumulate.',
+  },
+];
+
+const microFigures = [
+  {
+    src: '/img/micro/skill-use-qwen-zeroclaw.png',
+    title: 'Qwen3.5 + ZeroClaw skill use',
+    caption: 'Math skills are consulted more often than general skills on reasoning tasks.',
+  },
+  {
+    src: '/img/micro/skill-use-qwen-opencode.png',
+    title: 'Qwen3.5 + OpenCode skill use',
+    caption: 'OpenCode compresses the gap between math and general skill read rates.',
+  },
+  {
+    src: '/img/micro/memory-cross-task-opencode.png',
+    title: 'OpenCode cross-task memory',
+    caption: 'Replayed prior solutions raise accuracy as the run progresses.',
+  },
+  {
+    src: '/img/micro/memory-cross-task-openclaw.png',
+    title: 'OpenClaw cross-task memory',
+    caption: 'Retrieved notes distract the run and widen the gap from the no-memory baseline.',
+  },
+  {
+    src: '/img/micro/memory-cross-task-zeroclaw.png',
+    title: 'ZeroClaw cross-task memory',
+    caption: 'The same memory intervention remains below the matched full-harness baseline.',
   },
 ];
 
@@ -105,31 +151,34 @@ const installCommand = `git clone https://github.com/tmlr-group/AlphaDiana
 cd AlphaDiana
 
 # One-click setup: conda env, dependencies, services
-bash scripts/quickstart.sh
+bash scripts/quickstart.sh`;
 
-# Pull the reasoning image (OpenClaw pre-installed)
-docker pull tmlrgroup/alphadiana:v1`;
-
-const runCommand = `# Activate the environment (once per terminal)
+const runCommand = `# Activate the environment once per terminal
 source scripts/activate.sh
 
-# Check services, then run an evaluation
-alphadiana env
-alphadiana run configs/test_openclaw_quick.yaml
+# Validate the AIME 2026 OpenCode configuration
+alphadiana validate configs/micro_runs/Tool/aime2026_opencode_qwen35_27b.yaml
 
-# Generate a report
-alphadiana report results/`;
+# Run a one-problem, one-sample AIME 2026 OpenCode smoke evaluation
+alphadiana run configs/micro_runs/Tool/aime2026_opencode_qwen35_27b.yaml \\
+  -o run_id=quickstart_aime2026_opencode_t1_k1 \\
+  -o benchmark.config.max_tasks=1 \\
+  -o num_samples=1 \\
+  -o max_concurrent=1
+
+# Generate a report from the smoke run
+alphadiana report results/quickstart_aime2026_opencode_t1_k1`;
 
 export default function Home(): ReactNode {
   return (
     <Layout
       title="AlphaDiana"
-      description="AlphaDiana: harness-aware evaluation of open agents on verifiable reasoning tasks.">
+      description="AlphaDiana: A System for Evaluating Reasoning Agents.">
       <main>
         <div className={styles.container}>
           <Hero
             title="AlphaDiana"
-            description="Harness-Aware Evaluation of Open Agents on Verifiable Reasoning Tasks"
+            description="A System for Evaluating Reasoning Agents"
             primaryButtonText="Get Started"
             primaryButtonLink="/docs/intro"
             secondaryButtonText="GitHub"
@@ -141,9 +190,10 @@ export default function Home(): ReactNode {
               <img src="/img/motivation.png" alt="From model-centric to harness-aware evaluation" loading="lazy" />
               <figcaption>
                 <strong>Reasoning is more than the model.</strong> A foundation model is an <em>engine</em> scored
-                prompt-in / answer-out; an agent is the <em>car</em> that embeds it in a runtime of control, tools,
-                state, and sandbox. AlphaDiana is the <em>tournament organizer</em> — it fixes the rules across
-                agents and logs canonical traces for analyzing correctness, efficiency, reliability, and failures.
+                with prompt-in and answer-out evaluation. An agent is the <em>car</em> that embeds it in control
+                flow, tools, state, policies, and sandbox constraints. AlphaDiana is the <em>tournament organizer</em>:
+                it fixes the rules across agents and logs canonical traces for correctness, efficiency, reliability,
+                and failure analysis.
               </figcaption>
             </figure>
           </section>
@@ -151,45 +201,26 @@ export default function Home(): ReactNode {
           <section className={styles.introSection}>
             <div className={styles.introContent}>
               <p>
-                Open agents such as OpenClaw are <strong>model-harness systems</strong>: the model supplies
+                Reasoning agents such as OpenClaw are <strong>model-harness systems</strong>. The model supplies
                 reasoning capacity, while the harness realizes it through tool use, multi-turn control, execution
-                feedback, and memory. Existing evaluations either test models without a harness or fix a single
-                harness — conflating base-model reasoning with harness orchestration. AlphaDiana makes the
-                evaluation boundary explicit, factorizing each run into a benchmark, model, harness, environment,
-                scorer, and budget, so you can ask <strong>whether gains come from a stronger model or a specific
-                harness</strong>.
+                feedback, memory, and runtime policy. Existing evaluations often test models without a harness or
+                fix a single harness, which conflates base-model reasoning with harness orchestration. AlphaDiana
+                factorizes each run into a benchmark, model, harness, environment, scorer, and budget, so researchers
+                can ask whether gains come from stronger reasoning or from a specific runtime scaffold.
               </p>
             </div>
           </section>
 
-          <section className={styles.scopeSection}>
-            <div className={styles.scopeInner}>
-              {scope.map((s) => (
-                <div key={s.label} className={styles.scopeCard}>
-                  <div className={styles.scopeCount}>{s.count}</div>
-                  <div className={styles.scopeLabel}>{s.label}</div>
-                  <div className={styles.scopeChips}>
-                    {s.items.map((it) => (
-                      <span key={it} className={styles.chip}>
-                        {it}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
+          <Scoreboard />
 
           <FeaturesGrid title="What AlphaDiana standardizes" features={features} background="white" />
 
-          <Scoreboard />
-
           <section className={styles.findingsSection}>
             <div className={styles.findingsInner}>
-              <p className={styles.kicker}>Key Findings</p>
-              <h2>What harness-aware evaluation reveals</h2>
+              <p className={styles.kicker}>Macro Findings</p>
+              <h2>What the result table reveals</h2>
               <div className={styles.findingsGrid}>
-                {findings.map((f) => (
+                {macroFindings.map((f) => (
                   <div key={f.tag} className={styles.findingCard}>
                     <span className={styles.findingTag}>{f.tag} perspective</span>
                     <h3>{f.title}</h3>
@@ -198,50 +229,94 @@ export default function Home(): ReactNode {
                 ))}
               </div>
               <p className={styles.findingsNote}>
-                A micro-level study goes further: stripping tools or adding skill libraries has{' '}
-                <strong>non-monotonic</strong> effects — they help compatible model-harness settings but can
-                distract, over-constrain, or destabilize otherwise strong direct reasoning.
+                Direct inference is not just another baseline. It is the control that separates useful orchestration
+                from harness-induced failure modes.
               </p>
             </div>
           </section>
 
-          {/* "One run, fully factorized" architecture section hidden per request.
-              Re-enable by restoring the <section className={styles.flowSection}> block
-              with the <Mermaid value={archChart} /> diagram. */}
+          <section className={styles.analysisSection}>
+            <div className={styles.analysisInner}>
+              <p className={styles.kicker}>Process Analysis</p>
+              <h2>Scores are only the entry point</h2>
+              <p className={styles.flowLead}>
+                AlphaDiana preserves trajectories, actions, tool feedback, and token-level uncertainty. These plots
+                from the latest draft show why a model-harness system succeeds or fails after the final score is known.
+              </p>
+              <div className={styles.figureGrid}>
+                {macroFigures.map((figure) => (
+                  <figure key={figure.src} className={styles.analysisFigure}>
+                    <img src={figure.src} alt={figure.title} loading="lazy" />
+                    <figcaption>
+                      <strong>{figure.title}.</strong> {figure.caption}
+                    </figcaption>
+                  </figure>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section className={styles.microSection}>
+            <div className={styles.microInner}>
+              <p className={styles.kicker}>Micro Findings</p>
+              <h2>Capability ablations explain the shifts</h2>
+              <p className={styles.flowLead}>
+                The micro study holds the model, benchmark, and harness fixed, then toggles one harness capability at
+                a time. Tools, skills, and memory each have non-monotonic effects; the sign depends on the harness and
+                on how the model uses the exposed interface.
+              </p>
+              <div className={styles.findingsGrid}>
+                {microFindings.map((f) => (
+                  <div key={f.tag} className={styles.findingCard}>
+                    <span className={styles.findingTag}>{f.tag} axis</span>
+                    <h3>{f.title}</h3>
+                    <p>{f.body}</p>
+                  </div>
+                ))}
+              </div>
+              <div className={styles.microFigureGrid}>
+                {microFigures.map((figure) => (
+                  <figure key={figure.src} className={styles.microFigure}>
+                    <img src={figure.src} alt={figure.title} loading="lazy" />
+                    <figcaption>
+                      <strong>{figure.title}.</strong> {figure.caption}
+                    </figcaption>
+                  </figure>
+                ))}
+              </div>
+            </div>
+          </section>
 
           <section id="dashboard" className={styles.dashboardSection}>
             <div className={styles.dashboardContent}>
               <p className={styles.kicker}>Dashboard</p>
-              <h2>Launch, monitor, and compare — visually</h2>
+              <h2>Launch, monitor, and compare</h2>
               <p className={styles.flowLead}>
-                Configure a run from explicit fields, then inspect aggregate outcomes and per-task behavior —
-                accuracy, completion, sample efficiency, token usage, and runtime — all computed from saved records.
+                The screenshots show an AIME 2026 Direct LLM evaluation with four samples per problem. The result view
+                reports 30/30 completed tasks, zero failed runs, 97% Pass@4, and 93% Avg@4 from saved records.
               </p>
               <div className={styles.dashboardGrid}>
                 <figure className={styles.dashShot}>
-                  <img src="/img/dashboard-create.png" alt="Creating a new evaluation in the dashboard" loading="lazy" />
-                  <figcaption>Create a run from explicit configuration fields.</figcaption>
+                  <img src="/img/dashboard-create.png" alt="Creating an AIME 2026 Direct LLM evaluation" loading="lazy" />
+                  <figcaption>Create an AIME 2026 Direct LLM evaluation from explicit configuration fields.</figcaption>
                 </figure>
-                <figure className={styles.dashShot}>
-                  <img src="/img/dashboard-results.png" alt="Evaluation results in the dashboard" loading="lazy" />
-                  <figcaption>Inspect results — here a 30/30 AIME 26 run at 97% Pass@4, 93% Avg@4.</figcaption>
-                </figure>
-              </div>
-              <div className={styles.dashboardActions}>
-                <Link className="button button--primary button--lg" to="/docs/architecture/scoring-and-results">
-                  Results &amp; reporting
-                </Link>
-              </div>
+              <figure className={styles.dashShot}>
+                <img src="/img/dashboard-results.png" alt="AIME 2026 Direct LLM evaluation results" loading="lazy" />
+                <figcaption>Inspect the completed run with Pass@4, Avg@4, token usage, and runtime statistics.</figcaption>
+              </figure>
             </div>
-          </section>
+          </div>
+        </section>
 
           <section className={styles.quickstartSection}>
             <div className={styles.quickstartContent}>
               <p className={styles.kicker}>Quick Start</p>
-              <h2>Run your first evaluation</h2>
+              <h2>Run an AIME 2026 OpenCode evaluation</h2>
               <p className={styles.flowLead}>
-                Linux, Python ≥ 3.10, Conda, and Docker required. See the{' '}
-                <Link to="/docs/getting-started/installation">getting-started guide</Link> for the full walkthrough.
+                The command below runs <code>configs/micro_runs/Tool/aime2026_opencode_qwen35_27b.yaml</code>:
+                an OpenCode harness evaluation on AIME 2026, downscaled to one problem and one sample for a smoke
+                check. See the{' '}
+                <Link to="/docs/getting-started/installation">getting-started guide</Link> for setup details.
               </p>
               <div className={styles.installGrid}>
                 <div>

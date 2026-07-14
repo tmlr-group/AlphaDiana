@@ -127,7 +127,7 @@ import alphadiana.harness.myagent.agent     # noqa: F401  # <- add this
 ```
 
 The same import-for-side-effect pattern registers benchmarks, sandboxes, and
-scorers. **Forgetting the import line is the most common mistake.** The agent
+scorers. **Forgetting the import line is the most common mistake** — the agent
 looks registered (the `register()` call is in the file) but `AgentRegistry.get`
 never sees it, so `agent.name: myagent` fails with a `KeyError` listing the names
 that *were* imported.

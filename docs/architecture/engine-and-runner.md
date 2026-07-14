@@ -98,10 +98,10 @@ results/<run_id>/
 `ExperimentConfig.from_yaml(path, overrides)` resolves a config in a fixed order:
 
 1. `yaml.safe_load` the file (top level must be a mapping).
-2. `_expand_env_vars`: recursively expand `$VAR` / `${VAR}` in string values via `os.path.expandvars`.
-3. `deep_merge(data, overrides)`: non-mutating deep merge of CLI overrides on top.
-4. `_clear_unresolved_env_placeholders`: any value still left as a bare `$VAR` placeholder becomes `""`.
-5. `_apply_agent_env_defaults`: for API agents (`direct_llm`, `zeroclaw`, `opencode`, the `terminal_bench2_*` family, and `swebench_docker`), fill blank `api_base` / `api_key` from `OPENAI_BASE_URL` / `OPENAI_API_KEY`, plus the model field from `OPENAI_MODEL_NAME`. The model field is named `model` for `direct_llm` / `zeroclaw` but `model_name` for `opencode` (both sourced from `OPENAI_MODEL_NAME`). A field counts as blank when empty, the literal `EMPTY`, or an unresolved placeholder.
+2. `_expand_env_vars` — recursively expand `$VAR` / `${VAR}` in string values via `os.path.expandvars`.
+3. `deep_merge(data, overrides)` — non-mutating deep merge of CLI overrides on top.
+4. `_clear_unresolved_env_placeholders` — any value still left as a bare `$VAR` placeholder becomes `""`.
+5. `_apply_agent_env_defaults` — for API agents (`direct_llm`, `zeroclaw`, `opencode`, the `terminal_bench2_*` family, and `swebench_docker`), fill blank `api_base` / `api_key` from `OPENAI_BASE_URL` / `OPENAI_API_KEY`, plus the model field from `OPENAI_MODEL_NAME`. The model field is named `model` for `direct_llm` / `zeroclaw` but `model_name` for `opencode` (both sourced from `OPENAI_MODEL_NAME`). A field counts as blank when empty, the literal `EMPTY`, or an unresolved placeholder.
 
 The YAML shape is:
 
@@ -265,5 +265,5 @@ live status file and report views.
 
 ## See also
 
-- [Sandboxes & Isolation](./sandboxes): isolation modes, pools, and predeploy.
-- [DirectLLM](../harnesses/direct-llm), [OpenCode](../harnesses/opencode), [OpenClaw](../harnesses/openclaw), [ZeroClaw](../harnesses/zeroclaw): the registered agents.
+- [Sandboxes & Isolation](./sandboxes) — isolation modes, pools, and predeploy.
+- [DirectLLM](../harnesses/direct-llm), [OpenCode](../harnesses/opencode), [OpenClaw](../harnesses/openclaw), [ZeroClaw](../harnesses/zeroclaw) — the registered agents.

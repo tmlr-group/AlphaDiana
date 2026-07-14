@@ -18,10 +18,10 @@ full coding agent running inside a sandboxed container.
 
 Each harness has its own page:
 
-- [direct_llm](./direct-llm): the no-framework baseline.
-- [opencode](./opencode): the `opencode` CLI controller (host/docker/podman) plus memory experiments.
-- [openclaw](./openclaw): ROCK gateway agent with lancedb memory.
-- [zeroclaw](./zeroclaw): native Rust CLI agent with sqlite memory.
+- [direct_llm](./direct-llm) — the no-framework baseline.
+- [opencode](./opencode) — the `opencode` CLI controller (host/docker/podman) plus memory experiments.
+- [openclaw](./openclaw) — ROCK gateway agent with lancedb memory.
+- [zeroclaw](./zeroclaw) — native Rust CLI agent with sqlite memory.
 
 Shared skill bundles (file bundles mounted into a harness sandbox) are described
 in [Skills](#skills) below.
@@ -78,10 +78,10 @@ store at `alphadiana/analysis/io/result_store.py`.
 `AgentRegistry` (`alphadiana/harness/registry.py:10`) is a classmethod-only
 singleton holding a class-level `_registry: dict[str, Type[Agent]]`:
 
-- `AgentRegistry.register(name, cls)`: register a class.
-- `AgentRegistry.get(name)`: look up by name; raises `KeyError` listing the
+- `AgentRegistry.register(name, cls)` — register a class.
+- `AgentRegistry.get(name)` — look up by name; raises `KeyError` listing the
   available names if missing.
-- `AgentRegistry.list()`: sorted list of registered names.
+- `AgentRegistry.list()` — sorted list of registered names.
 
 The four built-in keys are `direct_llm`, `opencode`, `openclaw`, and
 `zeroclaw`; you select one via `agent.name` in the config.
@@ -150,20 +150,20 @@ Set under `agent.config`. Settings resolve via `_resolve_setting`
 
 | Key | Default | Notes |
 | --- | --- | --- |
-| `model` | none | Env fallback `OPENAI_MODEL_NAME` |
-| `api_base` | none | Env fallback `OPENAI_BASE_URL` |
+| `model` | — | Env fallback `OPENAI_MODEL_NAME` |
+| `api_base` | — | Env fallback `OPENAI_BASE_URL` |
 | `api_key` | `EMPTY` | Env fallback `OPENAI_API_KEY`; use `sk-EMPTY` for local vLLM (literal `EMPTY` is treated as unset) |
 | `temperature` | `0.7` | |
-| `top_p` | none | |
+| `top_p` | — | |
 | `max_tokens` | auto | If unset, GETs `{api_base}/models`, reads `data[0].max_model_len`, uses `max_model_len - 8192` (fallback `131072`) |
-| `max_completion_tokens` | none | |
+| `max_completion_tokens` | — | |
 | `request_timeout` | `600` | |
 | `stream` | `true` | |
-| `stream_total_timeout` | none | On expiry sets `answer=None`, `finish_reason='timeout'` |
+| `stream_total_timeout` | — | On expiry sets `answer=None`, `finish_reason='timeout'` |
 | `max_retries` | `3` | Exponential backoff with jitter |
 | `system_prompt` | asks for `\boxed{}` | |
-| `enable_thinking` | none | |
-| `extra_body` | none | |
+| `enable_thinking` | — | |
+| `extra_body` | — | |
 | `capture_logprobs` | `true` | DirectLLM captures logprobs by default |
 | `top_logprobs` | `20` | |
 | `logprobs_format` | `int16` | `int16` quantizes via `analysis.logprobs.quantize_records_int16`; or `float` |

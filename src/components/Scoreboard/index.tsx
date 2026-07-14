@@ -3,15 +3,15 @@ import clsx from 'clsx';
 import styles from './styles.module.css';
 
 /**
- * Scoreboard — AlphaDiana's signature element.
+ * Scoreboard for AlphaDiana's main result.
  *
  * AlphaDiana's thesis is harness-aware evaluation: an agent is a model-harness
  * system, and the same harness can help one model while hurting another. This
- * board stages the paper's main result (Table 1) as a tournament: the Direct
- * (no-harness) baseline vs. three open harnesses, with green/red deltas marking
+ * board stages selected rows from the paper's main result: the Direct
+ * (no-harness) baseline vs. open harnesses, with green/red deltas marking
  * where harnessing improves or degrades the base model.
  *
- * Source: AlphaDiana paper, Table 1 — "End-to-end performance of
+ * Source: AlphaDiana paper, Table 1, "End-to-end performance of
  * model-harness systems on verifiable reasoning tasks." All values are % (higher
  * is better). AIME 26 reports Pass@4 / Avg@4; other benchmarks report Avg@1.
  */
@@ -44,7 +44,7 @@ const models: Model[] = [
     id: 'qwen',
     name: 'Qwen3.5-27B',
     verdict: 'hurts',
-    takeaway: 'Harnessing consistently hurts — Direct inference wins on every task.',
+    takeaway: 'Harnessing consistently hurts; Direct inference wins on every task in this slice.',
     rows: [
       { harness: 'Direct', vals: [58.3, 23.0, 81.3, 96.7, 89.2, 73.4], deltas: null },
       { harness: 'OpenClaw', vals: [20.3, 13.4, 66.2, 83.3, 64.2, 68.3], deltas: [-38.0, -9.6, -15.1, -13.4, -25.0, -5.1] },
@@ -56,7 +56,7 @@ const models: Model[] = [
     id: 'gemma',
     name: 'Gemma-4-31B-IT',
     verdict: 'helps',
-    takeaway: 'Harnessing consistently helps — gains on IMO, GPQA, and AIME across harnesses.',
+    takeaway: 'Harnessing consistently helps; gains appear on IMO, GPQA, and AIME across harnesses.',
     rows: [
       { harness: 'Direct', vals: [59.0, 27.9, 83.3, 96.7, 92.5, 65.8], deltas: null },
       { harness: 'OpenClaw', vals: [59.5, 24.2, 85.4, 100.0, 97.5, 56.8], deltas: [0.5, -3.7, 2.1, 3.3, 5.0, -9.0] },
@@ -68,7 +68,7 @@ const models: Model[] = [
     id: 'kimi',
     name: 'Kimi-K2.6',
     verdict: 'mixed',
-    takeaway: 'Mixed outcomes — ZeroClaw/OpenCode help, but OpenClaw collapses GPQA from 77.8 to 31.8.',
+    takeaway: 'Mixed outcomes; ZeroClaw and OpenCode lift GPQA and AIME, while OpenClaw sharply degrades GPQA and MMMU-Pro.',
     rows: [
       { harness: 'Direct', vals: [42.0, 35.9, 77.8, 96.7, 85.8, 75.1], deltas: null },
       { harness: 'OpenClaw', vals: [27.3, 40.7, 31.8, 93.3, 72.5, 48.6], deltas: [-14.7, 4.8, -46.0, -3.4, -13.3, -26.5] },
@@ -110,9 +110,10 @@ export default function Scoreboard() {
         <p className={styles.kicker}>Tournament Results</p>
         <h2 className={styles.heading}>Same harness, opposite outcomes</h2>
         <p className={styles.subhead}>
-          AlphaDiana pits the <strong>Direct</strong> (no-harness) baseline against three open harnesses on five
-          verifiable benchmarks. Harnessing is <strong>not</strong> a uniform upgrade: it lifts one model and
-          sinks another. <span className={styles.legendPos}>Green</span> means the harness beat Direct;{' '}
+          AlphaDiana compares the <strong>Direct</strong> no-harness baseline with open harnesses under matched
+          tasks, scorers, sandboxes, and budgets. Harnessing is <strong>not</strong> a uniform upgrade: it lifts Gemma,
+          sinks Qwen3.5, and produces mixed behavior on Kimi-K2.6. <span className={styles.legendPos}>Green</span>{' '}
+          means the harness beat Direct;{' '}
           <span className={styles.legendNeg}>red</span> means it lost ground.
         </p>
 
@@ -169,8 +170,8 @@ export default function Scoreboard() {
         </div>
 
         <p className={styles.footnote}>
-          Values are percentages (higher is better); deltas are absolute differences vs. Direct. From AlphaDiana
-          (paper), Table 1.
+          Values are percentages (higher is better); deltas are absolute differences vs. Direct. Selected rows from
+          AlphaDiana paper, Table 1.
         </p>
       </div>
     </section>
