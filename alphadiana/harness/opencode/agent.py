@@ -761,6 +761,38 @@ class OpenCodeAgent(Agent):
         self._opencode_bin = config.get("opencode_bin", "opencode")
         self._streaming = config.get("streaming") if "streaming" in config else None
         self._logprob_capture = resolve_logprob_capture_config(config)
+        self._persistent_memory = bool(config.get("persistent_memory", False))
+        self._compact_after_task = bool(config.get("compact_after_task", False))
+        # fresh_session: keep harness-level _memory_bank accumulation (prompt
+        # injection) but start a FRESH opencode session per task instead of
+        # chaining one shared --session. This preserves cross-task memory (B
+        # design) while making a single task's intra-task context balloon unable
+        # to poison the whole run (the shared-session failure mode in exp2 OC).
+        self._fresh_session = bool(config.get("fresh_session", False))
+        # memory_freeze: exp3 transfer mode. Build tasks (memory_mode=build)
+        # accumulate the shared --session as usual; frozen tasks
+        # (memory_mode=frozen) each FORK from a snapshot of the post-build HOME
+        # so they recall train-phase experience but never chain forward or mutate
+        # it, i.e. frozen test problems do not learn from one another. Off by
+        # default so normal OC runs are byte-for-byte unchanged.
+        self._memory_freeze = bool(config.get("memory_freeze", False))
+        # oracle_feedback: exp3-v2. In build mode, after solving, run one extra
+        # same-session turn that reveals the ground-truth answer and asks the model
+        # to self-grade and note a lesson. That reflection rides the session into the
+        # compaction summary (and the freeze snapshot), so future tasks recall an
+        # oracle-corrected experience instead of an unverified solution. Off by
+        # default = exp3-v1 behavior unchanged.
+        self._oracle_feedback = bool(config.get("oracle_feedback", False))
+        # context_limit/output_limit: declare the model's token budget to opencode
+        # so its NATIVE autocompact fires PROACTIVELY (before the provider's hard
+        # wall) instead of only reacting at the wall and wedging the chained
+        # session (the exp2 OC poisoning). Setting context below the real window
+        # gives a safety margin so the compaction LLM call itself still fits.
+        self._context_limit = config.get("context_limit")
+        self._output_limit = config.get("output_limit")
+        self._persistent_workdir: Path | None = None
+        self._last_session_id: str = ""
+        self._memory_bank: list[dict[str, str]] = []
         self._config = dict(config)
         self._runtime_manager = None
         self._podman_runtime = config.get("_podman_runtime") or PodmanCLI()
@@ -990,6 +1022,14 @@ class OpenCodeAgent(Agent):
             setattr(exc, "error_type", error_info["error_type"])
             setattr(exc, "response_body", full_content)
             raise exc
+        if self._persistent_memory and response.answer:
+            self._memory_bank.append({
+                "task_id": task.task_id,
+                "answer": str(response.answer),
+                "summary": assistant_text[:300] if assistant_text else "",
+            })
+            logger.info("Programmatic memory_store: task=%s answer=%s (bank=%d)",
+                        task.task_id, response.answer, len(self._memory_bank))
         return response
 
     def _run_in_docker(
@@ -1027,7 +1067,7 @@ class OpenCodeAgent(Agent):
             "-w", workdir,
             "-e", f"HOME={container_home}",
         ]
-        for key in ("OPENAI_API_KEY", "OPENAI_BASE_URL", "XDG_CONFIG_HOME"):
+        for key in ("OPENAI_API_KEY", "OPENAI_BASE_URL", "XDG_CONFIG_HOME", "OPENCODE_DISABLE_CHANNEL_DB"):
             if key in env:
                 docker_cmd.extend(["-e", f"{key}={env[key]}"])
         docker_cmd.append(self._controller_image)
@@ -1066,6 +1106,107 @@ class OpenCodeAgent(Agent):
                     raw_output, timed_out_stderr = process.communicate()
                     stderr = timed_out_stderr or stderr
             return raw_output, stderr, -1
+
+    def _compact_session_in_docker(
+        self,
+        workdir: str,
+        env: dict[str, str],
+        session_id: str,
+        task_id: str,
+    ) -> None:
+        """Trigger opencode's native compaction (the /compact slash command's
+        backing API) on the chained session via a short-lived serve container."""
+        if self._controller_mode != "docker":
+            logger.warning(
+                "compact_after_task is only implemented for docker mode (got %s)",
+                self._controller_mode,
+            )
+            return
+        provider_model_name = self._model_name or self._api_model
+        if not provider_model_name:
+            provider_model_name = _derive_api_model(self._cli_model, self._model_name)
+        port = 4100 + (time.time_ns() % 1900)
+        container_home = Path(workdir) / ".controller-home"
+        container_name = f"alphadiana-opencode-compact-{os.getpid()}-{time.time_ns()}"
+        inner_cmd = (
+            f"node /usr/lib/node_modules/opencode-ai/bin/opencode serve --port {port} "
+            f">/tmp/serve.log 2>&1 & sp=$!; "
+            f"for i in $(seq 1 30); do "
+            f"curl -s -m 2 http://127.0.0.1:{port}/session >/dev/null 2>&1 && break; sleep 1; done; "
+            f"curl -s -m 600 -X POST http://127.0.0.1:{port}/session/{session_id}/summarize "
+            f"-H 'Content-Type: application/json' "
+            f"-d '{{\"providerID\":\"custom\",\"modelID\":\"{provider_model_name}\",\"auto\":false}}'; rc=$?; "
+            f"kill $sp 2>/dev/null; exit $rc"
+        )
+        docker_cmd = [
+            "docker", "run", "--rm",
+            "--name", container_name,
+            "--label", "alphadiana.component=opencode-compact",
+            f"--network={self._controller_network}",
+            f"--user={os.getuid()}:{os.getgid()}",
+            "-v", f"{workdir}:{workdir}",
+            "-w", workdir,
+            "-e", f"HOME={container_home}",
+        ]
+        for key in ("OPENAI_API_KEY", "OPENAI_BASE_URL", "XDG_CONFIG_HOME", "OPENCODE_DISABLE_CHANNEL_DB"):
+            if key in env:
+                docker_cmd.extend(["-e", f"{key}={env[key]}"])
+        docker_cmd.append(self._controller_image)
+        docker_cmd.extend(["sh", "-c", inner_cmd])
+        try:
+            proc = subprocess.run(
+                docker_cmd,
+                capture_output=True,
+                text=True,
+                timeout=900,
+            )
+            response_text = (proc.stdout or "").strip()
+            ok = proc.returncode == 0 and "true" in response_text.lower()
+            logger.info(
+                "opencode compact: task=%s session=%s ok=%s response=%s",
+                task_id, session_id, ok,
+                (response_text or proc.stderr or "")[:200],
+            )
+        except subprocess.TimeoutExpired:
+            self._force_remove_docker_container(container_name)
+            logger.warning(
+                "opencode compact timed out for task=%s session=%s",
+                task_id, session_id,
+            )
+
+    def _snapshot_persistent_home(self, workdir: str) -> None:
+        """Snapshot the persistent opencode HOME (session DB + storage) so frozen
+        transfer tasks can fork from the post-build state. Host-side copy: in
+        docker/podman mode HOME is {workdir}/.controller-home, bind-mounted into
+        the container, so the session store is visible and copyable on the host."""
+        home = Path(workdir) / ".controller-home"
+        snap = Path(workdir) / ".frozen-home-snapshot"
+        try:
+            if snap.exists():
+                shutil.rmtree(snap)
+            if home.exists():
+                shutil.copytree(home, snap, symlinks=True)
+                logger.info("opencode freeze: snapshot HOME -> %s", snap.name)
+        except Exception as exc:  # best-effort; never break the run
+            logger.warning("opencode freeze: snapshot failed: %s", exc)
+
+    def _restore_persistent_home(self, workdir: str) -> None:
+        """Restore the post-build HOME snapshot before a frozen task so it forks
+        from train-phase memory and its writes do not leak to later frozen tasks."""
+        home = Path(workdir) / ".controller-home"
+        snap = Path(workdir) / ".frozen-home-snapshot"
+        if not snap.exists():
+            logger.warning(
+                "opencode freeze: no snapshot to restore (frozen task before any build?)"
+            )
+            return
+        try:
+            if home.exists():
+                shutil.rmtree(home)
+            shutil.copytree(snap, home, symlinks=True)
+            logger.info("opencode freeze: restored HOME from snapshot")
+        except Exception as exc:
+            logger.warning("opencode freeze: restore failed: %s", exc)
 
     def _run_in_podman(
         self,
@@ -1186,6 +1327,62 @@ class OpenCodeAgent(Agent):
                 result.stderr.strip()[:500],
             )
 
+    def _run_oracle_feedback_turn(
+        self, task: BenchmarkTask, workdir: str, env: dict[str, str],
+        cli_model: str, session_id: str,
+    ) -> str:
+        """exp3-v2: append one self-grading reflection turn to the just-solved session.
+
+        Reveals the ground-truth answer and asks the model to judge its own attempt
+        and record a lesson, in the SAME --session so the reflection rides into the
+        compaction summary and freeze snapshot. Best-effort: never raises into the
+        solve path. Returns the (possibly advanced) session id, else the input one.
+        """
+        try:
+            reflection = (
+                "You just attempted the competition problem above in this session. The "
+                f"OFFICIAL correct answer is: {task.ground_truth}.\n\n"
+                "Compare it with the final answer you gave and state plainly whether you "
+                "were CORRECT or WRONG. Then write a brief lesson for your future self: "
+                "if WRONG, the specific step where you went astray and the correct "
+                "approach; if CORRECT, the key technique that worked. A few sentences."
+            )
+            cmd = [
+                self._opencode_bin, "run", "--format", "json",
+                "--dir", workdir, "--title", f"{task.task_id}_oracle_feedback",
+            ]
+            if cli_model:
+                cmd.extend(["--model", cli_model])
+            if self._variant:
+                cmd.extend(["--variant", self._variant])
+            if self._agent_name:
+                cmd.extend(["--agent", self._agent_name])
+            if session_id:
+                cmd.extend(["--session", session_id])
+            cmd.append("--")
+            cmd.append(reflection)
+            if self._controller_mode == "docker":
+                raw_output, _stderr, _rc = self._run_in_docker(cmd, workdir, env)
+            elif self._controller_mode == "podman":
+                raw_output, _stderr, _rc = self._run_in_podman(cmd, workdir, env)
+            else:
+                proc = subprocess.run(
+                    cmd, capture_output=True, text=True, env=env, cwd=workdir,
+                    timeout=min(600, self._timeout),
+                )
+                raw_output = proc.stdout or ""
+            _, _, fb_session_id = _parse_opencode_output(raw_output)
+            logger.info(
+                "opencode oracle-feedback turn task=%s base_session=%s fb_session=%s",
+                task.task_id, session_id, fb_session_id,
+            )
+            return fb_session_id or session_id
+        except Exception as exc:  # noqa: BLE001 - never break the solve path
+            logger.warning(
+                "opencode oracle-feedback turn failed task=%s: %s", task.task_id, exc,
+            )
+            return session_id
+
     def _solve_cli(self, task: BenchmarkTask) -> AgentResponse:
         """Run tasks through the OpenCode CLI (host or Docker, multimodal-aware)."""
         start = time.time()
@@ -1194,7 +1391,18 @@ class OpenCodeAgent(Agent):
         preserved_local_artifacts: dict[str, Any] = {}
         attachment_artifacts: list[dict[str, str]] = []
 
-        with tempfile.TemporaryDirectory(prefix="opencode-task-") as workdir:
+        if self._persistent_memory and self._persistent_workdir is None:
+            # Pin the workdir before task 1 so every task shares the same --dir,
+            # HOME and opencode data dir; required for native --session chaining.
+            self._persistent_workdir = Path(tempfile.mkdtemp(prefix="opencode-persistent-"))
+            logger.info("Created persistent opencode workdir: %s", self._persistent_workdir)
+        _use_persistent_dir = self._persistent_memory
+        _temp_ctx = None if _use_persistent_dir else tempfile.TemporaryDirectory(prefix="opencode-task-")
+        try:
+            if _use_persistent_dir:
+                workdir = str(self._persistent_workdir)
+            else:
+                workdir = _temp_ctx.__enter__()
             workdir_path = Path(workdir)
             container_home = workdir_path / ".controller-home"
             config_root = workdir_path / "xdg-config"
@@ -1209,6 +1417,14 @@ class OpenCodeAgent(Agent):
                 "name": provider_model_name,
                 "tool_call": self._tool_call,
             }
+            if self._context_limit:
+                # Enables opencode's native proactive autocompact. Keep output at
+                # the same reservation the run already uses (don't change max_tokens);
+                # set context below the true 65536 window for a compaction-safe margin.
+                model_spec["limit"] = {
+                    "context": int(self._context_limit),
+                    "output": int(self._output_limit) if self._output_limit else 32000,
+                }
             if _has_image_attachments(task.attachments):
                 model_spec["attachment"] = True
                 model_spec["modalities"] = {
@@ -1320,16 +1536,33 @@ class OpenCodeAgent(Agent):
                 }
                 for path in attachment_paths
             ]
-            prompt = _build_prompt(task.problem, self._system_prompt, attachment_paths)
+            memory_prefix = ""
+            if self._persistent_memory and self._memory_bank:
+                memory_lines = "\n".join(
+                    f"- Task {m['task_id']}: Answer={m['answer']} | {m['summary']}"
+                    for m in self._memory_bank
+                )
+                memory_prefix = (
+                    f"[MEMORY FROM PREVIOUS PROBLEMS]\n"
+                    f"You have solved {len(self._memory_bank)} problem(s) before:\n"
+                    f"{memory_lines}\n"
+                    f"[END MEMORY]\n\n"
+                )
+                logger.info("Injected %d memory entries into prompt", len(self._memory_bank))
+            augmented_problem = memory_prefix + task.problem if memory_prefix else task.problem
+            prompt = _build_prompt(augmented_problem, self._system_prompt, attachment_paths)
             request_messages: list[dict[str, Any]] = []
             if str(self._system_prompt).strip():
                 request_messages.append({"role": "system", "content": self._system_prompt})
-            request_messages.append({"role": "user", "content": task.problem})
+            request_messages.append({"role": "user", "content": augmented_problem})
 
             env = os.environ.copy()
             env["OPENAI_API_KEY"] = self._api_key
             env["OPENAI_BASE_URL"] = effective_api_base
             env["XDG_CONFIG_HOME"] = str(config_root)
+            # Newer opencode builds suffix the sqlite filename by build channel;
+            # pin to plain opencode.db so every container opens the same file.
+            env["OPENCODE_DISABLE_CHANNEL_DB"] = "1"
             for var in (
                 "ALL_PROXY",
                 "HTTP_PROXY",
@@ -1357,6 +1590,8 @@ class OpenCodeAgent(Agent):
                 cmd.extend(["--variant", self._variant])
             if self._agent_name:
                 cmd.extend(["--agent", self._agent_name])
+            if self._persistent_memory and self._last_session_id and not self._fresh_session:
+                cmd.extend(["--session", self._last_session_id])
             if self._print_logs:
                 cmd.append("--print-logs")
             if self._log_level:
@@ -1365,6 +1600,21 @@ class OpenCodeAgent(Agent):
                 cmd.extend(["--file", str(attachment_path)])
             cmd.append("--")
             cmd.append(prompt)
+
+            task_memory_mode = str(
+                (getattr(task, "metadata", None) or {}).get("memory_mode", "build")
+            )
+            if self._memory_freeze and self._persistent_memory and task_memory_mode == "frozen":
+                # Reset HOME (and thus the opencode session store) to the frozen
+                # post-build snapshot so this test task forks from the train-phase
+                # memory; --session below still points at the train-final session,
+                # which the restored store contains. Its writes are discarded by
+                # the next frozen task's restore, so frozen tasks stay independent.
+                self._restore_persistent_home(workdir)
+                logger.info(
+                    "opencode freeze: frozen task=%s forks from base session=%s",
+                    task.task_id, self._last_session_id,
+                )
 
             logger.info("Running opencode for task %s (timeout=%ds, mode=%s)",
                         task.task_id, self._timeout, self._controller_mode)
@@ -1413,6 +1663,46 @@ class OpenCodeAgent(Agent):
             _, _, session_id = _parse_opencode_output(raw_output)
             preserved_local_artifacts = _collect_local_opencode_artifacts(config_dir, session_id)
             session_trace = preserved_local_artifacts.get("workspace_file_contents", {}).get("opencode_session.jsonl", "")
+            if self._persistent_memory and session_id:
+                frozen = self._memory_freeze and task_memory_mode == "frozen"
+                continued = session_id == self._last_session_id
+                if frozen:
+                    # Do NOT advance the chain or compact: this frozen test task
+                    # must not become the base for the next one. The pre-run
+                    # restore already isolated its writes from the snapshot.
+                    logger.info(
+                        "opencode FROZEN task=%s session_id=%s base=%s (not chained forward)",
+                        task.task_id, session_id, self._last_session_id,
+                    )
+                else:
+                    self._last_session_id = session_id
+                    logger.info(
+                        "opencode session chain: task=%s session_id=%s continued=%s",
+                        task.task_id, session_id, continued,
+                    )
+                    if self._oracle_feedback:
+                        # exp3-v2: reflect against ground truth in-session BEFORE
+                        # compaction/snapshot so the corrected experience is carried.
+                        new_sid = self._run_oracle_feedback_turn(
+                            task, workdir, env, cli_model, session_id,
+                        )
+                        session_id = new_sid
+                        self._last_session_id = new_sid
+                    if self._compact_after_task and not self._fresh_session:
+                        self._compact_session_in_docker(
+                            workdir, env, session_id, task.task_id,
+                        )
+                    if self._memory_freeze:
+                        # Refresh the snapshot after each build task (post-compact)
+                        # so frozen tasks fork from the latest train-phase HOME.
+                        self._snapshot_persistent_home(workdir)
+
+            if _temp_ctx is not None and not self._persistent_memory:
+                _temp_ctx.__exit__(None, None, None)
+        except BaseException:
+            if _temp_ctx is not None:
+                _temp_ctx.__exit__(None, None, None)
+            raise
 
         wall_time = time.time() - start
         assistant_text, events, session_id = _parse_opencode_output(raw_output)
@@ -1691,6 +1981,22 @@ class OpenCodeAgent(Agent):
             setattr(exc, "error_type", failure_info["error_type"])
             setattr(exc, "response_body", full_content)
             raise exc
+        # fresh_session mode (B/accumulation without session poisoning): the CLI
+        # path normally relies on --session chaining for cross-task memory, so it
+        # never populated _memory_bank (that append lives in _solve_in_container).
+        # In fresh_session we DON'T chain sessions, so carry memory forward here by
+        # recording each solved task; _build_prompt injection (memory_prefix) then
+        # seeds the next fresh session with the accumulated answers/summaries.
+        if self._fresh_session and self._persistent_memory and answer:
+            self._memory_bank.append({
+                "task_id": task.task_id,
+                "answer": str(answer),
+                "summary": assistant_text[:300] if assistant_text else "",
+            })
+            logger.info(
+                "fresh_session memory_store: task=%s answer=%s (bank=%d)",
+                task.task_id, answer, len(self._memory_bank),
+            )
         return response
 
     def teardown(self) -> None:
