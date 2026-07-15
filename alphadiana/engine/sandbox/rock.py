@@ -812,7 +812,11 @@ class ROCKSession(SandboxSession):
     def _remove_paths(self, paths: list[str]) -> None:
         quoted_paths = " ".join(shlex.quote(path) for path in paths)
         if quoted_paths:
-            self.execute(f"rm -rf {quoted_paths}")
+            # Best-effort: some candidate paths are stale image artifacts the
+            # session user cannot remove (e.g. root-owned /root/.openclaw);
+            # that must not fail the between-task reset and force a sandbox
+            # recreation, which would destroy persistent plugin state.
+            self.execute(f"rm -rf {quoted_paths} 2>/dev/null || true")
 
     def _cleanup_workspace(self) -> None:
         """Remove reusable OpenClaw state between tasks."""
