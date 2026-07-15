@@ -481,6 +481,8 @@ class OpenClawRuntimeManager:
         self._temperature = config.get("temperature", None)
         self._top_p = config.get("top_p", None)
         self._max_tokens = config.get("max_tokens", None)
+        _ml = config.get("memory_lancedb")
+        self._memory_lancedb = _ml if isinstance(_ml, dict) else None
         self._agent_timeout_seconds = self._coerce_positive_int(
             config.get(
                 "openclaw_agent_timeout",
@@ -656,6 +658,38 @@ class OpenClawRuntimeManager:
             if not memory:
                 config.pop("memory", None)
 
+        if self._memory_lancedb:
+            # Official @openclaw/memory-lancedb plugin. The TS source is staged
+            # into OPENCLAW_HOME/.openclaw/extensions by the run_cmd prefix
+            # (see _openclaw_memory_lancedb_setup_command); the dist build in
+            # current images ships manifests without compiled entries.
+            ml = self._memory_lancedb
+            config["plugins"] = {
+                "slots": {"memory": "memory-lancedb"},
+                "entries": {
+                    "memory-lancedb": {
+                        "enabled": True,
+                        "config": {
+                            "embedding": {
+                                "apiKey": str(ml.get("api_key") or "sk-EMPTY"),
+                                # Defaults must stay in sync with the local-agent
+                                # config in agent.py; both write the same lancedb
+                                # store, so a model/dimensions mismatch corrupts it.
+                                "model": str(ml.get("model") or "qwen3-embed-0.6b"),
+                                "baseUrl": str(ml.get("base_url") or ""),
+                                "dimensions": int(ml.get("dimensions") or 1024),
+                            },
+                            "dbPath": str(
+                                ml.get("db_path")
+                                or "/tmp/oc_home/.openclaw/memory/lancedb"
+                            ),
+                            "autoCapture": bool(ml.get("auto_capture", True)),
+                            "autoRecall": bool(ml.get("auto_recall", True)),
+                        },
+                    }
+                },
+            }
+
         gateway = config.setdefault("gateway", {})
         gateway["port"] = self._gateway_port
         # ROCK publishes the container's 8080/tcp to a host port. Binding the
@@ -685,19 +719,38 @@ class OpenClawRuntimeManager:
             ">> /tmp/gateway.log; fi;"
         )
 
+    def _openclaw_memory_lancedb_setup_command(self) -> str:
+        if not self._memory_lancedb:
+            return ""
+        return (
+            "oc_root=''; for r in /app /opt/openclaw; do "
+            "[ -d \"$r/extensions/memory-lancedb\" ] && oc_root=\"$r\" && break; done; "
+            "if [ -n \"$oc_root\" ]; then "
+            "mkdir -p /tmp/oc_home/.openclaw/extensions; "
+            "cp -r \"$oc_root/extensions/memory-lancedb\" /tmp/oc_home/.openclaw/extensions/ 2>/dev/null; "
+            "(cd /tmp/oc_home/.openclaw/extensions/memory-lancedb/node_modules 2>/dev/null && "
+            "for d in \"$oc_root\"/node_modules/*; do b=$(basename \"$d\"); "
+            "[ -e \"$b\" ] || ln -s \"$d\" \"$b\"; done); "
+            "else echo '[AlphaDiana] memory-lancedb extension source not found' "
+            ">> /tmp/gateway.log; fi;"
+        )
+
     def _apply_openclaw_runtime_patches(self, generated_config: dict[str, Any]) -> None:
-        patch_cmd = self._openclaw_undici_timeout_patch_command()
-        if not patch_cmd:
-            return
         run_cmd = str(generated_config.get("run_cmd", "") or "").strip()
         if not run_cmd:
             return
-        if (
+        prefix = ""
+        patch_cmd = self._openclaw_undici_timeout_patch_command()
+        if patch_cmd and (
             "opts?.timeoutMs ?? (Number(process.env.OPENCLAW_UNDICI_STREAM_TIMEOUT_MS"
-            in run_cmd
+            not in run_cmd
         ):
-            return
-        generated_config["run_cmd"] = f"{patch_cmd} {run_cmd}"
+            prefix += f"{patch_cmd} "
+        lancedb_cmd = self._openclaw_memory_lancedb_setup_command()
+        if lancedb_cmd and "memory-lancedb" not in run_cmd:
+            prefix += f"{lancedb_cmd} "
+        if prefix:
+            generated_config["run_cmd"] = f"{prefix}{run_cmd}"
 
     def _apply_generation_params(self, config: dict[str, Any]) -> None:
         """Apply common sampling controls to the configured OpenClaw model."""

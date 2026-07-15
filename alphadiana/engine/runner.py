@@ -1498,11 +1498,12 @@ class Runner:
             supports_shared_session = getattr(self.sandbox, "supports_shared_session", None)
             if callable(supports_shared_session):
                 sandbox_supports_shared_session = bool(supports_shared_session())
+        _persistent_memory = bool(self.config.agent_config.get("persistent_memory", False))
         if (
             self.sandbox is not None
             and pool is None
             and sandbox_supports_shared_session
-            and self.config.agent_name != "openclaw"
+            and (self.config.agent_name != "openclaw" or _persistent_memory)
         ):
             logger.info("Creating shared sandbox session for sequential execution")
             shared_session = self.sandbox.create_session()
