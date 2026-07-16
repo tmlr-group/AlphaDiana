@@ -81,8 +81,8 @@ ZeroClaw).
 | Harness | Backend | Mechanism |
 |---|---|---|
 | [OpenCode](../harnesses/opencode) | OpenCode session chain + per-task `/compact`; persistent HOME (`opencode.db` sqlite) bind-mounted at `{workdir}/.controller-home` | Compaction summaries carry the agent's own prior clean solves as a behavioral template — anchoring, not knowledge transfer |
-| [OpenClaw](../harnesses/openclaw) | `memory-lancedb` vector plugin, embedding endpoint :10087 | One distilled `[fact]` sentence per problem via a forced store-turn; recall injected under a `<relevant-memories>` "untrusted historical data" guard |
-| [ZeroClaw](../harnesses/zeroclaw) | sqlite + vector (embed :10088), `memory_store` / `memory_search` | Keyed `[math]` insights; self-pollutes by also storing its own system prompt as a `[conversation]` memory and recalling it as junk |
+| [OpenClaw](../harnesses/openclaw) | `memory-lancedb` vector plugin, backed by an OpenAI-compatible embedding endpoint (for example a local vLLM serving an embedding model) | One distilled `[fact]` sentence per problem via a forced store-turn; recall injected under a `<relevant-memories>` "untrusted historical data" guard |
+| [ZeroClaw](../harnesses/zeroclaw) | sqlite + vector (embeddings via an OpenAI-compatible endpoint), `memory_store` / `memory_search` | Keyed `[math]` insights; self-pollutes by also storing its own system prompt as a `[conversation]` memory and recalling it as junk |
 
 ### Configuration
 
@@ -93,14 +93,14 @@ same across all three harnesses; the remaining keys are harness-specific.
 |---|---|---|
 | `persistent_memory` | all three | Master memory on/off |
 | `compact_after_task` | OpenCode | Run `/compact` after each task |
-| `fresh_session` | OpenCode | Fresh session per task, keep harness memory-bank prompt injection |
+| `fresh_session` | OpenCode | Fresh session per task; fills and injects the harness memory bank instead of chaining sessions |
 | `memory_freeze` | OpenCode | Transfer mode: frozen tasks fork from a post-build HOME snapshot |
 | `oracle_feedback` | all three | Post-solve reflection turn that reveals `ground_truth` (oracle-feedback v2) |
 | `context_limit` / `output_limit` | OpenCode | Declare token budget so OpenCode's native autocompact fires before the provider's hard wall |
 | `memory_embedding.{base_url, model, dimensions, search_mode}` | ZeroClaw | Vector recall; omit `base_url` to fall back to FTS-only |
-| `memory_lancedb.{db_path, embedding}` | OpenClaw | LanceDB vector store path and embedding endpoint |
+| `memory_lancedb.{api_key, model, base_url, dimensions, db_path, auto_capture, auto_recall}` | OpenClaw | Flat keys in one dict: embedding endpoint (api_key, model, base_url, dimensions) and the LanceDB store path. `auto_capture` / `auto_recall` are read on the gateway path only; the local-agent path hardcodes `autoCapture: false` and `autoRecall: true` |
 
-OpenCode's flags are parsed in `alphadiana/harness/opencode/agent.py:765-793`.
+OpenCode's flags are parsed in `alphadiana/harness/opencode/agent.py:764-792`.
 ZeroClaw's memory store-turn is `_memory_store_via_agent`
 (`alphadiana/harness/zeroclaw/agent.py:1549`), which skips the write when a task
 carries `metadata['memory_mode'] == 'frozen'`. OpenClaw runs memory through an
@@ -116,17 +116,37 @@ Transfer is data-driven: each task carries `metadata.memory_mode`, either
 
 ```bash
 python -m alphadiana.cli run \
-  configs/memory_experiments/exp1_oc_aime_memory_seq.yaml \
+  configs/memory_experiments/exp1_zw_aime_memory_seq.yaml \
   --redo-all
 ```
 
-The same pattern covers `exp1_{ow,zw}` (Cross-Task) and
-`exp2_{oc,ow,zw}_aime_memory_passk` (Cross-Sample, which adds
-`num_samples: 4`). A Cross-Sample config differs from a Cross-Task config only
-by that sample count and the system prompt: Cross-Task tells the agent to
-"build on any prior context from previous problems," while the ZeroClaw
-Cross-Sample prompt mandates a `memory_search` before and a `memory_store`
-after every problem.
+The shipped config is a ZeroClaw Cross-Task run in sqlite FTS mode (no embedding
+endpoint needed). It reads five environment variables: `OPENAI_MODEL_NAME`,
+`OPENAI_BASE_URL`, `OPENAI_API_KEY`, `ROCK_BASE_URL`, and `ROCK_PROXY_URL`. An
+unset one is blanked rather than reported. The three `OPENAI_*` are named back to
+you when the run dies, but an unset `ROCK_*` fails opaquely: the runner quietly
+falls back to a default localhost ROCK port and you get a connection error.
+
+The config also pins `rock_image: zeroclaw-reasoning:0.6.9`, which makes the
+runner auto-create a ROCK sandbox, so the ROCK mode prerequisites on the
+[ZeroClaw](../harnesses/zeroclaw) page apply first: build that image locally (it
+is not published on Docker Hub), then start the host ROCK services with
+`bash scripts/start_zeroclaw.sh` and export their URLs with
+`source scripts/rock_env.sh`. Both scripts need the `ref/ROCK` checkout that the
+one-time setup in [Installation](../getting-started/installation) creates, and
+abort without it, which is what leaves the two `ROCK_*` variables unset.
+
+The remaining Cross-Task and Cross-Sample experiment configs are not shipped in
+the repository. The design they encode is small: a Cross-Sample config differs
+from a Cross-Task config by the sample count (`num_samples: 4`, a top-level key
+rather than a `benchmark.config` one) and by its system prompt. The ZeroClaw
+Cross-Sample prompt mandates a `memory_search` before and a `memory_store` after
+every problem; its Cross-Task counterpart carries no such instruction, because
+the harness appends its own "use memory_search" line once at least one store turn
+has run (`alphadiana/harness/zeroclaw/agent.py:1664-1669`). That gate is a count
+of store turns that exited 0 (`_has_memories`, `agent.py:1642-1643`), not an
+inspection of the store, so it can fire even if the model never actually called
+`memory_store`.
 
 ### Reading the results
 

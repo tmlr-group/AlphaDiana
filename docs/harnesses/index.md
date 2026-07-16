@@ -90,7 +90,7 @@ The four built-in keys are `direct_llm`, `opencode`, `openclaw`, and
 
 Registration is **import-for-side-effect**, not auto-discovery. Each agent calls
 `AgentRegistry.register(...)` at module bottom (e.g. `direct_llm.py:509`,
-`opencode/agent.py:2111`, `zeroclaw/agent.py:2175`,
+`opencode/agent.py:2006`, `zeroclaw/agent.py:2175`,
 `openclaw/agent.py:3321`), and the runner explicitly imports every agent module
 so those calls fire (`runner.py:573-583`):
 

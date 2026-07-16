@@ -203,17 +203,19 @@ learn from one another; recall still fires via autoRecall.
 
 When a `memory_lancedb` block is present, `_build_openclaw_config` injects
 `plugins.slots.memory = 'memory-lancedb'` and the plugin config (`runtime.py:661`).
-A setup command (`_openclaw_memory_lancedb_setup_command`, `runtime.py:719`)
+A setup command (`_openclaw_memory_lancedb_setup_command`, `runtime.py:722`)
 copies the memory-lancedb TS source from `/app` or `/opt/openclaw` into
 `OPENCLAW_HOME/.openclaw/extensions` and symlinks `node_modules`, because the
 dist build in current images ships manifests without compiled entries.
 
-The two paths use **different embedding defaults**:
+Both paths use the **same embedding defaults**, kept in sync deliberately:
+they write the same lancedb store, so a model/dimensions mismatch would
+corrupt it.
 
 | Key | Gateway path (`runtime.py`) | Local-agent path (`agent.py`) |
 | --- | --- | --- |
-| `model` | `all-MiniLM-L6-v2` | `qwen3-embed-0.6b` |
-| `dimensions` | 384 | 1024 |
+| `model` | `qwen3-embed-0.6b` | `qwen3-embed-0.6b` |
+| `dimensions` | 1024 | 1024 |
 | `auto_capture` | `True` | forced `False` |
 | `auto_recall` | `True` | `True` |
 | `db_path` | `/tmp/oc_home/.openclaw/memory/lancedb` | same |
@@ -222,9 +224,10 @@ The `memory_lancedb` config block accepts: `api_key`, `model`, `base_url`,
 `dimensions`, `db_path`, `auto_capture`, `auto_recall`.
 
 :::note
-The memory-experiment configs set `persistent_memory: true` **without** a
-`memory_lancedb` block, so the embedding defaults apply unless `OPENAI_BASE_URL`
-(and friends) supply the embed endpoint.
+Omit the `memory_lancedb` block and the embedding `baseUrl` is the empty string
+(`agent.py:1717`), which leaves recall unable to embed. There is no environment
+fallback: `OPENAI_BASE_URL` feeds the chat provider, never the embed endpoint.
+Set `memory_lancedb.base_url` explicitly.
 :::
 
 ### oracle_feedback four-tuple
@@ -250,7 +253,7 @@ gateway/session; after a task writes its result, the runner closes that sandbox
 and warms a standby replacement, so stale OpenClaw chat history cannot leak.
 
 The predeploy pool is configured from `agent.config`
-(`alphadiana/engine/runner.py:799`):
+(`alphadiana/engine/runner.py:803`):
 
 | Key | Default | Meaning |
 | --- | --- | --- |
@@ -350,14 +353,14 @@ layers. Check them in order:
 1. **Gateway agent timeout.** `openclaw.json -> agents.defaults.timeoutSeconds`.
    AlphaDiana derives this from `agent.config.request_timeout` and writes it into
    **both** `agents.defaults.timeoutSeconds` and `tools.exec.timeoutSec`, and
-   also sets ROCK `agent_run_timeout` (`runtime.py:484`, `633`, `650`, `1085`).
+   also sets ROCK `agent_run_timeout` (`runtime.py:486`, `636`, `652`, `1138`).
 2. **ROCK proxy.** `proxy_service.timeout` (raise via the ROCK YAML / `ROCK_CONFIG`,
    e.g. `proxy_service.timeout: 600`). Older external ROCK checkouts hardcode
    `timeout=120` in `rock/sandbox/service/sandbox_proxy_service.py`; patch the
    per-request timeout to use `read=None` plus a bounded connect timeout.
 3. **Client.** `agent.config.request_timeout` (default `1800`s; `agent.py:996`).
 4. **undici stream watchdog.** The prebuilt embedded provider is patched via
-   `OPENCLAW_UNDICI_STREAM_TIMEOUT_MS` (`runtime.py:677`). When diagnosing
+   `OPENCLAW_UNDICI_STREAM_TIMEOUT_MS` (`runtime.py:711`). When diagnosing
    `~1800s` empty-response retries, inspect the sandbox `openclaw.json` and the
    generated ROCK `run_cmd` patch for `opts?.timeoutMs ?? 18e5`.
 5. **`max_tokens`.** Set `65536`+ so thinking models do not exhaust the budget
