@@ -24,7 +24,7 @@ normalizers) and `alphadiana/analysis/` (the offline metrics).
 | Lifecycle | in-process, started by the harness agent | out-of-process CLI launched manually |
 | Purpose | observability (capture logprobs) | experimental intervention (mutate the request) |
 | `trust_env` | n/a | `trust_env=True` (honors `HTTP(S)_PROXY`) |
-| Wired into agents | yes (zeroclaw / openclaw / opencode) | no (only `scripts/oc_capture_to_alphadiana.py`) |
+| Wired into agents | yes (zeroclaw / openclaw / opencode) | no (launched manually as a standalone CLI) |
 
 The two are never wired together. `LogprobCaptureProxy` is a passive observer;
 `tool_filter_proxy` is an active editor of the request stream.

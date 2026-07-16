@@ -323,7 +323,9 @@ sandbox:
   name: local
 ```
 
-Then validate and run:
+Note that the checked-in example currently ships `sandbox: null`, so edit it to
+`sandbox: {name: local}` first (otherwise `ZeroClawAgent.solve` raises the
+live-sandbox RuntimeError above). Then validate and run:
 
 ```bash
 source scripts/activate.sh
@@ -358,7 +360,10 @@ runner's auto-sandbox config.
 
 ### ROCK mode
 
-ROCK mode prerequisites:
+ROCK mode prerequisites. This assumes the one-time setup in
+[Installation](../getting-started/installation) has already created the conda env
+and the `ref/ROCK` checkout: `start_zeroclaw.sh` and `rock_env.sh` both abort
+without the latter, which leaves `ROCK_BASE_URL` and `ROCK_PROXY_URL` unset.
 
 ```bash
 source scripts/activate.sh

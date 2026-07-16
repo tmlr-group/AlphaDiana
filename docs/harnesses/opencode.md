@@ -6,7 +6,7 @@ sidebar_position: 3
 
 The OpenCode harness wraps the third-party `opencode` CLI (`opencode-ai` 1.3.2)
 as an AlphaDiana agent. The entry class is `OpenCodeAgent(Agent)`
-(`alphadiana/harness/opencode/agent.py:684`, `name = "opencode"`), registered via
+(`alphadiana/harness/opencode/agent.py:683`, `name = "opencode"`), registered via
 `AgentRegistry.register("opencode", OpenCodeAgent)` at the bottom of the same
 file. It dispatches across three controller modes plus an in-container
 SWE-bench runtime, and layers a set of experimental memory mechanics on top of
@@ -17,31 +17,31 @@ memory lever defaults off.
 
 ## Solve Dispatch
 
-`solve()` (`agent.py:848`) branches on the `runtime` config key:
+`solve()` (`agent.py:845`) branches on the `runtime` config key:
 
 - `runtime == "swebench_container"` -> `_solve_in_container(task, sandbox)`
   (requires a sandbox; raises otherwise). See
   [SWE-bench In-Container](#swe-bench-in-container).
-- otherwise -> `_solve_cli(task)` (`agent.py:1487`), the main path for
+- otherwise -> `_solve_cli(task)` (`agent.py:1386`), the main path for
   AIME / GPQA / HLE / IMO / MMMU.
 
 ## Controller Modes
 
 `_solve_cli` then dispatches on `controller_mode`. The supported set is
-`_SUPPORTED_CONTROLLER_MODES = {host, docker, podman}` (`agent.py:62`), validated
+`_SUPPORTED_CONTROLLER_MODES = {host, docker, podman}` (`agent.py:61`), validated
 in `setup()`; an unknown mode raises `ValueError`.
 
 | Mode | Path | What runs |
 |------|------|-----------|
 | `host` | `subprocess.Popen(...)` | `opencode` as a direct host process |
-| `docker` | `_run_in_docker` (`agent.py:1070`) | ephemeral `--rm` controller container |
-| `podman` | `_run_in_podman` (`agent.py:1312`) | rootless controller container |
+| `docker` | `_run_in_docker` (`agent.py:1035`) | ephemeral `--rm` controller container |
+| `podman` | `_run_in_podman` (`agent.py:1211`) | rootless controller container |
 
 The default controller image is mode-dependent:
 `alphadiana/tb2-opencode-controller:latest` for docker
-(`_DEFAULT_DOCKER_CONTROLLER_IMAGE`, `agent.py:63`) and
+(`_DEFAULT_DOCKER_CONTROLLER_IMAGE`, `agent.py:62`) and
 `alphadiana-opencode-podman:latest` for podman (`_DEFAULT_PODMAN_CONTROLLER_IMAGE`,
-`agent.py:64`). The checked-in benchmark configs set `controller_mode: docker`;
+`agent.py:63`). The checked-in benchmark configs set `controller_mode: docker`;
 `host` remains available for local debugging.
 
 ### Host vs Docker
@@ -88,7 +88,7 @@ excerpt and surfaces provenance (`container_engine=podman`,
 
 ## CLI Invocation and Custom Provider
 
-The CLI command shape (`agent.py:1678`) is:
+The CLI command shape (`agent.py:1577`) is:
 
 ```bash
 opencode run --format json --dir <workdir> --title <task_id> \
@@ -98,7 +98,7 @@ opencode run --format json --dir <workdir> --title <task_id> \
 ```
 
 The model is always declared as a `custom` OpenAI-compatible provider written to
-`<workdir>/xdg-config/opencode/opencode.json` (`agent.py:1538`), and `cli_model`
+`<workdir>/xdg-config/opencode/opencode.json` (`agent.py:1437`), and `cli_model`
 is `custom/<provider_model_name>`. The provider file has roughly this shape:
 
 ```jsonc
@@ -128,7 +128,7 @@ is `custom/<provider_model_name>`. The provider file has roughly this shape:
 }
 ```
 
-The CLI environment (`agent.py:1660`) sets `OPENAI_API_KEY`, `OPENAI_BASE_URL`
+The CLI environment (`agent.py:1559`) sets `OPENAI_API_KEY`, `OPENAI_BASE_URL`
 (the logprob proxy URL when capture is on), `XDG_CONFIG_HOME=<workdir>/xdg-config`
 and `OPENCODE_DISABLE_CHANNEL_DB=1`, and strips `ALL_PROXY` / `HTTP(S)_PROXY` /
 `OPENAI_MODEL_NAME`. `OPENCODE_DISABLE_CHANNEL_DB=1` is load-bearing: newer
@@ -139,16 +139,16 @@ container opening the same file.
 ### Answer Extraction
 
 `_parse_opencode_output` returns `(assistant_text, events, session_id)`. The
-answer prefers a boxed / explicit-answer regex (`_EXPLICIT_ANSWER_RE:66`,
-`_BOXED_RE:70`). The `transport` metadata is one of `opencode_cli` (host),
+answer prefers a boxed / explicit-answer regex (`_EXPLICIT_ANSWER_RE:65`,
+`_BOXED_RE:69`). The `transport` metadata is one of `opencode_cli` (host),
 `opencode_cli_container` (docker), or `opencode_cli_podman` (podman), set at
-`agent.py:1811`. A timeout (returncode `-1`) yields an `OpenCodeTimeout`
+`agent.py:1709`. A timeout (returncode `-1`) yields an `OpenCodeTimeout`
 error type.
 
 ### Logprob Capture
 
-`resolve_logprob_capture_config(config)` (`agent.py:764`) gates a
-`LogprobCaptureProxy` (`agent.py:1606`) placed in front of the upstream. When on,
+`resolve_logprob_capture_config(config)` (`agent.py:763`) gates a
+`LogprobCaptureProxy` (`agent.py:1505`) placed in front of the upstream. When on,
 the provider `baseURL` is rewritten to `proxy_url + "/v1"`, request overrides
 (temperature / top_p / max_tokens / chat_template_kwargs) are applied, and
 proxy-captured records are merged in when in-trace extraction finds none.
@@ -160,44 +160,60 @@ and compose:
 
 | Lever | Mechanism |
 |-------|-----------|
-| `persistent_memory` | harness-side `_memory_bank` prompt injection **and** a pinned shared workdir/HOME (enables the native session store) |
+| `persistent_memory` | a pinned shared workdir/HOME (enables the native session store); the `_memory_bank` prompt injection only fills in under `fresh_session` |
 | `--session` chaining | continues the same native opencode session across tasks |
 | `compact_after_task` | post-task `/compact` via the summarize API (docker-only) |
-| `fresh_session` | keep prompt-injection memory, drop `--session` chaining |
+| `fresh_session` | enable prompt-injection memory, drop `--session` chaining (needs `persistent_memory`) |
 | `memory_freeze` | build/frozen snapshot-and-restore of HOME for transfer experiments |
 | `oracle_feedback` | a self-grading reflection turn that sees ground truth |
 
-`persistent_memory` is **not** opencode-native memory. It is a harness-side
-`_memory_bank: list[dict[str, str]]` of `{task_id, answer, summary}` entries
-(`summary = assistant_text[:300]`) appended after each solved task
-(`agent.py:1028-1033`). On each task it prepends a
-`[MEMORY FROM PREVIOUS PROBLEMS] ... [END MEMORY]` block to `task.problem`
-(`agent.py:1640-1653`). Setting `persistent_memory: true` also pins one shared
-workdir (`tempfile.mkdtemp(prefix="opencode-persistent-")`) before task 1
-(`agent.py:1495`) so all tasks share `--dir` / HOME / the opencode data dir,
-which is what makes the opencode-native session store persist.
+`persistent_memory: true` pins one shared workdir
+(`tempfile.mkdtemp(prefix="opencode-persistent-")`) before task 1
+(`agent.py:1397`) so all tasks share `--dir` / HOME / the opencode data dir,
+which is what makes the opencode-native session store persist. On the CLI path
+that store, reached through `--session` chaining, is what actually carries
+memory across tasks.
+
+The harness also keeps its own `_memory_bank: list[dict[str, str]]` of
+`{task_id, answer, summary}` entries (`summary = assistant_text[:300]`).
+`_solve_cli` prepends the bank to `task.problem` as a
+`[MEMORY FROM PREVIOUS PROBLEMS] ... [END MEMORY]` block and passes the result
+to `_build_prompt` (`agent.py:1539-1553`), gated on `persistent_memory` and a
+non-empty bank. That is the only site in the codebase that renders the block. Two paths append
+to the bank: `fresh_session` mode (`agent.py:1990-1995`) and the
+`swebench_container` runtime (`agent.py:1025-1030`); the latter builds its
+prompt without the block, so its writes are never read back. Under plain
+`persistent_memory: true` on the CLI path the bank therefore stays empty and
+memory rides session chaining alone.
 
 ### Session Chaining
 
 When `persistent_memory` is set, a prior `self._last_session_id` exists, and
 `fresh_session` is **not** set, the harness adds `--session <last_session_id>`
-(`agent.py:1694`) so opencode continues the same native session. After each run
-it parses the new `session_id` and advances `self._last_session_id`
-(`agent.py:1780`).
+(`agent.py:1594`) so opencode continues the same native session. After a run
+that returns a `session_id` it advances `self._last_session_id` to it
+(`agent.py:1678`), except on a frozen `memory_freeze` task, which is
+deliberately not chained forward (`agent.py:1669-1677`). An `oracle_feedback`
+turn then advances the pointer again, to the session that turn leaves behind
+(`agent.py:1690`).
 
 ### fresh_session
 
-`fresh_session` (`agent.py:772`) keeps the `_memory_bank` prompt injection
-(cross-task memory) but does **not** pass `--session`, so each task starts a
-fresh opencode session. This prevents one task's intra-task context balloon from
-poisoning the whole chained session (the exp2-OC overflow failure mode). In this
-mode memory is carried forward via the bank only (`agent.py:2092`).
+`fresh_session` (`agent.py:771`) is what fills the `_memory_bank` on the CLI
+path, and therefore what turns the prompt injection on. It only works alongside
+`persistent_memory`: the append at `agent.py:1990` requires both, so
+`fresh_session` on its own is a no-op. It does **not** pass `--session`, so each
+task starts a fresh opencode session. This prevents one task's intra-task context
+balloon from poisoning the whole chained session (the exp2-OC overflow failure
+mode). Cross-task memory then rides the bank rather than the native session
+(`agent.py:1991`), though the shared workdir and HOME still persist
+(`agent.py:1400`).
 
 ### compact_after_task
 
-`compact_after_task` (`agent.py:766`) runs `_compact_session_in_docker`
-(`agent.py:1145`) after a non-frozen task. It is **docker-only** (warns and
-no-ops elsewhere, `agent.py:1156`). It spins a short-lived
+`compact_after_task` (`agent.py:765`) runs `_compact_session_in_docker`
+(`agent.py:1110`) after a non-frozen task. It is **docker-only** (warns and
+no-ops elsewhere, `agent.py:1119`). It spins a short-lived
 `opencode serve --port <4100+rand>` container, polls `/session`, then POSTs
 `/session/<id>/summarize` with body `{providerID: "custom", modelID: <model>,
 auto: false}` — the backing API for the `/compact` slash command. It only fires
@@ -205,13 +221,13 @@ when not `fresh_session`.
 
 ### memory_freeze (build / frozen snapshot)
 
-`memory_freeze` (`agent.py:779`) is the exp3 transfer mode, keyed on per-task
-`task.metadata["memory_mode"]` (default `"build"`, read at `agent.py:1705`).
+`memory_freeze` (`agent.py:778`) is the exp3 transfer mode, keyed on per-task
+`task.metadata["memory_mode"]` (default `"build"`, read at `agent.py:1604`).
 
 - `build` tasks chain, compact, and snapshot normally. After each build task,
-  `_snapshot_persistent_home` (`agent.py:1212`) copytrees
+  `_snapshot_persistent_home` (`agent.py:1177`) copytrees
   `<workdir>/.controller-home` -> `.frozen-home-snapshot`.
-- `frozen` tasks call `_restore_persistent_home` (`agent.py:1228`) **before**
+- `frozen` tasks call `_restore_persistent_home` (`agent.py:1193`) **before**
   running (so they fork from the train-phase memory) and are **not** chained
   forward, compacted, or snapshotted — frozen test tasks stay independent of
   each other.
@@ -223,8 +239,8 @@ carries `memory_mode: build|frozen` ->
 
 ### oracle_feedback
 
-`oracle_feedback` (`agent.py:786`) is exp3-v2. After solving a build task and
-before compaction/snapshot, `_run_oracle_feedback_turn` (`agent.py:1431`)
+`oracle_feedback` (`agent.py:785`) is exp3-v2. After solving a build task and
+before compaction/snapshot, `_run_oracle_feedback_turn` (`agent.py:1330`)
 appends one same-session turn that reveals `task.ground_truth`, asks the model to
 self-grade CORRECT/WRONG, and write a lesson. The reflection then rides into the
 compaction summary and the freeze snapshot. It is best-effort (never raises into
@@ -234,21 +250,23 @@ answer leak into scoring.
 
 ### Native autocompact margin
 
-`context_limit` / `output_limit` (`agent.py:792-793`), when set, are written into
-the provider `model.limit` `{context, output}` (`output` defaults to `32000`,
-`agent.py:1521-1528`). Set `context` below the true window (e.g. `< 65536`) so
-opencode's native proactive autocompact fires before the provider hard wall.
+`context_limit` / `output_limit` (`agent.py:791-792`) are written into the
+provider `model.limit` `{context, output}` (`agent.py:1420-1427`). The whole
+block is gated on `context_limit` alone, so `output_limit` on its own is a
+silent no-op; with `context_limit` set, `output` defaults to `32000`. Set
+`context` below the true window (e.g. `< 65536`) so opencode's native proactive
+autocompact fires before the provider hard wall.
 
 ## SWE-bench In-Container
 
-When `runtime == "swebench_container"`, `_solve_in_container` (`agent.py:857`)
+When `runtime == "swebench_container"`, `_solve_in_container` (`agent.py:854`)
 runs opencode *inside the task sandbox* rather than in a controller container.
 `OpenCodeContainerRuntimeManager` (`alphadiana/harness/opencode/container_runtime.py:157`)
 installs opencode into the sandbox if needed (`_install_opencode_if_needed`),
 writes the provider config (`_write_opencode_config`), runs the task
 (`run_task`), and collects artifacts including a sqlite summary
 (`collect_artifacts`). The result is reduced to a git patch, using
-`_SWE_BENCH_SYSTEM_PROMPT` (`agent.py:83`) by default. This is the container-agent
+`_SWE_BENCH_SYSTEM_PROMPT` (`agent.py:82`) by default. This is the container-agent
 path for SWE-bench Verified-Mini (distinct from the official standalone SWE-agent
 path used by SWE-bench Pro).
 
@@ -265,7 +283,7 @@ path used by SWE-bench Pro).
 
 ### Core agent.config
 
-Read by `OpenCodeAgent.setup()` (`agent.py:708`):
+Read by `OpenCodeAgent.setup()` (`agent.py:707`):
 
 | Key | Default | Notes |
 |-----|---------|-------|
@@ -288,13 +306,13 @@ All default off, so a normal run is unchanged:
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `persistent_memory` | `false` | `_memory_bank` injection + pinned shared workdir/HOME |
+| `persistent_memory` | `false` | pinned shared workdir/HOME (enables the native session store); required by `compact_after_task`, `fresh_session`, `memory_freeze`, and `oracle_feedback` |
 | `compact_after_task` | `false` | docker-only `/compact` via summarize API |
-| `fresh_session` | `false` | keep bank, drop `--session` chaining |
+| `fresh_session` | `false` | fill and inject the bank, drop `--session` chaining (needs `persistent_memory`) |
 | `memory_freeze` | `false` | build/frozen HOME snapshot-restore |
 | `oracle_feedback` | `false` | self-grading reflection turn (reveals ground truth) |
 | `context_limit` | — | provider `model.limit.context` (autocompact margin) |
-| `output_limit` | — | provider `model.limit.output` (default `32000`) |
+| `output_limit` | — | provider `model.limit.output` (default `32000`); ignored unless `context_limit` is also set |
 
 ## Quick Start
 
@@ -365,16 +383,9 @@ calling does not work with opencode at all.
 - The docker controller container is ephemeral per task (`--rm`, fresh name per
   call) even under `persistent_memory`. Cross-task state survives only via the
   bind-mounted shared workdir/HOME, not a reused container.
-- `compact_after_task` and the persistent long-lived container
-  (`_ensure_persistent_container`) are docker-only. `memory_freeze`
+- `compact_after_task` is docker-only. `memory_freeze`
   snapshot/restore is a host-side copytree of `<workdir>/.controller-home` and
   works under docker and podman because HOME is bind-mounted.
-- The `micro_runs/Memory/*opencode*.yaml` configs use a **different** memory
-  system (keys `memory_plugin`, `memory_plugin_version`, `memory_hf_endpoint`,
-  `memory_cache_root`, `memory_max_chars`) that `agent.py` does not read. Those
-  native-plugin runs are processed via
-  `scripts/oc_capture_to_alphadiana.py`, not the `persistent_memory`
-  `_memory_bank` path.
 - Results are written by the result store
   (`alphadiana/analysis/io/result_store.py`); the runner and config live under
   `alphadiana/engine/`.

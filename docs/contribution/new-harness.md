@@ -44,8 +44,9 @@ class MyAgent(Agent):
 
 Set the two class attributes `name: str` and `version: str`. The `name` is the
 registry key that a config selects via `agent.name`. The runner instantiates the
-class, assigns `agent.version` from the config, then calls `setup()` once and
-`solve()` per task (`alphadiana/engine/runner.py:609-611`).
+class, assigns `agent.version` from the config, then calls `setup()` once
+(`alphadiana/engine/runner.py:608-611`) and `solve()` per task
+(`alphadiana/engine/runner.py:1965`).
 
 ### `setup(config)`
 
@@ -102,7 +103,7 @@ classmethod-only singleton over a class-level `_registry: dict[str, Type[Agent]]
 
 Register **at the bottom of your agent module** so the call fires on import. A
 `register_agent(name)` decorator exists, but the shipped agents register
-directly (for example `direct_llm.py:509`, `opencode/agent.py:2111`,
+directly (for example `direct_llm.py:509`, `opencode/agent.py:2006`,
 `zeroclaw/agent.py:2175`, `openclaw/agent.py:3321`):
 
 ```python
@@ -157,7 +158,7 @@ python -m alphadiana.cli run <config.yaml>
 If your harness should expose AlphaDiana skill bundles to the model, read the
 `agent.config.skill_folder` key in `setup()` and mount the bundle into the
 sandbox. The existing agents resolve it with a per-harness `_resolve_skill_folder`
-(`opencode/agent.py:43`, `zeroclaw/agent.py:44`): empty disables it; an absolute
+(`opencode/agent.py:42`, `zeroclaw/agent.py:44`): empty disables it; an absolute
 path is used as-is; a value with `/` resolves against the cwd; a bare name
 resolves to `alphadiana/harness/skills/<name>/` (for example `advanced-maths`).
 Skills are **not** auto-injected into context, so your system prompt must instruct
