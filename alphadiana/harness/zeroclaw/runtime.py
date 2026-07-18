@@ -103,6 +103,16 @@ def _resolve_zeroclaw_provider(provider: str, api_base: str) -> str:
     return normalized_provider or "openai"
 
 
+def _parse_bridge_port(value: Any) -> int:
+    try:
+        port = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"ZeroClaw bridge_port must be an integer, got {value!r}") from exc
+    if not 1 <= port <= 65535:
+        raise ValueError(f"ZeroClaw bridge_port must be between 1 and 65535, got {port}")
+    return port
+
+
 class ZeroClawRuntimeManager:
     """Bootstraps a ZeroClaw bridge inside a live ROCK sandbox."""
 
@@ -111,7 +121,7 @@ class ZeroClawRuntimeManager:
     def __init__(self, config: dict) -> None:
         self._gateway_token = config.get("gateway_token", "ZEROCLAW")
         self._gateway_model = config.get("model", "zeroclaw")
-        self._bridge_port = int(config.get("bridge_port", 8080))
+        self._bridge_port = _parse_bridge_port(config.get("bridge_port", 8080))
         self._bridge_host = str(config.get("bridge_host", "0.0.0.0") or "0.0.0.0").strip()
         self._model_api_base = str(config.get("api_base", config.get("provider_api_base", ""))).strip()
         self._model_api_key = str(config.get("api_key", config.get("provider_api_key", ""))).strip()
@@ -201,6 +211,7 @@ class ZeroClawRuntimeManager:
             "OPENROUTER_API_KEY": self._model_api_key or os.environ.get("OPENROUTER_API_KEY", ""),
             "ZEROCLAW_GATEWAY_TOKEN": self._gateway_token,
             "ZEROCLAW_BRIDGE_HOST": self._bridge_host,
+            "ZEROCLAW_BRIDGE_PORT": str(self._bridge_port),
             "ZEROCLAW_PROVIDER": self._provider,
             "ZEROCLAW_ARTIFACT_ROOT": self._artifact_root,
             "ZEROCLAW_TEMPERATURE": str(self._temperature),
@@ -680,7 +691,11 @@ class ZeroClawPodmanRuntimeManager(ZeroClawRuntimeManager):
             startup_timeout=float(self._gateway_startup_timeout),
             request_timeout=float(self._request_timeout),
             cleanup_timeout=30.0,
-            install_commands=("command -v zeroclaw >/dev/null 2>&1 && zeroclaw --version",),
+            install_commands=(
+                "command -v python >/dev/null 2>&1 && python --version",
+                "python -c 'import scipy'",
+                "command -v zeroclaw >/dev/null 2>&1 && zeroclaw --version",
+            ),
             run_command=f"python {shlex.quote(self._remote_bridge_path)}",
             process_log_path=self._bridge_log_path,
             files=(RuntimeFile(self._remote_bridge_path, self._bridge_template_path.read_bytes()),),
