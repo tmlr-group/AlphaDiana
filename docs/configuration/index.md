@@ -10,9 +10,10 @@ of top-level keys (`run_id`, `max_concurrent`, `num_samples`, `output_dir`,
 `metadata`). The file is parsed into the `ExperimentConfig` dataclass and launched
 through the `alphadiana` CLI, where dotted `-o key.path=value` flags can override any
 field at the command line. This page is the orientation map: see
-[Config Schema](./config-schema) for the full field reference and
+[Config Schema](./config-schema) for the core fields and
 [CLI and Overrides](./cli-and-overrides) for command syntax and run-id conventions.
-`configs/schema.yaml` is the authoritative, fully commented field reference; the
+`configs/schema.yaml` is an annotated core-shape reference; harness- and
+benchmark-specific pass-through keys live on their dedicated pages. The
 files under `configs/examples/` are smoke configs, useful as copy-paste starting
 points but not production settings.
 
@@ -90,6 +91,8 @@ run starts; non-ROCK runs skip it.
 | `output_dir` | `./results` | where result files and the run report land |
 | `task_retries` | `0` | per-task retry budget (must be `>= 0`); the `from_yaml` path defaults to `0` when the key is absent, though the dataclass default is `1` |
 | `strict_report`, `strict_isolation` | `false` | stricter reporting / isolation gates |
+| `parallel_strategy` | `""` | `process_shards` enables DecodingTrust child-process isolation |
+| `process_shards` | `1` | child-process count; validated as `>= 1` |
 | `metadata` | `{}` | free-form `author` / `gpu` / `notes` tags |
 
 `ExperimentConfig` lives in
@@ -112,7 +115,7 @@ to the harness. Common LLM fields:
 | `max_tokens` / `max_completion_tokens` | none | output length cap |
 | `request_timeout` / `timeout` | harness | DirectLLM 600s, OpenClaw 1800s, ZeroClaw 1200s; OpenCode uses `timeout` |
 | `stream` / `streaming` | harness | DirectLLM/OpenClaw default on; ZeroClaw CLI is downstream non-streaming; OpenCode is optional |
-| `capture_logprobs` | `false` unless enabled | support and sidecar format depend on the harness path |
+| `capture_logprobs` | harness-specific | DirectLLM defaults to `true`; other transports require explicit support/configuration |
 | `enable_thinking`, `extra_body` | none | reasoning controls; see below |
 
 When the LLM fields are blank, `_apply_agent_env_defaults` fills them from
@@ -172,9 +175,8 @@ overrides of contract parameters.
 
 ## A note on the configs/ tree
 
-Two grammars coexist under `configs/`. Per-experiment configs (`examples/`,
-`full_runs/`, `memory_experiments/`, `micro_runs/`) match `configs/schema.yaml` and
-run with `alphadiana run`. Campaign manifests such as
+Two grammars coexist under `configs/`. Ordinary per-experiment configs use the
+`ExperimentConfig` shape and run with `alphadiana run`. Campaign manifests such as
 `configs/full_runs/swe_verified_mini.yaml` use a different top-level shape
 (`campaign_id`, `defaults.run_id_prefix`, `models[]`, `path_templates[]`) and are
 consumed by the `rollout_campaign` runner, not by `alphadiana run`. The

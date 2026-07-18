@@ -11,6 +11,14 @@ scorer. This page covers the task data model, the registered benchmark names and
 their default scorers, how a benchmark is selected from config, and the smoke vs
 full convention. Per-benchmark detail lives in the sibling pages linked below.
 
+:::caution Evidence availability
+This website checkout does not include `results/` or the reviewer-facing
+`context/` archive. Dated run IDs on the benchmark pages are provenance
+pointers, not independently verifiable artifacts in this branch. Before citing
+an exact result or promoting a support claim, obtain the matching task JSONs,
+raw run log, and audit context from the release evidence archive.
+:::
+
 ## The `BenchmarkTask` data model
 
 Every loader emits `BenchmarkTask` instances defined in
@@ -41,7 +49,8 @@ per-benchmark, never as one type:
 ### Robust dataset loading
 
 HuggingFace-backed loaders fetch through `load_dataset_with_retry()` in
-`alphadiana/benchmarks/base.py`: up to three attempts with exponential backoff (base `2.0s`,
+`alphadiana/benchmarks/base.py`: up to four total attempts (the initial call plus
+three retries) with exponential backoff (base `2.0s`,
 cap `60.0s`, jitter) for transient `ConnectionError`/`TimeoutError`. It does not
 retry `NON_RETRYABLE_DATASET_ERRORS` (`PermissionError`, `FileNotFoundError`,
 `ValueError`, `OSError`), and a read-only HF cache is converted into an

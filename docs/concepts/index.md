@@ -17,9 +17,9 @@ comparisons fair and reproducible.
 - **[Harness-Aware Evaluation](./harness-aware-evaluation)** — why the harness
   is a measured variable, the `Agent` contract every harness implements, and
   how the registry plugs them in.
-- **[Evaluation Axes](./evaluation-axes)** — the dimensions AlphaDiana varies
-  and holds fixed (tools, memory, reasoning, logprob capture) and the proxies
-  that let you toggle them without forking a harness.
+- **[Evaluation Axes](./evaluation-axes)** — matched Tool, Skill, and Memory
+  condition bundles, including the prompt/runtime changes each intervention
+  actually makes.
 - **[Isolation & Fairness](./isolation-and-fairness)** — task-scoped sandbox and
   container runtimes, what "isolated" does and does not mean, and the controls
   that keep two runs comparable.
@@ -97,7 +97,8 @@ The registered keys map to the four built-in harnesses:
 `DirectLLMAgent` (`alphadiana/harness/direct_llm.py`, `name="direct_llm"`) is
 the clean comparison point: a single system+user chat to an OpenAI-compatible
 endpoint, with **no tools, no multi-turn loop, and no code execution**. It is
-the "engine on a test bench" against which harness gains are measured.
+the "engine on a test bench" used as the reference for matched harness
+comparisons.
 
 It builds its own client with `httpx.Client(trust_env=False)` so inherited
 SOCKS/HTTP proxy environment variables cannot break it. Config resolution falls

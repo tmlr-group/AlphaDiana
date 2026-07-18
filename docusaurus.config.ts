@@ -11,7 +11,7 @@ const config: Config = {
     v4: true,
   },
 
-  // TODO: set to the final hosting URL before deploying.
+  // Canonical production origin used for metadata and generated absolute URLs.
   url: 'https://alphadiana.org',
   baseUrl: '/',
 
@@ -39,7 +39,8 @@ const config: Config = {
               path: '',
             },
           },
-          editUrl: 'https://github.com/AndrewZhou924/AlphaDiana-dev/edit/clean-website/',
+          // Edit links stay disabled until these docs are published in a
+          // publicly editable source repository.
         },
         blog: false,
         theme: {
@@ -67,17 +68,14 @@ const config: Config = {
       },
       items: [
         { to: '/docs/intro', label: 'Docs', position: 'left' },
-        // These anchors are rendered by homepage React components rather than
-        // Markdown headings. Canonical absolute URLs keep Markdown anchor
-        // validation strict without Docusaurus treating them as missing headings.
-        { href: 'https://alphadiana.org/#results', label: 'Results', position: 'left' },
-        { href: 'https://alphadiana.org/#dashboard', label: 'Dashboard', position: 'left' },
+        { to: '/docs/concepts/harness-aware-evaluation', label: 'Results', position: 'left' },
+        { to: '/docs/dashboard', label: 'Dashboard', position: 'left' },
         { href: 'https://github.com/tmlr-group/AlphaDiana', label: 'GitHub', position: 'right' },
       ],
     },
     footer: {
       style: 'dark',
-      copyright: `Copyright © ${new Date().getFullYear()} AlphaDiana. Built with Docusaurus. All rights reserved. For technical issues, please submit an issue on <a href="https://github.com/tmlr-group/AlphaDiana/issues" target="_blank" rel="noopener noreferrer">GitHub</a>. </br>For questions and discussions, please contact Prof. Bo Han (<a href="mailto:bhanml@comp.hkbu.edu.hk">bhanml@comp.hkbu.edu.hk</a>) or Zhanke Zhou (<a href="mailto:cszkzhou@comp.hkbu.edu.hk">cszkzhou@comp.hkbu.edu.hk</a>).`,
+      copyright: `Copyright © ${new Date().getFullYear()} AlphaDiana. Built with Docusaurus. All rights reserved. For technical issues, please submit an issue on <a href="https://github.com/tmlr-group/AlphaDiana/issues" target="_blank" rel="noopener noreferrer">GitHub</a>.<br />For questions and discussions, please contact Prof. Bo Han (<a href="mailto:bhanml@comp.hkbu.edu.hk">bhanml@comp.hkbu.edu.hk</a>) or Zhanke Zhou (<a href="mailto:cszkzhou@comp.hkbu.edu.hk">cszkzhou@comp.hkbu.edu.hk</a>).`,
     },
     prism: {
       theme: prismThemes.github,

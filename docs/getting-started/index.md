@@ -46,12 +46,18 @@ A run is launched with the `alphadiana` CLI, a Click group defined in `alphadian
 # Validate first; prints "Config is valid." or lists "  - <error>" lines and exits 1.
 alphadiana validate configs/examples/direct_llm.yaml
 
-# Run an experiment.
-alphadiana run configs/examples/direct_llm.yaml
+# Run one bounded task with a stable checkpoint namespace.
+alphadiana run configs/examples/direct_llm.yaml \
+  -o run_id=getting_started_aime_directllm_t1_k1 \
+  -o benchmark.config.max_tasks=1 \
+  -o num_samples=1
 
 # Re-running the same config resumes from the checkpoint (skips already-scored
 # samples). Use --redo-all to ignore the checkpoint and recompute everything.
-alphadiana run configs/examples/direct_llm.yaml --redo-all
+alphadiana run configs/examples/direct_llm.yaml --redo-all \
+  -o run_id=getting_started_aime_directllm_t1_k1 \
+  -o benchmark.config.max_tasks=1 \
+  -o num_samples=1
 ```
 
 ### CLI subcommands
@@ -63,7 +69,7 @@ alphadiana run configs/examples/direct_llm.yaml --redo-all
 | `alphadiana report <results_dir>` | Regenerate the markdown report from existing `<run_id>.jsonl`. |
 | `alphadiana batch <c1> <c2> ...` | Run multiple configs; `--parallel` runs them concurrently. |
 | `alphadiana env` | ROCK service and port-ownership health check. |
-| `alphadiana list-benchmarks` | List the diagnostic command's imported benchmark subset. |
+| `alphadiana list-benchmarks` | List the complete benchmark registry used by the Runner. |
 
 ### Overrides
 
@@ -71,9 +77,10 @@ Use `-o` (long form `--override`) with a dotted key path to override any config 
 
 ```bash
 python -m alphadiana.cli run configs/examples/direct_llm.yaml \
-  -o run_id=my_test \
-  -o output_dir=/tmp/runs/my_test \
+  -o run_id=getting_started_aime_directllm_concurrency_t1_k1 \
   -o agent.config.temperature=0.5 \
+  -o benchmark.config.max_tasks=1 \
+  -o num_samples=1 \
   -o max_concurrent=4
 ```
 
@@ -105,7 +112,9 @@ num_samples: 1
 output_dir: ./results
 ```
 
-`configs/schema.yaml` is the authoritative, fully-commented field reference. Top-level keys and their defaults:
+`configs/schema.yaml` is an annotated core-shape reference. Harness and benchmark
+configuration dictionaries are open pass-throughs, so use their dedicated pages
+for the complete path-specific keys. Top-level keys and their defaults:
 
 | Key | Default | Notes |
 | --- | --- | --- |

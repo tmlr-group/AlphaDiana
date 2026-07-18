@@ -43,7 +43,7 @@ export default function InstallBox({
             aria-label="Copy command"
             className={styles.copyButton}
             onClick={handleCopy}>
-            {copied ? 'Copied' : 'Copy'}
+            <span aria-live="polite">{copied ? 'Copied' : 'Copy'}</span>
           </button>
         ) : null}
       </div>

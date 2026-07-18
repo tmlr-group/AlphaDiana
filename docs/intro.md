@@ -18,8 +18,9 @@ single-turn call and then fail the same problem when wrapped in a tool-using age
 that over-deliberates, or vice versa. AlphaDiana exists to make that gap measurable:
 
 - **Decouple model from harness.** Every run names an *agent* (the harness) and a
-  *benchmark* separately, so accuracy deltas can be attributed to the scaffold
-  rather than the weights.
+  *benchmark* separately. Matched cells make harness-condition differences
+  measurable, but the complete prompt, transport, runtime, and budget contract
+  must be reported before interpreting a delta.
 - **A first-class no-harness baseline.** The `direct_llm` agent is a single-turn
   chat with no tools and no multi-turn loop. It is the reference against which every
   harness is measured, and it surfaces the *agent scaffold tax*: the cases where the
@@ -36,9 +37,9 @@ A run is one YAML config. The `Runner` orchestrates it end to end:
 1. **Load tasks** from a benchmark (AIME, GPQA-Diamond, HLE, MMMU-Pro, SWE-bench,
    SWE-bench Pro, TerminalBench2, IMO-AnswerBench, external_benchmark, or an inline `custom`
    problem set).
-2. **Run an agent** on each task: the `direct_llm` baseline, or one of the
-   `opencode` / `openclaw` / `zeroclaw` harnesses, inside a sandbox
-   (`local` / `rock` / `podman` / `swebench_container`).
+2. **Run an agent** on each task: the sandbox-free `direct_llm` baseline, or one
+   of the `opencode` / `openclaw` / `zeroclaw` harnesses. Supported tool-using
+   paths use task-scoped `local`, ROCK, Podman, or SWE task-container runtimes.
 3. **Score** each answer against ground truth with a pluggable scorer
    (`numeric`, `math_verify`, `exact_match`, `llm_judge`, or a benchmark-specific one).
 4. **Persist** one JSON record per `(task, sample)` to `results/<run_id>.jsonl`
@@ -62,9 +63,10 @@ A run is one YAML config. The `Runner` orchestrates it end to end:
 - **Observability.** Optional per-token logprob capture, normalized trajectories, and
   a two-tier `score_status` validity model that separates real model outcomes from
   infrastructure failures when computing metrics.
-- **Evaluation axes.** Macro studies vary three harness-level capabilities, **Tool**
-  exposure, **Skill** loading, and **Memory**, and quantify the marginal contribution
-  of each.
+- **Evaluation axes.** Micro studies compare matched **Tool**, **Skill**, and
+  **Memory** conditions. Because a condition can change both prompts and runtime
+  behavior, its delta describes the intervention bundle rather than an isolated
+  causal contribution.
 
 ## How it relates to training frameworks
 
@@ -80,4 +82,5 @@ can plug into AlphaDiana as one candidate agent and have its solves scored here.
 - **[Harnesses](./harnesses/)**: `direct_llm`, `opencode`, `openclaw`, `zeroclaw`, and skills.
 - **[Benchmarks](./benchmarks/)**: the supported task sets and how to add one.
 - **[Configuration](./configuration/)**: the YAML schema, CLI overrides, and run-id conventions.
+- **[Dashboard](./dashboard)**: launch, monitor, browse, and compare local runs.
 - **[Contributing](./contribution/)**: adding harnesses and benchmarks, engineering conventions.

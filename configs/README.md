@@ -8,20 +8,22 @@ file can be passed directly to `alphadiana run`.
 
 | Goal | Entry point |
 | --- | --- |
-| Run the first DirectLLM smoke | `examples/direct_llm_gpqa_diamond.yaml` |
+| Run the first DirectLLM smoke | `examples/direct_llm.yaml` with a one-task override |
 | Browse ad-hoc harness/benchmark examples | `examples/` |
 | Run a checked-in Podman readiness matrix | `smokes/` and its per-folder `README.md` |
 | Reproduce Tool/Skill/Memory micro cells | `micro_runs/README.md` |
 | Run the shipped memory experiment | `memory_experiments/exp1_zw_aime_memory_seq.yaml` |
 | Render the SWE-bench Verified Mini campaign | `full_runs/swe_verified_mini.yaml` |
-| Check valid experiment fields | `schema.yaml` |
+| Inspect the annotated core experiment shape | `schema.yaml` |
 | Compare canonical benchmark prompts | `PROMPTS.md` |
 
 Validate an ordinary experiment config before running it:
 
 ```bash
-python -m alphadiana.cli validate configs/examples/direct_llm_gpqa_diamond.yaml
-python -m alphadiana.cli run configs/examples/direct_llm_gpqa_diamond.yaml \
+python -m alphadiana.cli validate configs/examples/direct_llm.yaml \
+  -o benchmark.config.max_tasks=1
+python -m alphadiana.cli run configs/examples/direct_llm.yaml \
+  -o run_id=config_map_aime_directllm_t1_k1 \
   -o benchmark.config.max_tasks=1 -o num_samples=1
 ```
 
@@ -42,7 +44,8 @@ and comments are not proof of support: inspect the matching page under
 
 Useful first entries:
 
-- `direct_llm_gpqa_diamond.yaml`: sandbox-free baseline used by Quick Start.
+- `direct_llm.yaml`: sandbox-free AIME baseline used by Quick Start with a
+  one-task CLI override.
 - `openclaw_aime2024.yaml`: OpenClaw ROCK auto-deploy template.
 - `opencode_aime_podman_smoke.yaml`: OpenCode Podman smoke.
 - `zeroclaw_aime2026.yaml`: ZeroClaw with a live ROCK sandbox.
@@ -96,7 +99,7 @@ commands.
 
 | File | Purpose |
 | --- | --- |
-| `schema.yaml` | Annotated experiment-config field reference |
+| `schema.yaml` | Annotated core experiment shape; pass-through keys are documented per harness/benchmark |
 | `PROMPTS.md` | Prompt catalogue |
 | `test_openclaw_quick.yaml` | OpenClaw sanity config; requires provider and ROCK prerequisites |
 

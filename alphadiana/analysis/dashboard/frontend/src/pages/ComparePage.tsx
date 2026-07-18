@@ -14,19 +14,20 @@ export default function ComparePage() {
   const [entries, setEntries] = useState<CompareRunEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const runIds = (searchParams.get('runs') || '').split(',').filter(Boolean);
+  const runsParam = searchParams.get('runs') || '';
+  const runIds = runsParam.split(',').filter(Boolean);
 
   useEffect(() => {
-    if (runIds.length < 2) {
-      setLoading(false);
-      return;
-    }
-    compareRuns(runIds)
+    const requestedRunIds = runsParam.split(',').filter(Boolean);
+    if (requestedRunIds.length < 2) return;
+
+    compareRuns(requestedRunIds)
       .then(setEntries)
       .catch((e) => message.error(e.message))
       .finally(() => setLoading(false));
-  }, [searchParams.get('runs')]);
+  }, [runsParam]);
 
+  if (runIds.length < 2) return <Text>Select at least two runs to compare</Text>;
   if (loading) return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
   if (entries.length === 0) return <Text>No runs to compare</Text>;
 

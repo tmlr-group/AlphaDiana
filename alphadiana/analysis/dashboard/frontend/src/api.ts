@@ -7,7 +7,11 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     const body = await res.text();
     let msg = `API error ${res.status}`;
-    try { msg = JSON.parse(body).detail ?? msg; } catch {}
+    try {
+      msg = JSON.parse(body).detail ?? msg;
+    } catch {
+      if (body) msg = body;
+    }
     throw new Error(msg);
   }
   return res.json();

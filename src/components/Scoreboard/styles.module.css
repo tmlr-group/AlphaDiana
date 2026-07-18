@@ -76,6 +76,10 @@
   color: #fff;
 }
 
+:global([data-theme='dark']) .activeTab {
+  background: #2563eb;
+}
+
 /* Board */
 .boardWrap {
   border: 1px solid var(--ifm-color-emphasis-200);
@@ -243,6 +247,16 @@
 }
 .neg .cellDelta {
   color: #b91c1c;
+}
+
+:global([data-theme='dark']) .legendPos,
+:global([data-theme='dark']) .pos .cellDelta {
+  color: #86efac;
+}
+
+:global([data-theme='dark']) .legendNeg,
+:global([data-theme='dark']) .neg .cellDelta {
+  color: #fca5a5;
 }
 .zero .cellDelta {
   color: var(--ifm-color-emphasis-500);

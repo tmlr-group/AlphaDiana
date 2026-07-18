@@ -852,7 +852,7 @@ export default function NewJobPage() {
                     label={
                       <Space size={4}>
                         <span>Model API Key</span>
-                        <Tooltip title={API_KEY_TOOLTIP} styles={{ body: { maxWidth: 360 } }}>
+                        <Tooltip title={API_KEY_TOOLTIP} styles={{ container: { maxWidth: 360 } }}>
                           <QuestionCircleOutlined style={{ color: '#8c8c8c' }} />
                         </Tooltip>
                       </Space>
@@ -914,7 +914,7 @@ export default function NewJobPage() {
                       label={
                         <Space size={4}>
                           <span>{f.label}</span>
-                          <Tooltip title={API_KEY_TOOLTIP} styles={{ body: { maxWidth: 360 } }}>
+                          <Tooltip title={API_KEY_TOOLTIP} styles={{ container: { maxWidth: 360 } }}>
                             <QuestionCircleOutlined style={{ color: '#8c8c8c' }} />
                           </Tooltip>
                         </Space>
@@ -1024,7 +1024,7 @@ export default function NewJobPage() {
                           ))}
                         </div>
                       }
-                      styles={{ body: { maxWidth: 380 } }}
+                      styles={{ container: { maxWidth: 380 } }}
                     >
                       <QuestionCircleOutlined style={{ color: '#8c8c8c' }} />
                     </Tooltip>
@@ -1035,7 +1035,7 @@ export default function NewJobPage() {
                   options={SCORERS.map((s) => ({
                     value: s.value,
                     label: (
-                      <Tooltip title={s.description} placement="right" styles={{ body: { maxWidth: 320 } }}>
+                      <Tooltip title={s.description} placement="right" styles={{ container: { maxWidth: 320 } }}>
                         <span style={{ display: 'block' }}>
                           <strong>{s.label}</strong>
                           <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>

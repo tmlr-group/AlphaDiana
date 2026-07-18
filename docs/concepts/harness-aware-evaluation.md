@@ -37,9 +37,11 @@ Every harness implements the same contract: the `Agent` abstract base class in
 `setup(config: dict)`, `solve(task: BenchmarkTask, sandbox=None) -> AgentResponse`,
 and a no-op `teardown()`, plus class attributes `name` and `version`. The engine
 sets `agent.version`, then calls `setup()` once and `solve()` per task
-(`alphadiana/engine/runner.py`). Because the contract is uniform, swapping
-harnesses is a one-line config edit, and the resulting accuracy gap is
-attributable to the scaffold rather than to plumbing differences.
+(`alphadiana/engine/runner.py`). The uniform response contract makes comparison
+possible, but swapping harnesses is not generally a one-line edit: endpoint
+keys, controller/sandbox runtime, prompts, retries, and timeout controls can
+differ. Report and match those fields before associating an accuracy gap with a
+harness condition.
 
 Every harness returns the same shape, the `AgentResponse` dataclass
 (`AgentResponse` in `alphadiana/harness/base.py`). Beyond the core fields (`answer`, `trajectory`, `raw_output`,
@@ -133,7 +135,9 @@ agent:
 
 ```bash
 python -m alphadiana.cli validate configs/examples/direct_llm.yaml
-python -m alphadiana.cli run configs/examples/direct_llm.yaml
+python -m alphadiana.cli run configs/examples/direct_llm.yaml \
+  -o run_id=concept_aime_directllm_t1_k1 \
+  -o benchmark.config.max_tasks=1 -o num_samples=1
 ```
 
 ## The agent scaffold tax
@@ -160,15 +164,16 @@ number hides which side of zero you are on.
 
 AlphaDiana supports two complementary modes of harness-aware study:
 
-- **Macro** — swap whole harnesses (`direct_llm` vs `opencode` vs `openclaw` vs
-  `zeroclaw`) on a fixed model and benchmark, then compare end-to-end accuracy.
-  This answers "how much does this agent improve over the base model, and at what
-  cost?" It is a pure `agent.name` change with everything else held constant.
+- **Macro** — compare whole harness conditions (`direct_llm` vs `opencode` vs
+  `openclaw` vs `zeroclaw`) on a fixed model and benchmark, then compare
+  end-to-end accuracy and cost. The harness-specific runtime and transport
+  fields are part of each condition; keep shared budgets fixed and disclose the
+  fields that cannot be identical.
 
-- **Micro** — isolate one scaffold ingredient at a time (a tool, a skill, a
-  memory mechanism, the system-prompt tool documentation) and toggle just that
-  axis. Micro studies need surgical control over the request stream, which is
-  what the proxies provide (below). The
+- **Micro** — compare a matched scaffold intervention (tool exposure, skill
+  loading, memory behavior, and any associated prompt changes) against its
+  baseline condition. Micro studies need surgical control over the request
+  stream, which is what the proxies provide (below). The
   [Tool / Skill / Memory axes](./evaluation-axes) page covers the ablation
   design.
 

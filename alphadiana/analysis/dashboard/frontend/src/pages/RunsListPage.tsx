@@ -5,7 +5,6 @@ import {
   Table,
   Tag,
   Progress,
-  Statistic,
   Row,
   Col,
   Button,
@@ -44,7 +43,10 @@ export default function RunsListPage() {
   };
 
   useEffect(() => {
-    fetchRuns();
+    listRuns()
+      .then(setRuns)
+      .catch((e) => message.error(e.message))
+      .finally(() => setLoading(false));
   }, []);
 
   const handleDeleteRun = async (runId: string) => {

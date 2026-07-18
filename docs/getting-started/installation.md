@@ -68,12 +68,32 @@ bash installation.sh
 
 ### Activate the environment
 
-Run this **once per terminal** before using AlphaDiana. It handles conda
-activation, proxy cleanup, ROCK port loading, and `.env` loading:
+If you installed with `scripts/quickstart.sh`, run this **once per terminal**.
+It activates the checkout-derived environment, cleans proxy variables, loads
+ROCK ports, and sources `.env`:
 
 ```bash
 source scripts/activate.sh
 ```
+
+If you used the standalone `installation.sh`, it created the shared environment
+named by `ALPHADIANA_ENV` (default `alphadiana`) but did not create
+`scripts/.alphadiana_env`. Activate that environment directly instead:
+
+```bash
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate "${ALPHADIANA_ENV:-alphadiana}"
+
+# Load an optional local env file; otherwise export provider variables next.
+if [ -f .env ]; then
+  set -a
+  source .env
+  set +a
+fi
+```
+
+Do not rely on `source scripts/activate.sh` to discover a standalone custom env;
+without quickstart's local state file it derives a checkout-specific name.
 
 ### Serve a model with vLLM (optional)
 
@@ -231,6 +251,8 @@ export OPENAI_MODEL_NAME=<provider-model>
 unset OPENAI_BASE_URL
 
 python -m alphadiana.cli run configs/examples/openclaw_aime2024.yaml \
+  -o run_id=endpoint_demo_openclaw_aime_t1_k1 \
+  -o benchmark.config.max_tasks=1 -o num_samples=1 \
   -o agent.config.OPENAI_BASE_URL="$PROVIDER_BASE_URL"
 ```
 
@@ -258,7 +280,10 @@ Run a config validation and a quick evaluation:
 
 ```bash
 alphadiana validate configs/examples/direct_llm.yaml
-alphadiana run configs/examples/direct_llm.yaml
+alphadiana run configs/examples/direct_llm.yaml \
+  -o run_id=install_check_aime_directllm_t1_k1 \
+  -o benchmark.config.max_tasks=1 \
+  -o num_samples=1
 ```
 
 `validate` prints `Config is valid.` on success and exits non-zero with
@@ -278,7 +303,7 @@ alphadiana report results/
 | CLI entry point | `alphadiana/cli.py` (console script `alphadiana`; module form `python -m alphadiana.cli`) |
 | Config dataclass + loader | `alphadiana/engine/config/experiment_config.py` (`ExperimentConfig`) |
 | Config validator | `alphadiana/engine/config/validator.py` (`ConfigValidator`) |
-| Authoritative config schema | `configs/schema.yaml` |
+| Annotated core config shape | `configs/schema.yaml` |
 | Harness implementations | `alphadiana/harness/` (`direct_llm.py`, `openclaw/`, `opencode/`, `zeroclaw/`) |
 | Result store | `alphadiana/analysis/io/result_store.py` |
 

@@ -29,7 +29,6 @@ export default function Hero({
     <section className={clsx(styles.hero, 'section-white')}>
       <div className={styles.inner}>
         <div className={styles.text}>
-          <p className={styles.kicker}></p>
           <h1 className={styles.title}>{title}</h1>
           <p className={styles.description}>{description}</p>
           <div className={styles.actions}>
