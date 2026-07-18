@@ -120,7 +120,9 @@ Config: `configs/examples/direct_llm_mmmu_pro.yaml`
 
 ```bash
 python -m alphadiana.cli validate configs/examples/direct_llm_mmmu_pro.yaml
-python -m alphadiana.cli run configs/examples/direct_llm_mmmu_pro.yaml
+python -m alphadiana.cli run configs/examples/direct_llm_mmmu_pro.yaml \
+  -o benchmark.config.data_config=vision \
+  -o benchmark.config.max_tasks=1 -o num_samples=1
 ```
 
 ## OpenClaw
@@ -129,7 +131,9 @@ Config: `configs/examples/openclaw_mmmu_pro.yaml`
 
 ```bash
 python -m alphadiana.cli validate configs/examples/openclaw_mmmu_pro.yaml
-python -m alphadiana.cli run configs/examples/openclaw_mmmu_pro.yaml
+python -m alphadiana.cli run configs/examples/openclaw_mmmu_pro.yaml \
+  -o benchmark.config.data_config=vision \
+  -o benchmark.config.max_tasks=1 -o num_samples=1
 ```
 
 ## OpenCode
@@ -138,7 +142,9 @@ Config: `configs/examples/opencode_mmmu_pro.yaml`
 
 ```bash
 python -m alphadiana.cli validate configs/examples/opencode_mmmu_pro.yaml
-python -m alphadiana.cli run configs/examples/opencode_mmmu_pro.yaml
+python -m alphadiana.cli run configs/examples/opencode_mmmu_pro.yaml \
+  -o benchmark.config.data_config=vision \
+  -o benchmark.config.max_tasks=1 -o num_samples=1
 ```
 
 The checked-in OpenCode benchmark config now uses Docker controller isolation by

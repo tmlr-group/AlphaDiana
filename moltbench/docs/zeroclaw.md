@@ -7,9 +7,9 @@ It focuses on the **MoltBench Docker path** added by
 
 If you want the standard AlphaDiana reasoning path instead of the MoltBench
 Docker path, use
-[`docs/tutorial_zeroclaw_aime2026.md`](../../docs/tutorial_zeroclaw_aime2026.md).
-That tutorial covers the `ROCK -> sandbox -> proxy -> zeroclaw bridge`
-architecture used by [`configs/examples/zeroclaw_aime2026.yaml`](../../configs/examples/zeroclaw_aime2026.yaml).
+the [ZeroClaw harness guide](../../docs/harnesses/zeroclaw.md). It covers the
+current sandboxed ZeroClaw CLI architecture used by
+[`configs/examples/zeroclaw_aime2026.yaml`](../../configs/examples/zeroclaw_aime2026.yaml).
 
 ## What Is Different From The Root README
 
@@ -21,7 +21,7 @@ ZeroClaw migration.
 For this PR:
 
 - The agent is `moltbench_docker`, not the general `openclaw`/ROCK path.
-- The benchmark is `moltbench`, not AIME / MATH / custom reasoning tasks.
+- The benchmark is `moltbench`, not an AIME or custom reasoning task.
 - The image is `tmlrgroup/alphadiana:zeroclaw`.
 - The container entrypoint is `/workspace/run_task.sh`.
 - The agent runs inside the task container with `MOLTBENCH_AGENT=zeroclaw`.
@@ -55,7 +55,7 @@ This repository now also includes a dedicated ZeroClaw example for that
 standard path:
 
 - [`configs/examples/zeroclaw_aime2026.yaml`](../../configs/examples/zeroclaw_aime2026.yaml)
-- [`zeroclaw_deploy/Dockerfile`](../../zeroclaw_deploy/Dockerfile)
+- [`alphadiana/harness/zeroclaw/deploy/Dockerfile`](../../alphadiana/harness/zeroclaw/deploy/Dockerfile)
 
 That benchmark is useful to document for the overall project, but it is **not
 the benchmark validated by this ZeroClaw image migration**. The smoke

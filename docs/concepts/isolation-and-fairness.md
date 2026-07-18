@@ -87,15 +87,15 @@ harness and sandbox backend, to audit the realized boundary.
 | `GPQA-Diamond` | ROCK sandbox | Dockerized controller in the checked-in config | ROCK sandbox |
 | `HLE` | ROCK sandbox | Dockerized controller in the checked-in config | ROCK sandbox |
 
-`opencode` still supports both `host` and `docker` controller modes, but the checked-in plain benchmark configs default to the Docker controller path. The local CLI path from the `zeroclaw` AIME tutorial is useful for debugging, but it is not the benchmark path described here.
+`opencode` still supports both `host` and `docker` controller modes, but the checked-in plain benchmark configs default to the Docker controller path. The generic `zeroclaw` harness is sandbox-only and runs its CLI inside a live ROCK sandbox.
 
 ## Cross-task safeguards
 
 Beyond the runtime boundary, the engine adds defenses against state that escapes a single task:
 
 - **OpenClaw integrity guard.** Responses flagged as session-tainted, stream-incomplete, or carrying heartbeat taint text are rejected by `_openclaw_integrity_guard_reason` in `alphadiana/engine/runner.py` and recorded as errors rather than scored, guarding against leaked cross-task state.
-- **Secret redaction.** Command, stdout, and stderr in sandbox metadata are scrubbed of credential assignments before persistence by the runner's redaction helpers; the result store also redacts sensitive keys (`alphadiana/analysis/io/result_store.py`).
-- **ROCK TTL safety net.** `auto_clear_seconds` (default 3600) is a server-side container TTL, so leaked or abandoned containers are eventually reclaimed by ROCK itself.
+- **Secret redaction.** Runner and result-store helpers scrub recognized credential assignments and sensitive keys before persistence. This is best-effort defense in depth, not a substitute for reviewing artifacts and running a secret scan before publication.
+- **ROCK TTL safety net.** `auto_clear_seconds` is a server-side container TTL. Explicit ROCK sandbox config defaults to 3600 seconds; auto-created OpenClaw/ZeroClaw paths default to 7200 seconds, and dashboard-oriented paths may use 28800 seconds. Record the effective value rather than assuming one global default.
 
 ## Preserved runtime artifacts
 
@@ -105,7 +105,9 @@ These benchmark paths preserve readable, task-scoped runtime artifacts in the re
 - `opencode` preserves the main event/session stream plus task-local state under aliases such as `opencode_session.jsonl`, `opencode_workspace_listing.txt`, `opencode_config.json`, `memory/opencode_db_files.json`, and `memory/opencode.db.summary.json`.
 - `zeroclaw` preserves the equivalent task-local CLI evidence: `config.toml`, readable `state/*` files, and runtime artifacts such as `status.json`, `runtime_trace.jsonl`, and `provider_exchange_summary.json`.
 
-Credential-bearing JSON artifacts are redacted before they are persisted into the result payload.
+Recognized credentials in JSON artifacts are redacted on supported persistence
+paths. Before sharing results, inspect the payload and run a secret scan because
+unrecognized formats or third-party artifacts can still contain sensitive data.
 
 ## See also
 

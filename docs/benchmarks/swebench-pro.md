@@ -587,7 +587,7 @@ support claim.
 Use the following smoke pass criteria:
 
 - `results/<run_id>/tasks/<task>.json` exists
-- the task record has no error dict
+- the relevant row in the task JSON sample list (`data[0]` for `num_samples=1`) has no error dict
 - dashboard shows `O` or `X`, not `-`
 
 For SWE-bench Pro smoke in AlphaDiana, also inspect the root agent artifact directory:
@@ -599,7 +599,7 @@ Interpretation:
 
 - `X` means execution succeeded but the patch did not solve the benchmark task
 - that is still a valid smoke pass for infrastructure reproduction
-- for `opencode`, an empty patch is acceptable in smoke mode when `OPENCODE_REQUIRE_PATCH=0`; the task JSON should then show `error: null` and a rationale like `Empty patch produced; skipping SWE-bench evaluation.`
+- for `opencode`, an empty patch is acceptable in smoke mode when `OPENCODE_REQUIRE_PATCH=0`; the selected task-list row should then show `error: null` and a rationale like `Empty patch produced; skipping SWE-bench evaluation.`
 - for `zeroclaw`, `ZEROCLAW_REQUIRE_PATCH=1` still keeps patchless attempts
   strict for scoring, but loop-detector, no-edit, and CLI-abort outcomes are
   preserved as auditable task results when artifacts exist; expect

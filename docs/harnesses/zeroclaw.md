@@ -99,7 +99,11 @@ The harness distinguishes:
 - provider/tool/control-plane errors — preserved as rerunnable errors;
 - non-timeout runtime failure or empty assistant output — invalid/rerunnable according to classification;
 - timeout exit (`124`) or supported runtime-only timeout evidence — returns `answer=None`, `finish_reason: timeout`, `zeroclaw_timeout_scored_zero=true`, scores zero, and is checkpoint-complete;
-- provider length exhaustion with no assistant text — preserved with explicit length/empty-assistant metadata rather than a synthetic answer.
+- provider length exhaustion with no assistant text — when classified as a true
+  empty assistant after length exhaustion, records
+  `zeroclaw_empty_assistant_scored_zero=true`, scores zero as
+  `valid_scored`, and is checkpoint-complete; other provider/control-plane
+  failures remain rerunnable errors.
 
 Verifier behavior for `terminal_bench2_zeroclaw` has additional reward requirements described in [Scoring & Results](../architecture/scoring-and-results).
 

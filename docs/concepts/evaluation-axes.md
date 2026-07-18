@@ -4,8 +4,11 @@ sidebar_position: 3
 
 # Evaluation Axes: Tool, Skill, Memory
 
-AlphaDiana measures how a single harness capability changes a model's score by
-varying that capability **one at a time** and holding everything else fixed.
+AlphaDiana can compare matched harness conditions that change tool exposure,
+skill loading, or memory behavior. These are useful controlled comparisons, but
+they are not always literal one-variable interventions: disabling tools can also
+replace prompt text, and enabling a skill or memory mode can add instructions as
+well as runtime state.
 There are three axes:
 
 - **Tool** — whether the harness exposes its native tools (file, bash, sandbox).
@@ -13,16 +16,18 @@ There are three axes:
 - **Memory** — whether the harness keeps a persistent memory store, and at what
   scope.
 
-Each axis is a harness-level on/off knob. The model weights, prompt template,
-sampling parameters, benchmark, and scorer stay constant; only the harness
-configuration moves. The marginal delta against the matched no-capability cell
-is the capability's contribution.
+For a defensible comparison, keep the model, sampling parameters, benchmark,
+scorer, and unrelated harness settings fixed, then document the complete
+condition bundle that changed. Treat the score delta as an association with that
+bundle, not as an isolated causal contribution from a single capability.
 
-A useful reference point sits above all three axes: the **Direct LLM** baseline
-(`direct_llm` harness), the raw model with no agent scaffold. On AIME 2026 it
-scores avg@1 = 0.909 (pass@4 = 0.949). Any harnessed cell below that line is
-paying an *agent scaffold tax*; the axes isolate which knob pays it down (or
-adds to it). See [Harnesses](../harnesses/) for the four harnesses themselves.
+A useful reference point is the **Direct LLM** baseline (`direct_llm` harness),
+the model without an agent scaffold. A harnessed cell below a matched DirectLLM
+cell may be described as an *agent scaffold tax*, provided both cells use the
+same model and evaluation protocol. This checkout does not contain the raw
+result artifacts needed to substantiate a particular headline delta; use the
+result store from the run being reported. See [Harnesses](../harnesses/) for the
+four harnesses themselves.
 
 ## What "off" means per axis
 
@@ -30,8 +35,8 @@ adds to it). See [Harnesses](../harnesses/) for the four harnesses themselves.
 
 | Axis | "On" | "Off" |
 |---|---|---|
-| Tool | Harness exposes its native tools; default system prompt | All tools stripped, system prompt replaced — pure chain-of-thought, the lower bound on harness behavior |
-| Skill | A skill bundle is mounted and named in the prompt | No skill bundle loaded |
+| Tool | Harness exposes its native tools and uses the corresponding prompt condition | Tools are filtered and the system/user prompt condition may also be rewritten |
+| Skill | A skill bundle is mounted and named in the prompt | No skill bundle is loaded and the skill-introduction prompt is absent |
 | Memory | Harness's native memory backend is enabled (`persistent_memory: true`) | Harness defaults with no memory store and no memory-encouraging prompt |
 
 Note that **Tool-off** and **Memory-off** are not the same configuration.
@@ -55,20 +60,18 @@ deliberate counterexample to the framework's monotonicity thesis.
 
 ### Scopes
 
-Memory is studied at three increasing scopes on Qwen3.5-27B / AIME 2026,
-mapping to the three columns of the paper's memory table.
+The experimental design discusses three possible persistence scopes. Only the
+checked-in Cross-Task ZeroClaw config is directly runnable from this checkout.
 
 | Scope | What persists | n | Boundary |
 |---|---|---|---|
-| Cross-Sample | Memory accumulates across the 4 pass@4 attempts of the **same** problem | 4 | Cleared between problems |
-| Cross-Task | Memory accumulates across 30 different AIME 2026 problems run sequentially | 1 (paper); n=4 rerun available | Never within the run |
-| Transfer | A store built on AIME 2025 is **frozen**, then applied to AIME 2026 with recall-on / store-off | 1 | Frozen between build and test |
+| Cross-Sample | Intended: memory accumulates across samples of the same problem | multiple | Requires task-scoped namespacing or an explicit reset between problems; the runner does not provide this boundary |
+| Cross-Task | Memory accumulates across different problems run sequentially | configurable | Store remains available within the run |
+| Transfer | Intended: build a store on one dataset, then evaluate with recall-on / store-off | configurable | Requires separately controlled build and frozen evaluation stages |
 
-The headline finding: memory helps **only** OpenCode at within-run scopes
-(Cross-Task +20.8, Cross-Sample +17.5 vs the no-memory cell); it is net-negative
-for OpenClaw and ZeroClaw at every scope; and all three degrade under cross-year
-Transfer with none reaching the Direct ceiling of 89.2. Cross-Sample is the only
-clean positive memory effect in the whole study.
+Static paper figures may illustrate proposed or previously reported comparisons,
+but they are not current support evidence. Do not quote exact memory deltas from
+this page without the corresponding run IDs and task-level artifacts.
 
 ### Mechanisms are harness-native, not a shared framework
 
@@ -136,17 +139,13 @@ is not published on Docker Hub), then start the host ROCK services with
 one-time setup in [Installation](../getting-started/installation) creates, and
 abort without it, which is what leaves the two `ROCK_*` variables unset.
 
-The remaining Cross-Task and Cross-Sample experiment configs are not shipped in
-the repository. The design they encode is small: a Cross-Sample config differs
-from a Cross-Task config by the sample count (`num_samples: 4`, a top-level key
-rather than a `benchmark.config` one) and by its system prompt. The ZeroClaw
-Cross-Sample prompt mandates a `memory_search` before and a `memory_store` after
-every problem; its Cross-Task counterpart carries no such instruction, because
-the harness appends its own "use memory_search" line once at least one store turn
-has run. That gate uses `_has_memories` in
-`alphadiana/harness/zeroclaw/agent.py` and counts store turns that exited 0, not an
-inspection of the store, so it can fire even if the model never actually called
-`memory_store`.
+The remaining Cross-Sample and Transfer configs are not shipped in the
+repository. Increasing `num_samples` and changing a prompt is not sufficient to
+implement Cross-Sample isolation: the runner has no general store reset between
+task boundaries. A faithful experiment must use separate per-problem runs,
+task-namespaced stores, or an explicit verified reset. The ZeroClaw gate
+`_has_memories` counts successful store turns rather than inspecting the store,
+so it can fire even if the model never actually called `memory_store`.
 
 ### Reading the results
 
@@ -155,7 +154,6 @@ Memory results land through the result store at
 `alphadiana/engine/` (`alphadiana/engine/runner.py`). The plots and the scope
 ladder are regenerated from the recorded results.
 
-When reading a single-sample cell, treat Cross-Task and Transfer as n=1: their
-variance is roughly +/-0.2, so per-cell gaps should be read as directional, not
-precise. Cross-Sample (n=4) and the no-memory Full cell (avg@4) are the more
-robust comparisons.
+Report the configured sample count, run IDs, and uncertainty with every result.
+Do not infer precision or robustness from an intended design when the matching
+artifacts are not present in the checkout.

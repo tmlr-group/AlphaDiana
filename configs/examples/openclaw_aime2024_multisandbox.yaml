@@ -11,7 +11,7 @@ agent:
     rock_cpus: 1                # CPUs per sandbox container
     rock_startup_timeout: 600   # Sandbox startup timeout in seconds
     model: openclaw             # Model name as seen by the gateway (always "openclaw")
-    gateway_token: "OPENCLAW"   # Must match OPENCLAW_GATEWAY_TOKEN in rock_agent_config.yaml
+    gateway_token: "${OPENCLAW_GATEWAY_TOKEN}"
     max_tokens: 65536           # Maximum tokens per response
     request_timeout: 1800       # Request timeout in seconds (increase for complex tasks)
     max_attempts: 5             # Max retry attempts per task on failure

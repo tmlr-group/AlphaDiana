@@ -101,7 +101,7 @@ integration in this docs directory is still the Docker/task-runner path; the
 standard reasoning path now has its own example config at
 [`configs/examples/zeroclaw_aime2026.yaml`](../../configs/examples/zeroclaw_aime2026.yaml)
 and a dedicated tutorial at
-[`docs/tutorial_zeroclaw_aime2026.md`](../../docs/tutorial_zeroclaw_aime2026.md).
+the [ZeroClaw harness guide](../../docs/harnesses/zeroclaw.md).
 
 Verified on **2026-04-08**:
 

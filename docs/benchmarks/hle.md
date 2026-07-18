@@ -43,7 +43,9 @@ As of April 22, 2026, the loader also treats `image: ""` rows in the current
 attempts on the same snapshot could fail early with
 `HLE: unsupported image type ... str` before this compatibility fix landed.
 
-The corresponding smoke configs remain under `configs/examples/` and pin `dataset_index: 1`, `max_tasks: 1`.
+The DirectLLM and OpenCode configs pin `dataset_index: 1`; the OpenClaw and
+ZeroClaw configs use `max_tasks: 1` and therefore select the first eligible row.
+All four are bounded to one task, but only the first pair explicitly pins row 1.
 
 Current dataset caveat:
 the checked-in smoke row `hle_1` is text-only in the current `cais/hle`
@@ -97,7 +99,7 @@ by default. If you need the old host-process path for debugging, override
 
 The smoke config keeps `timeout: 1800` to allow visible model output before
 scoring. The controller image build and caveats are documented in
-`docs/opencode-docker-isolation.md`.
+the [OpenCode harness guide](../harnesses/opencode).
 
 As of April 22, 2026, current main also stops treating OpenCode provider error
 bodies as normal HLE answers on `qwen3vl`. Historical April 22 artifacts such
@@ -215,7 +217,7 @@ Expected result:
 
 - dashboard: `X`
 - task file exists under `results/zeroclaw_hle_smoke/<run_id>/tasks/`
-- task JSON has no `error`
+- `data[0]` in the single-sample task JSON list has no `error`
 - the recorded task is `hle_1`
 
 Observed local verification on 2026-04-17:
