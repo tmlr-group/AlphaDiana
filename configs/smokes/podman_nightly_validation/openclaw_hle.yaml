@@ -2,7 +2,7 @@ run_id: "podman_nightly_20260514_openclaw_hle"
 
 agent:
   name: openclaw
-  version: "2026.3.20"
+  version: "2026.3.7"
   config:
     runtime_backend: podman
     podman_gateway_config_path: "alphadiana/harness/openclaw/deploy/podman_gateway.yaml"

@@ -2,7 +2,7 @@ run_id: "podman_scale_openclaw_aime_pilot"
 
 agent:
   name: openclaw
-  version: "2026.3.20"
+  version: "2026.3.7"
   config:
     runtime_backend: podman
     podman_gateway_config_path: "configs/smokes/podman_scale_readiness/openclaw_podman_gateway_host.yaml"

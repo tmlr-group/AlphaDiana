@@ -15,6 +15,8 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from alphadiana.utils.openclaw_security import resolve_openclaw_gateway_token
+
 import logging as _logging
 
 _logger = _logging.getLogger(__name__)
@@ -320,9 +322,9 @@ def _is_unresolved_placeholder(value: str) -> bool:
 
 def _resolve_gateway_token(value: Any) -> str:
     token = str(value or "").strip()
-    if not token or _is_unresolved_placeholder(token):
-        return "OPENCLAW"
-    return token
+    return resolve_openclaw_gateway_token(
+        None if not token or _is_unresolved_placeholder(token) else token
+    )
 
 
 def _sanitize_json_text(raw_text: str) -> str:
