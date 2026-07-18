@@ -11,6 +11,9 @@ scorer. This page covers the task data model, the registered benchmark names and
 their default scorers, how a benchmark is selected from config, and the smoke vs
 full convention. Per-benchmark detail lives in the sibling pages linked below.
 
+For the opt-in container runtime shared by several benchmark paths, see the
+[Podman runtime readiness runbook](./podman).
+
 :::caution Evidence availability
 This website checkout does not include `results/` or the reviewer-facing
 `context/` archive. Dated run IDs on the benchmark pages are provenance

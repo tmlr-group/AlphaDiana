@@ -133,6 +133,9 @@ logprob-capture proxies, and the per-harness internals, start at the
 bundles a harness can mount into its sandbox are covered in
 [Adding a Harness](./new-harness).
 
+Current cross-harness Podman issues found by the documentation-release smoke
+are consolidated in [Runtime Follow-ups for the Code Team](./runtime-followups).
+
 ## Add a scorer
 
 A scorer grades an `AgentResponse` against a `BenchmarkTask` and returns a

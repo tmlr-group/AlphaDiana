@@ -70,7 +70,10 @@ The store turn is best-effort. Memory being configured or a store prompt being i
 
 `runtime_backend: podman` uses the Podman runtime manager, starts or reuses its bridge, sends the task through the bridge, and collects container artifacts and provider-proxy observations. Result metadata records Podman/container provenance and distinguishes this transport from the ordinary sandbox CLI path.
 
-Use the current checked-in Podman readiness config and runbook for image, socket, networking, and model settings. Do not translate an older ROCK or host example mechanically.
+Use the current checked-in Podman readiness config and
+[Podman runtime runbook](../benchmarks/podman) for image, socket, networking,
+and model settings. Do not translate an older ROCK or host example
+mechanically.
 
 ## Provider resolution
 

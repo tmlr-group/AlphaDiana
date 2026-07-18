@@ -95,6 +95,7 @@ harness-specific defaults:
 | `enable_thinking` | `None` | Reasoning toggle (see note below). |
 | `capture_logprobs` | harness-specific | DirectLLM defaults to `true`; other transports require explicit support/configuration. |
 | `system_prompt` | harness | Optional system-prompt text. |
+| `bridge_port` | `8080` | ZeroClaw Podman exposure/probe port. Current bridge-process binding remains fixed at `8080`; see the [runtime follow-up](../contribution/runtime-followups). |
 
 Harness-specific keys (e.g. `controller_mode`, `tools_profile`, `persistent_memory`,
 `system_prompt_override`, and the nested `env{}` for `swebench_docker` modes) are documented
@@ -116,7 +117,8 @@ you may also see pinned `dataset_index` / `max_tasks`.
 ### sandbox
 
 Set to `null` when the harness manages its own runtime. When present, `sandbox.name`
-selects the backend (`local`, `rock`, `podman`, `swebench_container`) and `sandbox.config`
+selects the backend (`local`, `rock`, `podman`, `swebench_container`,
+`decodingtrust`) and `sandbox.config`
 carries backend params (ROCK `admin_base_url` / `proxy_base_url` / `image` / `memory` /
 `cpus`; Podman `ports` / `network` / `name_prefix`; etc.). A ROCK preflight runs only for
 ROCK-backed runs.
@@ -164,9 +166,9 @@ This is why example configs leave `model` / `api_base` /
 
 | Agent field | Env var | Applies to |
 |---|---|---|
-| `api_base` | `OPENAI_BASE_URL` | direct_llm, zeroclaw, opencode, terminal_bench2_* |
+| `api_base` | `OPENAI_BASE_URL` | direct_llm, openclaw, zeroclaw, opencode, terminal_bench2_* |
 | `api_key` | `OPENAI_API_KEY` | same |
-| `model` | `OPENAI_MODEL_NAME` | direct_llm, zeroclaw, tb2_docker, tb2_zeroclaw |
+| `model` | `OPENAI_MODEL_NAME` | direct_llm, openclaw, zeroclaw, tb2_docker, tb2_zeroclaw |
 | `model_name` | `OPENAI_MODEL_NAME` | opencode, tb2 variants |
 
 ```bash
