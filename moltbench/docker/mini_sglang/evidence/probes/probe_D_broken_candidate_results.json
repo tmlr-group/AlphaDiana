@@ -1,0 +1,18 @@
+{
+  "correctness": "ERROR",
+  "speedup": 0.0,
+  "og": 0.0,
+  "throughput_tok_per_s": 0.0,
+  "throughput_ci95": 0.0,
+  "baseline_throughput": 5508.1,
+  "correct": false,
+  "attempts_used": 0,
+  "cost": {
+    "attempts_used": 0,
+    "max_attempts": 3,
+    "wall_time_sec": 1.0,
+    "model_calls": null,
+    "total_tokens": null,
+    "cost_per_improvement": null
+  }
+}

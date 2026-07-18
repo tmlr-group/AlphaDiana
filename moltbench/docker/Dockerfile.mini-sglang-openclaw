@@ -1,0 +1,45 @@
+# MoltBench mini-SGLang + OpenClaw Agent
+#
+# Build (from AlphaDiana repo root):
+#   docker build --network host \
+#     -f moltbench/docker/Dockerfile.mini-sglang-openclaw \
+#     -t tmlrgroup/alphadiana:mini-sglang-openclaw .
+
+# ─── Stage 1: Get OpenClaw from pre-built image ───
+FROM ghcr.io/tsrigo/openclaw-reasoning:20260320 AS openclaw-src
+
+USER root
+RUN ln -sf /usr/bin/python3 /usr/bin/python
+RUN apt-get update && apt-get install -y --no-install-recommends python3-pip \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir --break-system-packages sympy numpy
+
+# ─── Stage 2: mini-SGLang base + OpenClaw ───
+FROM tmlrgroup/alphadiana:mini-sglang-base
+
+# Node.js runtime (required by OpenClaw)
+ARG NODE_SHA256="c1bfeecf1d7404fa74728f9db72e697decbd8119ccc6f5a294d795756dfcfca7"
+RUN wget -q -O /tmp/node.tar.xz \
+        https://npmmirror.com/mirrors/node/v22.18.0/node-v22.18.0-linux-x64.tar.xz \
+    && echo "${NODE_SHA256}  /tmp/node.tar.xz" | sha256sum -c - \
+    && tar -xf /tmp/node.tar.xz -C /opt \
+    && mv /opt/node-v22.18.0-linux-x64 /opt/node \
+    && rm /tmp/node.tar.xz
+ENV PATH="/opt/node/bin:${PATH}"
+
+# Copy OpenClaw from pre-built image
+COPY --from=openclaw-src /app /opt/openclaw
+RUN ln -sf /opt/openclaw/node_modules/.bin/openclaw /usr/local/bin/openclaw
+
+# Copy OpenClaw config template
+COPY moltbench/docker/openclaw.json /workspace/openclaw.json.template
+
+# Copy latest run_task.sh (keep in leaf image for fast iteration)
+COPY moltbench/docker/run_task.sh /workspace/run_task.sh
+RUN chmod +x /workspace/run_task.sh
+
+# Verify
+RUN openclaw --version && node --version && python --version
+
+WORKDIR /workspace
+ENTRYPOINT ["/workspace/run_task.sh"]

@@ -1,0 +1,3 @@
+[submodule "ref/DecodingTrust-Agent"]
+	path = ref/DecodingTrust-Agent
+	url = https://github.com/AI-secure/DecodingTrust-Agent.git

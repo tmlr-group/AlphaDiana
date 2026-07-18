@@ -55,6 +55,35 @@ class SandboxSession(ABC):
         """Read a text file from the sandbox. Default: download + decode."""
         return self.download(filename).decode("utf-8", errors="replace")
 
+    # --- Optional tool / injection interface -------------------------------
+    # Sandboxes that expose MCP-style tools or per-turn injections (e.g. the
+    # DecodingTrust sandbox) implement these. The default raises so callers can
+    # feature-detect with hasattr/try and so the contract is discoverable on the
+    # base class rather than hidden inside one backend.
+
+    def list_tools(self) -> list[dict]:
+        """Return the tools this session exposes to the agent.
+
+        Override in sandboxes that bridge external tools (e.g. MCP servers).
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not expose tools (list_tools)"
+        )
+
+    def call_tool(self, name: str, arguments: dict) -> object:
+        """Invoke an exposed tool by name and return its serialized result."""
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support tool calls (call_tool)"
+        )
+
+    def apply_turn_injections(self, turn_id: int) -> list[dict]:
+        """Apply any per-turn environment injections for the given turn.
+
+        Default is a no-op (no injections); override in sandboxes that support
+        controlled or attack-driven injection.
+        """
+        return []
+
 
 class Sandbox(ABC):
     """Abstract base class for a sandbox provider."""

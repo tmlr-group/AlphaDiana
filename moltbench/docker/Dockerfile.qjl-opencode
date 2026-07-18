@@ -1,0 +1,16 @@
+# QJL + OpenCode. Evaluation remains in the external verifier image.
+ARG QJL_BASE_IMAGE=localhost/alphadiana:qjl-base
+FROM ${QJL_BASE_IMAGE}
+
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN npm install -g opencode-ai@1.3.2
+
+RUN git config --global user.email "moltbench@eval" && \
+    git config --global user.name "MoltBench"
+
+COPY moltbench/docker/opencode.json.template /workspace/opencode.json.template
+COPY moltbench/docker/run_task.sh /workspace/run_task.sh
+RUN chmod +x /workspace/run_task.sh && opencode --version

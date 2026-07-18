@@ -62,6 +62,8 @@ dump.rdb
 !/configs/smokes/podman_mmmu_pro_readiness/
 !/configs/smokes/podman_mmmu_pro_readiness/**
 /artifacts/
+/.podman-storage/
+/.podman-run/
 
 # MoltBench runtime artifacts
 moltbench_artifacts_*/

@@ -1,0 +1,13 @@
+{
+  "throughput_tok_per_s_median": 4703.69,
+  "throughput_tok_per_s_ci95": 14.69,
+  "throughput_tok_per_s_stdev": 10.6,
+  "cold_throughput_tok_per_s": 4523.33,
+  "per_pass_throughput": [
+    4523.33,
+    4711.19,
+    4696.2
+  ],
+  "baseline_throughput": 4162.32,
+  "optimization_gain": 1.1301
+}
