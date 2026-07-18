@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from alphadiana.utils.openclaw_security import resolve_openclaw_gateway_token
 
 from alphadiana.engine.container_runtime import (
     HTTPHealthcheck,
@@ -56,9 +57,9 @@ def _is_unresolved_placeholder(value: str) -> bool:
 
 def _resolve_gateway_token(value: Any) -> str:
     token = str(value or "").strip()
-    if not token or _is_unresolved_placeholder(token):
-        return "OPENCLAW"
-    return token
+    return resolve_openclaw_gateway_token(
+        None if not token or _is_unresolved_placeholder(token) else token
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1377,6 +1378,7 @@ class OpenClawPodmanRuntimeManager(OpenClawRuntimeManager):
         )
         self._podman_runtime = config.get("_podman_agent_runtime") or PodmanAgentRuntime()
         self._podman_image_override = str(config.get("podman_image", config.get("image", "")) or "").strip()
+        self._expected_openclaw_version = str(config.get("_agent_version", "") or "").strip()
         self._podman_result: PodmanAgentRuntimeResult | None = None
 
     @property
@@ -1724,6 +1726,15 @@ class OpenClawPodmanRuntimeManager(OpenClawRuntimeManager):
         run_command = str(podman_cfg.get("run_command", "") or "").strip()
         if not run_command:
             raise RuntimeError("OpenClaw Podman runtime requires podman_gateway.yaml run_command")
+        install_commands = list(podman_cfg.get("install_commands") or ())
+        if self._expected_openclaw_version:
+            expected = shlex.quote(self._expected_openclaw_version)
+            install_commands.append(
+                'actual="$(openclaw --version | awk \'{print $NF}\')"; '
+                f'test "$actual" = {expected} || {{ '
+                f'echo "OpenClaw version mismatch: expected {self._expected_openclaw_version}, got $actual" >&2; '
+                "exit 1; }"
+            )
         return PodmanAgentSpec(
             adapter_name="openclaw-podman",
             image=image,
@@ -1735,7 +1746,7 @@ class OpenClawPodmanRuntimeManager(OpenClawRuntimeManager):
             startup_timeout=float(podman_cfg.get("startup_timeout", self._gateway_startup_timeout)),
             request_timeout=float(self._agent_timeout_seconds or podman_cfg.get("request_timeout", 600)),
             cleanup_timeout=float(podman_cfg.get("cleanup_timeout", 30)),
-            install_commands=tuple(podman_cfg.get("install_commands") or ()),
+            install_commands=tuple(install_commands),
             run_command=run_command,
             process_log_path=str(podman_cfg.get("process_log_path", self._gateway_log_path) or self._gateway_log_path),
             files=(
@@ -1759,6 +1770,7 @@ class OpenClawPodmanRuntimeManager(OpenClawRuntimeManager):
                 "gateway_token": self._gateway_token,
                 "logprob_support": self._logprob_support_status(),
                 "logprob_proxy": "openclaw" if self._logprob_capture.get("enabled") else "",
+                "expected_openclaw_version": self._expected_openclaw_version,
             },
         )
 

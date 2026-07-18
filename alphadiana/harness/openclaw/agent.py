@@ -58,6 +58,10 @@ from alphadiana.utils.attachments import build_openai_multimodal_user_content
 from alphadiana.utils.lifecycle_events import append_lifecycle_event
 from alphadiana.utils.math_answer import extract_answer_candidate
 from alphadiana.utils.rock_ports import resolve_rock_ports_from_env
+from alphadiana.utils.openclaw_security import (
+    is_weak_openclaw_gateway_token,
+    resolve_openclaw_gateway_token,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1049,6 +1053,10 @@ class OpenClawAgent(Agent):
         self._api_key = config.get("api_key", os.environ.get("OPENAI_API_KEY", ""))
         self._model = config.get("model", "openclaw")
         self._gateway_token = _resolve_gateway_token(config.get("gateway_token", "OPENCLAW"))
+        if (self._runtime or self._runtime_backend == "podman") and is_weak_openclaw_gateway_token(
+            self._gateway_token
+        ):
+            self._gateway_token = resolve_openclaw_gateway_token(self._gateway_token)
         self._temperature = config.get("temperature", 0.7)
         self._top_p = config.get("top_p", None)
         self._max_tokens = config.get("max_tokens", None)
@@ -1187,11 +1195,15 @@ class OpenClawAgent(Agent):
             elif self._runtime == "swebench_container":
                 from alphadiana.harness.openclaw.container_runtime import OpenClawContainerRuntimeManager
 
-                self._runtime_manager = OpenClawContainerRuntimeManager(config)
+                runtime_config = dict(config)
+                runtime_config["gateway_token"] = self._gateway_token
+                self._runtime_manager = OpenClawContainerRuntimeManager(runtime_config)
             elif self._runtime_backend == "podman":
                 from alphadiana.harness.openclaw.runtime import OpenClawPodmanRuntimeManager
 
                 runtime_config = dict(config)
+                runtime_config["gateway_token"] = self._gateway_token
+                runtime_config["_agent_version"] = self.version
                 runtime_config["_logprob_capture"] = self._logprob_capture
                 self._runtime_manager = OpenClawPodmanRuntimeManager(runtime_config)
             else:
@@ -1200,6 +1212,7 @@ class OpenClawAgent(Agent):
                 # Pass logprob capture config to runtime manager so it can
                 # start the Docker-accessible MITM proxy when enabled.
                 runtime_config = dict(config)
+                runtime_config["gateway_token"] = self._gateway_token
                 runtime_config["_logprob_capture"] = self._logprob_capture
                 self._runtime_manager = OpenClawRuntimeManager(runtime_config)
         except ImportError:

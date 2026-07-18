@@ -17,7 +17,9 @@ from alphadiana.engine.container_runtime.agent_runtime import (
 from alphadiana.engine.container_runtime.podman_cli import PodmanResult
 from alphadiana.engine.container_runtime.proxy_env import podman_proxy_env
 from alphadiana.harness.opencode.agent import OpenCodeAgent
+from alphadiana.harness.openclaw.runtime import OpenClawPodmanRuntimeManager
 from alphadiana.harness.zeroclaw.runtime import ZeroClawPodmanRuntimeManager
+from alphadiana.utils.openclaw_security import is_weak_openclaw_gateway_token
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -224,3 +226,35 @@ def test_scale_audit_rejects_non_scored_task(tmp_path):
 
     assert row["audit_status"] == "fail"
     assert "invalid_score_status" in row["audit_failures"]
+
+
+def test_openclaw_podman_spec_checks_declared_version():
+    manager = OpenClawPodmanRuntimeManager(
+        {
+            "_agent_version": "2026.3.7",
+            "podman_image": "localhost/openclaw:test",
+            "gateway_token": "strong-test-token-for-version-check",
+            "gateway_warmup_enabled": False,
+            "openai_base_url": "https://provider.example/v1",
+            "openai_api_key": "test-key",
+            "openai_model_name": "test-model",
+        }
+    )
+
+    spec = manager._build_podman_spec()
+    assert any(
+        "OpenClaw version mismatch: expected 2026.3.7" in command
+        for command in spec.install_commands
+    )
+    assert spec.metadata["expected_openclaw_version"] == "2026.3.7"
+
+
+def test_openclaw_podman_generates_strong_default_token():
+    manager = OpenClawPodmanRuntimeManager(
+        {
+            "podman_image": "localhost/openclaw:test",
+            "gateway_warmup_enabled": False,
+        }
+    )
+
+    assert not is_weak_openclaw_gateway_token(manager._gateway_token)

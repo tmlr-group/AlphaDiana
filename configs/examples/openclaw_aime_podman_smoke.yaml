@@ -4,7 +4,7 @@ run_id: "phase02_openclaw_podman_aime_smoke"
 
 agent:
   name: openclaw
-  version: "2026.3.20"
+  version: "2026.3.7"
   config:
     runtime_backend: podman
     podman_gateway_config_path: "alphadiana/harness/openclaw/deploy/podman_gateway.yaml"
