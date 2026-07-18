@@ -24,9 +24,10 @@ that over-deliberates, or vice versa. AlphaDiana exists to make that gap measura
   chat with no tools and no multi-turn loop. It is the reference against which every
   harness is measured, and it surfaces the *agent scaffold tax*: the cases where the
   scaffold costs more than it adds.
-- **Fairness by construction.** Each task runs in its own task-scoped sandbox, and
-  `strict_isolation` fails the run closed rather than silently degrading to a shared
-  environment that could leak state across tasks.
+- **Auditable isolation.** Supported tool-using paths can use task-scoped
+  sandboxes, and every run records its realized `isolation_mode`.
+  `strict_isolation` makes ROCK auto-create/predeploy failures fail closed; it
+  does not place every harness in a sandbox by itself.
 
 ## What a run does
 
@@ -50,13 +51,14 @@ A run is one YAML config. The `Runner` orchestrates it end to end:
   by string name from four registries. Adding a backend means registering it and
   importing it; there is no plugin auto-discovery to fight.
 - **Checkpoint-resume off the result file.** Completion is inferred from the result
-  JSONL itself (a record whose `score_status == valid_scored`). Errors, timeouts, and
-  no-answer records are intentionally *not* complete, so a re-run retries exactly
-  those. `--redo-all` bypasses this.
+  JSONL itself (a scorer-matching record whose `score_status == valid_scored`).
+  Provider/runtime failures and no-answer records remain retryable. Timeout-classified
+  harness outcomes that are normalized to scored zero are valid scored records and
+  are therefore checkpoint-complete. `--redo-all` bypasses the checkpoint.
 - **Isolation modes.** A run records its `isolation_mode`
   (`shared_gateway`, `explicit_sandbox`, `auto_single_sandbox`, `predeployed_pool`,
-  `fresh_predeployed_pool`, ...). `strict_isolation` turns any sandbox failure into a
-  hard error instead of a silent fallback.
+  `fresh_predeployed_pool`, ...). Check this recorded value rather than inferring
+  isolation from `strict_isolation` alone.
 - **Observability.** Optional per-token logprob capture, normalized trajectories, and
   a two-tier `score_status` validity model that separates real model outcomes from
   infrastructure failures when computing metrics.

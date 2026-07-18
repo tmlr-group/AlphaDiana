@@ -43,15 +43,21 @@ key from config first, then from environment variables. For a local vLLM server
 set:
 
 ```bash
-export OPENAI_MODEL_NAME="Qwen/Qwen3-235B-A22B"
-export OPENAI_BASE_URL="http://127.0.0.1:8011/v1"
+# These names match configs/examples/direct_llm_gpqa_diamond.yaml.
+export OPENAI_MODEL="Qwen/Qwen3-235B-A22B"
+export OPENAI_API_BASE="http://127.0.0.1:8011/v1"
 export OPENAI_API_KEY="sk-EMPTY"
 ```
 
 Use `sk-EMPTY` (any non-`EMPTY` string) for a keyless local server. The literal
-string `EMPTY` is treated as blank by both the validator and the agent, so it
-falls through to the environment. For a hosted provider, set
-`OPENAI_BASE_URL=https://openrouter.ai/api/v1` and a real key.
+string `EMPTY` is treated as blank by both the validator and the agent. For a
+hosted provider, set `OPENAI_API_BASE=https://openrouter.ai/api/v1` and a real
+key.
+
+Other checked-in DirectLLM configs leave the three fields blank and use the
+loader fallbacks `OPENAI_MODEL_NAME`, `OPENAI_BASE_URL`, and `OPENAI_API_KEY`.
+Both forms are supported, but the variables above are the ones consumed by
+this specific GPQA example.
 
 ## 2. Write (or point to) a config
 
@@ -65,8 +71,8 @@ agent:
   name: direct_llm
   version: "1.0"
   config:
-    model: "${OPENAI_MODEL_NAME}"   # or leave "" to fall back to env
-    api_base: "${OPENAI_BASE_URL}"
+    model: "${OPENAI_MODEL}"
+    api_base: "${OPENAI_API_BASE}"
     api_key: "${OPENAI_API_KEY}"
     temperature: 0.0
     max_tokens: 4096
@@ -111,7 +117,7 @@ An unresolved placeholder becomes a blank string, and for `direct_llm` a blank
 | `scorer` | `{name, config}`; e.g. `exact_match`, `numeric` | required |
 | `sandbox` | `null` (no sandbox) or `{name, config}`; not needed for `direct_llm` | `null` |
 | `max_concurrent` | Worker count; `1` is sequential, otherwise a `ThreadPoolExecutor`; integer in `[1, 64]` | `1` |
-| `num_samples` | Samples per task; drives Pass@N / Avg@N | `1` |
+| `num_samples` | Samples per task; drives Pass@k / Avg@k | `1` |
 | `output_dir` | Where `<run_id>.jsonl` and `<run_id>/` are written | `./results` |
 | `metadata` | Free-form notes embedded into each record | `{}` |
 
@@ -165,8 +171,11 @@ alphadiana run configs/examples/direct_llm_gpqa_diamond.yaml
 The runner loads the tasks, expands them into `(task, sample_index)` work items,
 and for each one calls `agent.solve` then `scorer.score` then appends a record.
 Runs are checkpoint-resumable: rerunning the same command skips any task that
-already has a valid scored record and retries only errors, timeouts, and
-no-answer records. To ignore the checkpoint and recompute everything:
+already has a scorer-matching `valid_scored` record. Provider/runtime errors
+and no-answer records remain retryable. Timeout-classified outcomes from the
+current harnesses are scored zero with `finish_reason: timeout`, so they are
+checkpoint-complete rather than retried. To ignore the checkpoint and
+recompute everything:
 
 ```bash
 alphadiana run configs/examples/direct_llm_gpqa_diamond.yaml --redo-all
@@ -207,7 +216,7 @@ results/
   <run_id>/
     run_manifest.json                 # expected task / sample counts, config metadata
     artifacts/<task_id>/...           # raw runtime artifacts, logprob sidecars
-    tasks/<task_id>.json              # mirror of the per-task record
+    tasks/<task_id>.json              # JSON list of samples (even when n=1)
     lifecycle/<task_id>.jsonl         # per-item lifecycle events
     status/                           # status / dashboard files
 ```
@@ -237,12 +246,14 @@ score, and observability fields:
 ```
 
 `predicted` is the agent's extracted answer, `correct` is the scorer's verdict,
-and `score_status` is what checkpointing keys off: only `valid_scored` counts a
-task as complete, so a record from a failed or timed-out attempt is retried on
-the next run. Errors are recorded too, with `correct: null` and `score: null`,
-so nothing is silently dropped.
+and `score_status` is what checkpointing keys off: only a scorer-matching
+`valid_scored` record counts as complete. Errors are recorded too, with
+`correct: null` and `score: null`, so nothing is silently dropped. Current
+timeout-classified harness outcomes are the exception to the intuitive
+"no-answer means retry" rule: they are normalized to `score: 0`,
+`correct: false`, and `score_status: valid_scored`.
 
-## Accuracy, Pass@N, and Avg@N
+## Accuracy, Pass@k, and Avg@k
 
 The report metrics come from `ReportGenerator.generate`
 (`alphadiana/analysis/report.py`):
@@ -252,19 +263,21 @@ The report metrics come from `ReportGenerator.generate`
 | **Accuracy** | `correct / scored` — fraction correct among records that were actually scored |
 | **Accuracy (total)** | `correct / expected_sample_count` — denominator is the planned count, so unfinished or errored samples count against it |
 | **Mean Score** | Mean of the `score` field over scored records (equals accuracy for binary scorers) |
-| **Pass@N** | Fraction of unique tasks with at least one correct sample (`N = num_samples`) |
-| **Avg@N** | Per task, the correct-sample rate `n_correct / num_samples`, then averaged across tasks |
+| **Pass@k** | Fraction of unique tasks with at least one correct sample (`k = num_samples`) |
+| **Avg@k** | Per task, the correct-sample rate `n_correct / num_samples`, then averaged across tasks |
 
-With `num_samples: 1` (the default, and the rule for GPQA), Pass@1 and Avg@1
-both equal Accuracy because there is exactly one sample per task. They diverge
-only with multi-sample runs. AIME, for example, is typically run with
-`num_samples: 4`: Pass@4 rewards getting the answer at least once across four
-draws, while Avg@4 measures average per-draw reliability.
+With `num_samples: 1` (the default), Pass@1 and Avg@1 both equal Accuracy
+because there is exactly one sample per task. They diverge only with
+multi-sample runs. With `num_samples: 4`, for example, Pass@4 rewards getting
+the answer at least once across four draws, while Avg@4 measures average
+per-draw reliability. Choose the sample count required by the study protocol;
+the validator only requires a positive integer.
 
 ## Next steps
 
 - Try a different benchmark: [GPQA-Diamond](../benchmarks/gpqa-diamond) or
-  [AIME](../benchmarks/aime) (use `num_samples: 4` for Pass@4 / Avg@4).
+  [AIME](../benchmarks/aime). Set `num_samples` above 1 only when you want a
+  multi-sample Pass@k / Avg@k protocol.
 - Swap the baseline for a real agent scaffold: see the
   [harnesses](../harnesses/) (`opencode`, `openclaw`, `zeroclaw`), which add
   tools, sandboxes, and memory.

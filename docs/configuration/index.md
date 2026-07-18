@@ -71,8 +71,8 @@ These are the values the validator and registries accept. Unknown keys inside an
 | Block | Accepted `name` values |
 | --- | --- |
 | `agent.name` | `direct_llm`, `openclaw`, `opencode`, `zeroclaw`, `swebench_docker`, `external_benchmark_docker`, `external_benchmark_podman`, `terminal_bench2_*` |
-| `scorer.name` | `numeric`, `math_verify`, `exact_match`, `llm_judge`, `swebench_pro` |
-| `sandbox.name` | `null`, `local`, `rock`, `podman`, `swebench_container` |
+| `scorer.name` | `numeric`, `math_verify`, `exact_match`, `llm_judge`, `swebench_pro`, `swe_bench`, `terminal_bench2`, `external_benchmark`, `imo_verify`, `external_benchmark_qjl`, `decodingtrust` |
+| `sandbox.name` | `null`, `local`, `rock`, `podman`, `swebench_container`, `decodingtrust` |
 
 `sandbox: null` is correct for `direct_llm` and for CLI harnesses
 ([OpenCode](../harnesses/opencode), [ZeroClaw](../harnesses/zeroclaw)) that
@@ -92,8 +92,8 @@ run starts; non-ROCK runs skip it.
 | `strict_report`, `strict_isolation` | `false` | stricter reporting / isolation gates |
 | `metadata` | `{}` | free-form `author` / `gpu` / `notes` tags |
 
-`ExperimentConfig` lives at
-`alphadiana/engine/config/experiment_config.py` (the `@dataclass` at line 174);
+`ExperimentConfig` lives in
+`alphadiana/engine/config/experiment_config.py`;
 `ConfigValidator` lives at `alphadiana/engine/config/validator.py`. Result files
 are written and read through `alphadiana/analysis/io/result_store.py`.
 

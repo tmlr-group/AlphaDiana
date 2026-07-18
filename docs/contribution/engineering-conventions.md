@@ -22,7 +22,7 @@ When you need to flip a value, patch the line in place:
 ```bash
 # Good: surgical, comment-preserving
 sed -i '' 's/^  temperature: 0.7/  temperature: 0.6/' \
-  configs/full_runs/gpqa_directllm_gemma4_31b_logprobs.yaml
+  configs/full_runs/swe_verified_mini.yaml
 ```
 
 ```python
@@ -67,14 +67,14 @@ git add configs/full_runs/*.yaml
 
 ```bash
 # Good: explicit named paths, or stage only already-tracked changes
-git add configs/full_runs/gpqa_directllm_gemma4_31b_logprobs.yaml
+git add configs/full_runs/swe_verified_mini.yaml
 git add -u configs/
 ```
 
 ## Use `sk-EMPTY` for local vLLM, never literal `EMPTY`
 
-The validator's `_has_nonempty_value`
-(`alphadiana/engine/config/validator.py:257`) treats `None`, the empty string,
+The validator's `_has_nonempty_value` in
+`alphadiana/engine/config/validator.py` treats `None`, the empty string,
 the literal `EMPTY` (case-insensitive), and a string that is wholly an
 unresolved `$VAR` / `${VAR}` placeholder as **not populated**. Most agents
 require a non-empty `api_key`, so a literal `EMPTY` fails validation.
@@ -120,23 +120,21 @@ alphadiana run config.yaml
 
 Re-invoking `alphadiana run` on the same config **resumes** rather than
 restarts. The runner loads the existing `<run_id>.jsonl` and skips work items
-that already completed under the matching scorer
-(`alphadiana/engine/runner.py:703`):
+that already completed under the matching scorer:
 
 | `num_samples` | Skip granularity | Source |
 | --- | --- | --- |
-| `> 1` (e.g. AIME pass@4) | `completed_sample_ids` — per `(task_id, sample_index)` | runner.py:704 |
-| `1` (e.g. GPQA pass@1) | `completed_task_ids` — per `task_id` | runner.py:719 |
+| `> 1` (e.g. AIME pass@4) | `completed_sample_ids` — per `(task_id, sample_index)` | `Runner.run()` |
+| `1` (e.g. GPQA pass@1) | `completed_task_ids` — per `task_id` | `Runner.run()` |
 
 Per-sample artifacts use the suffix `{task_id}.jsonl` for sample 0 and
-`{task_id}.sample_{N}.jsonl` for later samples (runner.py:734). A scorer
+`{task_id}.sample_{N}.jsonl` for later samples. A scorer
 mismatch against the existing records is warned, so resuming with a different
 scorer does not silently mix results.
 
 `--redo-all` bypasses the checkpoint and recomputes everything. It is exact
-sugar for `-o redo_all=true` (cli.py:72), which sets the
-[`ExperimentConfig.redo_all`](../configuration/config-schema) flag
-(`experiment_config.py:188`).
+sugar for `-o redo_all=true`, which sets the
+[`ExperimentConfig.redo_all`](../configuration/config-schema) flag.
 
 ```bash
 # Resume: only fills in missing tasks/samples
@@ -154,7 +152,7 @@ than deleting files and reusing the old id.
 ## `run_id` hygiene
 
 An empty `run_id` is auto-filled with `uuid.uuid4().hex[:12]`, and any `/` in a
-`run_id` is replaced with `_` (`experiment_config.py:197`). For real runs use a
+`run_id` is replaced with `_` by `ExperimentConfig`. For real runs use a
 descriptive, stable id encoding `{date}-{benchmark}-{harness}-{model}-{axis}` so
 the checkpoint and the results directory are unambiguous, for example
 `20260423-gpqa_diamond-directllm-qwen35_27b-v01`. Distinct variants get distinct

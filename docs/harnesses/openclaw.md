@@ -4,404 +4,130 @@ sidebar_position: 4
 
 # OpenClaw
 
-The OpenClaw harness drives the OpenClaw coding/reasoning agent inside a
-[ROCK](../concepts/) Docker sandbox through an HTTP gateway. The entry class is
-`OpenClawAgent(Agent)` at `alphadiana/harness/openclaw/agent.py:954`.
+The generic `openclaw` harness normally calls an OpenClaw gateway through an OpenAI-compatible chat-completions endpoint. AlphaDiana makes one gateway request per solve, while the gateway internally runs OpenClaw's multi-turn orchestration, tool use, and context compaction. Calling the gateway is therefore not the same as bypassing the OpenClaw agent loop.
 
-There are two solve paths in the same harness:
+The harness also has an opt-in local-agent memory path and a DecodingTrust-specific CLI backend.
 
-- The **default path** streams OpenAI `chat/completions` through the gateway. It
-  is fast and stateless, but it never runs OpenClaw's own agent loop, so the
-  in-gateway memory plugin stays inert.
-- The **local-agent path** (`persistent_memory: true`) runs embedded
-  `openclaw agent --local` turns so the lancedb memory plugin's recall/capture
-  hooks actually fire.
+## Runtime selectors
 
-This page also covers the operational doctrine: recommended defaults, retry
-semantics, and the result-integrity contract (see the sections below). See also
-the sibling harnesses [direct_llm](./direct-llm), [opencode](./opencode), and
-[zeroclaw](./zeroclaw).
+`runtime` and `runtime_backend` are separate keys:
 
-## Topology
-
-```text
-AlphaDiana Runner
-       │
-       ▼
-  ROCK Admin (:9000) + ROCK Proxy (:9001)
-       │
-       ▼
-  ROCK Sandbox (Docker)
-       │
-       ▼
-  OpenClaw Gateway (:8080)
-       │
-       ▼
-  vLLM (OpenAI-compatible)
-```
-
-- **AlphaDiana** loads tasks, schedules them, scores, and writes results.
-- **ROCK** runs the OpenClaw gateway inside a Docker container. The admin plane
-  lives on `:9000`, the proxy on `:9001`.
-- **OpenClaw** is the agent loop (multi-round LLM + tool calls) behind the
-  gateway.
-- **vLLM** serves the model over an OpenAI-compatible API.
-
-The agent reaches the gateway through the proxy at
-`<proxy>/sandboxes/<sandbox_id>/proxy/v1`.
-
-### ROCK sandbox wrapper
-
-`ROCKSession(SandboxSession)` lives at `alphadiana/engine/sandbox/rock.py:447`.
-`_start_sandbox` builds a `ROCKClientSandbox` from a `SandboxConfig`
-(`base_url`, `image`, `memory`, `cpus`, `startup_timeout`, `auto_clear_seconds`,
-`use_kata_runtime`), calls `sandbox.start()`, retries smaller resource profiles
-on failure, and overrides `sandbox.url` to the proxy URL.
-`proxy_v1_base()` returns `<proxy>/sandboxes/<sandbox_id>/proxy/v1`. `execute(cmd)`
-runs a command in the sandbox bash `default` session through the SDK.
-`proxy_timeout` defaults to 1800s. The `ROCKSandbox.setup()` wrapper
-(`rock.py:891`) defaults `auto_clear_seconds` to 3600s; the OpenClaw predeploy
-path (`runner.py:886`, `runner.py:1176`) raises this to 7200s via
-`rock_auto_clear_seconds`.
-
-`setup()` selects a runtime manager from
-`alphadiana/harness/openclaw/runtime.py` based on config:
-`OpenClawRuntimeManager` for ROCK/Docker, `OpenClawPodmanRuntimeManager` for
-podman (both in `runtime.py`), and `OpenClawContainerRuntimeManager`
-(in `container_runtime.py`) for `runtime == 'swebench_container'`.
-The manager owns gateway lifecycle (`ensure_ready`, `_wait_for_gateway`,
-`_warmup_gateway`, `collect_artifacts`).
-
-### Gateway config
-
-`_build_openclaw_config` (`runtime.py:614`) loads `openclaw.json`, forces
-`gateway.port`, sets `gateway.bind = 'lan'`, and removes `customBindHost`. This
-override matters: the static `openclaw.json` defaults to `bind = custom` on
-`127.0.0.1`, which would make the ROCK-published host port unreachable from the
-evaluator. Auth mode is `token`, the `chatCompletions` endpoint is enabled, and
-tools allow `group:fs` / `group:runtime` / `group:web`.
-
-## Default solve path: chat/completions
-
-`solve(task, sandbox)` (`agent.py:2054`) builds a single user message. There is
-no system role; the gateway builds its own system prompt. If
-`self._user_system_prompt` is set, it is prepended to `task.problem`. Multimodal
-inputs go through `build_openai_multimodal_user_content`.
-
-The default path is a streaming `chat/completions` POST to the gateway with a
-bearer header `Authorization: bearer <gateway_token>`. The payload is built by
-`_build_request_payload` (`agent.py:1664`): model, messages, temperature, stream,
-and optionally `max_tokens` / `top_p` / `logprobs`. A retry loop
-(`max_attempts`, default 5) applies exponential backoff, with errors classified
-by `classify_error` (`agent.py:415`) into recoverable transport vs terminal.
-
-### Circuit breaker
-
-A persistent backend outage manifests as an empty-SSE 200 response: the gateway
-returns HTTP 200 but the stream closes without ever sending `[DONE]`. After
-`backend_down_threshold` (default 5) consecutive such responses, `_circuit_open`
-trips and every later `solve()` call raises `BackendDownError` immediately
-(`agent.py:1063`, `2055`) instead of grinding through full timeouts.
-
-## Result integrity guard
-
-Before scoring, the runner runs `_openclaw_integrity_guard_reason`
-(`alphadiana/engine/runner.py:459`). It rejects an OpenClaw response (writing
-`score_status = runtime_error`) when any of the following hold:
-
-- `metadata.received_done is False` (and not a timeout-scored-zero result)
-- `metadata.session_tainted is True`
-- `finish_reason == "incomplete"`
-- the trajectory, request/response payloads, or raw output contain
-  `Read HEARTBEAT.md` or `HEARTBEAT_OK`
-
-A valid scored result therefore requires all of:
-
-| Condition | Required value |
+| Key/value | Path |
 | --- | --- |
-| `score_status` | `valid_scored` |
-| `metadata.received_done` | `True` |
-| `metadata.session_tainted` | not `True` |
-| heartbeat markers in trajectory / payload | absent |
+| `runtime` unset | Standard OpenClaw runtime manager / gateway path |
+| `runtime: swebench_container` | OpenClaw gateway inside a SWE-bench task container |
+| `runtime_backend: podman` | Podman runtime manager |
+| `runtime_backend: decodingtrust_openclaw_cli` | DTAP-native OpenClaw CLI path; requires a DecodingTrust sandbox session |
 
-Rejected responses still preserve the partial raw output, trajectory, response
-JSON, sandbox artifacts, and logprob sidecars, and `runtime_error` records remain
-checkpoint-rerunnable.
+Do not place `decodingtrust_openclaw_cli` under `runtime`; the solve dispatch reads `runtime_backend`.
 
-Session taint is detected by `_detect_session_pollution` (`agent.py:331`), which
-sets `session_tainted` when prior-task chat history leaks into the reconstructed
-trajectory. The agent rebuilds the full assistant trajectory by reading the
-OpenClaw session JSONL out of the sandbox (`_parse_openclaw_session`,
-`_retrieve_trajectory_from_sandbox_session`).
+## Standard gateway path
 
-## Local-agent path: solve + store turns
+The harness resolves or starts the configured gateway, builds a user message, and sends a streaming or non-streaming request. The gateway handles agentic execution internally. AlphaDiana then parses the consolidated answer and attempts to recover session trajectory and workspace artifacts from the sandbox/runtime.
 
-### Why it exists
+Common gateway inputs include `api_base`, `model`, `gateway_token`, sampling settings, `stream`, retry counts, and timeout controls. Runtime-backed configs may instead supply image/config paths from which the manager deploys the gateway and returns its effective API base.
 
-The plain `chat/completions` path never runs OpenClaw's agent loop, so the
-memory-lancedb plugin's `before_agent_start` (autoRecall) and `agent_end`
-(autoCapture) hooks never fire and the plugin stays inert (`agent.py:1687`). To
-make memory real, `persistent_memory` mode runs an embedded
-`openclaw agent --local` turn against the same provider, plugin, and `dbPath`.
+## Fresh-per-task gateway pools
 
-`solve()` gates on `self._persistent_memory and sandbox is not None` and calls
-`_try_solve_via_local_agent` (`agent.py:1893`). If it returns non-`None`, that
-response is used; otherwise execution falls through to `chat/completions`.
+For concurrent task separation, the runner can predeploy a gateway pool and assign sessions per task. Pooling behavior is owned by the runner/runtime, not by model memory. Dead gateways are quarantined based on explicit liveness evidence, and replacements may be created when the live pool is exhausted.
 
-### Two turns per task
+Fresh task sessions reduce cross-task state leakage and file contention. They do not constitute a formal security guarantee; inspect backend, mounts, network, and credentials.
 
-Mirroring [ZeroClaw](./zeroclaw), each task runs two `--local` turns:
+## Persistent-memory path
 
-1. **SOLVE turn.** Prompt = the user text plus a `[Memory]` instruction telling
-   the agent to call `memory_recall` before solving. Uses `request_timeout` and
-   `thinking` from `reasoning_enabled` / `enable_thinking` (`high` or `off`).
-2. **STORE turn.** A forced `memory_store` turn that guarantees per-task storage.
-   Timeout is capped at `min(120s, request_timeout)` with `thinking = low`.
+When `persistent_memory: true` and a live sandbox is available, `solve()` first tries the embedded local-agent path. This is implemented in the current source and is distinct from the ordinary gateway request.
 
-The local-agent config emitted by `_build_local_agent_config_json`
-(`agent.py:1683`) uses provider `local` (`api = openai-completions`), adds
-`memory_store` / `memory_recall` / `memory_forget` to `tools.allow`, and sets
-the plugin to **`autoCapture: false`, `autoRecall: true`**. Question
-auto-capture is deliberately disabled (it captures the user question, not the
-solution) in favor of the explicit forced store-turn.
+The path runs:
 
-### ROCK 85s cap and detached execution
+1. a solve turn that can recall existing memory;
+2. an eligible store turn that asks the agent to persist a lesson.
 
-ROCK's `run_in_session` caps each synchronous call at roughly 85s, far short of
-a minutes-long agent turn. `_run_local_agent_turn` (`agent.py:1789`) therefore
-launches the turn detached:
+`task.metadata.memory_mode` supports build/frozen transfer experiments: frozen tasks may recall the built memory but skip the store turn. `oracle_feedback: true` changes the store prompt to reveal the official answer and request a self-graded problem/attempt/correct-answer/lesson record. This is a materially different experimental condition and must be reported.
 
-```text
-timeout <t> openclaw --log-level info agent --local \
-  --session-id <sid> --thinking <high|off|low> --timeout <t> -m "$prompt"
-```
+`memory_lancedb` config is consumed by the runtime manager to install/configure the OpenClaw LanceDB memory plugin, set its embedding provider, and allow memory tools. Supply an explicit embedding base URL and credentials appropriate to the environment; a configured plugin does not prove that recall succeeded, so inspect the trace.
 
-It runs via `setsid` writing to files, then polls for an `agent_done` marker
-every 10s (up to `agent_timeout + 240s`). Storage and recall are verified
-out-of-band: it counts lancedb `_transactions` files before/after
-(`txn_before` / `txn_after`) as storage evidence and greps gateway stderr for
-`injecting N memories` / `prepended context` as recall evidence. Returns
-`(reply, diag, done)`.
+## DecodingTrust backend
 
-The resulting `AgentResponse` carries metadata
-`{openclaw_local_agent: True, openclaw_local_solve_diag, openclaw_local_store_diag,
-persistent_memory: True}`, `finish_reason = 'stop'`, and an answer extracted via
-`_extract_answer` (prefers `\boxed{}`).
+`runtime_backend: decodingtrust_openclaw_cli` bypasses the ordinary gateway manager and requires `sandbox.name: decodingtrust`. For each task the harness:
 
-### memory_mode gating
+- reads the DTAP task/attack config through the task-bound sandbox;
+- obtains live MCP server URLs and injection configuration;
+- builds the OpenClaw CLI instruction and output directory;
+- runs the DTAP-integrated agent flow;
+- preserves trajectory data for `decodingtrust` scoring.
 
-`task.metadata['memory_mode']` defaults to `build`. When set to `frozen` (the
-test/transfer phase), the STORE turn is skipped so later test problems do not
-learn from one another; recall still fires via autoRecall.
+Use `parallel_strategy: process_shards` for multi-process DTAP parallelism. In-process DecodingTrust concurrency is forced to one.
 
-| `memory_mode` | SOLVE turn | STORE turn |
-| --- | --- | --- |
-| `build` (default) | runs (recall) | runs (forced store) |
-| `frozen` | runs (recall only) | skipped |
+## Integrity and status
 
-## lancedb memory config
+For ordinary non-timeout streams, the runner rejects responses that explicitly report `received_done=false`, finish as incomplete, or contain heartbeat/session-taint evidence. These rejections are rerunnable error records.
 
-When a `memory_lancedb` block is present, `_build_openclaw_config` injects
-`plugins.slots.memory = 'memory-lancedb'` and the plugin config (`runtime.py:661`).
-A setup command (`_openclaw_memory_lancedb_setup_command`, `runtime.py:722`)
-copies the memory-lancedb TS source from `/app` or `/opt/openclaw` into
-`OPENCLAW_HOME/.openclaw/extensions` and symlinks `node_modules`, because the
-dist build in current images ships manifests without compiled entries.
+Timeout-scored-zero is the explicit exception: request or stream budget exhaustion can return `answer=None`, `finish_reason: timeout`, and `openclaw_timeout_scored_zero=true`. Such a response does not need `received_done=true`; after scoring it is `valid_scored` and checkpoint-complete.
 
-Both paths use the **same embedding defaults**, kept in sync deliberately:
-they write the same lancedb store, so a model/dimensions mismatch would
-corrupt it.
+Structured provider, tool, and control-plane errors remain errors rather than being converted to timeout zero.
 
-| Key | Gateway path (`runtime.py`) | Local-agent path (`agent.py`) |
-| --- | --- | --- |
-| `model` | `qwen3-embed-0.6b` | `qwen3-embed-0.6b` |
-| `dimensions` | 1024 | 1024 |
-| `auto_capture` | `True` | forced `False` |
-| `auto_recall` | `True` | `True` |
-| `db_path` | `/tmp/oc_home/.openclaw/memory/lancedb` | same |
+## Timeout layers
 
-The `memory_lancedb` config block accepts: `api_key`, `model`, `base_url`,
-`dimensions`, `db_path`, `auto_capture`, `auto_recall`.
+| Key | Meaning |
+| --- | --- |
+| `request_timeout` | Overall request/runtime timeout input; also propagated into generated OpenClaw/ROCK settings where supported |
+| `stream_idle_timeout` | Maximum quiet interval while reading a stream; defaults to at most 180 seconds |
+| `stream_total_timeout` | Total stream budget even while chunks continue; defaults from `response_timeout` or `request_timeout` |
+| `proxy_timeout` | Proxy-side request budget |
+| `max_attempts` | Gateway request attempts |
 
-:::note
-Omit the `memory_lancedb` block and the embedding `baseUrl` is the empty string
-(`agent.py:1717`), which leaves recall unable to embed. There is no environment
-fallback: `OPENAI_BASE_URL` feeds the chat provider, never the embed endpoint.
-Set `memory_lancedb.base_url` explicitly.
-:::
+Increasing `request_timeout` alone does not widen the default 180-second idle budget. Conversely, a stream that keeps emitting chunks can avoid the idle timer, so long local-provider validation should set `stream_total_timeout` explicitly.
 
-### oracle_feedback four-tuple
+## Logprobs and trajectories
 
-`self._oracle_feedback = bool(config.get('oracle_feedback', False))`
-(`agent.py:1047`). It changes only the STORE-turn prompt.
+Runtime-backed OpenClaw can place the shared logprob proxy between the gateway and upstream provider. Verify capture through task metadata, request summaries, and sidecar references.
 
-- **`False` (default).** The store prompt asks for the single most useful
-  technique/insight from the agent's own solution. No ground truth is shown.
-- **`True`.** The store prompt includes `task.problem`, the agent's own
-  `solve_reply`, **and** `task.ground_truth` (the official correct answer). The
-  agent self-grades `CORRECT` / `WRONG` and stores a four-tuple: problem, its own
-  answer plus correctness, the official answer, and a feedback note. Wrong
-  attempts are stored **labeled wrong** as negative examples rather than
-  silently polluting memory, a designed mitigation for the memory-poisoning seen
-  in the memory experiments.
+The harness preserves the gateway response, stream status, logs, session/workspace artifacts, and normalized trajectories available on the chosen path. DTAP, standard gateway, local-memory, and SWE-bench paths produce different evidence shapes; do not assume one artifact is present everywhere.
 
-## Fresh-per-task contract
+## Config reference
 
-Fresh-per-task is the recommended full-run mode. With
-`reuse_predeployed_sandboxes: false`, every task gets a brand-new
-gateway/session; after a task writes its result, the runner closes that sandbox
-and warms a standby replacement, so stale OpenClaw chat history cannot leak.
+| Area | Keys |
+| --- | --- |
+| Selector | `runtime`, `runtime_backend` |
+| Gateway/provider | `api_base`, `api_key`, `model`, `gateway_token`, `temperature`, `top_p`, `max_tokens`, `stream` |
+| Retry/timeout | `max_attempts`, `request_timeout`, `stream_idle_timeout`, `stream_total_timeout`, `proxy_timeout` |
+| ROCK/pool | `rock_sandbox_url`, `sandbox_id`, `gateway_pool`, runtime image/config fields |
+| Prompt/agent | `system_prompt`, `agent_md_mode`, `agent_md_content` |
+| Memory | `persistent_memory`, `oracle_feedback`, `memory_lancedb` |
+| Observability | shared logprob-capture and proxy bind/advertise settings |
 
-The predeploy pool is configured from `agent.config`
-(`alphadiana/engine/runner.py:803`):
-
-| Key | Default | Meaning |
-| --- | --- | --- |
-| `num_sandboxes` | auto | active target (else `ceil(max_concurrent / per-sandbox)`) |
-| `standby_sandboxes` | — | extra fresh-per-task replacements |
-| `reuse_predeployed_sandboxes` | `false` | fresh-per-task contract |
-| `reset_predeployed_between_tasks` | `true` | clear session state on reuse |
-| `predeployed_lease_probe` | `true` | probe sandbox liveness before lease |
-| `predeployed_lease_probe_timeout` | `2.0` | probe timeout (s) |
-| `predeploy_replenish_concurrency` | auto | parallel standby refill |
-
-A reuse mode (`reuse_predeployed_sandboxes: true`) still exists but must clear
-OpenClaw session state between tasks; it is not the recommended full-run mode.
-
-## Heartbeat anti-pattern
-
-Liveness must **never** be sent as a prompt into the model session. The integrity
-guard actively rejects any response whose trajectory or payload contains
-`HEARTBEAT` markers. Operational heartbeats belong in a separate monitor log:
-
-```text
-logs/<run_id>.monitor.log      # operator/wrapper heartbeats — never the model session
-logs/<run_id>.log              # the benchmark shell log
-```
-
-## Recommended defaults
-
-For long local-vLLM full runs, use fresh-per-task predeployed sandboxes:
+## Example: DecodingTrust
 
 ```yaml
-max_concurrent: 1
-task_retries: 2
-task_retry_on_recoverable_only: true
-
 agent:
   name: openclaw
   config:
-    max_tokens: 131072
-    request_timeout: 9300
-    stream_idle_timeout: 9300
-    stream_total_timeout: 9000
+    runtime_backend: decodingtrust_openclaw_cli
+    model: ${OPENAI_MODEL_NAME}
 
-    num_sandboxes: 1
-    standby_sandboxes: 1
-    predeploy_replenish_concurrency: 1
-    reuse_predeployed_sandboxes: false
-    predeployed_lease_probe: true
+benchmark:
+  name: decodingtrust
 
-    capture_logprobs: true
-    top_logprobs: 20
+sandbox:
+  name: decodingtrust
+
+scorer:
+  name: decodingtrust
 ```
 
-For `max_concurrent: 2`, use two active and two standby sandboxes and set
-`predeploy_replenish_concurrency: 2`. Keep concurrency low unless the local vLLM
-queue is healthy: long thinking-on samples can run near 30 tokens/sec, so a
-131072-token cap can need more than an hour per task after agent/tool overhead.
+Use the checked-in DecodingTrust config for its required DTAP paths and environment details.
 
-### Key config reference
+## Artifacts to inspect
 
-| Key | Default | Notes |
-| --- | --- | --- |
-| `runtime` / `runtime_backend` | `''` / `''` | `''`, `podman`, or `swebench_container` |
-| `api_base` | — | gateway / proxy base |
-| `model` | `openclaw` | served model name |
-| `gateway_token` | `OPENCLAW` | bearer token |
-| `temperature` | `0.7` | |
-| `max_tokens` | — | per-request cap |
-| `stream` / `streaming` | `True` | |
-| `max_attempts` | `5` | retry loop |
-| `request_timeout` | `1800` | |
-| `stream_idle_timeout` | `min(rt, 180)` | |
-| `proxy_timeout` | `600` | |
-| `backend_down_threshold` | `5` | circuit breaker threshold |
-| `persistent_memory` | `False` | enables local-agent path |
-| `oracle_feedback` | `False` | self-grading four-tuple store |
-| `capture_logprobs` / `top_logprobs` | — | logprob capture |
+- stream status and `received_done`/finish reason;
+- timeout or integrity-guard metadata;
+- gateway request/response and session trace;
+- sandbox/gateway identity and quarantine/replacement evidence;
+- memory solve/store traces when enabled;
+- DTAP tool trajectory and judge metadata on DecodingTrust runs.
 
-## vLLM tool-calling & timeout layers
+## Related pages
 
-### vLLM serving requirement
-
-OpenClaw drives multi-round inference through tool calling, so the vLLM server
-must be started with `--enable-auto-tool-choice --tool-call-parser <parser>`.
-Without it, vLLM returns HTTP 400
-`auto tool choice requires --enable-auto-tool-choice` on the first tool-bearing
-request.
-
-The `<parser>` value is parser- and model-specific: older Qwen3-8B configs use
-`hermes`, while current `Qwen3.5-27B` configs use `qwen3_coder`. Use the parser
-named by your model card / config, not a fixed value.
-
-### Layered timeouts for empty/timeout responses
-
-An empty or timed-out OpenClaw response can be cut off at any one of several
-layers. Check them in order:
-
-1. **Gateway agent timeout.** `openclaw.json -> agents.defaults.timeoutSeconds`.
-   AlphaDiana derives this from `agent.config.request_timeout` and writes it into
-   **both** `agents.defaults.timeoutSeconds` and `tools.exec.timeoutSec`, and
-   also sets ROCK `agent_run_timeout` (`runtime.py:486`, `636`, `652`, `1138`).
-2. **ROCK proxy.** `proxy_service.timeout` (raise via the ROCK YAML / `ROCK_CONFIG`,
-   e.g. `proxy_service.timeout: 600`). Older external ROCK checkouts hardcode
-   `timeout=120` in `rock/sandbox/service/sandbox_proxy_service.py`; patch the
-   per-request timeout to use `read=None` plus a bounded connect timeout.
-3. **Client.** `agent.config.request_timeout` (default `1800`s; `agent.py:996`).
-4. **undici stream watchdog.** The prebuilt embedded provider is patched via
-   `OPENCLAW_UNDICI_STREAM_TIMEOUT_MS` (`runtime.py:711`). When diagnosing
-   `~1800s` empty-response retries, inspect the sandbox `openclaw.json` and the
-   generated ROCK `run_cmd` patch for `opts?.timeoutMs ?? 18e5`.
-5. **`max_tokens`.** Set `65536`+ so thinking models do not exhaust the budget
-   before emitting output. AlphaDiana auto-retries empty responses (~5 attempts;
-   `empty_response` backoff starts ~60s).
-
-## Logprob capture
-
-`OpenClawLogprobProxy` (`runtime.py:254`) is a host-side MITM HTTP proxy reachable
-from the container via the host bridge IP (default `host.docker.internal`). It intercepts
-container-to-vLLM calls, injects `logprobs` / `top_logprobs` into the request, and
-captures per-token records. The proxy is reused across tasks when upstream and
-`top_logprobs` match, and is deliberately not torn down mid-stream under
-`max_concurrent >= 2` so it does not kill a still-streaming task.
-
-## Run lifecycle
-
-```bash
-# validate then run
-python -m alphadiana.cli validate <config>
-python -m alphadiana.cli run <config>
-
-# standalone single-sandbox bring-up (prints Sandbox ID + API base)
-python alphadiana/harness/openclaw/deploy/deploy.py \
-  --image tmlrgroup/alphadiana:v1 --memory 4g --cpus 1 \
-  --model-base-url <vllm> --model-name <model>
-```
-
-`deploy.py` creates one ROCK sandbox, waits for running, warms the default
-session, installs the ROCK agent, runs the gateway, and prints `Sandbox ID` plus
-`API base: <proxy>/sandboxes/<id>/proxy/v1`. It requires a reachable redis-stack
-and a `ref/ROCK/.venv` symlink to the active Python env.
-
-Checkpoint resume is scorer-aware: `run` skips only latest records that are
-completed for the configured scorer, while latest `runtime_error` records remain
-rerunnable. Results land at `results/<run_id>.jsonl`, with per-task sample lists
-at `results/<run_id>/tasks/*.json`. The result store itself is
-`alphadiana/analysis/io/result_store.py`.
-
-Before launch, run the security gate:
-
-```bash
-python scripts/security_guard.py --check
-```
+- [Harnesses Overview](./)
+- [Sandboxes & Isolation](../architecture/sandboxes)
+- [Scoring & Results](../architecture/scoring-and-results)

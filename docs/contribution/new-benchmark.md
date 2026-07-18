@@ -14,7 +14,7 @@ bottom, and add the import to `Runner.setup()`.
 
 ## The `Benchmark` contract
 
-All benchmarks subclass `Benchmark` (`alphadiana/benchmarks/base.py:90-102`), an
+All benchmarks subclass `Benchmark` in `alphadiana/benchmarks/base.py`, an
 ABC with one abstract method and one overridable hook:
 
 ```python
@@ -43,7 +43,7 @@ unless overridden; it only *suggests* a scorer, and the run config's
 
 ## `BenchmarkTask`
 
-`BenchmarkTask` (`alphadiana/benchmarks/base.py:26-34`) is the unit the runner
+`BenchmarkTask` in `alphadiana/benchmarks/base.py` is the unit the runner
 hands to a harness and the scorer:
 
 | Field | Type | Notes |
@@ -62,8 +62,8 @@ string `"1"` for `terminal_bench2`. Pick the shape your scorer expects.
 
 ## Loading a HuggingFace dataset
 
-For HF-backed benchmarks, use the `load_dataset_with_retry` helper
-(`alphadiana/benchmarks/base.py:37-87`) instead of calling
+For HF-backed benchmarks, use the `load_dataset_with_retry` helper in
+`alphadiana/benchmarks/base.py` instead of calling
 `datasets.load_dataset` directly. It wraps the load with up to three retries
 (exponential backoff, `base_delay=2.0`, `max_delay=60.0`, jitter):
 
@@ -122,8 +122,8 @@ Two things make a benchmark discoverable.
 
 2. **Add the import to `Runner.setup()`.** Registration is import-side-effect
    driven, and `benchmarks/__init__.py` does **not** auto-import every module.
-   `Runner.setup()` (`alphadiana/engine/runner.py:562-571`) explicitly imports
-   all benchmark modules before resolving the class at `runner.py:604`:
+   `Runner.setup()` in `alphadiana/engine/runner.py` explicitly imports
+   all benchmark modules before resolving the class:
 
    ```python
    import alphadiana.benchmarks.my_benchmark.benchmark  # noqa: F401
@@ -131,14 +131,14 @@ Two things make a benchmark discoverable.
 
    Forgetting this import means `BenchmarkRegistry.get()` raises `KeyError` even
    though the file exists. The runner then calls
-   `self.benchmark.load_tasks(self.config.benchmark_config)`
-   (`runner.py:658`) and writes the per-task metadata into the run manifest.
+   `self.benchmark.load_tasks(self.config.benchmark_config)` and writes the
+   per-task metadata into the run manifest.
 
 ## `memory_mode` metadata
 
 `memory_mode` is a memory-experiment hook read by the agentic harnesses, **not**
-core benchmark metadata. Only the `custom` benchmark injects it at load time
-(`alphadiana/benchmarks/custom/benchmark.py:36`):
+core benchmark metadata. Only the `custom` benchmark injects it at load time in
+`alphadiana/benchmarks/custom/benchmark.py`:
 
 ```python
 metadata={"memory_mode": str(item.get("memory_mode", "build"))}
@@ -167,7 +167,7 @@ scorer:
 ```
 
 ```bash
-# List registered benchmarks (imports modules, then BenchmarkRegistry.list())
+# Quick diagnostic only; the command imports a subset of Runner modules
 python -m alphadiana.cli list-benchmarks
 
 # Run it

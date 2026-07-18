@@ -26,7 +26,8 @@ comparisons fair and reproducible.
 
 ## The contract every harness shares
 
-A harness is an [`Agent`](#) implementation. The abstract base class lives in
+A harness is an [`Agent`](./harness-aware-evaluation#decoupling-model-from-harness)
+implementation. The abstract base class lives in
 `alphadiana/harness/base.py` and defines three methods plus two class
 attributes:
 

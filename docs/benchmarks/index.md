@@ -13,8 +13,8 @@ full convention. Per-benchmark detail lives in the sibling pages linked below.
 
 ## The `BenchmarkTask` data model
 
-Every loader emits `BenchmarkTask` instances
-(`alphadiana/benchmarks/base.py:26-34`):
+Every loader emits `BenchmarkTask` instances defined in
+`alphadiana/benchmarks/base.py`:
 
 | Field | Type | Notes |
 | --- | --- | --- |
@@ -31,15 +31,17 @@ per-benchmark, never as one type:
 
 - **String** for text, multiple-choice, and patch benchmarks: `aime`, `gpqa_diamond`,
   `hle`, `mmmu_pro`, `imo_answerbench`, `custom`, and the SWE-bench patch.
-- **Dict** for `swebench_pro_os` (`{instance_id, repo, base_commit}`) and
-  `external_benchmark` (`{level, problem_id, name}`).
+- **Dict** for `swebench_pro_os` (`{instance_id, repo, base_commit}`),
+  `external_benchmark` (`{level, problem_id, name}`), and `external_benchmark_qjl` (the baseline).
+- **`None`** for `decodingtrust`; its DTAP judge uses task metadata and the
+  recorded response trajectory.
 - **The literal string `"1"`** for `terminal_bench2`: the scorer compares
   `response.answer.strip() == "1"` against the reward observed by the verifier.
 
 ### Robust dataset loading
 
-HuggingFace-backed loaders fetch through `load_dataset_with_retry`
-(`base.py:37-87`): up to three attempts with exponential backoff (base `2.0s`,
+HuggingFace-backed loaders fetch through `load_dataset_with_retry()` in
+`alphadiana/benchmarks/base.py`: up to three attempts with exponential backoff (base `2.0s`,
 cap `60.0s`, jitter) for transient `ConnectionError`/`TimeoutError`. It does not
 retry `NON_RETRYABLE_DATASET_ERRORS` (`PermissionError`, `FileNotFoundError`,
 `ValueError`, `OSError`), and a read-only HF cache is converted into an
@@ -49,8 +51,9 @@ actionable error asking you to set `HF_DATASETS_CACHE`.
 
 A `Benchmark` subclass sets a class attribute `name`, implements
 `load_tasks(config: dict) -> list[BenchmarkTask]`, and may override
-`default_scorer()` (the base default is `exact_match`). Each module ends with an
-explicit `BenchmarkRegistry.register(<name>, <cls>)` call.
+`default_scorer()` (the base default is `exact_match`). Registrations use either
+an explicit `BenchmarkRegistry.register(<name>, <cls>)` call or the
+`register_benchmark(<name>)` decorator.
 
 | `benchmark.name` | Default scorer | Source / shape |
 | --- | --- | --- |
@@ -64,6 +67,8 @@ explicit `BenchmarkRegistry.register(<name>, <cls>)` call.
 | `swebench_pro_os` | `swebench_pro` | `ScaleAI/SWE-bench_Pro`; ground truth is a dict. |
 | `terminal_bench2` | `terminal_bench2` | Local task tree; ground truth is `"1"`. |
 | `external_benchmark` | `external_benchmark` | KernelBench GPU-kernel optimization. |
+| `external_benchmark_qjl` | `external_benchmark_qjl` | Protected-verifier QJL CUDA optimization task. |
+| `decodingtrust` | `decodingtrust` | DecodingTrust Agent Platform tasks and judge. |
 
 Note that the SWE-bench Pro registry name is `swebench_pro_os` (class
 `SWEBenchProBenchmark`), while its scorer name is `swebench_pro`. The default
@@ -72,21 +77,26 @@ scorer is only a suggestion; `scorer_name` in config wins when set.
 `BenchmarkRegistry` (`alphadiana/benchmarks/registry.py`) keeps a class-level
 `_registry` dict. `BenchmarkRegistry.get(name)` raises `KeyError` listing the
 available names if the loader was never imported, and `BenchmarkRegistry.list()`
-returns the sorted names. A `register_benchmark(name)` decorator also exists, but
-the shipped benchmarks use the explicit `.register()` call form instead.
+returns the sorted names. Most shipped benchmarks use explicit `.register()`;
+DecodingTrust uses the decorator.
 
-List the registered names at any time:
+The CLI also provides a quick diagnostic list:
 
 ```bash
 python -m alphadiana.cli list-benchmarks
 ```
 
+Because registration is import-side-effect driven, that command reports the
+modules imported by its own command path; use the `Runner.setup()` import block
+and the table above as the complete shipped inventory.
+
 ## How a benchmark is selected
 
 Registration is import-side-effect driven. Importing the package does not
 auto-load every loader, so `Runner.setup()` (`alphadiana/engine/runner.py`)
-explicitly imports all ten `benchmark.benchmark` modules (plus the scorer and
-harness modules) before resolving the class:
+explicitly imports all 12 shipped benchmark registrations (including
+`external_benchmark.qjl` and DecodingTrust, plus scorer and harness modules) before
+resolving the class:
 
 ```python
 BenchmarkRegistry.get(self.config.benchmark_name)

@@ -41,18 +41,19 @@ own containers (`opencode` / `zeroclaw` with a controller mode).
 
 ## Top-level fields
 
-These map one-to-one onto `ExperimentConfig` (`experiment_config.py:174`).
+These map one-to-one onto `ExperimentConfig` in
+`alphadiana/engine/config/experiment_config.py`.
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
-| `run_id` | string | `uuid4().hex[:12]` | Empty value auto-fills a UUID; any `/` is replaced with `_` (`__post_init__`, `experiment_config.py:197`). |
+| `run_id` | string | `uuid4().hex[:12]` | Empty value auto-fills a UUID; `ExperimentConfig.__post_init__()` replaces any `/` with `_`. |
 | `agent.name` | string | required | e.g. `direct_llm`, `openclaw`, `opencode`, `zeroclaw`, `swebench_docker`. |
 | `agent.version` | string | required | Pinned tag or `"latest"`. |
 | `agent.config` | dict | `{}` | Open pass-through to the harness (see below). |
 | `benchmark.name` | string | required | e.g. `aime`, `gpqa_diamond`, `hle`, `mmmu_pro`, `terminal_bench2`, `swe_bench`. |
 | `benchmark.config` | dict | `{}` | `split`, `year`, `subset`, `data_path`, etc. |
-| `sandbox` | null \| object | `null` | `{ name, config }`; name in `local` / `rock` / `podman` / `swebench_container`. |
-| `scorer.name` | string | required | `math_verify`, `numeric`, `exact_match`, `llm_judge`, `swebench_pro`. |
+| `sandbox` | null \| object | `null` | `{ name, config }`; name in `local` / `rock` / `podman` / `swebench_container` / `decodingtrust`. |
+| `scorer.name` | string | required | Registered values are listed in the scorer table below. |
 | `scorer.config` | dict | `{}` | Scorer-specific params. |
 | `max_concurrent` | int | `1` | Parallel task executions; validator requires `1 <= n <= 64`. |
 | `num_samples` | int | `1` | Independent samples per task; `> 1` reports pass@k / avg@k. |
@@ -61,8 +62,8 @@ These map one-to-one onto `ExperimentConfig` (`experiment_config.py:174`).
 | `task_retries` | int | `0` | Retry attempts per task; validator requires `>= 0`. |
 | `task_retry_on_recoverable_only` | bool | `false` | Retry only on recoverable errors. |
 | `sandbox_retries` | int | `1` | Sandbox startup retries. |
-| `strict_report` | bool | `false` | Fail the run on report-generation errors. |
-| `strict_isolation` | bool | `false` | Enforce stricter task isolation. |
+| `strict_report` | bool | `false` | Exit non-zero when the report finds missing samples, invalid scored rows, or error records. |
+| `strict_isolation` | bool | `false` | For ROCK auto-create/predeploy paths, turn setup failures into hard errors instead of shared-gateway fallback. |
 | `metadata` | dict | `{}` | Free-form tags (`author`, `gpu`, `notes`, ...). |
 
 :::tip GPQA / AIME sample counts
@@ -125,10 +126,16 @@ ROCK-backed runs.
 | `exact_match` | Exact string answers | Math-aware normalization + strict equality; does not equate `1/2` and `0.5`. |
 | `llm_judge` | Open-ended (e.g. HLE) | Needs `api_base` / `api_key` / `judge_model`. |
 | `swebench_pro` | SWE-bench Pro | Requires `eval_script_path` and `scripts_dir`. |
+| `swe_bench` | SWE-bench Verified | Runs the official SWE-bench evaluator against the submitted patch. |
+| `terminal_bench2` | Terminal-Bench 2 | Converts the task-container verifier reward to a binary score. |
+| `external_benchmark` | external_benchmark | Scores the benchmark's kernel-verifier result. |
+| `imo_verify` | IMO-AnswerBench | Repo-local conservative math-answer verifier; required for this benchmark. |
+| `external_benchmark_qjl` | external_benchmark QJL | Consumes host-owned official QJL evaluation artifacts. |
+| `decodingtrust` | DecodingTrust | Runs the DTAP judge and records utility/security metadata. |
 
 ## Environment-variable interpolation
 
-`from_yaml` (`experiment_config.py:202`) resolves the environment in two phases:
+`ExperimentConfig.from_yaml()` resolves the environment in two phases:
 
 1. **Expand** — `_expand_env_vars` runs `os.path.expandvars` on every string in the document,
    so `$VAR` and `${VAR}` are substituted from the shell before CLI overrides are merged.
@@ -146,8 +153,9 @@ agent:
 
 ### Agent env defaults
 
-When an agent field is left blank, `_apply_agent_env_defaults` (`experiment_config.py:53+`)
-fills it from the environment. This is why example configs leave `model` / `api_base` /
+When an agent field is left blank, `_apply_agent_env_defaults()` in
+`alphadiana/engine/config/experiment_config.py` fills it from the environment.
+This is why example configs leave `model` / `api_base` /
 `api_key` empty and rely on `.env` loaded via `source scripts/activate.sh`.
 
 | Agent field | Env var | Applies to |
@@ -164,7 +172,7 @@ export OPENAI_MODEL_NAME=Qwen/Qwen3.5-27B
 ```
 
 :::note The `EMPTY` sentinel
-`_has_nonempty_value` (`validator.py:257`) treats `None`, `""`, `EMPTY` (case-insensitive),
+`ConfigValidator._has_nonempty_value()` treats `None`, `""`, `EMPTY` (case-insensitive),
 and a lone `$VAR` / `${VAR}` placeholder as **not populated**. For local vLLM, set
 `api_key: "EMPTY"` or `"sk-EMPTY"` — any non-literal-`EMPTY` string passes.
 :::
@@ -172,7 +180,8 @@ and a lone `$VAR` / `${VAR}` placeholder as **not populated**. For local vLLM, s
 ## CLI overrides
 
 `alphadiana run` accepts repeatable `-o key.path=value` (long form `--override`). Each
-override is parsed by `parse_override` (`experiment_config.py:141`): it splits on the first
+override is parsed by `parse_override()` in
+`alphadiana/engine/config/experiment_config.py`: it splits on the first
 `=`, builds a nested dict from the dotted key path, and deep-merges it after env expansion.
 
 Value coercion is automatic and order-sensitive — `true`/`false` to bool, then int, then

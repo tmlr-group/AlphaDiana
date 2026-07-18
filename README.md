@@ -57,6 +57,7 @@ cd AlphaDiana
 
 # One-click setup: creates a checkout-local conda env, installs all
 # dependencies, starts services
+export OPENCLAW_GATEWAY_TOKEN="$(openssl rand -hex 32)"
 bash scripts/quickstart.sh
 
 # Note: If quickstart fails, or you want to reset the ports/RAY clusters, please run: bash scripts/cleanup_rock_ports.sh (USE WITH CAUTION!)
@@ -209,14 +210,9 @@ configs/examples/openclaw_aime2024_multisandbox.yaml
 
 ### Run a ZeroClaw agent
 
-**Quick start (local mode, no ROCK required)** — requires `zeroclaw` binary in PATH:
-
-```bash
-export OPENAI_BASE_URL=https://your-endpoint/v1
-export OPENAI_API_KEY=sk-...
-export OPENAI_MODEL_NAME=your-model
-alphadiana run configs/examples/zeroclaw_aime2026_local_smoke.yaml
-```
+The generic ZeroClaw harness requires a live sandbox/container session. The
+legacy `zeroclaw_aime2026_local_smoke.yaml` file has `sandbox: null` and is not
+a runnable host-mode example on the current implementation.
 
 **ROCK auto-deploy mode** follows the same pattern as the bundled OpenClaw
 example, but starts a lightweight ZeroClaw bridge inside the sandbox:
@@ -301,7 +297,7 @@ Any supported agent and scorer can be used with the `custom` benchmark.
 | `alphadiana validate <config.yaml>` | Validate a config without running |
 | `alphadiana report <results_dir>` | Generate reports from saved results |
 | `alphadiana batch <config1> <config2> ...` | Run multiple experiments |
-| `alphadiana list-benchmarks` | List all registered benchmarks |
+| `alphadiana list-benchmarks` | List the diagnostic command's imported benchmark subset; see the website inventory for the full Runner set |
 
 Use `-o key=value` to override config values from the command line (e.g., `-o max_concurrent=4`).
 
@@ -458,9 +454,9 @@ AlphaDiana includes a web dashboard for launching, monitoring, and comparing eva
 
 ```bash
 pip install -e '.[dashboard]'
-cd alphadiana/dashboard/frontend
+cd alphadiana/analysis/dashboard/frontend
 npm install && npm run build
-cd ../../..
+cd ../../../..
 ```
 
 ### Start the dashboard
@@ -469,7 +465,7 @@ cd ../../..
 source scripts/rock_env.sh
 source scripts/.rock_ports.env
 
-cd alphadiana/dashboard
+cd alphadiana/analysis/dashboard
 ./run.sh
 ```
 

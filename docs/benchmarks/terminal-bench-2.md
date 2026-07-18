@@ -7,18 +7,19 @@ Use it for local AlphaDiana evaluation and smoke validation. It is not a claim o
 For the benchmark-plan `direct_llm` baseline, use the official
 `terminal-bench-2` repository and Harbor's built-in `terminus-2` agent. The
 April 19, 2026 OpenRouter/Qwen evidence for that official path is summarized
-below and in `context/qwen-openrouter-pilots/pilot-validation.md`.
+below.
 
 ## Current Support
 
-| Mode | Smoke config | Full-run config |
-|---|---|---|
-| `direct_llm` | `configs/examples/terminal_bench2_directllm_minimax.yaml` | `configs/full_runs/p25_full_terminal_bench2_directllm_minimax.yaml` |
-| `opencode` | `configs/examples/terminal_bench2_opencode_minimax.yaml` | `configs/full_runs/p25_full_terminal_bench2_opencode_minimax.yaml` |
-| `openclaw` | `configs/examples/terminal_bench2_openclaw_minimax.yaml` | `configs/full_runs/p25_full_terminal_bench2_openclaw_minimax.yaml` |
-| `zeroclaw` | `configs/examples/terminal_bench2_zeroclaw_minimax.yaml` | `configs/full_runs/p25_full_terminal_bench2_zeroclaw_minimax.yaml` |
+| Mode | Checked-in smoke config |
+|---|---|
+| `direct_llm` | `configs/examples/terminal_bench2_directllm_minimax.yaml` |
+| `opencode` | `configs/examples/terminal_bench2_opencode_minimax.yaml` |
+| `openclaw` | `configs/examples/terminal_bench2_openclaw_minimax.yaml` |
+| `zeroclaw` | `configs/examples/terminal_bench2_zeroclaw_minimax.yaml` |
 
-All three paths use the same local AlphaDiana `terminal_bench2` benchmark loader and scorer.
+All four paths use the same local AlphaDiana `terminal_bench2` benchmark loader and scorer.
+This checkout does not ship a Terminal-Bench 2 full-run config.
 
 ## Podman Task-Container Readiness
 
@@ -32,8 +33,6 @@ Entry points:
   `configs/smokes/podman_terminal_bench2/terminal_bench2_opencode_pilot.yaml`
 - Runner:
   `scripts/run_podman_terminal_bench2_readiness.sh`
-- Evidence:
-  `context/podman-terminal-bench2-readiness/README.md`
 
 Run shape:
 
@@ -243,9 +242,9 @@ official `direct_llm` path on OpenRouter/Qwen.
 
 The sections above are the AlphaDiana container-agent path. To run the
 *official/leaderboard* configuration instead (standalone Harbor CLI + the
-upstream `terminus-2` agent, orchestrated by `alphadiana.benchmark_rollout_cli`
-with backend `official_terminal_bench_2`), use the path below. Harbor owns the
-system prompt; `alphadiana/agent/terminal_bench2_docker.py` is not on this path.
+upstream `terminus-2` agent), use the path below. Harbor owns the system prompt;
+the AlphaDiana task-container harness at
+`alphadiana/benchmarks/terminal_bench2/harness/docker.py` is not on this path.
 
 vLLM endpoint (Qwen3.5-27B; the serve-side flags match the official spec):
 
@@ -272,16 +271,11 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 uv tool install harbor          # installs the `harbor` binary
 ```
 
-Run (manifest checked in at `configs/full_runs/terminal_bench_v2.yaml`):
+No official Terminal-Bench 2 campaign manifest is checked into this checkout.
+Use Harbor directly for that leaderboard path, or add and review a campaign
+manifest before invoking `alphadiana.benchmark_rollout_cli`.
 
-```bash
-python -m alphadiana.benchmark_rollout_cli summary     --manifest configs/full_runs/terminal_bench_v2.yaml
-python -m alphadiana.benchmark_rollout_cli preflight   --manifest configs/full_runs/terminal_bench_v2.yaml --probe-vllm --check-docker
-python -m alphadiana.benchmark_rollout_cli materialize --manifest configs/full_runs/terminal_bench_v2.yaml --output-dir generated/terminal_bench_v2
-bash generated/terminal_bench_v2/*.run.sh
-```
-
-The generated shell runs `harbor run --dataset terminal-bench@2.0 --agent
+The intended campaign command runs `harbor run --dataset terminal-bench@2.0 --agent
 terminus-2 --model openai/qwen3.5-27b ...` at `temperature=0.0`,
 `reasoning_effort=high`, `top_p=0.95`, `max_tokens=131072`, `--n-concurrent 10`
 (pass@1). Outputs land in `$DIRECTLLM_TB2_ROOT/jobs/<run_id>/`. Renderer and
@@ -537,23 +531,11 @@ It does not mean the agent is competitive across the full benchmark.
 
 ## Full Runs
 
-Validate the full-run configs first:
-
-```bash
-python -m alphadiana.cli validate configs/full_runs/p25_full_terminal_bench2_directllm_minimax.yaml
-python -m alphadiana.cli validate configs/full_runs/p25_full_terminal_bench2_opencode_minimax.yaml
-python -m alphadiana.cli validate configs/full_runs/p25_full_terminal_bench2_openclaw_minimax.yaml
-python -m alphadiana.cli validate configs/full_runs/p25_full_terminal_bench2_zeroclaw_minimax.yaml
-```
-
-Run them:
-
-```bash
-python -m alphadiana.cli run configs/full_runs/p25_full_terminal_bench2_directllm_minimax.yaml --redo-all
-python -m alphadiana.cli run configs/full_runs/p25_full_terminal_bench2_opencode_minimax.yaml --redo-all
-python -m alphadiana.cli run configs/full_runs/p25_full_terminal_bench2_openclaw_minimax.yaml --redo-all
-python -m alphadiana.cli run configs/full_runs/p25_full_terminal_bench2_zeroclaw_minimax.yaml --redo-all
-```
+There is no checked-in Terminal-Bench 2 full-run YAML. The example configs are
+bounded smoke entry points. For a full evaluation, create and review a dedicated
+config that points `benchmark.config.tasks_dir` at the complete task checkout
+and sets the intended task selection, runtime, timeouts, output directory, and
+concurrency.
 
 Recommended concurrency:
 
@@ -591,11 +573,8 @@ Smoke configs:
 - use `TERMINAL_BENCH2_SMOKE_DIR`
 - intentionally run one staged task
 
-Full-run configs:
-
-- live under `configs/full_runs/`
-- use `TERMINAL_BENCH2_DIR`
-- scan all task directories under that root
+A full-run config is not checked in. A project-specific full config should use
+`TERMINAL_BENCH2_DIR` and scan the intended task directories under that root.
 
 For the current checked-in smoke setup, the canonical staged task is `db-wal-recovery`.
 

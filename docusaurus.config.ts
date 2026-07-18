@@ -19,9 +19,7 @@ const config: Config = {
   projectName: 'AlphaDiana',
 
   onBrokenLinks: 'throw',
-  // Navbar "Results"/"Dashboard" link to homepage anchors; the navbar renders on
-  // every page, so per-page anchor checking false-positives. Ignore anchors only.
-  onBrokenAnchors: 'ignore',
+  onBrokenAnchors: 'throw',
 
   i18n: {
     defaultLocale: 'en',
@@ -41,7 +39,7 @@ const config: Config = {
               path: '',
             },
           },
-          editUrl: 'https://github.com/tmlr-group/AlphaDiana',
+          editUrl: 'https://github.com/AndrewZhou924/AlphaDiana-dev/edit/clean-website/',
         },
         blog: false,
         theme: {
@@ -69,8 +67,11 @@ const config: Config = {
       },
       items: [
         { to: '/docs/intro', label: 'Docs', position: 'left' },
-        { to: '/#results', label: 'Results', position: 'left' },
-        { to: '/#dashboard', label: 'Dashboard', position: 'left' },
+        // These anchors are rendered by homepage React components rather than
+        // Markdown headings. Canonical absolute URLs keep Markdown anchor
+        // validation strict without Docusaurus treating them as missing headings.
+        { href: 'https://alphadiana.org/#results', label: 'Results', position: 'left' },
+        { href: 'https://alphadiana.org/#dashboard', label: 'Dashboard', position: 'left' },
         { href: 'https://github.com/tmlr-group/AlphaDiana', label: 'GitHub', position: 'right' },
       ],
     },

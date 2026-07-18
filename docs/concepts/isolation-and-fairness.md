@@ -4,7 +4,7 @@ sidebar_position: 4
 
 # Isolation & Fairness
 
-AlphaDiana compares harnesses ([`direct_llm`](../harnesses/direct-llm), [`zeroclaw`](../harnesses/zeroclaw), [`opencode`](../harnesses/opencode), [`openclaw`](../harnesses/openclaw)) on the same benchmarks. For that comparison to be fair, every task must run in its own clean environment. If one task could leave files, processes, or state behind for the next task, accuracy numbers would reflect leakage rather than capability. AlphaDiana addresses this with **task-scoped sandbox runtimes** and a fail-closed switch that refuses to silently degrade isolation.
+AlphaDiana compares harnesses ([`direct_llm`](../harnesses/direct-llm), [`zeroclaw`](../harnesses/zeroclaw), [`opencode`](../harnesses/opencode), [`openclaw`](../harnesses/openclaw)) on the same benchmarks. For comparisons that permit tools or filesystem side effects, tasks should run in clean task-scoped environments. If one task could leave files, processes, or state behind for the next task, accuracy numbers would reflect leakage rather than capability. AlphaDiana provides task-scoped runtimes for supported harness paths and records the isolation mode that was actually realized.
 
 ## Why task-scoped isolation matters
 
@@ -34,7 +34,7 @@ It is accurate to say AlphaDiana uses task-scoped sandbox or container runtimes 
 
 ## How a run picks its isolation mode
 
-The `Runner` records the chosen mode in `run_metadata["isolation_mode"]` and mirrors it into the run manifest (`alphadiana/engine/runner.py:1225-1252`). The mode is derived from whether a sandbox was configured, auto-created, or predeployed as a pool.
+The `Runner` records the chosen mode in `run_metadata["isolation_mode"]` and mirrors it into the run manifest in `alphadiana/engine/runner.py`. The mode is derived from whether a sandbox was configured, auto-created, or predeployed as a pool.
 
 | `isolation_mode` | When it applies |
 |---|---|
@@ -44,14 +44,27 @@ The `Runner` records the chosen mode in `run_metadata["isolation_mode"]` and mir
 | `predeployed_pool` / `partial_predeploy` | A pool of ROCK sandboxes predeployed up front (gateway agents). |
 | `fresh_predeployed_pool` / `partial_fresh_predeployed_pool` | Self-healing pool that recreates sandboxes as tasks consume them. |
 
-`shared_gateway` is the only mode without per-task isolation. It exists as a fallback when no sandbox is configured and auto-create or predeploy is unavailable.
+`shared_gateway` does not establish per-task sandbox isolation. It can be the
+intentional mode for a harness that does not use ROCK, or a fallback when an
+OpenClaw ROCK auto-create/predeploy path is unavailable. The other labels
+describe how the runner obtained a sandbox or pool, but they are still runtime
+evidence rather than a formal security guarantee.
 
 ## `strict_isolation`: the fail-closed switch
 
-`strict_isolation` is a config-level boolean (`ExperimentConfig`, `alphadiana/engine/config/experiment_config.py:194`, default `False`). When `true`, any sandbox auto-create or predeploy failure becomes a hard `RuntimeError` instead of silently degrading to `shared_gateway` (`alphadiana/engine/runner.py:1017-1214`). This is the load-bearing knob for benchmark-fairness claims: it guarantees that a run either obtained real per-task isolation or aborted, rather than quietly producing numbers from a contaminated shared environment.
+`strict_isolation` is a config-level boolean (`ExperimentConfig`, default
+`false`). For harness paths that use ROCK sandbox auto-creation or gateway
+predeployment, `true` turns setup failures into hard errors instead of allowing
+OpenClaw to fall back to `shared_gateway`. ZeroClaw already rejects a failed ROCK
+auto-create even when this flag is false.
+
+The flag does **not** make every harness use a per-task sandbox. For example,
+`direct_llm` does not acquire a ROCK sandbox merely because this value is true.
+Always inspect `isolation_mode` in `results/<run_id>/run_manifest.json` before
+making an isolation claim about a run.
 
 ```yaml
-# Abort the run if task-scoped isolation cannot be established.
+# On ROCK auto-create/predeploy paths, abort instead of falling back.
 strict_isolation: true
 ```
 
@@ -59,7 +72,9 @@ strict_isolation: true
 |---|---|---|---|
 | `strict_isolation` | bool | `false` | `true` turns auto-create / predeploy failures into a hard error instead of falling back to `shared_gateway`. |
 
-Both `isolation_mode` and `strict_isolation` are written into `run_metadata` and the run manifest, so the realized isolation of any run is auditable after the fact from its result store.
+Both `isolation_mode` and `strict_isolation` are written into run metadata and
+the run manifest. Use those recorded values, together with the configured
+harness and sandbox backend, to audit the realized boundary.
 
 ## Per-benchmark isolation matrix
 
@@ -78,8 +93,8 @@ Both `isolation_mode` and `strict_isolation` are written into `run_metadata` and
 
 Beyond the runtime boundary, the engine adds defenses against state that escapes a single task:
 
-- **OpenClaw integrity guard.** Responses flagged as session-tainted, stream-incomplete, or carrying heartbeat taint text are rejected (`_openclaw_integrity_guard_reason`, `alphadiana/engine/runner.py:459-480`) and recorded as errors rather than scored, guarding against leaked cross-task state.
-- **Secret redaction.** Command, stdout, and stderr in sandbox metadata are scrubbed of credential assignments before persistence (`alphadiana/engine/runner.py:45-97`); the result store also redacts sensitive keys (`alphadiana/analysis/io/result_store.py`).
+- **OpenClaw integrity guard.** Responses flagged as session-tainted, stream-incomplete, or carrying heartbeat taint text are rejected by `_openclaw_integrity_guard_reason` in `alphadiana/engine/runner.py` and recorded as errors rather than scored, guarding against leaked cross-task state.
+- **Secret redaction.** Command, stdout, and stderr in sandbox metadata are scrubbed of credential assignments before persistence by the runner's redaction helpers; the result store also redacts sensitive keys (`alphadiana/analysis/io/result_store.py`).
 - **ROCK TTL safety net.** `auto_clear_seconds` (default 3600) is a server-side container TTL, so leaked or abandoned containers are eventually reclaimed by ROCK itself.
 
 ## Preserved runtime artifacts
