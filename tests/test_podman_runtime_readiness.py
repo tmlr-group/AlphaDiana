@@ -9,6 +9,11 @@ from pathlib import Path
 
 import pytest
 
+from alphadiana.engine.container_runtime.agent_runtime import (
+    PodmanAgentRuntime,
+    PodmanAgentSpec,
+)
+from alphadiana.engine.container_runtime.podman_cli import PodmanResult
 from alphadiana.engine.container_runtime.proxy_env import podman_proxy_env
 from alphadiana.harness.opencode.agent import OpenCodeAgent
 from alphadiana.harness.zeroclaw.runtime import ZeroClawPodmanRuntimeManager
@@ -101,3 +106,43 @@ def test_opencode_podman_preserves_remote_proxy_and_bypasses_provider():
 
     assert env["HTTPS_PROXY"] == "http://host.containers.internal:7890"
     assert "provider.example" in env["NO_PROXY"].split(",")
+
+
+class _FakePodmanRuntime:
+    def __init__(self):
+        self.run_kwargs = {}
+
+    def _run(self, *args, **kwargs):
+        return PodmanResult(("podman", "ps"), 0, "", "")
+
+    def run(self, image, **kwargs):
+        self.run_kwargs = {"image": image, **kwargs}
+        return PodmanResult(("podman", "run"), 0, "container-123\n", "")
+
+    def inspect(self, container_id, **kwargs):
+        payload = (
+            '[{"Image":"sha256:abc","ImageName":"localhost/test:latest",'
+            '"Config":{"Entrypoint":"/bin/sh","Cmd":["-c","sleep infinity"]}}]'
+        )
+        return PodmanResult(("podman", "inspect"), 0, payload, "")
+
+    def logs(self, container_id, **kwargs):
+        return PodmanResult(("podman", "logs"), 0, "", "")
+
+
+def test_agent_runtime_overrides_image_entrypoint_and_records_identity():
+    fake = _FakePodmanRuntime()
+    runtime = PodmanAgentRuntime(runtime=fake)
+    result = runtime.start(
+        PodmanAgentSpec(
+            adapter_name="test-podman",
+            image="localhost/test:latest",
+            run_command="",
+            exposed_port=None,
+        )
+    )
+
+    assert fake.run_kwargs["entrypoint"] == "/bin/sh"
+    assert fake.run_kwargs["command"] == ["-c", "sleep infinity"]
+    assert result.metadata["runtime_image_id"] == "sha256:abc"
+    assert result.metadata["runtime_entrypoint"] == "/bin/sh"
