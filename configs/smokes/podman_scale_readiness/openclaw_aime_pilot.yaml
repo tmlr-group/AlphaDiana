@@ -13,7 +13,7 @@ agent:
     OPENAI_MODEL_NAME: "${OPENAI_MODEL_NAME}"
     enable_thinking: true
     model: openclaw
-    gateway_token: "OPENCLAW"
+    gateway_token: "${OPENCLAW_GATEWAY_TOKEN}"
     request_timeout: 1200
     gateway_startup_timeout: 180
     gateway_warmup_enabled: false

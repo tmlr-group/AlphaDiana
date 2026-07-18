@@ -127,8 +127,8 @@ that already completed under the matching scorer:
 | `> 1` (e.g. AIME pass@4) | `completed_sample_ids` — per `(task_id, sample_index)` | `Runner.run()` |
 | `1` (e.g. GPQA pass@1) | `completed_task_ids` — per `task_id` | `Runner.run()` |
 
-Per-sample artifacts use the suffix `{task_id}.jsonl` for sample 0 and
-`{task_id}.sample_{N}.jsonl` for later samples. A scorer
+Logprob sidecars are stored as `logprobs/<task_id>/sample_0.jsonl`,
+`sample_1.jsonl`, and so on (with matching int16 sidecars when enabled). A scorer
 mismatch against the existing records is warned, so resuming with a different
 scorer does not silently mix results.
 

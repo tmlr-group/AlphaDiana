@@ -44,7 +44,7 @@ benchmark:
     dataset: "HuggingFaceH4/aime_2024"
     split: "train"
 
-sandbox: null            # null for direct_llm / self-managing CLI harnesses
+sandbox: null            # null for direct_llm / self-managed OpenCode paths
 
 scorer:
   name: numeric
@@ -74,9 +74,9 @@ These are the values the validator and registries accept. Unknown keys inside an
 | `scorer.name` | `numeric`, `math_verify`, `exact_match`, `llm_judge`, `swebench_pro`, `swe_bench`, `terminal_bench2`, `external_benchmark`, `imo_verify`, `external_benchmark_qjl`, `decodingtrust` |
 | `sandbox.name` | `null`, `local`, `rock`, `podman`, `swebench_container`, `decodingtrust` |
 
-`sandbox: null` is correct for `direct_llm` and for CLI harnesses
-([OpenCode](../harnesses/opencode), [ZeroClaw](../harnesses/zeroclaw)) that
-self-manage their own containers via `controller_mode`. ROCK-backed runs add a
+`sandbox: null` is correct for `direct_llm` and for OpenCode controller modes
+that self-manage their runtime. The generic ZeroClaw harness requires a live
+ROCK sandbox. ROCK-backed runs add a
 preflight that checks admin/proxy/redis reachability and port ownership before the
 run starts; non-ROCK runs skip it.
 
@@ -86,7 +86,7 @@ run starts; non-ROCK runs skip it.
 | --- | --- | --- |
 | `run_id` | auto | empty becomes `uuid.uuid4().hex[:12]`; any `/` is replaced with `_` |
 | `max_concurrent` | `1` | parallel task executions; validated to the range `1..64` |
-| `num_samples` | `1` | independent samples per task for pass@k (AIME uses 4, GPQA always 1) |
+| `num_samples` | `1` | independent samples per task for pass@k; choose and report it as part of the protocol |
 | `output_dir` | `./results` | where result files and the run report land |
 | `task_retries` | `0` | per-task retry budget (must be `>= 0`); the `from_yaml` path defaults to `0` when the key is absent, though the dataclass default is `1` |
 | `strict_report`, `strict_isolation` | `false` | stricter reporting / isolation gates |
@@ -108,11 +108,11 @@ to the harness. Common LLM fields:
 | --- | --- | --- |
 | `model` / `model_name` | env | `model` for `direct_llm`/`zeroclaw`, `model_name` for `opencode` |
 | `api_base`, `api_key` | env | filled from `OPENAI_BASE_URL` / `OPENAI_API_KEY` when blank |
-| `temperature`, `top_p` | `0.7` | `direct_llm` defaults `temperature` to `0.7` when absent |
+| `temperature`, `top_p` | harness | DirectLLM/OpenClaw default temperature to `0.7`; ZeroClaw uses `0.0`; omitted `top_p` uses the provider default |
 | `max_tokens` / `max_completion_tokens` | none | output length cap |
-| `request_timeout` | `600` | per-request HTTP timeout (seconds) |
-| `stream` | `true` | stream responses when the backend supports it |
-| `capture_logprobs` | `true` | with `top_logprobs` (20) and `logprobs_format` (`int16`) |
+| `request_timeout` / `timeout` | harness | DirectLLM 600s, OpenClaw 1800s, ZeroClaw 1200s; OpenCode uses `timeout` |
+| `stream` / `streaming` | harness | DirectLLM/OpenClaw default on; ZeroClaw CLI is downstream non-streaming; OpenCode is optional |
+| `capture_logprobs` | `false` unless enabled | support and sidecar format depend on the harness path |
 | `enable_thinking`, `extra_body` | none | reasoning controls; see below |
 
 When the LLM fields are blank, `_apply_agent_env_defaults` fills them from
@@ -122,8 +122,8 @@ When the LLM fields are blank, `_apply_agent_env_defaults` fills them from
 
 :::caution api_key sentinel
 The validator treats `None`, `""`, and the literal string `EMPTY`
-(case-insensitive) as missing. For a local vLLM endpoint use `api_key: "EMPTY"` or
-`"sk-EMPTY"`. Any non-literal-`EMPTY` string passes; literal `EMPTY` fails
+(case-insensitive) as missing. For a local vLLM endpoint use `api_key: "sk-EMPTY"`
+or another non-empty placeholder. Literal `EMPTY` fails
 validation.
 :::
 

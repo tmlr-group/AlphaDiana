@@ -64,7 +64,7 @@ const macroFindings = [
   {
     tag: 'Model',
     title: 'Harnessing is not model-agnostic',
-    body: 'The same harness layer can degrade Qwen3.5-27B, benefit Gemma-4-31B-IT, and produce mixed outcomes for Kimi-K2.6. Scores should be read as properties of model-harness-task triples.',
+    body: 'The draft manuscript reports different harness effects across Qwen3.5-27B, Gemma-4-31B-IT, and Kimi-K2.6. Scores should be read as properties of model-harness-task triples.',
   },
   {
     tag: 'Task',
@@ -105,7 +105,7 @@ const microFindings = [
   {
     tag: 'Tool',
     title: 'Tool access is harness-conditioned',
-    body: 'Stripping the tool registry hurts ZeroClaw in most reference cells but improves OpenCode in most reference cells. Tool exposure is not a universal upgrade.',
+    body: 'The draft ablations report different tool-condition effects across ZeroClaw and OpenCode. Tool filtering also changes prompt conditions, so this is not a pure one-variable causal estimate.',
   },
   {
     tag: 'Skill',
@@ -114,8 +114,8 @@ const microFindings = [
   },
   {
     tag: 'Memory',
-    title: 'Memory changes sign by harness',
-    body: 'On Qwen3.5 AIME 26, memory helps OpenCode across scopes, but hurts OpenClaw and ZeroClaw as stored notes accumulate.',
+    title: 'Memory behavior is harness-specific',
+    body: 'Memory comparisons must name the persistence boundary and complete prompt/runtime condition. The current checkout ships only one Cross-Task memory config.',
   },
 ];
 
@@ -150,24 +150,31 @@ const microFigures = [
 const installCommand = `git clone https://github.com/tmlr-group/AlphaDiana
 cd AlphaDiana
 
-# One-click setup: conda env, dependencies, services
+# Required by the security preflight in the current release
+export OPENCLAW_GATEWAY_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+
+# Checkout-local conda env, dependencies, and services
 bash scripts/quickstart.sh`;
 
 const runCommand = `# Activate the environment once per terminal
 source scripts/activate.sh
 
-# Validate the AIME 2026 OpenCode configuration
-alphadiana validate configs/micro_runs/Tool/aime2026_opencode_qwen35_27b.yaml
+# Point DirectLLM at an OpenAI-compatible provider
+export OPENAI_MODEL="your-model"
+export OPENAI_API_BASE="https://your-provider.example/v1"
+export OPENAI_API_KEY="your-provider-key"
 
-# Run a one-problem, one-sample AIME 2026 OpenCode smoke evaluation
-alphadiana run configs/micro_runs/Tool/aime2026_opencode_qwen35_27b.yaml \\
-  -o run_id=quickstart_aime2026_opencode_t1_k1 \\
+# Validate and run a one-task GPQA DirectLLM smoke
+alphadiana validate configs/examples/direct_llm_gpqa_diamond.yaml \\
+  -o benchmark.config.max_tasks=1
+alphadiana run configs/examples/direct_llm_gpqa_diamond.yaml \\
+  -o run_id=quickstart_gpqa_directllm_t1_k1 \\
   -o benchmark.config.max_tasks=1 \\
   -o num_samples=1 \\
   -o max_concurrent=1
 
 # Generate a report from the smoke run
-alphadiana report results/quickstart_aime2026_opencode_t1_k1`;
+alphadiana report results`;
 
 export default function Home(): ReactNode {
   return (
@@ -261,9 +268,9 @@ export default function Home(): ReactNode {
               <p className={styles.kicker}>Micro Findings</p>
               <h2>Capability ablations explain the shifts</h2>
               <p className={styles.flowLead}>
-                The micro study holds the model, benchmark, and harness fixed, then toggles one harness capability at
-                a time. Tools, skills, and memory each have non-monotonic effects; the sign depends on the harness and
-                on how the model uses the exposed interface.
+                The micro study compares matched harness conditions for tools, skills, and memory. A condition may
+                include both prompt and runtime changes, so interpret each delta as a bundle rather than an isolated
+                causal effect.
               </p>
               <div className={styles.findingsGrid}>
                 {microFindings.map((f) => (
@@ -311,11 +318,11 @@ export default function Home(): ReactNode {
           <section className={styles.quickstartSection}>
             <div className={styles.quickstartContent}>
               <p className={styles.kicker}>Quick Start</p>
-              <h2>Run an AIME 2026 OpenCode evaluation</h2>
+              <h2>Run a GPQA DirectLLM smoke evaluation</h2>
               <p className={styles.flowLead}>
-                The command below runs <code>configs/micro_runs/Tool/aime2026_opencode_qwen35_27b.yaml</code>:
-                an OpenCode harness evaluation on AIME 2026, downscaled to one problem and one sample for a smoke
-                check. See the{' '}
+                The command below uses <code>configs/examples/direct_llm_gpqa_diamond.yaml</code>, the
+                sandbox-free baseline from the Quick Start guide, downscaled to one problem and one sample. Replace
+                the provider placeholders before running it. See the{' '}
                 <Link to="/docs/getting-started/installation">getting-started guide</Link> for setup details.
               </p>
               <div className={styles.installGrid}>

@@ -115,7 +115,8 @@ benchmark:
   config:
     dataset: MathArena/aime_2026
     split: train
-    num_samples: 4
+
+num_samples: 4        # top-level runner setting
 ```
 
 ### Common `benchmark.config` keys
@@ -151,9 +152,10 @@ dependency; it reads tasks off disk and needs `tasks_dir` or the
 
 ## Smoke vs full convention
 
-Configs under `configs/examples/` are smoke/debug configs. They intentionally
-pin one task with `dataset_index` or `max_tasks` and should not be used for full
-benchmark runs.
+Configs under `configs/examples/` are examples and starting points; they are not
+uniformly bounded. Inspect `dataset_index`, `dataset_indices`, `max_tasks`, or
+benchmark-specific selectors before running one. If none is present, the config
+can load the full selected split and make many real provider requests.
 
 > Smoke-test success means the evaluation path loads tasks, invokes the selected
 > agent mode, and writes scored results. It does not mean the model answered
@@ -213,7 +215,8 @@ and special-case `"frozen"` to suppress the post-task memory store. See
 
 Scored results are written by `ResultStore`
 (`alphadiana/analysis/io/result_store.py`): one redacted JSON record per
-`(task_id, sample_index)` appended to `{run_id}.jsonl`, plus per-task JSON,
+`(task_id, sample_index)` appended to `{run_id}.jsonl`, plus per-task JSON sample
+lists (even when `num_samples=1`),
 artifacts, and logprob sidecars under `{run_id}/`. See
 [Scoring & Results](../architecture/scoring-and-results) and the per-benchmark pages
 for reading and reporting on a run.

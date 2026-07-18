@@ -357,9 +357,10 @@ Fixes:
   sliced split such as `train[16:17]` with a config that already sets
   `max_tasks`, and do not set both `dataset_index` and `max_tasks` at once.
 
-The `configs/examples/` configs intentionally pin one task via `dataset_index`
-or `max_tasks` for smoke testing. Do not use them for full benchmark runs;
-the full entry points live under `configs/full_runs/`.
+`configs/examples/` is mixed: some files pin a small smoke, while others load a
+full selected split. Inspect the selectors before launch and add a bounded
+override for a smoke. `configs/full_runs/swe_verified_mini.yaml` is a rollout
+campaign manifest, not a generic `alphadiana run` config.
 
 ## Quick checklist
 

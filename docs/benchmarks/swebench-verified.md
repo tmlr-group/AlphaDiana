@@ -130,11 +130,13 @@ GitHub.
 
 Per-task results land under `results/<run_id>/`:
 
-- `tasks/<task_id>.json` is the scored record (a non-`-` `dashboard` letter means
-  the pipeline ran).
+- `tasks/<task_id>.json` is a JSON list of sample records, even when
+  `num_samples=1` (a non-`-` `dashboard` letter in the selected row means the
+  pipeline ran).
 - `logs/swebench_container/` and `swe_bench_logs/` hold build and evaluation logs.
 - the official evaluator output (`report.json`, `run_instance.log`,
   `test_output.txt`) is attached as task artifacts.
 
-A smoke run is healthy when `results/<run_id>/tasks/<task_id>.json` exists, the
-record has no `error`, and the `dashboard` letter is `O` or `X` (not `-`).
+A smoke run is healthy when `results/<run_id>/tasks/<task_id>.json` exists and
+the relevant sample row (`data[0]` for a single-sample run) has no `error` and a
+`dashboard` letter of `O` or `X` (not `-`).

@@ -64,11 +64,15 @@ directly from the JSONL result store, without re-running any tasks.
 ### `batch`
 
 ```bash
-alphadiana batch configs/examples/direct_llm.yaml configs/examples/direct_llm_gpqa_diamond.yaml
-alphadiana batch configs/examples/direct_llm.yaml configs/examples/direct_llm_gpqa_diamond.yaml --parallel
+alphadiana batch configs/examples/direct_llm.yaml configs/examples/direct_llm_gpqa_diamond.yaml \
+  -o benchmark.config.max_tasks=1 -o num_samples=1
+alphadiana batch configs/examples/direct_llm.yaml configs/examples/direct_llm_gpqa_diamond.yaml \
+  --parallel -o benchmark.config.max_tasks=1 -o num_samples=1
 ```
 
-The `BatchRunner` (`alphadiana/engine/batch_runner.py`) runs each config with its own
+These commands make real provider requests but bound each input to one task.
+Without the overrides, both configs load their full selected split. The
+`BatchRunner` (`alphadiana/engine/batch_runner.py`) runs each config with its own
 `Runner` and `setup`/`run`/`teardown` lifecycle. Sequential mode isolates failures (a failed
 config yields `None` and the others continue); `--parallel` uses a `ThreadPoolExecutor`.
 
@@ -140,8 +144,11 @@ By default `run` resumes from the checkpoint: any task with an existing valid-sc
 is skipped. `--redo-all` sets `overrides['redo_all'] = True`, which bypasses the checkpoint
 and re-runs every `(task, sample_index)` work item. Checkpoint state lives in the result
 JSONL itself, not a separate file: completion means a record whose
-`infer_score_status` is `valid_scored`. Error, timeout, and no-answer records are
-intentionally **not** complete, so a plain re-run retries exactly those.
+`infer_score_status` is `valid_scored`. Current supported harness timeouts are
+scored-zero `valid_scored` samples and count as complete; explicit legacy
+timeout records are normalized the same way on load. Non-timeout provider or
+runtime errors, context overflow, taint, and unresolved no-answer rows remain
+incomplete and are retried.
 
 ## `run_id` conventions
 
@@ -157,7 +164,7 @@ results/
   my-run/
     run_manifest.json              # expected counts, task ids, config metadata
     artifacts/<task_id>/           # per-task artifacts
-    tasks/<task_id>.json           # mirrored per-task record
+    tasks/<task_id>.json           # JSON list of sample records, even when num_samples=1
     lifecycle/                     # per-item lifecycle event logs
     status/                        # dashboard.txt and status files
 ```
@@ -174,15 +181,10 @@ the cartesian expansion `[(task, si) for task in tasks for si in range(num_sampl
 metrics are computed: with `num_samples > 1` the report exposes Pass@k (fraction of tasks
 with at least one correct sample) and Avg@k (mean per-task correct fraction).
 
-Standing conventions for the headline benchmarks:
-
-| Benchmark | `num_samples` | Metric |
-|-----------|---------------|--------|
-| AIME | `4` | pass@4 / avg@4 |
-| GPQA | `1` | pass@1 |
-
-GPQA is **always** pass@1 (`num_samples: 1`); never run it at pass@4. AIME uses
-`num_samples: 4`. Checkpoint resume keys off `completed_sample_ids` when `num_samples > 1`
+There is no validator-enforced benchmark-specific sample count. AIME and GPQA
+may both use one or multiple samples; choose the protocol before the run, keep
+it fixed across compared cells, and label the resulting pass@k/avg@k.
+Checkpoint resume keys off `completed_sample_ids` when `num_samples > 1`
 and `completed_task_ids` when `num_samples == 1`.
 
 ## Minimal config shape

@@ -96,9 +96,9 @@ agent:
 benchmark:
   name: gpqa_diamond
   config: {}
-sandbox: null             # null for direct_llm / self-managed CLI harnesses; else {name, config}
+sandbox: null             # null for direct_llm / self-managed OpenCode paths; else {name, config}
 scorer:
-  name: math_verify       # numeric | math_verify | exact_match | llm_judge | ...
+  name: exact_match       # GPQA is multiple-choice; other benchmarks require their matching scorer
   config: {}
 max_concurrent: 1
 num_samples: 1

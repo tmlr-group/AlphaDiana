@@ -4,7 +4,7 @@ sidebar_position: 4
 
 # OpenClaw
 
-The generic `openclaw` harness normally calls an OpenClaw gateway through an OpenAI-compatible chat-completions endpoint. AlphaDiana makes one gateway request per solve, while the gateway internally runs OpenClaw's multi-turn orchestration, tool use, and context compaction. Calling the gateway is therefore not the same as bypassing the OpenClaw agent loop.
+The generic `openclaw` harness normally calls an OpenClaw gateway through an OpenAI-compatible chat-completions endpoint. AlphaDiana makes one consolidated gateway request per attempt; a solve may retry up to `max_attempts` (default 5). The gateway internally runs OpenClaw's multi-turn orchestration, tool use, and context compaction, so calling it is not the same as bypassing the OpenClaw agent loop.
 
 The harness also has an opt-in local-agent memory path and a DecodingTrust-specific CLI backend.
 

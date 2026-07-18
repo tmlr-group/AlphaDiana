@@ -106,7 +106,7 @@ three connection fields (`OPENAI_MODEL_NAME`, `OPENAI_BASE_URL`,
 | `max_tokens` | auto | if unset, GETs `{api_base}/models`, uses `max_model_len - 8192` (fallback `131072`) |
 | `request_timeout` | `600` | per-request seconds |
 | `stream` | `True` | |
-| `stream_total_timeout` | — | on hit, `answer=None`, `finish_reason="timeout"` |
+| `stream_total_timeout` | defaults to `request_timeout` (600 seconds); `0`/`None` disables | on hit, `answer=None`, `finish_reason="timeout"` |
 | `max_retries` | `3` | exponential backoff with jitter |
 | `system_prompt` | boxed-answer prompt | |
 | `enable_thinking` | — | |

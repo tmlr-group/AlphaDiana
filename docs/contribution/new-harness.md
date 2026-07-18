@@ -67,12 +67,13 @@ return an `AgentResponse`.
 
 ## 2. Return an `AgentResponse`
 
-`AgentResponse` is a `@dataclass` in `alphadiana/harness/base.py`. Only one field feeds
-scoring; the rest are for observability and post-hoc analysis.
+`AgentResponse` is a `@dataclass` in `alphadiana/harness/base.py`. General answer
+scorers grade `answer`, but benchmark-specific scorers may also consume response
+metadata or artifacts. Check every target scorer before defining the contract.
 
 | Field | Type | Purpose |
 |---|---|---|
-| `answer` | `Any` | **Scored.** The extracted answer the scorer grades. `None` marks a failed/timed-out attempt. |
+| `answer` | `Any` | Extracted answer used by general answer scorers. `None` marks a failed/timed-out attempt. |
 | `trajectory` | `list[dict]` | Per-step record of the run. |
 | `raw_output` | `str` | Full model/CLI output. |
 | `token_usage` | `dict` | Prompt/completion token counts. |
@@ -85,8 +86,9 @@ The dataclass also carries extended observability fields absorbed from `codex-de
 `response_json`, `sandbox_id`, `gateway_url`, `artifact_manifest`,
 `gateway_log_excerpt`, `workspace_snapshot_paths`, `workspace_file_contents`,
 `sandbox_metadata`, `system_prompt`, and `finish_reason`. Populate whatever your
-harness can produce; none of them affect the score, but they make a run
-auditable. Set `answer = None` and record a reason in `metadata` (for example
+harness can produce; they make a run auditable, and scorer-specific fields can
+affect scoring. For example, external_benchmark consumes artifact and runtime metadata.
+Set `answer = None` and record a reason in `metadata` (for example
 `failure_reason`) when a run cannot produce a gradable answer.
 
 ## 3. Register the class

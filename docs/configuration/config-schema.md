@@ -36,8 +36,8 @@ output_dir: ./results          # default ./results
 metadata: {}                   # free-form tags
 ```
 
-`sandbox: null` is used for `direct_llm` and for CLI-agent harnesses that self-manage their
-own containers (`opencode` / `zeroclaw` with a controller mode).
+`sandbox: null` is used for `direct_llm` and for OpenCode controller modes that
+self-manage their runtime. The generic ZeroClaw harness requires a live sandbox.
 
 ## Top-level fields
 
@@ -48,7 +48,7 @@ These map one-to-one onto `ExperimentConfig` in
 |---|---|---|---|
 | `run_id` | string | `uuid4().hex[:12]` | Empty value auto-fills a UUID; `ExperimentConfig.__post_init__()` replaces any `/` with `_`. |
 | `agent.name` | string | required | e.g. `direct_llm`, `openclaw`, `opencode`, `zeroclaw`, `swebench_docker`. |
-| `agent.version` | string | required | Pinned tag or `"latest"`. |
+| `agent.version` | string | required | Version label containing at least one digit, such as `"1.0"` or `"0.6.9"`; `"latest"` is rejected. |
 | `agent.config` | dict | `{}` | Open pass-through to the harness (see below). |
 | `benchmark.name` | string | required | e.g. `aime`, `gpqa_diamond`, `hle`, `mmmu_pro`, `terminal_bench2`, `swe_bench`. |
 | `benchmark.config` | dict | `{}` | `split`, `year`, `subset`, `data_path`, etc. |
@@ -66,9 +66,10 @@ These map one-to-one onto `ExperimentConfig` in
 | `strict_isolation` | bool | `false` | For ROCK auto-create/predeploy paths, turn setup failures into hard errors instead of shared-gateway fallback. |
 | `metadata` | dict | `{}` | Free-form tags (`author`, `gpu`, `notes`, ...). |
 
-:::tip GPQA / AIME sample counts
-GPQA is always `num_samples: 1` (pass@1). AIME uses `num_samples: 4` (pass@4). This is a
-hard convention, not a tunable.
+:::tip Sample counts are protocol choices
+`num_samples` is a top-level run setting, not a benchmark-loader setting. The
+validator accepts any positive value for GPQA or AIME. Record the chosen value
+and keep it fixed across cells being compared.
 :::
 
 ## The four blocks
@@ -76,20 +77,20 @@ hard convention, not a tunable.
 ### agent.config
 
 `agent.config` is an open dict. The validator enforces only a small required core; unknown
-keys are passed straight through to the harness. Common LLM fields (used by
-`direct_llm` and the agentic harnesses):
+keys are passed straight through to the harness. Common LLM fields have
+harness-specific defaults:
 
 | Key | Default | Notes |
 |---|---|---|
 | `model` / `model_name` | env-filled | Model id; `direct_llm`/`zeroclaw` use `model`, `opencode` uses `model_name`. |
 | `api_base` | env-filled | OpenAI-compatible base URL. |
-| `api_key` | env-filled | Use `EMPTY` / `sk-EMPTY` for local vLLM (literal `EMPTY` is rejected). |
-| `temperature` | `0.7` (direct_llm) | Sampling temperature. |
+| `api_key` | env-filled | Use `sk-EMPTY` or another non-empty placeholder for keyless local vLLM. |
+| `temperature` | harness-specific | DirectLLM/OpenClaw use `0.7`, ZeroClaw uses `0.0`, and OpenCode leaves it to the provider when omitted. |
 | `max_tokens` / `max_completion_tokens` | harness | Output budget. |
-| `request_timeout` | `600` | HTTP timeout in seconds. |
-| `stream` | `true` | Stream from the backend. |
+| `request_timeout` / `timeout` | harness-specific | DirectLLM 600s, OpenClaw 1800s, ZeroClaw 1200s; OpenCode uses `timeout` (1200s in the generic agent). |
+| `stream` / `streaming` | harness-specific | DirectLLM/OpenClaw default on; ZeroClaw's stock CLI consumes non-streaming JSON; OpenCode is optional. |
 | `enable_thinking` | `None` | Reasoning toggle (see note below). |
-| `capture_logprobs` | `true` | Emit logprob sidecars; `top_logprobs: 20`, `logprobs_format: int16`. |
+| `capture_logprobs` | `false` unless enabled | Emit logprob sidecars when the selected harness transport supports capture. |
 | `system_prompt` | harness | Optional system-prompt text. |
 
 Harness-specific keys (e.g. `controller_mode`, `tools_profile`, `persistent_memory`,
@@ -173,8 +174,8 @@ export OPENAI_MODEL_NAME=Qwen/Qwen3.5-27B
 
 :::note The `EMPTY` sentinel
 `ConfigValidator._has_nonempty_value()` treats `None`, `""`, `EMPTY` (case-insensitive),
-and a lone `$VAR` / `${VAR}` placeholder as **not populated**. For local vLLM, set
-`api_key: "EMPTY"` or `"sk-EMPTY"` — any non-literal-`EMPTY` string passes.
+and a lone `$VAR` / `${VAR}` placeholder as **not populated**. For local vLLM,
+use `api_key: "sk-EMPTY"` or another non-empty placeholder.
 :::
 
 ## CLI overrides
@@ -213,7 +214,7 @@ contract params.
 alphadiana validate config.yaml      # prints "Config is valid." or lists errors and exits 1
 alphadiana run config.yaml           # run (resumes from checkpoint by default)
 alphadiana run config.yaml --redo-all
-alphadiana report ./results/<run_id> # regenerate the markdown report
+alphadiana report ./results          # scan root JSONL files and regenerate reports
 alphadiana batch c1.yaml c2.yaml --parallel
 alphadiana env                       # ROCK service + port-ownership health
 ```

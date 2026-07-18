@@ -85,7 +85,7 @@ pip install vllm
 
 CUDA_VISIBLE_DEVICES=0 python -m vllm.entrypoints.openai.api_server \
     --model /path/to/Qwen3-8B \
-    --host 0.0.0.0 \
+    --host 127.0.0.1 \
     --port 8000 \
     --trust-remote-code
 ```
@@ -287,5 +287,5 @@ alphadiana report results/
 - [Quickstart](./quick-start) — run your first evaluation end to end.
 - [direct_llm](../harnesses/direct-llm) — single-turn baseline, no sandbox.
 - [openclaw](../harnesses/openclaw) — ROCK-sandboxed agent harness.
-- [zeroclaw](../harnesses/zeroclaw) — local CLI or ROCK auto-deploy modes.
+- [zeroclaw](../harnesses/zeroclaw) — sandbox/container execution and ROCK auto-deploy modes.
 - [opencode](../harnesses/opencode) — host or Docker controller modes.

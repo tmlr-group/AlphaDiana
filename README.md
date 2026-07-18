@@ -19,7 +19,7 @@ With AlphaDiana, you can:
 - evaluate **OpenClaw-style reasoning agents**
 - compare against a **direct LLM baseline**
 - run evaluations with **sandboxed execution**
-- benchmark on **AIME, MATH, and custom datasets**
+- benchmark on **AIME, GPQA, HLE, MMMU-Pro, software tasks, and custom datasets**
 - record and inspect **full execution traces**
 - launch and compare runs through both **CLI and dashboard**
 
@@ -35,7 +35,7 @@ Typical questions AlphaDiana helps answer:
 - **OpenClaw support** for multi-turn reasoning with tool use and code execution  
 - **ROCK sandbox integration** for safe, isolated execution  
 - **Direct LLM baseline** for clean agent-vs-model comparison  
-- **Built-in benchmarks** including AIME, MATH, and custom tasks  
+- **Built-in benchmarks** including AIME, GPQA, HLE, MMMU-Pro, and custom tasks
 - **Full trace logging** for debugging, inspection, and analysis  
 - **Web dashboard** for launching, monitoring, and comparing runs  
 - **Automatic sandbox management** with configurable concurrency
@@ -98,13 +98,13 @@ Run this **once per terminal** before using AlphaDiana. It handles conda activat
 source scripts/activate.sh
 ```
 
-### 4. Check that everything is working
+### 4. Check optional ROCK services
 
 ```bash
 alphadiana env
 ```
 
-All four checks should pass:
+If you ran the full quickstart and plan to use ROCK, all four checks should pass:
 
 ```
   ✓ admin
@@ -116,19 +116,16 @@ All four checks should pass:
 ### 5. Run your first evaluation
 
 ```bash
-alphadiana validate configs/test_openclaw_quick.yaml
-alphadiana run configs/test_openclaw_quick.yaml
+alphadiana validate configs/examples/direct_llm.yaml \
+  -o benchmark.config.max_tasks=1
+alphadiana run configs/examples/direct_llm.yaml \
+  -o run_id=quickstart_aime_directllm_t1_k1 \
+  -o benchmark.config.max_tasks=1 \
+  -o num_samples=1
 ```
 
-Expected output:
-
-```
-Pre-flight passed: admin ✓  proxy ✓  redis ✓
-...
-Run completed: test-openclaw-quick
-  Accuracy:   1.0000
-  Tasks:      1/1 completed
-```
+This DirectLLM path does not require ROCK. A successful provider call writes one
+scored task record; the accuracy depends on the model response and is not fixed.
 
 ### 6. Generate a report
 
@@ -136,11 +133,13 @@ Run completed: test-openclaw-quick
 alphadiana report results/
 ```
 
-For a full walkthrough, see [`docs/getting_started.md`](docs/getting_started.md).
-For the process and runbook index, see [`docs/README.md`](docs/README.md).
-For opt-in Podman experiments, see [`docs/benchmarks/podman.md`](docs/benchmarks/podman.md).
-For manual setup and troubleshooting, see [`docs/setup_detail.md`](docs/setup_detail.md).
-For ZeroClaw on the standard AIME path, see [`docs/tutorial_zeroclaw_aime2026.md`](docs/tutorial_zeroclaw_aime2026.md).
+For a full walkthrough, see [Getting Started](docs/getting-started/quick-start.md).
+For the documentation entry point, see [Welcome to AlphaDiana](docs/intro.md).
+For Podman-backed paths, start from the matching page under [Benchmarks](docs/benchmarks/index.md).
+For manual setup and recovery, see [Installation](docs/getting-started/installation.md)
+and [Troubleshooting](docs/getting-started/troubleshooting.md).
+For ZeroClaw, see the [harness guide](docs/harnesses/zeroclaw.md) and
+[AIME benchmark page](docs/benchmarks/aime.md).
 For external_benchmark GPU-kernel benchmarking, see [`external_benchmark/docs/README.md`](external_benchmark/docs/README.md).
 
 ## Configuration
@@ -159,7 +158,9 @@ run_id: "openclaw-qwen3-8b-aime2024-001"
 
 agent:
   name: openclaw
+  version: "1.0"
   config:
+    gateway_token: "${OPENCLAW_GATEWAY_TOKEN}"
     rock_image: "tmlrgroup/alphadiana:v1"
     rock_agent_config_path: "alphadiana/harness/openclaw/deploy/rock_agent_config.prebuilt.yaml"
     openclaw_config_path: "alphadiana/harness/openclaw/deploy/openclaw.json"
@@ -191,7 +192,8 @@ Ready-to-run examples are provided in [`configs/examples/`](configs/examples/).
 The recommended starting point is the **single-sandbox** configuration. In this mode, AlphaDiana automatically creates a ROCK sandbox, runs the evaluation, and removes the sandbox afterward.
 
 ```bash
-alphadiana run configs/examples/openclaw_aime2024.yaml
+alphadiana run configs/examples/openclaw_aime2024.yaml \
+  -o benchmark.config.max_tasks=1 -o num_samples=1
 ```
 
 This configuration uses one sandbox by default with `4g` memory and `1` CPU.
@@ -228,17 +230,16 @@ alphadiana run configs/examples/zeroclaw_aime2026.yaml
 `source scripts/rock_env.sh` before `alphadiana run` so the example YAML
 resolves the local ROCK URLs correctly.
 
-For copy-paste commands, see
-[`docs/zeroclaw_aime2026_runbook.md`](docs/zeroclaw_aime2026_runbook.md).
-For config details, architecture notes, and the validated smoke run, see
-[`docs/tutorial_zeroclaw_aime2026.md`](docs/tutorial_zeroclaw_aime2026.md).
+For current prerequisites, runtime behavior, and copy-paste commands, see the
+[ZeroClaw harness guide](docs/harnesses/zeroclaw.md).
 
 ### Run a direct LLM baseline
 
 You can also evaluate a model directly without agent orchestration:
 
 ```bash
-alphadiana run configs/examples/direct_llm.yaml
+alphadiana run configs/examples/direct_llm.yaml \
+  -o benchmark.config.max_tasks=1 -o num_samples=1
 ```
 
 This is useful for establishing a clean baseline before measuring the effect of an agent framework.
@@ -252,7 +253,7 @@ The bundled example reuses the `.env` values loaded by `source scripts/activate.
 If you want a different endpoint just for this baseline, override `model`, `api_base`, and
 `api_key` directly in `configs/examples/direct_llm.yaml`.
 
-See [`docs/getting_started.md`](docs/getting_started.md) for a complete example.
+See [Quick Start](docs/getting-started/quick-start.md) for a complete example.
 
 ### Run a custom problem set
 
@@ -263,6 +264,7 @@ run_id: "my-custom-run"
 
 agent:
   name: openclaw
+  version: "1.0"
   config:
     # ... same agent config as above
 
@@ -272,7 +274,7 @@ benchmark:
     problems:
       - id: "problem_1"
         problem: "Find the number of ordered pairs (x,y) of positive integers satisfying x + y = 100 and x * y is divisible by 6."
-        answer: "117"
+        answer: "32"
       - id: "problem_2"
         problem: "What is the sum of all prime numbers less than 20?"
         answer: "77"
@@ -286,7 +288,10 @@ max_concurrent: 1
 output_dir: "./results"
 ```
 
-Any supported agent and scorer can be used with the `custom` benchmark.
+Registered harnesses can use `custom`, but choose a general answer scorer such
+as `numeric`, `exact_match`, `math_verify`, or `llm_judge`. Benchmark-specific
+scorers such as SWE-bench, Terminal-Bench 2, and external_benchmark require their own task
+metadata and artifacts.
 
 ## CLI Reference
 
@@ -327,25 +332,17 @@ results/<run_id>.jsonl
    └── dashboard visualization
 ```
 
-## Results
+## Results and analysis
 
-We evaluate agentic reasoning on **AIME 2024, 2025, and 2026** using two backbone models: **Qwen2.5-14B-Instruct** and **GLM-5**. Each configuration is compared under a direct LLM baseline and the OpenClaw agent, with **avg@32** and **pass@32** as evaluation metrics (32 samples per problem).
+AlphaDiana treats a score as a property of the model, harness, task, scorer,
+environment, and budget together. The website's Results section presents the
+current paper table and process-analysis figures; saved runs can be regenerated
+with `alphadiana report <results_dir>`.
 
-**Qwen2.5-14B-Instruct**
-
-| Benchmark | Avg@32 (Base) | Avg@32 (OpenClaw) | Pass@32 (Base) | Pass@32 (OpenClaw) |
-|-----------|--------------|-------------------|---------------|-------------------|
-| AIME 2024 | 0.1521 | 0.1271 | 0.4333 | 0.4000 |
-| AIME 2025 | 0.1229 | 0.1469 | 0.4000 | 0.4333 |
-| AIME 2026 | 0.1115 | 0.1250 | 0.4333 | 0.4333 |
-
-**GLM-5**
-
-| Benchmark | Avg@32 (Base) | Avg@32 (OpenClaw) | Pass@32 (Base) | Pass@32 (OpenClaw) |
-|-----------|--------------|-------------------|---------------|-------------------|
-| AIME 2024 | 0.9000 | 0.8300 | 0.9330 | 1.0000 |
-| AIME 2025 | 0.6300 | 0.7600 | 0.9300 | 1.0000 |
-| AIME 2026 | 0.5719 | 0.3896 | 0.9000 | 0.9667 |
+When reviewing a result, start from `score_status`, scorer identity, expected
+sample count, and the recorded `isolation_mode`. Report Pass@k and Avg@k with
+the configured `num_samples`; do not compare rows whose runtime or evaluation
+contracts differ.
 
 ## Project Structure
 
@@ -353,32 +350,24 @@ We evaluate agentic reasoning on **AIME 2024, 2025, and 2026** using two backbon
 AlphaDiana/
 ├── alphadiana/                   # Core package
 │   ├── cli.py                    # CLI entry point
-│   ├── agent/                    # Agent implementations
-│   │   ├── direct_llm.py         #   Direct LLM baseline (single-turn)
-│   │   └── openclaw.py           #   OpenClaw agent (multi-turn + tools)
-│   ├── benchmark/                # Benchmark loaders
-│   │   ├── aime.py               #   AIME competition math
-│   │   └── custom.py             #   User-defined inline problems
+│   ├── analysis/                 # Result storage, reporting, dashboard
+│   ├── benchmarks/               # Benchmark loaders and task adapters
+│   ├── engine/                   # Runner, config, dispatch, sandboxes
+│   ├── harness/                  # DirectLLM, OpenClaw, OpenCode, ZeroClaw
 │   ├── scorer/                   # Answer scorers
-│   │   ├── numeric.py            #   Numeric comparison
-│   │   ├── exact_match.py        #   Exact string match
-│   │   ├── math_verify_scorer.py #   Math-aware verification
-│   │   └── llm_judge.py          #   LLM-as-judge
-│   ├── runner/                   # Orchestration
-│   ├── sandbox/                  # Sandbox backends (ROCK, local, etc.)
-│   ├── results/                  # Result storage and reporting
-│   ├── config/                   # Config parsing and validation
-│   └── dashboard/                # Web UI (FastAPI + React)
-├── configs/examples/             # Ready-made experiment configs
-├── alphadiana/harness/openclaw/deploy/              # OpenClaw deployment configs
+│   └── utils/                    # Shared runtime helpers
+├── configs/                      # Examples, smokes, and full-run manifests
 ├── scripts/                      # Setup and utility scripts
-├── docs/                         # Documentation
+├── docs/                         # Docusaurus documentation source
+├── src/                          # Documentation website components/pages
 └── tests/                        # Test suite
 ```
 
 ## Security Guard
 
-AlphaDiana ships with a security daemon (`scripts/security_guard.py`) that prevents misconfigured services from starting and continuously monitors for active attacks at runtime.
+AlphaDiana ships with a security guard (`scripts/security_guard.py`). Launch
+scripts run its preflight before starting services; continuous monitoring is
+available only when the daemon mode is started explicitly.
 
 ### What it checks
 
@@ -386,7 +375,7 @@ AlphaDiana ships with a security daemon (`scripts/security_guard.py`) that preve
 |---|---|
 | **Redis** | No password, `protected-mode` off, bound to `0.0.0.0`, active SLAVEOF/Rogue-Master attack |
 | **Docker containers** | Any Redis container with ports exposed to the public network |
-| **OpenClaw gateway** | Default weak token (`"OPENCLAW"`), token in config files |
+| **OpenClaw gateway** | Missing or known weak `OPENCLAW_GATEWAY_TOKEN` in the environment; legacy config locations when present |
 | **ROCK Admin / Proxy** | Listening on a public interface instead of `127.0.0.1` |
 | **Sandbox containers** | OpenClaw sandbox ports mapped directly to the host |
 | **Dashboard backend** | FastAPI running with `--host 0.0.0.0` without authentication |
@@ -399,7 +388,9 @@ AlphaDiana ships with a security daemon (`scripts/security_guard.py`) that preve
 python3 scripts/security_guard.py --check
 ```
 
-This is already integrated into `scripts/start_openclaw.sh` and runs automatically before services start.
+This preflight is integrated into `scripts/quickstart.sh`,
+`scripts/setup_alphadiana_rock.sh`, `scripts/start_openclaw.sh`, and
+`scripts/start_zeroclaw.sh`.
 
 **Continuous monitoring daemon** — checks every 10 seconds and auto-remediates SLAVEOF attacks:
 
@@ -428,7 +419,7 @@ SECURITY_GUARD_BYPASS=1 python3 scripts/security_guard.py --check
 | Redis has no password | `redis-cli -p <port> CONFIG SET requirepass 'strong-password'` |
 | `protected-mode` off | `redis-cli -p <port> CONFIG SET protected-mode yes` |
 | Redis bound to `0.0.0.0` | Restart container with `-p 127.0.0.1:<port>:6379` |
-| Weak OpenClaw token | Edit `OPENCLAW_GATEWAY_TOKEN` in `alphadiana/harness/openclaw/deploy/rock_agent_config.yaml` |
+| Weak OpenClaw token | Export a strong random `OPENCLAW_GATEWAY_TOKEN` before running a launcher |
 | ROCK services on public interface | Set `ROCK_BIND_HOST=127.0.0.1` before starting |
 
 ## Dashboard
@@ -477,16 +468,19 @@ For production mode:
 
 If the default port is already in use, `run.sh` automatically switches to the next available port.
 
-For detailed instructions, see [`docs/dashboard.md`](docs/dashboard.md).
+For result and proxy internals, see
+[Observability & Proxies](docs/architecture/observability.md).
 
 ## Documentation
 
 | Document | Description |
 |---|---|
-| [`docs/README.md`](docs/README.md) | Top-level docs index for setup guides, benchmark runbooks, and related context entry points |
-| [`docs/getting_started.md`](docs/getting_started.md) | End-to-end tutorial for a first evaluation run |
-| [`docs/setup_detail.md`](docs/setup_detail.md) | Manual setup, troubleshooting, and shared-host ROCK isolation notes |
-| [`docs/dashboard.md`](docs/dashboard.md) | Dashboard usage guide |
+| [Welcome](docs/intro.md) | Documentation entry point and concept map |
+| [Getting Started](docs/getting-started/index.md) | Installation, first run, and troubleshooting |
+| [Architecture](docs/architecture/index.md) | Runner, registries, sandboxes, scoring, and observability |
+| [Harnesses](docs/harnesses/index.md) | DirectLLM, OpenClaw, OpenCode, and ZeroClaw behavior |
+| [Benchmarks](docs/benchmarks/index.md) | Supported benchmark loaders and runbooks |
+| [Configuration](docs/configuration/index.md) | YAML schema and CLI override semantics |
 
 ## Acknowledgements
 

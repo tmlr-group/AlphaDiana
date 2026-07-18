@@ -35,7 +35,8 @@ override before `imo_answerbench` could load at all.
 | `openclaw` | smoke config available | `configs/examples/openclaw_minimax_imo_answerbench.yaml` |
 | `zeroclaw` | smoke config available | `configs/examples/zeroclaw_imo_answerbench.yaml` |
 
-The corresponding smoke configs remain under `configs/examples/` and pin `dataset_index: 367`, `max_tasks: 1`.
+The DirectLLM, OpenCode, and OpenClaw configs pin `dataset_index: 367`. The
+ZeroClaw config uses only `max_tasks: 1`, so it selects the first eligible row.
 
 Additional April 18/19, 2026 pilot configs are also checked in:
 
@@ -174,7 +175,7 @@ by default. If you need the old host-process path for debugging, override
 
 The smoke config uses `timeout: 1800` because shorter bounds can kill valid
 slow model output before it reaches scoring. The full Docker setup and
-reproduction guide live in `docs/opencode-docker-isolation.md`.
+reproduction guidance is in the [OpenCode harness guide](../harnesses/opencode).
 
 ## OpenClaw
 
@@ -243,7 +244,7 @@ Expected result:
 
 - dashboard: `X`
 - task file exists under `results/zeroclaw_imo_answerbench_smoke/<run_id>/tasks/`
-- task JSON has no `error`
+- `data[0]` in the single-sample task JSON list has no `error`
 - the recorded task uses the dataset row's `Problem ID` (for example,
   `imo-bench-number_theory-068`); if that field is missing, the loader falls
   back to `imo_0`
@@ -256,7 +257,8 @@ Observed local verification on 2026-04-17:
 
 ## Smoke Selection
 
-The checked-in minimax smoke configs pin `dataset_index: 367` and `max_tasks: 1` so the run stays deterministic and bounded.
+The DirectLLM, OpenCode, and OpenClaw minimax configs pin row 367; the ZeroClaw
+config is bounded to one task with `max_tasks: 1` but does not pin that row.
 
 No IMO-AnswerBench full-run file is checked in; create and validate one before scaling.
 

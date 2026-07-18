@@ -46,7 +46,8 @@ Config: `configs/examples/direct_llm_gpqa_diamond.yaml`
 
 ```bash
 python -m alphadiana.cli validate configs/examples/direct_llm_gpqa_diamond.yaml
-python -m alphadiana.cli run configs/examples/direct_llm_gpqa_diamond.yaml
+python -m alphadiana.cli run configs/examples/direct_llm_gpqa_diamond.yaml \
+  -o benchmark.config.max_tasks=1 -o num_samples=1
 ```
 
 ## OpenClaw
@@ -60,7 +61,8 @@ that warmup could contaminate the first question's default session.
 
 ```bash
 python -m alphadiana.cli validate configs/examples/openclaw_gpqa_diamond.yaml
-python -m alphadiana.cli run configs/examples/openclaw_gpqa_diamond.yaml
+python -m alphadiana.cli run configs/examples/openclaw_gpqa_diamond.yaml \
+  -o benchmark.config.max_tasks=1 -o num_samples=1
 ```
 
 ## OpenCode
@@ -69,7 +71,8 @@ Config: `configs/examples/opencode_gpqa_diamond.yaml`
 
 ```bash
 python -m alphadiana.cli validate configs/examples/opencode_gpqa_diamond.yaml
-python -m alphadiana.cli run configs/examples/opencode_gpqa_diamond.yaml
+python -m alphadiana.cli run configs/examples/opencode_gpqa_diamond.yaml \
+  -o benchmark.config.max_tasks=1 -o num_samples=1
 ```
 
 The checked-in OpenCode benchmark config now uses Docker controller isolation by

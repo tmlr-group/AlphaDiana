@@ -110,7 +110,7 @@ export default function Scoreboard() {
         <p className={styles.kicker}>Tournament Results</p>
         <h2 className={styles.heading}>Same harness, opposite outcomes</h2>
         <p className={styles.subhead}>
-          AlphaDiana compares the <strong>Direct</strong> no-harness baseline with open harnesses under matched
+          The manuscript table compares the <strong>Direct</strong> no-harness baseline with open harnesses under matched
           tasks, scorers, sandboxes, and budgets. Harnessing is <strong>not</strong> a uniform upgrade: it lifts Gemma,
           sinks Qwen3.5, and produces mixed behavior on Kimi-K2.6. <span className={styles.legendPos}>Green</span>{' '}
           means the harness beat Direct;{' '}
@@ -170,8 +170,9 @@ export default function Scoreboard() {
         </div>
 
         <p className={styles.footnote}>
-          Values are percentages (higher is better); deltas are absolute differences vs. Direct. Selected rows from
-          AlphaDiana paper, Table 1.
+          Values are percentages (higher is better); deltas are absolute differences vs. Direct. These are selected
+          rows from the draft manuscript table, not current repository support evidence. Raw task-level artifacts are
+          not included in this checkout; cite exact values only with the corresponding archived runs.
         </p>
       </div>
     </section>
