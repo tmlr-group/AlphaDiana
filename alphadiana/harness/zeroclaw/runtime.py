@@ -676,7 +676,13 @@ class ZeroClawPodmanRuntimeManager(ZeroClawRuntimeManager):
             env["OPENAI_API_KEY"] = self._logprob_proxy_api_key
             env["OPENROUTER_API_KEY"] = self._logprob_proxy_api_key
             env["ZEROCLAW_PROVIDER"] = _resolve_zeroclaw_provider("", proxy_api_base)
-        env.update(podman_proxy_env(os.environ, host_alias=self._podman_host_ip))
+        env.update(
+            podman_proxy_env(
+                os.environ,
+                host_alias=self._podman_host_ip,
+                no_proxy_hosts=[self._resolve_logprob_proxy_advertise_host()],
+            )
+        )
         last_request_dir = f"{self._artifact_root.rstrip('/')}/last_request"
         artifact_paths = [self._bridge_log_path]
         artifact_paths.extend(path for path, _ in self._last_request_artifact_paths(last_request_dir))

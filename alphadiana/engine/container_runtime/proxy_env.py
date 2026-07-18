@@ -42,8 +42,9 @@ def podman_proxy_env(
             env[key] = _rewrite_loopback_proxy(raw_value, host_alias=host_alias)
         else:
             env[key] = raw_value
-    if no_proxy_hosts:
-        _append_no_proxy_hosts(env, no_proxy_hosts)
+    bypass_hosts = [host_alias, "localhost", "127.0.0.1", "::1"]
+    bypass_hosts.extend(no_proxy_hosts or ())
+    _append_no_proxy_hosts(env, bypass_hosts)
     return env
 
 
@@ -75,12 +76,15 @@ def _append_no_proxy_hosts(env: dict[str, str], hosts: Sequence[str]) -> None:
     if not normalized_hosts:
         return
 
-    existing_keys = [key for key in ("NO_PROXY", "no_proxy") if env.get(key)]
-    if not existing_keys:
-        existing_keys = ["NO_PROXY"]
-    for key in existing_keys:
-        entries = [part.strip() for part in str(env.get(key, "") or "").split(",") if part.strip()]
-        for host in normalized_hosts:
-            if host not in entries:
-                entries.append(host)
-        env[key] = ",".join(entries)
+    entries: list[str] = []
+    for key in ("NO_PROXY", "no_proxy"):
+        for part in str(env.get(key, "") or "").split(","):
+            value = part.strip()
+            if value and value not in entries:
+                entries.append(value)
+    for host in normalized_hosts:
+        if host not in entries:
+            entries.append(host)
+    joined = ",".join(entries)
+    env["NO_PROXY"] = joined
+    env["no_proxy"] = joined

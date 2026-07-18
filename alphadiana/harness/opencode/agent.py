@@ -15,6 +15,7 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from alphadiana.harness.proxies.logprob_capture import (
     apply_openai_logprob_request,
@@ -32,7 +33,13 @@ from alphadiana.harness.proxies.preservation import (
 )
 from alphadiana.harness.registry import AgentRegistry
 from alphadiana.benchmarks.base import BenchmarkTask
-from alphadiana.engine.container_runtime import PodmanAgentRuntime, PodmanAgentSpec, PodmanCLI, PodmanError
+from alphadiana.engine.container_runtime import (
+    PodmanAgentRuntime,
+    PodmanAgentSpec,
+    PodmanCLI,
+    PodmanError,
+    podman_proxy_env,
+)
 from alphadiana.utils.attachments import iter_binary_attachments, write_attachments
 from alphadiana.utils.math_answer import extract_answer_candidate, extract_boxed
 
@@ -1208,6 +1215,19 @@ class OpenCodeAgent(Agent):
         except Exception as exc:
             logger.warning("opencode freeze: restore failed: %s", exc)
 
+    def _podman_controller_proxy_env(self, source: dict[str, str]) -> dict[str, str]:
+        host_alias = (
+            "127.0.0.1"
+            if self._controller_network.strip().lower() == "host"
+            else str(self._config.get("podman_host_ip", "host.containers.internal"))
+        )
+        provider_host = urlsplit(str(source.get("OPENAI_BASE_URL", ""))).hostname or ""
+        return podman_proxy_env(
+            source,
+            host_alias=host_alias,
+            no_proxy_hosts=[provider_host],
+        )
+
     def _run_in_podman(
         self,
         cmd: list[str],
@@ -1217,6 +1237,7 @@ class OpenCodeAgent(Agent):
         """Run opencode inside a Podman controller container."""
         container_home = Path(workdir) / ".controller-home"
         container_home.mkdir(parents=True, exist_ok=True)
+        proxy_env = self._podman_controller_proxy_env(env)
         self._last_controller_metadata = {
             "container_engine": "podman",
             "controller_mode": "podman",
@@ -1246,7 +1267,7 @@ class OpenCodeAgent(Agent):
                 run_command="",
                 exposed_port=None,
                 workdir=workdir,
-                env={"HOME": str(container_home)},
+                env={"HOME": str(container_home), **proxy_env},
                 network=self._controller_network,
                 request_timeout=float(self._timeout),
                 startup_timeout=min(max(float(self._timeout), 30.0), 120.0),
@@ -1274,6 +1295,7 @@ class OpenCodeAgent(Agent):
             for key in ("OPENAI_API_KEY", "OPENAI_BASE_URL", "XDG_CONFIG_HOME"):
                 if key in env:
                     exec_env[key] = env[key]
+            exec_env.update(proxy_env)
             exec_result = agent_runtime.exec(
                 ["node", "/usr/lib/node_modules/opencode-ai/bin/opencode", *cmd[1:]],
                 env=exec_env,
@@ -1563,13 +1585,16 @@ class OpenCodeAgent(Agent):
             # Newer opencode builds suffix the sqlite filename by build channel;
             # pin to plain opencode.db so every container opens the same file.
             env["OPENCODE_DISABLE_CHANNEL_DB"] = "1"
-            for var in (
+            removable_proxy_vars = (
                 "ALL_PROXY",
                 "HTTP_PROXY",
                 "HTTPS_PROXY",
                 "all_proxy",
                 "http_proxy",
                 "https_proxy",
+            )
+            for var in (
+                *(() if self._controller_mode == "podman" else removable_proxy_vars),
                 "OPENAI_MODEL_NAME",
             ):
                 env.pop(var, None)
