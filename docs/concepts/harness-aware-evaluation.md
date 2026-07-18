@@ -25,6 +25,13 @@ A run is the product of three independent choices:
 - the **model endpoint** (an OpenAI-compatible base URL + model name),
 - the **harness** (an `Agent`) selected by `agent.name`.
 
+The endpoint is a logical evaluation input, but its config key is not uniform
+across transports. `direct_llm`, OpenCode, and ZeroClaw use `api_base` as the
+provider endpoint. OpenClaw uses lowercase `api_base` for an already-running
+**agent gateway**; its runtime provider endpoint is configured separately as
+`OPENAI_BASE_URL` / `openai_base_url` inside `agent.config`. See
+[Provider endpoints and agent gateways](../getting-started/installation#provider-endpoints-and-agent-gateways).
+
 Every harness implements the same contract: the `Agent` abstract base class in
 [`alphadiana/harness/base.py`](../architecture/). It defines
 `setup(config: dict)`, `solve(task: BenchmarkTask, sandbox=None) -> AgentResponse`,
@@ -35,7 +42,7 @@ harnesses is a one-line config edit, and the resulting accuracy gap is
 attributable to the scaffold rather than to plumbing differences.
 
 Every harness returns the same shape, the `AgentResponse` dataclass
-(`base.py:12`). Beyond the core fields (`answer`, `trajectory`, `raw_output`,
+(`AgentResponse` in `alphadiana/harness/base.py`). Beyond the core fields (`answer`, `trajectory`, `raw_output`,
 `token_usage`, `token_entropy_stats`, `wall_time_sec`, `metadata`) it carries
 extended observability fields such as `reasoning_trajectory`, `request_messages`,
 `response_json`, `system_prompt`, `finish_reason`, and `artifact_manifest`, so
@@ -54,7 +61,7 @@ in `agent.name`:
 
 | `agent.name` | Harness | Scaffold |
 | --- | --- | --- |
-| `direct_llm` | [Direct LLM](#the-directllm-baseline) | none (single-turn chat) |
+| `direct_llm` | [Direct LLM](#the-direct_llm-baseline) | none (single-turn chat) |
 | `opencode` | [OpenCode](../harnesses/opencode) | `opencode` CLI, multi-turn + tools |
 | `openclaw` | [OpenClaw](../harnesses/openclaw) | OpenClaw gateway + ROCK sandbox |
 | `zeroclaw` | [ZeroClaw](../harnesses/zeroclaw) | ZeroClaw agent loop |

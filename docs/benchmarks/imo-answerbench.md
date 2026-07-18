@@ -30,10 +30,10 @@ override before `imo_answerbench` could load at all.
 
 | Mode | Status | Config |
 |---|---|---|
-| `direct_llm` | supported | `configs/full_runs/p25_full_directllm_minimax_imo_answerbench.yaml` |
-| `opencode` | supported | `configs/full_runs/p25_full_opencode_minimax_imo_answerbench.yaml` |
-| `openclaw` | supported | `configs/full_runs/p25_full_openclaw_minimax_imo_answerbench.yaml` |
-| `zeroclaw` | supported | `configs/full_runs/p25_full_zeroclaw_minimax_imo_answerbench.yaml` |
+| `direct_llm` | smoke config available | `configs/examples/directllm_minimax_imo_answerbench.yaml` |
+| `opencode` | smoke config available | `configs/examples/opencode_minimax_imo_answerbench.yaml` |
+| `openclaw` | smoke config available | `configs/examples/openclaw_minimax_imo_answerbench.yaml` |
+| `zeroclaw` | smoke config available | `configs/examples/zeroclaw_imo_answerbench.yaml` |
 
 The corresponding smoke configs remain under `configs/examples/` and pin `dataset_index: 367`, `max_tasks: 1`.
 
@@ -50,19 +50,10 @@ The dedicated `opencode` pilot config intentionally omits the smoke
 
 ## Full Runs
 
-```bash
-python -m alphadiana.cli run configs/full_runs/p25_full_directllm_minimax_imo_answerbench.yaml --redo-all
-python -m alphadiana.cli run configs/full_runs/p25_full_opencode_minimax_imo_answerbench.yaml --redo-all
-python -m alphadiana.cli run configs/full_runs/p25_full_openclaw_minimax_imo_answerbench.yaml --redo-all
-python -m alphadiana.cli run configs/full_runs/p25_full_zeroclaw_minimax_imo_answerbench.yaml --redo-all
-```
-
-For the local-vLLM `Qwen/Qwen3.5-27B` path when you need per-token logprobs,
-use:
-
-```bash
-python -m alphadiana.cli run configs/full_runs/phase9_directllm_qwen35_27b_imo_answerbench_logprobs.yaml --redo-all
-```
+This checkout does not ship IMO-AnswerBench full-run configs. Start from the
+appropriate checked-in smoke or Qwen pilot config, remove the bounded task
+selector, and review the model, output, timeout, and concurrency contract before
+a full evaluation. Keep `scorer.name: imo_verify`.
 
 Current OpenRouter free-text follow-up on April 22, 2026 uses
 `nvidia/nemotron-3-nano-30b-a3b:free`.
@@ -110,7 +101,7 @@ export HF_ENDPOINT=https://hf-mirror.com
 export QWEN_VLLM_API_BASE=http://127.0.0.1:8011/v1
 export QWEN_VLLM_API_KEY=EMPTY
 
-python -m alphadiana.cli run configs/full_runs/p25_full_directllm_minimax_imo_answerbench.yaml \
+python -m alphadiana.cli run configs/examples/directllm_minimax_imo_answerbench.yaml \
   -o run_id=full_20260422_imo_answerbench_direct_llm_qwen35_27b_localvllm_mc20_r1 \
   -o output_dir=./results/full_20260422_imo_answerbench_direct_llm_qwen35_27b_localvllm_mc20_r1 \
   -o max_concurrent=20 \
@@ -123,20 +114,18 @@ python -m alphadiana.cli run configs/full_runs/p25_full_directllm_minimax_imo_an
   -o agent.config.stream=true
 ```
 
-This command intentionally differs from the checked-in rollout manifest only on
-`max_concurrent`: the local follow-up kept the user-requested `20`, while the
-manifest template for this path still defaults to `10`.
+This command scales a bounded smoke config with overrides. Review and remove its
+task-selection limit before treating it as a full evaluation.
 
-On current main, `direct_llm` captures logprobs by default. The dedicated
-`phase9_directllm_qwen35_27b_imo_answerbench_logprobs.yaml` config is still the
-preferred local-vLLM Qwen path because it checks in the intended model/api-base
-contract and `max_concurrent: 10` for the heavier logprob run.
+On current main, `direct_llm` captures logprobs by default. For a local-vLLM
+Qwen pilot, use
+`configs/examples/directllm_qwen35_27b_imo_answerbench_pilot.yaml`.
 
 ## OpenCode
 
 OpenCode runs the `opencode` CLI. The checked-in minimax smoke config includes
 OpenCode-specific external agent settings (`agent: lean-math` and
-`agent_md_path: context/opencode_lean_math.md`) in addition to
+`agent_md_path: alphadiana/context/opencode_lean_math.md`) in addition to
 `agent.config.system_prompt`. When comparing harness prompts or running local
 Qwen logprob smoke without that external agent layer, override both fields to
 empty strings.
@@ -145,7 +134,7 @@ Build the controller image once before using the checked-in OpenCode configs:
 
 ```bash
 docker build --network host \
-  -f docker/terminal_bench2/Dockerfile.opencode-controller \
+  -f alphadiana/benchmarks/terminal_bench2/deploy/dockerfiles/Dockerfile.opencode-controller \
   -t alphadiana/tb2-opencode-controller:latest .
 ```
 
@@ -255,7 +244,9 @@ Expected result:
 - dashboard: `X`
 - task file exists under `results/zeroclaw_imo_answerbench_smoke/<run_id>/tasks/`
 - task JSON has no `error`
-- the recorded task is `imo_answerbench_0`
+- the recorded task uses the dataset row's `Problem ID` (for example,
+  `imo-bench-number_theory-068`); if that field is missing, the loader falls
+  back to `imo_0`
 
 Observed local verification on 2026-04-17:
 
@@ -267,7 +258,7 @@ Observed local verification on 2026-04-17:
 
 The checked-in minimax smoke configs pin `dataset_index: 367` and `max_tasks: 1` so the run stays deterministic and bounded.
 
-Use the `configs/full_runs/` files for full evaluations.
+No IMO-AnswerBench full-run file is checked in; create and validate one before scaling.
 
 ## Qwen/OpenRouter 3-Task Pilot
 
@@ -294,10 +285,10 @@ Observed on April 18/19/20, 2026:
 
 - `direct_llm`: `3/3` task records written, all `score=1`
 - `openclaw`: not rollout-ready yet
-  - `imo_answerbench_0`: `score=1`
-  - `imo_answerbench_1`: task completed on the April 19 checkpoint rerun, but
+  - the first selected dataset `Problem ID`: `score=1`
+  - the second selected dataset `Problem ID`: task completed on the April 19 checkpoint rerun, but
     the current scorer marked a symbolic mismatch as `score=1`
-  - `imo_answerbench_2`: `score=0` with `partial_reasoning_only=true`; the
+  - the third selected dataset `Problem ID`: `score=0` with `partial_reasoning_only=true`; the
     partial reasoning trace was preserved and is treated as a normal sample
   - the path remains blocked on scorer correctness, not on benchmark completion
 - `opencode`:
@@ -336,4 +327,4 @@ Local follow-up on April 20, 2026:
   `pilot_run/pilot_20260420_qwen35_27b_imo_answerbench_zeroclaw_t3_repair_r3/`
 
 Reviewer-facing evidence for this pilot lives in
-`context/qwen-openrouter-pilots/`.
+the recorded run IDs above.

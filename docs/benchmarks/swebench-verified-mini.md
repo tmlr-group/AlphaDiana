@@ -245,6 +245,5 @@ which time out the single-shot uploader.
 - Renderer: `alphadiana/utils/rollout_campaign.py::_render_official_swebench_verified_command`
 - Dispatch: `alphadiana/utils/rollout_campaign.py::render_run_command`
 - CLI: `alphadiana/benchmark_rollout_cli.py`
-- Tests: `tests/test_rollout_campaign_swe_verified_and_tb2.py`
 - SWE-agent upstream: https://github.com/SWE-agent/SWE-agent
 - SWE-bench harness: https://github.com/SWE-bench/SWE-bench

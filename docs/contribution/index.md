@@ -16,9 +16,9 @@ class-level `_registry: dict[str, Type[...]]`:
 
 | Component | Registry | Base class | Selected by config key |
 | --- | --- | --- | --- |
-| Benchmark | `BenchmarkRegistry` (`alphadiana/benchmarks/registry.py:10`) | `Benchmark` (`alphadiana/benchmarks/base.py:90`) | `benchmark.name` |
-| Harness / agent | `AgentRegistry` (`alphadiana/harness/registry.py:10`) | `Agent` (`alphadiana/harness/base.py:39`) | `agent.name` |
-| Scorer | `ScorerRegistry` (`alphadiana/scorer/registry.py:10`) | `Scorer` (`alphadiana/scorer/base.py:22`) | `scorer.name` |
+| Benchmark | `BenchmarkRegistry` (`alphadiana/benchmarks/registry.py`) | `Benchmark` (`alphadiana/benchmarks/base.py`) | `benchmark.name` |
+| Harness / agent | `AgentRegistry` (`alphadiana/harness/registry.py`) | `Agent` (`alphadiana/harness/base.py`) | `agent.name` |
+| Scorer | `ScorerRegistry` (`alphadiana/scorer/registry.py`) | `Scorer` (`alphadiana/scorer/base.py`) | `scorer.name` |
 
 Each registry exposes the same classmethod API:
 
@@ -30,8 +30,8 @@ Each registry exposes the same classmethod API:
 The key thing to understand is that **registration is not auto-discovery**. A
 class is only registered when its module is imported and the module-level
 `register(...)` call (or `@register_*` decorator) actually runs. The runner
-forces this by explicitly importing every component module at setup time, with
-`# noqa: F401`, purely for the side effect (`alphadiana/engine/runner.py:562-600`):
+forces this by explicitly importing every component module in `Runner.setup()`,
+with `# noqa: F401`, purely for the side effect:
 
 ```python
 # benchmarks
@@ -57,12 +57,12 @@ your module, plus an import line in `runner.py` so it fires. The runner then
 resolves your config keys against the registries during `setup()`:
 `BenchmarkRegistry.get(self.config.benchmark_name)`,
 `AgentRegistry.get(self.config.agent_name)`, and
-`ScorerRegistry.get(self.config.scorer_name)` (`runner.py:604-620`).
+`ScorerRegistry.get(self.config.scorer_name)`.
 
 ## Add a benchmark
 
 A benchmark turns a dataset into a list of `BenchmarkTask` objects. The
-`BenchmarkTask` dataclass (`benchmarks/base.py:27`) has `task_id`, `problem`,
+`BenchmarkTask` dataclass in `alphadiana/benchmarks/base.py` has `task_id`, `problem`,
 `ground_truth`, `metadata`, and `attachments` (for multimodal inputs).
 
 Subclass `Benchmark` and implement `load_tasks(config)`. The optional
@@ -90,8 +90,7 @@ BenchmarkRegistry.register("my_bench", MyBenchmark)
 ```
 
 The built-in benchmarks call `BenchmarkRegistry.register(...)` directly at the
-bottom of the module (e.g. `benchmarks/aime/benchmark.py:153`,
-`benchmarks/gpqa/benchmark.py:154`); a `register_benchmark(name)` decorator also
+bottom of each implementation module; a `register_benchmark(name)` decorator also
 exists in `registry.py`. For network datasets, prefer
 `load_dataset_with_retry(...)` from `benchmarks/base.py`, which handles HF hub
 rate limits and read-only cache errors. See [Adding a Benchmark](./new-benchmark)
@@ -124,7 +123,7 @@ AgentRegistry.register("my_agent", MyAgent)
 
 The runner drives one instance per run: it sets `agent.version`, calls
 `setup(config)` once, then `solve(task, sandbox)` per task
-(`runner.py:609-611`). A `sandbox` is passed only for harnesses that need one.
+in `Runner.run()`. A `sandbox` is passed only for harnesses that need one.
 
 For the full `AgentResponse` field reference, the `direct_llm` baseline,
 logprob-capture proxies, and the per-harness internals, start at the
@@ -137,7 +136,7 @@ bundles a harness can mount into its sandbox are covered in
 ## Add a scorer
 
 A scorer grades an `AgentResponse` against a `BenchmarkTask` and returns a
-`ScoreResult` (`scorer/base.py:10`) with `correct`, `score`, `expected`,
+`ScoreResult` in `alphadiana/scorer/base.py` with `correct`, `score`, `expected`,
 `predicted`, `rationale`, and `metadata`. Subclass `Scorer`, expose a `name`
 property, and implement `score(task, response)`; override `setup(config)` if you
 need configuration.
@@ -163,8 +162,7 @@ class MyScorer(Scorer):
 ```
 
 The built-in scorers (`exact_match`, `numeric`, `llm_judge`, `math_verify`) all
-use this decorator (`scorer/exact_match.py:28`, `scorer/numeric.py:12`,
-`scorer/llm_judge.py:42`, `scorer/math_verify_scorer.py:53`). Select your scorer
+use this decorator in their implementation modules. Select your scorer
 from config:
 
 ```yaml
@@ -174,7 +172,7 @@ scorer:
 ```
 
 The runner reads `scorer.name` into `scorer_name` and resolves it with
-`ScorerRegistry.get(...)` (`runner.py:620`). `scorer.name` is always required:
+`ScorerRegistry.get(...)`. `scorer.name` is always required:
 if it is omitted, `scorer_name` becomes `""` and `ScorerRegistry.get("")` raises
 (the config validator also rejects an empty `scorer_name`). A benchmark's
 `default_scorer()` is **not** consulted as a fallback; it is a convention/hint
@@ -183,7 +181,7 @@ only, with zero callers in the runtime path.
 ## Don't forget the import line
 
 Whichever component you add, register the class **and** add its `# noqa: F401`
-import to the matching block in `alphadiana/engine/runner.py` (benchmarks
-`:562-571`, agents `:574-583`, scorers `:592-600`). Without that import line the
+import to the matching block in `Runner.setup()` in
+`alphadiana/engine/runner.py`. Without that import line the
 module never loads, the `register(...)` call never runs, and `get(name)` raises
 `KeyError` listing only the components that were imported.

@@ -100,9 +100,9 @@ same across all three harnesses; the remaining keys are harness-specific.
 | `memory_embedding.{base_url, model, dimensions, search_mode}` | ZeroClaw | Vector recall; omit `base_url` to fall back to FTS-only |
 | `memory_lancedb.{api_key, model, base_url, dimensions, db_path, auto_capture, auto_recall}` | OpenClaw | Flat keys in one dict: embedding endpoint (api_key, model, base_url, dimensions) and the LanceDB store path. `auto_capture` / `auto_recall` are read on the gateway path only; the local-agent path hardcodes `autoCapture: false` and `autoRecall: true` |
 
-OpenCode's flags are parsed in `alphadiana/harness/opencode/agent.py:764-792`.
-ZeroClaw's memory store-turn is `_memory_store_via_agent`
-(`alphadiana/harness/zeroclaw/agent.py:1549`), which skips the write when a task
+OpenCode's flags are parsed by `OpenCodeAgent.setup()` in
+`alphadiana/harness/opencode/agent.py`. ZeroClaw's memory store-turn is
+`_memory_store_via_agent` in `alphadiana/harness/zeroclaw/agent.py`, which skips the write when a task
 carries `metadata['memory_mode'] == 'frozen'`. OpenClaw runs memory through an
 embedded `openclaw agent --local` two-turn flow
 (`alphadiana/harness/openclaw/agent.py`) so the `memory-lancedb` plugin's
@@ -143,8 +143,8 @@ rather than a `benchmark.config` one) and by its system prompt. The ZeroClaw
 Cross-Sample prompt mandates a `memory_search` before and a `memory_store` after
 every problem; its Cross-Task counterpart carries no such instruction, because
 the harness appends its own "use memory_search" line once at least one store turn
-has run (`alphadiana/harness/zeroclaw/agent.py:1664-1669`). That gate is a count
-of store turns that exited 0 (`_has_memories`, `agent.py:1642-1643`), not an
+has run. That gate uses `_has_memories` in
+`alphadiana/harness/zeroclaw/agent.py` and counts store turns that exited 0, not an
 inspection of the store, so it can fire even if the model never actually called
 `memory_store`.
 

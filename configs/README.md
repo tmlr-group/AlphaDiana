@@ -132,7 +132,7 @@ Copy and fill in values to create a production config. Most have `max_tasks: 1â€
 | File | Benchmark | Notes |
 |---|---|---|
 | `zeroclaw_aime2026.yaml` | AIME 2026 | env-var template, 1-task smoke |
-| `zeroclaw_aime2026_local_smoke.yaml` | AIME 2026 | local vLLM variant, 1-task smoke |
+| `zeroclaw_aime2026_local_smoke.yaml` | AIME 2026 | legacy validation fixture; not runnable because current generic ZeroClaw requires a live sandbox |
 | `zeroclaw_gpqa_diamond.yaml` | GPQA | env-var template, 1-task smoke |
 | `zeroclaw_hle.yaml` | HLE | env-var template, 1-task smoke |
 | `zeroclaw_imo_answerbench.yaml` | IMO | env-var template, 1-task smoke |

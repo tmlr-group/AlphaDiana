@@ -22,12 +22,12 @@ python -m alphadiana.cli env
 
 ## Supported Modes
 
-| Mode | Status | Smoke / Debug Config | Full-run Config |
-|---|---|---|---|
-| `direct_llm` | smoke/debug supported | `configs/examples/direct_llm_mmmu_pro.yaml` | `configs/full_runs/rollout_full_directllm_mmmu_pro_vision.yaml` |
-| `openclaw` | smoke/debug supported | `configs/examples/openclaw_mmmu_pro.yaml` | `configs/full_runs/rollout_full_openclaw_mmmu_pro_vision.yaml` |
-| `opencode` | smoke/debug supported | `configs/examples/opencode_mmmu_pro.yaml` | `configs/full_runs/rollout_full_opencode_mmmu_pro_vision.yaml` |
-| `zeroclaw` | smoke/debug supported | `configs/examples/zeroclaw_mmmu_pro.yaml` | `configs/full_runs/rollout_full_zeroclaw_mmmu_pro_vision.yaml` |
+| Mode | Status | Smoke / Debug Config |
+|---|---|---|
+| `direct_llm` | smoke/debug supported | `configs/examples/direct_llm_mmmu_pro.yaml` |
+| `openclaw` | smoke/debug supported | `configs/examples/openclaw_mmmu_pro.yaml` |
+| `opencode` | smoke/debug supported | `configs/examples/opencode_mmmu_pro.yaml` |
+| `zeroclaw` | smoke/debug supported | `configs/examples/zeroclaw_mmmu_pro.yaml` |
 
 ## Podman Multimodal Readiness
 
@@ -89,8 +89,8 @@ Current dataset note: the Hugging Face `vision` subset now exposes a singular
 `image` field. AlphaDiana normalizes that payload into `image_1` task
 attachments before handing the task to the agent.
 
-The checked-in full configs also use `data_config: "vision"` so the full run
-matches the image-backed path rather than a text-only variant.
+Use `data_config: "vision"` in any full config so it matches the image-backed
+smoke path rather than a text-only variant.
 
 When using a local Hugging Face snapshot, verify that the selected subset
 directory contains actual data files before launching an agent run. A snapshot
@@ -100,7 +100,7 @@ at dataset load time with `DataFilesNotFoundError` and is not runnable.
 
 Current full-run caveat on April 22, 2026:
 the full `vision` loader is currently front-loaded. The implementation in
-`alphadiana/benchmark/mmmu_pro.py` eagerly converts every dataset image into
+`alphadiana/benchmarks/mmmu_pro/benchmark.py` eagerly converts every dataset image into
 PNG bytes before it returns the task list, so a full run can spend several
 minutes with no task JSONs while still being active. Early OpenRouter evidence:
 `full_20260422_openrouter_nemotron_nano_12b_v2_vl_mmmu_pro_{directllm,openclaw,opencode,zeroclaw}_r1`
@@ -110,14 +110,9 @@ phase is ruled out.
 
 ## Full Run
 
-Validate the four full configs directly:
-
-```bash
-python -m alphadiana.cli validate configs/full_runs/rollout_full_directllm_mmmu_pro_vision.yaml
-python -m alphadiana.cli validate configs/full_runs/rollout_full_openclaw_mmmu_pro_vision.yaml
-python -m alphadiana.cli validate configs/full_runs/rollout_full_opencode_mmmu_pro_vision.yaml
-python -m alphadiana.cli validate configs/full_runs/rollout_full_zeroclaw_mmmu_pro_vision.yaml
-```
+This checkout does not ship MMMU-Pro full-run configs. Start from a checked-in
+example, remove its bounded task selection, retain `data_config: "vision"`, and
+review runtime, output, and concurrency settings before a full sweep.
 
 ## DirectLLM
 

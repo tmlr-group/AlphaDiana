@@ -2,14 +2,6 @@
 
 HLE evaluates multiple-choice Humanity's Last Exam tasks from `cais/hle`.
 
-Related references:
-
-- current status summary: `context/current_eval_status.md`
-- historical multimodal validation note:
-  `context/P25-three-benchmarks/openclaw_opencode_hle_multimodal_validation_20260417.md`
-- reviewer-facing debug trail:
-  `context/P25-three-benchmarks/openclaw-hle-multimodal-fix-20260417.md`
-
 ## Prerequisites
 
 Run from the repository root:
@@ -38,12 +30,13 @@ OpenCode Docker controller.
 
 | Mode | Status | Config |
 |---|---|---|
-| `direct_llm` | supported | `configs/full_runs/p25_full_directllm_minimax_hle.yaml` |
-| `opencode` | supported | `configs/full_runs/p25_full_opencode_minimax_hle.yaml` |
-| `openclaw` | supported | `configs/full_runs/p25_full_openclaw_minimax_hle.yaml` |
-| `zeroclaw` | supported | `configs/full_runs/p25_full_zeroclaw_minimax_hle.yaml` |
+| `direct_llm` | smoke config available | `configs/examples/direct_llm_hle.yaml` |
+| `opencode` | smoke config available | `configs/examples/opencode_minimax_hle.yaml` |
+| `openclaw` | smoke config available | `configs/examples/openclaw_hle.yaml` |
+| `zeroclaw` | smoke config available | `configs/examples/zeroclaw_hle.yaml` |
 
-The full configs run the supported HLE `multipleChoice` subset. Other HLE answer types are not included in the current exact-match scoring path.
+The checked-in configs exercise the HLE `multipleChoice` subset. Other HLE
+answer types are not included in the current exact-match scoring path.
 
 As of April 22, 2026, the loader also treats `image: ""` rows in the current
 `cais/hle` snapshot as ordinary no-attachment questions. Earlier full-run
@@ -68,31 +61,20 @@ distinct `multipleChoice` tasks.
 
 ## Full Runs
 
-```bash
-python -m alphadiana.cli run configs/full_runs/p25_full_directllm_minimax_hle.yaml --redo-all
-python -m alphadiana.cli run configs/full_runs/p25_full_opencode_minimax_hle.yaml --redo-all
-python -m alphadiana.cli run configs/full_runs/p25_full_openclaw_minimax_hle.yaml --redo-all
-python -m alphadiana.cli run configs/full_runs/p25_full_zeroclaw_minimax_hle.yaml --redo-all
-```
-
-For the local-vLLM `Qwen/Qwen3.5-27B` path when you need per-token logprobs,
-use:
-
-```bash
-python -m alphadiana.cli run configs/full_runs/phase9_directllm_qwen35_27b_hle_logprobs.yaml --redo-all
-```
+This checkout does not ship HLE full-run configs. Start from the appropriate
+checked-in example or Qwen pilot, remove the bounded task selector, and review
+the model, output, timeout, and concurrency contract before a full evaluation.
 
 ## DirectLLM
 
 ```bash
-python -m alphadiana.cli run configs/examples/directllm_minimax_hle.yaml \
+python -m alphadiana.cli run configs/examples/direct_llm_hle.yaml \
   -o run_id=hle_directllm_smoke
 ```
 
-On current main, `direct_llm` captures logprobs by default. The dedicated
-`configs/full_runs/phase9_directllm_qwen35_27b_hle_logprobs.yaml` entrypoint is
-still the preferred local-vLLM Qwen path because it pins the model/api-base and
-the heavier `max_concurrent: 15` benchmark run contract in one checked-in file.
+On current main, `direct_llm` captures logprobs by default. For a local-vLLM
+Qwen pilot, use `configs/examples/directllm_qwen35_27b_hle_pilot.yaml` and
+review its bounded selection before scaling.
 
 ## OpenCode
 
@@ -100,7 +82,7 @@ Build the controller image once before using the checked-in OpenCode configs:
 
 ```bash
 docker build --network host \
-  -f docker/terminal_bench2/Dockerfile.opencode-controller \
+  -f alphadiana/benchmarks/terminal_bench2/deploy/dockerfiles/Dockerfile.opencode-controller \
   -t alphadiana/tb2-opencode-controller:latest .
 ```
 
@@ -252,7 +234,7 @@ The checked-in minimax smoke configs pin:
 
 The scorer is `exact_match`, so the final answer should be one of the multiple-choice options.
 
-Use the `configs/full_runs/` files for full supported HLE multiple-choice evaluations.
+No HLE full-run file is checked in; create and validate one before scaling.
 
 ## Qwen/OpenRouter 3-Task Pilot
 

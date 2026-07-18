@@ -1,11 +1,6 @@
 # SWE-bench Pro Reproduction Guide
 
-Related references kept outside this folder:
-
-- legacy SWE-bench Verified/container reproduction note:
-  `docs/benchmarks/swebench-verified.md`
-- older Verified/container internal note:
-  `context/pr26-swebench-verified/implementation-notes.md`
+Related reference: [SWE-bench Verified](./swebench-verified.md).
 
 This guide covers the AlphaDiana paths that were actually exercised for SWE-bench Pro smoke reproduction in this repo:
 
@@ -39,15 +34,12 @@ Shipped configs:
 - `configs/examples/swebench_pro_opencode_smoke.local.yaml`
 - `configs/examples/swebench_pro_zeroclaw_smoke.local.yaml`
 - `configs/examples/swebench_pro_direct_llm_smoke.local.yaml`
-- `configs/full_runs/p29_full_openclaw_swebench_pro.yaml`
-- `configs/full_runs/p29_full_opencode_swebench_pro.yaml`
-- `configs/full_runs/p29_full_zeroclaw_swebench_pro.yaml`
 
 The OpenClaw, OpenCode, ZeroClaw, and opt-in Podman OpenClaw configs are part
 of the AlphaDiana reproduction path documented here. The `direct_llm` config is
 separate from the Diana-managed execution modes and mirrors the official-path
-baseline shape. The three `configs/full_runs/` files are the full benchmark
-entry points for the Diana-backed paths. The Podman OpenClaw smoke is an
+baseline shape. This checkout does not ship a SWE-bench Pro full-run config;
+the checked-in files above are smoke/reproduction entry points. The Podman OpenClaw smoke is an
 opt-in container-engine variant of the OpenClaw path and is still
 evidence-gated; it is not a default-promotion claim.
 
@@ -385,10 +377,10 @@ python -m alphadiana.cli run configs/examples/swebench_pro_openclaw_smoke.local.
 
 Current branch fix and rerun:
 
-- `alphadiana/agent/swebench_assets/run_openclaw.sh` no longer depends on
+- `alphadiana/benchmarks/swe_bench/assets/run_openclaw.sh` no longer depends on
   `curl`; it uses `python3` and `urllib.request` for the gateway readiness
   probe and the streaming request path
-- `alphadiana/agent/swebench_docker.py` now falls back from `docker stop`
+- `alphadiana/benchmarks/swe_bench/harness.py` now falls back from `docker stop`
   timeout to `docker rm -f` during best-effort cleanup
 - after those fixes, the canonical rerun was
   `pilot_20260419_qwen35_27b_swebench_pro_openclaw_t3_r4`
@@ -624,8 +616,6 @@ These are the outcomes actually observed during local validation on `2026-04-17`
   repaired run `pr23_qwen_openrouter_zeroclaw_swebench_pro_t3_repair_20260419`
   finished `X/X/X` with all three task JSONs written, no top-level `error`,
   and `runtime_image_built=true` on every task
-- reviewer-facing summary: `context/pr29-add-swebench-pro/smoke-validation.md`
-- compact matrix: `context/pr29-add-swebench-pro/status-matrix.md`
 
 Additional Qwen/OpenRouter outcomes observed on `2026-04-19`:
 
@@ -640,8 +630,6 @@ Additional Qwen/OpenRouter outcomes observed on `2026-04-19`:
 - `openclaw` canonical rerun:
   `pilot_20260419_qwen35_27b_swebench_pro_openclaw_t3_r4`,
   `3/3` normal task records, all `score=0`
-- reviewer-facing summary:
-  `context/qwen-openrouter-pilots/pilot-validation.md`
 
 ## Where To Inspect Artifacts
 
@@ -650,32 +638,12 @@ Each smoke run produces two useful output trees:
 - run results under `results_*`
 - agent artifacts under `swebench_artifacts_*`
 
-The PR-specific local validation bundle is organized under:
-
-- `context/pr29-add-swebench-pro/`
-
 ## Full Runs
 
-For full benchmark runs, use:
-
-- `configs/full_runs/p29_full_openclaw_swebench_pro.yaml`
-- `configs/full_runs/p29_full_opencode_swebench_pro.yaml`
-- `configs/full_runs/p29_full_zeroclaw_swebench_pro.yaml`
-
-Validate first:
-
-```bash
-python -m alphadiana.cli validate configs/full_runs/p29_full_openclaw_swebench_pro.yaml
-python -m alphadiana.cli validate configs/full_runs/p29_full_opencode_swebench_pro.yaml
-python -m alphadiana.cli validate configs/full_runs/p29_full_zeroclaw_swebench_pro.yaml
-```
-
-Then run:
-
-```bash
-python -m alphadiana.cli run configs/full_runs/p29_full_openclaw_swebench_pro.yaml --redo-all
-python -m alphadiana.cli run configs/full_runs/p29_full_opencode_swebench_pro.yaml --redo-all
-python -m alphadiana.cli run configs/full_runs/p29_full_zeroclaw_swebench_pro.yaml --redo-all
-```
+This checkout does not include a ready-made SWE-bench Pro full-run YAML. The
+files listed under **Shipped configs** are bounded smoke/reproduction configs;
+do not treat them as full-sweep manifests. Create and review a dedicated config
+for the intended task selection, runtime, evaluator assets, output location,
+and concurrency before launching a full evaluation.
 
 `directLLM` full runs remain outside Diana. Use the official `scaleapi/SWE-bench_Pro-os` repository for that path.

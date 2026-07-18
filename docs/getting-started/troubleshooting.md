@@ -146,6 +146,29 @@ blanked rather than left as a literal placeholder. A missing variable therefore
 degrades to an empty field, which the validator will flag, rather than leaking
 `${VAR}` into a request.
 
+### OpenClaw sends a provider URL a gateway token
+
+OpenClaw has two distinct endpoints. Uppercase `OPENAI_BASE_URL` (or lowercase
+`openai_base_url`) in `agent.config` is the upstream model provider used while
+starting a gateway. Lowercase `agent.config.api_base` is the URL of an
+already-running OpenClaw gateway and is called with `gateway_token`.
+
+The current config loader also copies the shell's `OPENAI_BASE_URL` into a blank
+OpenClaw `api_base`. That can make an auto-deploy config skip gateway startup
+and send its gateway credential directly to the provider. For an OpenClaw
+ROCK/Podman auto-deploy run, use a separate shell variable:
+
+```bash
+export PROVIDER_BASE_URL=https://provider.example/v1
+unset OPENAI_BASE_URL
+
+python -m alphadiana.cli run <openclaw-config.yaml> \
+  -o agent.config.OPENAI_BASE_URL="$PROVIDER_BASE_URL"
+```
+
+If you intentionally use a predeployed gateway, set `agent.config.api_base` to
+that gateway and set the matching `gateway_token`.
+
 ## ROCK service not up
 
 The `openclaw` harness and any run with `sandbox.name: rock` need the ROCK
@@ -290,9 +313,15 @@ So the normal recovery is:
 1. Confirm vLLM is actually alive: `curl http://<host>:<port>/v1/models`. If
    that fails, the endpoint is down and must be restarted. If it returns the
    model list, the model is fine and only the records are bad.
-2. Delete the `None`/empty records for the affected tasks (or use a fresh
-   `run_id`), then re-run the same config. Checkpointing fills only the missing
-   samples.
+2. Re-run the same config and run id. A provider/runtime error or other invalid
+   record is not checkpoint-complete, so the runner evaluates that sample again
+   and the latest JSONL record wins during load. You do not need to edit the
+   result file.
+
+Timeout-classified outcomes are different: current harnesses record them as
+`score: 0`, `correct: false`, `finish_reason: timeout`, and
+`score_status: valid_scored`, so they are checkpoint-complete. Use `--redo-all`
+or a new run id when you intentionally want to rerun those samples.
 
 Use `--redo-all` only when you intend to discard the checkpoint and recompute
 every sample:
@@ -301,9 +330,11 @@ every sample:
 alphadiana run config.yaml --redo-all   # bypass checkpoint; recompute everything
 ```
 
-For runs with `num_samples > 1`, checkpointing is per-sample: sample 0 writes
-`{task_id}.jsonl` and later samples write `{task_id}.sample_{N}.jsonl`, so only
-the failed samples are recomputed on resume.
+For runs with `num_samples > 1`, checkpointing is per `(task_id, sample_index)`.
+The flat `<run_id>.jsonl` stores every attempt, while
+`results/<run_id>/tasks/<task_id>.json` is a JSON sample list. Lifecycle event
+files use `{task_id}.jsonl` for sample 0 and
+`{task_id}.sample_{N}.jsonl` for later samples.
 
 ## `max_tasks == 0` returns an empty run
 
@@ -338,6 +369,8 @@ the full entry points live under `configs/full_runs/`.
 | Dataset load fails on a gated set | No access token | `export HF_TOKEN=...` and request access |
 | Agent requests fail oddly | Proxy vars leaking into sandbox | `source scripts/rock_env.sh` |
 | `api_key` rejected at validation | Literal `EMPTY` value | use `sk-EMPTY` |
+| OpenClaw provider returns gateway-auth `401` | Provider URL was loaded into gateway `api_base` | unset shell `OPENAI_BASE_URL`; override `agent.config.OPENAI_BASE_URL` from a differently named variable |
+| Quickstart rejects an empty gateway token | Token generation happens after the current preflight | export a strong random `OPENCLAW_GATEWAY_TOKEN` before quickstart |
 | Pre-flight fails for OpenClaw/ROCK | ROCK services down or wrong ports | `alphadiana env`, then start/repair ROCK |
 | Docker socket `permission denied` | Shell lacks `docker` group | `newgrp docker` (then re-activate env) |
 | Sandbox container exits immediately | `ref/ROCK/.venv` missing/invalid | `ln -sfn "$(python -c 'import sys; print(sys.prefix)')" ref/ROCK/.venv` |
@@ -346,5 +379,5 @@ the full entry points live under `configs/full_runs/`.
 | `ROCK proxy failed` after ~120s | Old proxy stream timeout or shared stale ports/env | dedicated env + ports, current `ref/ROCK` patch active |
 | Wrong provider despite exported vars | `OPENAI_BASE_URL:-` default kept stale `.env` value | export `OPENAI_*` explicitly or unset first; check argv |
 | Stale `scripts/.alphadiana_env` | Points at missing checkout/wrong ROCK root | `bash scripts/setup_alphadiana_rock.sh` |
-| Records have `predicted: null` | vLLM transient crash | check `/v1/models`, drop bad records, re-run |
+| Records have `predicted: null` | Provider/runtime failure | check `/v1/models`, then rerun the same run id |
 | Run completes with 0 tasks | `max_tasks: 0` | omit `max_tasks` or use a positive count |

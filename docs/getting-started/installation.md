@@ -29,17 +29,30 @@ agent harnesses can all point at a remote OpenAI-compatible endpoint instead.
 
 ## Install
 
-Clone the repository and create the environment. The one-click path creates a
-checkout-derived conda env (for example `alphadiana-dev-9809e32f`) so that
-multiple checkouts on the same host do not collide:
+Clone the repository and create the environment. The service bootstrap creates
+a checkout-derived conda env (for example `alphadiana-9809e32f`) so that
+multiple checkouts on the same host do not collide.
+
+:::warning Current bootstrap prerequisite
+`scripts/quickstart.sh` runs `scripts/security_guard.py --check` before the
+setup helper gets a chance to generate an OpenClaw gateway token. In a fresh
+shell you must export a strong token first. Do not use
+`SECURITY_GUARD_BYPASS=1` for normal setup.
+:::
 
 ```bash
 git clone https://github.com/tmlr-group/AlphaDiana
 cd AlphaDiana
 
-# One-click setup: checkout-local conda env + dependencies + services
+# Required before quickstart's security preflight in the current release.
+export OPENCLAW_GATEWAY_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+
+# Checkout-local conda env + dependencies + Redis/Ray/ROCK services.
 bash scripts/quickstart.sh
 ```
+
+The preflight also rejects public Redis/ROCK bindings and other HIGH/CRITICAL
+findings. If it stops, fix the reported issue and rerun the same command.
 
 If you only want the package and its dependencies in a plain shared `alphadiana`
 env (no ROCK service bring-up), use the standalone installer instead:
@@ -85,22 +98,37 @@ See [openclaw](../harnesses/openclaw) for details.
 
 ## ROCK bring-up (optional, for openclaw / zeroclaw)
 
-`direct_llm` and the host/Docker-controller harnesses (`opencode`, plus
-`zeroclaw` in local mode) do **not** need ROCK. The ROCK preflight only fires
+`direct_llm` and host/Docker-controller OpenCode paths do **not** need ROCK.
+Generic ZeroClaw still requires a live sandbox/container session. The ROCK preflight only fires
 for ROCK-backed runs (`sandbox.name == 'rock'` or a gateway-autodeploy agent),
 checking admin/proxy/Redis reachability and port ownership in
 `alphadiana/cli.py`; non-ROCK runs skip it.
 
-`scripts/quickstart.sh` brings these services up for you. The manual sequence,
-using one checkout's allocated ports, is below. Generate dedicated ports first
-so worktrees on a shared host do not collide:
+`scripts/quickstart.sh` brings these services up for you. For an already
+installed checkout, the supported harness launchers are safer than assembling
+the stack by hand: they allocate checkout-specific ports, bind Redis and ROCK
+to loopback, start or reuse the intended Ray cluster, and inject that cluster's
+GCS address into a runtime ROCK config.
 
 ```bash
-python scripts/find_rock_ports.py --write-env scripts/.rock_ports.env
 source scripts/activate.sh
+export OPENCLAW_GATEWAY_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+
+# OpenClaw ROCK stack and one gateway sandbox. Provider flags avoid confusing
+# the upstream provider URL with agent.config.api_base.
+bash scripts/start_openclaw.sh \
+  --model-base-url https://provider.example/v1 \
+  --model-api-key <provider-key> \
+  --model-name <provider-model>
+
+# Or, for a ZeroClaw ROCK stack:
+# OPENAI_BASE_URL=https://provider.example/v1 \
+# OPENAI_API_KEY=<provider-key> \
+# OPENAI_MODEL_NAME=<provider-model> \
+# bash scripts/start_zeroclaw.sh
 ```
 
-A typical allocation looks like:
+The generated allocation includes checkout-specific values such as:
 
 | Service | Example port |
 |---|---|
@@ -109,35 +137,31 @@ A typical allocation looks like:
 | Redis | 20201 |
 | Ray | 6388 |
 
-Start Redis (as a `redis-stack` container), then the ROCK admin and proxy
-processes:
+For debugging the low-level sequence, first generate and load the same
+checkout-local names and ports used by the launchers:
 
 ```bash
-# Redis (redis-stack container)
-docker start redis-stack 2>/dev/null \
-  || docker run -d --restart unless-stopped \
-       --name redis-stack \
-       -p 20201:6379 \
-       redis/redis-stack-server:latest
+python scripts/find_rock_ports.py --write-env scripts/.rock_ports.env
+source scripts/rock_env.sh
 
-# ROCK admin
-cd ref/ROCK
-nohup python -m rock.admin.main \
-  --env local-proxy --role admin --port 9016 \
-  > ../../dev/generated/admin.log 2>&1 &
-
-# ROCK proxy
-nohup python -m rock.admin.main \
-  --env local-proxy --role proxy --port 9027 \
-  > ../../dev/generated/proxy.log 2>&1 &
-cd -
+docker start "$ROCK_REDIS_CONTAINER" 2>/dev/null || \
+  docker run -d --restart unless-stopped \
+    --name "$ROCK_REDIS_CONTAINER" \
+    -p "127.0.0.1:${ROCK_REDIS_PORT}:6379" \
+    redis/redis-stack-server:latest
 ```
 
-Ray is started as a head node by the bring-up scripts; run `ray stop` before
-re-starting it if a stale head is already listening on the GCS port. For the
-turnkey paths use `scripts/start_openclaw.sh` or `scripts/start_zeroclaw.sh`,
-then `source scripts/rock_env.sh` so `ROCK_BASE_URL` / `ROCK_PROXY_URL` are
-exported into your current shell before `alphadiana run`.
+Do not substitute `-p ${ROCK_REDIS_PORT}:6379`: without the `127.0.0.1:` host
+prefix Docker publishes Redis on every interface. Do not use a fixed
+`redis-stack` name either; `$ROCK_REDIS_CONTAINER` includes the user, checkout,
+and path hash.
+
+Ray must be started on `$ROCK_RAY_PORT` before admin/proxy. More importantly,
+the config passed to admin and proxy must contain
+`ray.address: "$ROCK_BIND_HOST:$ROCK_RAY_PORT"`. The checked-in launchers create
+that runtime config before invoking `scripts/run_rock_admin_local.py`; the base
+file generated by `find_rock_ports.py` is not sufficient by itself. Use those
+launchers unless you are debugging the service bootstrap itself.
 
 Verify everything is healthy:
 
@@ -163,14 +187,17 @@ the current user:
 bash scripts/cleanup_rock_ports.sh
 ```
 
-## Model-provider environment variables
+## Provider endpoints and agent gateways
 
-Most harnesses leave `model`, `api_base`, and `api_key` blank in their YAML and
-inherit them from the environment. During config loading,
-`ExperimentConfig._apply_agent_env_defaults`
-(`alphadiana/engine/config/experiment_config.py`) fills any blank agent field
-from these variables for `direct_llm`, `zeroclaw`, `opencode`, and the
-`terminal_bench2_*` agents:
+Do not treat one base URL as interchangeable across every harness. There are
+two different connections:
+
+1. The **provider endpoint** is the OpenAI-compatible model API.
+2. The **agent gateway** is a running OpenClaw gateway. For OpenClaw,
+   `agent.config.api_base` means this gateway, not the upstream provider.
+
+For `direct_llm`, `zeroclaw`, `opencode`, and the `terminal_bench2_*` agents,
+blank provider fields are populated from these environment variables:
 
 | Variable | Maps to agent field | Example |
 |---|---|---|
@@ -186,6 +213,31 @@ export OPENAI_BASE_URL=http://127.0.0.1:8000/v1
 export OPENAI_API_KEY=sk-EMPTY
 export OPENAI_MODEL_NAME=Qwen/Qwen3-8B
 ```
+
+:::warning OpenClaw auto-deploy boundary
+The current config loader also fills blank OpenClaw `api_base` from
+`OPENAI_BASE_URL`. The runner then interprets that value as an already-running
+OpenClaw gateway and can skip ROCK/Podman gateway startup. Until those fields
+are separated in code, do not export `OPENAI_BASE_URL` for an OpenClaw
+auto-deploy run.
+
+Instead, use a differently named shell variable and pass it to OpenClaw's
+provider-specific config key:
+
+```bash
+export PROVIDER_BASE_URL=https://openrouter.ai/api/v1
+export OPENAI_API_KEY=<provider-key>
+export OPENAI_MODEL_NAME=<provider-model>
+unset OPENAI_BASE_URL
+
+python -m alphadiana.cli run configs/examples/openclaw_aime2024.yaml \
+  -o agent.config.OPENAI_BASE_URL="$PROVIDER_BASE_URL"
+```
+
+Set `agent.config.api_base` only when you intentionally want to connect to an
+already deployed OpenClaw gateway; pair it with `gateway_token`, not the
+provider API key.
+:::
 
 :::note Use `sk-EMPTY`, not literal `EMPTY`, for local vLLM
 The config validator (`alphadiana/engine/config/validator.py`,
