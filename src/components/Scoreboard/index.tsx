@@ -44,7 +44,7 @@ const models: Model[] = [
     id: 'qwen',
     name: 'Qwen3.5-27B',
     verdict: 'hurts',
-    takeaway: 'Harnessing consistently hurts; Direct inference wins on every task in this slice.',
+    takeaway: 'Draft table: Direct inference leads every harness row in this selected slice.',
     rows: [
       { harness: 'Direct', vals: [58.3, 23.0, 81.3, 96.7, 89.2, 73.4], deltas: null },
       { harness: 'OpenClaw', vals: [20.3, 13.4, 66.2, 83.3, 64.2, 68.3], deltas: [-38.0, -9.6, -15.1, -13.4, -25.0, -5.1] },
@@ -56,7 +56,7 @@ const models: Model[] = [
     id: 'gemma',
     name: 'Gemma-4-31B-IT',
     verdict: 'helps',
-    takeaway: 'Harnessing consistently helps; gains appear on IMO, GPQA, and AIME across harnesses.',
+    takeaway: 'Draft table: several harness rows improve on IMO, GPQA, and AIME in this selected slice.',
     rows: [
       { harness: 'Direct', vals: [59.0, 27.9, 83.3, 96.7, 92.5, 65.8], deltas: null },
       { harness: 'OpenClaw', vals: [59.5, 24.2, 85.4, 100.0, 97.5, 56.8], deltas: [0.5, -3.7, 2.1, 3.3, 5.0, -9.0] },
@@ -68,7 +68,7 @@ const models: Model[] = [
     id: 'kimi',
     name: 'Kimi-K2.6',
     verdict: 'mixed',
-    takeaway: 'Mixed outcomes; ZeroClaw and OpenCode lift GPQA and AIME, while OpenClaw sharply degrades GPQA and MMMU-Pro.',
+    takeaway: 'Draft table: the selected cells contain a mixture of gains and losses against Direct.',
     rows: [
       { harness: 'Direct', vals: [42.0, 35.9, 77.8, 96.7, 85.8, 75.1], deltas: null },
       { harness: 'OpenClaw', vals: [27.3, 40.7, 31.8, 93.3, 72.5, 48.6], deltas: [-14.7, 4.8, -46.0, -3.4, -13.3, -26.5] },
@@ -79,8 +79,8 @@ const models: Model[] = [
 ];
 
 const verdictLabel: Record<Model['verdict'], string> = {
-  hurts: 'Harness hurts',
-  helps: 'Harness helps',
+  hurts: 'Draft: lower',
+  helps: 'Draft: higher',
   mixed: 'Mixed',
 };
 
@@ -111,18 +111,18 @@ export default function Scoreboard() {
         <h2 className={styles.heading}>Same harness, opposite outcomes</h2>
         <p className={styles.subhead}>
           The manuscript table compares the <strong>Direct</strong> no-harness baseline with open harnesses under matched
-          tasks, scorers, sandboxes, and budgets. Harnessing is <strong>not</strong> a uniform upgrade: it lifts Gemma,
+          models, tasks, scorers, and shared budgets while recording harness-specific runtime conditions. In the draft
+          table, harnessing is <strong>not</strong> a uniform upgrade: it lifts Gemma,
           sinks Qwen3.5, and produces mixed behavior on Kimi-K2.6. <span className={styles.legendPos}>Green</span>{' '}
           means the harness beat Direct;{' '}
           <span className={styles.legendNeg}>red</span> means it lost ground.
         </p>
 
-        <div className={styles.tabs} role="tablist">
+        <div className={styles.tabs} role="group" aria-label="Select model results">
           {models.map((m, i) => (
             <button
               key={m.id}
-              role="tab"
-              aria-selected={i === active}
+              aria-pressed={i === active}
               className={clsx(styles.tab, i === active && styles.activeTab)}
               onClick={() => setActive(i)}
               type="button">

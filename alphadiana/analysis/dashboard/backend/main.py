@@ -41,7 +41,7 @@ if os.environ.get("ALPHADIANA_USE_HF_MIRROR", "").lower() in ("1", "true", "yes"
         os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 
 # Resolve paths relative to the project root
-PROJECT_ROOT = Path(__file__).resolve().parents[3]  # alphadiana/dashboard/backend -> project root
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
 RESULTS_DIR = os.environ.get("ALPHADIANA_RESULTS_DIR", str(PROJECT_ROOT / "results"))
 CONFIGS_DIR = os.environ.get("ALPHADIANA_CONFIGS_DIR", str(PROJECT_ROOT / "configs"))
 

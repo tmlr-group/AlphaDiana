@@ -7,8 +7,9 @@ sidebar_position: 2
 Every AlphaDiana run is defined by a single YAML file. The CLI parses it into the
 `ExperimentConfig` dataclass (`alphadiana/engine/config/experiment_config.py`), validates
 it, and hands the four blocks (agent / benchmark / sandbox / scorer) to the runner. The
-fully commented field reference lives at `configs/schema.yaml` and
-this page summarizes it.
+annotated core-shape reference lives at `configs/schema.yaml` and this page
+summarizes it. Harness and benchmark `config` blocks are open pass-throughs;
+their dedicated pages are the reference for path-specific keys and defaults.
 
 ## Top-level shape
 
@@ -64,6 +65,8 @@ These map one-to-one onto `ExperimentConfig` in
 | `sandbox_retries` | int | `1` | Sandbox startup retries. |
 | `strict_report` | bool | `false` | Exit non-zero when the report finds missing samples, invalid scored rows, or error records. |
 | `strict_isolation` | bool | `false` | For ROCK auto-create/predeploy paths, turn setup failures into hard errors instead of shared-gateway fallback. |
+| `parallel_strategy` | string | `""` | Set to `process_shards` for DecodingTrust multi-process isolation. |
+| `process_shards` | int | `1` | Number of isolated DecodingTrust child processes; validator requires `>= 1`. |
 | `metadata` | dict | `{}` | Free-form tags (`author`, `gpu`, `notes`, ...). |
 
 :::tip Sample counts are protocol choices
@@ -90,7 +93,7 @@ harness-specific defaults:
 | `request_timeout` / `timeout` | harness-specific | DirectLLM 600s, OpenClaw 1800s, ZeroClaw 1200s; OpenCode uses `timeout` (1200s in the generic agent). |
 | `stream` / `streaming` | harness-specific | DirectLLM/OpenClaw default on; ZeroClaw's stock CLI consumes non-streaming JSON; OpenCode is optional. |
 | `enable_thinking` | `None` | Reasoning toggle (see note below). |
-| `capture_logprobs` | `false` unless enabled | Emit logprob sidecars when the selected harness transport supports capture. |
+| `capture_logprobs` | harness-specific | DirectLLM defaults to `true`; other transports require explicit support/configuration. |
 | `system_prompt` | harness | Optional system-prompt text. |
 
 Harness-specific keys (e.g. `controller_mode`, `tools_profile`, `persistent_memory`,

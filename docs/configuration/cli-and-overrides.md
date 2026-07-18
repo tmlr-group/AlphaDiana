@@ -19,7 +19,7 @@ that govern where results land and how many samples each task produces.
 | `report` | `<results_dir>` | Regenerate a `RunSummary` from an existing results directory. |
 | `batch` | `<config1.yaml> <config2.yaml> ...` | Run several configs sequentially (or with `--parallel`). |
 | `env` | — | Check ROCK service health and ownership; print start instructions. |
-| `list-benchmarks` | — | List the benchmark modules imported by this diagnostic command. |
+| `list-benchmarks` | — | List the complete benchmark registry used by `Runner.setup()`. |
 
 All commands that take a config accept `-o`/`--override` (see below). The `run` and `batch`
 commands additionally accept run-control flags.
@@ -92,11 +92,9 @@ for the full bring-up sequence.
 alphadiana list-benchmarks
 ```
 
-Lists the benchmark strings registered after this command imports its built-in
-diagnostic subset. On the current implementation that output is not the complete
-Runner inventory: it omits `hle`, `imo_answerbench`, and `decodingtrust`. Use the
-[Benchmarks inventory](../benchmarks/) for all `benchmark.name` values accepted
-after `Runner.setup()` imports the full set.
+Imports the same benchmark modules as `Runner.setup()` and lists the resulting
+registry names. The [Benchmarks inventory](../benchmarks/) explains each value
+and its expected scorer/runtime contract.
 
 ## The `-o` override syntax
 
@@ -106,10 +104,10 @@ repeatable; each override is parsed into a nested dict by `parse_override` and m
 after the YAML is loaded, so overrides win.
 
 ```bash
-alphadiana run configs/examples/direct_llm.yaml \
+alphadiana validate configs/examples/direct_llm.yaml \
   -o agent.config.temperature=0.6 \
-  -o max_concurrent=4 \
-  -o num_samples=4
+  -o benchmark.config.max_tasks=1 \
+  -o max_concurrent=2
 ```
 
 Values are **auto-cast** by `parse_override()` in
@@ -137,7 +135,9 @@ suffix.
 ### `--redo-all`
 
 ```bash
-alphadiana run configs/examples/direct_llm.yaml --redo-all
+alphadiana run configs/examples/direct_llm.yaml --redo-all \
+  -o run_id=redo_demo_aime_directllm_t1_k1 \
+  -o benchmark.config.max_tasks=1 -o num_samples=1
 ```
 
 By default `run` resumes from the checkpoint: any task with an existing valid-scored record

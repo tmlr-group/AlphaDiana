@@ -26,7 +26,7 @@ const features = [
   {
     icon: TargetIcon,
     title: 'Controlled Comparison',
-    description: 'Hold the task, scorer, sandbox, and budget fixed while swapping the harness layer.',
+    description: 'Match the model, task, scorer, and shared budgets while disclosing harness-specific runtime conditions.',
   },
   {
     icon: AgentIcon,
@@ -46,7 +46,7 @@ const features = [
   {
     icon: SandboxIcon,
     title: 'Sandboxed Execution',
-    description: 'Run tool-using agents in isolated environments with explicit resource and reset policies.',
+    description: 'Run supported tool-using paths in task-scoped environments with explicit resource and reset policies.',
   },
   {
     icon: ConcurrencyIcon,
@@ -69,12 +69,12 @@ const macroFindings = [
   {
     tag: 'Task',
     title: 'Benefits depend on task structure',
-    body: 'Harnesses help most when a task rewards stable computation or answer selection. They become unstable when tool use distracts from internal knowledge.',
+    body: 'The draft table suggests task-dependent effects, but the checked-in website does not include the task artifacts needed to promote that observation to current support evidence.',
   },
   {
     tag: 'Harness',
     title: 'No harness is uniformly best',
-    body: 'ZeroClaw and OpenCode provide more stable gains in compatible settings, while OpenClaw has the widest envelope of improvements and failures.',
+    body: 'The draft table contains both gains and losses across harnesses. Treat those rows as manuscript results and verify any operational support claim against current run artifacts.',
   },
 ];
 
@@ -82,22 +82,22 @@ const macroFigures = [
   {
     src: '/img/analysis/action-composition-qwen.png',
     title: 'Qwen3.5 action composition',
-    caption: 'Correct and wrong trajectories allocate effort differently across reasoning, tool use, verification, and finalization.',
+    caption: 'Draft action-category breakdown for correct and wrong trajectories.',
   },
   {
     src: '/img/analysis/action-composition-gemma.png',
     title: 'Gemma action composition',
-    caption: 'The same action taxonomy makes outcome-conditioned process shifts comparable across model-harness cells.',
+    caption: 'Draft outcome-conditioned action breakdown using the shared taxonomy.',
   },
   {
     src: '/img/analysis/post-tool-entropy-qwen.png',
     title: 'Qwen3.5 post-tool entropy',
-    caption: 'Tool feedback is useful only when it reduces uncertainty instead of extending an unstable trajectory.',
+    caption: 'Draft post-tool entropy comparison across recorded outcomes.',
   },
   {
     src: '/img/analysis/post-tool-entropy-gemma.png',
     title: 'Gemma post-tool entropy',
-    caption: 'Entropy after tool calls helps separate productive feedback loops from long-tail failures.',
+    caption: 'Draft post-tool entropy comparison for Gemma model-harness cells.',
   },
 ];
 
@@ -110,7 +110,7 @@ const microFindings = [
   {
     tag: 'Skill',
     title: 'Skill loading depends on selection behavior',
-    body: 'Qwen3.5 preferentially reads the math skill set over the general skill set, and the harness changes how sharply that preference appears.',
+    body: 'The draft skill-use figures compare math and general skill read rates. They are illustrations from the manuscript, not current runtime evidence in this checkout.',
   },
   {
     tag: 'Memory',
@@ -123,27 +123,27 @@ const microFigures = [
   {
     src: '/img/micro/skill-use-qwen-zeroclaw.png',
     title: 'Qwen3.5 + ZeroClaw skill use',
-    caption: 'Math skills are consulted more often than general skills on reasoning tasks.',
+    caption: 'Draft comparison of math-skill and general-skill read rates.',
   },
   {
     src: '/img/micro/skill-use-qwen-opencode.png',
     title: 'Qwen3.5 + OpenCode skill use',
-    caption: 'OpenCode compresses the gap between math and general skill read rates.',
+    caption: 'Draft OpenCode comparison of math-skill and general-skill read rates.',
   },
   {
     src: '/img/micro/memory-cross-task-opencode.png',
     title: 'OpenCode cross-task memory',
-    caption: 'Replayed prior solutions raise accuracy as the run progresses.',
+    caption: 'Draft plot of OpenCode accuracy across a cross-task memory condition.',
   },
   {
     src: '/img/micro/memory-cross-task-openclaw.png',
     title: 'OpenClaw cross-task memory',
-    caption: 'Retrieved notes distract the run and widen the gap from the no-memory baseline.',
+    caption: 'Draft plot comparing an OpenClaw cross-task memory condition with its baseline.',
   },
   {
     src: '/img/micro/memory-cross-task-zeroclaw.png',
     title: 'ZeroClaw cross-task memory',
-    caption: 'The same memory intervention remains below the matched full-harness baseline.',
+    caption: 'Draft plot comparing a ZeroClaw cross-task memory condition with its baseline.',
   },
 ];
 
@@ -160,15 +160,15 @@ const runCommand = `# Activate the environment once per terminal
 source scripts/activate.sh
 
 # Point DirectLLM at an OpenAI-compatible provider
-export OPENAI_MODEL="your-model"
-export OPENAI_API_BASE="https://your-provider.example/v1"
+export OPENAI_MODEL_NAME="your-model"
+export OPENAI_BASE_URL="https://your-provider.example/v1"
 export OPENAI_API_KEY="your-provider-key"
 
-# Validate and run a one-task GPQA DirectLLM smoke
-alphadiana validate configs/examples/direct_llm_gpqa_diamond.yaml \\
+# Validate and run a one-task AIME DirectLLM smoke
+alphadiana validate configs/examples/direct_llm.yaml \\
   -o benchmark.config.max_tasks=1
-alphadiana run configs/examples/direct_llm_gpqa_diamond.yaml \\
-  -o run_id=quickstart_gpqa_directllm_t1_k1 \\
+alphadiana run configs/examples/direct_llm.yaml \\
+  -o run_id=quickstart_aime_directllm_t1_k1 \\
   -o benchmark.config.max_tasks=1 \\
   -o num_samples=1 \\
   -o max_concurrent=1
@@ -225,7 +225,7 @@ export default function Home(): ReactNode {
           <section className={styles.findingsSection}>
             <div className={styles.findingsInner}>
               <p className={styles.kicker}>Macro Findings</p>
-              <h2>What the result table reveals</h2>
+              <h2>What the draft result table illustrates</h2>
               <div className={styles.findingsGrid}>
                 {macroFindings.map((f) => (
                   <div key={f.tag} className={styles.findingCard}>
@@ -236,8 +236,8 @@ export default function Home(): ReactNode {
                 ))}
               </div>
               <p className={styles.findingsNote}>
-                Direct inference is not just another baseline. It is the control that separates useful orchestration
-                from harness-induced failure modes.
+                Direct inference is the reference condition for comparing orchestration outcomes when the shared
+                model, task, scorer, and budget contract is matched.
               </p>
             </div>
           </section>
@@ -266,7 +266,7 @@ export default function Home(): ReactNode {
           <section className={styles.microSection}>
             <div className={styles.microInner}>
               <p className={styles.kicker}>Micro Findings</p>
-              <h2>Capability ablations explain the shifts</h2>
+              <h2>Capability conditions contextualize the shifts</h2>
               <p className={styles.flowLead}>
                 The micro study compares matched harness conditions for tools, skills, and memory. A condition may
                 include both prompt and runtime changes, so interpret each delta as a bundle rather than an isolated
@@ -299,8 +299,9 @@ export default function Home(): ReactNode {
               <p className={styles.kicker}>Dashboard</p>
               <h2>Launch, monitor, and compare</h2>
               <p className={styles.flowLead}>
-                The screenshots show an AIME 2026 Direct LLM evaluation with four samples per problem. The result view
-                reports 30/30 completed tasks, zero failed runs, 97% Pass@4, and 93% Avg@4 from saved records.
+                These screenshots illustrate the dashboard workflow for an AIME 2026 DirectLLM evaluation with four
+                samples per problem. The underlying task artifacts are not included in this checkout, so the values
+                visible in the images are UI examples rather than current support evidence.
               </p>
               <div className={styles.dashboardGrid}>
                 <figure className={styles.dashShot}>
@@ -318,9 +319,9 @@ export default function Home(): ReactNode {
           <section className={styles.quickstartSection}>
             <div className={styles.quickstartContent}>
               <p className={styles.kicker}>Quick Start</p>
-              <h2>Run a GPQA DirectLLM smoke evaluation</h2>
+              <h2>Run an AIME DirectLLM smoke evaluation</h2>
               <p className={styles.flowLead}>
-                The command below uses <code>configs/examples/direct_llm_gpqa_diamond.yaml</code>, the
+                The command below uses <code>configs/examples/direct_llm.yaml</code>, the
                 sandbox-free baseline from the Quick Start guide, downscaled to one problem and one sample. Replace
                 the provider placeholders before running it. See the{' '}
                 <Link to="/docs/getting-started/installation">getting-started guide</Link> for setup details.

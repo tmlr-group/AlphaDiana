@@ -9,7 +9,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 export ALPHADIANA_RESULTS_DIR="${ALPHADIANA_RESULTS_DIR:-$PROJECT_ROOT/results}"
 export ALPHADIANA_CONFIGS_DIR="${ALPHADIANA_CONFIGS_DIR:-$PROJECT_ROOT/configs}"
@@ -37,7 +37,7 @@ fi
 
 DEFAULT_BACKEND_PORT="${ALPHADIANA_BACKEND_PORT:-8000}"
 DEFAULT_FRONTEND_PORT="${ALPHADIANA_FRONTEND_PORT:-5173}"
-DEFAULT_RELOAD_DIRS="alphadiana/dashboard"
+DEFAULT_RELOAD_DIRS="alphadiana/analysis/dashboard"
 
 # --- Resolve Python environment ---
 # Priority: ALPHADIANA_PYTHON env var > alphadiana conda env > current python3
@@ -113,7 +113,7 @@ Environment variables:
     ALPHADIANA_BACKEND_PORT   Preferred backend start port (default: 8000)
     ALPHADIANA_FRONTEND_PORT  Preferred frontend start port (default: 5173)
     ALPHADIANA_RELOAD_DIRS    Colon-separated dev reload dirs
-                              (default: alphadiana/dashboard)
+                              (default: alphadiana/analysis/dashboard)
 
 Behavior:
     If a preferred port is occupied, the script automatically finds the next free port.
@@ -229,7 +229,7 @@ if [ "$MODE" = "prod" ]; then
 
     echo "==> Starting production server at http://localhost:${BACKEND_PORT}"
     cd "$PROJECT_ROOT"
-    "${PYTHON}" -m uvicorn alphadiana.dashboard.backend.main:app --host 127.0.0.1 --port "$BACKEND_PORT"
+    "${PYTHON}" -m uvicorn alphadiana.analysis.dashboard.backend.main:app --host 127.0.0.1 --port "$BACKEND_PORT"
 else
     BACKEND_PORT="$(pick_port_with_notice "$DEFAULT_BACKEND_PORT" "Backend")"
     FRONTEND_PORT="$(pick_port_with_notice "$DEFAULT_FRONTEND_PORT" "Frontend")"
@@ -242,7 +242,7 @@ else
 
     # Start backend in background
     cd "$PROJECT_ROOT"
-    "${PYTHON}" -m uvicorn alphadiana.dashboard.backend.main:app --host 127.0.0.1 --reload "${RELOAD_ARGS[@]}" --port "$BACKEND_PORT" &
+    "${PYTHON}" -m uvicorn alphadiana.analysis.dashboard.backend.main:app --host 127.0.0.1 --reload "${RELOAD_ARGS[@]}" --port "$BACKEND_PORT" &
     BACKEND_PID=$!
 
     # Start frontend

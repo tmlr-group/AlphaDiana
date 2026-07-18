@@ -22,7 +22,7 @@
   /* AlphaDiana design tokens */
   --diana-primary: #2563eb;
   --diana-primary-dark: #1d4ed8;
-  --diana-secondary: #0ea5e9;
+  --diana-secondary: #0369a1;
   --diana-accent: #22d3ee;
   --diana-night: #0f172a;
   --diana-gray-50: #f9fafb;
@@ -44,6 +44,18 @@
   --ifm-color-primary-lighter: #bfdbfe;
   --ifm-color-primary-lightest: #dbeafe;
   --docusaurus-highlighted-code-line-bg: rgba(96, 165, 250, 0.16);
+  --diana-secondary: #38bdf8;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
 
 /* Shared section helpers */

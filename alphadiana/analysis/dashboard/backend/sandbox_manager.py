@@ -30,7 +30,7 @@ from alphadiana.utils.openclaw_security import is_weak_openclaw_gateway_token
 
 logger = logging.getLogger(__name__)
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
 DEPLOY_DIR = PROJECT_ROOT / "alphadiana/harness/openclaw/deploy"
 
 
@@ -614,16 +614,16 @@ class SandboxManager:
                 log(f"  Redis OK (port {redis_port})")
         except OSError:
             _conda_env = os.environ.get("CONDA_DEFAULT_ENV", "alphadiana")
-            _rock_env = PROJECT_ROOT / "dev" / "rock_env.sh"
-            _rock_ports = PROJECT_ROOT / "dev" / ".rock_ports.env"
             raise RuntimeError(
                 f"Redis is not reachable on port {redis_port}.\n"
                 f"Please ensure all ROCK services are running. In a terminal:\n"
                 f"\n"
+                f"  cd {PROJECT_ROOT}\n"
                 f"  conda activate {_conda_env}\n"
-                f"  source {_rock_env}\n"
-                f"  source {_rock_ports}\n"
-                f"  bash dev/quickstart.sh   # if services are not started yet"
+                f"  bash scripts/quickstart.sh   # if services are not started yet\n"
+                f"  source scripts/rock_env.sh\n"
+                f"  source scripts/.rock_ports.env\n"
+                f"  # Then restart the dashboard so it inherits these values."
             )
 
         # Ensure ROCK .venv symlink

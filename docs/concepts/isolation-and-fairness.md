@@ -12,8 +12,9 @@ A single run expands into work items `[(task, sample_index)]`. Each item runs `a
 
 Task-scoped runtimes keep benchmark-side effects confined to the task environment in normal use:
 
-- ROCK Docker sandboxes for the standard text and multimodal benchmarks.
-- Docker task containers for `terminal-bench-2`.
+- ROCK Docker sandboxes or opt-in Podman runtimes for supported standard text
+  and multimodal paths.
+- Docker or Podman task containers for `terminal-bench-2`.
 - Official per-task SWE containers (via `swebench_docker`) for `SWE-bench Pro`.
 
 This is the **practical evaluation boundary** described below, not a formal security boundary.
@@ -80,14 +81,17 @@ harness and sandbox backend, to audit the realized boundary.
 
 | Benchmark | `openclaw` | `opencode` | `zeroclaw` |
 |---|---|---|---|
-| `terminal-bench-2` | Docker task container + Dockerized controller | Docker task container + Dockerized controller | Docker task container + Dockerized controller |
+| `terminal-bench-2` | Docker/Podman task container + matching controller | Docker/Podman task container + matching controller | Docker/Podman task container + matching controller |
 | `SWE-bench Pro` | official per-task SWE container via `swebench_docker` | official per-task SWE container via `swebench_docker` | official per-task SWE container via `swebench_docker` |
 | `MMMU-Pro` | ROCK sandbox | Dockerized controller in the checked-in config | ROCK sandbox |
 | `IMO-AnswerBench` | ROCK sandbox | Dockerized controller in the checked-in config | ROCK sandbox |
 | `GPQA-Diamond` | ROCK sandbox | Dockerized controller in the checked-in config | ROCK sandbox |
 | `HLE` | ROCK sandbox | Dockerized controller in the checked-in config | ROCK sandbox |
 
-`opencode` still supports both `host` and `docker` controller modes, but the checked-in plain benchmark configs default to the Docker controller path. The generic `zeroclaw` harness is sandbox-only and runs its CLI inside a live ROCK sandbox.
+`opencode` supports `host`, `docker`, and opt-in `podman` controller modes; the
+checked-in plain benchmark configs default to Docker. The generic `zeroclaw`
+harness is sandbox/container-only: it runs the CLI inside a live sandbox or an
+explicit `runtime_backend: podman` container, never directly on the host.
 
 ## Cross-task safeguards
 

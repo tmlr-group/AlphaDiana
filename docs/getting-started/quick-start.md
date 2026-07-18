@@ -43,26 +43,21 @@ key from config first, then from environment variables. For a local vLLM server
 set:
 
 ```bash
-# These names match configs/examples/direct_llm_gpqa_diamond.yaml.
-export OPENAI_MODEL="Qwen/Qwen3-235B-A22B"
-export OPENAI_API_BASE="http://127.0.0.1:8011/v1"
+# These names match configs/examples/direct_llm.yaml and the loader fallbacks.
+export OPENAI_MODEL_NAME="Qwen/Qwen3-235B-A22B"
+export OPENAI_BASE_URL="http://127.0.0.1:8011/v1"
 export OPENAI_API_KEY="sk-EMPTY"
 ```
 
 Use `sk-EMPTY` (any non-`EMPTY` string) for a keyless local server. The literal
 string `EMPTY` is treated as blank by both the validator and the agent. For a
-hosted provider, set `OPENAI_API_BASE=https://openrouter.ai/api/v1` and a real
+hosted provider, set `OPENAI_BASE_URL=https://openrouter.ai/api/v1` and a real
 key.
-
-Other checked-in DirectLLM configs leave the three fields blank and use the
-loader fallbacks `OPENAI_MODEL_NAME`, `OPENAI_BASE_URL`, and `OPENAI_API_KEY`.
-Both forms are supported, but the variables above are the ones consumed by
-this specific GPQA example.
 
 ## 2. Write (or point to) a config
 
-A ready-made example ships at
-`configs/examples/direct_llm_gpqa_diamond.yaml`. The shape is:
+A ready-made example ships at `configs/examples/direct_llm.yaml`. It is also
+present in the public repository's default branch. The shape is:
 
 ```yaml
 run_id: ""              # blank → auto-generated uuid4().hex[:12]
@@ -71,35 +66,25 @@ agent:
   name: direct_llm
   version: "1.0"
   config:
-    model: "${OPENAI_MODEL}"
-    api_base: "${OPENAI_API_BASE}"
-    api_key: "${OPENAI_API_KEY}"
-    temperature: 0.0
-    max_tokens: 4096
-    max_retries: 3
-    stream: true
-    system_prompt: |
-      You are solving expert-level multiple-choice science questions.
-      Reason carefully, but the final answer must be a single option letter.
-      At the end, output only one of: \boxed{A}, \boxed{B}, \boxed{C}, \boxed{D}
+    model: ""            # falls back to OPENAI_MODEL_NAME
+    api_base: ""         # falls back to OPENAI_BASE_URL
+    api_key: ""          # falls back to OPENAI_API_KEY
+    temperature: 0.6
+    max_tokens:
 
 benchmark:
-  name: gpqa_diamond
+  name: aime
   config:
-    dataset: "fingertap/GPQA-Diamond"
-    split: "test"
-    seed: 42
-    # max_tasks: 20      # uncomment to run a small subset first
+    dataset: "HuggingFaceH4/aime_2024"
+    split: "train"
 
 scorer:
-  name: exact_match
-  config: {}
+  name: numeric
+  config:
+    tolerance: 1e-6
 
 max_concurrent: 1
-num_samples: 1
 output_dir: "./results"
-metadata:
-  notes: "Direct LLM baseline for GPQA-Diamond"
 ```
 
 `$VAR` / `${VAR}` placeholders are expanded from the environment at load time.
@@ -145,7 +130,8 @@ anything. It blocks on hard errors (missing `agent.name`, an `agent.version`
 with no digit, `max_concurrent` out of range, a scorer mismatch, and so on):
 
 ```bash
-alphadiana validate configs/examples/direct_llm_gpqa_diamond.yaml
+alphadiana validate configs/examples/direct_llm.yaml \
+  -o benchmark.config.max_tasks=1
 ```
 
 Expected output:
@@ -158,38 +144,45 @@ You can layer overrides on either `validate` or `run`. Each `-o a.b.c=value` is
 parsed into a nested dict and auto-cast to bool/int/float:
 
 ```bash
-alphadiana validate configs/examples/direct_llm_gpqa_diamond.yaml \
+alphadiana validate configs/examples/direct_llm.yaml \
   -o benchmark.config.max_tasks=20
 ```
 
 ## 4. Run
 
 ```bash
-alphadiana run configs/examples/direct_llm_gpqa_diamond.yaml
+alphadiana run configs/examples/direct_llm.yaml \
+  -o run_id=quickstart_aime_directllm_t1_k1 \
+  -o benchmark.config.max_tasks=1 \
+  -o num_samples=1
 ```
 
 The runner loads the tasks, expands them into `(task, sample_index)` work items,
 and for each one calls `agent.solve` then `scorer.score` then appends a record.
-Runs are checkpoint-resumable: rerunning the same command skips any task that
-already has a scorer-matching `valid_scored` record. Provider/runtime errors
+Runs are checkpoint-resumable: rerunning this command with the same explicit
+`run_id` skips any task that already has a scorer-matching `valid_scored`
+record. Provider/runtime errors
 and no-answer records remain retryable. Timeout-classified outcomes from the
 current harnesses are scored zero with `finish_reason: timeout`, so they are
 checkpoint-complete rather than retried. To ignore the checkpoint and
 recompute everything:
 
 ```bash
-alphadiana run configs/examples/direct_llm_gpqa_diamond.yaml --redo-all
+alphadiana run configs/examples/direct_llm.yaml --redo-all \
+  -o run_id=quickstart_aime_directllm_t1_k1 \
+  -o benchmark.config.max_tasks=1 \
+  -o num_samples=1
 ```
 
 When the run finishes, the CLI prints the headline metrics:
 
 ```
-Run completed: <run_id>
-  Accuracy:   0.6212
-  Mean Score: 0.6212
-  Pass@1:    0.6212
-  Avg@1:     0.6212
-  Tasks:      198/198 completed
+Run completed: quickstart_aime_directllm_t1_k1
+  Accuracy:   <model-dependent value>
+  Mean Score: <model-dependent value>
+  Pass@1:     <model-dependent value>
+  Avg@1:      <model-dependent value>
+  Tasks:      1/1 completed
 ```
 
 ## 5. Read the report
@@ -226,14 +219,14 @@ score, and observability fields:
 
 ```json
 {
-  "task_id": "gpqa_42",
-  "problem": "Question content...",
-  "ground_truth": "C",
-  "predicted": "C",
+  "task_id": "aime_0",
+  "problem": "Competition math problem...",
+  "ground_truth": "42",
+  "predicted": "42",
   "correct": true,
   "score": 1.0,
   "score_status": "valid_scored",
-  "rationale": "Exact match: expected=C, predicted=C",
+  "rationale": "Numeric match within tolerance",
   "trajectory": [
     {"role": "user", "content": "..."},
     {"role": "assistant", "content": "...", "thinking": "..."}

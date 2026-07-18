@@ -107,8 +107,12 @@ The runner emits bounded, redacted lifecycle events for task start, progress, re
 
 ```bash
 python -m alphadiana.cli validate configs/examples/direct_llm_gpqa_diamond.yaml
-python -m alphadiana.cli run configs/examples/direct_llm_gpqa_diamond.yaml
-python -m alphadiana.cli run configs/examples/direct_llm_gpqa_diamond.yaml -o max_concurrent=2
+python -m alphadiana.cli run configs/examples/direct_llm_gpqa_diamond.yaml \
+  -o run_id=engine_gpqa_directllm_t1_seq \
+  -o benchmark.config.max_tasks=1 -o num_samples=1
+python -m alphadiana.cli run configs/examples/direct_llm_gpqa_diamond.yaml \
+  -o run_id=engine_gpqa_directllm_t1_concurrent \
+  -o benchmark.config.max_tasks=1 -o num_samples=1 -o max_concurrent=2
 python -m alphadiana.cli report results
 python -m alphadiana.cli list-benchmarks
 ```

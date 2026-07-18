@@ -36,6 +36,12 @@
   box-shadow: 0 14px 35px rgba(15, 23, 42, 0.1);
 }
 
+:global([data-theme='dark']) .card {
+  background: var(--ifm-background-surface-color);
+  border-color: var(--ifm-color-emphasis-300);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.24);
+}
+
 .icon {
   width: 48px;
   height: 48px;

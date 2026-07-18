@@ -222,7 +222,9 @@ example, but starts a lightweight ZeroClaw bridge inside the sandbox:
 ```bash
 bash scripts/start_zeroclaw.sh
 source scripts/rock_env.sh
-alphadiana run configs/examples/zeroclaw_aime2026.yaml
+alphadiana run configs/examples/zeroclaw_aime2026.yaml \
+  -o run_id=zeroclaw_aime_t1_k1 \
+  -o benchmark.config.max_tasks=1 -o num_samples=1
 ```
 
 `start_zeroclaw.sh` starts the local ROCK services, but it cannot export
@@ -239,6 +241,7 @@ You can also evaluate a model directly without agent orchestration:
 
 ```bash
 alphadiana run configs/examples/direct_llm.yaml \
+  -o run_id=directllm_aime_t1_k1 \
   -o benchmark.config.max_tasks=1 -o num_samples=1
 ```
 
@@ -302,7 +305,7 @@ metadata and artifacts.
 | `alphadiana validate <config.yaml>` | Validate a config without running |
 | `alphadiana report <results_dir>` | Generate reports from saved results |
 | `alphadiana batch <config1> <config2> ...` | Run multiple experiments |
-| `alphadiana list-benchmarks` | List the diagnostic command's imported benchmark subset; see the website inventory for the full Runner set |
+| `alphadiana list-benchmarks` | List the complete benchmark registry used by the Runner |
 
 Use `-o key=value` to override config values from the command line (e.g., `-o max_concurrent=4`).
 
@@ -481,6 +484,7 @@ For result and proxy internals, see
 | [Harnesses](docs/harnesses/index.md) | DirectLLM, OpenClaw, OpenCode, and ZeroClaw behavior |
 | [Benchmarks](docs/benchmarks/index.md) | Supported benchmark loaders and runbooks |
 | [Configuration](docs/configuration/index.md) | YAML schema and CLI override semantics |
+| [Dashboard](docs/dashboard.md) | Launch, monitor, browse, and compare runs locally |
 
 ## Acknowledgements
 
