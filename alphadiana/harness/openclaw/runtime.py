@@ -1827,7 +1827,14 @@ class OpenClawPodmanRuntimeManager(OpenClawRuntimeManager):
                     f"container→proxy({proxy_url})→vLLM({upstream_base_url})"
                 )
         env_cfg["OPENCLAW_GATEWAY_TOKEN"] = str(self._gateway_token or "OPENCLAW")
-        env_cfg.update(podman_proxy_env(os.environ, host_alias=self._docker_host_ip))
+        podman_host_ip = self._resolve_podman_logprob_proxy_host(podman_cfg)
+        env_cfg.update(
+            podman_proxy_env(
+                os.environ,
+                host_alias=podman_host_ip,
+                no_proxy_hosts=[podman_host_ip],
+            )
+        )
         if self._undici_stream_timeout_ms is not None:
             env_cfg["OPENCLAW_UNDICI_STREAM_TIMEOUT_MS"] = str(self._undici_stream_timeout_ms)
         return env_cfg

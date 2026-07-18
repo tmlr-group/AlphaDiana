@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+from alphadiana.engine.container_runtime.proxy_env import podman_proxy_env
+from alphadiana.harness.opencode.agent import OpenCodeAgent
 from alphadiana.harness.zeroclaw.runtime import ZeroClawPodmanRuntimeManager
 
 
@@ -53,3 +55,49 @@ def test_standalone_bridge_reads_configured_port():
         check=True,
     )
     assert completed.stdout.strip() == "18080"
+
+
+def test_podman_proxy_env_synchronizes_bypass_hosts():
+    env = podman_proxy_env(
+        {
+            "HTTP_PROXY": "http://127.0.0.1:7890",
+            "NO_PROXY": "example.test",
+            "no_proxy": "legacy.test,example.test",
+        },
+        host_alias="host.containers.internal",
+        no_proxy_hosts=["provider.internal"],
+    )
+
+    assert env["HTTP_PROXY"] == "http://host.containers.internal:7890"
+    assert env["NO_PROXY"] == env["no_proxy"]
+    assert env["NO_PROXY"].split(",") == [
+        "example.test",
+        "legacy.test",
+        "host.containers.internal",
+        "localhost",
+        "127.0.0.1",
+        "::1",
+        "provider.internal",
+    ]
+
+
+def test_opencode_podman_preserves_remote_proxy_and_bypasses_provider():
+    agent = OpenCodeAgent()
+    agent.setup(
+        {
+            "controller_mode": "podman",
+            "controller_network": "slirp4netns",
+            "api_base": "https://provider.example/v1",
+            "api_key": "test-key",
+            "model_name": "test-model",
+        }
+    )
+    env = agent._podman_controller_proxy_env(
+        {
+            "OPENAI_BASE_URL": "https://provider.example/v1",
+            "HTTPS_PROXY": "http://127.0.0.1:7890",
+        }
+    )
+
+    assert env["HTTPS_PROXY"] == "http://host.containers.internal:7890"
+    assert "provider.example" in env["NO_PROXY"].split(",")
