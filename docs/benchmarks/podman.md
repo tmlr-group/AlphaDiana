@@ -32,14 +32,9 @@ podman build \
   alphadiana/harness/openclaw/deploy
 ```
 
-:::warning OpenClaw version mismatch
-The checked-in OpenClaw image currently installs `openclaw@2026.3.7`, while
-the scale-readiness YAMLs declare `agent.version: 2026.3.20`. Validation does
-not compare that label with the binary. Do not treat an OpenClaw matrix cell as
-reproducible evidence until the image pin and config version are aligned and
-the binary version is recorded. This is included in the consolidated
-[runtime follow-up](../contribution/runtime-followups).
-:::
+The repository image and Podman configs pin OpenClaw `2026.3.7`. Runtime
+preflight compares the installed binary with `agent.version` and stops with a
+clear version-mismatch error before any benchmark request is made.
 
 Verify the required executable and Python runtime before starting a pilot. This
 avoids waiting through a gateway timeout when a local tag points at an
@@ -97,53 +92,37 @@ listening port must be free on the host. Check it before launching:
 ss -ltn | grep ':8080 '
 ```
 
-On a shared host, rootless networking can isolate the gateway and publish a
-dynamic host port. ZeroClaw can use this smoke-only override with the current
-runtime:
+On a shared host, choose another free ZeroClaw bridge port or use rootless
+networking to isolate the gateway. The same `bridge_port` value is used for the
+listener, exposure, probe, and published URL:
 
 ```bash
 -o agent.config.podman_network=slirp4netns:allow_host_loopback=true \
--o agent.config.bridge_port=8080 \
+-o agent.config.bridge_port=18080 \
 -o agent.config.capture_logprobs=true
 ```
 
-The logprob proxy then advertises the provider through
-`host.containers.internal`. Remove inherited HTTP proxy variables for this
-local-only run, or ensure both `NO_PROXY` and `no_proxy` contain
-`host.containers.internal`; otherwise the local request may be sent to the
-shell's outbound proxy.
-
-`bridge_port` does not currently change the ZeroClaw bridge process's hardcoded
-listen port. Keep it at `8080` for the rootless mapping workaround. The code
-follow-up and acceptance tests are tracked in
-[Runtime follow-ups](../contribution/runtime-followups).
+The runtime keeps Podman host aliases, loopback names, the provider host, and
+the logprob-proxy host in both `NO_PROXY` and `no_proxy`. Existing outbound
+proxy settings remain available for remote providers; users normally do not
+need to clear them for a local run.
 
 ## Run and audit the matrix
 
 Validate before making real provider requests:
 
-:::caution Matrix is diagnostic until two follow-ups land
-The launcher does not currently require `OPENCLAW_GATEWAY_TOKEN`; omitting the
-export above can fall back to a weak default. It also does not reject the
-OpenClaw image/config version mismatch. The commands below are suitable for
-collecting diagnostics, but their OpenClaw cells are non-authoritative until
-both checks are implemented. For bounded work, invoke the intended ZeroClaw or
-OpenCode cell config directly instead of treating the full matrix as a gate.
-:::
-
 ```bash
 export PODMAN_SCALE_RUN_PREFIX=podman_scale_$(date +%Y%m%d_%H%M%S)
 bash scripts/run_podman_scale_readiness.sh validate
-bash scripts/run_podman_scale_readiness.sh pilot
-bash scripts/run_podman_scale_readiness.sh audit
+bash scripts/run_podman_scale_readiness.sh gate
 ```
 
-Until the fail-closed launcher follow-up is implemented, `pilot` records each
-cell's exit code but returns success after failures. It is evidence collection,
-not the readiness gate. Inspect its status TSV and raw logs, then run `audit` as
-the required artifact/status check. Audit does not make OpenClaw cells
-authoritative until the token and version preflights land; a shell exit code
-from `pilot` alone is not a pass signal.
+`gate` attempts every matrix cell, preserves each exit code and raw log, and
+then runs the artifact/status audit. It exits nonzero when a child command
+fails, a task result is missing or not `valid_scored`, or required provenance,
+logs, or artifacts are absent. Use `pilot` only when you intentionally want to
+collect execution evidence separately, and use `audit` to re-check an existing
+run prefix.
 
 The full pilot is `3 harnesses x 4 benchmarks x 3 tasks`; it is not a quick
 smoke. For a bounded diagnostic, run one checked-in cell directly and override

@@ -95,7 +95,7 @@ harness-specific defaults:
 | `enable_thinking` | `None` | Reasoning toggle (see note below). |
 | `capture_logprobs` | harness-specific | DirectLLM defaults to `true`; other transports require explicit support/configuration. |
 | `system_prompt` | harness | Optional system-prompt text. |
-| `bridge_port` | `8080` | ZeroClaw Podman exposure/probe port. Current bridge-process binding remains fixed at `8080`; see the [runtime follow-up](../contribution/runtime-followups). |
+| `bridge_port` | `8080` | ZeroClaw Podman bridge listener, container exposure, health-probe, and published API port. |
 
 Harness-specific keys (e.g. `controller_mode`, `tools_profile`, `persistent_memory`,
 `system_prompt_override`, and the nested `env{}` for `swebench_docker` modes) are documented
