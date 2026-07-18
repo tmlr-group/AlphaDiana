@@ -43,6 +43,7 @@ agent:
     max_tokens: integer
     max_attempts: integer            # Retry attempts; generic OpenClaw default: 5
     request_timeout: float           # Harness-specific: DirectLLM 600s, OpenClaw 1800s, ZeroClaw 1200s
+    bridge_port: integer             # ZeroClaw Podman exposure/probe port; current bridge process still binds 8080
     runtime_trace_mode: string       # ZeroClaw trace mode (default: "none")
     max_tool_iterations: integer     # ZeroClaw max tool iterations (default: 100)
     max_actions_per_hour: integer    # ZeroClaw autonomy action budget (default: 200)
