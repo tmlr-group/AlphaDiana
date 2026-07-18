@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import importlib.util
 import subprocess
 import sys
 from pathlib import Path
@@ -21,6 +22,8 @@ from alphadiana.harness.zeroclaw.runtime import ZeroClawPodmanRuntimeManager
 
 ROOT = Path(__file__).resolve().parents[1]
 BRIDGE_PATH = ROOT / "alphadiana/harness/zeroclaw/deploy/zeroclaw_bridge.py"
+SCALE_SCRIPT = ROOT / "scripts/run_podman_scale_readiness.sh"
+AUDIT_PATH = ROOT / "scripts/audit_podman_scale_readiness.py"
 
 
 def test_zeroclaw_bridge_port_is_shared_by_process_and_podman_spec():
@@ -146,3 +149,78 @@ def test_agent_runtime_overrides_image_entrypoint_and_records_identity():
     assert fake.run_kwargs["command"] == ["-c", "sleep infinity"]
     assert result.metadata["runtime_image_id"] == "sha256:abc"
     assert result.metadata["runtime_entrypoint"] == "/bin/sh"
+
+
+def test_scale_runner_rejects_weak_openclaw_token():
+    completed = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f"source {str(SCALE_SCRIPT)!r}; unset OPENCLAW_GATEWAY_TOKEN; "
+            "require_openclaw_gateway_token",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 2
+    assert "Missing or weak OPENCLAW_GATEWAY_TOKEN" in completed.stderr
+
+
+def test_scale_runner_preserves_failed_command_exit_code(tmp_path):
+    command = f"""
+source {str(SCALE_SCRIPT)!r}
+ROOT_DIR={str(tmp_path)!r}
+STATUS_FILE="$ROOT_DIR/status.tsv"
+COMMAND_TIMEOUT_SECONDS=1
+mkdir -p "$ROOT_DIR/logs"
+printf 'scope\\trun_id\\tconfig\\texit_code\\tlog_path\\n' > "$STATUS_FILE"
+timeout() {{ return 7; }}
+run_config pilot fake.yaml unit_failure
+"""
+    completed = subprocess.run(
+        ["bash", "-c", command],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 7
+    assert "\t7\t" in (tmp_path / "status.tsv").read_text(encoding="utf-8")
+
+
+def test_scale_audit_rejects_non_scored_task(tmp_path):
+    spec = importlib.util.spec_from_file_location("podman_scale_audit", AUDIT_PATH)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    log_path = tmp_path / "run.log"
+    log_path.write_text("complete", encoding="utf-8")
+    artifact_path = tmp_path / "results/run/run/artifacts/sample/trajectory.json"
+    artifact_path.parent.mkdir(parents=True)
+    artifact_path.write_text("{}", encoding="utf-8")
+    task_path = tmp_path / "task.json"
+    row = module.row_from_record(
+        record={
+            "score_status": "provider_error",
+            "score": 0,
+            "metadata": {"container_engine": "podman"},
+            "artifact_manifest": {"local_artifact_root": "sample"},
+        },
+        task_json_path=task_path,
+        cell={
+            "config_path": tmp_path / "config.yaml",
+            "agent": "openclaw",
+            "benchmark": "aime",
+        },
+        run_id="run",
+        log_path=log_path,
+        results_dir=tmp_path / "results",
+        root=tmp_path,
+    )
+
+    assert row["audit_status"] == "fail"
+    assert "invalid_score_status" in row["audit_failures"]
