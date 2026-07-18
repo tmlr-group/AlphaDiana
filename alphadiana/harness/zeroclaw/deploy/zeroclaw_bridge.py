@@ -41,7 +41,20 @@ def _json_object_from_env(name: str) -> dict[str, Any]:
     return parsed
 
 HOST = os.environ.get("ZEROCLAW_BRIDGE_HOST", "127.0.0.1")
-PORT = 8080
+
+
+def _bridge_port_from_env() -> int:
+    raw = os.environ.get("ZEROCLAW_BRIDGE_PORT", "8080")
+    try:
+        port = int(raw)
+    except ValueError as exc:
+        raise ValueError(f"ZEROCLAW_BRIDGE_PORT must be an integer, got {raw!r}") from exc
+    if not 1 <= port <= 65535:
+        raise ValueError(f"ZEROCLAW_BRIDGE_PORT must be between 1 and 65535, got {port}")
+    return port
+
+
+PORT = _bridge_port_from_env()
 GATEWAY_TOKEN = os.environ.get("ZEROCLAW_GATEWAY_TOKEN", "ZEROCLAW")
 REQUEST_TIMEOUT = int(os.environ.get("ZEROCLAW_REQUEST_TIMEOUT", "1200"))
 MAX_TOOL_ITERATIONS = int(os.environ.get("ZEROCLAW_MAX_TOOL_ITERATIONS", "100"))
