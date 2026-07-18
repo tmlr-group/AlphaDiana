@@ -133,8 +133,8 @@ logprob-capture proxies, and the per-harness internals, start at the
 bundles a harness can mount into its sandbox are covered in
 [Adding a Harness](./new-harness).
 
-Current cross-harness Podman issues found by the documentation-release smoke
-are consolidated in [Runtime Follow-ups for the Code Team](./runtime-followups).
+The shared startup, networking, image, and evidence checks for Podman-backed
+harnesses are documented in [Podman Runtime Safeguards](./runtime-followups).
 
 ## Add a scorer
 
