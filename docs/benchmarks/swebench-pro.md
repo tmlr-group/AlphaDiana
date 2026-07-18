@@ -25,7 +25,7 @@ official path, not for a Diana-managed execution mode.
 
 ## Scope
 
-AlphaDiana does not use the ROCK/AIME flow from the root [README.md](../../README.md) for SWE-bench Pro smoke. Instead, it:
+AlphaDiana does not use the ROCK/AIME flow from the root [README.md](https://github.com/tmlr-group/AlphaDiana/blob/main/README.md) for SWE-bench Pro smoke. Instead, it:
 
 - runs `benchmark.name: swebench_pro_os`
 - uses `agent.name: swebench_docker`

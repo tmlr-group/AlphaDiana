@@ -1,0 +1,292 @@
+.section {
+  padding: var(--diana-section-padding, 4rem 0);
+}
+
+.inner {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+  text-align: center;
+}
+
+.kicker {
+  font-family: var(--ifm-heading-font-family);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--diana-secondary);
+  margin: 0 0 0.5rem;
+}
+
+.heading {
+  font-size: clamp(1.8rem, 1.4rem + 1.4vw, 2.5rem);
+  margin: 0 0 0.75rem;
+  color: var(--ifm-heading-color);
+}
+
+.subhead {
+  max-width: 720px;
+  margin: 0 auto 2rem;
+  color: var(--ifm-font-color-secondary);
+  line-height: 1.7;
+}
+
+.legendPos {
+  color: #15803d;
+  font-weight: 700;
+}
+.legendNeg {
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+/* Model tabs */
+.tabs {
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.3rem;
+  border-radius: 999px;
+  background: var(--ifm-background-surface-color);
+  border: 1px solid var(--ifm-color-emphasis-200);
+  margin-bottom: 1.75rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.tab {
+  border: none;
+  background: transparent;
+  padding: 0.5rem 1.1rem;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  font-family: var(--ifm-heading-font-family);
+  color: var(--ifm-font-color-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tab:hover {
+  color: var(--ifm-color-primary);
+}
+
+.activeTab {
+  background: var(--ifm-color-primary);
+  color: #fff;
+}
+
+/* Board */
+.boardWrap {
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: var(--diana-border-radius, 12px);
+  overflow: hidden;
+  background: var(--ifm-background-color);
+  box-shadow: 0 18px 40px rgba(37, 99, 235, 0.10);
+}
+
+.boardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1.25rem;
+  background: var(--diana-night);
+  color: #e2e8f0;
+}
+
+.modelName {
+  font-family: var(--ifm-heading-font-family);
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.verdict {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+}
+.v_hurts {
+  background: rgba(185, 28, 28, 0.18);
+  color: #fca5a5;
+}
+.v_helps {
+  background: rgba(21, 128, 61, 0.2);
+  color: #86efac;
+}
+.v_mixed {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fcd34d;
+}
+
+.tableScroll {
+  overflow-x: auto;
+}
+
+.table {
+  display: table;
+  width: 100%;
+  min-width: 720px;
+  overflow: visible;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  margin: 0;
+}
+
+/* First column (harness) is fixed; the six metric columns split the rest evenly,
+   so the table always fills its width with no trailing whitespace. */
+.table th:first-child,
+.table td:first-child {
+  width: 16.5%;
+}
+
+.table thead th {
+  background: var(--ifm-background-surface-color);
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+  padding: 0.6rem 0.5rem;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--ifm-font-color-secondary);
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.cornerTh {
+  text-align: left;
+  padding-left: 1.25rem !important;
+}
+
+.mName {
+  display: block;
+  font-family: var(--ifm-heading-font-family);
+  color: var(--ifm-heading-color);
+  font-weight: 600;
+}
+.mMetric {
+  display: block;
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.75;
+  margin-top: 0.15rem;
+}
+
+.table tbody td,
+.table tbody th {
+  padding: 0.55rem 0.5rem;
+  border-bottom: 1px solid var(--ifm-color-emphasis-100);
+  text-align: center;
+  font-size: 0.92rem;
+}
+
+.rowHead {
+  text-align: left !important;
+  padding-left: 1.25rem !important;
+  font-family: var(--ifm-heading-font-family);
+  font-weight: 600;
+  color: var(--ifm-heading-color);
+  white-space: nowrap;
+}
+
+.baseTag {
+  display: inline-block;
+  margin-left: 0.5rem;
+  font-family: var(--ifm-font-family-base);
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ifm-color-primary);
+  background: var(--ifm-color-primary-lightest);
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  vertical-align: middle;
+}
+
+.baseRow {
+  background: rgba(37, 99, 235, 0.05);
+}
+
+.baseCell {
+  font-weight: 600;
+  color: var(--ifm-heading-color);
+}
+
+.deltaCell {
+  position: relative;
+}
+
+.cellVal {
+  font-weight: 600;
+  color: var(--ifm-heading-color);
+}
+
+.cellDelta {
+  font-size: 0.72rem;
+  font-weight: 600;
+  margin-left: 0.3rem;
+  white-space: nowrap;
+}
+
+.pos {
+  background: rgba(34, 197, 94, 0.12);
+}
+.pos .cellDelta {
+  color: #15803d;
+}
+.neg {
+  background: rgba(239, 68, 68, 0.1);
+}
+.neg .cellDelta {
+  color: #b91c1c;
+}
+.zero .cellDelta {
+  color: var(--ifm-color-emphasis-500);
+}
+
+.takeaway {
+  margin: 0;
+  padding: 0.9rem 1.25rem;
+  background: var(--ifm-background-surface-color);
+  border-top: 1px solid var(--ifm-color-emphasis-200);
+  font-size: 0.92rem;
+  color: var(--ifm-font-color-base);
+  text-align: left;
+}
+
+.footnote {
+  margin-top: 1.25rem;
+  font-size: 0.82rem;
+  color: var(--ifm-font-color-secondary);
+}
+
+:global([data-theme='dark']) .pos {
+  background: rgba(34, 197, 94, 0.16);
+}
+:global([data-theme='dark']) .pos .cellDelta {
+  color: #4ade80;
+}
+:global([data-theme='dark']) .neg {
+  background: rgba(239, 68, 68, 0.16);
+}
+:global([data-theme='dark']) .neg .cellDelta {
+  color: #f87171;
+}
+:global([data-theme='dark']) .legendPos {
+  color: #4ade80;
+}
+:global([data-theme='dark']) .legendNeg {
+  color: #f87171;
+}
+
+@media (max-width: 640px) {
+  .boardTop {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+}

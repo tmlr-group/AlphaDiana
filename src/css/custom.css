@@ -1,0 +1,68 @@
+/**
+ * Any CSS included here will be global. The classic template
+ * bundles Infima by default. Infima is a CSS framework designed to
+ * work well for content-centric websites.
+ *
+ * AlphaDiana identity: blue primary with a cyan accent.
+ * The site inherits the default Docusaurus/Infima system font stack.
+ */
+
+:root {
+  /* Brand palette: blue */
+  --ifm-color-primary: #2563eb;
+  --ifm-color-primary-dark: #1d4ed8;
+  --ifm-color-primary-darker: #1e40af;
+  --ifm-color-primary-darkest: #1e3a8a;
+  --ifm-color-primary-light: #3b82f6;
+  --ifm-color-primary-lighter: #60a5fa;
+  --ifm-color-primary-lightest: #bfdbfe;
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(37, 99, 235, 0.10);
+
+  /* AlphaDiana design tokens */
+  --diana-primary: #2563eb;
+  --diana-primary-dark: #1d4ed8;
+  --diana-secondary: #0ea5e9;
+  --diana-accent: #22d3ee;
+  --diana-night: #0f172a;
+  --diana-gray-50: #f9fafb;
+  --diana-gray-100: #f3f4f6;
+  --diana-gray-200: #e5e7eb;
+  --diana-gray-800: #1f2937;
+  --diana-gray-900: #111827;
+  --diana-section-padding: 4rem 0;
+  --diana-card-padding: 2rem;
+  --diana-border-radius: 8px;
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #60a5fa;
+  --ifm-color-primary-dark: #3b82f6;
+  --ifm-color-primary-darker: #2563eb;
+  --ifm-color-primary-darkest: #1d4ed8;
+  --ifm-color-primary-light: #93c5fd;
+  --ifm-color-primary-lighter: #bfdbfe;
+  --ifm-color-primary-lightest: #dbeafe;
+  --docusaurus-highlighted-code-line-bg: rgba(96, 165, 250, 0.16);
+}
+
+/* Shared section helpers */
+.section-white {
+  background: #fff;
+}
+
+.section-gray {
+  background: var(--diana-gray-50);
+}
+
+[data-theme='dark'] .section-white {
+  background: var(--ifm-background-color);
+}
+
+[data-theme='dark'] .section-gray {
+  background: var(--ifm-background-surface-color);
+}
+
+.button--primary {
+  box-shadow: 0 12px 30px rgba(37, 99, 235, 0.25);
+}
