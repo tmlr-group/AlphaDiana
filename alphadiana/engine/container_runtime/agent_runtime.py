@@ -72,7 +72,8 @@ class PodmanAgentSpec:
     ports: Mapping[int | str, int | str | None] | None = None
     network: str | None = None
     extra_args: Sequence[str] = field(default_factory=tuple)
-    container_command: Sequence[str] = ("sleep", "infinity")
+    container_entrypoint: str | None = "/bin/sh"
+    container_command: Sequence[str] = ("-c", "sleep infinity")
     install_commands: Sequence[str] = field(default_factory=tuple)
     files: Sequence[RuntimeFile] = field(default_factory=tuple)
     safe_config_paths: Sequence[str] = field(default_factory=tuple)
@@ -127,6 +128,8 @@ class PodmanAgentRuntime:
         self._api_base = ""
         self._process_id = ""
         self._owned_host_port: int | None = None
+        self._runtime_identity: dict[str, Any] = {}
+        self._preflight_outputs: list[dict[str, str]] = []
 
     @property
     def container_id(self) -> str:
@@ -214,12 +217,14 @@ class PodmanAgentRuntime:
                 workdir=spec.workdir,
                 ports=spec.port_mapping(),
                 network=spec.network,
+                entrypoint=spec.container_entrypoint,
                 remove=False,
                 extra_args=list(spec.extra_args),
                 timeout=spec.startup_timeout,
             )
             container_id = result.stdout.strip()
             self._container_id = container_id
+            self._runtime_identity = self._inspect_runtime_identity(container_id)
 
             self._copy_files(spec, container_id)
             self._run_install_commands(spec, container_id)
@@ -315,6 +320,8 @@ class PodmanAgentRuntime:
             self._api_base = ""
             self._process_id = ""
             self._owned_host_port = None
+            self._runtime_identity = {}
+            self._preflight_outputs = []
         if stop_error is not None and check:
             raise stop_error
 
@@ -372,16 +379,41 @@ class PodmanAgentRuntime:
                 )
 
     def _run_install_commands(self, spec: PodmanAgentSpec, container_id: str) -> None:
+        self._preflight_outputs = []
         for command in spec.install_commands:
             if not str(command).strip():
                 continue
-            self._runtime.exec(
+            result = self._runtime.exec(
                 container_id,
                 ["/bin/sh", "-c", str(command)],
                 workdir=spec.workdir,
                 timeout=spec.startup_timeout,
                 check=True,
             )
+            self._preflight_outputs.append({
+                "command": str(command),
+                "stdout": (result.stdout or "")[-2000:],
+                "stderr": (result.stderr or "")[-2000:],
+            })
+
+    def _inspect_runtime_identity(self, container_id: str) -> dict[str, Any]:
+        try:
+            result = self._runtime.inspect(container_id, check=False)
+            if result.returncode != 0:
+                return {}
+            payload = json.loads(result.stdout or "[]")
+            item = payload[0] if isinstance(payload, list) and payload else payload
+            if not isinstance(item, dict):
+                return {}
+            config = item.get("Config") if isinstance(item.get("Config"), dict) else {}
+            return {
+                "runtime_image_id": str(item.get("Image") or ""),
+                "runtime_image_name": str(item.get("ImageName") or config.get("Image") or ""),
+                "runtime_entrypoint": config.get("Entrypoint"),
+                "runtime_command": config.get("Cmd"),
+            }
+        except Exception:
+            return {}
 
     def _launch_process(self, spec: PodmanAgentSpec, container_id: str) -> str:
         if not str(spec.run_command or "").strip():
@@ -640,7 +672,9 @@ class PodmanAgentRuntime:
             "request_timeout": spec.request_timeout,
             "startup_timeout": spec.startup_timeout,
             "cleanup_timeout": spec.cleanup_timeout,
+            "runtime_preflight_outputs": list(self._preflight_outputs),
         }
+        metadata.update(self._runtime_identity)
         metadata.update(_redact_secret_fields(dict(spec.metadata)))
         return metadata
 

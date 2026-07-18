@@ -1278,6 +1278,10 @@ class OpenCodeAgent(Agent):
                     "--label", f"alphadiana.workdir={workdir}",
                     "-v", f"{workdir}:{workdir}",
                 ],
+                install_commands=(
+                    "command -v node >/dev/null 2>&1 && node --version",
+                    "test -r /usr/lib/node_modules/opencode-ai/bin/opencode",
+                ),
                 metadata={
                     "controller_mode": "podman",
                     "controller_image": self._controller_image,
