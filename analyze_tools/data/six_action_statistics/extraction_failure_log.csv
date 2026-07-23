@@ -1,0 +1,133 @@
+benchmark,harness,source_id,task_id,sample_index,outcome,correct,score_status,failure_type,detail
+GPQA,OpenClaw,gpqa_openclaw_v2,gpqa_108,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+GPQA,OpenClaw,gpqa_openclaw_v2,gpqa_112,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+GPQA,OpenClaw,gpqa_openclaw_v2,gpqa_116,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+GPQA,OpenClaw,gpqa_openclaw_v2,gpqa_120,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+GPQA,OpenClaw,gpqa_openclaw_v2,gpqa_133,0,success,True,valid_scored,missing_token_length,No n_tokens or completion token fallback
+GPQA,OpenClaw,gpqa_openclaw_v2,gpqa_14,0,success,True,valid_scored,missing_token_length,No n_tokens or completion token fallback
+GPQA,OpenClaw,gpqa_openclaw_v2,gpqa_165,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+GPQA,OpenClaw,gpqa_openclaw_v2,gpqa_166,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+GPQA,OpenClaw,gpqa_openclaw_v2,gpqa_171,0,success,True,valid_scored,missing_token_length,No n_tokens or completion token fallback
+GPQA,OpenClaw,gpqa_openclaw_v2,gpqa_177,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+GPQA,OpenClaw,gpqa_openclaw_v2,gpqa_188,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+GPQA,OpenClaw,gpqa_openclaw_v2,gpqa_189,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+GPQA,OpenCode,gpqa_opencode_v2,gpqa_160,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+GPQA,OpenCode,gpqa_opencode_v2,gpqa_173,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+GPQA,OpenCode,gpqa_opencode_v2,gpqa_181,0,failure,False,valid_scored,no_action_events,No model action spans extracted
+GPQA,OpenCode,gpqa_opencode_v2,gpqa_181,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+GPQA,OpenCode,gpqa_opencode_v2,gpqa_189,0,failure,False,valid_scored,no_action_events,No model action spans extracted
+GPQA,OpenCode,gpqa_opencode_v2,gpqa_189,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+GPQA,ZeroClaw,gpqa_zeroclaw_v2,gpqa_106,0,unknown,,runtime_error,no_action_events,No model action spans extracted
+GPQA,ZeroClaw,gpqa_zeroclaw_v2,gpqa_106,0,unknown,,runtime_error,missing_token_length,No n_tokens or completion token fallback
+GPQA,ZeroClaw,gpqa_zeroclaw_v2,gpqa_108,0,unknown,,runtime_error,no_action_events,No model action spans extracted
+GPQA,ZeroClaw,gpqa_zeroclaw_v2,gpqa_108,0,unknown,,runtime_error,missing_token_length,No n_tokens or completion token fallback
+GPQA,ZeroClaw,gpqa_zeroclaw_v2,gpqa_112,0,unknown,,runtime_error,no_action_events,No model action spans extracted
+GPQA,ZeroClaw,gpqa_zeroclaw_v2,gpqa_112,0,unknown,,runtime_error,missing_token_length,No n_tokens or completion token fallback
+GPQA,ZeroClaw,gpqa_zeroclaw_v2,gpqa_116,0,unknown,,runtime_error,no_action_events,No model action spans extracted
+GPQA,ZeroClaw,gpqa_zeroclaw_v2,gpqa_116,0,unknown,,runtime_error,missing_token_length,No n_tokens or completion token fallback
+GPQA,ZeroClaw,gpqa_zeroclaw_v2,gpqa_125,0,unknown,,runtime_error,no_action_events,No model action spans extracted
+GPQA,ZeroClaw,gpqa_zeroclaw_v2,gpqa_125,0,unknown,,runtime_error,missing_token_length,No n_tokens or completion token fallback
+GPQA,ZeroClaw,gpqa_zeroclaw_v2,gpqa_128,0,unknown,,runtime_error,no_action_events,No model action spans extracted
+GPQA,ZeroClaw,gpqa_zeroclaw_v2,gpqa_128,0,unknown,,runtime_error,missing_token_length,No n_tokens or completion token fallback
+GPQA,ZeroClaw,gpqa_zeroclaw_v2,gpqa_142,0,unknown,,runtime_error,no_action_events,No model action spans extracted
+GPQA,ZeroClaw,gpqa_zeroclaw_v2,gpqa_142,0,unknown,,runtime_error,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_1052,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_1070,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_108,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_11,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_1108,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_1109,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_1120,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_117,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_1198,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_1231,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_1301,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_136,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_1436,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_1450,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_1454,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_1463,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_1467,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_1476,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_1528,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_1563,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_169,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_1762,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_178,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_1809,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_1843,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_1853,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_1889,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_2212,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_2220,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_2333,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_335,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_371,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_44,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_470,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_508,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_548,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_696,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_791,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_810,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_830,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_84,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_855,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_876,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_893,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_911,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_942,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+HLE,ZeroClaw,hle_zeroclaw_20260426,hle_997,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+AIMEPass4,OpenClaw,aime_pass4_openclaw,aime_13,2,unknown,,runtime_error,no_action_events,No model action spans extracted
+AIMEPass4,OpenClaw,aime_pass4_openclaw,aime_14,1,unknown,,runtime_error,no_action_events,No model action spans extracted
+AIMEPass4,OpenClaw,aime_pass4_openclaw,aime_14,2,unknown,,runtime_error,no_action_events,No model action spans extracted
+AIMEPass4,OpenClaw,aime_pass4_openclaw,aime_15,0,unknown,,runtime_error,no_action_events,No model action spans extracted
+AIMEPass4,OpenClaw,aime_pass4_openclaw,aime_15,1,unknown,,runtime_error,no_action_events,No model action spans extracted
+AIMEPass4,OpenClaw,aime_pass4_openclaw,aime_15,2,unknown,,runtime_error,no_action_events,No model action spans extracted
+AIMEPass4,OpenClaw,aime_pass4_openclaw,aime_15,3,unknown,,runtime_error,no_action_events,No model action spans extracted
+AIMEPass4,OpenClaw,aime_pass4_openclaw,aime_17,1,unknown,,runtime_error,no_action_events,No model action spans extracted
+AIMEPass4,OpenClaw,aime_pass4_openclaw,aime_17,0,unknown,,runtime_error,no_action_events,No model action spans extracted
+AIMEPass4,OpenClaw,aime_pass4_openclaw,aime_17,2,unknown,,runtime_error,no_action_events,No model action spans extracted
+AIMEPass4,OpenClaw,aime_pass4_openclaw,aime_17,3,unknown,,runtime_error,no_action_events,No model action spans extracted
+AIMEPass4,OpenClaw,aime_pass4_openclaw,aime_18,0,unknown,,runtime_error,no_action_events,No model action spans extracted
+AIMEPass4,OpenClaw,aime_pass4_openclaw,aime_18,3,unknown,,runtime_error,no_action_events,No model action spans extracted
+AIMEPass4,OpenClaw,aime_pass4_openclaw,aime_2,3,unknown,,runtime_error,no_action_events,No model action spans extracted
+AIMEPass4,OpenClaw,aime_pass4_openclaw,aime_21,2,unknown,,runtime_error,no_action_events,No model action spans extracted
+AIMEPass4,OpenClaw,aime_pass4_openclaw,aime_22,1,unknown,,runtime_error,no_action_events,No model action spans extracted
+AIMEPass4,OpenClaw,aime_pass4_openclaw,aime_22,2,unknown,,runtime_error,no_action_events,No model action spans extracted
+AIMEPass4,OpenClaw,aime_pass4_openclaw,aime_23,0,unknown,,runtime_error,no_action_events,No model action spans extracted
+AIMEPass4,OpenClaw,aime_pass4_openclaw,aime_23,2,unknown,,runtime_error,no_action_events,No model action spans extracted
+AIMEPass4,OpenClaw,aime_pass4_openclaw,aime_26,0,unknown,,runtime_error,no_action_events,No model action spans extracted
+AIMEPass4,OpenClaw,aime_pass4_openclaw,aime_26,1,unknown,,runtime_error,no_action_events,No model action spans extracted
+AIMEPass4,OpenClaw,aime_pass4_openclaw,aime_27,1,unknown,,runtime_error,no_action_events,No model action spans extracted
+AIMEPass4,OpenClaw,aime_pass4_openclaw,aime_28,0,unknown,,runtime_error,no_action_events,No model action spans extracted
+AIMEPass4,OpenClaw,aime_pass4_openclaw,aime_28,1,unknown,,runtime_error,no_action_events,No model action spans extracted
+AIMEPass4,OpenClaw,aime_pass4_openclaw,aime_29,1,unknown,,runtime_error,no_action_events,No model action spans extracted
+AIMEPass4,OpenClaw,aime_pass4_openclaw,aime_29,0,unknown,,runtime_error,no_action_events,No model action spans extracted
+AIMEPass4,OpenClaw,aime_pass4_openclaw,aime_29,2,unknown,,runtime_error,no_action_events,No model action spans extracted
+AIMEPass4,OpenClaw,aime_pass4_openclaw,aime_29,3,unknown,,runtime_error,no_action_events,No model action spans extracted
+AIMEPass4,OpenClaw,aime_pass4_openclaw,aime_29,3,unknown,,runtime_error,missing_entropy,token_entropy_stats.mean missing
+AIMEPass4,OpenClaw,aime_pass4_openclaw,aime_29,3,unknown,,runtime_error,missing_token_length,No n_tokens or completion token fallback
+AIMEPass4,ZeroClaw,aime_pass4_zeroclaw,aime_13,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+AIMEPass4,ZeroClaw,aime_pass4_zeroclaw,aime_14,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+AIMEPass4,ZeroClaw,aime_pass4_zeroclaw,aime_14,2,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+AIMEPass4,ZeroClaw,aime_pass4_zeroclaw,aime_14,3,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+AIMEPass4,ZeroClaw,aime_pass4_zeroclaw,aime_15,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+AIMEPass4,ZeroClaw,aime_pass4_zeroclaw,aime_15,2,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+AIMEPass4,ZeroClaw,aime_pass4_zeroclaw,aime_15,3,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+AIMEPass4,ZeroClaw,aime_pass4_zeroclaw,aime_17,1,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+AIMEPass4,ZeroClaw,aime_pass4_zeroclaw,aime_17,2,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+AIMEPass4,ZeroClaw,aime_pass4_zeroclaw,aime_17,3,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+AIMEPass4,ZeroClaw,aime_pass4_zeroclaw,aime_18,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+AIMEPass4,ZeroClaw,aime_pass4_zeroclaw,aime_18,1,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+AIMEPass4,ZeroClaw,aime_pass4_zeroclaw,aime_18,3,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+AIMEPass4,ZeroClaw,aime_pass4_zeroclaw,aime_19,2,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+AIMEPass4,ZeroClaw,aime_pass4_zeroclaw,aime_22,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+AIMEPass4,ZeroClaw,aime_pass4_zeroclaw,aime_22,1,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+AIMEPass4,ZeroClaw,aime_pass4_zeroclaw,aime_22,2,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+AIMEPass4,ZeroClaw,aime_pass4_zeroclaw,aime_22,3,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+AIMEPass4,ZeroClaw,aime_pass4_zeroclaw,aime_25,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+AIMEPass4,ZeroClaw,aime_pass4_zeroclaw,aime_26,0,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+AIMEPass4,ZeroClaw,aime_pass4_zeroclaw,aime_27,2,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+AIMEPass4,ZeroClaw,aime_pass4_zeroclaw,aime_28,2,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback
+AIMEPass4,ZeroClaw,aime_pass4_zeroclaw,aime_28,3,failure,False,valid_scored,missing_token_length,No n_tokens or completion token fallback

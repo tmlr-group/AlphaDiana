@@ -1,7 +1,7 @@
 harness_a,harness_b,canonical_action_jsd,action_support_overlap,support_a,support_b
-directllm,openclaw,0.3979026297936963,0.3333333333333333,answer reason,answer plan reason recover tool_use verify
-directllm,opencode,0.26441154858507476,0.4,answer reason,answer plan reason tool_use verify
-directllm,zeroclaw,0.2185750886325109,0.5,answer reason,answer plan reason verify
-openclaw,opencode,0.11839396313473322,0.8333333333333334,answer plan reason recover tool_use verify,answer plan reason tool_use verify
-openclaw,zeroclaw,0.5101871867294452,0.6666666666666666,answer plan reason recover tool_use verify,answer plan reason verify
-opencode,zeroclaw,0.26356824975092463,0.8,answer plan reason tool_use verify,answer plan reason verify
+directllm,openclaw,0.41087536212899023,0.3333333333333333,answer reason,answer plan reason recover tool_use verify
+directllm,opencode,0.2627771420214654,0.4,answer reason,answer plan reason tool_use verify
+directllm,zeroclaw,0.21595797276752268,0.5,answer reason,answer plan reason verify
+openclaw,opencode,0.12626209978613231,0.8333333333333334,answer plan reason recover tool_use verify,answer plan reason tool_use verify
+openclaw,zeroclaw,0.5332944615850314,0.6666666666666666,answer plan reason recover tool_use verify,answer plan reason verify
+opencode,zeroclaw,0.26428464788753103,0.8,answer plan reason tool_use verify,answer plan reason verify

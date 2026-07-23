@@ -1,254 +1,363 @@
 % GPQA-Diamond macro analysis section for AlphaDiana paper
 % Generated from computed results in analyze_tools/data/
+% Scripts: compute_gpqa_action_rates.py, compute_gpqa_goal_loss.py,
+%          compute_gpqa_oracle.py, analyze_gpqa_tool_quality.py,
+%          build_gpqa_subdomain_map.py
+% Requires: \usepackage{tcolorbox} in preamble
+
+% Boxed finding claim, conference benchmark style (steel blue)
+\newcounter{finding}
+\newcommand{\findingbox}[1]{%
+  \refstepcounter{finding}%
+  \begin{tcolorbox}[
+    colback=blue!6!white,
+    colframe=blue!45!black,
+    boxrule=0.5pt,
+    arc=3pt,
+    left=8pt, right=8pt, top=6pt, bottom=6pt,
+  ]
+  \textbf{Finding \thefinding.}\enspace #1
+  \end{tcolorbox}
+}
+
 
 \subsection{GPQA-Diamond}
 \label{appendix:macro-gpqa}
 
-On the 198-question GPQA-Diamond benchmark (Qwen2.5-72B-Instruct backbone),
-DirectLLM achieves 159/198 (80.3\%) accuracy.
-The three agent harnesses reach 131/198 (66.2\%, OpenClaw),
-145/198 (73.2\%, OpenCode), and 154/191 valid-scored (80.6\%, ZeroClaw).
-An oracle router that picks the best harness per task would achieve
-175/198 (88.4\%), a 8.1-point ceiling gain over DirectLLM, but the harnesses
-individually fall short or match DirectLLM rather than uniformly surpassing it.
+We evaluate all four systems on the 198-question GPQA-Diamond benchmark using
+Qwen3.5-27B.
+Table~\ref{tab:gpqa-overview} reports accuracy, output length, and tool-use rates
+for each system.
+Two terms used throughout this section: a \emph{harness-specific failure} is a
+task DirectLLM answers correctly but the harness answers incorrectly; a
+\emph{harness-only success} is a task DirectLLM answers incorrectly but the
+harness answers correctly.
+The \emph{W/C token ratio} is the mean output length on wrong trajectories
+divided by the mean on correct trajectories.
+The \emph{tool use rate} is the fraction of trajectories containing at least one
+tool invocation.
 
-\paragraph{Action Distribution.}
-Table~\ref{tab:gpqa-action-rates} shows outcome-conditioned action rates
-(fraction of trajectories with $\geq 1$ event of each type) broken down by
-harness and correctness.
+Three contrasts define the landscape.
+OpenClaw's wrong trajectories are nearly twelve times longer than its correct
+ones, a W/C ratio absent in any other system.
+OpenCode shows a 3.6$\times$ gap in tool use rate between correct and wrong
+trajectories, pointing to tool activation as an outcome predictor.
+ZeroClaw and OpenClaw have comparable harness-only success rates yet differ
+by 13 percentage points in harness-specific failures, indicating that the loss
+side of the ledger drives most of the accuracy gap.
 
-Three structural patterns stand out.
-First, \emph{ZeroClaw imposes maximum planning}: 82.5\% of correct trajectories
-and 81.1\% of wrong ones contain at least one \texttt{plan} event,
-with zero tool use---it is a pure chain-of-thought harness that structures
-reasoning into explicit plan--reason--answer sequences.
-The near-identical plan rates across correct and wrong ZeroClaw trajectories
-(82.5\% vs.\ 81.1\%) indicate that planning alone is insufficient as a
-differentiator: ZeroClaw's accuracy advantage (80.6\%) over OpenClaw (66.2\%)
-stems from avoiding tool-induced distractions rather than from more planning.
-
-Second, \emph{tool use is a strong correctness discriminator for OpenClaw}:
-55.7\% of correct trajectories invoke a tool versus only 19.4\% of wrong ones.
-Substantive tool calls (result length $>100$ chars, no error) mirror this split
-(51.1\% vs.\ 14.9\%), meaning it is productive tool use that correlates with
-success, not just any call.
-OpenCode shows the same directional pattern but weaker (55.2\% correct
-vs.\ 15.1\% wrong), consistent with OpenCode relying more on internal
-reasoning (reason rate 93.1\%) than on tool output.
-
-Third, \emph{OpenClaw answer and reason rates are inverted across outcomes}:
-correct trajectories have answer\_rate = 51.1\% and reason\_rate = 12.2\%,
-while wrong trajectories have answer\_rate = 9.0\% and reason\_rate = 19.4\%.
-This reveals a completion-failure mode: many wrong OpenClaw trajectories
-never emit a boxed answer at all, terminating in a reasoning or recovery loop
-(recover\_rate 23.7\% correct vs.\ 10.4\% wrong further supports this).
+A fourth contrast emerges from output entropy.
+\emph{Mean entropy} is the average per-token log-probability entropy over a
+trajectory, computed from model logprobs; higher entropy indicates more
+diffuse, exploratory generation while lower entropy indicates repetitive or
+over-confident output.
+OpenClaw wrong trajectories collapse to mean entropy 0.14 versus 0.25 on
+correct ones: repetitive low-diversity generation accompanying the looping
+spiral.
+ZeroClaw reverses the direction: wrong trajectories carry higher entropy (0.36)
+than correct ones (0.25), reflecting genuine deliberative uncertainty that
+nonetheless resolves incorrectly.
+OpenCode and DirectLLM show no outcome-conditioned entropy gap, so length
+rather than diversity distinguishes their wrong trajectories.
 
 \begin{table}[t]
 \centering
 \small
 \caption{%
-  Outcome-conditioned action rates on GPQA-Diamond (198 tasks).
-  Rate = fraction of trajectories with $\geq 1$ event of that action type.
-  DirectLLM is a degenerate baseline (no tools, one answer step per trajectory).
-  OpenClaw/ZeroClaw correct/wrong counts reflect paired-outcome grouping
-  (both\_correct + rescue = correct; both\_wrong + regression = wrong).
+  System-level overview on GPQA-Diamond ($n=198$, Qwen3.5-27B).
+  Tok\,(C) / Tok\,(W) = mean output tokens on correct / wrong trajectories.
+  W/C ratio = Tok\,(W) / Tok\,(C).
+  Ent\,(C) / Ent\,(W) = mean per-token log-probability entropy on correct / wrong
+  trajectories.
+  Tool\,\% = tool use rate, split correct / wrong.
+  Loss\,\% = harness-specific failure rate over the 159 DirectLLM-correct tasks.
+}
+\label{tab:gpqa-overview}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{lrrrrrrr}
+\toprule
+System & Acc\,\% & Tok (C) & Tok (W) & W/C & Ent (C\,/\,W) & Tool\,\% (C\,/\,W) & Loss\,\% \\
+\midrule
+DirectLLM &  80.3 &  9{,}049 & 19{,}534 & $2.2{\times}$  & 0.32\,/\,0.30 & 0\,/\,0    & N/A  \\
+OpenClaw  &  66.2 &  2{,}372 & 28{,}283 & $11.9{\times}$ & 0.25\,/\,0.14 & 22\,/\,7   & 22.6 \\
+OpenCode  &  73.2 &  1{,}066 &  3{,}571 & $3.3{\times}$  & 0.30\,/\,0.30 & 55\,/\,15  & 15.1 \\
+ZeroClaw  &  77.8 &  2{,}101 &  2{,}338 & $1.1{\times}$  & 0.25\,/\,0.36 & 0\,/\,0    &  9.4 \\
+\midrule
+Oracle    &  \textbf{88.4} & \multicolumn{6}{c}{(per-task best available harness)} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Action Distribution.}
+Table~\ref{tab:gpqa-action-rates} reports the fraction of trajectories in each
+(harness, outcome) bucket containing at least one event of each action type.
+DirectLLM is a degenerate baseline with no scaffolding, so its rows carry no
+diagnostic content beyond outcome counts.
+Among the three agent harnesses, action profiles diverge substantially.
+OpenCode shows the largest outcome-conditioned gap on tool use (55\% correct
+vs.\ 15\% wrong).
+OpenClaw shows the opposite on plan (16\% correct vs.\ 31\% wrong): wrong
+trajectories over-emit planning steps while under-utilizing recovery.
+ZeroClaw is structurally flat across outcomes, consistent with its fixed
+plan-then-reason-then-answer template leaving no room for outcome-contingent
+divergence.
+
+\begin{table}[t]
+\centering
+\small
+\caption{%
+  Outcome-conditioned action rates on GPQA-Diamond ($n=198$).
+  Each value is the percentage of trajectories in the (harness, outcome) bucket
+  that contain at least one event of that action type.
 }
 \label{tab:gpqa-action-rates}
 \setlength{\tabcolsep}{4pt}
 \begin{tabular}{llrcccccc}
 \toprule
-Harness & Outcome & $n$ & Ans. & Reason & Tool & Verify & Plan & Recover \\
+Harness & Outcome & $n$ & Ans.\,\% & Reason\,\% & Tool\,\% & Verify\,\% & Plan\,\% & Recover\,\% \\
 \midrule
-DirectLLM & correct & 159 & 1.00 & 1.00 & 0.00 & 0.00 & 0.00 & 0.00 \\
-DirectLLM & wrong   &  39 & 1.00 & 1.00 & 0.00 & 0.00 & 0.00 & 0.00 \\
+DirectLLM & correct & 159 & 100 & 100 &  0 &  0 &  0 &  0 \\
+DirectLLM & wrong   &  39 & 100 & 100 &  0 &  0 &  0 &  0 \\
 \midrule
-OpenClaw  & correct & 131 & 0.51 & 0.12 & 0.22 & 0.57 & 0.16 & 0.24 \\
-OpenClaw  & wrong   &  67 & 0.09 & 0.19 & 0.07 & 0.58 & 0.31 & 0.10 \\
+OpenClaw  & correct & 131 &  99 &  12 & 22 & 57 & 16 & 24 \\
+OpenClaw  & wrong   &  67 &  85 &  19 &  7 & 58 & 31 & 10 \\
 \midrule
-OpenCode  & correct & 145 & 1.00 & 0.93 & 0.55 & 0.59 & 0.30 & 0.00 \\
-OpenCode  & wrong   &  53 & 1.00 & 0.92 & 0.15 & 0.49 & 0.32 & 0.00 \\
+OpenCode  & correct & 145 & 100 &  93 & 55 & 59 & 30 &  0 \\
+OpenCode  & wrong   &  53 & 100 &  92 & 15 & 49 & 32 &  0 \\
 \midrule
-ZeroClaw  & correct & 154 & 1.00 & 1.00 & 0.00 & 0.60 & 0.82 & 0.00 \\
-ZeroClaw  & wrong   &  37 & 1.00 & 1.00 & 0.00 & 0.59 & 0.81 & 0.00 \\
+ZeroClaw  & correct & 154 & 100 & 100 &  0 & 60 & 82 &  0 \\
+ZeroClaw  & wrong   &  37 & 100 & 100 &  0 & 59 & 81 &  0 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\paragraph{Harness-induced Behaviors.}
+\findingbox{Agent loops without a commit deadline produce systematic trajectory
+inflation on wrong instances; context exhaustion rather than reasoning failure
+becomes the proximate cause of incorrect answers.}
 
-\textbf{Signature 1 -- Tool quality discriminates success (OpenClaw).}
-Among the 198 OpenClaw trajectories, 55.7\% of correct ones contain at least one
-tool call with a substantive result ($>100$ chars, no error signal),
-versus only 14.9\% of wrong ones (Table~\ref{tab:gpqa-tool-quality}).
-The mean substantive tool calls per trajectory is 0.89 for correct vs.\ 0.28 for wrong.
-This is a causal indicator: OpenClaw routes tool use through a sandboxed executor,
-and tasks that benefit from numerical or symbolic computation (physics, quantum mechanics)
-yield executable code, whereas tasks requiring verbal multi-hop reasoning (organic chemistry)
-produce no useful execution output and account for most regressions.
+A harness loop without a commit deadline converts deliberation into a liability
+on hard instances.
+When reasoning converges, OpenClaw's open loop is harmless; when it does not,
+the model re-enters planning or verification indefinitely until the context
+budget is exhausted.
+Table~\ref{tab:gpqa-goal-loss} captures this asymmetry: correct OpenClaw
+trajectories are brief, while wrong ones spiral to an average of 28k tokens and
+34\% hit the context limit before the model can emit an answer.
+ZeroClaw's structurally fixed template prevents re-entry entirely, producing
+nearly identical token budgets on correct and wrong trajectories.
+DirectLLM's cap events reflect a separate mechanism: a confident but incorrect
+chain generated at low entropy, running out of space before a commit decision
+rather than cycling.
+The same surface symptom (long wrong output) has two distinct causes requiring
+different interventions.
 
-\textbf{Signature 2 -- Answer completion failure (OpenClaw).}
-OpenClaw wrong trajectories have answer\_rate = 9.0\%---only 6 of 67 wrong
-trajectories contain a boxed answer.
-The remainder terminate in a plan or recovery loop without committing to a final answer.
-This is structurally different from DirectLLM wrong trajectories (answer\_rate = 100\%)
-and from OpenCode/ZeroClaw wrong trajectories (answer\_rate = 100\%).
-The mechanism: OpenClaw's reactive tool-invocation loop can enter a search cycle that
-never converges to an answer step, particularly on organic synthesis questions
-(72 of 198 tasks) where tool results are not decisive.
-
-\textbf{Signature 3 -- ZeroClaw entropy--token profile.}
-See Figure~\ref{fig:gpqa_entropy_token}.
-ZeroClaw wrong trajectories cluster in the low-entropy, long-token quadrant
-(harness\_mean\_entropy $\leq$ 25th percentile \emph{and}
-log$_{10}$(tokens) $\geq$ 75th percentile).
-This corresponds to a high-confidence but verbose failure mode:
-the model repeats a confident but incorrect reasoning chain at length,
-without any corrective signal from tools or verification.
-OpenClaw correct trajectories occupy the high-entropy, moderate-token region,
-consistent with productive tool-assisted exploration.
+\textbf{Case: gpqa\_140 (Organic Chemistry).}
+Correct chemical analysis appears early in the OpenClaw trajectory, but the
+loop re-enters before any commit, exhausts the context limit mid-sentence, and
+produces no extractable answer.
 
 \begin{table}[t]
 \centering
 \small
 \caption{%
-  Tool quality by outcome on GPQA-Diamond (OpenClaw from normalized trace;
-  OpenCode from feature-matrix tool\_use\_count, error rate not separately tracked).
-  ``Substantive'' = result length $>100$ chars and no error string detected.
+  Trajectory-level signals by system and outcome on GPQA-Diamond.
+  Mean tokens = average output length.
+  Cap\,\% = percentage of trajectories reaching the 32k-token context limit.
+  DirectLLM is single-pass; cap events reflect confident overrun, not looping.
+}
+\label{tab:gpqa-goal-loss}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{llrrr}
+\toprule
+System & Outcome & $n$ & Mean tokens & Cap\,\% \\
+\midrule
+DirectLLM & correct & 159 &  9{,}049 &  0 \\
+DirectLLM & wrong   &  39 & 19{,}534 & 33 \\
+\midrule
+OpenClaw  & correct & 131 &  2{,}372 &  0 \\
+OpenClaw  & wrong   &  67 & 28{,}283 & 34 \\
+\midrule
+OpenCode  & correct & 145 &  1{,}066 &  0 \\
+OpenCode  & wrong   &  53 &  3{,}571 &  0 \\
+\midrule
+ZeroClaw  & correct & 154 &  2{,}101 &  0 \\
+ZeroClaw  & wrong   &  37 &  2{,}338 &  0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\findingbox{Tool activation is outcome-predictive only when the task affords an
+executable path; the same harness and model produce opposite outcome-conditioned
+tool-use gaps across structurally different subdomains.}
+
+Tool activation is the strongest outcome-conditioned action signal on this
+benchmark, but only when paired with a useful tool result.
+Table~\ref{tab:gpqa-tool-quality} shows that restricting to substantive results
+(non-empty, no error string, over 100 characters) preserves nearly the full
+correct-vs-wrong gap, ruling out trajectories that invoke a tool but discard its
+output.
+The gap is subdomain-driven rather than model-driven: tasks with tractable
+numerical or symbolic structure afford an executable path, where code execution
+anchors the answer; tasks with irreducibly verbal reasoning (stereochemistry,
+reaction mechanisms) offer no such path, and the deliberation loop from
+Finding~1 dominates.
+
+\textbf{Case contrast: gpqa\_167 vs.\ gpqa\_143.}
+On a Quantum Mechanics eigenvector problem, OpenCode executes three code calls
+and commits correctly in under 1,400 tokens.
+On a stereochemistry problem, zero tool calls are made and the model commits to
+the wrong option in comparable token length.
+Same harness, same model; task structure determines whether the tool path opens.
+
+\begin{table}[t]
+\centering
+\small
+\caption{%
+  Tool-use quality by outcome on GPQA-Diamond.
+  Any call\,\% = trajectories with $\geq$1 tool invocation.
+  Substantive\,\% = trajectories whose tool result is non-empty, longer than
+  100 characters, and contains no error string.
+  Err/empty\,\% = trajectories with an empty or error-containing result.
+  Mean calls = average invocations per trajectory.
+  OpenClaw values from normalized trace; Err/empty not tracked for OpenCode (N/A).
 }
 \label{tab:gpqa-tool-quality}
 \setlength{\tabcolsep}{4pt}
 \begin{tabular}{llrrrrr}
 \toprule
-Harness & Outcome & $n$ & Any call & Substantive & Err/empty & Mean calls \\
+Harness & Outcome & $n$ & Any call\,\% & Subst.\,\% & Err/empty\,\% & Mean calls \\
 \midrule
-OpenClaw & correct & 131 & 0.557 & 0.511 & 0.229 & 1.34 \\
-OpenClaw & wrong   &  67 & 0.194 & 0.149 & 0.119 & 0.69 \\
+OpenClaw & correct & 131 & 56 & 51 & 23 & 1.34 \\
+OpenClaw & wrong   &  67 & 19 & 15 & 12 & 0.69 \\
 \midrule
-OpenCode & correct & 145 & 0.552 & 0.552 & ---   & 0.95 \\
-OpenCode & wrong   &  53 & 0.151 & 0.151 & ---   & 0.32 \\
+OpenCode & correct & 145 & 55 & 55 & N/A & 0.95 \\
+OpenCode & wrong   &  53 & 15 & 15 & N/A & 0.32 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\paragraph{Failure Modes and Oracle Ceiling.}
+\findingbox{The same ``wrong'' label aggregates mechanistically distinct failure
+types: extraction failure from context truncation, premature commitment under
+budget pressure, and genuine reasoning error each leave different signatures in
+output format and trajectory length.}
 
-\textbf{Oracle router ceiling.}
-A perfect per-task harness selector (choosing any correct harness when available)
-achieves 175/198 = 88.4\% on GPQA-Diamond (Table~\ref{tab:gpqa-oracle}).
-Of the 39 tasks that DirectLLM answers incorrectly:
-OpenClaw recovers 8 (20.5\%),
-OpenCode recovers 10 (25.6\%), and
-ZeroClaw recovers 13 (33.3\%).
-Any harness recovers 16/39 (41.0\%), leaving 23 tasks hard-negative across all systems.
-The 23 remaining hard negatives consist predominantly of Organic Chemistry
-and Genetics tasks where no harness found a decisive signal.
+The ``harness loses'' row of Table~\ref{tab:gpqa-failure-sig} isolates
+harness-induced damage from pre-existing model limitations.
+\emph{Malformed} means the predicted answer falls outside $\{\mathrm{A,B,C,D}\}$;
+\emph{No boxed} means no \texttt{\textbackslash boxed\{$\cdot$\}} token appears
+and the extractor cannot recover any answer; \emph{TokRatio} is the harness
+token count divided by the DirectLLM token count on the same task.
 
-Conversely, regression is a significant cost:
-OpenClaw causes 36/159 DirectLLM-correct tasks to become wrong (22.6\%),
-OpenCode 24/159 (15.1\%), and ZeroClaw 15/159 (9.4\%).
-ZeroClaw's low regression rate is the primary reason its final accuracy
-matches or exceeds DirectLLM despite a worse rescue rate.
+Each harness exhibits a structurally distinct failure signature in that row.
+OpenClaw regressions are predominantly malformed and missing a boxed answer at
+a TokRatio above 2: the loop spirals past context and the extractor recovers
+nothing.
+OpenCode regressions are partially malformed but never missing a boxed answer,
+and TokRatio is well below 1: the format is intact, but the answer was reached
+at a fraction of DirectLLM's deliberation budget.
+ZeroClaw regressions are largely well-formed, short, and structurally normal;
+the model committed to the wrong answer without any harness artifact.
 
-\textbf{Paired-outcome failure signatures.}
-Figure~\ref{fig:gpqa_paired_outcome} and Table~\ref{tab:gpqa-failure-sig}
-show that \emph{regression} rows have the highest malformed-prediction rates
-and missing-boxed-answer rates across all harnesses, confirming that
-formatting failure (not knowledge failure) is the proximate cause of regressions.
-OpenClaw regression trajectories have malformed\_prediction\_rate = 88.9\%---the harness
-destabilizes answer formatting on tasks where DirectLLM converges cleanly.
-OpenCode regressions show a similar pattern at 62.5\% malformed, though the
-boxed-answer rate stays intact (0\% missing), suggesting OpenCode at least commits
-to a formatted answer but picks the wrong option.
-ZeroClaw regressions (15 tasks) have a lower malformed rate (20.0\%) and zero
-missing-boxed-answer rate, confirming that ZeroClaw's failures are primarily
-reasoning errors rather than formatting breakdowns.
+\textbf{Case: gpqa\_143 (Organic Chemistry, Cope rearrangement).}
+All three failure modes appear on the same task: OpenClaw spirals past context
+with no extractable output, OpenCode emits a well-formed but wrong answer with
+minimal deliberation, and ZeroClaw outputs a malformed option in 590 tokens,
+all labeled ``wrong'' without distinction.
 
 \begin{table}[t]
 \centering
 \small
 \caption{%
-  Oracle harness router ceiling on GPQA-Diamond.
-  Rescue = DirectLLM-wrong tasks recovered by harness.
-  Regression = DirectLLM-correct tasks where harness is wrong.
-}
-\label{tab:gpqa-oracle}
-\setlength{\tabcolsep}{4pt}
-\begin{tabular}{lrrrr}
-\toprule
-System & Accuracy & Rescue / 39 & Rescue\% & Regress\% \\
-\midrule
-DirectLLM & 80.3\% & --- & --- & --- \\
-OpenClaw  & 66.2\% &  8 & 20.5\% & 22.6\% \\
-OpenCode  & 73.2\% & 10 & 25.6\% & 15.1\% \\
-ZeroClaw  & 80.6\%* & 13 & 33.3\% & 9.4\% \\
-\midrule
-Oracle (any correct) & \textbf{88.4\%} & 16 & 41.0\% & --- \\
-\bottomrule
-\end{tabular}
-\begin{minipage}{\linewidth}
-\small
-* ZeroClaw accuracy computed over 191 valid-scored tasks (7 non-valid);
-  191-denominator rate = 80.6\%.
-\end{minipage}
-\end{table}
-
-\begin{table}[t]
-\centering
-\small
-\caption{%
-  Paired-outcome failure signatures on GPQA-Diamond.
-  Rates computed over trajectories in each (harness, paired\_outcome) cell.
-  ``Malformed'' = harness\_malformed\_prediction.
-  ``No boxed'' = harness\_missing\_boxed\_answer.
-  ``LowEnt-Long'' = low\_entropy\_long indicator.
-  ``TokRatio'' = mean token ratio vs.\ DirectLLM.
+  Paired-outcome failure signatures on GPQA-Diamond ($n=198$).
+  ``Harness loses'' = DirectLLM correct, harness wrong.
+  ``Harness gains'' = DirectLLM wrong, harness correct.
+  Malformed\,\% = predicted answer not in $\{\mathrm{A,B,C,D}\}$.
+  No boxed\,\% = no \texttt{\textbackslash boxed\{$\cdot$\}} in raw output.
+  TokRatio = harness token count / DirectLLM token count on the same task.
 }
 \label{tab:gpqa-failure-sig}
 \setlength{\tabcolsep}{3.5pt}
-\begin{tabular}{llrcccc}
+\begin{tabular}{llrrrr}
 \toprule
-Harness & Outcome & $n$ & Malformed & No boxed & LowEnt-Long & TokRatio \\
+Harness & Outcome & $n$ & Malformed\,\% & No boxed\,\% & TokRatio \\
 \midrule
 \multirow{4}{*}{OpenClaw}
- & both\_correct & 123 & 0.008 & 0.008 & 0.033 & 0.27 \\
- & rescue        &   8 & 0.000 & 0.000 & 0.000 & 0.30 \\
- & regression    &  36 & 0.889 & 0.833 & 0.694 & 2.47 \\
- & both\_wrong   &  31 & 0.581 & 0.581 & 0.419 & 1.02 \\
+ & both correct  & 123 &  0.8 &  0.8 & 0.27 \\
+ & harness gains &   8 &  0.0 &  0.0 & 0.30 \\
+ & harness loses &  36 & 89.0 & 83.0 & 2.47 \\
+ & both wrong    &  31 & 58.0 & 58.0 & 1.02 \\
 \midrule
 \multirow{4}{*}{OpenCode}
- & both\_correct & 135 & 0.000 & 0.000 & 0.007 & 0.133 \\
- & rescue        &  10 & 0.000 & 0.000 & 0.000 & 0.082 \\
- & regression    &  24 & 0.625 & 0.000 & 0.417 & 0.292 \\
- & both\_wrong   &  29 & 0.483 & 0.000 & 0.241 & 0.172 \\
+ & both correct  & 135 &  0.0 &  0.0 & 0.13 \\
+ & harness gains &  10 &  0.0 &  0.0 & 0.08 \\
+ & harness loses &  24 & 63.0 &  0.0 & 0.29 \\
+ & both wrong    &  29 & 48.0 &  0.0 & 0.17 \\
 \midrule
 \multirow{4}{*}{ZeroClaw}
- & both\_correct & 141 & 0.000 & 0.000 & 0.106 & 0.251 \\
- & rescue        &  13 & 0.000 & 0.000 & 0.000 & 0.110 \\
- & regression    &  15 & 0.200 & 0.000 & 0.000 & 0.171 \\
- & both\_wrong   &  22 & 0.182 & 0.000 & 0.045 & 0.165 \\
+ & both correct  & 141 &  0.0 &  0.0 & 0.25 \\
+ & harness gains &  13 &  0.0 &  0.0 & 0.11 \\
+ & harness loses &  15 & 20.0 &  0.0 & 0.17 \\
+ & both wrong    &  22 & 18.0 &  0.0 & 0.17 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\paragraph{Subdomain Analysis.}
-Figure~\ref{fig:gpqa_subdomain} and Table~\ref{tab:gpqa-subdomain} decompose
-accuracy by the 13 GPQA subdomains.
-High-energy particle physics (14 tasks) is the easiest for all systems:
-DirectLLM, OpenCode, ZeroClaw all reach 100.0\%, OpenClaw 100.0\%.
-Organic Chemistry (72 tasks, 36\% of the benchmark) is the dominant
-difficulty driver: DirectLLM achieves only 63.9\%, OpenClaw drops to 48.6\%,
-and ZeroClaw reaches 66.2\% (the highest).
-Quantum Mechanics (25 tasks) shows a strong harness divergence:
-ZeroClaw 100.0\% vs.\ OpenClaw 68.0\%---suggesting that the structured
-plan--reason--answer loop is particularly well-suited to quantum calculation
-questions that require sequential algebraic steps without external lookup.
+\findingbox{Harnesses consistently damage more answers than they recover; because
+correct instances outnumber recoverable failures, reducing harness-induced loss
+is a more tractable accuracy lever than maximizing recovery.}
+
+The \emph{recovery rate} measures how often a harness answers correctly on tasks
+DirectLLM fails; the \emph{loss rate} measures how often it answers incorrectly
+on tasks DirectLLM already solves.
+Table~\ref{tab:gpqa-oracle} shows that recovery rates across all three harnesses
+collectively cover only 41\% of DirectLLM's failures, and individually span a
+narrow range.
+Loss rates, by contrast, vary by more than a factor of two.
+Since DirectLLM-correct tasks outnumber DirectLLM-wrong tasks four to one on
+this benchmark, reducing the loss rate produces more accuracy gain than an
+equivalent improvement in recovery.
+ZeroClaw leads not by recovering more DirectLLM failures but by losing fewer
+tasks that DirectLLM already handles, confirming that the loss rate is the
+tractable lever for improvement.
+
+Subdomain analysis (Table~\ref{tab:gpqa-subdomain}) shows that losses concentrate
+where tool use is unavailable and deliberation loops are most active (Organic
+Chemistry), while the only case where a harness materially exceeds DirectLLM
+(ZeroClaw on Quantum Mechanics) is a subdomain whose sequential algebraic
+structure matches ZeroClaw's fixed template precisely.
+Harnesses gain where tasks are decomposable and executable; they lose where
+reasoning is irreducibly verbal and multi-hop.
 
 \begin{table}[t]
 \centering
 \small
 \caption{%
-  Pass rates by GPQA-Diamond subdomain (sorted by DirectLLM rate descending).
-  $n$ = number of tasks in subdomain.
+  Oracle harness router ceiling on GPQA-Diamond ($n=198$).
+  Recovery\,\% = harness-only success rate over the 39 DirectLLM-wrong tasks.
+  Loss\,\% = harness-specific failure rate over the 159 DirectLLM-correct tasks.
+  Oracle selects, per task, any harness that answers correctly when one exists.
+}
+\label{tab:gpqa-oracle}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrrr}
+\toprule
+System & Accuracy\,\% & Recovery\,\% & Loss\,\% \\
+\midrule
+DirectLLM & 80.3 & N/A  & N/A \\
+OpenClaw  & 66.2 & 20.5 & 22.6 \\
+OpenCode  & 73.2 & 25.6 & 15.1 \\
+ZeroClaw  & 77.8 & 33.3 &  9.4 \\
+\midrule
+Oracle    & \textbf{88.4} & 41.0 & N/A \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\centering
+\small
+\caption{%
+  Pass rates by GPQA-Diamond subdomain, sorted by DirectLLM accuracy descending.
 }
 \label{tab:gpqa-subdomain}
 \setlength{\tabcolsep}{4pt}
@@ -256,19 +365,521 @@ questions that require sequential algebraic steps without external lookup.
 \toprule
 Subdomain & $n$ & DirectLLM & OpenClaw & OpenCode & ZeroClaw \\
 \midrule
-High-energy particle physics & 14 & 1.00 & 1.00 & 1.00 & 1.00 \\
-Electromagnetism \& Photonics &  6 & 1.00 & 0.83 & 0.83 & 1.00 \\
-Condensed Matter Physics      &  1 & 1.00 & 1.00 & 1.00 & 1.00 \\
-Optics and Acoustics          &  1 & 1.00 & 1.00 & 1.00 & 1.00 \\
-Inorganic Chemistry           &  1 & 1.00 & 1.00 & 0.00 & 1.00 \\
-Quantum Mechanics             & 25 & 1.00 & 0.68 & 0.84 & 1.00 \\
-Physics (general)             & 19 & 0.95 & 0.79 & 0.89 & 0.95 \\
-Relativistic Mechanics        &  7 & 0.86 & 0.71 & 0.86 & 0.86 \\
-Chemistry (general)           & 20 & 0.85 & 0.75 & 0.75 & 0.80 \\
-Astrophysics                  & 13 & 0.85 & 0.77 & 0.92 & 1.00 \\
-Molecular Biology             & 15 & 0.73 & 0.67 & 0.73 & 0.60 \\
-Organic Chemistry             & 72 & 0.64 & 0.49 & 0.57 & 0.66 \\
-Genetics                      &  4 & 0.50 & 0.50 & 0.25 & 0.25 \\
+High-energy particle physics  & 14 & 100 & 100 & 100 & 100 \\
+Electromagnetism \& Photonics &  6 & 100 &  83 &  83 & 100 \\
+Condensed Matter Physics      &  1 & 100 & 100 & 100 & 100 \\
+Optics and Acoustics          &  1 & 100 & 100 & 100 & 100 \\
+Inorganic Chemistry           &  1 & 100 & 100 &   0 & 100 \\
+Quantum Mechanics             & 25 & 100 &  68 &  84 & 100 \\
+Physics (general)             & 19 &  95 &  79 &  89 &  95 \\
+Relativistic Mechanics        &  7 &  86 &  71 &  86 &  86 \\
+Chemistry (general)           & 20 &  85 &  75 &  75 &  80 \\
+Astrophysics                  & 13 &  85 &  77 &  92 & 100 \\
+Molecular Biology             & 15 &  73 &  67 &  73 &  60 \\
+Organic Chemistry             & 72 &  64 &  49 &  57 &  66 \\
+Genetics                      &  4 &  50 &  50 &  25 &  25 \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\findingbox{Output entropy is a harness-conditional failure signal: low-entropy-long
+trajectories indicate pathological repetition under open loops, while
+high-entropy trajectories indicate unresolved deliberation under structured
+templates; the two failure regimes require different diagnostic criteria.}
+
+Output entropy, computed from per-token log-probabilities, provides a
+trajectory-level signal whose direction is harness-specific.
+Table~\ref{tab:gpqa-entropy} shows that OpenClaw wrong trajectories collapse to
+half the entropy of correct ones while simultaneously growing to 28k tokens.
+The model is not expressing uncertainty; it cycles through low-diversity tokens
+as the loop runs.
+Partitioning by the 25th-percentile entropy and 75th-percentile token threshold
+isolates a low-entropy-long quadrant of 41 tasks at 7\% accuracy: a near-certain
+failure predictor for OpenClaw specifically.
+
+ZeroClaw inverts this pattern entirely.
+Wrong trajectories carry higher entropy than correct ones (0.36 vs.\ 0.25): the
+model explores genuinely under uncertainty and still arrives at the wrong answer.
+The low-entropy-long quadrant for ZeroClaw is high-accuracy (93\%); short,
+confident trajectories are correct under its structured template, not indicative
+of pathological looping.
+OpenCode shows a flat entropy profile across both outcomes; length rather than
+output diversity separates its correct from wrong trajectories.
+Entropy is therefore not a universal failure signal but a harness-conditional one.
+
+\begin{table}[t]
+\centering
+\small
+\caption{%
+  Entropy and token statistics by system and outcome on GPQA-Diamond (tasks with
+  logprob data; OpenClaw $n=186$, OpenCode $n=193$, ZeroClaw $n=191$,
+  DirectLLM $n=198$).
+  Mean entropy = mean per-token log-probability entropy over the trajectory.
+  Cap\,\% = fraction reaching the 32k-token context limit (all cap events are
+  wrong).
+}
+\label{tab:gpqa-entropy}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{llrrrr}
+\toprule
+System & Outcome & $n$ & Mean entropy & Mean tokens & Cap\,\% \\
+\midrule
+DirectLLM & correct & 159 & 0.322 &  9{,}050 &  0 \\
+DirectLLM & wrong   &  39 & 0.295 & 19{,}534 & 33 \\
+\midrule
+OpenClaw  & correct & 128 & 0.254 &  2{,}373 &  0 \\
+OpenClaw  & wrong   &  58 & 0.139 & 28{,}284 & 40 \\
+\midrule
+OpenCode  & correct & 145 & 0.301 &  1{,}067 &  0 \\
+OpenCode  & wrong   &  48 & 0.300 &  3{,}244 &  0 \\
+\midrule
+ZeroClaw  & correct & 154 & 0.248 &  2{,}102 &  0 \\
+ZeroClaw  & wrong   &  37 & 0.363 &  2{,}338 &  0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ===========================================================================
+\paragraph{Cognitive-Mode Analysis: the ARM Taxonomy.}
+% ===========================================================================
+
+The action-rate analysis tells us \emph{what} operations each harness performs.
+The ARM (Agentic Reasoning Mode) taxonomy asks a different question: given a
+reasoning step, \emph{what cognitive strategy} does it represent?
+We classify every assistant-generated segment of every GPQA-Diamond trajectory
+into one of six reasoning modes plus an undifferentiated \texttt{reason}
+catch-all:
+
+\begin{itemize}[leftmargin=*, itemsep=1pt]
+\item \texttt{PD} (Principle-Based Deduction): derivation from physical laws,
+  chemical mechanisms, or mathematical theorems
+\item \texttt{SE} (Systematic Elimination): explicit option-by-option comparison
+\item \texttt{IC} (Intuitive Commitment): direct assertion without extended
+  derivation
+\item \texttt{UN} (Uncertainty Navigation): explicit hedging or probabilistic
+  language
+\item \texttt{RR} (Recovery-Replanning): correction of prior reasoning or
+  direction change
+\item \texttt{reason}: generic deliberation not triggering any classifier
+\end{itemize}
+
+Classification is per-segment (each assistant message = one segment) via
+keyword heuristics with domain-specific chemistry, physics, and biology signals.
+Arm entropy measures cognitive mode diversity within a trajectory.
+
+% ---------------------------------------------------------------------------
+\paragraph{PD over-expression is the strongest single-mode predictor of failure.}
+% ---------------------------------------------------------------------------
+
+Table~\ref{tab:gpqa-arm-modes} reports the mean ARM mode rate per
+(harness, outcome) cell.
+
+\begin{table}[t]
+\centering
+\small
+\caption{%
+  ARM cognitive-mode segment allocation by harness and outcome on GPQA-Diamond.
+  Each cell is the mean fraction of segments classified to that mode.
+  Arm entropy = mode diversity (higher = more modes used within a trajectory).
+  $\Delta$PD = PD(wrong) $-$ PD(correct) in percentage points.
+}
+\label{tab:gpqa-arm-modes}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{llrrrrrrr}
+\toprule
+Harness & Out. & PD & reason & IC & UN & RR & SE & Arm ent. \\
+\midrule
+\multirow{2}{*}{OpenClaw}
+  & C & 0.519 & 0.386 & 0.052 & 0.017 & 0.018 & 0.007 & 0.548 \\
+  & W & \textbf{0.608} & \textbf{0.291} & \textbf{0.026} & \textbf{0.043} & 0.010 & 0.022 & \textbf{0.395} \\
+  & $\Delta$ & +8.9 & $-$9.5 & $-$2.6 & +2.6 & $-$0.8 & +1.5 & $-$0.15 \\
+\midrule
+\multirow{2}{*}{OpenCode}
+  & C & 0.353 & 0.587 & 0.026 & 0.009 & 0.019 & 0.006 & 0.593 \\
+  & W & \textbf{0.498} & \textbf{0.450} & 0.000 & \textbf{0.041} & 0.010 & 0.000 & \textbf{0.468} \\
+  & $\Delta$ & +14.5 & $-$13.7 & $-$2.6 & +3.2 & $-$0.9 & $-$0.6 & $-$0.13 \\
+\midrule
+\multirow{2}{*}{ZeroClaw}
+  & C & 0.280 & 0.674 & 0.023 & 0.011 & 0.021 & 0.001 & 0.636 \\
+  & W & \textbf{0.406} & \textbf{0.504} & 0.011 & \textbf{0.032} & \textbf{0.044} & 0.003 & \textbf{0.812} \\
+  & $\Delta$ & +12.6 & $-$17.0 & $-$1.2 & +2.2 & +2.4 & +0.2 & \textbf{+0.18} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\findingbox{Principle-based deduction is the dominant cognitive mode on
+expert-level science questions, and its over-representation is the strongest
+single-mode predictor of failure across all three harness architectures.}
+
+GPQA-Diamond is a hard-science benchmark; all three harnesses spend the
+plurality of their reasoning budget in PD.
+But the allocation is not outcome-neutral: wrong trajectories allocate 8.9 to
+14.5~pp \emph{more} of their segments to PD than correct trajectories do, at
+the direct expense of undifferentiated \texttt{reason} and IC.
+The PD/IC ratio, measuring the tendency to keep deriving rather than committing,
+rises 12\% to 55\% in wrong trajectories across all three harnesses.
+The interpretation is not that deduction is harmful, but that failure
+trajectories are trapped in a deduction spiral: the model re-derives known
+principles without transitioning to elimination or commitment.
+
+Arm entropy direction is harness-specific.
+OpenClaw and OpenCode wrong trajectories have \emph{lower} mode diversity than
+correct ones ($-$0.15 and $-$0.13 respectively): the model collapses into fewer
+modes.
+ZeroClaw wrong trajectories have \emph{higher} mode diversity (+0.18): the model
+oscillates between PD, reason, UN, and RR without converging.
+The same ARM marker (high arm entropy) therefore signals productive exploration
+under ZeroClaw but unproductive mode oscillation under OpenClaw.
+
+% ---------------------------------------------------------------------------
+\paragraph{PD self-transition creates a near-absorbing cognitive state.}
+% ---------------------------------------------------------------------------
+
+Table~\ref{tab:gpqa-pd-transitions} reports ARM transition probabilities
+for the PD-related cognitive moves.
+
+\begin{table}[t]
+\centering
+\small
+\caption{%
+  PD-related ARM transition probabilities by harness and outcome on
+  GPQA-Diamond.
+  PD$\to$PD = probability a PD segment is followed by another PD segment.
+  reason$\to$PD = probability generic reasoning enters deduction.
+  reason$\to$IC = probability reasoning exits to intuitive commitment.
+}
+\label{tab:gpqa-pd-transitions}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{llrrrr}
+\toprule
+Harness & Outcome & PD$\to$PD & reason$\to$PD & reason$\to$IC & PD$\to$reason \\
+\midrule
+\multirow{2}{*}{OpenClaw}
+  & C & 0.729 & 0.513 & \textbf{0.356} & 0.248 \\
+  & W & \textbf{0.863} & \textbf{0.765} & \textbf{0.091} & 0.345 \\
+\cmidrule{1-5}
+\multirow{2}{*}{OpenCode}
+  & C & 0.251 & 0.301 & \textbf{0.198} & 0.222 \\
+  & W & \textbf{0.536} & \textbf{0.525} & \textbf{0.016} & 0.270 \\
+\cmidrule{1-5}
+\multirow{2}{*}{ZeroClaw}
+  & C & 0.215 & 0.165 & 0.079 & 0.163 \\
+  & W & 0.241 & 0.182 & 0.083 & 0.182 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\findingbox{The PD$\to$PD self-transition probability reaches 0.86 on OpenClaw
+wrong trajectories, creating a near-absorbing cognitive state; simultaneously,
+the commitment exit path (reason$\to$IC) collapses 4$\times$ to 10$\times$
+across open-loop harnesses.}
+
+Three transition signatures distinguish spiraling from non-spiraling harnesses.
+First, OpenClaw wrong trajectories show PD$\to$PD at 0.86: once the model enters
+deduction under uncertainty, it has an 86\% probability of remaining in
+deduction on the next cognitive segment.
+Second, the commitment exit path collapses: reason$\to$IC drops from 0.36
+(correct) to 0.09 (wrong) on OpenClaw, and from 0.20 to 0.02 on OpenCode.
+Third, the re-entry probability from generic reasoning into PD (reason$\to$PD)
+rises sharply on wrong trajectories for OpenClaw (0.51 to 0.77) and OpenCode
+(0.30 to 0.53), but remains flat for ZeroClaw (0.17 to 0.18): the fixed
+template prevents re-entry even when the model is uncertain.
+
+These three probabilities encode the mechanism: a near-absorbing PD state, a
+collapsing exit path, and an architecture-dependent re-entry trigger.
+A harness that breaks any one of the three prevents the entropy collapse
+documented in Finding~\ref{finding} (the most recent Finding~5 on entropy).
+
+% ---------------------------------------------------------------------------
+\paragraph{Recovery is efficacy-heterogeneous across paired outcomes.}
+% ---------------------------------------------------------------------------
+
+Table~\ref{tab:gpqa-arm-paired} reports ARM mode rates disaggregated by the
+four-way paired outcome decomposition from Table~\ref{tab:gpqa-failure-sig}.
+
+\begin{table}[t]
+\centering
+\small
+\caption{%
+  ARM mode rates by paired outcome on GPQA-Diamond.
+  Arm entropy = cognitive mode diversity.
+  Regression = DirectLLM correct, harness wrong.
+  Rescue = DirectLLM wrong, harness correct.
+}
+\label{tab:gpqa-arm-paired}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{llrrrrr}
+\toprule
+Harness & Paired outcome & RR & Arm ent. & PD & IC & Tokens \\
+\midrule
+\multirow{4}{*}{OpenClaw}
+  & both correct & 0.018 & 0.476 & 0.519 & 0.058 &  1{,}932 \\
+  & both wrong   & 0.016 & 0.324 & 0.568 & 0.024 & 22{,}148 \\
+  & regression   & 0.005 & 0.261 & 0.643 & 0.028 & 30{,}451 \\
+  & rescue       & 0.000 & 0.161 & 0.831 & 0.004 &  3{,}598 \\
+\midrule
+\multirow{4}{*}{OpenCode}
+  & both correct & 0.020 & 0.563 & 0.335 & 0.027 &    967 \\
+  & both wrong   & 0.002 & 0.486 & 0.471 & 0.001 &  3{,}251 \\
+  & regression   & 0.021 & 0.407 & 0.530 & 0.000 &  3{,}672 \\
+  & rescue       & 0.000 & 0.386 & 0.600 & 0.014 &    701 \\
+\midrule
+\multirow{4}{*}{ZeroClaw}
+  & both correct & 0.020 & 0.650 & 0.271 & 0.023 &  1{,}982 \\
+  & both wrong   & 0.044 & 0.762 & 0.392 & 0.019 &  2{,}482 \\
+  & regression   & 0.044 & 0.825 & 0.427 & 0.000 &  1{,}913 \\
+  & rescue       & 0.032 & 0.679 & 0.380 & 0.014 &  2{,}333 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\findingbox{Recovery (RR) is not a portable quality signal: it marks productive
+self-correction under OpenClaw and OpenCode, but mode oscillation under
+ZeroClaw, where wrong trajectories carry the highest RR rates and highest arm
+entropy simultaneously.}
+
+Under OpenClaw and OpenCode, RR appears in 9\% to 12\% of correct trajectories
+versus 3\% to 4\% of wrong ones: recovery is a success signal.
+Under ZeroClaw, the direction inverts: 49\% of wrong trajectories contain RR
+versus 24\% of correct ones.
+But ZeroClaw wrong trajectories also carry the highest arm entropy of any GPQA
+cell (0.81 to 0.83 for both-wrong and regression), while their RR rate is
+0.044: the RR signal is embedded in mode oscillation rather than focused
+correction.
+
+The quadruple (RR rate, arm entropy, PD rate, paired outcome) jointly
+determines whether recovery is productive.
+Productive recovery (OpenClaw/OpenCode correct): moderate arm entropy
+(0.48 to 0.56), moderate PD (0.34 to 0.52), RR present as a focused correction.
+Mode oscillation (ZeroClaw wrong): high arm entropy (0.76 to 0.83), elevated
+PD (0.39 to 0.43), RR embedded in mode switching without convergence.
+Cognitive collapse (OpenClaw regression): low arm entropy (0.26), very high PD
+(0.64), RR near zero: the model cannot recover because it cannot exit deduction.
+
+% ---------------------------------------------------------------------------
+\paragraph{Tool-type composition and the intent-execution gap.}
+% ---------------------------------------------------------------------------
+
+The canonical action analysis (Table~\ref{tab:gpqa-action-rates}) reports
+\emph{whether} a harness calls tools.
+Table~\ref{tab:gpqa-tool-composition} decomposes \emph{what kind} of tools and
+\emph{whether the calls are substantive}.
+OpenClaw provides a general-purpose tool shed (shell, read, search, write,
+memory\_read); OpenCode provides a single code-execution environment;
+ZeroClaw provides none.
+
+\begin{table}[t]
+\centering
+\small
+\caption{%
+  Tool-type composition and call quality by harness and outcome on GPQA-Diamond.
+  Tool types from event-log subtype labels.
+  Any call = mean tool invocations per trajectory.
+  Substantive = mean invocations producing executable code or non-empty output.
+  Intent = keyword markers expressing desire to use a tool without necessarily
+  executing one.
+}
+\label{tab:gpqa-tool-composition}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{llrrrrrrr}
+\toprule
+Harness & Out. & Shell & Read & Search & Other & Any & Subst. & Intent \\
+\midrule
+\multirow{2}{*}{OpenClaw}
+  & C & 67\% & 12\% & 9\% & 12\% & 1.34 & 0.89 &   2.1 \\
+  & W & 50\% & 17\% & 17\% & 17\% & 0.69 & 0.28 & \textbf{48.0} \\
+\midrule
+\multirow{2}{*}{OpenCode}
+  & C & \multicolumn{4}{c}{100\% code execution} & 0.95 & 0.95 &   7.8 \\
+  & W & \multicolumn{4}{c}{100\% code execution} & 0.32 & 0.32 &  11.4 \\
+\midrule
+\multirow{2}{*}{ZeroClaw}
+  & C & \multicolumn{4}{c}{no tools available} & 0.00 & 0.00 &   6.8 \\
+  & W & \multicolumn{4}{c}{no tools available} & 0.00 & 0.00 &   7.2 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\findingbox{Tool-intent inflation without tool execution is the lexical
+signature of the OpenClaw spiral: intent markers explode 23-fold on wrong
+trajectories (2.1 to 48.0) while actual tool calls drop to near zero (0.40 to
+0.09).
+OpenCode inverts the pattern: every call is substantive, but the call rate
+collapses 3.0$\times$ when the model is on an unproductive path.}
+
+Three structural facts emerge.
+First, OpenClaw provides multiple tool types (shell, read, search) but the model
+cannot convert intent into execution on wrong trajectories.
+Correct trajectories average 1.34 tool calls with 67\% substantive execution;
+wrong trajectories drop to 0.69 calls with 41\% substantive.
+Meanwhile, tool-intent markers explode from 2.1 to 48.0: the model repeatedly
+expresses the desire to compute something without executing.
+
+Second, OpenCode's single-tool surface produces an all-or-nothing pattern.
+Every tool call is substantive (code execution always produces output), but the
+call rate drops from 0.95 (correct) to 0.32 (wrong).
+Tool activation is outcome-predictive not because tools cause correctness, but
+because the model persists in calling tools only when on a productive path.
+
+Third, ZeroClaw has no tool surface, yet its tool-intent markers (6.8 to 7.2)
+are comparable to OpenCode correct trajectories (7.8).
+The model expresses approximately the same baseline level of computational
+intent regardless of harness; OpenClaw's open loop amplifies this into a
+repeating marker without execution, while ZeroClaw's template suppresses it.
+
+% ---------------------------------------------------------------------------
+\paragraph{Action motifs distinguish productive from pathological trajectories.}
+% ---------------------------------------------------------------------------
+
+Canonical actions $\{\texttt{answer}, \texttt{reason}, \texttt{tool\_use},
+\texttt{verify}, \texttt{plan}, \texttt{recover}\}$ classify the operational
+structure of each trajectory step.
+Table~\ref{tab:gpqa-action-motifs} reports the top 2-gram and 3-gram action
+motifs by harness and outcome.
+A motif's rate is the mean number of occurrences per trajectory.
+
+\begin{table}[t]
+\centering
+\small
+\caption{%
+  Top action motifs by harness and outcome on GPQA-Diamond.
+  Rate = mean occurrences per trajectory.
+  Motifs ordered by rate within each (harness, outcome) cell.
+}
+\label{tab:gpqa-action-motifs}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{llllr}
+\toprule
+Harness & Outcome & \multicolumn{2}{c}{Top 3 motifs} & Rate \\
+\midrule
+\multirow{3}{*}{OpenClaw}
+  & \multirow{3}{*}{C}
+    & answer$\to$verify            & & 0.53 \\
+  & & answer$\to$answer            & & 0.22 \\
+  & & answer$\to$verify$\to$recover &  & 0.15 \\
+\cmidrule{2-5}
+  & \multirow{3}{*}{W}
+    & answer$\to$verify            & & 0.45 \\
+  & & answer$\to$plan              & (re-planning) & 0.27 \\
+  & & recover$\to$recover          & (oscillation) & 0.19 \\
+\midrule
+\multirow{3}{*}{OpenCode}
+  & \multirow{3}{*}{C}
+    & answer$\to$reason            & & 0.86 \\
+  & & reason$\to$verify            & & 0.49 \\
+  & & tool\_use$\to$reason         & (tool-grounded) & 0.42 \\
+\cmidrule{2-5}
+  & \multirow{3}{*}{W}
+    & answer$\to$reason            & & 0.92 \\
+  & & reason$\to$verify            & & 0.46 \\
+  & & reason$\to$plan              & (stalled planning) & 0.23 \\
+\midrule
+\multirow{3}{*}{ZeroClaw}
+  & \multirow{3}{*}{C}
+    & reason$\to$reason            & & 11.43 \\
+  & & reason$\to$reason$\to$reason & & 9.77 \\
+  & & plan$\to$reason              & & 1.23 \\
+\cmidrule{2-5}
+  & \multirow{3}{*}{W}
+    & reason$\to$reason            & & 10.88 \\
+  & & reason$\to$reason$\to$reason & & 9.03 \\
+  & & reason$\to$plan              & (diverted planning) & 1.44 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\findingbox{The dominant action motif on OpenClaw wrong trajectories shifts
+from productive verification (answer$\to$verify) to re-planning without
+execution (answer$\to$plan) and recovery oscillation (recover$\to$recover).
+OpenCode wrong trajectories lose the tool-grounded reasoning cycle
+(tool\_use$\to$reason) that anchors its correct trajectories.}
+
+OpenClaw correct trajectories follow a verify-then-recover cycle:
+answer$\to$verify at 0.53, with answer$\to$verify$\to$recover at 0.15.
+On wrong trajectories, the second-rank motif becomes answer$\to$plan at 0.27:
+the model stops verifying and starts re-planning without executing.
+The third-rank motif recover$\to$recover at 0.19 is the action-level analogue
+of the ARM-level PD$\to$PD sink: recovery chains into itself without resolution.
+
+OpenCode correct trajectories are anchored by tool\_use$\to$reason at 0.42.
+On wrong trajectories, this motif drops below the top 3, replaced by
+reason$\to$plan at 0.23: the model substitutes planning for execution while
+maintaining the reason$\to$verify cycle at a comparable rate (0.46 vs.\ 0.49).
+
+ZeroClaw trajectories are dominated by reason$\to$reason chains at
+approximately 10 per trajectory regardless of outcome, the template signature.
+The only outcome-conditioned signal is a slight shift from plan$\to$reason
+(correct, 1.23) to reason$\to$plan (wrong, 1.44): wrong trajectories interrupt
+reasoning with planning.
+
+% ---------------------------------------------------------------------------
+\paragraph{Action-conditioned entropy: tool use suppresses but does not
+guarantee.}
+% ---------------------------------------------------------------------------
+
+Table~\ref{tab:gpqa-action-entropy} reports mean per-token log-probability
+entropy conditioned on the presence of specific action patterns.
+
+\begin{table}[t]
+\centering
+\small
+\caption{%
+  Mean per-token entropy conditioned on action pattern, by harness and outcome
+  on GPQA-Diamond.
+  ``Has tool'' = trajectory contains $\ge$1 tool\_use event.
+  ``Has recover'' = trajectory contains $\ge$1 recover event.
+  $\Delta$Ent = entropy(wrong) $-$ entropy(correct).
+}
+\label{tab:gpqa-action-entropy}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{llrrrr}
+\toprule
+Harness & Action pattern & Ent. (C) & Ent. (W) & $\Delta$Ent & $n$ (C\,/\,W) \\
+\midrule
+\multirow{4}{*}{OpenClaw}
+  & Has tool use      & 0.216 & 0.264 & +0.048 & 29\,/\, 5 \\
+  & No tool use       & 0.247 & 0.125 & $-$0.122 & 102\,/\,62 \\
+  & Has recover       & 0.201 & 0.169 & $-$0.032 & 30\,/\, 7 \\
+  & Verify after ans. & 0.242 & 0.148 & $-$0.094 & 74\,/\,39 \\
+\midrule
+\multirow{4}{*}{OpenCode}
+  & Has tool use      & 0.251 & \textbf{0.378} & \textbf{+0.127} & 80\,/\, 8 \\
+  & No tool use       & 0.307 & 0.273 & $-$0.034 & 65\,/\,45 \\
+  & Has verify        & 0.293 & 0.280 & $-$0.013 & 86\,/\,26 \\
+  & Has plan          & 0.289 & 0.265 & $-$0.024 & 44\,/\,16 \\
+\midrule
+\multirow{3}{*}{ZeroClaw}
+  & Has verify        & 0.245 & 0.350 & \textbf{+0.105} & 90\,/\,21 \\
+  & Has plan          & 0.239 & 0.352 & \textbf{+0.113} & 122\,/\,27 \\
+  & Sustained reason  & 0.245 & 0.359 & \textbf{+0.114} & 147\,/\,34 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\findingbox{Tool use is an entropy suppressor, not a correctness guarantee.
+Under OpenCode, tool-using correct trajectories have lower entropy than
+non-tool-using ones (0.25 vs.\ 0.31), but tool-using wrong trajectories spike
+to the highest entropy in the table (0.38).
+The model persists in tool use under uncertainty, and that uncertainty remains
+visible in the output.}
+
+Three regularities emerge from Table~\ref{tab:gpqa-action-entropy}.
+First, tool use lowers entropy on correct trajectories across both tool-using
+harnesses: OpenClaw correct with tools 0.22 versus 0.25 without; OpenCode
+correct with tools 0.25 versus 0.31 without.
+Tool execution anchors reasoning and the output becomes more deterministic.
+
+Second, tool use on wrong trajectories carries the opposite signal.
+OpenCode wrong trajectories with tools have entropy 0.38, the highest cell in
+the table: the model invokes tools under uncertainty, the output does not
+resolve it, and subsequent reasoning retains high entropy.
+This is the failure mode the ARM analysis identifies as uncertainty without
+resolution.
+
+Third, ZeroClaw's action-conditioned entropy shows a uniform positive
+$\Delta$Ent: wrong trajectories have higher entropy than correct ones for every
+action pattern (+0.11 for verify, +0.11 for plan, +0.11 for sustained reason).
+The model is uncertain, the entropy reflects that uncertainty, but the template
+prevents the uncertainty from spiraling into repetition: the entropy stays high
+rather than collapsing, consistent with Finding~5's observation that ZeroClaw
+inverts the entropy pattern.

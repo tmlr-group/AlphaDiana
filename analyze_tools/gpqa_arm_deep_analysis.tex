@@ -1,0 +1,571 @@
+% GPQA-Diamond ARM deep semantic analysis
+% Requires: \usepackage{tcolorbox}, \findingbox, \newcounter{finding} from gpqa_macro_analysis.tex
+%
+% Self-contained findings: every term defined in-place.
+%   F1: First cognitive move locks trajectory fate
+%   F2: Deduction and generic reasoning are near-perfectly anti-correlated (r=-0.908)
+%   F3: Segment count U-shape risk curve
+%   F4: Tool execution breaks the deduction self-loop
+%   F5: Question domain sets the cognitive baseline, harness determines the deviation
+%   F6: ZeroClaw is the only harness where wrong answers produce less homogeneous cognition
+%   F7: On HLE, no cognitive mode discriminates correct from wrong answers
+
+\subsection{ARM Semantic Structure: Deeper Patterns}
+\label{appendix:macro-gpqa-arm-deep}
+
+\paragraph{Definitions.}
+Every model-generated response is divided into \emph{segments}, where each
+segment is one assistant message in the trajectory.
+Each segment is classified into exactly one of six \emph{Agentic Reasoning
+Modes} (ARM) via keyword heuristics:
+\begin{itemize}[leftmargin=*, itemsep=1pt]
+\item \textbf{Principle-Based Deduction (PD)}: the segment derives an answer
+  from scientific laws, chemical mechanisms, mathematical theorems, or
+  formal computation steps.
+\item \textbf{Recovery-Replanning (RR)}: the segment retracts, corrects, or
+  changes direction from prior reasoning.
+\item \textbf{Uncertainty Navigation (UN)}: the segment expresses hedging,
+  doubt, or probabilistic language.
+\item \textbf{Intuitive Commitment (IC)}: the segment asserts an answer
+  directly without extended derivation.
+\item \textbf{Systematic Elimination (SE)}: the segment compares options
+  and rules them out one by one.
+\item \textbf{Undifferentiated reasoning (reason)}: the segment contains
+  deliberation that does not trigger any of the above classifiers.
+\end{itemize}
+
+\emph{Arm entropy} measures how evenly a trajectory's segments are spread
+across modes. A value near zero means nearly all segments belong to one
+mode; higher values mean the trajectory uses several modes in similar
+proportions.
+
+Three \emph{harness architectures} are evaluated on the GPQA-Diamond
+benchmark of 198 expert-level science multiple-choice questions, all using
+the Qwen3.5-27B model.
+\textbf{OpenClaw} provides an open-ended loop: the model can call tools
+(shell, search, read) or emit an answer at any time, with no structural
+commit deadline.
+\textbf{OpenCode} provides a code-execution environment: the model can write
+and run Python code, with each tool result anchoring subsequent reasoning.
+\textbf{ZeroClaw} imposes a fixed template: the model must plan, then
+reason for a fixed number of steps, then answer, leaving no room to re-enter
+earlier phases.
+
+% ===========================================================================
+\paragraph{The first cognitive move predicts the trajectory's eventual
+cognitive profile.}
+% ===========================================================================
+
+Table~\ref{tab:arm-first-mode} groups trajectories by whether their very
+first segment is classified as deduction (PD) or undifferentiated reasoning
+(reason).
+All other starting modes (IC, UN, RR, SE) account for under 3\% of
+trajectories and are omitted.
+
+\begin{table}[t]
+\centering
+\small
+\caption{%
+  How the first cognitive move shapes the rest of the trajectory, on
+  GPQA-Diamond.
+  ``First mode'' = the ARM label of the very first assistant-generated
+  segment.
+  ``Mean PD rate'' = what fraction of all subsequent segments in the
+  trajectory are classified as principle-based deduction, regardless of
+  how the trajectory started.
+  ``Acc'' = percentage of trajectories in this group that answer correctly.
+}
+\label{tab:arm-first-mode}
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{llrrrrr}
+\toprule
+Harness & First mode & $n$ & Acc\,\% & Mean PD rate & Mean segments & Arm ent. \\
+\midrule
+\multirow{2}{*}{OpenClaw}
+  & PD     &  97 & 61 & \textbf{0.83} &  3.7 & 0.25 \\
+  & reason &  95 & 69 & 0.30          &  4.6 & 0.70 \\
+\midrule
+\multirow{2}{*}{OpenCode}
+  & PD     &  99 & 71 & \textbf{0.55} &  9.8 & 0.45 \\
+  & reason &  93 & 74 & 0.24          & 11.4 & 0.68 \\
+\midrule
+\multirow{2}{*}{ZeroClaw}
+  & PD     &  99 & 72 & \textbf{0.45} & 16.2 & 0.48 \\
+  & reason &  93 & 84 & 0.18          & 16.4 & 0.79 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\findingbox{The first cognitive move a model makes is self-reinforcing.
+Trajectories that begin with deduction end up spending 2.5 to 3.5 times
+more of their total cognitive budget on deduction than trajectories that
+begin with generic reasoning, regardless of harness architecture.}
+
+The effect is strongest under OpenClaw, where an initial deduction segment
+leads to a mean PD rate of 0.83: the model spends over four-fifths of its
+cognitive effort re-deriving principles.
+Trajectories that begin with undifferentiated reasoning keep their PD rate
+to 0.30, leaving room for commitment, recovery, and mode switching.
+
+The accuracy gap consistently favors starting with reason: 6 percentage
+points under OpenClaw and OpenCode, 12 points under ZeroClaw.
+The mechanism is the PD self-loop: once the model enters deduction, the
+probability of staying in deduction on the next segment rises sharply, and
+the exit path toward commitment narrows.
+A trajectory that begins with reason can still enter deduction later, but
+the reverse rarely happens, because deduction is an absorbing cognitive
+state.
+
+ZeroClaw's fixed template controls the number of segments (16.2 vs.\ 16.4
+regardless of first mode) but cannot control their cognitive content.
+The PD rate gap (0.45 vs.\ 0.18) persists, and the accuracy gap is the
+widest of the three harnesses, suggesting that when the template forces a
+commit deadline, entering through deduction rather than reasoning is
+particularly harmful.
+
+% ===========================================================================
+\paragraph{Deduction and generic reasoning are near-perfect substitutes on
+hard-science questions.}
+% ===========================================================================
+
+On GPQA-Diamond, the Pearson correlation between a trajectory's PD rate and
+its reason rate is $r = -0.908$ across all 586 agent trajectories.
+No other mode pair has $|r| > 0.2$.
+On the HLE benchmark (323 to 591 text-based multiple-choice questions across
+dozens of academic disciplines), the PD-reason correlation is $r = -0.21$,
+and the strongest anti-correlation is between uncertainty and recovery at
+$r = -0.37$.
+
+\findingbox{On hard-science benchmarks, cognitive mode allocation reduces to
+a single dimension: every segment is either deduction or generic reasoning,
+and the two are near-perfect substitutes.
+On knowledge-intensive benchmarks, the mode space is genuinely
+multidimensional, with recovery, uncertainty, and reasoning operating as
+independent cognitive strategies.}
+
+This structural fact explains why the PD rate carries such strong diagnostic
+weight on GPQA-Diamond but none on HLE.
+In a near-one-dimensional mode space, an increase in deduction necessarily
+displaces generic reasoning.
+The exit path from deduction (reason$\to$IC, the transition from generic
+reasoning to commitment) collapses because there is no generic reasoning
+left to serve as the exit vehicle.
+On HLE, deduction and reasoning are independent dimensions: a model can
+increase recovery or uncertainty without reducing reasoning, and no single
+mode dominates the diagnostic landscape.
+
+% ===========================================================================
+\paragraph{Too few segments predict failure as reliably as too many.}
+% ===========================================================================
+
+Table~\ref{tab:arm-segment-bins} groups trajectories by how many segments
+they contain and reports accuracy within each size bin.
+A \emph{segment} is one assistant message, classified into one ARM mode.
+
+\begin{table}[t]
+\centering
+\small
+\caption{%
+  Accuracy and cognitive profile by segment count, on GPQA-Diamond.
+  ``Segments'' = number of assistant-generated messages in the trajectory.
+  ``PD rate'' = fraction of segments classified as principle-based deduction.
+  ``Arm ent.'' = cognitive mode diversity (higher = more modes used).
+}
+\label{tab:arm-segment-bins}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{llrrrrr}
+\toprule
+Harness & Segments & $n$ & Acc\,\% & PD rate & Arm ent. & Tokens \\
+\midrule
+\multirow{5}{*}{OpenClaw}
+  & 1--2   & 112 &  52 & 0.70 & 0.32 & 18{,}000 \\
+  & 3--5   &  38 &  87 & 0.46 & 0.67 &  4{,}000 \\
+  & 6--10  &  40 &  88 & 0.33 & 0.68 &  1{,}400 \\
+  & 11--20 &   6 &  67 & 0.26 & 0.85 &  2{,}900 \\
+\midrule
+\multirow{5}{*}{OpenCode}
+  & 1--2   &  23 &  \textbf{0} & 0.63 & 0.42 &  1{,}400 \\
+  & 3--5   &  70 &  73 & 0.60 & 0.62 &  1{,}200 \\
+  & 6--10  &  60 &  93 & 0.26 & 0.62 &  1{,}200 \\
+  & 11--20 &  24 &  83 & 0.18 & 0.61 &  4{,}200 \\
+  & 20+    &  21 &  86 & 0.06 & 0.32 & 10{,}000 \\
+\midrule
+\multirow{2}{*}{ZeroClaw}
+  & 1--10  &   0 & -- & --  & --  & -- \\
+  & 11--20 & 190 &  81 & 0.30 & 0.68 &  2{,}100 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\findingbox{Segment count exhibits a U-shaped relationship with accuracy:
+trajectories with only 1 or 2 segments are near-certain failures under
+OpenCode (0\% accuracy), while the optimal range is 3 to 10 segments (73\%
+to 93\% accuracy), where the model deliberates without either committing
+prematurely or spiraling indefinitely.}
+
+Under OpenCode, the 23 trajectories with 1 or 2 segments form a pure failure
+class: the model emits an answer after minimal deliberation, and none are
+correct.
+These are premature commitments, not deduction spirals.
+The 3 to 10 segment range is the healthy regime: the model reasons, invokes
+code, verifies results, and converges.
+
+Under OpenClaw, the 1 to 2 segment bin is heterogeneous.
+It contains both brief correct answers (short, confident, well-formed) and
+giant deduction monoliths: the mean token count is 18,000, compared to 1,400
+for 6 to 10 segment trajectories.
+These are single-segment PD spirals that happen to be classified as one
+segment because the model never transitions to another mode before hitting
+the context limit.
+The 3 to 10 segment range achieves 87\% to 88\% accuracy under OpenClaw as
+well, confirming that multi-step structure is necessary for reliable
+correctness.
+
+ZeroClaw's fixed template produces a narrow segment distribution centered at
+17 segments regardless of outcome, so segment count carries no diagnostic
+content for this harness.
+
+% ===========================================================================
+\paragraph{Executing a tool breaks the deduction self-loop.}
+% ===========================================================================
+
+Table~\ref{tab:arm-tool-catalyst} compares OpenCode trajectories that call
+at least one code-execution tool against those that never do.
+A \emph{transition} is a consecutive pair of segments: PD$\to$PD means a
+deduction segment is immediately followed by another deduction segment.
+Reason$\to$IC means a generic reasoning segment is immediately followed by
+an intuitive commitment (a direct answer).
+
+\begin{table}[t]
+\centering
+\small
+\caption{%
+  How tool use changes cognitive transitions, for OpenCode on GPQA-Diamond.
+  ``Has tool use'' = the trajectory contains at least one code-execution step.
+  PD$\to$PD = probability that a deduction segment is followed immediately
+  by another deduction segment.
+  Reason$\to$IC = probability that generic reasoning is followed immediately
+  by a direct commitment to an answer.
+}
+\label{tab:arm-tool-catalyst}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrrrrr}
+\toprule
+Group & $n$ & PD$\to$PD & Reason$\to$PD & Reason$\to$IC & Acc\,\% \\
+\midrule
+Has tool use    &  88 & \textbf{0.14} & 0.20 & 0.14 & \textbf{91} \\
+No tool use     & 110 & \textbf{0.44} & 0.46 & 0.47 & 60 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\findingbox{Executing code functions as a cognitive circuit breaker.
+OpenCode trajectories that invoke tools have a deduction-to-deduction
+transition probability of 0.14, compared to 0.44 for those that never invoke
+tools: a threefold reduction in the self-loop that characterizes deduction
+spirals.}
+
+The mechanism is structural, not informational.
+When the model executes code, the tool result arrives as a separate event
+that must be processed.
+The model's next segment after receiving a tool result is classified as
+generic reasoning (reflection on the output), not as deduction.
+This mandatory mode boundary interrupts what would otherwise be a continuous
+deduction chain.
+
+The accuracy gap is large (91\% vs.\ 60\%), but this does not mean tool use
+causes correctness.
+Task structure determines both whether a computational path exists and
+whether the problem is solvable.
+Tasks that afford tool use tend to be decomposable (numerical, algebraic)
+and therefore tractable; tasks that do not afford tool use tend to require
+irreducible verbal reasoning about molecular structure or biological
+mechanisms, where the model defaults to deduction without a computational
+anchor.
+The causality runs from task structure through tool availability to both the
+cognitive transition pattern and the outcome, not from the tool call itself.
+
+% ===========================================================================
+\paragraph{Question domain sets the cognitive baseline; harness architecture
+determines whether that baseline helps or hurts.}
+% ===========================================================================
+
+Table~\ref{tab:arm-subdomain} reports ARM mode rates by high-level scientific
+domain, pooled across all three agent harnesses.
+
+\begin{table}[t]
+\centering
+\small
+\caption{%
+  Cognitive mode allocation by scientific domain on GPQA-Diamond, pooled
+  across OpenClaw, OpenCode, and ZeroClaw.
+  PD rate = fraction of segments classified as principle-based deduction.
+  RR rate = fraction classified as recovery (retraction or correction).
+  UN rate = fraction classified as uncertainty expression.
+}
+\label{tab:arm-subdomain}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrrrrrr}
+\toprule
+Domain & $n$ & PD rate & IC rate & RR rate & UN rate & Acc\,\% \\
+\midrule
+Physics   & 258 & 0.31 & 0.04 & 0.02 & 0.01 & 89 \\
+Chemistry & 279 & \textbf{0.53} & 0.01 & 0.01 & 0.02 & 62 \\
+Biology   &  57 & 0.40 & 0.03 & 0.02 & 0.05 & 60 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\findingbox{The cognitive strategy a model adopts is primarily determined by
+the scientific domain of the question, not by the harness that executes it.
+Chemistry questions demand 1.7 times more deduction than Physics questions
+regardless of which harness is used.
+Harness architecture determines whether that elevated deduction baseline
+produces a pathological spiral or a structured derivation within a bounded
+budget.}
+
+Physics tasks (quantum mechanics, high-energy physics, electromagnetism)
+have sequential algebraic structure: the model can compute a quantity,
+verify the result, and commit.
+Chemistry tasks (organic synthesis, stereochemistry, reaction mechanisms)
+require multi-step verbal reasoning about three-dimensional molecular
+structure: there is no computational shortcut, so the model defaults to
+deduction and stays there.
+
+The PD rate gap between Chemistry (0.53) and Physics (0.31) is larger than
+the outcome-conditioned PD gap within any single harness.
+Domain determines the cognitive baseline; harness determines the deviation
+from it.
+Physics tasks are decomposable and executable: they work well under every
+harness (89\% pooled accuracy).
+Chemistry tasks are irreducibly verbal: under OpenClaw's open loop the
+baseline PD amplifies into a spiral, while under ZeroClaw's fixed template
+it merely produces an elevated PD rate within a bounded budget.
+
+% ===========================================================================
+\paragraph{ZeroClaw is the only harness where wrong answers produce
+\emph{less} homogeneous cognition than correct ones.}
+% ===========================================================================
+
+Table~\ref{tab:arm-dominance} reports the \emph{dominant rate}: the fraction
+of a trajectory's segments assigned to its single most frequent cognitive
+mode.
+A dominant rate of 1.0 means every segment in the trajectory has the same
+ARM label; a lower value means the trajectory mixes several modes.
+
+\begin{table}[t]
+\centering
+\small
+\caption{%
+  Cognitive homogeneity by harness and outcome on GPQA-Diamond.
+  ``Dominant rate'' = fraction of segments assigned to the trajectory's most
+  frequent mode (higher = more homogeneous).
+  ``Arm ent.'' = cognitive mode diversity (higher = modes used more evenly).
+  ``Dominant mode'' = the most frequent mode, with the percentage of
+  trajectories for which it is dominant.
+}
+\label{tab:arm-dominance}
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{llrrrl}
+\toprule
+Harness & Outcome & Dom. rate & Arm ent. & Dominant mode & \\
+\midrule
+\multirow{2}{*}{OpenClaw}
+  & C & 0.70 & 0.52 & reason (55\% of traj.) \\
+  & W & \textbf{0.74} & 0.40 & PD (60\% of traj.)    \\
+\midrule
+\multirow{2}{*}{OpenCode}
+  & C & 0.70 & 0.60 & reason (67\% of traj.) \\
+  & W & \textbf{0.73} & 0.46 & PD (55\% of traj.)    \\
+\midrule
+\multirow{2}{*}{ZeroClaw}
+  & C & 0.71 & 0.64 & reason (77\% of traj.) \\
+  & W & \textbf{0.62} & 0.81 & reason (68\% of traj.) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\findingbox{ZeroClaw is the only harness where wrong trajectories are
+\emph{less} cognitively homogeneous than correct ones.
+Under OpenClaw and OpenCode, wrong answers coincide with mode collapse (the
+model fixates on a single cognitive strategy, typically deduction).
+Under ZeroClaw, wrong answers coincide with mode oscillation (the model
+switches between strategies without converging on any of them).}
+
+Under OpenClaw and OpenCode, the dominant rate rises on wrong trajectories
+(from 0.70 to 0.74 and 0.73 respectively), and the dominant mode shifts
+from reason (correct) to deduction (wrong).
+The model collapses toward pure deduction.
+
+Under ZeroClaw, the dominant rate \emph{drops} on wrong trajectories (from
+0.71 to 0.62), and arm entropy rises from 0.64 to 0.81.
+The fixed template forces the model to produce a set number of reasoning
+steps.
+When the model is uncertain, it fills those mandatory steps with diverse,
+oscillating modes (deduction, recovery, uncertainty, reasoning) rather than
+converging.
+Reason remains the dominant mode for both outcomes under ZeroClaw; the
+template prevents the shift to deduction-dominance that occurs under the
+other two harnesses, but it cannot prevent the uncertainty that produces
+mode oscillation.
+
+% ===========================================================================
+\paragraph{On knowledge-intensive benchmarks, cognitive strategy does not
+predict correctness.}
+% ===========================================================================
+
+Table~\ref{tab:arm-hle-nondiscriminative} reports ARM mode rates on the HLE
+benchmark, which consists of 323 to 591 text-based multiple-choice questions
+spanning philosophy, linguistics, theoretical mathematics, experimental
+science, and other academic disciplines.
+DirectLLM is the model without any harness scaffolding (single-pass
+inference); OpenCode provides a code-execution environment.
+
+\begin{table}[t]
+\centering
+\small
+\caption{%
+  Cognitive mode rates by outcome on the HLE benchmark.
+  $\Delta$ = wrong minus correct, in percentage points.
+  A positive $\Delta$ means the mode is more common on wrong trajectories.
+  ``$n$ seg.'' = mean number of assistant segments per trajectory.
+}
+\label{tab:arm-hle-nondiscriminative}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{llrrrrrrr}
+\toprule
+Harness & Out. & PD & RR & UN & IC & Arm ent. & $n$ seg. \\
+\midrule
+\multirow{3}{*}{DirectLLM}
+  & C      & 0.13 & 0.27 & 0.10 & 0.08 & 1.23 & 44 \\
+  & W      & 0.11 & 0.26 & \textbf{0.14} & 0.07 & 1.14 & \textbf{52} \\
+  & $\Delta$ & $-$2 & $-$1  & \textbf{+4}  & $-$1  & $-$9  & \textbf{+8} \\
+\midrule
+\multirow{3}{*}{OpenCode}
+  & C      & 0.16 & 0.36 & 0.20 & 0.13 & 0.17 & 3 \\
+  & W      & 0.14 & 0.31 & 0.24 & 0.15 & 0.13 & 4 \\
+  & $\Delta$ & $-$2 & $-$5  & +4    & +2    & $-$4  & +1 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\findingbox{On HLE, no cognitive mode rate meaningfully discriminates
+correct from wrong trajectories.
+The largest outcome-conditioned gap is 4 percentage points (uncertainty
+expression, slightly higher on wrong answers).
+This is an order of magnitude smaller than the deduction gap on GPQA-Diamond
+(7 to 15 points), and it runs in the opposite direction.
+Cognitive strategy describes how the model thinks; it does not predict
+whether the model succeeds.}
+
+On GPQA-Diamond, the model's cognitive strategy (how much deduction, whether
+it can exit to commitment) is a cause of success or failure.
+On HLE, cognitive strategy is a response to task difficulty, not a
+determinant of outcome: the model explores, recovers, and hedges at nearly
+identical rates whether it ultimately answers correctly or not.
+What separates success from failure is the depth of domain knowledge the
+model can bring to bear, which manifests in trajectory length (44 vs.\ 52
+segments for DirectLLM) rather than in mode allocation.
+
+OpenCode's arm entropy on HLE is extremely low (0.13 to 0.17) because its
+compressed reasoning budget allows only 3 to 4 segments per trajectory.
+In that narrow window, mode diversity is structurally impossible.
+DirectLLM, unconstrained, produces 44 to 52 segments with arm entropy above
+1.1, reflecting genuine multi-mode exploration.
+Yet the mode distribution is nearly identical across outcomes for both
+harnesses, confirming that ARM modes on HLE describe what the model chooses
+to do, not whether it succeeds.
+
+% ===========================================================================
+\paragraph{What is common across both benchmarks?}
+% ===========================================================================
+
+The preceding findings treat GPQA-Diamond and HLE separately.
+Table~\ref{tab:arm-cross-direction} pools all 1,500 trajectories (586 GPQA
++ 914 HLE) and reports, for each cognitive metric, whether the direction of
+the wrong-minus-correct gap is the same on both benchmarks.
+
+\begin{table}[t]
+\centering
+\small
+\caption{%
+  Direction of the wrong-minus-correct gap ($\Delta$) for each cognitive
+  metric, computed separately on GPQA-Diamond and HLE and then compared.
+  ``Same direction'' means the metric shifts the same way on wrong
+  trajectories regardless of benchmark.
+  ``Flips direction'' means the metric rises on wrong trajectories for one
+  benchmark and falls on the other.
+}
+\label{tab:arm-cross-direction}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrrrr}
+\toprule
+Metric & GPQA $\Delta$ & HLE $\Delta$ & Same? & Interpretation \\
+\midrule
+Arm entropy (mode diversity)    & $-$0.07 & $-$0.22 & yes & Wrong = less diverse \\
+Uncertainty expression (UN)     & +0.03   & +0.05   & yes & Wrong = more hedging \\
+Generic reasoning (reason)      & $-$0.16 & $-$0.03 & yes & Wrong = less deliberation \\
+Number of segments              & $-$4.2  & $-$2.7  & yes & Wrong = fewer steps \\
+Dominant mode purity            & +0.00   & +0.09   & yes & Wrong = more homogeneous \\
+\midrule
+Principle-based deduction (PD)  & \textbf{+0.14} & \textbf{$-$0.01} & \textbf{no} & GPQA: wrong = more deduction \\
+                                &         &         &      & HLE: wrong = slightly less \\
+Intuitive commitment (IC)       & $-$0.02 & +0.02   & no   & Flips weakly \\
+Recovery-replanning (RR)        & $-$0.00 & $-$0.03 & yes  & Wrong = slightly less recovery \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\findingbox{Five of eight cognitive metrics shift in the same direction on
+wrong trajectories regardless of whether the benchmark is hard-science
+(GPQA) or knowledge-intensive (HLE).
+Wrong trajectories are less cognitively diverse, more uncertain, contain
+less generic deliberation, take fewer steps, and are more homogeneous.
+The only metric that flips direction is deduction rate, confirming that the
+PD sink is a benchmark-specific pathology, not a universal cognitive law.}
+
+The five universal markers describe a common failure profile: the model's
+cognition narrows (lower arm entropy, higher dominant rate, fewer segments)
+while its expressed uncertainty rises.
+This is visible even on HLE, where the overall ARM profile is
+outcome-invariant at the mode-rate level: the \emph{direction} of each
+metric's shift is the same, even though the \emph{magnitude} is smaller
+than on GPQA.
+
+The only genuine reversal is deduction rate.
+On GPQA, wrong trajectories spend 14 percentage points more of their
+cognitive budget on deduction; on HLE, wrong trajectories spend 1 point
+less.
+The deduction spiral (Finding~1 and Finding~3 of the main GPQA analysis) is
+therefore not a property of the model, nor of agent harnesses in general,
+but of the interaction between a hard-science benchmark and an open-loop
+harness architecture.
+
+\findingbox{Correct trajectories converge to approximately 70\% dominant
+mode purity regardless of benchmark, harness, or absolute mode rates.
+This is the only ARM metric whose central value is identical between
+GPQA-correct (0.70) and HLE-correct (0.71).}
+
+The dominant rate is the fraction of a trajectory's segments assigned to
+its single most frequent cognitive mode.
+A value of 1.0 means the trajectory never switches modes (pure PD, or pure
+reason); a value near 0.5 means it splits evenly between two modes.
+
+On GPQA, correct trajectories achieve this 0.70 through a mix of deduction
+and generic reasoning (PD and reason are near-perfect substitutes in the
+one-dimensional GPQA mode space).
+On HLE, correct trajectories achieve it through a mix of recovery,
+uncertainty navigation, and generic reasoning (a genuinely multidimensional
+mode space).
+The mechanism differs, but the outcome is the same: correct trajectories
+are neither cognitively rigid (pure one mode) nor chaotic (constant mode
+switching without convergence).
+They settle into a dominant mode with room for occasional transitions.
+
+Wrong trajectories deviate from this equilibrium in opposite directions
+depending on harness architecture.
+Under OpenClaw and OpenCode, wrong trajectories become more pure (dominant
+rate 0.73 to 0.74, mode collapse toward deduction).
+Under ZeroClaw, wrong trajectories become less pure (dominant rate 0.62,
+mode oscillation between deduction, recovery, and uncertainty).
+Both deviations from the 0.70 equilibrium predict failure.

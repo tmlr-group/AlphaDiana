@@ -1,0 +1,534 @@
+% GPQA-Diamond: action-level + semantic-level loop mechanics analysis
+% Supports Finding 1 — Agent loops without a clear target
+% Integrates: canonical action analysis, ARM semantic mode analysis,
+%             entropy trajectory analysis, keyword markers, context rotting
+
+\subsection{Action-Level and Semantic Mechanics of Trajectory Inflation}
+\label{appendix:macro-gpqa-loop}
+
+The Finding~1 claim in \S\ref{appendix:macro-gpqa} states that OpenClaw's open
+loop converts deliberation into trajectory inflation, where context exhaustion
+rather than reasoning error becomes the proximate cause of incorrect answers.
+We now decompose the mechanism at two levels: the canonical action level (what
+operations the harness performs) and the ARM semantic level (what cognitive
+strategy each reasoning segment represents).
+We then diagnose \emph{why} the model enters the spiral, \emph{where} the token
+budget goes inside it, and \emph{how} context rotting degrades output quality
+as the trajectory lengthens.
+
+% ===========================================================================
+\paragraph{The loop is internal to a single assistant turn.}
+% ===========================================================================
+
+OpenClaw trajectories consist of exactly two message-level steps regardless of
+outcome: one user message (system prompt plus task) and one assistant message.
+Correct trajectories produce a compact assistant response (mean 2.4K tokens);
+wrong trajectories produce a single continuous output stream averaging 28K
+tokens, with 34\% reaching the 32K context limit before the model emits a valid
+boxed answer.
+The canonical action space $\{\texttt{plan},\texttt{reason},\texttt{tool\_use},
+\texttt{verify},\texttt{recover},\texttt{answer}\}$ classifies the trajectory
+as a whole.
+On correct trajectories, OpenClaw's terminal action is \texttt{answer} in 99\%
+of cases.
+On regressions, only 6\% terminate in \texttt{answer}: the model ends in
+\texttt{verify} (58\%) or \texttt{plan} (22\%), cycling without committing.
+
+To analyze what happens \emph{inside} the single-turn output, we use the ARM
+(Agentic Reasoning Mode) taxonomy, which classifies every segment of the
+continuous output into one of seven cognitive modes:
+principle-based deduction (PD), systematic elimination (SE), intuitive
+commitment (IC), uncertainty navigation (UN), recovery-replanning (RR),
+computational verification (CV), and undifferentiated reasoning (reason).
+
+% ===========================================================================
+\paragraph{Where the token budget goes: ARM mode allocation.}
+% ===========================================================================
+
+Table~\ref{tab:gpqa-arm-budget} reports the fraction of trajectory segments
+allocated to each ARM mode.
+This answers the question: when OpenClaw inflates from 2.4K to 28K tokens,
+which cognitive activities consume the additional budget?
+
+\begin{table}[t]
+\centering
+\small
+\caption{%
+  ARM cognitive-mode segment allocation by harness and outcome on GPQA-Diamond.
+  Each cell is the mean fraction of segments classified to that mode.
+  $\Delta$ = correct $-$ wrong difference in percentage points.
+  Arm entropy = mode diversity (higher = more modes used).
+}
+\label{tab:gpqa-arm-budget}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{llrrrrrrrc}
+\toprule
+Harness & Outcome & PD & reason & IC & UN & RR & SE & CV & Arm ent. \\
+\midrule
+\multirow{2}{*}{OpenClaw}
+ & correct & 0.519 & 0.386 & 0.052 & 0.017 & 0.018 & 0.007 & 0.000 & 0.548 \\
+ & wrong   & \textbf{0.608} & \textbf{0.291} & \textbf{0.026} & \textbf{0.043} & 0.010 & 0.022 & 0.000 & \textbf{0.395} \\
+ & $\Delta$ & +8.9 & $-$9.5 & $-$2.6 & +2.6 & $-$0.8 & +1.5 & 0.0 & $-$0.15 \\
+\midrule
+\multirow{2}{*}{OpenCode}
+ & correct & 0.353 & 0.587 & 0.026 & 0.009 & 0.019 & 0.006 & 0.000 & 0.593 \\
+ & wrong   & \textbf{0.498} & \textbf{0.450} & 0.000 & \textbf{0.041} & 0.010 & 0.000 & 0.000 & \textbf{0.468} \\
+ & $\Delta$ & +14.5 & $-$13.7 & $-$2.6 & +3.2 & $-$0.9 & $-$0.6 & 0.0 & $-$0.13 \\
+\midrule
+\multirow{2}{*}{ZeroClaw}
+ & correct & 0.280 & 0.674 & 0.023 & 0.010 & 0.020 & 0.001 & 0.000 & 0.636 \\
+ & wrong   & \textbf{0.406} & \textbf{0.504} & 0.011 & \textbf{0.032} & \textbf{0.044} & 0.003 & 0.000 & \textbf{0.812} \\
+ & $\Delta$ & +12.6 & $-$17.0 & $-$1.2 & +2.2 & +2.4 & +0.2 & 0.0 & \textbf{+0.18} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three regularities emerge from Table~\ref{tab:gpqa-arm-budget}.
+First, \textbf{PD is the dominant consumer of the inflated budget}.
+Across all three harnesses, wrong trajectories allocate 8.9 to 14.5~pp more of
+their segments to principle-based deduction than correct trajectories do, at the
+direct expense of undifferentiated \texttt{reason} and IC.
+The model is not ``over-thinking'' in a diverse or exploratory way; it is
+specifically over-deriving, re-stating chemical principles or physical laws
+without transitioning to elimination or commitment.
+
+Second, \textbf{computational verification (CV) is zero across ALL harnesses
+and outcomes}.
+No harness successfully induces the Qwen3.5-27B model to perform
+tool-mediated numerical verification as a distinct cognitive mode.
+OpenCode achieves tool use at the canonical action level (55\% of correct
+trajectories), but the ARM classifier assigns the model's reflection on the
+tool output to \texttt{reason} rather than a dedicated verification mode.
+OpenClaw never reaches CV either, despite its tool-intent markers growing 28-fold
+on wrong trajectories.
+The model \emph{wants} to use tools but does not translate intent into an
+executable verification step.
+
+Third, \textbf{arm entropy direction is harness-specific}.
+OpenClaw and OpenCode wrong trajectories have \emph{lower} mode diversity than
+correct ones ($-$0.15 and $-$0.13 respectively): the model collapses into fewer
+modes.
+ZeroClaw wrong trajectories have \emph{higher} mode diversity (+0.18): the model
+oscillates between PD, reason, UN, and RR without converging.
+The same ARM marker (high arm entropy) therefore signals productive exploration
+under ZeroClaw but unproductive mode oscillation under OpenClaw.
+
+% ===========================================================================
+\paragraph{Why the model enters the spiral: the PD sink.}
+% ===========================================================================
+
+Table~\ref{tab:gpqa-arm-transitions-full} reports ARM transition probabilities
+for OpenClaw, split by outcome.
+Because OpenClaw outputs are single continuous messages, transitions represent
+successive cognitive segments within one assistant turn.
+
+\begin{table}[t]
+\centering
+\small
+\caption{%
+  ARM cognitive-mode transition probabilities within OpenClaw trajectories,
+  by outcome.
+  Each cell = probability of transitioning from row mode to column mode,
+  averaged over all trajectories in the bucket.
+  Bold = transition differs by $>0.10$ between correct and wrong.
+}
+\label{tab:gpqa-arm-transitions-full}
+\setlength{\tabcolsep}{2.5pt}
+\begin{tabular}{llrrrrrr}
+\toprule
+From $\to$ To & Outcome & PD & reason & UN & IC & RR & SE \\
+\midrule
+\multirow{2}{*}{PD}
+  & correct & 0.709 & 0.248 & 0.004 & 0.017 & 0.012 & 0.002 \\
+  & wrong   & \textbf{0.851} & \textbf{0.113} & 0.010 & 0.011 & 0.004 & 0.010 \\
+\midrule
+\multirow{2}{*}{reason}
+  & correct & 0.521 & 0.301 & 0.065 & 0.069 & 0.016 & 0.008 \\
+  & wrong   & \textbf{0.748} & \textbf{0.168} & \textbf{0.044} & 0.032 & 0.008 & 0.000 \\
+\midrule
+\multirow{2}{*}{UN}
+  & correct & 0.200 & 0.467 & 0.200 & 0.067 & 0.000 & 0.000 \\
+  & wrong   & 0.275 & 0.450 & 0.200 & 0.025 & 0.050 & 0.000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:gpqa-arm-transitions-full} reveals a PD sink: once the model
+enters principle-based deduction on a hard instance, the probability of staying
+in PD on the next segment rises from 0.71 (correct) to 0.85 (wrong).
+Simultaneously, the escape route narrows: PD$\to$\texttt{reason} drops from
+0.25 to 0.11, and \texttt{reason}$\to$IC (the commitment path) collapses.
+Even when the model pauses deduction for generic reflection
+(\texttt{reason}$\to$PD at 0.75 on wrong trajectories vs.\ 0.52 on correct),
+it immediately re-enters deduction.
+The cognitive state is trapped: each deduction segment increases the probability
+of another deduction segment, and the exit probability toward commitment decays
+toward zero.
+
+\emph{Over-reasoning vs.\ dedicated tool calling.}
+The PD sink constitutes a specific failure of \emph{over-reasoning without
+grounding}.
+The model does not lack information: on OpenClaw regression tasks, DirectLLM
+solves the same questions correctly at 11.3K tokens with entropy 0.31.
+The model possesses the knowledge but cannot convert it into a commit decision
+because the harness provides no exit signal.
+Tool calling is not ``dedicated'' but \emph{aspirational}: tool-intent markers
+explode to 53 per trajectory (vs.\ 1.9 on correct), yet the model never reaches
+CV and only 7\% of wrong trajectories contain an actual tool invocation (vs.\
+22\% on correct).
+The model repeatedly expresses the desire to compute something
+(\texttt{``Let me compute\ldots''}, \texttt{``I need to check\ldots''}) but
+cycles back to PD without executing or without integrating the result.
+
+% ===========================================================================
+\paragraph{Context rotting: entropy collapse as the trajectory lengthens.}
+% ===========================================================================
+
+Table~\ref{tab:gpqa-context-rotting} reports three measures of how output
+quality degrades with token position.
+\emph{Head entropy} is the mean per-token log-probability entropy over the first
+quartile of tokens; \emph{tail entropy} is the same over the last quartile.
+\emph{Low-entropy token share} is the fraction of tokens whose entropy falls
+below the 25th percentile of the full trajectory distribution.
+\emph{Top-1 probability} is the mean probability the model assigns to its
+selected token.
+
+\begin{table}[t]
+\centering
+\small
+\caption{%
+  Context rotting signals: how output entropy and token probability evolve
+  from the beginning (head) to the end (tail) of the trajectory.
+  $\Delta$H = tail entropy $-$ head entropy.
+  Low-ent share = fraction of tokens in the bottom entropy quartile.
+  Top-1 prob = mean probability of the model's selected token.
+}
+\label{tab:gpqa-context-rotting}
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{llrrrrr}
+\toprule
+Harness & Outcome & Head ent. & Tail ent. & $\Delta$H & Low-ent share & Top-1 prob \\
+\midrule
+\multirow{3}{*}{OpenClaw}
+ & correct   & 0.251 & 0.215 & $-$0.036 & 0.620 & 0.908 \\
+ & regression & 0.241 & 0.073 & \textbf{$-$0.167} & \textbf{0.865} & \textbf{0.968} \\
+ & both wrong & 0.254 & 0.147 & $-$0.107 & 0.739 & 0.954 \\
+\midrule
+\multirow{2}{*}{OpenCode}
+ & correct   & 0.269 & 0.211 & $-$0.059 & 0.579 & 0.895 \\
+ & regression & 0.236 & 0.165 & $-$0.071 & 0.663 & 0.912 \\
+\midrule
+\multirow{2}{*}{ZeroClaw}
+ & correct   & 0.239 & 0.179 & $-$0.060 & 0.645 & 0.915 \\
+ & regression & 0.244 & 0.237 & \textbf{$-$0.007} & \textbf{0.543} & \textbf{0.879} \\
+ & both wrong & 0.244 & 0.265 & \textbf{+0.021} & 0.520 & 0.895 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:gpqa-context-rotting} reveals a harness-conditional context
+rotting signature.
+OpenClaw regressions begin at head entropy 0.241 (similar to correct trajectories
+at 0.251) but collapse to tail entropy 0.073, a drop of 0.167.
+By the final quartile, 86.5\% of tokens fall in the bottom entropy quartile
+and the model assigns 0.97 probability to its selected tokens: the output has
+become near-deterministic, cycling through high-confidence restatements rather
+than exploring alternatives or advancing toward a decision.
+The entropy collapse is not gradual but catastrophic: the model reaches a
+critical context depth where diversity collapses and output becomes repetitive
+filler.
+
+ZeroClaw shows the opposite pattern.
+Its regression trajectories maintain stable entropy from head to tail
+($\Delta$H = $-$0.007), and its both-wrong trajectories show \emph{rising}
+entropy (+0.021): the model explores genuinely under uncertainty without
+collapsing into repetition.
+Its low-entropy token share is 0.54 (vs.\ 0.87 for OpenClaw regression), and
+top-1 probability is lower than correct trajectories (0.88 vs.\ 0.92), indicating
+that the model remains in a deliberative, non-deterministic state throughout.
+The fixed template prevents context rotting not by improving reasoning quality
+but by capping the trajectory length before the rotting regime begins.
+
+OpenCode regressions show a mild rotting signal ($\Delta$H = $-$0.071, low-ent
+share 0.66), consistent with its intermediate architecture: tool-grounded
+transitions provide partial exit ramps from PD, but on tasks where tools are
+inapplicable the model still drifts toward lower-entropy output, just within a
+shorter absolute token budget.
+
+% ===========================================================================
+\paragraph{Quantitative failure signatures: keyword markers.}
+% ===========================================================================
+
+Table~\ref{tab:gpqa-keyword-failure} reports per-trajectory counts of
+diagnostic text patterns that distinguish spiraling from converging trajectories.
+
+\begin{table}[t]
+\centering
+\small
+\caption{%
+  Quantitative keyword-marker analysis by harness and outcome.
+  All values are per-trajectory means.
+  Looping = restatements of question/goal.
+  Self-corr = retractions or direction changes.
+  Uncertainty = explicit hedging (``might be'', ``possibly'', ``not sure'').
+  N-gram rate = fraction of 4-grams appearing more than once.
+  Tool intent = expressions indicating desire to use a tool without actual
+  invocation.
+}
+\label{tab:gpqa-keyword-failure}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{llrrrrrr}
+\toprule
+Harness & Outcome & Looping & Self-corr & Uncert. & N-gram rep. & Tool intent & Tokens \\
+\midrule
+\multirow{3}{*}{OpenClaw}
+ & correct   &    2 &    4 &   1 & 0.13 &   2 &  2{,}372 \\
+ & regression &   83 &  148 &  35 & 0.63 &  53 & 27{,}420 \\
+ & both wrong &   99 &  127 &  38 & 0.54 &  42 & 21{,}075 \\
+\midrule
+\multirow{3}{*}{OpenCode}
+ & correct   &    3 &    6 &   1 & 0.44 &   8 &  1{,}036 \\
+ & regression &   19 &   44 &   3 & 0.53 &  11 &  3{,}672 \\
+ & both wrong &   11 &   29 &   6 & 0.55 &  12 &  2{,}996 \\
+\midrule
+\multirow{3}{*}{ZeroClaw}
+ & correct   &    3 &    6 &   1 & 0.13 &   7 &  2{,}101 \\
+ & regression &    5 &   14 &   3 & 0.12 &   7 &  1{,}913 \\
+ & both wrong &    5 &   16 &   2 & 0.12 &   7 &  2{,}628 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:gpqa-keyword-failure} shows that OpenClaw's wrong trajectories
+are not merely long; they are \emph{qualitatively different} in lexical
+structure.
+Self-correction markers explode from 4 (correct) to 148 (regression): the model
+retracts or changes direction roughly once every 185 tokens on average.
+Yet these self-corrections do not converge to a correct answer: they represent
+oscillation between incompatible reasoning chains rather than progressive
+refinement.
+The repeated n-gram rate nearly quintuples (0.13 to 0.63), confirming that the
+output is lexically self-similar rather than informationally progressive.
+Uncertainty markers rise 35-fold (1 to 35), but the uncertainty is never
+resolved: the model expresses doubt, re-enters PD to resolve it, and emerges
+still uncertain, creating an uncertainty$\to$PD$\to$uncertainty cycle.
+
+Critically, ZeroClaw shows none of these signatures despite sharing the same
+model.
+Its keyword markers are nearly identical across outcomes: looping markers stay
+at 3--5, self-correction at 6--16, and repeated n-gram rate at 0.12--0.13
+regardless of correctness.
+The fixed template prevents the lexical degradation that characterizes
+OpenClaw's spirals, even though the ARM mode rates (Table~\ref{tab:gpqa-arm-budget})
+confirm that ZeroClaw's wrong trajectories also over-allocate to PD.
+
+% ===========================================================================
+\paragraph{Failure mode taxonomy.}
+% ===========================================================================
+
+Table~\ref{tab:gpqa-failure-taxonomy} classifies every incorrect trajectory
+into a mechanistic cause bucket based on the relationship between the harness
+output and the DirectLLM output on the same task.
+
+\begin{table}[t]
+\centering
+\small
+\caption{%
+  Failure cause taxonomy by harness.
+  Cause buckets are mutually exclusive and assigned by comparing harness output
+  against DirectLLM output on the same task.
+}
+\label{tab:gpqa-failure-taxonomy}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{lrrr}
+\toprule
+Cause bucket & $n$ & Mean tokens & Mean entropy \\
+\midrule
+\multicolumn{4}{c}{\textit{OpenClaw} (67 failures)} \\
+\quad answer\_format\_or\_extraction (context exhaustion) & 32 & 30{,}451 & 0.051 \\
+\quad both\_wrong (genuine reasoning error)               & 31 & 21{,}075 & 0.168 \\
+\quad other (tool, verification, overrun)                &  4 &  3{,}169 & 0.304 \\
+\midrule
+\multicolumn{4}{c}{\textit{OpenCode} (53 failures)} \\
+\quad both\_wrong (genuine reasoning error)               & 29 &  2{,}996 & 0.317 \\
+\quad answer\_format\_or\_extraction (context exhaustion) & 15 &  4{,}718 & 0.107 \\
+\quad premature\_answer                                   &  5 &  1{,}467 & 0.437 \\
+\quad other (tool, verification)                         &  4 &  2{,}783 & 0.362 \\
+\midrule
+\multicolumn{4}{c}{\textit{ZeroClaw} (37 failures)} \\
+\quad both\_wrong (genuine reasoning error)               & 22 &  2{,}628 & 0.372 \\
+\quad premature\_answer                                   &  5 &  2{,}242 & 0.373 \\
+\quad answer\_changed\_valid                              &  3 &  1{,}990 & 0.369 \\
+\quad other (extraction, churn, verification)            &  7 &  2{,}105 & 0.348 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:gpqa-failure-taxonomy} reveals three mechanistically distinct
+failure regimes.
+
+\textbf{Context exhaustion failure} (OpenClaw dominant, 32/67 failures).
+The model enters a PD sink, self-correction markers explode, entropy collapses
+to 0.05, and the trajectory hits the 32K context limit before a valid boxed
+answer is emitted.
+These are tasks DirectLLM answers correctly (regressions): the base model knows
+the answer, but the harness loop destroys it.
+The 30.5K mean tokens represent almost pure waste: the model is not exploring
+or computing, it is cycling through low-entropy restatements.
+
+\textbf{Genuine reasoning error} (all harnesses, dominant in ZeroClaw and
+OpenCode).
+The model reaches a wrong answer through normal-length deliberation (2--3K
+tokens) with healthy entropy (0.17--0.37).
+DirectLLM also fails these tasks: the base model lacks the knowledge or
+reasoning capability.
+No harness architecture can rescue these failures, and the trajectories show
+no pathological signatures.
+The entropy is \emph{higher} than on correct trajectories for both ZeroClaw
+(0.37 vs.\ 0.25) and OpenCode (0.32 vs.\ 0.29), consistent with genuine
+uncertainty during deliberation.
+
+\textbf{Premature commitment} (OpenCode and ZeroClaw).
+The model emits an answer after minimal deliberation (1.5--2.2K tokens) with
+high entropy (0.37--0.44): it commits under uncertainty rather than continuing
+to reason.
+This is the inverse failure mode to context exhaustion: insufficient rather than
+excessive deliberation.
+
+% ===========================================================================
+\paragraph{The loop is task-structure-dependent.}
+% ===========================================================================
+
+Table~\ref{tab:gpqa-loop-subdomain} confirms that looping is not uniform across
+the benchmark.
+Subdomains where the task affords an executable, computational path (High-energy
+physics, Quantum Mechanics) show minimal looping and near-perfect accuracy.
+Subdomains requiring irreducible verbal reasoning about molecular structure
+(Organic Chemistry, Molecular Biology) concentrate the spiral trajectories.
+
+\begin{table}[t]
+\centering
+\small
+\caption{%
+  OpenClaw looping markers and token inflation by GPQA-Diamond subdomain,
+  sorted by mean looping markers descending.
+}
+\label{tab:gpqa-loop-subdomain}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrrrr}
+\toprule
+Subdomain & $n$ & Loop markers & Mean tokens & Acc\% \\
+\midrule
+Organic Chemistry           & 72 &  59 & 17{,}564 &  49 \\
+Astrophysics                & 13 &  50 &  7{,}900 &  77 \\
+Molecular Biology           & 15 &  36 &  7{,}533 &  67 \\
+Relativistic Mechanics      &  7 &  27 &  7{,}528 &  71 \\
+Chemistry (general)         & 20 &  21 &  6{,}746 &  75 \\
+Physics (general)           & 19 &  11 &  7{,}724 &  79 \\
+Genetics                    &  4 &   4 &  2{,}710 &  50 \\
+High-energy particle phys.  & 14 &   3 &  1{,}391 & 100 \\
+Quantum Mechanics           & 25 &   2 &  2{,}041 &  68 \\
+Electromagnetism \& Photonics & 6 &   0 &  6{,}236 &  83 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The subdomain gradient in Table~\ref{tab:gpqa-loop-subdomain} supports the
+PD-sink mechanism.
+Organic Chemistry questions (stereochemistry, reaction mechanisms, aromatic
+substitution) require multi-step verbal reasoning about molecular structure.
+The model defaults to PD because there is no numerical path to compute; the
+open loop permits unbounded PD chaining; entropy collapses; and context
+exhaustion prevents answer emission.
+Quantum Mechanics questions involve sequential algebraic structure that OpenClaw
+can navigate with brief verification (2.0K tokens, 68\% accuracy), while
+ZeroClaw's fixed plan-reason-answer template maps directly onto the
+decomposition structure, yielding 100\% accuracy on the same subdomain.
+
+% ===========================================================================
+\paragraph{Why ZeroClaw and OpenCode avoid the spiral.}
+% ===========================================================================
+
+The same Qwen3.5-27B model exhibits the same cognitive tendency toward PD
+over-expression on wrong trajectories under all three harnesses
+(Table~\ref{tab:gpqa-arm-budget}).
+Yet only OpenClaw produces the catastrophic entropy-collapse-plus-context-exhaustion
+failure mode.
+The difference is architectural.
+
+\textbf{ZeroClaw} imposes a fixed template: plan, then reason for a fixed number
+of steps, then answer.
+Its action count distribution is near-constant (correct: mean 18.0, std 0.19;
+wrong: mean 16.9, std 2.7), confirming that the template overrides any tendency
+to re-enter planning.
+The template caps the trajectory at $\sim$2.3K tokens regardless of outcome,
+which is below the threshold where context rotting begins.
+ZeroClaw wrong trajectories show elevated PD (0.41 vs.\ 0.28) and arm entropy
+(0.81 vs.\ 0.64), but the entropy is high rather than collapsed: the model
+oscillates between modes under uncertainty but is forced to commit before
+degradation sets in.
+The failure is a genuine reasoning error under a budget constraint, not a
+context-exhaustion artifact.
+
+\textbf{OpenCode} provides a natural exit ramp from PD through tool execution.
+When the task affords a computable path (numerical or symbolic structure),
+executing code forces a mode transition out of PD and the result anchors the
+answer.
+When the tool path is unavailable (Organic Chemistry), OpenCode shows the same
+PD over-expression as OpenClaw (PD rate 0.53 on regressions vs.\ 0.34 on
+correct), but its wrong trajectories terminate at 3.7K tokens because the
+harness does not permit unbounded re-entry.
+Its entropy drop is mild ($\Delta$H = $-$0.07, low-ent share 0.66) compared to
+OpenClaw ($\Delta$H = $-$0.17, low-ent share 0.87).
+
+% ===========================================================================
+\paragraph{Mechanism summary: three necessary conditions for the spiral.}
+% ===========================================================================
+
+The trajectory-inflation spiral operates through three interacting conditions,
+each necessary and jointly sufficient.
+
+\begin{enumerate}[leftmargin=*, itemsep=2pt]
+\item \textbf{Task-structural tool-path conflict.}
+  The model encounters a task where tool use is structurally unavailable (e.g.,
+  reasoning about chemical reaction mechanisms) but its system prompt instructs
+  it to use tools actively.
+  The model repeatedly expresses tool intent (53 markers per wrong trajectory)
+  without producing useful execution.
+  On tool-affording subdomains (Quantum Mechanics, High-energy physics), the
+  same harness and model show minimal looping and near-perfect accuracy
+  (Table~\ref{tab:gpqa-loop-subdomain}).
+
+\item \textbf{Cognitive PD default under uncertainty.}
+  In the absence of tool grounding, the model defaults to principle-based
+  deduction, the dominant cognitive mode for science questions.
+  On tasks where the model is uncertain, PD rate rises from 0.52 (correct) to
+  0.64 (regression), while IC (commitment) halves from 0.05 to 0.03 and RR
+  (recovery) collapses from 0.018 to 0.005.
+  The PD$\to$PD self-transition probability reaches 0.85: deduction begets
+  deduction.
+
+\item \textbf{Harness architecture without a commit deadline.}
+  OpenClaw's open loop provides no structural signal to transition from
+  deliberation to commitment.
+  The model can re-enter PD indefinitely, and as the trajectory lengthens,
+  entropy collapses from 0.24 (head) to 0.07 (tail) and 87\% of tokens fall
+  into the low-entropy regime.
+  The context budget is exhausted, and the answer extractor recovers nothing
+  (89\% malformed, 83\% missing boxed answer on regressions).
+\end{enumerate}
+
+Removing any one condition prevents the spiral.
+ZeroClaw removes condition (3) via its fixed template, absorbing the same PD
+over-expression within a bounded budget.
+OpenCode partially removes condition (1) by providing a tool-execution path that
+forces mode transitions, and partially removes condition (3) by not permitting
+unbounded re-entry.
+DirectLLM removes all three by having no loop at all, achieving 80.3\% accuracy
+with zero cap events.
+
+The corrective implication follows directly: a harness that either provides an
+executable tool path for every task class or imposes a structural commit
+deadline after a bounded deliberation budget will eliminate context-exhaustion
+failures without requiring any improvement in the base model's reasoning
+capability.

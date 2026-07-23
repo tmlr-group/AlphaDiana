@@ -1,0 +1,13 @@
+benchmark,harness,failure_trajectories,mean_tokens,mean_entropy,mean_action_events,mean_tool_calls,top_failure_action,top_failure_action_count,top_failure_tool_type,top_failure_tool_count,extraction_failure_types
+AIMEPass4,DirectLLM,11,47113.363636,0.314394,1803.727273,0.000000,Solution Execution,14033,,0,
+AIMEPass4,OpenClaw,15,64169.066667,0.108959,895.400000,0.866667,Solution Execution,11003,python,13,missing_entropy=1; missing_token_length=1; no_action_events=28
+AIMEPass4,OpenCode,35,31404.914286,0.235899,467.000000,0.314286,Solution Execution,12676,tool,11,
+AIMEPass4,ZeroClaw,37,17253.428571,0.055769,97.351351,0.000000,Solution Execution,2986,,0,missing_token_length=23
+GPQA,DirectLLM,39,19534.076923,0.294571,857.282051,0.000000,Solution Execution,23378,,0,
+GPQA,OpenClaw,67,28283.603448,0.120127,307.089552,0.701493,Solution Execution,14158,web_fetch,29,missing_token_length=12
+GPQA,OpenCode,52,3244.083333,0.276491,65.634615,0.365385,Solution Execution,2383,python,10,missing_token_length=4; no_action_events=2
+GPQA,ZeroClaw,37,2338.189189,0.362605,38.918919,0.000000,Solution Execution,1060,,0,missing_token_length=7; no_action_events=7
+HLE,DirectLLM,455,17179.670330,0.425673,551.276923,0.000000,Solution Execution,146365,,0,
+HLE,OpenClaw,509,6972.286837,0.249638,139.550098,10.909627,Solution Execution,45002,web_fetch,4739,
+HLE,OpenCode,508,7377.848425,0.331745,163.625984,3.673228,Solution Execution,59319,web_fetch,898,
+HLE,ZeroClaw,503,2287.010965,0.310747,42.353877,0.000000,Solution Execution,14616,,0,missing_token_length=47

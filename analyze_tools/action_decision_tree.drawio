@@ -1,0 +1,106 @@
+<mxfile host="app.diagrams.net" agent="AlphaDiana" version="24.7.0">
+  <diagram id="action-decision-tree" name="Action Decision Tree">
+    <mxGraphModel dx="1000" dy="900" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1060" pageHeight="720" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Title -->
+        <mxCell id="title" value="Formalizing the action label: a decision tree" style="text;html=1;fontSize=16;fontStyle=1;align=left;verticalAlign=middle;fontColor=#202124;" vertex="1" parent="1">
+          <mxGeometry x="36" y="14" width="760" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="subt" value="a : model span → 𝒜.   Priority cascade, first matching rule wins.   leaf = &lt;i&gt;paper name&lt;/i&gt; · &lt;font color=&quot;#9aa0a6&quot;&gt;internal code label&lt;/font&gt;" style="text;html=1;fontSize=10;align=left;verticalAlign=middle;fontColor=#5f6368;" vertex="1" parent="1">
+          <mxGeometry x="36" y="38" width="900" height="18" as="geometry" />
+        </mxCell>
+
+        <!-- Entry -->
+        <mxCell id="seg" value="Segmentation: drop observations · split model text into spans · keep tool calls as spans" style="text;html=1;fontSize=9;align=left;fontColor=#9aa0a6;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="230" y="66" width="560" height="16" as="geometry" />
+        </mxCell>
+        <mxCell id="entry" value="&lt;b&gt;Model span&lt;/b&gt; s&#10;⟨ text, is_tool_event, after_observation, is_last ⟩" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eef1f5;strokeColor=#8a9099;fontSize=10;fontColor=#3c4043;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="248" y="90" width="304" height="42" as="geometry" />
+        </mxCell>
+
+        <!-- ===================== DECISION DIAMONDS ===================== -->
+        <mxCell id="D1" value="&lt;b&gt;1&lt;/b&gt;&#160;&#160;\boxed{…} or &#8220;final answer&#8221;?&lt;br&gt;&lt;font color=&quot;#9aa0a6&quot; style=&quot;font-size:8px&quot;&gt;terminal span&lt;/font&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fbfcfd;strokeColor=#9aa0a6;fontSize=9;fontColor=#3c4043;" vertex="1" parent="1">
+          <mxGeometry x="250" y="154" width="300" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="D2" value="&lt;b&gt;2&lt;/b&gt;&#160;&#160;tool call, or&lt;br&gt;integrates an observation?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fbfcfd;strokeColor=#9aa0a6;fontSize=9;fontColor=#3c4043;" vertex="1" parent="1">
+          <mxGeometry x="250" y="234" width="300" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="D3" value="&lt;b&gt;3&lt;/b&gt;&#160;&#160;audit cue &amp; no computation?&lt;br&gt;&lt;font color=&quot;#9aa0a6&quot; style=&quot;font-size:8px&quot;&gt;check / verify / wait / wrong / reconsider&lt;/font&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fbfcfd;strokeColor=#9aa0a6;fontSize=9;fontColor=#3c4043;" vertex="1" parent="1">
+          <mxGeometry x="250" y="314" width="300" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="D4" value="&lt;b&gt;4&lt;/b&gt;&#160;&#160;computation cue?&lt;br&gt;&lt;font color=&quot;#9aa0a6&quot; style=&quot;font-size:8px&quot;&gt;= , ∵ , compute / derive / option X&lt;/font&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fbfcfd;strokeColor=#9aa0a6;fontSize=9;fontColor=#3c4043;" vertex="1" parent="1">
+          <mxGeometry x="250" y="394" width="300" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="D5" value="&lt;b&gt;5&lt;/b&gt;&#160;&#160;plan cue?&lt;br&gt;&lt;font color=&quot;#9aa0a6&quot; style=&quot;font-size:8px&quot;&gt;let me… / step by step / first, second / strategy&lt;/font&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fbfcfd;strokeColor=#9aa0a6;fontSize=9;fontColor=#3c4043;" vertex="1" parent="1">
+          <mxGeometry x="250" y="474" width="300" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="D6" value="&lt;b&gt;6&lt;/b&gt;&#160;&#160;framing cue?&lt;br&gt;&lt;font color=&quot;#9aa0a6&quot; style=&quot;font-size:8px&quot;&gt;question asks / we need to / given / options&lt;/font&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fbfcfd;strokeColor=#9aa0a6;fontSize=9;fontColor=#3c4043;" vertex="1" parent="1">
+          <mxGeometry x="250" y="554" width="300" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="Ddef" value="&lt;font color=&quot;#9aa0a6&quot; style=&quot;font-size:8px&quot;&gt;else (no rule fired)&lt;/font&gt;&lt;br&gt;&lt;b&gt;≤ 5 words?&lt;/b&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fbfcfd;strokeColor=#c2c7cf;fontSize=9;fontColor=#3c4043;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="270" y="636" width="260" height="56" as="geometry" />
+        </mxCell>
+
+        <!-- ===================== LEAVES (colored actions) ===================== -->
+        <mxCell id="Lfin" value="&lt;b&gt;Finalization&lt;/b&gt;&#160;&#160;&lt;span style=&quot;color:#9aa0a6;font-size:8px&quot;&gt;answer delivery&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f1e7e1;strokeColor=#A65628;fontSize=10;fontColor=#3c4043;align=left;spacingLeft=10;arcSize=18;" vertex="1" parent="1">
+          <mxGeometry x="660" y="162" width="300" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="Ltool" value="&lt;b&gt;Tool Use&lt;/b&gt;&#160;&#160;&lt;span style=&quot;color:#9aa0a6;font-size:8px&quot;&gt;tool grounding&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#efe6f1;strokeColor=#984EA3;fontSize=10;fontColor=#3c4043;align=left;spacingLeft=10;arcSize=18;" vertex="1" parent="1">
+          <mxGeometry x="660" y="242" width="300" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="Lver" value="&lt;b&gt;Verification&lt;/b&gt;&#160;&#160;&lt;span style=&quot;color:#9aa0a6;font-size:8px&quot;&gt;result auditing&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffecd9;strokeColor=#FF7F00;fontSize=10;fontColor=#3c4043;align=left;spacingLeft=10;arcSize=18;" vertex="1" parent="1">
+          <mxGeometry x="660" y="322" width="300" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="Lrea" value="&lt;b&gt;Reasoning&lt;/b&gt;&#160;&#160;&lt;span style=&quot;color:#9aa0a6;font-size:8px&quot;&gt;solution execution&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e4f3e3;strokeColor=#4DAF4A;fontSize=10;fontColor=#3c4043;align=left;spacingLeft=10;arcSize=18;" vertex="1" parent="1">
+          <mxGeometry x="660" y="402" width="300" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="Lpla" value="&lt;b&gt;Planning&lt;/b&gt;&#160;&#160;&lt;span style=&quot;color:#9aa0a6;font-size:8px&quot;&gt;plan formation&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3edf6;strokeColor=#377EB8;fontSize=10;fontColor=#3c4043;align=left;spacingLeft=10;arcSize=18;" vertex="1" parent="1">
+          <mxGeometry x="660" y="482" width="300" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="Lund" value="&lt;b&gt;Understanding&lt;/b&gt;&#160;&#160;&lt;span style=&quot;color:#9aa0a6;font-size:8px&quot;&gt;problem framing&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fbe3e1;strokeColor=#E41A1C;fontSize=10;fontColor=#3c4043;align=left;spacingLeft=10;arcSize=18;" vertex="1" parent="1">
+          <mxGeometry x="660" y="562" width="300" height="44" as="geometry" />
+        </mxCell>
+        <!-- default leaves -->
+        <mxCell id="Lpla2" value="&lt;b&gt;Planning&lt;/b&gt;&#160;&lt;span style=&quot;color:#9aa0a6;font-size:8px&quot;&gt;plan formation · low-confidence&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3edf6;strokeColor=#377EB8;fontSize=9;fontColor=#3c4043;align=left;spacingLeft=10;arcSize=18;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="660" y="620" width="300" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="Lrea2" value="&lt;b&gt;Reasoning&lt;/b&gt;&#160;&lt;span style=&quot;color:#9aa0a6;font-size:8px&quot;&gt;solution execution · low-confidence&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e4f3e3;strokeColor=#4DAF4A;fontSize=9;fontColor=#3c4043;align=left;spacingLeft=10;arcSize=18;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="660" y="664" width="300" height="34" as="geometry" />
+        </mxCell>
+
+        <!-- ===================== EDGES ===================== -->
+        <mxCell id="e0" style="endArrow=block;html=1;strokeColor=#4d4d4d;strokeWidth=1.2;endSize=5;rounded=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="entry" target="D1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="y1" value="yes" style="endArrow=block;html=1;strokeColor=#4d4d4d;strokeWidth=1.1;endSize=5;rounded=1;fontSize=9;fontColor=#2f7a2f;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="D1" target="Lfin"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="n1" value="no" style="endArrow=block;html=1;strokeColor=#9aa0a6;strokeWidth=1;endSize=5;rounded=1;fontSize=9;fontColor=#9aa0a6;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="D1" target="D2"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="y2" value="yes" style="endArrow=block;html=1;strokeColor=#4d4d4d;strokeWidth=1.1;endSize=5;rounded=1;fontSize=9;fontColor=#2f7a2f;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="D2" target="Ltool"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="n2" value="no" style="endArrow=block;html=1;strokeColor=#9aa0a6;strokeWidth=1;endSize=5;rounded=1;fontSize=9;fontColor=#9aa0a6;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="D2" target="D3"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="y3" value="yes" style="endArrow=block;html=1;strokeColor=#4d4d4d;strokeWidth=1.1;endSize=5;rounded=1;fontSize=9;fontColor=#2f7a2f;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="D3" target="Lver"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="n3" value="no" style="endArrow=block;html=1;strokeColor=#9aa0a6;strokeWidth=1;endSize=5;rounded=1;fontSize=9;fontColor=#9aa0a6;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="D3" target="D4"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="y4" value="yes" style="endArrow=block;html=1;strokeColor=#4d4d4d;strokeWidth=1.1;endSize=5;rounded=1;fontSize=9;fontColor=#2f7a2f;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="D4" target="Lrea"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="n4" value="no" style="endArrow=block;html=1;strokeColor=#9aa0a6;strokeWidth=1;endSize=5;rounded=1;fontSize=9;fontColor=#9aa0a6;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="D4" target="D5"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="y5" value="yes" style="endArrow=block;html=1;strokeColor=#4d4d4d;strokeWidth=1.1;endSize=5;rounded=1;fontSize=9;fontColor=#2f7a2f;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="D5" target="Lpla"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="n5" value="no" style="endArrow=block;html=1;strokeColor=#9aa0a6;strokeWidth=1;endSize=5;rounded=1;fontSize=9;fontColor=#9aa0a6;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="D5" target="D6"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="y6" value="yes" style="endArrow=block;html=1;strokeColor=#4d4d4d;strokeWidth=1.1;endSize=5;rounded=1;fontSize=9;fontColor=#2f7a2f;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="D6" target="Lund"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="n6" value="no" style="endArrow=block;html=1;strokeColor=#9aa0a6;strokeWidth=1;endSize=5;rounded=1;fontSize=9;fontColor=#9aa0a6;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="D6" target="Ddef"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="yd" value="yes" style="endArrow=block;html=1;strokeColor=#4d4d4d;strokeWidth=1;endSize=5;rounded=1;fontSize=9;fontColor=#2f7a2f;exitX=1;exitY=0.35;entryX=0;entryY=0.5;" edge="1" parent="1" source="Ddef" target="Lpla2"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="nd" value="no" style="endArrow=block;html=1;strokeColor=#9aa0a6;strokeWidth=1;endSize=5;rounded=1;fontSize=9;fontColor=#9aa0a6;exitX=1;exitY=0.65;entryX=0;entryY=0.5;" edge="1" parent="1" source="Ddef" target="Lrea2"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- provenance footer -->
+        <mxCell id="foot" value="rule table: compute_six_action_frequencies.classify_segment   ·   𝒜 = {Understanding, Planning, Reasoning, Tool Use, Verification, Finalization}" style="text;html=1;fontSize=8;align=left;fontColor=#9aa0a6;" vertex="1" parent="1">
+          <mxGeometry x="36" y="700" width="1000" height="14" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

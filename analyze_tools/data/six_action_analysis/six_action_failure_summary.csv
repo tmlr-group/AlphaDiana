@@ -1,0 +1,13 @@
+benchmark,harness,failure_trajectories,failure_events,top_action,top_action_pct,terminal_answer_delivery_rate_pct,terminal_result_auditing_rate_pct,tool_grounding_event_pct,result_auditing_event_pct
+AIMEPass4,DirectLLM,11,19841,Solution Execution,70.73,100.00,0.00,0.00,9.53
+AIMEPass4,OpenClaw,15,13431,Solution Execution,81.92,53.33,0.00,0.10,2.10
+AIMEPass4,OpenCode,35,16345,Solution Execution,77.55,68.57,5.71,0.07,15.44
+AIMEPass4,ZeroClaw,37,3602,Solution Execution,82.90,16.22,10.81,0.00,12.60
+GPQA,DirectLLM,39,33434,Solution Execution,69.92,66.67,5.13,0.00,9.08
+GPQA,OpenClaw,67,20575,Solution Execution,68.81,28.36,17.91,0.19,18.90
+GPQA,OpenCode,50,3413,Solution Execution,69.82,48.00,12.00,0.50,17.32
+GPQA,ZeroClaw,37,1440,Solution Execution,73.61,81.08,2.70,0.00,11.67
+HLE,DirectLLM,455,250831,Solution Execution,58.35,93.85,0.88,0.00,13.53
+HLE,OpenClaw,509,71031,Solution Execution,63.36,55.99,6.68,7.57,18.31
+HLE,OpenCode,508,83122,Solution Execution,71.36,70.67,5.31,2.12,17.48
+HLE,ZeroClaw,503,21304,Solution Execution,68.61,72.76,5.37,0.00,16.00

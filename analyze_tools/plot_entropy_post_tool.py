@@ -2,17 +2,13 @@
 """
 Aggregate token-position entropy dynamics for post-tool trajectories.
 
-For each (benchmark, model, harness) setting this script aggregates per-token
-entropy from logprob sidecars into log-spaced token-position bins. Tool-call
-regions are highlighted in gray when trace alignment can identify assistant
-turns that ended in tool calls, or when explicit structured tool tokens appear
-in the logprob stream.
+For each tool-capable (benchmark, model, harness) setting this script aggregates
+only post-tool-call assistant tokens. Each assistant segment immediately after a
+tool call/result is re-indexed from token position 1 before aggregation.
 
 Outputs:
     analyze_tools/figures/post_tool_entropy/<benchmark>_<model>_<harness>.pdf
     analyze_tools/figures/post_tool_entropy/<benchmark>_<model>_<harness>.png
-    analyze_tools/figures/post_tool_entropy/<benchmark>_<model>_<harness>_toolcall_only.pdf
-    analyze_tools/figures/post_tool_entropy/<benchmark>_<model>_<harness>_toolcall_only.png
 """
 
 from __future__ import annotations
@@ -37,6 +33,7 @@ OUT_DIR = ROOT / "analyze_tools" / "figures" / "post_tool_entropy"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 HARNESSES = ("DirectLLM", "OpenClaw", "OpenCode", "ZeroClaw")
+TOOL_HARNESSES = {"OpenClaw", "OpenCode"}
 BENCHMARKS = ("HLE", "GPQA", "AIMEPass4")
 MODELS = ("Qwen", "Gemma")
 
@@ -50,10 +47,8 @@ HARNESS_COLORS = {
 STRUCTURED_COLOR = "#8a8a8a"
 CORRECT_COLOR = "#2ca02c"
 WRONG_COLOR = "#d62728"
-TOOL_TAIL_TOKENS = 32
 MIN_BIN_COUNT = 3
-MAX_TRACE_ALIGNED_FILES = 220
-COMMON_Y_LIM = (0.0, 1.2)
+MAX_Y_LIM = 1.2
 TOOL_METRIC_FILES = {
     "Qwen": ROOT / "analyze_tools" / "data" / "six_action_statistics" / "trajectory_metrics.csv",
     "Gemma": ROOT / "analyze_tools" / "data" / "six_action_statistics_gemma" / "trajectory_metrics.csv",
@@ -110,6 +105,8 @@ def main() -> None:
     TOOL_CALL_LOOKUP = load_tool_call_lookup()
     summaries = []
     for setting in SETTINGS:
+        if setting.harness not in TOOL_HARNESSES:
+            continue
         if not setting.run_dir.exists():
             print(f"SKIP missing {setting.benchmark}/{setting.model}/{setting.harness}: {setting.run_dir}", flush=True)
             continue
@@ -117,11 +114,10 @@ def main() -> None:
         summary = plot_setting(setting)
         summaries.append(summary)
         print(
-            "  files={files} tokens={tokens} structured={structured} tool_files={tool_files} -> {out}".format(
+            "  files={files} post_tool_segments={segments} post_tool_tokens={tokens} -> {out}".format(
                 files=summary["files"],
+                segments=summary["post_tool_segments"],
                 tokens=summary["tokens"],
-                structured=summary["structured_tokens"],
-                tool_files=summary["toolcall_files"],
                 out=summary["pdf"],
             ),
             flush=True,
@@ -139,74 +135,49 @@ def plot_setting(setting: Setting) -> dict[str, object]:
     correct_count = np.zeros(n_bins, dtype=int)
     wrong_sum = np.zeros(n_bins, dtype=float)
     wrong_count = np.zeros(n_bins, dtype=int)
-    struct_count = np.zeros(n_bins, dtype=int)
-    tool_correct_sum = np.zeros(n_bins, dtype=float)
-    tool_correct_count = np.zeros(n_bins, dtype=int)
-    tool_wrong_sum = np.zeros(n_bins, dtype=float)
-    tool_wrong_count = np.zeros(n_bins, dtype=int)
-    tool_struct_count = np.zeros(n_bins, dtype=int)
     file_count = 0
     correct_files = 0
     wrong_files = 0
     skipped_files = 0
-    toolcall_files = 0
-    toolcall_correct_files = 0
-    toolcall_wrong_files = 0
+    post_tool_segments = 0
     token_count = 0
-    toolcall_token_count = 0
-    structured_token_count = 0
-    toolcall_structured_token_count = 0
 
     for lp_path in files:
-        tokens = load_token_records(lp_path)
-        if not tokens:
-            continue
         task_id, sample_index = task_and_sample_from_logprob_path(lp_path)
+        tool_key = (setting.model, setting.benchmark, setting.harness, task_id, sample_index)
+        if TOOL_CALL_LOOKUP.get(tool_key) is False:
+            continue
         correct = load_correct_label(setting.run_dir, task_id, sample_index)
         if correct is None:
             skipped_files += 1
             continue
-        spans = structured_spans(setting, lp_path, tokens, allow_trace_alignment=len(files) <= MAX_TRACE_ALIGNED_FILES)
-        has_tool_call = trajectory_has_tool_call(setting, task_id, sample_index, spans)
+        tokens = load_token_records(lp_path)
+        if not tokens:
+            continue
+        spans = post_tool_spans(setting, lp_path, tokens)
+        if not spans:
+            continue
         file_count += 1
         if correct:
             correct_files += 1
         else:
             wrong_files += 1
-        if has_tool_call:
-            toolcall_files += 1
-            toolcall_token_count += len(tokens)
-            if correct:
-                toolcall_correct_files += 1
-            else:
-                toolcall_wrong_files += 1
-        token_count += len(tokens)
-        for idx, item in enumerate(tokens, start=1):
-            entropy = token_entropy(item)
-            if entropy is None or not math.isfinite(entropy):
-                continue
-            bin_idx = int(np.searchsorted(edges, idx, side="right") - 1)
-            if not (0 <= bin_idx < n_bins):
-                continue
-            if correct:
-                correct_sum[bin_idx] += entropy
-                correct_count[bin_idx] += 1
-                if has_tool_call:
-                    tool_correct_sum[bin_idx] += entropy
-                    tool_correct_count[bin_idx] += 1
-            else:
-                wrong_sum[bin_idx] += entropy
-                wrong_count[bin_idx] += 1
-                if has_tool_call:
-                    tool_wrong_sum[bin_idx] += entropy
-                    tool_wrong_count[bin_idx] += 1
-            is_structured = token_is_structured(setting.harness, idx - 1, item, spans)
-            if is_structured:
-                struct_count[bin_idx] += 1
-                structured_token_count += 1
-                if has_tool_call:
-                    tool_struct_count[bin_idx] += 1
-                    toolcall_structured_token_count += 1
+        post_tool_segments += len(spans)
+        for start, end in spans:
+            token_count += max(0, end - start)
+            for rel_idx, item in enumerate(tokens[start:end], start=1):
+                entropy = token_entropy(item)
+                if entropy is None or not math.isfinite(entropy):
+                    continue
+                bin_idx = int(np.searchsorted(edges, rel_idx, side="right") - 1)
+                if not (0 <= bin_idx < n_bins):
+                    continue
+                if correct:
+                    correct_sum[bin_idx] += entropy
+                    correct_count[bin_idx] += 1
+                else:
+                    wrong_sum[bin_idx] += entropy
+                    wrong_count[bin_idx] += 1
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     stem = f"{file_benchmark_name(setting.benchmark)}_{setting.model}_{setting.harness}"
@@ -219,33 +190,12 @@ def plot_setting(setting: Setting) -> dict[str, object]:
         correct_count=correct_count,
         wrong_sum=wrong_sum,
         wrong_count=wrong_count,
-        struct_count=struct_count,
         correct_files=correct_files,
         wrong_files=wrong_files,
         pdf=pdf,
         png=png,
-        title_suffix="",
+        no_data=post_tool_segments == 0,
     )
-
-    tool_pdf = None
-    tool_png = None
-    if toolcall_files:
-        tool_pdf = OUT_DIR / f"{stem}_toolcall_only.pdf"
-        tool_png = OUT_DIR / f"{stem}_toolcall_only.png"
-        render_entropy_plot(
-            setting=setting,
-            edges=edges,
-            correct_sum=tool_correct_sum,
-            correct_count=tool_correct_count,
-            wrong_sum=tool_wrong_sum,
-            wrong_count=tool_wrong_count,
-            struct_count=tool_struct_count,
-            correct_files=toolcall_correct_files,
-            wrong_files=toolcall_wrong_files,
-            pdf=tool_pdf,
-            png=tool_png,
-            title_suffix=" / tool-call trajectories only",
-        )
 
     return {
         "benchmark": setting.benchmark,
@@ -256,17 +206,10 @@ def plot_setting(setting: Setting) -> dict[str, object]:
         "correct_files": correct_files,
         "wrong_files": wrong_files,
         "skipped_files": skipped_files,
-        "toolcall_files": toolcall_files,
-        "toolcall_correct_files": toolcall_correct_files,
-        "toolcall_wrong_files": toolcall_wrong_files,
+        "post_tool_segments": post_tool_segments,
         "tokens": token_count,
-        "toolcall_tokens": toolcall_token_count,
-        "structured_tokens": structured_token_count,
-        "toolcall_structured_tokens": toolcall_structured_token_count,
         "pdf": str(pdf.relative_to(ROOT)),
         "png": str(png.relative_to(ROOT)),
-        "toolcall_pdf": str(tool_pdf.relative_to(ROOT)) if tool_pdf else "",
-        "toolcall_png": str(tool_png.relative_to(ROOT)) if tool_png else "",
     }
 
 
@@ -278,12 +221,11 @@ def render_entropy_plot(
     correct_count: np.ndarray,
     wrong_sum: np.ndarray,
     wrong_count: np.ndarray,
-    struct_count: np.ndarray,
     correct_files: int,
     wrong_files: int,
     pdf: Path,
     png: Path,
-    title_suffix: str,
+    no_data: bool,
 ) -> None:
     correct_mean = np.divide(
         correct_sum,
@@ -300,56 +242,59 @@ def render_entropy_plot(
     total_count = correct_count + wrong_count
     correct_valid = correct_count >= MIN_BIN_COUNT
     wrong_valid = wrong_count >= MIN_BIN_COUNT
-    valid = correct_valid | wrong_valid
     x = np.sqrt(edges[:-1] * edges[1:])
 
     fig, ax = plt.subplots(figsize=(8.2, 4.8))
-    struct_valid = (struct_count > 0) & valid & (total_count > 0)
-    if np.any(struct_valid):
-        shade_bins = struct_valid & (struct_count / np.maximum(total_count, 1) >= 0.03)
-        for left, right in zip(edges[:-1][shade_bins], edges[1:][shade_bins]):
-            ax.axvspan(left, right, color=STRUCTURED_COLOR, alpha=0.18, linewidth=0)
-        ax.plot(
-            [],
-            [],
-            color=STRUCTURED_COLOR,
-            linewidth=6,
-            alpha=0.35,
-            label="Tool-call / structured bins",
-        )
-
+    widths = np.diff(edges)
     if np.any(correct_valid):
-        ax.plot(
-            x[correct_valid],
+        ax.bar(
+            edges[:-1][correct_valid],
             correct_mean[correct_valid],
+            width=widths[correct_valid] * 0.48,
+            align="edge",
             color=CORRECT_COLOR,
-            linewidth=2.1,
-            marker="o",
-            markersize=3.0,
-            label=f"Correct trajectories (n={correct_files})",
+            alpha=0.82,
+            edgecolor="white",
+            linewidth=0.35,
         )
     if np.any(wrong_valid):
-        ax.plot(
-            x[wrong_valid],
+        ax.bar(
+            edges[:-1][wrong_valid] + widths[wrong_valid] * 0.52,
             wrong_mean[wrong_valid],
+            width=widths[wrong_valid] * 0.48,
+            align="edge",
             color=WRONG_COLOR,
-            linewidth=2.1,
-            marker="o",
-            markersize=3.0,
-            label=f"Wrong trajectories (n={wrong_files})",
+            alpha=0.82,
+            edgecolor="white",
+            linewidth=0.35,
+        )
+    if no_data:
+        ax.text(
+            0.5,
+            0.52,
+            "No post-tool-call tokens",
+            transform=ax.transAxes,
+            ha="center",
+            va="center",
+            fontsize=18,
+            color="#555555",
         )
 
     ax.set_xscale("log")
     ax.set_xlim(1, max(10, min(edges[-1], max_position_with_data(total_count, edges))))
-    ax.set_ylim(*COMMON_Y_LIM)
-    ax.set_xlabel("Output token position within trajectory (log scale)")
-    ax.set_ylabel("Mean token entropy (nats)")
-    ax.set_title(f"{setting.benchmark} / {setting.model} / {setting.harness}{title_suffix}")
+    y_values = np.concatenate([correct_mean[correct_valid], wrong_mean[wrong_valid]])
+    if y_values.size:
+        y_top = min(MAX_Y_LIM, max(0.08, float(np.nanmax(y_values)) * 1.18))
+    else:
+        y_top = MAX_Y_LIM
+    ax.set_ylim(0, y_top)
+    ax.set_xlabel("Post-tool token position (log scale)", fontsize=18)
+    ax.set_ylabel("Mean token entropy (nats)", fontsize=18)
+    ax.tick_params(axis="both", labelsize=15)
     ax.grid(True, axis="y", alpha=0.25, linewidth=0.6)
     ax.grid(True, axis="x", alpha=0.16, linewidth=0.5)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    ax.legend(loc="upper right", framealpha=0.9, fontsize=8)
 
     fig.tight_layout()
     fig.savefig(pdf, dpi=220, bbox_inches="tight")
@@ -508,16 +453,8 @@ def shannon_entropy(probs: list[float]) -> float:
     return float(-sum(p * math.log(p) for p in norm))
 
 
-def structured_spans(
-    setting: Setting,
-    lp_path: Path,
-    tokens: list[dict],
-    *,
-    allow_trace_alignment: bool,
-) -> list[tuple[int, int]]:
+def post_tool_spans(setting: Setting, lp_path: Path, tokens: list[dict]) -> list[tuple[int, int]]:
     if setting.harness not in {"OpenClaw", "OpenCode"}:
-        return []
-    if not allow_trace_alignment:
         return []
     task_id, sample_index = task_and_sample_from_logprob_path(lp_path)
     artifact_dir = find_artifact_dir(setting.run_dir, task_id, sample_index)
@@ -529,7 +466,18 @@ def structured_spans(
         turns = openclaw_turns(artifact_dir)
     if not turns:
         return []
-    return align_tool_turn_tails(tokens, turns)
+    turn_spans = align_turn_spans(tokens, turns)
+    spans = []
+    previous_turn_used_tool = False
+    for turn in turn_spans:
+        has_token_span = turn["start_tok"] is not None and turn["end_tok"] is not None
+        if previous_turn_used_tool and has_token_span:
+            start = int(turn["start_tok"])
+            end = int(turn["end_tok"])
+            if end > start:
+                spans.append((start, end))
+        previous_turn_used_tool = bool(turn["has_tool"])
+    return spans
 
 
 def task_and_sample_from_logprob_path(path: Path) -> tuple[str, int]:
@@ -616,9 +564,9 @@ def openclaw_turns(artifact_dir: Path) -> list[dict[str, object]]:
     return turns
 
 
-def align_tool_turn_tails(tokens: list[dict], turns: list[dict[str, object]]) -> list[tuple[int, int]]:
+def align_turn_spans(tokens: list[dict], turns: list[dict[str, object]]) -> list[dict[str, object]]:
     token_text = "".join(str(t.get("token") or "") for t in tokens)
-    spans = []
+    spans: list[dict[str, object]] = []
     cursor = 0
     token_offsets = []
     char_pos = 0
@@ -629,13 +577,25 @@ def align_tool_turn_tails(tokens: list[dict], turns: list[dict[str, object]]) ->
     for turn in turns:
         text = str(turn.get("text") or "")
         if not text.strip():
+            spans.append(
+                {
+                    "start_tok": None,
+                    "end_tok": None,
+                    "has_tool": bool(turn.get("has_tool")),
+                }
+            )
             continue
-        needle = compact_probe(text)
-        if not needle:
-            continue
-        pos = token_text.find(needle, cursor)
-        if pos < 0:
-            pos = token_text.find(needle)
+        pos = -1
+        needle = ""
+        for probe in compact_probes(text):
+            if not probe:
+                continue
+            needle = probe
+            pos = token_text.find(probe, cursor)
+            if pos < 0:
+                pos = token_text.find(probe)
+            if pos >= 0:
+                break
         if pos < 0:
             continue
         end_char = min(len(token_text), pos + len(text))
@@ -643,17 +603,27 @@ def align_tool_turn_tails(tokens: list[dict], turns: list[dict[str, object]]) ->
         end_tok = char_to_token_index(token_offsets, end_char)
         end_tok = max(start_tok + 1, min(end_tok, len(tokens)))
         cursor = max(cursor, end_char)
-        if bool(turn.get("has_tool")):
-            span_start = max(start_tok, end_tok - TOOL_TAIL_TOKENS)
-            spans.append((span_start, end_tok))
+        spans.append(
+            {
+                "start_tok": start_tok,
+                "end_tok": end_tok,
+                "has_tool": bool(turn.get("has_tool")),
+            }
+        )
     return spans
 
 
-def compact_probe(text: str) -> str:
-    text = re.sub(r"\s+", " ", text.strip())
-    if len(text) <= 48:
-        return text
-    return text[:48]
+def compact_probes(text: str) -> list[str]:
+    stripped = text.strip()
+    collapsed = re.sub(r"\s+", " ", stripped)
+    return [
+        stripped[:96],
+        stripped[:64],
+        stripped[:40],
+        collapsed[:96],
+        collapsed[:64],
+        collapsed[:40],
+    ]
 
 
 def char_to_token_index(offsets: list[int], char_pos: int) -> int:

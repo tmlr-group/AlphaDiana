@@ -1,0 +1,8 @@
+model,harness,benchmark,avg_turns,avg_tool_calls,retry_rate,error_recovery_rate,behavioral_entropy,avg_solved_cost,n_tasks
+Qwen3.5-27B,directllm,GPQA-Diamond,3.0,0.0,0.0,nan,1.0,9050.0,198
+Qwen3.5-27B,directllm,HLE,3.0,0.0,0.0,nan,0.833,12175.0,323
+Qwen3.5-27B,openclaw,GPQA-Diamond,4.2,0.3,0.1869,nan,1.035,2319.0,198
+Qwen3.5-27B,opencode,GPQA-Diamond,17.9,0.8,0.0,nan,1.527,1067.0,197
+Qwen3.5-27B,opencode,HLE,15.9,3.2,0.0,nan,0.908,1466.0,591
+Qwen3.5-27B,zeroclaw,GPQA-Diamond,17.9,0.0,0.0,nan,0.943,2102.0,191
+Qwen3.5-27B,zeroclaw,HLE,4.7,0.0,0.0,nan,0.72,2340.0,591

@@ -1,0 +1,13 @@
+benchmark,harness,failure_trajectories,mean_tokens,mean_entropy,mean_action_events,mean_tool_calls,top_failure_action,top_failure_action_count,top_failure_tool_type,top_failure_tool_count,extraction_failure_types
+AIMEPass4,DirectLLM,9,15108.777778,0.151431,28.777778,0.000000,Solution Execution,207,,0,
+AIMEPass4,OpenClaw,3,14197.333333,0.189118,10.333333,6.333333,Tool Grounding,19,write,7,
+AIMEPass4,OpenCode,3,102858.666667,0.064950,11.000000,12.000000,Tool Grounding,14,bash,18,
+AIMEPass4,ZeroClaw,4,48584.750000,0.177618,94.000000,0.000000,Solution Execution,314,,0,
+GPQA,DirectLLM,33,21797.606061,0.203862,7.575758,0.000000,Solution Execution,175,,0,no_action_events=5
+GPQA,OpenClaw,27,10124.888889,0.263712,11.666667,3.333333,Solution Execution,165,bash,37,
+GPQA,OpenCode,24,18838.708333,0.229143,20.875000,2.041667,Solution Execution,343,web_fetch,24,
+GPQA,ZeroClaw,27,33595.481481,0.225302,12.814815,0.000000,Solution Execution,206,,0,
+HLE,DirectLLM,426,13579.704225,0.255880,14.737089,0.000000,Solution Execution,5396,,0,no_action_events=33
+HLE,OpenClaw,448,19885.334821,0.245631,10.314732,4.055804,Solution Execution,2038,bash,718,no_action_events=23
+HLE,OpenCode,449,12983.768374,0.248476,147.951002,11.527840,Solution Execution,32782,web_fetch,4268,
+HLE,ZeroClaw,419,10978.607229,0.269975,20.510740,0.000000,Solution Execution,6330,,0,missing_token_length=4

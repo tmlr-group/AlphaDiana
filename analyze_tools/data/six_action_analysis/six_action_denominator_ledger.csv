@@ -1,0 +1,13 @@
+benchmark,harness,source_id,task_files,trajectory_records,success_records,failure_records,unknown_records,records_with_events,action_events,low_confidence_events
+GPQA,DirectLLM,gpqa_directllm_phase9,198,198,159,39,0,198,66520,34322
+GPQA,OpenClaw,gpqa_openclaw_v2,198,198,131,67,0,198,24021,6370
+GPQA,OpenCode,gpqa_opencode_v2,198,198,145,52,1,196,10785,3080
+GPQA,ZeroClaw,gpqa_zeroclaw_v2,198,198,154,37,7,191,7513,2254
+HLE,DirectLLM,hle_directllm_hf_20260423,591,591,136,455,0,591,306323,188185
+HLE,OpenClaw,hle_openclaw_merged,591,591,79,509,3,591,75806,25009
+HLE,OpenCode,hle_opencode_20260426,591,591,82,508,1,591,88553,25756
+HLE,ZeroClaw,hle_zeroclaw_20260426,591,591,88,503,0,591,26248,10224
+AIMEPass4,DirectLLM,aime_pass4_directllm,30,120,109,11,0,120,75939,30361
+AIMEPass4,OpenClaw,aime_pass4_openclaw,30,120,77,15,28,92,17864,5511
+AIMEPass4,OpenCode,aime_pass4_opencode,30,120,80,35,5,120,38098,5019
+AIMEPass4,ZeroClaw,aime_pass4_zeroclaw,30,120,83,37,0,120,11362,2054

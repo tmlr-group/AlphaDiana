@@ -1,0 +1,141 @@
+\begin{table*}[t]
+\centering
+\fontsize{7.5}{8.5}\selectfont
+\renewcommand{\arraystretch}{1.12}
+\setlength{\tabcolsep}{3.5pt}
+\caption{Action composition (\%) for \texttt{GPQA-Diamond}. `S'=success, `F'=failure, `U'=unknown. Columns Framing--Finalization sum to 100\% per row.}
+\label{tab:action-gpqa}
+\vspace{-2pt}
+\begin{tabular}{@{}llcrrrrrr@{}}
+\toprule
+Model & Harness & Out & Events & Framing & Planning & Reasoning & Tool Use & Verification & Finalization \\
+\midrule
+  Qwen3.5 & Direct & S & 33,086 & 1.3\% & 15.0\% & 74.3\% & 0.0\% & 8.8\% & 0.6\% \\
+  Qwen3.5 & Direct & F & 33,434 & 0.6\% & 20.3\% & 69.9\% & 0.0\% & 9.1\% & 0.1\% \\
+  Qwen3.5 & OpenClaw & S & 3,446 & 1.9\% & 11.4\% & 69.6\% & 6.5\% & 6.4\% & 4.1\% \\
+  Qwen3.5 & OpenClaw & F & 20,575 & 9.1\% & 2.8\% & 68.8\% & 0.2\% & 18.9\% & 0.2\% \\
+  Qwen3.5 & OpenCode & S & 7,099 & 2.6\% & 8.1\% & 77.5\% & 1.9\% & 5.6\% & 4.2\% \\
+  Qwen3.5 & OpenCode & F & 3,413 & 4.4\% & 6.5\% & 69.8\% & 0.5\% & 17.3\% & 1.5\% \\
+  Qwen3.5 & OpenCode & U & 273 & 0.0\% & 0.7\% & 83.9\% & 0.0\% & 15.4\% & 0.0\% \\
+  Qwen3.5 & ZeroClaw & S & 6,073 & 2.3\% & 8.0\% & 80.0\% & 0.0\% & 7.1\% & 2.6\% \\
+  Qwen3.5 & ZeroClaw & F & 1,440 & 3.2\% & 9.3\% & 73.6\% & 0.0\% & 11.7\% & 2.2\% \\
+\midrule
+  Gemma-4 & Direct & S & 1,407 & 4.5\% & 4.4\% & 78.6\% & 0.0\% & 0.7\% & 11.7\% \\
+  Gemma-4 & Direct & F & 250 & 7.2\% & 8.8\% & 70.0\% & 0.0\% & 2.8\% & 11.2\% \\
+  Gemma-4 & OpenClaw & S & 1,483 & 4.5\% & 4.7\% & 69.6\% & 8.8\% & 1.0\% & 11.4\% \\
+  Gemma-4 & OpenClaw & F & 315 & 2.9\% & 4.1\% & 52.4\% & 28.6\% & 3.5\% & 8.6\% \\
+  Gemma-4 & OpenClaw & U & 21 & 0.0\% & 0.0\% & 47.6\% & 42.9\% & 0.0\% & 9.5\% \\
+  Gemma-4 & OpenCode & S & 2,139 & 2.6\% & 4.9\% & 68.0\% & 6.7\% & 1.6\% & 16.3\% \\
+  Gemma-4 & OpenCode & F & 501 & 3.0\% & 3.2\% & 68.5\% & 9.8\% & 7.2\% & 8.4\% \\
+  Gemma-4 & ZeroClaw & S & 1,706 & 3.5\% & 5.3\% & 74.5\% & 0.0\% & 6.6\% & 10.0\% \\
+  Gemma-4 & ZeroClaw & F & 346 & 2.6\% & 4.9\% & 59.5\% & 0.0\% & 26.3\% & 6.6\% \\
+\midrule
+  Kimi & Direct & S & 1,213 & 1.1\% & 7.8\% & 77.7\% & 0.0\% & 0.9\% & 12.5\% \\
+  Kimi & Direct & F & 40 & 0.0\% & 2.5\% & 70.0\% & 0.0\% & 7.5\% & 20.0\% \\
+  Kimi & OpenClaw & S & 789 & 1.0\% & 6.0\% & 56.3\% & 25.3\% & 1.3\% & 10.1\% \\
+  Kimi & OpenClaw & F & 155 & 0.0\% & 1.9\% & 23.9\% & 71.0\% & 0.0\% & 3.2\% \\
+  Kimi & OpenCode & S & 2,067 & 0.4\% & 4.8\% & 50.0\% & 27.7\% & 1.5\% & 15.6\% \\
+  Kimi & OpenCode & F & 649 & 0.3\% & 37.4\% & 21.9\% & 29.0\% & 7.7\% & 3.7\% \\
+  Kimi & ZeroClaw & S & 2,087 & 1.4\% & 16.2\% & 63.7\% & 0.0\% & 10.3\% & 8.3\% \\
+  Kimi & ZeroClaw & F & 282 & 1.4\% & 7.4\% & 62.1\% & 0.0\% & 23.0\% & 6.0\% \\
+  Kimi & ZeroClaw & U & 47 & 0.0\% & 0.0\% & 57.4\% & 0.0\% & 42.6\% & 0.0\% \\
+\bottomrule
+\end{tabular}
+\vspace{-14pt}
+\end{table*}
+
+\begin{table*}[t]
+\centering
+\fontsize{7.5}{8.5}\selectfont
+\renewcommand{\arraystretch}{1.12}
+\setlength{\tabcolsep}{3.5pt}
+\caption{Action composition (\%) for \texttt{HLE-Verifiable}. `S'=success, `F'=failure, `U'=unknown. Columns Framing--Finalization sum to 100\% per row.}
+\label{tab:action-hle}
+\vspace{-2pt}
+\begin{tabular}{@{}llcrrrrrr@{}}
+\toprule
+Model & Harness & Out & Events & Framing & Planning & Reasoning & Tool Use & Verification & Finalization \\
+\midrule
+  Qwen3.5 & Direct & S & 55,492 & 1.1\% & 15.9\% & 69.2\% & 0.0\% & 13.6\% & 0.3\% \\
+  Qwen3.5 & Direct & F & 250,831 & 0.7\% & 27.2\% & 58.4\% & 0.0\% & 13.5\% & 0.2\% \\
+  Qwen3.5 & OpenClaw & S & 4,312 & 4.3\% & 6.6\% & 70.5\% & 5.7\% & 10.7\% & 2.1\% \\
+  Qwen3.5 & OpenClaw & F & 71,031 & 4.0\% & 5.8\% & 63.4\% & 7.6\% & 18.3\% & 1.0\% \\
+  Qwen3.5 & OpenClaw & U & 463 & 0.4\% & 1.5\% & 56.6\% & 13.8\% & 27.4\% & 0.2\% \\
+  Qwen3.5 & OpenCode & S & 5,339 & 4.7\% & 7.5\% & 71.9\% & 2.3\% & 10.3\% & 3.3\% \\
+  Qwen3.5 & OpenCode & F & 83,122 & 3.3\% & 4.8\% & 71.4\% & 2.1\% & 17.5\% & 0.9\% \\
+  Qwen3.5 & OpenCode & U & 92 & 2.2\% & 0.0\% & 59.8\% & 4.3\% & 33.7\% & 0.0\% \\
+  Qwen3.5 & ZeroClaw & S & 4,944 & 3.6\% & 7.0\% & 71.6\% & 0.0\% & 15.1\% & 2.7\% \\
+  Qwen3.5 & ZeroClaw & F & 21,304 & 4.7\% & 8.7\% & 68.6\% & 0.0\% & 16.0\% & 2.1\% \\
+\midrule
+  Gemma-4 & Direct & S & 1,326 & 4.1\% & 6.7\% & 74.1\% & 0.0\% & 2.6\% & 12.4\% \\
+  Gemma-4 & Direct & F & 6,278 & 2.6\% & 3.6\% & 86.0\% & 0.0\% & 1.5\% & 6.2\% \\
+  Gemma-4 & OpenClaw & S & 1,369 & 2.6\% & 3.4\% & 57.0\% & 24.5\% & 2.1\% & 10.4\% \\
+  Gemma-4 & OpenClaw & F & 4,621 & 2.3\% & 3.9\% & 44.1\% & 39.5\% & 2.2\% & 8.0\% \\
+  Gemma-4 & OpenCode & S & 2,623 & 1.3\% & 6.2\% & 58.9\% & 21.2\% & 1.7\% & 10.8\% \\
+  Gemma-4 & OpenCode & F & 66,430 & 0.9\% & 15.9\% & 49.3\% & 7.7\% & 25.0\% & 1.2\% \\
+  Gemma-4 & ZeroClaw & S & 1,830 & 2.2\% & 4.5\% & 60.4\% & 0.0\% & 23.5\% & 9.4\% \\
+  Gemma-4 & ZeroClaw & F & 8,594 & 1.1\% & 2.9\% & 73.7\% & 0.0\% & 17.8\% & 4.5\% \\
+\midrule
+  Kimi & Direct & S & 395 & 1.5\% & 4.1\% & 38.7\% & 0.0\% & 2.5\% & 53.2\% \\
+  Kimi & Direct & F & 649 & 1.4\% & 2.5\% & 41.1\% & 0.0\% & 1.5\% & 53.5\% \\
+  Kimi & OpenClaw & S & 1,853 & 1.0\% & 3.6\% & 30.8\% & 57.3\% & 1.8\% & 5.5\% \\
+  Kimi & OpenClaw & F & 2,039 & 2.1\% & 6.4\% & 40.1\% & 42.1\% & 2.6\% & 6.7\% \\
+  Kimi & OpenClaw & U & 371 & 0.0\% & 0.0\% & 0.0\% & 39.1\% & 60.9\% & 0.0\% \\
+  Kimi & OpenCode & S & 2,724 & 1.6\% & 3.6\% & 33.7\% & 47.0\% & 1.8\% & 12.3\% \\
+  Kimi & OpenCode & F & 8,907 & 1.1\% & 23.3\% & 27.4\% & 35.8\% & 5.0\% & 7.4\% \\
+  Kimi & OpenCode & U & 17 & 0.0\% & 0.0\% & 35.3\% & 47.1\% & 5.9\% & 11.8\% \\
+  Kimi & ZeroClaw & S & 2,119 & 1.7\% & 12.2\% & 58.9\% & 0.0\% & 19.4\% & 7.7\% \\
+  Kimi & ZeroClaw & F & 6,177 & 1.7\% & 8.2\% & 64.6\% & 0.0\% & 20.3\% & 5.2\% \\
+  Kimi & ZeroClaw & U & 1,646 & 0.0\% & 3.8\% & 76.0\% & 0.0\% & 20.2\% & 0.1\% \\
+\bottomrule
+\end{tabular}
+\vspace{-14pt}
+\end{table*}
+
+\begin{table*}[t]
+\centering
+\fontsize{7.5}{8.5}\selectfont
+\renewcommand{\arraystretch}{1.12}
+\setlength{\tabcolsep}{3.5pt}
+\caption{Action composition (\%) for \texttt{AIME~26}. `S'=success, `F'=failure, `U'=unknown. Columns Framing--Finalization sum to 100\% per row.}
+\label{tab:action-aime}
+\vspace{-2pt}
+\begin{tabular}{@{}llcrrrrrr@{}}
+\toprule
+Model & Harness & Out & Events & Framing & Planning & Reasoning & Tool Use & Verification & Finalization \\
+\midrule
+  Qwen3.5 & Direct & S & 56,098 & 0.7\% & 12.8\% & 76.4\% & 0.0\% & 9.8\% & 0.4\% \\
+  Qwen3.5 & Direct & F & 19,841 & 0.8\% & 18.9\% & 70.7\% & 0.0\% & 9.5\% & 0.1\% \\
+  Qwen3.5 & OpenClaw & S & 4,433 & 0.9\% & 5.4\% & 78.3\% & 5.0\% & 8.1\% & 2.2\% \\
+  Qwen3.5 & OpenClaw & F & 13,431 & 6.6\% & 9.2\% & 81.9\% & 0.1\% & 2.1\% & 0.1\% \\
+  Qwen3.5 & OpenCode & S & 15,816 & 1.3\% & 3.0\% & 79.7\% & 0.9\% & 13.8\% & 1.2\% \\
+  Qwen3.5 & OpenCode & F & 16,345 & 2.6\% & 3.9\% & 77.6\% & 0.1\% & 15.4\% & 0.5\% \\
+  Qwen3.5 & OpenCode & U & 5,937 & 3.5\% & 1.2\% & 74.3\% & 0.0\% & 21.0\% & 0.0\% \\
+  Qwen3.5 & ZeroClaw & S & 7,760 & 1.4\% & 4.7\% & 83.0\% & 0.0\% & 9.7\% & 1.2\% \\
+  Qwen3.5 & ZeroClaw & F & 3,602 & 0.8\% & 3.4\% & 82.9\% & 0.0\% & 12.6\% & 0.2\% \\
+\midrule
+  Gemma-4 & Direct & S & 1,401 & 0.4\% & 3.5\% & 87.5\% & 0.0\% & 0.6\% & 8.0\% \\
+  Gemma-4 & Direct & F & 259 & 0.0\% & 3.9\% & 79.9\% & 0.0\% & 12.4\% & 3.9\% \\
+  Gemma-4 & OpenClaw & S & 1,384 & 0.4\% & 3.8\% & 77.7\% & 9.7\% & 0.2\% & 8.2\% \\
+  Gemma-4 & OpenClaw & F & 31 & 0.0\% & 9.7\% & 22.6\% & 61.3\% & 0.0\% & 6.5\% \\
+  Gemma-4 & OpenClaw & U & 34 & 0.0\% & 0.0\% & 11.8\% & 85.3\% & 0.0\% & 2.9\% \\
+  Gemma-4 & OpenCode & S & 2,155 & 0.6\% & 6.6\% & 75.3\% & 6.2\% & 0.6\% & 10.8\% \\
+  Gemma-4 & OpenCode & F & 33 & 0.0\% & 21.2\% & 30.3\% & 42.4\% & 0.0\% & 6.1\% \\
+  Gemma-4 & OpenCode & U & 834 & 0.8\% & 5.8\% & 75.5\% & 9.4\% & 8.2\% & 0.4\% \\
+  Gemma-4 & ZeroClaw & S & 1,470 & 0.3\% & 7.0\% & 83.7\% & 0.0\% & 1.1\% & 7.9\% \\
+  Gemma-4 & ZeroClaw & F & 376 & 0.0\% & 8.2\% & 83.5\% & 0.0\% & 7.4\% & 0.8\% \\
+\midrule
+  Kimi & Direct & S & 1,350 & 0.4\% & 11.9\% & 80.0\% & 0.0\% & 0.3\% & 7.4\% \\
+  Kimi & Direct & F & 2 & 0.0\% & 0.0\% & 100.0\% & 0.0\% & 0.0\% & 0.0\% \\
+  Kimi & OpenClaw & S & 1,200 & 0.0\% & 7.2\% & 58.7\% & 26.8\% & 1.0\% & 6.2\% \\
+  Kimi & OpenClaw & F & 65 & 0.0\% & 0.0\% & 0.0\% & 100.0\% & 0.0\% & 0.0\% \\
+  Kimi & OpenCode & S & 1,669 & 0.0\% & 5.6\% & 54.2\% & 27.0\% & 0.8\% & 12.3\% \\
+  Kimi & OpenCode & F & 408 & 0.0\% & 56.9\% & 18.4\% & 20.6\% & 3.2\% & 1.0\% \\
+  Kimi & ZeroClaw & S & 1,515 & 0.3\% & 6.3\% & 78.0\% & 0.0\% & 8.1\% & 7.5\% \\
+  Kimi & ZeroClaw & F & 138 & 0.0\% & 1.4\% & 87.0\% & 0.0\% & 11.6\% & 0.0\% \\
+  Kimi & ZeroClaw & U & 23 & 0.0\% & 0.0\% & 82.6\% & 0.0\% & 17.4\% & 0.0\% \\
+\bottomrule
+\end{tabular}
+\vspace{-14pt}
+\end{table*}
+

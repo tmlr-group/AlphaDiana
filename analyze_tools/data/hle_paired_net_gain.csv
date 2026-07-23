@@ -1,0 +1,3 @@
+harness,paired_valid_tasks,rescue,regression,both_correct,both_wrong,skipped_nonvalid_or_missing,paired_net_gain,rescue_rate,regression_rate
+opencode,323,18,51,25,229,0,-33,0.05572755417956656,0.15789473684210525
+zeroclaw,323,25,50,26,222,0,-25,0.07739938080495357,0.15479876160990713

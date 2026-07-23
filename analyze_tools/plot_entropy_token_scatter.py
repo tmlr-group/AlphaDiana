@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """
-plot_entropy_token_scatter.py — Scatter plot of trajectory-level entropy vs token length.
-One figure per model, correct (green) vs wrong (red) per subplot.
+plot_entropy_token_scatter.py — Combined scatter figure: Qwen (left) + Gemma (right)
+side by side. Correct = green, wrong = red.
 
 Produces:
-    figures/scatter/fig_entropy_token_scatter_qwen.pdf
-    figures/scatter/fig_entropy_token_scatter_gemma.pdf
+    figures/scatter/fig_entropy_token_scatter_combined.pdf
 
 Run:
     python3 analyze_tools/plot_entropy_token_scatter.py
@@ -20,7 +19,6 @@ from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap
 
 SKILL_DIR = Path("/home/xxx/academic-plot/scripts")
 if str(SKILL_DIR) not in sys.path:
@@ -37,23 +35,16 @@ CSV_PATH = DATA_DIR / "entropy_token_scatter.csv"
 C_CORRECT = "#2ca02c"
 C_WRONG   = "#d62728"
 
-CMAP_CORRECT = LinearSegmentedColormap.from_list("kde_correct",
-    [(1, 1, 1), (0.75, 0.93, 0.75), (0.40, 0.83, 0.40), (0.17, 0.63, 0.17)])
-CMAP_WRONG = LinearSegmentedColormap.from_list("kde_wrong",
-    [(1, 1, 1), (0.96, 0.75, 0.75), (0.88, 0.40, 0.40), (0.84, 0.15, 0.16)])
-
 HARNESS_ORDER = ["directllm", "openclaw", "zeroclaw", "opencode"]
 HARNESS_LABEL = {"directllm": "DirectLLM", "openclaw": "OpenClaw",
                  "zeroclaw": "ZeroClaw", "opencode": "OpenCode"}
 BENCH_ORDER = ["GPQA", "HLE", "AIME"]
 BENCH_LABEL = {"GPQA": "GPQA-Diamond", "HLE": "HLE", "AIME": "AIME (Pass@4)"}
+MODEL_ORDER = ["Qwen3.5-27B", "Gemma4-31B"]
+MODEL_SHORT = {"Qwen3.5-27B": "Qwen3.5-27B", "Gemma4-31B": "Gemma4-31B"}
 
-KDE_GRID     = 100
-KDE_LEVELS   = 10
-KDE_ALPHA    = 0.45
-KDE_LW       = 0.7
-KDE_MIN_PTS  = 10
-HPD_MASS     = 0.85   # fraction of probability mass to retain (trims low-density tails)
+ALPHA       = 0.55
+MARKER_SIZE = 18
 
 
 def load_data(path: Path) -> list[dict]:
@@ -61,128 +52,113 @@ def load_data(path: Path) -> list[dict]:
         return list(csv.DictReader(f))
 
 
-def compute_kde(x: np.ndarray, y: np.ndarray,
-                x_lim: tuple[float, float], y_lim: tuple[float, float]):
-    if len(x) < KDE_MIN_PTS:
-        return None, None, None
-    try:
-        from scipy.stats import gaussian_kde
-        np.random.seed(42)
-        x_jitter = x + np.random.uniform(0, 0.005, size=len(x))
-        kde = gaussian_kde(np.vstack([x_jitter, y]))
-    except Exception:
-        return None, None, None
-    xi = np.linspace(x_lim[0], x_lim[1], KDE_GRID)
-    yi = np.linspace(y_lim[0], y_lim[1], KDE_GRID)
-    X, Y = np.meshgrid(xi, yi)
-    try:
-        Z = kde(np.vstack([X.ravel(), Y.ravel()])).reshape(X.shape)
-    except Exception:
-        return None, None, None
-    return xi, yi, Z
-
-
-def clip_kde_tails(Z: np.ndarray, mass: float = HPD_MASS) -> np.ndarray:
-    """Mask low-density tails: keep only the region containing `mass` of probability.
-    Returns Z with below-threshold values set to NaN."""
-    z_flat = Z.ravel()
-    order = np.argsort(z_flat)[::-1]
-    z_sorted = z_flat[order]
-    cumsum = np.cumsum(z_sorted) / z_sorted.sum()
-    idx = int(np.searchsorted(cumsum, mass, side="left"))
-    idx = min(idx, len(z_sorted) - 1)
-    threshold = z_sorted[idx]
-    Zc = Z.copy()
-    Zc[Zc < threshold] = np.nan
-    return Zc
-
-
-def plot_one_model(model: str, out_name: str) -> None:
+def plot_combined() -> None:
     set_academic_style(font_size=18)
     rows_data = load_data(CSV_PATH)
 
-    # Compute per-model global limits
-    model_rows = [r for r in rows_data if r["model"] == model]
-    all_log_tokens = np.array([np.log10(max(float(r["n_tokens"]), 1)) for r in model_rows])
-    all_entropy    = np.array([float(r["mean_entropy"]) for r in model_rows])
-    x_lim = (all_log_tokens.min() - 0.1, all_log_tokens.max() + 0.1)
-    y_lim = (-0.02, min(1.05, all_entropy.max() + 0.05))
+    # Per-model global limits
+    limits = {}
+    for model in MODEL_ORDER:
+        mr = [r for r in rows_data if r["model"] == model]
+        lx = np.array([np.log10(max(float(r["n_tokens"]), 1)) for r in mr])
+        ly = np.array([float(r["mean_entropy"]) for r in mr])
+        limits[model] = (
+            (lx.min() - 0.12, lx.max() + 0.12),
+            (-0.03, min(1.05, ly.max() + 0.05)),
+        )
 
-    n_rows = len(BENCH_ORDER)
-    n_cols = len(HARNESS_ORDER)
+    n_bench = len(BENCH_ORDER)
+    n_har   = len(HARNESS_ORDER)
+    n_cols  = len(HARNESS_ORDER) * len(MODEL_ORDER) + 1
 
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(16, 20))
-    fig.subplots_adjust(hspace=0.15, wspace=0.10, left=0.08, right=0.98, top=0.94, bottom=0.10)
+    fig, axes = plt.subplots(n_bench, n_cols, figsize=(20, 10),
+                             gridspec_kw={"width_ratios": [1]*4 + [0.08] + [1]*4})
+    fig.subplots_adjust(hspace=0.10, wspace=0.08,
+                        left=0.08, right=0.99, top=0.90, bottom=0.10)
 
     for bi, benchmark in enumerate(BENCH_ORDER):
-        for hi, harness in enumerate(HARNESS_ORDER):
-            ax = axes[bi, hi]
+        for mi, model in enumerate(MODEL_ORDER):
+            x_lim, y_lim = limits[model]
+            col_offset = mi * (n_har + 1)
 
-            subset = [r for r in rows_data
-                      if r["model"] == model
-                      and r["benchmark"] == benchmark
-                      and r["harness"] == harness]
+            for hi, harness in enumerate(HARNESS_ORDER):
+                ax = axes[bi, col_offset + hi]
 
-            cr = [r for r in subset if r["correct"] == "1"]
-            wr = [r for r in subset if r["correct"] == "0"]
+                subset = [r for r in rows_data
+                          if r["model"] == model
+                          and r["benchmark"] == benchmark
+                          and r["harness"] == harness]
 
-            if cr:
-                x_c = np.array([np.log10(max(float(r["n_tokens"]), 1)) for r in cr])
-                y_c = np.array([float(r["mean_entropy"]) for r in cr])
-                xi, yi, Z = compute_kde(x_c, y_c, x_lim, y_lim)
-                if Z is not None:
-                    Zc = clip_kde_tails(Z)
-                    ax.contourf(xi, yi, Zc, levels=KDE_LEVELS, cmap=CMAP_CORRECT,
-                               alpha=KDE_ALPHA)
-                    ax.contour(xi, yi, Zc, levels=KDE_LEVELS, colors=C_CORRECT,
-                              linewidths=KDE_LW, alpha=0.80)
+                # Wrong first (behind), correct on top
+                wr = [r for r in subset if r["correct"] == "0"]
+                if wr:
+                    x_w = np.array([np.log10(max(float(r["n_tokens"]), 1)) for r in wr])
+                    y_w = np.array([float(r["mean_entropy"]) for r in wr])
+                    ax.scatter(x_w, y_w, s=MARKER_SIZE, color=C_WRONG, marker="o",
+                              alpha=ALPHA, edgecolors="none", rasterized=True, zorder=1)
 
-            if wr:
-                x_w = np.array([np.log10(max(float(r["n_tokens"]), 1)) for r in wr])
-                y_w = np.array([float(r["mean_entropy"]) for r in wr])
-                xi, yi, Z = compute_kde(x_w, y_w, x_lim, y_lim)
-                if Z is not None:
-                    Zc = clip_kde_tails(Z)
-                    ax.contourf(xi, yi, Zc, levels=KDE_LEVELS, cmap=CMAP_WRONG,
-                               alpha=KDE_ALPHA)
-                    ax.contour(xi, yi, Zc, levels=KDE_LEVELS, colors=C_WRONG,
-                              linewidths=KDE_LW, alpha=0.80)
+                cr = [r for r in subset if r["correct"] == "1"]
+                if cr:
+                    x_c = np.array([np.log10(max(float(r["n_tokens"]), 1)) for r in cr])
+                    y_c = np.array([float(r["mean_entropy"]) for r in cr])
+                    ax.scatter(x_c, y_c, s=MARKER_SIZE, color=C_CORRECT, marker="o",
+                              alpha=ALPHA, edgecolors="none", rasterized=True, zorder=2)
 
-            ax.set_xlim(x_lim)
-            ax.set_ylim(y_lim)
-            ax.grid(True, alpha=0.18)
-            ax.tick_params(labelsize=16)
+                ax.set_xlim(x_lim)
+                ax.set_ylim(y_lim)
+                ax.grid(True, alpha=0.20)
+                ax.tick_params(labelsize=16)
 
-            if hi != 0:
-                ax.set_yticklabels([])
-            if bi != n_rows - 1:
-                ax.set_xticklabels([])
+                # Y ticks: only leftmost column of each model half
+                is_leftmost_qwen  = (mi == 0 and hi == 0)
+                is_leftmost_gemma = (mi == 1 and hi == 0)
+                if not (is_leftmost_qwen or is_leftmost_gemma):
+                    ax.set_yticklabels([])
 
-        # Row label (vertical)
+                # X ticks: only bottom row
+                if bi != n_bench - 1:
+                    ax.set_xticklabels([])
+
+        # Row labels (benchmark) — left of Qwen columns, vertical
         axes[bi, 0].set_ylabel(BENCH_LABEL[benchmark],
-                                fontsize=18, rotation=90, labelpad=18,
+                                fontsize=20, rotation=90, labelpad=14,
                                 va="center", ha="center")
 
-    # Column headers
-    for hi, harness in enumerate(HARNESS_ORDER):
-        fig.text((0.08 + 0.90 * (hi + 0.5) / n_cols), 0.975,
-                 HARNESS_LABEL[harness], ha="center", va="top",
-                 fontsize=20, fontweight="bold")
+        # Hide gap column
+        axes[bi, n_har].set_visible(False)
 
-    # Shared axis labels
+    # Column headers — harness names, positioned per half
+    for mi, model in enumerate(MODEL_ORDER):
+        col_offset = mi * (n_har + 1)
+        for hi, harness in enumerate(HARNESS_ORDER):
+            # Fractional x positions
+            if mi == 0:
+                x = 0.08 + (0.43) * (hi + 0.5) / 4
+            else:
+                x = 0.55 + (0.44) * (hi + 0.5) / 4
+            fig.text(x, 0.95, HARNESS_LABEL[harness], ha="center", va="top",
+                    fontsize=20, fontweight="bold")
+
+    # Model labels centered over each half
+    fig.text(0.295, 0.985, MODEL_SHORT[MODEL_ORDER[0]], ha="center", va="top",
+             fontsize=22, fontweight="bold")
+    fig.text(0.770, 0.985, MODEL_SHORT[MODEL_ORDER[1]], ha="center", va="top",
+             fontsize=22, fontweight="bold")
+
+    # Shared Y label (left edge, vertical)
     fig.text(0.018, 0.50, "Mean token entropy (nat)", va="center",
              rotation="vertical", fontsize=20)
-    fig.text(0.50, 0.025, "log₁₀ output tokens", ha="center", fontsize=20)
+    # Shared X label (bottom, horizontal)
+    fig.text(0.50, 0.018, "log₁₀ output tokens", ha="center", fontsize=20)
 
-    out_path = FIG_DIR / out_name
+    out_path = FIG_DIR / "fig_entropy_token_scatter_combined.pdf"
     fig.savefig(out_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved {out_path}")
 
 
 def main() -> None:
-    plot_one_model("Qwen3.5-27B", "fig_entropy_token_scatter_qwen.pdf")
-    plot_one_model("Gemma4-31B",  "fig_entropy_token_scatter_gemma.pdf")
+    plot_combined()
 
 
 if __name__ == "__main__":

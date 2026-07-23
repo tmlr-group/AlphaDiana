@@ -136,45 +136,24 @@
     },
     {
       "harness": "opencode",
-      "paired_outcome": "nonvalid_or_missing",
-      "n": 1,
-      "share_within_harness": 0.005050505050505051,
-      "malformed_prediction_rate": 1.0,
-      "missing_boxed_answer_rate": 0.0,
-      "low_entropy_long_rate": 1.0,
-      "mean_token_ratio_vs_direct": 0.7455220061412487,
-      "mean_entropy_delta_vs_direct": -0.1286897901837636,
-      "mean_action_count": 3.0,
-      "mean_tool_use_count": 0.0,
-      "mean_verify_count": 0.0,
-      "mean_plan_count": 1.0,
-      "mean_recover_count": 0.0,
-      "verify_before_answer_rate": 0.0,
-      "post_verify_action_change_rate": 0.0,
-      "premature_answer_rate": 1.0,
-      "mean_repeated_ngram_rate": 0.7780355761794276,
-      "mean_looping_marker_count": 101.0
-    },
-    {
-      "harness": "opencode",
       "paired_outcome": "regression",
-      "n": 23,
-      "share_within_harness": 0.11616161616161616,
-      "malformed_prediction_rate": 0.6086956521739131,
+      "n": 24,
+      "share_within_harness": 0.12121212121212122,
+      "malformed_prediction_rate": 0.625,
       "missing_boxed_answer_rate": 0.0,
-      "low_entropy_long_rate": 0.391304347826087,
-      "mean_token_ratio_vs_direct": 0.25108134017632655,
-      "mean_entropy_delta_vs_direct": -0.08674656249367797,
-      "mean_action_count": 3.782608695652174,
-      "mean_tool_use_count": 0.30434782608695654,
-      "mean_verify_count": 0.7391304347826086,
-      "mean_plan_count": 0.21739130434782608,
+      "low_entropy_long_rate": 0.4166666666666667,
+      "mean_token_ratio_vs_direct": 0.29208989231926963,
+      "mean_entropy_delta_vs_direct": -0.09302569274323101,
+      "mean_action_count": 3.75,
+      "mean_tool_use_count": 0.2916666666666667,
+      "mean_verify_count": 0.7083333333333334,
+      "mean_plan_count": 0.25,
       "mean_recover_count": 0.0,
       "verify_before_answer_rate": 0.0,
-      "post_verify_action_change_rate": 0.13043478260869565,
-      "premature_answer_rate": 0.4782608695652174,
-      "mean_repeated_ngram_rate": 0.5110364165521459,
-      "mean_looping_marker_count": 14.521739130434783
+      "post_verify_action_change_rate": 0.125,
+      "premature_answer_rate": 0.5,
+      "mean_repeated_ngram_rate": 0.5283401031062746,
+      "mean_looping_marker_count": 19.208333333333332
     },
     {
       "harness": "opencode",
@@ -200,23 +179,23 @@
     {
       "harness": "zeroclaw",
       "paired_outcome": "both_correct",
-      "n": 139,
-      "share_within_harness": 0.702020202020202,
+      "n": 141,
+      "share_within_harness": 0.7121212121212122,
       "malformed_prediction_rate": 0.0,
       "missing_boxed_answer_rate": 0.0,
-      "low_entropy_long_rate": 0.1079136690647482,
-      "mean_token_ratio_vs_direct": 0.24836440570131324,
-      "mean_entropy_delta_vs_direct": -0.08227364673229072,
-      "mean_action_count": 17.97841726618705,
+      "low_entropy_long_rate": 0.10638297872340426,
+      "mean_token_ratio_vs_direct": 0.25131518666703256,
+      "mean_entropy_delta_vs_direct": -0.08252743198895915,
+      "mean_action_count": 17.97872340425532,
       "mean_tool_use_count": 0.0,
-      "mean_verify_count": 0.8848920863309353,
-      "mean_plan_count": 1.525179856115108,
+      "mean_verify_count": 0.8723404255319149,
+      "mean_plan_count": 1.5460992907801419,
       "mean_recover_count": 0.0,
       "verify_before_answer_rate": 0.0,
-      "post_verify_action_change_rate": 0.39568345323741005,
-      "premature_answer_rate": 0.38848920863309355,
-      "mean_repeated_ngram_rate": 0.13130675132533964,
-      "mean_looping_marker_count": 3.0071942446043165
+      "post_verify_action_change_rate": 0.3900709219858156,
+      "premature_answer_rate": 0.3971631205673759,
+      "mean_repeated_ngram_rate": 0.1318004872398538,
+      "mean_looping_marker_count": 3.106382978723404
     },
     {
       "harness": "zeroclaw",
@@ -242,44 +221,44 @@
     {
       "harness": "zeroclaw",
       "paired_outcome": "nonvalid_or_missing",
-      "n": 10,
-      "share_within_harness": 0.050505050505050504,
+      "n": 7,
+      "share_within_harness": 0.03535353535353535,
       "malformed_prediction_rate": 1.0,
       "missing_boxed_answer_rate": 0.0,
       "low_entropy_long_rate": 0.0,
       "mean_token_ratio_vs_direct": 0.0,
-      "mean_entropy_delta_vs_direct": -0.32113519288693493,
+      "mean_entropy_delta_vs_direct": -0.336576973736138,
       "mean_action_count": 2.0,
       "mean_tool_use_count": 0.0,
       "mean_verify_count": 0.0,
-      "mean_plan_count": 0.1,
+      "mean_plan_count": 0.14285714285714285,
       "mean_recover_count": 0.0,
       "verify_before_answer_rate": 0.0,
       "post_verify_action_change_rate": 0.0,
       "premature_answer_rate": 1.0,
-      "mean_repeated_ngram_rate": 0.05444391441420963,
+      "mean_repeated_ngram_rate": 0.0729616112819367,
       "mean_looping_marker_count": 0.0
     },
     {
       "harness": "zeroclaw",
       "paired_outcome": "regression",
-      "n": 14,
-      "share_within_harness": 0.0707070707070707,
-      "malformed_prediction_rate": 0.21428571428571427,
+      "n": 15,
+      "share_within_harness": 0.07575757575757576,
+      "malformed_prediction_rate": 0.2,
       "missing_boxed_answer_rate": 0.0,
       "low_entropy_long_rate": 0.0,
-      "mean_token_ratio_vs_direct": 0.177811971104979,
-      "mean_entropy_delta_vs_direct": -0.007800657857867553,
-      "mean_action_count": 16.857142857142858,
+      "mean_token_ratio_vs_direct": 0.17136513081955723,
+      "mean_entropy_delta_vs_direct": 0.00401191430180699,
+      "mean_action_count": 16.933333333333334,
       "mean_tool_use_count": 0.0,
-      "mean_verify_count": 0.7857142857142857,
-      "mean_plan_count": 1.3571428571428572,
+      "mean_verify_count": 0.8,
+      "mean_plan_count": 1.3333333333333333,
       "mean_recover_count": 0.0,
       "verify_before_answer_rate": 0.0,
-      "post_verify_action_change_rate": 0.2857142857142857,
-      "premature_answer_rate": 0.42857142857142855,
-      "mean_repeated_ngram_rate": 0.12331258809114742,
-      "mean_looping_marker_count": 4.428571428571429
+      "post_verify_action_change_rate": 0.3333333333333333,
+      "premature_answer_rate": 0.4,
+      "mean_repeated_ngram_rate": 0.12123968356326496,
+      "mean_looping_marker_count": 4.466666666666667
     },
     {
       "harness": "zeroclaw",
@@ -376,38 +355,31 @@
     },
     {
       "harness": "opencode",
-      "paired_outcome": "nonvalid_or_missing",
-      "cause_bucket": "operational_error",
-      "n": 1,
-      "share_within_outcome": 1.0
-    },
-    {
-      "harness": "opencode",
       "paired_outcome": "regression",
       "cause_bucket": "answer_format_or_extraction",
-      "n": 14,
-      "share_within_outcome": 0.6086956521739131
+      "n": 15,
+      "share_within_outcome": 0.625
     },
     {
       "harness": "opencode",
       "paired_outcome": "regression",
       "cause_bucket": "premature_answer",
       "n": 5,
-      "share_within_outcome": 0.21739130434782608
+      "share_within_outcome": 0.20833333333333334
     },
     {
       "harness": "opencode",
       "paired_outcome": "regression",
       "cause_bucket": "tool_use_not_integrated",
       "n": 1,
-      "share_within_outcome": 0.043478260869565216
+      "share_within_outcome": 0.041666666666666664
     },
     {
       "harness": "opencode",
       "paired_outcome": "regression",
       "cause_bucket": "verification_without_conversion",
       "n": 3,
-      "share_within_outcome": 0.13043478260869565
+      "share_within_outcome": 0.125
     },
     {
       "harness": "opencode",
@@ -420,7 +392,7 @@
       "harness": "zeroclaw",
       "paired_outcome": "both_correct",
       "cause_bucket": "both_correct",
-      "n": 139,
+      "n": 141,
       "share_within_outcome": 1.0
     },
     {
@@ -434,43 +406,43 @@
       "harness": "zeroclaw",
       "paired_outcome": "nonvalid_or_missing",
       "cause_bucket": "operational_error",
-      "n": 10,
+      "n": 7,
       "share_within_outcome": 1.0
     },
     {
       "harness": "zeroclaw",
       "paired_outcome": "regression",
       "cause_bucket": "answer_changed_valid",
-      "n": 2,
-      "share_within_outcome": 0.14285714285714285
+      "n": 3,
+      "share_within_outcome": 0.2
     },
     {
       "harness": "zeroclaw",
       "paired_outcome": "regression",
       "cause_bucket": "answer_format_or_extraction",
       "n": 3,
-      "share_within_outcome": 0.21428571428571427
+      "share_within_outcome": 0.2
     },
     {
       "harness": "zeroclaw",
       "paired_outcome": "regression",
       "cause_bucket": "planning_recovery_churn",
       "n": 2,
-      "share_within_outcome": 0.14285714285714285
+      "share_within_outcome": 0.13333333333333333
     },
     {
       "harness": "zeroclaw",
       "paired_outcome": "regression",
       "cause_bucket": "premature_answer",
       "n": 5,
-      "share_within_outcome": 0.35714285714285715
+      "share_within_outcome": 0.3333333333333333
     },
     {
       "harness": "zeroclaw",
       "paired_outcome": "regression",
       "cause_bucket": "verification_without_conversion",
       "n": 2,
-      "share_within_outcome": 0.14285714285714285
+      "share_within_outcome": 0.13333333333333333
     },
     {
       "harness": "zeroclaw",

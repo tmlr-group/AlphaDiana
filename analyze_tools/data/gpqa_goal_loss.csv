@@ -1,0 +1,15 @@
+system,outcome,n,looping_marker_mean,self_correction_mean,uncertainty_mean,repeated_ngram_mean,mean_tokens,cap_frac
+DirectLLM,correct,159,—,—,—,—,9049,0.0
+DirectLLM,wrong,39,—,—,—,—,19534,0.333
+OpenClaw,correct (all),131,2.26,5.94,1.15,0.135,2372,0.0
+OpenClaw,regression,36,83.14,148.0,34.72,0.63,31842,0.361
+OpenClaw,both_wrong,31,98.87,126.65,37.52,0.542,24197,0.323
+OpenClaw,wrong (all),67,90.42,138.12,36.01,0.589,28283,0.343
+OpenCode,correct (all),145,3.3,7.37,1.23,0.444,1066,0.0
+OpenCode,regression,24,19.21,44.04,2.75,0.528,4406,0.0
+OpenCode,both_wrong,29,10.97,28.86,6.41,0.546,2996,0.0
+OpenCode,wrong (all),53,14.7,35.74,4.75,0.538,3571,0.0
+ZeroClaw,correct (all),154,3.14,6.34,1.15,0.13,2101,0.0
+ZeroClaw,regression,15,4.47,14.0,2.73,0.121,1913,0.0
+ZeroClaw,both_wrong,22,5.18,15.5,2.09,0.118,2627,0.0
+ZeroClaw,wrong (all),37,4.89,14.89,2.35,0.119,2338,0.0
