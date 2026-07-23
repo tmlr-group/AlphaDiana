@@ -1,0 +1,257 @@
+benchmark,harness,outcome,from_action,to_action,transition_count,transition_total,transition_fraction
+MMMUPro,DirectLLM,failure,Answer Delivery,__END__,441,3666,0.12029460
+MMMUPro,DirectLLM,failure,Plan Formation,Answer Delivery,60,3666,0.01636661
+MMMUPro,DirectLLM,failure,Plan Formation,Plan Formation,33,3666,0.00900164
+MMMUPro,DirectLLM,failure,Plan Formation,Problem Framing,4,3666,0.00109111
+MMMUPro,DirectLLM,failure,Plan Formation,Result Auditing,2,3666,0.00054555
+MMMUPro,DirectLLM,failure,Plan Formation,Solution Execution,156,3666,0.04255319
+MMMUPro,DirectLLM,failure,Problem Framing,Answer Delivery,46,3666,0.01254774
+MMMUPro,DirectLLM,failure,Problem Framing,Plan Formation,45,3666,0.01227496
+MMMUPro,DirectLLM,failure,Problem Framing,Problem Framing,5,3666,0.00136388
+MMMUPro,DirectLLM,failure,Problem Framing,Result Auditing,10,3666,0.00272777
+MMMUPro,DirectLLM,failure,Problem Framing,Solution Execution,135,3666,0.03682488
+MMMUPro,DirectLLM,failure,Result Auditing,Answer Delivery,9,3666,0.00245499
+MMMUPro,DirectLLM,failure,Result Auditing,Plan Formation,3,3666,0.00081833
+MMMUPro,DirectLLM,failure,Result Auditing,Problem Framing,3,3666,0.00081833
+MMMUPro,DirectLLM,failure,Result Auditing,Result Auditing,3,3666,0.00081833
+MMMUPro,DirectLLM,failure,Result Auditing,Solution Execution,33,3666,0.00900164
+MMMUPro,DirectLLM,failure,Solution Execution,Answer Delivery,326,3666,0.08892526
+MMMUPro,DirectLLM,failure,Solution Execution,Plan Formation,122,3666,0.03327878
+MMMUPro,DirectLLM,failure,Solution Execution,Problem Framing,148,3666,0.04037098
+MMMUPro,DirectLLM,failure,Solution Execution,Result Auditing,32,3666,0.00872886
+MMMUPro,DirectLLM,failure,Solution Execution,Solution Execution,1603,3666,0.43726132
+MMMUPro,DirectLLM,failure,Solution Execution,__END__,3,3666,0.00081833
+MMMUPro,DirectLLM,failure,__START__,Plan Formation,52,3666,0.01418440
+MMMUPro,DirectLLM,failure,__START__,Problem Framing,81,3666,0.02209493
+MMMUPro,DirectLLM,failure,__START__,Result Auditing,4,3666,0.00109111
+MMMUPro,DirectLLM,failure,__START__,Solution Execution,307,3666,0.08374250
+MMMUPro,DirectLLM,success,Answer Delivery,Answer Delivery,1,9068,0.00011028
+MMMUPro,DirectLLM,success,Answer Delivery,__END__,1139,9068,0.12560653
+MMMUPro,DirectLLM,success,Plan Formation,Answer Delivery,259,9068,0.02856198
+MMMUPro,DirectLLM,success,Plan Formation,Plan Formation,55,9068,0.00606528
+MMMUPro,DirectLLM,success,Plan Formation,Problem Framing,9,9068,0.00099250
+MMMUPro,DirectLLM,success,Plan Formation,Result Auditing,2,9068,0.00022056
+MMMUPro,DirectLLM,success,Plan Formation,Solution Execution,191,9068,0.02106308
+MMMUPro,DirectLLM,success,Problem Framing,Answer Delivery,105,9068,0.01157918
+MMMUPro,DirectLLM,success,Problem Framing,Plan Formation,190,9068,0.02095280
+MMMUPro,DirectLLM,success,Problem Framing,Problem Framing,21,9068,0.00231584
+MMMUPro,DirectLLM,success,Problem Framing,Result Auditing,7,9068,0.00077195
+MMMUPro,DirectLLM,success,Problem Framing,Solution Execution,417,9068,0.04598588
+MMMUPro,DirectLLM,success,Result Auditing,Answer Delivery,8,9068,0.00088222
+MMMUPro,DirectLLM,success,Result Auditing,Plan Formation,1,9068,0.00011028
+MMMUPro,DirectLLM,success,Result Auditing,Problem Framing,2,9068,0.00022056
+MMMUPro,DirectLLM,success,Result Auditing,Result Auditing,11,9068,0.00121306
+MMMUPro,DirectLLM,success,Result Auditing,Solution Execution,100,9068,0.01102779
+MMMUPro,DirectLLM,success,Solution Execution,Answer Delivery,767,9068,0.08458315
+MMMUPro,DirectLLM,success,Solution Execution,Plan Formation,197,9068,0.02172475
+MMMUPro,DirectLLM,success,Solution Execution,Problem Framing,475,9068,0.05238200
+MMMUPro,DirectLLM,success,Solution Execution,Result Auditing,86,9068,0.00948390
+MMMUPro,DirectLLM,success,Solution Execution,Solution Execution,3886,9068,0.42853992
+MMMUPro,DirectLLM,success,__START__,Plan Formation,73,9068,0.00805029
+MMMUPro,DirectLLM,success,__START__,Problem Framing,233,9068,0.02569475
+MMMUPro,DirectLLM,success,__START__,Result Auditing,16,9068,0.00176445
+MMMUPro,DirectLLM,success,__START__,Solution Execution,817,9068,0.09009704
+MMMUPro,OpenClaw,failure,Answer Delivery,Solution Execution,1,4825,0.00020725
+MMMUPro,OpenClaw,failure,Answer Delivery,__END__,386,4825,0.08000000
+MMMUPro,OpenClaw,failure,Plan Formation,Answer Delivery,59,4825,0.01222798
+MMMUPro,OpenClaw,failure,Plan Formation,Plan Formation,38,4825,0.00787565
+MMMUPro,OpenClaw,failure,Plan Formation,Problem Framing,3,4825,0.00062176
+MMMUPro,OpenClaw,failure,Plan Formation,Result Auditing,5,4825,0.00103627
+MMMUPro,OpenClaw,failure,Plan Formation,Solution Execution,132,4825,0.02735751
+MMMUPro,OpenClaw,failure,Plan Formation,__END__,2,4825,0.00041451
+MMMUPro,OpenClaw,failure,Problem Framing,Answer Delivery,34,4825,0.00704663
+MMMUPro,OpenClaw,failure,Problem Framing,Plan Formation,37,4825,0.00766839
+MMMUPro,OpenClaw,failure,Problem Framing,Problem Framing,4,4825,0.00082902
+MMMUPro,OpenClaw,failure,Problem Framing,Result Auditing,1,4825,0.00020725
+MMMUPro,OpenClaw,failure,Problem Framing,Solution Execution,71,4825,0.01471503
+MMMUPro,OpenClaw,failure,Problem Framing,__END__,1,4825,0.00020725
+MMMUPro,OpenClaw,failure,Result Auditing,Answer Delivery,13,4825,0.00269430
+MMMUPro,OpenClaw,failure,Result Auditing,Plan Formation,1,4825,0.00020725
+MMMUPro,OpenClaw,failure,Result Auditing,Problem Framing,4,4825,0.00082902
+MMMUPro,OpenClaw,failure,Result Auditing,Result Auditing,8,4825,0.00165803
+MMMUPro,OpenClaw,failure,Result Auditing,Solution Execution,47,4825,0.00974093
+MMMUPro,OpenClaw,failure,Result Auditing,__END__,3,4825,0.00062176
+MMMUPro,OpenClaw,failure,Solution Execution,Answer Delivery,280,4825,0.05803109
+MMMUPro,OpenClaw,failure,Solution Execution,Plan Formation,116,4825,0.02404145
+MMMUPro,OpenClaw,failure,Solution Execution,Problem Framing,104,4825,0.02155440
+MMMUPro,OpenClaw,failure,Solution Execution,Result Auditing,51,4825,0.01056995
+MMMUPro,OpenClaw,failure,Solution Execution,Solution Execution,1332,4825,0.27606218
+MMMUPro,OpenClaw,failure,Solution Execution,__END__,23,4825,0.00476684
+MMMUPro,OpenClaw,failure,Tool Grounding,Answer Delivery,1,4825,0.00020725
+MMMUPro,OpenClaw,failure,Tool Grounding,Plan Formation,16,4825,0.00331606
+MMMUPro,OpenClaw,failure,Tool Grounding,Problem Framing,6,4825,0.00124352
+MMMUPro,OpenClaw,failure,Tool Grounding,Result Auditing,3,4825,0.00062176
+MMMUPro,OpenClaw,failure,Tool Grounding,Solution Execution,131,4825,0.02715026
+MMMUPro,OpenClaw,failure,Tool Grounding,Tool Grounding,1479,4825,0.30652850
+MMMUPro,OpenClaw,failure,Tool Grounding,__END__,9,4825,0.00186528
+MMMUPro,OpenClaw,failure,__START__,Plan Formation,31,4825,0.00642487
+MMMUPro,OpenClaw,failure,__START__,Problem Framing,27,4825,0.00559585
+MMMUPro,OpenClaw,failure,__START__,Result Auditing,8,4825,0.00165803
+MMMUPro,OpenClaw,failure,__START__,Solution Execution,192,4825,0.03979275
+MMMUPro,OpenClaw,failure,__START__,Tool Grounding,166,4825,0.03440415
+MMMUPro,OpenClaw,success,Answer Delivery,Answer Delivery,1,8847,0.00011303
+MMMUPro,OpenClaw,success,Answer Delivery,__END__,975,8847,0.11020685
+MMMUPro,OpenClaw,success,Plan Formation,Answer Delivery,239,8847,0.02701481
+MMMUPro,OpenClaw,success,Plan Formation,Plan Formation,11,8847,0.00124336
+MMMUPro,OpenClaw,success,Plan Formation,Problem Framing,4,8847,0.00045213
+MMMUPro,OpenClaw,success,Plan Formation,Result Auditing,5,8847,0.00056516
+MMMUPro,OpenClaw,success,Plan Formation,Solution Execution,156,8847,0.01763310
+MMMUPro,OpenClaw,success,Problem Framing,Answer Delivery,85,8847,0.00960778
+MMMUPro,OpenClaw,success,Problem Framing,Plan Formation,154,8847,0.01740703
+MMMUPro,OpenClaw,success,Problem Framing,Problem Framing,8,8847,0.00090426
+MMMUPro,OpenClaw,success,Problem Framing,Result Auditing,4,8847,0.00045213
+MMMUPro,OpenClaw,success,Problem Framing,Solution Execution,245,8847,0.02769300
+MMMUPro,OpenClaw,success,Result Auditing,Answer Delivery,18,8847,0.00203459
+MMMUPro,OpenClaw,success,Result Auditing,Plan Formation,6,8847,0.00067820
+MMMUPro,OpenClaw,success,Result Auditing,Problem Framing,8,8847,0.00090426
+MMMUPro,OpenClaw,success,Result Auditing,Result Auditing,7,8847,0.00079123
+MMMUPro,OpenClaw,success,Result Auditing,Solution Execution,59,8847,0.00666893
+MMMUPro,OpenClaw,success,Solution Execution,Answer Delivery,612,8847,0.06917599
+MMMUPro,OpenClaw,success,Solution Execution,Plan Formation,170,8847,0.01921555
+MMMUPro,OpenClaw,success,Solution Execution,Problem Framing,358,8847,0.04046569
+MMMUPro,OpenClaw,success,Solution Execution,Result Auditing,68,8847,0.00768622
+MMMUPro,OpenClaw,success,Solution Execution,Solution Execution,3075,8847,0.34757545
+MMMUPro,OpenClaw,success,Tool Grounding,Answer Delivery,21,8847,0.00237369
+MMMUPro,OpenClaw,success,Tool Grounding,Plan Formation,24,8847,0.00271278
+MMMUPro,OpenClaw,success,Tool Grounding,Problem Framing,19,8847,0.00214762
+MMMUPro,OpenClaw,success,Tool Grounding,Result Auditing,4,8847,0.00045213
+MMMUPro,OpenClaw,success,Tool Grounding,Solution Execution,245,8847,0.02769300
+MMMUPro,OpenClaw,success,Tool Grounding,Tool Grounding,1281,8847,0.14479485
+MMMUPro,OpenClaw,success,Tool Grounding,__END__,5,8847,0.00056516
+MMMUPro,OpenClaw,success,__START__,Plan Formation,50,8847,0.00565163
+MMMUPro,OpenClaw,success,__START__,Problem Framing,99,8847,0.01119023
+MMMUPro,OpenClaw,success,__START__,Result Auditing,10,8847,0.00113033
+MMMUPro,OpenClaw,success,__START__,Solution Execution,503,8847,0.05685543
+MMMUPro,OpenClaw,success,__START__,Tool Grounding,318,8847,0.03594439
+MMMUPro,OpenClaw,unknown,Problem Framing,Solution Execution,1,16,0.06250000
+MMMUPro,OpenClaw,unknown,Solution Execution,Problem Framing,1,16,0.06250000
+MMMUPro,OpenClaw,unknown,Solution Execution,Solution Execution,7,16,0.43750000
+MMMUPro,OpenClaw,unknown,Solution Execution,__END__,3,16,0.18750000
+MMMUPro,OpenClaw,unknown,Tool Grounding,Solution Execution,1,16,0.06250000
+MMMUPro,OpenClaw,unknown,__START__,Solution Execution,2,16,0.12500000
+MMMUPro,OpenClaw,unknown,__START__,Tool Grounding,1,16,0.06250000
+MMMUPro,OpenCode,failure,Answer Delivery,Answer Delivery,3,5428,0.00055269
+MMMUPro,OpenCode,failure,Answer Delivery,Plan Formation,38,5428,0.00700074
+MMMUPro,OpenCode,failure,Answer Delivery,Problem Framing,40,5428,0.00736920
+MMMUPro,OpenCode,failure,Answer Delivery,Result Auditing,10,5428,0.00184230
+MMMUPro,OpenCode,failure,Answer Delivery,Solution Execution,377,5428,0.06945468
+MMMUPro,OpenCode,failure,Answer Delivery,__END__,468,5428,0.08621960
+MMMUPro,OpenCode,failure,Plan Formation,Answer Delivery,112,5428,0.02063375
+MMMUPro,OpenCode,failure,Plan Formation,Plan Formation,14,5428,0.00257922
+MMMUPro,OpenCode,failure,Plan Formation,Problem Framing,2,5428,0.00036846
+MMMUPro,OpenCode,failure,Plan Formation,Result Auditing,2,5428,0.00036846
+MMMUPro,OpenCode,failure,Plan Formation,Solution Execution,124,5428,0.02284451
+MMMUPro,OpenCode,failure,Problem Framing,Answer Delivery,86,5428,0.01584377
+MMMUPro,OpenCode,failure,Problem Framing,Plan Formation,50,5428,0.00921150
+MMMUPro,OpenCode,failure,Problem Framing,Problem Framing,6,5428,0.00110538
+MMMUPro,OpenCode,failure,Problem Framing,Result Auditing,6,5428,0.00110538
+MMMUPro,OpenCode,failure,Problem Framing,Solution Execution,108,5428,0.01989683
+MMMUPro,OpenCode,failure,Result Auditing,Answer Delivery,28,5428,0.00515844
+MMMUPro,OpenCode,failure,Result Auditing,Problem Framing,3,5428,0.00055269
+MMMUPro,OpenCode,failure,Result Auditing,Result Auditing,7,5428,0.00128961
+MMMUPro,OpenCode,failure,Result Auditing,Solution Execution,61,5428,0.01123803
+MMMUPro,OpenCode,failure,Solution Execution,Answer Delivery,704,5428,0.12969786
+MMMUPro,OpenCode,failure,Solution Execution,Plan Formation,114,5428,0.02100221
+MMMUPro,OpenCode,failure,Solution Execution,Problem Framing,165,5428,0.03039794
+MMMUPro,OpenCode,failure,Solution Execution,Result Auditing,64,5428,0.01179071
+MMMUPro,OpenCode,failure,Solution Execution,Solution Execution,1872,5428,0.34487841
+MMMUPro,OpenCode,failure,Solution Execution,__END__,1,5428,0.00018423
+MMMUPro,OpenCode,failure,Tool Grounding,Answer Delivery,3,5428,0.00055269
+MMMUPro,OpenCode,failure,Tool Grounding,Plan Formation,8,5428,0.00147384
+MMMUPro,OpenCode,failure,Tool Grounding,Problem Framing,5,5428,0.00092115
+MMMUPro,OpenCode,failure,Tool Grounding,Solution Execution,56,5428,0.01031688
+MMMUPro,OpenCode,failure,Tool Grounding,Tool Grounding,400,5428,0.07369197
+MMMUPro,OpenCode,failure,Tool Grounding,__END__,11,5428,0.00202653
+MMMUPro,OpenCode,failure,__START__,Plan Formation,30,5428,0.00552690
+MMMUPro,OpenCode,failure,__START__,Problem Framing,35,5428,0.00644805
+MMMUPro,OpenCode,failure,__START__,Result Auditing,10,5428,0.00184230
+MMMUPro,OpenCode,failure,__START__,Solution Execution,322,5428,0.05932203
+MMMUPro,OpenCode,failure,__START__,Tool Grounding,83,5428,0.01529108
+MMMUPro,OpenCode,success,Answer Delivery,Answer Delivery,61,12855,0.00474524
+MMMUPro,OpenCode,success,Answer Delivery,Plan Formation,74,12855,0.00575651
+MMMUPro,OpenCode,success,Answer Delivery,Problem Framing,95,12855,0.00739012
+MMMUPro,OpenCode,success,Answer Delivery,Result Auditing,16,12855,0.00124465
+MMMUPro,OpenCode,success,Answer Delivery,Solution Execution,920,12855,0.07156748
+MMMUPro,OpenCode,success,Answer Delivery,__END__,1166,12855,0.09070401
+MMMUPro,OpenCode,success,Plan Formation,Answer Delivery,378,12855,0.02940490
+MMMUPro,OpenCode,success,Plan Formation,Plan Formation,12,12855,0.00093349
+MMMUPro,OpenCode,success,Plan Formation,Problem Framing,4,12855,0.00031116
+MMMUPro,OpenCode,success,Plan Formation,Solution Execution,196,12855,0.01524699
+MMMUPro,OpenCode,success,Problem Framing,Answer Delivery,242,12855,0.01882536
+MMMUPro,OpenCode,success,Problem Framing,Plan Formation,206,12855,0.01602489
+MMMUPro,OpenCode,success,Problem Framing,Problem Framing,6,12855,0.00046674
+MMMUPro,OpenCode,success,Problem Framing,Result Auditing,4,12855,0.00031116
+MMMUPro,OpenCode,success,Problem Framing,Solution Execution,272,12855,0.02115908
+MMMUPro,OpenCode,success,Result Auditing,Answer Delivery,34,12855,0.00264489
+MMMUPro,OpenCode,success,Result Auditing,Plan Formation,8,12855,0.00062233
+MMMUPro,OpenCode,success,Result Auditing,Problem Framing,6,12855,0.00046674
+MMMUPro,OpenCode,success,Result Auditing,Result Auditing,24,12855,0.00186698
+MMMUPro,OpenCode,success,Result Auditing,Solution Execution,88,12855,0.00684559
+MMMUPro,OpenCode,success,Solution Execution,Answer Delivery,1556,12855,0.12104240
+MMMUPro,OpenCode,success,Solution Execution,Plan Formation,216,12855,0.01680280
+MMMUPro,OpenCode,success,Solution Execution,Problem Framing,524,12855,0.04076235
+MMMUPro,OpenCode,success,Solution Execution,Result Auditing,100,12855,0.00777907
+MMMUPro,OpenCode,success,Solution Execution,Solution Execution,4914,12855,0.38226371
+MMMUPro,OpenCode,success,Tool Grounding,Answer Delivery,61,12855,0.00474524
+MMMUPro,OpenCode,success,Tool Grounding,Plan Formation,4,12855,0.00031116
+MMMUPro,OpenCode,success,Tool Grounding,Problem Framing,10,12855,0.00077791
+MMMUPro,OpenCode,success,Tool Grounding,Result Auditing,4,12855,0.00031116
+MMMUPro,OpenCode,success,Tool Grounding,Solution Execution,141,12855,0.01096849
+MMMUPro,OpenCode,success,Tool Grounding,Tool Grounding,347,12855,0.02699339
+MMMUPro,OpenCode,success,__START__,Plan Formation,70,12855,0.00544535
+MMMUPro,OpenCode,success,__START__,Problem Framing,85,12855,0.00661221
+MMMUPro,OpenCode,success,__START__,Result Auditing,12,12855,0.00093349
+MMMUPro,OpenCode,success,__START__,Solution Execution,779,12855,0.06059899
+MMMUPro,OpenCode,success,__START__,Tool Grounding,220,12855,0.01711396
+MMMUPro,ZeroClaw,failure,Answer Delivery,__END__,478,3373,0.14171361
+MMMUPro,ZeroClaw,failure,Plan Formation,Answer Delivery,69,3373,0.02045657
+MMMUPro,ZeroClaw,failure,Plan Formation,Plan Formation,24,3373,0.00711533
+MMMUPro,ZeroClaw,failure,Plan Formation,Problem Framing,4,3373,0.00118589
+MMMUPro,ZeroClaw,failure,Plan Formation,Result Auditing,4,3373,0.00118589
+MMMUPro,ZeroClaw,failure,Plan Formation,Solution Execution,116,3373,0.03439075
+MMMUPro,ZeroClaw,failure,Problem Framing,Answer Delivery,46,3373,0.01363771
+MMMUPro,ZeroClaw,failure,Problem Framing,Plan Formation,39,3373,0.01156241
+MMMUPro,ZeroClaw,failure,Problem Framing,Problem Framing,6,3373,0.00177883
+MMMUPro,ZeroClaw,failure,Problem Framing,Result Auditing,4,3373,0.00118589
+MMMUPro,ZeroClaw,failure,Problem Framing,Solution Execution,93,3373,0.02757189
+MMMUPro,ZeroClaw,failure,Result Auditing,Answer Delivery,14,3373,0.00415061
+MMMUPro,ZeroClaw,failure,Result Auditing,Plan Formation,2,3373,0.00059294
+MMMUPro,ZeroClaw,failure,Result Auditing,Problem Framing,6,3373,0.00177883
+MMMUPro,ZeroClaw,failure,Result Auditing,Result Auditing,7,3373,0.00207530
+MMMUPro,ZeroClaw,failure,Result Auditing,Solution Execution,46,3373,0.01363771
+MMMUPro,ZeroClaw,failure,Solution Execution,Answer Delivery,348,3373,0.10317225
+MMMUPro,ZeroClaw,failure,Solution Execution,Plan Formation,106,3373,0.03142603
+MMMUPro,ZeroClaw,failure,Solution Execution,Problem Framing,131,3373,0.03883783
+MMMUPro,ZeroClaw,failure,Solution Execution,Result Auditing,50,3373,0.01482360
+MMMUPro,ZeroClaw,failure,Solution Execution,Solution Execution,1302,3373,0.38600652
+MMMUPro,ZeroClaw,failure,__START__,Answer Delivery,1,3373,0.00029647
+MMMUPro,ZeroClaw,failure,__START__,Plan Formation,46,3373,0.01363771
+MMMUPro,ZeroClaw,failure,__START__,Problem Framing,41,3373,0.01215535
+MMMUPro,ZeroClaw,failure,__START__,Result Auditing,10,3373,0.00296472
+MMMUPro,ZeroClaw,failure,__START__,Solution Execution,380,3373,0.11265935
+MMMUPro,ZeroClaw,success,Answer Delivery,__END__,1148,8051,0.14259098
+MMMUPro,ZeroClaw,success,Plan Formation,Answer Delivery,264,8051,0.03279096
+MMMUPro,ZeroClaw,success,Plan Formation,Plan Formation,25,8051,0.00310520
+MMMUPro,ZeroClaw,success,Plan Formation,Problem Framing,6,8051,0.00074525
+MMMUPro,ZeroClaw,success,Plan Formation,Result Auditing,3,8051,0.00037262
+MMMUPro,ZeroClaw,success,Plan Formation,Solution Execution,126,8051,0.01565023
+MMMUPro,ZeroClaw,success,Problem Framing,Answer Delivery,113,8051,0.01403552
+MMMUPro,ZeroClaw,success,Problem Framing,Plan Formation,182,8051,0.02260589
+MMMUPro,ZeroClaw,success,Problem Framing,Problem Framing,7,8051,0.00086946
+MMMUPro,ZeroClaw,success,Problem Framing,Result Auditing,4,8051,0.00049683
+MMMUPro,ZeroClaw,success,Problem Framing,Solution Execution,237,8051,0.02943734
+MMMUPro,ZeroClaw,success,Result Auditing,Answer Delivery,18,8051,0.00223575
+MMMUPro,ZeroClaw,success,Result Auditing,Plan Formation,7,8051,0.00086946
+MMMUPro,ZeroClaw,success,Result Auditing,Problem Framing,7,8051,0.00086946
+MMMUPro,ZeroClaw,success,Result Auditing,Result Auditing,8,8051,0.00099367
+MMMUPro,ZeroClaw,success,Result Auditing,Solution Execution,61,8051,0.00757670
+MMMUPro,ZeroClaw,success,Solution Execution,Answer Delivery,741,8051,0.09203826
+MMMUPro,ZeroClaw,success,Solution Execution,Plan Formation,133,8051,0.01651969
+MMMUPro,ZeroClaw,success,Solution Execution,Problem Framing,412,8051,0.05117377
+MMMUPro,ZeroClaw,success,Solution Execution,Result Auditing,69,8051,0.00857036
+MMMUPro,ZeroClaw,success,Solution Execution,Solution Execution,3332,8051,0.41386163
+MMMUPro,ZeroClaw,success,__START__,Answer Delivery,12,8051,0.00149050
+MMMUPro,ZeroClaw,success,__START__,Plan Formation,77,8051,0.00956403
+MMMUPro,ZeroClaw,success,__START__,Problem Framing,111,8051,0.01378711
+MMMUPro,ZeroClaw,success,__START__,Result Auditing,17,8051,0.00211154
+MMMUPro,ZeroClaw,success,__START__,Solution Execution,931,8051,0.11563781

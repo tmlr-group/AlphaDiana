@@ -1,0 +1,5 @@
+benchmark,harness,failure_trajectories,mean_tokens,mean_entropy,mean_action_events,mean_tool_calls,top_failure_action,top_failure_action_count,top_failure_tool_type,top_failure_tool_count,extraction_failure_types
+MMMUPro,DirectLLM,591,7911.216582,0.224499,5.451777,0.000000,Solution Execution,2234,,0,no_action_events=147
+MMMUPro,OpenClaw,424,13631.478774,0.206057,10.379717,3.837264,Solution Execution,1906,bash,946,missing_token_length=91; no_action_events=163
+MMMUPro,OpenCode,564,9179.969858,0.216587,8.773050,0.858156,Solution Execution,2920,web_fetch,378,no_action_events=84
+MMMUPro,ZeroClaw,478,4839.511931,0.252134,6.056485,0.000000,Solution Execution,1937,,0,missing_token_length=57; no_action_events=104
