@@ -17,6 +17,20 @@ for the current prompt-aligned local-Qwen runs.
 Canonical prompts live in [`../PROMPTS.md`](../PROMPTS.md). Every active config
 below uses the matching Direct or Harness prompt from that file.
 
+The SWE-bench Verified Mini Gemma 4 matrix is a separate coding-agent
+exception. DirectLLM uses the official standalone SWE-agent default agent and
+therefore has no AlphaDiana experiment YAML. The three AlphaDiana
+`swebench_container` entry points are:
+
+- [`swe_verified_mini_openclaw_gemma4_31b.yaml`](swe_verified_mini_openclaw_gemma4_31b.yaml)
+- [`swe_verified_mini_opencode_gemma4_31b.yaml`](swe_verified_mini_opencode_gemma4_31b.yaml)
+- [`swe_verified_mini_zeroclaw_gemma4_31b.yaml`](swe_verified_mini_zeroclaw_gemma4_31b.yaml)
+
+Use the
+[`SWE-bench Verified Mini × Gemma 4 runbook`](../../docs/benchmarks/runbook-swebench-verified-mini-gemma4-31b.md)
+for the official DirectLLM command, the shared vLLM contract, validation,
+execution, and upload steps.
+
 ## Active Inventory
 
 | Benchmark | DirectLLM | OpenCode | OpenClaw | ZeroClaw |

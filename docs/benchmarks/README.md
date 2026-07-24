@@ -6,6 +6,13 @@ Start from [`context/current_eval_status.md`](../../context/current_eval_status.
 for the current cross-benchmark support snapshot, then open the matching
 runbook here.
 
+For the formalized `google/gemma-4-31B-it` SWE-bench Verified Mini matrix,
+use
+[`runbook-swebench-verified-mini-gemma4-31b.md`](runbook-swebench-verified-mini-gemma4-31b.md).
+It defines DirectLLM as the official standalone SWE-agent default-agent path
+with no AlphaDiana config; OpenClaw, OpenCode, and ZeroClaw use the checked-in
+AlphaDiana `swebench_container` configs under `configs/full_runs/`.
+
 For opt-in Podman experiments, start with
 [`podman.md`](podman.md). It covers image setup, standard-reasoning pilot
 commands, nightly validation, task-container smokes, result inspection, and the
