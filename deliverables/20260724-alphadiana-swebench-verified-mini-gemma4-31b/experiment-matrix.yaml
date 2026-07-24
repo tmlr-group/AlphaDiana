@@ -1,0 +1,68 @@
+schema_version: 1
+formalized_on: "2026-07-24"
+
+dataset:
+  display_name: "SWE-Bench-Verified-Mini"
+  hf_id: "MariusHobbhahn/swe-bench-verified-mini"
+  subset: "verified"
+  split: "test"
+  expected_tasks: 50
+  include_hints: false
+
+model:
+  hf_id: "google/gemma-4-31B-it"
+  served_alias_for_swe_agent: "gemma-4-31b-it"
+  max_model_length: 262144
+  max_tokens: 131072
+
+generation:
+  temperature: 0.0
+  top_p: 0.95
+  presence_penalty: 1.5
+  thinking: true
+  streaming: true
+
+execution:
+  sample_k: 1
+  max_concurrent: 4
+  task_retries: 0
+  container_engine: docker
+  run_order: sequential
+
+runs:
+  directllm:
+    execution_path: "official_swe_agent"
+    alphadiana_config: null
+    agent_config: "SWE-agent/config/default.yaml"
+    run_id: "full_swe_bench_verified_mini_directllm_gemma4_31b_v01"
+    parameter_notes:
+      thinking: "enforced by the shared vLLM server default"
+      streaming: "SWE-agent streams internally; it has no separate runbook override"
+      presence_penalty: "enforced by the shared vLLM server generation default"
+  openclaw:
+    execution_path: "alphadiana_swebench_container"
+    alphadiana_config: "configs/openclaw.yaml"
+    run_id: "full_swe_bench_verified_mini_openclaw_gemma4_31b_v01"
+  opencode:
+    execution_path: "alphadiana_swebench_container"
+    alphadiana_config: "configs/opencode.yaml"
+    run_id: "full_swe_bench_verified_mini_opencode_gemma4_31b_v01"
+  zeroclaw:
+    execution_path: "alphadiana_swebench_container"
+    alphadiana_config: "configs/zeroclaw.yaml"
+    run_id: "full_swe_bench_verified_mini_zeroclaw_gemma4_31b_v01"
+    parameter_notes:
+      streaming: "the native ZeroClaw CLI owns provider streaming; AlphaDiana exposes no separate YAML transport switch on this path"
+      request_overrides: "a non-logprob provider proxy enforces top_p, max_tokens, and thinking on upstream requests"
+
+huggingface:
+  repo_id: "T-MARS/alphadiana-benchmark-results"
+  repo_type: "dataset"
+  visibility: "private"
+  folder_pattern: "YYYYMMDD-dataset-agent-model-vNN"
+  resolved_leaf_pattern: "YYYYMMDD-swe-bench-verified-mini-<agent>-gemma-4-31b-it-vNN"
+  default_version: "v01"
+
+observability:
+  capture_logprobs: false
+  rationale: "Not requested; keeps the official SWE-agent and AlphaDiana runs aligned."
