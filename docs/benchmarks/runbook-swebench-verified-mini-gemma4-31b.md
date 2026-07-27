@@ -4,7 +4,7 @@ Formalized on 2026-07-24 and corrected on 2026-07-27 for these four cells:
 
 | Cell | Execution path | Checked-in config |
 | --- | --- | --- |
-| DirectLLM | Official standalone SWE-agent, upstream default agent | None; use the [dedicated DirectLLM runbook](runbook-swebench-verified-mini-directllm-gemma4-31b.md) |
+| DirectLLM | Official standalone SWE-agent, upstream default agent, Podman task containers | None; use the [dedicated DirectLLM runbook](runbook-swebench-verified-mini-directllm-gemma4-31b.md) |
 | OpenClaw | AlphaDiana `openclaw` + `swebench_container` | `configs/full_runs/swe_verified_mini_openclaw_gemma4_31b.yaml` |
 | OpenCode | AlphaDiana `opencode` + `swebench_container` | `configs/full_runs/swe_verified_mini_opencode_gemma4_31b.yaml` |
 | ZeroClaw | AlphaDiana `zeroclaw` + `swebench_container` | `configs/full_runs/swe_verified_mini_zeroclaw_gemma4_31b.yaml` |
@@ -48,14 +48,17 @@ official SWE-agent path does not write AlphaDiana logprob sidecars.
 Run all AlphaDiana commands from the repository root. For DirectLLM, use the
 separate checkout and host gates in the
 [dedicated runbook](runbook-swebench-verified-mini-directllm-gemma4-31b.md).
-Required:
+The runtime requirements are path-specific:
 
-- Docker works without `sudo` (`docker ps` succeeds).
-- The AlphaDiana environment is installed and activated.
-- At least 200 GB of free space is available for task images and artifacts.
-- The three checked-in configs pass `python -m alphadiana.cli validate`.
-- The dedicated DirectLLM version, Docker, tool-call, and one-task smoke gates
-  pass before its full run.
+- DirectLLM requires native Podman plus a Podman Docker-compatible socket
+  advertising API `>=1.41`, Linux `x86_64`, fully qualified task images, and
+  at least 200 GiB free in the Podman graph root.
+- DirectLLM's pinned-version, Podman lifecycle, tool-call, and one-task
+  official-evaluator gates must all pass before its full run.
+- OpenClaw, OpenCode, and ZeroClaw still use their checked-in AlphaDiana
+  Docker task-container path in this matrix. Docker must work without `sudo`.
+- The AlphaDiana environment must be installed, activated, and able to
+  validate all three checked-in configs.
 
 ## 3. Start the shared Gemma 4 vLLM endpoint
 
@@ -64,11 +67,14 @@ it with vLLM's separate example template.
 
 ```bash
 export VLLM_PORT=8011
-# A100 40 GB: allocate four devices and use TP=4.
-# H200 141 GB: two devices with TP=2 are sufficient.
-export VLLM_GPUS=0,1,2,3
-export VLLM_TENSOR_PARALLEL=4
 export GEMMA4_MODEL_REVISION=842da3794eaa0b77d5f08bae87a17459d91ff475
+
+: "${VLLM_GPUS:?Set VLLM_GPUS to the allocated comma-separated device IDs}"
+: "${VLLM_TENSOR_PARALLEL:?Set VLLM_TENSOR_PARALLEL to the device count}"
+export VLLM_GPUS VLLM_TENSOR_PARALLEL
+test "$VLLM_TENSOR_PARALLEL" -gt 0
+test "$(awk -F, '{print NF}' <<<"$VLLM_GPUS")" \
+  -eq "$VLLM_TENSOR_PARALLEL"
 
 CUDA_VISIBLE_DEVICES="$VLLM_GPUS" \
 vllm serve google/gemma-4-31B-it \
@@ -95,6 +101,9 @@ vllm serve google/gemma-4-31B-it \
 
 The server-level `enable_thinking` default applies to DirectLLM because
 upstream SWE-agent does not send AlphaDiana's request-level override.
+Choose the device count from the actual allocation and verify the unchanged
+BF16, 262144-token server starts. Do not infer tensor parallelism from a
+hostname or copy a GPU-specific profile from an older run.
 
 ## 4. DirectLLM: official default SWE-agent
 
@@ -252,5 +261,6 @@ version for a repaired or repeated run.
   thinking are applied to upstream requests without requesting sidecars.
 - Presence penalty is deliberately server-side so all four cells inherit the
   same value.
-- This runbook targets Docker. Re-formalize gateway and networking settings
-  before substituting Podman.
+- The dedicated DirectLLM path targets Podman. The three checked-in
+  AlphaDiana paths in this matrix retain their Docker gateway and networking
+  contract; do not copy runtime settings between the two paths.
