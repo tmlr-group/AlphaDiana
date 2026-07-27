@@ -12,9 +12,9 @@ The valid execution path is:
 ```text
 Gemma 4 on vLLM
   -> official SWE-agent run-batch with config/default.yaml
-  -> one Docker task container per SWE-bench instance
+  -> one Podman task container per SWE-bench instance
   -> SWE-agent preds.json
-  -> official SWE-bench evaluator
+  -> official SWE-bench evaluator through the Podman API socket
 ```
 
 ## 0. Rerun decision and hard boundary
@@ -54,7 +54,8 @@ the rerun.
 | SWE-bench | `f7bbbb2ccdf479001d6467c9e34af59e44a840f9` |
 | LiteLLM | `1.93.0` |
 | SWE-ReX | `1.4.0` |
-| Dataset/runtime clients | `datasets==5.0.0`, `docker==7.2.0`, `huggingface_hub==1.24.0`, `openai==2.48.0` |
+| Container runtime | Podman CLI for SWE-agent; Podman Docker-compatible socket with API `>=1.41` for the evaluator |
+| Dataset/runtime clients | `datasets==5.0.0`, `docker==7.2.0` (API client only), `huggingface_hub==1.24.0`, `openai==2.48.0` |
 | Config stack | `pydantic==2.13.4`, `pydantic-settings==2.14.2` |
 
 | Parameter | Value | Enforcement point |
@@ -73,7 +74,7 @@ the rerun.
 | Per-instance call limit | `80` | SWE-agent model config |
 | Agent workers | `4` | SWE-agent `--num_workers` |
 | Evaluator workers | `4` | SWE-bench `--max_workers` |
-| Tensor parallelism | A100 40 GB: `4`; H200 141 GB: `2` | vLLM launch |
+| Tensor parallelism | Operator-selected; must equal the number of allocated devices in `VLLM_GPUS` | vLLM launch |
 | Logprobs | disabled | Not part of the official SWE-agent path |
 
 For this SWE-agent revision, `agent.model.max_output_tokens` is an internal
@@ -86,62 +87,157 @@ The pinned upstream client is non-streaming. Do not set
 `completion_kwargs.stream=true`: its response handling expects a completed
 OpenAI response, not an event iterator.
 
-## 2. Execution-host gate
+## 2. Execution-host and Podman gate
 
-Use a host or scheduled node with real Docker access. Run these checks before
-installing or launching anything:
+This runbook is for an unknown target host and does not assume a hostname, a
+GPU model, a rootless Podman setup, or a rootful Podman setup. It does require:
+
+- Linux `x86_64`; the pinned SWE-agent revision requests
+  `docker.io/swebench/sweb.eval.x86_64.*` images.
+- A local Podman CLI usable by the benchmark account without privilege
+  escalation.
+- A Podman Docker-compatible Unix socket usable by that same account.
+- At least 200 GiB free in the Podman graph root.
+- A CUDA environment that can start the locked BF16, 262144-token vLLM
+  command unchanged.
+
+SWE-agent uses Podman natively through SWE-ReX. The official SWE-bench
+evaluator has no Podman runtime flag at the pinned revision and uses the
+Python Docker SDK, so the evaluator connects to Podman's compatibility socket
+through `DOCKER_HOST`. Docker SDK 7.2.0 rejects the evaluator's
+`platform=linux/x86_64` container creation call when the negotiated API is
+below 1.41. An API version below 1.41 is therefore a hard stop, even if
+`podman ps` and `_ping` work.
+
+Keep these runtime invariants together:
+
+- SWE-agent must save `deployment.type: docker` and
+  `deployment.container_runtime: podman`. The first value is the SWE-ReX
+  schema name; changing it to `podman` is invalid.
+- SWE-agent launches the native `podman` CLI. `DOCKER_HOST` is for the
+  official evaluator and does not convert the agent runtime by itself.
+- The native CLI and compatibility socket must address the same Podman image
+  store. Do not mix a rootless CLI with a rootful socket.
+- Every task image must retain its fully qualified
+  `docker.io/swebench/...` name, and the evaluator must use
+  `--namespace docker.io/swebench`.
+- Do not begin the 50-task run until the exact one-task agent plus official
+  evaluator smoke has passed on the target host.
+- Socket paths and runtime evidence are host-specific. Rerun the Podman gates
+  and one-task smoke after changing hosts, users, or Podman services.
+
+Start the socket using the target site's supported mechanism. A common
+rootless systemd setup is:
+
+```bash
+systemctl --user enable --now podman.socket
+```
+
+If user systemd is unavailable, choose a writable socket path and run this in
+a persistent terminal:
+
+```bash
+export PODMAN_SOCKET=/path/to/podman.sock
+mkdir -p "$(dirname "$PODMAN_SOCKET")"
+podman system service --time=0 "unix://$PODMAN_SOCKET"
+```
+
+Export that same bare socket path as `PODMAN_SOCKET` in benchmark shells. For
+a rootful service, have the site administrator provide the socket and access
+policy; do not add `sudo` to the benchmark commands.
+
+Run the following gate before installing or launching anything:
 
 ```bash
 set -euo pipefail
 
-unset DOCKER_HOST CONTAINER_HOST
-docker info >/dev/null
-docker run --rm python:3.11 true
-docker info --format 'DockerRootDir={{.DockerRootDir}}'
-df -h "$(docker info --format '{{.DockerRootDir}}')"
-```
+export DIRECTLLM_SWE_VERIFIED_ROOT=/path/to/swe-bench-direct-gemma4
 
-The Docker root must have at least 200 GB free. `docker --version` is not a
-sufficient check; `docker info` and the test container must both succeed
-without `sudo`.
+command -v podman
+command -v curl
+command -v python3.11
+test "$(uname -s)" = "Linux"
+test "$(uname -m)" = "x86_64"
 
-As checked on 2026-07-27, the `weikaihuang` account on `A100-1` could see
-`/var/run/docker.sock` but was not a member of the `docker` group, so
-`docker info` failed with permission denied. Do not launch this run on that
-host until Docker access is fixed or a Docker-enabled scheduled node is used.
+podman version
+podman info
+podman ps
 
-The GPU profile is also a hard gate. `A100-1` has 40 GB A100 PCIe devices.
-Do not use the two-GPU profile on those devices: the pinned BF16 checkpoint
-alone is 58.25 GiB, and `--gpu-memory-utilization 0.90` leaves too little
-per-GPU memory for the locked 262144-token context and runtime overhead.
-Allocate at least four exclusive 40 GB A100s and use tensor parallelism 4.
-Two H200 141 GB devices may use tensor parallelism 2. Do not reduce
-`--max-model-len`, quantize the model, or change the KV-cache dtype to make an
-undersized allocation start; that would be a different benchmark condition.
+PODMAN_SOCKET="${PODMAN_SOCKET:-$(
+  podman info --format '{{.Host.RemoteSocket.Path}}'
+)}"
+PODMAN_SOCKET="${PODMAN_SOCKET#unix://}"
+: "${PODMAN_SOCKET:?Set PODMAN_SOCKET to the Podman Unix socket path}"
+test -S "$PODMAN_SOCKET"
+export PODMAN_SOCKET
+export DOCKER_HOST="unix://$PODMAN_SOCKET"
 
-Before starting vLLM, verify that every selected device belongs to the current
-allocation and is effectively empty:
+test "$(
+  curl -fsS --unix-socket "$PODMAN_SOCKET" http://d/_ping
+)" = "OK"
 
-```bash
+mkdir -p "$DIRECTLLM_SWE_VERIFIED_ROOT"
+podman version > "$DIRECTLLM_SWE_VERIFIED_ROOT/podman-version.txt"
+podman info --format json \
+  > "$DIRECTLLM_SWE_VERIFIED_ROOT/podman-info.json"
+curl -fsS --unix-socket "$PODMAN_SOCKET" http://d/version \
+  > "$DIRECTLLM_SWE_VERIFIED_ROOT/podman-docker-api-version.json"
+printf '%s\n' "$PODMAN_SOCKET" \
+  > "$DIRECTLLM_SWE_VERIFIED_ROOT/podman-socket-path.txt"
+
+export PODMAN_GRAPH_ROOT="$(
+  podman info --format '{{.Store.GraphRoot}}'
+)"
+df -h "$PODMAN_GRAPH_ROOT"
+export PODMAN_AVAILABLE_KIB="$(
+  df -Pk "$PODMAN_GRAPH_ROOT" | awk 'NR == 2 {print $4}'
+)"
+test "$PODMAN_AVAILABLE_KIB" -ge 209715200
+
+python3.11 - <<'PY'
+import json
+import os
+from pathlib import Path
+
+root = Path(os.environ["DIRECTLLM_SWE_VERIFIED_ROOT"])
+payload = json.loads(
+    root.joinpath("podman-docker-api-version.json").read_text()
+)
+api_version = payload.get("ApiVersion") or payload.get("APIVersion")
+assert api_version, payload
+parts = tuple(int(part) for part in api_version.split(".")[:2])
+assert parts >= (1, 41), (
+    f"Podman Docker API {api_version} is below the required 1.41"
+)
+assert "podman" in json.dumps(payload).lower(), payload
+print(f"podman_docker_api={api_version}")
+PY
+
+command -v nvidia-smi
 nvidia-smi \
   --query-gpu=index,name,memory.total,memory.free \
   --format=csv,noheader
 ```
 
-Do not silently point `DOCKER_HOST` at a rootless Podman socket. The failed
-run used such a compatibility socket, but the official SWE-agent plus official
-SWE-bench path has not been accepted on that runtime in this campaign. A
-Podman substitution needs its own one-task end-to-end qualification before it
-can replace the Docker contract here.
+The native CLI and socket must address the same Podman image store; Section 3
+checks this with the exact smoke-task image. Registry access is also a hard
+gate. If the site uses an offline transfer or registry mirror, preload and tag
+images with the exact `docker.io/swebench/...` names used below.
 
-Run long-lived vLLM and benchmark processes in named `tmux` sessions or in the
-same scheduler allocation. Do not rely on a background process surviving the
-end of an SSH shell.
+The operator must choose enough exclusive devices for the unchanged locked
+vLLM command. Successful vLLM startup and the tool-call smoke are the final
+memory qualification. Do not reduce `--max-model-len`, quantize the model, or
+change the KV-cache dtype to fit a smaller allocation; that creates a
+different benchmark condition.
+
+Run long-lived vLLM, Podman service, and benchmark processes in named `tmux`
+sessions or in the same scheduler allocation. Do not rely on a background
+process surviving the end of an SSH shell.
 
 ## 3. Prepare pinned checkouts
 
-Use a fresh directory. The commands intentionally do not involve an
-AlphaDiana checkout.
+Use a fresh directory apart from the Podman evidence written by Section 2.
+The commands intentionally do not involve an AlphaDiana checkout.
 
 ```bash
 set -euo pipefail
@@ -155,6 +251,8 @@ export GEMMA4_MODEL_REVISION=842da3794eaa0b77d5f08bae87a17459d91ff475
 mkdir -p "$DIRECTLLM_SWE_VERIFIED_ROOT"
 cd "$DIRECTLLM_SWE_VERIFIED_ROOT"
 
+test ! -e SWE-agent
+test ! -e SWE-bench
 git clone https://github.com/SWE-agent/SWE-agent.git
 git -C SWE-agent checkout --detach "$SWE_AGENT_COMMIT"
 
@@ -182,6 +280,12 @@ Verify the actual code and default-agent config before continuing:
 ```bash
 set -euo pipefail
 
+export PODMAN_SOCKET="$(
+  cat "$DIRECTLLM_SWE_VERIFIED_ROOT/podman-socket-path.txt"
+)"
+test -S "$PODMAN_SOCKET"
+export DOCKER_HOST="unix://$PODMAN_SOCKET"
+
 test "$(git -C SWE-agent rev-parse HEAD)" = "$SWE_AGENT_COMMIT"
 test "$(git -C SWE-bench rev-parse HEAD)" = "$SWE_BENCH_COMMIT"
 test \
@@ -206,6 +310,9 @@ test \
 ./.venv/bin/sweagent --version
 ./.venv/bin/python - <<'PY'
 import importlib.metadata as metadata
+import json
+import os
+from pathlib import Path
 
 expected = {
     "sweagent": "1.1.0",
@@ -224,8 +331,27 @@ for package, version in expected.items():
     print(f"{package}={actual}")
 
 import docker
-assert docker.from_env().ping()
-print("docker_sdk_ping=ok")
+
+client = docker.from_env()
+assert client.ping()
+api_version = client.api.api_version
+parts = tuple(int(part) for part in api_version.split(".")[:2])
+assert parts >= (1, 41), api_version
+server_version = client.version()
+assert "podman" in json.dumps(server_version).lower(), server_version
+
+evidence = {
+    "docker_host": os.environ["DOCKER_HOST"],
+    "docker_sdk_version": docker.__version__,
+    "negotiated_api_version": api_version,
+    "server_version": server_version,
+}
+root = Path(os.environ["DIRECTLLM_SWE_VERIFIED_ROOT"])
+root.joinpath("podman-runtime-qualification.json").write_text(
+    json.dumps(evidence, indent=2, sort_keys=True) + "\n",
+    encoding="utf-8",
+)
+print(f"podman_docker_sdk_api={api_version}")
 PY
 
 ./.venv/bin/pip freeze > environment.freeze.txt
@@ -236,6 +362,9 @@ GEMMA4_MODEL_REVISION=842da3794eaa0b77d5f08bae87a17459d91ff475
 VLLM_VERSION=0.19.1
 SWE_AGENT_COMMIT=3ea751c087f32b16e039a2233dd6eefecef325d5
 SWE_BENCH_COMMIT=f7bbbb2ccdf479001d6467c9e34af59e44a840f9
+CONTAINER_RUNTIME=podman
+PODMAN_DOCKER_API_MINIMUM=1.41
+SWE_BENCH_IMAGE_NAMESPACE=docker.io/swebench
 SWE_AGENT_DEFAULT_CONFIG_SHA256=96aeb863cbfaa768044527155f8555c9b401c6644e937b5b6b0bba5538b6eee4
 GEMMA4_CHAT_TEMPLATE_SHA256=ae53464bf3be25802b3a5b37def7fd89667067d7577049b3b2d74c4d8de4c6d4
 EOF
@@ -271,8 +400,20 @@ assert len(ids) == 50, len(ids)
 assert len(set(ids)) == 50
 
 output = Path(os.environ["DIRECTLLM_SWE_VERIFIED_ROOT"])
+images = [
+    (
+        "docker.io/swebench/sweb.eval.x86_64."
+        + instance_id.replace("__", "_1776_").lower()
+        + ":latest"
+    )
+    for instance_id in ids
+]
 output.joinpath("dataset-instance-ids.txt").write_text(
     "\n".join(ids) + "\n",
+    encoding="utf-8",
+)
+output.joinpath("task-images.txt").write_text(
+    "\n".join(images) + "\n",
     encoding="utf-8",
 )
 output.joinpath("dataset-snapshot-path.txt").write_text(
@@ -295,8 +436,92 @@ $DIRECTLLM_SWE_VERIFIED_ROOT/
 |-- dataset-snapshot-path.txt
 |-- environment.freeze.txt
 |-- locked-revisions.env
+|-- podman-docker-api-version.json
+|-- podman-info.json
+|-- podman-runtime-qualification.json
+|-- podman-socket-path.txt
+|-- podman-version.txt
+|-- task-images.txt
 `-- sweagent_results/
 ```
+
+Qualify the exact smoke-task image through both the native Podman CLI and the
+same compatibility socket that the evaluator will use:
+
+```bash
+set -euo pipefail
+
+export DIRECTLLM_SWE_VERIFIED_ROOT=/path/to/swe-bench-direct-gemma4
+export PODMAN_SOCKET="$(
+  cat "$DIRECTLLM_SWE_VERIFIED_ROOT/podman-socket-path.txt"
+)"
+test -S "$PODMAN_SOCKET"
+export DOCKER_HOST="unix://$PODMAN_SOCKET"
+export SMOKE_IMAGE=\
+docker.io/swebench/sweb.eval.x86_64.django_1776_django-11880:latest
+
+grep -Fx "$SMOKE_IMAGE" \
+  "$DIRECTLLM_SWE_VERIFIED_ROOT/task-images.txt"
+if ! podman image exists "$SMOKE_IMAGE"; then
+  podman pull "$SMOKE_IMAGE"
+fi
+podman image exists "$SMOKE_IMAGE"
+test "$(
+  podman image inspect --format '{{.Architecture}}' "$SMOKE_IMAGE"
+)" = "amd64"
+podman image inspect "$SMOKE_IMAGE" \
+  > "$DIRECTLLM_SWE_VERIFIED_ROOT/podman-smoke-image-inspect.json"
+
+export DIRECTLLM_SWE_VERIFIED_ROOT SMOKE_IMAGE
+"$DIRECTLLM_SWE_VERIFIED_ROOT/.venv/bin/python" - <<'PY'
+import json
+import os
+import uuid
+from pathlib import Path
+
+import docker
+
+client = docker.from_env()
+assert client.ping()
+client.images.get(os.environ["SMOKE_IMAGE"])
+
+container = None
+result = None
+try:
+    container = client.containers.create(
+        image=os.environ["SMOKE_IMAGE"],
+        command=["/bin/true"],
+        name=f"directllm-podman-api-smoke-{uuid.uuid4().hex[:12]}",
+        platform="linux/x86_64",
+    )
+    container.start()
+    result = container.wait(timeout=60)
+    assert result["StatusCode"] == 0, result
+finally:
+    if container is not None:
+        container.remove(force=True)
+
+evidence = {
+    "image": os.environ["SMOKE_IMAGE"],
+    "platform": "linux/x86_64",
+    "status_code": result["StatusCode"],
+}
+root = Path(os.environ["DIRECTLLM_SWE_VERIFIED_ROOT"])
+root.joinpath("podman-api-lifecycle-smoke.json").write_text(
+    json.dumps(evidence, indent=2, sort_keys=True) + "\n",
+    encoding="utf-8",
+)
+print("podman_api_lifecycle_smoke=ok")
+PY
+```
+
+This lifecycle check deliberately passes `platform=linux/x86_64`, matching
+the official evaluator's API call. If the CLI sees the image but
+`client.images.get()` does not, the native CLI and `PODMAN_SOCKET` point to
+different Podman stores; fix that before continuing. A pull failure must be
+resolved through site registry access, `podman load`, or an exact-name retag.
+Do not shorten the image name to `swebench/...`: Podman's short-name policy
+can reject it, and the pinned SWE-agent uses the fully qualified name.
 
 ## 4. Start the pinned Gemma 4 vLLM endpoint
 
@@ -324,14 +549,10 @@ export DIRECTLLM_SWE_VERIFIED_ROOT=/path/to/swe-bench-direct-gemma4
 export GEMMA4_MODEL_REVISION=842da3794eaa0b77d5f08bae87a17459d91ff475
 export VLLM_PORT=8011
 
-# A100 40 GB profile. Replace the IDs with four allocated, empty devices.
-export VLLM_GPUS=0,1,2,3
-export VLLM_TENSOR_PARALLEL=4
-
-# H200 141 GB profile:
-# export VLLM_GPUS=0,1
-# export VLLM_TENSOR_PARALLEL=2
-
+: "${VLLM_GPUS:?Set VLLM_GPUS to the allocated comma-separated device IDs}"
+: "${VLLM_TENSOR_PARALLEL:?Set VLLM_TENSOR_PARALLEL to the device count}"
+export VLLM_GPUS VLLM_TENSOR_PARALLEL
+test "$VLLM_TENSOR_PARALLEL" -gt 0
 test "$(awk -F, '{print NF}' <<<"$VLLM_GPUS")" \
   -eq "$VLLM_TENSOR_PARALLEL"
 
@@ -470,6 +691,14 @@ export DIRECTLLM_SWE_VERIFIED_ROOT=/path/to/swe-bench-direct-gemma4
 export SWE_MINI_DATASET_PATH="$(
   cat "$DIRECTLLM_SWE_VERIFIED_ROOT/dataset-snapshot-path.txt"
 )"
+export PODMAN_SOCKET="$(
+  cat "$DIRECTLLM_SWE_VERIFIED_ROOT/podman-socket-path.txt"
+)"
+test -S "$PODMAN_SOCKET"
+export DOCKER_HOST="unix://$PODMAN_SOCKET"
+export SMOKE_IMAGE=\
+docker.io/swebench/sweb.eval.x86_64.django_1776_django-11880:latest
+podman image exists "$SMOKE_IMAGE"
 export VLLM_PORT=8011
 export OPENAI_BASE_URL="http://127.0.0.1:${VLLM_PORT}/v1"
 export OPENAI_API_KEY=EMPTY
@@ -496,6 +725,7 @@ test ! -e "$SMOKE_RUN_DIR"
   --instances.shuffle=False \
   --instances.evaluate=False \
   --instances.deployment.type docker \
+  --instances.deployment.container_runtime podman \
   --instances.deployment.startup_timeout 1800 \
   --agent.model.name openai/gemma-4-31b-it \
   --agent.model.api_base "$OPENAI_BASE_URL" \
@@ -511,6 +741,11 @@ test ! -e "$SMOKE_RUN_DIR"
   --progress_bar False \
   2>&1 | tee "../logs/$SMOKE_RUN_ID.log"
 ```
+
+`instances.deployment.type=docker` is the SWE-ReX deployment schema name at
+this pinned revision. It does not select the executable. The separate
+`instances.deployment.container_runtime=podman` field is mandatory and must
+remain present in both agent commands.
 
 Require one non-empty, syntactically shaped prediction:
 
@@ -540,6 +775,15 @@ Run the official evaluator on that same prediction:
 ```bash
 set -euo pipefail
 
+export PODMAN_SOCKET="$(
+  cat "$DIRECTLLM_SWE_VERIFIED_ROOT/podman-socket-path.txt"
+)"
+test -S "$PODMAN_SOCKET"
+export DOCKER_HOST="unix://$PODMAN_SOCKET"
+test "$(
+  curl -fsS --unix-socket "$PODMAN_SOCKET" http://d/_ping
+)" = "OK"
+
 cd "$DIRECTLLM_SWE_VERIFIED_ROOT"
 ./.venv/bin/python -m swebench.harness.run_evaluation \
   --dataset_name "$SWE_MINI_DATASET_PATH" \
@@ -547,6 +791,7 @@ cd "$DIRECTLLM_SWE_VERIFIED_ROOT"
   --instance_ids "$SMOKE_INSTANCE" \
   --predictions_path "sweagent_results/$SMOKE_RUN_ID/preds.json" \
   --run_id "$SMOKE_RUN_ID" \
+  --namespace docker.io/swebench \
   --max_workers 1 \
   --timeout 1800 \
   2>&1 | tee "logs/eval-$SMOKE_RUN_ID.log"
@@ -602,6 +847,11 @@ export DIRECTLLM_SWE_VERIFIED_ROOT=/path/to/swe-bench-direct-gemma4
 export SWE_MINI_DATASET_PATH="$(
   cat "$DIRECTLLM_SWE_VERIFIED_ROOT/dataset-snapshot-path.txt"
 )"
+export PODMAN_SOCKET="$(
+  cat "$DIRECTLLM_SWE_VERIFIED_ROOT/podman-socket-path.txt"
+)"
+test -S "$PODMAN_SOCKET"
+export DOCKER_HOST="unix://$PODMAN_SOCKET"
 export VLLM_PORT=8011
 export OPENAI_BASE_URL="http://127.0.0.1:${VLLM_PORT}/v1"
 export OPENAI_API_KEY=EMPTY
@@ -613,6 +863,44 @@ export RUN_DIR="$DIRECTLLM_SWE_VERIFIED_ROOT/sweagent_results/$RUN_ID"
 
 test -s "$DIRECTLLM_SWE_VERIFIED_ROOT/smoke-run-id.txt"
 test ! -e "$RUN_ID_FILE"
+
+# Pre-stage every exact task image before spending the full model budget.
+while IFS= read -r image; do
+  if ! podman image exists "$image"; then
+    podman pull "$image"
+  fi
+  podman image exists "$image"
+done < "$DIRECTLLM_SWE_VERIFIED_ROOT/task-images.txt"
+
+export DIRECTLLM_SWE_VERIFIED_ROOT
+"$DIRECTLLM_SWE_VERIFIED_ROOT/.venv/bin/python" - <<'PY'
+import json
+import os
+from pathlib import Path
+
+import docker
+
+root = Path(os.environ["DIRECTLLM_SWE_VERIFIED_ROOT"])
+images = root.joinpath("task-images.txt").read_text().splitlines()
+assert len(images) == 50, len(images)
+
+client = docker.from_env()
+assert client.ping()
+inventory = []
+for name in images:
+    image = client.images.get(name)
+    inventory.append({
+        "id": image.id,
+        "name": name,
+        "repo_digests": image.attrs.get("RepoDigests") or [],
+    })
+
+root.joinpath("podman-task-image-inventory.json").write_text(
+    json.dumps(inventory, indent=2, sort_keys=True) + "\n",
+    encoding="utf-8",
+)
+print("podman_task_images_visible_to_evaluator=50")
+PY
 
 case "$RUN_ID" in
   *direct-noharness*)
@@ -639,6 +927,7 @@ mkdir -p ../sweagent_results
   --instances.shuffle=False \
   --instances.evaluate=False \
   --instances.deployment.type docker \
+  --instances.deployment.container_runtime podman \
   --instances.deployment.startup_timeout 1800 \
   --agent.model.name openai/gemma-4-31b-it \
   --agent.model.api_base "$OPENAI_BASE_URL" \
@@ -713,6 +1002,9 @@ assert len(list(run_dir.rglob("*.traj"))) == 50
 assert saved_config["num_workers"] == 4
 assert saved_config["instances"]["type"] == "swe_bench"
 assert saved_config["instances"]["deployment"]["type"] == "docker"
+assert (
+    saved_config["instances"]["deployment"]["container_runtime"] == "podman"
+)
 assert saved_config["agent"]["type"] == "default"
 assert saved_config["agent"]["tools"]["parse_function"]["type"] == (
     "function_calling"
@@ -760,6 +1052,14 @@ export SWE_MINI_DATASET_PATH="$(
 export RUN_ID="$(
   cat "$DIRECTLLM_SWE_VERIFIED_ROOT/full-run-id.txt"
 )"
+export PODMAN_SOCKET="$(
+  cat "$DIRECTLLM_SWE_VERIFIED_ROOT/podman-socket-path.txt"
+)"
+test -S "$PODMAN_SOCKET"
+export DOCKER_HOST="unix://$PODMAN_SOCKET"
+test "$(
+  curl -fsS --unix-socket "$PODMAN_SOCKET" http://d/_ping
+)" = "OK"
 
 cd "$DIRECTLLM_SWE_VERIFIED_ROOT"
 ./.venv/bin/python -m swebench.harness.run_evaluation \
@@ -767,6 +1067,7 @@ cd "$DIRECTLLM_SWE_VERIFIED_ROOT"
   --split test \
   --predictions_path "sweagent_results/$RUN_ID/preds.json" \
   --run_id "$RUN_ID" \
+  --namespace docker.io/swebench \
   --max_workers 4 \
   --timeout 1800 \
   2>&1 | tee "logs/eval-$RUN_ID.log"
@@ -873,8 +1174,19 @@ cp "$DIRECTLLM_SWE_VERIFIED_ROOT/environment.freeze.txt" "$RUN_DIR/"
 cp "$DIRECTLLM_SWE_VERIFIED_ROOT/locked-revisions.env" "$RUN_DIR/"
 cp "$DIRECTLLM_SWE_VERIFIED_ROOT/dataset-instance-ids.txt" "$RUN_DIR/"
 cp "$DIRECTLLM_SWE_VERIFIED_ROOT/dataset-snapshot-path.txt" "$RUN_DIR/"
+cp "$DIRECTLLM_SWE_VERIFIED_ROOT/task-images.txt" "$RUN_DIR/"
 cp "$DIRECTLLM_SWE_VERIFIED_ROOT/full-run-id.txt" "$RUN_DIR/"
 cp "$DIRECTLLM_SWE_VERIFIED_ROOT/smoke-run-id.txt" "$RUN_DIR/"
+cp \
+  "$DIRECTLLM_SWE_VERIFIED_ROOT/podman-version.txt" \
+  "$DIRECTLLM_SWE_VERIFIED_ROOT/podman-info.json" \
+  "$DIRECTLLM_SWE_VERIFIED_ROOT/podman-docker-api-version.json" \
+  "$DIRECTLLM_SWE_VERIFIED_ROOT/podman-runtime-qualification.json" \
+  "$DIRECTLLM_SWE_VERIFIED_ROOT/podman-socket-path.txt" \
+  "$DIRECTLLM_SWE_VERIFIED_ROOT/podman-smoke-image-inspect.json" \
+  "$DIRECTLLM_SWE_VERIFIED_ROOT/podman-api-lifecycle-smoke.json" \
+  "$DIRECTLLM_SWE_VERIFIED_ROOT/podman-task-image-inventory.json" \
+  "$RUN_DIR/"
 cp "$OFFICIAL_REPORT" "$RUN_DIR/official-evaluation-report.json"
 mkdir -p "$RUN_DIR/official-evaluation-logs"
 cp -a \
@@ -943,7 +1255,12 @@ overwrite an existing `vNN`.
 
 | Symptom | Decision |
 | --- | --- |
-| `docker info` fails | Fix Docker access or move to a qualified Docker host; do not silently substitute Podman |
+| `podman info` or native CLI access fails | Fix the account's Podman access; do not use `sudo` for only part of the run |
+| Podman socket is missing or `_ping` fails | Start the site-approved Podman API service and set `PODMAN_SOCKET` to its bare Unix path |
+| Socket API is below 1.41 | Upgrade/change the Podman service; the official evaluator cannot create its platform-qualified containers through this API |
+| CLI sees an image but Docker SDK does not | CLI and socket use different rootless/rootful stores; point both paths at the same Podman engine |
+| Fully qualified task image cannot be pulled | Fix registry access or preload and exact-tag the image before spending model budget |
+| Saved SWE-agent config does not say `container_runtime: podman` | Discard the run as a runtime configuration error |
 | vLLM tool smoke has no parsed `tool_calls` | Stop; fix the pinned template/parser/server path |
 | SWE-agent smoke has no `.traj`, `.pred`, or non-empty `diff --git` patch | Stop; the default-agent path is not functioning |
 | Smoke evaluator has no per-instance `report.json` | Stop; inspect patch-apply, image-build, and test logs |
@@ -960,6 +1277,8 @@ overwrite an existing `vNN`.
 - [SWE-agent model transport](https://github.com/SWE-agent/SWE-agent/blob/3ea751c087f32b16e039a2233dd6eefecef325d5/sweagent/agent/models.py)
 - [SWE-agent prediction merge](https://github.com/SWE-agent/SWE-agent/blob/3ea751c087f32b16e039a2233dd6eefecef325d5/sweagent/run/run_batch.py)
 - [Official SWE-bench evaluator](https://github.com/SWE-bench/SWE-bench/blob/f7bbbb2ccdf479001d6467c9e34af59e44a840f9/swebench/harness/run_evaluation.py)
+- [Podman system service and Docker-compatible API](https://docs.podman.io/en/latest/markdown/podman-system-service.1.html)
+- [SWE-agent fully qualified Podman image-name fix](https://github.com/SWE-agent/SWE-agent/pull/1291)
 - [vLLM 0.19.1 source](https://github.com/vllm-project/vllm/tree/v0.19.1)
 - [Pinned Gemma 4 model snapshot](https://huggingface.co/google/gemma-4-31B-it/tree/842da3794eaa0b77d5f08bae87a17459d91ff475)
 - [Pinned Verified Mini dataset snapshot](https://huggingface.co/datasets/MariusHobbhahn/swe-bench-verified-mini/tree/b316c349947c29963fce3f4a65967c9807a4b673)
