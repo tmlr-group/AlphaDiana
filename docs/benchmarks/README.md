@@ -9,9 +9,12 @@ runbook here.
 For the formalized `google/gemma-4-31B-it` SWE-bench Verified Mini matrix,
 use
 [`runbook-swebench-verified-mini-gemma4-31b.md`](runbook-swebench-verified-mini-gemma4-31b.md).
-It defines DirectLLM as the official standalone SWE-agent default-agent path
-with no AlphaDiana config; OpenClaw, OpenCode, and ZeroClaw use the checked-in
-AlphaDiana `swebench_container` configs under `configs/full_runs/`.
+For the DirectLLM cell, use the stricter
+[`runbook-swebench-verified-mini-directllm-gemma4-31b.md`](runbook-swebench-verified-mini-directllm-gemma4-31b.md).
+It pins the official standalone SWE-agent default-agent path and explicitly
+forbids the AlphaDiana `direct_llm` wrapper. OpenClaw, OpenCode, and ZeroClaw
+use the checked-in AlphaDiana `swebench_container` configs under
+`configs/full_runs/`.
 
 For the formalized AIME 2026 pass@32 × `Qwen/Qwen3.5-27B` matrix, use
 [`runbook-aime2026-pass32-qwen35-27b.md`](runbook-aime2026-pass32-qwen35-27b.md).

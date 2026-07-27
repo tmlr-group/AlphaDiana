@@ -27,9 +27,11 @@ therefore has no AlphaDiana experiment YAML. The three AlphaDiana
 - [`swe_verified_mini_zeroclaw_gemma4_31b.yaml`](swe_verified_mini_zeroclaw_gemma4_31b.yaml)
 
 Use the
-[`SWE-bench Verified Mini × Gemma 4 runbook`](../../docs/benchmarks/runbook-swebench-verified-mini-gemma4-31b.md)
-for the official DirectLLM command, the shared vLLM contract, validation,
-execution, and upload steps.
+[`SWE-bench Verified Mini x Gemma 4 matrix runbook`](../../docs/benchmarks/runbook-swebench-verified-mini-gemma4-31b.md)
+for the four-cell overview. The DirectLLM cell has a separate
+[`official SWE-agent runbook`](../../docs/benchmarks/runbook-swebench-verified-mini-directllm-gemma4-31b.md)
+with pinned revisions and hard validation gates; it does not use an
+AlphaDiana campaign manifest or experiment YAML.
 
 The AIME 2026 pass@32 × Qwen3.5-27B matrix is a separate sampling exception
 to the K/temperature rows below: it uses `num_samples: 32` at

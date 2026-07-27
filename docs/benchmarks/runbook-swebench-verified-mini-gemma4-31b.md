@@ -1,10 +1,10 @@
 # Runbook — SWE-Bench Verified Mini × Gemma 4 31B
 
-Formalized on 2026-07-24 for these four cells:
+Formalized on 2026-07-24 and corrected on 2026-07-27 for these four cells:
 
 | Cell | Execution path | Checked-in config |
 | --- | --- | --- |
-| DirectLLM | Official standalone SWE-agent, upstream default agent | None; follow §4 |
+| DirectLLM | Official standalone SWE-agent, upstream default agent | None; use the [dedicated DirectLLM runbook](runbook-swebench-verified-mini-directllm-gemma4-31b.md) |
 | OpenClaw | AlphaDiana `openclaw` + `swebench_container` | `configs/full_runs/swe_verified_mini_openclaw_gemma4_31b.yaml` |
 | OpenCode | AlphaDiana `opencode` + `swebench_container` | `configs/full_runs/swe_verified_mini_opencode_gemma4_31b.yaml` |
 | ZeroClaw | AlphaDiana `zeroclaw` + `swebench_container` | `configs/full_runs/swe_verified_mini_zeroclaw_gemma4_31b.yaml` |
@@ -13,6 +13,10 @@ DirectLLM deliberately has no AlphaDiana experiment YAML. In this matrix,
 “DirectLLM” means the official SWE-agent path using upstream
 `config/default.yaml`. The other three cells run the agent inside each
 SWE-bench task container through AlphaDiana.
+
+Do not use an AlphaDiana `direct_llm` YAML as a substitute. The
+`20260724-...-direct-noharness-...-v01` run used that wrong path and is not
+valid DirectLLM baseline evidence.
 
 ## 1. Locked parameter contract
 
@@ -23,11 +27,11 @@ SWE-bench task container through AlphaDiana.
 | Temperature | `0.0` | SWE-agent CLI or AlphaDiana agent config |
 | Sample K | `1` | One SWE-agent attempt or `num_samples: 1` |
 | Maximum model length | `262144` (256K) | vLLM `--max-model-len` |
-| Maximum output tokens | `131072` (128K) | SWE-agent CLI or AlphaDiana agent config |
+| Maximum output tokens | `131072` (128K) | SWE-agent `completion_kwargs.max_tokens` or AlphaDiana agent config |
 | Top-p | `0.95` | SWE-agent CLI or AlphaDiana agent config |
 | Presence penalty | `1.5` | Shared vLLM generation default |
 | Thinking | `true` | vLLM default plus AlphaDiana request override |
-| Streaming | `true` | SWE-agent transport or native agent transport |
+| Streaming | DirectLLM: `false`; other cells: `true` | Pinned upstream SWE-agent behavior or native agent transport |
 | Maximum concurrency | `4` | SWE-agent `--num_workers` or AlphaDiana `max_concurrent` |
 | HF repository | `T-MARS/alphadiana-benchmark-results` (private dataset) | Upload step |
 | HF folder | `YYYYMMDD-dataset-agent-model-vNN` | Run ID and upload destination |
@@ -41,62 +45,47 @@ official SWE-agent path does not write AlphaDiana logprob sidecars.
 
 ## 2. Host and checkout prerequisites
 
-Run all AlphaDiana commands from the repository root. Required:
+Run all AlphaDiana commands from the repository root. For DirectLLM, use the
+separate checkout and host gates in the
+[dedicated runbook](runbook-swebench-verified-mini-directllm-gemma4-31b.md).
+Required:
 
 - Docker works without `sudo` (`docker ps` succeeds).
 - The AlphaDiana environment is installed and activated.
 - At least 200 GB of free space is available for task images and artifacts.
 - The three checked-in configs pass `python -m alphadiana.cli validate`.
-- A separate official SWE-agent checkout exists for DirectLLM.
-
-Create the official-agent layout once:
-
-```bash
-export DIRECTLLM_SWE_VERIFIED_ROOT=/path/to/swe-bench-root
-mkdir -p "$DIRECTLLM_SWE_VERIFIED_ROOT"
-cd "$DIRECTLLM_SWE_VERIFIED_ROOT"
-
-git clone https://github.com/SWE-agent/SWE-agent
-python3.11 -m venv .venv
-./.venv/bin/pip install -U pip
-./.venv/bin/pip install -e SWE-agent
-./.venv/bin/pip install swebench huggingface_hub
-```
-
-Expected layout:
-
-```text
-$DIRECTLLM_SWE_VERIFIED_ROOT/
-├── .venv/
-├── SWE-agent/
-│   └── config/default.yaml
-└── sweagent_results/
-```
+- The dedicated DirectLLM version, Docker, tool-call, and one-task smoke gates
+  pass before its full run.
 
 ## 3. Start the shared Gemma 4 vLLM endpoint
 
-Set `GEMMA4_CHAT_TEMPLATE` to the
-`examples/tool_chat_template_gemma4.jinja` shipped by the installed vLLM
-release.
+Use the canonical chat template from the pinned model revision. Do not replace
+it with vLLM's separate example template.
 
 ```bash
 export VLLM_PORT=8011
-export VLLM_GPUS=0,1
-export VLLM_TENSOR_PARALLEL=2
-export GEMMA4_CHAT_TEMPLATE=/path/to/examples/tool_chat_template_gemma4.jinja
+# A100 40 GB: allocate four devices and use TP=4.
+# H200 141 GB: two devices with TP=2 are sufficient.
+export VLLM_GPUS=0,1,2,3
+export VLLM_TENSOR_PARALLEL=4
+export GEMMA4_MODEL_REVISION=842da3794eaa0b77d5f08bae87a17459d91ff475
 
 CUDA_VISIBLE_DEVICES="$VLLM_GPUS" \
 vllm serve google/gemma-4-31B-it \
+  --revision "$GEMMA4_MODEL_REVISION" \
+  --code-revision "$GEMMA4_MODEL_REVISION" \
+  --tokenizer-revision "$GEMMA4_MODEL_REVISION" \
   --host 0.0.0.0 \
   --port "$VLLM_PORT" \
   --trust-remote-code \
   --enable-auto-tool-choice \
   --tool-call-parser gemma4 \
   --reasoning-parser gemma4 \
-  --chat-template "$GEMMA4_CHAT_TEMPLATE" \
   --default-chat-template-kwargs '{"enable_thinking":true}' \
   --enable-prefix-caching \
   --tensor-parallel-size "$VLLM_TENSOR_PARALLEL" \
+  --dtype bfloat16 \
+  --kv-cache-dtype auto \
   --gpu-memory-utilization 0.90 \
   --max-model-len 262144 \
   --generation-config vllm \
@@ -104,64 +93,22 @@ vllm serve google/gemma-4-31B-it \
   --served-model-name gemma-4-31b-it google/gemma-4-31B-it
 ```
 
-The default chat-template setting is required for DirectLLM because upstream
-SWE-agent's default config does not expose AlphaDiana's request-level
-`enable_thinking` option.
+The server-level `enable_thinking` default applies to DirectLLM because
+upstream SWE-agent does not send AlphaDiana's request-level override.
 
 ## 4. DirectLLM: official default SWE-agent
 
-This is the official standalone path and intentionally does not use an
-AlphaDiana YAML.
+This is the official standalone path and intentionally does not use any
+AlphaDiana CLI, YAML, patch extractor, scorer, or result writer. Follow the
+[dedicated DirectLLM runbook](runbook-swebench-verified-mini-directllm-gemma4-31b.md)
+end to end. It pins the full stack and requires a vLLM tool-call smoke, a
+one-task SWE-agent plus official-evaluator smoke, 50 exact predictions, valid
+patch headers, and an official report with zero infrastructure errors.
 
-```bash
-export OPENAI_BASE_URL="http://127.0.0.1:${VLLM_PORT}/v1"
-export OPENAI_API_KEY=EMPTY
-export RUN_ID="$(date -u +%Y%m%d)-swe_bench_verified_mini-directllm-gemma-4-31b-it-v01"
-
-cd "$DIRECTLLM_SWE_VERIFIED_ROOT/SWE-agent"
-mkdir -p ../sweagent_results
-
-OPENAI_BASE_URL="$OPENAI_BASE_URL" OPENAI_API_KEY="$OPENAI_API_KEY" \
-../.venv/bin/sweagent run-batch \
-  --config config/default.yaml \
-  --output_dir "../sweagent_results/$RUN_ID" \
-  --num_workers 4 \
-  --random_delay_multiplier 0 \
-  --instances.type swe_bench \
-  --instances.path_override MariusHobbhahn/swe-bench-verified-mini \
-  --instances.subset verified \
-  --instances.split test \
-  --instances.shuffle=False \
-  --instances.evaluate=False \
-  --instances.deployment.type docker \
-  --instances.deployment.startup_timeout 1800 \
-  --agent.model.name openai/gemma-4-31b-it \
-  --agent.model.api_base "$OPENAI_BASE_URL" \
-  --agent.model.api_key "$OPENAI_API_KEY" \
-  --agent.model.temperature 0.0 \
-  --agent.model.top_p 0.95 \
-  --agent.model.max_output_tokens 131072 \
-  --agent.model.per_instance_cost_limit 0 \
-  --agent.model.total_cost_limit 0 \
-  --agent.model.per_instance_call_limit 80 \
-  --progress_bar False
-```
-
-Then run the official evaluator:
-
-```bash
-cd "$DIRECTLLM_SWE_VERIFIED_ROOT"
-./.venv/bin/python -m swebench.harness.run_evaluation \
-  --dataset_name MariusHobbhahn/swe-bench-verified-mini \
-  --split test \
-  --predictions_path "sweagent_results/$RUN_ID/preds.json" \
-  --run_id "$RUN_ID" \
-  --max_workers 4
-```
-
-If the installed SWE-agent revision writes only per-instance `.pred` files,
-use that checkout's patch-gather helper to produce `preds.json`, then rerun
-only the evaluation command.
+Do not copy an older DirectLLM command from this file's Git history. In
+particular, `agent.model.max_output_tokens` alone does not send the output cap
+on the pinned OpenAI/LiteLLM path; the dedicated command also sets
+`completion_kwargs.max_tokens`.
 
 ## 5. AlphaDiana environment and config validation
 
@@ -262,13 +209,8 @@ The task count must be 50. Inspect any row whose `score_status` is not
 `valid_scored`; task files store sample lists, so inspect `data[0]` rather
 than treating the JSON root as a result record.
 
-For DirectLLM:
-
-```bash
-find "$DIRECTLLM_SWE_VERIFIED_ROOT/sweagent_results/$RUN_ID" \
-  -name '*.pred' | wc -l
-test -f "$DIRECTLLM_SWE_VERIFIED_ROOT/sweagent_results/$RUN_ID/preds.json"
-```
+For DirectLLM, use the stronger prediction and official-report acceptance
+gates in its dedicated runbook. A file-existence check alone is insufficient.
 
 ## 9. Upload to the private HF dataset
 
@@ -293,9 +235,9 @@ huggingface-cli upload \
   --token "$HF_HUB_WRITE_TOKEN"
 ```
 
-For DirectLLM, set `RESULTS_LOCAL` to
-`$DIRECTLLM_SWE_VERIFIED_ROOT/sweagent_results/$RUN_ID` and upload the
-directory. There is no AlphaDiana sibling JSONL on that path.
+For DirectLLM, follow its dedicated artifact and upload section. It includes
+the SWE-agent run, official evaluation report and logs, pinned revisions, and
+environment freeze. There is no AlphaDiana sibling JSONL on that path.
 
 Never overwrite an existing `vNN`. Bump `v01` to the next free two-digit
 version for a repaired or repeated run.
