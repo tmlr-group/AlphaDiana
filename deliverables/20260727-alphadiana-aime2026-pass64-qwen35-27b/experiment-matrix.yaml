@@ -1,0 +1,69 @@
+schema_version: 1
+formalized_on: "2026-07-27"
+
+dataset:
+  display_name: "AIME 2026"
+  hf_id: "MathArena/aime_2026"
+  split: "train"
+  expected_tasks: 30
+
+model:
+  hf_id: "Qwen/Qwen3.5-27B"
+  served_aliases:
+    - "Qwen/Qwen3.5-27B"      # OpenClaw env, ZeroClaw
+    - "qwen/qwen3.5-27b"      # OpenCode controller
+  max_model_length: 262144
+  max_tokens: 131072
+
+generation:
+  temperature: 0.6            # Qwen thinking-mode recommendation; 0.0 would degenerate pass@64 to pass@1
+  top_p: 0.95
+  thinking: true
+  presence_penalty: null      # deliberately unset; not injectable from agent config on any harness
+
+execution:
+  sample_k: 64
+  sampling_mode: "pass@64"
+  max_concurrent_per_harness: 3
+  parallel_harnesses: 3       # run_all.sh launches all three at once (~9 concurrent requests)
+  task_retries: 2
+  task_retry_on_recoverable_only: true
+  run_order: parallel
+
+observability:
+  capture_logprobs: true
+  top_logprobs: 20
+  rationale: "Kept identical to the proven Tool-axis cells; enables token-entropy analysis. Budget >=200GB disk."
+
+runs:
+  openclaw:
+    execution_path: "alphadiana_rock_gateway"
+    alphadiana_config: "configs/openclaw.yaml"
+    derived_from: "configs/micro_runs/Tool/aime2026_openclaw_qwen35_27b.yaml"
+    run_id: "full_aime2026_pass64_openclaw_qwen35_27b_v01"
+  opencode:
+    execution_path: "alphadiana_docker_controller"
+    alphadiana_config: "configs/opencode.yaml"
+    derived_from: "configs/micro_runs/Tool/aime2026_opencode_qwen35_27b.yaml"
+    run_id: "full_aime2026_pass64_opencode_qwen35_27b_v01"
+    parameter_notes:
+      presence_penalty: "source cell carried presence_penalty=1.5, a config-level no-op on every harness; removed here"
+  zeroclaw:
+    execution_path: "alphadiana_rock_sandbox"
+    alphadiana_config: "configs/zeroclaw.yaml"
+    derived_from: "configs/micro_runs/Tool/aime2026_zeroclaw_qwen35_27b.yaml"
+    run_id: "full_aime2026_pass64_zeroclaw_qwen35_27b_v01"
+    parameter_notes:
+      streaming: "native ZeroClaw CLI owns provider streaming; no separate YAML transport switch"
+
+directllm:
+  included: false
+  rationale: "Not part of this campaign per the experiment request."
+
+huggingface:
+  repo_id: "T-MARS/alphadiana-benchmark-results"
+  repo_type: "dataset"
+  visibility: "private"
+  folder_pattern: "YYYYMMDD-dataset-agent-model-vNN"
+  resolved_leaf_pattern: "YYYYMMDD-aime-2026-<agent>-qwen35-27b-vNN"
+  default_version: "v01"
