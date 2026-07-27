@@ -2,16 +2,17 @@
 # Parameter contract: T=0.0, K=1, top_p=0.95, max_tokens=131072,
 # max_concurrent=4, request_timeout=3600.
 #
-# NOTE: The canonical DirectLLM-style SWE-mini path goes through the
-# standalone SWE-agent CLI driven by the campaign manifest at
-# configs/full_runs/swe_verified_mini.yaml. The cell runbook documents
-# the env overrides needed to point that manifest at this model.
+# WARNING: This is NOT the scored DirectLLM baseline entry point.
+# The canonical Gemma 4 DirectLLM path bypasses AlphaDiana completely
+# and runs pinned official SWE-agent config/default.yaml followed by
+# the official SWE-bench evaluator. Follow:
+# docs/benchmarks/runbook-swebench-verified-mini-directllm-gemma4-31b.md
 #
 # This YAML is a thin AlphaDiana direct_llm wrapper for callers who
 # want to run the chat-completions layer against the verified-mini
-# dataset without the SWE-agent loop. Patches are NOT executed
-# against the SWE-bench harness in this path — use the campaign
-# manifest for scored runs.
+# dataset without the SWE-agent loop. Its generic free-form answer
+# extraction is not patch-safe. Do not score, resume, or publish its
+# output as the DirectLLM SWE-agent cell.
 
 run_id: "swe_bench_verified_mini_directllm_gemma_4_31b_it_cell"
 
@@ -65,4 +66,4 @@ num_samples: 1
 output_dir: "./results"
 metadata:
   experiment: "swe_bench_verified_mini-directllm-gemma-4-31b-it"
-  notes: "DirectLLM chat-completions layer only. For scored runs use configs/full_runs/swe_verified_mini.yaml (SWE-agent CLI campaign)."
+  notes: "Exploratory AlphaDiana chat-completions wrapper only; never use as the scored DirectLLM SWE-agent baseline. Follow docs/benchmarks/runbook-swebench-verified-mini-directllm-gemma4-31b.md."
