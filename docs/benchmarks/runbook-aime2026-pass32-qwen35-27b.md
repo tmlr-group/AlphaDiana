@@ -1,6 +1,11 @@
-# Runbook — AIME 2026 pass@32 × Qwen3.5-27B
+# Runbook — AIME 2026 pass@64 × Qwen3.5-27B
 
 Formalized on 2026-07-27 for these three cells, launched **in parallel**:
+
+> **Run target: pass@64.** Each task must run 64 samples in every cell. The
+> retained `pass32` strings in this runbook's filename and the three config
+> filenames are compatibility-only identifiers; they do not define the sample
+> count.
 
 | Cell | Execution path | Checked-in config |
 | --- | --- | --- |
@@ -20,7 +25,7 @@ config); the YAML headers list the exact fields changed.
 | Dataset | `MathArena/aime_2026`, `train`, 30 tasks | AlphaDiana benchmark block |
 | Model | `Qwen/Qwen3.5-27B` | vLLM and agent settings |
 | Temperature | `0.6` | AlphaDiana agent config |
-| Sample K | `32` (pass@32) | `num_samples: 32` |
+| Sample K | `64` (pass@64) | `num_samples: 64` |
 | Maximum model length | `262144` (256K) | vLLM `--max-model-len` |
 | Maximum output tokens | `131072` (128K) | AlphaDiana agent config |
 | Top-p | `0.95` | AlphaDiana agent config |
@@ -37,9 +42,9 @@ Presence penalty and model length are server properties. They appear in config
 metadata for auditability but are enforced by the vLLM launch, not by
 AlphaDiana request rewriting.
 
-Sizing: 30 tasks × 32 samples = 960 work items per cell, 2880 total. The
-AlphaDiana run summary prints Pass@32 directly (a task passes when any of its
-32 samples is correct).
+Sizing: 30 tasks × 64 samples = 1920 work items per cell, 5760 total. The
+AlphaDiana run summary prints Pass@64 directly (a task passes when any of its
+64 samples is correct).
 
 ## 2. Host and checkout prerequisites
 
@@ -62,8 +67,8 @@ python -m alphadiana.cli env
   [`configs/full_runs/README.md`](../../configs/full_runs/README.md).
 - RAM headroom for 6 concurrent ROCK sandboxes at `rock_memory: 4g` plus 3
   OpenCode controllers: plan for ≥32 GB free.
-- Disk headroom for 2880 samples with top-20 logprob sidecars under long
-  thinking chains: plan for ≥100 GB free under `results/`.
+- Disk headroom for 5760 samples with top-20 logprob sidecars under long
+  thinking chains: plan for ≥200 GB free under `results/`.
 - The three checked-in configs pass `python -m alphadiana.cli validate`.
 
 ## 3. Start the shared Qwen3.5 vLLM endpoint
@@ -128,7 +133,7 @@ Use unique smoke run IDs so the full-run checkpoints are never polluted. Two
 samples per task make the smoke also prove sampling diversity: at
 temperature 0.6 the two outputs must differ. If they are byte-identical, the
 sampling parameters are not reaching the server — fix that before burning
-2880 full-run samples on a degenerate pass@32.
+5760 full-run samples on a degenerate pass@64.
 
 ```bash
 for agent in openclaw opencode zeroclaw; do
@@ -158,7 +163,7 @@ mkdir -p logs
 
 for agent in openclaw opencode zeroclaw; do
   RUN_ID="${RUN_DATE}-aime_2026-${agent}-qwen3.5-27b-v01"
-  tmux new-session -d -s "aime32_${agent}" \
+  tmux new-session -d -s "aime64_${agent}" \
     "python -m alphadiana.cli run \
        configs/full_runs/aime2026_pass32_${agent}_qwen35_27b.yaml \
        -o run_id=${RUN_ID} 2>&1 | tee logs/${RUN_ID}.log"
@@ -170,7 +175,7 @@ Reusing a run ID resumes from AlphaDiana checkpoints; completed samples are
 not redone. Do not add `--redo-all` to a resume. For a repaired rerun, bump
 `v01` to the next free version.
 
-Wall-clock is roughly `960 × avg_sample_minutes ÷ 3` per cell; take
+Wall-clock is roughly `1920 × avg_sample_minutes ÷ 3` per cell; take
 `avg_sample_minutes` from the smoke. Raise concurrency only with explicit
 `-o max_concurrent=N` overrides after checking vLLM queue headroom, and raise
 OpenClaw's `-o agent.config.num_sandboxes=N` to match.
@@ -186,18 +191,18 @@ python - "$RUN_ID" <<'PY'
 import json, sys
 run_id = sys.argv[1]
 rows = [json.loads(l) for l in open(f"results/{run_id}.jsonl") if l.strip()]
-assert len(rows) == 960, f"expected 960 rows, got {len(rows)}"
+assert len(rows) == 1920, f"expected 1920 rows, got {len(rows)}"
 by_task = {}
 for r in rows:
     by_task.setdefault(r["task_id"], []).append(r)
 assert len(by_task) == 30
 bad = {s for r in rows if (s := r.get("score_status")) != "valid_scored"}
 passed = sum(any(r.get("correct") for r in v) for v in by_task.values())
-print(f"pass@32 = {passed}/30 = {passed/30:.4f}; non-valid statuses: {bad or 'none'}")
+print(f"pass@64 = {passed}/30 = {passed/30:.4f}; non-valid statuses: {bad or 'none'}")
 PY
 ```
 
-The task count must be 30 and the aggregate JSONL must hold 960 rows with 32
+The task count must be 30 and the aggregate JSONL must hold 1920 rows with 64
 samples per task. `strict_report: true` makes the runner exit non-zero when
 samples are missing or non-valid. Task JSON files store sample lists — inspect
 `data[0]`, not the JSON root.
@@ -245,6 +250,6 @@ a repaired or repeated run.
 - Timeout-scored-zero semantics from
   [`configs/full_runs/README.md`](../../configs/full_runs/README.md) apply
   unchanged: harness timeouts persist as scored-zero samples, which lowers
-  pass@32 rather than blocking completion.
+  pass@64 rather than blocking completion.
 - This runbook targets the Docker/ROCK runtime. Re-formalize before
   substituting Podman.
