@@ -13,6 +13,12 @@ It defines DirectLLM as the official standalone SWE-agent default-agent path
 with no AlphaDiana config; OpenClaw, OpenCode, and ZeroClaw use the checked-in
 AlphaDiana `swebench_container` configs under `configs/full_runs/`.
 
+For the formalized AIME 2026 pass@32 × `Qwen/Qwen3.5-27B` matrix, use
+[`runbook-aime2026-pass32-qwen35-27b.md`](runbook-aime2026-pass32-qwen35-27b.md).
+It runs the OpenClaw, OpenCode, and ZeroClaw cells in parallel (no DirectLLM
+cell) from the checked-in `aime2026_pass32_*` configs under
+`configs/full_runs/`.
+
 For opt-in Podman experiments, start with
 [`podman.md`](podman.md). It covers image setup, standard-reasoning pilot
 commands, nightly validation, task-container smokes, result inspection, and the
