@@ -31,6 +31,20 @@ Use the
 for the official DirectLLM command, the shared vLLM contract, validation,
 execution, and upload steps.
 
+The AIME 2026 pass@32 × Qwen3.5-27B matrix is a separate sampling exception
+to the K/temperature rows below: it uses `num_samples: 32` at
+`temperature: 0.6` with `presence_penalty: 1.5` enforced server-side, and its
+three cells (no DirectLLM) launch in parallel at `max_concurrent: 3` each:
+
+- [`aime2026_pass32_openclaw_qwen35_27b.yaml`](aime2026_pass32_openclaw_qwen35_27b.yaml)
+- [`aime2026_pass32_opencode_qwen35_27b.yaml`](aime2026_pass32_opencode_qwen35_27b.yaml)
+- [`aime2026_pass32_zeroclaw_qwen35_27b.yaml`](aime2026_pass32_zeroclaw_qwen35_27b.yaml)
+
+Use the
+[`AIME 2026 pass@32 runbook`](../../docs/benchmarks/runbook-aime2026-pass32-qwen35-27b.md)
+for the shared vLLM contract, validation, smokes, parallel execution,
+completion checks, and upload steps.
+
 ## Active Inventory
 
 | Benchmark | DirectLLM | OpenCode | OpenClaw | ZeroClaw |
