@@ -1,9 +1,9 @@
-# FULL RUN: AIME 2026 pass@32 x ZeroClaw on local Qwen/Qwen3.5-27B.
+# FULL RUN: AIME 2026 pass@64 x ZeroClaw on local Qwen/Qwen3.5-27B.
 # Derived from aime2026_zeroclaw_qwen35_27b_logprobs.yaml (2026-05-29 contract);
-# changes: num_samples 4->32, max_concurrent 4->3, run_id, metadata.
+# changes: num_samples 4->64, max_concurrent 4->3, run_id, metadata.
 # See docs/benchmarks/runbook-aime2026-pass32-qwen35-27b.md.
 
-run_id: "full_aime2026_pass32_zeroclaw_qwen35_27b_v01"
+run_id: "full_aime2026_pass64_zeroclaw_qwen35_27b_v01"
 
 agent:
   name: zeroclaw
@@ -55,7 +55,7 @@ scorer:
     tolerance: 1e-6
 
 max_concurrent: 3
-num_samples: 32
+num_samples: 64
 task_retries: 2
 output_dir: "./results"
 strict_report: true
@@ -63,11 +63,11 @@ strict_isolation: true
 metadata:
   benchmark_display_name: "AIME 2026"
   model_hf_id: "Qwen/Qwen3.5-27B"
-  sampling_mode: "pass@32"
+  sampling_mode: "pass@64"
   max_model_length: 262144
   presence_penalty: 1.5
   streaming: true
   thinking: true
   hf_repo: "T-MARS/alphadiana-benchmark-results"
   hf_folder_pattern: "YYYYMMDD-aime_2026-zeroclaw-qwen3.5-27b-vNN"
-  notes: "AIME 2026 pass@32 cell: T=0.6, K=32, max_concurrent=3 per cell with the three harness cells launched in parallel (~9 total). Streaming is owned by the native ZeroClaw CLI transport. Presence penalty and model length are vLLM server properties recorded here for auditability."
+  notes: "AIME 2026 pass@64 cell: T=0.6, K=64, max_concurrent=3 per cell with the three harness cells launched in parallel (~9 total). Streaming is owned by the native ZeroClaw CLI transport. Presence penalty and model length are vLLM server properties recorded here for auditability."
