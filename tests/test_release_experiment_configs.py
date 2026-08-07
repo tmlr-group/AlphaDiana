@@ -68,3 +68,12 @@ def test_checkout_local_rock_ports_are_not_versioned():
     assert not (REPO_ROOT / "scripts" / ".rock_ports.env").exists()
     gitignore = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
     assert "scripts/.rock_ports.env" in gitignore
+
+
+def test_launchers_allocate_checkout_local_ports_before_loading_rock_env():
+    for launcher_name in ("start_openclaw.sh", "start_zeroclaw.sh"):
+        script = (REPO_ROOT / "scripts" / launcher_name).read_text(encoding="utf-8")
+        allocation = script.index('if [ ! -f "${SCRIPT_DIR}/.rock_ports.env" ]')
+        first_source = script.index('source "${SCRIPT_DIR}/rock_env.sh"')
+        assert allocation < first_source
+        assert '--write-env "${SCRIPT_DIR}/.rock_ports.env"' in script

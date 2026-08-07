@@ -73,6 +73,14 @@ if [ "${_rock_installed}" != "${_rock_expected}" ]; then
     exit 1
 fi
 
+# A release clone must allocate its own complete port set before loading ROCK.
+# Otherwise an empty checkout can silently reuse a healthy Ray/Redis listener
+# on the conventional default ports even though admin/proxy are not running.
+if [ ! -f "${SCRIPT_DIR}/.rock_ports.env" ]; then
+    "${PYTHON}" "${SCRIPT_DIR}/find_rock_ports.py" \
+        --write-env "${SCRIPT_DIR}/.rock_ports.env" >/dev/null
+fi
+
 source "${SCRIPT_DIR}/rock_env.sh"
 
 # Mirror OpenClaw's control-plane hardening on the ZeroClaw path too.
