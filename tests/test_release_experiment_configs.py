@@ -61,3 +61,10 @@ def test_zeroclaw_launcher_does_not_stop_containers_by_shared_image():
     script = (REPO_ROOT / "scripts" / "start_zeroclaw.sh").read_text(encoding="utf-8")
     assert 'docker ps -q --filter "ancestor=' not in script
     assert "docker stop ${_old_containers}" not in script
+
+
+def test_checkout_local_rock_ports_are_not_versioned():
+    """A fresh clone must not inherit another machine's ROCK state."""
+    assert not (REPO_ROOT / "scripts" / ".rock_ports.env").exists()
+    gitignore = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
+    assert "scripts/.rock_ports.env" in gitignore
