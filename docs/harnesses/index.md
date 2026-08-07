@@ -21,7 +21,6 @@ These memory paths are opt-in and now exist in the current source. They are not 
 
 The agent registry also contains:
 
-- `moltbench_docker` and `moltbench_podman`;
 - `swebench_docker`;
 - `terminal_bench2_docker`, `terminal_bench2_openclaw`, `terminal_bench2_opencode`, and `terminal_bench2_zeroclaw`.
 

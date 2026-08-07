@@ -23,8 +23,6 @@ The tables below reflect the registrations imported by `Runner.setup()` in the c
 | `hle` | Humanity's Last Exam |
 | `imo_answerbench` | IMO AnswerBench |
 | `mmmu_pro` | MMMU-Pro multimodal tasks |
-| `moltbench` | MoltBench |
-| `moltbench_qjl` | MoltBench QJL |
 | `swe_bench` | SWE-bench |
 | `swebench_pro_os` | SWE-bench Pro open-source split |
 | `terminal_bench2` | TerminalBench 2 |
@@ -39,8 +37,6 @@ The first four are generic harness families. The remaining keys are benchmark-sp
 | `openclaw` | Generic OpenClaw harness, including the DecodingTrust runtime backend |
 | `opencode` | Generic OpenCode CLI harness |
 | `zeroclaw` | Generic ZeroClaw CLI harness |
-| `moltbench_docker` | MoltBench Docker adapter |
-| `moltbench_podman` | MoltBench Podman adapter |
 | `swebench_docker` | SWE-bench task-container adapter |
 | `terminal_bench2_docker` | TerminalBench 2 baseline adapter |
 | `terminal_bench2_openclaw` | TerminalBench 2 OpenClaw adapter |
@@ -69,8 +65,6 @@ The first four are generic harness families. The remaining keys are benchmark-sp
 | `swe_bench` | Official SWE-bench evaluation adapter |
 | `swebench_pro` | SWE-bench Pro evaluator |
 | `terminal_bench2` | Verifier reward scorer |
-| `moltbench` | MoltBench verifier |
-| `moltbench_qjl` | Host-owned QJL artifact scorer |
 | `decodingtrust` | DTAP task/attack judge adapter |
 
 ## Registration forms

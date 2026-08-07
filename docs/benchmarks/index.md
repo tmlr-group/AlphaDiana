@@ -42,8 +42,7 @@ per-benchmark, never as one type:
 
 - **String** for text, multiple-choice, and patch benchmarks: `aime`, `gpqa_diamond`,
   `hle`, `mmmu_pro`, `imo_answerbench`, `custom`, and the SWE-bench patch.
-- **Dict** for `swebench_pro_os` (`{instance_id, repo, base_commit}`),
-  `moltbench` (`{level, problem_id, name}`), and `moltbench_qjl` (the baseline).
+- **Dict** for `swebench_pro_os` (`{instance_id, repo, base_commit}`).
 - **`None`** for `decodingtrust`; its DTAP judge uses task metadata and the
   recorded response trajectory.
 - **The literal string `"1"`** for `terminal_bench2`: the scorer compares
@@ -78,8 +77,6 @@ an explicit `BenchmarkRegistry.register(<name>, <cls>)` call or the
 | `swe_bench` | `swe_bench` | `SWE-bench/SWE-bench_Verified`; ground truth is a patch. |
 | `swebench_pro_os` | `swebench_pro` | `ScaleAI/SWE-bench_Pro`; ground truth is a dict. |
 | `terminal_bench2` | `terminal_bench2` | Local task tree; ground truth is `"1"`. |
-| `moltbench` | `moltbench` | KernelBench GPU-kernel optimization. |
-| `moltbench_qjl` | `moltbench_qjl` | Protected-verifier QJL CUDA optimization task. |
 | `decodingtrust` | `decodingtrust` | DecodingTrust Agent Platform tasks and judge. |
 
 Note that the SWE-bench Pro registry name is `swebench_pro_os` (class
@@ -106,9 +103,8 @@ and the table above as the complete shipped inventory.
 
 Registration is import-side-effect driven. Importing the package does not
 auto-load every loader, so `Runner.setup()` (`alphadiana/engine/runner.py`)
-explicitly imports all 12 shipped benchmark registrations (including
-`moltbench.qjl` and DecodingTrust, plus scorer and harness modules) before
-resolving the class:
+explicitly imports all 10 shipped benchmark registrations (including
+DecodingTrust, plus scorer and harness modules) before resolving the class:
 
 ```python
 BenchmarkRegistry.get(self.config.benchmark_name)
@@ -151,7 +147,6 @@ to every benchmark; see the per-benchmark page for the full set.
 | `subset` / `instance_ids` / `repos` | `swebench_pro_os` | `smoke` (default) vs `all`; explicit instance/repo filters. |
 | `task_ids` / `taskset_path` / `include_hints` | `swe_bench` | Instance selection and hint inclusion. |
 | `tasks_dir` / `categories` / `task_ids` | `terminal_bench2` | Local task tree and dir-name filters. |
-| `levels` / `problems` / `max_rounds` / `backend` / `source` | `moltbench` | KernelBench selection and run shape. |
 | `problems` | `custom` | Inline list of `{id, problem, answer}` dicts. |
 
 For AIME, `max_tasks` slices the split as `f"{split}[:{N}]"` rather than

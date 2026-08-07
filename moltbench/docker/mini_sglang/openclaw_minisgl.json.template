@@ -1,6 +1,0 @@
-{
-  "env": {"OPENAI_BASE_URL": "__OPENAI_BASE_URL__", "OPENAI_API_KEY": "__OPENAI_API_KEY__", "OPENAI_MODEL_NAME": "__MODEL__", "OPENCLAW_GATEWAY_TOKEN": "__TOKEN__"},
-  "models": {"mode": "merge", "providers": {"local": {"baseUrl": "${OPENAI_BASE_URL}", "apiKey": "${OPENAI_API_KEY}", "api": "openai-completions", "models": [{"id": "${OPENAI_MODEL_NAME}", "name": "${OPENAI_MODEL_NAME}"}]}}},
-  "agents": {"defaults": {"model": {"primary": "local/${OPENAI_MODEL_NAME}"}, "timeoutSeconds": __AGENT_TIMEOUT__}},
-  "gateway": {"port": __GPORT__, "mode": "local", "bind": "custom", "customBindHost": "127.0.0.1", "auth": {"mode": "token", "token": "${OPENCLAW_GATEWAY_TOKEN}"}, "http": {"endpoints": {"chatCompletions": {"enabled": true}}}}
-}
