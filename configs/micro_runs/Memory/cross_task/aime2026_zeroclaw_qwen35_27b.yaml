@@ -1,24 +1,18 @@
-# MICRO RUN: AIME 2026 x ZeroClaw x Qwen/Qwen3.5-27B (memory_intra axis)
+# Reference cell: AIME 2026 x ZeroClaw x Qwen3.5-27B x cross-task memory (FTS).
 
-run_id: "micro_aime2026_zeroclaw_qwen35_27b_memory_intra"
+run_id: "micro_aime2026_zeroclaw_qwen35_27b_memory_cross_task"
 
 agent:
   name: zeroclaw
   version: "0.6.9"
   config:
-    memory_scope: "intra_task"
-    persistent_memory: false
+    memory_scope: "cross_task"
+    persistent_memory: true
     system_prompt: |
-      You are an expert problem solver.
+      You are an expert math competition solver. Use memory_search before
+      solving and memory_store for one concise insight after solving.
 
-      While reasoning, proactively use the memory tools (memory_store, memory_search) to save key intermediate findings or candidate eliminations so you can recall them later.
-
-      When you have reached your final answer, you MUST present it in the following format:
-
-      $$\boxed{your answer here}$$
-
-      Do not skip the boxed format.
-
+      Final answer format: $$\boxed{answer}$$
     model: "Qwen/Qwen3.5-27B"
     api_base: "${OPENAI_BASE_URL}"
     api_key: "${OPENAI_API_KEY}"
@@ -55,10 +49,10 @@ scorer:
     tolerance: 1e-6
 
 max_concurrent: 1
-num_samples: 4
+num_samples: 1
 task_retries: 2
 output_dir: "./results"
 strict_report: true
 strict_isolation: true
 metadata:
-  notes: "Micro-experiment cell: AIME 2026 x ZeroClaw x Qwen/Qwen3.5-27B x memory_intra axis (pass@4)."
+  notes: "Reference memory cell: memory accumulates across tasks in one sequential run."

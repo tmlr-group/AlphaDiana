@@ -12,7 +12,7 @@ file can be passed directly to `alphadiana run`.
 | Browse ad-hoc harness/benchmark examples | `examples/` |
 | Run a checked-in Podman readiness matrix | `smokes/` and its per-folder `README.md` |
 | Reproduce Tool/Skill/Memory micro cells | `micro_runs/README.md` |
-| Run the shipped memory experiment | `memory_experiments/exp1_zw_aime_memory_seq.yaml` |
+| Run the memory-scope reference matrix | `micro_runs/Memory/` |
 | Render the SWE-bench Verified Mini campaign | `full_runs/swe_verified_mini.yaml` |
 | Inspect the annotated core experiment shape | `schema.yaml` |
 | Compare canonical benchmark prompts | `PROMPTS.md` |
@@ -79,12 +79,6 @@ Paper-oriented Tool, Skill, and Memory cells. Start at
 `micro_runs/README.md`. These configs can be expensive and may require local
 images, skills, or provider-specific tool-call support; do not treat them as
 Getting Started smokes.
-
-### `memory_experiments/`
-
-The current checkout ships only
-`exp1_zw_aime_memory_seq.yaml`. Other experiment names discussed in drafts are
-not published here and must not be used as runnable paths.
 
 ### `full_runs/`
 

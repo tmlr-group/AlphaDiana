@@ -60,14 +60,14 @@ deliberate counterexample to the framework's monotonicity thesis.
 
 ### Scopes
 
-The experimental design discusses three possible persistence scopes. Only the
-checked-in Cross-Task ZeroClaw config is directly runnable from this checkout.
+The release reference matrix implements three persistence scopes across
+OpenClaw, OpenCode, and ZeroClaw.
 
 | Scope | What persists | n | Boundary |
 |---|---|---|---|
-| Cross-Sample | Intended: memory accumulates across samples of the same problem | multiple | Requires task-scoped namespacing or an explicit reset between problems; the runner does not provide this boundary |
-| Cross-Task | Memory accumulates across different problems run sequentially | configurable | Store remains available within the run |
-| Transfer | Intended: build a store on one dataset, then evaluate with recall-on / store-off | configurable | Requires separately controlled build and frozen evaluation stages |
+| Intra-Task | Native scratch/memory state exists only inside one solve | one work item | Fresh state for every `(task, sample)` |
+| Cross-Sample | Memory accumulates across samples of the same problem | multiple | Runner recreates the harness and sandbox when the task ID changes |
+| Cross-Task | Memory accumulates across different problems | configurable | Harness and sandbox remain live for the sequential run |
 
 Static paper figures may illustrate proposed or previously reported comparisons,
 but they are not current support evidence. Do not quote exact memory deltas from
@@ -75,8 +75,9 @@ this page without the corresponding run IDs and task-level artifacts.
 
 ### Mechanisms are harness-native, not a shared framework
 
-There is **no** runner-level snapshot framework. Each harness uses its own
-native memory backend, which is the point: the same "memory on" knob produces
+There is **no** runner-level snapshot framework. The runner owns only the
+scope boundary and each harness uses its own native memory backend. The same
+"memory on" knob can therefore produce
 opposite signs because the harness, not the model, decides whether memory
 anchors behavior (OpenCode) or injects low-relevance noise (OpenClaw,
 ZeroClaw).
@@ -94,6 +95,7 @@ same across all three harnesses; the remaining keys are harness-specific.
 
 | Key | Harness | Purpose |
 |---|---|---|
+| `memory_scope` | all three | `intra_task`, `cross_sample`, or `cross_task`; stateful scopes are sequential |
 | `persistent_memory` | all three | Master memory on/off |
 | `compact_after_task` | OpenCode | Run `/compact` after each task |
 | `fresh_session` | OpenCode | Fresh session per task; fills and injects the harness memory bank instead of chaining sessions |
@@ -112,19 +114,19 @@ embedded `openclaw agent --local` two-turn flow
 `autoRecall` / `autoCapture` hooks fire; the chat/completions path never
 triggers them.
 
-Transfer is data-driven: each task carries `metadata.memory_mode`, either
+The separate transfer protocol is data-driven: each task carries `metadata.memory_mode`, either
 `build` (write + recall) or `frozen` (recall only). The default is `build`.
 
 ### Running a memory experiment
 
 ```bash
 python -m alphadiana.cli run \
-  configs/memory_experiments/exp1_zw_aime_memory_seq.yaml \
+  configs/micro_runs/Memory/cross_task/aime2026_zeroclaw_qwen35_27b.yaml \
   --redo-all
 ```
 
-The shipped config is a ZeroClaw Cross-Task run in sqlite FTS mode (no embedding
-endpoint needed). It reads five environment variables: `OPENAI_MODEL_NAME`,
+The ZeroClaw Cross-Task reference uses sqlite FTS mode (no embedding endpoint
+needed). It reads provider and ROCK environment variables including `OPENAI_MODEL_NAME`,
 `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `ROCK_BASE_URL`, and `ROCK_PROXY_URL`. An
 unset one is blanked rather than reported. The three `OPENAI_*` are named back to
 you when the run dies, but an unset `ROCK_*` fails opaquely: the runner quietly
@@ -139,11 +141,9 @@ is not published on Docker Hub), then start the host ROCK services with
 one-time setup in [Installation](../getting-started/installation) creates, and
 abort without it, which is what leaves the two `ROCK_*` variables unset.
 
-The remaining Cross-Sample and Transfer configs are not shipped in the
-repository. Increasing `num_samples` and changing a prompt is not sufficient to
-implement Cross-Sample isolation: the runner has no general store reset between
-task boundaries. A faithful experiment must use separate per-problem runs,
-task-namespaced stores, or an explicit verified reset. The ZeroClaw gate
+Cross-Sample is not just `num_samples > 1`: `memory_scope: cross_sample` also
+enforces sequential dispatch and explicitly rebuilds harness/sandbox state at
+the task boundary. The ZeroClaw gate
 `_has_memories` counts successful store turns rather than inspecting the store,
 so it can fire even if the model never actually called `memory_store`.
 

@@ -95,9 +95,11 @@ harness-specific defaults:
 | `enable_thinking` | `None` | Reasoning toggle (see note below). |
 | `capture_logprobs` | harness-specific | DirectLLM defaults to `true`; other transports require explicit support/configuration. |
 | `system_prompt` | harness | Optional system-prompt text. |
+| `memory_scope` | unset | Optional explicit scope: `intra_task`, `cross_sample`, or `cross_task`. Stateful scopes force sequential dispatch. |
+| `persistent_memory` | `false` | Must be false for `intra_task` and true for `cross_sample`/`cross_task` when `memory_scope` is explicit. |
 | `bridge_port` | `8080` | ZeroClaw Podman bridge listener, container exposure, health-probe, and published API port. |
 
-Harness-specific keys (e.g. `controller_mode`, `tools_profile`, `persistent_memory`,
+Harness-specific keys (e.g. `controller_mode`, `tools_profile`,
 `system_prompt_override`, and the nested `env{}` for `swebench_docker` modes) are documented
 per-harness. See [`zeroclaw`](../harnesses/zeroclaw), [`opencode`](../harnesses/opencode),
 and [`openclaw`](../harnesses/openclaw).
@@ -168,6 +170,11 @@ This is why example configs leave `model` / `api_base` /
 | `api_key` | `OPENAI_API_KEY` | same |
 | `model` | `OPENAI_MODEL_NAME` | direct_llm, openclaw, zeroclaw, tb2_docker, tb2_zeroclaw |
 | `model_name` | `OPENAI_MODEL_NAME` | opencode, tb2 variants |
+
+For OpenClaw auto-deploy configs that provide both `rock_agent_config_path` and
+`openclaw_config_path`, `OPENAI_BASE_URL` is the model-provider endpoint inside
+the sandbox. It does not fill `api_base`; the runner first deploys the OpenClaw
+gateway and then supplies that gateway address to the harness.
 
 ```bash
 export OPENAI_BASE_URL=http://127.0.0.1:8000/v1

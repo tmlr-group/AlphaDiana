@@ -38,6 +38,8 @@ agent:
     request_timeout: float           # Harness-specific: DirectLLM 600s, OpenClaw 1800s, ZeroClaw 1200s
     bridge_port: integer             # ZeroClaw Podman bridge listener, exposure, probe, and API port
     runtime_trace_mode: string       # ZeroClaw trace mode (default: "none")
+    memory_scope: string             # "intra_task" | "cross_sample" | "cross_task"
+    persistent_memory: boolean       # False for intra_task; true for stateful scopes
     max_tool_iterations: integer     # ZeroClaw max tool iterations (default: 100)
     max_actions_per_hour: integer    # ZeroClaw autonomy action budget (default: 200)
     timeout_sec: integer
