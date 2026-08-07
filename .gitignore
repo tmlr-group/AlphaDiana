@@ -54,6 +54,8 @@ dump.rdb
 !/configs/examples/**
 !/configs/full_runs/
 !/configs/full_runs/**
+!/configs/macro_runs/
+!/configs/macro_runs/**
 !/configs/micro_runs/
 !/configs/micro_runs/README.md
 !/configs/micro_runs/Memory/

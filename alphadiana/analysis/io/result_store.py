@@ -24,6 +24,7 @@ from alphadiana.analysis.io.normalized_trace import (
 )
 from alphadiana.scorer.base import ScoreResult
 from alphadiana.analysis.io.status import (
+    VALID_SCORE_STATUS,
     infer_score_status,
     is_valid_completed_record,
     normalize_legacy_timeout_zero_record,
