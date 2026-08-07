@@ -133,20 +133,19 @@ GCS address into a runtime ROCK config.
 ```bash
 source scripts/activate.sh
 export OPENCLAW_GATEWAY_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+export OPENAI_BASE_URL=https://provider.example/v1
+export OPENAI_API_KEY=<provider-key>
+export OPENAI_MODEL_NAME=<provider-model>
 
-# OpenClaw ROCK stack and one gateway sandbox. Provider flags avoid confusing
-# the upstream provider URL with agent.config.api_base.
-bash scripts/start_openclaw.sh \
-  --model-base-url https://provider.example/v1 \
-  --model-api-key <provider-key> \
-  --model-name <provider-model>
+# OpenClaw ROCK control plane. The runner creates gateway sandboxes.
+bash scripts/start_openclaw.sh
 
 # Or, for a ZeroClaw ROCK stack:
-# OPENAI_BASE_URL=https://provider.example/v1 \
-# OPENAI_API_KEY=<provider-key> \
-# OPENAI_MODEL_NAME=<provider-model> \
 # bash scripts/start_zeroclaw.sh
 ```
+
+Both launchers read provider settings from the environment and accept no model
+flags. Passing deployment options to `start_openclaw.sh` exits with status 2.
 
 The generated allocation includes checkout-specific values such as:
 
