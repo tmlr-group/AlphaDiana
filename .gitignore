@@ -78,6 +78,7 @@ results_*/
 
 dev/generated
 scripts/.alphadiana_env
+scripts/.rock_ports.env
 scripts/generated/*.resolved.yaml
 logs/
 
