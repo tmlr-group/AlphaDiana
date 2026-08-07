@@ -240,11 +240,9 @@ for _port in "${ROCK_ADMIN_PORT}" "${ROCK_PROXY_PORT}"; do
         sleep 1
     fi
 done
-_old_containers=$(docker ps -q --filter "ancestor=${ZEROCLAW_IMAGE}" 2>/dev/null || true)
-if [ -n "${_old_containers}" ]; then
-    echo "      Stopping leftover ZeroClaw sandbox container(s)..."
-    docker stop ${_old_containers} >/dev/null 2>&1 || true
-fi
+# Do not stop containers by image ancestry here. Multiple checkouts and users
+# may legitimately run the same ZeroClaw image; the runner owns the lifecycle
+# of the sandbox IDs it creates.
 
 echo "[4/6] Starting or reusing Ray head node..."
 RAY_SESSION_DIR="${RAY_TMPDIR}/rock"

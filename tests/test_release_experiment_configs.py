@@ -55,3 +55,9 @@ def test_result_store_score_rank_supports_shard_deduplication():
         {"score_status": "runtime_error", "score": 0, "correct": False}
     ) == 1
     assert ResultStore._record_score_rank({"score": 0, "correct": False}) == 2
+
+
+def test_zeroclaw_launcher_does_not_stop_containers_by_shared_image():
+    script = (REPO_ROOT / "scripts" / "start_zeroclaw.sh").read_text(encoding="utf-8")
+    assert 'docker ps -q --filter "ancestor=' not in script
+    assert "docker stop ${_old_containers}" not in script
