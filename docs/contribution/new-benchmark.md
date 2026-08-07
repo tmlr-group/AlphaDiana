@@ -57,8 +57,8 @@ hands to a harness and the scorer:
 `ground_truth` is intentionally polymorphic. It is a plain string for text and
 MCQ benchmarks (`aime`, `gpqa_diamond`, `hle`, `mmmu_pro`, `custom`,
 `imo_answerbench`), a dict for `swebench_pro_os` (`{instance_id, repo,
-base_commit}`) and `external_benchmark` (`{level, problem_id, name}`), and the sentinel
-string `"1"` for `terminal_bench2`. Pick the shape your scorer expects.
+base_commit}`), and the sentinel string `"1"` for `terminal_bench2`. Pick the
+shape your scorer expects.
 
 ## Loading a HuggingFace dataset
 

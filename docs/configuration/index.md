@@ -71,8 +71,8 @@ These are the values the validator and registries accept. Unknown keys inside an
 
 | Block | Accepted `name` values |
 | --- | --- |
-| `agent.name` | `direct_llm`, `openclaw`, `opencode`, `zeroclaw`, `swebench_docker`, `external_benchmark_docker`, `external_benchmark_podman`, `terminal_bench2_*` |
-| `scorer.name` | `numeric`, `math_verify`, `exact_match`, `llm_judge`, `swebench_pro`, `swe_bench`, `terminal_bench2`, `external_benchmark`, `imo_verify`, `external_benchmark_qjl`, `decodingtrust` |
+| `agent.name` | `direct_llm`, `openclaw`, `opencode`, `zeroclaw`, `swebench_docker`, `terminal_bench2_*` |
+| `scorer.name` | `numeric`, `math_verify`, `exact_match`, `llm_judge`, `swebench_pro`, `swe_bench`, `terminal_bench2`, `imo_verify`, `decodingtrust` |
 | `sandbox.name` | `null`, `local`, `rock`, `podman`, `swebench_container`, `decodingtrust` |
 
 `sandbox: null` is correct for `direct_llm` and for OpenCode controller modes

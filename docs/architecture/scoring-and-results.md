@@ -16,8 +16,6 @@ Generic scorer keys are `exact_match`, `numeric`, `math_verify`, and `llm_judge`
 | `swe_bench` | Official SWE-bench evaluation adapter |
 | `swebench_pro` | SWE-bench Pro evaluator and resolved metadata |
 | `terminal_bench2` | Binary score from an actually observed verifier reward |
-| `external_benchmark` | external_benchmark verifier |
-| `external_benchmark_qjl` | Validates host-owned official artifacts and their hashes before scoring |
 | `decodingtrust` | Runs the DTAP judge and records task/attack metrics |
 
 Scorers do not share one universal no-answer rationale. Benchmark adapters may interpret missing patches, rewards, verifier output, or official artifacts differently. The universal status is the top-level `score_status`, not benchmark-specific supporting fields.

@@ -87,7 +87,7 @@ The dataclass also carries extended observability fields absorbed from `codex-de
 `gateway_log_excerpt`, `workspace_snapshot_paths`, `workspace_file_contents`,
 `sandbox_metadata`, `system_prompt`, and `finish_reason`. Populate whatever your
 harness can produce; they make a run auditable, and scorer-specific fields can
-affect scoring. For example, external_benchmark consumes artifact and runtime metadata.
+affect scoring.
 Set `answer = None` and record a reason in `metadata` (for example
 `failure_reason`) when a run cannot produce a gradable answer.
 

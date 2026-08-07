@@ -67,7 +67,7 @@ Passing evidence:
 This supports recommending a larger overnight TerminalBench2 OpenCode Podman
 campaign. It does not prove Direct x TerminalBench2, OpenClaw/ZeroClaw
 TerminalBench2 Podman readiness, full-sweep readiness, Podman global default
-promotion, or any SWE-bench/external_benchmark/MMMU-Pro status.
+promotion, or any SWE-bench/MMMU-Pro status.
 
 OpenRouter/Qwen pilot status on April 19, 2026:
 

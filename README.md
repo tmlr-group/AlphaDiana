@@ -140,7 +140,6 @@ For manual setup and recovery, see [Installation](docs/getting-started/installat
 and [Troubleshooting](docs/getting-started/troubleshooting.md).
 For ZeroClaw, see the [harness guide](docs/harnesses/zeroclaw.md) and
 [AIME benchmark page](docs/benchmarks/aime.md).
-For external_benchmark GPU-kernel benchmarking, see [`external_benchmark/docs/README.md`](external_benchmark/docs/README.md).
 
 ## Configuration
 
@@ -293,8 +292,8 @@ output_dir: "./results"
 
 Registered harnesses can use `custom`, but choose a general answer scorer such
 as `numeric`, `exact_match`, `math_verify`, or `llm_judge`. Benchmark-specific
-scorers such as SWE-bench, Terminal-Bench 2, and external_benchmark require their own task
-metadata and artifacts.
+scorers such as SWE-bench and Terminal-Bench 2 require their own task metadata
+and artifacts.
 
 ## CLI Reference
 

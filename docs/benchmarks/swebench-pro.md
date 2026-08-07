@@ -239,13 +239,13 @@ Default runtime source image:
 If that image is unavailable from Docker Hub but you already have a local equivalent runtime image, set:
 
 ```bash
-export SWEBENCH_OPENCODE_RUNTIME_IMAGE=external_benchmark/opencode:latest
+export SWEBENCH_OPENCODE_RUNTIME_IMAGE=tmlrgroup/alphadiana:opencode
 ```
 
 Validation command:
 
 ```bash
-SWEBENCH_OPENCODE_RUNTIME_IMAGE=${SWEBENCH_OPENCODE_RUNTIME_IMAGE:-external_benchmark/opencode:latest} \
+SWEBENCH_OPENCODE_RUNTIME_IMAGE=${SWEBENCH_OPENCODE_RUNTIME_IMAGE:-tmlrgroup/alphadiana:opencode} \
 OPENCODE_SMOKE_MODEL_NAME=minimax \
 OPENCODE_SMOKE_MODEL_CANDIDATES=minimax \
 OPENCODE_STRATEGY_SEQUENCE=guided_edit_first \
@@ -325,7 +325,7 @@ Shared additional environment:
 export SWE_BENCH_PRO_ROOT=/path/to/SWE-bench_Pro-os
 export SWE_BENCH_PRO_EVAL_SCRIPT="$SWE_BENCH_PRO_ROOT/swe_bench_pro_eval.py"
 export SWE_BENCH_PRO_SCRIPTS_DIR="$SWE_BENCH_PRO_ROOT/run_scripts"
-export SWEBENCH_OPENCODE_RUNTIME_IMAGE=${SWEBENCH_OPENCODE_RUNTIME_IMAGE:-external_benchmark/opencode:latest}
+export SWEBENCH_OPENCODE_RUNTIME_IMAGE=${SWEBENCH_OPENCODE_RUNTIME_IMAGE:-tmlrgroup/alphadiana:opencode}
 ```
 
 ### OpenClaw
@@ -421,7 +421,7 @@ Observed result:
 Validation:
 
 ```bash
-SWEBENCH_OPENCODE_RUNTIME_IMAGE=${SWEBENCH_OPENCODE_RUNTIME_IMAGE:-external_benchmark/opencode:latest} \
+SWEBENCH_OPENCODE_RUNTIME_IMAGE=${SWEBENCH_OPENCODE_RUNTIME_IMAGE:-tmlrgroup/alphadiana:opencode} \
 OPENCODE_SMOKE_MODEL_NAME=qwen/qwen3.5-27b \
 OPENCODE_SMOKE_MODEL_CANDIDATES=qwen/qwen3.5-27b \
 OPENCODE_STRATEGY_SEQUENCE=guided_edit_first \
@@ -449,7 +449,7 @@ python -m alphadiana.cli validate configs/examples/swebench_pro_opencode_smoke.l
 Run:
 
 ```bash
-SWEBENCH_OPENCODE_RUNTIME_IMAGE=${SWEBENCH_OPENCODE_RUNTIME_IMAGE:-external_benchmark/opencode:latest} \
+SWEBENCH_OPENCODE_RUNTIME_IMAGE=${SWEBENCH_OPENCODE_RUNTIME_IMAGE:-tmlrgroup/alphadiana:opencode} \
 OPENCODE_SMOKE_MODEL_NAME=qwen/qwen3.5-27b \
 OPENCODE_SMOKE_MODEL_CANDIDATES=qwen/qwen3.5-27b \
 OPENCODE_STRATEGY_SEQUENCE=guided_edit_first \
@@ -509,7 +509,7 @@ python -m alphadiana.cli run configs/examples/swebench_pro_openclaw_smoke.local.
 This is the exact user-facing smoke recipe that was validated locally on `2026-04-17`:
 
 ```bash
-SWEBENCH_OPENCODE_RUNTIME_IMAGE=${SWEBENCH_OPENCODE_RUNTIME_IMAGE:-external_benchmark/opencode:latest} \
+SWEBENCH_OPENCODE_RUNTIME_IMAGE=${SWEBENCH_OPENCODE_RUNTIME_IMAGE:-tmlrgroup/alphadiana:opencode} \
 OPENCODE_SMOKE_MODEL_NAME=minimax \
 OPENCODE_SMOKE_MODEL_CANDIDATES=minimax \
 OPENCODE_STRATEGY_SEQUENCE=guided_edit_first \

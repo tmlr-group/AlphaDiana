@@ -406,8 +406,6 @@ def list_benchmarks():
     import alphadiana.benchmarks.imo.benchmark  # noqa: F401
     import alphadiana.benchmarks.mmmu_pro.benchmark  # noqa: F401
     import alphadiana.benchmarks.swe_bench.benchmark  # noqa: F401
-    import alphadiana.benchmarks.external_benchmark.benchmark  # noqa: F401
-    import alphadiana.benchmarks.external_benchmark.qjl  # noqa: F401
     import alphadiana.benchmarks.swebench_pro.benchmark  # noqa: F401
     import alphadiana.benchmarks.terminal_bench2.benchmark  # noqa: F401
 

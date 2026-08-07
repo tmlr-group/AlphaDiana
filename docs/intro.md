@@ -35,8 +35,8 @@ that over-deliberates, or vice versa. AlphaDiana exists to make that gap measura
 A run is one YAML config. The `Runner` orchestrates it end to end:
 
 1. **Load tasks** from a benchmark (AIME, GPQA-Diamond, HLE, MMMU-Pro, SWE-bench,
-   SWE-bench Pro, TerminalBench2, IMO-AnswerBench, external_benchmark, or an inline `custom`
-   problem set).
+   SWE-bench Pro, TerminalBench2, IMO-AnswerBench, or an inline `custom` problem
+   set).
 2. **Run an agent** on each task: the sandbox-free `direct_llm` baseline, or one
    of the `opencode` / `openclaw` / `zeroclaw` harnesses. Supported tool-using
    paths use task-scoped `local`, ROCK, Podman, or SWE task-container runtimes.

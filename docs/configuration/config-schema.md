@@ -134,9 +134,7 @@ ROCK-backed runs.
 | `swebench_pro` | SWE-bench Pro | Requires `eval_script_path` and `scripts_dir`. |
 | `swe_bench` | SWE-bench Verified | Runs the official SWE-bench evaluator against the submitted patch. |
 | `terminal_bench2` | Terminal-Bench 2 | Converts the task-container verifier reward to a binary score. |
-| `external_benchmark` | external_benchmark | Scores the benchmark's kernel-verifier result. |
 | `imo_verify` | IMO-AnswerBench | Repo-local conservative math-answer verifier; required for this benchmark. |
-| `external_benchmark_qjl` | external_benchmark QJL | Consumes host-owned official QJL evaluation artifacts. |
 | `decodingtrust` | DecodingTrust | Runs the DTAP judge and records utility/security metadata. |
 
 ## Environment-variable interpolation

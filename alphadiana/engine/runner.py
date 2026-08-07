@@ -645,15 +645,12 @@ class Runner:
         import alphadiana.benchmarks.hle.benchmark  # noqa: F401
         import alphadiana.benchmarks.imo.benchmark  # noqa: F401
         import alphadiana.benchmarks.mmmu_pro.benchmark  # noqa: F401
-        import alphadiana.benchmarks.external_benchmark.benchmark  # noqa: F401
-        import alphadiana.benchmarks.external_benchmark.qjl  # noqa: F401
         import alphadiana.benchmarks.swebench_pro.benchmark  # noqa: F401
         import alphadiana.benchmarks.terminal_bench2.benchmark  # noqa: F401
         import alphadiana.benchmarks.decodingtrust.benchmark  # noqa: F401
 
         # Import agent modules to trigger registration.
         import alphadiana.harness.direct_llm  # noqa: F401
-        import alphadiana.benchmarks.external_benchmark.harness  # noqa: F401
         import alphadiana.harness.openclaw.agent  # noqa: F401
         import alphadiana.harness.opencode.agent  # noqa: F401
         import alphadiana.benchmarks.swe_bench.harness  # noqa: F401
@@ -675,8 +672,6 @@ class Runner:
         import alphadiana.benchmarks.imo.verify  # noqa: F401
         import alphadiana.scorer.llm_judge  # noqa: F401
         import alphadiana.scorer.math_verify_scorer  # noqa: F401
-        import alphadiana.benchmarks.external_benchmark.scorer  # noqa: F401
-        import alphadiana.scorer.external_benchmark_qjl  # noqa: F401
         import alphadiana.scorer.numeric  # noqa: F401
         import alphadiana.benchmarks.swe_bench.scorer  # noqa: F401
         import alphadiana.benchmarks.swebench_pro.scorer  # noqa: F401
