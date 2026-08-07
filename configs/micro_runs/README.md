@@ -54,6 +54,27 @@ invalidates a work item if the harness cannot verify its memory operation.
 
 ## Running a cell
 
+Build or pull the three harness images on the execution host:
+
+```bash
+docker build --network host \
+  -f alphadiana/benchmarks/terminal_bench2/deploy/dockerfiles/Dockerfile.opencode-controller \
+  -t alphadiana/tb2-opencode-controller:latest .
+docker pull tmlrgroup/alphadiana:v1
+docker build --network host \
+  -f alphadiana/harness/zeroclaw/deploy/Dockerfile \
+  -t zeroclaw-reasoning:0.6.9 .
+```
+
+Start ROCK before OpenClaw or ZeroClaw cells, then load the generated URLs into
+the current shell:
+
+```bash
+bash scripts/start_zeroclaw.sh
+source scripts/rock_env.sh
+python -m alphadiana.cli env
+```
+
 The YAML expects provider variables to be set by the launcher:
 
 ```bash
@@ -78,6 +99,29 @@ python -m alphadiana.cli run \
   -o run_id=my_memory_smoke \
   -o output_dir=/tmp/runs/my_memory_smoke \
   -o benchmark.config.max_tasks=1 -o num_samples=2 --redo-all
+```
+
+Representative Tool and Skill smokes use the same environment:
+
+```bash
+python -m alphadiana.cli run \
+  configs/micro_runs/Tool/aime2026_zeroclaw_qwen35_27b.yaml \
+  -o run_id=smoke_micro_tool_zeroclaw \
+  -o benchmark.config.max_tasks=1 -o num_samples=1 --redo-all
+
+python -m alphadiana.cli run \
+  configs/micro_runs/Skill/aime2026_zeroclaw_qwen35_27b_skill_math.yaml \
+  -o run_id=smoke_micro_skill_zeroclaw \
+  -o benchmark.config.max_tasks=1 -o num_samples=1 --redo-all
+```
+
+Validate every micro YAML on the execution host before launching:
+
+```bash
+find configs/micro_runs -name '*.yaml' -print0 | sort -z | \
+  while IFS= read -r -d '' config; do
+    python -m alphadiana.cli validate "$config" || exit 1
+  done
 ```
 
 For Kimi-K2.6 cells, point `OPENAI_BASE_URL` at a `tool_filter_proxy.py` instance that

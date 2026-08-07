@@ -52,7 +52,7 @@ def _resolve_skill_folder(raw: Any) -> str | None:
     - Empty/None  -> None (skill mounting disabled)
     - Absolute path -> use as-is
     - Path with "/" -> resolve relative to cwd
-    - Bare name like "advanced-maths" -> alphadiana/skills/<name>/
+    - Bare name like "advanced-maths" -> alphadiana/harness/skills/<name>/
     """
     text = str(raw or "").strip()
     if not text:

@@ -234,26 +234,21 @@ export OPENAI_API_KEY=sk-EMPTY
 export OPENAI_MODEL_NAME=Qwen/Qwen3-8B
 ```
 
-:::warning OpenClaw auto-deploy boundary
-The current config loader also fills blank OpenClaw `api_base` from
-`OPENAI_BASE_URL`. The runner then interprets that value as an already-running
-OpenClaw gateway and can skip ROCK/Podman gateway startup. Until those fields
-are separated in code, do not export `OPENAI_BASE_URL` for an OpenClaw
-auto-deploy run.
-
-Instead, use a differently named shell variable and pass it to OpenClaw's
-provider-specific config key:
+:::note OpenClaw auto-deploy boundary
+For an OpenClaw config that declares both `rock_agent_config_path` and
+`openclaw_config_path`, the loader treats `OPENAI_BASE_URL` as the upstream
+provider endpoint and deliberately leaves lower-case `agent.config.api_base`
+empty so the runner creates the gateway. You can therefore use the normal
+provider variables:
 
 ```bash
-export PROVIDER_BASE_URL=https://openrouter.ai/api/v1
+export OPENAI_BASE_URL=https://openrouter.ai/api/v1
 export OPENAI_API_KEY=<provider-key>
 export OPENAI_MODEL_NAME=<provider-model>
-unset OPENAI_BASE_URL
 
 python -m alphadiana.cli run configs/examples/openclaw_aime2024.yaml \
   -o run_id=endpoint_demo_openclaw_aime_t1_k1 \
-  -o benchmark.config.max_tasks=1 -o num_samples=1 \
-  -o agent.config.OPENAI_BASE_URL="$PROVIDER_BASE_URL"
+  -o benchmark.config.max_tasks=1 -o num_samples=1
 ```
 
 Set `agent.config.api_base` only when you intentionally want to connect to an

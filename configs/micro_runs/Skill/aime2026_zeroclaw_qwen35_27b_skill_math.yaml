@@ -17,8 +17,8 @@ agent:
     max_tool_iterations: 100
     max_actions_per_hour: 200
 
-    # Skill bundle name. Bare name resolves to alphadiana/skills/<name>/.
-    # Also accepted: a relative path (e.g. "alphadiana/skills/advanced-maths")
+    # Skill bundle name. Bare name resolves to alphadiana/harness/skills/<name>/.
+    # Also accepted: a relative path (e.g. "alphadiana/harness/skills/advanced-maths")
     # or an absolute host path (e.g. "/abs/path/to/skill_dir").
     skill_folder: "advanced-maths"
 

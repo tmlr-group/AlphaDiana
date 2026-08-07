@@ -1,0 +1,40 @@
+run_id: "macro_aime2026_directllm_qwen35_27b"
+
+agent:
+  name: direct_llm
+  version: "1.0"
+  config:
+    model: "${OPENAI_MODEL_NAME}"
+    api_base: "${OPENAI_BASE_URL}"
+    api_key: "${OPENAI_API_KEY}"
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 32768
+    stream: true
+    capture_logprobs: true
+    top_logprobs: 20
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: true
+    system_prompt: |
+      You are an expert competition-math problem solver. Reason carefully and
+      put only the final integer in $$\boxed{answer}$$ at the end.
+
+benchmark:
+  name: aime
+  config:
+    dataset: "MathArena/aime_2026"
+    split: "train"
+
+scorer:
+  name: numeric
+  config:
+    tolerance: 1e-6
+
+max_concurrent: 1
+num_samples: 1
+output_dir: "./results"
+strict_report: true
+strict_isolation: true
+metadata:
+  notes: "Release macro seed: AIME 2026 x DirectLLM x Qwen3.5-27B."

@@ -11,6 +11,7 @@ file can be passed directly to `alphadiana run`.
 | Run the first DirectLLM smoke | `examples/direct_llm.yaml` with a one-task override |
 | Browse ad-hoc harness/benchmark examples | `examples/` |
 | Run a checked-in Podman readiness matrix | `smokes/` and its per-folder `README.md` |
+| Run the release macro harness comparison | `macro_runs/README.md` |
 | Reproduce Tool/Skill/Memory micro cells | `micro_runs/README.md` |
 | Run the memory-scope reference matrix | `micro_runs/Memory/` |
 | Render the SWE-bench Verified Mini campaign | `full_runs/swe_verified_mini.yaml` |
@@ -79,6 +80,13 @@ Paper-oriented Tool, Skill, and Memory cells. Start at
 `micro_runs/README.md`. These configs can be expensive and may require local
 images, skills, or provider-specific tool-call support; do not treat them as
 Getting Started smokes.
+
+### `macro_runs/`
+
+The release macro seed compares DirectLLM, OpenCode, OpenClaw, and ZeroClaw on
+AIME 2026 and GPQA-Diamond with conservative one-sample, one-worker defaults.
+Start at `macro_runs/README.md`; validate on the execution host because
+OpenCode validation checks that its controller image exists locally.
 
 ### `full_runs/`
 
