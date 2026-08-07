@@ -8,6 +8,8 @@ agent:
   config:
     memory_scope: "cross_sample"
     persistent_memory: true
+    memory_enabled: true
+    strict_memory: true
     system_prompt: |
       You are an expert math competition solver. Recall useful state from an
       earlier attempt on this problem, and store one concise reusable insight.
@@ -30,7 +32,7 @@ agent:
     gateway_token: "${OPENCLAW_GATEWAY_TOKEN}"
     temperature: 0.0
     top_p: 0.95
-    max_tokens: 131072
+    max_tokens: 32768
     stream: true
     request_timeout: 9300
     stream_idle_timeout: 9300
@@ -60,7 +62,7 @@ scorer:
 
 max_concurrent: 1
 num_samples: 4
-task_retries: 2
+task_retries: 0
 task_retry_on_recoverable_only: true
 output_dir: "./results"
 strict_report: true

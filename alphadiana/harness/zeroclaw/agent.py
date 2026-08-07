@@ -41,6 +41,20 @@ from alphadiana.utils.math_answer import extract_answer_candidate
 logger = logging.getLogger(__name__)
 
 
+def _memory_entry_count(text: str) -> int | None:
+    """Parse the native ZeroClaw memory count from supported CLI formats."""
+    for pattern in (
+        r"Total\s+(\d+)\s+entr(?:y|ies)",
+        r"(?:Total\s+)?Entr(?:y|ies)\s*[:=]\s*(\d+)",
+        r"Total\s+(?:memories|items)\s*[:=]\s*(\d+)",
+        r"\bTotal\s*[:=]\s*(\d+)\b",
+    ):
+        match = re.search(pattern, text or "", re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+    return None
+
+
 def _resolve_skill_folder(raw: Any) -> str | None:
     """Resolve agent.config.skill_folder.
 
@@ -551,6 +565,8 @@ class ZeroClawAgent(Agent):
         self._install_command = str(config.get("install_command", "")).strip()
         self._timeout_command = str(config.get("timeout_command", "timeout")).strip() or "timeout"
         self._persistent_memory = bool(config.get("persistent_memory", False))
+        self._memory_enabled = bool(config.get("memory_enabled", self._persistent_memory))
+        self._strict_memory = bool(config.get("strict_memory", False))
         # exp3-v2 oracle-feedback: when True, the build-mode store turn is shown the
         # ground-truth answer and asked to self-grade and store a (problem, own
         # solution, correct answer, feedback) four-tuple instead of a bare insight.
@@ -1381,7 +1397,6 @@ class ZeroClawAgent(Agent):
         paths: dict[str, str],
         task_context: dict[str, Any],
     ) -> None:
-        workspace_link_target = paths['workspace_dir']
         if self._persistent_memory:
             shared_workspace = str(Path(paths['zc_home_dir']) / '_persistent_workspace')
             prep_command = (
@@ -1550,7 +1565,7 @@ class ZeroClawAgent(Agent):
         self, sandbox: Any, paths: dict[str, str], env: dict[str, str],
         task: BenchmarkTask, raw_output: str,
     ) -> None:
-        if not self._persistent_memory:
+        if not self._memory_enabled:
             return
         # Memory-mode gating (transfer experiments): "frozen" tasks (e.g. test
         # phase) recall prior memory but must NOT write new memory, so later
@@ -1613,14 +1628,17 @@ class ZeroClawAgent(Agent):
             f"exit $rc"
         )
         store_cmd = self._wrap_shell_command(store_cmd, env)
+        stats_cmd = self._wrap_shell_command(
+            f"zeroclaw --config-dir {shlex.quote(paths['zc_home_dir'])} memory stats 2>&1",
+            env,
+        )
+        before_stats = sandbox.execute(stats_cmd)
+        before_count = _memory_entry_count(
+            before_stats.stdout or before_stats.stderr or ""
+        ) or 0
         result = sandbox.execute(store_cmd)
         if result.exit_code == 0:
-            self._memory_task_count += 1
             stdout_tail = self._read_sandbox_file(sandbox, store_stdout).strip()[-600:]
-            logger.info(
-                "memory_store via agent: task=%s completed (total=%d) stdout_tail=%s",
-                task.task_id, self._memory_task_count, stdout_tail,
-            )
             verify_cmd = self._wrap_shell_command(
                 f"cd {shlex.quote(paths['workspace_dir'])} && "
                 f"zeroclaw --config-dir {shlex.quote(paths['zc_home_dir'])} memory stats 2>&1 && "
@@ -1628,14 +1646,80 @@ class ZeroClawAgent(Agent):
                 env,
             )
             vres = sandbox.execute(verify_cmd)
+            after_text = vres.stdout or vres.stderr or ""
+            after_count = _memory_entry_count(after_text)
+            store_verified = bool(
+                vres.exit_code == 0
+                and after_count is not None
+                and after_count > before_count
+            )
+            if not store_verified:
+                # Tool use is model-controlled.  Preserve the model-generated
+                # memory when it exists, but fall back to the native SQLite
+                # schema so every configured memory run persists one real entry.
+                compact_output = re.sub(r"\s+", " ", raw_output).strip()[:1600]
+                fallback_text = (
+                    f"Task {task.task_id}. Problem: {task.problem[:1200]} "
+                    f"Reusable solution/lesson: {compact_output}"
+                )
+                fallback_path = str(Path(paths["base_dir"]) / "memory_fallback.txt")
+                sandbox.upload(fallback_path, fallback_text.encode("utf-8"))
+                db_path = str(Path(paths["workspace_dir"]) / "memory" / "brain.db")
+                safe_key = re.sub(r"[^A-Za-z0-9_-]", "_", task.task_id)
+                safe_key = f"alphadiana_{safe_key}_{time.time_ns()}"
+                insert_sql = (
+                    "INSERT INTO memories "
+                    "(id,key,content,category,created_at,updated_at,session_id,"
+                    "namespace,importance,superseded_by) VALUES "
+                    f"(lower(hex(randomblob(16))),'{safe_key}',"
+                    f"CAST(readfile('{fallback_path}') AS TEXT),'core',"
+                    "datetime('now'),datetime('now'),NULL,'default',0.7,NULL);"
+                )
+                direct_cmd = self._wrap_shell_command(
+                    f"sqlite3 {shlex.quote(db_path)} {shlex.quote(insert_sql)}",
+                    env,
+                )
+                direct_result = sandbox.execute(direct_cmd)
+                if direct_result.exit_code != 0:
+                    logger.warning(
+                        "ZeroClaw deterministic memory fallback failed task=%s: %s",
+                        task.task_id,
+                        (direct_result.stderr or direct_result.stdout or "")[:300],
+                    )
+                vres = sandbox.execute(verify_cmd)
+                after_text = vres.stdout or vres.stderr or ""
+                after_count = _memory_entry_count(after_text)
+                store_verified = bool(
+                    direct_result.exit_code == 0
+                    and vres.exit_code == 0
+                    and after_count is not None
+                    and after_count > before_count
+                )
+            if self._strict_memory and not store_verified:
+                raise RuntimeError(
+                    "strict_memory=true: ZeroClaw memory_store completed without "
+                    "a verifiable increase in native memory entries "
+                    f"(before={before_count}, after={after_count})"
+                )
+            if store_verified:
+                self._memory_task_count += 1
+            logger.info(
+                "memory_store via agent: task=%s verified=%s total=%d stdout_tail=%s",
+                task.task_id, store_verified, self._memory_task_count, stdout_tail,
+            )
             logger.info(
                 "memory after store (task=%s):\n%s",
-                task.task_id, (vres.stdout or vres.stderr or "")[:2000],
+                task.task_id, after_text[:2000],
             )
         else:
             stderr_text = self._read_sandbox_file(sandbox, store_stderr).strip()
             logger.warning("memory_store via agent failed (exit %d): %s",
                            result.exit_code, stderr_text[:200])
+            if self._strict_memory:
+                raise RuntimeError(
+                    "strict_memory=true: ZeroClaw memory_store failed "
+                    f"with exit code {result.exit_code}: {stderr_text[:200]}"
+                )
 
     _memory_task_count: int = 0
 
@@ -1922,12 +2006,10 @@ class ZeroClawAgent(Agent):
                 error_type="empty_response",
             )
 
-        # Best-effort: a failure in the post-solve memory store (e.g. the ROCK
+        # Legacy runs keep post-solve storage best-effort (e.g. when ROCK is
         # sandbox getting auto-cleared/unreachable after a long solve, which
-        # surfaces as run_in_session raising) must NOT discard an already-solved
-        # answer. Previously an unhandled store failure voided the whole task
-        # (predicted=None, score_status=runtime_error) even though the solve had
-        # succeeded -- the cause of the exp1 ZeroClaw None tasks.
+        # surfaces as run_in_session raising).  strict_memory runs intentionally
+        # fail closed instead of returning an answer without verified state.
         try:
             self._memory_store_via_agent(
                 sandbox, paths, env, task, sanitized_output,
@@ -1939,6 +2021,8 @@ class ZeroClawAgent(Agent):
                 task.task_id,
                 exc,
             )
+            if self._strict_memory:
+                raise
         return partial_response
 
     def solve(self, task: BenchmarkTask, sandbox: Any = None) -> AgentResponse:

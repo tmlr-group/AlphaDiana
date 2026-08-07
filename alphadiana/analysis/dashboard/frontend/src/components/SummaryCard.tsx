@@ -107,14 +107,14 @@ export default function SummaryCard({ summary }: { summary: RunSummary }) {
               icon={<ThunderboltOutlined />}
             />
             <StatItem
-              label={`Pass@${summary.num_samples}`}
+              label={`${summary.samples_independent ? 'Pass' : 'Sequential Any'}@${summary.num_samples}`}
               value={Math.round(summary.pass_at_k * 100)}
               suffix="%"
               icon={<CheckCircleOutlined />}
               color={summary.pass_at_k >= 0.8 ? '#3f8600' : '#cf1322'}
             />
             <StatItem
-              label={`Avg@${summary.num_samples}`}
+              label={`${summary.samples_independent ? 'Avg' : 'Sequential Mean'}@${summary.num_samples}`}
               value={Math.round(summary.avg_at_k * 100)}
               suffix="%"
               icon={<CheckCircleOutlined />}

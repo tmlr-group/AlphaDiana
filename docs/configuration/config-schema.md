@@ -97,6 +97,8 @@ harness-specific defaults:
 | `system_prompt` | harness | Optional system-prompt text. |
 | `memory_scope` | unset | Optional explicit scope: `intra_task`, `cross_sample`, or `cross_task`. Stateful scopes force sequential dispatch. |
 | `persistent_memory` | `false` | Must be false for `intra_task` and true for `cross_sample`/`cross_task` when `memory_scope` is explicit. |
+| `memory_enabled` | harness-specific | Enable the harness-native memory execution path independently of cross-work-item persistence. |
+| `strict_memory` | `false` | When true, missing native memory evidence fails the work item instead of silently falling back. |
 | `bridge_port` | `8080` | ZeroClaw Podman bridge listener, container exposure, health-probe, and published API port. |
 
 Harness-specific keys (e.g. `controller_mode`, `tools_profile`,

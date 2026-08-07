@@ -35,8 +35,8 @@ that the current release can reproduce every provider/model combination.
 
 - **Tool** (clean baseline): no memory hint; tools are present and the model may invoke
   them but the system prompt does not nudge it.
-- **Memory / intra_task**: `persistent_memory: false`; native scratch state is
-  confined to one `(task, sample)` work item.
+- **Memory / intra_task**: `persistent_memory: false`; native memory is enabled
+  but its store is confined to one `(task, sample)` work item.
 - **Memory / cross_sample**: `persistent_memory: true`; work items run in task-major
   order and the runner rebuilds the harness and sandbox when the task ID changes.
 - **Memory / cross_task**: `persistent_memory: true`; the harness and sandbox remain
@@ -45,9 +45,12 @@ that the current release can reproduce every provider/model combination.
 
 Every memory reference config declares `agent.config.memory_scope`. Stateful
 scopes are forced to effective concurrency 1 even if a caller supplies a larger
-value. A partial Cross-Task run and a partially sampled Cross-Sample task cannot
+value, reject task retries, and stop after the first failed work item. A partial
+Cross-Task run and a partially sampled Cross-Sample task cannot
 reconstruct earlier native memory, so the runner requires a new `run_id` or
 `--redo-all`; Cross-Sample may resume only at a complete task boundary.
+`memory_enabled: true` activates the native path and `strict_memory: true`
+invalidates a work item if the harness cannot verify its memory operation.
 
 ## Running a cell
 
@@ -56,8 +59,8 @@ The YAML expects provider variables to be set by the launcher:
 ```bash
 export OPENAI_BASE_URL=http://HOST_REACHABLE_FROM_SANDBOX:9091/v1
 export OPENAI_API_KEY=sk-EMPTY                    # any non-"EMPTY" string for local
-export OPENCLAW_GATEWAY_TOKEN=mytoken             # OpenClaw cells only
-export MEMORY_EMBEDDING_BASE_URL=http://127.0.0.1:10087/v1  # OpenClaw memory cells
+export OPENCLAW_GATEWAY_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+export MEMORY_EMBEDDING_BASE_URL=http://HOST_REACHABLE_FROM_SANDBOX:10087/v1
 export MEMORY_EMBEDDING_MODEL=qwen3-embed-0.6b             # OpenClaw memory cells
 export MEMORY_EMBEDDING_API_KEY=sk-EMPTY                   # OpenClaw memory cells
 ```
@@ -86,12 +89,14 @@ See `python -m alphadiana.harness.proxies.tool_filter_proxy --help` for proxy op
 
 ## Notes
 
-- The reference cells use `temperature=0.0`; cross-sample uses `num_samples=4`,
-  while cross-task uses one sample per task.
+- All nine reference cells use `temperature=0.0`, `max_tokens=32768`, and
+  `num_samples=4`.
 - OpenClaw persistent memory requires a compatible embedding endpoint for its
   LanceDB plugin. ZeroClaw reference cells use sqlite FTS and need no embedding
   endpoint.
 - Keep stateful scopes sequential. Parallelizing them changes the intervention.
+- Cross-Sample and Cross-Task samples are dependent. Reports label their
+  aggregate as `Sequential Any@k` / `Sequential Mean@k`, not standard pass@k.
 - For ZeroClaw + thinking-mode models, route requests through
   `tool_filter_proxy.py --rename-reasoning` to keep the chain-of-thought visible
   in `normalized_trace.json`.

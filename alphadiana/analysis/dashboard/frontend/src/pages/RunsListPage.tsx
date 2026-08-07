@@ -168,9 +168,9 @@ export default function RunsListPage() {
             </div>
             {r.num_samples > 1 && (
               <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 1 }}>
-                Pass@{r.num_samples}: {Math.round(r.pass_at_k * 100)}%
+                {r.samples_independent ? 'Pass' : 'Sequential Any'}@{r.num_samples}: {Math.round(r.pass_at_k * 100)}%
                 {' · '}
-                Avg@{r.num_samples}: {Math.round(r.avg_at_k * 100)}%
+                {r.samples_independent ? 'Avg' : 'Sequential Mean'}@{r.num_samples}: {Math.round(r.avg_at_k * 100)}%
               </div>
             )}
           </div>

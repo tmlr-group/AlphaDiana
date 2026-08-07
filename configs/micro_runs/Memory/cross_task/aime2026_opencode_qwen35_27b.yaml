@@ -8,6 +8,8 @@ agent:
   config:
     memory_scope: "cross_task"
     persistent_memory: true
+    memory_enabled: true
+    strict_memory: true
     compact_after_task: true
     fresh_session: false
     system_prompt: |
@@ -28,7 +30,7 @@ agent:
     temperature: 0.0
     top_p: 0.95
     presence_penalty: 1.5
-    max_tokens: 131072
+    max_tokens: 32768
     enable_thinking: true
     capture_logprobs: true
     top_logprobs: 20
@@ -45,8 +47,8 @@ scorer:
     tolerance: 1e-6
 
 max_concurrent: 1
-num_samples: 1
-task_retries: 2
+num_samples: 4
+task_retries: 0
 output_dir: "./results"
 strict_report: true
 strict_isolation: true

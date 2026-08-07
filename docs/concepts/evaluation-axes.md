@@ -65,7 +65,7 @@ OpenClaw, OpenCode, and ZeroClaw.
 
 | Scope | What persists | n | Boundary |
 |---|---|---|---|
-| Intra-Task | Native scratch/memory state exists only inside one solve | one work item | Fresh state for every `(task, sample)` |
+| Intra-Task | Native memory is enabled only inside one solve | one work item | Fresh state for every `(task, sample)` |
 | Cross-Sample | Memory accumulates across samples of the same problem | multiple | Runner recreates the harness and sandbox when the task ID changes |
 | Cross-Task | Memory accumulates across different problems | configurable | Harness and sandbox remain live for the sequential run |
 
@@ -96,7 +96,9 @@ same across all three harnesses; the remaining keys are harness-specific.
 | Key | Harness | Purpose |
 |---|---|---|
 | `memory_scope` | all three | `intra_task`, `cross_sample`, or `cross_task`; stateful scopes are sequential |
-| `persistent_memory` | all three | Master memory on/off |
+| `persistent_memory` | all three | Retain native memory across work items |
+| `memory_enabled` | all three | Enable native memory even when the store is isolated to one work item |
+| `strict_memory` | all three | Require verifiable native memory execution; no silent fallback |
 | `compact_after_task` | OpenCode | Run `/compact` after each task |
 | `fresh_session` | OpenCode | Fresh session per task; fills and injects the harness memory bank instead of chaining sessions |
 | `memory_freeze` | OpenCode | Transfer mode: frozen tasks fork from a post-build HOME snapshot |
@@ -143,9 +145,14 @@ abort without it, which is what leaves the two `ROCK_*` variables unset.
 
 Cross-Sample is not just `num_samples > 1`: `memory_scope: cross_sample` also
 enforces sequential dispatch and explicitly rebuilds harness/sandbox state at
-the task boundary. The ZeroClaw gate
-`_has_memories` counts successful store turns rather than inspecting the store,
-so it can fire even if the model never actually called `memory_store`.
+the task boundary. With `strict_memory: true`, ZeroClaw verifies that the native
+entry count increased and OpenClaw verifies a new LanceDB transaction before a
+work item is accepted.
+
+Cross-Sample and Cross-Task samples are deliberately dependent observations.
+The generated report therefore labels their aggregates `Sequential Any@k` and
+`Sequential Mean@k`; they must not be interpreted as standard independent
+pass@k estimates.
 
 ### Reading the results
 

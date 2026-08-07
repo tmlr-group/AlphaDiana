@@ -37,6 +37,7 @@ class RunSummary:
     avg_at_k: float = 0.0
     per_category_pass_at_k: dict[str, float] = field(default_factory=dict)
     per_category_avg_at_k: dict[str, float] = field(default_factory=dict)
+    samples_independent: bool = True
     expected_task_count: int = 0
     expected_sample_count: int = 0
     written_records: int = 0
@@ -175,6 +176,7 @@ class ReportGenerator:
 
         # num_samples: prefer manifest, then data, then config, then infer.
         manifest_num_samples = manifest.get("num_samples")
+        samples_independent = bool(manifest.get("samples_independent", True))
         num_samples_raw = self._infer_from_results(results, "num_samples")
         if manifest_num_samples:
             num_samples = int(manifest_num_samples)
@@ -417,6 +419,7 @@ class ReportGenerator:
             avg_at_k=avg_at_k,
             per_category_pass_at_k=per_category_pass_at_k,
             per_category_avg_at_k=per_category_avg_at_k,
+            samples_independent=samples_independent,
             expected_task_count=expected_task_count,
             expected_sample_count=expected_sample_count,
             written_records=written_records,
@@ -437,6 +440,16 @@ class ReportGenerator:
 
     def to_markdown(self, summary: RunSummary) -> str:
         """Generate a markdown report string with a summary table."""
+        pass_label = (
+            f"Pass@{summary.num_samples}"
+            if summary.samples_independent
+            else f"Sequential Any@{summary.num_samples}"
+        )
+        avg_label = (
+            f"Avg@{summary.num_samples}"
+            if summary.samples_independent
+            else f"Sequential Mean@{summary.num_samples}"
+        )
         lines = [
             f"# Evaluation Report: {summary.run_id}",
             "",
@@ -468,8 +481,8 @@ class ReportGenerator:
                 if summary.benchmark == "swebench_pro_os"
                 else []
             ),
-            f"| Pass@{summary.num_samples} | {summary.pass_at_k:.4f} |",
-            f"| Avg@{summary.num_samples} | {summary.avg_at_k:.4f} |",
+            f"| {pass_label} | {summary.pass_at_k:.4f} |",
+            f"| {avg_label} | {summary.avg_at_k:.4f} |",
             f"| Mean Score | {summary.mean_score:.4f} |",
             *(
                 [
@@ -500,9 +513,9 @@ class ReportGenerator:
 
         if summary.num_samples > 1 and summary.per_category_pass_at_k:
             lines.extend([
-                f"## Per-Category Pass@{summary.num_samples} / Avg@{summary.num_samples}",
+                f"## Per-Category {pass_label} / {avg_label}",
                 "",
-                f"| Category | Pass@{summary.num_samples} | Avg@{summary.num_samples} |",
+                f"| Category | {pass_label} | {avg_label} |",
                 "|----------|----------|----------|",
             ])
             for cat in sorted(summary.per_category_pass_at_k.keys()):

@@ -8,6 +8,8 @@ agent:
   config:
     memory_scope: "intra_task"
     persistent_memory: false
+    memory_enabled: true
+    strict_memory: true
     system_prompt: |
       You are an expert problem solver.
 
@@ -26,7 +28,7 @@ agent:
     provider_api_key: "${OPENAI_API_KEY}"
     temperature: 0.0
     top_p: 0.95
-    max_tokens: 131072
+    max_tokens: 32768
     request_timeout: 9300
     runtime_trace_mode: "full"
     enable_thinking: true

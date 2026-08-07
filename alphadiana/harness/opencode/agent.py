@@ -769,6 +769,8 @@ class OpenCodeAgent(Agent):
         self._streaming = config.get("streaming") if "streaming" in config else None
         self._logprob_capture = resolve_logprob_capture_config(config)
         self._persistent_memory = bool(config.get("persistent_memory", False))
+        self._memory_enabled = bool(config.get("memory_enabled", self._persistent_memory))
+        self._strict_memory = bool(config.get("strict_memory", False))
         self._compact_after_task = bool(config.get("compact_after_task", False))
         # fresh_session: keep harness-level _memory_bank accumulation (prompt
         # injection) but start a FRESH opencode session per task instead of
@@ -1430,7 +1432,6 @@ class OpenCodeAgent(Agent):
             else:
                 workdir = _temp_ctx.__enter__()
             workdir_path = Path(workdir)
-            container_home = workdir_path / ".controller-home"
             config_root = workdir_path / "xdg-config"
             config_dir = config_root / "opencode"
             config_dir.mkdir(parents=True, exist_ok=True)
@@ -1690,6 +1691,11 @@ class OpenCodeAgent(Agent):
                 proxy.stop()
 
             _, _, session_id = _parse_opencode_output(raw_output)
+            if self._strict_memory and self._memory_enabled and not session_id:
+                raise RuntimeError(
+                    "strict_memory=true: OpenCode did not return a session id, so "
+                    "native memory execution cannot be verified"
+                )
             preserved_local_artifacts = _collect_local_opencode_artifacts(config_dir, session_id)
             session_trace = preserved_local_artifacts.get("workspace_file_contents", {}).get("opencode_session.jsonl", "")
             if self._persistent_memory and session_id:
@@ -2029,7 +2035,14 @@ class OpenCodeAgent(Agent):
         return response
 
     def teardown(self) -> None:
-        pass
+        workdir = self._persistent_workdir
+        self._persistent_workdir = None
+        self._last_session_id = ""
+        memory_bank = getattr(self, "_memory_bank", None)
+        if isinstance(memory_bank, list):
+            memory_bank.clear()
+        if workdir is not None:
+            shutil.rmtree(workdir, ignore_errors=True)
 
 
 AgentRegistry.register("opencode", OpenCodeAgent)
