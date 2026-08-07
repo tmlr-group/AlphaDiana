@@ -135,8 +135,10 @@ def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
         click.echo(f"\nRun completed: {summary.run_id}")
         click.echo(f"  Accuracy:   {summary.accuracy:.4f}")
         click.echo(f"  Mean Score: {summary.mean_score:.4f}")
-        click.echo(f"  Pass@{summary.num_samples}:    {summary.pass_at_k:.4f}")
-        click.echo(f"  Avg@{summary.num_samples}:     {summary.avg_at_k:.4f}")
+        pass_label = "Pass" if summary.samples_independent else "Sequential Any"
+        avg_label = "Avg" if summary.samples_independent else "Sequential Mean"
+        click.echo(f"  {pass_label}@{summary.num_samples}:    {summary.pass_at_k:.4f}")
+        click.echo(f"  {avg_label}@{summary.num_samples}:     {summary.avg_at_k:.4f}")
         click.echo(f"  Tasks:      {summary.completed}/{summary.total_tasks} completed")
         if config.benchmark_name == "decodingtrust" or config.scorer_name == "decodingtrust":
             click.echo(
@@ -368,22 +370,22 @@ def env():
         click.echo("  # both paths run scripts/security_guard.py --check first")
         click.echo()
         click.echo("Or start manually (remember to run scripts/security_guard.py --check first):")
-        click.echo(f"  # Redis")
+        click.echo("  # Redis")
         click.echo(
             f"  docker run -d --name {redis_container} -p 127.0.0.1:{ports.redis_port}:6379 "
             "redis/redis-stack-server:latest"
         )
-        click.echo(f"  # Ray")
+        click.echo("  # Ray")
         click.echo(
             f"  cd {rock_root} && ray start --head --port={ports.ray_port} "
             f"--dashboard-port={ports.ray_dashboard_port} --disable-usage-stats"
         )
-        click.echo(f"  # Admin")
+        click.echo("  # Admin")
         click.echo(
             f"  cd {rock_root} && python -m rock.admin.main --env local-proxy --role admin "
             f"--port {ports.admin_port} &"
         )
-        click.echo(f"  # Proxy")
+        click.echo("  # Proxy")
         click.echo(
             f"  cd {rock_root} && python -m rock.admin.main --env local-proxy --role proxy "
             f"--port {ports.proxy_port} &"

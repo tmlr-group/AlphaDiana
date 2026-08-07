@@ -8,6 +8,8 @@ agent:
   config:
     memory_scope: "cross_task"
     persistent_memory: true
+    memory_enabled: true
+    strict_memory: true
     system_prompt: |
       You are an expert math competition solver. Use memory_search before
       solving and memory_store for one concise insight after solving.
@@ -20,7 +22,7 @@ agent:
     provider_api_key: "${OPENAI_API_KEY}"
     temperature: 0.0
     top_p: 0.95
-    max_tokens: 131072
+    max_tokens: 32768
     request_timeout: 9300
     runtime_trace_mode: "full"
     enable_thinking: true
@@ -49,8 +51,8 @@ scorer:
     tolerance: 1e-6
 
 max_concurrent: 1
-num_samples: 1
-task_retries: 2
+num_samples: 4
+task_retries: 0
 output_dir: "./results"
 strict_report: true
 strict_isolation: true

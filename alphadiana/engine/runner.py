@@ -450,7 +450,9 @@ def _configured_memory_scope(config: "ExperimentConfig") -> str:
         valid = ", ".join(sorted(_VALID_MEMORY_SCOPES))
         raise ValueError(f"agent.config.memory_scope must be one of: {valid}")
 
-    persistent = bool(agent_config.get("persistent_memory", False))
+    persistent = _coerce_config_bool(
+        agent_config.get("persistent_memory"), default=False
+    )
     expected_persistent = raw_scope != "intra_task"
     if persistent != expected_persistent:
         raise ValueError(
@@ -467,14 +469,30 @@ class _MemoryScopeLifecycle:
         self.scope = scope
         self._task_id = ""
 
-    def before_work_item(self, task_id: str, sample_index: int) -> bool:
-        del sample_index  # Ordering is task-major; task identity defines the boundary.
+    def needs_reset(self, task_id: str) -> bool:
+        """Return whether ``task_id`` crosses a committed task boundary."""
         if self.scope != "cross_sample":
             return False
         task_id = str(task_id)
-        should_reset = bool(self._task_id and task_id != self._task_id)
-        self._task_id = task_id
-        return should_reset
+        return bool(self._task_id and task_id != self._task_id)
+
+    def commit(self, task_id: str) -> None:
+        """Record a boundary only after any required reset has succeeded."""
+        if self.scope == "cross_sample":
+            self._task_id = str(task_id)
+
+
+def _validate_stateful_run_policy(config: "ExperimentConfig") -> str:
+    """Validate failure semantics for runs whose native state spans work items."""
+    scope = _configured_memory_scope(config)
+    if scope in {"cross_sample", "cross_task"}:
+        retries = int(getattr(config, "task_retries", 0) or 0)
+        if retries:
+            raise ValueError(
+                f"memory_scope={scope!r} requires task_retries=0 because native "
+                "memory writes cannot be rolled back safely"
+            )
+    return scope
 
 
 def _validate_stateful_checkpoint_resume(
@@ -749,21 +767,37 @@ class Runner:
 
     def _reset_cross_sample_state(self, shared_session):
         """Recreate harness-native state before the first sample of a new task."""
-        if self.agent is not None:
-            self.agent.teardown()
+        old_agent = self.agent
         agent_cls = AgentRegistry.get(self.config.agent_name)
-        self.agent = agent_cls()
-        self.agent.version = self.config.agent_version
-        self.agent.setup(self.config.agent_config)
-
-        if shared_session is None:
-            return None
-        shared_session.close()
-        return self.sandbox.create_session() if self.sandbox is not None else None
+        new_agent = agent_cls()
+        new_agent.version = self.config.agent_version
+        new_session = None
+        try:
+            new_agent.setup(self.config.agent_config)
+            if shared_session is not None and self.sandbox is not None:
+                # Create the replacement before closing the current session so a
+                # transient startup failure leaves the committed state usable.
+                new_session = self.sandbox.create_session()
+                shared_session.close()
+            if old_agent is not None:
+                old_agent.teardown()
+        except Exception:
+            try:
+                new_agent.teardown()
+            except Exception:
+                logger.debug("Replacement agent teardown failed", exc_info=True)
+            if new_session is not None:
+                try:
+                    new_session.close()
+                except Exception:
+                    logger.debug("Replacement session teardown failed", exc_info=True)
+            raise
+        self.agent = new_agent
+        return new_session if shared_session is not None else None
 
     def setup(self) -> None:
         """Resolve and instantiate all components from their registries."""
-        _configured_memory_scope(self.config)
+        _validate_stateful_run_policy(self.config)
         _stabilize_openclaw_gateway_token(self.config)
         # Import all benchmark/agent/sandbox/scorer modules to trigger registration.
         import alphadiana.benchmarks.aime.benchmark  # noqa: F401
@@ -987,6 +1021,7 @@ class Runner:
 
         num_samples = getattr(self.config, "num_samples", 1)
         memory_scope = _configured_memory_scope(self.config)
+        effective_max_concurrent = _effective_dispatch_concurrency(self.config)
         memory_lifecycle = _MemoryScopeLifecycle(memory_scope)
         self.result_store.save_manifest({
             "run_id": self.config.run_id,
@@ -996,6 +1031,7 @@ class Runner:
             "scorer_name": self.config.scorer_name,
             "num_samples": num_samples,
             "memory_scope": memory_scope,
+            "samples_independent": memory_scope not in {"cross_sample", "cross_task"},
             "expected_task_count": len(tasks),
             "expected_sample_count": len(tasks) * num_samples,
             "expected_task_ids": [task.task_id for task in tasks],
@@ -1098,7 +1134,7 @@ class Runner:
                     "agent": self.config.agent_name,
                     "benchmark": self.config.benchmark_name,
                     "scorer": self.config.scorer_name,
-                    "max_concurrent": self.config.max_concurrent,
+                    "max_concurrent": effective_max_concurrent,
                 },
             )
 
@@ -1166,8 +1202,8 @@ class Runner:
         ):
             explicit_num = int(self.config.agent_config.get("num_sandboxes", 0) or 0)
             auto_num = (
-                math.ceil(self.config.max_concurrent / OPENCLAW_CONCURRENCY_PER_SANDBOX)
-                if self.config.max_concurrent > 1 else 1
+                math.ceil(effective_max_concurrent / OPENCLAW_CONCURRENCY_PER_SANDBOX)
+                if effective_max_concurrent > 1 else 1
             )
             predeployed_active_target = max(1, explicit_num or auto_num)
             fresh_predeployed_mode = not reuse_predeployed_sandboxes
@@ -1339,7 +1375,7 @@ class Runner:
                         "standby=%d, replenish_concurrency=%d)",
                         desired_num,
                         gateway_agent_label,
-                        self.config.max_concurrent,
+                        effective_max_concurrent,
                         OPENCLAW_CONCURRENCY_PER_SANDBOX,
                         reuse_predeployed_sandboxes,
                         standby_sandboxes if fresh_predeployed_mode else 0,
@@ -1399,13 +1435,14 @@ class Runner:
                             1,
                             len(gateway_pool) * OPENCLAW_CONCURRENCY_PER_SANDBOX,
                         )
-                    if self.config.max_concurrent > effective_capacity:
+                    if effective_max_concurrent > effective_capacity:
                         logger.warning(
                             "Lowering max_concurrent from %d to %d due to available sandbox capacity.",
-                            self.config.max_concurrent,
+                            effective_max_concurrent,
                             effective_capacity,
                         )
                         self.config.max_concurrent = effective_capacity
+                        effective_max_concurrent = effective_capacity
                     self.config.agent_config["gateway_pool"] = gateway_pool
                     if self.config.agent_name == "openclaw":
                         self.config.agent_config["api_base"] = gateway_pool[0]
@@ -1532,7 +1569,7 @@ class Runner:
                     "Auto-created ROCK sandbox for %s concurrent isolation "
                     "(max_concurrent=%d, memory=%s, cpus=%s)",
                     gateway_agent_label,
-                    self.config.max_concurrent,
+                    effective_max_concurrent,
                     auto_sandbox_config["memory"],
                     auto_sandbox_config["cpus"],
                 )
@@ -1613,12 +1650,12 @@ class Runner:
 
         if (
             self.sandbox is not None
-            and self.config.max_concurrent > 1
+            and effective_max_concurrent > 1
             and sandbox_supports_pooling
             and self.config.agent_name != "openclaw"
         ):
             from alphadiana.engine.sandbox.pool import SandboxPool
-            pool_size = self.config.max_concurrent
+            pool_size = effective_max_concurrent
             logger.info("Creating SandboxPool with %d sessions", pool_size)
             pool = SandboxPool(self.sandbox, pool_size)
 
@@ -2187,12 +2224,13 @@ class Runner:
         def solve_fn(work_item):
             nonlocal shared_session, predeployed_started_work_items
             task, sample_index = work_item
-            if memory_lifecycle.before_work_item(task.task_id, sample_index):
+            if memory_lifecycle.needs_reset(task.task_id):
                 logger.info(
                     "Resetting harness-native memory at cross-sample task boundary: %s",
                     task.task_id,
                 )
                 shared_session = self._reset_cross_sample_state(shared_session)
+            memory_lifecycle.commit(task.task_id)
             runtime_task = _bind_runtime_task(task, sample_index)
             if memory_scope:
                 runtime_task.metadata["memory_scope"] = memory_scope
@@ -2581,7 +2619,6 @@ class Runner:
                         logger.warning("Cleanup failed for task %s: %s", task.task_id, cleanup_exc)
 
         # Dispatch work items (task, sample_index) tuples.
-        effective_max_concurrent = _effective_dispatch_concurrency(self.config)
         dispatcher = TaskDispatcher(
             max_concurrent=effective_max_concurrent,
             cancel_event=self.cancel_event,
@@ -2591,6 +2628,7 @@ class Runner:
                 if getattr(self.config, "task_retry_on_recoverable_only", False)
                 else None
             ),
+            stop_on_error=memory_scope in {"cross_sample", "cross_task"},
         )
         try:
             outcomes = dispatcher.dispatch(work_items, solve_fn)
@@ -2630,13 +2668,17 @@ class Runner:
 
         # Generate summary report.
         summary = self.report_generator.generate(self.result_store, self.config)
+        pass_label = "pass" if summary.samples_independent else "sequential-any"
+        avg_label = "avg" if summary.samples_independent else "sequential-mean"
         logger.info(
-            "Run %s complete: accuracy=%.4f, mean_score=%.4f, pass@%d=%.4f, avg@%d=%.4f",
+            "Run %s complete: accuracy=%.4f, mean_score=%.4f, %s@%d=%.4f, %s@%d=%.4f",
             self.config.run_id,
             summary.accuracy,
             summary.mean_score,
+            pass_label,
             summary.num_samples,
             summary.pass_at_k,
+            avg_label,
             summary.num_samples,
             summary.avg_at_k,
         )

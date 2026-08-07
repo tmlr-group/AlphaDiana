@@ -24,6 +24,7 @@ class RunSummaryResponse(BaseModel):
     error_distribution: dict[str, int] = {}
     model: str = ""
     num_samples: int = 1
+    samples_independent: bool = True
     pass_at_k: float = 0.0
     avg_at_k: float = 0.0
     per_category_pass_at_k: dict[str, float] = {}

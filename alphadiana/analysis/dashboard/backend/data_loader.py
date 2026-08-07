@@ -121,6 +121,16 @@ def _build_summary(run_id: str, records: list[dict[str, Any]]) -> RunSummaryResp
     # Always take the larger of stored value vs observed data.
     num_samples_raw = next((r.get("num_samples") for r in records if r.get("num_samples") is not None), None)
     num_samples = max(int(num_samples_raw), actual_max_samples) if num_samples_raw is not None else actual_max_samples
+    memory_scope = next(
+        (
+            str((r.get("task_metadata") or {}).get("memory_scope", ""))
+            for r in records
+            if isinstance(r.get("task_metadata"), dict)
+            and (r.get("task_metadata") or {}).get("memory_scope")
+        ),
+        "",
+    )
+    samples_independent = memory_scope not in {"cross_sample", "cross_task"}
 
     # Pass@K: fraction of unique tasks where at least 1 sample is correct.
     num_unique_tasks = len(by_task)
@@ -227,6 +237,7 @@ def _build_summary(run_id: str, records: list[dict[str, Any]]) -> RunSummaryResp
         error_distribution=error_dist,
         model=model,
         num_samples=num_samples,
+        samples_independent=samples_independent,
         pass_at_k=pass_at_k,
         avg_at_k=avg_at_k,
         per_category_pass_at_k=per_category_pass_at_k,

@@ -1,23 +1,21 @@
 #!/usr/bin/env bash
-# start_openclaw.sh — start Ray + ROCK services and deploy the default OpenClaw reasoning sandbox
+# start_openclaw.sh — start Ray + ROCK services for runner-managed OpenClaw sandboxes
 # Usage:
-#   ./dev/start_openclaw.sh [deploy.py options]
-#   OPENAI_BASE_URL=... OPENAI_API_KEY=... OPENAI_MODEL_NAME=... ./dev/start_openclaw.sh
-#
-# Any unrecognised options are forwarded verbatim to openclaw_deploy.deploy.
-# Common examples:
-#   --model-base-url URL  --model-api-key KEY  --model-name NAME
-#   --memory 8g  --cpus 2  --auto-clear-seconds 28800
+#   ./scripts/start_openclaw.sh
 #
 # The script is idempotent: it kills any stale ROCK processes on the configured
-# ports and stops any leftover sandbox containers before starting fresh.
+# ports before starting fresh. Sandboxes are created and stopped by the runner.
 
 set -euo pipefail
 
 DEFAULT_IMAGE="${OPENCLAW_SANDBOX_IMAGE:-tmlrgroup/alphadiana:v1}"
 
-# Collect all CLI arguments to forward to deploy.py
-DEPLOY_EXTRA_ARGS=("$@")
+if [ "$#" -ne 0 ]; then
+    echo "ERROR: start_openclaw.sh no longer accepts sandbox deployment options."
+    echo "       Start the infrastructure here, then run an OpenClaw config with:"
+    echo "         alphadiana run <config.yaml>"
+    exit 2
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd -P)"
@@ -198,7 +196,7 @@ PYEOF
 fi
 echo "      Redis OK (PONG)"
 
-# ── 3. Kill stale ROCK processes and sandbox containers ──────────────────────
+# ── 3. Kill stale ROCK service processes on this checkout's ports ────────────
 echo "[3/6] Cleaning up stale processes..."
 for _port in "${ROCK_ADMIN_PORT}" "${ROCK_PROXY_PORT}"; do
     _pids=$(lsof -ti ":${_port}" 2>/dev/null || true)
@@ -208,11 +206,6 @@ for _port in "${ROCK_ADMIN_PORT}" "${ROCK_PROXY_PORT}"; do
         sleep 1
     fi
 done
-_old_containers=$(docker ps -q --filter "ancestor=${DEFAULT_IMAGE}" 2>/dev/null || true)
-if [ -n "${_old_containers}" ]; then
-    echo "      Stopping leftover sandbox container(s)..."
-    docker stop ${_old_containers} >/dev/null 2>&1 || true
-fi
 
 # ── 4. Start Ray ─────────────────────────────────────────────────────────────
 # We use a dedicated session dir so we can point ROCK to our exact Ray cluster.
@@ -405,20 +398,13 @@ while true; do
     sleep 2
 done
 
-# ── 6. Deploy OpenClaw prebuilt image ────────────────────────────────────────
-echo "[6/6] Deploying OpenClaw sandbox..."
-echo "      Image : ${DEFAULT_IMAGE}"
+# ── 6. Report infrastructure readiness ───────────────────────────────────────
+echo "[6/6] ROCK infrastructure ready for runner-managed OpenClaw sandboxes"
+echo "      Default image : ${DEFAULT_IMAGE}"
 echo "      Admin : ${ROCK_BASE_URL}"
 echo "      Proxy : ${ROCK_PROXY_URL}"
 echo ""
-
-"${PYTHON}" -m openclaw_deploy.deploy \
-    --image "${DEFAULT_IMAGE}" \
-    --startup-timeout 300 \
-    "${DEPLOY_EXTRA_ARGS[@]}"
-
-echo ""
-echo "Done. OpenClaw is ready."
+echo "Done. Run 'alphadiana run <openclaw-config.yaml>'; the runner manages sandbox lifecycle."
 echo "Logs: ${LOG_DIR}/rock-admin.log  |  ${LOG_DIR}/rock-proxy.log"
 # phase12_start_ready readiness marker
 echo "phase12_start_ready admin=${ROCK_ADMIN_PORT} proxy=${ROCK_PROXY_PORT} redis=${ROCK_REDIS_PORT} ray=${ROCK_RAY_PORT}"

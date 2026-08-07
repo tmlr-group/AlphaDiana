@@ -930,6 +930,19 @@ def _parse_openclaw_session(session_jsonl: str) -> list[dict]:
     return trajectory
 
 
+def _clean_local_agent_reply(text: str) -> str:
+    """Remove OpenClaw CLI diagnostics and reject its no-reply sentinel."""
+    lines = [
+        line
+        for line in text.splitlines()
+        if not line.lstrip().startswith("[plugins]")
+    ]
+    cleaned = "\n".join(lines).strip()
+    if cleaned.casefold().rstrip(".") == "no reply from agent":
+        return ""
+    return cleaned
+
+
 def _extract_reasoning_trajectory_from_openclaw_trajectory(
     trajectory: list[dict],
 ) -> list[dict]:
@@ -1119,6 +1132,8 @@ class OpenClawAgent(Agent):
         else:
             self._predeployed_gateway_api_base_by_sandbox_id = {}
         self._persistent_memory = bool(config.get("persistent_memory", False))
+        self._memory_enabled = bool(config.get("memory_enabled", self._persistent_memory))
+        self._strict_memory = bool(config.get("strict_memory", False))
         # exp3-v2 oracle-feedback: build-mode store turn sees the ground-truth answer
         # and stores a (problem, own solution, correct answer, self-graded feedback)
         # four-tuple instead of a bare insight. Default False = exp3-v1 behavior.
@@ -2055,10 +2070,10 @@ class OpenClawAgent(Agent):
                         "config": {
                             "embedding": embedding,
                             "dbPath": db_path,
-                            # autoCapture only stores short user questions (weak,
-                            # off-by-default in ZeroClaw-equivalent setups). We store
-                            # solution insights explicitly via a forced store-turn,
-                            # so disable question auto-capture and keep auto-recall.
+                            # Persistence is performed by the harness against the
+                            # same native LanceDB schema after the solve turn.  Keep
+                            # conversational auto-capture off to avoid storing whole
+                            # benchmark prompts or depending on model stop reasons.
                             "autoCapture": False,
                             "autoRecall": True,
                         },
@@ -2113,12 +2128,14 @@ class OpenClawAgent(Agent):
             "OCBIN=$(command -v openclaw 2>/dev/null)\n"
             '[ -x "$OCBIN" ] || OCBIN=/usr/local/bin/openclaw\n'
             '[ -x "$OCBIN" ] || OCBIN=$(find / -maxdepth 6 -name openclaw -type f 2>/dev/null | head -1)\n'
+            f'"$OCBIN" --log-level error ltm stats > {H}/agent_membefore.txt 2>/dev/null || true\n'
             f"prompt=$(cat {H}/agent_prompt.txt)\n"
             f"timeout {agent_timeout} \"$OCBIN\" --log-level info agent --local "
             f"--session-id {session_id} --thinking {think} "
             f"--timeout {agent_timeout} -m \"$prompt\" "
             f"> {H}/agent_out.txt 2> {H}/agent_err.txt\n"
             f"echo $? > {H}/agent_rc.txt\n"
+            f'"$OCBIN" --log-level error ltm stats > {H}/agent_memafter.txt 2>/dev/null || true\n'
             f"echo \"ocbin=$OCBIN\" > {H}/agent_meta.txt\n"
             f"touch {H}/agent_done\n"
         )
@@ -2156,6 +2173,8 @@ class OpenClawAgent(Agent):
             f"printf 'rc='; cat {H}/agent_rc.txt 2>/dev/null; echo; "
             f"printf 'txn_before='; cat {H}/agent_dbbefore.txt 2>/dev/null; echo; "
             f"printf 'txn_after='; ls {txn_dir} 2>/dev/null | wc -l; "
+            f"printf 'mem_before='; awk '/Total memories:/ {{print $NF}}' {H}/agent_membefore.txt 2>/dev/null | tail -1; echo; "
+            f"printf 'mem_after='; awk '/Total memories:/ {{print $NF}}' {H}/agent_memafter.txt 2>/dev/null | tail -1; echo; "
             f"cat {H}/agent_meta.txt 2>/dev/null; "
             "printf 'recall_inject='; "
             f"grep -icE 'injecting [0-9]+ memories|prepended context' {H}/agent_err.txt 2>/dev/null; "
@@ -2170,7 +2189,93 @@ class OpenClawAgent(Agent):
                 reply, diag = after_out.split("===DIAG===", 1)
             else:
                 reply = after_out
-        return reply.strip(), diag.strip(), done
+        return _clean_local_agent_reply(reply), diag.strip(), done
+
+    def _store_local_memory_entry(
+        self,
+        *,
+        sandbox: Any,
+        cfg_json: str,
+        memory_text: str,
+    ) -> tuple[str, bool]:
+        """Persist one entry in OpenClaw's native memory-lancedb store.
+
+        OpenClaw exposes read-only ``ltm stats/search`` CLI commands but no
+        non-agent store command.  Calling ``memory_store`` through a second LLM
+        turn is nondeterministic, so write the plugin's documented row schema
+        directly and verify it through the plugin's own ``ltm stats`` command.
+        """
+        H = "/tmp/oc_home"
+        cfg_eof = "ADK_OCCFG_STORE_EOF_41c8d2"
+        text_eof = "ADK_OCMEM_STORE_EOF_41c8d2"
+        js_eof = "ADK_OCJS_STORE_EOF_41c8d2"
+        js_script = r"""
+const fs = require("node:fs");
+const { randomUUID } = require("node:crypto");
+const lancedb = require("/app/node_modules/@lancedb/lancedb");
+
+(async () => {
+  const cfg = JSON.parse(fs.readFileSync("/tmp/oc_home/agent_local.json", "utf8"));
+  const memoryCfg = cfg.plugins.entries["memory-lancedb"].config;
+  const embedding = memoryCfg.embedding;
+  const text = fs.readFileSync("/tmp/oc_home/memory_entry.txt", "utf8").trim();
+  const endpoint = embedding.baseUrl.replace(/\/$/, "") + "/embeddings";
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${embedding.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: embedding.model,
+      input: text,
+      dimensions: embedding.dimensions,
+    }),
+  });
+  if (!response.ok) throw new Error(`embedding request failed: ${response.status}`);
+  const payload = await response.json();
+  const vector = payload.data?.[0]?.embedding;
+  if (!Array.isArray(vector)) throw new Error("embedding response had no vector");
+  const db = await lancedb.connect(memoryCfg.dbPath);
+  const table = await db.openTable("memories");
+  await table.add([{
+    id: randomUUID(),
+    text,
+    vector,
+    importance: 0.7,
+    category: "other",
+    createdAt: Date.now(),
+  }]);
+})().catch((error) => {
+  console.error(error?.stack || String(error));
+  process.exitCode = 1;
+});
+""".strip()
+        command = (
+            f"mkdir -p {H}/.openclaw\n"
+            f"cat > {H}/agent_local.json <<'{cfg_eof}'\n{cfg_json}\n{cfg_eof}\n"
+            f"cat > {H}/memory_entry.txt <<'{text_eof}'\n{memory_text}\n{text_eof}\n"
+            f"cat > {H}/memory_store.js <<'{js_eof}'\n{js_script}\n{js_eof}\n"
+            'export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"\n'
+            f"export OPENCLAW_HOME={H} OPENCLAW_CONFIG_PATH={H}/agent_local.json "
+            "OPENCLAW_BUNDLED_PLUGINS_DIR=/tmp/empty-bundled\n"
+            "OCBIN=$(command -v openclaw 2>/dev/null || true)\n"
+            '[ -x "$OCBIN" ] || OCBIN=/usr/local/bin/openclaw\n'
+            f'"$OCBIN" --log-level error ltm stats > {H}/memory_before.txt 2>/dev/null\n'
+            "before_rc=$?\n"
+            f"node {H}/memory_store.js > {H}/memory_store_out.txt 2> {H}/memory_store_err.txt\n"
+            "store_rc=$?\n"
+            f'"$OCBIN" --log-level error ltm stats > {H}/memory_after.txt 2>/dev/null\n'
+            "after_rc=$?\n"
+            f"printf 'mem_before='; awk '/Total memories:/ {{print $NF}}' {H}/memory_before.txt | tail -1; echo\n"
+            f"printf 'mem_after='; awk '/Total memories:/ {{print $NF}}' {H}/memory_after.txt | tail -1; echo\n"
+            "echo store_rc=$store_rc\n"
+            "echo stats_rc=$before_rc,$after_rc\n"
+            f"[ $store_rc -eq 0 ] || tail -20 {H}/memory_store_err.txt\n"
+        )
+        result = sandbox.execute(command)
+        diag = (getattr(result, "stdout", "") or "").strip()
+        return diag, bool(diag)
 
     def _try_solve_via_local_agent(
         self,
@@ -2231,11 +2336,16 @@ class OpenClawAgent(Agent):
                     "openclaw --local empty solve reply task=%s; falling back",
                     task.task_id,
                 )
+                if self._strict_memory:
+                    raise RuntimeError(
+                        "strict_memory=true: OpenClaw local memory solve returned no reply"
+                    )
                 return None
             answer = _extract_answer(solve_reply)
 
             # --- Turn 2: forced store (guaranteed per-task, mirrors ZeroClaw's
-            # _memory_store_via_agent). Short, best-effort: never blocks the answer. ---
+            # _memory_store_via_agent). Strict runs fail closed if the native
+            # plugin's row count does not increase. ---
             store_diag = ""
             # Memory-mode gating (transfer experiments): when a task is marked
             # "frozen" (e.g. test phase) the agent must RECALL prior memory but
@@ -2251,49 +2361,24 @@ class OpenClawAgent(Agent):
                 )
             else:
                 try:
+                    compact_solution = re.sub(r"\s+", " ", solve_reply).strip()[:600]
                     if self._oracle_feedback:
-                        # exp3-v2: self-grade against the official answer, store the
-                        # four-tuple. Wrong attempts are stored LABELED wrong with the
-                        # correct answer (negative example, not silent pollution).
+                        # Keep the auto-capture input below captureMaxChars while
+                        # retaining the official answer as explicit feedback.
                         store_prompt = (
-                            "You just attempted a competition math problem. Below are "
-                            "the problem, your full solution attempt, and the OFFICIAL "
-                            "correct answer.\n\n"
-                            f"Problem:\n{task.problem}\n\n"
-                            f"Your solution attempt:\n{solve_reply}\n\n"
-                            f"OFFICIAL CORRECT ANSWER: {task.ground_truth}\n\n"
-                            "Compare your final answer with the official answer and state "
-                            "whether you were CORRECT or WRONG. Then, using the memory_store "
-                            "tool exactly once, save a single entry containing all four parts "
-                            "so you can learn from it on future problems: (1) the problem, "
-                            "(2) your answer and whether it was correct, (3) the official "
-                            "correct answer, (4) a brief feedback note (if wrong, the step "
-                            "you missed and the correct approach; if correct, the key "
-                            "technique that worked)."
+                            "Remember this competition-math attempt and official feedback "
+                            f"from task {task.task_id}. Attempt: {compact_solution} "
+                            f"Official answer: {task.ground_truth}."
                         )
                     else:
                         store_prompt = (
-                            "You just solved a competition math problem. Using the "
-                            "memory_store tool, save the single most useful technique, "
-                            "formula, or insight from your solution in one concise sentence "
-                            "so you can reuse it on future problems. Call memory_store "
-                            "exactly once.\n\n"
-                            f"Problem:\n{task.problem}\n\n"
-                            f"Your solution:\n{solve_reply}\n\n"
-                            "Now call the memory_store tool with the key insight."
+                            "Remember this reusable competition-math lesson from task "
+                            f"{task.task_id}: {compact_solution}"
                         )
-                    # Store turn is light (one memory_store tool call); ZeroClaw's
-                    # equivalent caps at 120s and never hit it across ~250 stores, and
-                    # measured OW store turns are ~20s. Align to 120s as a safe ceiling.
-                    store_timeout = min(120, agent_timeout)
-                    _store_reply, store_diag, store_done = self._run_local_agent_turn(
+                    store_diag, store_done = self._store_local_memory_entry(
                         sandbox=sandbox,
                         cfg_json=cfg_json,
-                        prompt_text=store_prompt,
-                        think="low",
-                        agent_timeout=store_timeout,
-                        session_id=f"{base_sid}_store",
-                        label="store",
+                        memory_text=store_prompt,
                     )
                     logger.info(
                         "openclaw --local STORE task=%s done=%s diag: %s",
@@ -2301,6 +2386,22 @@ class OpenClawAgent(Agent):
                         store_done,
                         store_diag.replace("\n", " | ")[:300],
                     )
+                    mem_before_match = re.search(r"mem_before=(\d+)", store_diag)
+                    mem_after_match = re.search(r"mem_after=(\d+)", store_diag)
+                    store_rc_match = re.search(r"store_rc=(\d+)", store_diag)
+                    store_verified = bool(
+                        store_done
+                        and store_rc_match
+                        and int(store_rc_match.group(1)) == 0
+                        and mem_before_match
+                        and mem_after_match
+                        and int(mem_after_match.group(1)) > int(mem_before_match.group(1))
+                    )
+                    if self._strict_memory and not store_verified:
+                        raise RuntimeError(
+                            "strict_memory=true: OpenClaw memory store did not create "
+                            f"a verified LanceDB entry ({store_diag[:240]})"
+                        )
                 except Exception as exc:  # noqa: BLE001
                     store_diag = f"store-turn failed: {exc}"
                     logger.warning(
@@ -2308,6 +2409,8 @@ class OpenClawAgent(Agent):
                         task.task_id,
                         exc,
                     )
+                    if self._strict_memory:
+                        raise
 
             return AgentResponse(
                 answer=answer,
@@ -2325,12 +2428,16 @@ class OpenClawAgent(Agent):
                     "persistent_memory": True,
                 },
             )
-        except Exception as exc:  # noqa: BLE001 - fall back to chat/completions
+        except Exception as exc:  # noqa: BLE001 - optional fallback for legacy runs
             logger.warning(
                 "openclaw --local memory turn failed task=%s: %s; falling back",
                 task.task_id,
                 exc,
             )
+            if self._strict_memory:
+                raise RuntimeError(
+                    f"strict_memory=true: OpenClaw native memory path failed: {exc}"
+                ) from exc
             return None
 
     def solve(self, task: BenchmarkTask, sandbox: Any = None) -> AgentResponse:
@@ -2453,7 +2560,7 @@ class OpenClawAgent(Agent):
         # autoRecall/autoCapture hooks actually fire (the chat/completions path
         # below bypasses the agent loop and leaves the plugin inert). Falls
         # through to chat/completions if the local turn yields nothing usable.
-        if self._persistent_memory and sandbox is not None:
+        if self._memory_enabled and sandbox is not None:
             local_response = self._try_solve_via_local_agent(
                 task=task,
                 sandbox=sandbox,

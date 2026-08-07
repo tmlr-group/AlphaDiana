@@ -22,11 +22,13 @@ class TaskDispatcher:
         cancel_event: threading.Event | None = None,
         task_retries: int = 0,
         retry_if: Callable[[Exception], bool] | None = None,
+        stop_on_error: bool = False,
     ) -> None:
         self.max_concurrent = max(1, max_concurrent)
         self._cancel = cancel_event
         self._task_retries = max(0, task_retries)
         self._retry_if = retry_if
+        self._stop_on_error = bool(stop_on_error)
 
     @property
     def cancelled(self) -> bool:
@@ -107,6 +109,13 @@ class TaskDispatcher:
                     "success": False,
                     "error": str(exc),
                 })
+                if self._stop_on_error:
+                    logger.error(
+                        "Stopping sequential dispatch after task %s because its "
+                        "state may affect later work items",
+                        task_id,
+                    )
+                    break
         return outcomes
 
     def _dispatch_concurrent(

@@ -55,7 +55,9 @@ dump.rdb
 !/configs/full_runs/
 !/configs/full_runs/**
 !/configs/micro_runs/
-!/configs/micro_runs/**
+!/configs/micro_runs/README.md
+!/configs/micro_runs/Memory/
+!/configs/micro_runs/Memory/**
 !/configs/smokes/
 !/configs/smokes/podman_nightly_validation/
 !/configs/smokes/podman_nightly_validation/**

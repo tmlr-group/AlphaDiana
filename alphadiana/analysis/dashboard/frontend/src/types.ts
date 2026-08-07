@@ -15,6 +15,7 @@ export interface RunSummary {
   error_distribution: Record<string, number>;
   model: string;
   num_samples: number;
+  samples_independent: boolean;
   pass_at_k: number;
   avg_at_k: number;
   per_category_pass_at_k: Record<string, number>;
