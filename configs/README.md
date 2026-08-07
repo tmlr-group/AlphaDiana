@@ -12,7 +12,7 @@ file can be passed directly to `alphadiana run`.
 | Browse ad-hoc harness/benchmark examples | `examples/` |
 | Run a checked-in Podman readiness matrix | `smokes/` and its per-folder `README.md` |
 | Reproduce Tool/Skill/Memory micro cells | `micro_runs/README.md` |
-| Run the shipped memory experiment | `memory_experiments/exp1_zw_aime_memory_seq.yaml` |
+| Run the memory-scope reference matrix | `micro_runs/Memory/` |
 | Render the SWE-bench Verified Mini campaign | `full_runs/swe_verified_mini.yaml` |
 | Inspect the annotated core experiment shape | `schema.yaml` |
 | Compare canonical benchmark prompts | `PROMPTS.md` |
@@ -37,7 +37,7 @@ Read the target YAML because older examples use either
 ### `examples/`
 
 Runnable or validation-oriented examples for DirectLLM, OpenClaw, OpenCode,
-ZeroClaw, SWE-bench, Terminal-Bench 2, MoltBench, DecodingTrust, and Podman
+ZeroClaw, SWE-bench, Terminal-Bench 2, DecodingTrust, and Podman
 paths. Some are single-task smokes; others are larger templates. The filename
 and comments are not proof of support: inspect the matching page under
 `docs/benchmarks/` or `docs/harnesses/` for prerequisites and current caveats.
@@ -50,7 +50,6 @@ Useful first entries:
 - `opencode_aime_podman_smoke.yaml`: OpenCode Podman smoke.
 - `zeroclaw_aime2026.yaml`: ZeroClaw with a live ROCK sandbox.
 - `openclaw_decodingtrust_finance_cli.yaml`: DecodingTrust-specific OpenClaw CLI path.
-- `moltbench_qjl_smoke_podman.yaml`: MoltBench QJL Podman smoke.
 
 `zeroclaw_aime2026_local_smoke.yaml` is a legacy validation fixture, not a
 runnable host-mode example: current generic ZeroClaw requires a live
@@ -80,12 +79,6 @@ Paper-oriented Tool, Skill, and Memory cells. Start at
 `micro_runs/README.md`. These configs can be expensive and may require local
 images, skills, or provider-specific tool-call support; do not treat them as
 Getting Started smokes.
-
-### `memory_experiments/`
-
-The current checkout ships only
-`exp1_zw_aime_memory_seq.yaml`. Other experiment names discussed in drafts are
-not published here and must not be used as runnable paths.
 
 ### `full_runs/`
 

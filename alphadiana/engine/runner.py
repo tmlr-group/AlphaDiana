@@ -46,6 +46,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 OPENCLAW_CONCURRENCY_PER_SANDBOX = 1
 _OPENCLAW_PROFILE_CACHE_PATH = Path(".cache/openclaw_startup_profiles.json")
+_VALID_MEMORY_SCOPES = frozenset({"intra_task", "cross_sample", "cross_task"})
 
 _SECRET_ENV_KEYS = (
     "OPENAI_API_KEY",
@@ -200,6 +201,28 @@ def _is_gateway_autodeploy_agent(config: "ExperimentConfig") -> bool:
             and config.agent_config.get("openclaw_config_path")
         )
     return False
+
+
+def _stabilize_openclaw_gateway_token(config: "ExperimentConfig") -> None:
+    """Resolve one strong auto-deploy token shared by every runtime instance."""
+    if not _is_gateway_autodeploy_agent(config):
+        return
+    from alphadiana.utils.openclaw_security import (
+        is_weak_openclaw_gateway_token,
+        resolve_openclaw_gateway_token,
+    )
+
+    token = str(config.agent_config.get("gateway_token", "") or "")
+    if is_weak_openclaw_gateway_token(token):
+        config.agent_config["gateway_token"] = resolve_openclaw_gateway_token(token)
+
+
+def _should_predeploy_openclaw(config: "ExperimentConfig") -> bool:
+    """Use the fresh gateway pool only when state does not span work items."""
+    return _is_gateway_autodeploy_agent(config) and _configured_memory_scope(config) not in {
+        "cross_sample",
+        "cross_task",
+    }
 
 
 def _needs_auto_rock_sandbox(config: "ExperimentConfig") -> bool:
@@ -412,9 +435,98 @@ def _is_recoverable_task_failure(exc: Exception) -> bool:
     return bool(getattr(exc, "retryable_task_failure", False))
 
 
+def _configured_memory_scope(config: "ExperimentConfig") -> str:
+    """Return and validate the optional harness-native memory scope.
+
+    An empty value preserves legacy behavior. Explicit scopes make the
+    persistence contract auditable and prevent a config from claiming a scope
+    whose ``persistent_memory`` setting implements different semantics.
+    """
+    agent_config = getattr(config, "agent_config", {}) or {}
+    raw_scope = str(agent_config.get("memory_scope", "") or "").strip().lower()
+    if not raw_scope:
+        return ""
+    if raw_scope not in _VALID_MEMORY_SCOPES:
+        valid = ", ".join(sorted(_VALID_MEMORY_SCOPES))
+        raise ValueError(f"agent.config.memory_scope must be one of: {valid}")
+
+    persistent = bool(agent_config.get("persistent_memory", False))
+    expected_persistent = raw_scope != "intra_task"
+    if persistent != expected_persistent:
+        raise ValueError(
+            f"memory_scope={raw_scope!r} requires "
+            f"persistent_memory={str(expected_persistent).lower()}"
+        )
+    return raw_scope
+
+
+class _MemoryScopeLifecycle:
+    """Track task-major work items and identify cross-sample reset points."""
+
+    def __init__(self, scope: str) -> None:
+        self.scope = scope
+        self._task_id = ""
+
+    def before_work_item(self, task_id: str, sample_index: int) -> bool:
+        del sample_index  # Ordering is task-major; task identity defines the boundary.
+        if self.scope != "cross_sample":
+            return False
+        task_id = str(task_id)
+        should_reset = bool(self._task_id and task_id != self._task_id)
+        self._task_id = task_id
+        return should_reset
+
+
+def _validate_stateful_checkpoint_resume(
+    scope: str,
+    work_items: list[tuple["BenchmarkTask", int]],
+    completed_samples: set[tuple[str, int]],
+) -> None:
+    """Reject checkpoint resumes that cannot reconstruct native memory state."""
+    if scope not in {"cross_sample", "cross_task"} or not completed_samples:
+        return
+
+    expected_samples = {(task.task_id, sample_index) for task, sample_index in work_items}
+    completed_expected = expected_samples & completed_samples
+    if not completed_expected or completed_expected == expected_samples:
+        return
+
+    if scope == "cross_task":
+        raise ValueError(
+            "Cannot resume a partial cross_task memory run because prior native "
+            "memory cannot be reconstructed; use a new run_id or --redo-all."
+        )
+
+    completed_by_task: dict[str, set[int]] = {}
+    expected_by_task: dict[str, set[int]] = {}
+    for task_id, sample_index in expected_samples:
+        expected_by_task.setdefault(task_id, set()).add(sample_index)
+    for task_id, sample_index in completed_expected:
+        completed_by_task.setdefault(task_id, set()).add(sample_index)
+    partially_completed_tasks = sorted(
+        task_id
+        for task_id, completed in completed_by_task.items()
+        if completed != expected_by_task[task_id]
+    )
+    if partially_completed_tasks:
+        raise ValueError(
+            "Cannot resume partially sampled task(s) in a cross_sample memory run "
+            f"({', '.join(partially_completed_tasks)}); use a new run_id or --redo-all."
+        )
+
+
 def _effective_dispatch_concurrency(config: "ExperimentConfig") -> int:
     """Return the safe dispatcher concurrency for a configured run."""
     requested = max(1, int(getattr(config, "max_concurrent", 1) or 1))
+    memory_scope = _configured_memory_scope(config)
+    if memory_scope in {"cross_sample", "cross_task"} and requested > 1:
+        logger.warning(
+            "memory_scope=%s requires deterministic state inheritance; lowering "
+            "effective max_concurrent from %d to 1.",
+            memory_scope,
+            requested,
+        )
+        return 1
     if getattr(config, "sandbox_name", "") == "decodingtrust" and requested > 1:
         logger.warning(
             "DecodingTrust sandbox uses process-wide DTAP state and is not safe "
@@ -635,8 +747,24 @@ class Runner:
         self.result_store: ResultStore | None = None
         self.report_generator: ReportGenerator | None = None
 
+    def _reset_cross_sample_state(self, shared_session):
+        """Recreate harness-native state before the first sample of a new task."""
+        if self.agent is not None:
+            self.agent.teardown()
+        agent_cls = AgentRegistry.get(self.config.agent_name)
+        self.agent = agent_cls()
+        self.agent.version = self.config.agent_version
+        self.agent.setup(self.config.agent_config)
+
+        if shared_session is None:
+            return None
+        shared_session.close()
+        return self.sandbox.create_session() if self.sandbox is not None else None
+
     def setup(self) -> None:
         """Resolve and instantiate all components from their registries."""
+        _configured_memory_scope(self.config)
+        _stabilize_openclaw_gateway_token(self.config)
         # Import all benchmark/agent/sandbox/scorer modules to trigger registration.
         import alphadiana.benchmarks.aime.benchmark  # noqa: F401
         import alphadiana.benchmarks.custom.benchmark  # noqa: F401
@@ -858,6 +986,8 @@ class Runner:
             return self._run_decodingtrust_process_shards(tasks)
 
         num_samples = getattr(self.config, "num_samples", 1)
+        memory_scope = _configured_memory_scope(self.config)
+        memory_lifecycle = _MemoryScopeLifecycle(memory_scope)
         self.result_store.save_manifest({
             "run_id": self.config.run_id,
             "benchmark_name": self.config.benchmark_name,
@@ -865,6 +995,7 @@ class Runner:
             "agent_version": self.config.agent_version,
             "scorer_name": self.config.scorer_name,
             "num_samples": num_samples,
+            "memory_scope": memory_scope,
             "expected_task_count": len(tasks),
             "expected_sample_count": len(tasks) * num_samples,
             "expected_task_ids": [task.task_id for task in tasks],
@@ -903,6 +1034,11 @@ class Runner:
                 completed_samples = self.result_store.completed_sample_ids(
                     scorer_name=self.config.scorer_name,
                 )
+                _validate_stateful_checkpoint_resume(
+                    memory_scope,
+                    work_items,
+                    completed_samples,
+                )
                 if completed_samples:
                     before = len(work_items)
                     work_items = [
@@ -917,6 +1053,11 @@ class Runner:
             else:
                 completed = self.result_store.completed_task_ids(
                     scorer_name=self.config.scorer_name,
+                )
+                _validate_stateful_checkpoint_resume(
+                    memory_scope,
+                    work_items,
+                    {(task_id, 0) for task_id in completed},
                 )
                 if completed:
                     before = len(work_items)
@@ -1021,7 +1162,7 @@ class Runner:
         fresh_predeployed_mode = False
         if (
             self.sandbox is None
-            and _is_gateway_autodeploy_agent(self.config)
+            and _should_predeploy_openclaw(self.config)
         ):
             explicit_num = int(self.config.agent_config.get("num_sandboxes", 0) or 0)
             auto_num = (
@@ -2046,7 +2187,15 @@ class Runner:
         def solve_fn(work_item):
             nonlocal shared_session, predeployed_started_work_items
             task, sample_index = work_item
+            if memory_lifecycle.before_work_item(task.task_id, sample_index):
+                logger.info(
+                    "Resetting harness-native memory at cross-sample task boundary: %s",
+                    task.task_id,
+                )
+                shared_session = self._reset_cross_sample_state(shared_session)
             runtime_task = _bind_runtime_task(task, sample_index)
+            if memory_scope:
+                runtime_task.metadata["memory_scope"] = memory_scope
             runtime_task.metadata["_lifecycle_path"] = str(
                 _lifecycle_path_for(task.task_id, sample_index)
             )

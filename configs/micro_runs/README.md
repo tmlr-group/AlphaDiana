@@ -1,8 +1,10 @@
 # Micro Runs — Paper §5 Axis Experiments
 
 Configurations for the three-axis ablation in the AlphaDiana paper §5:
-**Tool / Memory / Skill** axes evaluated on **AIME 2026** and **GPQA-Diamond**
-across **OpenClaw / ZeroClaw** harnesses and two reasoning models.
+**Tool / Memory / Skill** axes evaluated on **AIME 2026** and **GPQA-Diamond**.
+The release memory seed covers **OpenClaw / OpenCode / ZeroClaw** with
+Qwen3.5-27B; expand it to other benchmarks and models only after validating the
+seed on the target infrastructure.
 
 ## Directory layout
 
@@ -10,61 +12,69 @@ across **OpenClaw / ZeroClaw** harnesses and two reasoning models.
 micro_runs/
 ├── Tool/                   # Tool axis (clean reasoning prompt, tools available)
 ├── Memory/
-│   ├── intra_task/         # Setting 1: prompt-level memory hint, no persistence
-│   ├── cross_sample/       # Setting 2: memory persists across samples of one task (TODO)
-│   └── cross_task/         # Setting 3: memory persists across all tasks (TODO)
-└── Skill/                  # Skill axis (TODO, owned by Jinbo)
+│   ├── intra_task/         # Native memory is isolated to one work item
+│   ├── cross_sample/       # Samples of one task share state; tasks are isolated
+│   └── cross_task/         # All work items in the run share state
+└── Skill/                  # Skill axis
 ```
 
-Each directory contains 8 cells: `{benchmark}_{harness}_{model}.yaml`
-- `benchmark`: `aime2026` | `gpqa`
-- `harness`: `openclaw` | `zeroclaw`
-- `model`: `qwen35_27b` | `kimi_k26`
+The nine release reference cells use
+`aime2026_{openclaw|opencode|zeroclaw}_qwen35_27b.yaml`, one per memory scope.
+Historical data may contain a larger 36-cell matrix; those files are not proof
+that the current release can reproduce every provider/model combination.
 
-## Cells (Tool + Memory/intra_task = 16 cells, runnable now)
+## Memory reference cells
 
-| benchmark | harness | model | Tool | Memory/intra_task |
-|---|---|---|---|---|
-| AIME 2026 | OpenClaw | Qwen3.5-27B | ✅ | ✅ |
-| AIME 2026 | OpenClaw | Kimi-K2.6 | ✅ | ✅ |
-| AIME 2026 | ZeroClaw | Qwen3.5-27B | ✅ | ✅ |
-| AIME 2026 | ZeroClaw | Kimi-K2.6 | ✅ | ✅ |
-| GPQA-Diamond | OpenClaw | Qwen3.5-27B | ✅ | ✅ |
-| GPQA-Diamond | OpenClaw | Kimi-K2.6 | ✅ | ✅ |
-| GPQA-Diamond | ZeroClaw | Qwen3.5-27B | ✅ | ✅ |
-| GPQA-Diamond | ZeroClaw | Kimi-K2.6 | ✅ | ✅ |
+| Harness | Intra-Task | Cross-Sample | Cross-Task |
+|---|---:|---:|---:|
+| OpenClaw | ✅ | ✅ | ✅ |
+| OpenCode | ✅ | ✅ | ✅ |
+| ZeroClaw | ✅ | ✅ | ✅ |
 
 ## Axis definitions
 
 - **Tool** (clean baseline): no memory hint; tools are present and the model may invoke
   them but the system prompt does not nudge it.
-- **Memory / intra_task** (prompt-level): the system prompt explicitly nudges the model
-  to call `write` (OpenClaw) or `memory_store / memory_recall` (ZeroClaw). Each task
-  gets a fresh sandbox; memory does not persist beyond a single rollout.
-- **Memory / cross_sample** (TODO): for `num_samples > 1`, sample N inherits the memory
-  state of sample N-1 within the same task. Requires pipeline patches to
-  `runner.py` and the harness agents.
-- **Memory / cross_task** (TODO): memory persists across the entire benchmark run.
-  Same pipeline patch as above.
-- **Skill** (TODO, Jinbo): see `Skill/README.md`.
+- **Memory / intra_task**: `persistent_memory: false`; native scratch state is
+  confined to one `(task, sample)` work item.
+- **Memory / cross_sample**: `persistent_memory: true`; work items run in task-major
+  order and the runner rebuilds the harness and sandbox when the task ID changes.
+- **Memory / cross_task**: `persistent_memory: true`; the harness and sandbox remain
+  live for the complete sequential run.
+- **Skill**: see `Skill/README.md`.
+
+Every memory reference config declares `agent.config.memory_scope`. Stateful
+scopes are forced to effective concurrency 1 even if a caller supplies a larger
+value. A partial Cross-Task run and a partially sampled Cross-Sample task cannot
+reconstruct earlier native memory, so the runner requires a new `run_id` or
+`--redo-all`; Cross-Sample may resume only at a complete task boundary.
 
 ## Running a cell
 
-The yaml expects three environment variables to be set by the launcher:
+The YAML expects provider variables to be set by the launcher:
 
 ```bash
-export OPENAI_BASE_URL=http://127.0.0.1:9091/v1   # local proxy or vLLM endpoint
+export OPENAI_BASE_URL=http://HOST_REACHABLE_FROM_SANDBOX:9091/v1
 export OPENAI_API_KEY=sk-EMPTY                    # any non-"EMPTY" string for local
 export OPENCLAW_GATEWAY_TOKEN=mytoken             # OpenClaw cells only
+export MEMORY_EMBEDDING_BASE_URL=http://127.0.0.1:10087/v1  # OpenClaw memory cells
+export MEMORY_EMBEDDING_MODEL=qwen3-embed-0.6b             # OpenClaw memory cells
+export MEMORY_EMBEDDING_API_KEY=sk-EMPTY                   # OpenClaw memory cells
 ```
+
+For ROCK-backed OpenClaw and ZeroClaw, `OPENAI_BASE_URL` (and the OpenClaw
+embedding URL) must be reachable from inside the sandbox. A host-loopback URL
+such as `127.0.0.1` may point back at the sandbox rather than the model host;
+use the host address reported by ROCK or an equivalent routable endpoint.
 
 Then:
 
 ```bash
-python -m alphadiana.cli run configs/micro_runs/Tool/aime2026_zeroclaw_qwen35_27b.yaml \
-  -o run_id=my_test \
-  -o output_dir=/tmp/runs/my_test \
-  -o max_concurrent=5
+python -m alphadiana.cli run \
+  configs/micro_runs/Memory/cross_sample/aime2026_zeroclaw_qwen35_27b.yaml \
+  -o run_id=my_memory_smoke \
+  -o output_dir=/tmp/runs/my_memory_smoke \
+  -o benchmark.config.max_tasks=1 -o num_samples=2 --redo-all
 ```
 
 For Kimi-K2.6 cells, point `OPENAI_BASE_URL` at a `tool_filter_proxy.py` instance that
@@ -72,23 +82,16 @@ forwards to OpenRouter. For ZeroClaw + Kimi specifically, the proxy must pass
 `--rename-reasoning` so the model's reasoning is preserved through ZeroClaw's
 content sanitisation.
 
-See `alphadiana/agent/tool_filter_proxy.py --help` for proxy options.
-
-## Running all cells of an axis
-
-There is no committed launcher script. Use your own orchestration (tmux per cell,
-one OpenRouter key per pair of cells to stay under per-key concurrency limits).
-
-A reference launcher is kept locally in `scripts/` (not committed because key
-allocation is operator-specific).
+See `python -m alphadiana.harness.proxies.tool_filter_proxy --help` for proxy options.
 
 ## Notes
 
-- All cells default to `temperature=0.7`. AIME cells run `num_samples=4` (pass@4),
-  GPQA cells run `num_samples=1` (pass@1).
-- All cells have `capture_logprobs: true` and `top_logprobs: 20`.
-- `max_concurrent: 5` is conservative; raise it if your provider tolerates more
-  per-key concurrency.
+- The reference cells use `temperature=0.0`; cross-sample uses `num_samples=4`,
+  while cross-task uses one sample per task.
+- OpenClaw persistent memory requires a compatible embedding endpoint for its
+  LanceDB plugin. ZeroClaw reference cells use sqlite FTS and need no embedding
+  endpoint.
+- Keep stateful scopes sequential. Parallelizing them changes the intervention.
 - For ZeroClaw + thinking-mode models, route requests through
   `tool_filter_proxy.py --rename-reasoning` to keep the chain-of-thought visible
   in `normalized_trace.json`.

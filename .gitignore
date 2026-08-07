@@ -54,6 +54,8 @@ dump.rdb
 !/configs/examples/**
 !/configs/full_runs/
 !/configs/full_runs/**
+!/configs/micro_runs/
+!/configs/micro_runs/**
 !/configs/smokes/
 !/configs/smokes/podman_nightly_validation/
 !/configs/smokes/podman_nightly_validation/**
@@ -65,12 +67,10 @@ dump.rdb
 /.podman-storage/
 /.podman-run/
 
-# MoltBench runtime artifacts
-moltbench_artifacts_*/
+# Runtime artifacts
 swebench_artifacts_*/
 swe_bench_logs/
 results_*/
-moltbench_pipeline_*/
 
 dev/generated
 scripts/.alphadiana_env

@@ -1053,9 +1053,15 @@ class OpenClawAgent(Agent):
         self._api_key = config.get("api_key", os.environ.get("OPENAI_API_KEY", ""))
         self._model = config.get("model", "openclaw")
         self._gateway_token = _resolve_gateway_token(config.get("gateway_token", "OPENCLAW"))
-        if (self._runtime or self._runtime_backend == "podman") and is_weak_openclaw_gateway_token(
-            self._gateway_token
-        ):
+        manages_gateway_runtime = bool(
+            self._runtime
+            or self._runtime_backend == "podman"
+            or (
+                config.get("rock_agent_config_path")
+                and config.get("openclaw_config_path")
+            )
+        )
+        if manages_gateway_runtime and is_weak_openclaw_gateway_token(self._gateway_token):
             self._gateway_token = resolve_openclaw_gateway_token(self._gateway_token)
         self._temperature = config.get("temperature", 0.7)
         self._top_p = config.get("top_p", None)

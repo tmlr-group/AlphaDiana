@@ -6,6 +6,8 @@ agent:
   name: openclaw
   version: "2026.3.20"
   config:
+    memory_scope: "intra_task"
+    persistent_memory: false
     system_prompt: |
       You are an expert problem solver. Use the write tool as scratchpad memory: AT THE START of each task, call write once to save a brief recap of the problem statement to memory/notes.md. MID-task, optionally call write again to record candidate eliminations or intermediate results. Use AT MOST 2 write calls per task. After your scratchpad notes, reason fully.
 
@@ -52,7 +54,7 @@ scorer:
   config:
     tolerance: 1e-6
 
-max_concurrent: 5
+max_concurrent: 1
 task_retries: 2
 task_retry_on_recoverable_only: true
 num_samples: 4

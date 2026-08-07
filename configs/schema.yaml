@@ -13,7 +13,6 @@ agent:
     runtime: string                  # Optional runtime selector, e.g. "swebench_container"
     container_engine: string         # Task-container engine: "docker" legacy/baseline or opt-in "podman"
     container_engine_binary: string  # Optional explicit Docker/Podman executable path
-    podman_gpu_args: [string]        # `moltbench_docker` Podman GPU flags, default ["--device", "nvidia.com/gpu=all"]
     agent_type: string               # `swebench_docker` mode: "direct_llm" | "openclaw" | "opencode" | "zeroclaw"
     model: string
     model_name: string
@@ -33,18 +32,14 @@ agent:
     dockerhub_repo: string           # `swebench_docker` image repo prefix (default: "jefzda/sweap-images")
     image: string                    # Explicit SWE-bench image override
     output_dir: string               # Local artifact directory for Docker-backed agents
-    extra_volumes: [string]          # Additional `moltbench_docker` container -v mount specs
-    shm_size: string                 # Optional `moltbench_docker` --shm-size value
-    ipc_mode: string                 # Optional `moltbench_docker` --ipc value; incompatible with shm_size when host
-    container_runtime: string        # Optional `moltbench_docker` OCI runtime override, e.g. "runc"
-    verifier_image: string           # Host-only verifier image for protected MoltBench tasks
-    verifier_startup_timeout: integer
     temperature: float
     max_tokens: integer
     max_attempts: integer            # Retry attempts; generic OpenClaw default: 5
     request_timeout: float           # Harness-specific: DirectLLM 600s, OpenClaw 1800s, ZeroClaw 1200s
     bridge_port: integer             # ZeroClaw Podman bridge listener, exposure, probe, and API port
     runtime_trace_mode: string       # ZeroClaw trace mode (default: "none")
+    memory_scope: string             # "intra_task" | "cross_sample" | "cross_task"
+    persistent_memory: boolean       # False for intra_task; true for stateful scopes
     max_tool_iterations: integer     # ZeroClaw max tool iterations (default: 100)
     max_actions_per_hour: integer    # ZeroClaw autonomy action budget (default: 200)
     timeout_sec: integer
@@ -87,13 +82,12 @@ agent:
 
 # benchmark: (required) Benchmark configuration.
 benchmark:
-  name: string        # e.g. "aime", "gpqa_diamond", "hle", "mmmu_pro", "imo_answerbench", "swe_bench", "swebench_pro_os", "terminal_bench2", "moltbench", "moltbench_qjl", "decodingtrust", "custom"
+  name: string        # e.g. "aime", "gpqa_diamond", "hle", "mmmu_pro", "imo_answerbench", "swe_bench", "swebench_pro_os", "terminal_bench2", "decodingtrust", "custom"
   config:             # Benchmark-specific params
     split: string
     year: string
     subset: string
     data_path: string
-    seed_config_path: string
     baseline_json_path: string
     distortion_threshold: float
     retention_threshold: float

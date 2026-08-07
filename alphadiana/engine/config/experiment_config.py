@@ -82,6 +82,15 @@ def _apply_agent_env_defaults(agent_name: str, agent_config: Any) -> dict:
             "api_base": "OPENAI_BASE_URL",
             "api_key": "OPENAI_API_KEY",
         }
+        if (
+            agent_name == "openclaw"
+            and resolved.get("rock_agent_config_path")
+            and resolved.get("openclaw_config_path")
+        ):
+            # In auto-deploy mode OPENAI_BASE_URL is the provider endpoint used
+            # inside the sandbox, not an already-running OpenClaw gateway.  The
+            # runner must leave api_base empty so it creates the gateway first.
+            env_defaults.pop("api_base")
         if agent_name in {
             "direct_llm",
             "openclaw",
