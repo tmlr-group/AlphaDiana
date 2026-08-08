@@ -35,6 +35,6 @@ The pilot writes raw logs under `logs/`, task JSONs under `results/`, and audit
 artifacts under `context/podman-scale-readiness/`.
 
 For the operator runbook and support boundary, see
-`docs/benchmarks/podman.md`. For the latest evidence, see
+`website/docs/benchmarks/podman.md`. For the latest evidence, see
 `context/podman-scale-readiness/README.md` when that reviewer archive is present
 in the checkout.
