@@ -50,7 +50,7 @@ env_has_required_python_stack() {
   with_nounset_disabled conda run -n "${ENV_NAME}" python -c "
 from pathlib import Path
 import importlib.metadata as md
-import alphadiana, rock, ray, openai, httpx, requests, datasets, pytest, yaml
+import alphadiana, rock, ray, openai, httpx, requests, datasets, yaml
 from packaging.version import Version
 
 project_root = Path(r'''${PROJECT_ROOT}''').resolve()
@@ -205,7 +205,7 @@ else
   # Reuse the active environment's build backend packages so repeat setup runs
   # do not fail in network-restricted shells while trying to create an isolated
   # build env for the local project.
-  with_nounset_disabled conda run -n "${ENV_NAME}" python -m pip install --no-build-isolation -e ".[all,benchmarks,dev]"
+  with_nounset_disabled conda run -n "${ENV_NAME}" python -m pip install --no-build-isolation -e ".[all,benchmarks]"
   log_progress "Installing ROCK editable package from ${ROCK_REL}"
   with_nounset_disabled conda run -n "${ENV_NAME}" python -m pip install --no-build-isolation -e "${ROCK_REL}"
   log_progress "Installing pinned nacos-sdk-python==2.0.9"

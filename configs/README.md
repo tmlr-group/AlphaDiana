@@ -51,10 +51,6 @@ Useful first entries:
 - `opencode_aime_podman_smoke.yaml`: OpenCode Podman smoke.
 - `zeroclaw_aime2026.yaml`: ZeroClaw with a live ROCK sandbox.
 
-`zeroclaw_aime2026_local_smoke.yaml` is a legacy validation fixture, not a
-runnable host-mode example: current generic ZeroClaw requires a live
-sandbox/container session.
-
 Files ending in `.local.yaml` are local override templates. Review every path,
 image, endpoint, and environment variable before use.
 

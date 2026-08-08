@@ -26,11 +26,10 @@ pilot without committing it.
 
 ## Contributor checks
 
-After changing one of these paths, run the focused regression suite and config
-validation before a real smoke:
+After changing one of these paths, check the launcher syntax and config matrix
+before a real smoke:
 
 ```bash
-python -m pytest -q tests/test_podman_runtime_readiness.py
 bash -n scripts/run_podman_scale_readiness.sh
 
 export OPENCLAW_GATEWAY_TOKEN="$(python3 -c \
