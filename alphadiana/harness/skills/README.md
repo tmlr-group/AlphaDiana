@@ -26,12 +26,12 @@ third-party assets (ImageIO, FFmpeg, OOXML schemas, fonts).
 ```yaml
 agent:
   config:
-    # Bare name — resolves to alphadiana/skills/<name>/
+    # Bare name — resolves to alphadiana/harness/skills/<name>/
     skill_folder: "advanced-maths"
 ```
 
 Other accepted forms:
-- Relative path: `skill_folder: "alphadiana/skills/advanced-maths"` (resolved against cwd)
+- Relative path: `skill_folder: "alphadiana/harness/skills/advanced-maths"` (resolved against cwd)
 - Absolute path: `skill_folder: "/abs/path/to/your_skill_dir"`
 
 The harness then makes the bundle reachable to the model:
