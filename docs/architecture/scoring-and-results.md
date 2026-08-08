@@ -16,7 +16,6 @@ Generic scorer keys are `exact_match`, `numeric`, `math_verify`, and `llm_judge`
 | `swe_bench` | Official SWE-bench evaluation adapter |
 | `swebench_pro` | SWE-bench Pro evaluator and resolved metadata |
 | `terminal_bench2` | Binary score from an actually observed verifier reward |
-| `decodingtrust` | Runs the DTAP judge and records task/attack metrics |
 
 Scorers do not share one universal no-answer rationale. Benchmark adapters may interpret missing patches, rewards, verifier output, or official artifacts differently. The universal status is the top-level `score_status`, not benchmark-specific supporting fields.
 
@@ -70,14 +69,6 @@ For `terminal_bench2`, ordinary score fields are not sufficient. `verifier_statu
 
 `RunSummary` includes expected/written sample counts, valid and invalid counts, errors, missing samples/tasks, accuracy, mean score, mean wall time, total tokens, Pass@k, Avg@k, and per-category variants. `k` is the configured `num_samples`; the engine does not assign benchmark-specific values.
 
-DecodingTrust adds denominator-scoped fields:
-
-- task-success count, denominator, and rate;
-- attack-success count, denominator, and rate;
-- count of valid DecodingTrust records.
-
-These denominators only include records whose scorer metadata contains the corresponding boolean. Do not infer a full-run rate from a narrower denominator without reporting that scope.
-
 Strict reporting compares the manifest's expected samples with written valid/invalid records and can fail the command when required samples are missing or inconsistent.
 
 ## Reading results safely
@@ -86,7 +77,7 @@ Strict reporting compares the manifest's expected samples with written valid/inv
 2. Use `infer_score_status`, not the presence of a numeric field alone.
 3. Confirm the scorer name matches the run being analyzed.
 4. Inspect task-level error, trajectory, and artifacts for abnormal rows.
-5. For benchmark-specific claims, inspect the matching verifier, patch, reward, or DTAP judge evidence.
+5. For benchmark-specific claims, inspect the matching verifier, patch, or reward evidence.
 
 ## Related pages
 

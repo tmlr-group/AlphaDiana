@@ -6,7 +6,7 @@ sidebar_position: 4
 
 The generic `openclaw` harness normally calls an OpenClaw gateway through an OpenAI-compatible chat-completions endpoint. AlphaDiana makes one consolidated gateway request per attempt; a solve may retry up to `max_attempts` (default 5). The gateway internally runs OpenClaw's multi-turn orchestration, tool use, and context compaction, so calling it is not the same as bypassing the OpenClaw agent loop.
 
-The harness also has an opt-in local-agent memory path and a DecodingTrust-specific CLI backend.
+The harness also has an opt-in local-agent memory path.
 
 ## Runtime selectors
 
@@ -17,9 +17,6 @@ The harness also has an opt-in local-agent memory path and a DecodingTrust-speci
 | `runtime` unset | Standard OpenClaw runtime manager / gateway path |
 | `runtime: swebench_container` | OpenClaw gateway inside a SWE-bench task container |
 | `runtime_backend: podman` | Podman runtime manager |
-| `runtime_backend: decodingtrust_openclaw_cli` | DTAP-native OpenClaw CLI path; requires a DecodingTrust sandbox session |
-
-Do not place `decodingtrust_openclaw_cli` under `runtime`; the solve dispatch reads `runtime_backend`.
 
 ## Standard gateway path
 
@@ -46,18 +43,6 @@ The path runs:
 
 `memory_lancedb` config is consumed by the runtime manager to install/configure the OpenClaw LanceDB memory plugin, set its embedding provider, and allow memory tools. Supply an explicit embedding base URL and credentials appropriate to the environment; a configured plugin does not prove that recall succeeded, so inspect the trace.
 
-## DecodingTrust backend
-
-`runtime_backend: decodingtrust_openclaw_cli` bypasses the ordinary gateway manager and requires `sandbox.name: decodingtrust`. For each task the harness:
-
-- reads the DTAP task/attack config through the task-bound sandbox;
-- obtains live MCP server URLs and injection configuration;
-- builds the OpenClaw CLI instruction and output directory;
-- runs the DTAP-integrated agent flow;
-- preserves trajectory data for `decodingtrust` scoring.
-
-Use `parallel_strategy: process_shards` for multi-process DTAP parallelism. In-process DecodingTrust concurrency is forced to one.
-
 ## Integrity and status
 
 For ordinary non-timeout streams, the runner rejects responses that explicitly report `received_done=false`, finish as incomplete, or contain heartbeat/session-taint evidence. These rejections are rerunnable error records.
@@ -82,7 +67,7 @@ Increasing `request_timeout` alone does not widen the default 180-second idle bu
 
 Runtime-backed OpenClaw can place the shared logprob proxy between the gateway and upstream provider. Verify capture through task metadata, request summaries, and sidecar references.
 
-The harness preserves the gateway response, stream status, logs, session/workspace artifacts, and normalized trajectories available on the chosen path. DTAP, standard gateway, local-memory, and SWE-bench paths produce different evidence shapes; do not assume one artifact is present everywhere.
+The harness preserves the gateway response, stream status, logs, session/workspace artifacts, and normalized trajectories available on the chosen path. Standard gateway, local-memory, and SWE-bench paths produce different evidence shapes; do not assume one artifact is present everywhere.
 
 ## Config reference
 
@@ -96,27 +81,6 @@ The harness preserves the gateway response, stream status, logs, session/workspa
 | Memory | `persistent_memory`, `oracle_feedback`, `memory_lancedb` |
 | Observability | shared logprob-capture and proxy bind/advertise settings |
 
-## Example: DecodingTrust
-
-```yaml
-agent:
-  name: openclaw
-  config:
-    runtime_backend: decodingtrust_openclaw_cli
-    model: ${OPENAI_MODEL_NAME}
-
-benchmark:
-  name: decodingtrust
-
-sandbox:
-  name: decodingtrust
-
-scorer:
-  name: decodingtrust
-```
-
-Use the checked-in DecodingTrust config for its required DTAP paths and environment details.
-
 ## Artifacts to inspect
 
 - stream status and `received_done`/finish reason;
@@ -124,7 +88,6 @@ Use the checked-in DecodingTrust config for its required DTAP paths and environm
 - gateway request/response and session trace;
 - sandbox/gateway identity and quarantine/replacement evidence;
 - memory solve/store traces when enabled;
-- DTAP tool trajectory and judge metadata on DecodingTrust runs.
 
 ## Related pages
 

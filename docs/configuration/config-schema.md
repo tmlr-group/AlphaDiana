@@ -53,7 +53,7 @@ These map one-to-one onto `ExperimentConfig` in
 | `agent.config` | dict | `{}` | Open pass-through to the harness (see below). |
 | `benchmark.name` | string | required | e.g. `aime`, `gpqa_diamond`, `hle`, `mmmu_pro`, `terminal_bench2`, `swe_bench`. |
 | `benchmark.config` | dict | `{}` | `split`, `year`, `subset`, `data_path`, etc. |
-| `sandbox` | null \| object | `null` | `{ name, config }`; name in `local` / `rock` / `podman` / `swebench_container` / `decodingtrust`. |
+| `sandbox` | null \| object | `null` | `{ name, config }`; name in `local` / `rock` / `podman` / `swebench_container`. |
 | `scorer.name` | string | required | Registered values are listed in the scorer table below. |
 | `scorer.config` | dict | `{}` | Scorer-specific params. |
 | `max_concurrent` | int | `1` | Parallel task executions; validator requires `1 <= n <= 64`. |
@@ -65,8 +65,6 @@ These map one-to-one onto `ExperimentConfig` in
 | `sandbox_retries` | int | `1` | Sandbox startup retries. |
 | `strict_report` | bool | `false` | Exit non-zero when the report finds missing samples, invalid scored rows, or error records. |
 | `strict_isolation` | bool | `false` | For ROCK auto-create/predeploy paths, turn setup failures into hard errors instead of shared-gateway fallback. |
-| `parallel_strategy` | string | `""` | Set to `process_shards` for DecodingTrust multi-process isolation. |
-| `process_shards` | int | `1` | Number of isolated DecodingTrust child processes; validator requires `>= 1`. |
 | `metadata` | dict | `{}` | Free-form tags (`author`, `gpu`, `notes`, ...). |
 
 :::tip Sample counts are protocol choices
@@ -121,8 +119,7 @@ you may also see pinned `dataset_index` / `max_tasks`.
 ### sandbox
 
 Set to `null` when the harness manages its own runtime. When present, `sandbox.name`
-selects the backend (`local`, `rock`, `podman`, `swebench_container`,
-`decodingtrust`) and `sandbox.config`
+selects the backend (`local`, `rock`, `podman`, `swebench_container`) and `sandbox.config`
 carries backend params (ROCK `admin_base_url` / `proxy_base_url` / `image` / `memory` /
 `cpus`; Podman `ports` / `network` / `name_prefix`; etc.). A ROCK preflight runs only for
 ROCK-backed runs.
@@ -139,7 +136,6 @@ ROCK-backed runs.
 | `swe_bench` | SWE-bench Verified | Runs the official SWE-bench evaluator against the submitted patch. |
 | `terminal_bench2` | Terminal-Bench 2 | Converts the task-container verifier reward to a binary score. |
 | `imo_verify` | IMO-AnswerBench | Repo-local conservative math-answer verifier; required for this benchmark. |
-| `decodingtrust` | DecodingTrust | Runs the DTAP judge and records utility/security metadata. |
 
 ## Environment-variable interpolation
 

@@ -5,11 +5,8 @@ from __future__ import annotations
 import json
 import math
 import logging
-import os
 import queue
 import re
-import subprocess
-import sys
 import threading
 import time
 from dataclasses import replace
@@ -18,7 +15,6 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import httpx
-import yaml
 
 from alphadiana.harness.registry import AgentRegistry
 from alphadiana.benchmarks.base import BenchmarkTask
@@ -26,7 +22,6 @@ from alphadiana.utils.rock_ports import resolve_rock_ports_from_env
 from alphadiana.benchmarks.registry import BenchmarkRegistry
 from alphadiana.analysis.report import ReportGenerator, RunSummary
 from alphadiana.analysis.io.result_store import ResultStore
-from alphadiana.engine.config.experiment_config import REPO_ROOT
 from alphadiana.engine.task_dispatcher import TaskDispatcher
 from alphadiana.engine.sandbox.registry import SandboxRegistry
 from alphadiana.scorer.registry import ScorerRegistry
@@ -545,75 +540,7 @@ def _effective_dispatch_concurrency(config: "ExperimentConfig") -> int:
             requested,
         )
         return 1
-    if getattr(config, "sandbox_name", "") == "decodingtrust" and requested > 1:
-        logger.warning(
-            "DecodingTrust sandbox uses process-wide DTAP state and is not safe "
-            "for in-process task concurrency; lowering effective max_concurrent "
-            "from %d to 1.",
-            requested,
-        )
-        return 1
     return requested
-
-
-def _is_decodingtrust_process_sharded_run(config: "ExperimentConfig") -> bool:
-    strategy = str(getattr(config, "parallel_strategy", "") or "").strip().lower()
-    shards = int(getattr(config, "process_shards", 1) or 1)
-    return (
-        getattr(config, "benchmark_name", "") == "decodingtrust"
-        and strategy == "process_shards"
-        and shards > 1
-    )
-
-
-def _chunk_round_robin(items: list[BenchmarkTask], shard_count: int) -> list[list[BenchmarkTask]]:
-    shards: list[list[BenchmarkTask]] = [[] for _ in range(shard_count)]
-    for index, item in enumerate(items):
-        shards[index % shard_count].append(item)
-    return shards
-
-
-def _safe_shard_env_fragment(value: object, *, max_len: int = 40) -> str:
-    fragment = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(value or "").strip()).strip("_.-")
-    return (fragment or "run")[:max_len]
-
-
-def _experiment_config_to_yaml_data(config: "ExperimentConfig") -> dict:
-    """Serialize the supported ExperimentConfig surface back to YAML data."""
-    data: dict[str, object] = {
-        "run_id": config.run_id,
-        "agent": {
-            "name": config.agent_name,
-            "version": config.agent_version,
-            "config": dict(config.agent_config or {}),
-        },
-        "benchmark": {
-            "name": config.benchmark_name,
-            "config": dict(config.benchmark_config or {}),
-        },
-        "scorer": {
-            "name": config.scorer_name,
-            "config": dict(config.scorer_config or {}),
-        },
-        "max_concurrent": int(getattr(config, "max_concurrent", 1) or 1),
-        "num_samples": int(getattr(config, "num_samples", 1) or 1),
-        "task_retries": int(getattr(config, "task_retries", 0) or 0),
-        "task_retry_on_recoverable_only": bool(
-            getattr(config, "task_retry_on_recoverable_only", False)
-        ),
-        "output_dir": str(config.output_dir),
-        "redo_all": bool(getattr(config, "redo_all", False)),
-        "sandbox_retries": int(getattr(config, "sandbox_retries", 1) or 1),
-        "strict_report": bool(getattr(config, "strict_report", False)),
-        "strict_isolation": bool(getattr(config, "strict_isolation", False)),
-        "metadata": dict(getattr(config, "metadata", {}) or {}),
-    }
-    if config.sandbox_name:
-        data["sandbox"] = {
-            "name": config.sandbox_name,
-            "config": dict(config.sandbox_config or {}),
-        }
-    return data
 
 
 class _OpenClawResponseRejected(RuntimeError):
@@ -809,7 +736,6 @@ class Runner:
         import alphadiana.benchmarks.mmmu_pro.benchmark  # noqa: F401
         import alphadiana.benchmarks.swebench_pro.benchmark  # noqa: F401
         import alphadiana.benchmarks.terminal_bench2.benchmark  # noqa: F401
-        import alphadiana.benchmarks.decodingtrust.benchmark  # noqa: F401
 
         # Import agent modules to trigger registration.
         import alphadiana.harness.direct_llm  # noqa: F401
@@ -827,7 +753,6 @@ class Runner:
         import alphadiana.engine.sandbox.podman  # noqa: F401
         import alphadiana.engine.sandbox.rock  # noqa: F401
         import alphadiana.engine.sandbox.swebench_container  # noqa: F401
-        import alphadiana.engine.sandbox.decodingtrust  # noqa: F401
 
         # Import scorer modules to trigger registration.
         import alphadiana.scorer.exact_match  # noqa: F401
@@ -838,7 +763,6 @@ class Runner:
         import alphadiana.benchmarks.swe_bench.scorer  # noqa: F401
         import alphadiana.benchmarks.swebench_pro.scorer  # noqa: F401
         import alphadiana.benchmarks.terminal_bench2.scorer  # noqa: F401
-        import alphadiana.scorer.decodingtrust  # noqa: F401
 
         try:
             # Resolve and instantiate benchmark.
@@ -887,123 +811,6 @@ class Runner:
         )
         logger.info("Setup complete for run %s", self.config.run_id)
 
-    def _run_decodingtrust_process_shards(self, tasks: list[BenchmarkTask]) -> RunSummary:
-        """Run DecodingTrust through isolated serial child processes."""
-        assert self.result_store is not None
-        assert self.report_generator is not None
-
-        shard_count = max(1, int(getattr(self.config, "process_shards", 1) or 1))
-        task_shards = [shard for shard in _chunk_round_robin(tasks, shard_count) if shard]
-
-        run_root = self.result_store.output_dir / self.config.run_id
-        shard_root = run_root / "shards"
-        shard_config_dir = shard_root / "configs"
-        shard_log_dir = shard_root / "logs"
-        shard_config_dir.mkdir(parents=True, exist_ok=True)
-        shard_log_dir.mkdir(parents=True, exist_ok=True)
-
-        base_port_start = int(
-            (getattr(self.config, "metadata", {}) or {}).get("dt_shard_port_start", 8000)
-        )
-        port_stride = int(
-            (getattr(self.config, "metadata", {}) or {}).get("dt_shard_port_stride", 3000)
-        )
-        shard_run_ids: list[str] = []
-        processes: list[tuple[int, str, subprocess.Popen, object]] = []
-
-        for shard_index, shard_tasks in enumerate(task_shards):
-            shard_run_id = f"{self.config.run_id}__shard_{shard_index}"
-            shard_run_ids.append(shard_run_id)
-
-            shard_data = _experiment_config_to_yaml_data(self.config)
-            shard_data["run_id"] = shard_run_id
-            shard_data["max_concurrent"] = 1
-            shard_data["parallel_strategy"] = ""
-            shard_data["process_shards"] = 1
-            shard_metadata = dict(shard_data.get("metadata", {}) or {})
-            shard_metadata.update(
-                {
-                    "parent_run_id": self.config.run_id,
-                    "shard_index": shard_index,
-                    "process_shards": len(task_shards),
-                }
-            )
-            shard_data["metadata"] = shard_metadata
-
-            benchmark = dict(shard_data.get("benchmark", {}) or {})
-            benchmark_config = dict(benchmark.get("config", {}) or {})
-            benchmark_config["task_ids"] = [task.task_id for task in shard_tasks]
-            benchmark_config.pop("limit", None)
-            benchmark["config"] = benchmark_config
-            shard_data["benchmark"] = benchmark
-
-            shard_config_path = shard_config_dir / f"{shard_run_id}.yaml"
-            shard_config_path.write_text(
-                yaml.safe_dump(shard_data, sort_keys=False, allow_unicode=False),
-                encoding="utf-8",
-            )
-
-            env = os.environ.copy()
-            env["DT_POOL_PREFIX"] = f"ad_{_safe_shard_env_fragment(self.config.run_id)}_s{shard_index}"
-            port_start = base_port_start + shard_index * port_stride
-            env["DT_PORT_RANGE_START"] = str(port_start)
-            env["DT_PORT_RANGE_END"] = str(port_start + port_stride - 1)
-
-            log_handle = (shard_log_dir / f"{shard_run_id}.log").open("w", encoding="utf-8")
-            cmd = [sys.executable, "-m", "alphadiana.cli", "run", str(shard_config_path)]
-            logger.info(
-                "Starting DecodingTrust shard %d/%d with %d tasks: %s",
-                shard_index + 1,
-                len(task_shards),
-                len(shard_tasks),
-                " ".join(cmd),
-            )
-            proc = subprocess.Popen(
-                cmd,
-                cwd=str(REPO_ROOT),
-                env=env,
-                stdout=log_handle,
-                stderr=subprocess.STDOUT,
-                text=True,
-            )
-            processes.append((shard_index, shard_run_id, proc, log_handle))
-
-        failures: list[str] = []
-        try:
-            for shard_index, shard_run_id, proc, log_handle in processes:
-                code = proc.wait()
-                log_handle.close()
-                if code != 0:
-                    failures.append(
-                        f"shard {shard_index} ({shard_run_id}) exited with code {code}; "
-                        f"log={shard_log_dir / f'{shard_run_id}.log'}"
-                    )
-        finally:
-            for _, _, proc, log_handle in processes:
-                if proc.poll() is None:
-                    proc.terminate()
-                try:
-                    log_handle.close()
-                except Exception:
-                    pass
-
-        if failures:
-            raise RuntimeError("DecodingTrust process shard run failed: " + "; ".join(failures))
-
-        self.result_store.merge_result_stores(
-            target_run_id=self.config.run_id,
-            shard_run_ids=shard_run_ids,
-            expected_tasks=tasks,
-            num_samples=int(getattr(self.config, "num_samples", 1) or 1),
-            config_metadata={
-                "benchmark_config": self.config.benchmark_config,
-                "metadata": self.config.metadata,
-                "parallel_strategy": "process_shards",
-                "process_shards": len(task_shards),
-            },
-        )
-        return self.report_generator.generate(self.result_store, self.config)
-
     def run(self) -> RunSummary:
         """Execute the full evaluation loop and return a summary report."""
         assert self.benchmark is not None, "Call setup() before run()"
@@ -1015,9 +822,6 @@ class Runner:
         # Load tasks from benchmark.
         tasks = self.benchmark.load_tasks(self.config.benchmark_config)
         logger.info("Loaded %d tasks from benchmark '%s'", len(tasks), self.config.benchmark_name)
-
-        if _is_decodingtrust_process_sharded_run(self.config):
-            return self._run_decodingtrust_process_shards(tasks)
 
         num_samples = getattr(self.config, "num_samples", 1)
         memory_scope = _configured_memory_scope(self.config)
@@ -2269,7 +2073,7 @@ class Runner:
                 elif shared_session is not None:
                     sandbox_session = shared_session
                 elif self.sandbox is not None:
-                    if self.config.sandbox_name in {"swebench_container", "decodingtrust"}:
+                    if self.config.sandbox_name == "swebench_container":
                         sandbox_session = self.sandbox.create_session(task=runtime_task)
                     else:
                         sandbox_session = self.sandbox.create_session()

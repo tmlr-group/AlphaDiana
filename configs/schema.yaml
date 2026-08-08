@@ -84,7 +84,7 @@ agent:
 
 # benchmark: (required) Benchmark configuration.
 benchmark:
-  name: string        # e.g. "aime", "gpqa_diamond", "hle", "mmmu_pro", "imo_answerbench", "swe_bench", "swebench_pro_os", "terminal_bench2", "decodingtrust", "custom"
+  name: string        # e.g. "aime", "gpqa_diamond", "hle", "mmmu_pro", "imo_answerbench", "swe_bench", "swebench_pro_os", "terminal_bench2", "custom"
   config:             # Benchmark-specific params
     split: string
     year: string
@@ -99,7 +99,7 @@ benchmark:
 
 # sandbox: (optional) Execution environment. Set to null if not needed.
 sandbox:
-  name: string        # "local", "rock", "podman", "swebench_container", or "decodingtrust"
+  name: string        # "local", "rock", "podman", or "swebench_container"
   config:             # Sandbox-specific params
     # ROCK SDK config
     admin_base_url: string          # ROCK admin server URL (e.g. "http://localhost:9000")
@@ -173,10 +173,6 @@ task_retries: integer                     # YAML-loader default 0; per-item retr
 task_retry_on_recoverable_only: boolean   # default false
 strict_report: boolean                    # default false; non-zero exit for incomplete/invalid reports
 strict_isolation: boolean                 # default false; fail closed on supported ROCK setup failures
-
-# DecodingTrust multi-process isolation. Other paths normally leave these at defaults.
-parallel_strategy: string                 # "process_shards" enables isolated child processes
-process_shards: integer                   # default 1; must be >= 1
 
 # metadata: (optional) Free-form tags for tracking experiments.
 metadata:

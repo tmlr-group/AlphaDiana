@@ -48,7 +48,7 @@ With logprob capture enabled, the harness forces full runtime-trace mode. Persis
 
 OpenCode parses JSON output events, preserves its output stream and stderr, and may preserve a session trace or partial model output. The normalized trajectory should be read together with `returncode`, answer-source metadata, and controller artifacts.
 
-OpenClaw preserves gateway request/response data, stream events, logs, and sandbox artifacts available on the selected path. The normal gateway path and `decodingtrust_openclaw_cli` path have different evidence shapes. Timeout-scored-zero responses are allowed to lack the normal completed-stream marker; non-timeout incomplete streams are rejected by the runner integrity guard.
+OpenClaw preserves gateway request/response data, stream events, logs, and sandbox artifacts available on the selected path. Timeout-scored-zero responses are allowed to lack the normal completed-stream marker; non-timeout incomplete streams are rejected by the runner integrity guard.
 
 ## Lifecycle and live status
 

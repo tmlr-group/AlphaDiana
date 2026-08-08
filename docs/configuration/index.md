@@ -72,8 +72,8 @@ These are the values the validator and registries accept. Unknown keys inside an
 | Block | Accepted `name` values |
 | --- | --- |
 | `agent.name` | `direct_llm`, `openclaw`, `opencode`, `zeroclaw`, `swebench_docker`, `terminal_bench2_*` |
-| `scorer.name` | `numeric`, `math_verify`, `exact_match`, `llm_judge`, `swebench_pro`, `swe_bench`, `terminal_bench2`, `imo_verify`, `decodingtrust` |
-| `sandbox.name` | `null`, `local`, `rock`, `podman`, `swebench_container`, `decodingtrust` |
+| `scorer.name` | `numeric`, `math_verify`, `exact_match`, `llm_judge`, `swebench_pro`, `swe_bench`, `terminal_bench2`, `imo_verify` |
+| `sandbox.name` | `null`, `local`, `rock`, `podman`, `swebench_container` |
 
 `sandbox: null` is correct for `direct_llm` and for OpenCode controller modes
 that self-manage their runtime. The generic ZeroClaw harness requires a live
@@ -91,8 +91,6 @@ run starts; non-ROCK runs skip it.
 | `output_dir` | `./results` | where result files and the run report land |
 | `task_retries` | `0` | per-task retry budget (must be `>= 0`); the `from_yaml` path defaults to `0` when the key is absent, though the dataclass default is `1` |
 | `strict_report`, `strict_isolation` | `false` | stricter reporting / isolation gates |
-| `parallel_strategy` | `""` | `process_shards` enables DecodingTrust child-process isolation |
-| `process_shards` | `1` | child-process count; validated as `>= 1` |
 | `metadata` | `{}` | free-form `author` / `gpu` / `notes` tags |
 
 `ExperimentConfig` lives in
