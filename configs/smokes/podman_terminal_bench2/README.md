@@ -34,8 +34,8 @@ export TB2_OPENCLAW_RUNTIME_IMAGE=localhost/alphadiana-openclaw-swebench-runtime
 export TB2_ZEROCLAW_RUNTIME_IMAGE=localhost/zeroclaw-reasoning:0.6.9
 # Output + task logs MUST live on a large disk, NOT /home (logprob dual-write
 # alone can reach hundreds of GB). Point both at a /data* mount.
-export ALPHADIANA_TB2_OUTPUT_DIR=/path/to/<user>/alphadiana/podman-tb2/results
-export ALPHADIANA_TB2_LOGS_DIR=/path/to/<user>/alphadiana/podman-tb2/task-logs
+export ALPHADIANA_TB2_OUTPUT_DIR=/path/to/xxx/alphadiana/podman-tb2/results
+export ALPHADIANA_TB2_LOGS_DIR=/path/to/xxx/alphadiana/podman-tb2/task-logs
 export PODMAN_TB2_RUN_PREFIX=podman_tb2_$(date +%Y%m%d_%H%M%S)
 
 bash scripts/run_podman_terminal_bench2_readiness.sh all

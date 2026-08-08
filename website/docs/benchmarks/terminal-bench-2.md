@@ -397,7 +397,7 @@ Early OpenRouter full-run evidence on April 22, 2026 uses
 For ZeroClaw, prefer putting large temporary files on a data disk before running:
 
 ```bash
-export TMPDIR=/path/to/$USER/tmp/alphadiana-tb2
+export TMPDIR=/path/to/xxx/tmp/alphadiana-tb2
 mkdir -p "$TMPDIR"
 ```
 
@@ -601,7 +601,7 @@ export OPENAI_API_KEY=sk-...
 export OPENAI_MODEL_NAME=Qwen/Qwen3.5-27B
 export PYTHONPATH=$PWD
 export TERMINAL_BENCH2_SMOKE_DIR=/path/to/terminal-bench-smoke-dbwal
-export TMPDIR=/path/to/$USER/tmp/alphadiana-tb2
+export TMPDIR=/path/to/xxx/tmp/alphadiana-tb2
 mkdir -p "$TMPDIR"
 
 docker pull alexgshaw/db-wal-recovery:20251031
