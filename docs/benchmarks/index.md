@@ -43,8 +43,6 @@ per-benchmark, never as one type:
 - **String** for text, multiple-choice, and patch benchmarks: `aime`, `gpqa_diamond`,
   `hle`, `mmmu_pro`, `imo_answerbench`, `custom`, and the SWE-bench patch.
 - **Dict** for `swebench_pro_os` (`{instance_id, repo, base_commit}`).
-- **`None`** for `decodingtrust`; its DTAP judge uses task metadata and the
-  recorded response trajectory.
 - **The literal string `"1"`** for `terminal_bench2`: the scorer compares
   `response.answer.strip() == "1"` against the reward observed by the verifier.
 
@@ -77,7 +75,6 @@ an explicit `BenchmarkRegistry.register(<name>, <cls>)` call or the
 | `swe_bench` | `swe_bench` | `SWE-bench/SWE-bench_Verified`; ground truth is a patch. |
 | `swebench_pro_os` | `swebench_pro` | `ScaleAI/SWE-bench_Pro`; ground truth is a dict. |
 | `terminal_bench2` | `terminal_bench2` | Local task tree; ground truth is `"1"`. |
-| `decodingtrust` | `decodingtrust` | DecodingTrust Agent Platform tasks and judge. |
 
 Note that the SWE-bench Pro registry name is `swebench_pro_os` (class
 `SWEBenchProBenchmark`), while its scorer name is `swebench_pro`. The default
@@ -86,8 +83,7 @@ scorer is only a suggestion; `scorer_name` in config wins when set.
 `BenchmarkRegistry` (`alphadiana/benchmarks/registry.py`) keeps a class-level
 `_registry` dict. `BenchmarkRegistry.get(name)` raises `KeyError` listing the
 available names if the loader was never imported, and `BenchmarkRegistry.list()`
-returns the sorted names. Most shipped benchmarks use explicit `.register()`;
-DecodingTrust uses the decorator.
+returns the sorted names. Shipped benchmarks use explicit `.register()` calls.
 
 The CLI also provides a quick diagnostic list:
 
@@ -103,8 +99,8 @@ and the table above as the complete shipped inventory.
 
 Registration is import-side-effect driven. Importing the package does not
 auto-load every loader, so `Runner.setup()` (`alphadiana/engine/runner.py`)
-explicitly imports all 10 shipped benchmark registrations (including
-DecodingTrust, plus scorer and harness modules) before resolving the class:
+explicitly imports all shipped benchmark registrations, plus scorer and harness
+modules, before resolving the class:
 
 ```python
 BenchmarkRegistry.get(self.config.benchmark_name)

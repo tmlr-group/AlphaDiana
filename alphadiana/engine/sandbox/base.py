@@ -57,7 +57,7 @@ class SandboxSession(ABC):
 
     # --- Optional tool / injection interface -------------------------------
     # Sandboxes that expose MCP-style tools or per-turn injections (e.g. the
-    # DecodingTrust sandbox) implement these. The default raises so callers can
+    # Task-bound sandbox implementations may override these. The default raises so callers can
     # feature-detect with hasattr/try and so the contract is discoverable on the
     # base class rather than hidden inside one backend.
 

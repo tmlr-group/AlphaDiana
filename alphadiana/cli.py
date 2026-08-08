@@ -140,22 +140,6 @@ def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
         click.echo(f"  {pass_label}@{summary.num_samples}:    {summary.pass_at_k:.4f}")
         click.echo(f"  {avg_label}@{summary.num_samples}:     {summary.avg_at_k:.4f}")
         click.echo(f"  Tasks:      {summary.completed}/{summary.total_tasks} completed")
-        if config.benchmark_name == "decodingtrust" or config.scorer_name == "decodingtrust":
-            click.echo(
-                "  (DTAP headline metrics below; Accuracy above is AlphaDiana's "
-                "blended score, not DTAP task success)"
-            )
-            click.echo(f"  DT Valid Records: {summary.dt_valid_records}")
-            click.echo(
-                "  DT Task Success (utility): "
-                f"{summary.dt_task_success_count}/{summary.dt_task_success_denominator} = "
-                f"{summary.dt_task_success_rate:.4f}"
-            )
-            click.echo(
-                "  DT Attack Success (ASR): "
-                f"{summary.dt_attack_success_count}/{summary.dt_attack_success_denominator} = "
-                f"{summary.dt_attack_success_rate:.4f}"
-            )
         if config.strict_report and summary.strict_report_failed:
             click.echo(
                 "Strict report failed: " + ", ".join(summary.strict_report_issues),
@@ -402,7 +386,6 @@ def list_benchmarks():
     # Import benchmark modules to trigger registration.
     import alphadiana.benchmarks.aime.benchmark  # noqa: F401
     import alphadiana.benchmarks.custom.benchmark  # noqa: F401
-    import alphadiana.benchmarks.decodingtrust.benchmark  # noqa: F401
     import alphadiana.benchmarks.gpqa.benchmark  # noqa: F401
     import alphadiana.benchmarks.hle.benchmark  # noqa: F401
     import alphadiana.benchmarks.imo.benchmark  # noqa: F401

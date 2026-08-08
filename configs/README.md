@@ -38,7 +38,7 @@ Read the target YAML because older examples use either
 ### `examples/`
 
 Runnable or validation-oriented examples for DirectLLM, OpenClaw, OpenCode,
-ZeroClaw, SWE-bench, Terminal-Bench 2, DecodingTrust, and Podman
+ZeroClaw, SWE-bench, Terminal-Bench 2, and Podman
 paths. Some are single-task smokes; others are larger templates. The filename
 and comments are not proof of support: inspect the matching page under
 `docs/benchmarks/` or `docs/harnesses/` for prerequisites and current caveats.
@@ -50,7 +50,6 @@ Useful first entries:
 - `openclaw_aime2024.yaml`: OpenClaw ROCK auto-deploy template.
 - `opencode_aime_podman_smoke.yaml`: OpenCode Podman smoke.
 - `zeroclaw_aime2026.yaml`: ZeroClaw with a live ROCK sandbox.
-- `openclaw_decodingtrust_finance_cli.yaml`: DecodingTrust-specific OpenClaw CLI path.
 
 `zeroclaw_aime2026_local_smoke.yaml` is a legacy validation fixture, not a
 runnable host-mode example: current generic ZeroClaw requires a live

@@ -18,7 +18,6 @@ The tables below reflect the registrations imported by `Runner.setup()` in the c
 | --- | --- |
 | `aime` | AIME math tasks |
 | `custom` | User-provided task data |
-| `decodingtrust` | DTAP security/utility tasks |
 | `gpqa_diamond` | GPQA Diamond |
 | `hle` | Humanity's Last Exam |
 | `imo_answerbench` | IMO AnswerBench |
@@ -34,7 +33,7 @@ The first four are generic harness families. The remaining keys are benchmark-sp
 | Key | Scope |
 | --- | --- |
 | `direct_llm` | Generic direct provider baseline |
-| `openclaw` | Generic OpenClaw harness, including the DecodingTrust runtime backend |
+| `openclaw` | Generic OpenClaw gateway and local-memory harness |
 | `opencode` | Generic OpenCode CLI harness |
 | `zeroclaw` | Generic ZeroClaw CLI harness |
 | `swebench_docker` | SWE-bench task-container adapter |
@@ -51,7 +50,6 @@ The first four are generic harness families. The remaining keys are benchmark-sp
 | `podman` | Rootless Podman session |
 | `rock` | Remote/container sandbox through ROCK |
 | `swebench_container` | Task-bound SWE-bench container |
-| `decodingtrust` | Task-bound DTAP environment, MCP tools, and injections |
 
 ### Scorers
 
@@ -65,7 +63,6 @@ The first four are generic harness families. The remaining keys are benchmark-sp
 | `swe_bench` | Official SWE-bench evaluation adapter |
 | `swebench_pro` | SWE-bench Pro evaluator |
 | `terminal_bench2` | Verifier reward scorer |
-| `decodingtrust` | DTAP task/attack judge adapter |
 
 ## Registration forms
 

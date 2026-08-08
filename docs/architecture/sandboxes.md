@@ -23,7 +23,7 @@ It also provides `reset()`, `metadata()`, and `read_text()`. The optional tool/i
 
 Backends that do not expose tools raise `NotImplementedError`; the default injection implementation is a no-op.
 
-`Sandbox.create_session()` is task-independent in the base interface. The runner deliberately passes `task=` to the two task-bound implementations: `swebench_container` and `decodingtrust`.
+`Sandbox.create_session()` is task-independent in the base interface. The runner deliberately passes `task=` to the task-bound `swebench_container` implementation.
 
 ## Backends
 
@@ -33,7 +33,6 @@ Backends that do not expose tools raise `NotImplementedError`; the default injec
 | `podman` | No | Backend-specific | Rootless local container execution |
 | `rock` | No | Yes, when the configured path allows it | Remote/container agent sandboxes and gateways |
 | `swebench_container` | Yes | No generic reuse across tasks | Repository-specific SWE-bench task container |
-| `decodingtrust` | Yes | No | DTAP Docker Compose environments, MCP tools, and attack injections |
 
 Do not point a shell-heavy harness at `local` merely by changing YAML. Commands that rely on `&&`, pipes, redirection, or command substitution are rejected by `LocalSession`.
 
@@ -50,12 +49,6 @@ For OpenClaw pools, the runner:
 - creates replacements when the live pool is depleted.
 
 This behavior improves task separation and recovery. It does not establish a formal multi-tenant security boundary.
-
-## DecodingTrust
-
-`DecodingTrustSandbox.create_session(task=...)` resolves the DTAP task directory, starts the required environments and MCP servers, and returns a session whose metadata includes the DT task identity and tool trajectory.
-
-The session can list and invoke DTAP tools and apply attack-defined environment injections. The backend explicitly reports that pooling and shared sessions are unsupported. Because DTAP owns process-wide state, the runner lowers in-process concurrency to one. Use `parallel_strategy: process_shards` for isolated multi-process parallelism; see [Engine & Runner](./engine-and-runner).
 
 ## SWE-bench task containers
 

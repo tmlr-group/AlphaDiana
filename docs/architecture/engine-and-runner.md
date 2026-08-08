@@ -51,8 +51,7 @@ Each benchmark task becomes `num_samples` work items. Before execution the runne
 The normal dispatcher limits concurrency with `max_concurrent`. Sandbox acquisition depends on the backend:
 
 - ordinary backends create or borrow a session without task binding;
-- `swebench_container` and `decodingtrust` receive the current `BenchmarkTask`;
-- DecodingTrust lowers effective in-process concurrency to one;
+- `swebench_container` receives the current `BenchmarkTask`;
 - OpenClaw gateway predeployment uses its own pool and quarantines dead sessions rather than requeueing them.
 
 Recoverable task failures may be retried on fresh infrastructure according to `task_retries` and `task_retry_on_recoverable_only`. This retry layer is distinct from checkpoint resume across separate CLI invocations.
@@ -75,29 +74,6 @@ The completion split is:
 | Record produced by another scorer | No |
 
 `redo_all: true` or CLI `--redo-all` bypasses checkpoint skipping.
-
-## DecodingTrust process sharding
-
-For DecodingTrust, this config activates process isolation:
-
-```yaml
-benchmark:
-  name: decodingtrust
-sandbox:
-  name: decodingtrust
-parallel_strategy: process_shards
-process_shards: 4
-max_concurrent: 1
-```
-
-`_run_decodingtrust_process_shards()` partitions tasks round-robin and writes child configs below the parent run's `shards/configs/` directory. Each child gets:
-
-- a shard run ID and parent metadata;
-- `max_concurrent: 1` and process sharding disabled recursively;
-- a shard-specific DT pool prefix and port range;
-- a raw log in `shards/logs/`.
-
-After every child exits successfully, `ResultStore.merge_result_stores()` validates and merges their records into the parent run. A failed child aborts the merge with the shard ID and log path in the error.
 
 ## Lifecycle events and live status
 

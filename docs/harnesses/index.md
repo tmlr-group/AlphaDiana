@@ -12,7 +12,7 @@ AlphaDiana has four generic harness families plus benchmark-specific agent adapt
 | --- | --- | --- | --- |
 | [`direct_llm`](./direct-llm) | Direct OpenAI-compatible provider request | No harness tool loop | None |
 | [`opencode`](./opencode) | OpenCode CLI on host, Docker, Podman, or SWE-bench task container | OpenCode agent tools | Optional native session chaining, prompt bank, compaction, and freeze workflow |
-| [`openclaw`](./openclaw) | OpenClaw gateway, local-agent memory path, or DTAP CLI backend | OpenClaw/DTAP tools | Optional solve/store path with LanceDB memory |
+| [`openclaw`](./openclaw) | OpenClaw gateway or local-agent memory path | OpenClaw tools | Optional solve/store path with LanceDB memory |
 | [`zeroclaw`](./zeroclaw) | Native ZeroClaw CLI in a live sandbox or Podman runtime | ZeroClaw tools | Optional shared HOME, vector recall, and post-solve store turn |
 
 These memory paths are opt-in and now exist in the current source. They are not implied by ordinary fresh-per-task runs, and their transfer-experiment controls must be configured explicitly.
@@ -62,7 +62,7 @@ Logprob and trajectory coverage varies by harness and runtime:
 - DirectLLM captures provider data directly;
 - external CLI harnesses may use the shared logprob proxy;
 - OpenCode parses JSON events;
-- OpenClaw preserves gateway or DTAP-path evidence;
+- OpenClaw preserves gateway and local-agent evidence;
 - ZeroClaw preserves a bounded native runtime trace plus normalized trajectories.
 
 Do not infer capture from config inspection alone. Verify task metadata and sidecars from a real run. Shared proxy mechanics are documented once in [Observability & Proxies](../architecture/observability).
@@ -71,7 +71,7 @@ Do not infer capture from config inspection alone. Verify task metadata and side
 
 - Use DirectLLM for a provider baseline without an agent tool loop.
 - Use OpenCode for a CLI coding/reasoning agent with selectable host or container controller.
-- Use OpenClaw for gateway orchestration, its opt-in local-agent memory path, or DecodingTrust through `runtime_backend: decodingtrust_openclaw_cli`.
+- Use OpenClaw for gateway orchestration or its opt-in local-agent memory path.
 - Use ZeroClaw when the native Rust CLI must run inside the benchmark sandbox or current Podman runtime.
 - Use a benchmark-specific adapter when the benchmark runbook requires it; do not substitute a generic key solely because the underlying agent name is similar.
 
