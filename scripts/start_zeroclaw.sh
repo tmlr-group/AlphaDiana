@@ -382,5 +382,5 @@ echo "Next step:"
 echo "  source scripts/activate.sh"
 echo "  source scripts/rock_env.sh"
 echo "  alphadiana run ${ZEROCLAW_CONFIG}"
-# phase12_start_ready readiness marker
-echo "phase12_start_ready admin=${ROCK_ADMIN_PORT} proxy=${ROCK_PROXY_PORT} redis=${ROCK_REDIS_PORT} ray=${ROCK_RAY_PORT}"
+# Stable readiness marker for automation and smoke checks.
+echo "rock_start_ready admin=${ROCK_ADMIN_PORT} proxy=${ROCK_PROXY_PORT} redis=${ROCK_REDIS_PORT} ray=${ROCK_RAY_PORT}"

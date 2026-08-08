@@ -46,10 +46,8 @@ python -m alphadiana.cli run configs/examples/zeroclaw_aime2026.yaml --redo-all
 ```
 
 Start ROCK and export its URLs first as described in the
-[ZeroClaw harness guide](../harnesses/zeroclaw). The checked-in
-`zeroclaw_aime2026_local_smoke.yaml` is a legacy validation fixture, not a
-runnable host-mode path: current generic ZeroClaw raises when no live sandbox
-session is provided.
+[ZeroClaw harness guide](../harnesses/zeroclaw). The generic ZeroClaw harness
+requires a live sandbox/container session.
 
 This checkout does not ship an AIME full-run YAML. For a full evaluation,
 create and review a dedicated config with the intended dataset year, task

@@ -211,9 +211,7 @@ configs/examples/openclaw_aime2024_multisandbox.yaml
 
 ### Run a ZeroClaw agent
 
-The generic ZeroClaw harness requires a live sandbox/container session. The
-legacy `zeroclaw_aime2026_local_smoke.yaml` file has `sandbox: null` and is not
-a runnable host-mode example on the current implementation.
+The generic ZeroClaw harness requires a live sandbox/container session.
 
 **ROCK auto-deploy mode** follows the same pattern as the bundled OpenClaw
 example, but starts a lightweight ZeroClaw bridge inside the sandbox:
