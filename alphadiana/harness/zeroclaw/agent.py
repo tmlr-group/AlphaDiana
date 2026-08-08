@@ -1608,6 +1608,7 @@ class ZeroClawAgent(Agent):
         sandbox.upload(store_task_path, store_prompt.encode("utf-8"))
         store_stdout = str(Path(paths["base_dir"]) / "memory_store_stdout.txt")
         store_stderr = str(Path(paths["base_dir"]) / "memory_store_stderr.txt")
+        store_rc_path = str(Path(paths["base_dir"]) / "memory_store_rc.txt")
         # The store run reuses the same config-dir, so zeroclaw would truncate the
         # solve run's runtime trace; stash it and keep the store trace separately.
         trace_path = paths["runtime_trace_path"]
@@ -1623,9 +1624,13 @@ class ZeroClawAgent(Agent):
             f"-m \"$prompt\" "
             f"> {shlex.quote(store_stdout)} "
             f"2> {shlex.quote(store_stderr)}; rc=$?; "
+            f"printf '%s' \"$rc\" > {shlex.quote(store_rc_path)}; "
             f"cp {shlex.quote(trace_path)} {shlex.quote(store_trace)} 2>/dev/null; "
             f"cp {shlex.quote(solve_trace)} {shlex.quote(trace_path)} 2>/dev/null; "
-            f"exit $rc"
+            # ROCK raises instead of returning CommandResult for non-zero
+            # commands. Keep the real status in a file so the deterministic
+            # native-memory fallback below still gets a chance to run.
+            f"exit 0"
         )
         store_cmd = self._wrap_shell_command(store_cmd, env)
         stats_cmd = self._wrap_shell_command(
@@ -1638,6 +1643,11 @@ class ZeroClawAgent(Agent):
         ) or 0
         result = sandbox.execute(store_cmd)
         if result.exit_code == 0:
+            store_rc_text = self._read_sandbox_file(sandbox, store_rc_path).strip()
+            try:
+                store_exit_code = int(store_rc_text)
+            except (TypeError, ValueError):
+                store_exit_code = 1
             stdout_tail = self._read_sandbox_file(sandbox, store_stdout).strip()[-600:]
             verify_cmd = self._wrap_shell_command(
                 f"cd {shlex.quote(paths['workspace_dir'])} && "
@@ -1704,8 +1714,10 @@ class ZeroClawAgent(Agent):
             if store_verified:
                 self._memory_task_count += 1
             logger.info(
-                "memory_store via agent: task=%s verified=%s total=%d stdout_tail=%s",
-                task.task_id, store_verified, self._memory_task_count, stdout_tail,
+                "memory_store via agent: task=%s command_rc=%d verified=%s "
+                "total=%d stdout_tail=%s",
+                task.task_id, store_exit_code, store_verified,
+                self._memory_task_count, stdout_tail,
             )
             logger.info(
                 "memory after store (task=%s):\n%s",
