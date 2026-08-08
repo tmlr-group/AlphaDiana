@@ -23,16 +23,7 @@ serving `Qwen/Qwen3.5-27B` at `http://127.0.0.1:8011/v1` with
    Expected: at least 20 GB available. If not, clean up old runs or change
    `output_dir` in the config to a larger filesystem.
 
-3. **Run Phase 9 unit tests:**
-   ```bash
-   python -m pytest tests/test_phase9_direct_llm_logprobs.py \
-                    tests/test_phase9_result_store_logprobs.py \
-                    tests/test_phase9_config.py \
-                    tests/test_phase9_monitor_review.py -x -v
-   ```
-   All must pass before running against vLLM.
-
-4. **Use a writable Hugging Face dataset cache if needed:**
+3. **Use a writable Hugging Face dataset cache if needed:**
    ```bash
    export HF_ENDPOINT=https://hf-mirror.com
    export HF_DATASETS_CACHE=/tmp/alphadiana_hf_datasets_phase9

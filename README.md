@@ -364,7 +364,6 @@ AlphaDiana/
 │   ├── docs/                     # Documentation content
 │   ├── src/                      # Homepage components/pages
 │   └── static/                   # Website static assets
-└── tests/                        # Test suite
 ```
 
 ## Security Guard

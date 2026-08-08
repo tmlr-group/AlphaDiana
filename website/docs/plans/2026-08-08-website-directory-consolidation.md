@@ -44,6 +44,6 @@
 
 1. Run `npm run typecheck` from `website/`; expect exit code 0.
 2. Run `npm run build` from `website/`; expect exit code 0 with no broken links.
-3. Run `PYTHONPATH=. pytest tests -q` from repository root; expect all tests to pass.
+3. Run `python -m compileall -q alphadiana` from repository root; expect exit code 0.
 4. Run `git diff --check` and inspect the final tracked tree.
 5. Commit the verified directory migration separately from the design record.

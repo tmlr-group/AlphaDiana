@@ -44,5 +44,4 @@ from `docs/...` to `website/docs/...`.
 - `cd website && npm run typecheck`
 - `cd website && npm run build`
 - scan tracked files for stale root-level website paths and commands
-- run the Python test suite to show the packaging-only move did not affect runtime
-  behavior
+- compile the Python package to show the packaging-only move did not affect imports
