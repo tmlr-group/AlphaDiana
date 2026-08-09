@@ -25,7 +25,8 @@ as a separate framework extension and must not be described as a paper result:
 
 The paper matrices use ZeroClaw and OpenCode, Qwen3.5-27B and Kimi-K2.6, and
 GPQA-Diamond and AIME 2026. OpenClaw is not a Table 2/3 micro harness. The
-extra Kimi/GPQA Memory files are supplemental to the AIME/Qwen 3×3 extension.
+separate Memory extension is intentionally restricted to its AIME/Qwen 3×3
+reference matrix.
 
 For a defensible comparison, keep the model, sampling parameters, benchmark,
 scorer, and unrelated harness settings fixed, then document the complete

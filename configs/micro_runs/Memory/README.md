@@ -4,8 +4,9 @@ Memory is a runnable AlphaDiana framework extension. It is **not** one of the
 paper's reported micro ablations: the current paper tables cover Tool exposure
 and Skill loading only. Do not cite this directory as paper-result coverage.
 
-Within this separate extension, the release provides a complete 3-harness ×
-3-scope AIME/Qwen reference matrix.
+Within this separate extension, the release provides only the uniform
+3-harness × 3-scope AIME/Qwen reference matrix. Historical Kimi and GPQA
+one-scope configs are intentionally excluded from the public release.
 
 ## Canonical 9-cell matrix
 
@@ -20,10 +21,3 @@ harnesses with all three memory scopes:
 
 Each canonical filename is
 `aime2026_{openclaw|opencode|zeroclaw}_qwen35_27b.yaml` inside its scope folder.
-
-## Supplemental intra-task cells
-
-`intra_task/` also contains six older Kimi/GPQA launch definitions for
-OpenClaw and ZeroClaw. They are retained for reproducibility, but they are not
-part of the canonical 9-cell matrix and do not form a complete cross-harness
-matrix.
