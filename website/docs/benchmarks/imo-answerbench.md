@@ -12,7 +12,7 @@ export PYTHONPATH=$PWD
 
 export OPENAI_BASE_URL=https://api.example.com/v1/
 export OPENAI_API_KEY=sk-...
-export OPENAI_MODEL_NAME=minimax-m2.5
+export OPENAI_MODEL_NAME=qwen/qwen3.5-27b
 ```
 
 The benchmark loads from HuggingFace. If the default mirror is slow, set `HF_ENDPOINT` before running.
@@ -30,13 +30,13 @@ override before `imo_answerbench` could load at all.
 
 | Mode | Status | Config |
 |---|---|---|
-| `direct_llm` | smoke config available | `configs/examples/directllm_minimax_imo_answerbench.yaml` |
-| `opencode` | smoke config available | `configs/examples/opencode_minimax_imo_answerbench.yaml` |
-| `openclaw` | smoke config available | `configs/examples/openclaw_minimax_imo_answerbench.yaml` |
+| `direct_llm` | Qwen pilot available | `configs/examples/directllm_qwen35_27b_imo_answerbench_pilot.yaml` |
+| `opencode` | Qwen pilot available | `configs/examples/opencode_qwen35_27b_imo_answerbench_pilot.yaml` |
+| `openclaw` | Qwen pilot available | `configs/examples/openclaw_qwen35_27b_imo_answerbench_pilot.yaml` |
 | `zeroclaw` | smoke config available | `configs/examples/zeroclaw_imo_answerbench.yaml` |
 
-The DirectLLM, OpenCode, and OpenClaw configs pin `dataset_index: 367`. The
-ZeroClaw config uses only `max_tasks: 1`, so it selects the first eligible row.
+The Qwen pilot configs use `max_tasks: 3`. The ZeroClaw config uses
+`max_tasks: 1`, so it selects the first eligible row.
 
 Additional April 18/19, 2026 pilot configs are also checked in:
 
@@ -89,7 +89,7 @@ canary-only override; benchmark defaults still keep reasoning enabled unless
 you explicitly change them.
 
 ```bash
-python -m alphadiana.cli run configs/examples/directllm_minimax_imo_answerbench.yaml \
+python -m alphadiana.cli run configs/examples/directllm_qwen35_27b_imo_answerbench_pilot.yaml \
   -o run_id=imo_directllm_smoke
 ```
 
@@ -102,7 +102,7 @@ export HF_ENDPOINT=https://hf-mirror.com
 export QWEN_VLLM_API_BASE=http://127.0.0.1:8011/v1
 export QWEN_VLLM_API_KEY=EMPTY
 
-python -m alphadiana.cli run configs/examples/directllm_minimax_imo_answerbench.yaml \
+python -m alphadiana.cli run configs/examples/directllm_qwen35_27b_imo_answerbench_pilot.yaml \
   -o run_id=full_20260422_imo_answerbench_direct_llm_qwen35_27b_localvllm_mc20_r1 \
   -o output_dir=./results/full_20260422_imo_answerbench_direct_llm_qwen35_27b_localvllm_mc20_r1 \
   -o max_concurrent=20 \
@@ -124,9 +124,9 @@ Qwen pilot, use
 
 ## OpenCode
 
-OpenCode runs the `opencode` CLI. The checked-in minimax smoke config includes
-OpenCode-specific external agent settings (`agent: lean-math` and
-`agent_md_path: alphadiana/context/opencode_lean_math.md`) in addition to
+OpenCode runs the `opencode` CLI. The checked-in Qwen pilot includes
+OpenCode-specific external agent settings (`agent: imo-answer` and
+`agent_md_path: alphadiana/context/opencode_imo_answer.md`) in addition to
 `agent.config.system_prompt`. When comparing harness prompts or running local
 Qwen logprob smoke without that external agent layer, override both fields to
 empty strings.
@@ -140,14 +140,14 @@ docker build --network host \
 ```
 
 ```bash
-python -m alphadiana.cli run configs/examples/opencode_minimax_imo_answerbench.yaml \
+python -m alphadiana.cli run configs/examples/opencode_qwen35_27b_imo_answerbench_pilot.yaml \
   -o run_id=imo_opencode_smoke
 ```
 
 Local-vLLM Qwen logprob smoke with the external agent disabled:
 
 ```bash
-python -m alphadiana.cli run configs/examples/opencode_minimax_imo_answerbench.yaml \
+python -m alphadiana.cli run configs/examples/opencode_qwen35_27b_imo_answerbench_pilot.yaml \
   --redo-all \
   -o run_id=phase11_opencode_imo_answerbench_qwen35_27b_logprobs_smoke \
   -o output_dir=./results \
@@ -187,7 +187,7 @@ chat-completions warmup by default on benchmark runs because that warmup could
 pollute the first task with a leftover `READY`/bootstrap response.
 
 ```bash
-python -m alphadiana.cli run configs/examples/openclaw_minimax_imo_answerbench.yaml \
+python -m alphadiana.cli run configs/examples/openclaw_qwen35_27b_imo_answerbench_pilot.yaml \
   -o run_id=imo_openclaw_smoke
 ```
 
@@ -225,40 +225,10 @@ still fails its first task as `score_status=runtime_error` with
 `metadata.failure_reason=empty_response`, even though current main preserves
 the failure record cleanly.
 
-### Reproduce The 2026-04-17 Formal Sandbox Smoke
-
-This is the exact smoke style used for local validation of the ZeroClaw sandbox path. It intentionally forces a fast wrong answer so the run terminates quickly with dashboard `X`, which is enough for the execution-path smoke criterion.
-
-```bash
-export OPENAI_BASE_URL=https://api.example.com/v1/
-export OPENAI_API_KEY=sk-...
-export OPENAI_MODEL_NAME=minimax
-
-python -m alphadiana.cli run configs/examples/zeroclaw_imo_answerbench.yaml \
-  -o run_id=pr26_formal_smoke_zeroclaw_imo_minimax_rock_cli_box0_20260417_v2 \
-  -o benchmark.config.dataset_index=0 \
-  -o agent.config.system_prompt='Smoke test mode: ignore the math problem. Do not use tools. Output exactly $$\\boxed{0}$$ and nothing else.'
-```
-
-Expected result:
-
-- dashboard: `X`
-- task file exists under `results/zeroclaw_imo_answerbench_smoke/<run_id>/tasks/`
-- `data[0]` in the single-sample task JSON list has no `error`
-- the recorded task uses the dataset row's `Problem ID` (for example,
-  `imo-bench-number_theory-068`); if that field is missing, the loader falls
-  back to `imo_0`
-
-Observed local verification on 2026-04-17:
-
-- run_id: `pr26_formal_smoke_zeroclaw_imo_minimax_rock_cli_box0_20260417_v2`
-- result: dashboard `X`, `predicted=0`, `ground_truth=3`, no `error`
-- execution mode: ROCK sandbox + in-sandbox ZeroClaw CLI
-
 ## Smoke Selection
 
-The DirectLLM, OpenCode, and OpenClaw minimax configs pin row 367; the ZeroClaw
-config is bounded to one task with `max_tasks: 1` but does not pin that row.
+The Qwen pilot configs load three tasks; the ZeroClaw config is bounded to one
+task with `max_tasks: 1`.
 
 No IMO-AnswerBench full-run file is checked in; create and validate one before scaling.
 

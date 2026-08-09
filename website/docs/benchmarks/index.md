@@ -42,7 +42,6 @@ per-benchmark, never as one type:
 
 - **String** for text, multiple-choice, and patch benchmarks: `aime`, `gpqa_diamond`,
   `hle`, `mmmu_pro`, `imo_answerbench`, `custom`, and the SWE-bench patch.
-- **Dict** for `swebench_pro_os` (`{instance_id, repo, base_commit}`).
 - **The literal string `"1"`** for `terminal_bench2`: the scorer compares
   `response.answer.strip() == "1"` against the reward observed by the verifier.
 
@@ -73,12 +72,7 @@ an explicit `BenchmarkRegistry.register(<name>, <cls>)` call or the
 | `imo_answerbench` | `imo_verify` | `Hwilner/imo-answerbench`; math-answer verify. |
 | `custom` | `numeric` | Inline `problems` defined in YAML. |
 | `swe_bench` | `swe_bench` | `SWE-bench/SWE-bench_Verified`; ground truth is a patch. |
-| `swebench_pro_os` | `swebench_pro` | `ScaleAI/SWE-bench_Pro`; ground truth is a dict. |
 | `terminal_bench2` | `terminal_bench2` | Local task tree; ground truth is `"1"`. |
-
-Note that the SWE-bench Pro registry name is `swebench_pro_os` (class
-`SWEBenchProBenchmark`), while its scorer name is `swebench_pro`. The default
-scorer is only a suggestion; `scorer_name` in config wins when set.
 
 `BenchmarkRegistry` (`alphadiana/benchmarks/registry.py`) keeps a class-level
 `_registry` dict. `BenchmarkRegistry.get(name)` raises `KeyError` listing the
@@ -140,7 +134,6 @@ to every benchmark; see the per-benchmark page for the full set.
 | `seed` | `gpqa_diamond` | Per-task MCQ shuffle seed (default `42`, stable across runs). |
 | `category` / `category_field` | `hle`, `imo_answerbench` | Optional category filter. |
 | `answer_types` | `hle` | Keep only rows whose answer type is in the list. |
-| `subset` / `instance_ids` / `repos` | `swebench_pro_os` | `smoke` (default) vs `all`; explicit instance/repo filters. |
 | `task_ids` / `taskset_path` / `include_hints` | `swe_bench` | Instance selection and hint inclusion. |
 | `tasks_dir` / `categories` / `task_ids` | `terminal_bench2` | Local task tree and dir-name filters. |
 | `problems` | `custom` | Inline list of `{id, problem, answer}` dicts. |
@@ -166,9 +159,7 @@ can load the full selected split and make many real provider requests.
 
 For a single-task smoke, pin `benchmark.config.dataset_index=<i>`. Do not also
 set `max_tasks` together with a sliced split such as `train[16:17]`; pick one
-selection mechanism. For SWE-bench Pro, the default `subset: smoke` loads only
-the five hardcoded `DEFAULT_SMOKE_INSTANCE_IDS`, so a full run needs
-`subset: all`.
+selection mechanism.
 
 Common setup for the example configs:
 
@@ -177,7 +168,7 @@ source scripts/activate.sh
 
 export OPENAI_BASE_URL=https://api.example.com/v1/
 export OPENAI_API_KEY=sk-...
-export OPENAI_MODEL_NAME=minimax-m2.5
+export OPENAI_MODEL_NAME=qwen/qwen3.5-27b
 ```
 
 Run a benchmark and (optionally) produce a report:
@@ -211,7 +202,6 @@ and special-case `"frozen"` to suppress the post-task memory store. See
 - [IMO-AnswerBench](./imo-answerbench.md)
 - [SWE-bench Verified](./swebench-verified.md)
 - [SWE-bench Verified Mini](./swebench-verified-mini.md)
-- [SWE-bench Pro](./swebench-pro.md)
 - [Terminal-Bench 2](./terminal-bench-2.md)
 
 ## Where results land

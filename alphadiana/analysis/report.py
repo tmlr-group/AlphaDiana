@@ -403,11 +403,6 @@ class ReportGenerator:
             f"| Num Samples (k) | {summary.num_samples} |",
             f"| Accuracy (completed) | {summary.accuracy:.4f} |",
             f"| Accuracy (total) | {summary.accuracy_total:.4f} |",
-            *(
-                [f"| Resolve Rate | {summary.accuracy_total:.4f} |"]
-                if summary.benchmark == "swebench_pro_os"
-                else []
-            ),
             f"| {pass_label} | {summary.pass_at_k:.4f} |",
             f"| {avg_label} | {summary.avg_at_k:.4f} |",
             f"| Mean Score | {summary.mean_score:.4f} |",

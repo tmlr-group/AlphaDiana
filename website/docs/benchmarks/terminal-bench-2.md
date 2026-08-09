@@ -13,12 +13,11 @@ below.
 
 | Mode | Checked-in smoke config |
 |---|---|
-| `direct_llm` | `configs/examples/terminal_bench2_directllm_minimax.yaml` |
-| `opencode` | `configs/examples/terminal_bench2_opencode_minimax.yaml` |
-| `openclaw` | `configs/examples/terminal_bench2_openclaw_minimax.yaml` |
-| `zeroclaw` | `configs/examples/terminal_bench2_zeroclaw_minimax.yaml` |
+| `opencode` | `configs/smokes/podman_terminal_bench2/terminal_bench2_opencode_pilot.yaml` |
+| `openclaw` | `configs/smokes/podman_terminal_bench2/terminal_bench2_openclaw_pilot.yaml` |
+| `zeroclaw` | `configs/smokes/podman_terminal_bench2/terminal_bench2_zeroclaw_pilot.yaml` |
 
-All four paths use the same local AlphaDiana `terminal_bench2` benchmark loader and scorer.
+All three paths use the same local AlphaDiana `terminal_bench2` benchmark loader and scorer.
 This checkout does not ship a Terminal-Bench 2 full-run config.
 
 ## Podman Task-Container Readiness
@@ -128,7 +127,7 @@ export PYTHONPATH=$PWD
 
 export OPENAI_BASE_URL=https://api.example.com/v1/
 export OPENAI_API_KEY=sk-...
-export OPENAI_MODEL_NAME=minimax-m2.5
+export OPENAI_MODEL_NAME=qwen/qwen3.5-27b
 ```
 
 For the April 19, 2026 OpenRouter/Qwen pilot:
@@ -138,25 +137,7 @@ export OPENAI_BASE_URL=https://openrouter.ai/api/v1
 export OPENAI_MODEL_NAME=qwen/qwen3.5-27b
 ```
 
-### Model-Pin Caveat
-
-The general "some smoke configs pin the model in YAML" rule lives in
-`benchmarks/index.md`. This is the concrete tb2 case.
-
-`configs/examples/terminal_bench2_directllm_minimax.yaml` hard-pins
-`agent.config.model: "minimax-m2.5"`, so it ignores `OPENAI_MODEL_NAME`
-(it still reads `api_base` / `api_key` from `OPENAI_BASE_URL` /
-`OPENAI_API_KEY`). To run a different model on that config, override the
-agent config explicitly:
-
-```bash
-python -m alphadiana.cli run configs/examples/terminal_bench2_directllm_minimax.yaml \
-  -o agent.config.model=... \
-  -o agent.config.api_base=... \
-  -o agent.config.api_key=...
-```
-
-The `opencode`, `openclaw`, and `zeroclaw` tb2 example configs read the model
+The `opencode`, `openclaw`, and `zeroclaw` TB2 pilot configs read the model
 from the environment (`${OPENAI_MODEL_NAME}`), so for those switching the env
 vars is enough. The `zeroclaw` config additionally accepts
 `-o agent.config.logs_base_dir=...` when redirecting log output.
@@ -423,32 +404,30 @@ For the native agents:
 Validate the smoke configs first:
 
 ```bash
-python -m alphadiana.cli validate configs/examples/terminal_bench2_directllm_minimax.yaml
-python -m alphadiana.cli validate configs/examples/terminal_bench2_opencode_minimax.yaml
-python -m alphadiana.cli validate configs/examples/terminal_bench2_openclaw_minimax.yaml
-python -m alphadiana.cli validate configs/examples/terminal_bench2_zeroclaw_minimax.yaml
+python -m alphadiana.cli validate configs/smokes/podman_terminal_bench2/terminal_bench2_opencode_pilot.yaml
+python -m alphadiana.cli validate configs/smokes/podman_terminal_bench2/terminal_bench2_openclaw_pilot.yaml
+python -m alphadiana.cli validate configs/smokes/podman_terminal_bench2/terminal_bench2_zeroclaw_pilot.yaml
 ```
 
 Run the three smoke configs:
 
 ```bash
-python -m alphadiana.cli run configs/examples/terminal_bench2_directllm_minimax.yaml --redo-all
-python -m alphadiana.cli run configs/examples/terminal_bench2_opencode_minimax.yaml --redo-all
-python -m alphadiana.cli run configs/examples/terminal_bench2_openclaw_minimax.yaml --redo-all
-python -m alphadiana.cli run configs/examples/terminal_bench2_zeroclaw_minimax.yaml --redo-all
+python -m alphadiana.cli run configs/smokes/podman_terminal_bench2/terminal_bench2_opencode_pilot.yaml --redo-all
+python -m alphadiana.cli run configs/smokes/podman_terminal_bench2/terminal_bench2_openclaw_pilot.yaml --redo-all
+python -m alphadiana.cli run configs/smokes/podman_terminal_bench2/terminal_bench2_zeroclaw_pilot.yaml --redo-all
 ```
 
 April 19 OpenRouter/Qwen 3-task pilot commands:
 
 ```bash
-python -m alphadiana.cli validate configs/examples/terminal_bench2_openclaw_minimax.yaml \
+python -m alphadiana.cli validate configs/smokes/podman_terminal_bench2/terminal_bench2_openclaw_pilot.yaml \
   -o run_id=pilot_20260419_qwen35_27b_terminal_bench2_openclaw_t3 \
   -o output_dir=./results \
   -o benchmark.config.tasks_dir="$TERMINAL_BENCH2_PILOT_ROOT" \
   -o benchmark.config.max_tasks=3 \
   -o agent.config.model_name=qwen/qwen3.5-27b
 
-python -m alphadiana.cli validate configs/examples/terminal_bench2_opencode_minimax.yaml \
+python -m alphadiana.cli validate configs/smokes/podman_terminal_bench2/terminal_bench2_opencode_pilot.yaml \
   -o run_id=pilot_20260419_qwen35_27b_terminal_bench2_opencode_t3 \
   -o output_dir=./results \
   -o benchmark.config.tasks_dir="$TERMINAL_BENCH2_PILOT_ROOT" \
@@ -458,7 +437,7 @@ python -m alphadiana.cli validate configs/examples/terminal_bench2_opencode_mini
   -o agent.config.streaming=true \
   -o max_concurrent=2
 
-python -m alphadiana.cli run configs/examples/terminal_bench2_openclaw_minimax.yaml \
+python -m alphadiana.cli run configs/smokes/podman_terminal_bench2/terminal_bench2_openclaw_pilot.yaml \
   -o run_id=pilot_20260419_qwen35_27b_terminal_bench2_openclaw_t3 \
   -o output_dir=./results \
   -o benchmark.config.tasks_dir="$TERMINAL_BENCH2_PILOT_ROOT" \
@@ -466,7 +445,7 @@ python -m alphadiana.cli run configs/examples/terminal_bench2_openclaw_minimax.y
   -o agent.config.model_name=qwen/qwen3.5-27b \
   2>&1 | tee logs/pilot_20260419_qwen35_27b_terminal_bench2_openclaw_t3.log
 
-python -m alphadiana.cli run configs/examples/terminal_bench2_opencode_minimax.yaml \
+python -m alphadiana.cli run configs/smokes/podman_terminal_bench2/terminal_bench2_opencode_pilot.yaml \
   -o run_id=pilot_20260419_qwen35_27b_terminal_bench2_opencode_t3 \
   -o output_dir=./results \
   -o benchmark.config.tasks_dir="$TERMINAL_BENCH2_PILOT_ROOT" \
@@ -611,7 +590,7 @@ docker pull zeroclaw-reasoning:0.6.9
 Run the smoke:
 
 ```bash
-python -m alphadiana.cli run configs/examples/terminal_bench2_zeroclaw_minimax.yaml \
+python -m alphadiana.cli run configs/smokes/podman_terminal_bench2/terminal_bench2_zeroclaw_pilot.yaml \
   -o run_id=smoke_20260420_qwen35_27b_tb2_zeroclaw_incontainer_r2 \
   -o output_dir=./results/smoke_20260420_qwen35_27b_tb2_zeroclaw_incontainer_r2
 ```

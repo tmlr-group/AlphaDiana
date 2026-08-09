@@ -14,7 +14,6 @@ Generic scorer keys are `exact_match`, `numeric`, `math_verify`, and `llm_judge`
 | --- | --- |
 | `imo_verify` | IMO AnswerBench verifier; `math_verify` is rejected for this benchmark |
 | `swe_bench` | Official SWE-bench evaluation adapter |
-| `swebench_pro` | SWE-bench Pro evaluator and resolved metadata |
 | `terminal_bench2` | Binary score from an actually observed verifier reward |
 
 Scorers do not share one universal no-answer rationale. Benchmark adapters may interpret missing patches, rewards, verifier output, or official artifacts differently. The universal status is the top-level `score_status`, not benchmark-specific supporting fields.

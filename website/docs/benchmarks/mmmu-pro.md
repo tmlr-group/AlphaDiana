@@ -11,7 +11,7 @@ source scripts/activate.sh
 
 export OPENAI_BASE_URL=https://api.example.com/v1/
 export OPENAI_API_KEY=sk-...
-export OPENAI_MODEL_NAME=minimax-m2.5
+export OPENAI_MODEL_NAME=qwen/qwen3.5-27b
 ```
 
 When running from a local checkout, prefer the module entrypoint:
@@ -251,29 +251,6 @@ remain useful audit evidence for the old workaround only.
 When the path still fails, current main preserves explicit failure metadata
 such as `metadata.failure_reason=empty_response` or `provider_error` so the
 task JSON remains diagnosable.
-
-### Reproduce The 2026-04-18 Sandbox Smoke
-
-This smoke run intentionally returns a fixed option letter so the benchmark path
-finishes quickly while still proving that attachment upload, prompt plumbing,
-and scoring all complete.
-
-```bash
-export OPENAI_BASE_URL=https://api.example.com/v1/
-export OPENAI_API_KEY=sk-...
-export OPENAI_MODEL_NAME=minimax-m2.5
-
-python -m alphadiana.cli run configs/examples/zeroclaw_mmmu_pro.yaml \
-  -o run_id=pr23_smoke_zeroclaw_mmmupro_minimaxm25_boxA_20260418 \
-  -o output_dir=./results/pr23_zeroclaw_smokes \
-  -o agent.config.system_prompt='Smoke test mode: ignore the question and attachments. Do not use tools. Output exactly $$\\boxed{A}$$ and nothing else.'
-```
-
-Observed local verification on 2026-04-18:
-
-- run_id: `pr23_smoke_zeroclaw_mmmupro_minimaxm25_boxA_20260418`
-- result: dashboard `X`, `predicted=A`, `ground_truth=B`, no `error`
-- execution mode: ROCK sandbox + in-sandbox ZeroClaw CLI
 
 ### Qwen/OpenRouter Vision Pilot (2026-04-19)
 

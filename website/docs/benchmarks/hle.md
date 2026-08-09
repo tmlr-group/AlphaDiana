@@ -12,7 +12,7 @@ export PYTHONPATH=$PWD
 
 export OPENAI_BASE_URL=https://api.example.com/v1/
 export OPENAI_API_KEY=sk-...
-export OPENAI_MODEL_NAME=minimax-m2.5
+export OPENAI_MODEL_NAME=qwen/qwen3.5-27b
 ```
 
 `cais/hle` is gated on HuggingFace. On a fresh machine, export `HF_TOKEN` before running:
@@ -31,7 +31,7 @@ OpenCode Docker controller.
 | Mode | Status | Config |
 |---|---|---|
 | `direct_llm` | smoke config available | `configs/examples/direct_llm_hle.yaml` |
-| `opencode` | smoke config available | `configs/examples/opencode_minimax_hle.yaml` |
+| `opencode` | Qwen pilot available | `configs/examples/opencode_qwen35_27b_hle_pilot.yaml` |
 | `openclaw` | smoke config available | `configs/examples/openclaw_hle.yaml` |
 | `zeroclaw` | smoke config available | `configs/examples/zeroclaw_hle.yaml` |
 
@@ -43,9 +43,8 @@ As of April 22, 2026, the loader also treats `image: ""` rows in the current
 attempts on the same snapshot could fail early with
 `HLE: unsupported image type ... str` before this compatibility fix landed.
 
-The DirectLLM and OpenCode configs pin `dataset_index: 1`; the OpenClaw and
-ZeroClaw configs use `max_tasks: 1` and therefore select the first eligible row.
-All four are bounded to one task, but only the first pair explicitly pins row 1.
+The DirectLLM config pins `dataset_index: 1`; the generic OpenClaw and ZeroClaw
+configs use `max_tasks: 1`. The Qwen pilot configs load three tasks.
 
 Current dataset caveat:
 the checked-in smoke row `hle_1` is text-only in the current `cais/hle`
@@ -89,7 +88,7 @@ docker build --network host \
 ```
 
 ```bash
-python -m alphadiana.cli run configs/examples/opencode_minimax_hle.yaml \
+python -m alphadiana.cli run configs/examples/opencode_qwen35_27b_hle_pilot.yaml \
   -o run_id=hle_opencode_smoke
 ```
 
@@ -126,7 +125,7 @@ each. A follow-up image-backed smoke,
 ## OpenClaw
 
 ```bash
-python -m alphadiana.cli run configs/examples/openclaw_minimax_hle.yaml \
+python -m alphadiana.cli run configs/examples/openclaw_qwen35_27b_hle_pilot.yaml \
   -o run_id=hle_openclaw_smoke
 ```
 
@@ -197,38 +196,9 @@ The real-API before/after evidence is
 `fixproof_before_20260422_hle_zeroclaw_qwen3vl_t1` versus
 `fixproof_after_20260422_hle_zeroclaw_qwen3vl_t1`.
 
-### Reproduce The 2026-04-17 Formal Sandbox Smoke
-
-This smoke run intentionally returns a fixed multiple-choice answer to validate the HLE attachment + sandbox plumbing without waiting for full reasoning quality. Under the smoke playbook, dashboard `X` is a pass for the execution path.
-
-```bash
-export OPENAI_BASE_URL=https://api.example.com/v1/
-export OPENAI_API_KEY=sk-...
-export OPENAI_MODEL_NAME=minimax
-export HF_TOKEN=hf_...
-
-python -m alphadiana.cli run configs/examples/zeroclaw_hle.yaml \
-  -o run_id=pr26_formal_smoke_zeroclaw_hle_minimax_rock_cli_boxA_20260417 \
-  -o benchmark.config.dataset_index=1 \
-  -o agent.config.system_prompt='Smoke test mode: ignore the question and attachments. Do not use tools. Output exactly $$\\boxed{A}$$ and nothing else.'
-```
-
-Expected result:
-
-- dashboard: `X`
-- task file exists under `results/zeroclaw_hle_smoke/<run_id>/tasks/`
-- `data[0]` in the single-sample task JSON list has no `error`
-- the recorded task is `hle_1`
-
-Observed local verification on 2026-04-17:
-
-- run_id: `pr26_formal_smoke_zeroclaw_hle_minimax_rock_cli_boxA_20260417`
-- result: dashboard `X`, `predicted=A`, `ground_truth=D`, no `error`
-- execution mode: ROCK sandbox + in-sandbox ZeroClaw CLI
-
 ## Smoke Selection
 
-The checked-in minimax smoke configs pin:
+The checked-in one-task smoke configs use:
 
 - `dataset_index: 1`
 - `answer_types: ["multipleChoice"]`

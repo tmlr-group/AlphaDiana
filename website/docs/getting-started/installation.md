@@ -245,7 +245,7 @@ export OPENAI_BASE_URL=https://openrouter.ai/api/v1
 export OPENAI_API_KEY=<provider-key>
 export OPENAI_MODEL_NAME=<provider-model>
 
-python -m alphadiana.cli run configs/examples/openclaw_aime2024.yaml \
+python -m alphadiana.cli run configs/examples/openclaw_quickstart.yaml \
   -o run_id=endpoint_demo_openclaw_aime_t1_k1 \
   -o benchmark.config.max_tasks=1 -o num_samples=1
 ```

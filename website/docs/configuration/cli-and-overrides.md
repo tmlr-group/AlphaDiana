@@ -27,7 +27,7 @@ commands additionally accept run-control flags.
 ### `run`
 
 ```bash
-alphadiana run configs/test_openclaw_quick.yaml
+alphadiana run configs/examples/openclaw_quickstart.yaml
 ```
 
 `run` builds the override dict, loads the config with `ExperimentConfig.from_yaml`, runs the
@@ -40,13 +40,13 @@ completed/total counts, exiting 1 when `strict_report` is set and the strict che
 To ignore the checkpoint and re-run every task:
 
 ```bash
-alphadiana run configs/test_openclaw_quick.yaml --redo-all
+alphadiana run configs/examples/openclaw_quickstart.yaml --redo-all
 ```
 
 ### `validate`
 
 ```bash
-alphadiana validate configs/test_openclaw_quick.yaml
+alphadiana validate configs/examples/openclaw_quickstart.yaml
 ```
 
 Loads the config and runs the same `ConfigValidator` as `run`, printing `Config is valid.`

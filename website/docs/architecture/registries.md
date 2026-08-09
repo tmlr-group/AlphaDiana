@@ -23,7 +23,6 @@ The tables below reflect the registrations imported by `Runner.setup()` in the c
 | `imo_answerbench` | IMO AnswerBench |
 | `mmmu_pro` | MMMU-Pro multimodal tasks |
 | `swe_bench` | SWE-bench |
-| `swebench_pro_os` | SWE-bench Pro open-source split |
 | `terminal_bench2` | TerminalBench 2 |
 
 ### Agents
@@ -61,7 +60,6 @@ The first four are generic harness families. The remaining keys are benchmark-sp
 | `llm_judge` | Model-based judging |
 | `imo_verify` | Required verifier for `imo_answerbench` |
 | `swe_bench` | Official SWE-bench evaluation adapter |
-| `swebench_pro` | SWE-bench Pro evaluator |
 | `terminal_bench2` | Verifier reward scorer |
 
 ## Registration forms

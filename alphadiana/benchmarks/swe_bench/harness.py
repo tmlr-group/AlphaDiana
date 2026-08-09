@@ -1,7 +1,7 @@
 """SWE-bench Docker agent.
 
-Phase 9 introduces the Docker lifecycle and image-resolution contract used by
-SWE-bench Pro runs. Direct patch generation is added in a later step.
+Provides the Docker lifecycle and image-resolution contract used by
+SWE-bench runs.
 """
 
 from __future__ import annotations
@@ -834,7 +834,7 @@ RUN chmod +x /usr/local/bin/zeroclaw
     def _render_container_prompt(parts: dict[str, Any]) -> str:
         """Render structured prompt parts into the staged prompt text."""
         lines = [
-            "You are working on a SWE-bench Pro task inside a checked-out git repository.",
+            "You are working on a SWE-bench task inside a checked-out git repository.",
             f"Repository path: {parts['repo_root']}",
         ]
         repo = str(parts.get("repo", "")).strip()

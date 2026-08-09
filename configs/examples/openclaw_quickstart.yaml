@@ -11,7 +11,7 @@ agent:
     rock_cpus: 1
     rock_startup_timeout: 600
     model: openclaw
-    gateway_token: "2ee4379b65cc62714b31c1b93b56bf47505ec8a2f51f26f3"
+    gateway_token: "${OPENCLAW_GATEWAY_TOKEN}"
     max_tokens: 8192
     request_timeout: 600
     max_attempts: 2

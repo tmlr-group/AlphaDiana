@@ -132,7 +132,6 @@ ROCK-backed runs.
 | `numeric` | Numeric answers | Tolerance default `1e-6`. |
 | `exact_match` | Exact string answers | Math-aware normalization + strict equality; does not equate `1/2` and `0.5`. |
 | `llm_judge` | Open-ended (e.g. HLE) | Needs `api_base` / `api_key` / `judge_model`. |
-| `swebench_pro` | SWE-bench Pro | Requires `eval_script_path` and `scripts_dir`. |
 | `swe_bench` | SWE-bench Verified | Runs the official SWE-bench evaluator against the submitted patch. |
 | `terminal_bench2` | Terminal-Bench 2 | Converts the task-container verifier reward to a binary score. |
 | `imo_verify` | IMO-AnswerBench | Repo-local conservative math-answer verifier; required for this benchmark. |
