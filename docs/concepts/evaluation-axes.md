@@ -12,6 +12,21 @@ There are three axes:
 - **Memory** — whether the harness keeps a persistent memory store, and at what
   scope.
 
+## Release coverage
+
+The three axes do not have equal experimental coverage in this release:
+
+| Axis | Coverage |
+| --- | --- |
+| Tool | Partial runnable configuration set; not a complete paper matrix |
+| Skill | Two mechanism/smoke cells only; not a matched three-harness matrix |
+| Memory | Complete 9-cell reference matrix across three harnesses and three scopes |
+
+The number of YAML files is not evidence that an experiment appeared in the
+paper or has matching result artifacts. The extra Kimi/GPQA intra-task Memory
+files are supplemental; the complete reference matrix is the AIME 2026,
+Qwen3.5-27B 3×3 scope matrix.
+
 For a defensible comparison, keep the model, sampling parameters, benchmark,
 scorer, and unrelated harness settings fixed, then document the complete
 condition bundle that changed. Treat the score delta as an association with that
