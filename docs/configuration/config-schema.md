@@ -205,7 +205,7 @@ configs use descriptive kebab/underscore ids encoding `{date?}-{benchmark}-{harn
 ```
 20260423-gpqa_diamond-directllm-qwen35_27b-v01
 exp2-zw-aime-memory-passk
-micro_aime2026_opencode_kimi_k26_memory_cross_sample
+micro_aime2026_opencode_qwen35_27b_memory_cross_sample
 ```
 
 Downscaled or variant runs must use a distinct `run_id` suffix rather than CLI-overriding
