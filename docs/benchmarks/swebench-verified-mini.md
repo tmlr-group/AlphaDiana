@@ -116,7 +116,7 @@ $DIRECTLLM_SWE_VERIFIED_ROOT/
 
 ## 3. Campaign manifest
 
-Already checked in at `configs/full_runs/swe_verified_mini.yaml`:
+Already checked in at `configs/macro_runs/swe_bench_verified_sweagent_qwen35_27b_campaign.yaml`:
 
 ```yaml
 campaign_id: "swe_verified_mini"
@@ -157,16 +157,16 @@ path_templates:
 ```bash
 # Sanity (prints the expanded run list)
 python -m alphadiana.benchmark_rollout_cli summary \
-  --manifest configs/full_runs/swe_verified_mini.yaml
+  --manifest configs/macro_runs/swe_bench_verified_sweagent_qwen35_27b_campaign.yaml
 
 # Env + docker preflight (non-zero exit on error)
 python -m alphadiana.benchmark_rollout_cli preflight \
-  --manifest configs/full_runs/swe_verified_mini.yaml \
+  --manifest configs/macro_runs/swe_bench_verified_sweagent_qwen35_27b_campaign.yaml \
   --probe-vllm --check-docker
 
 # Materialize the run script
 python -m alphadiana.benchmark_rollout_cli materialize \
-  --manifest configs/full_runs/swe_verified_mini.yaml \
+  --manifest configs/macro_runs/swe_bench_verified_sweagent_qwen35_27b_campaign.yaml \
   --output-dir generated/swe_verified_mini
 
 # Execute in tmux (50 tasks @ max_concurrent=10 → ~8-15h wall)

@@ -144,10 +144,10 @@ dependency; it reads tasks off disk and needs `tasks_dir` or the
 
 ## Smoke vs full convention
 
-Configs under `configs/examples/` are examples and starting points; they are not
-uniformly bounded. Inspect `dataset_index`, `dataset_indices`, `max_tasks`, or
-benchmark-specific selectors before running one. If none is present, the config
-can load the full selected split and make many real provider requests.
+Configs under `configs/macro_runs/` are release experiment definitions. They
+default to one sample and one worker, but their benchmark selection may still
+cover a full split. Add `-o benchmark.config.max_tasks=1` for a first smoke and
+use a fresh `run_id`.
 
 > Smoke-test success means the evaluation path loads tasks, invokes the selected
 > agent mode, and writes scored results. It does not mean the model answered
@@ -157,7 +157,7 @@ For a single-task smoke, pin `benchmark.config.dataset_index=<i>`. Do not also
 set `max_tasks` together with a sliced split such as `train[16:17]`; pick one
 selection mechanism.
 
-Common setup for the example configs:
+Common setup for the macro configs:
 
 ```bash
 source scripts/activate.sh
@@ -175,9 +175,9 @@ python -m alphadiana.cli run <config.yaml> \
 alphadiana report ./results/my_run
 ```
 
-For most example configs, switching backends only requires changing the three
+For most macro configs, switching backends only requires changing the three
 standard environment variables before `python -m alphadiana.cli run ...`. Some
-smoke configs pin the model in YAML; for those, override
+micro configs pin the model in YAML; for those, override
 `agent.config.model` / `agent.config.api_base` / `agent.config.api_key` with `-o`.
 
 ## A note on `memory_mode`

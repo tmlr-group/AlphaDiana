@@ -1,8 +1,7 @@
-run_id: "macro_gpqa_directllm_qwen35_27b"
-
+run_id: macro_gpqa_directllm_qwen35_27b
 agent:
   name: direct_llm
-  version: "1.0"
+  version: '1.0'
   config:
     model: "${OPENAI_MODEL_NAME}"
     api_base: "${OPENAI_BASE_URL}"
@@ -13,29 +12,28 @@ agent:
     stream: true
     capture_logprobs: true
     top_logprobs: 20
-    extra_body:
-      chat_template_kwargs:
-        enable_thinking: true
     system_prompt: |
       You are solving expert-level science multiple-choice questions. Reason
       carefully and put only the final option letter in $$\boxed{A}$$,
       $$\boxed{B}$$, $$\boxed{C}$$, or $$\boxed{D}$$ at the end.
-
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: true
 benchmark:
   name: gpqa_diamond
   config:
-    dataset: "fingertap/GPQA-Diamond"
-    split: "test"
+    dataset: fingertap/GPQA-Diamond
+    split: test
     seed: 42
-
 scorer:
   name: exact_match
   config: {}
-
 max_concurrent: 1
 num_samples: 1
-output_dir: "./results"
+output_dir: ./results
 strict_report: true
 strict_isolation: true
 metadata:
-  notes: "Release macro seed: GPQA-Diamond x DirectLLM x Qwen3.5-27B."
+  model_family: Qwen3.5-27B
+  experiment_axis: macro
+  notes: 'Release macro config: GPQA-Diamond x directllm x Qwen3.5-27B.'

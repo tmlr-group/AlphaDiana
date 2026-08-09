@@ -6,7 +6,7 @@
 #   OPENAI_BASE_URL=... OPENAI_API_KEY=... OPENAI_MODEL_NAME=... bash scripts/start_zeroclaw.sh
 #
 # This script prepares the host-side ROCK control plane used by the standard
-# ZeroClaw reasoning path (for example configs/examples/zeroclaw_aime2026.yaml).
+# ZeroClaw reasoning path (for configs/macro_runs/aime2026_zeroclaw_qwen35_27b.yaml).
 # Unlike start_openclaw.sh, it does not pre-deploy a long-lived gateway sandbox:
 # ZeroClaw sandboxes are auto-created per run by AlphaDiana itself.
 
@@ -17,7 +17,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd -P)"
 ROCK_ROOT="${ALPHADIANA_ROCK_ROOT:-${PROJECT_ROOT}/ref/ROCK}"
 PYTHON="${PYTHON:-$(command -v python3 || command -v python)}"
 ZEROCLAW_IMAGE="${ZEROCLAW_SANDBOX_IMAGE:-zeroclaw-reasoning:0.6.9}"
-ZEROCLAW_CONFIG="${ZEROCLAW_RUN_CONFIG:-${PROJECT_ROOT}/configs/examples/zeroclaw_aime2026.yaml}"
+ZEROCLAW_CONFIG="${ZEROCLAW_RUN_CONFIG:-${PROJECT_ROOT}/configs/macro_runs/aime2026_zeroclaw_qwen35_27b.yaml}"
 ROCK_BIND_HOST="${ROCK_BIND_HOST:-127.0.0.1}"
 ROCK_REDIS_HOST="${ROCK_REDIS_HOST:-${ROCK_BIND_HOST}}"
 ROCK_HTTP_HOST="${ROCK_HTTP_HOST:-${ROCK_BIND_HOST}}"

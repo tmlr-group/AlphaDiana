@@ -6,7 +6,7 @@ SCOPE="${1:-pilot}"
 RUN_PREFIX="${PODMAN_SCALE_RUN_PREFIX:-podman_scale_$(date +%Y%m%d_%H%M%S)}"
 COMMAND_TIMEOUT_SECONDS="${PODMAN_SCALE_COMMAND_TIMEOUT_SECONDS:-7200}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-CONFIG_DIR="${PODMAN_SCALE_CONFIG_DIR:-$ROOT_DIR/configs/smokes/podman_scale_readiness}"
+CONFIG_DIR="${PODMAN_SCALE_CONFIG_DIR:-$ROOT_DIR/configs/macro_runs}"
 STATUS_DIR="$ROOT_DIR/context/podman-scale-readiness"
 STATUS_FILE="$STATUS_DIR/run-status-${RUN_PREFIX}.tsv"
 AUDIT_SCRIPT="$ROOT_DIR/scripts/audit_podman_scale_readiness.py"
@@ -222,7 +222,11 @@ init_status() {
 cell_config() {
   local agent="$1"
   local benchmark="$2"
-  printf '%s/%s_%s_pilot.yaml' "$CONFIG_DIR" "$agent" "$benchmark"
+  case "$benchmark" in
+    aime) benchmark="aime2026" ;;
+    imo) benchmark="imo_answerbench" ;;
+  esac
+  printf '%s/%s_%s_qwen35_27b.yaml' "$CONFIG_DIR" "$benchmark" "$agent"
 }
 
 run_config() {
@@ -240,6 +244,7 @@ run_config() {
         --redo-all \
         -o "run_id=$run_id" \
         -o "output_dir=$output_dir" \
+        -o benchmark.config.max_tasks=1 \
         -o strict_report=true \
         2>&1
   ) | tee "$log_path"

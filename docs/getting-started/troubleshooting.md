@@ -117,8 +117,8 @@ The same rule applies on the command line and via environment defaults: prefer
 
 ### Where credentials come from
 
-Many example configs leave `model`, `api_base`, and `api_key` blank and rely on
-environment defaults. During `ExperimentConfig.from_yaml`, blank agent fields
+Release configs use environment placeholders or leave `model`, `api_base`, and
+`api_key` blank. During `ExperimentConfig.from_yaml`, blank agent fields
 are filled from the environment for the standard agents (`direct_llm`,
 `zeroclaw`, `opencode`, and the `terminal_bench2_*` variants):
 
@@ -353,10 +353,10 @@ Fixes:
   sliced split such as `train[16:17]` with a config that already sets
   `max_tasks`, and do not set both `dataset_index` and `max_tasks` at once.
 
-`configs/examples/` is mixed: some files pin a small smoke, while others load a
-full selected split. Inspect the selectors before launch and add a bounded
-override for a smoke. `configs/full_runs/swe_verified_mini.yaml` is a rollout
-campaign manifest, not a generic `alphadiana run` config.
+`configs/macro_runs/` contains release configs that may load a full selected
+split. Inspect the selectors before launch and add a bounded override for a
+smoke. The `_campaign.yaml` file is a rollout manifest for
+`alphadiana.benchmark_rollout_cli`, not a generic `alphadiana run` config.
 
 ## Quick checklist
 

@@ -118,31 +118,31 @@ def expected_task_ids(config: dict[str, Any]) -> list[str]:
     return []
 
 
-def _cell_from_config_path(path: Path) -> tuple[str, str]:
-    stem = path.stem
-    if stem.endswith("_pilot"):
-        stem = stem[:-len("_pilot")]
-    if stem.endswith(f"_{BENCHMARK_KEY}"):
-        return stem[: -len(f"_{BENCHMARK_KEY}")], BENCHMARK_KEY
-    agent, benchmark = stem.rsplit("_", 1)
-    return agent, benchmark
-
-
 def discover_cells(config_dir: Path) -> list[dict[str, Any]]:
     cells: list[dict[str, Any]] = []
-    for path in sorted(config_dir.glob(f"*_{BENCHMARK_KEY}_pilot.yaml")):
+    paths = [
+        config_dir / f"mmmu_pro_{agent}_qwen35_27b.yaml"
+        for agent in ("openclaw", "opencode", "zeroclaw")
+    ]
+    for path in paths:
+        if not path.is_file():
+            continue
         data = _load_yaml(path)
-        agent_key, benchmark_key = _cell_from_config_path(path)
-        agent_name = str(_as_dict(data.get("agent")).get("name") or agent_key)
-        benchmark_name = str(_as_dict(data.get("benchmark")).get("name") or benchmark_key)
+        agent_name = str(_as_dict(data.get("agent")).get("name") or "")
+        benchmark_name = str(_as_dict(data.get("benchmark")).get("name") or "")
+        selected_ids = expected_task_ids(data) or [
+            "mmmu_pro_test_History_1",
+            "mmmu_pro_test_Art_113",
+            "mmmu_pro_validation_Design_19",
+        ]
         cells.append({
             "config_path": path,
             "config": data,
-            "agent_key": agent_key,
-            "benchmark_key": benchmark_key,
+            "agent_key": agent_name,
+            "benchmark_key": benchmark_name,
             "agent": agent_name,
             "benchmark": benchmark_name,
-            "expected_task_ids": expected_task_ids(data),
+            "expected_task_ids": selected_ids,
         })
     return cells
 

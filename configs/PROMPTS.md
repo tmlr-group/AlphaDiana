@@ -1,9 +1,9 @@
 # Canonical System Prompts
 
-This is the single source of truth for active prompt-aligned benchmark configs.
-Every active config file in the root of `full_runs/` must use exactly these
-prompts. Archived configs and older smoke examples may preserve historical
-prompts for reproducibility.
+This is the prompt reference for release configs under `macro_runs/` and
+`micro_runs/`. A config may intentionally use a different prompt only when the
+prompt itself is an experimental variable; document that difference in its
+metadata or directory README.
 
 ## Harness types
 
@@ -168,9 +168,8 @@ You are a helpful assistant that can interact with a computer to solve tasks.
 
 ## Config file conventions
 
-- `full_runs/` root — active production runs with `run_id`, model pinned, logprob capture enabled
-- `full_runs/archive/` — historical configs retained for audit/reference
-- `examples/` — smoke/debug templates that may lag the active prompt contract
-- Naming: `{benchmark}_{harness}_{model_short}_logprobs.yaml`
-- All configs must set `system_prompt` explicitly — never rely on harness defaults
-- `redo_all: true` only when intentionally re-running completed tasks
+- `macro_runs/` — end-to-end benchmark × harness runs
+- `micro_runs/` — Tool, Skill, and Memory ablations
+- Naming: `{benchmark}_{harness}_{model_short}.yaml`
+- Set `system_prompt` explicitly when the harness accepts one
+- Use `--redo-all` only when intentionally re-running completed tasks

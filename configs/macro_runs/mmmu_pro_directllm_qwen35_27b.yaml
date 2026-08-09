@@ -1,0 +1,33 @@
+run_id: macro_mmmu_pro_directllm_qwen35_27b
+agent:
+  name: direct_llm
+  version: '1.0'
+  config:
+    model: "${OPENAI_MODEL_NAME}"
+    api_base: "${OPENAI_BASE_URL}"
+    api_key: "${OPENAI_API_KEY}"
+    temperature: 0.0
+    max_tokens: 32768
+    top_p: 0.95
+    stream: true
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: true
+benchmark:
+  name: mmmu_pro
+  config:
+    dataset: MMMU/MMMU_Pro
+    data_config: vision
+    split: test
+scorer:
+  name: exact_match
+  config: {}
+max_concurrent: 1
+num_samples: 1
+output_dir: ./results
+strict_report: true
+strict_isolation: true
+metadata:
+  model_family: Qwen3.5-27B
+  experiment_axis: macro
+  notes: 'Release macro config: MMMU-Pro x directllm x Qwen3.5-27B.'

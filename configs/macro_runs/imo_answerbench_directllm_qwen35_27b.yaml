@@ -1,0 +1,37 @@
+run_id: macro_imo_answerbench_directllm_qwen35_27b
+agent:
+  name: direct_llm
+  version: '1.0'
+  config:
+    model: "${OPENAI_MODEL_NAME}"
+    api_base: "${OPENAI_BASE_URL}"
+    api_key: "${OPENAI_API_KEY}"
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 32768
+    max_retries: 3
+    stream: true
+    system_prompt: |
+      You are an expert mathematician. Solve the problem carefully.
+
+      The final line must be:
+      $$\boxed{your answer here}$$
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: true
+benchmark:
+  name: imo_answerbench
+  config:
+    dataset: Hwilner/imo-answerbench
+    split: train
+scorer:
+  name: imo_verify
+max_concurrent: 1
+num_samples: 1
+output_dir: ./results
+strict_report: true
+strict_isolation: true
+metadata:
+  model_family: Qwen3.5-27B
+  experiment_axis: macro
+  notes: 'Release macro config: IMO-AnswerBench x directllm x Qwen3.5-27B.'

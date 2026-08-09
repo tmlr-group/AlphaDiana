@@ -1,0 +1,39 @@
+run_id: macro_imo_answerbench_opencode_qwen35_27b
+agent:
+  name: opencode
+  version: 1.3.2
+  config:
+    model: "custom/${OPENAI_MODEL_NAME}"
+    model_name: "${OPENAI_MODEL_NAME}"
+    api_base: "${OPENAI_BASE_URL}"
+    api_key: "${OPENAI_API_KEY}"
+    controller_mode: docker
+    controller_image: alphadiana/tb2-opencode-controller:latest
+    timeout: 1800
+    streaming: false
+    tool_call: true
+    agent: imo-answer
+    agent_md_path: alphadiana/context/opencode_imo_answer.md
+    system_prompt: |
+      Solve efficiently and keep the response short.
+      The final line must be $$\boxed{your answer here}$$.
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 32768
+    enable_thinking: true
+benchmark:
+  name: imo_answerbench
+  config:
+    dataset: Hwilner/imo-answerbench
+    split: train
+scorer:
+  name: imo_verify
+max_concurrent: 1
+num_samples: 1
+output_dir: ./results
+strict_report: true
+strict_isolation: true
+metadata:
+  model_family: Qwen3.5-27B
+  experiment_axis: macro
+  notes: 'Release macro config: IMO-AnswerBench x opencode x Qwen3.5-27B.'

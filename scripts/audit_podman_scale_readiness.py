@@ -56,29 +56,31 @@ def expected_task_count(config: dict[str, Any]) -> int:
     return 0
 
 
-def _cell_from_config_path(path: Path) -> tuple[str, str]:
-    stem = path.stem
-    if stem.endswith("_pilot"):
-        stem = stem[:-len("_pilot")]
-    agent, benchmark = stem.rsplit("_", 1)
-    return agent, benchmark
-
-
 def discover_cells(config_dir: Path) -> list[dict[str, Any]]:
     cells: list[dict[str, Any]] = []
-    for path in sorted(config_dir.glob("*_pilot.yaml")):
+    paths = [
+        path
+        for benchmark in ("aime2026", "gpqa", "hle", "imo_answerbench")
+        for agent in ("openclaw", "opencode", "zeroclaw")
+        for path in [config_dir / f"{benchmark}_{agent}_qwen35_27b.yaml"]
+        if path.is_file()
+    ]
+    for path in paths:
         data = _load_yaml(path)
-        agent_key, benchmark_key = _cell_from_config_path(path)
-        agent_name = str(_as_dict(data.get("agent")).get("name") or agent_key)
-        benchmark_name = str(_as_dict(data.get("benchmark")).get("name") or benchmark_key)
+        agent_name = str(_as_dict(data.get("agent")).get("name") or "")
+        benchmark_name = str(_as_dict(data.get("benchmark")).get("name") or "")
+        benchmark_key = {
+            "gpqa_diamond": "gpqa",
+            "imo_answerbench": "imo",
+        }.get(benchmark_name, benchmark_name)
         cells.append({
             "config_path": path,
             "config": data,
-            "agent_key": agent_key,
+            "agent_key": agent_name,
             "benchmark_key": benchmark_key,
             "agent": agent_name,
             "benchmark": benchmark_name,
-            "expected_tasks": expected_task_count(data),
+            "expected_tasks": expected_task_count(data) or 1,
         })
     return cells
 

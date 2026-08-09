@@ -1,0 +1,41 @@
+run_id: macro_hle_directllm_qwen35_27b
+agent:
+  name: direct_llm
+  version: '1.0'
+  config:
+    model: "${OPENAI_MODEL_NAME}"
+    api_base: "${OPENAI_BASE_URL}"
+    api_key: "${OPENAI_API_KEY}"
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 32768
+    max_retries: 3
+    stream: true
+    system_prompt: |
+      You are solving expert-level multimodal multiple-choice questions.
+      Read the question and image carefully, then choose the single best option.
+
+      At the end of your response, output only one of:
+      \boxed{A}, \boxed{B}, \boxed{C}, \boxed{D}, \boxed{E}, \boxed{F}, \boxed{G}, \boxed{H}, \boxed{I}, or \boxed{J}
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: true
+benchmark:
+  name: hle
+  config:
+    dataset: cais/hle
+    split: test
+    answer_types:
+      - multipleChoice
+scorer:
+  name: exact_match
+  config: {}
+max_concurrent: 1
+num_samples: 1
+output_dir: ./results
+strict_report: true
+strict_isolation: true
+metadata:
+  model_family: Qwen3.5-27B
+  experiment_axis: macro
+  notes: 'Release macro config: HLE x directllm x Qwen3.5-27B.'

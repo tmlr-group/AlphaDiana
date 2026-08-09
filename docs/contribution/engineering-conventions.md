@@ -18,7 +18,7 @@ When you need to flip a value, patch the line in place:
 ```bash
 # Good: surgical, comment-preserving
 sed -i '' 's/^  temperature: 0.7/  temperature: 0.6/' \
-  configs/full_runs/swe_verified_mini.yaml
+  configs/macro_runs/swe_bench_verified_sweagent_qwen35_27b_campaign.yaml
 ```
 
 ```python
@@ -58,12 +58,12 @@ to tracked ones. A wildcard add sweeps them in by accident:
 
 ```bash
 # Avoid: tracks whatever happens to be untracked in configs/
-git add configs/full_runs/*.yaml
+git add configs/macro_runs/*.yaml
 ```
 
 ```bash
 # Good: explicit named paths, or stage only already-tracked changes
-git add configs/full_runs/swe_verified_mini.yaml
+git add configs/macro_runs/swe_bench_verified_sweagent_qwen35_27b_campaign.yaml
 git add -u configs/
 ```
 

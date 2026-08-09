@@ -23,7 +23,7 @@ commands additionally accept run-control flags.
 ### `run`
 
 ```bash
-alphadiana run configs/examples/openclaw_quickstart.yaml
+alphadiana run configs/macro_runs/aime2026_openclaw_qwen35_27b.yaml
 ```
 
 `run` builds the override dict, loads the config with `ExperimentConfig.from_yaml`, runs the
@@ -36,13 +36,13 @@ completed/total counts, exiting 1 when `strict_report` is set and the strict che
 To ignore the checkpoint and re-run every task:
 
 ```bash
-alphadiana run configs/examples/openclaw_quickstart.yaml --redo-all
+alphadiana run configs/macro_runs/aime2026_openclaw_qwen35_27b.yaml --redo-all
 ```
 
 ### `validate`
 
 ```bash
-alphadiana validate configs/examples/openclaw_quickstart.yaml
+alphadiana validate configs/macro_runs/aime2026_openclaw_qwen35_27b.yaml
 ```
 
 Loads the config and runs the same `ConfigValidator` as `run`, printing `Config is valid.`
@@ -60,9 +60,9 @@ directly from the JSONL result store, without re-running any tasks.
 ### `batch`
 
 ```bash
-alphadiana batch configs/examples/direct_llm.yaml configs/examples/direct_llm_gpqa_diamond.yaml \
+alphadiana batch configs/macro_runs/aime2026_directllm_qwen35_27b.yaml configs/macro_runs/gpqa_directllm_qwen35_27b.yaml \
   -o benchmark.config.max_tasks=1 -o num_samples=1
-alphadiana batch configs/examples/direct_llm.yaml configs/examples/direct_llm_gpqa_diamond.yaml \
+alphadiana batch configs/macro_runs/aime2026_directllm_qwen35_27b.yaml configs/macro_runs/gpqa_directllm_qwen35_27b.yaml \
   --parallel -o benchmark.config.max_tasks=1 -o num_samples=1
 ```
 
@@ -100,7 +100,7 @@ repeatable; each override is parsed into a nested dict by `parse_override` and m
 after the YAML is loaded, so overrides win.
 
 ```bash
-alphadiana validate configs/examples/direct_llm.yaml \
+alphadiana validate configs/macro_runs/aime2026_directllm_qwen35_27b.yaml \
   -o agent.config.temperature=0.6 \
   -o benchmark.config.max_tasks=1 \
   -o max_concurrent=2
@@ -131,7 +131,7 @@ The dotted path mirrors the YAML structure exactly:
 ### `--redo-all`
 
 ```bash
-alphadiana run configs/examples/direct_llm.yaml --redo-all \
+alphadiana run configs/macro_runs/aime2026_directllm_qwen35_27b.yaml --redo-all \
   -o run_id=redo_demo_aime_directllm_t1_k1 \
   -o benchmark.config.max_tasks=1 -o num_samples=1
 ```
