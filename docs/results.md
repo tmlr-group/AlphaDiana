@@ -61,6 +61,10 @@ how a harness changed model behavior.
 
 ## Micro-study figures
 
+Coverage is asymmetric: Tool and Skill are partial studies, while Memory has a
+complete three-harness, three-scope reference matrix. The two Skill figures
+below are not a matched three-harness comparison.
+
 ### Skill
 
 | ZeroClaw | OpenCode |

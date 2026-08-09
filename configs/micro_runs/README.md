@@ -1,27 +1,39 @@
-# Micro Runs — Paper §5 Axis Experiments
+# Micro runs
 
-Configurations for the three-axis ablation in the AlphaDiana paper §5:
-**Tool / Memory / Skill** axes evaluated on **AIME 2026** and **GPQA-Diamond**.
-The release memory seed covers **OpenClaw / OpenCode / ZeroClaw** with
-Qwen3.5-27B; expand it to other benchmarks and models only after validating the
-seed on the target infrastructure.
+Runnable configurations related to the AlphaDiana paper's **Tool**, **Skill**,
+and **Memory** micro studies. Coverage is intentionally not presented as
+uniform: Tool and Skill contain partial experiment cells, while Memory contains
+the complete release reference matrix.
+
+## Coverage status
+
+| Axis | Release status | What is complete |
+| --- | --- | --- |
+| Tool | Partial | Runnable cells are preserved, but they are not evidence of a complete paper matrix |
+| Skill | Partial | Two mechanism/smoke cells only; no matched three-harness comparison |
+| Memory | Complete reference matrix | AIME 2026 × Qwen3.5-27B × 3 harnesses × 3 scopes = 9 cells |
+
+Do not infer paper coverage from the number of YAML files. A checked-in config
+proves that a launch definition exists, not that the corresponding paper cell
+was executed, audited, or reported.
 
 ## Directory layout
 
 ```
 micro_runs/
-├── Tool/                   # Tool axis (clean reasoning prompt, tools available)
+├── Tool/                   # Partial Tool cells; see Tool/README.md
 ├── Memory/
 │   ├── intra_task/         # Native memory is isolated to one work item
 │   ├── cross_sample/       # Samples of one task share state; tasks are isolated
 │   └── cross_task/         # All work items in the run share state
-└── Skill/                  # Skill axis
+└── Skill/                  # Partial Skill cells; see Skill/README.md
 ```
 
-The nine release reference cells use
+The nine canonical Memory reference cells use
 `aime2026_{openclaw|opencode|zeroclaw}_qwen35_27b.yaml`, one per memory scope.
-Historical data may contain a larger 36-cell matrix; those files are not proof
-that the current release can reproduce every provider/model combination.
+Six additional Kimi/GPQA files under `Memory/intra_task/` are supplemental
+historical launch definitions. They are not part of the complete 9-cell
+reference matrix and are not a second complete matrix.
 
 ## Memory reference cells
 
@@ -33,15 +45,15 @@ that the current release can reproduce every provider/model combination.
 
 ## Axis definitions
 
-- **Tool** (clean baseline): no memory hint; tools are present and the model may invoke
-  them but the system prompt does not nudge it.
+- **Tool** (partial coverage): no memory hint; tools are present and the model may
+  invoke them but the system prompt does not nudge it. See `Tool/README.md`.
 - **Memory / intra_task**: `persistent_memory: false`; native memory is enabled
   but its store is confined to one `(task, sample)` work item.
 - **Memory / cross_sample**: `persistent_memory: true`; work items run in task-major
   order and the runner rebuilds the harness and sandbox when the task ID changes.
 - **Memory / cross_task**: `persistent_memory: true`; the harness and sandbox remain
   live for the complete sequential run.
-- **Skill**: see `Skill/README.md`.
+- **Skill** (partial coverage): see `Skill/README.md`.
 
 Every memory reference config declares `agent.config.memory_scope`. Stateful
 scopes are forced to effective concurrency 1 even if a caller supplies a larger

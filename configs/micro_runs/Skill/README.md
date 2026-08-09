@@ -1,7 +1,12 @@
 # Skill axis
 
-Configurations for the Skill axis (model reads pre-defined skill bundles
-during reasoning).
+Partial configurations for the Skill axis, where the model reads a predefined
+skill bundle during reasoning. This directory contains two mechanism/smoke
+cells; it is not a complete or matched paper matrix.
+
+There is no OpenClaw cell. The OpenCode and ZeroClaw cells also use different
+benchmarks and different skill bundles, so their scores must not be presented
+as a direct cross-harness comparison.
 
 ## Mechanism
 
@@ -33,15 +38,14 @@ See `alphadiana/harness/skills/README.md` for bundle details.
 Mirrors `../Tool/`: `{benchmark}_{harness}_{model_short}_skill_{bundle_short}.yaml`,
 where `bundle_short` is `math` (advanced-maths) or `anth` (anthropic-bundle).
 
-## Cells
+## Available partial cells
 
 | File | Smoke? |
 |---|---|
 | `aime2026_zeroclaw_qwen35_27b_skill_math.yaml` | smoke (max_tasks=1) |
 | `gpqa_opencode_qwen35_27b_skill_anth.yaml` | smoke (max_tasks=1) |
 
-Production cells (full benchmark) live elsewhere and reference the same
-`skill_folder` resolution mechanism.
+No complete production Skill matrix is claimed by this checkout.
 
 ## Smoke commands
 
