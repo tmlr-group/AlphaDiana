@@ -93,5 +93,5 @@ Scope boundaries:
 - `terminal_bench2_openclaw`, `terminal_bench2_opencode`, and
   `terminal_bench2_zeroclaw` only.
 - Direct x TerminalBench2 remains out of scope.
-- SWE-bench, SWE-bench Pro, MMMU-Pro, standard-reasoning reruns,
+- SWE-bench, MMMU-Pro, standard-reasoning reruns,
   Podman global default promotion, and ROCK/Docker deletion are out of scope.

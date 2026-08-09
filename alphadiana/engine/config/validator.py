@@ -198,22 +198,6 @@ class ConfigValidator:
                 "or OPENAI_BASE_URL env defaults"
             )
 
-        if config.scorer_name == "swebench_pro":
-            self._validate_existing_path(
-                errors,
-                scorer_name="swebench_pro",
-                key="eval_script_path",
-                value=config.scorer_config.get("eval_script_path"),
-                expect_dir=False,
-            )
-            self._validate_existing_path(
-                errors,
-                scorer_name="swebench_pro",
-                key="scripts_dir",
-                value=config.scorer_config.get("scripts_dir"),
-                expect_dir=True,
-            )
-
         num_samples = self._validate_int_field(errors, "num_samples", getattr(config, "num_samples", 1))
         if config.benchmark_name == "terminal_bench2":
             self._validate_terminal_bench2_tasks_dir(errors, config)

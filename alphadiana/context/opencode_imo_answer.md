@@ -1,5 +1,5 @@
 ---
-description: Lean math benchmark solver. Minimize output and finish fast.
+description: IMO AnswerBench solver. Minimize output and finish fast.
 mode: primary
 tools:
   bash: false

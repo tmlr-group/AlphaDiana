@@ -21,7 +21,7 @@ export HF_DATASETS_CACHE=$HF_HOME/datasets
 export HUGGINGFACE_HUB_CACHE=$HF_HOME/hub
 ```
 
-The checked-in examples cover AIME 2024, 2025, and 2026. Check each config's
+The checked-in examples cover AIME 2024 and 2026. Check each config's
 dataset before running it; the year is part of the evaluation contract.
 
 ## Supported Modes
@@ -29,7 +29,7 @@ dataset before running it; the year is part of the evaluation contract.
 | Mode | Status | Config |
 |---|---|---|
 | `direct_llm` | AIME 2024 example | `configs/examples/direct_llm.yaml` |
-| `openclaw` | AIME 2024/2025 examples | `configs/examples/openclaw_aime2024.yaml`, `configs/examples/openclaw_aime2025_glm5.yaml` |
+| `openclaw` | AIME 2026 macro config | `configs/macro_runs/aime2026_openclaw_qwen35_27b.yaml` |
 | `opencode` | AIME 2024 Podman smoke | `configs/examples/opencode_aime_podman_smoke.yaml` |
 | `zeroclaw` | AIME 2026 ROCK example | `configs/examples/zeroclaw_aime2026.yaml` |
 

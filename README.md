@@ -191,22 +191,15 @@ Ready-to-run examples are provided in [`configs/examples/`](configs/examples/).
 The recommended starting point is the **single-sandbox** configuration. In this mode, AlphaDiana automatically creates a ROCK sandbox, runs the evaluation, and removes the sandbox afterward.
 
 ```bash
-alphadiana run configs/examples/openclaw_aime2024.yaml \
-  -o benchmark.config.max_tasks=1 -o num_samples=1
+alphadiana run configs/examples/openclaw_quickstart.yaml
 ```
 
 This configuration uses one sandbox by default with `4g` memory and `1` CPU.
 
-To increase parallelism, update:
+To increase parallelism for a larger config, update:
 
 ```yaml
 max_concurrent: 4
-```
-
-A multi-sandbox example is provided in:
-
-```text
-configs/examples/openclaw_aime2024_multisandbox.yaml
 ```
 
 ### Run a ZeroClaw agent

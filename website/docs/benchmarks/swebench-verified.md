@@ -7,8 +7,7 @@ the official instance image, the agent edits the repository and emits a patch,
 and the `swe_bench` scorer hands that patch to the official `swebench` evaluator
 (`report.json`, `run_instance.log`, and `test_output.txt` are attached as
 artifacts). There is no `direct_llm` path here; the task needs an agent acting
-inside a container. For the SWE-bench **Pro** path see
-[SWE-bench Pro](./swebench-pro); for the smaller set see
+inside a container. For the smaller reproduction set see
 [SWE-bench Verified Mini](./swebench-verified-mini).
 
 ## Prerequisites
