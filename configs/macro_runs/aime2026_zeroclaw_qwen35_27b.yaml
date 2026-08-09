@@ -1,8 +1,7 @@
-run_id: "macro_aime2026_zeroclaw_qwen35_27b"
-
+run_id: macro_aime2026_zeroclaw_qwen35_27b
 agent:
   name: zeroclaw
-  version: "0.6.9"
+  version: 0.6.9
   config:
     system_prompt: |
       You are an expert competition-math problem solver. Use available tools
@@ -17,37 +16,36 @@ agent:
     top_p: 0.95
     max_tokens: 32768
     request_timeout: 9300
-    runtime_trace_mode: "full"
+    runtime_trace_mode: full
     enable_thinking: true
     capture_logprobs: true
     top_logprobs: 20
-    docker_host_ip: "host.docker.internal"
-    network_mode: "host"
+    docker_host_ip: host.docker.internal
+    network_mode: host
     max_tool_iterations: 100
     max_actions_per_hour: 200
-    rock_image: "zeroclaw-reasoning:0.6.9"
-    rock_memory: "4g"
+    rock_image: zeroclaw-reasoning:0.6.9
+    rock_memory: 4g
     rock_cpus: 1
     rock_startup_timeout: 600
     admin_base_url: "${ROCK_BASE_URL}"
     proxy_base_url: "${ROCK_PROXY_URL}"
-
 benchmark:
   name: aime
   config:
-    dataset: "MathArena/aime_2026"
-    split: "train"
-
+    dataset: MathArena/aime_2026
+    split: train
 scorer:
   name: numeric
   config:
     tolerance: 1e-6
-
 max_concurrent: 1
 num_samples: 1
 task_retries: 2
-output_dir: "./results"
+output_dir: ./results
 strict_report: true
 strict_isolation: true
 metadata:
-  notes: "Release macro seed: AIME 2026 x ZeroClaw x Qwen3.5-27B."
+  model_family: Qwen3.5-27B
+  experiment_axis: macro
+  notes: 'Release macro config: AIME 2026 x zeroclaw x Qwen3.5-27B.'

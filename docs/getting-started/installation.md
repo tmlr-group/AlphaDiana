@@ -241,7 +241,7 @@ export OPENAI_MODEL_NAME=Qwen/Qwen3-8B
 > export OPENAI_API_KEY=<provider-key>
 > export OPENAI_MODEL_NAME=<provider-model>
 >
-> python -m alphadiana.cli run configs/examples/openclaw_quickstart.yaml \
+> python -m alphadiana.cli run configs/macro_runs/aime2026_openclaw_qwen35_27b.yaml \
 >   -o run_id=endpoint_demo_openclaw_aime_t1_k1 \
 >   -o benchmark.config.max_tasks=1 -o num_samples=1
 > ```
@@ -269,8 +269,8 @@ leaking the literal `${VAR}` text.
 Run a config validation and a quick evaluation:
 
 ```bash
-alphadiana validate configs/examples/direct_llm.yaml
-alphadiana run configs/examples/direct_llm.yaml \
+alphadiana validate configs/macro_runs/aime2026_directllm_qwen35_27b.yaml
+alphadiana run configs/macro_runs/aime2026_directllm_qwen35_27b.yaml \
   -o run_id=install_check_aime_directllm_t1_k1 \
   -o benchmark.config.max_tasks=1 \
   -o num_samples=1

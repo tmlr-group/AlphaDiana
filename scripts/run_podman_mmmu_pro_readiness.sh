@@ -6,7 +6,7 @@ SCOPE="${1:-validate}"
 RUN_PREFIX="${PODMAN_MMMU_RUN_PREFIX:-podman_mmmu_pro_$(date +%Y%m%d_%H%M%S)}"
 COMMAND_TIMEOUT_SECONDS="${PODMAN_MMMU_COMMAND_TIMEOUT_SECONDS:-7200}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-CONFIG_DIR="${PODMAN_MMMU_CONFIG_DIR:-$ROOT_DIR/configs/smokes/podman_mmmu_pro_readiness}"
+CONFIG_DIR="${PODMAN_MMMU_CONFIG_DIR:-$ROOT_DIR/configs/macro_runs}"
 STATUS_DIR="$ROOT_DIR/context/podman-mmmu-pro-readiness"
 STATUS_FILE="$STATUS_DIR/run-status-${RUN_PREFIX}.tsv"
 PREFLIGHT_STATUS_FILE="$STATUS_DIR/preflight-${RUN_PREFIX}.json"
@@ -123,7 +123,7 @@ init_status() {
 
 cell_config() {
   local agent="$1"
-  printf '%s/%s_mmmu_pro_pilot.yaml' "$CONFIG_DIR" "$agent"
+  printf '%s/mmmu_pro_%s_qwen35_27b.yaml' "$CONFIG_DIR" "$agent"
 }
 
 preflight_provider_from_podman() {
@@ -208,6 +208,7 @@ run_config() {
         --redo-all \
         -o "run_id=$run_id" \
         -o "output_dir=$output_dir" \
+        -o 'benchmark.config.dataset_indices=[0,1,2]' \
         2>&1
   ) | tee "$log_path"
   local rc=${PIPESTATUS[0]}

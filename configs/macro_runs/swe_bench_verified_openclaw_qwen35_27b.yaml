@@ -1,0 +1,71 @@
+run_id: macro_swe_bench_verified_openclaw_qwen35_27b
+agent:
+  name: openclaw
+  version: 2026.3.20
+  config:
+    runtime: swebench_container
+    openclaw_config_path: alphadiana/harness/openclaw/deploy/openclaw_swe_bench.runtime.json
+    container_gateway_host: 127.0.0.1
+    container_gateway_port: 8080
+    gateway_token: "${OPENCLAW_GATEWAY_TOKEN}"
+    model: openclaw
+    max_tokens: 32768
+    request_timeout: 9300
+    max_attempts: 3
+    system_prompt: |
+      You are an expert software engineer. You will be given a GitHub issue description for a Python repository.
+      Your task is to produce a minimal unified diff patch that resolves the issue.
+
+      Guidelines:
+      - Use your code execution tools to inspect the repository inside the provided SWE-bench task container.
+      - Make the smallest correct change needed; avoid unrelated refactoring.
+      - Format your final answer as a valid git unified diff starting with "diff --git".
+
+      When you have finished, present your patch in the following format:
+
+      $$\boxed{
+      <your unified diff patch here>
+      }$$
+
+      The boxed content must contain only the patch, nothing else.
+    OPENAI_BASE_URL: "${OPENAI_BASE_URL}"
+    OPENAI_API_KEY: "${OPENAI_API_KEY}"
+    OPENAI_MODEL_NAME: "${OPENAI_MODEL_NAME}"
+    temperature: 0.0
+    top_p: 0.95
+    stream_total_timeout: 9000
+    enable_thinking: true
+benchmark:
+  name: swe_bench
+  config:
+    dataset: SWE-bench/SWE-bench_Verified
+    split: test
+    include_hints: false
+    max_tasks: 1
+sandbox:
+  name: swebench_container
+  config:
+    namespace: swebench
+    force_rebuild: false
+    keep_container: false
+    keep_logs: true
+    log_dir: ./logs/swebench_container
+    gateway_host: 127.0.0.1
+    gateway_port: 8080
+scorer:
+  name: swe_bench
+  config:
+    timeout: 1800
+    cache_level: env
+    namespace: swebench
+    force_rebuild: false
+    log_dir: ./swe_bench_logs
+max_concurrent: 1
+num_samples: 1
+output_dir: ./results
+strict_report: true
+strict_isolation: true
+metadata:
+  model_family: Qwen3.5-27B
+  experiment_axis: macro
+  notes: 'Release macro config: SWE-bench Verified x openclaw x Qwen3.5-27B.'

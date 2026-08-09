@@ -39,7 +39,7 @@ key from config first, then from environment variables. For a local vLLM server
 set:
 
 ```bash
-# These names match configs/examples/direct_llm.yaml and the loader fallbacks.
+# These names match configs/macro_runs/aime2026_directllm_qwen35_27b.yaml and the loader fallbacks.
 export OPENAI_MODEL_NAME="Qwen/Qwen3-235B-A22B"
 export OPENAI_BASE_URL="http://127.0.0.1:8011/v1"
 export OPENAI_API_KEY="sk-EMPTY"
@@ -52,7 +52,7 @@ key.
 
 ## 2. Write (or point to) a config
 
-A ready-made example ships at `configs/examples/direct_llm.yaml`. It is also
+A ready-made example ships at `configs/macro_runs/aime2026_directllm_qwen35_27b.yaml`. It is also
 present in the public repository's default branch. The shape is:
 
 ```yaml
@@ -126,7 +126,7 @@ anything. It blocks on hard errors (missing `agent.name`, an `agent.version`
 with no digit, `max_concurrent` out of range, a scorer mismatch, and so on):
 
 ```bash
-alphadiana validate configs/examples/direct_llm.yaml \
+alphadiana validate configs/macro_runs/aime2026_directllm_qwen35_27b.yaml \
   -o benchmark.config.max_tasks=1
 ```
 
@@ -140,14 +140,14 @@ You can layer overrides on either `validate` or `run`. Each `-o a.b.c=value` is
 parsed into a nested dict and auto-cast to bool/int/float:
 
 ```bash
-alphadiana validate configs/examples/direct_llm.yaml \
+alphadiana validate configs/macro_runs/aime2026_directllm_qwen35_27b.yaml \
   -o benchmark.config.max_tasks=20
 ```
 
 ## 4. Run
 
 ```bash
-alphadiana run configs/examples/direct_llm.yaml \
+alphadiana run configs/macro_runs/aime2026_directllm_qwen35_27b.yaml \
   -o run_id=quickstart_aime_directllm_t1_k1 \
   -o benchmark.config.max_tasks=1 \
   -o num_samples=1
@@ -164,7 +164,7 @@ checkpoint-complete rather than retried. To ignore the checkpoint and
 recompute everything:
 
 ```bash
-alphadiana run configs/examples/direct_llm.yaml --redo-all \
+alphadiana run configs/macro_runs/aime2026_directllm_qwen35_27b.yaml --redo-all \
   -o run_id=quickstart_aime_directllm_t1_k1 \
   -o benchmark.config.max_tasks=1 \
   -o num_samples=1

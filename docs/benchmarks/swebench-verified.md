@@ -39,9 +39,9 @@ scale a full run by raising `benchmark.config.max_tasks`.
 
 | Harness | How the agent runs in the task container | Smoke config |
 | --- | --- | --- |
-| `openclaw` | starts an `openclaw` gateway in the container; AlphaDiana drives it over the OpenAI-compatible API | `configs/examples/openclaw_swe_bench.yaml` |
-| `opencode` | runs `opencode run` directly; the patch is taken from `git diff HEAD` | `configs/examples/opencode_swe_bench.yaml` |
-| `zeroclaw` | runs the `zeroclaw` CLI in the container | `configs/examples/zeroclaw_swe_bench.yaml` |
+| `openclaw` | starts an `openclaw` gateway in the container; AlphaDiana drives it over the OpenAI-compatible API | `configs/macro_runs/swe_bench_verified_openclaw_qwen35_27b.yaml` |
+| `opencode` | runs `opencode run` directly; the patch is taken from `git diff HEAD` | `configs/macro_runs/swe_bench_verified_opencode_qwen35_27b.yaml` |
+| `zeroclaw` | runs the `zeroclaw` CLI in the container | `configs/macro_runs/swe_bench_verified_zeroclaw_qwen35_27b.yaml` |
 
 > ZeroClaw on a local `Qwen/Qwen3.5-27B` endpoint currently preserves
 > provider-side context overflow as a `provider_error` rather than an empty
@@ -79,7 +79,7 @@ scorer:
 
 ## OpenClaw
 
-`configs/examples/openclaw_swe_bench.yaml` sets `runtime: swebench_container` and
+`configs/macro_runs/swe_bench_verified_openclaw_qwen35_27b.yaml` sets `runtime: swebench_container` and
 `openclaw_config_path: alphadiana/harness/openclaw/deploy/openclaw_swe_bench.runtime.json`.
 At run time the harness installs and starts an `openclaw` gateway inside each
 task container, injects the three `OPENAI_*` variables into the runtime JSON, and
@@ -87,30 +87,30 @@ talks to the gateway over `/v1/chat/completions`. Artifacts include the OpenClaw
 session trajectory and gateway logs.
 
 ```bash
-python -m alphadiana.cli run configs/examples/openclaw_swe_bench.yaml \
+python -m alphadiana.cli run configs/macro_runs/swe_bench_verified_openclaw_qwen35_27b.yaml \
   -o run_id=swebench-openclaw-smoke -o benchmark.config.max_tasks=1
 ```
 
 ## OpenCode
 
-`configs/examples/opencode_swe_bench.yaml` runs `opencode run` directly in the
+`configs/macro_runs/swe_bench_verified_opencode_qwen35_27b.yaml` runs `opencode run` directly in the
 container (no gateway) and extracts the final patch with `git diff HEAD`. It
 reads the model endpoint from the three `OPENAI_*` variables and writes the
 provider config to `opencode.json` inside the container.
 
 ```bash
-python -m alphadiana.cli run configs/examples/opencode_swe_bench.yaml \
+python -m alphadiana.cli run configs/macro_runs/swe_bench_verified_opencode_qwen35_27b.yaml \
   -o run_id=swebench-opencode-smoke -o benchmark.config.max_tasks=1
 ```
 
 ## ZeroClaw
 
-`configs/examples/zeroclaw_swe_bench.yaml` runs the `zeroclaw` CLI in the task
+`configs/macro_runs/swe_bench_verified_zeroclaw_qwen35_27b.yaml` runs the `zeroclaw` CLI in the task
 container; artifacts include `zeroclaw_output.txt` and `zeroclaw_stderr.log`. See
 the limitation note above for the local Qwen path.
 
 ```bash
-python -m alphadiana.cli run configs/examples/zeroclaw_swe_bench.yaml \
+python -m alphadiana.cli run configs/macro_runs/swe_bench_verified_zeroclaw_qwen35_27b.yaml \
   -o run_id=swebench-zeroclaw-smoke -o benchmark.config.max_tasks=1
 ```
 

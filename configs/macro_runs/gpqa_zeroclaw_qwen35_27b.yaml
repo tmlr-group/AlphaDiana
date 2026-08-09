@@ -1,8 +1,7 @@
-run_id: "macro_gpqa_zeroclaw_qwen35_27b"
-
+run_id: macro_gpqa_zeroclaw_qwen35_27b
 agent:
   name: zeroclaw
-  version: "0.6.9"
+  version: 0.6.9
   config:
     system_prompt: |
       You are solving expert-level science multiple-choice questions. Use
@@ -18,37 +17,36 @@ agent:
     top_p: 0.95
     max_tokens: 32768
     request_timeout: 9300
-    runtime_trace_mode: "full"
+    runtime_trace_mode: full
     enable_thinking: true
     capture_logprobs: true
     top_logprobs: 20
-    docker_host_ip: "host.docker.internal"
-    network_mode: "host"
+    docker_host_ip: host.docker.internal
+    network_mode: host
     max_tool_iterations: 100
     max_actions_per_hour: 200
-    rock_image: "zeroclaw-reasoning:0.6.9"
-    rock_memory: "4g"
+    rock_image: zeroclaw-reasoning:0.6.9
+    rock_memory: 4g
     rock_cpus: 1
     rock_startup_timeout: 600
     admin_base_url: "${ROCK_BASE_URL}"
     proxy_base_url: "${ROCK_PROXY_URL}"
-
 benchmark:
   name: gpqa_diamond
   config:
-    dataset: "fingertap/GPQA-Diamond"
-    split: "test"
+    dataset: fingertap/GPQA-Diamond
+    split: test
     seed: 42
-
 scorer:
   name: exact_match
   config: {}
-
 max_concurrent: 1
 num_samples: 1
 task_retries: 2
-output_dir: "./results"
+output_dir: ./results
 strict_report: true
 strict_isolation: true
 metadata:
-  notes: "Release macro seed: GPQA-Diamond x ZeroClaw x Qwen3.5-27B."
+  model_family: Qwen3.5-27B
+  experiment_axis: macro
+  notes: 'Release macro config: GPQA-Diamond x zeroclaw x Qwen3.5-27B.'

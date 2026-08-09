@@ -116,9 +116,9 @@ If you ran the full quickstart and plan to use ROCK, all four checks should pass
 ### 5. Run your first evaluation
 
 ```bash
-alphadiana validate configs/examples/direct_llm.yaml \
+alphadiana validate configs/macro_runs/aime2026_directllm_qwen35_27b.yaml \
   -o benchmark.config.max_tasks=1
-alphadiana run configs/examples/direct_llm.yaml \
+alphadiana run configs/macro_runs/aime2026_directllm_qwen35_27b.yaml \
   -o run_id=quickstart_aime_directllm_t1_k1 \
   -o benchmark.config.max_tasks=1 \
   -o num_samples=1
@@ -182,7 +182,8 @@ max_concurrent: 1
 output_dir: "./results"
 ```
 
-Ready-to-run examples are provided in [`configs/examples/`](configs/examples/).
+Ready-to-run macro and micro experiments are indexed in
+[`configs/README.md`](configs/README.md).
 
 ## Running Evaluations
 
@@ -191,7 +192,7 @@ Ready-to-run examples are provided in [`configs/examples/`](configs/examples/).
 The recommended starting point is the **single-sandbox** configuration. In this mode, AlphaDiana automatically creates a ROCK sandbox, runs the evaluation, and removes the sandbox afterward.
 
 ```bash
-alphadiana run configs/examples/openclaw_quickstart.yaml
+alphadiana run configs/macro_runs/aime2026_openclaw_qwen35_27b.yaml
 ```
 
 This configuration uses one sandbox by default with `4g` memory and `1` CPU.
@@ -212,14 +213,14 @@ example, but starts a lightweight ZeroClaw bridge inside the sandbox:
 ```bash
 bash scripts/start_zeroclaw.sh
 source scripts/rock_env.sh
-alphadiana run configs/examples/zeroclaw_aime2026.yaml \
+alphadiana run configs/macro_runs/aime2026_zeroclaw_qwen35_27b.yaml \
   -o run_id=zeroclaw_aime_t1_k1 \
   -o benchmark.config.max_tasks=1 -o num_samples=1
 ```
 
 `start_zeroclaw.sh` starts the local ROCK services, but it cannot export
 `ROCK_BASE_URL` and `ROCK_PROXY_URL` back into your current shell. Run
-`source scripts/rock_env.sh` before `alphadiana run` so the example YAML
+`source scripts/rock_env.sh` before `alphadiana run` so the release YAML
 resolves the local ROCK URLs correctly.
 
 For current prerequisites, runtime behavior, and copy-paste commands, see the
@@ -230,7 +231,7 @@ For current prerequisites, runtime behavior, and copy-paste commands, see the
 You can also evaluate a model directly without agent orchestration:
 
 ```bash
-alphadiana run configs/examples/direct_llm.yaml \
+alphadiana run configs/macro_runs/aime2026_directllm_qwen35_27b.yaml \
   -o run_id=directllm_aime_t1_k1 \
   -o benchmark.config.max_tasks=1 -o num_samples=1
 ```
@@ -244,7 +245,7 @@ The bundled example reuses the `.env` values loaded by `source scripts/activate.
 - `OPENAI_API_KEY`
 
 If you want a different endpoint just for this baseline, override `model`, `api_base`, and
-`api_key` directly in `configs/examples/direct_llm.yaml`.
+`api_key` directly in `configs/macro_runs/aime2026_directllm_qwen35_27b.yaml`.
 
 See [Quick Start](docs/getting-started/quick-start.md) for a complete example.
 

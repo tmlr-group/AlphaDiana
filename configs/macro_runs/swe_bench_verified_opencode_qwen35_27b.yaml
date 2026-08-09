@@ -1,0 +1,66 @@
+run_id: macro_swe_bench_verified_opencode_qwen35_27b
+agent:
+  name: opencode
+  version: 1.0.0
+  config:
+    runtime: swebench_container
+    tool_call: true
+    permission:
+      edit: deny
+      bash: allow
+    timeout: 1800
+    system_prompt: |
+      You are an expert software engineer. You will be given a GitHub issue description
+      for a Python repository. Your task is to fix the issue by making the minimal
+      necessary code changes.
+
+      Guidelines:
+      - Use your file reading and editing tools to inspect and modify the repository.
+      - Prefer using bash or short Python commands to modify files in place.
+      - Avoid the edit tool for file changes; use bash-based edits instead.
+      - Make the smallest correct change needed; avoid unrelated refactoring.
+      - Do not modify test files.
+      - After making your changes, ensure the code is syntactically correct.
+      - You do not need to run the full test suite; just fix the issue described.
+    model: "custom/${OPENAI_MODEL_NAME}"
+    model_name: "${OPENAI_MODEL_NAME}"
+    api_base: "${OPENAI_BASE_URL}"
+    api_key: "${OPENAI_API_KEY}"
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 32768
+    enable_thinking: true
+benchmark:
+  name: swe_bench
+  config:
+    dataset: SWE-bench/SWE-bench_Verified
+    split: test
+    include_hints: false
+    max_tasks: 1
+sandbox:
+  name: swebench_container
+  config:
+    namespace: swebench
+    force_rebuild: false
+    keep_container: false
+    keep_logs: true
+    log_dir: ./logs/swebench_container
+    gateway_host: 127.0.0.1
+    gateway_port: 8080
+scorer:
+  name: swe_bench
+  config:
+    timeout: 1800
+    cache_level: env
+    namespace: swebench
+    force_rebuild: false
+    log_dir: ./swe_bench_logs
+max_concurrent: 1
+num_samples: 1
+output_dir: ./results
+strict_report: true
+strict_isolation: true
+metadata:
+  model_family: Qwen3.5-27B
+  experiment_axis: macro
+  notes: 'Release macro config: SWE-bench Verified x opencode x Qwen3.5-27B.'

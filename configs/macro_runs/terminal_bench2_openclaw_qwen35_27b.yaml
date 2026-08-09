@@ -1,0 +1,37 @@
+run_id: macro_terminal_bench2_openclaw_qwen35_27b
+agent:
+  name: terminal_bench2_openclaw
+  version: '1.0'
+  config:
+    container_engine: podman
+    api_base: "${OPENAI_BASE_URL}"
+    api_key: "${OPENAI_API_KEY}"
+    model_name: "${OPENAI_MODEL_NAME}"
+    runtime_source_image: "${TB2_OPENCLAW_RUNTIME_IMAGE}"
+    logs_base_dir: "${ALPHADIANA_TB2_LOGS_DIR}"
+    podman_network: host
+    openclaw_bin: openclaw
+    onboard_timeout_sec: 180
+    solver_timeout_sec: 1800
+    timeout_sec: 900
+    test_timeout_sec: 1200
+benchmark:
+  name: terminal_bench2
+  config:
+    tasks_dir: "${TERMINAL_BENCH2_DIR}"
+    task_ids:
+      - db-wal-recovery
+      - overfull-hbox
+      - adaptive-rejection-sampler
+    max_tasks: 3
+scorer:
+  name: terminal_bench2
+max_concurrent: 1
+num_samples: 1
+output_dir: ./results
+strict_report: true
+strict_isolation: true
+metadata:
+  model_family: Qwen3.5-27B
+  experiment_axis: macro
+  notes: 'Release macro config: Terminal-Bench 2 x openclaw x Qwen3.5-27B.'

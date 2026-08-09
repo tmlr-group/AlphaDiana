@@ -9,14 +9,14 @@ field at the command line. This page is the orientation map: see
 [Config Schema](./config-schema.md) for the core fields and
 [CLI and Overrides](./cli-and-overrides.md) for command syntax and run-id conventions.
 `configs/schema.yaml` is an annotated core-shape reference; harness- and
-benchmark-specific pass-through keys live on their dedicated pages. The
-files under `configs/examples/` are smoke configs, useful as copy-paste starting
-points but not production settings.
+benchmark-specific pass-through keys live on their dedicated pages. Release
+configs are split into `configs/macro_runs/` for end-to-end benchmarks and
+`configs/micro_runs/` for controlled Tool, Skill, and Memory ablations.
 
 ## The four sections
 
 A config has four blocks plus top-level run controls. The minimal, env-driven
-`direct_llm` example (`configs/examples/direct_llm.yaml`) is the basis for the shape
+`direct_llm` example (`configs/macro_runs/aime2026_directllm_qwen35_27b.yaml`) is the basis for the shape
 below; the `sandbox: null` and `num_samples: 1` lines are shown here for
 illustration (both are optional and default to those values when omitted, so the
 on-disk example leaves them out):
@@ -114,8 +114,8 @@ to the harness. Common LLM fields:
 
 When the LLM fields are blank, `_apply_agent_env_defaults` fills them from
 `OPENAI_BASE_URL` / `OPENAI_API_KEY` / `OPENAI_MODEL_NAME` (loaded via
-`source scripts/activate.sh`). This is why the example configs leave
-`model`/`api_base`/`api_key` empty.
+`source scripts/activate.sh`). Release configs use those environment variables
+directly or rely on the same defaults.
 
 > [!CAUTION] **api_key sentinel**
 > The validator treats `None`, `""`, and the literal string `EMPTY`
@@ -171,7 +171,7 @@ overrides of contract parameters.
 
 Two grammars coexist under `configs/`. Ordinary per-experiment configs use the
 `ExperimentConfig` shape and run with `alphadiana run`. Campaign manifests such as
-`configs/full_runs/swe_verified_mini.yaml` use a different top-level shape
+`configs/macro_runs/swe_bench_verified_sweagent_qwen35_27b_campaign.yaml` use a different top-level shape
 (`campaign_id`, `defaults.run_id_prefix`, `models[]`, `path_templates[]`) and are
 consumed by the `rollout_campaign` runner, not by `alphadiana run`. The
 [benchmark guides](../benchmarks/) cover those campaign flows.

@@ -30,31 +30,17 @@ override before `imo_answerbench` could load at all.
 
 | Mode | Status | Config |
 |---|---|---|
-| `direct_llm` | Qwen pilot available | `configs/examples/directllm_qwen35_27b_imo_answerbench_pilot.yaml` |
-| `opencode` | Qwen pilot available | `configs/examples/opencode_qwen35_27b_imo_answerbench_pilot.yaml` |
-| `openclaw` | Qwen pilot available | `configs/examples/openclaw_qwen35_27b_imo_answerbench_pilot.yaml` |
-| `zeroclaw` | smoke config available | `configs/examples/zeroclaw_imo_answerbench.yaml` |
-
-The Qwen pilot configs use `max_tasks: 3`. The ZeroClaw config uses
-`max_tasks: 1`, so it selects the first eligible row.
-
-Additional April 18/19, 2026 pilot configs are also checked in:
-
-- `configs/examples/directllm_qwen35_27b_imo_answerbench_pilot.yaml`
-- `configs/examples/openclaw_qwen35_27b_imo_answerbench_pilot.yaml`
-- `configs/examples/opencode_qwen35_27b_imo_answerbench_pilot.yaml`
-
-These pilot configs use `max_tasks: 3` and the OpenRouter slug
-`qwen/qwen3.5-27b` for the logical model target `Qwen/Qwen3.5-27B`.
-The dedicated `opencode` pilot config intentionally omits the smoke
-`dataset_index: 367` pin so it can load three distinct tasks.
+| `direct_llm` | macro config available | `configs/macro_runs/imo_answerbench_directllm_qwen35_27b.yaml` |
+| `opencode` | macro config available | `configs/macro_runs/imo_answerbench_opencode_qwen35_27b.yaml` |
+| `openclaw` | macro config available | `configs/macro_runs/imo_answerbench_openclaw_qwen35_27b.yaml` |
+| `zeroclaw` | macro config available | `configs/macro_runs/imo_answerbench_zeroclaw_qwen35_27b.yaml` |
 
 ## Full Runs
 
-This checkout does not ship IMO-AnswerBench full-run configs. Start from the
-appropriate checked-in smoke or Qwen pilot config, remove the bounded task
-selector, and review the model, output, timeout, and concurrency contract before
-a full evaluation. Keep `scorer.name: imo_verify`.
+The macro configs select the full train split. Add
+`-o benchmark.config.max_tasks=1` for a first smoke, then remove the override
+only after reviewing the model, output, timeout, and concurrency contract. Keep
+`scorer.name: imo_verify`.
 
 Current OpenRouter free-text follow-up on April 22, 2026 uses
 `nvidia/nemotron-3-nano-30b-a3b:free`.
@@ -89,7 +75,7 @@ canary-only override; benchmark defaults still keep reasoning enabled unless
 you explicitly change them.
 
 ```bash
-python -m alphadiana.cli run configs/examples/directllm_qwen35_27b_imo_answerbench_pilot.yaml \
+python -m alphadiana.cli run configs/macro_runs/imo_answerbench_directllm_qwen35_27b.yaml \
   -o run_id=imo_directllm_smoke
 ```
 
@@ -102,7 +88,7 @@ export HF_ENDPOINT=https://hf-mirror.com
 export QWEN_VLLM_API_BASE=http://127.0.0.1:8011/v1
 export QWEN_VLLM_API_KEY=EMPTY
 
-python -m alphadiana.cli run configs/examples/directllm_qwen35_27b_imo_answerbench_pilot.yaml \
+python -m alphadiana.cli run configs/macro_runs/imo_answerbench_directllm_qwen35_27b.yaml \
   -o run_id=full_20260422_imo_answerbench_direct_llm_qwen35_27b_localvllm_mc20_r1 \
   -o output_dir=./results/full_20260422_imo_answerbench_direct_llm_qwen35_27b_localvllm_mc20_r1 \
   -o max_concurrent=20 \
@@ -115,16 +101,16 @@ python -m alphadiana.cli run configs/examples/directllm_qwen35_27b_imo_answerben
   -o agent.config.stream=true
 ```
 
-This command scales a bounded smoke config with overrides. Review and remove its
-task-selection limit before treating it as a full evaluation.
+This command adds a bounded selector to the full-split macro config. Remove the
+override only after reviewing the run contract.
 
 On current main, `direct_llm` captures logprobs by default. For a local-vLLM
 Qwen pilot, use
-`configs/examples/directllm_qwen35_27b_imo_answerbench_pilot.yaml`.
+`configs/macro_runs/imo_answerbench_directllm_qwen35_27b.yaml`.
 
 ## OpenCode
 
-OpenCode runs the `opencode` CLI. The checked-in Qwen pilot includes
+OpenCode runs the `opencode` CLI. The checked-in Qwen macro config includes
 OpenCode-specific external agent settings (`agent: imo-answer` and
 `agent_md_path: alphadiana/context/opencode_imo_answer.md`) in addition to
 `agent.config.system_prompt`. When comparing harness prompts or running local
@@ -140,14 +126,14 @@ docker build --network host \
 ```
 
 ```bash
-python -m alphadiana.cli run configs/examples/opencode_qwen35_27b_imo_answerbench_pilot.yaml \
+python -m alphadiana.cli run configs/macro_runs/imo_answerbench_opencode_qwen35_27b.yaml \
   -o run_id=imo_opencode_smoke
 ```
 
 Local-vLLM Qwen logprob smoke with the external agent disabled:
 
 ```bash
-python -m alphadiana.cli run configs/examples/opencode_qwen35_27b_imo_answerbench_pilot.yaml \
+python -m alphadiana.cli run configs/macro_runs/imo_answerbench_opencode_qwen35_27b.yaml \
   --redo-all \
   -o run_id=phase11_opencode_imo_answerbench_qwen35_27b_logprobs_smoke \
   -o output_dir=./results \
@@ -173,7 +159,7 @@ The checked-in OpenCode benchmark configs now use Docker controller isolation
 by default. If you need the old host-process path for debugging, override
 `-o agent.config.controller_mode=host`.
 
-The smoke config uses `timeout: 1800` because shorter bounds can kill valid
+The macro config uses `timeout: 1800` because shorter bounds can kill valid
 slow model output before it reaches scoring. The full Docker setup and
 reproduction guidance is in the [OpenCode harness guide](../harnesses/opencode.md).
 
@@ -187,8 +173,8 @@ chat-completions warmup by default on benchmark runs because that warmup could
 pollute the first task with a leftover `READY`/bootstrap response.
 
 ```bash
-python -m alphadiana.cli run configs/examples/openclaw_qwen35_27b_imo_answerbench_pilot.yaml \
-  -o run_id=imo_openclaw_smoke
+python -m alphadiana.cli run configs/macro_runs/imo_answerbench_openclaw_qwen35_27b.yaml \
+  -o run_id=imo_openclaw_smoke -o benchmark.config.max_tasks=1
 ```
 
 ROCK services must be healthy before this run. `scripts/activate.sh` loads the local ROCK port configuration.
@@ -215,8 +201,8 @@ source scripts/rock_env.sh
 If another branch is already using ROCK, edit `scripts/.rock_ports.env` before startup so this worktree gets isolated admin/proxy/redis/ray ports.
 
 ```bash
-python -m alphadiana.cli run configs/examples/zeroclaw_imo_answerbench.yaml \
-  -o run_id=imo_zeroclaw_smoke
+python -m alphadiana.cli run configs/macro_runs/imo_answerbench_zeroclaw_qwen35_27b.yaml \
+  -o run_id=imo_zeroclaw_smoke -o benchmark.config.max_tasks=1
 ```
 
 Current OpenRouter free-text full-run evidence on April 22, 2026:
@@ -227,12 +213,10 @@ the failure record cleanly.
 
 ## Smoke Selection
 
-The Qwen pilot configs load three tasks; the ZeroClaw config is bounded to one
-task with `max_tasks: 1`.
+The checked-in configs select the full train split. Add
+`-o benchmark.config.max_tasks=1` for a smoke.
 
-No IMO-AnswerBench full-run file is checked in; create and validate one before scaling.
-
-## Qwen/OpenRouter 3-Task Pilot
+## Historical Qwen/OpenRouter 3-Task Pilot
 
 Environment:
 
@@ -248,9 +232,9 @@ export OPENAI_API_KEY=sk-...
 Commands:
 
 ```bash
-python -m alphadiana.cli run configs/examples/directllm_qwen35_27b_imo_answerbench_pilot.yaml
-python -m alphadiana.cli run configs/examples/openclaw_qwen35_27b_imo_answerbench_pilot.yaml
-python -m alphadiana.cli run configs/examples/opencode_qwen35_27b_imo_answerbench_pilot.yaml
+python -m alphadiana.cli run configs/macro_runs/imo_answerbench_directllm_qwen35_27b.yaml
+python -m alphadiana.cli run configs/macro_runs/imo_answerbench_openclaw_qwen35_27b.yaml
+python -m alphadiana.cli run configs/macro_runs/imo_answerbench_opencode_qwen35_27b.yaml
 ```
 
 Observed on April 18/19/20, 2026:

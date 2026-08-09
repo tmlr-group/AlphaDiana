@@ -16,7 +16,9 @@ from alphadiana.engine.config.experiment_config import ExperimentConfig
 from alphadiana.engine.config.validator import ConfigValidator
 from alphadiana.utils.rock_ports import check_rock_services, resolve_rock_ports_from_env
 
-DEFAULT_MANIFEST_PATH = Path("configs/full_runs/swe_verified_mini.yaml")
+DEFAULT_MANIFEST_PATH = Path(
+    "configs/macro_runs/swe_bench_verified_sweagent_qwen35_27b_campaign.yaml"
+)
 
 _BLOCKED_OPENCLAW_BENCHMARKS = {"terminal_bench2"}
 _NEMOTRON_HIGH_RISK_BENCHMARKS = {"hle", "mmmu_pro"}

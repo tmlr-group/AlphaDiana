@@ -65,7 +65,7 @@ def _read_first_record(path: Path) -> dict[str, Any] | None:
 def _cell_from_config(path: Path) -> dict[str, Any]:
     data = _load_yaml(path)
     metadata = _as_dict(data.get("metadata"))
-    run_suffix = str(metadata.get("run_suffix") or path.stem.removesuffix("_pilot"))
+    run_suffix = str(metadata.get("run_suffix") or path.stem)
     benchmark_config = _as_dict(_as_dict(data.get("benchmark")).get("config"))
     task_names = metadata.get("selected_task_names")
     if not isinstance(task_names, list):
@@ -84,7 +84,10 @@ def _cell_from_config(path: Path) -> dict[str, Any]:
 
 
 def discover_cells(config_dir: Path) -> list[dict[str, Any]]:
-    return [_cell_from_config(path) for path in sorted(config_dir.glob("*_pilot.yaml"))]
+    return [
+        _cell_from_config(path)
+        for path in sorted(config_dir.glob("terminal_bench2_*_qwen35_27b.yaml"))
+    ]
 
 
 def find_task_files(results_dir: Path, run_id: str) -> dict[str, Path]:

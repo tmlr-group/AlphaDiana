@@ -13,9 +13,9 @@ below.
 
 | Mode | Checked-in smoke config |
 |---|---|
-| `opencode` | `configs/smokes/podman_terminal_bench2/terminal_bench2_opencode_pilot.yaml` |
-| `openclaw` | `configs/smokes/podman_terminal_bench2/terminal_bench2_openclaw_pilot.yaml` |
-| `zeroclaw` | `configs/smokes/podman_terminal_bench2/terminal_bench2_zeroclaw_pilot.yaml` |
+| `opencode` | `configs/macro_runs/terminal_bench2_opencode_qwen35_27b.yaml` |
+| `openclaw` | `configs/macro_runs/terminal_bench2_openclaw_qwen35_27b.yaml` |
+| `zeroclaw` | `configs/macro_runs/terminal_bench2_zeroclaw_qwen35_27b.yaml` |
 
 All three paths use the same local AlphaDiana `terminal_bench2` benchmark loader and scorer.
 This checkout does not ship a Terminal-Bench 2 full-run config.
@@ -29,7 +29,7 @@ official TerminalBench2 pilot.
 Entry points:
 
 - Config:
-  `configs/smokes/podman_terminal_bench2/terminal_bench2_opencode_pilot.yaml`
+  `configs/macro_runs/terminal_bench2_opencode_qwen35_27b.yaml`
 - Runner:
   `scripts/run_podman_terminal_bench2_readiness.sh`
 
@@ -278,14 +278,14 @@ Set the full-run task root:
 export TERMINAL_BENCH2_DIR=/tmp/terminal-bench/tasks
 ```
 
-Prepare a deterministic smoke staging directory with one task:
+To run only a staged subset, point the same variable at that subset:
 
 ```bash
 rm -rf /tmp/terminal-bench-smoke-dbwal
 mkdir -p /tmp/terminal-bench-smoke-dbwal
 cp -a /tmp/terminal-bench/tasks/db-wal-recovery /tmp/terminal-bench-smoke-dbwal/
 
-export TERMINAL_BENCH2_SMOKE_DIR=/tmp/terminal-bench-smoke-dbwal
+export TERMINAL_BENCH2_DIR=/tmp/terminal-bench-smoke-dbwal
 ```
 
 For the April 19 OpenRouter pilot, the approved staged trio was:
@@ -308,7 +308,8 @@ cp -a "$TERMINAL_BENCH2_SOURCE_ROOT"/fix-git "$TERMINAL_BENCH2_PILOT_ROOT"/
 cp -a "$TERMINAL_BENCH2_SOURCE_ROOT"/break-filter-js-from-html "$TERMINAL_BENCH2_PILOT_ROOT"/
 ```
 
-The smoke configs assume `TERMINAL_BENCH2_SMOKE_DIR` points at a directory whose immediate children are task directories. The full-run configs assume `TERMINAL_BENCH2_DIR` points at the full task root.
+The macro configs assume `TERMINAL_BENCH2_DIR` points at a directory whose
+immediate children are task directories.
 
 Current loader note on April 22, 2026:
 pointing `TERMINAL_BENCH2_DIR` at a normal checkout root is valid. The loader
@@ -404,30 +405,30 @@ For the native agents:
 Validate the smoke configs first:
 
 ```bash
-python -m alphadiana.cli validate configs/smokes/podman_terminal_bench2/terminal_bench2_opencode_pilot.yaml
-python -m alphadiana.cli validate configs/smokes/podman_terminal_bench2/terminal_bench2_openclaw_pilot.yaml
-python -m alphadiana.cli validate configs/smokes/podman_terminal_bench2/terminal_bench2_zeroclaw_pilot.yaml
+python -m alphadiana.cli validate configs/macro_runs/terminal_bench2_opencode_qwen35_27b.yaml
+python -m alphadiana.cli validate configs/macro_runs/terminal_bench2_openclaw_qwen35_27b.yaml
+python -m alphadiana.cli validate configs/macro_runs/terminal_bench2_zeroclaw_qwen35_27b.yaml
 ```
 
 Run the three smoke configs:
 
 ```bash
-python -m alphadiana.cli run configs/smokes/podman_terminal_bench2/terminal_bench2_opencode_pilot.yaml --redo-all
-python -m alphadiana.cli run configs/smokes/podman_terminal_bench2/terminal_bench2_openclaw_pilot.yaml --redo-all
-python -m alphadiana.cli run configs/smokes/podman_terminal_bench2/terminal_bench2_zeroclaw_pilot.yaml --redo-all
+python -m alphadiana.cli run configs/macro_runs/terminal_bench2_opencode_qwen35_27b.yaml --redo-all
+python -m alphadiana.cli run configs/macro_runs/terminal_bench2_openclaw_qwen35_27b.yaml --redo-all
+python -m alphadiana.cli run configs/macro_runs/terminal_bench2_zeroclaw_qwen35_27b.yaml --redo-all
 ```
 
 April 19 OpenRouter/Qwen 3-task pilot commands:
 
 ```bash
-python -m alphadiana.cli validate configs/smokes/podman_terminal_bench2/terminal_bench2_openclaw_pilot.yaml \
+python -m alphadiana.cli validate configs/macro_runs/terminal_bench2_openclaw_qwen35_27b.yaml \
   -o run_id=pilot_20260419_qwen35_27b_terminal_bench2_openclaw_t3 \
   -o output_dir=./results \
   -o benchmark.config.tasks_dir="$TERMINAL_BENCH2_PILOT_ROOT" \
   -o benchmark.config.max_tasks=3 \
   -o agent.config.model_name=qwen/qwen3.5-27b
 
-python -m alphadiana.cli validate configs/smokes/podman_terminal_bench2/terminal_bench2_opencode_pilot.yaml \
+python -m alphadiana.cli validate configs/macro_runs/terminal_bench2_opencode_qwen35_27b.yaml \
   -o run_id=pilot_20260419_qwen35_27b_terminal_bench2_opencode_t3 \
   -o output_dir=./results \
   -o benchmark.config.tasks_dir="$TERMINAL_BENCH2_PILOT_ROOT" \
@@ -437,7 +438,7 @@ python -m alphadiana.cli validate configs/smokes/podman_terminal_bench2/terminal
   -o agent.config.streaming=true \
   -o max_concurrent=2
 
-python -m alphadiana.cli run configs/smokes/podman_terminal_bench2/terminal_bench2_openclaw_pilot.yaml \
+python -m alphadiana.cli run configs/macro_runs/terminal_bench2_openclaw_qwen35_27b.yaml \
   -o run_id=pilot_20260419_qwen35_27b_terminal_bench2_openclaw_t3 \
   -o output_dir=./results \
   -o benchmark.config.tasks_dir="$TERMINAL_BENCH2_PILOT_ROOT" \
@@ -445,7 +446,7 @@ python -m alphadiana.cli run configs/smokes/podman_terminal_bench2/terminal_benc
   -o agent.config.model_name=qwen/qwen3.5-27b \
   2>&1 | tee logs/pilot_20260419_qwen35_27b_terminal_bench2_openclaw_t3.log
 
-python -m alphadiana.cli run configs/smokes/podman_terminal_bench2/terminal_bench2_opencode_pilot.yaml \
+python -m alphadiana.cli run configs/macro_runs/terminal_bench2_opencode_qwen35_27b.yaml \
   -o run_id=pilot_20260419_qwen35_27b_terminal_bench2_opencode_t3 \
   -o output_dir=./results \
   -o benchmark.config.tasks_dir="$TERMINAL_BENCH2_PILOT_ROOT" \
@@ -510,7 +511,7 @@ It does not mean the agent is competitive across the full benchmark.
 
 ## Full Runs
 
-There is no checked-in Terminal-Bench 2 full-run YAML. The example configs are
+There is no checked-in Terminal-Bench 2 full-run YAML. The macro configs are
 bounded smoke entry points. For a full evaluation, create and review a dedicated
 config that points `benchmark.config.tasks_dir` at the complete task checkout
 and sets the intended task selection, runtime, timeouts, output directory, and
@@ -546,16 +547,10 @@ post-fix reproducer
 
 ## Current Config Semantics
 
-Smoke configs:
-
-- live under `configs/examples/`
-- use `TERMINAL_BENCH2_SMOKE_DIR`
-- intentionally run one staged task
-
-A full-run config is not checked in. A project-specific full config should use
-`TERMINAL_BENCH2_DIR` and scan the intended task directories under that root.
-
-For the current checked-in smoke setup, the canonical staged task is `db-wal-recovery`.
+The three release configs live under `configs/macro_runs/`, use
+`TERMINAL_BENCH2_DIR`, and pin the same small task set for a reproducible first
+run. Override `benchmark.config.task_ids` in a separately named config when
+running a different task set.
 
 The April 19 OpenRouter/Qwen pilot used the approved trio `db-wal-recovery`,
 `fix-git`, and `break-filter-js-from-html` instead of a single staged task.
@@ -579,7 +574,7 @@ export OPENAI_BASE_URL=https://openrouter.ai/api/v1/
 export OPENAI_API_KEY=sk-...
 export OPENAI_MODEL_NAME=Qwen/Qwen3.5-27B
 export PYTHONPATH=$PWD
-export TERMINAL_BENCH2_SMOKE_DIR=/path/to/terminal-bench-smoke-dbwal
+export TERMINAL_BENCH2_DIR=/path/to/terminal-bench-smoke-dbwal
 export TMPDIR=/path/to/xxx/tmp/alphadiana-tb2
 mkdir -p "$TMPDIR"
 
@@ -590,7 +585,7 @@ docker pull zeroclaw-reasoning:0.6.9
 Run the smoke:
 
 ```bash
-python -m alphadiana.cli run configs/smokes/podman_terminal_bench2/terminal_bench2_zeroclaw_pilot.yaml \
+python -m alphadiana.cli run configs/macro_runs/terminal_bench2_zeroclaw_qwen35_27b.yaml \
   -o run_id=smoke_20260420_qwen35_27b_tb2_zeroclaw_incontainer_r2 \
   -o output_dir=./results/smoke_20260420_qwen35_27b_tb2_zeroclaw_incontainer_r2
 ```

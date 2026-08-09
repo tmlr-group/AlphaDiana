@@ -154,7 +154,7 @@ agent:
 
 When an agent field is left blank, `_apply_agent_env_defaults()` in
 `alphadiana/engine/config/experiment_config.py` fills it from the environment.
-This is why example configs leave `model` / `api_base` /
+This is why release configs may leave `model` / `api_base` /
 `api_key` empty and rely on `.env` loaded via `source scripts/activate.sh`.
 
 | Agent field | Env var | Applies to |

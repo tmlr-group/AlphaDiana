@@ -1,4 +1,6 @@
-run_id: "opencode-gpqa-diamond-skill-001"
+# MICRO RUN: GPQA-Diamond x OpenCode x Qwen/Qwen3.5-27B (skill axis)
+
+run_id: "micro_gpqa_opencode_qwen35_27b_skill_anth"
 
 agent:
   name: opencode
@@ -45,6 +47,8 @@ scorer:
 
 max_concurrent: 1
 num_samples: 1
-output_dir: "./results/opencode_gpqa_diamond_skill"
+output_dir: "./results"
+strict_report: true
+strict_isolation: true
 metadata:
-  notes: "OpenCode x GPQA-Diamond + Skill (anthropic-bundle) smoke config"
+  notes: "Micro-experiment cell: GPQA-Diamond x OpenCode x Qwen3.5-27B x anthropic-bundle skill."

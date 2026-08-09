@@ -40,17 +40,17 @@ A run is launched with the `alphadiana` CLI, a Click group defined in `alphadian
 
 ```bash
 # Validate first; prints "Config is valid." or lists "  - <error>" lines and exits 1.
-alphadiana validate configs/examples/direct_llm.yaml
+alphadiana validate configs/macro_runs/aime2026_directllm_qwen35_27b.yaml
 
 # Run one bounded task with a stable checkpoint namespace.
-alphadiana run configs/examples/direct_llm.yaml \
+alphadiana run configs/macro_runs/aime2026_directllm_qwen35_27b.yaml \
   -o run_id=getting_started_aime_directllm_t1_k1 \
   -o benchmark.config.max_tasks=1 \
   -o num_samples=1
 
 # Re-running the same config resumes from the checkpoint (skips already-scored
 # samples). Use --redo-all to ignore the checkpoint and recompute everything.
-alphadiana run configs/examples/direct_llm.yaml --redo-all \
+alphadiana run configs/macro_runs/aime2026_directllm_qwen35_27b.yaml --redo-all \
   -o run_id=getting_started_aime_directllm_t1_k1 \
   -o benchmark.config.max_tasks=1 \
   -o num_samples=1
@@ -72,7 +72,7 @@ alphadiana run configs/examples/direct_llm.yaml --redo-all \
 Use `-o` (long form `--override`) with a dotted key path to override any config field without editing the YAML. It is repeatable and merges deeply. Values are auto-coerced in order: `true`/`false` to bool, then int, then float, else string.
 
 ```bash
-python -m alphadiana.cli run configs/examples/direct_llm.yaml \
+python -m alphadiana.cli run configs/macro_runs/aime2026_directllm_qwen35_27b.yaml \
   -o run_id=getting_started_aime_directllm_concurrency_t1_k1 \
   -o agent.config.temperature=0.5 \
   -o benchmark.config.max_tasks=1 \

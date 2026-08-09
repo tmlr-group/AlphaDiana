@@ -1,18 +1,11 @@
-run_id: macro_gpqa_openclaw_qwen35_27b
+run_id: macro_imo_answerbench_openclaw_qwen35_27b
 agent:
   name: openclaw
   version: 2026.3.20
   config:
-    system_prompt: |
-      You are solving expert-level science multiple-choice questions. Use
-      available tools when they help verify the reasoning. Put only the final
-      option letter in $$\boxed{A}$$, $$\boxed{B}$$, $$\boxed{C}$$, or
-      $$\boxed{D}$$ at the end.
     rock_image: tmlrgroup/alphadiana:v1
     rock_agent_config_path: alphadiana/harness/openclaw/deploy/rock_agent_config.prebuilt.yaml
     openclaw_config_path: alphadiana/harness/openclaw/deploy/openclaw.json
-    network_mode: host
-    docker_host_ip: host.docker.internal
     rock_memory: 4g
     rock_cpus: 1
     rock_startup_timeout: 600
@@ -26,30 +19,29 @@ agent:
     temperature: 0.0
     top_p: 0.95
     max_tokens: 32768
-    stream: true
     request_timeout: 9300
-    stream_idle_timeout: 1800
+    max_attempts: 5
+    system_prompt: |
+      You are an expert problem solver. Use available tools when they help.
+
+      The final line must be:
+      $$\boxed{your answer here}$$
     stream_total_timeout: 9000
     enable_thinking: true
-    capture_logprobs: true
-    top_logprobs: 20
 benchmark:
-  name: gpqa_diamond
+  name: imo_answerbench
   config:
-    dataset: fingertap/GPQA-Diamond
-    split: test
-    seed: 42
+    dataset: Hwilner/imo-answerbench
+    split: train
+sandbox: null
 scorer:
-  name: exact_match
-  config: {}
+  name: imo_verify
 max_concurrent: 1
 num_samples: 1
-task_retries: 2
-task_retry_on_recoverable_only: true
 output_dir: ./results
 strict_report: true
 strict_isolation: true
 metadata:
   model_family: Qwen3.5-27B
   experiment_axis: macro
-  notes: 'Release macro config: GPQA-Diamond x openclaw x Qwen3.5-27B.'
+  notes: 'Release macro config: IMO-AnswerBench x openclaw x Qwen3.5-27B.'

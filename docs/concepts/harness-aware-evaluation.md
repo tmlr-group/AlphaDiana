@@ -120,7 +120,7 @@ three connection fields (`OPENAI_MODEL_NAME`, `OPENAI_BASE_URL`,
 
 
 ```yaml
-# configs/examples/direct_llm_gpqa_diamond.yaml (excerpt)
+# configs/macro_runs/gpqa_directllm_qwen35_27b.yaml (excerpt)
 agent:
   name: direct_llm
   config:
@@ -130,8 +130,8 @@ agent:
 ```
 
 ```bash
-python -m alphadiana.cli validate configs/examples/direct_llm.yaml
-python -m alphadiana.cli run configs/examples/direct_llm.yaml \
+python -m alphadiana.cli validate configs/macro_runs/aime2026_directllm_qwen35_27b.yaml
+python -m alphadiana.cli run configs/macro_runs/aime2026_directllm_qwen35_27b.yaml \
   -o run_id=concept_aime_directllm_t1_k1 \
   -o benchmark.config.max_tasks=1 -o num_samples=1
 ```

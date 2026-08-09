@@ -30,10 +30,10 @@ OpenCode Docker controller.
 
 | Mode | Status | Config |
 |---|---|---|
-| `direct_llm` | smoke config available | `configs/examples/direct_llm_hle.yaml` |
-| `opencode` | Qwen pilot available | `configs/examples/opencode_qwen35_27b_hle_pilot.yaml` |
-| `openclaw` | smoke config available | `configs/examples/openclaw_hle.yaml` |
-| `zeroclaw` | smoke config available | `configs/examples/zeroclaw_hle.yaml` |
+| `direct_llm` | macro config available | `configs/macro_runs/hle_directllm_qwen35_27b.yaml` |
+| `opencode` | macro config available | `configs/macro_runs/hle_opencode_qwen35_27b.yaml` |
+| `openclaw` | macro config available | `configs/macro_runs/hle_openclaw_qwen35_27b.yaml` |
+| `zeroclaw` | macro config available | `configs/macro_runs/hle_zeroclaw_qwen35_27b.yaml` |
 
 The checked-in configs exercise the HLE `multipleChoice` subset. Other HLE
 answer types are not included in the current exact-match scoring path.
@@ -43,39 +43,22 @@ As of April 22, 2026, the loader also treats `image: ""` rows in the current
 attempts on the same snapshot could fail early with
 `HLE: unsupported image type ... str` before this compatibility fix landed.
 
-The DirectLLM config pins `dataset_index: 1`; the generic OpenClaw and ZeroClaw
-configs use `max_tasks: 1`. The Qwen pilot configs load three tasks.
-
-Current dataset caveat:
-the checked-in smoke row `hle_1` is text-only in the current `cais/hle`
-snapshot. For a real image-backed transport probe, override
-`-o benchmark.config.dataset_index=53`.
-
-Additional April 19, 2026 pilot config:
-
-- `configs/examples/directllm_qwen35_27b_hle_pilot.yaml`
-- `configs/examples/openclaw_qwen35_27b_hle_pilot.yaml`
-- `configs/examples/opencode_qwen35_27b_hle_pilot.yaml`
-
-That pilot config drops the smoke `dataset_index: 1` pin so it can load three
-distinct `multipleChoice` tasks.
-
 ## Full Runs
 
-This checkout does not ship HLE full-run configs. Start from the appropriate
-checked-in example or Qwen pilot, remove the bounded task selector, and review
-the model, output, timeout, and concurrency contract before a full evaluation.
+The macro configs select the full `multipleChoice` subset. Add
+`-o benchmark.config.max_tasks=1` for a first smoke, then remove the override
+only after reviewing the model, output, timeout, and concurrency contract.
 
 ## DirectLLM
 
 ```bash
-python -m alphadiana.cli run configs/examples/direct_llm_hle.yaml \
-  -o run_id=hle_directllm_smoke
+python -m alphadiana.cli run configs/macro_runs/hle_directllm_qwen35_27b.yaml \
+  -o run_id=hle_directllm_smoke -o benchmark.config.max_tasks=1
 ```
 
 On current main, `direct_llm` captures logprobs by default. For a local-vLLM
-Qwen pilot, use `configs/examples/directllm_qwen35_27b_hle_pilot.yaml` and
-review its bounded selection before scaling.
+Qwen run, use `configs/macro_runs/hle_directllm_qwen35_27b.yaml` and add a
+bounded selection before the first smoke.
 
 ## OpenCode
 
@@ -88,15 +71,15 @@ docker build --network host \
 ```
 
 ```bash
-python -m alphadiana.cli run configs/examples/opencode_qwen35_27b_hle_pilot.yaml \
-  -o run_id=hle_opencode_smoke
+python -m alphadiana.cli run configs/macro_runs/hle_opencode_qwen35_27b.yaml \
+  -o run_id=hle_opencode_smoke -o benchmark.config.max_tasks=1
 ```
 
 The checked-in OpenCode benchmark configs now use Docker controller isolation
 by default. If you need the old host-process path for debugging, override
 `-o agent.config.controller_mode=host`.
 
-The smoke config keeps `timeout: 1800` to allow visible model output before
+The macro config keeps `timeout: 1800` to allow visible model output before
 scoring. The controller image build and caveats are documented in
 the [OpenCode harness guide](../harnesses/opencode.md).
 
@@ -125,7 +108,7 @@ each. A follow-up image-backed smoke,
 ## OpenClaw
 
 ```bash
-python -m alphadiana.cli run configs/examples/openclaw_qwen35_27b_hle_pilot.yaml \
+python -m alphadiana.cli run configs/macro_runs/hle_openclaw_qwen35_27b.yaml \
   -o run_id=hle_openclaw_smoke
 ```
 
@@ -161,7 +144,7 @@ source scripts/rock_env.sh
 If another branch is already using ROCK, edit `scripts/.rock_ports.env` before startup so this worktree gets isolated admin/proxy/redis/ray ports.
 
 ```bash
-python -m alphadiana.cli run configs/examples/zeroclaw_hle.yaml \
+python -m alphadiana.cli run configs/macro_runs/hle_zeroclaw_qwen35_27b.yaml \
   -o run_id=hle_zeroclaw_smoke
 ```
 
@@ -198,17 +181,11 @@ The real-API before/after evidence is
 
 ## Smoke Selection
 
-The checked-in one-task smoke configs use:
+The checked-in configs select the full `multipleChoice` subset. Add
+`-o benchmark.config.max_tasks=1` for a smoke. The scorer is `exact_match`, so
+the final answer should be one of the multiple-choice options.
 
-- `dataset_index: 1`
-- `answer_types: ["multipleChoice"]`
-- `max_tasks: 1`
-
-The scorer is `exact_match`, so the final answer should be one of the multiple-choice options.
-
-No HLE full-run file is checked in; create and validate one before scaling.
-
-## Qwen/OpenRouter 3-Task Pilot
+## Historical Qwen/OpenRouter 3-Task Pilot
 
 Environment:
 
@@ -225,9 +202,9 @@ export OPENAI_API_KEY=sk-...
 Command:
 
 ```bash
-python -m alphadiana.cli run configs/examples/directllm_qwen35_27b_hle_pilot.yaml
-python -m alphadiana.cli run configs/examples/openclaw_qwen35_27b_hle_pilot.yaml
-python -m alphadiana.cli run configs/examples/opencode_qwen35_27b_hle_pilot.yaml
+python -m alphadiana.cli run configs/macro_runs/hle_directllm_qwen35_27b.yaml
+python -m alphadiana.cli run configs/macro_runs/hle_openclaw_qwen35_27b.yaml
+python -m alphadiana.cli run configs/macro_runs/hle_opencode_qwen35_27b.yaml
 ```
 
 Config note:
@@ -237,7 +214,7 @@ Config note:
 - In the current `cais/hle` snapshot those three rows expose `image: ""`, so
   they are not valid image-backed probes even though the benchmark is
   multimodal in general.
-- The dedicated `direct_llm` and `openclaw` pilot configs therefore pin
+- Historical `direct_llm` and `openclaw` pilot configs pinned
   `dataset_indices: [53, 98, 111]`, which do carry real image payloads and
   preserve `task.attachments.image_1`.
 

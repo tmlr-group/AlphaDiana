@@ -1,4 +1,6 @@
-run_id: "zeroclaw_${OPENAI_MODEL_NAME}_aime_2026_skill"
+# MICRO RUN: AIME 2026 x ZeroClaw x Qwen/Qwen3.5-27B (skill axis)
+
+run_id: "micro_aime2026_zeroclaw_qwen35_27b_skill_math"
 
 agent:
   name: zeroclaw
@@ -49,6 +51,9 @@ scorer:
     tolerance: 1e-6
 
 max_concurrent: 1
+num_samples: 1
 output_dir: "./results"
+strict_report: true
+strict_isolation: true
 metadata:
-  notes: "ZeroClaw + Skill (advanced-maths bundle) smoke test on AIME 2026"
+  notes: "Micro-experiment cell: AIME 2026 x ZeroClaw x Qwen3.5-27B x advanced-maths skill."

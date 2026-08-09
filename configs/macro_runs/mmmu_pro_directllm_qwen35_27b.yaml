@@ -1,4 +1,4 @@
-run_id: macro_aime2026_directllm_qwen35_27b
+run_id: macro_mmmu_pro_directllm_qwen35_27b
 agent:
   name: direct_llm
   version: '1.0'
@@ -7,26 +7,21 @@ agent:
     api_base: "${OPENAI_BASE_URL}"
     api_key: "${OPENAI_API_KEY}"
     temperature: 0.0
-    top_p: 0.95
     max_tokens: 32768
+    top_p: 0.95
     stream: true
-    capture_logprobs: true
-    top_logprobs: 20
-    system_prompt: |
-      You are an expert competition-math problem solver. Reason carefully and
-      put only the final integer in $$\boxed{answer}$$ at the end.
     extra_body:
       chat_template_kwargs:
         enable_thinking: true
 benchmark:
-  name: aime
+  name: mmmu_pro
   config:
-    dataset: MathArena/aime_2026
-    split: train
+    dataset: MMMU/MMMU_Pro
+    data_config: vision
+    split: test
 scorer:
-  name: numeric
-  config:
-    tolerance: 1e-6
+  name: exact_match
+  config: {}
 max_concurrent: 1
 num_samples: 1
 output_dir: ./results
@@ -35,4 +30,4 @@ strict_isolation: true
 metadata:
   model_family: Qwen3.5-27B
   experiment_axis: macro
-  notes: 'Release macro config: AIME 2026 x directllm x Qwen3.5-27B.'
+  notes: 'Release macro config: MMMU-Pro x directllm x Qwen3.5-27B.'

@@ -6,7 +6,7 @@ SCOPE="${1:-validate}"
 RUN_PREFIX="${PODMAN_TB2_RUN_PREFIX:-podman_tb2_$(date +%Y%m%d_%H%M%S)}"
 COMMAND_TIMEOUT_SECONDS="${PODMAN_TB2_COMMAND_TIMEOUT_SECONDS:-14400}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-CONFIG_DIR="${PODMAN_TB2_CONFIG_DIR:-$ROOT_DIR/configs/smokes/podman_terminal_bench2}"
+CONFIG_DIR="${PODMAN_TB2_CONFIG_DIR:-$ROOT_DIR/configs/macro_runs}"
 REDO_ALL="${PODMAN_TB2_REDO_ALL:-1}"
 STATUS_DIR="$ROOT_DIR/context/podman-terminal-bench2-readiness"
 STATUS_FILE="$STATUS_DIR/run-status-${RUN_PREFIX}.tsv"
@@ -50,7 +50,7 @@ export TB2_OPENCODE_RUNTIME_IMAGE="${TB2_OPENCODE_RUNTIME_IMAGE:-localhost/alpha
 export TB2_OPENCLAW_RUNTIME_IMAGE="${TB2_OPENCLAW_RUNTIME_IMAGE:-localhost/alphadiana-openclaw-swebench-runtime-source:latest}"
 export TB2_ZEROCLAW_RUNTIME_IMAGE="${TB2_ZEROCLAW_RUNTIME_IMAGE:-localhost/zeroclaw-reasoning:0.6.9}"
 export PODMAN_TB2_PREFLIGHT_PROVIDER_IMAGE="${PODMAN_TB2_PREFLIGHT_PROVIDER_IMAGE:-$TB2_OPENCODE_RUNTIME_IMAGE}"
-# The TB2 pilot YAMLs all set agent.config.podman_network=host so loopback
+# The TB2 macro YAMLs all set agent.config.podman_network=host so loopback
 # OPENAI_BASE_URL values work from inside the task container. The preflight
 # provider probe defaults to bridge networking and would fail for loopback
 # URLs (127.0.0.1 inside a bridge container is the container itself). Match
@@ -81,9 +81,9 @@ discover_configs() {
   CONFIG_PATHS=()
   while IFS= read -r path; do
     CONFIG_PATHS+=("$path")
-  done < <(find "$CONFIG_DIR" -maxdepth 1 -type f -name '*_pilot.yaml' | sort)
+  done < <(find "$CONFIG_DIR" -maxdepth 1 -type f -name 'terminal_bench2_*_qwen35_27b.yaml' | sort)
   if [[ ${#CONFIG_PATHS[@]} -eq 0 ]]; then
-    printf 'No TerminalBench2 pilot configs found in %s\n' "${CONFIG_DIR#$ROOT_DIR/}" >&2
+    printf 'No TerminalBench2 macro configs found in %s\n' "${CONFIG_DIR#$ROOT_DIR/}" >&2
     return 2
   fi
 }
@@ -92,7 +92,7 @@ run_suffix_for_config() {
   local config_path="$1"
   local filename
   filename="$(basename "$config_path")"
-  printf '%s\n' "${filename%_pilot.yaml}"
+  printf '%s\n' "${filename%.yaml}"
 }
 
 validate_config() {

@@ -80,6 +80,7 @@ The YAML expects provider variables to be set by the launcher:
 ```bash
 export OPENAI_BASE_URL=http://HOST_REACHABLE_FROM_SANDBOX:9091/v1
 export OPENAI_API_KEY=sk-EMPTY                    # any non-"EMPTY" string for local
+export OPENAI_MODEL_NAME=Qwen/Qwen3.5-27B
 export OPENCLAW_GATEWAY_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
 export MEMORY_EMBEDDING_BASE_URL=http://HOST_REACHABLE_FROM_SANDBOX:10087/v1
 export MEMORY_EMBEDDING_MODEL=qwen3-embed-0.6b             # OpenClaw memory cells

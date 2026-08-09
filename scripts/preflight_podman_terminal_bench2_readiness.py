@@ -107,7 +107,7 @@ def _config_paths(*, config_path: Path | None, config_dir: Path | None) -> list[
         return [config_path]
     if config_dir is None:
         return []
-    return sorted(config_dir.glob("*_pilot.yaml"))
+    return sorted(config_dir.glob("terminal_bench2_*_qwen35_27b.yaml"))
 
 
 def _resolve_env_placeholder(value: str) -> str:

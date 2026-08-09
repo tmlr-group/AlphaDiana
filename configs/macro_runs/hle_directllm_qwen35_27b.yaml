@@ -1,4 +1,4 @@
-run_id: macro_gpqa_directllm_qwen35_27b
+run_id: macro_hle_directllm_qwen35_27b
 agent:
   name: direct_llm
   version: '1.0'
@@ -9,22 +9,24 @@ agent:
     temperature: 0.0
     top_p: 0.95
     max_tokens: 32768
+    max_retries: 3
     stream: true
-    capture_logprobs: true
-    top_logprobs: 20
     system_prompt: |
-      You are solving expert-level science multiple-choice questions. Reason
-      carefully and put only the final option letter in $$\boxed{A}$$,
-      $$\boxed{B}$$, $$\boxed{C}$$, or $$\boxed{D}$$ at the end.
+      You are solving expert-level multimodal multiple-choice questions.
+      Read the question and image carefully, then choose the single best option.
+
+      At the end of your response, output only one of:
+      \boxed{A}, \boxed{B}, \boxed{C}, \boxed{D}, \boxed{E}, \boxed{F}, \boxed{G}, \boxed{H}, \boxed{I}, or \boxed{J}
     extra_body:
       chat_template_kwargs:
         enable_thinking: true
 benchmark:
-  name: gpqa_diamond
+  name: hle
   config:
-    dataset: fingertap/GPQA-Diamond
+    dataset: cais/hle
     split: test
-    seed: 42
+    answer_types:
+      - multipleChoice
 scorer:
   name: exact_match
   config: {}
@@ -36,4 +38,4 @@ strict_isolation: true
 metadata:
   model_family: Qwen3.5-27B
   experiment_axis: macro
-  notes: 'Release macro config: GPQA-Diamond x directllm x Qwen3.5-27B.'
+  notes: 'Release macro config: HLE x directllm x Qwen3.5-27B.'

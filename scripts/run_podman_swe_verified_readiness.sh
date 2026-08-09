@@ -6,7 +6,10 @@ SCOPE="${1:-validate}"
 RUN_PREFIX="${PODMAN_SWE_RUN_PREFIX:-podman_swe_verified_$(date +%Y%m%d_%H%M%S)}"
 COMMAND_TIMEOUT_SECONDS="${PODMAN_SWE_COMMAND_TIMEOUT_SECONDS:-28800}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-CONFIG_DIR="${PODMAN_SWE_CONFIG_DIR:-$ROOT_DIR/configs/smokes/podman_swe_verified_readiness}"
+# This reproducer consumes the historical tiered readiness matrix. Those
+# configs are intentionally not part of the compact release tree, so callers
+# must point at an archived checkout or an explicitly materialized matrix.
+CONFIG_DIR="${PODMAN_SWE_CONFIG_DIR:?Set PODMAN_SWE_CONFIG_DIR to the historical SWE readiness config directory}"
 STATUS_DIR="$ROOT_DIR/context/podman-swe-verified-readiness"
 STATUS_FILE="$STATUS_DIR/run-status-${RUN_PREFIX}.tsv"
 PREFLIGHT_STATUS_FILE="$STATUS_DIR/preflight-${RUN_PREFIX}.json"
