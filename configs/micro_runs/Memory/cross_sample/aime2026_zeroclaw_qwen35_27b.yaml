@@ -1,0 +1,60 @@
+# Reference cell: AIME 2026 x ZeroClaw x Qwen3.5-27B x cross-sample memory.
+
+run_id: "micro_aime2026_zeroclaw_qwen35_27b_memory_cross_sample"
+
+agent:
+  name: zeroclaw
+  version: "0.6.9"
+  config:
+    memory_scope: "cross_sample"
+    persistent_memory: true
+    memory_enabled: true
+    strict_memory: true
+    system_prompt: |
+      You are an expert math competition solver. Use memory_search before
+      solving and memory_store for one concise insight after solving.
+
+      Final answer format: $$\boxed{answer}$$
+    model: "Qwen/Qwen3.5-27B"
+    api_base: "${OPENAI_BASE_URL}"
+    api_key: "${OPENAI_API_KEY}"
+    provider_api_base: "${OPENAI_BASE_URL}"
+    provider_api_key: "${OPENAI_API_KEY}"
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 32768
+    request_timeout: 9300
+    runtime_trace_mode: "full"
+    enable_thinking: true
+    capture_logprobs: true
+    top_logprobs: 20
+    docker_host_ip: "host.docker.internal"
+    network_mode: "host"
+    max_tool_iterations: 100
+    max_actions_per_hour: 200
+    rock_image: "zeroclaw-reasoning:0.6.9"
+    rock_memory: "4g"
+    rock_cpus: 1
+    rock_startup_timeout: 600
+    admin_base_url: "${ROCK_BASE_URL}"
+    proxy_base_url: "${ROCK_PROXY_URL}"
+
+benchmark:
+  name: aime
+  config:
+    dataset: "MathArena/aime_2026"
+    split: "train"
+
+scorer:
+  name: numeric
+  config:
+    tolerance: 1e-6
+
+max_concurrent: 1
+num_samples: 4
+task_retries: 0
+output_dir: "./results"
+strict_report: true
+strict_isolation: true
+metadata:
+  notes: "Reference memory cell: samples of one task share state; the next task starts clean."

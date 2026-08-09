@@ -1,198 +1,113 @@
-# configs/
+# Configuration map
 
-AlphaDiana experiment configuration directory.
+`configs/` contains several kinds of YAML. They do not all have the same
+top-level schema, so choose an entry point by purpose instead of assuming every
+file can be passed directly to `alphadiana run`.
 
+## Start here
+
+| Goal | Entry point |
+| --- | --- |
+| Run the first DirectLLM smoke | `examples/direct_llm.yaml` with a one-task override |
+| Browse ad-hoc harness/benchmark examples | `examples/` |
+| Run a checked-in Podman readiness matrix | `smokes/` and its per-folder `README.md` |
+| Run the release macro harness comparison | `macro_runs/README.md` |
+| Reproduce Tool/Skill/Memory micro cells | `micro_runs/README.md` |
+| Run the memory-scope reference matrix | `micro_runs/Memory/` |
+| Render the SWE-bench Verified Mini campaign | `full_runs/swe_verified_mini.yaml` |
+| Inspect the annotated core experiment shape | `schema.yaml` |
+| Compare canonical benchmark prompts | `PROMPTS.md` |
+
+Validate an ordinary experiment config before running it:
+
+```bash
+python -m alphadiana.cli validate configs/examples/direct_llm.yaml \
+  -o benchmark.config.max_tasks=1
+python -m alphadiana.cli run configs/examples/direct_llm.yaml \
+  -o run_id=config_map_aime_directllm_t1_k1 \
+  -o benchmark.config.max_tasks=1 -o num_samples=1
 ```
-configs/
-├── README.md                  ← you are here
-├── PROMPTS.md                 ← canonical system prompts for every benchmark × harness
-├── schema.yaml                ← annotated full-field reference for config structure
-├── full_runs/                 ← production runs (pinned models, logprob capture)
-│   └── README.md              ← inventory and naming conventions for full runs
-├── smokes/                    ← active smoke matrices with pinned local settings
-├── examples/                  ← smoke / pilot templates (env-var placeholders, max_tasks ≤ 5)
-│   └── *.yaml
-├── test_direct_llm_qwen.yaml  ← quick sanity-check: direct_llm via OpenRouter
-├── test_openclaw_quick.yaml   ← quick sanity-check: openclaw via OpenRouter
-└── observe_prompt_injection_test.yaml  ← security test: prompt injection detection
-```
 
----
+Provider-backed examples normally require endpoint, key, and model variables.
+Read the target YAML because older examples use either
+`OPENAI_MODEL`/`OPENAI_API_BASE` or
+`OPENAI_MODEL_NAME`/`OPENAI_BASE_URL`. Never commit a real key.
 
-## Which file to use
+## Directory roles
 
-| Goal | Where to look |
-|---|---|
-| Run a full benchmark | `full_runs/` |
-| Run the active local-Qwen harness smoke matrix | `smokes/` |
-| Smoke-test a new model or harness ad hoc (1–5 tasks) | `examples/` |
-| Understand what fields are valid | `schema.yaml` |
-| Check which system prompt to use | `PROMPTS.md` |
-| Quick one-off sanity check | root-level `test_*.yaml` |
+### `examples/`
 
----
+Runnable or validation-oriented examples for DirectLLM, OpenClaw, OpenCode,
+ZeroClaw, SWE-bench, Terminal-Bench 2, and Podman
+paths. Some are single-task smokes; others are larger templates. The filename
+and comments are not proof of support: inspect the matching page under
+`website/docs/benchmarks/` or `website/docs/harnesses/` for prerequisites and current caveats.
 
-## `full_runs/` — production runs
+Useful first entries:
 
-Each file is one benchmark × harness × model combination, fully pinned.
+- `direct_llm.yaml`: sandbox-free AIME baseline used by Quick Start with a
+  one-task CLI override.
+- `openclaw_aime2024.yaml`: OpenClaw ROCK auto-deploy template.
+- `opencode_aime_podman_smoke.yaml`: OpenCode Podman smoke.
+- `zeroclaw_aime2026.yaml`: ZeroClaw with a live ROCK sandbox.
 
-- Model, URL, and all hyperparameters are explicit (no `${ENV_VAR}` placeholders except tokens)
-- `capture_logprobs: true` + `top_logprobs: 20` for top-20 int16 logprob sidecar capture
-- `system_prompt` is always set explicitly — see `PROMPTS.md`
-- Naming: `{benchmark}_{harness}_{model_short}_logprobs.yaml`
+Files ending in `.local.yaml` are local override templates. Review every path,
+image, endpoint, and environment variable before use.
 
-See [`full_runs/README.md`](full_runs/README.md) for the full file inventory.
+### `smokes/`
 
----
+Each active smoke matrix has its own README and runner/auditor scripts:
 
-## `smokes/` — active smoke matrices
+| Folder | Scope | User-facing guide |
+| --- | --- | --- |
+| `podman_scale_readiness/` | Standard-reasoning OpenClaw/OpenCode/ZeroClaw cells | `website/docs/benchmarks/index.md` and harness pages |
+| `podman_mmmu_pro_readiness/` | MMMU-Pro multimodal Podman pilot | `website/docs/benchmarks/mmmu-pro.md` |
+| `podman_terminal_bench2/` | Terminal-Bench 2 task containers | `website/docs/benchmarks/terminal-bench-2.md` |
+| `podman_swe_verified_readiness/` | SWE-bench Verified task containers | `website/docs/benchmarks/swebench-verified.md` |
+| `podman_nightly_validation/` | Validation-only cross-path matrix | folder README |
 
-The validation-only Podman nightly matrix lives in
-[`smokes/podman_nightly_validation/`](smokes/podman_nightly_validation/).
-It contains opt-in configs for OpenClaw, ZeroClaw, and OpenCode standard
-reasoning rows across AIME, GPQA-Diamond, HLE, and IMO-AnswerBench, plus the
-already validated Podman task-container cells for TerminalBench2 and
-SWE-bench Verified. Run it with
-`bash scripts/run_podman_nightly_validation.sh [standard|task|all]`. Current
-evidence and caveats are recorded in
-[`context/podman-nightly-validation/README.md`](../context/podman-nightly-validation/README.md);
-these configs do not promote Podman defaults.
+These are opt-in evidence/configuration paths. Their presence does not promote
+Podman to a global default.
 
-The standard-reasoning Podman scale-readiness pilot matrix lives in
-[`smokes/podman_scale_readiness/`](smokes/podman_scale_readiness/). It covers
-OpenClaw, ZeroClaw, and OpenCode across AIME, GPQA-Diamond, HLE, and
-IMO-AnswerBench with three tasks per cell. Run it with
-`bash scripts/run_podman_scale_readiness.sh [validate|pilot|audit]`. Operator
-commands and support boundaries are documented in
-[`docs/benchmarks/podman.md`](../docs/benchmarks/podman.md), and evidence is in
-[`context/podman-scale-readiness/README.md`](../context/podman-scale-readiness/README.md).
+### `micro_runs/`
 
-The current prompt-aligned local-Qwen smoke matrix lives in
-[`smokes/harness_prompt_alignment_20260425/`](smokes/harness_prompt_alignment_20260425/).
-It contains OpenClaw and ZeroClaw configs for AIME 2024, IMO-AnswerBench,
-GPQA-Diamond, HLE, and MMMU-Pro in both `trunc5k` and `long64k` settings.
-ZeroClaw `long64k` smokes are serial per config (`max_concurrent: 1`) because
-the April 26 local-Qwen recovery evidence found concurrent ZeroClaw long runs
-can stall before the first provider request and therefore cannot save logprobs.
+Paper-oriented Tool, Skill, and Memory cells. Start at
+`micro_runs/README.md`. These configs can be expensive and may require local
+images, skills, or provider-specific tool-call support; do not treat them as
+Getting Started smokes.
 
----
+### `macro_runs/`
 
-## `examples/` — smoke / pilot templates
+The release macro seed compares DirectLLM, OpenCode, OpenClaw, and ZeroClaw on
+AIME 2026 and GPQA-Diamond with conservative one-sample, one-worker defaults.
+Start at `macro_runs/README.md`; validate on the execution host because
+OpenCode validation checks that its controller image exists locally.
 
-Templates with `${OPENAI_BASE_URL}` / `${OPENAI_MODEL_NAME}` / `${OPENAI_API_KEY}` placeholders.
-Copy and fill in values to create a production config. Most have `max_tasks: 1–5` for fast smoke runs.
+### `full_runs/`
 
-### Direct LLM
+The current checkout contains only `swe_verified_mini.yaml`. It is a rollout
+campaign manifest consumed by `python -m alphadiana.benchmark_rollout_cli`, not
+an ordinary `ExperimentConfig` for `alphadiana run`. See
+`website/docs/benchmarks/swebench-verified-mini.md` for render, preflight, and launch
+commands.
 
-| File | Benchmark | Notes |
-|---|---|---|
-| `direct_llm.yaml` | AIME | Generic env-var template |
-| `direct_llm_gpqa_diamond.yaml` | GPQA | Generic env-var template |
-| `direct_llm_hle.yaml` | HLE | 1-task smoke |
-| `direct_llm_mmmu_pro.yaml` | MMMU-Pro | Generic env-var template |
-| `directllm_minimax_imo_answerbench.yaml` | IMO | MiniMax model, 1-task smoke |
-| `directllm_qwen35_27b_gpqa_diamond_pilot.yaml` | GPQA | Qwen3.5-27B, 3-task pilot |
-| `directllm_qwen35_27b_hle_pilot.yaml` | HLE | Qwen3.5-27B, 3-task pilot |
-| `directllm_qwen35_27b_imo_answerbench_pilot.yaml` | IMO | Qwen3.5-27B, 3-task pilot |
-
-### OpenClaw
-
-| File | Benchmark | Notes |
-|---|---|---|
-| `openclaw_aime2024.yaml` | AIME 2024 | env-var, full run template |
-| `openclaw_aime2024_multisandbox.yaml` | AIME 2024 | multi-sandbox parallel variant |
-| `openclaw_aime2025_glm5.yaml` | AIME 2025 | GLM-5 model |
-| `openclaw_gpqa_diamond.yaml` | GPQA | env-var template, full |
-| `openclaw_hle.yaml` | HLE | 1-task smoke |
-| `openclaw_imo_answerbench.yaml` | IMO | 1-task smoke |
-| `openclaw_minimax_hle.yaml` | HLE | MiniMax model, 1-task smoke |
-| `openclaw_minimax_imo_answerbench.yaml` | IMO | MiniMax model, 1-task smoke |
-| `openclaw_mmmu_pro.yaml` | MMMU-Pro | env-var template, full |
-| `openclaw_qwen35_27b_gpqa_diamond_pilot.yaml` | GPQA | Qwen3.5-27B, 3-task pilot |
-| `openclaw_qwen35_27b_hle_pilot.yaml` | HLE | Qwen3.5-27B, 3-task pilot |
-| `openclaw_qwen35_27b_imo_answerbench_pilot.yaml` | IMO | Qwen3.5-27B, 3-task pilot |
-| `openclaw_swe_bench.yaml` | SWE-Bench | 1-task smoke |
-
-### OpenCode
-
-| File | Benchmark | Notes |
-|---|---|---|
-| `opencode_gpqa_diamond.yaml` | GPQA | MiniMax model, full |
-| `opencode_minimax_hle.yaml` | HLE | MiniMax, 1-task smoke |
-| `opencode_minimax_imo_answerbench.yaml` | IMO | MiniMax, 1-task smoke |
-| `opencode_mmmu_pro.yaml` | MMMU-Pro | MiniMax, full |
-| `opencode_qwen35_27b_gpqa_diamond_pilot.yaml` | GPQA | Qwen3.5-27B, 3-task pilot |
-| `opencode_qwen35_27b_hle_pilot.yaml` | HLE | Qwen3.5-27B, 3-task pilot |
-| `opencode_qwen35_27b_imo_answerbench_pilot.yaml` | IMO | Qwen3.5-27B, 3-task pilot |
-| `opencode_swe_bench.yaml` | SWE-Bench | 1-task smoke |
-
-### ZeroClaw
-
-| File | Benchmark | Notes |
-|---|---|---|
-| `zeroclaw_aime2026.yaml` | AIME 2026 | env-var template, 1-task smoke |
-| `zeroclaw_aime2026_local_smoke.yaml` | AIME 2026 | local vLLM variant, 1-task smoke |
-| `zeroclaw_gpqa_diamond.yaml` | GPQA | env-var template, 1-task smoke |
-| `zeroclaw_hle.yaml` | HLE | env-var template, 1-task smoke |
-| `zeroclaw_imo_answerbench.yaml` | IMO | env-var template, 1-task smoke |
-| `zeroclaw_mmmu_pro.yaml` | MMMU-Pro | env-var template, 1-task smoke |
-| `zeroclaw_swe_bench.yaml` | SWE-Bench | env-var template, 1-task smoke |
-
-### external_benchmark
-
-| File | Notes |
-|---|---|
-| `external_benchmark_openclaw.yaml` | OpenClaw on external_benchmark |
-| `external_benchmark_openclaw_L1_batch.yaml` | Batch variant |
-| `external_benchmark_openclaw_L1_batch_v2.yaml` | Batch v2 |
-| `external_benchmark_openclaw_codex.yaml` | Codex scaffold |
-| `external_benchmark_opencode_L1_batch.yaml` | OpenCode batch |
-| `external_benchmark_zeroclaw_L1_batch.yaml` | ZeroClaw batch |
-| `external_benchmark_claude_code.yaml` | Claude Code agent |
-| `external_benchmark_claude_code_codex.yaml` | Claude Code + Codex |
-| `external_benchmark_openclaw_smoke.yaml` | Smoke (shared env) |
-| `external_benchmark_openclaw_smoke.local.yaml` | Smoke (local overrides) |
-| `external_benchmark_opencode_smoke.local.yaml` | Smoke (local overrides) |
-| `external_benchmark_zeroclaw_smoke.local.yaml` | Smoke (local overrides) |
-
-### Terminal Bench 2
-
-| File | Harness | Notes |
-|---|---|---|
-| `terminal_bench2.yaml` | DirectLLM | Generic env-var, 1-task smoke |
-| `terminal_bench2_directllm_minimax.yaml` | DirectLLM | MiniMax, 1-task smoke |
-| `terminal_bench2_openclaw_minimax.yaml` | OpenClaw | MiniMax, 1-task smoke |
-| `terminal_bench2_opencode_minimax.yaml` | OpenCode | MiniMax, 1-task smoke |
-| `terminal_bench2_zeroclaw_minimax.yaml` | ZeroClaw | MiniMax, 1-task smoke |
-
-### SWE-Bench Pro
-
-| File | Notes |
-|---|---|
-| `swebench_pro_direct_llm_smoke.local.yaml` | Local override, 1-task smoke |
-| `swebench_pro_openclaw_smoke.local.yaml` | Local override, 1-task smoke |
-| `swebench_pro_opencode_smoke.local.yaml` | Local override, 1-task smoke |
-| `swebench_pro_zeroclaw_smoke.local.yaml` | Local override, 1-task smoke |
-
----
-
-## Root-level files
+## Root files
 
 | File | Purpose |
-|---|---|
-| `schema.yaml` | Annotated field reference — lists every valid key with types and descriptions |
-| `test_direct_llm_qwen.yaml` | Quick sanity-check: `direct_llm` calling Qwen3-235B via OpenRouter |
-| `test_openclaw_quick.yaml` | Quick sanity-check: `openclaw` via OpenRouter (1 task) |
-| `observe_prompt_injection_test.yaml` | Security test: verifies AlphaDiana detects prompt injection in task inputs |
+| --- | --- |
+| `schema.yaml` | Annotated core experiment shape; pass-through keys are documented per harness/benchmark |
+| `PROMPTS.md` | Prompt catalogue |
+| `test_openclaw_quick.yaml` | OpenClaw sanity config; requires provider and ROCK prerequisites |
 
----
+## Naming conventions
 
-## File suffix conventions
+Names are descriptive rather than executable contracts:
 
-| Suffix | Meaning |
-|---|---|
-| _(none)_ | Standard template with env-var placeholders |
-| `_pilot` | 3-task pilot, model partially pinned |
-| `_smoke` | 1-task smoke run |
-| `.local` | Local machine overrides (not committed to CI) — gitignored except by exception |
-| `_logprobs` | Top-20 int16 logprob capture enabled |
+- `_smoke`: intended small smoke path;
+- `_pilot`: limited pilot rather than full evaluation;
+- `.local`: host-specific override template;
+- `_podman`: Podman-backed path;
+- `_logprobs`: logprob capture enabled.
+
+Always confirm the actual `benchmark.config`, `num_samples`, runtime backend,
+model/reasoning controls, scorer, and `run_id` before launch.

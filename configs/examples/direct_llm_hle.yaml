@@ -1,7 +1,5 @@
 # SMOKE ONLY: deterministic 1-task config for path validation.
-# Full supported HLE multiple-choice config: configs/full_runs/p25_full_directllm_minimax_hle.yaml.
-
-run_id: "directllm_minimax_hle_smoke"
+run_id: "directllm_hle_smoke"
 
 agent:
   name: direct_llm
@@ -33,6 +31,6 @@ scorer:
   config: {}
 
 max_concurrent: 1
-output_dir: "./results/directllm_minimax_hle_smoke"
+output_dir: "./results/directllm_hle_smoke"
 metadata:
-  notes: "DirectLLM x HLE smoke via minimax-m2.5. Requires HF_TOKEN."
+  notes: "DirectLLM x HLE smoke using OPENAI_MODEL_NAME. Requires HF_TOKEN."

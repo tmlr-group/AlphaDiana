@@ -13,7 +13,7 @@ from typing import Any, Mapping, Sequence
 
 from alphadiana.analysis.action_events import normalized_records
 from alphadiana.analysis.result_reader import RunBundle, load_run_bundle
-from alphadiana.results.status import VALID_SCORE_STATUS, infer_score_status
+from alphadiana.analysis.io.status import VALID_SCORE_STATUS, infer_score_status
 
 CORPUS_STATUS_VALUES = ("unavailable", "manifest_only", "validated_records")
 ENV_CORPUS_VARS = (

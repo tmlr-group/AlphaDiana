@@ -1,5 +1,0 @@
-model,harness,benchmark,run_path,n_tasks,n_scored,null_count,acc,pass_at_k,has_logprobs,has_artifacts,trace_format,notes
-Gemma-4-31B-IT,directllm,MMMU-Pro vision,hf_downloads/alphadiana-mmmu-pro-gemma4-four-harness-20260624/results/20260619-mmmu_pro_vision-directllm-gemma-4-31b-it-full-1250788,1730,1730,0,0.6583815028901734,,true,true,flat,Complete 1730-row vision sweep.
-Gemma-4-31B-IT,openclaw,MMMU-Pro vision,hf_downloads/alphadiana-mmmu-pro-gemma4-four-harness-20260624/results/20260620-mmmu_pro_vision-openclaw-gemma-4-31b-it-full-1269794,1570,1407,164,0.5676300578034682,,true,true,flat,Partial vision sweep: 160 expected rows missing.
-Gemma-4-31B-IT,opencode,MMMU-Pro vision,hf_downloads/alphadiana-mmmu-pro-gemma4-four-harness-20260624/results/20260619-mmmu_pro_vision-opencode-gemma-4-31b-it-full-1212372,1730,1635,0,0.6739884393063584,,true,true,flat,Complete 1730-row vision sweep.
-Gemma-4-31B-IT,zeroclaw,MMMU-Pro vision,hf_downloads/alphadiana-mmmu-pro-gemma4-four-harness-20260624/results/20260620-mmmu_pro_vision-zeroclaw-gemma-4-31b-it-full-1269790,1730,1626,104,0.6635838150289017,,true,true,flat,Complete 1730-row vision sweep.

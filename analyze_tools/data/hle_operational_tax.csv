@@ -1,4 +1,0 @@
-harness,expected_samples,valid_scored,correct,error_records,behavioral_accuracy,operational_tax,deployable_accuracy
-directllm,323,323,76,0,0.23529411764705882,0.0,0.23529411764705882
-opencode,591,591,82,0,0.13874788494077833,0.0,0.13874788494077833
-zeroclaw,591,591,88,0,0.14890016920473773,0.0,0.14890016920473773

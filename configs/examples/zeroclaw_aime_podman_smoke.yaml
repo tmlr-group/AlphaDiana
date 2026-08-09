@@ -24,7 +24,7 @@ agent:
 benchmark:
   name: aime
   config:
-    dataset: "MathArena/aime_2026"
+    dataset: "HuggingFaceH4/aime_2024"
     split: "train"
     dataset_index: 0
 

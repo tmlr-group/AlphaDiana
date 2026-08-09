@@ -299,12 +299,9 @@ Minimal OpenClaw smoke path:
   export OPENAI_BASE_URL=...
   export OPENAI_API_KEY=...
   export OPENAI_MODEL_NAME=...
-  alphadiana validate configs/examples/openclaw_aime2026.yaml
-  alphadiana run configs/examples/openclaw_aime2026.yaml
-
-Multi-sandbox CLI path (adjust max_concurrent in the YAML to control concurrency):
-  alphadiana run configs/examples/openclaw_aime2026_multisandbox.yaml
+  alphadiana validate configs/examples/openclaw_quickstart.yaml
+  alphadiana run configs/examples/openclaw_quickstart.yaml
 
 Manual deploy path:
-  python openclaw_deploy/deploy.py --agent-config openclaw_deploy/rock_agent_config.prebuilt.yaml --image tmlrgroup/alphadiana:v1
+  python alphadiana/harness/openclaw/deploy/deploy.py --agent-config alphadiana/harness/openclaw/deploy/rock_agent_config.prebuilt.yaml --image tmlrgroup/alphadiana:v1
 EOF

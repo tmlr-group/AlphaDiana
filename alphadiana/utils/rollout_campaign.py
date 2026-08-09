@@ -12,12 +12,11 @@ from typing import Any
 
 import yaml
 
-from alphadiana.config.experiment_config import ExperimentConfig
-from alphadiana.config.validator import ConfigValidator
+from alphadiana.engine.config.experiment_config import ExperimentConfig
+from alphadiana.engine.config.validator import ConfigValidator
 from alphadiana.utils.rock_ports import check_rock_services, resolve_rock_ports_from_env
-from alphadiana.utils.rock_runtime import PREBUILT_SANDBOX_IMAGE
 
-DEFAULT_MANIFEST_PATH = Path("configs/full_runs/rollout_local_vllm_campaign_20260419.yaml")
+DEFAULT_MANIFEST_PATH = Path("configs/full_runs/swe_verified_mini.yaml")
 
 _BLOCKED_OPENCLAW_BENCHMARKS = {"terminal_bench2"}
 _NEMOTRON_HIGH_RISK_BENCHMARKS = {"hle", "mmmu_pro"}
@@ -28,11 +27,6 @@ _TB2_CONTROLLER_IMAGES = {
     "openclaw": "alphadiana/tb2-openclaw-controller:latest",
     "opencode": "alphadiana/tb2-opencode-controller:latest",
     "zeroclaw": "alphadiana/tb2-zeroclaw-controller:latest",
-}
-_SWEBENCH_RUNTIME_IMAGE_ENVS = {
-    "openclaw": ("SWEBENCH_OPENCLAW_RUNTIME_IMAGE", PREBUILT_SANDBOX_IMAGE),
-    "opencode": ("SWEBENCH_OPENCODE_RUNTIME_IMAGE", "tmlrgroup/alphadiana:opencode"),
-    "zeroclaw": ("SWEBENCH_ZEROCLAW_RUNTIME_IMAGE", _ZEROCLAW_ROCK_IMAGE),
 }
 
 
@@ -228,8 +222,6 @@ def render_run_command(run: ConcreteRun) -> str:
         return "\n".join(parts)
     if run.path.backend == "official_terminal_bench_2":
         return _render_official_tb2_command(run)
-    if run.path.backend == "official_swebench_pro":
-        return _render_official_swebench_command(run)
     if run.path.backend == "official_swebench_verified":
         return _render_official_swebench_verified_command(run)
     raise ValueError(f"Unsupported backend: {run.path.backend}")
@@ -466,59 +458,6 @@ def _render_official_tb2_command(run: ConcreteRun) -> str:
     )
 
 
-def _render_official_swebench_command(run: ConcreteRun) -> str:
-    root_ref = _swebench_workdir_ref()
-    api_key_expr = _env_with_default(run.model.api_key_env, "EMPTY")
-    api_base_ref = run.model.api_base_env_ref
-    run_id_q = shlex.quote(run.run_id)
-    model_q = shlex.quote(run.model.official_model_name)
-    return (
-        'repo_root="$PWD"\n'
-        'mkdir -p "$repo_root/logs"\n'
-        '{\n'
-        f"cd {root_ref}\n"
-        "unset ALL_PROXY all_proxy HTTP_PROXY HTTPS_PROXY http_proxy https_proxy\n"
-        "if [ ! -f SWE-agent/data/instances.yaml ]; then\n"
-        "  ./.venv/bin/python helper_code/generate_sweagent_instances.py --dockerhub_username jefzda\n"
-        "fi\n"
-        "cd SWE-agent\n"
-        f"OPENAI_API_KEY={api_key_expr} OPENAI_BASE_URL={api_base_ref} \\\n"
-        "../.venv/bin/sweagent run-batch \\\n"
-        "  --config config/tool_use.yaml \\\n"
-        f"  --output_dir ../sweagent_results/{run_id_q} \\\n"
-        f"  --num_workers {run.path.max_concurrent} \\\n"
-        "  --random_delay_multiplier 0 \\\n"
-        "  --instances.type file \\\n"
-        "  --instances.path data/instances.yaml \\\n"
-        "  --instances.shuffle=False \\\n"
-        "  --instances.deployment.type docker \\\n"
-        "  --instances.deployment.startup_timeout 1800 \\\n"
-        f"  --agent.model.name {model_q} \\\n"
-        f"  --agent.model.api_base {api_base_ref} \\\n"
-        f"  --agent.model.api_key {api_key_expr} \\\n"
-        "  --agent.model.temperature 0.0 \\\n"
-        "  --agent.model.top_p 0.95 \\\n"
-        "  --agent.model.max_output_tokens 32768 \\\n"
-        "  --agent.model.per_instance_cost_limit 0 \\\n"
-        "  --agent.model.total_cost_limit 0 \\\n"
-        "  --agent.model.per_instance_call_limit 20 \\\n"
-        "  --progress_bar False\n"
-        "cd ..\n"
-        "./.venv/bin/python helper_code/gather_patches.py \\\n"
-        f"  --directory sweagent_results/{run_id_q} \\\n"
-        f"  --prefix {run_id_q} \\\n"
-        f"  --output sweagent_results/{run_id_q}_patches.json\n"
-        "./.venv/bin/python swe_bench_pro_eval.py \\\n"
-        "  --raw_sample_path=swe_bench_pro_full.csv \\\n"
-        f"  --patch_path=sweagent_results/{run_id_q}_patches.json \\\n"
-        f"  --output_dir=swebench_eval/{run_id_q} \\\n"
-        "  --scripts_dir=run_scripts \\\n"
-        "  --num_workers=100 \\\n"
-        "  --dockerhub_username=jefzda\n"
-        f'}} 2>&1 | tee "$repo_root/logs/{run.run_id}.log"'
-    )
-
-
 def _render_official_swebench_verified_command(run: ConcreteRun) -> str:
     """Shell command for SWE-bench Verified / Verified-Mini via standalone SWE-agent.
 
@@ -526,7 +465,7 @@ def _render_official_swebench_verified_command(run: ConcreteRun) -> str:
     ``20260422-swe-bench-verified-mini-sweagent-qwen35-27b-local-v1`` HF run:
     ``sweagent run-batch`` against ``MariusHobbhahn/swe-bench-verified-mini``,
     followed by the SWE-bench official harness eval (``swebench.harness.run_evaluation``)
-    — not the SWE-bench-Pro-specific eval script.
+    — not a benchmark-specific evaluation script.
 
     Required env:
       DIRECTLLM_SWE_VERIFIED_ROOT or DIRECTLLM_ROOT (+ an ``SWE-bench`` subdir)
@@ -669,8 +608,6 @@ def _required_checks_for_run(run: ConcreteRun) -> list[CheckResult]:
         checks.extend(_env_and_path_checks_for_alphadiana(run))
     elif run.path.backend == "official_terminal_bench_2":
         checks.append(_check_resolved_root("DIRECTLLM_TB2_ROOT", "DIRECTLLM_ROOT", "terminal-bench-2"))
-    elif run.path.backend == "official_swebench_pro":
-        checks.append(_check_resolved_root("DIRECTLLM_SWEBENCH_ROOT", "DIRECTLLM_ROOT", "SWE-bench_Pro-os"))
     elif run.path.backend == "official_swebench_verified":
         checks.append(_check_resolved_root("DIRECTLLM_SWE_VERIFIED_ROOT", "DIRECTLLM_ROOT", "SWE-bench"))
     if run.path.benchmark in _MULTIMODAL_BENCHMARKS and not run.model.supports_multimodal:
@@ -700,9 +637,6 @@ def _env_and_path_checks_for_alphadiana(run: ConcreteRun) -> list[CheckResult]:
         )
     if run.path.benchmark == "terminal_bench2":
         checks.append(_check_path_env("TERMINAL_BENCH2_DIR"))
-    if run.path.benchmark == "swebench_pro":
-        checks.append(_check_path_env("SWE_BENCH_PRO_EVAL_SCRIPT"))
-        checks.append(_check_path_env("SWE_BENCH_PRO_SCRIPTS_DIR", expect_dir=True))
     return checks
 
 
@@ -769,21 +703,8 @@ def _docker_image_checks_for_run(run: ConcreteRun) -> list[CheckResult]:
             if controller_image:
                 images.append(controller_image)
 
-        if run.path.benchmark == "swebench_pro":
-            runtime_image = _resolve_swebench_runtime_source_image(run.path.harness)
-            if runtime_image:
-                images.append(runtime_image)
-
     ordered_unique = tuple(dict.fromkeys(images))
     return [_check_docker_image(image) for image in ordered_unique]
-
-
-def _resolve_swebench_runtime_source_image(harness: str) -> str | None:
-    image_spec = _SWEBENCH_RUNTIME_IMAGE_ENVS.get(harness)
-    if image_spec is None:
-        return None
-    env_name, default = image_spec
-    return os.environ.get(env_name, default).strip() or default
 
 
 def _check_rock() -> list[CheckResult]:
@@ -831,10 +752,6 @@ def resolve_workdir(primary_env: str, root_env: str, subdir: str) -> str | None:
 
 def _tb2_workdir_ref() -> str:
     return "${DIRECTLLM_TB2_ROOT:-${DIRECTLLM_ROOT}/terminal-bench-2}"
-
-
-def _swebench_workdir_ref() -> str:
-    return "${DIRECTLLM_SWEBENCH_ROOT:-${DIRECTLLM_ROOT}/SWE-bench_Pro-os}"
 
 
 def _swe_verified_workdir_ref() -> str:

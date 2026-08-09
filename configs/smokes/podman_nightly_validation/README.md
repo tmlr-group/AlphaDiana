@@ -35,5 +35,4 @@ Scope:
   them.
 - MMMU-Pro is intentionally not included until a cheap Podman-specific
   multimodal smoke config is validated.
-- SWE-bench Pro and external_benchmark remain deferred.
 - Direct x SWE/TB2 remains `-`.

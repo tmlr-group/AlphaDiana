@@ -5,8 +5,8 @@ agent:
   version: "2026.3.20"          # OpenClaw version
   config:
     rock_image: "tmlrgroup/alphadiana:v1"
-    rock_agent_config_path: "openclaw_deploy/rock_agent_config.prebuilt.yaml"
-    openclaw_config_path: "openclaw_deploy/openclaw.json"
+    rock_agent_config_path: "alphadiana/harness/openclaw/deploy/rock_agent_config.prebuilt.yaml"
+    openclaw_config_path: "alphadiana/harness/openclaw/deploy/openclaw.json"
     rock_memory: "4g"           # Memory per sandbox container
     rock_cpus: 1                # CPUs per sandbox container
     rock_startup_timeout: 600   # Sandbox startup timeout in seconds
@@ -16,7 +16,7 @@ agent:
     OPENAI_API_KEY: "${OPENAI_API_KEY}"
     OPENAI_MODEL_NAME: "${OPENAI_MODEL_NAME}"
     model: openclaw             # Model name as seen by the gateway (always "openclaw")
-    gateway_token: "OPENCLAW"   # Must match OPENCLAW_GATEWAY_TOKEN in rock_agent_config.yaml
+    gateway_token: "${OPENCLAW_GATEWAY_TOKEN}"
     max_tokens: 4096            # Maximum tokens per response
     request_timeout: 2400       # Request timeout in seconds
     max_attempts: 5             # Max retry attempts per task on failure

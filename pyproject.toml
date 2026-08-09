@@ -10,6 +10,7 @@ requires-python = ">=3.10"
 dependencies = [
     "pyyaml>=6.0",
     "click>=8.0",
+    "scipy>=1.10",
 ]
 
 [project.optional-dependencies]
@@ -36,16 +37,10 @@ all = [
     "nacos-sdk-python==2.0.9",
 ]
 dashboard = ["fastapi>=0.100", "uvicorn[standard]>=0.20", "httpx>=0.24"]
-dev = ["pytest>=7.0", "pytest-asyncio>=0.21"]
 
 [project.scripts]
 alphadiana = "alphadiana.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-
-[tool.pytest.ini_options]
-markers = [
-    "integration: tests that require external services (vLLM, ROCK, OpenClaw)",
-    "asyncio: async tests",
-]
+include = ["alphadiana*"]

@@ -1,4 +1,0 @@
-harness,paired_valid_tasks,rescue,regression,both_correct,both_wrong,skipped_nonvalid_or_missing,paired_net_gain,rescue_rate,regression_rate
-openclaw,198,8,36,123,31,0,-28,0.04040404040404041,0.18181818181818182
-opencode,197,10,23,135,29,1,-13,0.050761421319796954,0.116751269035533
-zeroclaw,191,13,15,141,22,7,-2,0.06806282722513089,0.07853403141361257

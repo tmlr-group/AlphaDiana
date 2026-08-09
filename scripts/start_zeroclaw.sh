@@ -73,6 +73,14 @@ if [ "${_rock_installed}" != "${_rock_expected}" ]; then
     exit 1
 fi
 
+# A release clone must allocate its own complete port set before loading ROCK.
+# Otherwise an empty checkout can silently reuse a healthy Ray/Redis listener
+# on the conventional default ports even though admin/proxy are not running.
+if [ ! -f "${SCRIPT_DIR}/.rock_ports.env" ]; then
+    "${PYTHON}" "${SCRIPT_DIR}/find_rock_ports.py" \
+        --write-env "${SCRIPT_DIR}/.rock_ports.env" >/dev/null
+fi
+
 source "${SCRIPT_DIR}/rock_env.sh"
 
 # Mirror OpenClaw's control-plane hardening on the ZeroClaw path too.
@@ -240,11 +248,9 @@ for _port in "${ROCK_ADMIN_PORT}" "${ROCK_PROXY_PORT}"; do
         sleep 1
     fi
 done
-_old_containers=$(docker ps -q --filter "ancestor=${ZEROCLAW_IMAGE}" 2>/dev/null || true)
-if [ -n "${_old_containers}" ]; then
-    echo "      Stopping leftover ZeroClaw sandbox container(s)..."
-    docker stop ${_old_containers} >/dev/null 2>&1 || true
-fi
+# Do not stop containers by image ancestry here. Multiple checkouts and users
+# may legitimately run the same ZeroClaw image; the runner owns the lifecycle
+# of the sandbox IDs it creates.
 
 echo "[4/6] Starting or reusing Ray head node..."
 RAY_SESSION_DIR="${RAY_TMPDIR}/rock"
@@ -348,7 +354,7 @@ fi
 if ! docker image inspect "${ZEROCLAW_IMAGE}" >/dev/null 2>&1; then
     echo "ERROR: ZeroClaw sandbox image not found: ${ZEROCLAW_IMAGE}"
     echo "       Build it with:"
-    echo "         docker build -f zeroclaw_deploy/Dockerfile -t ${ZEROCLAW_IMAGE} ."
+    echo "         docker build -f alphadiana/harness/zeroclaw/deploy/Dockerfile -t ${ZEROCLAW_IMAGE} ."
     exit 1
 fi
 "${PYTHON}" -m alphadiana.cli validate "${ZEROCLAW_CONFIG}"
@@ -376,5 +382,5 @@ echo "Next step:"
 echo "  source scripts/activate.sh"
 echo "  source scripts/rock_env.sh"
 echo "  alphadiana run ${ZEROCLAW_CONFIG}"
-# phase12_start_ready readiness marker
-echo "phase12_start_ready admin=${ROCK_ADMIN_PORT} proxy=${ROCK_PROXY_PORT} redis=${ROCK_REDIS_PORT} ray=${ROCK_RAY_PORT}"
+# Stable readiness marker for automation and smoke checks.
+echo "rock_start_ready admin=${ROCK_ADMIN_PORT} proxy=${ROCK_PROXY_PORT} redis=${ROCK_REDIS_PORT} ray=${ROCK_RAY_PORT}"

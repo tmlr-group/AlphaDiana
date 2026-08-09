@@ -1,6 +1,6 @@
 # OpenCode x AIME Podman controller smoke.
 # Build the Podman-only controller image with:
-#   podman build -f opencode_deploy/Containerfile.podman-controller \
+#   podman build -f alphadiana/harness/opencode/deploy/Containerfile.podman-controller \
 #     -t alphadiana-opencode-podman:latest .
 run_id: "phase02_opencode_podman_aime_smoke"
 
@@ -20,7 +20,7 @@ agent:
 benchmark:
   name: aime
   config:
-    dataset: "MathArena/aime_2026"
+    dataset: "HuggingFaceH4/aime_2024"
     split: "train"
     dataset_index: 0
 

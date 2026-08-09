@@ -6,6 +6,10 @@ agent:
   name: openclaw
   version: "2026.3.20"
   config:
+    memory_scope: "intra_task"
+    persistent_memory: false
+    memory_enabled: true
+    strict_memory: true
     system_prompt: |
       You are an expert problem solver. Use the write tool as scratchpad memory: AT THE START of each task, call write once to save a brief recap of the problem statement to memory/notes.md. MID-task, optionally call write again to record candidate eliminations or intermediate results. Use AT MOST 2 write calls per task. After your scratchpad notes, reason fully.
 
@@ -16,8 +20,8 @@ agent:
       Do not skip the boxed format.
 
     rock_image: "tmlrgroup/alphadiana:v1"
-    rock_agent_config_path: "openclaw_deploy/rock_agent_config.prebuilt.yaml"
-    openclaw_config_path: "openclaw_deploy/openclaw.json"
+    rock_agent_config_path: "alphadiana/harness/openclaw/deploy/rock_agent_config.prebuilt.yaml"
+    openclaw_config_path: "alphadiana/harness/openclaw/deploy/openclaw.json"
     network_mode: "host"
     docker_host_ip: "host.docker.internal"
     rock_memory: "4g"
@@ -32,7 +36,7 @@ agent:
     gateway_token: "${OPENCLAW_GATEWAY_TOKEN}"
     temperature: 0.0
     top_p: 0.95
-    max_tokens: 131072
+    max_tokens: 32768
     stream: true
     request_timeout: 9300
     stream_idle_timeout: 9300
@@ -40,6 +44,14 @@ agent:
     enable_thinking: true
     capture_logprobs: true
     top_logprobs: 20
+    memory_lancedb:
+      api_key: "${MEMORY_EMBEDDING_API_KEY}"
+      model: "${MEMORY_EMBEDDING_MODEL}"
+      base_url: "${MEMORY_EMBEDDING_BASE_URL}"
+      dimensions: 1024
+      db_path: "/tmp/oc_home/.openclaw/memory/lancedb"
+      auto_capture: false
+      auto_recall: true
 
 benchmark:
   name: aime
@@ -52,7 +64,7 @@ scorer:
   config:
     tolerance: 1e-6
 
-max_concurrent: 5
+max_concurrent: 1
 task_retries: 2
 task_retry_on_recoverable_only: true
 num_samples: 4
