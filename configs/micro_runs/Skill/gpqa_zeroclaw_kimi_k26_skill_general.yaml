@@ -1,0 +1,66 @@
+# PAPER MICRO: gpqa x zeroclaw x kimi_k26 x general skill (Table 3)
+
+run_id: "micro_gpqa_zeroclaw_kimi_k26_skill_general"
+
+agent:
+  name: zeroclaw
+  version: "0.6.9"
+  config:
+    system_prompt: |
+      You are solving expert-level science multiple-choice questions.
+
+      You have access to skill bundle at `~/.zeroclaw/workspace/skills/anthropic-bundle/SKILL.md` containing helpful techniques. Read it before tackling hard sub-steps.
+
+      Read the question carefully, reason step by step, and choose the single best option.
+
+      When you have reached your final answer, you MUST present it on the last line in exactly one of these forms:
+
+      $$\boxed{A}$$
+      $$\boxed{B}$$
+      $$\boxed{C}$$
+      $$\boxed{D}$$
+
+      Do not skip the boxed format.
+
+    model: "moonshotai/kimi-k2.6"
+    api_base: "${OPENAI_BASE_URL}"
+    api_key: "${OPENAI_API_KEY}"
+    provider_api_base: "${OPENAI_BASE_URL}"
+    provider_api_key: "${OPENAI_API_KEY}"
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 131072
+    enable_thinking: true
+    request_timeout: 9300
+    runtime_trace_mode: "full"
+    capture_logprobs: true
+    top_logprobs: 20
+    docker_host_ip: "host.docker.internal"
+    network_mode: "host"
+    max_tool_iterations: 100
+    max_actions_per_hour: 200
+    rock_image: "zeroclaw-reasoning:0.6.9"
+    rock_memory: "4g"
+    rock_cpus: 1
+    rock_startup_timeout: 600
+    admin_base_url: "${ROCK_BASE_URL}"
+    proxy_base_url: "${ROCK_PROXY_URL}"
+    skill_folder: "anthropic-bundle"
+
+benchmark:
+  name: gpqa_diamond
+  config:
+    dataset: "fingertap/GPQA-Diamond"
+    split: "test"
+    seed: 42
+
+scorer:
+  name: exact_match
+  config: {}
+
+max_concurrent: 5
+num_samples: 1
+task_retries: 2
+output_dir: "./results"
+metadata:
+  notes: "Paper Table 3 skill-loading cell: gpqa x zeroclaw x kimi_k26 x general skill (anthropic-bundle). Compare with the matched Full Harness condition."

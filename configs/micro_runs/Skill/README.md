@@ -1,67 +1,33 @@
-# Skill axis
+# Skill axis — paper Table 3
 
-Partial configurations for the Skill axis, where the model reads a predefined
-skill bundle during reasoning. This directory contains two mechanism/smoke
-cells; it is not a complete or matched paper matrix.
+These configs reproduce the Skill experiment reported in Table 3 of the
+[AlphaDiana paper](https://openreview.net/forum?id=4vARlk9o95). It uses the same
+8 model-harness-benchmark reference cells as the Tool study and compares the
+matched Full Harness baseline with two loaded procedural libraries:
 
-There is no OpenClaw cell. The OpenCode and ZeroClaw cells also use different
-benchmarks and different skill bundles, so their scores must not be presented
-as a direct cross-harness comparison.
+- **Math Skill**: bundled as `advanced-maths`.
+- **General Skill**: bundled as `anthropic-bundle`.
 
-## Mechanism
+OpenClaw is not part of Table 3.
 
-Each yaml sets `agent.config.skill_folder: "<bundle_name>"`. The harness
-(`opencode` or `zeroclaw`) resolves bare names against
-`alphadiana/harness/skills/<bundle_name>/`, then makes the bundle reachable to
-the model:
+## Paper matrix
 
-- **OpenCode**: `shutil.copytree(skill_folder, workdir/skills/<name>/)`
-  before launching the docker controller. Model reads with the `read` tool
-  using path `./skills/<name>/SKILL.md`.
-- **ZeroClaw**: `_upload_skill_folder()` walks the bundle and uploads each
-  file via the ROCK `sandbox.upload()` API into
-  `<workspace_dir>/skills/<name>/`. Model reads with the `shell` tool
-  using `cat ~/.zeroclaw/workspace/skills/<name>/SKILL.md`.
+| Harness | Model | GPQA-Diamond | AIME 2026 |
+|---|---|---:|---:|
+| ZeroClaw | Qwen3.5-27B | Math + General | Math + General |
+| OpenCode | Qwen3.5-27B | Math + General | Math + General |
+| ZeroClaw | Kimi-K2.6 | Math + General | Math + General |
+| OpenCode | Kimi-K2.6 | Math + General | Math + General |
 
-The system prompt must explicitly instruct the model to consult the skill —
-neither harness auto-injects skill content into context.
+The directory therefore contains 16 skill-loaded YAMLs. The 8 matched Full
+Harness baselines are the `_tool_full.yaml` files in `../Tool/`; they are shared
+instead of duplicated.
 
-## Available skill bundles
+Each Skill YAML uses a bare `agent.config.skill_folder` name. The harness
+resolves it against `alphadiana/harness/skills/`, so the release contains no
+machine-specific `/data*` path. OpenCode copies the bundle into
+`./skills/<name>/`; ZeroClaw uploads it to
+`~/.zeroclaw/workspace/skills/<name>/`. The prompts instruct the model to read
+`SKILL.md`, matching the paper intervention.
 
-- `advanced-maths` — disciplined symbolic + numeric reasoning, 7-step protocol
-- `anthropic-bundle` — Anthropic's official 18 sub-skills (pdf/xlsx/pptx/etc.)
-
-See `alphadiana/harness/skills/README.md` for bundle details.
-
-## Naming
-
-Mirrors `../Tool/`: `{benchmark}_{harness}_{model_short}_skill_{bundle_short}.yaml`,
-where `bundle_short` is `math` (advanced-maths) or `anth` (anthropic-bundle).
-
-## Available partial cells
-
-| File | Smoke? |
-|---|---|
-| `aime2026_zeroclaw_qwen35_27b_skill_math.yaml` | smoke (max_tasks=1) |
-| `gpqa_opencode_qwen35_27b_skill_anth.yaml` | smoke (max_tasks=1) |
-
-No complete production Skill matrix is claimed by this checkout.
-
-## Smoke commands
-
-Run from the repository root after following `../README.md`:
-
-```bash
-python -m alphadiana.cli validate \
-  configs/micro_runs/Skill/aime2026_zeroclaw_qwen35_27b_skill_math.yaml
-python -m alphadiana.cli run \
-  configs/micro_runs/Skill/aime2026_zeroclaw_qwen35_27b_skill_math.yaml \
-  -o run_id=smoke_skill_math_zeroclaw --redo-all
-
-python -m alphadiana.cli validate \
-  configs/micro_runs/Skill/gpqa_opencode_qwen35_27b_skill_anth.yaml
-python -m alphadiana.cli run \
-  configs/micro_runs/Skill/gpqa_opencode_qwen35_27b_skill_anth.yaml \
-  -o run_id=smoke_skill_anth_opencode \
-  -o benchmark.config.max_tasks=1 --redo-all
-```
+Filenames end in `_skill_math.yaml` or `_skill_general.yaml`.

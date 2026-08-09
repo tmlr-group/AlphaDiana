@@ -1,6 +1,6 @@
-# PAPER MICRO: aime2026 x zeroclaw x qwen35_27b x math skill (Table 3)
+# PAPER MICRO: aime2026_zeroclaw_kimi_k26 x minimal harness (Table 2)
 
-run_id: "micro_aime2026_zeroclaw_qwen35_27b_skill_math"
+run_id: "micro_aime2026_zeroclaw_kimi_k26_tool_minimal"
 
 agent:
   name: zeroclaw
@@ -9,18 +9,16 @@ agent:
     system_prompt: |
       You are an expert problem solver.
 
-      You have access to skill bundle at `~/.zeroclaw/workspace/skills/advanced-maths/SKILL.md` containing helpful techniques. Read it before tackling hard sub-steps.
-
       When you have reached your final answer, you MUST present it in the following format:
 
       $$\boxed{your answer here}$$
 
-      Do not skip the boxed format.
+      Do not skip the boxed format. The boxed answer must appear at the very end of your response and contain only the final answer, not explanations.
 
-    model: "Qwen/Qwen3.5-27B"
-    api_base: "${OPENAI_BASE_URL}"
+    model: "moonshotai/kimi-k2.6"
+    api_base: "${TOOL_FILTER_BASE_URL}"
     api_key: "${OPENAI_API_KEY}"
-    provider_api_base: "${OPENAI_BASE_URL}"
+    provider_api_base: "${TOOL_FILTER_BASE_URL}"
     provider_api_key: "${OPENAI_API_KEY}"
     temperature: 0.0
     top_p: 0.95
@@ -40,7 +38,6 @@ agent:
     rock_startup_timeout: 600
     admin_base_url: "${ROCK_BASE_URL}"
     proxy_base_url: "${ROCK_PROXY_URL}"
-    skill_folder: "advanced-maths"
 
 benchmark:
   name: aime
@@ -60,4 +57,4 @@ output_dir: "./results"
 strict_report: true
 strict_isolation: true
 metadata:
-  notes: "Paper Table 3 skill-loading cell: aime2026 x zeroclaw x qwen35_27b x math skill (advanced-maths). Compare with the matched Full Harness condition."
+  notes: "Paper Table 2 tool-registry cell: aime2026_zeroclaw_kimi_k26 x minimal harness. Minimal must run through tool_filter_proxy with the matching --harness-strip mode."

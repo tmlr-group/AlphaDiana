@@ -1,6 +1,11 @@
-# Memory axis
+# Memory extension (not a paper micro table)
 
-Memory is the complete micro reference matrix in this release.
+Memory is a runnable AlphaDiana framework extension. It is **not** one of the
+paper's reported micro ablations: the current paper tables cover Tool exposure
+and Skill loading only. Do not cite this directory as paper-result coverage.
+
+Within this separate extension, the release provides a complete 3-harness ×
+3-scope AIME/Qwen reference matrix.
 
 ## Canonical 9-cell matrix
 

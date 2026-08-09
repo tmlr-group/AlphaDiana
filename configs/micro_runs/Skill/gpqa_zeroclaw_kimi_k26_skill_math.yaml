@@ -1,23 +1,28 @@
-# PAPER MICRO: aime2026 x zeroclaw x qwen35_27b x math skill (Table 3)
+# PAPER MICRO: gpqa x zeroclaw x kimi_k26 x math skill (Table 3)
 
-run_id: "micro_aime2026_zeroclaw_qwen35_27b_skill_math"
+run_id: "micro_gpqa_zeroclaw_kimi_k26_skill_math"
 
 agent:
   name: zeroclaw
   version: "0.6.9"
   config:
     system_prompt: |
-      You are an expert problem solver.
+      You are solving expert-level science multiple-choice questions.
 
       You have access to skill bundle at `~/.zeroclaw/workspace/skills/advanced-maths/SKILL.md` containing helpful techniques. Read it before tackling hard sub-steps.
 
-      When you have reached your final answer, you MUST present it in the following format:
+      Read the question carefully, reason step by step, and choose the single best option.
 
-      $$\boxed{your answer here}$$
+      When you have reached your final answer, you MUST present it on the last line in exactly one of these forms:
+
+      $$\boxed{A}$$
+      $$\boxed{B}$$
+      $$\boxed{C}$$
+      $$\boxed{D}$$
 
       Do not skip the boxed format.
 
-    model: "Qwen/Qwen3.5-27B"
+    model: "moonshotai/kimi-k2.6"
     api_base: "${OPENAI_BASE_URL}"
     api_key: "${OPENAI_API_KEY}"
     provider_api_base: "${OPENAI_BASE_URL}"
@@ -25,9 +30,9 @@ agent:
     temperature: 0.0
     top_p: 0.95
     max_tokens: 131072
+    enable_thinking: true
     request_timeout: 9300
     runtime_trace_mode: "full"
-    enable_thinking: true
     capture_logprobs: true
     top_logprobs: 20
     docker_host_ip: "host.docker.internal"
@@ -43,21 +48,19 @@ agent:
     skill_folder: "advanced-maths"
 
 benchmark:
-  name: aime
+  name: gpqa_diamond
   config:
-    dataset: "MathArena/aime_2026"
-    split: "train"
+    dataset: "fingertap/GPQA-Diamond"
+    split: "test"
+    seed: 42
 
 scorer:
-  name: numeric
-  config:
-    tolerance: 1e-6
+  name: exact_match
+  config: {}
 
 max_concurrent: 5
-num_samples: 4
+num_samples: 1
 task_retries: 2
 output_dir: "./results"
-strict_report: true
-strict_isolation: true
 metadata:
-  notes: "Paper Table 3 skill-loading cell: aime2026 x zeroclaw x qwen35_27b x math skill (advanced-maths). Compare with the matched Full Harness condition."
+  notes: "Paper Table 3 skill-loading cell: gpqa x zeroclaw x kimi_k26 x math skill (advanced-maths). Compare with the matched Full Harness condition."

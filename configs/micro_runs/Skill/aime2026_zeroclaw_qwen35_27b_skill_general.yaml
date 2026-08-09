@@ -1,6 +1,6 @@
-# MICRO RUN: AIME 2026 x ZeroClaw x moonshotai/kimi-k2.6 (tool axis)
+# PAPER MICRO: aime2026 x zeroclaw x qwen35_27b x general skill (Table 3)
 
-run_id: "micro_aime2026_zeroclaw_kimi_k26_tool"
+run_id: "micro_aime2026_zeroclaw_qwen35_27b_skill_general"
 
 agent:
   name: zeroclaw
@@ -9,13 +9,15 @@ agent:
     system_prompt: |
       You are an expert problem solver.
 
+      You have access to skill bundle at `~/.zeroclaw/workspace/skills/anthropic-bundle/SKILL.md` containing helpful techniques. Read it before tackling hard sub-steps.
+
       When you have reached your final answer, you MUST present it in the following format:
 
       $$\boxed{your answer here}$$
 
-      Do not skip the boxed format. The boxed answer must appear at the very end of your response and contain only the final answer, not explanations.
+      Do not skip the boxed format.
 
-    model: "moonshotai/kimi-k2.6"
+    model: "Qwen/Qwen3.5-27B"
     api_base: "${OPENAI_BASE_URL}"
     api_key: "${OPENAI_API_KEY}"
     provider_api_base: "${OPENAI_BASE_URL}"
@@ -38,6 +40,7 @@ agent:
     rock_startup_timeout: 600
     admin_base_url: "${ROCK_BASE_URL}"
     proxy_base_url: "${ROCK_PROXY_URL}"
+    skill_folder: "anthropic-bundle"
 
 benchmark:
   name: aime
@@ -57,4 +60,4 @@ output_dir: "./results"
 strict_report: true
 strict_isolation: true
 metadata:
-  notes: "Micro-experiment cell: AIME 2026 x ZeroClaw x moonshotai/kimi-k2.6 x tool axis (pass@4)."
+  notes: "Paper Table 3 skill-loading cell: aime2026 x zeroclaw x qwen35_27b x general skill (anthropic-bundle). Compare with the matched Full Harness condition."

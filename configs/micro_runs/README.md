@@ -1,134 +1,65 @@
 # Micro runs
 
-Runnable configurations related to the AlphaDiana paper's **Tool**, **Skill**,
-and **Memory** micro studies. Coverage is intentionally not presented as
-uniform: Tool and Skill contain partial experiment cells, while Memory contains
-the complete release reference matrix.
+Runnable micro experiments for AlphaDiana. The release distinguishes the
+experiments reported in the [paper](https://openreview.net/forum?id=4vARlk9o95)
+from later framework extensions.
 
-## Coverage status
+## Paper coverage
 
-| Axis | Release status | What is complete |
-| --- | --- | --- |
-| Tool | Partial | Runnable cells are preserved, but they are not evidence of a complete paper matrix |
-| Skill | Partial | Two mechanism/smoke cells only; no matched three-harness comparison |
-| Memory | Complete reference matrix | AIME 2026 × Qwen3.5-27B × 3 harnesses × 3 scopes = 9 cells |
+| Paper axis | Paper conditions | Reference cells | Config coverage |
+|---|---|---:|---:|
+| Tool (Table 2) | Full Harness, Minimal Harness | 2 harnesses × 2 models × 2 benchmarks = 8 | 16/16 |
+| Skill (Table 3) | Full Harness, Math Skill, General Skill | the same 8 cells | 16/16 skill configs; Full baselines shared with Tool |
+| Memory | Not reported as a paper micro ablation | — | repository extension only |
 
-Do not infer paper coverage from the number of YAML files. A checked-in config
-proves that a launch definition exists, not that the corresponding paper cell
-was executed, audited, or reported.
+The paper micro matrix uses:
 
-## Directory layout
+- harnesses: ZeroClaw and OpenCode;
+- models: Qwen3.5-27B and Kimi-K2.6;
+- benchmarks: GPQA-Diamond (Avg@1) and AIME 2026 (Pass@4 / Avg@4).
 
-```
+OpenClaw is intentionally absent from the paper Tool and Skill directories.
+
+## Layout
+
+```text
 micro_runs/
-├── Tool/                   # Partial Tool cells; see Tool/README.md
-├── Memory/
-│   ├── intra_task/         # Native memory is isolated to one work item
-│   ├── cross_sample/       # Samples of one task share state; tasks are isolated
-│   └── cross_task/         # All work items in the run share state
-└── Skill/                  # Partial Skill cells; see Skill/README.md
+├── Tool/                   # Table 2: 8 Full + 8 Minimal configs
+├── Skill/                  # Table 3: 8 Math + 8 General configs
+└── Memory/                 # non-paper extension
+    ├── intra_task/
+    ├── cross_sample/
+    └── cross_task/
 ```
 
-The nine canonical Memory reference cells use
-`aime2026_{openclaw|opencode|zeroclaw}_qwen35_27b.yaml`, one per memory scope.
-Six additional Kimi/GPQA files under `Memory/intra_task/` are supplemental
-historical launch definitions. They are not part of the complete 9-cell
-reference matrix and are not a second complete matrix.
+The Skill study reuses the 8 `_tool_full.yaml` files as its Full Harness
+baselines. This keeps the matched baseline identical across Tables 2 and 3.
 
-## Memory reference cells
+## Environment
 
-| Harness | Intra-Task | Cross-Sample | Cross-Task |
-|---|---:|---:|---:|
-| OpenClaw | ✅ | ✅ | ✅ |
-| OpenCode | ✅ | ✅ | ✅ |
-| ZeroClaw | ✅ | ✅ | ✅ |
-
-## Axis definitions
-
-- **Tool** (partial coverage): no memory hint; tools are present and the model may
-  invoke them but the system prompt does not nudge it. See `Tool/README.md`.
-- **Memory / intra_task**: `persistent_memory: false`; native memory is enabled
-  but its store is confined to one `(task, sample)` work item.
-- **Memory / cross_sample**: `persistent_memory: true`; work items run in task-major
-  order and the runner rebuilds the harness and sandbox when the task ID changes.
-- **Memory / cross_task**: `persistent_memory: true`; the harness and sandbox remain
-  live for the complete sequential run.
-- **Skill** (partial coverage): see `Skill/README.md`.
-
-Every memory reference config declares `agent.config.memory_scope`. Stateful
-scopes are forced to effective concurrency 1 even if a caller supplies a larger
-value, reject task retries, and stop after the first failed work item. A partial
-Cross-Task run and a partially sampled Cross-Sample task cannot
-reconstruct earlier native memory, so the runner requires a new `run_id` or
-`--redo-all`; Cross-Sample may resume only at a complete task boundary.
-`memory_enabled: true` activates the native path and `strict_memory: true`
-invalidates a work item if the harness cannot verify its memory operation.
-
-## Running a cell
-
-Build or pull the three harness images on the execution host:
+Build or pull the harness images on the execution host, start ROCK for
+ZeroClaw, and export provider settings:
 
 ```bash
 docker build --network host \
   -f alphadiana/benchmarks/terminal_bench2/deploy/dockerfiles/Dockerfile.opencode-controller \
   -t alphadiana/tb2-opencode-controller:latest .
-docker pull tmlrgroup/alphadiana:v1
 docker build --network host \
   -f alphadiana/harness/zeroclaw/deploy/Dockerfile \
   -t zeroclaw-reasoning:0.6.9 .
-```
 
-Start ROCK before OpenClaw or ZeroClaw cells, then load the generated URLs into
-the current shell:
-
-```bash
 bash scripts/start_zeroclaw.sh
 source scripts/rock_env.sh
-python -m alphadiana.cli env
+
+export OPENAI_BASE_URL=http://HOST_REACHABLE_FROM_SANDBOX:PORT/v1
+export OPENAI_API_KEY=sk-EMPTY
 ```
 
-The YAML expects provider variables to be set by the launcher:
+For Kimi-K2.6, use a compatible OpenAI-style provider endpoint. For
+ZeroClaw + Kimi, route through the supplied proxy with `--rename-reasoning` so
+thinking content survives normalization.
 
-```bash
-export OPENAI_BASE_URL=http://HOST_REACHABLE_FROM_SANDBOX:9091/v1
-export OPENAI_API_KEY=sk-EMPTY                    # any non-"EMPTY" string for local
-export OPENAI_MODEL_NAME=Qwen/Qwen3.5-27B
-export OPENCLAW_GATEWAY_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
-export MEMORY_EMBEDDING_BASE_URL=http://HOST_REACHABLE_FROM_SANDBOX:10087/v1
-export MEMORY_EMBEDDING_MODEL=qwen3-embed-0.6b             # OpenClaw memory cells
-export MEMORY_EMBEDDING_API_KEY=sk-EMPTY                   # OpenClaw memory cells
-```
-
-For ROCK-backed OpenClaw and ZeroClaw, `OPENAI_BASE_URL` (and the OpenClaw
-embedding URL) must be reachable from inside the sandbox. A host-loopback URL
-such as `127.0.0.1` may point back at the sandbox rather than the model host;
-use the host address reported by ROCK or an equivalent routable endpoint.
-
-Then:
-
-```bash
-python -m alphadiana.cli run \
-  configs/micro_runs/Memory/cross_sample/aime2026_zeroclaw_qwen35_27b.yaml \
-  -o run_id=my_memory_smoke \
-  -o output_dir=/tmp/runs/my_memory_smoke \
-  -o benchmark.config.max_tasks=1 -o num_samples=2 --redo-all
-```
-
-Representative Tool and Skill smokes use the same environment:
-
-```bash
-python -m alphadiana.cli run \
-  configs/micro_runs/Tool/aime2026_zeroclaw_qwen35_27b.yaml \
-  -o run_id=smoke_micro_tool_zeroclaw \
-  -o benchmark.config.max_tasks=1 -o num_samples=1 --redo-all
-
-python -m alphadiana.cli run \
-  configs/micro_runs/Skill/aime2026_zeroclaw_qwen35_27b_skill_math.yaml \
-  -o run_id=smoke_micro_skill_zeroclaw \
-  -o benchmark.config.max_tasks=1 -o num_samples=1 --redo-all
-```
-
-Validate every micro YAML on the execution host before launching:
+## Validate
 
 ```bash
 find configs/micro_runs -name '*.yaml' -print0 | sort -z | \
@@ -137,23 +68,52 @@ find configs/micro_runs -name '*.yaml' -print0 | sort -z | \
   done
 ```
 
-For Kimi-K2.6 cells, point `OPENAI_BASE_URL` at a `tool_filter_proxy.py` instance that
-forwards to OpenRouter. For ZeroClaw + Kimi specifically, the proxy must pass
-`--rename-reasoning` so the model's reasoning is preserved through ZeroClaw's
-content sanitisation.
+## Run paper Tool conditions
 
-See `python -m alphadiana.harness.proxies.tool_filter_proxy --help` for proxy options.
+Full Harness points directly at `OPENAI_BASE_URL`:
 
-## Notes
+```bash
+python -m alphadiana.cli run \
+  configs/micro_runs/Tool/aime2026_zeroclaw_qwen35_27b_tool_full.yaml \
+  --redo-all
+```
 
-- All nine reference cells use `temperature=0.0`, `max_tokens=32768`, and
-  `num_samples=4`.
-- OpenClaw persistent memory requires a compatible embedding endpoint for its
-  LanceDB plugin. ZeroClaw reference cells use sqlite FTS and need no embedding
-  endpoint.
-- Keep stateful scopes sequential. Parallelizing them changes the intervention.
-- Cross-Sample and Cross-Task samples are dependent. Reports label their
-  aggregate as `Sequential Any@k` / `Sequential Mean@k`, not standard pass@k.
-- For ZeroClaw + thinking-mode models, route requests through
-  `tool_filter_proxy.py --rename-reasoning` to keep the chain-of-thought visible
-  in `normalized_trace.json`.
+Minimal Harness must point at a filtering proxy:
+
+```bash
+python -m alphadiana.harness.proxies.tool_filter_proxy \
+  --upstream "$OPENAI_BASE_URL" --api-key "$OPENAI_API_KEY" --port 9050 \
+  --block '.*' --harness-strip zeroclaw
+export TOOL_FILTER_BASE_URL=http://HOST_REACHABLE_FROM_SANDBOX:9050/v1
+
+python -m alphadiana.cli run \
+  configs/micro_runs/Tool/aime2026_zeroclaw_qwen35_27b_tool_minimal.yaml \
+  --redo-all
+```
+
+Use `--harness-strip opencode` for OpenCode. Do not omit `--block '.*'`:
+`--harness-strip` rewrites the prompt but does not itself remove tool schemas.
+A Minimal YAML without this correctly configured proxy does not implement the
+paper intervention.
+
+## Run paper Skill conditions
+
+```bash
+python -m alphadiana.cli run \
+  configs/micro_runs/Skill/aime2026_zeroclaw_qwen35_27b_skill_math.yaml \
+  --redo-all
+
+python -m alphadiana.cli run \
+  configs/micro_runs/Skill/aime2026_zeroclaw_qwen35_27b_skill_general.yaml \
+  --redo-all
+```
+
+The bundles are checked in under `alphadiana/harness/skills/`; no private
+absolute path is required.
+
+## Memory extension
+
+Memory configs remain available for AlphaDiana's `intra_task`, `cross_sample`,
+and `cross_task` scopes. They are useful follow-up experiments but are not
+evidence for Tables 2 or 3. See `Memory/README.md` for their state and resume
+semantics.

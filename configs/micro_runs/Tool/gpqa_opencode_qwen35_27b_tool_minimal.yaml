@@ -1,6 +1,6 @@
-# MICRO RUN: GPQA-Diamond x OpenCode x moonshotai/kimi-k2.6 (tool axis)
+# PAPER MICRO: gpqa_opencode_qwen35_27b x minimal harness (Table 2)
 
-run_id: "micro_gpqa_opencode_kimi_k26_tool"
+run_id: "micro_gpqa_opencode_qwen35_27b_tool_minimal"
 
 agent:
   name: opencode
@@ -20,9 +20,9 @@ agent:
 
       Do not skip the boxed format. The boxed answer must contain only the final option letter, not the option text, explanations, or a full sentence.
 
-    model: "custom/moonshotai/kimi-k2.6"
-    model_name: "moonshotai/kimi-k2.6"
-    api_base: "${OPENAI_BASE_URL}"
+    model: "custom/qwen/qwen3.5-27b"
+    model_name: "qwen/qwen3.5-27b"
+    api_base: "${TOOL_FILTER_BASE_URL}"
     api_key: "${OPENAI_API_KEY}"
     controller_mode: "docker"
     controller_network: "host"
@@ -32,6 +32,7 @@ agent:
     tool_call: true
     temperature: 0.0
     top_p: 0.95
+    presence_penalty: 1.5
     max_tokens: 131072
     enable_thinking: true
     capture_logprobs: true
@@ -55,4 +56,4 @@ output_dir: "./results"
 strict_report: true
 strict_isolation: true
 metadata:
-  notes: "Micro-experiment cell: GPQA-Diamond x OpenCode x Kimi-K2.6 x tool axis. Prompt mirrors ZC Tool: no tool encouragement."
+  notes: "Paper Table 2 tool-registry cell: gpqa_opencode_qwen35_27b x minimal harness. Minimal must run through tool_filter_proxy with the matching --harness-strip mode."

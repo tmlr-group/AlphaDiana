@@ -58,8 +58,9 @@ A run is one YAML config. The `Runner` orchestrates it end to end:
 - **Observability.** Optional per-token logprob capture, normalized trajectories, and
   a two-tier `score_status` validity model that separates real model outcomes from
   infrastructure failures when computing metrics.
-- **Evaluation axes.** Micro studies compare matched **Tool**, **Skill**, and
-  **Memory** conditions. Because a condition can change both prompts and runtime
+- **Evaluation axes.** The paper micro study compares matched **Tool** and
+  **Skill** conditions; **Memory** is documented as a separate framework
+  extension. Because a condition can change both prompts and runtime
   behavior, its delta describes the intervention bundle rather than an isolated
   causal contribution.
 

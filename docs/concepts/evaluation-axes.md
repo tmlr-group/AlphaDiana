@@ -1,4 +1,4 @@
-# Evaluation Axes: Tool, Skill, Memory
+# Evaluation Axes: Paper Tool/Skill and Memory Extension
 
 AlphaDiana can compare matched harness conditions that change tool exposure,
 skill loading, or memory behavior. These are useful controlled comparisons, but
@@ -14,18 +14,18 @@ There are three axes:
 
 ## Release coverage
 
-The three axes do not have equal experimental coverage in this release:
+The current paper reports Tool and Skill micro ablations. Memory is implemented
+as a separate framework extension and must not be described as a paper result:
 
 | Axis | Coverage |
 | --- | --- |
-| Tool | Partial runnable configuration set; not a complete paper matrix |
-| Skill | Two mechanism/smoke cells only; not a matched three-harness matrix |
-| Memory | Complete 9-cell reference matrix across three harnesses and three scopes |
+| Tool | Complete Table 2 config matrix: 8 Full + 8 Minimal conditions |
+| Skill | Complete Table 3 skill config matrix: 8 Math + 8 General conditions; shares the 8 Full baselines |
+| Memory | Non-paper extension; complete 9-cell AIME/Qwen scope reference matrix |
 
-The number of YAML files is not evidence that an experiment appeared in the
-paper or has matching result artifacts. The extra Kimi/GPQA intra-task Memory
-files are supplemental; the complete reference matrix is the AIME 2026,
-Qwen3.5-27B 3×3 scope matrix.
+The paper matrices use ZeroClaw and OpenCode, Qwen3.5-27B and Kimi-K2.6, and
+GPQA-Diamond and AIME 2026. OpenClaw is not a Table 2/3 micro harness. The
+extra Kimi/GPQA Memory files are supplemental to the AIME/Qwen 3×3 extension.
 
 For a defensible comparison, keep the model, sampling parameters, benchmark,
 scorer, and unrelated harness settings fixed, then document the complete
@@ -57,12 +57,17 @@ correct baseline for measuring memory's contribution. Conversely **Tool-on**
 (harness default) and **Memory-off** are the same data point reported under two
 names for table self-containment.
 
-For the Skill axis mechanics (skill bundles mounted via `agent.config.skill_folder`),
-see the [Harnesses overview](../harnesses/). The rest
-of this page covers the Memory axis, the only axis that adds a second dimension
-(scope) on top of on/off.
+For the paper-aligned runnable matrix, see
+[`configs/micro_runs/`](../../configs/micro_runs/README.md). For Skill mechanics
+(bundles mounted via `agent.config.skill_folder`), see the
+[Harnesses overview](../harnesses/). The rest of this page documents the
+non-paper Memory extension, which adds a scope dimension on top of on/off.
 
-## The Memory axis
+## The Memory extension
+
+> [!IMPORTANT]
+> This section documents framework functionality and follow-up configs. Memory
+> is not one of the micro ablations reported in the current paper.
 
 Tool exposure and skill loading are one-shot on/off edits. Memory adds a
 **scope** dimension: how long the store survives before it is cleared. Widening

@@ -61,9 +61,9 @@ how a harness changed model behavior.
 
 ## Micro-study figures
 
-Coverage is asymmetric: Tool and Skill are partial studies, while Memory has a
-complete three-harness, three-scope reference matrix. The two Skill figures
-below are not a matched three-harness comparison.
+The paper micro study is the matched Tool and Skill matrix over ZeroClaw and
+OpenCode, Qwen3.5-27B and Kimi-K2.6, and GPQA-Diamond and AIME 2026. Runnable
+conditions are indexed under `configs/micro_runs/Tool/` and `Skill/`.
 
 ### Skill
 
@@ -71,7 +71,10 @@ below are not a matched three-harness comparison.
 |---|---|
 | ![Qwen3.5 and ZeroClaw skill use](../assets/docs/micro/skill-use-qwen-zeroclaw.png) | ![Qwen3.5 and OpenCode skill use](../assets/docs/micro/skill-use-qwen-opencode.png) |
 
-### Cross-task memory
+### Cross-task memory extension
+
+The following plots come from a separate Memory follow-up. They are not part of
+the current paper's Tool/Skill micro tables.
 
 | OpenClaw | OpenCode | ZeroClaw |
 |---|---|---|
@@ -79,4 +82,5 @@ below are not a matched three-harness comparison.
 
 Tool, Skill, and Memory conditions can change both prompts and runtime behavior.
 Their deltas should therefore be interpreted as intervention bundles rather
-than isolated causal effects.
+than isolated causal effects; Memory should additionally be labeled as a
+non-paper extension.

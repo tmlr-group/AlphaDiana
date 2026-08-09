@@ -169,7 +169,7 @@ You are a helpful assistant that can interact with a computer to solve tasks.
 ## Config file conventions
 
 - `macro_runs/` — end-to-end benchmark × harness runs
-- `micro_runs/` — Tool, Skill, and Memory ablations
+- `micro_runs/` — paper Tool/Skill ablations plus a non-paper Memory extension
 - Naming: `{benchmark}_{harness}_{model_short}.yaml`
 - Set `system_prompt` explicitly when the harness accepts one
 - Use `--redo-all` only when intentionally re-running completed tasks

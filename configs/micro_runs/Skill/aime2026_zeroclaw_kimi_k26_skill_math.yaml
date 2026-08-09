@@ -1,6 +1,6 @@
-# PAPER MICRO: aime2026 x zeroclaw x qwen35_27b x math skill (Table 3)
+# PAPER MICRO: aime2026 x zeroclaw x kimi_k26 x math skill (Table 3)
 
-run_id: "micro_aime2026_zeroclaw_qwen35_27b_skill_math"
+run_id: "micro_aime2026_zeroclaw_kimi_k26_skill_math"
 
 agent:
   name: zeroclaw
@@ -17,7 +17,7 @@ agent:
 
       Do not skip the boxed format.
 
-    model: "Qwen/Qwen3.5-27B"
+    model: "moonshotai/kimi-k2.6"
     api_base: "${OPENAI_BASE_URL}"
     api_key: "${OPENAI_API_KEY}"
     provider_api_base: "${OPENAI_BASE_URL}"
@@ -60,4 +60,4 @@ output_dir: "./results"
 strict_report: true
 strict_isolation: true
 metadata:
-  notes: "Paper Table 3 skill-loading cell: aime2026 x zeroclaw x qwen35_27b x math skill (advanced-maths). Compare with the matched Full Harness condition."
+  notes: "Paper Table 3 skill-loading cell: aime2026 x zeroclaw x kimi_k26 x math skill (advanced-maths). Compare with the matched Full Harness condition."
