@@ -1,6 +1,6 @@
-# MICRO RUN: GPQA-Diamond x OpenCode x Qwen/Qwen3.5-27B (tool axis)
+# PAPER MICRO: gpqa x opencode x kimi_k26 x general skill (Table 3)
 
-run_id: "micro_gpqa_opencode_qwen35_27b_tool"
+run_id: "micro_gpqa_opencode_kimi_k26_skill_general"
 
 agent:
   name: opencode
@@ -8,6 +8,8 @@ agent:
   config:
     system_prompt: |
       You are solving expert-level science multiple-choice questions.
+
+      You have access to skill bundle at `./skills/anthropic-bundle/SKILL.md` (relative path with ./, never use absolute /skills) containing helpful techniques. Read it before tackling hard sub-steps.
 
       Read the question carefully, reason step by step, and choose the single best option.
 
@@ -18,10 +20,10 @@ agent:
       $$\boxed{C}$$
       $$\boxed{D}$$
 
-      Do not skip the boxed format. The boxed answer must contain only the final option letter, not the option text, explanations, or a full sentence.
+      Do not skip the boxed format.
 
-    model: "custom/qwen/qwen3.5-27b"
-    model_name: "qwen/qwen3.5-27b"
+    model: "custom/moonshotai/kimi-k2.6"
+    model_name: "moonshotai/kimi-k2.6"
     api_base: "${OPENAI_BASE_URL}"
     api_key: "${OPENAI_API_KEY}"
     controller_mode: "docker"
@@ -32,11 +34,11 @@ agent:
     tool_call: true
     temperature: 0.0
     top_p: 0.95
-    presence_penalty: 1.5
     max_tokens: 131072
     enable_thinking: true
     capture_logprobs: true
     top_logprobs: 20
+    skill_folder: "anthropic-bundle"
 
 benchmark:
   name: gpqa_diamond
@@ -56,4 +58,4 @@ output_dir: "./results"
 strict_report: true
 strict_isolation: true
 metadata:
-  notes: "Micro-experiment cell: GPQA-Diamond x OpenCode x Qwen/Qwen3.5-27B x tool axis. Prompt mirrors ZC Tool: no tool encouragement."
+  notes: "Paper Table 3 skill-loading cell: gpqa x opencode x kimi_k26 x general skill (anthropic-bundle). Compare with the matched Full Harness condition."

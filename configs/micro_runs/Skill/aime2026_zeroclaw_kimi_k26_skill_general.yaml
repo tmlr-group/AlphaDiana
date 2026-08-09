@@ -1,0 +1,63 @@
+# PAPER MICRO: aime2026 x zeroclaw x kimi_k26 x general skill (Table 3)
+
+run_id: "micro_aime2026_zeroclaw_kimi_k26_skill_general"
+
+agent:
+  name: zeroclaw
+  version: "0.6.9"
+  config:
+    system_prompt: |
+      You are an expert problem solver.
+
+      You have access to skill bundle at `~/.zeroclaw/workspace/skills/anthropic-bundle/SKILL.md` containing helpful techniques. Read it before tackling hard sub-steps.
+
+      When you have reached your final answer, you MUST present it in the following format:
+
+      $$\boxed{your answer here}$$
+
+      Do not skip the boxed format.
+
+    model: "moonshotai/kimi-k2.6"
+    api_base: "${OPENAI_BASE_URL}"
+    api_key: "${OPENAI_API_KEY}"
+    provider_api_base: "${OPENAI_BASE_URL}"
+    provider_api_key: "${OPENAI_API_KEY}"
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 131072
+    request_timeout: 9300
+    runtime_trace_mode: "full"
+    enable_thinking: true
+    capture_logprobs: true
+    top_logprobs: 20
+    docker_host_ip: "172.17.0.1"
+    network_mode: "host"
+    max_tool_iterations: 100
+    max_actions_per_hour: 200
+    rock_image: "zeroclaw-reasoning:0.6.9"
+    rock_memory: "4g"
+    rock_cpus: 1
+    rock_startup_timeout: 600
+    admin_base_url: "${ROCK_BASE_URL}"
+    proxy_base_url: "${ROCK_PROXY_URL}"
+    skill_folder: "anthropic-bundle"
+
+benchmark:
+  name: aime
+  config:
+    dataset: "MathArena/aime_2026"
+    split: "train"
+
+scorer:
+  name: numeric
+  config:
+    tolerance: 1e-6
+
+max_concurrent: 5
+num_samples: 4
+task_retries: 2
+output_dir: "./results"
+strict_report: true
+strict_isolation: true
+metadata:
+  notes: "Paper Table 3 skill-loading cell: aime2026 x zeroclaw x kimi_k26 x general skill (anthropic-bundle). Compare with the matched Full Harness condition."

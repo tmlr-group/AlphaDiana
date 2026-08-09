@@ -11,7 +11,8 @@ field at the command line. This page is the orientation map: see
 `configs/schema.yaml` is an annotated core-shape reference; harness- and
 benchmark-specific pass-through keys live on their dedicated pages. Release
 configs are split into `configs/macro_runs/` for end-to-end benchmarks and
-`configs/micro_runs/` for controlled Tool, Skill, and Memory ablations.
+`configs/micro_runs/` for paper-aligned Tool/Skill ablations and the separately
+labeled Memory extension.
 
 ## The four sections
 

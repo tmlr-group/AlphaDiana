@@ -1,6 +1,6 @@
-# MICRO RUN: GPQA-Diamond x ZeroClaw x moonshotai/kimi-k2.6 (tool axis)
+# PAPER MICRO: gpqa_zeroclaw_kimi_k26 x minimal harness (Table 2)
 
-run_id: "micro_gpqa_zeroclaw_kimi_k26_tool"
+run_id: "micro_gpqa_zeroclaw_kimi_k26_tool_minimal"
 
 agent:
   name: zeroclaw
@@ -21,9 +21,9 @@ agent:
       Do not skip the boxed format. The boxed answer must contain only the final option letter, not the option text, explanations, or a full sentence.
 
     model: "moonshotai/kimi-k2.6"
-    api_base: "${OPENAI_BASE_URL}"
+    api_base: "${TOOL_FILTER_BASE_URL}"
     api_key: "${OPENAI_API_KEY}"
-    provider_api_base: "${OPENAI_BASE_URL}"
+    provider_api_base: "${TOOL_FILTER_BASE_URL}"
     provider_api_key: "${OPENAI_API_KEY}"
     temperature: 0.0
     top_p: 0.95
@@ -60,4 +60,4 @@ num_samples: 1
 task_retries: 2
 output_dir: "./results"
 metadata:
-  notes: "Micro-experiment cell: GPQA-Diamond x ZeroClaw x moonshotai/kimi-k2.6 x tool axis."
+  notes: "Paper Table 2 tool-registry cell: gpqa_zeroclaw_kimi_k26 x minimal harness. Minimal must run through tool_filter_proxy with the matching --harness-strip mode."

@@ -7,7 +7,7 @@ same `ExperimentConfig` schema and can be passed to `alphadiana validate`,
 | Path | Purpose |
 | --- | --- |
 | `macro_runs/` | End-to-end benchmark × harness experiments |
-| `micro_runs/` | Micro ablations: partial Tool/Skill coverage and the complete Memory reference matrix |
+| `micro_runs/` | Paper-aligned Tool/Skill ablations plus a separately labeled Memory extension |
 | `schema.yaml` | Annotated `ExperimentConfig` reference |
 | `PROMPTS.md` | Canonical benchmark prompts |
 

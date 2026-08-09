@@ -13,7 +13,7 @@ comparisons fair and reproducible.
 - **[Harness-Aware Evaluation](./harness-aware-evaluation.md)** — why the harness
   is a measured variable, the `Agent` contract every harness implements, and
   how the registry plugs them in.
-- **[Evaluation Axes](./evaluation-axes.md)** — matched Tool, Skill, and Memory
+- **[Evaluation Axes](./evaluation-axes.md)** — paper Tool/Skill matrices and the separate Memory extension
   condition bundles, including the prompt/runtime changes each intervention
   actually makes.
 - **[Isolation & Fairness](./isolation-and-fairness.md)** — task-scoped sandbox and

@@ -1,4 +1,4 @@
-# MICRO RUN: AIME 2026 x ZeroClaw x Qwen/Qwen3.5-27B (skill axis)
+# PAPER MICRO: aime2026 x zeroclaw x qwen35_27b x math skill (Table 3)
 
 run_id: "micro_aime2026_zeroclaw_qwen35_27b_skill_math"
 
@@ -6,54 +6,58 @@ agent:
   name: zeroclaw
   version: "0.6.9"
   config:
-    model: "${OPENAI_MODEL_NAME}"
+    system_prompt: |
+      You are an expert problem solver.
+
+      You have access to skill bundle at `~/.zeroclaw/workspace/skills/advanced-maths/SKILL.md` containing helpful techniques. Read it before tackling hard sub-steps.
+
+      When you have reached your final answer, you MUST present it in the following format:
+
+      $$\boxed{your answer here}$$
+
+      Do not skip the boxed format.
+
+    model: "Qwen/Qwen3.5-27B"
     api_base: "${OPENAI_BASE_URL}"
     api_key: "${OPENAI_API_KEY}"
+    provider_api_base: "${OPENAI_BASE_URL}"
+    provider_api_key: "${OPENAI_API_KEY}"
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 131072
+    request_timeout: 9300
+    runtime_trace_mode: "full"
+    enable_thinking: true
+    capture_logprobs: true
+    top_logprobs: 20
+    docker_host_ip: "172.17.0.1"
+    network_mode: "host"
+    max_tool_iterations: 100
+    max_actions_per_hour: 200
     rock_image: "zeroclaw-reasoning:0.6.9"
     rock_memory: "4g"
     rock_cpus: 1
     rock_startup_timeout: 600
     admin_base_url: "${ROCK_BASE_URL}"
     proxy_base_url: "${ROCK_PROXY_URL}"
-    request_timeout: 1200
-    max_tool_iterations: 100
-    max_actions_per_hour: 200
-
-    # Skill bundle name. Bare name resolves to alphadiana/harness/skills/<name>/.
-    # Also accepted: a relative path (e.g. "alphadiana/harness/skills/advanced-maths")
-    # or an absolute host path (e.g. "/abs/path/to/skill_dir").
     skill_folder: "advanced-maths"
-
-    system_prompt: |
-      You are an expert problem solver.
-
-      You have access to a skill bundle at `~/.zeroclaw/workspace/skills/advanced-maths/SKILL.md`.
-      BEFORE you reason about the question, you MUST run the shell command
-      `cat ~/.zeroclaw/workspace/skills/advanced-maths/SKILL.md` and FOLLOW its protocol.
-      Browse subfiles under that directory if SKILL.md points to them.
-
-      When you have reached your final answer, you MUST present it in the following format:
-
-      $$\boxed{your answer here}$$
 
 benchmark:
   name: aime
   config:
     dataset: "MathArena/aime_2026"
     split: "train"
-    max_tasks: 1
-
-sandbox: null
 
 scorer:
-  name: math_verify
+  name: numeric
   config:
     tolerance: 1e-6
 
-max_concurrent: 1
-num_samples: 1
+max_concurrent: 5
+num_samples: 4
+task_retries: 2
 output_dir: "./results"
 strict_report: true
 strict_isolation: true
 metadata:
-  notes: "Micro-experiment cell: AIME 2026 x ZeroClaw x Qwen3.5-27B x advanced-maths skill."
+  notes: "Paper Table 3 skill-loading cell: aime2026 x zeroclaw x qwen35_27b x math skill (advanced-maths). Compare with the matched Full Harness condition."
