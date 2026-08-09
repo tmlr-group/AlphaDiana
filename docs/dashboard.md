@@ -10,7 +10,7 @@ or the runner's `status/dashboard.txt` terminal-status artifact.
 
 | Create an evaluation | Inspect results |
 |---|---|
-| ![Create an evaluation](../assets/docs/dashboard-create.png) | ![Inspect evaluation results](../assets/docs/dashboard-results.png) |
+| ![Create an evaluation](assets/dashboard-create.png) | ![Inspect evaluation results](assets/dashboard-results.png) |
 
 ## Install
 

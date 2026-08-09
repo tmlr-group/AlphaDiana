@@ -10,7 +10,7 @@ model–harness–task combination.
 > evidence. Cite exact values only together with the corresponding archived
 > task records, raw logs, and evaluation contract.
 
-![From model-centric to harness-aware evaluation](../assets/docs/motivation.png)
+![From model-centric to harness-aware evaluation](assets/motivation.png)
 
 ## Selected macro results
 
@@ -52,8 +52,8 @@ matched and harness-specific runtime conditions are disclosed.
 
 | Qwen3.5 | Gemma |
 |---|---|
-| ![Qwen3.5 action composition](../assets/docs/analysis/action-composition-qwen.png) | ![Gemma action composition](../assets/docs/analysis/action-composition-gemma.png) |
-| ![Qwen3.5 post-tool entropy](../assets/docs/analysis/post-tool-entropy-qwen.png) | ![Gemma post-tool entropy](../assets/docs/analysis/post-tool-entropy-gemma.png) |
+| ![Qwen3.5 action composition](assets/analysis/action-composition-qwen.png) | ![Gemma action composition](assets/analysis/action-composition-gemma.png) |
+| ![Qwen3.5 post-tool entropy](assets/analysis/post-tool-entropy-qwen.png) | ![Gemma post-tool entropy](assets/analysis/post-tool-entropy-gemma.png) |
 
 These figures summarize outcome-conditioned action composition and post-tool
 entropy from the draft analysis. They show why final scores alone do not explain
@@ -69,7 +69,7 @@ conditions are indexed under `configs/micro_runs/Tool/` and `Skill/`.
 
 | ZeroClaw | OpenCode |
 |---|---|
-| ![Qwen3.5 and ZeroClaw skill use](../assets/docs/micro/skill-use-qwen-zeroclaw.png) | ![Qwen3.5 and OpenCode skill use](../assets/docs/micro/skill-use-qwen-opencode.png) |
+| ![Qwen3.5 and ZeroClaw skill use](assets/micro/skill-use-qwen-zeroclaw.png) | ![Qwen3.5 and OpenCode skill use](assets/micro/skill-use-qwen-opencode.png) |
 
 ### Cross-task memory extension
 
@@ -78,7 +78,7 @@ the current paper's Tool/Skill micro tables.
 
 | OpenClaw | OpenCode | ZeroClaw |
 |---|---|---|
-| ![OpenClaw cross-task memory](../assets/docs/micro/memory-cross-task-openclaw.png) | ![OpenCode cross-task memory](../assets/docs/micro/memory-cross-task-opencode.png) | ![ZeroClaw cross-task memory](../assets/docs/micro/memory-cross-task-zeroclaw.png) |
+| ![OpenClaw cross-task memory](assets/micro/memory-cross-task-openclaw.png) | ![OpenCode cross-task memory](assets/micro/memory-cross-task-opencode.png) | ![ZeroClaw cross-task memory](assets/micro/memory-cross-task-zeroclaw.png) |
 
 Tool, Skill, and Memory conditions can change both prompts and runtime behavior.
 Their deltas should therefore be interpreted as intervention bundles rather
