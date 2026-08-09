@@ -41,7 +41,7 @@ Runnable or validation-oriented examples for DirectLLM, OpenClaw, OpenCode,
 ZeroClaw, SWE-bench, Terminal-Bench 2, and Podman
 paths. Some are single-task smokes; others are larger templates. The filename
 and comments are not proof of support: inspect the matching page under
-`website/docs/benchmarks/` or `website/docs/harnesses/` for prerequisites and current caveats.
+`docs/benchmarks/` or `docs/harnesses/` for prerequisites and current caveats.
 
 Useful first entries:
 
@@ -60,10 +60,10 @@ Each active smoke matrix has its own README and runner/auditor scripts:
 
 | Folder | Scope | User-facing guide |
 | --- | --- | --- |
-| `podman_scale_readiness/` | Standard-reasoning OpenClaw/OpenCode/ZeroClaw cells | `website/docs/benchmarks/index.md` and harness pages |
-| `podman_mmmu_pro_readiness/` | MMMU-Pro multimodal Podman pilot | `website/docs/benchmarks/mmmu-pro.md` |
-| `podman_terminal_bench2/` | Terminal-Bench 2 task containers | `website/docs/benchmarks/terminal-bench-2.md` |
-| `podman_swe_verified_readiness/` | SWE-bench Verified task containers | `website/docs/benchmarks/swebench-verified.md` |
+| `podman_scale_readiness/` | Standard-reasoning OpenClaw/OpenCode/ZeroClaw cells | `docs/benchmarks/README.md` and harness pages |
+| `podman_mmmu_pro_readiness/` | MMMU-Pro multimodal Podman pilot | `docs/benchmarks/mmmu-pro.md` |
+| `podman_terminal_bench2/` | Terminal-Bench 2 task containers | `docs/benchmarks/terminal-bench-2.md` |
+| `podman_swe_verified_readiness/` | SWE-bench Verified task containers | `docs/benchmarks/swebench-verified.md` |
 | `podman_nightly_validation/` | Validation-only cross-path matrix | folder README |
 
 These are opt-in evidence/configuration paths. Their presence does not promote
@@ -88,7 +88,7 @@ OpenCode validation checks that its controller image exists locally.
 The current checkout contains only `swe_verified_mini.yaml`. It is a rollout
 campaign manifest consumed by `python -m alphadiana.benchmark_rollout_cli`, not
 an ordinary `ExperimentConfig` for `alphadiana run`. See
-`website/docs/benchmarks/swebench-verified-mini.md` for render, preflight, and launch
+`docs/benchmarks/swebench-verified-mini.md` for render, preflight, and launch
 commands.
 
 ## Root files

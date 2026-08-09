@@ -133,13 +133,13 @@ scored task record; the accuracy depends on the model response and is not fixed.
 alphadiana report results/
 ```
 
-For a full walkthrough, see [Getting Started](website/docs/getting-started/quick-start.md).
-For the documentation entry point, see [Welcome to AlphaDiana](website/docs/intro.md).
-For Podman-backed paths, start from the matching page under [Benchmarks](website/docs/benchmarks/index.md).
-For manual setup and recovery, see [Installation](website/docs/getting-started/installation.md)
-and [Troubleshooting](website/docs/getting-started/troubleshooting.md).
-For ZeroClaw, see the [harness guide](website/docs/harnesses/zeroclaw.md) and
-[AIME benchmark page](website/docs/benchmarks/aime.md).
+For a full walkthrough, see [Getting Started](docs/getting-started/quick-start.md).
+For the documentation entry point, see [Welcome to AlphaDiana](docs/README.md).
+For Podman-backed paths, start from the matching page under [Benchmarks](docs/benchmarks/README.md).
+For manual setup and recovery, see [Installation](docs/getting-started/installation.md)
+and [Troubleshooting](docs/getting-started/troubleshooting.md).
+For ZeroClaw, see the [harness guide](docs/harnesses/zeroclaw.md) and
+[AIME benchmark page](docs/benchmarks/aime.md).
 
 ## Configuration
 
@@ -223,7 +223,7 @@ alphadiana run configs/examples/zeroclaw_aime2026.yaml \
 resolves the local ROCK URLs correctly.
 
 For current prerequisites, runtime behavior, and copy-paste commands, see the
-[ZeroClaw harness guide](website/docs/harnesses/zeroclaw.md).
+[ZeroClaw harness guide](docs/harnesses/zeroclaw.md).
 
 ### Run a direct LLM baseline
 
@@ -246,7 +246,7 @@ The bundled example reuses the `.env` values loaded by `source scripts/activate.
 If you want a different endpoint just for this baseline, override `model`, `api_base`, and
 `api_key` directly in `configs/examples/direct_llm.yaml`.
 
-See [Quick Start](website/docs/getting-started/quick-start.md) for a complete example.
+See [Quick Start](docs/getting-started/quick-start.md) for a complete example.
 
 ### Run a custom problem set
 
@@ -328,8 +328,8 @@ results/<run_id>.jsonl
 ## Results and analysis
 
 AlphaDiana treats a score as a property of the model, harness, task, scorer,
-environment, and budget together. The website's Results section presents the
-current paper table and process-analysis figures; saved runs can be regenerated
+environment, and budget together. The [Results](docs/results.md) document presents
+selected draft tables and process-analysis figures; saved runs can be regenerated
 with `alphadiana report <results_dir>`.
 
 When reviewing a result, start from `score_status`, scorer identity, expected
@@ -351,10 +351,8 @@ AlphaDiana/
 │   └── utils/                    # Shared runtime helpers
 ├── configs/                      # Examples, smokes, and full-run manifests
 ├── scripts/                      # Setup and utility scripts
-├── website/                      # Docusaurus project
-│   ├── docs/                     # Documentation content
-│   ├── src/                      # Homepage components/pages
-│   └── static/                   # Website static assets
+├── docs/                         # GitHub-readable documentation
+└── assets/                       # Documentation and dashboard images
 ```
 
 ## Security Guard
@@ -463,28 +461,20 @@ For production mode:
 If the default port is already in use, `run.sh` automatically switches to the next available port.
 
 For result and proxy internals, see
-[Observability & Proxies](website/docs/architecture/observability.md).
+[Observability & Proxies](docs/architecture/observability.md).
 
 ## Documentation
 
 | Document | Description |
 |---|---|
-| [Welcome](website/docs/intro.md) | Documentation entry point and concept map |
-| [Getting Started](website/docs/getting-started/index.md) | Installation, first run, and troubleshooting |
-| [Architecture](website/docs/architecture/index.md) | Runner, registries, sandboxes, scoring, and observability |
-| [Harnesses](website/docs/harnesses/index.md) | DirectLLM, OpenClaw, OpenCode, and ZeroClaw behavior |
-| [Benchmarks](website/docs/benchmarks/index.md) | Supported benchmark loaders and runbooks |
-| [Configuration](website/docs/configuration/index.md) | YAML schema and CLI override semantics |
-| [Dashboard](website/docs/dashboard.md) | Launch, monitor, browse, and compare runs locally |
-
-Build the documentation website from its project directory:
-
-```bash
-cd website
-npm install
-npm run typecheck
-npm run build
-```
+| [Welcome](docs/README.md) | Documentation entry point and concept map |
+| [Getting Started](docs/getting-started/README.md) | Installation, first run, and troubleshooting |
+| [Architecture](docs/architecture/README.md) | Runner, registries, sandboxes, scoring, and observability |
+| [Harnesses](docs/harnesses/README.md) | DirectLLM, OpenClaw, OpenCode, and ZeroClaw behavior |
+| [Benchmarks](docs/benchmarks/README.md) | Supported benchmark loaders and runbooks |
+| [Configuration](docs/configuration/README.md) | YAML schema and CLI override semantics |
+| [Results](docs/results.md) | Selected draft tables and process-analysis figures |
+| [Dashboard](docs/dashboard.md) | Launch, monitor, browse, and compare runs locally |
 
 ## Acknowledgements
 
