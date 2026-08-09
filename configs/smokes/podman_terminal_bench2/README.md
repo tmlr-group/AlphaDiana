@@ -43,7 +43,7 @@ bash scripts/run_podman_terminal_bench2_readiness.sh all
 
 `output_dir` in the three pilot configs reads `${ALPHADIANA_TB2_OUTPUT_DIR}`,
 so it must be exported. Before a full sweep, work through the **Full-Run
-Pre-flight Checklist** in `website/docs/benchmarks/podman.md` (kernel keyring quota,
+Pre-flight Checklist** in `docs/benchmarks/podman.md` (kernel keyring quota,
 disk placement, host networking, vLLM health, post-crash cleanup) — those
 host/infra gates are not auto-enforced.
 
@@ -69,7 +69,7 @@ podman build -f docker/terminal_bench2/Dockerfile.zeroclaw-controller \
 
 Alternatively, override `TB2_OPENCLAW_RUNTIME_IMAGE` /
 `TB2_OPENCODE_RUNTIME_IMAGE` to reuse the fatter images built per
-`website/docs/benchmarks/podman.md` (`localhost/alphadiana-openclaw-fixed:latest`,
+`docs/benchmarks/podman.md` (`localhost/alphadiana-openclaw-fixed:latest`,
 `localhost/alphadiana-opencode-podman:latest`); both have passing TB2 readiness
 evidence under host networking.
 
