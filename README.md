@@ -74,7 +74,7 @@ Create a `.env` file in the project root with your model endpoint and set your a
 touch .env
 echo "OPENAI_BASE_URL=https://openrouter.ai/api/v1" >> .env
 echo "OPENAI_API_KEY=<your-api-key>" >> .env
-echo "OPENAI_MODEL_NAME=z-ai/glm-5" >> .env
+echo "OPENAI_MODEL_NAME=Qwen/Qwen3.5-27B" >> .env
 ```
 
 ### 3. Activate the environment
