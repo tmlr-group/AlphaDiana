@@ -30,7 +30,6 @@ agent:
     enable_thinking: true
     capture_logprobs: true
     top_logprobs: 20
-    docker_host_ip: "host.docker.internal"
     network_mode: "host"
     max_tool_iterations: 100
     max_actions_per_hour: 200

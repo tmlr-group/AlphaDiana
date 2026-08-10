@@ -300,9 +300,10 @@ class OpenClawLogprobProxy:
                 )
             return self._server.server_address[1]
 
-    def proxy_url_for_docker(self, docker_host_ip: str = "host.docker.internal") -> str:
+    def proxy_url_for_docker(self, docker_host_ip: str = "") -> str:
         """Return the URL that Docker containers can use to reach this proxy."""
-        return f"http://{docker_host_ip}:{self.local_port}"
+        host = docker_host_ip or resolve_logprob_proxy_advertise_host(self._upstream)
+        return f"http://{host}:{self.local_port}"
 
     def captured_records(self) -> list[dict]:
         """Return all captured per-token logprob dicts (SSE preferred over buffered)."""
@@ -509,7 +510,10 @@ class OpenClawRuntimeManager:
         # Logprob capture via Docker-accessible MITM proxy
         self._logprob_capture: dict = config.get("_logprob_capture", {})
         self._logprob_proxy: OpenClawLogprobProxy | None = None
-        self._docker_host_ip: str = str(config.get("docker_host_ip", "host.docker.internal"))
+        self._docker_host_ip: str = str(
+            config.get("docker_host_ip", "")
+            or resolve_logprob_proxy_advertise_host(self._provider_env["OPENAI_BASE_URL"])
+        )
 
         # Agent.md customization
         self._agent_md_mode = config.get("agent_md_mode", "none")

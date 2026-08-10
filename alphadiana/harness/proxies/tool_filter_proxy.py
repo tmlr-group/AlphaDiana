@@ -259,6 +259,7 @@ class Proxy:
                     think_state = {}
                     buf = b""
                     stream_aborted = False
+                    saw_done = False
                     try:
                         async for chunk in r.content.iter_chunked(4096):
                             buf += chunk
@@ -270,6 +271,10 @@ class Proxy:
                                 line_str = line.decode("utf-8", errors="replace")
                                 if line_str.startswith("data: "):
                                     payload = line_str[6:]
+                                    if payload.strip() == "[DONE]":
+                                        await resp.write(b"data: [DONE]\n\n")
+                                        saw_done = True
+                                        break
                                     if payload.strip() and payload.strip() != "[DONE]":
                                         try:
                                             d = json.loads(payload)
@@ -336,6 +341,8 @@ class Proxy:
                                         except Exception as e:
                                             pass
                                 await resp.write(line + b"\n")
+                            if saw_done:
+                                break
                     except Exception as e:
                         # OR upstream stream truncated (TransferEncodingError, ClientPayloadError, etc.)
                         # Synthesize a clean stream end so AI SDK's flush() fires and OC's run loop can terminate.
@@ -352,13 +359,16 @@ class Proxy:
                             await resp.write(b"data: " + json.dumps(synth).encode("utf-8") + b"\n\n")
                         except Exception:
                             pass
-                    if buf and not stream_aborted:
+                    if buf and not stream_aborted and not saw_done:
                         await resp.write(buf)
-                    # always emit [DONE] so SSE consumers (AI SDK) trigger flush() and finalize
-                    try:
-                        await resp.write(b"data: [DONE]\n\n")
-                    except Exception:
-                        pass
+                    # Emit exactly one terminator. In particular, stop as soon as the
+                    # upstream sends [DONE] instead of waiting for a provider/proxy to
+                    # close an otherwise persistent HTTP connection.
+                    if not saw_done:
+                        try:
+                            await resp.write(b"data: [DONE]\n\n")
+                        except Exception:
+                            pass
                     try:
                         await resp.write_eof()
                     except Exception:
@@ -409,6 +419,11 @@ class Proxy:
 
 def main(proxy_cls=None):
     p = argparse.ArgumentParser()
+    p.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="listen address; defaults to loopback to avoid exposing provider credentials",
+    )
     p.add_argument("--port", type=int, required=True)
     p.add_argument("--upstream", required=True)
     p.add_argument("--api-key", required=True)
@@ -475,7 +490,7 @@ def main(proxy_cls=None):
     app.router.add_post("/v1/chat/completions", proxy.handle_chat)
     app.router.add_post("/chat/completions", proxy.handle_chat)
     app.router.add_route("*", "/{tail:.*}", proxy.passthrough)
-    web.run_app(app, port=args.port, host="0.0.0.0")
+    web.run_app(app, port=args.port, host=args.host)
 
 
 if __name__ == "__main__":

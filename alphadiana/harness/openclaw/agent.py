@@ -1239,14 +1239,24 @@ class OpenClawAgent(Agent):
             overrides["max_tokens"] = resolved_max_tokens
         return overrides
 
-    def _start_logprob_proxy_locked(self) -> tuple[LogprobCaptureProxy, str, str] | None:
+    def _start_logprob_proxy_locked(
+        self,
+        *,
+        inject_logprobs: bool | None = None,
+    ) -> tuple[LogprobCaptureProxy, str, str] | None:
         upstream = normalize_openai_proxy_upstream(self._resolve_runtime_provider_api_base())
         if not upstream:
             return None
+        capture_enabled = (
+            self._logprob_capture["enabled"]
+            if inject_logprobs is None
+            else bool(inject_logprobs)
+        )
         proxy_api_key = secrets.token_urlsafe(24)
         advertise_host = resolve_logprob_proxy_advertise_host(
             upstream,
-            self._logprob_proxy_advertise_host,
+            self._logprob_proxy_advertise_host
+            or ("host.containers.internal" if self._runtime_backend == "podman" else ""),
         )
         proxy = LogprobCaptureProxy(
             upstream,
@@ -1256,37 +1266,63 @@ class OpenClawAgent(Agent):
             client_timeout=max(120.0, self._request_timeout),
             upstream_api_key=self._resolve_runtime_provider_api_key(),
             proxy_api_key=proxy_api_key,
-            request_overrides=self._logprob_request_overrides(),
+            request_overrides=(
+                self._logprob_request_overrides() if capture_enabled else None
+            ),
+            inject_logprobs=capture_enabled,
+            normalize_system_messages=capture_enabled,
         )
         proxy.start()
         self._logprob_proxies.append(proxy)
         proxy_api_base = f"{proxy.proxy_url.rstrip('/')}/v1"
         logger.info(
-            "OpenClaw logprob proxy started local_url=%s advertised_url=%s upstream=%s overrides=%s",
+            "OpenClaw provider proxy started mode=%s local_url=%s advertised_url=%s upstream=%s overrides=%s",
+            "logprob_capture" if capture_enabled else "loopback_bridge",
             proxy.local_url,
             proxy.proxy_url,
             proxy.upstream,
-            self._logprob_request_overrides(),
+            self._logprob_request_overrides() if capture_enabled else {},
         )
         return proxy, proxy_api_base, proxy_api_key
 
     def start_logprob_proxy_for_gateway(self) -> tuple[LogprobCaptureProxy, str, str] | None:
-        """Start a per-gateway provider proxy before a predeployed gateway boots."""
-        if not self._logprob_capture["enabled"]:
+        """Start capture or bridge proxy before a predeployed gateway boots.
+
+        ROCK sandboxes run in a Docker network namespace even when older ROCK
+        releases accept ``network_mode=host`` in their config. A provider bound
+        to host loopback is therefore unreachable from the gateway unless it is
+        bridged through an authenticated host-side proxy.
+        """
+        capture_enabled = bool(self._logprob_capture["enabled"])
+        upstream = normalize_openai_proxy_upstream(
+            self._resolve_runtime_provider_api_base()
+        )
+        upstream_host = (urlsplit(upstream).hostname or "").lower() if upstream else ""
+        needs_loopback_bridge = upstream_host in {"localhost", "127.0.0.1", "::1"}
+        if not capture_enabled and not needs_loopback_bridge:
             return None
         with self._logprob_proxy_lock:
-            return self._start_logprob_proxy_locked()
+            return self._start_logprob_proxy_locked(
+                inject_logprobs=capture_enabled,
+            )
 
     def _ensure_runtime_logprob_proxy(self) -> LogprobCaptureProxy | None:
-        if not self._logprob_capture["enabled"]:
-            return None
         if self._runtime_manager is None or not self._runtime_manager.is_configured:
+            return None
+        capture_enabled = bool(self._logprob_capture["enabled"])
+        upstream = normalize_openai_proxy_upstream(
+            self._resolve_runtime_provider_api_base()
+        )
+        upstream_host = (urlsplit(upstream).hostname or "").lower() if upstream else ""
+        if not capture_enabled and upstream_host not in {"localhost", "127.0.0.1", "::1"}:
             return None
         with self._logprob_proxy_lock:
             if self._logprob_proxy is not None:
                 return self._logprob_proxy
 
-            started = self._start_logprob_proxy_locked()
+            started = self._start_logprob_proxy_locked(
+                inject_logprobs=capture_enabled,
+            )
             if started is None:
                 return None
             proxy, proxy_api_base, proxy_api_key = started
@@ -2406,11 +2442,24 @@ const lancedb = require("/app/node_modules/@lancedb/lancedb");
             if logprob_proxy is not None:
                 response_metadata.update(
                     {
-                        "logprob_proxy_enabled": True,
-                        "logprob_proxy_url": f"{logprob_proxy.proxy_url.rstrip('/')}/v1",
-                        "logprob_proxy_upstream": logprob_proxy.upstream,
+                        "provider_proxy_enabled": True,
+                        "provider_proxy_mode": (
+                            "logprob_capture"
+                            if self._logprob_capture["enabled"]
+                            else "loopback_bridge"
+                        ),
+                        "provider_proxy_url": f"{logprob_proxy.proxy_url.rstrip('/')}/v1",
+                        "provider_proxy_upstream": logprob_proxy.upstream,
                     }
                 )
+                if self._logprob_capture["enabled"]:
+                    response_metadata.update(
+                        {
+                            "logprob_proxy_enabled": True,
+                            "logprob_proxy_url": f"{logprob_proxy.proxy_url.rstrip('/')}/v1",
+                            "logprob_proxy_upstream": logprob_proxy.upstream,
+                        }
+                    )
             response_metadata.update(self.error_provenance_metadata())
             token_entropy_stats, response_metadata = finalize_logprob_capture(
                 harness="openclaw",
@@ -3405,11 +3454,24 @@ const lancedb = require("/app/node_modules/@lancedb/lancedb");
         if logprob_proxy is not None:
             response_metadata.update(
                 {
-                    "logprob_proxy_enabled": True,
-                    "logprob_proxy_url": f"{logprob_proxy.proxy_url.rstrip('/')}/v1",
-                    "logprob_proxy_upstream": logprob_proxy.upstream,
+                    "provider_proxy_enabled": True,
+                    "provider_proxy_mode": (
+                        "logprob_capture"
+                        if self._logprob_capture["enabled"]
+                        else "loopback_bridge"
+                    ),
+                    "provider_proxy_url": f"{logprob_proxy.proxy_url.rstrip('/')}/v1",
+                    "provider_proxy_upstream": logprob_proxy.upstream,
                 }
             )
+            if self._logprob_capture["enabled"]:
+                response_metadata.update(
+                    {
+                        "logprob_proxy_enabled": True,
+                        "logprob_proxy_url": f"{logprob_proxy.proxy_url.rstrip('/')}/v1",
+                        "logprob_proxy_upstream": logprob_proxy.upstream,
+                    }
+                )
         token_entropy_stats, response_metadata = finalize_logprob_capture(
             harness="openclaw",
             enabled=self._logprob_capture["enabled"],

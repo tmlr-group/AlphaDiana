@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import http.server
+import ipaddress
 import json
 import logging
 import os
+import platform
 import socketserver
+import subprocess
 import threading
 import time
 from typing import Any
@@ -22,6 +25,60 @@ from alphadiana.harness.proxies.logprob_capture import (
 logger = logging.getLogger(__name__)
 
 _LOOPBACK_HOSTS = {"", "localhost", "127.0.0.1", "::1"}
+
+
+def _valid_gateway_address(value: str) -> str:
+    candidate = str(value or "").strip().split("/", 1)[0]
+    try:
+        address = ipaddress.ip_address(candidate)
+    except ValueError:
+        return ""
+    return candidate if not address.is_loopback and not address.is_unspecified else ""
+
+
+def _detect_container_host_gateway() -> str:
+    """Return a container-reachable host address without assuming a subnet.
+
+    Docker Desktop supplies ``host.docker.internal``. On Linux, inspect the
+    installed Docker bridge because its subnet is configurable. Users of
+    custom runtimes can override detection with
+    ``ALPHADIANA_CONTAINER_HOST`` or ``ALPHADIANA_LOGPROB_PROXY_HOST``.
+    """
+    if platform.system() != "Linux":
+        return "host.docker.internal"
+
+    commands = (
+        (
+            "docker",
+            "network",
+            "inspect",
+            "bridge",
+            "--format",
+            "{{(index .IPAM.Config 0).Gateway}}",
+        ),
+        ("ip", "-4", "-o", "addr", "show", "docker0"),
+    )
+    for command in commands:
+        try:
+            result = subprocess.run(
+                command,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if result.returncode != 0:
+            continue
+        for token in result.stdout.replace("\n", " ").split():
+            gateway = _valid_gateway_address(token)
+            if gateway:
+                return gateway
+
+    # Docker Desktop and recent Linux Docker releases support this alias. If a
+    # custom Linux runtime does not, set ALPHADIANA_CONTAINER_HOST explicitly.
+    return "host.docker.internal"
 
 
 def normalize_openai_proxy_upstream(api_base: str) -> str:
@@ -41,6 +98,8 @@ def resolve_logprob_proxy_advertise_host(
     if configured:
         return configured
     env_host = os.environ.get("ALPHADIANA_LOGPROB_PROXY_HOST", "").strip()
+    if not env_host:
+        env_host = os.environ.get("ALPHADIANA_CONTAINER_HOST", "").strip()
     if env_host:
         return env_host
     try:
@@ -49,7 +108,7 @@ def resolve_logprob_proxy_advertise_host(
         upstream_host = ""
     if upstream_host and upstream_host.lower() not in _LOOPBACK_HOSTS:
         return upstream_host
-    return "host.docker.internal"
+    return _detect_container_host_gateway()
 
 
 def _system_content_to_text(content: Any) -> str:
@@ -619,11 +678,29 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
         self.send_response(resp.status_code)
         for key, value in resp.headers.items():
             normalized = key.lower()
-            if normalized in ("transfer-encoding", "content-encoding"):
+            if normalized in (
+                "transfer-encoding",
+                "content-encoding",
+                "connection",
+                "keep-alive",
+                "proxy-authenticate",
+                "proxy-authorization",
+                "te",
+                "trailer",
+                "upgrade",
+            ):
                 continue
             if skip_length and normalized == "content-length":
                 continue
             self.send_header(key, value)
+        if skip_length:
+            # BaseHTTPRequestHandler speaks HTTP/1.0 and does not re-chunk the
+            # streamed body. With no Content-Length, EOF is therefore the only
+            # valid response boundary. Never forward an upstream keep-alive
+            # header here: OpenAI clients would otherwise wait forever after
+            # the final SSE [DONE] event.
+            self.send_header("Connection", "close")
+            self.close_connection = True
         self.end_headers()
 
     def _extract_sse_logprobs(self, line: str) -> None:

@@ -116,8 +116,20 @@ ROCK_REL="ref/ROCK"
 ENV_REL="scripts/rock_env.sh"
 ENV_MARKER_REL="scripts/.alphadiana_env"
 ROCK_REPO_URL="${ROCK_REPO_URL:-https://github.com/alibaba/ROCK.git}"
-ROCK_REPO_ARCHIVE_URL="${ROCK_REPO_ARCHIVE_URL:-https://codeload.github.com/alibaba/ROCK/tar.gz/refs/heads/master}"
+ROCK_REVISION="${ROCK_REVISION:-908f20d4bf2fcbc362dba6a068c1cd399a201f82}"
+ROCK_REPO_ARCHIVE_URL="${ROCK_REPO_ARCHIVE_URL:-https://codeload.github.com/alibaba/ROCK/tar.gz/${ROCK_REVISION}}"
 LOCAL_TMPDIR="${PROJECT_ROOT}/.cache/tmp"
+
+checkout_rock_revision() {
+  local current_revision
+  current_revision="$(git -C "${ROCK_REL}" rev-parse HEAD 2>/dev/null || true)"
+  if [ "${current_revision}" = "${ROCK_REVISION}" ]; then
+    return 0
+  fi
+  log_progress "Checking out pinned ROCK revision ${ROCK_REVISION}"
+  git -C "${ROCK_REL}" fetch --depth=1 origin "${ROCK_REVISION}"
+  git -C "${ROCK_REL}" checkout --detach FETCH_HEAD
+}
 
 is_weak_gateway_token() {
   case "${1:-}" in
@@ -171,6 +183,7 @@ if [ ! -d "${ROCK_REL}" ]; then
   log_progress "Cloning ROCK into ${ROCK_REL}"
   mkdir -p ref
   if git -c http.proxy= -c https.proxy= clone --depth=1 --filter=blob:none "${ROCK_REPO_URL}" "${ROCK_REL}"; then
+    checkout_rock_revision
     log_progress "ROCK clone completed"
   else
     log_progress "git clone failed; falling back to GitHub source archive"
@@ -184,6 +197,9 @@ if [ ! -d "${ROCK_REL}" ]; then
   fi
 else
   log_progress "ROCK repository already exists at ${ROCK_REL}"
+  if [ -d "${ROCK_REL}/.git" ]; then
+    checkout_rock_revision
+  fi
 fi
 
 log_stage "Prepare conda environment ${ENV_NAME}"

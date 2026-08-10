@@ -9,6 +9,8 @@ agent:
     api_base: "${OPENAI_BASE_URL}"
     api_key: "${OPENAI_API_KEY}"
     runtime_source_image: "${TB2_ZEROCLAW_RUNTIME_IMAGE}"
+    provider_proxy_enabled: true
+    normalize_provider_system_messages: true
     logs_base_dir: "${ALPHADIANA_TB2_LOGS_DIR}"
     podman_network: host
     zeroclaw_bin: zeroclaw
