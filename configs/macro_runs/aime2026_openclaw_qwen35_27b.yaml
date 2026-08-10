@@ -1,7 +1,7 @@
 run_id: macro_aime2026_openclaw_qwen35_27b
 agent:
   name: openclaw
-  version: 2026.3.20
+  version: 2026.3.14
   config:
     system_prompt: |
       You are an expert competition-math problem solver. Use available tools

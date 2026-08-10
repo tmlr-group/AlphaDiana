@@ -28,7 +28,7 @@ podman build \
   alphadiana/harness/openclaw/deploy
 ```
 
-The repository image and Podman configs pin OpenClaw `2026.3.7`. Runtime
+The repository image and Podman configs pin OpenClaw `2026.3.14`. Runtime
 preflight compares the installed binary with `agent.version` and stops with a
 clear version-mismatch error before any benchmark request is made.
 

@@ -19,7 +19,7 @@ PREBUILT_SANDBOX_IMAGE: str = os.environ.get(
 )
 
 # Full npm install command (used when running on a bare python:3.11 image).
-OPENCLAW_NPM_INSTALL_CMD = "npm install -g openclaw@2026.3.7 --omit=optional"
+OPENCLAW_NPM_INSTALL_CMD = "npm install -g openclaw@2026.3.14 --omit=optional"
 
 # ---------------------------------------------------------------------------
 # Node.js download commands
