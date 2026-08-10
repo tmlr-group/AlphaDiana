@@ -82,10 +82,13 @@ def _apply_agent_env_defaults(agent_name: str, agent_config: Any) -> dict:
             "api_base": "OPENAI_BASE_URL",
             "api_key": "OPENAI_API_KEY",
         }
-        if (
-            agent_name == "openclaw"
-            and resolved.get("rock_agent_config_path")
-            and resolved.get("openclaw_config_path")
+        if agent_name == "openclaw" and (
+            resolved.get("runtime")
+            or str(resolved.get("runtime_backend", "") or "").strip().lower() == "podman"
+            or (
+                resolved.get("rock_agent_config_path")
+                and resolved.get("openclaw_config_path")
+            )
         ):
             # In auto-deploy mode OPENAI_BASE_URL is the provider endpoint used
             # inside the sandbox, not an already-running OpenClaw gateway.  The

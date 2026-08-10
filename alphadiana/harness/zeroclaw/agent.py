@@ -15,6 +15,7 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from alphadiana.harness.proxies.logprob_capture import (
     extract_openai_logprob_records,
@@ -617,20 +618,20 @@ class ZeroClawAgent(Agent):
         return metadata
 
     def _resolve_logprob_proxy_advertise_host_for_sandbox(self, sandbox: Any) -> str:
-        if self._logprob_proxy_advertise_host:
-            return resolve_logprob_proxy_advertise_host(
-                self._provider_api_base,
-                self._logprob_proxy_advertise_host,
-            )
-        try:
-            sandbox_metadata = sandbox.metadata() if hasattr(sandbox, "metadata") else {}
-        except Exception:
-            sandbox_metadata = {}
-        if str((sandbox_metadata or {}).get("network_mode", "") or "").strip().lower() == "host":
-            return "127.0.0.1"
+        # Older ROCK versions echo the requested network_mode in metadata even
+        # when the Docker container is actually attached to the bridge network.
+        # Advertising host loopback in that case makes the provider unreachable.
+        # The Docker bridge gateway remains reachable from both bridge and true
+        # host-network containers, so derive it from the provider URL instead.
         return resolve_logprob_proxy_advertise_host(
             self._provider_api_base,
-            self._logprob_proxy_advertise_host,
+            self._logprob_proxy_advertise_host
+            or (
+                "host.containers.internal"
+                if str(self._config.get("runtime_backend", "") or "").strip().lower()
+                == "podman"
+                else ""
+            ),
         )
 
     def _logprob_request_overrides(self) -> dict[str, Any]:
@@ -1782,11 +1783,29 @@ class ZeroClawAgent(Agent):
         logprob_proxy_records: list[dict] = []
         logprob_proxy_metadata: dict[str, Any] = {}
         try:
+            provider_host = (
+                urlsplit(self._provider_api_base).hostname or ""
+            ).strip().lower()
+            needs_loopback_bridge = provider_host in {
+                "localhost",
+                "127.0.0.1",
+                "::1",
+            }
             use_provider_proxy = (
                 self._logprob_capture["enabled"]
                 or self._provider_proxy_normalize_system_messages
+                or needs_loopback_bridge
             )
             if use_provider_proxy:
+                capture_enabled = bool(self._logprob_capture["enabled"])
+                normalize_messages = bool(
+                    capture_enabled
+                    or self._provider_proxy_normalize_system_messages
+                )
+                mutate_request = bool(
+                    capture_enabled
+                    or self._provider_proxy_normalize_system_messages
+                )
                 proxy_api_key = secrets.token_urlsafe(24)
                 advertise_host = self._resolve_logprob_proxy_advertise_host_for_sandbox(sandbox)
                 logprob_proxy = LogprobCaptureProxy(
@@ -1797,9 +1816,13 @@ class ZeroClawAgent(Agent):
                     client_timeout=max(120.0, float(self._request_timeout)),
                     upstream_api_key=self._provider_api_key,
                     proxy_api_key=proxy_api_key,
-                    request_overrides=self._logprob_request_overrides(),
-                    inject_logprobs=self._logprob_capture["enabled"],
-                    normalize_system_messages=True,
+                    request_overrides=(
+                        self._logprob_request_overrides()
+                        if mutate_request
+                        else None
+                    ),
+                    inject_logprobs=capture_enabled,
+                    normalize_system_messages=normalize_messages,
                     capture_request_summary=True,
                 )
                 logprob_proxy.start()
@@ -1811,13 +1834,36 @@ class ZeroClawAgent(Agent):
                 env["ZEROCLAW_API_KEY"] = proxy_api_key
                 env["ZEROCLAW_PROVIDER"] = _resolve_zeroclaw_provider("", proxy_api_base)
                 logprob_proxy_metadata = {
-                    "logprob_proxy_enabled": True,
-                    "logprob_proxy_url": proxy_api_base,
-                    "logprob_proxy_upstream": logprob_proxy.upstream,
-                    "logprob_proxy_request_overrides": self._logprob_request_overrides(),
-                    "logprob_proxy_inject_logprobs": self._logprob_capture["enabled"],
-                    "provider_proxy_normalize_system_messages": True,
+                    "provider_proxy_enabled": True,
+                    "provider_proxy_mode": (
+                        "logprob_capture"
+                        if capture_enabled
+                        else (
+                            "system_message_normalization"
+                            if self._provider_proxy_normalize_system_messages
+                            else "loopback_bridge"
+                        )
+                    ),
+                    "provider_proxy_url": proxy_api_base,
+                    "provider_proxy_upstream": logprob_proxy.upstream,
+                    "provider_proxy_request_overrides": (
+                        self._logprob_request_overrides()
+                        if mutate_request
+                        else {}
+                    ),
+                    "provider_proxy_inject_logprobs": capture_enabled,
+                    "provider_proxy_normalize_system_messages": normalize_messages,
                 }
+                if capture_enabled:
+                    logprob_proxy_metadata.update(
+                        {
+                            "logprob_proxy_enabled": True,
+                            "logprob_proxy_url": proxy_api_base,
+                            "logprob_proxy_upstream": logprob_proxy.upstream,
+                            "logprob_proxy_request_overrides": self._logprob_request_overrides(),
+                            "logprob_proxy_inject_logprobs": True,
+                        }
+                    )
             run_command = self._wrap_shell_command(self._build_run_command(paths), env)
             execute_long_running = getattr(sandbox, "execute_long_running", None)
             if execute_long_running is not None:

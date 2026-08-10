@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import os
 import re
+import secrets
 import subprocess
 import sys
 from pathlib import Path
@@ -216,8 +218,30 @@ def render_exports(
     return "\n".join(lines) + "\n"
 
 
-def render_dynamic_rock_config(ports: RockPorts, *, instance_name: str) -> str:
+def load_or_create_aes_key() -> str:
+    """Return a stable per-checkout Fernet key for ROCK admin/proxy."""
+    key_path = REPO_ROOT / "dev/generated/.rock-aes-key"
+    try:
+        key = key_path.read_text(encoding="utf-8").strip()
+        if len(base64.b64decode(key.encode("ascii"), validate=True)) != 32:
+            raise ValueError("wrong decoded key length")
+    except (OSError, UnicodeError, ValueError):
+        key_path.parent.mkdir(parents=True, exist_ok=True)
+        key = base64.b64encode(secrets.token_bytes(32)).decode("ascii")
+        key_path.write_text(key + "\n", encoding="utf-8")
+    key_path.chmod(0o600)
+    return key
+
+
+def render_dynamic_rock_config(
+    ports: RockPorts,
+    *,
+    instance_name: str,
+    aes_encrypt_key: str,
+) -> str:
     return (
+        f'aes_encrypt_key: "{aes_encrypt_key}"\n'
+        "\n"
         "ray:\n"
         "    runtime_env:\n"
         "        working_dir: ./\n"
@@ -251,9 +275,14 @@ def main() -> int:
         dynamic_config_path = REPO_ROOT / "dev/generated/rock-local-proxy.dynamic.yml"
         dynamic_config_path.parent.mkdir(parents=True, exist_ok=True)
         dynamic_config_path.write_text(
-            render_dynamic_rock_config(ports, instance_name=args.instance_name),
+            render_dynamic_rock_config(
+                ports,
+                instance_name=args.instance_name,
+                aes_encrypt_key=load_or_create_aes_key(),
+            ),
             encoding="utf-8",
         )
+        dynamic_config_path.chmod(0o600)
 
     return 0
 

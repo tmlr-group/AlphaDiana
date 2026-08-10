@@ -15,8 +15,8 @@ agent:
       scratchpad within this task, but do not rely on state from another task.
 
       Final answer format: $$\boxed{answer}$$
-    model: "custom/qwen/qwen3.5-27b"
-    model_name: "qwen/qwen3.5-27b"
+    model: "custom/${OPENAI_MODEL_NAME}"
+    model_name: "${OPENAI_MODEL_NAME}"
     api_base: "${OPENAI_BASE_URL}"
     api_key: "${OPENAI_API_KEY}"
     controller_mode: "docker"

@@ -39,6 +39,7 @@ OPENCLAW_OFFLINE_REMOTE_ENTRYPOINT = f"{OPENCLAW_OFFLINE_REMOTE_DIR}/dist/index.
 OPENCLAW_OFFLINE_CACHE_DIR = PROJECT_ROOT / ".cache" / "openclaw" / OPENCLAW_OFFLINE_DIR_NAME
 OPENCLAW_OFFLINE_SOURCE_IMAGE_ENV = "OPENCLAW_OFFLINE_SOURCE_IMAGE"
 OPENCLAW_OFFLINE_SOURCE_IMAGE_PREFIXES = (
+    "tmlrgroup/alphadiana:",
     "localhost/alphadiana-swebench-runtime:openclaw-",
     "localhost/alphadiana-tb2-runtime:openclaw-",
     "localhost/alphadiana-openclaw-swebench-runtime-source:",

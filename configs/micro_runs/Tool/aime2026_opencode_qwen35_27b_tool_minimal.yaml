@@ -15,8 +15,8 @@ agent:
 
       Do not skip the boxed format. The boxed answer must appear at the very end of your response and contain only the final answer, not explanations.
 
-    model: "custom/qwen/qwen3.5-27b"
-    model_name: "qwen/qwen3.5-27b"
+    model: "custom/${OPENAI_MODEL_NAME}"
+    model_name: "${OPENAI_MODEL_NAME}"
     api_base: "${TOOL_FILTER_BASE_URL}"
     api_key: "${OPENAI_API_KEY}"
     controller_mode: "docker"
