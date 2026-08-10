@@ -165,6 +165,23 @@ sample count, and the recorded `isolation_mode`. Report Pass@k and Avg@k with
 the configured `num_samples`; do not compare rows whose runtime or evaluation
 contracts differ.
 
+## Dashboard
+
+AlphaDiana includes a web dashboard for launching, monitoring, and comparing evaluation runs without manually editing YAML or inspecting raw JSONL files.
+
+<p align="center">
+  <img src="./assets/dashboard_0.png" width="50%" alt="Dashboard — Results view">
+  <img src="./assets/dashboard_2.png" width="47%" alt="Dashboard — New Evaluation">
+</p>
+
+### Dashboard features
+
+- browse run history
+- compare multiple runs side by side
+- launch evaluations through forms
+- monitor job progress with real-time logs
+- manage ROCK sandboxes
+
 ## Documentation
 
 | Document | Description |
