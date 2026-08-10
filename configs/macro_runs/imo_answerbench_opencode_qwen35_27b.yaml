@@ -12,8 +12,6 @@ agent:
     timeout: 1800
     streaming: false
     tool_call: true
-    agent: imo-answer
-    agent_md_path: alphadiana/context/opencode_imo_answer.md
     system_prompt: |
       Solve efficiently and keep the response short.
       The final line must be $$\boxed{your answer here}$$.

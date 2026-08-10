@@ -110,12 +110,9 @@ Qwen pilot, use
 
 ## OpenCode
 
-OpenCode runs the `opencode` CLI. The checked-in Qwen macro config includes
-OpenCode-specific external agent settings (`agent: imo-answer` and
-`agent_md_path: alphadiana/context/opencode_imo_answer.md`) in addition to
-`agent.config.system_prompt`. When comparing harness prompts or running local
-Qwen logprob smoke without that external agent layer, override both fields to
-empty strings.
+OpenCode runs the `opencode` CLI. The checked-in Qwen macro config uses
+`agent.config.system_prompt` directly and does not install an additional
+OpenCode-specific external agent.
 
 Build the controller image once before using the checked-in OpenCode configs:
 
@@ -130,7 +127,7 @@ python -m alphadiana.cli run configs/macro_runs/imo_answerbench_opencode_qwen35_
   -o run_id=imo_opencode_smoke
 ```
 
-Local-vLLM Qwen logprob smoke with the external agent disabled:
+Local-vLLM Qwen logprob smoke:
 
 ```bash
 python -m alphadiana.cli run configs/macro_runs/imo_answerbench_opencode_qwen35_27b.yaml \
@@ -144,9 +141,7 @@ python -m alphadiana.cli run configs/macro_runs/imo_answerbench_opencode_qwen35_
   -o agent.config.controller_mode=docker \
   -o agent.config.controller_network=host \
   -o agent.config.capture_logprobs=true \
-  -o agent.config.top_logprobs=20 \
-  -o agent.config.agent= \
-  -o agent.config.agent_md_path=
+  -o agent.config.top_logprobs=20
 ```
 
 Observed on April 24, 2026: this command wrote
