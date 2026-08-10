@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline Phase 13 action-space analysis CLI."""
+"""Offline action-space analysis CLI."""
 
 from __future__ import annotations
 
