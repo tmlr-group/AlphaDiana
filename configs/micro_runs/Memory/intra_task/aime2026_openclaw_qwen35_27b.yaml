@@ -4,7 +4,7 @@ run_id: "micro_aime2026_openclaw_qwen35_27b_memory_intra"
 
 agent:
   name: openclaw
-  version: "2026.3.20"
+  version: "2026.3.14"
   config:
     memory_scope: "intra_task"
     persistent_memory: false

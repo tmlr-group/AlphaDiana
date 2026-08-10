@@ -16,7 +16,7 @@ run_cmd: export PATH=$(find /tmp/rock-runtime-envs/node -name 'npm' -type f ! -p
 runtime_env_config:
   type: node                    # Runtime type: node (Node.js environment)
   npm_registry: https://registry.npmmirror.com  # npm mirror registry; override via NPM_REGISTRY env var if needed
-  custom_install_cmd: if command -v openclaw >/dev/null 2>&1; then echo "Using preinstalled OpenClaw from sandbox image"; else git config --global url.'https://github.com/'.insteadOf 'ssh://git@github.com/' && npm install -g openclaw@2026.3.7 --registry https://registry.npmmirror.com; fi
+  custom_install_cmd: if command -v openclaw >/dev/null 2>&1; then echo "Using preinstalled OpenClaw from sandbox image"; else git config --global url.'https://github.com/'.insteadOf 'ssh://git@github.com/' && npm install -g openclaw@2026.3.14 --registry https://registry.npmmirror.com; fi
   # Note: the registry URL above is the default for npmmirror.com (China mainland).
   # To use a different registry, edit this file or set NPM_REGISTRY in your environment.
                                 # Custom install command for OpenClaw; change version as needed

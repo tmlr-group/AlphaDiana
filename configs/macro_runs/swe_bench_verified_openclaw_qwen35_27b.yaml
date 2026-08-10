@@ -1,7 +1,7 @@
 run_id: macro_swe_bench_verified_openclaw_qwen35_27b
 agent:
   name: openclaw
-  version: 2026.3.20
+  version: 2026.3.14
   config:
     runtime: swebench_container
     openclaw_config_path: alphadiana/harness/openclaw/deploy/openclaw_swe_bench.runtime.json

@@ -28,7 +28,7 @@ RUN set -eu; \
       mkdir -p "$dest"; \
       tar -xzf "/tmp/$tgz" -C "$dest" --strip-components=1; \
     }; \
-    unpack_pkg openclaw@2026.3.7 /app/node_modules/openclaw; \
+    unpack_pkg openclaw@2026.3.14 /app/node_modules/openclaw; \
     unpack_pkg @mariozechner/pi-ai@0.55.3 /app/node_modules/@mariozechner/pi-ai; \
     unpack_pkg @mariozechner/pi-agent-core@0.55.3 /app/node_modules/@mariozechner/pi-agent-core; \
     unpack_pkg @mariozechner/pi-coding-agent@0.55.3 /app/node_modules/@mariozechner/pi-coding-agent; \

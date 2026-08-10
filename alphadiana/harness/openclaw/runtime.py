@@ -652,7 +652,7 @@ class OpenClawRuntimeManager:
                 tools["exec"] = exec_cfg
             exec_cfg["timeoutSec"] = self._exec_timeout_seconds
 
-        # Remove memory.enabled — incompatible with openclaw@2026.3.7
+        # Remove memory.enabled — unsupported by the pinned OpenClaw runtime.
         memory = config.get("memory", {})
         if isinstance(memory, dict):
             memory.pop("enabled", None)
