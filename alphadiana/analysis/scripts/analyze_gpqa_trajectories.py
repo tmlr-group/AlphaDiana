@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline Phase 14 GPQA trajectory analysis CLI."""
+"""Offline GPQA trajectory analysis CLI."""
 
 from __future__ import annotations
 
@@ -16,6 +16,9 @@ from alphadiana.analysis.trajectory_metrics import compute_outcome_conditioned_m
 from alphadiana.analysis.trajectory_reports import write_phase14_outputs
 
 DEFAULT_OUTPUT_DIR = Path("results/phase14_gpqa_trajectory_analysis")
+DEFAULT_MEASUREMENT_SUMMARY = (
+    Path(__file__).resolve().parent / "analyze_tools" / "data" / "measurement_summary.json"
+)
 DEFAULT_PRIMARY_RUNS = {
     "openclaw": "full_gpqa_v2_openclaw_qwen35_27b_logprobs",
     "opencode": "full_gpqa_v2_opencode_qwen35_27b_logprobs",
@@ -30,7 +33,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--measurement-summary",
         type=Path,
-        default=Path("analyze_tools/data/measurement_summary.json"),
+        default=DEFAULT_MEASUREMENT_SUMMARY,
         help="Optional analyze_tools measurement_summary.json to fold into trajectory metrics.",
     )
     parser.add_argument("--stdout", action="store_true")

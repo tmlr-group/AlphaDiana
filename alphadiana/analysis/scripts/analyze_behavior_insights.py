@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline Phase 15 behavior insight analysis CLI."""
+"""Offline behavior insight analysis CLI."""
 
 from __future__ import annotations
 
@@ -23,7 +23,9 @@ from alphadiana.analysis.result_reader import load_run_bundle
 from alphadiana.analysis.trajectory_metrics import compute_outcome_conditioned_metrics
 
 DEFAULT_OUTPUT_DIR = Path("results/phase15_behavior_insights")
-DEFAULT_MEASUREMENT_SUMMARY = Path("analyze_tools/data/measurement_summary.json")
+DEFAULT_MEASUREMENT_SUMMARY = (
+    Path(__file__).resolve().parent / "analyze_tools" / "data" / "measurement_summary.json"
+)
 PHASE15_INPUT_ENV_VARS = (
     "PHASE15_HLE_OPENCODE_LOGPROBS",
     "PHASE15_HLE_ZEROCLAW_LOGPROBS",

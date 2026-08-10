@@ -139,7 +139,7 @@ import json
 import sys
 from pathlib import Path
 
-from alphadiana.container_runtime.podman_cli import normalize_podman_image_ref
+from alphadiana.engine.container_runtime.podman_cli import normalize_podman_image_ref
 
 preflight_path = Path(sys.argv[1])
 output_path = Path(sys.argv[2])

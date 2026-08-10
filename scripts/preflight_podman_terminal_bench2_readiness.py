@@ -15,7 +15,7 @@ from urllib.parse import urlparse, urlunparse
 
 import yaml
 
-from alphadiana.container_runtime.podman_cli import normalize_podman_image_ref
+from alphadiana.engine.container_runtime.podman_cli import normalize_podman_image_ref
 
 try:
     import tomllib
