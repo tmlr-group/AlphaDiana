@@ -119,6 +119,33 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
             overrides["max_tokens"] = self._max_tokens
         return overrides
 
+    @staticmethod
+    def _fatal_run_error(raw_output: str, returncode: int, stderr: str) -> str:
+        errors: list[str] = []
+        non_error_events = 0
+        for line in raw_output.splitlines():
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(event, dict):
+                continue
+            if event.get("type") != "error":
+                non_error_events += 1
+                continue
+            error = event.get("error")
+            if isinstance(error, dict):
+                data = error.get("data")
+                if isinstance(data, dict) and data.get("message"):
+                    errors.append(str(data["message"]))
+                    continue
+            errors.append(str(error or "OpenCode emitted an error event"))
+        if returncode != 0 and non_error_events == 0:
+            return stderr.strip() or ("; ".join(errors)) or f"OpenCode exited with status {returncode}"
+        if errors and non_error_events == 0:
+            return "; ".join(errors)
+        return ""
+
     def _write_provider_config(
         self,
         config_path: Path,
@@ -244,11 +271,19 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
             config_path = runtime.workdir / "xdg-config" / "opencode" / "opencode.json"
             effective_api_base = self._api_base
             effective_api_key = self._api_key
-            if self._logprob_capture["enabled"]:
+            needs_provider_bridge = (
+                self._container_engine == "docker"
+                and self._container_reachable_url(self._api_base) != self._api_base
+            )
+            if self._logprob_capture["enabled"] or needs_provider_bridge:
                 upstream = normalize_openai_proxy_upstream(self._api_base)
-                advertise_host = resolve_logprob_proxy_advertise_host(
-                    self._api_base,
-                    self._logprob_proxy_advertise_host,
+                advertise_host = (
+                    self._docker_host_alias
+                    if needs_provider_bridge and not self._logprob_proxy_advertise_host
+                    else resolve_logprob_proxy_advertise_host(
+                        self._api_base,
+                        self._logprob_proxy_advertise_host,
+                    )
                 )
                 logprob_proxy = LogprobCaptureProxy(
                     upstream,
@@ -258,11 +293,13 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
                     client_timeout=max(120.0, float(self._solver_timeout_sec)),
                     upstream_api_key=self._api_key,
                     request_overrides=self._provider_request_overrides() or None,
+                    inject_logprobs=self._logprob_capture["enabled"],
                 )
                 logprob_proxy.start()
                 effective_api_base = f"{logprob_proxy.proxy_url.rstrip('/')}/v1"
                 logprob_proxy_metadata = {
-                    "logprob_proxy_enabled": True,
+                    "logprob_proxy_enabled": self._logprob_capture["enabled"],
+                    "provider_bridge_enabled": needs_provider_bridge,
                     "logprob_proxy_url": effective_api_base,
                     "logprob_proxy_upstream": logprob_proxy.upstream,
                 }
@@ -308,6 +345,9 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
             raw_output = exec_result.stdout
             stderr = exec_result.stderr
             returncode = exec_result.returncode
+            fatal_error = self._fatal_run_error(raw_output, returncode, stderr)
+            if fatal_error:
+                raise RuntimeError(f"OpenCode failed before verification: {fatal_error}")
             if logprob_proxy is not None:
                 logprob_proxy_records = logprob_proxy.drain_records()
             session_trace = self._collect_session_trace(

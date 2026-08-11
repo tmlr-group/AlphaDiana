@@ -705,7 +705,7 @@ class OpenCodeAgent(Agent):
           -t alphadiana-opencode-podman:latest .
 
         docker build --network host \\
-          -f docker/terminal_bench2/Dockerfile.opencode-controller \\
+          -f alphadiana/benchmarks/terminal_bench2/deploy/dockerfiles/Dockerfile.opencode-controller \\
           -t alphadiana/tb2-opencode-controller:latest .
     """
 
