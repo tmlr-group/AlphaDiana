@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import sys
 from pathlib import Path
 from collections import defaultdict
@@ -27,9 +28,9 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
 # ─── 安装 academic-plot skill ──────────────────────────────────────────────────
-SKILL_DIR = Path("/home/xxx/academic-plot/scripts")
-if str(SKILL_DIR) not in sys.path:
-    sys.path.insert(0, str(SKILL_DIR))
+SKILL_DIR = os.environ.get("ALPHADIANA_ACADEMIC_PLOT_DIR", "").strip()
+if SKILL_DIR and SKILL_DIR not in sys.path:
+    sys.path.insert(0, SKILL_DIR)
 
 from academic_plot import (
     register_academic_colormaps,
@@ -42,11 +43,12 @@ FIG_DIR = Path(__file__).parent / "figures"
 FIG_DIR.mkdir(exist_ok=True)
 
 # ─── Paths resolved against repo root ─────────────────────────────────────────
-_REPO_ROOT = Path(__file__).resolve().parents[1]
-DIRECTLLM_TASKS = _REPO_ROOT / "results/phase9_directllm_gpqa_diamond_qwen35_27b_logprobs/phase9_directllm_gpqa_diamond_qwen35_27b_logprobs/tasks"
-OPENCODE_TASKS  = _REPO_ROOT / "results/full_gpqa_v2_opencode_qwen35_27b_logprobs/tasks"
-ZEROCLAW_TASKS  = _REPO_ROOT / "results/full_gpqa_v2_zeroclaw_qwen35_27b_logprobs/tasks"
-ACTION_EVENTS_CSV = _REPO_ROOT / "results/phase14_gpqa_trajectory_analysis/action_events.csv"
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+_RESULTS_DIR = Path(os.environ.get("ALPHADIANA_RESULTS_DIR", _REPO_ROOT / "results")).expanduser()
+DIRECTLLM_TASKS = _RESULTS_DIR / "phase9_directllm_gpqa_diamond_qwen35_27b_logprobs/phase9_directllm_gpqa_diamond_qwen35_27b_logprobs/tasks"
+OPENCODE_TASKS  = _RESULTS_DIR / "full_gpqa_v2_opencode_qwen35_27b_logprobs/tasks"
+ZEROCLAW_TASKS  = _RESULTS_DIR / "full_gpqa_v2_zeroclaw_qwen35_27b_logprobs/tasks"
+ACTION_EVENTS_CSV = _RESULTS_DIR / "phase14_gpqa_trajectory_analysis/action_events.csv"
 
 FONT_SIZE = 14
 

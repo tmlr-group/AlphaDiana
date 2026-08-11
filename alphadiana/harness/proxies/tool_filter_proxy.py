@@ -9,8 +9,8 @@ SSE response forwarded unchanged.
 
 Usage:
   python tool_filter_proxy.py --port 9050 \\
-    --upstream https://api.example.com/v1 \\
-    --api-key sk-... --model qwen \\
+    --upstream http://127.0.0.1:8011/v1 \\
+    --api-key sk-EMPTY --model Qwen/Qwen3.5-27B \\
     --allow "" --strip-prompt-tokens "bash,Bash,shell,python,Python"
 """
 import argparse, json, re, sys, time

@@ -60,7 +60,8 @@ python3 analyze_tools/plot_figures.py
 
 - Python ≥ 3.10
 - matplotlib ≥ 3.9、scipy ≥ 1.10、numpy ≥ 1.24
-- `/home/xxx/academic-plot/scripts/` — academic-plot skill（plot_figures.py 自动加入 sys.path）
+- `ALPHADIANA_ACADEMIC_PLOT_DIR` — optional path to the academic-plot skill scripts; set it when `academic_plot` is not installed in the active environment.
+- `ALPHADIANA_RESULTS_DIR` — root containing the named result directories consumed by extraction and analysis scripts; defaults to `<repo>/results`.
 - `results/full_gpqa_v2_openclaw_qwen35_27b_logprobs/` — OpenClaw 结果目录
 - `results/full_gpqa_v2_opencode_qwen35_27b_logprobs/` — OpenCode 结果目录
 

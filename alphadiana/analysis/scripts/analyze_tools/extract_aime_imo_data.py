@@ -15,15 +15,18 @@ from __future__ import annotations
 import csv
 import json
 import math
+import os
 from pathlib import Path
 from statistics import fmean
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "analyze_tools" / "data"
 DATA_DIR.mkdir(exist_ok=True)
+REPO_ROOT = Path(__file__).resolve().parents[4]
+RESULTS_DIR = Path(os.environ.get("ALPHADIANA_RESULTS_DIR", REPO_ROOT / "results")).expanduser()
 
-AIME_DIR = Path("/path/to/xxx/alphadiana_results/full_20260423_qwen35_27b_aime2026_directllm_r1")
-IMO_DIR = Path("/path/to/xxx/alphadiana_results/phase9_directllm_qwen35_27b_imo_answerbench_logprobs")
+AIME_DIR = RESULTS_DIR / "full_20260423_qwen35_27b_aime2026_directllm_r1"
+IMO_DIR = RESULTS_DIR / "phase9_directllm_qwen35_27b_imo_answerbench_logprobs"
 
 ERROR_STATUSES = {"agent_error", "provider_error", "runtime_error", "scorer_error"}
 

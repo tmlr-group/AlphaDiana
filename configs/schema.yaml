@@ -84,7 +84,7 @@ agent:
 
 # benchmark: (required) Benchmark configuration.
 benchmark:
-  name: string        # e.g. "aime", "gpqa_diamond", "hle", "mmmu_pro", "imo_answerbench", "swe_bench", "swebench_pro_os", "terminal_bench2", "custom"
+  name: string        # e.g. "aime", "gpqa_diamond", "hle", "mmmu_pro", "imo_answerbench", "swe_bench", "terminal_bench2", "custom"
   config:             # Benchmark-specific params
     split: string
     year: string
@@ -145,10 +145,8 @@ scorer:
     judge_model: string
     api_base: string
     api_key: string
-    eval_script_path: string        # Required when scorer.name == "swebench_pro"
-    scripts_dir: string             # Required when scorer.name == "swebench_pro"
     dockerhub_username: string      # Optional override for SWE-bench evaluator image namespace
-    python_bin: string              # Optional interpreter for `swe_bench_pro_eval.py`
+    python_bin: string              # Optional evaluator interpreter
     use_local_docker: boolean
     docker_platform: string
     block_network: boolean

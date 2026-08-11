@@ -16,7 +16,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.engine.container_runtime.podman_cli import PodmanCLI, PodmanError
@@ -152,6 +152,10 @@ class TerminalBench2ContainerMixin:
         self._podman_network = str(
             config.get("podman_network", "slirp4netns:allow_host_loopback=true") or ""
         ).strip()
+        self._docker_host_alias = str(
+            config.get("docker_host_alias", "host.docker.internal")
+            or "host.docker.internal"
+        ).strip()
         forward_proxy_env = config.get("forward_proxy_env", config.get("podman_forward_proxy_env", True))
         if isinstance(forward_proxy_env, str):
             self._forward_proxy_env = forward_proxy_env.strip().lower() not in {
@@ -162,6 +166,18 @@ class TerminalBench2ContainerMixin:
             }
         else:
             self._forward_proxy_env = bool(forward_proxy_env)
+
+    def _container_reachable_url(self, value: str) -> str:
+        """Rewrite a host-loopback URL for a Docker task container."""
+        if self._container_engine != "docker":
+            return value
+        parsed = urlsplit(str(value or "").strip())
+        if parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
+            return value
+        port = f":{parsed.port}" if parsed.port is not None else ""
+        return urlunsplit(
+            (parsed.scheme, f"{self._docker_host_alias}{port}", parsed.path, parsed.query, parsed.fragment)
+        )
 
     def _setup_controller_config(
         self,
@@ -320,6 +336,8 @@ class TerminalBench2ContainerMixin:
             "run",
             "-d",
             "--rm",
+            "--add-host",
+            f"{self._docker_host_alias}:host-gateway",
             "--entrypoint",
             "/bin/sh",
             "-v",
@@ -911,6 +929,28 @@ mkdir -p /root/.local/bin /usr/local/bin
 cat >/root/.local/bin/env <<'EOF'
 export PATH="/usr/local/bin:/root/.local/bin:$PATH"
 EOF
+cat >/usr/local/bin/curl <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Terminal-Bench tasks commonly bootstrap uv with
+# `curl https://astral.sh/uv/<version>/install.sh | sh`. The harness already
+# provides a compatible uvx shim below, so avoid making verifier execution
+# depend on GitHub availability while leaving every other curl call unchanged.
+case " $* " in
+  *" https://astral.sh/uv/"*"/install.sh "*)
+    cat <<'INSTALLER'
+#!/usr/bin/env bash
+mkdir -p "$HOME/.local/bin"
+cat >"$HOME/.local/bin/env" <<'ENV'
+export PATH="/usr/local/bin:/root/.local/bin:$PATH"
+ENV
+INSTALLER
+    exit 0
+    ;;
+esac
+exec /usr/bin/curl "$@"
+EOF
 cat >/usr/local/bin/uvx <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -968,7 +1008,7 @@ if [ "${cmd[0]}" = "pytest" ]; then
 fi
 exec "${cmd[@]}"
 EOF
-chmod +x /usr/local/bin/uvx /root/.local/bin/env
+chmod +x /usr/local/bin/curl /usr/local/bin/uvx /root/.local/bin/env
 """.strip()
         try:
             if getattr(self, "_container_engine", "docker") == "podman":

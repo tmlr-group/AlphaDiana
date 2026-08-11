@@ -26,12 +26,16 @@ alphadiana run configs/macro_runs/aime2026_directllm_qwen35_27b.yaml \
   -o benchmark.config.max_tasks=1 --redo-all
 ```
 
-The filename contract is `<benchmark>_<harness>_<model>.yaml`. Configs default
-to one sample and one worker so they are safe to validate and smoke before
-scaling. Provider settings use `OPENAI_MODEL_NAME`, `OPENAI_BASE_URL`, and
-`OPENAI_API_KEY`; never commit a real key.
+The filename contract is `<benchmark>_<harness>_<model>.yaml`. Before scaling,
+use CLI overrides such as `-o benchmark.config.max_tasks=1`, `-o num_samples=1`,
+and `-o max_concurrent=1`; paper configs may intentionally request more than
+one sample or worker. Provider settings use `OPENAI_MODEL_NAME`,
+`OPENAI_BASE_URL`, and `OPENAI_API_KEY`; never commit a real key.
 
 The sole `_campaign.yaml` file is intentionally different: it is a SWE-agent
 rollout manifest consumed by `python -m alphadiana.benchmark_rollout_cli`, not
 by `alphadiana run`. The macro README documents that exception and all external
 runtime prerequisites.
+
+See the [release validation matrix](../docs/configuration/release-validation.md)
+for the latest config-validation and real-smoke evidence.

@@ -15,6 +15,7 @@ Run:
 from __future__ import annotations
 
 import csv
+import os
 import sys
 from pathlib import Path
 
@@ -22,9 +23,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 
-SKILL_DIR = Path("/home/xxx/academic-plot/scripts")
-if str(SKILL_DIR) not in sys.path:
-    sys.path.insert(0, str(SKILL_DIR))
+SKILL_DIR = os.environ.get("ALPHADIANA_ACADEMIC_PLOT_DIR", "").strip()
+if SKILL_DIR and SKILL_DIR not in sys.path:
+    sys.path.insert(0, SKILL_DIR)
 
 from academic_plot import set_academic_style
 

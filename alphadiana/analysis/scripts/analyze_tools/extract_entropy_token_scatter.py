@@ -17,53 +17,54 @@ from __future__ import annotations
 import csv
 import json
 import math
+import os
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(__file__).parent / "data"
 DATA_DIR.mkdir(exist_ok=True)
+REPO_ROOT = Path(__file__).resolve().parents[4]
+RESULTS_DIR = Path(os.environ.get("ALPHADIANA_RESULTS_DIR", REPO_ROOT / "results")).expanduser()
 
 # ─── Run directory definitions ───────────────────────────────────────────────
 
 RUNS: dict[tuple[str, str, str], Path] = {}
 
-def _reg(model: str, harness: str, benchmark: str, path: str) -> None:
-    p = Path(path)
-    if not p.is_absolute():
-        p = ROOT / path
+def _reg(model: str, harness: str, benchmark: str, run_id: str) -> None:
+    p = RESULTS_DIR / run_id
     if p.exists():
         RUNS[(model, harness, benchmark)] = p
 
 # --- GPQA ---
-_reg("Qwen3.5-27B",  "directllm", "GPQA", "/path/to/xxx/alphadiana_results/phase9_directllm_gpqa_diamond_qwen35_27b_logprobs")
-_reg("Qwen3.5-27B",  "openclaw",  "GPQA", "results/full_gpqa_v2_openclaw_qwen35_27b_logprobs")
-_reg("Qwen3.5-27B",  "opencode",  "GPQA", "results/full_gpqa_v2_opencode_qwen35_27b_logprobs")
-_reg("Qwen3.5-27B",  "zeroclaw",  "GPQA", "results/full_gpqa_v2_zeroclaw_qwen35_27b_logprobs")
-_reg("Gemma4-31B",   "directllm", "GPQA", "results/422_full/results/full_gpqa_directllm_gemma4_31b_logprobs")
-_reg("Gemma4-31B",   "openclaw",  "GPQA", "results/422_full/results/full_gpqa_openclaw_gemma4_31b_logprobs")
-_reg("Gemma4-31B",   "opencode",  "GPQA", "results/422_full/results/full_gpqa_opencode_gemma4_31b_logprobs")
-_reg("Gemma4-31B",   "zeroclaw",  "GPQA", "results/422_full/results/full_gpqa_zeroclaw_gemma4_31b_logprobs")
+_reg("Qwen3.5-27B",  "directllm", "GPQA", "phase9_directllm_gpqa_diamond_qwen35_27b_logprobs")
+_reg("Qwen3.5-27B",  "openclaw",  "GPQA", "full_gpqa_v2_openclaw_qwen35_27b_logprobs")
+_reg("Qwen3.5-27B",  "opencode",  "GPQA", "full_gpqa_v2_opencode_qwen35_27b_logprobs")
+_reg("Qwen3.5-27B",  "zeroclaw",  "GPQA", "full_gpqa_v2_zeroclaw_qwen35_27b_logprobs")
+_reg("Gemma4-31B",   "directllm", "GPQA", "full_gpqa_directllm_gemma4_31b_logprobs")
+_reg("Gemma4-31B",   "openclaw",  "GPQA", "full_gpqa_openclaw_gemma4_31b_logprobs")
+_reg("Gemma4-31B",   "opencode",  "GPQA", "full_gpqa_opencode_gemma4_31b_logprobs")
+_reg("Gemma4-31B",   "zeroclaw",  "GPQA", "full_gpqa_zeroclaw_gemma4_31b_logprobs")
 
 # --- HLE ---
-_reg("Qwen3.5-27B",  "directllm", "HLE", "/path/to/xxx/alphadiana_results/phase9_directllm_qwen35_27b_hle_logprobs")
-_reg("Qwen3.5-27B",  "openclaw",  "HLE", "results/quick_260430_hle_openclaw_qwen35_27b_merged")
-_reg("Qwen3.5-27B",  "opencode",  "HLE", "/path/to/xxx/alphadiana-results/20260426-hle-opencode-qwen35_27b-v01")
-_reg("Qwen3.5-27B",  "zeroclaw",  "HLE", "/path/to/xxx/alphadiana-results/20260426-hle-zeroclaw-qwen35_27b-v01")
-_reg("Gemma4-31B",   "directllm", "HLE", "results/422_full/results/full_hle_directllm_gemma4_31b_logprobs")
-_reg("Gemma4-31B",   "openclaw",  "HLE", "results/422_full/results/full_hle_openclaw_gemma4_31b_logprobs")
-_reg("Gemma4-31B",   "opencode",  "HLE", "results/422_full/results/full_hle_opencode_gemma4_31b_logprobs")
-_reg("Gemma4-31B",   "zeroclaw",  "HLE", "results/422_full/results/full_hle_zeroclaw_gemma4_31b_logprobs")
+_reg("Qwen3.5-27B",  "directllm", "HLE", "phase9_directllm_qwen35_27b_hle_logprobs")
+_reg("Qwen3.5-27B",  "openclaw",  "HLE", "quick_260430_hle_openclaw_qwen35_27b_merged")
+_reg("Qwen3.5-27B",  "opencode",  "HLE", "20260426-hle-opencode-qwen35_27b-v01")
+_reg("Qwen3.5-27B",  "zeroclaw",  "HLE", "20260426-hle-zeroclaw-qwen35_27b-v01")
+_reg("Gemma4-31B",   "directllm", "HLE", "full_hle_directllm_gemma4_31b_logprobs")
+_reg("Gemma4-31B",   "openclaw",  "HLE", "full_hle_openclaw_gemma4_31b_logprobs")
+_reg("Gemma4-31B",   "opencode",  "HLE", "full_hle_opencode_gemma4_31b_logprobs")
+_reg("Gemma4-31B",   "zeroclaw",  "HLE", "full_hle_zeroclaw_gemma4_31b_logprobs")
 
 # --- AIME ---
-_reg("Qwen3.5-27B",  "directllm", "AIME", "/path/to/xxx/alphadiana_results/full_20260423_qwen35_27b_aime2026_directllm_r1_pass4")
-_reg("Qwen3.5-27B",  "openclaw",  "AIME", "/path/to/xxx/alphadiana_offload/422_full/results/repair_20260502_aime2026_openclaw_qwen35_27b_pass4_t9300_from_20260428")
-_reg("Qwen3.5-27B",  "opencode",  "AIME", "/path/to/xxx/alphadiana_offload/422_full/results/repair_20260502_aime2026_opencode_qwen35_27b_pass4_t9300_from_20260425")
-_reg("Qwen3.5-27B",  "zeroclaw",  "AIME", "/path/to/xxx/alphadiana_offload/422_full/results/repair_20260502_aime2026_zeroclaw_qwen35_27b_pass4_t9300_from_20260428")
-_reg("Gemma4-31B",   "directllm", "AIME", "/path/to/xxx/results/full_aime2026_directllm_gemma4_31b_k4_logprobs")
-_reg("Gemma4-31B",   "openclaw",  "AIME", "/path/to/xxx/results/quick_260503_aime2026_openclaw_gemma4_31b_8012_pass4_c1")
-_reg("Gemma4-31B",   "opencode",  "AIME", "/path/to/xxx/results/full_20260503_aime2026_opencode_gemma4_31b_8012_pass4_c4")
-_reg("Gemma4-31B",   "zeroclaw",  "AIME", "/path/to/xxx/results/full_20260503_aime2026_zeroclaw_gemma4_31b_8011_pass4_c4")
+_reg("Qwen3.5-27B",  "directllm", "AIME", "full_20260423_qwen35_27b_aime2026_directllm_r1_pass4")
+_reg("Qwen3.5-27B",  "openclaw",  "AIME", "repair_20260502_aime2026_openclaw_qwen35_27b_pass4_t9300_from_20260428")
+_reg("Qwen3.5-27B",  "opencode",  "AIME", "repair_20260502_aime2026_opencode_qwen35_27b_pass4_t9300_from_20260425")
+_reg("Qwen3.5-27B",  "zeroclaw",  "AIME", "repair_20260502_aime2026_zeroclaw_qwen35_27b_pass4_t9300_from_20260428")
+_reg("Gemma4-31B",   "directllm", "AIME", "full_aime2026_directllm_gemma4_31b_k4_logprobs")
+_reg("Gemma4-31B",   "openclaw",  "AIME", "quick_260503_aime2026_openclaw_gemma4_31b_8012_pass4_c1")
+_reg("Gemma4-31B",   "opencode",  "AIME", "full_20260503_aime2026_opencode_gemma4_31b_8012_pass4_c4")
+_reg("Gemma4-31B",   "zeroclaw",  "AIME", "full_20260503_aime2026_zeroclaw_gemma4_31b_8011_pass4_c4")
 
 
 def is_valid_record(record: dict) -> bool:

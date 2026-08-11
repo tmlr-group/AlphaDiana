@@ -570,11 +570,16 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
                 local_path=local_config_path,
             )
             proxy_base_url = ""
-            if self._logprob_capture["enabled"]:
+            needs_provider_bridge = (
+                self._container_engine == "docker"
+                and self._container_reachable_url(self._api_base) != self._api_base
+            )
+            if self._logprob_capture["enabled"] or needs_provider_bridge:
                 upstream = self._api_base.rstrip("/")
-                advertise_host = resolve_logprob_proxy_advertise_host(
-                    self._api_base,
-                    "",
+                advertise_host = (
+                    self._docker_host_alias
+                    if needs_provider_bridge
+                    else resolve_logprob_proxy_advertise_host(self._api_base, "")
                 )
                 logprob_proxy = LogprobCaptureProxy(
                     upstream,
@@ -583,11 +588,13 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
                     advertise_host=advertise_host,
                     client_timeout=max(120.0, float(self._solver_timeout_sec)),
                     upstream_api_key=self._api_key,
+                    inject_logprobs=self._logprob_capture["enabled"],
                 )
                 logprob_proxy.start()
                 proxy_base_url = f"{logprob_proxy.proxy_url.rstrip('/')}/v1"
                 logprob_proxy_metadata = {
-                    "logprob_proxy_enabled": True,
+                    "logprob_proxy_enabled": self._logprob_capture["enabled"],
+                    "provider_bridge_enabled": needs_provider_bridge,
                     "logprob_proxy_url": proxy_base_url,
                     "logprob_proxy_upstream": logprob_proxy.upstream,
                 }

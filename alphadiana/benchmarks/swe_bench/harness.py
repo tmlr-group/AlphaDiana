@@ -60,7 +60,7 @@ _FENCED_BLOCK_RE = re.compile(r"```(?:diff|patch)?\s*(.*?)```", re.DOTALL | re.I
 _ENV_PLACEHOLDER_RE = re.compile(
     r"^\$(?:\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)$"
 )
-_ASSET_ROOT = Path(__file__).resolve().parent / "swebench_assets"
+_ASSET_ROOT = Path(__file__).resolve().parent / "assets"
 _IN_CONTAINER_AGENT_TYPES = {"openclaw", "opencode", "zeroclaw"}
 _REMOTE_AGENT_ROOT = "/tmp/alphadiana-swebench"
 _OPENCLAW_RUNNER = _ASSET_ROOT / "run_openclaw.sh"

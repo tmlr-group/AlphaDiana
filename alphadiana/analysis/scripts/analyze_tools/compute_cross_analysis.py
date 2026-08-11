@@ -27,20 +27,22 @@ from collections import defaultdict, Counter
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "analyze_tools" / "data"
+REPO_ROOT = Path(__file__).resolve().parents[4]
+RESULTS_DIR = Path(os.environ.get("ALPHADIANA_RESULTS_DIR", REPO_ROOT / "results")).expanduser()
 
 # ── Paths ────────────────────────────────────────────────────────────
 # GPQA (already have ARM, but need per-mode entropy)
 GPQA_RESULT_DIRS = {
-    "openclaw": ROOT / "results" / "full_gpqa_v2_openclaw_qwen35_27b_logprobs",
-    "opencode": ROOT / "results" / "full_gpqa_v2_opencode_qwen35_27b_logprobs",
-    "zeroclaw": ROOT / "results" / "full_gpqa_v2_zeroclaw_qwen35_27b_logprobs",
+    "openclaw": RESULTS_DIR / "full_gpqa_v2_openclaw_qwen35_27b_logprobs",
+    "opencode": RESULTS_DIR / "full_gpqa_v2_opencode_qwen35_27b_logprobs",
+    "zeroclaw": RESULTS_DIR / "full_gpqa_v2_zeroclaw_qwen35_27b_logprobs",
 }
 
 # HLE
 HLE_RESULT_DIRS = {
-    "directllm": Path("/path/to/xxx/alphadiana_results/phase9_directllm_qwen35_27b_hle_logprobs"),
-    "opencode": Path("/path/to/xxx/alphadiana-results/20260426-hle-opencode-qwen35_27b-v01"),
-    "zeroclaw": Path("/path/to/xxx/alphadiana-results/20260426-hle-zeroclaw-qwen35_27b-v01"),
+    "directllm": RESULTS_DIR / "phase9_directllm_qwen35_27b_hle_logprobs",
+    "opencode": RESULTS_DIR / "20260426-hle-opencode-qwen35_27b-v01",
+    "zeroclaw": RESULTS_DIR / "20260426-hle-zeroclaw-qwen35_27b-v01",
 }
 
 # Existing data

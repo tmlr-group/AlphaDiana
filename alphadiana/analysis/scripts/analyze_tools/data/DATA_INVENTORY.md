@@ -38,8 +38,8 @@ Last updated: 2026-05-07
 | Qwen3.5-27B | DirectLLM | 323 | 23.5% (shared subset) | YES | `alphadiana_results/phase9_directllm_qwen35_27b_hle_logprobs` |
 | Qwen3.5-27B | DirectLLM | 591 | 19.3% (full set) | no | `results/hf-alphadiana-benchmark-results/full_run/full_20260422_qwen35_27b_hle_mc_directllm_v1/results` |
 | Qwen3.5-27B | OpenClaw | 591 | 13.4% | YES | `results/quick_260430_hle_openclaw_qwen35_27b_merged` |
-| Qwen3.5-27B | OpenCode | 591 | 13.9% | YES | `/path/to/xxx/alphadiana-results/20260426-hle-opencode-qwen35_27b-v01` |
-| Qwen3.5-27B | ZeroClaw | 591 | 14.9% | YES (544 lp) | `/path/to/xxx/alphadiana-results/20260426-hle-zeroclaw-qwen35_27b-v01` |
+| Qwen3.5-27B | OpenCode | 591 | 13.9% | YES | `${ALPHADIANA_RESULTS_DIR}/20260426-hle-opencode-qwen35_27b-v01` |
+| Qwen3.5-27B | ZeroClaw | 591 | 14.9% | YES (544 lp) | `${ALPHADIANA_RESULTS_DIR}/20260426-hle-zeroclaw-qwen35_27b-v01` |
 | Gemma4-31B | DirectLLM | 591 | 27.9% (165/591) | YES | `results/422_full/results/full_hle_directllm_gemma4_31b_logprobs` |
 | Gemma4-31B | OpenClaw | 591 | 24.2% (143/591) | YES | `results/422_full/results/full_hle_openclaw_gemma4_31b_logprobs` |
 | Gemma4-31B | OpenCode | 591 | 24.0% (142/591) | YES | `results/422_full/results/full_hle_opencode_gemma4_31b_logprobs` |
@@ -59,14 +59,14 @@ The paper's paired analysis correctly uses the 323-task shared subset with 23.5%
 
 | Model | Harness | N | Pass@1 | Pass@k | LP | Location |
 |-------|---------|---|--------|--------|----|----------|
-| Qwen3.5-27B | DirectLLM | 30 | 90.8% (109/120) | pass@4=93.3% (28/30) | YES | `/path/to/xxx/alphadiana_results/full_20260423_qwen35_27b_aime2026_directllm_r1_pass4` |
-| Qwen3.5-27B | OpenClaw | 30 | 64.2% (77/120; 28 null) | pass@3=83.3% (25/30) | ⚠️ 62 lp | `/path/to/xxx/alphadiana_offload/422_full/results/repair_20260502_aime2026_openclaw_qwen35_27b_pass4_t9300_from_20260428` |
-| Qwen3.5-27B | OpenCode | 30 | 66.7% (80/120; 5 null) | pass@3=86.7% (26/30) | ⚠️ 5 lp | `/path/to/xxx/alphadiana_offload/422_full/results/repair_20260502_aime2026_opencode_qwen35_27b_pass4_t9300_from_20260425` |
-| Qwen3.5-27B | ZeroClaw | 30 | 69.2% (83/120) | pass@4=86.7% (26/30) | ⚠️ 16 lp | `/path/to/xxx/alphadiana_offload/422_full/results/repair_20260502_aime2026_zeroclaw_qwen35_27b_pass4_t9300_from_20260428` |
-| Gemma4-31B | DirectLLM | 30 | 92.5% (111/120) | pass@4=96.7% (29/30) | YES | `/path/to/xxx/results/full_aime2026_directllm_gemma4_31b_k4_logprobs` |
-| Gemma4-31B | OpenClaw | 30 | 95.0% (114/120) | pass@3=**100%** (30/30) | YES | `/path/to/xxx/results/quick_260503_aime2026_openclaw_gemma4_31b_8012_pass4_c1` |
-| Gemma4-31B | OpenCode | 30 | 96.7% (116/120) | pass@3=**100%** (30/30) | YES | `/path/to/xxx/results/full_20260503_aime2026_opencode_gemma4_31b_8012_pass4_c4` |
-| Gemma4-31B | ZeroClaw | 30 | 96.7% (116/120) | pass@4=**100%** (30/30) | YES | `/path/to/xxx/results/full_20260503_aime2026_zeroclaw_gemma4_31b_8011_pass4_c4` |
+| Qwen3.5-27B | DirectLLM | 30 | 90.8% (109/120) | pass@4=93.3% (28/30) | YES | `${ALPHADIANA_RESULTS_DIR}/full_20260423_qwen35_27b_aime2026_directllm_r1_pass4` |
+| Qwen3.5-27B | OpenClaw | 30 | 64.2% (77/120; 28 null) | pass@3=83.3% (25/30) | ⚠️ 62 lp | `${ALPHADIANA_RESULTS_DIR}/repair_20260502_aime2026_openclaw_qwen35_27b_pass4_t9300_from_20260428` |
+| Qwen3.5-27B | OpenCode | 30 | 66.7% (80/120; 5 null) | pass@3=86.7% (26/30) | ⚠️ 5 lp | `${ALPHADIANA_RESULTS_DIR}/repair_20260502_aime2026_opencode_qwen35_27b_pass4_t9300_from_20260425` |
+| Qwen3.5-27B | ZeroClaw | 30 | 69.2% (83/120) | pass@4=86.7% (26/30) | ⚠️ 16 lp | `${ALPHADIANA_RESULTS_DIR}/repair_20260502_aime2026_zeroclaw_qwen35_27b_pass4_t9300_from_20260428` |
+| Gemma4-31B | DirectLLM | 30 | 92.5% (111/120) | pass@4=96.7% (29/30) | YES | `${ALPHADIANA_RESULTS_DIR}/full_aime2026_directllm_gemma4_31b_k4_logprobs` |
+| Gemma4-31B | OpenClaw | 30 | 95.0% (114/120) | pass@3=**100%** (30/30) | YES | `${ALPHADIANA_RESULTS_DIR}/quick_260503_aime2026_openclaw_gemma4_31b_8012_pass4_c1` |
+| Gemma4-31B | OpenCode | 30 | 96.7% (116/120) | pass@3=**100%** (30/30) | YES | `${ALPHADIANA_RESULTS_DIR}/full_20260503_aime2026_opencode_gemma4_31b_8012_pass4_c4` |
+| Gemma4-31B | ZeroClaw | 30 | 96.7% (116/120) | pass@4=**100%** (30/30) | YES | `${ALPHADIANA_RESULTS_DIR}/full_20260503_aime2026_zeroclaw_gemma4_31b_8011_pass4_c4` |
 
 **AIME Gemma pass@1 notes**: OpenClaw has 3 null-correct samples (97.4% excl null); OpenCode has 1 null-correct sample (97.5% excl null). pass@1 numbers above are null-inclusive (confirmed 2026-05-07).
 
@@ -111,9 +111,9 @@ Gemma pass@4 all use the nested structure consistently.
 | Qwen3.5-27B | OpenCode | — | NEED HF SYNC | — | — |
 | Qwen3.5-27B | ZeroClaw | — | NEED HF SYNC | — | — |
 | Gemma4-31B | DirectLLM | 400 | 59.0% (236/400) | no (tasks only) | `results/hf-alphadiana-benchmark-results/full_run/20260501-imo-answerbench-directllm-gemma4-31b-v01/results/tasks` |
-| Gemma4-31B | OpenClaw | 400 | DONE (off-machine) | NEED SYNC | `/home/xxx/projects/422_full/results/` (tracker: `full_run/20260505-imo-answerbench-openclaw-gemma4-31b-v01`) |
-| Gemma4-31B | OpenCode | 400 | DONE (off-machine) | NEED SYNC | `/home/xxx/projects/422_full/results/` (tracker: `full_run/20260502-imo-answerbench-opencode-gemma4-31b-v01`) |
-| Gemma4-31B | ZeroClaw | 400 | DONE (off-machine) | NEED SYNC | `/home/xxx/projects/422_full/results/` (tracker: `full_run/20260505-imo-answerbench-zeroclaw-gemma4-31b-v01`) |
+| Gemma4-31B | OpenClaw | 400 | DONE (external result store) | NEED SYNC | tracker: `full_run/20260505-imo-answerbench-openclaw-gemma4-31b-v01` |
+| Gemma4-31B | OpenCode | 400 | DONE (external result store) | NEED SYNC | tracker: `full_run/20260502-imo-answerbench-opencode-gemma4-31b-v01` |
+| Gemma4-31B | ZeroClaw | 400 | DONE (external result store) | NEED SYNC | tracker: `full_run/20260505-imo-answerbench-zeroclaw-gemma4-31b-v01` |
 
 ---
 

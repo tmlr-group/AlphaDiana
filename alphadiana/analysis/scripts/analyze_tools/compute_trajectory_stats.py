@@ -17,6 +17,7 @@ from __future__ import annotations
 import csv
 import json
 import math
+import os
 import statistics
 import sys
 from collections import Counter, defaultdict
@@ -27,7 +28,8 @@ csv.field_size_limit(sys.maxsize)
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "analyze_tools" / "data"
-RESULTS_DIR = ROOT / "results"
+REPO_ROOT = Path(__file__).resolve().parents[4]
+RESULTS_DIR = Path(os.environ.get("ALPHADIANA_RESULTS_DIR", REPO_ROOT / "results")).expanduser()
 
 ERROR_STATUSES = {"agent_error", "provider_error", "runtime_error", "scorer_error"}
 
@@ -40,13 +42,13 @@ GPQA_RUNS = {
 
 HLE_RUNS = {
     "directllm": {
-        "dir": Path("/path/to/xxx/alphadiana_results/phase9_directllm_qwen35_27b_hle_logprobs"),
+        "dir": RESULTS_DIR / "phase9_directllm_qwen35_27b_hle_logprobs",
     },
     "opencode": {
-        "dir": Path("/path/to/xxx/alphadiana-results/20260426-hle-opencode-qwen35_27b-v01"),
+        "dir": RESULTS_DIR / "20260426-hle-opencode-qwen35_27b-v01",
     },
     "zeroclaw": {
-        "dir": Path("/path/to/xxx/alphadiana-results/20260426-hle-zeroclaw-qwen35_27b-v01"),
+        "dir": RESULTS_DIR / "20260426-hle-zeroclaw-qwen35_27b-v01",
     },
 }
 

@@ -176,7 +176,8 @@ CMAP_WRONG = LinearSegmentedColormap.from_list("kde_wrong",
 
 ### Academic plot style
 ```python
-SKILL_DIR = Path("/home/xxx/academic-plot/scripts")
+import os
+SKILL_DIR = Path(os.environ["ALPHADIANA_ACADEMIC_PLOT_DIR"])
 sys.path.insert(0, str(SKILL_DIR))
 from academic_plot import set_academic_style
 set_academic_style(font_size=18)

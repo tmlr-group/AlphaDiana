@@ -16,6 +16,7 @@ from __future__ import annotations
 import csv
 import json
 import math
+import os
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -24,7 +25,8 @@ csv.field_size_limit(sys.maxsize)
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "analyze_tools" / "data"
-RESULTS_DIR = ROOT / "results"
+REPO_ROOT = Path(__file__).resolve().parents[4]
+RESULTS_DIR = Path(os.environ.get("ALPHADIANA_RESULTS_DIR", REPO_ROOT / "results")).expanduser()
 
 GPQA_RUNS = {
     "directllm": "phase9_directllm_gpqa_diamond_qwen35_27b_logprobs",
@@ -34,9 +36,9 @@ GPQA_RUNS = {
 }
 
 HLE_RUNS = {
-    "directllm": Path("/path/to/xxx/alphadiana_results/phase9_directllm_qwen35_27b_hle_logprobs"),
-    "opencode": Path("/path/to/xxx/alphadiana-results/20260426-hle-opencode-qwen35_27b-v01"),
-    "zeroclaw": Path("/path/to/xxx/alphadiana-results/20260426-hle-zeroclaw-qwen35_27b-v01"),
+    "directllm": RESULTS_DIR / "phase9_directllm_qwen35_27b_hle_logprobs",
+    "opencode": RESULTS_DIR / "20260426-hle-opencode-qwen35_27b-v01",
+    "zeroclaw": RESULTS_DIR / "20260426-hle-zeroclaw-qwen35_27b-v01",
 }
 
 CAUSE_BUCKET_MAP = {

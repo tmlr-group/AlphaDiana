@@ -14,12 +14,14 @@ import math
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "analyze_tools" / "data"
+REPO_ROOT = Path(__file__).resolve().parents[4]
+RESULTS_DIR = Path(os.environ.get("ALPHADIANA_RESULTS_DIR", REPO_ROOT / "results")).expanduser()
 
 RESULT_DIRS = {
-    "directllm": "/path/to/xxx/alphadiana_offload/422_full/results/full_gpqa_directllm_gemma4_31b_logprobs",
-    "openclaw":  "/path/to/xxx/alphadiana_offload/422_full/results/full_gpqa_openclaw_gemma4_31b_logprobs",
-    "opencode":  "/path/to/xxx/alphadiana_offload/422_full/results/full_gpqa_opencode_gemma4_31b_logprobs",
-    "zeroclaw":  "/path/to/xxx/alphadiana_offload/422_full/results/full_gpqa_zeroclaw_gemma4_31b_logprobs",
+    "directllm": RESULTS_DIR / "full_gpqa_directllm_gemma4_31b_logprobs",
+    "openclaw": RESULTS_DIR / "full_gpqa_openclaw_gemma4_31b_logprobs",
+    "opencode": RESULTS_DIR / "full_gpqa_opencode_gemma4_31b_logprobs",
+    "zeroclaw": RESULTS_DIR / "full_gpqa_zeroclaw_gemma4_31b_logprobs",
 }
 
 # ── ARM keyword rules (same as extract_arm_features.py) ──────────────

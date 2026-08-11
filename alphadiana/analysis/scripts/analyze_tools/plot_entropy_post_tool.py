@@ -20,6 +20,7 @@ from __future__ import annotations
 import csv
 import json
 import math
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,6 +34,8 @@ import numpy as np
 
 
 ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[4]
+RESULTS_DIR = Path(os.environ.get("ALPHADIANA_RESULTS_DIR", REPO_ROOT / "results")).expanduser()
 OUT_DIR = ROOT / "analyze_tools" / "figures" / "post_tool_entropy"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -71,37 +74,37 @@ class Setting:
 
 SETTINGS = [
     # HLE
-    Setting("HLE", "Qwen", "DirectLLM", Path("/path/to/xxx/alphadiana_results/phase9_directllm_qwen35_27b_hle_logprobs")),
-    Setting("HLE", "Qwen", "OpenClaw", ROOT / "results/quick_260430_hle_openclaw_qwen35_27b_merged"),
-    Setting("HLE", "Qwen", "OpenCode", Path("/path/to/xxx/alphadiana-results/20260426-hle-opencode-qwen35_27b-v01")),
-    Setting("HLE", "Qwen", "ZeroClaw", Path("/path/to/xxx/alphadiana-results/20260426-hle-zeroclaw-qwen35_27b-v01")),
-    Setting("HLE", "Gemma", "DirectLLM", ROOT / "results/422_full/results/full_hle_directllm_gemma4_31b_logprobs"),
-    Setting("HLE", "Gemma", "OpenClaw", ROOT / "results/422_full/results/full_hle_openclaw_gemma4_31b_logprobs"),
-    Setting("HLE", "Gemma", "OpenCode", ROOT / "results/422_full/results/full_hle_opencode_gemma4_31b_logprobs"),
-    Setting("HLE", "Gemma", "ZeroClaw", ROOT / "results/422_full/results/full_hle_zeroclaw_gemma4_31b_logprobs"),
+    Setting("HLE", "Qwen", "DirectLLM", RESULTS_DIR / "phase9_directllm_qwen35_27b_hle_logprobs"),
+    Setting("HLE", "Qwen", "OpenClaw", RESULTS_DIR / "quick_260430_hle_openclaw_qwen35_27b_merged"),
+    Setting("HLE", "Qwen", "OpenCode", RESULTS_DIR / "20260426-hle-opencode-qwen35_27b-v01"),
+    Setting("HLE", "Qwen", "ZeroClaw", RESULTS_DIR / "20260426-hle-zeroclaw-qwen35_27b-v01"),
+    Setting("HLE", "Gemma", "DirectLLM", RESULTS_DIR / "full_hle_directllm_gemma4_31b_logprobs"),
+    Setting("HLE", "Gemma", "OpenClaw", RESULTS_DIR / "full_hle_openclaw_gemma4_31b_logprobs"),
+    Setting("HLE", "Gemma", "OpenCode", RESULTS_DIR / "full_hle_opencode_gemma4_31b_logprobs"),
+    Setting("HLE", "Gemma", "ZeroClaw", RESULTS_DIR / "full_hle_zeroclaw_gemma4_31b_logprobs"),
     # GPQA
     Setting(
         "GPQA",
         "Qwen",
         "DirectLLM",
-        ROOT / "results/hf-alphadiana-benchmark-results/full_run/20260423-gpqa-diamond-directllm-qwen35-27b-v1/results/20260423-gpqa_diamond-directllm-qwen35_27b-v01",
+        RESULTS_DIR / "hf-alphadiana-benchmark-results/full_run/20260423-gpqa-diamond-directllm-qwen35-27b-v1/results/20260423-gpqa_diamond-directllm-qwen35_27b-v01",
     ),
-    Setting("GPQA", "Qwen", "OpenClaw", ROOT / "results/full_gpqa_v2_openclaw_qwen35_27b_logprobs"),
-    Setting("GPQA", "Qwen", "OpenCode", ROOT / "results/full_gpqa_v2_opencode_qwen35_27b_logprobs"),
-    Setting("GPQA", "Qwen", "ZeroClaw", ROOT / "results/full_gpqa_v2_zeroclaw_qwen35_27b_logprobs"),
-    Setting("GPQA", "Gemma", "DirectLLM", ROOT / "results/422_full/results/full_gpqa_directllm_gemma4_31b_logprobs"),
-    Setting("GPQA", "Gemma", "OpenClaw", ROOT / "results/422_full/results/full_gpqa_openclaw_gemma4_31b_logprobs"),
-    Setting("GPQA", "Gemma", "OpenCode", ROOT / "results/422_full/results/full_gpqa_opencode_gemma4_31b_logprobs"),
-    Setting("GPQA", "Gemma", "ZeroClaw", ROOT / "results/422_full/results/full_gpqa_zeroclaw_gemma4_31b_logprobs"),
+    Setting("GPQA", "Qwen", "OpenClaw", RESULTS_DIR / "full_gpqa_v2_openclaw_qwen35_27b_logprobs"),
+    Setting("GPQA", "Qwen", "OpenCode", RESULTS_DIR / "full_gpqa_v2_opencode_qwen35_27b_logprobs"),
+    Setting("GPQA", "Qwen", "ZeroClaw", RESULTS_DIR / "full_gpqa_v2_zeroclaw_qwen35_27b_logprobs"),
+    Setting("GPQA", "Gemma", "DirectLLM", RESULTS_DIR / "full_gpqa_directllm_gemma4_31b_logprobs"),
+    Setting("GPQA", "Gemma", "OpenClaw", RESULTS_DIR / "full_gpqa_openclaw_gemma4_31b_logprobs"),
+    Setting("GPQA", "Gemma", "OpenCode", RESULTS_DIR / "full_gpqa_opencode_gemma4_31b_logprobs"),
+    Setting("GPQA", "Gemma", "ZeroClaw", RESULTS_DIR / "full_gpqa_zeroclaw_gemma4_31b_logprobs"),
     # AIME pass@4
-    Setting("AIMEPass4", "Qwen", "DirectLLM", Path("/path/to/xxx/alphadiana_results/full_20260423_qwen35_27b_aime2026_directllm_r1_pass4")),
-    Setting("AIMEPass4", "Qwen", "OpenClaw", Path("/path/to/xxx/alphadiana_offload/422_full/results/repair_20260502_aime2026_openclaw_qwen35_27b_pass4_t9300_from_20260428")),
-    Setting("AIMEPass4", "Qwen", "OpenCode", Path("/path/to/xxx/alphadiana_offload/422_full/results/repair_20260502_aime2026_opencode_qwen35_27b_pass4_t9300_from_20260425")),
-    Setting("AIMEPass4", "Qwen", "ZeroClaw", Path("/path/to/xxx/alphadiana_offload/422_full/results/repair_20260502_aime2026_zeroclaw_qwen35_27b_pass4_t9300_from_20260428")),
-    Setting("AIMEPass4", "Gemma", "DirectLLM", Path("/path/to/xxx/results/full_aime2026_directllm_gemma4_31b_k4_logprobs")),
-    Setting("AIMEPass4", "Gemma", "OpenClaw", Path("/path/to/xxx/results/quick_260503_aime2026_openclaw_gemma4_31b_8012_pass4_c1")),
-    Setting("AIMEPass4", "Gemma", "OpenCode", Path("/path/to/xxx/results/full_20260503_aime2026_opencode_gemma4_31b_8012_pass4_c4")),
-    Setting("AIMEPass4", "Gemma", "ZeroClaw", Path("/path/to/xxx/results/full_20260503_aime2026_zeroclaw_gemma4_31b_8011_pass4_c4")),
+    Setting("AIMEPass4", "Qwen", "DirectLLM", RESULTS_DIR / "full_20260423_qwen35_27b_aime2026_directllm_r1_pass4"),
+    Setting("AIMEPass4", "Qwen", "OpenClaw", RESULTS_DIR / "repair_20260502_aime2026_openclaw_qwen35_27b_pass4_t9300_from_20260428"),
+    Setting("AIMEPass4", "Qwen", "OpenCode", RESULTS_DIR / "repair_20260502_aime2026_opencode_qwen35_27b_pass4_t9300_from_20260425"),
+    Setting("AIMEPass4", "Qwen", "ZeroClaw", RESULTS_DIR / "repair_20260502_aime2026_zeroclaw_qwen35_27b_pass4_t9300_from_20260428"),
+    Setting("AIMEPass4", "Gemma", "DirectLLM", RESULTS_DIR / "full_aime2026_directllm_gemma4_31b_k4_logprobs"),
+    Setting("AIMEPass4", "Gemma", "OpenClaw", RESULTS_DIR / "quick_260503_aime2026_openclaw_gemma4_31b_8012_pass4_c1"),
+    Setting("AIMEPass4", "Gemma", "OpenCode", RESULTS_DIR / "full_20260503_aime2026_opencode_gemma4_31b_8012_pass4_c4"),
+    Setting("AIMEPass4", "Gemma", "ZeroClaw", RESULTS_DIR / "full_20260503_aime2026_zeroclaw_gemma4_31b_8011_pass4_c4"),
 ]
 
 
