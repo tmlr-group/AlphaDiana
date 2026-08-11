@@ -52,7 +52,7 @@ Podman host networking:
 ```bash
 export OPENAI_BASE_URL=http://127.0.0.1:8011/v1
 export OPENAI_API_KEY=sk-EMPTY
-export OPENAI_MODEL_NAME=Qwen/Qwen3.5-4B
+export OPENAI_MODEL_NAME=Qwen/Qwen3.5-27B
 
 export HF_HOME=/path/to/writable/hf
 export HF_DATASETS_CACHE=$HF_HOME/datasets
@@ -140,9 +140,8 @@ checks in addition to the benchmark-specific preflight:
 - Put results, task logs, and dual logprob sidecars on a large data volume; do
   not assume the home filesystem can hold a full sweep.
 - Confirm every selected image digest and run its required binary/Python
-  preflight. TerminalBench2 may use the thinner controllers under
-  `docker/terminal_bench2/`; historical configs may call the OpenClaw image
-  `localhost/alphadiana-openclaw-fixed:latest`.
+  preflight. TerminalBench2 controller definitions live under
+  `alphadiana/benchmarks/terminal_bench2/deploy/dockerfiles/`.
 - Confirm the network mode matches provider reachability. A loopback provider
   requires host networking unless the harness explicitly advertises a host
   proxy through rootless networking.

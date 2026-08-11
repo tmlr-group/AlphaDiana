@@ -100,7 +100,7 @@ server works.
 pip install vllm
 
 CUDA_VISIBLE_DEVICES=0 python -m vllm.entrypoints.openai.api_server \
-    --model /path/to/Qwen3-8B \
+    --model /path/to/Qwen3.5-27B \
     --host 127.0.0.1 \
     --port 8000 \
     --trust-remote-code
@@ -218,7 +218,7 @@ blank provider fields are populated from these environment variables:
 |---|---|---|
 | `OPENAI_BASE_URL` | `api_base` | `http://127.0.0.1:8000/v1` |
 | `OPENAI_API_KEY` | `api_key` | `sk-EMPTY` (local vLLM) |
-| `OPENAI_MODEL_NAME` | `model` (`model_name` for opencode / tb2 variants) | `Qwen/Qwen3-8B` |
+| `OPENAI_MODEL_NAME` | `model` (`model_name` for opencode / tb2 variants) | `Qwen/Qwen3.5-27B` |
 
 Set them in your shell, or put them in a `.env` file that `scripts/activate.sh`
 loads:
@@ -226,15 +226,15 @@ loads:
 ```bash
 export OPENAI_BASE_URL=http://127.0.0.1:8000/v1
 export OPENAI_API_KEY=sk-EMPTY
-export OPENAI_MODEL_NAME=Qwen/Qwen3-8B
+export OPENAI_MODEL_NAME=Qwen/Qwen3.5-27B
 ```
 
 > [!NOTE] **OpenClaw auto-deploy boundary**
-> For an OpenClaw config that declares both `rock_agent_config_path` and
-> `openclaw_config_path`, the loader treats `OPENAI_BASE_URL` as the upstream
-> provider endpoint and deliberately leaves lower-case `agent.config.api_base`
-> empty so the runner creates the gateway. You can therefore use the normal
-> provider variables:
+> For a runtime-backed OpenClaw config (`runtime`, `runtime_backend: podman`, or
+> a `rock_agent_config_path` / `openclaw_config_path` pair), the loader treats
+> `OPENAI_BASE_URL` as the upstream provider endpoint and deliberately leaves
+> lower-case `agent.config.api_base` empty so the runner creates the gateway.
+> You can therefore use the normal provider variables:
 >
 > ```bash
 > export OPENAI_BASE_URL=https://openrouter.ai/api/v1

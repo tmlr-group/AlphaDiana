@@ -116,7 +116,9 @@ to the harness. Common LLM fields:
 When the LLM fields are blank, `_apply_agent_env_defaults` fills them from
 `OPENAI_BASE_URL` / `OPENAI_API_KEY` / `OPENAI_MODEL_NAME` (loaded via
 `source scripts/activate.sh`). Release configs use those environment variables
-directly or rely on the same defaults.
+directly or rely on the same defaults. Runtime-backed OpenClaw is the important
+exception: `OPENAI_BASE_URL` remains the upstream provider endpoint, while the
+runner resolves and supplies the deployed gateway's lower-case `api_base`.
 
 > [!CAUTION] **api_key sentinel**
 > The validator treats `None`, `""`, and the literal string `EMPTY`
