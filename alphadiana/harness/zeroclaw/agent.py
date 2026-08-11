@@ -628,8 +628,7 @@ class ZeroClawAgent(Agent):
             self._logprob_proxy_advertise_host
             or (
                 "host.containers.internal"
-                if str(self._config.get("runtime_backend", "") or "").strip().lower()
-                == "podman"
+                if self._runtime_backend == "podman"
                 else ""
             ),
         )

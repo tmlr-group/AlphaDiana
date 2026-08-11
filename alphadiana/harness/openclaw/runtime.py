@@ -21,6 +21,9 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from alphadiana.harness.proxies.logprob_proxy import (
+    resolve_logprob_proxy_advertise_host,
+)
 from alphadiana.utils.openclaw_security import resolve_openclaw_gateway_token
 
 from alphadiana.engine.container_runtime import (
