@@ -10,9 +10,9 @@ Run from the repository root:
 ```bash
 source scripts/activate.sh
 
-export OPENAI_BASE_URL=https://api.example.com/v1/
-export OPENAI_API_KEY=sk-...
-export OPENAI_MODEL_NAME=qwen/qwen3.5-27b
+export OPENAI_BASE_URL=http://127.0.0.1:8011/v1
+export OPENAI_API_KEY=sk-EMPTY
+export OPENAI_MODEL_NAME=Qwen/Qwen3.5-27B
 ```
 
 When running from a local checkout, prefer the module entrypoint:

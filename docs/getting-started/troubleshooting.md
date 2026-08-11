@@ -142,28 +142,28 @@ blanked rather than left as a literal placeholder. A missing variable therefore
 degrades to an empty field, which the validator will flag, rather than leaking
 `${VAR}` into a request.
 
-### OpenClaw sends a provider URL a gateway token
+### OpenClaw provider and gateway URLs are mixed up
 
 OpenClaw has two distinct endpoints. Uppercase `OPENAI_BASE_URL` (or lowercase
 `openai_base_url`) in `agent.config` is the upstream model provider used while
 starting a gateway. Lowercase `agent.config.api_base` is the URL of an
 already-running OpenClaw gateway and is called with `gateway_token`.
 
-The current config loader also copies the shell's `OPENAI_BASE_URL` into a blank
-OpenClaw `api_base`. That can make an auto-deploy config skip gateway startup
-and send its gateway credential directly to the provider. For an OpenClaw
-ROCK/Podman auto-deploy run, use a separate shell variable:
+For runtime-backed OpenClaw (`runtime`, `runtime_backend: podman`, or a
+ROCK/OpenClaw config-path pair), the current loader deliberately leaves
+lower-case `api_base` empty so the runner can deploy and resolve the gateway.
+Use the normal provider variables:
 
 ```bash
-export PROVIDER_BASE_URL=https://provider.example/v1
-unset OPENAI_BASE_URL
-
-python -m alphadiana.cli run <openclaw-config.yaml> \
-  -o agent.config.OPENAI_BASE_URL="$PROVIDER_BASE_URL"
+export OPENAI_BASE_URL=https://provider.example/v1
+export OPENAI_API_KEY=<provider-key>
+export OPENAI_MODEL_NAME=<provider-model>
 ```
 
 If you intentionally use a predeployed gateway, set `agent.config.api_base` to
-that gateway and set the matching `gateway_token`.
+that gateway and set the matching `gateway_token`. If a runtime-backed config
+returns a provider/gateway authentication `401`, check that the YAML does not
+explicitly assign the provider URL to lower-case `agent.config.api_base`.
 
 ## ROCK service not up
 
@@ -366,7 +366,7 @@ smoke. The `_campaign.yaml` file is a rollout manifest for
 | Dataset load fails on a gated set | No access token | `export HF_TOKEN=...` and request access |
 | Agent requests fail oddly | Proxy vars leaking into sandbox | `source scripts/rock_env.sh` |
 | `api_key` rejected at validation | Literal `EMPTY` value | use `sk-EMPTY` |
-| OpenClaw provider returns gateway-auth `401` | Provider URL was loaded into gateway `api_base` | unset shell `OPENAI_BASE_URL`; override `agent.config.OPENAI_BASE_URL` from a differently named variable |
+| OpenClaw provider returns gateway-auth `401` | Runtime config explicitly put the provider URL in lower-case gateway `api_base` | remove that `api_base`; keep the provider in `OPENAI_BASE_URL` / `agent.config.OPENAI_BASE_URL` |
 | Quickstart rejects an empty gateway token | Token generation happens after the current preflight | export a strong random `OPENCLAW_GATEWAY_TOKEN` before quickstart |
 | Pre-flight fails for OpenClaw/ROCK | ROCK services down or wrong ports | `alphadiana env`, then start/repair ROCK |
 | Docker socket `permission denied` | Shell lacks `docker` group | `newgrp docker` (then re-activate env) |

@@ -9,9 +9,9 @@ Run from the repository root:
 ```bash
 source scripts/activate.sh
 
-export OPENAI_BASE_URL=https://api.example.com/v1/
-export OPENAI_API_KEY=sk-...
-export OPENAI_MODEL_NAME=qwen/qwen3.5-27b
+export OPENAI_BASE_URL=http://127.0.0.1:8011/v1
+export OPENAI_API_KEY=sk-EMPTY
+export OPENAI_MODEL_NAME=Qwen/Qwen3.5-27B
 ```
 
 When running from a local checkout, prefer the module entrypoint:
@@ -29,7 +29,13 @@ python -m alphadiana.cli env
 | `opencode` | smoke/debug supported | `configs/macro_runs/mmmu_pro_opencode_qwen35_27b.yaml` |
 | `zeroclaw` | smoke/debug supported | `configs/macro_runs/mmmu_pro_zeroclaw_qwen35_27b.yaml` |
 
-## Podman Multimodal Readiness
+## Historical Podman Multimodal Readiness
+
+> [!CAUTION]
+> This records an earlier Podman validation. The current release configs select
+> ROCK for OpenClaw/ZeroClaw and Docker for OpenCode, while the historical audit
+> requires `metadata.container_engine=podman`. Do not run this helper as current
+> release evidence until its configs and audit are aligned.
 
 Phase 6 added an opt-in Podman readiness matrix for OpenClaw, ZeroClaw, and
 OpenCode on three deterministic MMMU-Pro `vision` rows:
@@ -51,7 +57,7 @@ Podman `--network host`. The repaired run prefix
 expected task rows with `metadata.container_engine=podman`; the audit passed
 with `audit_passed=true` and `audit_failure_count=0`.
 
-Use this sequence before any future pilot attempt:
+Historical sequence (not a current release command):
 
 ```bash
 export OPENAI_BASE_URL=http://127.0.0.1:8011/v1

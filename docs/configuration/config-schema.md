@@ -159,15 +159,16 @@ This is why release configs may leave `model` / `api_base` /
 
 | Agent field | Env var | Applies to |
 |---|---|---|
-| `api_base` | `OPENAI_BASE_URL` | direct_llm, openclaw, zeroclaw, opencode, terminal_bench2_* |
-| `api_key` | `OPENAI_API_KEY` | same |
+| `api_base` | `OPENAI_BASE_URL` | direct_llm, zeroclaw, opencode, terminal_bench2_*, and direct-gateway openclaw |
+| `api_key` | `OPENAI_API_KEY` | direct_llm, openclaw, zeroclaw, opencode, terminal_bench2_* |
 | `model` | `OPENAI_MODEL_NAME` | direct_llm, openclaw, zeroclaw, tb2_docker, tb2_zeroclaw |
 | `model_name` | `OPENAI_MODEL_NAME` | opencode, tb2 variants |
 
-For OpenClaw auto-deploy configs that provide both `rock_agent_config_path` and
-`openclaw_config_path`, `OPENAI_BASE_URL` is the model-provider endpoint inside
-the sandbox. It does not fill `api_base`; the runner first deploys the OpenClaw
-gateway and then supplies that gateway address to the harness.
+For runtime-backed OpenClaw configs (`runtime`, `runtime_backend: podman`, or a
+ROCK/OpenClaw config-path pair), `OPENAI_BASE_URL` is the model-provider
+endpoint inside the sandbox. It does not fill lower-case `api_base`; the runner
+first deploys the OpenClaw gateway and then supplies that gateway address to the
+harness.
 
 ```bash
 export OPENAI_BASE_URL=http://127.0.0.1:8000/v1
@@ -230,8 +231,9 @@ python -m alphadiana.cli run config.yaml -o run_id=my_test -o output_dir=/tmp/ru
 
 Re-invoking the same config **resumes**: `run` loads the existing `<run_id>` records and
 skips already-completed tasks (or samples, when `num_samples > 1`) unless `--redo-all` is
-given. The result store lives under `output_dir/<run_id>/`
-(see `alphadiana/analysis/io/result_store.py`).
+given. The checkpoint source of truth is `output_dir/<run_id>.jsonl`; the
+manifest, task JSON, lifecycle events, and artifacts live under
+`output_dir/<run_id>/` (see `alphadiana/analysis/io/result_store.py`).
 
 ## Editing configs
 

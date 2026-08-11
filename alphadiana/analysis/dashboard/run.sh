@@ -87,7 +87,7 @@ check_dependencies() {
         echo "" >&2
         echo "Please install AlphaDiana in the correct environment:" >&2
         echo "  source scripts/activate.sh" >&2
-        echo "  pip install -e '.[all]'" >&2
+        echo "  pip install -e '.[dashboard]'" >&2
         echo "" >&2
         echo "Or set ALPHADIANA_PYTHON to point to the right interpreter:" >&2
         echo "  ALPHADIANA_PYTHON=/path/to/python ./run.sh" >&2
