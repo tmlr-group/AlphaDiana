@@ -148,7 +148,7 @@ python -m alphadiana.cli run configs/macro_runs/hle_zeroclaw_qwen35_27b.yaml \
   -o run_id=hle_zeroclaw_smoke
 ```
 
-On the OpenAI-compatible `qwen3vl` endpoint, multimodal ZeroClaw currently works most
+On an OpenAI-compatible `qwen3vl` endpoint, multimodal ZeroClaw currently works most
 reliably through the same single sandbox CLI path now used for text benchmarks
 on current main. No extra override is required: when a live ROCK sandbox is
 present and the HLE row has an image attachment, AlphaDiana uploads the image
