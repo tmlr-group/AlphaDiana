@@ -20,11 +20,20 @@ class SandboxPool:
         self._all_sessions: list[Any] = []
         self._available: deque[Any] = deque()
         self._event = threading.Event()
+        self._replacement_error: RuntimeError | None = None
 
-        for _ in range(size):
-            session = sandbox.create_session()
-            self._all_sessions.append(session)
-            self._available.append(session)
+        try:
+            for _ in range(size):
+                session = sandbox.create_session()
+                self._all_sessions.append(session)
+                self._available.append(session)
+        except Exception:
+            for session in self._all_sessions:
+                try:
+                    session.close()
+                except Exception:
+                    logger.warning("Failed to close session after pool initialization failure", exc_info=True)
+            raise
 
         self._event.set()
 
@@ -49,6 +58,8 @@ class SandboxPool:
                 if self._available:
                     self._event.clear() if len(self._available) == 1 else None
                     return self._available.popleft()
+                if self._replacement_error is not None:
+                    raise self._replacement_error
             if deadline is not None:
                 import time
                 remaining = deadline - time.monotonic()
@@ -85,7 +96,11 @@ class SandboxPool:
                     self._all_sessions.append(session)
             except Exception:
                 logger.error("Failed to create replacement session", exc_info=True)
-                logger.error("session replacement failed; waiters will continue to wait")
+                with self._lock:
+                    self._replacement_error = RuntimeError(
+                        "Sandbox pool replacement failed; pool capacity cannot be restored"
+                    )
+                    self._event.set()
                 return
         with self._lock:
             self._available.append(session)
@@ -116,7 +131,11 @@ class SandboxPool:
             replacement = self._sandbox.create_session()
         except Exception:
             logger.error("Failed to create replacement session", exc_info=True)
-            logger.error("session replacement failed; waiters will continue to wait")
+            with self._lock:
+                self._replacement_error = RuntimeError(
+                    "Sandbox pool replacement failed; pool capacity cannot be restored"
+                )
+                self._event.set()
             return False
 
         with self._lock:

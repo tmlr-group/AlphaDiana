@@ -11,6 +11,10 @@ dependencies = [
     "pyyaml>=6.0",
     "click>=8.0",
     "scipy>=1.10",
+    "datasets>=2.0",
+    "openai>=1.0",
+    "httpx>=0.24",
+    "requests>=2.28",
 ]
 
 [project.optional-dependencies]

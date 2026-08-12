@@ -137,6 +137,7 @@ class DirectLLMAgent(Agent):
             base_url=self._api_base,
             api_key=self._api_key,
             timeout=self._request_timeout,
+            max_retries=0,
             http_client=httpx.Client(trust_env=False),
         )
 

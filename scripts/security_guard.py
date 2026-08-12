@@ -107,8 +107,22 @@ def is_loopback_host_ip(host_ip: str) -> bool:
     return host_ip in ("127.0.0.1", "localhost", "::1", "[::1]") or host_ip.startswith("127.")
 
 
-def is_redis_host_port_loopback_published(port: int) -> bool:
+def is_redis_host_port_loopback_published(port: int, container_name: str = "") -> bool:
     """Return True when Redis is Docker-published only on a loopback host IP."""
+    if container_name:
+        inspect = get_container_inspect(container_name)
+        if inspect:
+            bindings = (
+                inspect.get("HostConfig", {}).get("PortBindings", {}) or {}
+            ).get("6379/tcp") or []
+            matching = [
+                binding
+                for binding in bindings
+                if str(binding.get("HostPort", "")) == str(port)
+            ]
+            if matching:
+                return all(is_loopback_host_ip(binding.get("HostIp", "")) for binding in matching)
+
     matched = False
     for c in get_docker_containers():
         ports = c.get("Ports", "")
@@ -490,13 +504,18 @@ def run_preflight_check() -> bool:
 
     # 从环境变量读取 Redis 端口（与 rock_env.sh 保持一致）
     redis_port = int(os.environ.get("ROCK_REDIS_PORT", "6379"))
+    redis_container = os.environ.get("ROCK_REDIS_CONTAINER", "").strip()
 
     all_issues: list[SecurityIssue] = []
 
     info(f"检查 Redis(:{redis_port}) 安全配置...")
     all_issues += check_redis_security(
         redis_port,
-        loopback_only_docker_publish=is_redis_host_port_loopback_published(redis_port),
+        container_name=redis_container,
+        loopback_only_docker_publish=is_redis_host_port_loopback_published(
+            redis_port,
+            redis_container,
+        ),
     )
 
     info("检查 Docker 容器 Redis 暴露情况...")

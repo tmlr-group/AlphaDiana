@@ -18,6 +18,44 @@ from alphadiana.analysis.dashboard.backend.models import CreateJobRequest, JobSt
 
 logger = logging.getLogger(__name__)
 
+_SECRET_FIELD_NAMES = {
+    "api_key",
+    "apikey",
+    "gateway_token",
+    "password",
+    "secret",
+    "secret_key",
+    "token",
+}
+
+
+def _is_secret_field(key: object) -> bool:
+    normalized = str(key).lower().replace("-", "_")
+    return normalized in _SECRET_FIELD_NAMES or normalized.endswith(
+        ("_api_key", "_password", "_secret", "_secret_key", "_token")
+    )
+
+
+def _mask_secret_fields(value: Any) -> Any:
+    """Recursively mask resolved credentials while preserving $ENV references."""
+    if isinstance(value, dict):
+        masked: dict[str, Any] = {}
+        for key, item in value.items():
+            if _is_secret_field(key):
+                if isinstance(item, str) and item.startswith("$"):
+                    masked[key] = item
+                elif item:
+                    text = str(item)
+                    masked[key] = f"{text[:6]}...{text[-4:]}" if len(text) > 12 else "***"
+                else:
+                    masked[key] = item
+            else:
+                masked[key] = _mask_secret_fields(item)
+        return masked
+    if isinstance(value, list):
+        return [_mask_secret_fields(item) for item in value]
+    return value
+
 # Context variable to tag the current job ID.  Inherited by
 # ThreadPoolExecutor workers (Python 3.12+), so logs from worker
 # threads are correctly routed to their owning job's buffer.
@@ -576,17 +614,7 @@ class JobManager:
         Preserves $VAR_NAME references (they are not secrets and are needed
         for resume). Only masks resolved key values.
         """
-        data = req.model_dump()
-        agent_cfg = data.get("agent_config", {})
-        if isinstance(agent_cfg, dict):
-            for key in list(agent_cfg.keys()):
-                if "key" in key.lower() and isinstance(agent_cfg.get(key), str) and agent_cfg[key]:
-                    v = agent_cfg[key]
-                    # Keep $VAR_NAME env references as-is for resume
-                    if v.startswith("$"):
-                        continue
-                    agent_cfg[key] = f"{v[:6]}...{v[-4:]}" if len(v) > 12 else "***"
-        return data
+        return _mask_secret_fields(req.model_dump())
 
     def create_job_after_deploy(
         self,
@@ -910,13 +938,7 @@ class JobManager:
                 "redo_all": getattr(config, "redo_all", False),
                 "metadata": getattr(config, "metadata", {}),
             }
-            # Mask API keys
-            agent_cfg = data["agent"]["config"]
-            if isinstance(agent_cfg, dict):
-                for key in list(agent_cfg.keys()):
-                    if "key" in key.lower() and agent_cfg[key]:
-                        v = agent_cfg[key]
-                        agent_cfg[key] = f"{v[:6]}...{v[-4:]}" if len(v) > 12 else "***"
+            data = _mask_secret_fields(data)
 
             with open(config_path, "w", encoding="utf-8") as f:
                 yaml.safe_dump(data, f, default_flow_style=False, allow_unicode=True)

@@ -213,7 +213,7 @@ AlphaDiana is developed to support research on trustworthy agentic reasoning and
 
 ## Citation
 
-If you use AlphaDiana in your research, please cite:
+If you use AlphaDiana in your research, please cite either of the following papers:
 
 ```bibtex
 @inproceedings{

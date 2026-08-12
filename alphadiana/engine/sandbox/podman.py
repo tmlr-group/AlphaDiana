@@ -129,7 +129,12 @@ class PodmanSession(SandboxSession):
     def reset(self) -> None:
         reset_command = self._config.get("reset_command")
         if reset_command:
-            self.execute(str(reset_command))
+            result = self.execute(str(reset_command))
+            if result.exit_code != 0:
+                raise RuntimeError(
+                    f"Podman sandbox reset failed with exit {result.exit_code}: "
+                    f"{result.stderr.strip() or result.stdout.strip()}"
+                )
 
     def metadata(self) -> dict:
         return {
