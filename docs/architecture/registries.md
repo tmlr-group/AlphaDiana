@@ -1,6 +1,9 @@
 # Registries
 
-AlphaDiana has four class registries: benchmarks, agents, sandboxes, and scorers. Configuration selects a key; `Runner.setup()` imports built-in modules, resolves each key, instantiates the class, and calls `setup()`.
+AlphaDiana has five class registries: benchmarks, agents, sandboxes, scorers,
+and observational metrics. Configuration selects a key; `Runner.setup()`
+imports built-in modules, resolves each key, instantiates the class, and calls
+`setup()`.
 
 Registration is import-triggered, not discovered by scanning the filesystem. A new implementation normally requires no orchestration-logic change, but its module must be imported by the runner so registration executes.
 
@@ -36,6 +39,7 @@ The first four are generic harness families. The remaining keys are benchmark-sp
 | `terminal_bench2_openclaw` | TerminalBench 2 OpenClaw adapter |
 | `terminal_bench2_opencode` | TerminalBench 2 OpenCode adapter |
 | `terminal_bench2_zeroclaw` | TerminalBench 2 ZeroClaw adapter |
+| `terminal_bench2_pi_harbor` | Exact local Pi runtime in Harbor-owned TerminalBench 2 trials |
 
 ### Sandboxes
 
@@ -57,6 +61,16 @@ The first four are generic harness families. The remaining keys are benchmark-sp
 | `imo_verify` | Required verifier for `imo_answerbench` |
 | `swe_bench` | Official SWE-bench evaluation adapter |
 | `terminal_bench2` | Verifier reward scorer |
+
+### Observational metrics
+
+| Key | Scope |
+| --- | --- |
+| `answer_length` | Post-run final-answer length plus byte, word, and line metadata |
+
+Metric plugins implement `EvaluationMetric`, register through
+`MetricRegistry`, and are configured in the top-level `metrics` list. They run
+after the scorer and cannot replace `ScoreResult`.
 
 ## Registration forms
 

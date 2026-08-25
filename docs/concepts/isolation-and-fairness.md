@@ -11,6 +11,7 @@ Task-scoped runtimes keep benchmark-side effects confined to the task environmen
 - ROCK Docker sandboxes or opt-in Podman runtimes for supported standard text
   and multimodal paths.
 - Docker or Podman task containers for `terminal-bench-2`.
+- Harbor-owned disposable Docker task containers for the Pi-Harbor Terminal-Bench 2 path.
 - Official per-task SWE containers (via `swebench_docker`) for `SWE-bench Verified`.
 
 This is the **practical evaluation boundary** described below, not a formal security boundary.
@@ -40,6 +41,7 @@ The `Runner` records the chosen mode in `run_metadata["isolation_mode"]` and mir
 | `auto_single_sandbox` | One ROCK sandbox auto-created for the run. |
 | `predeployed_pool` / `partial_predeploy` | A pool of ROCK sandboxes predeployed up front (gateway agents). |
 | `fresh_predeployed_pool` / `partial_fresh_predeployed_pool` | Self-healing pool that recreates sandboxes as tasks consume them. |
+| `harbor_disposable_task_container` | The Pi-Harbor adapter starts one unique Harbor job and task container per `(task, sample_index)`. |
 
 `shared_gateway` does not establish per-task sandbox isolation. It can be the
 intentional mode for a harness that does not use ROCK, or a fallback when an
@@ -83,6 +85,14 @@ harness and sandbox backend, to audit the realized boundary.
 | `IMO-AnswerBench` | ROCK sandbox | Dockerized controller in the checked-in config | ROCK sandbox |
 | `GPQA-Diamond` | ROCK sandbox | Dockerized controller in the checked-in config | ROCK sandbox |
 | `HLE` | ROCK sandbox | Dockerized controller in the checked-in config | ROCK sandbox |
+
+The Pi-Harbor Terminal-Bench 2 path is separate from this three-harness matrix.
+It mounts the exact Node and Pi runtime read-only, disables Pi's ambient
+sessions/extensions/skills/prompts/context files, and loads only explicit audit
+and candidate extensions. AlphaDiana metrics run after Harbor exits and are not
+present in the agent container. Harbor `--no-delete` preserves completed
+evidence for review; the adapter never reuses that container or its HOME for a
+later sample.
 
 `opencode` supports `host`, `docker`, and opt-in `podman` controller modes; the
 checked-in plain benchmark configs default to Docker. The generic `zeroclaw`

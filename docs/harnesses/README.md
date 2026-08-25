@@ -18,7 +18,11 @@ These memory paths are opt-in and now exist in the current source. They are not 
 The agent registry also contains:
 
 - `swebench_docker`;
-- `terminal_bench2_docker`, `terminal_bench2_openclaw`, `terminal_bench2_opencode`, and `terminal_bench2_zeroclaw`.
+- `terminal_bench2_docker`, `terminal_bench2_openclaw`, `terminal_bench2_opencode`, and `terminal_bench2_zeroclaw`;
+- [`terminal_bench2_pi_harbor`](./pi-harbor.md), where Harbor owns the disposable Pi/TB2 runtime and AlphaDiana imports completed evidence for scoring and post-run metrics.
+
+For the optimizer/evaluator boundary and the deliberate deviations from the
+original Meta-Harness protocol, see the [Meta-Harness evaluation contract](../architecture/meta-harness-evaluation.md).
 
 These keys are selectable agents but are not additional generic harness families. Their benchmark runbooks define image, verifier, and artifact contracts.
 
@@ -60,6 +64,7 @@ Logprob and trajectory coverage varies by harness and runtime:
 - OpenCode parses JSON events;
 - OpenClaw preserves gateway and local-agent evidence;
 - ZeroClaw preserves a bounded native runtime trace plus normalized trajectories.
+- Pi-Harbor imports Pi JSON events and Harbor verifier evidence after the task container finishes.
 
 Do not infer capture from config inspection alone. Verify task metadata and sidecars from a real run. Shared proxy mechanics are documented once in [Observability & Proxies](../architecture/observability.md).
 

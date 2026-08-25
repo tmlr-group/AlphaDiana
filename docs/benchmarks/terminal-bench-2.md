@@ -4,6 +4,12 @@ This runbook describes the current AlphaDiana path for `terminal-bench-2`.
 
 Use it for local AlphaDiana evaluation and smoke validation. It is not a claim of strict Harbor-equivalent leaderboard execution.
 
+For the Harbor-backed Pi integration, use
+[`terminal_bench2_pi_harbor`](../harnesses/pi-harbor.md). Unlike the local
+controller paths documented below, that adapter delegates the disposable task
+container, timeout lifecycle, and official verifier to Harbor, then imports the
+completed trial into AlphaDiana for reporting and optional post-run metrics.
+
 For the benchmark-plan `direct_llm` baseline, use the official
 `terminal-bench-2` repository and Harbor's built-in `terminus-2` agent. The
 April 19, 2026 OpenRouter/Qwen evidence for that official path is summarized
