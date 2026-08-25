@@ -34,6 +34,9 @@ class AgentResponse:
     sandbox_metadata: dict = field(default_factory=dict)
     system_prompt: str = ""
     finish_reason: str = ""
+    # Observational post-run metrics. These never determine benchmark score.
+    evaluation_metrics: dict[str, dict] = field(default_factory=dict)
+    evaluation_metric_errors: dict[str, str] = field(default_factory=dict)
 
 
 class Agent(ABC):

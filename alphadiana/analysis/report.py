@@ -48,6 +48,7 @@ class RunSummary:
     missing_tasks: int = 0
     strict_report_failed: bool = False
     strict_report_issues: list[str] = field(default_factory=list)
+    evaluation_metrics: dict[str, dict] = field(default_factory=dict)
     timestamp: str = ""
 
 
@@ -195,6 +196,31 @@ class ReportGenerator:
             "prompt_tokens": total_prompt,
             "completion_tokens": total_completion,
         }
+
+        # Aggregate optional observations independently of benchmark score.
+        metric_values: dict[str, list[tuple[float, str]]] = defaultdict(list)
+        for result in results:
+            observations = result.get("evaluation_metrics", {})
+            if not isinstance(observations, dict):
+                continue
+            for name, observation in observations.items():
+                if not isinstance(observation, dict):
+                    continue
+                value = observation.get("value")
+                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                    continue
+                metric_values[str(name)].append((float(value), str(observation.get("unit", ""))))
+        evaluation_metrics = {}
+        for name, values_and_units in sorted(metric_values.items()):
+            values = [value for value, _ in values_and_units]
+            units = {unit for _, unit in values_and_units if unit}
+            evaluation_metrics[name] = {
+                "count": len(values),
+                "mean": sum(values) / len(values),
+                "min": min(values),
+                "max": max(values),
+                "unit": next(iter(units)) if len(units) == 1 else "mixed",
+            }
 
         # Group results by task_id for per-category and pass@k computation.
         by_task: dict[str, list[dict]] = defaultdict(list)
@@ -358,6 +384,7 @@ class ReportGenerator:
             missing_tasks=missing_tasks,
             strict_report_failed=bool(strict_report_issues),
             strict_report_issues=strict_report_issues,
+            evaluation_metrics=evaluation_metrics,
             timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
@@ -421,6 +448,22 @@ class ReportGenerator:
             ])
             for cat, stats in sorted(summary.per_category.items()):
                 lines.append(f"| {cat} | {float(stats['pass_rate']):.4f} |")
+            lines.append("")
+
+        if summary.evaluation_metrics:
+            lines.extend([
+                "## Observational Metrics",
+                "",
+                "These post-run measurements do not affect benchmark score.",
+                "",
+                "| Metric | Count | Mean | Min | Max | Unit |",
+                "|--------|------:|-----:|----:|----:|------|",
+            ])
+            for name, metric in sorted(summary.evaluation_metrics.items()):
+                lines.append(
+                    f"| {name} | {metric['count']} | {metric['mean']:.3f} | "
+                    f"{metric['min']:.3f} | {metric['max']:.3f} | {metric['unit']} |"
+                )
             lines.append("")
 
         if summary.num_samples > 1 and summary.per_category_pass_at_k:

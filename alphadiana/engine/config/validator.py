@@ -56,6 +56,23 @@ class ConfigValidator:
             errors.append("benchmark_name is required")
         if not config.scorer_name:
             errors.append("scorer_name is required")
+        if not isinstance(config.metrics, list):
+            errors.append("metrics must be a list")
+        else:
+            metric_names: set[str] = set()
+            for index, metric in enumerate(config.metrics):
+                if not isinstance(metric, dict):
+                    errors.append(f"metrics[{index}] must be a mapping")
+                    continue
+                if not self._has_nonempty_value(metric.get("name")):
+                    errors.append(f"metrics[{index}].name is required")
+                else:
+                    metric_name = str(metric["name"]).strip()
+                    if metric_name in metric_names:
+                        errors.append(f"metrics[{index}].name duplicates '{metric_name}'")
+                    metric_names.add(metric_name)
+                if "config" in metric and not isinstance(metric["config"], dict):
+                    errors.append(f"metrics[{index}].config must be a mapping")
         max_concurrent = self._validate_int_field(errors, "max_concurrent", config.max_concurrent)
         if max_concurrent is not None:
             if max_concurrent < 1:

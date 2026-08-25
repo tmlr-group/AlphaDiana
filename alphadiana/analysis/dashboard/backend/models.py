@@ -29,6 +29,7 @@ class RunSummaryResponse(BaseModel):
     avg_at_k: float = 0.0
     per_category_pass_at_k: dict[str, float] = {}
     per_category_avg_at_k: dict[str, float] = {}
+    evaluation_metrics: dict[str, dict[str, Any]] = {}
     timestamp: str = ""
 
 
@@ -49,6 +50,8 @@ class TaskResult(BaseModel):
     error: dict[str, Any] | None = None
     task_metadata: dict[str, Any] = {}
     finish_reason: str = ""
+    evaluation_metrics: dict[str, dict[str, Any]] = {}
+    evaluation_metric_errors: dict[str, str] = {}
 
 
 class RunDetailResponse(BaseModel):
@@ -83,6 +86,7 @@ class CreateJobRequest(BaseModel):
     redo_all: bool = False
     num_samples: int = 1
     metadata: dict[str, Any] = {}
+    metrics: list[dict[str, Any]] = []
 
 
 class JobStatus(BaseModel):
@@ -125,3 +129,4 @@ class DeployAndRunRequest(BaseModel):
     redo_all: bool = False
     num_samples: int = 1
     metadata: dict[str, Any] = {}
+    metrics: list[dict[str, Any]] = []
