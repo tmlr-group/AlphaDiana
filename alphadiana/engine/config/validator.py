@@ -215,6 +215,66 @@ class ConfigValidator:
                 "or OPENAI_BASE_URL env defaults"
             )
 
+        if config.agent_name == "terminal_bench2_pi_harbor":
+            from alphadiana.benchmarks.terminal_bench2.protocol import (
+                TerminalBench2EvaluationProtocol,
+            )
+
+            if config.benchmark_name != "terminal_bench2":
+                errors.append("agent 'terminal_bench2_pi_harbor' requires benchmark 'terminal_bench2'")
+            if config.scorer_name != "terminal_bench2":
+                errors.append("agent 'terminal_bench2_pi_harbor' requires scorer 'terminal_bench2'")
+            if config.sandbox_name:
+                errors.append(
+                    "agent 'terminal_bench2_pi_harbor' owns a Harbor task container; "
+                    "do not configure an additional AlphaDiana sandbox"
+                )
+            if config.benchmark_config.get("categories") is not None and (
+                config.benchmark_config.get("harbor_task_index") is True
+            ):
+                errors.append(
+                    "benchmark.config.categories is unavailable with harbor_task_index=true"
+                )
+            try:
+                TerminalBench2EvaluationProtocol.from_config(
+                    config.agent_config.get("protocol")
+                )
+            except (TypeError, ValueError) as exc:
+                errors.append(f"agent 'terminal_bench2_pi_harbor' protocol: {exc}")
+            for key, expect_dir in (
+                ("pi_install_path", True),
+                ("node_bin_path", False),
+                ("models_path", False),
+            ):
+                self._validate_existing_path(
+                    errors,
+                    scorer_name="terminal_bench2_pi_harbor",
+                    key=f"agent.config.{key}",
+                    value=config.agent_config.get(key),
+                    expect_dir=expect_dir,
+                )
+            pi_install_value = config.agent_config.get("pi_install_path")
+            if self._has_nonempty_value(pi_install_value):
+                pi_install_path = Path(str(pi_install_value)).expanduser()
+                pi_executable = pi_install_path / "pi"
+                if pi_install_path.is_dir() and not pi_executable.is_file():
+                    errors.append(
+                        "agent 'terminal_bench2_pi_harbor' requires "
+                        f"agent.config.pi_install_path/pi: {pi_executable}"
+                    )
+            for key in ("candidate_path", "audit_path", "compose_path"):
+                if self._has_nonempty_value(config.agent_config.get(key)):
+                    self._validate_existing_path(
+                        errors,
+                        scorer_name="terminal_bench2_pi_harbor",
+                        key=f"agent.config.{key}",
+                        value=config.agent_config.get(key),
+                        expect_dir=False,
+                    )
+            for key in ("pi_model", "harbor_model"):
+                if not self._has_nonempty_value(config.agent_config.get(key)):
+                    errors.append(f"agent 'terminal_bench2_pi_harbor' requires agent.config.{key}")
+
         num_samples = self._validate_int_field(errors, "num_samples", getattr(config, "num_samples", 1))
         if config.benchmark_name == "terminal_bench2":
             self._validate_terminal_bench2_tasks_dir(errors, config)

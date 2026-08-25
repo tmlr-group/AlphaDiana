@@ -768,6 +768,7 @@ class Runner:
         import alphadiana.benchmarks.terminal_bench2.harness.docker  # noqa: F401
         import alphadiana.benchmarks.terminal_bench2.harness.openclaw  # noqa: F401
         import alphadiana.benchmarks.terminal_bench2.harness.opencode  # noqa: F401
+        import alphadiana.benchmarks.terminal_bench2.harness.pi_harbor  # noqa: F401
         import alphadiana.benchmarks.terminal_bench2.harness.zeroclaw  # noqa: F401
         import alphadiana.harness.zeroclaw.agent  # noqa: F401
 
@@ -1438,7 +1439,9 @@ class Runner:
                 _auto_sandbox = None
 
         isolation_mode = "shared_gateway"
-        if predeployed_sessions:
+        if self.config.agent_name == "terminal_bench2_pi_harbor":
+            isolation_mode = "harbor_disposable_task_container"
+        elif predeployed_sessions:
             if fresh_predeployed_mode:
                 isolation_mode = (
                     "partial_fresh_predeployed_pool"

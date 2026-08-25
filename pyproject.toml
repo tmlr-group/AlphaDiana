@@ -44,3 +44,9 @@ alphadiana = "alphadiana.cli:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["alphadiana*"]
+
+[tool.setuptools.package-data]
+"alphadiana.benchmarks.terminal_bench2.harness" = [
+    "assets/*.ts",
+    "deploy/*.yaml",
+]

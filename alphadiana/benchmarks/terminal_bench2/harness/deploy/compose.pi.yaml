@@ -1,0 +1,14 @@
+services:
+  main:
+    volumes:
+      - "${ALPHADIANA_PI_NODE_BIN:?ALPHADIANA_PI_NODE_BIN is required}:/opt/alphadiana-pi-runtime/node:ro"
+      - "${ALPHADIANA_PI_INSTALL:?ALPHADIANA_PI_INSTALL is required}:/opt/alphadiana-pi-runtime/pi-install:ro"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      HTTP_PROXY: "${TB2_PROXY:-}"
+      HTTPS_PROXY: "${TB2_PROXY:-}"
+      http_proxy: "${TB2_PROXY:-}"
+      https_proxy: "${TB2_PROXY:-}"
+      NO_PROXY: "${TB2_NOPROXY:-localhost,127.0.0.1,::1,main,host.docker.internal}"
+      no_proxy: "${TB2_NOPROXY:-localhost,127.0.0.1,::1,main,host.docker.internal}"
