@@ -8,11 +8,9 @@ and optional post-run observations.
 
 ## Execution boundary
 
-This adapter is the evaluation layer of the Pi Meta-Harness adaptation. The
-optimizer owns candidate generation and best-frontier selection; AlphaDiana
-does not silently turn the run into the original Meta-Harness protocol. See
-the [evaluation contract](../architecture/meta-harness-evaluation.md) for the
-search-space, parent-policy, split, and proposer-workflow deviations.
+This is an evaluation adapter, not an optimizer. An external workflow may
+generate candidate extensions and pass one through `candidate_path`, while
+AlphaDiana remains responsible only for executing and recording that candidate.
 
 Each AlphaDiana work item `(task, sample_index)` gets a unique Harbor job:
 
@@ -67,6 +65,9 @@ agent:
     harbor_model: "luna-local/gpt-5.6-luna"
     reasoning: max
     dataset: terminal-bench@2.0
+    # Optional: keep completed missing-reward trials in the denominator.
+    # The default is `error`.
+    missing_reward_policy: zero
 benchmark:
   name: terminal_bench2
   config:
@@ -114,11 +115,11 @@ not expose that metadata in the task index.
 ## Score and observations
 
 Harbor's numeric `verifier_result.rewards.reward` is imported as the response
-used by the existing `terminal_bench2` scorer. If a completed Harbor trial has
-no finite numeric reward, the adapter supplies protocol score zero. This is the
-reference Meta-Harness TB2 rule: every trial directory remains in the flat
-denominator, including errored trials and trials without `verifier_result`.
-The adapter does not edit Harbor's `result.json` or fabricate `reward.txt`;
+used by the existing `terminal_bench2` scorer. A completed Harbor trial without
+a finite numeric reward fails closed by default. Set
+`missing_reward_policy: zero` only when the evaluation protocol deliberately
+keeps those trials in a flat denominator. In either mode, the adapter does not
+edit Harbor's `result.json` or fabricate `reward.txt`;
 `verifier_reward_observed=false`, `harbor_verifier_status`, and
 `reward_normalization` preserve the distinction. The answer shown to the model
 is never used as the correctness label.
@@ -156,8 +157,8 @@ The request audit is revalidated after Harbor exits. Every captured provider
 request must use the configured model ID and reasoning effort. Malformed or
 mismatched provenance and explicit provider errors are stored as error records
 with completed artifacts preserved. Harbor runtime exceptions and nonzero exits
-remain observable; when they end without a numeric reward, their primary TB2
-outcome is nevertheless zero under the reference flat-denominator rule.
+remain observable. Missing numeric rewards become errors unless the run
+explicitly selects the zero policy described above.
 
 Harbor's `AgentTimeoutError` remains a scored TB2 outcome (normally zero), even
 if no provider request completed. A verifier timeout may happen after an agent

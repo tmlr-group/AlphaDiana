@@ -83,12 +83,7 @@ agent:
     timeout_multiplier: float       # Harbor official task timeout multiplier
     harbor_max_retries: integer     # Harbor trial retry budget (default 0)
     subprocess_timeout_sec: float   # Host-side upper bound for the Harbor job
-    protocol: object                # Evaluation protocol/lineage metadata; does not alter Harbor runtime
-    candidate_name: string          # Optional optimizer candidate identifier
-    parent_names:                   # Optional declared parent identifiers
-      - string
-    parent_name: string             # Legacy single-parent compatibility field
-    frontier_name: string           # Optional overall training frontier identifier
+    missing_reward_policy: string   # error (default) or zero
     env:                             # Nested env contract for `swebench_docker` OpenClaw/OpenCode/ZeroClaw modes
       OPENAI_MODEL_NAME: string      # Required for `agent_type: openclaw|opencode|zeroclaw`
       OPENAI_BASE_URL: string        # Required for `agent_type: openclaw|opencode|zeroclaw`

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import os
@@ -10,32 +9,28 @@ import re
 import shutil
 import signal
 import subprocess
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from alphadiana.benchmarks.base import BenchmarkTask
-from alphadiana.benchmarks.terminal_bench2.protocol import (
-    TerminalBench2EvaluationProtocol,
+from alphadiana.benchmarks.terminal_bench2.harness.pi_harbor_support import (
+    _artifact_entry,
+    _duration_seconds,
+    _explicit_provider_error,
+    _input_identity,
+    _provider_reasoning_effort,
+    _read_pi_trace,
+    _request_audit_error,
+    validate_pi_harbor_experiment_config,
 )
 from alphadiana.harness.base import Agent, AgentResponse
 from alphadiana.harness.registry import AgentRegistry
 
+if TYPE_CHECKING:
+    from alphadiana.engine.config.experiment_config import ExperimentConfig
+
 
 _SAFE_NAME_RE = re.compile(r"[^a-zA-Z0-9_.-]+")
-_PROVIDER_ERROR_MARKERS = (
-    "model_cooldown",
-    "http 429",
-    "api error",
-    "rate limit",
-    "quota",
-    "authentication",
-    "unauthorized",
-    "invalid api key",
-    "provider error",
-)
-
-
 class HarborTrialError(RuntimeError):
     """Preserve a completed Harbor trial as an AlphaDiana error record."""
 
@@ -56,188 +51,19 @@ def _required_path(value: object, label: str, *, directory: bool = False) -> Pat
     return path
 
 
-def _message_text(content: object, *, include_thinking: bool = False) -> str:
-    if isinstance(content, str):
-        return content
-    if not isinstance(content, list):
-        return ""
-    accepted = {"text"}
-    if include_thinking:
-        accepted.add("thinking")
-    parts = [
-        str(block.get("text", block.get("thinking", "")))
-        for block in content
-        if isinstance(block, dict) and block.get("type") in accepted
-    ]
-    return "\n".join(part for part in parts if part)
-
-
-def _read_pi_trace(path: Path) -> tuple[list[dict], list[dict], str]:
-    trajectory: list[dict] = []
-    reasoning: list[dict] = []
-    final_answer = ""
-    if not path.is_file():
-        return trajectory, reasoning, final_answer
-    for line in path.read_text(errors="replace").splitlines():
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if event.get("type") != "message_end":
-            continue
-        message = event.get("message") or {}
-        role = str(message.get("role") or "")
-        text = _message_text(message.get("content"))
-        thinking = ""
-        content = message.get("content")
-        if isinstance(content, list):
-            thinking = "\n".join(
-                str(block.get("thinking", ""))
-                for block in content
-                if isinstance(block, dict) and block.get("type") == "thinking"
-            )
-        if text:
-            trajectory.append({"role": role, "content": text, "type": "message"})
-            if role == "assistant":
-                final_answer = text
-        if thinking and role == "assistant":
-            reasoning.append(
-                {"role": "assistant", "content": thinking, "type": "reasoning"}
-            )
-    return trajectory, reasoning, final_answer
-
-
-def _explicit_provider_error(path: Path) -> str:
-    """Return an explicit Pi provider error, ignoring ordinary tool text."""
-    if not path.is_file():
-        return ""
-
-    def messages(value: object):
-        if isinstance(value, dict):
-            for key, child in value.items():
-                if key in {"errorMessage", "finalError"} and isinstance(child, str):
-                    yield child
-                else:
-                    yield from messages(child)
-        elif isinstance(value, list):
-            for child in value:
-                yield from messages(child)
-
-    for line in path.read_text(errors="replace").splitlines():
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        for message in messages(event):
-            lowered = message.lower()
-            if any(marker in lowered for marker in _PROVIDER_ERROR_MARKERS):
-                return message
-    return ""
-
-
-def _request_audit_error(
-    path: Path, expected_model: str, expected_reasoning: str
-) -> str:
-    """Validate every captured provider request against the frozen run config."""
-    if not path.is_file():
-        return "request-audit.jsonl is missing"
-    records = 0
-    for line_number, line in enumerate(
-        path.read_text(errors="replace").splitlines(), 1
-    ):
-        if not line.strip():
-            continue
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError:
-            return f"request audit line {line_number} is not valid JSON"
-        records += 1
-        model = record.get("model")
-        reasoning = record.get("reasoning") or {}
-        effort = reasoning.get("effort") if isinstance(reasoning, dict) else None
-        if model != expected_model or effort != expected_reasoning:
-            return (
-                f"request audit line {line_number} expected model={expected_model!r}, "
-                f"reasoning={expected_reasoning!r}; got model={model!r}, reasoning={effort!r}"
-            )
-    if records == 0:
-        return "request-audit.jsonl contains no provider requests"
-    return ""
-
-
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as source:
-        for chunk in iter(lambda: source.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def _artifact_entry(path: Path) -> dict[str, Any]:
-    return {
-        "path": str(path.resolve()),
-        "bytes": path.stat().st_size,
-        "sha256": _sha256(path),
-        "access": "read_only_post_run",
-    }
-
-
-def _input_identity(path: Path, *, access: str) -> dict[str, Any]:
-    entry = _artifact_entry(path)
-    entry["access"] = access
-    return entry
-
-
-def _duration_seconds(result: dict) -> float:
-    try:
-        start = datetime.fromisoformat(str(result["started_at"]).replace("Z", "+00:00"))
-        finish = datetime.fromisoformat(
-            str(result["finished_at"]).replace("Z", "+00:00")
-        )
-        return max(0.0, (finish - start).total_seconds())
-    except (KeyError, TypeError, ValueError):
-        return 0.0
-
-
-def _provider_reasoning_effort(models_path: Path, pi_model: str, reasoning: str) -> str:
-    """Resolve Pi's model-level thinking map and reject explicit unsupported levels."""
-    try:
-        models_config = json.loads(models_path.read_text())
-    except (OSError, json.JSONDecodeError) as exc:
-        raise ValueError(f"invalid Pi models config {models_path}: {exc}") from exc
-    if "/" not in pi_model:
-        return reasoning
-    provider_name, model_id = pi_model.split("/", 1)
-    provider = (models_config.get("providers") or {}).get(provider_name)
-    if not isinstance(provider, dict):
-        return reasoning
-    model = next(
-        (
-            item
-            for item in (provider.get("models") or [])
-            if isinstance(item, dict) and item.get("id") == model_id
-        ),
-        None,
-    )
-    if not isinstance(model, dict):
-        return reasoning
-    mapping = model.get("thinkingLevelMap")
-    if not isinstance(mapping, dict):
-        return reasoning
-    if reasoning in mapping and mapping[reasoning] is None:
-        raise ValueError(
-            f"Pi model {pi_model!r} explicitly marks reasoning level {reasoning!r} "
-            "unsupported in models.json"
-        )
-    mapped = mapping.get(reasoning)
-    return str(mapped) if mapped is not None else reasoning
-
-
 class TerminalBench2PiHarborAgent(Agent):
     """Use Harbor as the runtime boundary, then import frozen artifacts read-only."""
 
     name = "terminal_bench2_pi_harbor"
     version = "1.0"
+    owns_task_runtime = True
+    runtime_isolation_mode = "harbor_disposable_task_container"
+
+    @classmethod
+    def validate_experiment_config(
+        cls, config: "ExperimentConfig"
+    ) -> list[str]:
+        return validate_pi_harbor_experiment_config(config)
 
     def setup(self, config: dict) -> None:
         harbor_value = str(config.get("harbor_bin", "harbor") or "harbor")
@@ -276,20 +102,11 @@ class TerminalBench2PiHarborAgent(Agent):
         self._dataset = str(
             config.get("dataset", "terminal-bench@2.0") or "terminal-bench@2.0"
         )
-        self._protocol = TerminalBench2EvaluationProtocol.from_config(
-            config.get("protocol")
-        )
-        self._candidate_name = str(config.get("candidate_name", "") or "").strip()
-        raw_parents = config.get("parent_names")
-        if raw_parents is None:
-            legacy_parent = str(config.get("parent_name", "") or "").strip()
-            raw_parents = [legacy_parent] if legacy_parent else []
-        if not isinstance(raw_parents, list) or any(
-            not isinstance(item, str) for item in raw_parents
-        ):
-            raise ValueError("agent.config.parent_names must be a list of strings")
-        self._parent_names = [item.strip() for item in raw_parents if item.strip()]
-        self._frontier_name = str(config.get("frontier_name", "") or "").strip()
+        self._missing_reward_policy = str(
+            config.get("missing_reward_policy", "error") or "error"
+        ).strip()
+        if self._missing_reward_policy not in {"error", "zero"}:
+            raise ValueError("missing_reward_policy must be 'error' or 'zero'")
         self._timeout_multiplier = float(config.get("timeout_multiplier", 1.0))
         self._max_retries = int(config.get("harbor_max_retries", 0))
         self._subprocess_timeout = float(config.get("subprocess_timeout_sec", 14400))
@@ -315,7 +132,6 @@ class TerminalBench2PiHarborAgent(Agent):
                 self._models, access="uploaded_copy_hash_only"
             ),
             "compose_overlay": _input_identity(self._compose, access="harbor_input"),
-            "evaluation_protocol": self._protocol.to_dict(),
         }
         package_lock = self._pi_install / "package-lock.json"
         if package_lock.is_file():
@@ -453,10 +269,9 @@ class TerminalBench2PiHarborAgent(Agent):
             and isinstance(raw_reward, (int, float))
             and math.isfinite(float(raw_reward))
         )
-        # Faithfully match the reference Meta-Harness TB2 parser: a completed
-        # trial without a numeric verifier reward remains in the denominator as
-        # score zero.  Keep the distinction observable instead of fabricating a
-        # Harbor reward or rewriting its result.json.
+        # A configured zero policy keeps a completed trial without a numeric
+        # reward in the denominator. The default error policy fails closed.
+        # Both preserve the raw Harbor condition in metadata and artifacts.
         reward = float(raw_reward) if reward_observed else 0.0
         trial_log = trial_dir / "trial.log"
         trial_log_text = (
@@ -499,7 +314,11 @@ class TerminalBench2PiHarborAgent(Agent):
                 "agent_final_answer": final_answer,
                 # `verifier_status=ok` means AlphaDiana received a protocol-
                 # defined score. The raw Harbor condition remains separate.
-                "verifier_status": "ok",
+                "verifier_status": (
+                    "ok"
+                    if reward_observed or self._missing_reward_policy == "zero"
+                    else "error"
+                ),
                 "harbor_verifier_status": (
                     "reward_observed"
                     if reward_observed
@@ -511,7 +330,11 @@ class TerminalBench2PiHarborAgent(Agent):
                 "reward_normalization": (
                     "none"
                     if reward_observed
-                    else "meta_harness_tb2_missing_reward_is_zero"
+                    else (
+                        "configured_missing_reward_zero"
+                        if self._missing_reward_policy == "zero"
+                        else "missing_reward_error"
+                    )
                 ),
                 "harbor_verifier_timeout_observed": verifier_timeout_observed,
                 "harbor_returncode": completed.returncode,
@@ -524,13 +347,6 @@ class TerminalBench2PiHarborAgent(Agent):
                 ),
                 "cost_usd": agent_result.get("cost_usd"),
                 "metric_phase": "after_harbor_completion",
-                "evaluation_protocol": self._protocol.to_dict(),
-                "candidate_name": self._candidate_name,
-                "parent_names": self._parent_names,
-                "parent_name": self._parent_names[0]
-                if len(self._parent_names) == 1
-                else "",
-                "frontier_name": self._frontier_name,
             },
             response_json={
                 "harbor_result_id": result.get("id"),
@@ -557,6 +373,12 @@ class TerminalBench2PiHarborAgent(Agent):
             response.metadata["failure_reason"] = "provider_error"
             raise HarborTrialError(
                 f"Pi provider failure in completed Harbor trial: {provider_error}",
+                response,
+            )
+        if not reward_observed and self._missing_reward_policy == "error":
+            response.metadata["failure_reason"] = "missing_verifier_reward"
+            raise HarborTrialError(
+                "Harbor trial did not produce a finite numeric verifier reward",
                 response,
             )
         if reward_observed and exception_type and exception_type != "AgentTimeoutError":

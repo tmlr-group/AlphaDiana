@@ -1,15 +1,15 @@
 # Registries
 
 AlphaDiana has five class registries: benchmarks, agents, sandboxes, scorers,
-and observational metrics. Configuration selects a key; `Runner.setup()`
-imports built-in modules, resolves each key, instantiates the class, and calls
-`setup()`.
+and observational metrics. Configuration selects a key; the centralized
+`registry_loader` imports built-in modules, then `Runner.setup()` resolves each
+key, instantiates the class, and calls `setup()`.
 
-Registration is import-triggered, not discovered by scanning the filesystem. A new implementation normally requires no orchestration-logic change, but its module must be imported by the runner so registration executes.
+Registration is import-triggered, not discovered by scanning the filesystem. A new implementation normally requires no orchestration-logic change, but its module must be included in `registry_loader` so registration executes.
 
 ## Live inventory
 
-The tables below reflect the registrations imported by `Runner.setup()` in the current source tree.
+The tables below reflect the registrations imported by `registry_loader` in the current source tree.
 
 ### Benchmarks
 
@@ -98,8 +98,8 @@ Both forms mutate a process-local registry. Duplicate names raise instead of sil
 
 1. Implement the appropriate base class.
 2. Register a stable, lowercase config key in that module.
-3. Add the module import to the relevant import block in `Runner.setup()`.
-4. Add validation for any cross-component constraint.
+3. Add the module import to the relevant function in `registry_loader`.
+4. Put adapter-specific checks in `validate_experiment_config()` and keep only cross-component rules in the core validator.
 5. Add focused registry/setup tests and one real smoke before claiming runtime support.
 6. Document the new key in the relevant inventory and runbook.
 

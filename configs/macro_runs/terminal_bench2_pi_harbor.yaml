@@ -17,17 +17,9 @@ agent:
     timeout_multiplier: 1.0
     harbor_max_retries: 0
     subprocess_timeout_sec: 14400
-    # Evaluation-side record of the deliberate Meta-Harness adaptation.
-    # The optimizer supplies candidate/parent/frontier names when available.
-    protocol:
-      name: pi_meta_harness_adaptation
-      phase: standalone
-      search_space: pi_typescript_extension
-      parent_policy: population_proposer_selected
-      candidates_per_iteration: 1
-      proposer_workflow: autonomous
-      validation_rewards_withheld: true
-      task_names_withheld: false
+    # Preserve flat-denominator experiments. Omit this to fail closed when
+    # Harbor does not produce a finite numeric verifier reward.
+    missing_reward_policy: zero
 benchmark:
   name: terminal_bench2
   config:

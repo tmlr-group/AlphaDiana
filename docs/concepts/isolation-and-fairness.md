@@ -32,7 +32,7 @@ It is accurate to say AlphaDiana uses task-scoped sandbox or container runtimes 
 
 ## How a run picks its isolation mode
 
-The `Runner` records the chosen mode in `run_metadata["isolation_mode"]` and mirrors it into the run manifest in `alphadiana/engine/runner.py`. The mode is derived from whether a sandbox was configured, auto-created, or predeployed as a pool.
+The `Runner` records the chosen mode in `run_metadata["isolation_mode"]` and mirrors it into the run manifest in `alphadiana/engine/runner.py`. The mode is derived from an agent-declared runtime capability or from whether a sandbox was configured, auto-created, or predeployed as a pool.
 
 | `isolation_mode` | When it applies |
 |---|---|
@@ -41,7 +41,7 @@ The `Runner` records the chosen mode in `run_metadata["isolation_mode"]` and mir
 | `auto_single_sandbox` | One ROCK sandbox auto-created for the run. |
 | `predeployed_pool` / `partial_predeploy` | A pool of ROCK sandboxes predeployed up front (gateway agents). |
 | `fresh_predeployed_pool` / `partial_fresh_predeployed_pool` | Self-healing pool that recreates sandboxes as tasks consume them. |
-| `harbor_disposable_task_container` | The Pi-Harbor adapter starts one unique Harbor job and task container per `(task, sample_index)`. |
+| `harbor_disposable_task_container` | An agent declares this task-runtime mode; the Pi-Harbor adapter starts one unique Harbor job and container per `(task, sample_index)`. |
 
 `shared_gateway` does not establish per-task sandbox isolation. It can be the
 intentional mode for a harness that does not use ROCK, or a fallback when an

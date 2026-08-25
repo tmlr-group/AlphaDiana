@@ -750,43 +750,9 @@ class Runner:
         """Resolve and instantiate all components from their registries."""
         _validate_stateful_run_policy(self.config)
         _stabilize_openclaw_gateway_token(self.config)
-        # Import all benchmark/agent/sandbox/scorer modules to trigger registration.
-        import alphadiana.benchmarks.aime.benchmark  # noqa: F401
-        import alphadiana.benchmarks.custom.benchmark  # noqa: F401
-        import alphadiana.benchmarks.swe_bench.benchmark  # noqa: F401
-        import alphadiana.benchmarks.gpqa.benchmark  # noqa: F401
-        import alphadiana.benchmarks.hle.benchmark  # noqa: F401
-        import alphadiana.benchmarks.imo.benchmark  # noqa: F401
-        import alphadiana.benchmarks.mmmu_pro.benchmark  # noqa: F401
-        import alphadiana.benchmarks.terminal_bench2.benchmark  # noqa: F401
+        from alphadiana.registry_loader import load_builtin_components
 
-        # Import agent modules to trigger registration.
-        import alphadiana.harness.direct_llm  # noqa: F401
-        import alphadiana.harness.openclaw.agent  # noqa: F401
-        import alphadiana.harness.opencode.agent  # noqa: F401
-        import alphadiana.benchmarks.swe_bench.harness  # noqa: F401
-        import alphadiana.benchmarks.terminal_bench2.harness.docker  # noqa: F401
-        import alphadiana.benchmarks.terminal_bench2.harness.openclaw  # noqa: F401
-        import alphadiana.benchmarks.terminal_bench2.harness.opencode  # noqa: F401
-        import alphadiana.benchmarks.terminal_bench2.harness.pi_harbor  # noqa: F401
-        import alphadiana.benchmarks.terminal_bench2.harness.zeroclaw  # noqa: F401
-        import alphadiana.harness.zeroclaw.agent  # noqa: F401
-
-        # Import sandbox modules to trigger registration.
-        import alphadiana.engine.sandbox.local  # noqa: F401
-        import alphadiana.engine.sandbox.podman  # noqa: F401
-        import alphadiana.engine.sandbox.rock  # noqa: F401
-        import alphadiana.engine.sandbox.swebench_container  # noqa: F401
-
-        # Import scorer modules to trigger registration.
-        import alphadiana.scorer.exact_match  # noqa: F401
-        import alphadiana.benchmarks.imo.verify  # noqa: F401
-        import alphadiana.scorer.llm_judge  # noqa: F401
-        import alphadiana.scorer.math_verify_scorer  # noqa: F401
-        import alphadiana.scorer.numeric  # noqa: F401
-        import alphadiana.benchmarks.swe_bench.scorer  # noqa: F401
-        import alphadiana.benchmarks.terminal_bench2.scorer  # noqa: F401
-        import alphadiana.metrics.answer_length  # noqa: F401
+        load_builtin_components()
 
         try:
             # Resolve and instantiate benchmark.
@@ -1438,10 +1404,11 @@ class Runner:
                 )
                 _auto_sandbox = None
 
-        isolation_mode = "shared_gateway"
-        if self.config.agent_name == "terminal_bench2_pi_harbor":
-            isolation_mode = "harbor_disposable_task_container"
-        elif predeployed_sessions:
+        declared_isolation_mode = str(
+            getattr(self.agent, "runtime_isolation_mode", "") or ""
+        ).strip()
+        isolation_mode = declared_isolation_mode or "shared_gateway"
+        if not declared_isolation_mode and predeployed_sessions:
             if fresh_predeployed_mode:
                 isolation_mode = (
                     "partial_fresh_predeployed_pool"

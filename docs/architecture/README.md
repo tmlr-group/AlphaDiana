@@ -68,4 +68,3 @@ Provider failures, context overflow, control-plane failures, verifier anomalies,
 - [Sandboxes & Isolation](./sandboxes.md) — session contracts and backend boundaries.
 - [Scoring & Results](./scoring-and-results.md) — validity, storage, metrics, and sharing precautions.
 - [Observability & Proxies](./observability.md) — proxy capture and trajectory preservation.
-- [Meta-Harness evaluation contract](./meta-harness-evaluation.md) — Pi/Terminal-Bench 2 adaptation boundaries.

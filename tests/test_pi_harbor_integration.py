@@ -18,9 +18,6 @@ from alphadiana.benchmarks.terminal_bench2.harness.pi_harbor import (
     _request_audit_error,
     _provider_reasoning_effort,
 )
-from alphadiana.benchmarks.terminal_bench2.protocol import (
-    TerminalBench2EvaluationProtocol,
-)
 from alphadiana.benchmarks.terminal_bench2.scorer import TerminalBench2Scorer
 from alphadiana.engine.config.experiment_config import ExperimentConfig
 from alphadiana.engine.config.validator import ConfigValidator
@@ -33,7 +30,9 @@ def _write(path: Path, value: str = "x") -> Path:
     return path
 
 
-def _configured_agent(tmp_path: Path) -> tuple[TerminalBench2PiHarborAgent, Path]:
+def _configured_agent(
+    tmp_path: Path, *, missing_reward_policy: str = "zero"
+) -> tuple[TerminalBench2PiHarborAgent, Path]:
     pi_install = tmp_path / "pi-install"
     pi_install.mkdir()
     _write(pi_install / "pi", "#!/usr/bin/env node\n")
@@ -58,13 +57,7 @@ def _configured_agent(tmp_path: Path) -> tuple[TerminalBench2PiHarborAgent, Path
             "jobs_dir": str(jobs),
             "pi_model": "local/model",
             "harbor_model": "local/model",
-            "protocol": {
-                "phase": "training",
-                "parent_policy": "overall_training_frontier",
-            },
-            "candidate_name": "candidate-v1",
-            "parent_name": "baseline",
-            "frontier_name": "baseline",
+            "missing_reward_policy": missing_reward_policy,
         }
     )
     return agent, jobs
@@ -224,12 +217,8 @@ def test_harbor_bridge_imports_frozen_trial_and_metric(
         == "read_only_post_run"
     )
     assert response.artifact_manifest["runtime_inputs"]["candidate_extension"]["sha256"]
-    assert response.metadata["evaluation_protocol"]["phase"] == "training"
-    assert (
-        response.metadata["evaluation_protocol"]["original_meta_harness_claim"] is False
-    )
-    assert response.metadata["candidate_name"] == "candidate-v1"
-    assert response.metadata["parent_name"] == "baseline"
+    assert agent.owns_task_runtime is True
+    assert agent.runtime_isolation_mode == "harbor_disposable_task_container"
 
     score = TerminalBench2Scorer().score(task, response)
     metric = AnswerLengthMetric()
@@ -346,10 +335,10 @@ def test_official_agent_timeout_remains_scored_zero(
     assert store.load()[0]["score_status"] == "valid_scored"
 
 
-def test_missing_verifier_reward_is_observable_scored_zero(
+def test_configured_missing_verifier_reward_is_observable_scored_zero(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """Match the reference Meta-Harness flat-denominator TB2 semantics."""
+    """Keep missing-reward trials in the denominator only when configured."""
     agent, jobs = _configured_agent(tmp_path)
 
     def fake_harbor(command: list[str]) -> subprocess.CompletedProcess[str]:
@@ -389,7 +378,7 @@ def test_missing_verifier_reward_is_observable_scored_zero(
     )
     assert response.metadata["normalized_reward"] == 0.0
     assert response.metadata["reward_normalization"] == (
-        "meta_harness_tb2_missing_reward_is_zero"
+        "configured_missing_reward_zero"
     )
     assert response.metadata["harbor_verifier_timeout_observed"] is True
     assert "verifier_reward" not in response.artifact_manifest["files"]
@@ -405,6 +394,37 @@ def test_missing_verifier_reward_is_observable_scored_zero(
     record = store.load()[0]
     assert record["score_status"] == "valid_scored"
     assert record["score"] == 0.0
+
+
+def test_missing_verifier_reward_fails_closed_by_default(
+    tmp_path: Path, monkeypatch
+) -> None:
+    agent, jobs = _configured_agent(tmp_path, missing_reward_policy="error")
+
+    def fake_harbor(command: list[str]) -> subprocess.CompletedProcess[str]:
+        _write_harbor_trial(
+            jobs,
+            command,
+            trace_events=[
+                {
+                    "type": "message_end",
+                    "message": {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "done"}],
+                    },
+                }
+            ],
+            reward=None,
+        )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(agent, "_run_harbor", fake_harbor)
+    with pytest.raises(HarborTrialError, match="finite numeric verifier reward") as raised:
+        agent.solve(_task())
+    response = raised.value.partial_response
+    assert response.metadata["failure_reason"] == "missing_verifier_reward"
+    assert response.metadata["verifier_status"] == "error"
+    assert response.metadata["reward_normalization"] == "missing_reward_error"
 
 
 def test_config_parses_and_validates_metrics(tmp_path: Path) -> None:
@@ -515,28 +535,7 @@ def test_models_config_rejects_explicitly_unsupported_reasoning(tmp_path: Path) 
     assert _provider_reasoning_effort(models, "local/model", "max") == "max"
 
 
-def test_protocol_records_adaptation_and_rejects_exposed_final_rewards() -> None:
-    protocol = TerminalBench2EvaluationProtocol.from_config(
-        {
-            "phase": "training",
-            "parent_policy": "overall_training_frontier",
-            "proposer_workflow": "autonomous",
-        }
-    )
-    assert protocol.to_dict()["search_space"] == "pi_typescript_extension"
-    assert protocol.to_dict()["original_meta_harness_claim"] is False
-    with pytest.raises(ValueError, match="withhold validation rewards"):
-        TerminalBench2EvaluationProtocol.from_config(
-            {
-                "phase": "final",
-                "validation_rewards_withheld": False,
-            }
-        )
-    with pytest.raises(ValueError, match="task_names_withheld=true"):
-        TerminalBench2EvaluationProtocol.from_config({"phase": "final"})
-
-
-def test_config_validator_rejects_final_protocol_without_task_name_isolation(
+def test_config_validator_uses_agent_runtime_capability(
     tmp_path: Path,
 ) -> None:
     config = ExperimentConfig(
@@ -544,12 +543,12 @@ def test_config_validator_rejects_final_protocol_without_task_name_isolation(
         agent_version="1.0",
         benchmark_name="terminal_bench2",
         scorer_name="terminal_bench2",
+        sandbox_name="local",
         agent_config={
-            "protocol": {"phase": "final"},
             "pi_model": "local/model",
             "harbor_model": "local/model",
         },
         benchmark_config={"tasks_dir": str(tmp_path)},
     )
     errors = ConfigValidator().validate(config)
-    assert any("task_names_withheld=true" in error for error in errors)
+    assert any("owns its task runtime" in error for error in errors)
