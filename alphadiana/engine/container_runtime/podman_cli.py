@@ -146,7 +146,8 @@ class PodmanCLI:
         return result
 
     def rootless(self) -> bool:
-        return self._run(["info", "--format", "{{.Host.Security.Rootless}}"]).stdout.strip() == "true"
+        result = self._run(["info", "--format", "{{.Host.Security.Rootless}}"])
+        return result.stdout.strip() == "true"
 
     def list_ids(self, *, labels: Mapping[str, str]) -> list[str]:
         """List only containers matching all ownership labels."""
@@ -239,6 +240,8 @@ class PodmanCLI:
     ) -> PodmanResult:
         args = ["run"]
         if input_text is not None:
+            if detach:
+                raise ValueError("stdin requests cannot use detached execution")
             args.append("--interactive")
         if detach:
             args.append("-d")

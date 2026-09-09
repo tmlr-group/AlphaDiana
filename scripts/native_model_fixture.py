@@ -13,7 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 @contextmanager
-def model_server():
+def model_server(port: int = 0):
     requests = []
 
     class Handler(BaseHTTPRequestHandler):
@@ -107,7 +107,7 @@ def model_server():
             self.end_headers()
             self.wfile.write(data)
 
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -116,3 +116,16 @@ def model_server():
         server.shutdown()
         server.server_close()
         thread.join()
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--port", type=int, default=8765)
+    with model_server(parser.parse_args().port) as (endpoint, _requests):
+        print(endpoint, flush=True)
+        try:
+            threading.Event().wait()
+        except KeyboardInterrupt:
+            pass
