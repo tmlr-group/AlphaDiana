@@ -11,7 +11,7 @@ import time
 import uuid
 from pathlib import Path, PurePosixPath
 
-from alphadiana.engine.container_runtime.podman_cli import PodmanCLI
+from alphadiana.engine.container_runtime.podman_cli import PodmanCLI, PodmanError
 from alphadiana.harness.base import Agent, AgentResponse
 
 IMAGE = re.compile(r"(?:sha256:|[^\s]+@sha256:)[0-9a-f]{64}$")
@@ -116,6 +116,12 @@ def cleanup_execution(execution_id: str, runtime: PodmanCLI | None = None) -> No
         cli.rm(container, force=True, check=True)
 
 
+class NativeHarnessError(RuntimeError):
+    """Native failures enter Runner's error path rather than a scored zero."""
+
+    error_type = "native_harness_failure"
+
+
 class NativePodmanAgent(Agent):
     """One container per solve, including when Runner reuses an agent instance."""
 
@@ -214,12 +220,27 @@ class NativePodmanAgent(Agent):
                     sandbox_metadata={"isolation_mode": "podman_disposable_task_container"},
                 )
             except Exception as exc:
-                # CLI/SDK diagnostics can include credentials or private model output.
-                return AgentResponse(
-                    answer=None,
-                    wall_time_sec=time.monotonic() - started,
-                    metadata={"failure_reason": type(exc).__name__, "runtime": "podman"},
-                )
+                # Runner treats answer=None as a scored zero. Raise a sanitized
+                # error so failed solvers never contribute valid evidence.
+                stage = "protocol"
+                if isinstance(exc, PodmanError):
+                    stage = "timeout" if exc.result.returncode == 124 else "container"
+                    try:
+                        diagnostic = json.loads(exc.result.stderr.strip().splitlines()[-1])
+                        if diagnostic.get("stage") in {
+                            "initialization",
+                            "plugin",
+                            "execution",
+                            "protocol",
+                        }:
+                            stage = diagnostic["stage"]
+                    except (ValueError, IndexError, AttributeError):
+                        pass
+                elif isinstance(exc, TimeoutError):
+                    stage = "timeout"
+                error = NativeHarnessError(f"Native harness failed during {stage}")
+                error.error_type = f"native_harness_{stage}"
+                raise error from None
             finally:
                 self.runtime.rm(name, force=True, check=True)
                 self._containers.discard(name)

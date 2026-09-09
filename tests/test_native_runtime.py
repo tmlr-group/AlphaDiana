@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 from alphadiana.benchmarks.base import BenchmarkTask
-from alphadiana.harness._internal.podman_agent import tree_digest
+from alphadiana.harness._internal.podman_agent import NativeHarnessError, tree_digest
 from alphadiana.harness.deepseek_harness.agent import DeepSeekHarnessAgent
 from alphadiana.harness.pi.agent import PiAgent
 
@@ -71,6 +71,10 @@ def test_real_baseline_and_plugin(tmp_path, agent_class):
                 )
             )
             assert candidate.answer == "1", candidate
+            (root / "candidate.ts").write_text("export default {{{ definitely invalid syntax")
+            agent.config["candidate_digest"] = tree_digest(root)
+            with pytest.raises(NativeHarnessError):
+                agent.solve(BenchmarkTask(task_id="broken", problem="test", ground_truth="hidden"))
             assert len(requests) >= 4
             assert any(
                 "TOOL_RAN" in str(m.get("content"))
@@ -96,7 +100,7 @@ def test_real_timeout_cleanup(agent_class):
             "timeout": 0.5,
         }
     )
-    result = agent.solve(BenchmarkTask(task_id="timeout", problem="test", ground_truth="hidden"))
-    assert result.answer is None
+    with pytest.raises(NativeHarnessError):
+        agent.solve(BenchmarkTask(task_id="timeout", problem="test", ground_truth="hidden"))
     assert PodmanCLI().list_ids(labels={"alphadiana.execution": agent.execution_id}) == []
     agent.teardown()

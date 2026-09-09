@@ -114,10 +114,9 @@ def test_runtime_failure_is_not_scored_and_removes_container(monkeypatch):
     monkeypatch.setattr(native, "PodmanCLI", Runtime)
     agent = PiAgent()
     agent.setup(CONFIG)
-    result = agent.solve(BenchmarkTask(task_id="x", problem="test", ground_truth="answer"))
-    assert result.answer is None
-    assert result.metadata["failure_reason"] == "TimeoutError"
-    assert "secret-value" not in str(result)
+    with pytest.raises(native.NativeHarnessError, match="timeout") as failure:
+        agent.solve(BenchmarkTask(task_id="x", problem="test", ground_truth="answer"))
+    assert "secret-value" not in str(failure.value)
     assert len(removed) == 1
 
 

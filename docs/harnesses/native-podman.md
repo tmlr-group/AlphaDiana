@@ -75,7 +75,8 @@ credential; use evaluation-scoped credentials.
 
 Responses map final root assistant text, trajectory, finish reason and available
 usage to AgentResponse. Missing usage is marked unavailable. Harness failures
-produce answer=None; cleanup failures raise rather than claim a complete run.
+raise a sanitized NativeHarnessError so Runner records an error rather than a
+valid scored zero. Cleanup failures also raise.
 Pi role/content parsing is adapted from PR #78 at
 198d4db0638a69e57a6de16cf2898ab3420cbe2a without Harbor reward logic.
 

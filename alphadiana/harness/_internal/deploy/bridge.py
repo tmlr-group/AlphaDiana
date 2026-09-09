@@ -13,6 +13,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+PHASE = "initialization"
+
 
 def text_blocks(content, kind="text"):
     if isinstance(content, str):
@@ -25,6 +27,7 @@ def text_blocks(content, kind="text"):
 
 
 def pi_run(request):
+    global PHASE
     config = request["config"]
     home = Path(os.environ["HOME"]) / ".pi" / "agent"
     home.mkdir(parents=True)
@@ -81,6 +84,7 @@ def pi_run(request):
     if "candidate_entry" in config:
         command += ["--extension", "/candidate/" + config["candidate_entry"]]
     # stdin prevents a task string from becoming a CLI option or @file argument.
+    PHASE = "execution"
     process = subprocess.run(
         command,
         input=request["problem"],
@@ -90,6 +94,18 @@ def pi_run(request):
         check=True,
         timeout=config.get("timeout", 120),
     )
+    if any(
+        marker in process.stderr.lower()
+        for marker in (
+            "failed to load extension",
+            "extension issues",
+            "extension errors",
+            "error loading extension",
+        )
+    ):
+        PHASE = "plugin"
+        raise ValueError("Pi extension failed to load")
+    PHASE = "protocol"
     events = [json.loads(line) for line in process.stdout.splitlines() if line.strip()]
     messages = [event["message"] for event in events if event.get("type") == "message_end"]
     assistants = [m for m in messages if m.get("role") == "assistant"]
@@ -121,6 +137,7 @@ def pi_run(request):
 
 
 def deepseek_run(request):
+    global PHASE
     from deepseek_harness import DeepSeekHarness
 
     config = request["config"]
@@ -162,7 +179,9 @@ def deepseek_run(request):
             )
         )
         options["patches"] = (str(patch),)
+    PHASE = "initialization"
     with DeepSeekHarness(**options) as harness:
+        PHASE = "execution"
         result = harness.run(request["problem"], session_id="task")
     return {
         "answer": result.final_response,
@@ -186,5 +205,5 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as exc:
-        print(json.dumps({"error": type(exc).__name__}), file=sys.stderr)
+        print(json.dumps({"error": type(exc).__name__, "stage": PHASE}), file=sys.stderr)
         sys.exit(1)
