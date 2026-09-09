@@ -108,12 +108,29 @@ def validate_config(config: dict) -> None:
             raise ValueError("Candidate content identity differs")
 
 
+def remove_container(cli: PodmanCLI, container: str) -> None:
+    """Bounded force-stop/removal; absent containers are already cleaned."""
+    for attempt in range(3):
+        try:
+            cli.stop(container, stop_timeout=0, timeout=5, check=False)
+            cli.rm(container, force=True, ignore_missing=True, check=True, timeout=15)
+            return
+        except PodmanError as exc:
+            transient = exc.result.returncode == 124 or any(
+                message in exc.result.stderr.lower()
+                for message in ("device or resource busy", "being removed")
+            )
+            if attempt == 2 or not transient:
+                raise
+            time.sleep(0.1 * 2**attempt)
+
+
 def cleanup_execution(execution_id: str, runtime: PodmanCLI | None = None) -> None:
     if not re.fullmatch(r"[0-9a-f]{32}", execution_id):
         raise ValueError("Invalid execution identifier")
     cli = runtime or PodmanCLI()
     for container in cli.list_ids(labels={"alphadiana.execution": execution_id}):
-        cli.rm(container, force=True, check=True)
+        remove_container(cli, container)
 
 
 class NativeHarnessError(RuntimeError):
@@ -170,12 +187,11 @@ class NativePodmanAgent(Agent):
                 volumes.append(f"{Path(self.config['candidate_root']).resolve()}:/candidate:ro")
             self._containers.add(name)
             try:
-                result = self.runtime.run(
+                self.runtime.create(
                     self.config["image"],
                     name=name,
                     remove=False,
                     command=["/opt/runtime/bin/python", "/opt/bridge.py"],
-                    input_text=json.dumps(request),
                     user="1000:1000",
                     workdir="/work",
                     network="slirp4netns:allow_host_loopback=true",
@@ -183,7 +199,9 @@ class NativePodmanAgent(Agent):
                     env={"HOME": "/tmp/home", "PYTHONDONTWRITEBYTECODE": "1"},
                     extra_args=[
                         "--pull=never",
+                        "--interactive",
                         "--read-only",
+                        "--stop-timeout=0",
                         "--cap-drop=ALL",
                         "--security-opt=no-new-privileges",
                         "--tmpfs=/work:rw,mode=1777",
@@ -191,7 +209,13 @@ class NativePodmanAgent(Agent):
                         "--label",
                         f"alphadiana.execution={self.execution_id}",
                     ],
-                    timeout=timeout,
+                    timeout=30,
+                )
+                remaining = timeout - (time.monotonic() - started)
+                if remaining <= 0:
+                    raise TimeoutError("Container startup exhausted the task deadline")
+                result = self.runtime.start_attached(
+                    name, input_text=json.dumps(request), timeout=remaining
                 )
                 response = json.loads(result.stdout)
                 if (
@@ -242,12 +266,12 @@ class NativePodmanAgent(Agent):
                 error.error_type = f"native_harness_{stage}"
                 raise error from None
             finally:
-                self.runtime.rm(name, force=True, check=True)
+                remove_container(self.runtime, name)
                 self._containers.discard(name)
 
     def teardown(self) -> None:
         # Runner may tear down one recreated agent while siblings still solve.
         # Only the outer evaluator may clean the whole execution label.
         for name in tuple(getattr(self, "_containers", ())):
-            self.runtime.rm(name, force=True, check=True)
+            remove_container(self.runtime, name)
             self._containers.discard(name)

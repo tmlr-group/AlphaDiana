@@ -55,14 +55,20 @@ def test_public_task_stdin_and_container_contract(monkeypatch, agent_class):
     calls = []
 
     class Runtime:
+        def stop(self, *args, **kwargs):
+            pass
+
         def rootless(self):
             return True
 
         def image_exists(self, image):
             return image == IMAGE
 
-        def run(self, image, **kwargs):
+        def create(self, image, **kwargs):
             calls.append(kwargs)
+            return kwargs["name"]
+
+        def start_attached(self, name, **kwargs):
             request = json.loads(kwargs["input_text"])
             assert request["problem"] == "public question"
             assert "protected-answer" not in kwargs["input_text"]
@@ -92,20 +98,26 @@ def test_public_task_stdin_and_container_contract(monkeypatch, agent_class):
     assert result.answer == "done"
     assert calls[0]["volumes"][0].endswith(":/input:ro")
     assert "--read-only" in calls[0]["extra_args"]
-    assert calls[1][1] == {"force": True, "check": True}
+    assert calls[1][1] == {"force": True, "ignore_missing": True, "check": True, "timeout": 15}
 
 
 def test_runtime_failure_is_not_scored_and_removes_container(monkeypatch):
     removed = []
 
     class Runtime:
+        def stop(self, *args, **kwargs):
+            pass
+
         def rootless(self):
             return True
 
         def image_exists(self, image):
             return True
 
-        def run(self, *args, **kwargs):
+        def create(self, *args, **kwargs):
+            return "owned"
+
+        def start_attached(self, *args, **kwargs):
             raise TimeoutError("secret-value")
 
         def rm(self, name, **kwargs):
@@ -124,6 +136,9 @@ def test_cleanup_is_scoped():
     calls = []
 
     class Runtime:
+        def stop(self, *args, **kwargs):
+            pass
+
         def rootless(self):
             return True
 
@@ -144,6 +159,9 @@ def test_teardown_does_not_remove_sibling_samples(monkeypatch):
     removed = []
 
     class Runtime:
+        def stop(self, *args, **kwargs):
+            pass
+
         def rootless(self):
             return True
 
@@ -162,3 +180,34 @@ def test_teardown_does_not_remove_sibling_samples(monkeypatch):
     first.teardown()
     assert removed == ["first-sample"]
     assert second._containers == {"second-sample"}
+
+
+def test_transient_mount_cleanup_retries_but_other_failures_do_not(monkeypatch):
+    from alphadiana.engine.container_runtime.podman_cli import PodmanError, PodmanResult
+
+    calls = []
+
+    class Runtime:
+        def stop(self, *args, **kwargs):
+            pass
+
+        def rm(self, name, **kwargs):
+            calls.append(name)
+            if len(calls) < 2:
+                raise PodmanError(
+                    PodmanResult(("podman", "rm"), 125, "", "device or resource busy")
+                )
+
+    monkeypatch.setattr(native.time, "sleep", lambda _: None)
+    native.remove_container(Runtime(), "owned")
+    assert calls == ["owned", "owned"]
+
+    class Broken:
+        def stop(self, *args, **kwargs):
+            pass
+
+        def rm(self, *args, **kwargs):
+            raise PodmanError(PodmanResult(("podman", "rm"), 125, "", "permission denied"))
+
+    with pytest.raises(PodmanError):
+        native.remove_container(Broken(), "owned")
