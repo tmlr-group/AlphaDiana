@@ -139,3 +139,27 @@ def test_cleanup_is_scoped():
     assert calls == [{"alphadiana.execution": "a" * 32}, "owned"]
     with pytest.raises(ValueError):
         native.cleanup_execution("", Runtime())
+
+
+def test_teardown_does_not_remove_sibling_samples(monkeypatch):
+    removed = []
+
+    class Runtime:
+        def rootless(self):
+            return True
+
+        def image_exists(self, image):
+            return True
+
+        def rm(self, name, **kwargs):
+            removed.append(name)
+
+    monkeypatch.setattr(native, "PodmanCLI", Runtime)
+    first, second = PiAgent(), PiAgent()
+    for agent in (first, second):
+        agent.setup({**CONFIG, "_execution_id": "b" * 32})
+    first._containers.add("first-sample")
+    second._containers.add("second-sample")
+    first.teardown()
+    assert removed == ["first-sample"]
+    assert second._containers == {"second-sample"}

@@ -122,6 +122,7 @@ class NativePodmanAgent(Agent):
     def setup(self, config: dict) -> None:
         validate_config(config)
         self.config = dict(config)
+        self._containers = set()
         self.runtime = PodmanCLI()
         self.execution_id = config.get("_execution_id") or uuid.uuid4().hex
         if not self.runtime.rootless():
@@ -161,6 +162,7 @@ class NativePodmanAgent(Agent):
             volumes = [f"{public}:/input:ro"]
             if "candidate_root" in self.config:
                 volumes.append(f"{Path(self.config['candidate_root']).resolve()}:/candidate:ro")
+            self._containers.add(name)
             try:
                 result = self.runtime.run(
                     self.config["image"],
@@ -220,7 +222,11 @@ class NativePodmanAgent(Agent):
                 )
             finally:
                 self.runtime.rm(name, force=True, check=True)
+                self._containers.discard(name)
 
     def teardown(self) -> None:
-        if hasattr(self, "execution_id"):
-            cleanup_execution(self.execution_id, self.runtime)
+        # Runner may tear down one recreated agent while siblings still solve.
+        # Only the outer evaluator may clean the whole execution label.
+        for name in tuple(getattr(self, "_containers", ())):
+            self.runtime.rm(name, force=True, check=True)
+            self._containers.discard(name)
