@@ -145,6 +145,18 @@ class PodmanCLI:
             raise PodmanError(result)
         return result
 
+    def rootless(self) -> bool:
+        return self._run(["info", "--format", "{{.Host.Security.Rootless}}"]).stdout.strip() == "true"
+
+    def list_ids(self, *, labels: Mapping[str, str]) -> list[str]:
+        """List only containers matching all ownership labels."""
+        if not labels:
+            raise ValueError("Container ownership labels are required")
+        args = ["ps", "--all", "--quiet", "--no-trunc"]
+        for key, value in sorted(labels.items()):
+            args.extend(["--filter", f"label={key}={value}"])
+        return self._run(args).stdout.split()
+
     def version(self, *, timeout: float | None = None) -> PodmanResult:
         return self._run(["--version"], timeout=timeout)
 
@@ -213,6 +225,7 @@ class PodmanCLI:
         name: str | None = None,
         command: Sequence[str] | None = None,
         detach: bool = False,
+        input_text: str | None = None,
         env: Mapping[str, str] | None = None,
         workdir: str | None = None,
         user: str | None = None,
@@ -225,6 +238,8 @@ class PodmanCLI:
         timeout: float | None = None,
     ) -> PodmanResult:
         args = ["run"]
+        if input_text is not None:
+            args.append("--interactive")
         if detach:
             args.append("-d")
         args.extend(self._container_options(
@@ -242,7 +257,7 @@ class PodmanCLI:
         args.append(normalize_podman_image_ref(image))
         if command:
             args.extend(str(part) for part in command)
-        return self._run(args, timeout=timeout)
+        return self._run(args, timeout=timeout, input_text=input_text)
 
     def start(self, container_id: str, *, timeout: float | None = None) -> PodmanResult:
         return self._run(["start", container_id], timeout=timeout)

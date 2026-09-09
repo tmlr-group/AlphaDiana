@@ -44,3 +44,6 @@ alphadiana = "alphadiana.cli:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["alphadiana*"]
+
+[tool.setuptools.package-data]
+"alphadiana.harness._internal" = ["deploy/*"]

@@ -1,0 +1,190 @@
+"""Container-only solver driver. Candidate code must never import into the host.
+
+Pi final-message extraction follows the role/content approach in Diana PR #78
+(198d4db0638a69e57a6de16cf2898ab3420cbe2a), generalized without Harbor/TB2.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+
+def text_blocks(content, kind="text"):
+    if isinstance(content, str):
+        return content if kind == "text" else ""
+    return "\n".join(
+        str(block.get(kind, ""))
+        for block in content
+        if isinstance(block, dict) and block.get("type") == kind
+    )
+
+
+def pi_run(request):
+    config = request["config"]
+    home = Path(os.environ["HOME"]) / ".pi" / "agent"
+    home.mkdir(parents=True)
+    model = {
+        "id": config["model"],
+        "name": config["model"],
+        "reasoning": bool(config.get("reasoning")),
+        "input": ["text"],
+        "contextWindow": 128000,
+        "maxTokens": config.get("max_tokens", 4096),
+        "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
+    }
+    (home / "models.json").write_text(
+        json.dumps(
+            {
+                "providers": {
+                    "diana": {
+                        "baseUrl": config["api_base"],
+                        "api": "openai-completions",
+                        "apiKey": "DIANA_MODEL_API_KEY",
+                        "models": [model],
+                    }
+                }
+            }
+        )
+    )
+    environment = {
+        **os.environ,
+        "PI_CODING_AGENT_DIR": str(home),
+        "PI_OFFLINE": "1",
+        "PI_TELEMETRY": "0",
+        "DIANA_MODEL_API_KEY": config.get("api_key", "keyless"),
+    }
+    command = [
+        "/opt/pi/node_modules/.bin/pi",
+        "--mode",
+        "json",
+        "--print",
+        "--no-session",
+        "--no-extensions",
+        "--no-skills",
+        "--no-prompt-templates",
+        "--no-themes",
+        "--no-approve",
+        "--provider",
+        "diana",
+        "--model",
+        config["model"],
+        "--system-prompt",
+        config.get("system_prompt", "Solve the task using available tools."),
+    ]
+    if "reasoning" in config:
+        command += ["--thinking", config["reasoning"]]
+    if "candidate_entry" in config:
+        command += ["--extension", "/candidate/" + config["candidate_entry"]]
+    # stdin prevents a task string from becoming a CLI option or @file argument.
+    process = subprocess.run(
+        command,
+        input=request["problem"],
+        env=environment,
+        text=True,
+        capture_output=True,
+        check=True,
+        timeout=config.get("timeout", 120),
+    )
+    events = [json.loads(line) for line in process.stdout.splitlines() if line.strip()]
+    messages = [event["message"] for event in events if event.get("type") == "message_end"]
+    assistants = [m for m in messages if m.get("role") == "assistant"]
+    if not assistants:
+        raise ValueError("Pi returned no assistant message")
+    final = assistants[-1]
+    usage = {}
+    for message in assistants:
+        values = message.get("usage", {})
+        if "input" in values or "output" in values:
+            usage["prompt_tokens"] = (
+                usage.get("prompt_tokens", 0)
+                + values.get("input", 0)
+                + values.get("cacheRead", 0)
+                + values.get("cacheWrite", 0)
+            )
+            usage["completion_tokens"] = usage.get("completion_tokens", 0) + values.get("output", 0)
+    return {
+        "answer": text_blocks(final.get("content", [])),
+        "trajectory": messages,
+        "reasoning_trajectory": [
+            {"role": "assistant", "content": text_blocks(m.get("content", []), "thinking")}
+            for m in assistants
+            if text_blocks(m.get("content", []), "thinking")
+        ],
+        "token_usage": usage,
+        "finish_reason": final.get("stopReason"),
+    }
+
+
+def deepseek_run(request):
+    from deepseek_harness import DeepSeekHarness
+
+    config = request["config"]
+    options = {
+        "provider": "deepseek-official",
+        "model": config["model"],
+        "cwd": "/work",
+        "runtime_cwd": "/work",
+        "dsh_home": "/tmp/dsh-home",
+        "profile": "sdk-minimal",
+        "base_url": config["api_base"],
+        "api_key": config.get("api_key", "keyless"),
+        "request_timeout_seconds": config.get("timeout", 120),
+        "env": {
+            "DSH_SYSTEM_PROMPT": config.get(
+                "system_prompt", "Solve the task using available tools."
+            )
+        },
+    }
+    for field, target in (("reasoning", "reasoning_effort"), ("max_tokens", "max_tokens")):
+        if field in config:
+            options[target] = config[field]
+    if "candidate_entry" in config:
+        # JSON is valid YAML. The runtime compiles the local TS plugin; no package
+        # installation or candidate-controlled startup command is involved.
+        patch = Path("/tmp/candidate.patch.yml")
+        patch.write_text(
+            json.dumps(
+                [
+                    {
+                        "insert": [
+                            {
+                                "id": "diana-candidate",
+                                "name": "/candidate/" + config["candidate_entry"],
+                            }
+                        ]
+                    }
+                ]
+            )
+        )
+        options["patches"] = (str(patch),)
+    with DeepSeekHarness(**options) as harness:
+        result = harness.run(request["problem"], session_id="task")
+    return {
+        "answer": result.final_response,
+        "finish_reason": result.finish_reason,
+        "trajectory": result.events,
+        "token_usage": {},
+    }
+
+
+def main():
+    request = json.load(sys.stdin)
+    Path(os.environ["HOME"]).mkdir(parents=True, exist_ok=True)
+    attachments = Path("/input/attachments")
+    if attachments.exists():
+        shutil.copytree(attachments, "/work/attachments")
+    result = pi_run(request) if request["harness"] == "pi" else deepseek_run(request)
+    print(json.dumps(result, allow_nan=False))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        print(json.dumps({"error": type(exc).__name__}), file=sys.stderr)
+        sys.exit(1)
