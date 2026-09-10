@@ -47,7 +47,7 @@ def pi_run(request):
                     "diana": {
                         "baseUrl": config["api_base"],
                         "api": "openai-completions",
-                        "apiKey": "DIANA_MODEL_API_KEY",
+                        "apiKey": "$DIANA_MODEL_API_KEY",
                         "models": [model],
                     }
                 }
@@ -112,6 +112,9 @@ def pi_run(request):
     if not assistants:
         raise ValueError("Pi returned no assistant message")
     final = assistants[-1]
+    if final.get("stopReason") in {"error", "aborted"}:
+        PHASE = "execution"
+        raise RuntimeError("Pi model request did not complete")
     usage = {}
     for message in assistants:
         values = message.get("usage", {})

@@ -13,7 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 @contextmanager
-def model_server(port: int = 0):
+def model_server(port: int = 0, *, api_key: str = "keyless"):
     requests = []
 
     class Handler(BaseHTTPRequestHandler):
@@ -22,6 +22,9 @@ def model_server(port: int = 0):
 
         def do_POST(self):
             request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            if self.headers.get("Authorization") != "Bearer " + api_key:
+                self.send_error(401, "Invalid fixture credential")
+                return
             requests.append(request)
             messages = request["messages"]
             tool_results = [m for m in messages if m.get("role") == "tool"]

@@ -29,7 +29,7 @@ def test_real_baseline_and_plugin(tmp_path, agent_class):
 
     with (
         tempfile.TemporaryDirectory(prefix="native-candidate-") as directory,
-        fixture.model_server() as (endpoint, requests),
+        fixture.model_server(api_key="test-native-secret") as (endpoint, requests),
     ):
         root = Path(directory)
         root.chmod(0o755)
@@ -47,7 +47,13 @@ def test_real_baseline_and_plugin(tmp_path, agent_class):
             )
         (root / "candidate.ts").write_text(code)
         agent = agent_class()
-        config = {"image": IMAGE, "model": "fixture-v1", "api_base": endpoint, "timeout": 90}
+        config = {
+            "image": IMAGE,
+            "model": "fixture-v1",
+            "api_base": endpoint,
+            "timeout": 90,
+            "api_key": "test-native-secret",
+        }
         agent.setup(config)
         try:
             baseline = agent.solve(

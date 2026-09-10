@@ -91,3 +91,12 @@ ALPHADIANA_NATIVE_IMAGE=sha256:<built-image-id> \
 The runtime tests use actual Pi/DeepSeek tools and a deterministic HTTP model
 fixture. They demonstrate integration, plugin loading and cleanup, not live
 model quality. Without the image variable those checks explicitly skip.
+
+### Authenticated endpoints
+
+The pinned Pi version resolves model API key environment references with a `$`
+prefix. The bridge uses `$DIANA_MODEL_API_KEY`, populated from private container
+stdin; a bare environment variable name would be sent as a literal credential.
+The deterministic runtime fixture verifies the Authorization header, including a
+non-default test credential. Native containers disable Podman's implicit host
+HTTP proxy forwarding; deployment does not inherit a localhost proxy by accident.

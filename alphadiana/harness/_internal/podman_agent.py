@@ -199,6 +199,7 @@ class NativePodmanAgent(Agent):
                     env={"HOME": "/tmp/home", "PYTHONDONTWRITEBYTECODE": "1"},
                     extra_args=[
                         "--pull=never",
+                        "--http-proxy=false",
                         "--interactive",
                         "--read-only",
                         "--stop-timeout=0",
