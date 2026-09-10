@@ -133,6 +133,10 @@ def cleanup_execution(execution_id: str, runtime: PodmanCLI | None = None) -> No
         remove_container(cli, container)
 
 
+class _TaskBudgetExpired(TimeoutError):
+    """Only the evaluator-owned execution deadline may produce scored zero."""
+
+
 class NativeHarnessError(RuntimeError):
     """Native failures enter Runner's error path rather than a scored zero."""
 
@@ -173,6 +177,12 @@ class NativePodmanAgent(Agent):
                 target = public / "attachments" / relative
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(data)
+            # Set public input permissions explicitly, independently of host umask.
+            # Only this disposable task projection is made readable, never source
+            # workspaces or evaluator evidence. The container mount remains read-only.
+            public.chmod(0o755)
+            for path in public.rglob("*"):
+                path.chmod(0o755 if path.is_dir() else 0o644)
             request = {
                 "harness": self.name,
                 "problem": task.problem,
@@ -214,10 +224,17 @@ class NativePodmanAgent(Agent):
                 )
                 remaining = timeout - (time.monotonic() - started)
                 if remaining <= 0:
-                    raise TimeoutError("Container startup exhausted the task deadline")
-                result = self.runtime.start_attached(
-                    name, input_text=json.dumps(request), timeout=remaining
-                )
+                    raise _TaskBudgetExpired("Task deadline exhausted after container creation")
+                try:
+                    result = self.runtime.start_attached(
+                        name, input_text=json.dumps(request), timeout=remaining
+                    )
+                except PodmanError as exc:
+                    # Only start/attach uses the remaining task budget. A timeout
+                    # from create/cleanup is infrastructure failure, not a score.
+                    if exc.result.returncode == 124:
+                        raise _TaskBudgetExpired() from None
+                    raise
                 response = json.loads(result.stdout)
                 if (
                     not isinstance(response, dict)
@@ -241,6 +258,20 @@ class NativePodmanAgent(Agent):
                         "usage_status": "reported"
                         if response.get("token_usage")
                         else "unavailable",
+                    },
+                    sandbox_metadata={"isolation_mode": "podman_disposable_task_container"},
+                )
+            except _TaskBudgetExpired:
+                return AgentResponse(
+                    answer=None,
+                    finish_reason="timeout",
+                    wall_time_sec=time.monotonic() - started,
+                    metadata={
+                        "runtime": "podman",
+                        "image": self.config["image"],
+                        "native_harness_timeout_scored_zero": True,
+                        "native_harness_timeout_seconds": timeout,
+                        "usage_status": "unavailable",
                     },
                     sandbox_metadata={"isolation_mode": "podman_disposable_task_container"},
                 )

@@ -76,7 +76,8 @@ credential; use evaluation-scoped credentials.
 Responses map final root assistant text, trajectory, finish reason and available
 usage to AgentResponse. Missing usage is marked unavailable. Harness failures
 raise a sanitized NativeHarnessError so Runner records an error rather than a
-valid scored zero. Cleanup failures also raise.
+valid scored zero, except for the explicitly supported task deadline described
+below. Cleanup failures also raise.
 Pi role/content parsing is adapted from PR #78 at
 198d4db0638a69e57a6de16cf2898ab3420cbe2a without Harbor reward logic.
 
@@ -100,3 +101,20 @@ stdin; a bare environment variable name would be sent as a literal credential.
 The deterministic runtime fixture verifies the Authorization header, including a
 non-default test credential. Native containers disable Podman's implicit host
 HTTP proxy forwarding; deployment does not inherit a localhost proxy by accident.
+
+### Task deadlines and public inputs
+
+An evaluator-enforced task execution deadline returns `answer=None`,
+`finish_reason=timeout`, and `native_harness_timeout_scored_zero=true`. Like the
+existing harness policy, this is a completed, valid scored-zero sample. Only the
+remaining task budget passed to Podman start/attach (or budget exhaustion after
+successful container creation) has this treatment. Container creation/cleanup
+failures and provider/request failures remain evaluation errors. An outer Hebe
+worker deadline remains an infrastructure failure, not a completed task.
+
+Nested public attachment directories are explicitly staged as 0755 and files as
+0644, even under host umask 077, then mounted read-only. This permission change is
+limited to disposable public input; source workspaces and evaluator evidence are
+not made public. Pi extension callback errors invalidate the result even when
+Pi exits successfully and produces an answer. Extracted thinking uses the
+normalizer's explicit reasoning type and survives result/trace persistence.

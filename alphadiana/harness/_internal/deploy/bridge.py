@@ -100,6 +100,7 @@ def pi_run(request):
             "failed to load extension",
             "extension issues",
             "extension errors",
+            "extension error (",
             "error loading extension",
         )
     ):
@@ -130,7 +131,11 @@ def pi_run(request):
         "answer": text_blocks(final.get("content", [])),
         "trajectory": messages,
         "reasoning_trajectory": [
-            {"role": "assistant", "content": text_blocks(m.get("content", []), "thinking")}
+            {
+                "role": "assistant",
+                "type": "reasoning",
+                "content": text_blocks(m.get("content", []), "thinking"),
+            }
             for m in assistants
             if text_blocks(m.get("content", []), "thinking")
         ],
