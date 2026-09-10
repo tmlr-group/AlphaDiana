@@ -3,6 +3,8 @@
 import importlib.util
 import json
 import os
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -144,3 +146,17 @@ def test_only_owned_task_deadline_is_completed_zero(tmp_path, monkeypatch, phase
         assert row["score_status"] == "valid_scored"
         assert store.completed_task_ids() == {"deadline"}
     assert agent.runtime.removed
+
+
+def test_native_import_does_not_initialize_optional_dataset_runtime():
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; from alphadiana.engine.runner import Runner; "
+            "from alphadiana.harness._internal.podman_agent import validate_config; "
+            "assert 'datasets' not in sys.modules; assert 'pyarrow.dataset' not in sys.modules",
+        ],
+        check=True,
+        timeout=30,
+    )
