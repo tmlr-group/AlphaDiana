@@ -739,8 +739,6 @@ class Runner:
         # Import agent modules to trigger registration.
         import alphadiana.harness.direct_llm  # noqa: F401
         import alphadiana.harness.openclaw.agent  # noqa: F401
-        import alphadiana.harness.pi.agent  # noqa: F401
-        import alphadiana.harness.deepseek_harness.agent  # noqa: F401
         import alphadiana.harness.opencode.agent  # noqa: F401
         import alphadiana.benchmarks.swe_bench.harness  # noqa: F401
         import alphadiana.benchmarks.terminal_bench2.harness.docker  # noqa: F401

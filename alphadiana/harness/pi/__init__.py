@@ -1,1 +1,0 @@
-"""Native Pi harness."""

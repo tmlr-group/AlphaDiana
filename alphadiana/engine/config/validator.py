@@ -73,15 +73,6 @@ class ConfigValidator:
                 "(set sandbox_name to 'rock', 'local', or 'podman')"
             )
 
-        if config.agent_name in {"pi", "deepseek_harness"}:
-            from alphadiana.harness._internal.podman_agent import validate_config
-            try:
-                validate_config(config.agent_config)
-            except (ValueError, TypeError, OSError) as exc:
-                errors.append(str(exc))
-            if config.sandbox_name:
-                errors.append("Native harnesses own Podman isolation; omit sandbox.name")
-
         if config.agent_name in self.API_AGENTS:
             runtime = str(config.agent_config.get("runtime", "")).strip()
             has_api_base = self._has_nonempty_value(config.agent_config.get("api_base"))

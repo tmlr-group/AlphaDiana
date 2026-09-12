@@ -145,19 +145,6 @@ class PodmanCLI:
             raise PodmanError(result)
         return result
 
-    def rootless(self) -> bool:
-        result = self._run(["info", "--format", "{{.Host.Security.Rootless}}"])
-        return result.stdout.strip() == "true"
-
-    def list_ids(self, *, labels: Mapping[str, str]) -> list[str]:
-        """List only containers matching all ownership labels."""
-        if not labels:
-            raise ValueError("Container ownership labels are required")
-        args = ["ps", "--all", "--quiet", "--no-trunc"]
-        for key, value in sorted(labels.items()):
-            args.extend(["--filter", f"label={key}={value}"])
-        return self._run(args).stdout.split()
-
     def version(self, *, timeout: float | None = None) -> PodmanResult:
         return self._run(["--version"], timeout=timeout)
 
@@ -256,15 +243,6 @@ class PodmanCLI:
         if command:
             args.extend(str(part) for part in command)
         return self._run(args, timeout=timeout)
-
-    def start_attached(
-        self, container_id: str, *, input_text: str, timeout: float,
-    ) -> PodmanResult:
-        """Attach stdin only after creation has durably established ownership."""
-        return self._run(
-            ["start", "--attach", "--interactive", container_id],
-            input_text=input_text, timeout=timeout,
-        )
 
     def start(self, container_id: str, *, timeout: float | None = None) -> PodmanResult:
         return self._run(["start", container_id], timeout=timeout)
@@ -371,14 +349,11 @@ class PodmanCLI:
         container_id: str,
         *,
         force: bool = False,
-        ignore_missing: bool = False,
         volumes: bool = False,
         timeout: float | None = None,
         check: bool = False,
     ) -> PodmanResult:
         args = ["rm"]
-        if ignore_missing:
-            args.append("--ignore")
         if force:
             args.append("-f")
         if volumes:
