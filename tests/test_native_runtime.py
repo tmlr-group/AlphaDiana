@@ -29,7 +29,9 @@ def test_real_baseline_and_plugin(tmp_path, agent_class):
 
     with (
         tempfile.TemporaryDirectory(prefix="native-candidate-") as directory,
-        fixture.model_server(api_key="test-native-secret") as (endpoint, requests),
+        fixture.model_server(
+            api_key="test-native-secret", reasoning_text="Check the observed marker."
+        ) as (endpoint, requests),
     ):
         root = Path(directory)
         root.chmod(0o755)
@@ -90,6 +92,7 @@ def test_real_baseline_and_plugin(tmp_path, agent_class):
                 assert row["token_usage"]["prompt_tokens"] == 20
                 assert row["token_usage"]["completion_tokens"] == 8
                 assert row["response_json"]["native_events"]
+                assert row["reasoning_trajectory"][0]["content"] == "Check the observed marker."
                 trace = json.loads(
                     (store.artifacts_dir / "persist/agent/normalized_trace.json").read_text()
                 )

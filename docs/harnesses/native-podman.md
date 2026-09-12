@@ -121,7 +121,7 @@ normalizer's explicit reasoning type and survives result/trace persistence.
 
 
 Completed native messages are projected onto Diana's persisted trajectory schema,
-including tool call IDs, inputs, tool results and error flags. Original Pi and
+including tool call IDs, inputs, tool results, error flags and dedicated reasoning. Original Pi and
 DeepSeek events remain in `response_json.native_events` for diagnosis. DeepSeek
 usage sums completed assistant-message records; streaming usage chunks describe
 the same requests and are not added again. Unreported usage remains unavailable.

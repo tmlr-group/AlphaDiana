@@ -13,7 +13,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 @contextmanager
-def model_server(port: int = 0, *, api_key: str = "keyless", final_finish_reason: str = "stop"):
+def model_server(
+    port: int = 0,
+    *,
+    api_key: str = "keyless",
+    final_finish_reason: str = "stop",
+    reasoning_text: str | None = None,
+):
     requests = []
 
     class Handler(BaseHTTPRequestHandler):
@@ -32,6 +38,8 @@ def model_server(port: int = 0, *, api_key: str = "keyless", final_finish_reason
             if tool_results:
                 content = str(tool_results[-1].get("content", ""))
                 message["content"] = "1" if "CANDIDATE_GOOD" in content else "0"
+                if reasoning_text is not None:
+                    message["reasoning_content"] = reasoning_text
                 finish = final_finish_reason
             else:
                 tools = request.get("tools", [])

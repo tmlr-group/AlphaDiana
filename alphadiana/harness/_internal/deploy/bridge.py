@@ -187,8 +187,16 @@ def deepseek_events(events):
         if kind == "assistant/message":
             message = data["message"]
             content = text_blocks(message.get("content", []))
-            if content:
-                trajectory.append({"role": "assistant", "content": content})
+            thinking = "\n".join(
+                block["text"]
+                for block in message.get("content", [])
+                if block.get("type") == "reasoning"
+            )
+            if content or thinking:
+                step = {"role": "assistant", "content": content}
+                if thinking:
+                    step["thinking"] = thinking
+                trajectory.append(step)
             # The pinned runtime publishes the aggregate for each completed
             # model request here, as well as duplicate streaming usage chunks.
             values = data.get("usage") or {}
@@ -285,6 +293,11 @@ def deepseek_run(request):
         "answer": result.final_response,
         "finish_reason": result.finish_reason,
         "trajectory": trajectory,
+        "reasoning_trajectory": [
+            {"role": "assistant", "type": "reasoning", "content": step["thinking"]}
+            for step in trajectory
+            if step.get("thinking")
+        ],
         "token_usage": usage,
         "response_json": {"native_events": result.events},
     }
