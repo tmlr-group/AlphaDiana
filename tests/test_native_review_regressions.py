@@ -160,3 +160,54 @@ def test_native_import_does_not_initialize_optional_dataset_runtime():
         check=True,
         timeout=30,
     )
+
+
+def test_captured_deepseek_usage_and_tools_survive_persistence(tmp_path):
+    path = Path(__file__).parents[1] / "alphadiana/harness/_internal/deploy/bridge.py"
+    spec = importlib.util.spec_from_file_location("bridge_events", path)
+    bridge = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bridge)
+    events = json.loads(
+        (Path(__file__).parent / "fixtures/native_deepseek_events.json").read_text()
+    )
+    trajectory, usage = bridge.deepseek_events(events)
+    assert usage == {"prompt_tokens": 20, "completion_tokens": 8, "total_tokens": 28}
+    response = AgentResponse(
+        answer="0",
+        trajectory=trajectory,
+        token_usage=usage,
+        response_json={"native_events": events},
+        finish_reason="stop",
+    )
+    task = BenchmarkTask("tools", "Read marker with shell.", "0")
+    store = ResultStore(str(tmp_path / "results"), "review")
+    store.append(task, response, NumericScorer().score(task, response))
+    row = store.load()[0]
+    assert row["token_usage"] == usage
+    trace = json.loads((store.artifacts_dir / "tools/agent/normalized_trace.json").read_text())
+    calls = [call for step in trace["steps"] for call in step.get("tool_calls", [])]
+    results = [result for step in trace["steps"] for result in step.get("tool_results", [])]
+    assert len(calls) == len(results) == 1
+    assert calls[0]["id"] == results[0]["tool_use_id"] == "fixture_call"
+    assert calls[0]["tool"] == "bash" and "command" in calls[0]["input"]
+    assert "TOOL_RAN" in results[0]["content"] and not results[0]["is_error"]
+    assert row["response_json"]["native_events"] == events
+
+
+@pytest.mark.parametrize("answer", ["4", ""])
+def test_token_limit_is_scored_instead_of_protocol_error(tmp_path, monkeypatch, answer):
+    class Length(Runtime):
+        def start_attached(self, *args, **kwargs):
+            return SimpleNamespace(stdout=json.dumps({"answer": answer, "finish_reason": "length"}))
+
+    monkeypatch.setattr(native, "PodmanCLI", Length)
+    agent = PiAgent()
+    agent.setup(CONFIG)
+    response = agent.solve(BenchmarkTask("length", "2+2?", "4"))
+    task = BenchmarkTask("length", "2+2?", "4")
+    store = ResultStore(str(tmp_path / "results"), "review")
+    store.append(task, response, NumericScorer().score(task, response))
+    row = store.load()[0]
+    assert row["score"] == (1.0 if answer else 0.0)
+    assert row["score_status"] == "valid_scored" and row["finish_reason"] == "length"
+    assert store.completed_task_ids() == {"length"}

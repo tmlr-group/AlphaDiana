@@ -118,3 +118,15 @@ limited to disposable public input; source workspaces and evaluator evidence are
 not made public. Pi extension callback errors invalidate the result even when
 Pi exits successfully and produces an answer. Extracted thinking uses the
 normalizer's explicit reasoning type and survives result/trace persistence.
+
+
+Completed native messages are projected onto Diana's persisted trajectory schema,
+including tool call IDs, inputs, tool results and error flags. Original Pi and
+DeepSeek events remain in `response_json.native_events` for diagnosis. DeepSeek
+usage sums completed assistant-message records; streaming usage chunks describe
+the same requests and are not added again. Unreported usage remains unavailable.
+
+An answer ending at the model token limit (`finish_reason=length`) is scored by
+the configured scorer, like DirectLLM; an empty truncated answer is scored zero.
+This is distinct from a provider/protocol failure and from the wall-clock task
+budget, which returns a completed timeout with score zero.

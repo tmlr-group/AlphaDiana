@@ -239,16 +239,19 @@ class NativePodmanAgent(Agent):
                 if (
                     not isinstance(response, dict)
                     or not isinstance(response.get("answer"), str)
-                    or not response["answer"].strip()
+                    or (
+                        not response["answer"].strip() and response.get("finish_reason") != "length"
+                    )
                 ):
                     raise ValueError("Missing final assistant response")
-                if response.get("finish_reason") not in {"stop", "completed"}:
+                if response.get("finish_reason") not in {"stop", "completed", "length"}:
                     raise ValueError("Harness did not complete normally")
                 return AgentResponse(
                     answer=response["answer"],
                     trajectory=response.get("trajectory", []),
                     reasoning_trajectory=response.get("reasoning_trajectory", []),
                     token_usage=response.get("token_usage", {}),
+                    response_json=response.get("response_json", {}),
                     finish_reason=response["finish_reason"],
                     wall_time_sec=time.monotonic() - started,
                     metadata={

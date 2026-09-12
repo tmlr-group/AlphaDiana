@@ -129,7 +129,8 @@ def pi_run(request):
             usage["completion_tokens"] = usage.get("completion_tokens", 0) + values.get("output", 0)
     return {
         "answer": text_blocks(final.get("content", [])),
-        "trajectory": messages,
+        "trajectory": pi_messages(messages),
+        "response_json": {"native_events": events},
         "reasoning_trajectory": [
             {
                 "role": "assistant",
@@ -142,6 +143,94 @@ def pi_run(request):
         "token_usage": usage,
         "finish_reason": final.get("stopReason"),
     }
+
+
+def pi_messages(messages):
+    """Map Pi blocks and toolResult linkage to the persisted Diana schema."""
+    trajectory = []
+    for message in messages:
+        if message.get("role") == "toolResult":
+            trajectory.append(
+                {
+                    "role": "tool_result",
+                    "type": "tool_result",
+                    "tool_use_id": message["toolCallId"],
+                    "content": text_blocks(message.get("content", [])),
+                    "is_error": message.get("isError", False),
+                }
+            )
+            continue
+        step = {"role": message["role"], "content": text_blocks(message.get("content", []))}
+        thinking = text_blocks(message.get("content", []), "thinking")
+        if thinking:
+            step["thinking"] = thinking
+        calls = [
+            block
+            for block in message.get("content", [])
+            if isinstance(block, dict) and block.get("type") == "toolCall"
+        ]
+        if calls:
+            step["tool_calls"] = [
+                {"id": call["id"], "tool": call["name"], "input": call["arguments"]}
+                for call in calls
+            ]
+        trajectory.append(step)
+    return trajectory
+
+
+def deepseek_events(events):
+    """Project completed messages/tools; chunks duplicate message-level usage."""
+    trajectory = []
+    usage = {}
+    for event in events:
+        kind, data = event.get("type"), event.get("data", {})
+        if kind == "assistant/message":
+            message = data["message"]
+            content = text_blocks(message.get("content", []))
+            if content:
+                trajectory.append({"role": "assistant", "content": content})
+            # The pinned runtime publishes the aggregate for each completed
+            # model request here, as well as duplicate streaming usage chunks.
+            values = data.get("usage") or {}
+            for source, target in (
+                ("inputTokens", "prompt_tokens"),
+                ("outputTokens", "completion_tokens"),
+                ("totalTokens", "total_tokens"),
+            ):
+                if source in values:
+                    usage[target] = usage.get(target, 0) + values[source]
+        elif kind == "user/message":
+            trajectory.append({"role": "user", "content": text_blocks(data.get("content", []))})
+        elif kind == "tool/call":
+            arguments = data.get("arguments", {})
+            if isinstance(arguments, str):
+                # Preserve unparsable tool input for diagnosis, not a fake call.
+                try:
+                    arguments = json.loads(arguments)
+                except ValueError:
+                    arguments = {"raw_arguments": arguments}
+            trajectory.append(
+                {
+                    "role": "assistant",
+                    "type": "tool_use",
+                    "id": data["callId"],
+                    "tool": data["name"],
+                    "input": arguments,
+                }
+            )
+        elif kind == "tool/result":
+            for block in data["message"].get("content", []):
+                if block.get("type") == "tool-result":
+                    trajectory.append(
+                        {
+                            "role": "tool_result",
+                            "type": "tool_result",
+                            "tool_use_id": block["toolCallId"],
+                            "content": text_blocks(block.get("content", [])),
+                            "is_error": block.get("isError", False),
+                        }
+                    )
+    return trajectory, usage
 
 
 def deepseek_run(request):
@@ -191,11 +280,13 @@ def deepseek_run(request):
     with DeepSeekHarness(**options) as harness:
         PHASE = "execution"
         result = harness.run(request["problem"], session_id="task")
+    trajectory, usage = deepseek_events(result.events)
     return {
         "answer": result.final_response,
         "finish_reason": result.finish_reason,
-        "trajectory": result.events,
-        "token_usage": {},
+        "trajectory": trajectory,
+        "token_usage": usage,
+        "response_json": {"native_events": result.events},
     }
 
 

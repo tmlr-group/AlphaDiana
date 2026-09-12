@@ -77,6 +77,29 @@ def test_real_baseline_and_plugin(tmp_path, agent_class):
                 )
             )
             assert candidate.answer == "1", candidate
+            if agent_class in {PiAgent, DeepSeekHarnessAgent}:
+                import json
+
+                from alphadiana.analysis.io.result_store import ResultStore
+                from alphadiana.scorer.numeric import NumericScorer
+
+                task = BenchmarkTask("persist", "Read marker.", "1")
+                store = ResultStore(str(tmp_path / "persist"), "review")
+                store.append(task, candidate, NumericScorer().score(task, candidate))
+                row = store.load()[0]
+                assert row["token_usage"]["prompt_tokens"] == 20
+                assert row["token_usage"]["completion_tokens"] == 8
+                assert row["response_json"]["native_events"]
+                trace = json.loads(
+                    (store.artifacts_dir / "persist/agent/normalized_trace.json").read_text()
+                )
+                calls = [call for step in trace["steps"] for call in step.get("tool_calls", [])]
+                results = [
+                    result for step in trace["steps"] for result in step.get("tool_results", [])
+                ]
+                assert len(calls) == len(results) == 1
+                assert calls[0]["id"] == results[0]["tool_use_id"]
+                assert "TOOL_RAN" in results[0]["content"]
             if agent_class is PiAgent:
                 (root / "candidate.ts").write_text(
                     'export default function(pi) {pi.on("session_start", () => {'
@@ -168,4 +191,20 @@ def test_real_nested_attachments_under_private_umask(agent_class):
             assert result.answer == "1"
         finally:
             os.umask(old)
+            agent.teardown()
+
+
+def test_real_pi_token_limit_answer_is_scored(tmp_path):
+    with fixture.model_server(final_finish_reason="length") as (endpoint, requests):
+        agent = PiAgent()
+        agent.setup({"image": IMAGE, "model": "fixture-v1", "api_base": endpoint, "timeout": 90})
+        try:
+            task = BenchmarkTask("length", "Read marker with shell.", "0")
+            response = agent.solve(task)
+            assert response.answer == "0" and response.finish_reason == "length"
+            from alphadiana.scorer.numeric import NumericScorer
+
+            assert NumericScorer().score(task, response).score == 1.0
+            assert len(requests) == 2
+        finally:
             agent.teardown()
