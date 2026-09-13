@@ -10,8 +10,6 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
-import datasets as _datasets
-
 logger = logging.getLogger(__name__)
 
 NON_RETRYABLE_DATASET_ERRORS = (PermissionError, FileNotFoundError, ValueError, OSError)
@@ -20,7 +18,10 @@ READ_ONLY_CACHE_RE = re.compile(r"read.?only|permission denied|erofs", re.IGNORE
 
 def load_dataset(*args: Any, **kwargs: Any) -> Any:
     """Thin wrapper kept patchable by tests and loader modules."""
-    return _datasets.load_dataset(*args, **kwargs)
+    # Native/custom tasks do not need the optional datasets/Arrow runtime.
+    import datasets
+
+    return datasets.load_dataset(*args, **kwargs)
 
 
 @dataclass
