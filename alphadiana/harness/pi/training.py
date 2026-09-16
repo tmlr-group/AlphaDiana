@@ -870,6 +870,11 @@ class NativeCapture:
             "parallel_tool_calls",
             "stream",
             "stream_options",
+            # Pi 0.85 sends ``store: false`` on every OpenAI-compatible
+            # request.  It is provider bookkeeping rather than capture state;
+            # accept it at the boundary and deliberately omit it from the
+            # upstream payload below.
+            "store",
             "n",
             "max_tokens",
             "max_completion_tokens",

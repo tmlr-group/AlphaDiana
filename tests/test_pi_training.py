@@ -115,6 +115,14 @@ def test_capture_forces_plan_and_keeps_native_ids_and_attestation():
     assert record["turns"][0]["response_token_ids"] == (11, 12)
 
 
+def test_capture_accepts_pi_store_flag_without_forwarding_capture_state():
+    current = plan()
+    capture = NativeCapture(current, "task-a", 0, "fixture-v1", 1)
+    prepared = capture.prepare({**request(), "store": False})
+    assert "store" not in prepared
+    assert prepared["return_token_ids"] is True
+
+
 @pytest.mark.parametrize(
     "response, message",
     [
