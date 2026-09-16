@@ -1,0 +1,15 @@
+{
+  "schema": "alphadiana.rollout-result.v1",
+  "status": "complete",
+  "score_status": "valid_scored",
+  "run_id": "pi-eval-001",
+  "task_id": "addition",
+  "agent": {"name": "pi", "version": "model-deployment-v1"},
+  "benchmark": "custom",
+  "scorer": "exact_match",
+  "predicted": "5",
+  "correct": true,
+  "score": 1.0,
+  "cost": {"wall_seconds": 4.2, "tokens": {"prompt_tokens": 20, "completion_tokens": 8}},
+  "evidence": {"trajectory_available": true}
+}

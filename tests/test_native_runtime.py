@@ -211,3 +211,67 @@ def test_real_pi_token_limit_answer_is_scored(tmp_path):
             assert len(requests) == 2
         finally:
             agent.teardown()
+
+
+def test_real_pi_training_capture_uses_native_ids_and_policy_attestation():
+    """Opt-in integration through the actual Pi image and fixture server."""
+
+    import hashlib
+
+    digest = hashlib.sha256(b"fixture-policy").hexdigest()
+    with fixture.model_server(
+        api_key="test-native-secret",
+        native_capture=True,
+        policy_publication="policy-step-001",
+        tokenizer_digest=digest,
+        chat_template_digest=digest,
+    ) as (endpoint, requests):
+        # The host-side capture proxy connects to the fixture over loopback;
+        # only the proxy URL is advertised to the disposable Pi container.
+        host_endpoint = endpoint.replace("host.containers.internal", "127.0.0.1")
+        agent = PiAgent()
+        agent.setup(
+            {
+                "image": IMAGE,
+                "model": "fixture-v1",
+                "api_base": host_endpoint,
+                "api_key": "test-native-secret",
+                "timeout": 90,
+                "training": {
+                    "enabled": True,
+                    "algorithm": "sft",
+                    "round_id": "sft-round-001",
+                    "task_ids": ["training"],
+                    "group_size": 1,
+                    "max_new_tokens": 8,
+                    "temperature": 1.0,
+                    "seed": 17,
+                    "policy_publication": "policy-step-001",
+                    "policy": {
+                        "weights_digest": digest,
+                        "tokenizer_digest": digest,
+                        "chat_template_digest": digest,
+                    },
+                    "model_identity": {
+                        "model_name": "fixture-v1",
+                        "model_revision": "fixture-revision-1",
+                        "tokenizer_digest": digest,
+                        "chat_template_digest": digest,
+                    },
+                },
+            }
+        )
+        try:
+            response = agent.solve(BenchmarkTask("training", "Read marker.", None))
+            capture = response.metadata["training_capture"]
+            assert capture["tokens_native"] is True
+            assert capture["policy_attestation"] == "verified"
+            assert capture["model_identity"]["model_revision"] == "fixture-revision-1"
+            assert capture["turns"][0]["response_token_ids"]
+            assert all(request.get("return_token_ids") for request in requests)
+            assert all(
+                request.get("chat_template_kwargs") == {"enable_thinking": False}
+                for request in requests
+            )
+        finally:
+            agent.teardown()

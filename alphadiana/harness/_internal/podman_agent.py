@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import math
@@ -30,6 +31,7 @@ FIELDS = frozenset(
         "candidate_entry",
         "candidate_digest",
         "runtime",
+        "training",
         "_execution_id",
     }
 )
@@ -91,6 +93,13 @@ def validate_config(config: dict) -> None:
         not isinstance(config["reasoning"], str) or not config["reasoning"]
     ):
         raise ValueError("reasoning must be a nonempty string")
+    if "training" in config:
+        # Keep the optional HTTP client and training contract out of ordinary
+        # native imports.  Native SFT/GRPO runs opt in explicitly and require
+        # the pinned AlphaDiana agent extra at runtime.
+        from alphadiana.harness.pi.training import validate_training_config
+
+        validate_training_config(config["training"])
     if "_execution_id" in config and not re.fullmatch(r"[0-9a-f]{32}", config["_execution_id"]):
         raise ValueError("Invalid private execution identifier")
     source = {"candidate_root", "candidate_entry", "candidate_digest"}
@@ -148,6 +157,10 @@ class NativePodmanAgent(Agent):
 
     def setup(self, config: dict) -> None:
         validate_config(config)
+        if config.get("training") is not None and self.name != "pi":
+            raise ValueError(
+                "native-token training capture is currently supported by the Pi harness only"
+            )
         self.config = dict(config)
         self._containers = set()
         self.runtime = PodmanCLI()
@@ -166,6 +179,8 @@ class NativePodmanAgent(Agent):
         name = f"diana-{self.name.replace('_', '-')}-{uuid.uuid4().hex}"
         started = time.monotonic()
         timeout = float(self.config.get("timeout", 120))
+        capture = None
+        capture_endpoint = None
         with tempfile.TemporaryDirectory(prefix="diana-harness-") as directory:
             root = Path(directory)
             # Container uid can traverse this public task input, but cannot change it.
@@ -183,15 +198,81 @@ class NativePodmanAgent(Agent):
             public.chmod(0o755)
             for path in public.rglob("*"):
                 path.chmod(0o755 if path.is_dir() else 0o644)
+            request_config = {
+                k: v
+                for k, v in self.config.items()
+                if k not in {"candidate_root", "_execution_id"}
+            }
+            if self.config.get("training") is not None:
+                from alphadiana.harness.pi.training import (
+                    Backend,
+                    NativeCapture,
+                    TokenCaptureEndpoint,
+                    capture_config_from_dict,
+                )
+
+                sample_index = task.metadata.get("sample_index", 0)
+                attempt_id = task.metadata.get("execution_id", self.execution_id)
+                capture_config = capture_config_from_dict(
+                    self.config["training"],
+                    task_id=task.task_id,
+                    sample_index=sample_index,
+                    model_name=self.config["model"],
+                    attempt_id=attempt_id,
+                )
+                if capture_config is not None:
+                    capture = NativeCapture(
+                        capture_config.plan,
+                        capture_config.task_id,
+                        capture_config.sample_index,
+                        capture_config.model_name,
+                        capture_config.max_calls,
+                        require_logprobs=capture_config.require_logprobs,
+                        attempt_id=capture_config.attempt_id,
+                        model_identity=capture_config.plan.model_identity,
+                        require_policy_attestation=capture_config.require_policy_attestation,
+                        require_model_attestation=capture_config.require_model_attestation,
+                    )
+                    # The backend credential stays on the host.  Pi receives a
+                    # short-lived proxy credential and can therefore never
+                    # persist or print the model-service key.
+                    capture_endpoint = TokenCaptureEndpoint(
+                        Backend(
+                            self.config["api_base"],
+                            self.config.get("api_key") or "keyless",
+                        ),
+                        capture,
+                        max(
+                            0.001,
+                            min(timeout - (time.monotonic() - started), 120.0),
+                        ),
+                        bind_host="0.0.0.0",
+                        advertise_host=str(
+                            self.config["training"].get(
+                                "proxy_host", "host.containers.internal"
+                            )
+                        ),
+                    )
+                    try:
+                        capture_endpoint.start()
+                    except Exception:
+                        capture_endpoint.close()
+                        capture_endpoint = None
+                        raise
+                    request_config["api_base"] = capture_endpoint.base_url
+                    request_config["api_key"] = capture_endpoint.key
+                    request_config["training"] = capture_config.to_dict()
             request = {
                 "harness": self.name,
                 "problem": task.problem,
-                "config": {
-                    k: v
-                    for k, v in self.config.items()
-                    if k not in {"candidate_root", "_execution_id"}
-                },
+                "config": request_config,
             }
+            if capture is not None:
+                request.update(
+                    task_id=task.task_id,
+                    sample_index=task.metadata.get("sample_index", 0),
+                    execution_id=task.metadata.get("execution_id", self.execution_id),
+                )
             volumes = [f"{public}:/input:ro"]
             if "candidate_root" in self.config:
                 volumes.append(f"{Path(self.config['candidate_root']).resolve()}:/candidate:ro")
@@ -246,6 +327,24 @@ class NativePodmanAgent(Agent):
                     raise ValueError("Missing final assistant response")
                 if response.get("finish_reason") not in {"stop", "completed", "length"}:
                     raise ValueError("Harness did not complete normally")
+                training_capture = None
+                if capture is not None:
+                    training_capture = capture.capture().to_dict()
+                    response["training_capture"] = training_capture
+                    # Cross-repository consumers use this stable projection;
+                    # ``training_capture`` remains the Diana-native name.
+                    hebe_training = copy.deepcopy(training_capture)
+                    response["hebe_training"] = hebe_training
+                    response_json_value = response.get("response_json")
+                    response_json = (
+                        dict(response_json_value)
+                        if isinstance(response_json_value, dict)
+                        else {}
+                    )
+                    # Keep the exact native requests/responses alongside the
+                    # normal Pi event stream for replay and contract audits.
+                    response_json["native_training_capture"] = training_capture
+                    response["response_json"] = response_json
                 return AgentResponse(
                     answer=response["answer"],
                     trajectory=response.get("trajectory", []),
@@ -261,10 +360,26 @@ class NativePodmanAgent(Agent):
                         "usage_status": "reported"
                         if response.get("token_usage")
                         else "unavailable",
+                        **(
+                            {"training_capture": training_capture}
+                            if training_capture is not None
+                            else {}
+                        ),
+                        **(
+                            {"hebe_training": hebe_training}
+                            if training_capture is not None
+                            else {}
+                        ),
                     },
                     sandbox_metadata={"isolation_mode": "podman_disposable_task_container"},
                 )
             except _TaskBudgetExpired:
+                if capture is not None:
+                    error = NativeHarnessError(
+                        "Native training capture did not complete before the task deadline"
+                    )
+                    error.error_type = "native_harness_training_timeout"
+                    raise error from None
                 return AgentResponse(
                     answer=None,
                     finish_reason="timeout",
@@ -301,6 +416,8 @@ class NativePodmanAgent(Agent):
                 error.error_type = f"native_harness_{stage}"
                 raise error from None
             finally:
+                if capture_endpoint is not None:
+                    capture_endpoint.close()
                 remove_container(self.runtime, name)
                 self._containers.discard(name)
 

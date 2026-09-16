@@ -19,6 +19,11 @@ def model_server(
     api_key: str = "keyless",
     final_finish_reason: str = "stop",
     reasoning_text: str | None = None,
+    native_capture: bool = False,
+    policy_publication: str = "",
+    model_revision: str = "fixture-revision-1",
+    tokenizer_digest: str = "a" * 64,
+    chat_template_digest: str = "a" * 64,
 ):
     requests = []
 
@@ -77,7 +82,22 @@ def model_server(
                     }
                 ]
                 finish = "tool_calls"
+            native_prompt = list(range(100, 100 + len(messages)))
+            native_tokens = list(range(200, 204))
             usage = {"prompt_tokens": 10, "completion_tokens": 4, "total_tokens": 14}
+            if native_capture and request.get("return_token_ids"):
+                # These IDs are emitted by the fixture server itself, before
+                # Pi sees the text projection; tests can therefore verify the
+                # no-retokenization boundary without loading a tokenizer.
+                native_tokens = list(
+                    range(200, 200 + (2 if finish == "tool_calls" else 3))
+                )
+                native_prompt = list(range(100, 100 + len(messages) + 1))
+                usage = {
+                    "prompt_tokens": len(native_prompt),
+                    "completion_tokens": len(native_tokens),
+                    "total_tokens": len(native_prompt) + len(native_tokens),
+                }
             if request.get("stream"):
                 chunks = []
                 delta = dict(message)
@@ -100,16 +120,43 @@ def model_server(
                 )
                 content_type = "text/event-stream"
             else:
-                body = json.dumps(
-                    {
-                        "id": "fixture",
-                        "object": "chat.completion",
-                        "created": 1,
-                        "model": request["model"],
-                        "choices": [{"index": 0, "message": message, "finish_reason": finish}],
-                        "usage": usage,
-                    }
-                )
+                response = {
+                    "id": "fixture",
+                    "object": "chat.completion",
+                    "created": 1,
+                    "model": request["model"],
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": message,
+                            "finish_reason": finish,
+                            **(
+                                {
+                                    "token_ids": native_tokens,
+                                    "native_log_probs": [-0.1] * len(native_tokens),
+                                }
+                                if native_capture and request.get("return_token_ids")
+                                else {}
+                            ),
+                        }
+                    ],
+                    **(
+                        {
+                            "prompt_token_ids": native_prompt,
+                            "policy_publication": policy_publication,
+                            "model_identity": {
+                                "model_name": request["model"],
+                                "model_revision": model_revision,
+                                "tokenizer_digest": tokenizer_digest,
+                                "chat_template_digest": chat_template_digest,
+                            },
+                        }
+                        if native_capture and request.get("return_token_ids")
+                        else {}
+                    ),
+                    "usage": usage,
+                }
+                body = json.dumps(response)
                 content_type = "application/json"
             data = body.encode()
             self.send_response(200)

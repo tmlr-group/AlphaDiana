@@ -1,0 +1,17 @@
+{
+  "schema": "alphadiana.rollout-result.v1",
+  "status": "error",
+  "execution": {
+    "execution_id": "0123456789abcdef0123456789abcdef",
+    "attempt_id": "0123456789abcdef0123456789abcdef",
+    "state": "cancelled",
+    "failure_category": "execution",
+    "cancelled_by": "outer_worker"
+  },
+  "score": null,
+  "training_eligible": false,
+  "evidence": {
+    "result_metadata": "metadata.native_harness_failure",
+    "partial_capture_rejected": true
+  }
+}

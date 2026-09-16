@@ -1,0 +1,25 @@
+{
+  "schema": "alphadiana.pi-training-request.v1",
+  "enabled": true,
+  "algorithm": "sft",
+  "round_id": "sft-round-001",
+  "task_id": "addition",
+  "sample_index": 0,
+  "task_ids": ["addition"],
+  "group_size": 1,
+  "max_new_tokens": 128,
+  "temperature": 0.7,
+  "seed": 17,
+  "policy_publication": "policy-step-001",
+  "policy": {
+    "weights_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "tokenizer_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "chat_template_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "model_identity": {
+    "model_name": "served-model",
+    "model_revision": "revision-1",
+    "tokenizer_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "chat_template_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }
+}

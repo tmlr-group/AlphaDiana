@@ -1,0 +1,52 @@
+{
+  "schema": "alphadiana.pi-training-batch.v1",
+  "plan": {
+    "round_id": "grpo-round-001",
+    "algorithm": "grpo",
+    "task_ids": ["addition"],
+    "group_size": 2,
+    "max_new_tokens": 128,
+    "temperature": 1.0,
+    "seed": 17,
+    "policy_publication": "policy-step-001",
+    "policy": {
+      "weights_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "tokenizer_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "chat_template_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "model_identity": {
+      "model_name": "served-model",
+      "model_revision": "revision-1",
+      "tokenizer_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "chat_template_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  },
+  "samples": [
+    {
+      "round_id": "grpo-round-001",
+      "task_id": "addition",
+      "sample_index": 0,
+      "policy": {
+        "weights_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "tokenizer_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "chat_template_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "turns": [{"prompt_token_ids": [101], "response_token_ids": [201], "response_mask": [1], "behavior_log_probs": [-0.1]}],
+      "reward": 1.0,
+      "success": true
+    },
+    {
+      "round_id": "grpo-round-001",
+      "task_id": "addition",
+      "sample_index": 1,
+      "policy": {
+        "weights_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "tokenizer_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "chat_template_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "turns": [{"prompt_token_ids": [101], "response_token_ids": [202], "response_mask": [1], "behavior_log_probs": [-0.2]}],
+      "reward": 0.0,
+      "success": false
+    }
+  ]
+}
