@@ -9,6 +9,12 @@ from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.harness._internal.podman_agent import NativeHarnessError, tree_digest
 from alphadiana.harness.deepseek_harness.agent import DeepSeekHarnessAgent
 from alphadiana.harness.pi.agent import PiAgent
+from alphadiana.harness.pi.training import (
+    ModelIdentity,
+    PiTrainingCollector,
+    PolicyIdentity,
+    SamplingPlan,
+)
 
 spec = importlib.util.spec_from_file_location(
     "native_fixture", Path(__file__).parents[1] / "scripts/native_model_fixture.py"
@@ -275,3 +281,54 @@ def test_real_pi_training_capture_uses_native_ids_and_policy_attestation():
             )
         finally:
             agent.teardown()
+
+
+def test_real_pi_grpo_collector_isolates_samples_and_keeps_behavior_logprobs():
+    """The real Pi containers produce a complete, native-token GRPO group."""
+
+    import hashlib
+
+    digest = hashlib.sha256(b"fixture-policy").hexdigest()
+    policy = PolicyIdentity(digest, digest, digest)
+    identity = ModelIdentity("fixture-v1", "fixture-revision-1", digest, digest)
+    plan = SamplingPlan(
+        "grpo-round-001",
+        policy,
+        ("training",),
+        2,
+        8,
+        1.0,
+        17,
+        identity,
+        "policy-step-001",
+        "grpo",
+    )
+    with fixture.model_server(
+        api_key="test-native-secret",
+        native_capture=True,
+        policy_publication="policy-step-001",
+        tokenizer_digest=digest,
+        chat_template_digest=digest,
+    ) as (endpoint, requests):
+        collector = PiTrainingCollector(PiAgent)
+        batch = collector.collect(
+            [BenchmarkTask("training", "Read marker.", None)],
+            plan,
+            {
+                "image": IMAGE,
+                "model": "fixture-v1",
+                "api_base": endpoint.replace("host.containers.internal", "127.0.0.1"),
+                "api_key": "test-native-secret",
+                "timeout": 90,
+            },
+            score=lambda _task, _response: 0.5,
+        )
+    assert [sample.sample_index for sample in batch.samples] == [0, 1]
+    assert all(
+        turn.behavior_log_probs is not None
+        for sample in batch.samples
+        for turn in sample.turns
+    )
+    assert all(request["return_token_ids"] for request in requests)
+    assert all(request["logprobs"] for request in requests)
+    assert len(requests) == 4
