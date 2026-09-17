@@ -74,6 +74,7 @@ def _record_payload(
         "scorer_error": "evaluation_failure",
         "no_answer": "candidate_failure",
         "agent_empty_output": "candidate_failure",
+        "agent_error": "execution_failure",
     }
     if score_status == "runtime_error":
         # A sanitized native_harness_execution failure can be a model request

@@ -87,17 +87,45 @@ def _terminal_bench2_verifier_scored(record: dict[str, Any], metadata: dict[str,
     return False
 
 
-def is_legacy_timeout_zero_record(record: dict[str, Any]) -> bool:
-    """Return whether an old error record should now count as timeout score 0."""
+def _scorer_failure_status(record: dict[str, Any]) -> str | None:
+    """Reject unmeasured fallbacks, including lossy historical EvoX records."""
     score_metadata = _as_dict(record.get("score_metadata"))
-    if "error" in score_metadata or (
-        record.get("benchmark_name") == "ale_bench"
+    benchmark_name = str(record.get("benchmark_name", "") or "").strip()
+    if (
+        benchmark_name == "ale_bench"
         and score_metadata.get("judge_result") == "INTERNAL_ERROR"
     ):
+        return "verifier_error"
+    if "error" in score_metadata:
+        return (
+            "verifier_error"
+            if benchmark_name in {"ale_bench", "evox_problems"}
+            else "scorer_error"
+        )
+    if benchmark_name == "evox_problems":
+        # Pinned SkyDiscover uses metrics.error or error artifacts for failed
+        # evaluations. Hebe's original adapter retained artifact keys, not values.
+        # These signals cannot establish whether the candidate or evaluator
+        # failed: conservatively exclude them, never invent a negative reward.
+        keys = score_metadata.get("artifact_keys", [])
+        if "error" in _as_dict(score_metadata.get("metrics")) or (
+            isinstance(keys, list) and "error" in keys
+        ):
+            return "verifier_error"
+    return None
+
+
+def is_legacy_timeout_zero_record(record: dict[str, Any]) -> bool:
+    """Return whether an old error record should now count as timeout score 0."""
+    if _scorer_failure_status(record):
         return False
     metadata = _as_dict(record.get("metadata"))
     error = _as_dict(record.get("error"))
     explicit = str(record.get("score_status", "") or "").strip()
+    if explicit in {"verifier_error", "scorer_error"} or (
+        error and _classify_error_status(error) in {"verifier_error", "scorer_error"}
+    ):
+        return False
     if explicit == VALID_SCORE_STATUS:
         return False
     if record.get("score") is not None or record.get("correct") is not None:
@@ -208,20 +236,13 @@ def normalize_legacy_timeout_zero_record(record: dict[str, Any]) -> dict[str, An
 
 
 def infer_score_status(record: dict[str, Any]) -> str:
-    score_metadata = _as_dict(record.get("score_metadata"))
     benchmark_name = str(record.get("benchmark_name", "") or "").strip()
     # Scorer adapters may retain a numeric failure_score for forensic evidence.
     # An evaluator exception is not a measured candidate reward, even when an
     # older row incorrectly declared itself valid_scored.
-    if (
-        benchmark_name == "ale_bench"
-        and score_metadata.get("judge_result") == "INTERNAL_ERROR"
-    ):
-        return "verifier_error"
-    if "error" in score_metadata:
-        if benchmark_name in {"ale_bench", "evox_problems"}:
-            return "verifier_error"
-        return "scorer_error"
+    scorer_failure = _scorer_failure_status(record)
+    if scorer_failure:
+        return scorer_failure
     if is_legacy_timeout_zero_record(record):
         return VALID_SCORE_STATUS
 

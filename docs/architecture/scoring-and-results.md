@@ -61,6 +61,15 @@ candidate result. ALE `INTERNAL_ERROR` is a judge failure and remains
 `verifier_error` even when the adapter supplies a finite fallback. Legacy
 timeout normalization never overrides evaluator-error evidence.
 
+For historical EvoX rows, numeric `metrics.error` and an `error` entry in
+`artifact_keys` are also disqualifying. The original adapter could discard a
+textual metric error entirely; those records need a rerun, since a fallback
+number cannot reconstruct the missing verdict. The companion Hebe scorer fix
+raises a typed `verifier_error` for unsuccessful or malformed upstream results
+instead of returning a numeric reward. Generic SkyDiscover errors cannot
+reliably attribute blame to candidate versus evaluator, so they are excluded
+conservatively. A genuine zero without failure evidence remains valid.
+
 ### Timeout completion
 
 Supported harness timeouts can be valid scored-zero samples. DirectLLM, OpenCode, OpenClaw, and ZeroClaw attach harness-specific timeout metadata and return `finish_reason: timeout`; the score is zero and the checkpoint treats the sample as complete.

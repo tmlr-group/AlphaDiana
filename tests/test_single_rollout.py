@@ -180,6 +180,17 @@ def test_evaluator_error_is_not_normalized_to_legacy_timeout_score():
     assert infer_score_status(record) == "verifier_error"
 
 
+@pytest.mark.parametrize("status", ["verifier_error", "scorer_error"])
+def test_typed_evaluator_timeout_is_not_a_candidate_timeout(status):
+    record = {
+        "error": {"error_type": status, "message": "timed out after 60s"},
+        "score": None,
+        "correct": None,
+    }
+    assert not is_legacy_timeout_zero_record(record)
+    assert infer_score_status(record) == status
+
+
 def test_empty_exception_message_still_invalidates_score():
     record = {
         "benchmark_name": "ale_bench",
@@ -191,6 +202,50 @@ def test_empty_exception_message_still_invalidates_score():
 
 
 @pytest.mark.parametrize(
+    "score_metadata",
+    [
+        {"metrics": {"combined_score": 0.0, "error": 0.0}},
+        {"metrics": {"combined_score": 0.0}, "artifact_keys": ["error", "status"]},
+        {"metrics": {"combined_score": 0.0}, "artifact_keys": ["error"]},
+    ],
+)
+def test_evox_upstream_failure_signals_never_become_rewards(score_metadata):
+    record = {
+        "benchmark_name": "evox_problems",
+        "score_status": "valid_scored",
+        "score": -1000.0,
+        "correct": False,
+        "score_metadata": score_metadata,
+    }
+    assert infer_score_status(record) == "verifier_error"
+    assert not is_valid_completed_record(record)
+    record.update(score=None, correct=None, score_status="runtime_error")
+    record["error"] = {
+        "error_type": "AgentTimeoutError",
+        "message": "timed out after 60s",
+    }
+    assert not is_legacy_timeout_zero_record(record)
+    assert infer_score_status(record) == "verifier_error"
+
+
+def test_evox_measured_zero_without_error_remains_valid():
+    assert (
+        infer_score_status(
+            {
+                "benchmark_name": "evox_problems",
+                "score": 0.0,
+                "correct": True,
+                "score_metadata": {
+                    "metrics": {"combined_score": 0.0},
+                    "artifact_keys": [],
+                },
+            }
+        )
+        == "valid_scored"
+    )
+
+
+@pytest.mark.parametrize(
     ("score_status", "error_type", "expected_category"),
     [
         ("provider_error", "ProviderError", "serving_failure"),
@@ -198,6 +253,9 @@ def test_empty_exception_message_still_invalidates_score():
         ("runtime_error", "native_harness_execution", "execution_failure"),
         ("verifier_error", "", "evaluation_failure"),
         ("no_answer", "", "candidate_failure"),
+        ("agent_error", "AgentError", "execution_failure"),
+        ("unscored", "", "unscored_failure"),
+        ("preserved_failure", "", "unscored_failure"),
     ],
 )
 def test_single_rollout_failure_categories(

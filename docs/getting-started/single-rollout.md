@@ -65,7 +65,9 @@ python -m alphadiana.single_rollout configs/examples/single_rollout/pi_hle_verif
 record's canonical `score_status`. `outcome_category` distinguishes a measured
 `candidate_score` from `candidate_failure`, `serving_failure`,
 `infrastructure_failure`, and `evaluation_failure`. Ambiguous runtime or agent
-errors use `execution_failure` until their origin is known. For any invalid status,
+errors use `execution_failure` until their origin is known. Remaining invalid
+statuses (`unscored`, `preserved_failure`, or an unrecognized status) use
+`unscored_failure`; this is not a candidate reward. For any invalid status,
 top-level `score` and `correct` are `null` even if a scorer wrote a numeric
 fallback; the raw record and its diagnostic fields remain under `evidence`.
 Consumers must require `score_status: valid_scored` before using a value as a
@@ -136,6 +138,29 @@ run these handlers; the outer worker must clean containers with the
 `alphadiana.execution` label before retrying. Do not interpret process exit
 code `0` alone as a valid score.
 
+For cancellation, persist a fresh 32-hex execution ID **before** launching and
+pass it as `--override agent.config._execution_id=<id>`. This is the container
+ownership label, not the Runner's separate task execution ID. After stopping
+the worker (and its process group), the supervisor can call:
+
+```bash
+python -c 'import sys; from alphadiana.harness._internal.podman_agent import cleanup_execution; cleanup_execution(sys.argv[1])' "$execution_id"
+```
+
+Retrying this cleanup is safe. Never clean another live execution's label or
+run global container pruning. `KeyboardInterrupt` propagates through the
+native solve's cleanup; `SIGTERM` has no graceful handler in this CLI, and
+`SIGKILL` cannot run `finally`, so both require the supervisor's cleanup.
+The opt-in test below creates two lightweight real Podman containers and
+verifies that orphan cleanup removes only its execution, including on retry:
+
+```bash
+ALPHADIANA_LIFECYCLE_IMAGE=sha256:<installed-image-with-sleep> \
+  python -m pytest tests/test_native_cleanup_runtime.py -q
+```
+
+This tests the real cleanup primitive, not a killed Pi process or a live model.
+
 ## Known limitations
 
 - The DeepSeek harness requests `reasoning_effort: high`. Endpoints that accept
@@ -149,18 +174,35 @@ The following checks are narrower than a Pi/Qwen end-to-end benchmark run:
 
 | Family | Checked on pinned dependencies | Not yet established |
 |---|---|---|
-| ALE-Bench | `ale_bench` 1.6.1, source commit `f7d927906dc1dcd860ee086e4560d576438b1354`; adapter regression tests passed. | A fresh official `ahc027` judge run: this A100 worker cannot reach the Hugging Face dataset and cannot access the Docker daemon. The prior official `COMPILATION_ERROR` smoke is recorded in [issue #14](https://github.com/AndrewZhou924/AlphaHebe-dev/issues/14#issuecomment-5697998247), not reproduced here. |
-| EvoX | SkyDiscover commit `700711ec4c37d0be677456f66d38461310c0bcf8`; the original **Python** `circle_packing/evaluator.py` scored its seed at approximately `0.3642369` through the Hebe adapter. | The default container evaluator for `third_autocorr_ineq` and other Docker-backed problems remain unvalidated on this worker. Resolver, Harbor, GPU, and multi-file problems are outside this adapter's scope. |
+| ALE-Bench | Source commit `f7d927906dc1dcd860ee086e4560d576438b1354`; fresh A800 official `ahc027` public judge replay: 5 seeds, `ACCEPTED`, absolute score `49649610`, reward `1.0070571544210363e-07`. | This replays a stored DFS candidate, not fresh Pi/Qwen generation. No private seeds were evaluated. |
+| EvoX | SkyDiscover commit `700711ec4c37d0be677456f66d38461310c0bcf8`: original Python `circle_packing/evaluator.py` seed **0.3642368945** (A100-2); default `third_autocorr_ineq/evaluator` Docker seed **0.5783624315** (A800). Both deliberately failing sources were rejected with no reward using Hebe #16. | Only these selected evaluator paths were checked. The autocorrelation evaluator ignores `mode`; no independent held-out split is established. Resolver, Harbor, GPU, and multi-file problems are outside this adapter's scope. |
 | HLE-Verified | The Pi template and plugin are present; this change tests the result contract. | No new live HLE/Pi run was made for this change. Keep final-audit item-level evidence out of optimization. |
 
 To reproduce the EvoX seed smoke after installing both repositories in one
 environment, use a clean checkout at the commit above:
 
 ```bash
-python scripts/validate_evox_python_evaluator.py /path/to/skydiscover
+python scripts/validate_evox_evaluator.py /path/to/skydiscover
+python scripts/validate_evox_evaluator.py /path/to/skydiscover --invalid-source
 ```
 
-This invokes the original SkyDiscover evaluator on trusted seed code; it does
-not exercise the Pi model or the default containerized evaluator. Official
-ALE judging needs the published dataset and a working Docker runtime before
-claiming full coverage.
+These commands require the companion [Hebe EvoX error-handling fix](https://github.com/AndrewZhou924/AlphaHebe-dev/pull/16). They invoke
+the original SkyDiscover evaluator on trusted seed code and a deliberately
+failing source, respectively; the latter must raise a typed verifier failure,
+not return a reward. They do not exercise the Pi model. To select the default
+container evaluator instead, add `--problem third_autocorr_ineq`. That
+evaluator ignores `mode`, so `train`/`test` is not an independent held-out split.
+
+To replay the accepted ALE candidate using the pinned installed ALE checkout,
+cached published data (`ahc027.zip` and `problem_ids_lite.txt`), and Docker:
+
+```bash
+python scripts/validate_ale_evaluator.py /path/to/ALE-Bench /path/to/data \
+  scripts/fixtures/ahc027_dfs.cpp
+```
+
+The script verifies the clean source commit and dataset digest and reports the
+judge image ID, candidate digest, seed-set digest, and official score. The DFS
+fixture is derived from the earlier model-generated DFS candidate and is not
+a model-quality baseline. See the
+[validation record](../validation/issue14-evaluators.md) for exact provenance.
