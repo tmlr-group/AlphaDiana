@@ -89,6 +89,12 @@ def _terminal_bench2_verifier_scored(record: dict[str, Any], metadata: dict[str,
 
 def is_legacy_timeout_zero_record(record: dict[str, Any]) -> bool:
     """Return whether an old error record should now count as timeout score 0."""
+    score_metadata = _as_dict(record.get("score_metadata"))
+    if "error" in score_metadata or (
+        record.get("benchmark_name") == "ale_bench"
+        and score_metadata.get("judge_result") == "INTERNAL_ERROR"
+    ):
+        return False
     metadata = _as_dict(record.get("metadata"))
     error = _as_dict(record.get("error"))
     explicit = str(record.get("score_status", "") or "").strip()
@@ -202,11 +208,24 @@ def normalize_legacy_timeout_zero_record(record: dict[str, Any]) -> dict[str, An
 
 
 def infer_score_status(record: dict[str, Any]) -> str:
+    score_metadata = _as_dict(record.get("score_metadata"))
+    benchmark_name = str(record.get("benchmark_name", "") or "").strip()
+    # Scorer adapters may retain a numeric failure_score for forensic evidence.
+    # An evaluator exception is not a measured candidate reward, even when an
+    # older row incorrectly declared itself valid_scored.
+    if (
+        benchmark_name == "ale_bench"
+        and score_metadata.get("judge_result") == "INTERNAL_ERROR"
+    ):
+        return "verifier_error"
+    if "error" in score_metadata:
+        if benchmark_name in {"ale_bench", "evox_problems"}:
+            return "verifier_error"
+        return "scorer_error"
     if is_legacy_timeout_zero_record(record):
         return VALID_SCORE_STATUS
 
     metadata = _as_dict(record.get("metadata"))
-    benchmark_name = str(record.get("benchmark_name", "") or "").strip()
     finish_reason = str(record.get("finish_reason", "") or "").strip()
     error = _as_dict(record.get("error"))
     verifier_status = str(metadata.get("verifier_status", "") or "").strip()

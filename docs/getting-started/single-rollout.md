@@ -40,6 +40,7 @@ python -m alphadiana.single_rollout configs/examples/single_rollout/pi_hle_verif
 {
   "status": "complete",
   "score_status": "valid_scored",
+  "outcome_category": "candidate_score",
   "run_id": "pi-hle-verified-3f2a9c1b7d4e",
   "task_id": "hle_verified_...",
   "agent": {"name": "pi", "version": "model-deployment-v1"},
@@ -61,8 +62,16 @@ python -m alphadiana.single_rollout configs/examples/single_rollout/pi_hle_verif
 ```
 
 `status` is `complete` only for `valid_scored` records; otherwise it repeats the
-record's `score_status`. The full record, including the trajectory, stays in the
-files listed under `evidence`.
+record's canonical `score_status`. `outcome_category` distinguishes a measured
+`candidate_score` from `candidate_failure`, `serving_failure`,
+`infrastructure_failure`, and `evaluation_failure`. Ambiguous runtime or agent
+errors use `execution_failure` until their origin is known. For any invalid status,
+top-level `score` and `correct` are `null` even if a scorer wrote a numeric
+fallback; the raw record and its diagnostic fields remain under `evidence`.
+Consumers must require `score_status: valid_scored` before using a value as a
+training reward. A bad candidate, including an ALE compilation failure returned
+by the official judge, can still be a valid measured low score. ALE
+`INTERNAL_ERROR` and scorer/evaluator exceptions are not.
 
 ## Harness x benchmark templates
 
@@ -80,6 +89,18 @@ Each file names its `--import` module in the header comment:
 | HLE-Verified | `alphahebe.integrations.diana.benchmarks.hle_verified` |
 | ALE-Bench | `alphahebe.integrations.diana.benchmarks.ale_bench` |
 | EvoX problems | `alphahebe.integrations.diana.benchmarks.evox_problems` |
+
+For Pi, run each template as a separate rollout (set the prerequisites below
+first). These commands are examples, not claims of a live end-to-end run:
+
+```bash
+python -m alphadiana.single_rollout configs/examples/single_rollout/pi_hle_verified.yaml \
+  --import alphahebe.integrations.diana.benchmarks.hle_verified --output hle-result.json
+python -m alphadiana.single_rollout configs/examples/single_rollout/pi_ale_bench.yaml \
+  --import alphahebe.integrations.diana.benchmarks.ale_bench --output ale-result.json
+python -m alphadiana.single_rollout configs/examples/single_rollout/pi_evox_problems.yaml \
+  --import alphahebe.integrations.diana.benchmarks.evox_problems --output evox-result.json
+```
 
 The templates read these environment variables:
 
@@ -106,9 +127,40 @@ The templates read these environment variables:
 - ALE-Bench: Docker and the official judge image.
 - EvoX problems: a clean SkyDiscover checkout at the revision in the template.
 
+Set the `agent.config.timeout` in each template to the per-task budget. Native
+Pi timeouts after container creation are completed scored-zero attempts;
+container setup/cleanup failures and provider errors are invalid. The native
+agent force-removes its task container in `finally`, and `single_rollout`
+tears down the runner in `finally`. A hard kill (`SIGKILL`/machine loss) cannot
+run these handlers; the outer worker must clean containers with the
+`alphadiana.execution` label before retrying. Do not interpret process exit
+code `0` alone as a valid score.
+
 ## Known limitations
 
 - The DeepSeek harness requests `reasoning_effort: high`. Endpoints that accept
   only other effort values, such as Qwen3.8 chat templates, reject the request.
 - The native harness timeout covers queueing at the model endpoint. On a busy
   endpoint a long reasoning request can time out before any answer is produced.
+
+## Evaluator coverage snapshot for issue #14 (2026-09-17)
+
+The following checks are narrower than a Pi/Qwen end-to-end benchmark run:
+
+| Family | Checked on pinned dependencies | Not yet established |
+|---|---|---|
+| ALE-Bench | `ale_bench` 1.6.1, source commit `f7d927906dc1dcd860ee086e4560d576438b1354`; adapter regression tests passed. | A fresh official `ahc027` judge run: this A100 worker cannot reach the Hugging Face dataset and cannot access the Docker daemon. The prior official `COMPILATION_ERROR` smoke is recorded in [issue #14](https://github.com/AndrewZhou924/AlphaHebe-dev/issues/14#issuecomment-5697998247), not reproduced here. |
+| EvoX | SkyDiscover commit `700711ec4c37d0be677456f66d38461310c0bcf8`; the original **Python** `circle_packing/evaluator.py` scored its seed at approximately `0.3642369` through the Hebe adapter. | The default container evaluator for `third_autocorr_ineq` and other Docker-backed problems remain unvalidated on this worker. Resolver, Harbor, GPU, and multi-file problems are outside this adapter's scope. |
+| HLE-Verified | The Pi template and plugin are present; this change tests the result contract. | No new live HLE/Pi run was made for this change. Keep final-audit item-level evidence out of optimization. |
+
+To reproduce the EvoX seed smoke after installing both repositories in one
+environment, use a clean checkout at the commit above:
+
+```bash
+python scripts/validate_evox_python_evaluator.py /path/to/skydiscover
+```
+
+This invokes the original SkyDiscover evaluator on trusted seed code; it does
+not exercise the Pi model or the default containerized evaluator. Official
+ALE judging needs the published dataset and a working Docker runtime before
+claiming full coverage.

@@ -50,6 +50,17 @@ This is defense in depth, not a guarantee that a result bundle is safe to publis
 
 `infer_score_status()` in `alphadiana/analysis/io/status.py` is the canonical classifier. `valid_scored` requires normal score fields and no disqualifying failure evidence. Common invalid statuses include `unscored`, `preserved_failure`, `no_answer`, `agent_empty_output`, `agent_error`, `provider_error`, `runtime_error`, `verifier_error`, and `scorer_error`.
 
+Some scorer adapters retain a numeric fallback when the evaluator throws and
+record the exception in `score_metadata.error`. That row is `verifier_error`
+for ALE-Bench or EvoX and `scorer_error` otherwise, regardless of a stored
+`score_status: valid_scored`. It is excluded from completed-score aggregates
+and must not be used as a negative training reward. The raw fallback remains
+available for diagnosis. An official judge's candidate failure, such as
+ALE `COMPILATION_ERROR` without an evaluator exception, remains a measured
+candidate result. ALE `INTERNAL_ERROR` is a judge failure and remains
+`verifier_error` even when the adapter supplies a finite fallback. Legacy
+timeout normalization never overrides evaluator-error evidence.
+
 ### Timeout completion
 
 Supported harness timeouts can be valid scored-zero samples. DirectLLM, OpenCode, OpenClaw, and ZeroClaw attach harness-specific timeout metadata and return `finish_reason: timeout`; the score is zero and the checkpoint treats the sample as complete.
