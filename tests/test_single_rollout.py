@@ -205,8 +205,8 @@ def test_empty_exception_message_still_invalidates_score():
     "score_metadata",
     [
         {"metrics": {"combined_score": 0.0, "error": 0.0}},
-        {"metrics": {"combined_score": 0.0}, "artifact_keys": ["error", "status"]},
-        {"metrics": {"combined_score": 0.0}, "artifact_keys": ["error"]},
+        {"metrics": {"error": 0.0, "timeout": True}},
+        {"metrics": {"error": 0.0, "disk_space_error": True}},
     ],
 )
 def test_evox_upstream_failure_signals_never_become_rewards(score_metadata):
@@ -226,6 +226,46 @@ def test_evox_upstream_failure_signals_never_become_rewards(score_metadata):
     }
     assert not is_legacy_timeout_zero_record(record)
     assert infer_score_status(record) == "verifier_error"
+
+
+@pytest.mark.parametrize(
+    "score_metadata",
+    [
+        {"metrics": {"combined_score": 0.0}, "candidate_error": "Timeout"},
+        {"metrics": {"combined_score": 0.0, "error": "Timeout"}},
+        {"metrics": {"validity": 0.0, "error": "Invalid shapes"}},
+        {"metrics": {"combined_score": 0.0}, "artifact_keys": ["error"]},
+        {"metrics": {"combined_score": 0.0}, "artifact_keys": ["error", "status"]},
+    ],
+)
+def test_evox_candidate_verdict_is_not_an_evaluator_failure(tmp_path, score_metadata):
+    record = {
+        "benchmark_name": "evox_problems",
+        "score_status": "valid_scored",
+        "score": 0.0,
+        "correct": False,
+        "score_metadata": score_metadata,
+    }
+    assert infer_score_status(record) == "valid_scored"
+    assert is_valid_completed_record(record)
+    config = SimpleNamespace(
+        output_dir=str(tmp_path),
+        run_id="run",
+        agent_name="pi",
+        agent_version="v1",
+        benchmark_name="evox_problems",
+        scorer_name="evox_problems",
+    )
+    runner = SimpleNamespace(
+        result_store=SimpleNamespace(
+            path=str(tmp_path / "run.jsonl"),
+            manifest_path=tmp_path / "manifest.json",
+        )
+    )
+    payload = _record_payload(config, runner, "candidate", record)
+    assert payload["status"] == "complete"
+    assert payload["score"] == 0.0
+    assert payload["correct"] is False
 
 
 def test_evox_measured_zero_without_error_remains_valid():

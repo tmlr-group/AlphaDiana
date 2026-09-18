@@ -175,7 +175,7 @@ The following checks are narrower than a Pi/Qwen end-to-end benchmark run:
 | Family | Checked on pinned dependencies | Not yet established |
 |---|---|---|
 | ALE-Bench | Source commit `f7d927906dc1dcd860ee086e4560d576438b1354`; fresh A800 official `ahc027` public judge replay: 5 seeds, `ACCEPTED`, absolute score `49649610`, reward `1.0070571544210363e-07`. | This replays a stored DFS candidate, not fresh Pi/Qwen generation. No private seeds were evaluated. |
-| EvoX | SkyDiscover commit `700711ec4c37d0be677456f66d38461310c0bcf8`: original Python `circle_packing/evaluator.py` seed **0.3642368945** (A100-2); default `third_autocorr_ineq/evaluator` Docker seed **0.5783624315** (A800). Both deliberately failing sources were rejected with no reward using Hebe #16. | Only these selected evaluator paths were checked. The autocorrelation evaluator ignores `mode`; no independent held-out split is established. Resolver, Harbor, GPU, and multi-file problems are outside this adapter's scope. |
+| EvoX | SkyDiscover commit `700711ec4c37d0be677456f66d38461310c0bcf8`: original Python `circle_packing/evaluator.py` seed **0.3642368945** (A100-2); default `third_autocorr_ineq/evaluator` Docker seed **0.5783624315** (A800). The corrected smoke expects deliberately failing sources to retain the official candidate verdict: finite zero, `correct=False`, `valid_scored`. | Only these selected evaluator paths were checked. Both the Python backend and the autocorrelation shell ignore `mode`; neither provides an independent held-out split. Resolver, Harbor, GPU, and multi-file problems are outside this adapter's scope. |
 | HLE-Verified | The Pi template and plugin are present; this change tests the result contract. | No new live HLE/Pi run was made for this change. Keep final-audit item-level evidence out of optimization. |
 
 To reproduce the EvoX seed smoke after installing both repositories in one
@@ -188,10 +188,12 @@ python scripts/validate_evox_evaluator.py /path/to/skydiscover --invalid-source
 
 These commands require the companion [Hebe EvoX error-handling fix](https://github.com/AndrewZhou924/AlphaHebe-dev/pull/16). They invoke
 the original SkyDiscover evaluator on trusted seed code and a deliberately
-failing source, respectively; the latter must raise a typed verifier failure,
-not return a reward. They do not exercise the Pi model. To select the default
+failing source, respectively; the latter must retain the evaluator's measured
+candidate-failure zero and error message. Machinery failures still raise typed
+verifier errors, with no reward. They do not exercise the Pi model. To select the default
 container evaluator instead, add `--problem third_autocorr_ineq`. That
-evaluator ignores `mode`, so `train`/`test` is not an independent held-out split.
+evaluator ignores `mode`, as does the Python backend used for `circle_packing`;
+neither `train`/`test` pair is an independent held-out split.
 
 To replay the accepted ALE candidate using the pinned installed ALE checkout,
 cached published data (`ahc027.zip` and `problem_ids_lite.txt`), and Docker:

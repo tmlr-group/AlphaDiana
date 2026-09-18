@@ -61,14 +61,19 @@ candidate result. ALE `INTERNAL_ERROR` is a judge failure and remains
 `verifier_error` even when the adapter supplies a finite fallback. Legacy
 timeout normalization never overrides evaluator-error evidence.
 
-For historical EvoX rows, numeric `metrics.error` and an `error` entry in
-`artifact_keys` are also disqualifying. The original adapter could discard a
-textual metric error entirely; those records need a rerun, since a fallback
-number cannot reconstruct the missing verdict. The companion Hebe scorer fix
-raises a typed `verifier_error` for unsuccessful or malformed upstream results
-instead of returning a numeric reward. Generic SkyDiscover errors cannot
-reliably attribute blame to candidate versus evaluator, so they are excluded
-conservatively. A genuine zero without failure evidence remains valid.
+For EvoX, numeric `score_metadata.metrics.error` is a pinned SkyDiscover
+machinery-failure sentinel and is disqualifying. A textual evaluator-returned
+error is instead a candidate verdict (invalid output, candidate timeout, or
+invalid Python). The companion Hebe scorer retains the message in
+`score_metadata.candidate_error`, returns `correct=False` and the finite upstream
+score or configured failure score, and reserves typed `verifier_error` for
+machinery/protocol/cleanup failures. Genuine low scores stay valid.
+
+Historical `artifact_keys` lost the values needed to distinguish a returned
+candidate verdict from a wrapper exception. Those keys alone do not invalidate
+a score. Rerun ambiguous historical records when attribution is required; do not
+invent a verdict from a missing message. An upstream evaluator that catches an
+internal fault as a candidate verdict is not distinguishable at this boundary.
 
 ### Timeout completion
 

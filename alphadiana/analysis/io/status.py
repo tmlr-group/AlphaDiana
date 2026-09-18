@@ -103,14 +103,11 @@ def _scorer_failure_status(record: dict[str, Any]) -> str | None:
             else "scorer_error"
         )
     if benchmark_name == "evox_problems":
-        # Pinned SkyDiscover uses metrics.error or error artifacts for failed
-        # evaluations. Hebe's original adapter retained artifact keys, not values.
-        # These signals cannot establish whether the candidate or evaluator
-        # failed: conservatively exclude them, never invent a negative reward.
-        keys = score_metadata.get("artifact_keys", [])
-        if "error" in _as_dict(score_metadata.get("metrics")) or (
-            isinstance(keys, list) and "error" in keys
-        ):
+        # Pinned SkyDiscover machinery emits numeric error sentinels; evaluator
+        # returned text errors are candidate verdicts. Historical artifact keys
+        # alone lost the values/status needed to distinguish those paths.
+        metrics = _as_dict(score_metadata.get("metrics"))
+        if "error" in metrics and not isinstance(metrics["error"], str):
             return "verifier_error"
     return None
 

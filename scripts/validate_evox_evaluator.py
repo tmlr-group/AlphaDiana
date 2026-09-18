@@ -13,7 +13,6 @@ from pathlib import Path
 from alphadiana.analysis.io.status import infer_score_status
 from alphadiana.harness.base import AgentResponse
 from alphahebe.integrations.diana.benchmarks.evox_problems import (
-    EvoXEvaluationError,
     EvoXProblemsBenchmark,
     EvoXProblemsScorer,
 )
@@ -31,8 +30,10 @@ def main() -> None:
     )
     parser.add_argument(
         "--invalid-source",
-        action="store_true",
-        help="Verify that an upstream failed evaluation is rejected, not rewarded",
+        nargs="?",
+        const="exception",
+        choices=("exception", "prose", "invalid-shapes"),
+        help="Verify that the original evaluator's candidate-error verdict stays a low score",
     )
     args = parser.parse_args()
     root = args.sky_root.resolve()
@@ -49,31 +50,22 @@ def main() -> None:
         }
     )[0]
     seed = (root / problem / "initial_program.py").read_text(encoding="utf-8")
-    if args.invalid_source:
+    if args.invalid_source == "exception":
         seed = "raise RuntimeError('invalid-source-smoke')\n"
-    scorer = EvoXProblemsScorer()
-    scorer.setup({})
-    try:
-        result = scorer.score(task, AgentResponse(answer=f"```python\n{seed}\n```"))
-    except EvoXEvaluationError as exc:
-        if not args.invalid_source or exc.stage != "result":
-            raise
-        print(
-            json.dumps(
-                {
-                    "task_id": task.task_id,
-                    "revision": REVISION,
-                    "evaluator": task.metadata["evaluator"],
-                    "evaluator_digest": task.metadata["evaluator_digest"],
-                    "input": "invalid-source",
-                    "score": None,
-                    "score_status": exc.error_type,
-                    "failure_stage": exc.stage,
-                },
-                sort_keys=True,
-            )
+    elif args.invalid_source == "prose":
+        seed = "This is a prose answer, not a Python program.\n"
+    elif args.invalid_source == "invalid-shapes":
+        seed = (
+            "import numpy as np\ndef run_packing():\n"
+            "    return np.zeros((1, 2)), np.ones(1), 1.0\n"
+            if args.problem == "circle_packing"
+            else "import numpy as np\ndef run():\n    return np.ones(1), 1.0, 1.0, 400\n"
         )
-        return
+    failure_score = -1_000_000_000.0
+    scorer = EvoXProblemsScorer()
+    scorer.setup({"failure_score": failure_score})
+    answer = seed if args.invalid_source == "prose" else f"```python\n{seed}\n```"
+    result = scorer.score(task, AgentResponse(answer=answer))
     status = infer_score_status(
         {
             "benchmark_name": "evox_problems",
@@ -82,10 +74,22 @@ def main() -> None:
             "score_metadata": result.metadata,
         }
     )
+    expected_failure_score = (
+        failure_score
+        if args.problem == "circle_packing" and args.invalid_source == "invalid-shapes"
+        else 0.0
+    )
     if (
-        args.invalid_source
-        or status != "valid_scored"
+        status != "valid_scored"
         or not math.isfinite(result.score)
+        or (
+            args.invalid_source
+            and (
+                result.correct
+                or result.score != expected_failure_score
+                or "candidate_error" not in result.metadata
+            )
+        )
     ):
         raise RuntimeError(
             f"Unexpected evaluator outcome: status={status}, score={result.score}"
@@ -98,11 +102,12 @@ def main() -> None:
                 "evaluator": task.metadata["evaluator"],
                 "score": result.score,
                 "score_status": status,
-                "input": "invalid-source" if args.invalid_source else "upstream-seed",
+                "input": args.invalid_source or "upstream-seed",
                 "evaluator_digest": task.metadata["evaluator_digest"],
                 "correct": result.correct,
                 "metrics": result.metadata.get("metrics", {}),
                 "artifact_keys": result.metadata.get("artifact_keys", []),
+                "candidate_error": result.metadata.get("candidate_error"),
             },
             sort_keys=True,
         )
