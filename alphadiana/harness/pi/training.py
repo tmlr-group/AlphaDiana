@@ -1103,6 +1103,12 @@ class NativeCapture:
         attested = (
             actual == expected and bool(actual) and reported_weights == expected_weights
         )
+        server_reported = bool(actual) or bool(reported_weights)
+        if server_reported and not attested:
+            raise ValueError(
+                "native capture rejected a serving policy publication or weights "
+                "digest that differs from the sampling plan"
+            )
         if self.require_policy_attestation and not attested:
             raise ValueError(
                 "on-policy capture requires a serving policy publication and "
