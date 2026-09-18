@@ -16,8 +16,10 @@ needed.
 ## Contract
 
 The versioned episode result is stored in `AgentResponse.metadata.training_capture`
-and copied to the cross-repository `metadata.hebe_training` projection and to
-`response_json.native_training_capture`:
+and copied to the cross-repository `metadata.hebe_training` projection.
+`response_json.native_training_capture` carries only a versioned reference to
+that metadata record; the full native requests/responses are stored once under
+`training_capture` to avoid tripling the durable payload:
 
 ```json
 {
@@ -66,8 +68,11 @@ tool ID, or incomplete tool observation is an execution error and is never a
 valid training row. Every generated token receives an assistant mask of `1`;
 tool observations are represented in the next call's prompt IDs.
 
-The batch contract is `alphadiana.pi-training-batch.v1`. It requires exactly
-`task_ids × range(group_size)` unique samples with one policy identity. Calling
+The cross-repository batch contract is `alphahebe.training-batch.v2`: exactly
+the seven shared plan fields and Hebe's standard sample rows, so AlphaHebe's
+`TrainingBatch.from_dict` can load it unchanged. AlphaDiana's own archives keep
+the full-fidelity `alphadiana.pi-training-batch.v1` form with algorithm,
+publication, model identity and per-sample provenance. Calling
 `TrainingBatch.validate_for("grpo")` additionally requires at least two samples
 per task and native behavior log probabilities for every turn.
 
@@ -100,9 +105,15 @@ shape (the YAML adapter accepts the same fields either at the top level or under
     "chat_template_digest": "<sha256>"
   },
   "require_logprobs": true,
-  "require_policy_attestation": true
+  "require_policy_attestation": true,
+  "chat_template_kwargs": {"enable_thinking": false}
 }
 ```
+
+Unknown training keys, and provider fields such as `reasoning_effort`,
+`response_format` or `stop` that Pi would otherwise drop, are rejected instead
+of being silently forwarded. `reasoning` and `training` cannot be enabled
+together.
 
 An ordinary evaluated rollout, the training request and result, a complete
 two-sample group, and a cancelled execution are checked-in as readable fixtures under
@@ -133,13 +144,14 @@ the non-streaming response (the proxy forces the upstream request to
 }
 ```
 
-The proxy sends `X-AlphaDiana-Policy-Publication` and
-`X-AlphaDiana-Model-Identity` headers on every upstream call. GRPO requires the
-endpoint to echo the requested policy publication in the response; this is the
-policy attestation boundary. Model/tokenizer/template digests are retained from
-the immutable plan and the serving endpoint must echo `model_identity`; the echo
-is checked for equality. A generic OpenAI endpoint that cannot provide native
-IDs, the identity echo, or the policy echo is not a training-capable endpoint.
+The proxy never adds policy or model headers of its own; it forwards only the
+short-lived bearer credential. The serving endpoint itself must echo the policy
+publication and the policy weights digest in its response. GRPO requires these
+echoes to match the sampling plan on every generated call; this is the policy
+attestation boundary. Model/tokenizer/template digests are retained from the
+immutable plan and the serving endpoint must echo `model_identity`; the echo is
+checked for equality. A generic OpenAI endpoint that cannot provide native IDs,
+the identity echo, or the policy echo is not a training-capable endpoint.
 
 ## Full-run examples
 
@@ -150,7 +162,7 @@ identity values before running:
 ```bash
 export HARNESS_IMAGE=sha256:<immutable-image-id>
 export OPENAI_MODEL_NAME=served-model
-export OPENAI_BASE_URL=http://host.containers.internal:8000/v1
+export OPENAI_BASE_URL=http://127.0.0.1:8000/v1
 export OPENAI_API_KEY=<evaluation-key>
 export POLICY_PUBLICATION=policy-step-001
 export POLICY_WEIGHTS_DIGEST=<sha256>
@@ -174,8 +186,10 @@ python scripts/pi_training_capture.py \
   --output /path/to/native-batch.json
 ```
 
-The script assigns a placeholder reward of `0.0`; private scoring remains with
-the controller. It never receives ground truth through the Pi container.
+The script requires `--scores` (a JSON mapping from `task_id` to
+`{"score": ..., "correct": ...}`) or `--exact-match` against the public task
+`ground_truth`; it never fabricates rewards. Private scoring remains with the
+controller, and the Pi container never receives ground truth through its input.
 
 ## Scope and limitations
 

@@ -11,43 +11,6 @@
     "tokenizer_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "chat_template_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   },
-  "policy_publication": "policy-step-001",
-  "policy_attestation": "verified",
-  "sampling_plan": {
-    "round_id": "sft-round-001",
-    "policy": {
-      "weights_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "tokenizer_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "chat_template_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-    },
-    "task_ids": ["addition"],
-    "group_size": 1,
-    "max_new_tokens": 128,
-    "temperature": 0.7,
-    "seed": 17
-  },
-  "sampling_plan_details": {
-    "round_id": "sft-round-001",
-    "policy": {
-      "weights_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "tokenizer_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "chat_template_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-    },
-    "task_ids": ["addition"],
-    "group_size": 1,
-    "max_new_tokens": 128,
-    "temperature": 0.7,
-    "seed": 17,
-    "model_identity": {
-      "model_name": "served-model",
-      "model_revision": "revision-1",
-      "tokenizer_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "chat_template_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-    },
-    "policy_publication": "policy-step-001",
-    "algorithm": "sft"
-  },
-  "termination_reason": "eos",
   "model_identity": {
     "model_name": "served-model",
     "model_revision": "revision-1",
@@ -56,14 +19,34 @@
   },
   "turns": [
     {
-      "prompt_token_ids": [101, 102],
-      "response_token_ids": [201, 202],
-      "response_mask": [1, 1]
+      "prompt_token_ids": [
+        101,
+        102
+      ],
+      "response_token_ids": [
+        201,
+        202
+      ],
+      "response_mask": [
+        1,
+        1
+      ],
+      "behavior_log_probs": null
     }
   ],
-  "usage": {"prompt_tokens": 2, "completion_tokens": 2, "total_tokens": 4},
+  "termination_reason": "eos",
+  "usage": {
+    "prompt_tokens": 2,
+    "completion_tokens": 2,
+    "total_tokens": 4
+  },
+  "policy_publication": "policy-step-001",
+  "policy_attestation": "verified",
+  "calls": [],
   "evidence_refs": {
     "result_metadata": "metadata.training_capture",
     "response_json": "response_json.native_training_capture"
-  }
+  },
+  "sampling_plan": {},
+  "sampling_plan_details": {}
 }

@@ -1,15 +1,59 @@
 {
-  "schema": "alphadiana.rollout-result.v1",
-  "status": "complete",
-  "score_status": "valid_scored",
-  "run_id": "pi-eval-001",
   "task_id": "addition",
-  "agent": {"name": "pi", "version": "model-deployment-v1"},
-  "benchmark": "custom",
-  "scorer": "exact_match",
+  "sample_index": 0,
+  "run_id": "pi-eval-001",
+  "benchmark_name": "custom",
+  "agent_name": "pi",
+  "agent_version": "model-deployment-v1",
+  "model": "served-model",
+  "problem": "What is 2 + 3?",
+  "ground_truth": "5",
+  "task_metadata": {
+    "task_type": "arithmetic"
+  },
   "predicted": "5",
   "correct": true,
   "score": 1.0,
-  "cost": {"wall_seconds": 4.2, "tokens": {"prompt_tokens": 20, "completion_tokens": 8}},
-  "evidence": {"trajectory_available": true}
+  "rationale": "exact match",
+  "score_metadata": {},
+  "trajectory": [
+    {
+      "type": "message",
+      "role": "assistant",
+      "content": "5",
+      "timestamp": "2026-09-18T12:00:00.000000+00:00"
+    }
+  ],
+  "reasoning_trajectory": [],
+  "raw_output": "5",
+  "request_messages": [],
+  "response_json": {},
+  "token_usage": {
+    "prompt_tokens": 20,
+    "completion_tokens": 8
+  },
+  "token_entropy_stats": {},
+  "logprobs_path": "",
+  "logprobs_int16_path": "",
+  "top_logprobs": {},
+  "int16_probability_scale": null,
+  "wall_time_sec": 4.2,
+  "sandbox_id": "sandbox-eval-001",
+  "gateway_url": "",
+  "artifact_manifest": {
+    "files": {}
+  },
+  "gateway_log_excerpt": "",
+  "workspace_snapshot_paths": [],
+  "sandbox_metadata": {},
+  "system_prompt": "",
+  "finish_reason": "stop",
+  "metadata": {
+    "public_metadata_keys": [],
+    "events_file": "runs/runs_pi_eval_001/addition/events.jsonl",
+    "answer_file": "runs/runs_pi_eval_001/addition/answer.json",
+    "tokens_native": false
+  },
+  "timestamp": "2026-09-18T12:00:00.000000+00:00",
+  "score_status": "valid_scored"
 }

@@ -20,7 +20,7 @@ import math
 import re
 import secrets
 import threading
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable, Iterable, Mapping
 
@@ -31,11 +31,40 @@ except ImportError:  # pragma: no cover - exercised by a minimal core install
 
 
 SCHEMA = "alphadiana.pi-training.v1"
-BATCH_SCHEMA = "alphadiana.pi-training-batch.v1"
+# The collector emits the cross-repository batch schema accepted by Hebe's
+# ``TrainingBatch.from_dict``; Diana provenance stays in the capture records.
+BATCH_SCHEMA = "alphahebe.training-batch.v2"
+_LEGACY_BATCH_SCHEMA = "alphadiana.pi-training-batch.v1"
 REQUEST_SCHEMA = "alphadiana.pi-training-request.v1"
 MAX_MESSAGE_BYTES = 8 * 1024 * 1024
 MAX_CAPTURE_BYTES = 64 * 1024 * 1024
 _SHA256 = re.compile(r"[0-9a-f]{64}")
+
+_TRAINING_KEYS = frozenset(
+    {
+        "enabled",
+        "schema",
+        "task_id",
+        "sample_index",
+        "max_calls",
+        "require_logprobs",
+        "require_policy_attestation",
+        "require_model_attestation",
+        "proxy_host",
+        "sampling_plan",
+        "round_id",
+        "policy",
+        "task_ids",
+        "group_size",
+        "max_new_tokens",
+        "temperature",
+        "seed",
+        "model_identity",
+        "policy_publication",
+        "algorithm",
+        "chat_template_kwargs",
+    }
+)
 
 
 def _nonempty(value: object, name: str) -> None:
@@ -164,6 +193,9 @@ class SamplingPlan:
     model_identity: ModelIdentity | None = None
     policy_publication: str = ""
     algorithm: str = "sft"
+    chat_template_kwargs: Mapping[str, Any] = field(
+        default_factory=lambda: {"enable_thinking": False}
+    )
 
     def __post_init__(self) -> None:
         _nonempty(self.round_id, "round_id")
@@ -203,6 +235,16 @@ class SamplingPlan:
             _nonempty(self.policy_publication, "policy_publication")
         if not isinstance(self.algorithm, str) or self.algorithm not in {"sft", "grpo"}:
             raise ValueError("algorithm must be sft or grpo")
+        if not isinstance(self.chat_template_kwargs, Mapping):
+            raise TypeError("chat_template_kwargs must be an object")
+        normalized_kwargs = {}
+        for key, value in self.chat_template_kwargs.items():
+            if not isinstance(key, str) or not key.strip():
+                raise TypeError("chat_template_kwargs keys must be nonempty strings")
+            if type(value) not in (str, bool, int, float):
+                raise TypeError("chat_template_kwargs values must be scalars")
+            normalized_kwargs[key] = value
+        object.__setattr__(self, "chat_template_kwargs", normalized_kwargs)
         if self.algorithm == "grpo" and self.group_size < 2:
             raise ValueError("GRPO requires at least two samples per task")
         if self.algorithm == "grpo" and not self.policy_publication:
@@ -232,6 +274,9 @@ class SamplingPlan:
             else None,
             policy_publication=value.get("policy_publication", ""),
             algorithm=value.get("algorithm", "sft"),
+            chat_template_kwargs=value.get(
+                "chat_template_kwargs", {"enable_thinking": False}
+            ),
         )
 
 
@@ -276,7 +321,11 @@ class TokenTurn:
 
 @dataclass(frozen=True, slots=True)
 class TrainingSample:
-    """One complete scored sample; failed episodes are never invented as rows."""
+    """One complete scored sample; failed episodes are never invented as rows.
+
+    The last fields carry Diana-only provenance so a row can be traced back to
+    its native capture.  They are dropped by the Hebe-consumer projection.
+    """
 
     round_id: str
     task_id: str
@@ -285,6 +334,11 @@ class TrainingSample:
     turns: tuple[TokenTurn, ...]
     reward: float
     success: bool | None = None
+    attempt_id: str = ""
+    usage: dict[str, int] | None = None
+    termination_reason: str = ""
+    policy_attestation: str = ""
+    evidence_refs: dict[str, str] | None = None
 
     def __post_init__(self) -> None:
         _nonempty(self.round_id, "round_id")
@@ -301,6 +355,42 @@ class TrainingSample:
             raise ValueError("reward must be a finite number")
         if self.success is not None and type(self.success) is not bool:
             raise ValueError("success must be an explicit boolean or absent")
+        if self.attempt_id:
+            _nonempty(self.attempt_id, "attempt_id")
+        if self.usage is not None:
+            if not isinstance(self.usage, Mapping):
+                raise TypeError("usage must be an object")
+            for key, value in self.usage.items():
+                _integer(value, 0, f"usage.{key}")
+            object.__setattr__(self, "usage", dict(self.usage))
+        if self.termination_reason not in {"", "eos", "token_budget"}:
+            raise ValueError("unsupported termination reason")
+        if self.policy_attestation not in {"", "declared", "verified"}:
+            raise ValueError("unsupported policy attestation state")
+        if self.evidence_refs is not None:
+            if not isinstance(self.evidence_refs, Mapping) or any(
+                not isinstance(key, str) or not isinstance(value, str)
+                for key, value in self.evidence_refs.items()
+            ):
+                raise TypeError("evidence_refs must map names to string references")
+            object.__setattr__(self, "evidence_refs", dict(self.evidence_refs))
+
+    @classmethod
+    def _hebe_fields(cls, value: Mapping[str, Any]) -> dict[str, Any]:
+        """Project one row to the shared schema consumed by Hebe."""
+
+        return {
+            key: value[key]
+            for key in (
+                "round_id",
+                "task_id",
+                "sample_index",
+                "policy",
+                "turns",
+                "reward",
+                "success",
+            )
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -364,8 +454,26 @@ class TrainingBatch:
                 raise ValueError("GRPO requires native behavior log probabilities")
 
     def to_dict(self) -> dict[str, Any]:
+        """Emit the cross-repository batch consumed by Hebe's ``from_dict``.
+
+        The shared ``SamplingPlan`` is projected to its seven Hebe fields and
+        each sample to Hebe's row shape; AlphaDiana's per-sample provenance is
+        excluded because Hebe's consumer does not accept extra fields yet.
+        """
+
         return {
             "schema": BATCH_SCHEMA,
+            "plan": _legacy_sampling_plan(asdict(self.plan)),
+            "samples": [
+                TrainingSample._hebe_fields(asdict(sample)) for sample in self.samples
+            ],
+        }
+
+    def diana_dict(self) -> dict[str, Any]:
+        """Serialize the full-fidelity form kept by AlphaDiana's own archives."""
+
+        return {
+            "schema": _LEGACY_BATCH_SCHEMA,
             "plan": asdict(self.plan),
             "samples": [asdict(sample) for sample in self.samples],
         }
@@ -376,11 +484,7 @@ class TrainingBatch:
             not isinstance(value, Mapping)
             or set(value) != {"schema", "plan", "samples"}
             or value.get("schema")
-            not in {
-                BATCH_SCHEMA,
-                "alphahebe.training-batch.v1",
-                "alphahebe.training-batch.v2",
-            }
+            not in {BATCH_SCHEMA, "alphahebe.training-batch.v1", _LEGACY_BATCH_SCHEMA}
         ):
             raise ValueError("unsupported training batch schema")
         plan = SamplingPlan.from_dict(value["plan"])
@@ -621,6 +725,9 @@ def capture_config_from_dict(
         return None
     if not isinstance(value, Mapping):
         raise TypeError("training must be an object")
+    unknown = set(value) - _TRAINING_KEYS
+    if unknown:
+        raise ValueError(f"unsupported training settings: {sorted(unknown)}")
     if "schema" in value and value["schema"] != REQUEST_SCHEMA:
         raise ValueError("unsupported training request schema")
     enabled = value.get("enabled", True)
@@ -685,6 +792,9 @@ def validate_training_config(value: object) -> None:
         return
     if not isinstance(value, Mapping):
         raise TypeError("training must be an object")
+    unknown = set(value) - _TRAINING_KEYS
+    if unknown:
+        raise ValueError(f"unsupported training settings: {sorted(unknown)}")
     if "schema" in value and value["schema"] != REQUEST_SCHEMA:
         raise ValueError("unsupported training request schema")
     enabled = value.get("enabled", True)
@@ -747,6 +857,16 @@ def _identity_from_response(response: Mapping[str, Any]) -> Mapping[str, Any] | 
         if isinstance(candidate, Mapping):
             return candidate
     return None
+
+
+def _weights_digest_from_response(response: Mapping[str, Any]) -> str:
+    for key in ("policy_identity", "serving_policy", "policy"):
+        candidate = response.get(key)
+        if isinstance(candidate, Mapping):
+            digest = candidate.get("weights_digest")
+            if isinstance(digest, str) and _SHA256.fullmatch(digest):
+                return digest
+    return ""
 
 
 class NativeCapture:
@@ -813,7 +933,7 @@ class NativeCapture:
         self.turns: list[TokenTurn] = []
         self._captured_bytes = 0
         self.failed = False
-        self._last_attestation = "declared"
+        self._attested_calls = 0
 
     def _ensure_live(self) -> None:
         if self.failed or len(self.calls) >= self.max_calls:
@@ -889,15 +1009,25 @@ class NativeCapture:
             "repetition_penalty",
             "chat_template_kwargs",
             "return_token_ids",
-            "reasoning_effort",
-            "response_format",
-            "stop",
             "user",
         }
         unsupported = set(request) - allowed
         if unsupported:
             raise ValueError(
                 f"unsupported provider request fields: {sorted(unsupported)}"
+            )
+        for key in ("reasoning_effort", "response_format", "stop"):
+            if key in request:
+                raise ValueError(
+                    f"{key} is not supported by native training capture and would be "
+                    "silently dropped"
+                )
+        requested_template = request.get("chat_template_kwargs")
+        if requested_template is not None and dict(requested_template) != dict(
+            self.plan.chat_template_kwargs
+        ):
+            raise ValueError(
+                "chat_template_kwargs override differs from the sampling plan"
             )
         payload = {
             key: copy.deepcopy(request[key])
@@ -929,7 +1059,7 @@ class NativeCapture:
             presence_penalty=0.0,
             frequency_penalty=0.0,
             seed=seed,
-            chat_template_kwargs={"enable_thinking": False},
+            chat_template_kwargs=dict(self.plan.chat_template_kwargs),
         )
         return payload
 
@@ -968,13 +1098,18 @@ class NativeCapture:
             if value not in (None, ""):
                 actual = str(value)
                 break
-        if actual and expected and actual != expected:
-            raise ValueError("serving policy publication does not match sampling plan")
-        if self.require_policy_attestation and actual != expected:
-            raise ValueError("on-policy capture requires a serving policy attestation")
-        self._last_attestation = (
-            "verified" if actual and actual == expected else "declared"
+        expected_weights = self.plan.policy.weights_digest
+        reported_weights = _weights_digest_from_response(response)
+        attested = (
+            actual == expected and bool(actual) and reported_weights == expected_weights
         )
+        if self.require_policy_attestation and not attested:
+            raise ValueError(
+                "on-policy capture requires a serving policy publication and "
+                "weights digest matching the sampling plan"
+            )
+        if attested:
+            self._attested_calls += 1
 
     def record(self, request: Mapping[str, Any], response: Mapping[str, Any]) -> None:
         if self.failed:
@@ -1105,7 +1240,9 @@ class NativeCapture:
             termination_reason=termination_reason,
             usage=usage,
             policy_publication=self.plan.policy_publication,
-            policy_attestation=self._last_attestation,
+            policy_attestation=(
+                "verified" if self._attested_calls == len(self.calls) else "declared"
+            ),
             calls=tuple(self.calls),
             evidence_refs={
                 "result_metadata": "metadata.training_capture",
@@ -1354,14 +1491,6 @@ class TokenCaptureEndpoint:
                     if owner.backend.key
                     else {}
                 )
-                if owner.capture.plan.policy_publication:
-                    headers["X-AlphaDiana-Policy-Publication"] = (
-                        owner.capture.plan.policy_publication
-                    )
-                if owner.capture.model_identity is not None:
-                    headers["X-AlphaDiana-Model-Identity"] = _json_bytes(
-                        asdict(owner.capture.model_identity)
-                    ).decode()
                 content = bytearray()
                 with owner.client.stream(
                     "POST",
@@ -1510,7 +1639,7 @@ class PiTrainingCollector:
         plan: SamplingPlan,
         base_config: Mapping[str, Any],
         *,
-        score: Callable[[Any, Any], Any] | None = None,
+        score: Callable[[Any, Any], Any],
     ) -> TrainingBatch:
         task_list = list(tasks)
         task_map = {task.task_id: task for task in task_list}
@@ -1524,14 +1653,20 @@ class PiTrainingCollector:
             for sample_index in range(plan.group_size):
                 agent = self.agent_factory()
                 config = copy.deepcopy(dict(base_config))
-                config["training"] = {
-                    **asdict(plan),
-                    "enabled": True,
-                    "task_id": task_id,
-                    "sample_index": sample_index,
-                    "require_logprobs": plan.algorithm == "grpo",
-                    "require_policy_attestation": plan.algorithm == "grpo",
-                }
+                training_block = copy.deepcopy(dict(base_config.get("training") or {}))
+                training_block.pop("sampling_plan", None)
+                training_block.update(
+                    {
+                        **asdict(plan),
+                        "schema": REQUEST_SCHEMA,
+                        "enabled": True,
+                        "task_id": task_id,
+                        "sample_index": sample_index,
+                        "require_logprobs": plan.algorithm == "grpo",
+                        "require_policy_attestation": plan.algorithm == "grpo",
+                    }
+                )
+                config["training"] = training_block
                 attempt_id = secrets.token_hex(16)
                 config["_execution_id"] = attempt_id
                 metadata = dict(getattr(task, "metadata", {}) or {})
@@ -1581,7 +1716,7 @@ class PiTrainingCollector:
                             raise TrainingCollectionError(
                                 "GRPO capture policy publication differs from plan"
                             )
-                    score_result = score(task, response) if score is not None else 0.0
+                    score_result = score(task, response)
                     reward = _score_value(score_result)
                     samples.append(
                         TrainingSample(
@@ -1591,7 +1726,12 @@ class PiTrainingCollector:
                             plan.policy,
                             capture.turns,
                             reward,
-                            _success_value(score_result) if score is not None else None,
+                            _success_value(score_result),
+                            attempt_id=capture.attempt_id,
+                            usage=dict(capture.usage),
+                            termination_reason=capture.termination_reason,
+                            policy_attestation=capture.policy_attestation,
+                            evidence_refs=dict(capture.evidence_refs or {}),
                         )
                     )
                 except TrainingCollectionError:
@@ -1611,7 +1751,9 @@ class PiTrainingCollector:
 
 
 def _score_value(value: Any) -> float:
-    if hasattr(value, "score"):
+    if isinstance(value, Mapping):
+        value = value.get("score", value.get("reward"))
+    elif hasattr(value, "score"):
         value = value.score
     if type(value) not in (int, float) or not math.isfinite(value):
         raise TrainingCollectionError("score callback returned a non-finite reward")
@@ -1619,6 +1761,9 @@ def _score_value(value: Any) -> float:
 
 
 def _success_value(value: Any) -> bool | None:
+    if isinstance(value, Mapping):
+        result = value.get("correct")
+        return result if type(result) is bool else None
     if hasattr(value, "correct"):
         result = value.correct
         return result if type(result) is bool else None

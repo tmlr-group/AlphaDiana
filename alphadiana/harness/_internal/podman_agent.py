@@ -60,7 +60,9 @@ def tree_digest(root: Path) -> str:
         if not path.is_file():
             raise ValueError("Candidate contains a special file")
         mode = "100755" if path.stat().st_mode & 0o111 else "100644"
-        digest.update(path.relative_to(root).as_posix().encode() + b"\0" + mode.encode() + b"\0")
+        digest.update(
+            path.relative_to(root).as_posix().encode() + b"\0" + mode.encode() + b"\0"
+        )
         digest.update(hashlib.sha256(path.read_bytes()).digest())
     return digest.hexdigest()
 
@@ -71,7 +73,9 @@ def validate_config(config: dict) -> None:
     if config.get("runtime", "podman") != "podman":
         raise ValueError("Native harnesses require Podman; local fallback is forbidden")
     if not isinstance(config.get("image"), str) or not IMAGE.fullmatch(config["image"]):
-        raise ValueError("image must be an immutable sha256 ID or repository@sha256 digest")
+        raise ValueError(
+            "image must be an immutable sha256 ID or repository@sha256 digest"
+        )
     for field in ("model", "api_base"):
         if not isinstance(config.get(field), str) or not config[field].strip():
             raise ValueError(f"{field} is required")
@@ -93,6 +97,8 @@ def validate_config(config: dict) -> None:
         not isinstance(config["reasoning"], str) or not config["reasoning"]
     ):
         raise ValueError("reasoning must be a nonempty string")
+    if "reasoning" in config and "training" in config:
+        raise ValueError("reasoning and training cannot be enabled together")
     if "training" in config:
         # Keep the optional HTTP client and training contract out of ordinary
         # native imports.  Native SFT/GRPO runs opt in explicitly and require
@@ -100,7 +106,9 @@ def validate_config(config: dict) -> None:
         from alphadiana.harness.pi.training import validate_training_config
 
         validate_training_config(config["training"])
-    if "_execution_id" in config and not re.fullmatch(r"[0-9a-f]{32}", config["_execution_id"]):
+    if "_execution_id" in config and not re.fullmatch(
+        r"[0-9a-f]{32}", config["_execution_id"]
+    ):
         raise ValueError("Invalid private execution identifier")
     source = {"candidate_root", "candidate_entry", "candidate_digest"}
     if source.intersection(config):
@@ -168,7 +176,9 @@ class NativePodmanAgent(Agent):
         if not self.runtime.rootless():
             raise ValueError("Native harnesses require rootless Podman")
         if not self.runtime.image_exists(config["image"]):
-            raise ValueError("Pinned harness image is not installed; build/pull it explicitly")
+            raise ValueError(
+                "Pinned harness image is not installed; build/pull it explicitly"
+            )
 
     def solve(self, task, sandbox=None) -> AgentResponse:
         if sandbox is not None:
@@ -242,9 +252,13 @@ class NativePodmanAgent(Agent):
                             self.config.get("api_key") or "keyless",
                         ),
                         capture,
+                        # Training requests are forced to ``stream=false``, so
+                        # no bytes arrive until generation ends.  The upstream
+                        # call is bounded by the remaining task budget, never a
+                        # fixed 120-second cap.
                         max(
                             0.001,
-                            min(timeout - (time.monotonic() - started), 120.0),
+                            timeout - (time.monotonic() - started),
                         ),
                         bind_host="0.0.0.0",
                         advertise_host=str(
@@ -275,7 +289,9 @@ class NativePodmanAgent(Agent):
                 )
             volumes = [f"{public}:/input:ro"]
             if "candidate_root" in self.config:
-                volumes.append(f"{Path(self.config['candidate_root']).resolve()}:/candidate:ro")
+                volumes.append(
+                    f"{Path(self.config['candidate_root']).resolve()}:/candidate:ro"
+                )
             self._containers.add(name)
             try:
                 self.runtime.create(
@@ -305,7 +321,9 @@ class NativePodmanAgent(Agent):
                 )
                 remaining = timeout - (time.monotonic() - started)
                 if remaining <= 0:
-                    raise _TaskBudgetExpired("Task deadline exhausted after container creation")
+                    raise _TaskBudgetExpired(
+                        "Task deadline exhausted after container creation"
+                    )
                 try:
                     result = self.runtime.start_attached(
                         name, input_text=json.dumps(request), timeout=remaining
@@ -321,7 +339,8 @@ class NativePodmanAgent(Agent):
                     not isinstance(response, dict)
                     or not isinstance(response.get("answer"), str)
                     or (
-                        not response["answer"].strip() and response.get("finish_reason") != "length"
+                        not response["answer"].strip()
+                        and response.get("finish_reason") != "length"
                     )
                 ):
                     raise ValueError("Missing final assistant response")
@@ -331,9 +350,11 @@ class NativePodmanAgent(Agent):
                 if capture is not None:
                     training_capture = capture.capture().to_dict()
                     response["training_capture"] = training_capture
-                    # Cross-repository consumers use this stable projection;
-                    # ``training_capture`` remains the Diana-native name.
+                    # Cross-repository consumers read a slimmed projection and
+                    # dereference the full native calls through the evidence
+                    # refs; the full capture is stored exactly once.
                     hebe_training = copy.deepcopy(training_capture)
+                    hebe_training.pop("calls", None)
                     response["hebe_training"] = hebe_training
                     response_json_value = response.get("response_json")
                     response_json = (
@@ -341,9 +362,12 @@ class NativePodmanAgent(Agent):
                         if isinstance(response_json_value, dict)
                         else {}
                     )
-                    # Keep the exact native requests/responses alongside the
-                    # normal Pi event stream for replay and contract audits.
-                    response_json["native_training_capture"] = training_capture
+                    # Keep the exact native requests/responses for replay and
+                    # contract audits, referenced rather than duplicated.
+                    response_json["native_training_capture"] = {
+                        "schema": "alphadiana.pi-training-ref.v1",
+                        "reference": "metadata.training_capture",
+                    }
                     response["response_json"] = response_json
                 return AgentResponse(
                     answer=response["answer"],
@@ -371,7 +395,9 @@ class NativePodmanAgent(Agent):
                             else {}
                         ),
                     },
-                    sandbox_metadata={"isolation_mode": "podman_disposable_task_container"},
+                    sandbox_metadata={
+                        "isolation_mode": "podman_disposable_task_container"
+                    },
                 )
             except _TaskBudgetExpired:
                 if capture is not None:
@@ -391,7 +417,9 @@ class NativePodmanAgent(Agent):
                         "native_harness_timeout_seconds": timeout,
                         "usage_status": "unavailable",
                     },
-                    sandbox_metadata={"isolation_mode": "podman_disposable_task_container"},
+                    sandbox_metadata={
+                        "isolation_mode": "podman_disposable_task_container"
+                    },
                 )
             except Exception as exc:
                 # Runner treats answer=None as a scored zero. Raise a sanitized
@@ -400,7 +428,9 @@ class NativePodmanAgent(Agent):
                 if isinstance(exc, PodmanError):
                     stage = "timeout" if exc.result.returncode == 124 else "container"
                     try:
-                        diagnostic = json.loads(exc.result.stderr.strip().splitlines()[-1])
+                        diagnostic = json.loads(
+                            exc.result.stderr.strip().splitlines()[-1]
+                        )
                         if diagnostic.get("stage") in {
                             "initialization",
                             "plugin",

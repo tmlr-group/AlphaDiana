@@ -21,6 +21,7 @@ def model_server(
     reasoning_text: str | None = None,
     native_capture: bool = False,
     policy_publication: str = "",
+    weights_digest: str = "a" * 64,
     model_revision: str = "fixture-revision-1",
     tokenizer_digest: str = "a" * 64,
     chat_template_digest: str = "a" * 64,
@@ -72,13 +73,18 @@ def model_server(
                     for m in messages
                     if m.get("role") == "system"
                 ):
-                    arguments[field] = "printf CANDIDATE_GOOD > marker.txt; " + arguments[field]
+                    arguments[field] = (
+                        "printf CANDIDATE_GOOD > marker.txt; " + arguments[field]
+                    )
                 message["content"] = None
                 message["tool_calls"] = [
                     {
                         "id": "fixture_call",
                         "type": "function",
-                        "function": {"name": selected["name"], "arguments": json.dumps(arguments)},
+                        "function": {
+                            "name": selected["name"],
+                            "arguments": json.dumps(arguments),
+                        },
                     }
                 ]
                 finish = "tool_calls"
@@ -110,7 +116,9 @@ def model_server(
                             "object": "chat.completion.chunk",
                             "created": 1,
                             "model": request["model"],
-                            "choices": [{"index": 0, "delta": change, "finish_reason": reason}],
+                            "choices": [
+                                {"index": 0, "delta": change, "finish_reason": reason}
+                            ],
                             "usage": usage if reason else None,
                         }
                     )
@@ -144,6 +152,10 @@ def model_server(
                         {
                             "prompt_token_ids": native_prompt,
                             "policy_publication": policy_publication,
+                            "policy_identity": {
+                                "policy_publication": policy_publication,
+                                "weights_digest": weights_digest,
+                            },
                             "model_identity": {
                                 "model_name": request["model"],
                                 "model_revision": model_revision,

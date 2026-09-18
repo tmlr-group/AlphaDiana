@@ -71,6 +71,10 @@ def completion(*, finish: str = "stop", tokens=(11, 12), logs=(-0.1, -0.2)) -> d
             "total_tokens": 3 + len(tokens),
         },
         "policy_publication": "published-1",
+        "policy_identity": {
+            "policy_publication": "published-1",
+            "weights_digest": DIGEST,
+        },
         "model_identity": {
             "model_name": "fixture-v1",
             "model_revision": "revision-1",
@@ -260,8 +264,30 @@ def test_batch_round_trip_and_grpo_completeness():
     )
     batch = TrainingBatch(current, rows)
     batch.validate_for("grpo")
-    restored = TrainingBatch.from_dict(batch.to_dict())
+    restored = TrainingBatch.from_dict(batch.diana_dict())
     assert restored == batch
+    emitted = batch.to_dict()
+    assert emitted["schema"] == "alphahebe.training-batch.v2"
+    assert set(emitted) == {"schema", "plan", "samples"}
+    assert set(emitted["plan"]) == {
+        "round_id",
+        "task_ids",
+        "group_size",
+        "max_new_tokens",
+        "temperature",
+        "seed",
+        "policy",
+    }
+    assert set(emitted["samples"][0]) == {
+        "round_id",
+        "task_id",
+        "sample_index",
+        "policy",
+        "turns",
+        "reward",
+        "success",
+    }
+    TrainingBatch.from_dict(emitted).validate_for("grpo")
     with pytest.raises(ValueError, match="incomplete"):
         TrainingBatch(current, rows[:1])
 
@@ -313,20 +339,33 @@ def test_capture_config_requires_identity_and_binds_dispatch():
 def test_checked_in_versioned_contract_examples_are_parseable():
     root = Path(__file__).parents[1] / "docs/harnesses/examples"
     evaluation = json.loads((root / "pi-rollout-evaluation.json").read_text())
-    assert evaluation["schema"] == "alphadiana.rollout-result.v1"
-    assert evaluation["status"] == "complete"
+    assert evaluation["score_status"] == "valid_scored"
+    assert evaluation["predicted"] == "5"
+    assert evaluation["correct"] is True
     request_value = json.loads((root / "pi-training-episode-request.json").read_text())
     assert request_value["schema"] == "alphadiana.pi-training-request.v1"
     assert request_value["model_identity"]["model_revision"]
+    assert request_value["chat_template_kwargs"] == {"enable_thinking": False}
     result_value = json.loads((root / "pi-training-episode-result.json").read_text())
     assert result_value["schema"] == "alphadiana.pi-training.v1"
     assert result_value["tokens_native"] is True
     assert result_value["trajectory_complete"] is True
     failure = json.loads((root / "pi-rollout-failure-cancellation.json").read_text())
-    assert failure["schema"] == "alphadiana.rollout-result.v1"
-    assert failure["status"] == "error"
-    assert failure["training_eligible"] is False
+    assert failure["score_status"] == "runtime_error"
+    assert failure["predicted"] is None
+    assert failure["correct"] is None
+    assert failure["error"]["error_type"] == "podman_error"
     batch = json.loads((root / "pi-grpo-group.json").read_text())
+    assert batch["schema"] == "alphahebe.training-batch.v2"
+    assert set(batch["plan"]) == {
+        "round_id",
+        "task_ids",
+        "group_size",
+        "max_new_tokens",
+        "temperature",
+        "seed",
+        "policy",
+    }
     restored = TrainingBatch.from_dict(batch)
     restored.validate_for("grpo")
     assert len(restored.samples) == 2
@@ -376,6 +415,7 @@ def test_collector_invalidates_partial_group_and_preserves_sample_isolation():
                 "model": "fixture-v1",
                 "api_base": "http://unused",
             },
+            score=lambda _task, _response: 0.5,
         )
     assert calls == [
         ("setup", 0),
@@ -404,11 +444,8 @@ def test_native_pi_agent_routes_real_container_requests_through_capture_proxy(
             pass
 
         def do_POST(self):
-            assert self.headers["X-AlphaDiana-Policy-Publication"] == "published-1"
-            assert (
-                json.loads(self.headers["X-AlphaDiana-Model-Identity"])["model_name"]
-                == "fixture-v1"
-            )
+            assert "X-AlphaDiana-Policy-Publication" not in self.headers
+            assert "X-AlphaDiana-Model-Identity" not in self.headers
             assert self.headers["Authorization"] == "Bearer backend-secret"
             requests.append(
                 json.loads(self.rfile.read(int(self.headers["Content-Length"])))
@@ -529,3 +566,274 @@ def test_native_pi_agent_routes_real_container_requests_through_capture_proxy(
         server.shutdown()
         server.server_close()
         thread.join()
+
+
+def test_training_config_rejects_unsupported_keys_and_forwarded_provider_fields():
+    current = plan()
+    value = {
+        "enabled": True,
+        "sampling_plan": {
+            "round_id": current.round_id,
+            "policy": {
+                "weights_digest": DIGEST,
+                "tokenizer_digest": DIGEST,
+                "chat_template_digest": DIGEST,
+            },
+            "task_ids": ["task-a"],
+            "group_size": 1,
+            "max_new_tokens": 3,
+            "temperature": 1.0,
+            "seed": 17,
+            "model_identity": {
+                "model_name": "fixture-v1",
+                "model_revision": "revision-1",
+                "tokenizer_digest": DIGEST,
+                "chat_template_digest": DIGEST,
+            },
+        },
+    }
+    with pytest.raises(ValueError, match="unsupported training settings"):
+        capture_config_from_dict(
+            {**value, "silently_dropped": True},
+            task_id="task-a",
+            sample_index=0,
+            model_name="fixture-v1",
+            attempt_id="attempt",
+        )
+    capture = NativeCapture(current, "task-a", 0, "fixture-v1", 1)
+    for key, payload in (
+        ("reasoning_effort", {"reasoning_effort": "high"}),
+        ("response_format", {"response_format": {"type": "json_object"}}),
+        ("stop", {"stop": ["end"]}),
+    ):
+        with pytest.raises(ValueError, match=key):
+            capture.prepare({**request(), **payload})
+
+
+def _tool_step() -> dict:
+    value = completion()
+    value["choices"][0]["message"] = {
+        "role": "assistant",
+        "content": None,
+        "tool_calls": [
+            {
+                "id": "call-1",
+                "type": "function",
+                "function": {"name": "bash", "arguments": '{"command":"pwd"}'},
+            }
+        ],
+    }
+    value["choices"][0]["finish_reason"] = "tool_calls"
+    return value
+
+
+def test_policy_attestation_requires_matching_weights_digest_on_every_call():
+    current = plan()
+    capture = NativeCapture(
+        current,
+        "task-a",
+        0,
+        "fixture-v1",
+        2,
+        require_policy_attestation=True,
+    )
+    first = completion()
+    first["policy_identity"]["weights_digest"] = "b" * 64
+    with pytest.raises(ValueError, match="weights digest"):
+        capture.record(capture.prepare(request()), first)
+    assert capture.failed is False
+    assert capture.calls == []
+
+    # A single attested last call must not certify an earlier unattested one;
+    # every model call needs the matching serving publication and weights.
+    tool = _tool_step()
+    tool["policy_identity"]["weights_digest"] = "b" * 64
+    partial = NativeCapture(
+        current,
+        "task-a",
+        0,
+        "fixture-v1",
+        2,
+        require_policy_attestation=True,
+    )
+    with pytest.raises(ValueError, match="weights digest"):
+        partial.record(partial.prepare(request()), tool)
+    assert partial.calls == []
+
+    final = completion()
+    final["policy_identity"]["weights_digest"] = "b" * 64
+    drift = NativeCapture(
+        current,
+        "task-a",
+        0,
+        "fixture-v1",
+        2,
+        require_policy_attestation=True,
+    )
+    drift.prepare(request())
+    drift.record(drift.prepare(request()), _tool_step())
+    followup = {
+        "model": "fixture-v1",
+        "messages": [
+            {"role": "user", "content": "task"},
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "id": "call-1",
+                        "type": "function",
+                        "function": {
+                            "name": "bash",
+                            "arguments": '{"command":"pwd"}',
+                        },
+                    }
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call-1", "content": "output"},
+        ],
+    }
+    before = list(drift.calls)
+    with pytest.raises(ValueError, match="weights digest"):
+        drift.record(drift.prepare(followup), final)
+    assert list(drift.calls) == before
+    assert drift._attested_calls == len(drift.calls)
+
+
+def test_prepare_rejects_chat_template_override_off_plan():
+    current = plan()
+    capture = NativeCapture(current, "task-a", 0, "fixture-v1", 1)
+    with pytest.raises(ValueError, match="chat_template_kwargs"):
+        capture.prepare(
+            {**request(), "chat_template_kwargs": {"enable_thinking": True}}
+        )
+    prepared = capture.prepare(
+        {**request(), "chat_template_kwargs": {"enable_thinking": False}}
+    )
+    assert prepared["chat_template_kwargs"] == {"enable_thinking": False}
+
+
+def test_collector_rejects_a_missing_scorer():
+    current = plan()
+    collector = PiTrainingCollector(lambda: None)
+    with pytest.raises(TypeError, match="score"):
+        collector.collect(
+            [BenchmarkTask("task-a", "public", None)],
+            current,
+            {
+                "image": "sha256:" + DIGEST,
+                "model": "fixture-v1",
+                "api_base": "http://unused",
+            },
+        )
+
+
+def test_collector_merges_base_training_settings_and_emits_hebe_batch():
+    current = plan()
+    collected = {}
+
+    class FakeAgent:
+        def setup(self, config):
+            collected["config"] = config
+
+        def solve(self, task):
+            capture = NativeCapture(
+                current,
+                "task-a",
+                0,
+                "fixture-v1",
+                1,
+                attempt_id="attempt",
+            )
+            prepared = capture.prepare(request())
+            capture.record(prepared, completion())
+            return SimpleNamespace(
+                metadata={"training_capture": capture.capture().to_dict()}
+            )
+
+        def teardown(self):
+            pass
+
+    collector = PiTrainingCollector(FakeAgent)
+    batch = collector.collect(
+        [BenchmarkTask("task-a", "public", None)],
+        current,
+        {
+            "image": "sha256:" + DIGEST,
+            "model": "fixture-v1",
+            "api_base": "http://unused",
+            "training": {
+                "max_calls": 7,
+                "proxy_host": "capture-proxy.internal",
+                "enabled": False,
+                "sample_index": 0,
+            },
+        },
+        score=lambda _task, _response: 0.5,
+    )
+    training = collected["config"]["training"]
+    assert training["max_calls"] == 7
+    assert training["proxy_host"] == "capture-proxy.internal"
+    assert training["enabled"] is True
+    assert training["task_id"] == "task-a"
+    emitted = batch.to_dict()
+    assert emitted["schema"] == "alphahebe.training-batch.v2"
+    assert "sampling_plan_details" not in emitted["samples"][0]
+    assert "attempt_id" not in emitted["samples"][0]
+
+
+def test_legacy_diana_batch_schema_is_still_readable():
+    current = plan()
+    turn = TokenTurn((1,), (2,), (1,), (-0.1,))
+    batch = TrainingBatch(
+        current,
+        (
+            TrainingSample(
+                current.round_id,
+                "task-a",
+                0,
+                current.policy,
+                (turn,),
+                0.5,
+                True,
+                attempt_id="attempt",
+            ),
+        ),
+    )
+    native = batch.diana_dict()
+    assert native["schema"] == "alphadiana.pi-training-batch.v1"
+    restored = TrainingBatch.from_dict(native)
+    assert restored == batch
+
+
+def test_reasoning_and_training_cannot_be_enabled_together():
+    from alphadiana.harness._internal.podman_agent import validate_config
+
+    base = {
+        "image": "sha256:" + DIGEST,
+        "model": "fixture-v1",
+        "api_base": "http://unused",
+        "training": {
+            "enabled": True,
+            "algorithm": "sft",
+            "round_id": "round-1",
+            "task_ids": ["task-a"],
+            "group_size": 1,
+            "max_new_tokens": 3,
+            "temperature": 1.0,
+            "seed": 17,
+            "model_identity": {
+                "model_name": "fixture-v1",
+                "model_revision": "revision-1",
+                "tokenizer_digest": DIGEST,
+                "chat_template_digest": DIGEST,
+            },
+            "policy": {
+                "weights_digest": DIGEST,
+                "tokenizer_digest": DIGEST,
+                "chat_template_digest": DIGEST,
+            },
+        },
+    }
+    with pytest.raises(ValueError, match="cannot be enabled together"):
+        validate_config({**base, "reasoning": "concise"})
+    validate_config(base)

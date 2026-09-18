@@ -1,25 +1,36 @@
 {
-  "schema": "alphadiana.pi-training-request.v1",
-  "enabled": true,
-  "algorithm": "sft",
   "round_id": "sft-round-001",
-  "task_id": "addition",
-  "sample_index": 0,
-  "task_ids": ["addition"],
-  "group_size": 1,
-  "max_new_tokens": 128,
-  "temperature": 0.7,
-  "seed": 17,
-  "policy_publication": "policy-step-001",
   "policy": {
     "weights_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "tokenizer_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "chat_template_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   },
+  "task_ids": [
+    "addition"
+  ],
+  "group_size": 1,
+  "max_new_tokens": 128,
+  "temperature": 0.7,
+  "seed": 17,
   "model_identity": {
     "model_name": "served-model",
     "model_revision": "revision-1",
     "tokenizer_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "chat_template_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-  }
+  },
+  "policy_publication": "policy-step-001",
+  "algorithm": "sft",
+  "chat_template_kwargs": {
+    "enable_thinking": false
+  },
+  "schema": "alphadiana.pi-training-request.v1",
+  "enabled": true,
+  "task_id": "addition",
+  "sample_index": 0,
+  "model_name": "served-model",
+  "attempt_id": "0123456789abcdef0123456789abcdef",
+  "max_calls": 16,
+  "require_logprobs": false,
+  "require_policy_attestation": false,
+  "require_model_attestation": true
 }

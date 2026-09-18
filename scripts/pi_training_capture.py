@@ -11,7 +11,9 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Callable, Mapping
 from pathlib import Path
+from typing import Any
 
 if __package__ in {None, ""}:
     # Keep the checked-out delivery command runnable before an editable install.
@@ -31,15 +33,49 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--tasks",
         required=True,
-        help="JSON list of public {task_id, problem} objects (no gold fields are required)",
+        help="JSON list of public {task_id, problem, ground_truth} objects",
     )
     parser.add_argument(
         "--plan",
         required=True,
         help="JSON SamplingPlan object including model/policy identities",
     )
+    parser.add_argument(
+        "--scores",
+        help="JSON mapping task_id to {score, correct}; overrides exact-match",
+    )
+    parser.add_argument(
+        "--exact-match",
+        action="store_true",
+        help="score each response by exact equality with ground_truth",
+    )
     parser.add_argument("--output", help="Write the batch JSON to this file")
     return parser
+
+
+def _score_callback(args: argparse.Namespace) -> Callable[[object, object], Any]:
+    if args.scores:
+        scores = json.loads(Path(args.scores).read_text(encoding="utf-8"))
+        if not isinstance(scores, dict):
+            raise ValueError("--scores must be a JSON object keyed by task_id")
+        resolved = {}
+        for task_id, value in scores.items():
+            if not isinstance(value, Mapping) or "score" not in value:
+                raise ValueError(f"--scores[{task_id}] must contain a score")
+            score = value["score"]
+            if type(score) not in (int, float):
+                raise ValueError(f"--scores[{task_id}].score must be numeric")
+            resolved[task_id] = {
+                "score": float(score),
+                "correct": value.get("correct"),
+            }
+        return lambda task, _response: resolved[task.task_id]
+    if args.exact_match:
+        return lambda task, response: {
+            "score": 1.0 if response.answer == task.ground_truth else 0.0,
+            "correct": response.answer == task.ground_truth,
+        }
+    raise ValueError("provide --scores or --exact-match; never fabricate rewards")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -54,7 +90,7 @@ def main(argv: list[str] | None = None) -> int:
         BenchmarkTask(
             task_id=str(row["task_id"]),
             problem=str(row["problem"]),
-            ground_truth=None,
+            ground_truth=row.get("ground_truth"),
         )
         for row in raw_tasks
     ]
@@ -63,9 +99,7 @@ def main(argv: list[str] | None = None) -> int:
         tasks,
         plan,
         config.agent_config,
-        # Scoring belongs to the controller; this keeps the capture command
-        # usable for both private-evaluator and later reward pipelines.
-        score=lambda _task, _response: 0.0,
+        score=_score_callback(args),
     )
     text = json.dumps(batch.to_dict(), ensure_ascii=False, indent=2)
     if args.output:
