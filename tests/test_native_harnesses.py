@@ -98,7 +98,12 @@ def test_public_task_stdin_and_container_contract(monkeypatch, agent_class):
     assert result.answer == "done"
     assert calls[0]["volumes"][0].endswith(":/input:ro")
     assert "--read-only" in calls[0]["extra_args"]
-    assert calls[1][1] == {"force": True, "ignore_missing": True, "check": True, "timeout": 15}
+    assert calls[1][1] == {
+        "force": True,
+        "ignore_missing": True,
+        "check": True,
+        "timeout": 15,
+    }
 
 
 def test_runtime_failure_is_not_scored_and_removes_container(monkeypatch):
@@ -155,6 +160,40 @@ def test_cleanup_is_scoped():
         native.cleanup_execution("", Runtime())
 
 
+@pytest.mark.parametrize("agent_class", [PiAgent, DeepSeekHarnessAgent])
+def test_interrupted_solve_cleans_container_and_propagates(monkeypatch, agent_class):
+    removed = []
+
+    class Runtime:
+        def rootless(self):
+            return True
+
+        def image_exists(self, image):
+            return True
+
+        def create(self, *args, **kwargs):
+            return kwargs["name"]
+
+        def start_attached(self, *args, **kwargs):
+            raise KeyboardInterrupt()
+
+        def stop(self, *args, **kwargs):
+            pass
+
+        def rm(self, name, **kwargs):
+            removed.append(name)
+
+    monkeypatch.setattr(native, "PodmanCLI", Runtime)
+    agent = agent_class()
+    agent.setup(CONFIG)
+    with pytest.raises(KeyboardInterrupt):
+        agent.solve(BenchmarkTask("cancel", "public", "private"))
+    assert len(removed) == 1
+    assert agent._containers == set()
+    agent.teardown()
+    assert len(removed) == 1
+
+
 def test_teardown_does_not_remove_sibling_samples(monkeypatch):
     removed = []
 
@@ -207,7 +246,9 @@ def test_transient_mount_cleanup_retries_but_other_failures_do_not(monkeypatch):
             pass
 
         def rm(self, *args, **kwargs):
-            raise PodmanError(PodmanResult(("podman", "rm"), 125, "", "permission denied"))
+            raise PodmanError(
+                PodmanResult(("podman", "rm"), 125, "", "permission denied")
+            )
 
     with pytest.raises(PodmanError):
         native.remove_container(Broken(), "owned")

@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence
 
+from alphadiana.analysis.io.status import VALID_SCORE_STATUS, infer_score_status
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.engine.config.experiment_config import (
     ExperimentConfig,
@@ -61,10 +62,36 @@ def _record_payload(
     record: dict[str, Any],
 ) -> dict[str, Any]:
     run_dir = Path(config.output_dir) / config.run_id
-    score_status = str(record.get("score_status", "unknown"))
+    score_status = infer_score_status(record)
+    scored = score_status == VALID_SCORE_STATUS
+    error = record.get("error") or {}
+    error_type = str(
+        error.get("error_type", "") if isinstance(error, dict) else ""
+    ).lower()
+    failure_categories = {
+        "provider_error": "serving_failure",
+        "verifier_error": "evaluation_failure",
+        "scorer_error": "evaluation_failure",
+        "no_answer": "candidate_failure",
+        "agent_empty_output": "candidate_failure",
+        "agent_error": "execution_failure",
+    }
+    if score_status == "runtime_error":
+        # A sanitized native_harness_execution failure can be a model request
+        # or a Pi/tool failure; do not mislabel it as infrastructure.
+        failure_categories["runtime_error"] = (
+            "infrastructure_failure"
+            if error_type in {"native_harness_container", "native_harness_timeout"}
+            else "execution_failure"
+        )
     return {
-        "status": "complete" if score_status == "valid_scored" else score_status,
+        "status": "complete" if scored else score_status,
         "score_status": score_status,
+        "outcome_category": (
+            "candidate_score"
+            if scored
+            else failure_categories.get(score_status, "unscored_failure")
+        ),
         "run_id": config.run_id,
         "task_id": task_id,
         "agent": {
@@ -74,8 +101,8 @@ def _record_payload(
         "benchmark": config.benchmark_name,
         "scorer": config.scorer_name,
         "predicted": record.get("predicted"),
-        "correct": record.get("correct"),
-        "score": record.get("score"),
+        "correct": record.get("correct") if scored else None,
+        "score": record.get("score") if scored else None,
         "rationale": record.get("rationale", ""),
         "cost": {
             "wall_seconds": record.get("wall_time_sec"),

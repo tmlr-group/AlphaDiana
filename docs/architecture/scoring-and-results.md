@@ -50,6 +50,38 @@ This is defense in depth, not a guarantee that a result bundle is safe to publis
 
 `infer_score_status()` in `alphadiana/analysis/io/status.py` is the canonical classifier. `valid_scored` requires normal score fields and no disqualifying failure evidence. Common invalid statuses include `unscored`, `preserved_failure`, `no_answer`, `agent_empty_output`, `agent_error`, `provider_error`, `runtime_error`, `verifier_error`, and `scorer_error`.
 
+Some scorer adapters retain a numeric fallback when the evaluator throws and
+record the exception in `score_metadata.error`. That row is `verifier_error`
+for ALE-Bench or EvoX and `scorer_error` otherwise, regardless of a stored
+`score_status: valid_scored`. It is excluded from completed-score aggregates
+and must not be used as a negative training reward. The raw fallback remains
+available for diagnosis. An official judge's candidate failure, such as
+ALE `COMPILATION_ERROR` without an evaluator exception, remains a measured
+candidate result. ALE `INTERNAL_ERROR` is a judge failure and remains
+`verifier_error` even when the adapter supplies a finite fallback. Legacy
+timeout normalization never overrides evaluator-error evidence.
+
+For EvoX, numeric `score_metadata.metrics.error` is a pinned SkyDiscover
+machinery-failure sentinel and is disqualifying. A textual evaluator-returned
+error is instead a candidate verdict (invalid output, candidate timeout, or
+invalid Python). The companion Hebe scorer retains the message in
+`score_metadata.candidate_error`, returns `correct=False` and the finite upstream
+score or configured failure score, and reserves typed `verifier_error` for
+machinery/protocol/cleanup failures. Genuine low scores stay valid.
+
+Historical `artifact_keys` containing `traceback`, `exit_code`, or `raw_output`
+retain explicit machinery-failure evidence even when artifact values were lost.
+These records are `verifier_error`, matching the companion Hebe scorer, even if
+they stored a numeric fallback and `score_status: valid_scored`. They also cannot
+be normalized into legacy timeout-zero scores.
+
+By contrast, `error` / `status` key names alone cannot distinguish a returned
+candidate verdict from a wrapper protocol error: those keys do not invalidate
+a score on their own. Rerun such ambiguous historical records when attribution
+is required; do not invent a verdict from a missing message. An upstream
+evaluator that catches an internal fault as a candidate verdict is not
+distinguishable at this boundary.
+
 ### Timeout completion
 
 Supported harness timeouts can be valid scored-zero samples. DirectLLM, OpenCode, OpenClaw, and ZeroClaw attach harness-specific timeout metadata and return `finish_reason: timeout`; the score is zero and the checkpoint treats the sample as complete.
