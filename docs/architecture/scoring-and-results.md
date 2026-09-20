@@ -69,11 +69,18 @@ invalid Python). The companion Hebe scorer retains the message in
 score or configured failure score, and reserves typed `verifier_error` for
 machinery/protocol/cleanup failures. Genuine low scores stay valid.
 
-Historical `artifact_keys` lost the values needed to distinguish a returned
-candidate verdict from a wrapper exception. Those keys alone do not invalidate
-a score. Rerun ambiguous historical records when attribution is required; do not
-invent a verdict from a missing message. An upstream evaluator that catches an
-internal fault as a candidate verdict is not distinguishable at this boundary.
+Historical `artifact_keys` containing `traceback`, `exit_code`, or `raw_output`
+retain explicit machinery-failure evidence even when artifact values were lost.
+These records are `verifier_error`, matching the companion Hebe scorer, even if
+they stored a numeric fallback and `score_status: valid_scored`. They also cannot
+be normalized into legacy timeout-zero scores.
+
+By contrast, `error` / `status` key names alone cannot distinguish a returned
+candidate verdict from a wrapper protocol error: those keys do not invalidate
+a score on their own. Rerun such ambiguous historical records when attribution
+is required; do not invent a verdict from a missing message. An upstream
+evaluator that catches an internal fault as a candidate verdict is not
+distinguishable at this boundary.
 
 ### Timeout completion
 

@@ -104,10 +104,15 @@ def _scorer_failure_status(record: dict[str, Any]) -> str | None:
         )
     if benchmark_name == "evox_problems":
         # Pinned SkyDiscover machinery emits numeric error sentinels; evaluator
-        # returned text errors are candidate verdicts. Historical artifact keys
-        # alone lost the values/status needed to distinguish those paths.
+        # returned text errors are candidate verdicts. Specific machinery keys
+        # survive in historical rows even when their artifact values were lost.
         metrics = _as_dict(score_metadata.get("metrics"))
         if "error" in metrics and not isinstance(metrics["error"], str):
+            return "verifier_error"
+        artifact_keys = score_metadata.get("artifact_keys")
+        if isinstance(artifact_keys, list) and any(
+            key in artifact_keys for key in ("traceback", "exit_code", "raw_output")
+        ):
             return "verifier_error"
     return None
 

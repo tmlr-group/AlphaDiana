@@ -207,9 +207,15 @@ def test_empty_exception_message_still_invalidates_score():
         {"metrics": {"combined_score": 0.0, "error": 0.0}},
         {"metrics": {"error": 0.0, "timeout": True}},
         {"metrics": {"error": 0.0, "disk_space_error": True}},
+        {
+            "metrics": {"combined_score": 0.0},
+            "artifact_keys": ["error", "status", "traceback"],
+        },
+        {"metrics": {"combined_score": 0.0}, "artifact_keys": ["stderr", "exit_code"]},
+        {"metrics": {"combined_score": 0.0}, "artifact_keys": ["raw_output"]},
     ],
 )
-def test_evox_upstream_failure_signals_never_become_rewards(score_metadata):
+def test_evox_upstream_failure_signals_never_become_rewards(tmp_path, score_metadata):
     record = {
         "benchmark_name": "evox_problems",
         "score_status": "valid_scored",
@@ -219,6 +225,24 @@ def test_evox_upstream_failure_signals_never_become_rewards(score_metadata):
     }
     assert infer_score_status(record) == "verifier_error"
     assert not is_valid_completed_record(record)
+    config = SimpleNamespace(
+        output_dir=str(tmp_path),
+        run_id="run",
+        agent_name="pi",
+        agent_version="v1",
+        benchmark_name="evox_problems",
+        scorer_name="evox_problems",
+    )
+    runner = SimpleNamespace(
+        result_store=SimpleNamespace(
+            path=str(tmp_path / "run.jsonl"),
+            manifest_path=tmp_path / "manifest.json",
+        )
+    )
+    payload = _record_payload(config, runner, "failed-evaluation", record)
+    assert payload["outcome_category"] == "evaluation_failure"
+    assert payload["score"] is None
+    assert payload["correct"] is None
     record.update(score=None, correct=None, score_status="runtime_error")
     record["error"] = {
         "error_type": "AgentTimeoutError",
