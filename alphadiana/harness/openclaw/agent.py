@@ -52,6 +52,9 @@ from alphadiana.harness.proxies.preservation import add_artifact_file_refs
 from alphadiana.harness.registry import AgentRegistry
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.utils.attachments import build_openai_multimodal_user_content
+from alphadiana.harness.openclaw.responses import (
+    has_images, build_responses_payload, response_as_chat, event_as_chat,
+)
 from alphadiana.utils.lifecycle_events import append_lifecycle_event
 from alphadiana.utils.math_answer import extract_answer_candidate
 from alphadiana.utils.rock_ports import resolve_rock_ports_from_env
@@ -2369,6 +2372,10 @@ const lancedb = require("/app/node_modules/@lancedb/lancedb");
         self._health_check(url, headers)
 
         request_payload = self._build_request_payload(request_messages)
+        use_responses = has_images(request_messages)
+        if use_responses:
+            url = f"{runtime_info['api_base'].rstrip('/')}/responses"
+            request_payload = build_responses_payload(request_payload)
 
         # Retry loop with exponential backoff
         response_json: dict = {}
@@ -2558,6 +2565,8 @@ const lancedb = require("/app/node_modules/@lancedb/lancedb");
                                 # Error response — preserve the JSON body for diagnostics.
                                 pass
                             else:
+                                if use_responses:
+                                    response_json = response_as_chat(response_json)
                                 # Successful non-streaming JSON — extract assistant content.
                                 received_done = True
                                 choices = response_json.get("choices") or []
@@ -2667,6 +2676,12 @@ const lancedb = require("/app/node_modules/@lancedb/lancedb");
                                             )
                                         continue
                                     last_sse_progress_at = now
+                                    if use_responses:
+                                        if chunk_json.get("type") in {"response.completed", "response.failed", "response.incomplete"}:
+                                            response_json = {"native_response": chunk_json.get("response", {})}
+                                        chunk_json = event_as_chat(chunk_json)
+                                        if chunk_json.get("native_response"):
+                                            response_json = chunk_json
                                     choices = chunk_json.get("choices") or []
                                     choice = choices[0] if choices else {}
                                     provider_finish_reason = str(
@@ -3154,6 +3169,15 @@ const lancedb = require("/app/node_modules/@lancedb/lancedb");
                 logger.info("Retry delay: %.1fs (error_type=%s)", delay + jitter, last_error_type)
                 time.sleep(delay + jitter)
 
+        if use_responses and (response_json.get("native_response") or {}).get("status") != "completed":
+            raise OpenClawRequestError(
+                "OpenClaw Responses did not return a completed native response",
+                error_type="incomplete_native_response",
+                request_payload=request_payload,
+                response_body=response_json,
+                retry_responses=retry_responses,
+            )
+
         if request_payload.get("stream") and (raw_output or partial_reasoning_only) and not received_done:
             status_code = retry_responses[-1]["status_code"] if retry_responses else None
             error_type = classify_error(
@@ -3411,6 +3435,7 @@ const lancedb = require("/app/node_modules/@lancedb/lancedb");
             )
 
         response_metadata = {
+            "gateway_protocol": "responses" if use_responses else "chat_completions",
             "gateway_response_id": response_json.get("id", ""),
             "sandbox_id": runtime_info.get("sandbox_id", "") or sandbox_id,
             "model": self._model,

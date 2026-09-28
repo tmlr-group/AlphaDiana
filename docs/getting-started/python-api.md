@@ -240,3 +240,14 @@ SWE-Agent's native text-token estimate is retained in metadata. Measured efficie
 uses complete provider response usage collected with capture enabled; tool-call
 output is included according to provider counters. Incomplete usage is reported as
 missing, including when capture is disabled.
+
+## Native OpenClaw images
+
+Image-bearing OpenClaw tasks use its native `/v1/responses` endpoint. The pinned
+2026.3.2 Chat Completions endpoint extracts text only and has a 1 MiB body limit.
+The adapter preserves base64 image bytes and uses native OpenResponses image
+source objects, retaining the completed native response alongside the canonical
+projection. Failed/incomplete responses remain errors even if partial text was
+streamed. Text-only requests retain their existing Chat Completions path.
+Managed gateways enable Responses by default (`responses_enabled: false` can
+disable it); external gateways must enable that endpoint to accept images.

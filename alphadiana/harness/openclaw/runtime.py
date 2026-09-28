@@ -465,6 +465,7 @@ class OpenClawRuntimeManager:
     def __init__(self, config: dict) -> None:
         self._gateway_token = _resolve_gateway_token(config.get("gateway_token", "OPENCLAW"))
         self._gateway_model = config.get("model", "openclaw")
+        self._responses_enabled = bool(config.get("responses_enabled", True))
         self._external_provider_proxy = False
         self._gateway_port = int(config.get("gateway_port", 8080))
         self._rock_agent_config_path = str(self._resolve_config_path(config.get("rock_agent_config_path", ""))) if config.get("rock_agent_config_path") else ""
@@ -714,6 +715,9 @@ class OpenClawRuntimeManager:
         gateway["bind"] = "lan"
         gateway.pop("customBindHost", None)
 
+        if self._responses_enabled:
+            endpoints = gateway.setdefault("http", {}).setdefault("endpoints", {})
+            endpoints.setdefault("responses", {})["enabled"] = True
         self._ensure_image_capability_metadata(config)
         self._apply_generation_params(config)
         return config
