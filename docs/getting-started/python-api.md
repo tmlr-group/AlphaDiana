@@ -155,6 +155,46 @@ Rescored artifacts refer to their original sidecars. Keep both directories when
 reopening or analyzing a derived score file. Binary task attachments are stored by
 content hash and verified before rescoring.
 
+## Readable figure labels
+
+Run IDs remain evidence identifiers. A presentation plugin can use shorter labels
+without renaming artifacts or changing measured values:
+
+```python
+from copy import deepcopy
+from alphadiana.analysis.analyzer import ExecutionMetrics
+from alphadiana.analysis.process_entropy import RequestEntropy
+
+class DisplayLabels:
+    def __init__(self, plugin, labels):
+        self.plugin, self.name = plugin, plugin.name
+        self.labels = dict(labels)
+
+    def measure(self, artifacts):
+        result = deepcopy(self.plugin.measure(artifacts))
+        for rows in result.tables.values():
+            for row in rows:
+                original = row.get("run")
+                if original not in self.labels:
+                    continue
+                row["run"] = self.labels[original]
+                series = row.get("series")
+                if isinstance(series, str) and series.startswith(original + " / "):
+                    row["series"] = self.labels[original] + series[len(original):]
+        result.coverage["display_labels"] = self.labels
+        return result
+
+names = {saved.path.stem: "OpenClaw"}
+ad.analyzer(saved, plugins=[
+    DisplayLabels(ExecutionMetrics(), names),
+    DisplayLabels(RequestEntropy(), names),
+]).export("figures/readable-labels")
+```
+
+The label map accompanies the report. For a multi-run comparison, supply all
+artifact objects and one label per run. Keep labels distinct so different runs
+cannot be merged visually.
+
 ## Measured resource usage
 
 Efficiency analysis prefers persisted output-token usage. If the gateway omits
