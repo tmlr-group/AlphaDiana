@@ -12,7 +12,7 @@ from alphadiana.harness.opencode.container_runtime import (
 
 def test_native_container_config_preserves_limits_and_permissions():
     runtime = OpenCodeContainerRuntimeManager({
-        "context_limit": 32768, "output_limit": 8192,
+        "context_limit": 32768, "output_limit": 8192, "input_limit": 24576,
         "max_tokens": 8192, "permission": {"bash": "allow", "edit": "deny"},
     })
     uploads = []
@@ -20,7 +20,7 @@ def test_native_container_config_preserves_limits_and_permissions():
     runtime._write_opencode_config(sandbox, model_name="fixture", api_base="http://local/v1", api_key="test")
     config = json.loads(uploads[0])
     assert config["provider"]["custom"]["models"]["fixture"]["limit"] == {
-        "context": 32768, "output": 8192,
+        "context": 32768, "output": 8192, "input": 24576,
     }
     assert config["permission"] == {"bash": "allow", "edit": "deny"}
 

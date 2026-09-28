@@ -1475,6 +1475,8 @@ class OpenCodeAgent(Agent):
                     "context": int(self._context_limit),
                     "output": int(self._output_limit) if self._output_limit else 32000,
                 }
+            if self._config.get("input_limit") is not None:
+                model_spec.setdefault("limit", {})["input"] = int(self._config["input_limit"])
             if _has_image_attachments(task.attachments):
                 model_spec["attachment"] = True
                 model_spec["modalities"] = {

@@ -169,6 +169,18 @@ def main():
             receipt["config_sha256"] = hashlib.sha256(
                 config_path.read_bytes()
             ).hexdigest()
+            receipt["resolved_config_sha256"] = hashlib.sha256(
+                json.dumps(asdict(config), sort_keys=True, ensure_ascii=False).encode()
+            ).hexdigest()
+            if manifest.get("runtime_provenance"):
+                provenance = manifest["runtime_provenance"]
+                provenance_path = args.manifest.parent / provenance["path"]
+                observed = hashlib.sha256(provenance_path.read_bytes()).hexdigest()
+                if observed != provenance["sha256"]:
+                    raise ValueError("Runtime provenance file changed")
+                receipt["runtime_provenance"] = {
+                    "path": str(provenance_path.resolve()), "sha256": observed,
+                }
             receipt["model"] = manifest["model"]
             artifacts = execute(config)
             rows = artifacts.records()

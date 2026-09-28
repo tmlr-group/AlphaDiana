@@ -3,7 +3,7 @@ agent:
   name: terminal_bench2_zeroclaw
   version: 0.6.9
   config:
-    container_engine: podman
+    container_engine: docker
     model: Qwen/Qwen3.5-27B
     model_name: Qwen/Qwen3.5-27B
     api_base: ${ISSUE96_API_BASE}
@@ -23,6 +23,7 @@ agent:
     temperature: 0.0
     enable_thinking: false
     retain_verifier_snapshot: true
+    runtime_trace_mode: full
 benchmark:
   name: terminal_bench2
   config:

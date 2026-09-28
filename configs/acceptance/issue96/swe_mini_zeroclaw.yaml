@@ -64,8 +64,8 @@ sandbox:
     log_dir: ${ISSUE96_WORK}/swe-sandbox
     gateway_host: 127.0.0.1
     gateway_port: 8080
-    container_engine: podman
-    podman_socket_path: ${ISSUE96_PODMAN_SOCKET}
+    container_engine: docker
+    instance_image_tag: issue96-base
 scorer:
   name: swe_bench
   config:
@@ -74,8 +74,8 @@ scorer:
     namespace: swebench
     force_rebuild: false
     log_dir: ${ISSUE96_WORK}/swe-verifier
-    container_engine: podman
-    podman_socket_path: ${ISSUE96_PODMAN_SOCKET}
+    container_engine: docker
+    instance_image_tag: issue96-base
 max_concurrent: 1
 num_samples: 1
 output_dir: ${ISSUE96_RESULTS}

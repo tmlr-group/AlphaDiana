@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -167,17 +168,6 @@ class ResultStore:
                 normalized_trajectory=normalized_trajectory,
                 normalized_reasoning_trajectory=normalized_reasoning_trajectory,
             )
-            # Content-address inputs so offline scorers see the same attachments.
-            import hashlib
-            task_attachments = {}
-            for name, content in task.attachments.items():
-                digest = hashlib.sha256(content).hexdigest()
-                rel = Path("inputs") / digest
-                target = self.artifacts_dir / rel
-                target.parent.mkdir(parents=True, exist_ok=True)
-                if not target.exists():
-                    target.write_bytes(content)
-                task_attachments[name] = {"path": str(rel), "sha256": digest}
             record = {
                 "task_id": task.task_id,
                 "sample_index": sample_index,
@@ -185,7 +175,7 @@ class ResultStore:
                 "problem": task.problem,
                 "ground_truth": task.ground_truth,
                 "task_metadata": task.metadata,
-                "task_attachments": task_attachments,
+                "task_attachments": self._persist_task_attachments(task),
                 "predicted": response.answer,
                 "correct": score.correct,
                 "score": score.score,
@@ -263,6 +253,7 @@ class ResultStore:
                 "problem": task.problem,
                 "ground_truth": task.ground_truth,
                 "task_metadata": task.metadata,
+                "task_attachments": self._persist_task_attachments(task),
                 "predicted": response.answer,
                 "correct": None,
                 "score": None,
@@ -298,6 +289,24 @@ class ResultStore:
                 with open(self.path, "a", encoding="utf-8") as f:
                     f.write(json.dumps(record) + "\n")
             self._save_per_task_json(task.task_id, record)
+
+    def _persist_task_attachments(self, task: BenchmarkTask) -> dict:
+        """Retain identical binary inputs for successful and failed attempts."""
+        references = {}
+        # Different tasks may share the same content hash and execute concurrently.
+        with self._write_lock:
+            for name, content in task.attachments.items():
+                digest = hashlib.sha256(content).hexdigest()
+                relative = Path("inputs") / digest
+                target = self.artifacts_dir / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if target.exists():
+                    if hashlib.sha256(target.read_bytes()).hexdigest() != digest:
+                        raise ValueError(f"Persisted task attachment changed: {name}")
+                else:
+                    target.write_bytes(content)
+                references[name] = {"path": str(relative), "sha256": digest}
+        return references
 
     def _persist_artifacts(
         self,

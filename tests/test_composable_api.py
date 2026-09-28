@@ -281,3 +281,21 @@ def test_repeated_rescoring_preserves_solver_output(custom, tmp_path):
     second = first.rescore(LabelScorer())
     assert all(row["predicted"] == "2" for row in second.records())
     assert second.records()[0]["rescoring"]["scorer_predicted"] == "resolved"
+
+
+def test_failed_attempt_retains_binary_inputs_for_reopening(tmp_path):
+    from alphadiana.analysis.io.result_store import ResultStore
+
+    store = ResultStore(str(tmp_path), "failed-binary")
+    task = BenchmarkTask(
+        "image-task", "Read image", "2", attachments={"image.png": b"input"}
+    )
+    store.append_error(task, error={"error_type": "RuntimeError", "error": "failed"})
+    artifact = Artifacts(store.path)
+    record = artifact.records()[0]
+    assert record["score_status"] != "valid_scored"
+    assert artifact.task(record).attachments == task.attachments
+    reference = record["task_attachments"]["image.png"]
+    (artifact.artifact_root(record) / reference["path"]).write_bytes(b"corrupt")
+    with pytest.raises(ValueError, match="attachment changed"):
+        store.append_error(task, error={"error": "still failed"})

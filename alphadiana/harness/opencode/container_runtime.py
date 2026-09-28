@@ -432,9 +432,13 @@ print(json.dumps(summary, ensure_ascii=False, indent=2))
             output = int(self._config.get("output_limit", self._max_tokens or 32000))
             if not 0 < output < context:
                 raise ValueError("OpenCode requires 0 < output_limit < context_limit")
-            cfg["provider"]["custom"]["models"][model_name]["limit"] = {
-                "context": context, "output": output,
-            }
+            limits = {"context": context, "output": output}
+            if self._config.get("input_limit") is not None:
+                incoming = int(self._config["input_limit"])
+                if not 0 < incoming <= context:
+                    raise ValueError("OpenCode input_limit must be within context_limit")
+                limits["input"] = incoming
+            cfg["provider"]["custom"]["models"][model_name]["limit"] = limits
         permission_cfg = self._config.get("permission")
         if isinstance(permission_cfg, dict) and permission_cfg:
             cfg["permission"] = permission_cfg

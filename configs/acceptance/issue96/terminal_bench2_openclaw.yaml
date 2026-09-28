@@ -1,13 +1,13 @@
 run_id: issue96_accept_terminal_bench2_openclaw
 agent:
   name: terminal_bench2_openclaw
-  version: '1.0'
+  version: 2026.3.2
   config:
-    container_engine: podman
+    container_engine: docker
     api_base: ${ISSUE96_API_BASE}
     api_key: ${ISSUE96_API_KEY}
     model_name: Qwen/Qwen3.5-27B
-    runtime_source_image: ${ISSUE96_OPENCLAW_IMAGE}
+    runtime_source_image: ${ISSUE96_OPENCLAW_TB2_IMAGE}
     logs_base_dir: ${ISSUE96_WORK}/tb2-logs
     podman_network: host
     openclaw_bin: openclaw

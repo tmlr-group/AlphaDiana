@@ -86,7 +86,7 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
         self._max_tokens = None if raw_max_tokens in (None, "") else int(raw_max_tokens)
         self._model_limits = {
             target: int(config[source])
-            for source, target in (("context_limit", "context"), ("output_limit", "output"))
+            for source, target in (("context_limit", "context"), ("output_limit", "output"), ("input_limit", "input"))
             if config.get(source) is not None
         }
         if any(value <= 0 for value in self._model_limits.values()):

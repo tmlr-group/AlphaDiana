@@ -9,9 +9,13 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from alphadiana.engine.config.experiment_config import ExperimentConfig
+
+if TYPE_CHECKING:
+    from alphadiana.analysis.analyzer import Analyzer
+    from alphadiana.artifacts import Artifacts
 
 
 @dataclass(frozen=True)
@@ -109,7 +113,9 @@ class EvaluationRunner:
             **deepcopy(self.options),
         )
 
-    def compute(self, *, agent: AgentSpec, data: DatasetSpec, scorer: ScorerSpec):
+    def compute(
+        self, *, agent: AgentSpec, data: DatasetSpec, scorer: ScorerSpec
+    ) -> Artifacts:
         """Execute and persist evidence, releasing resources even on failure."""
         from alphadiana.artifacts import Artifacts
         from alphadiana.benchmarks.registry import BenchmarkRegistry
@@ -153,7 +159,7 @@ def runner(env: EnvironmentSpec | None = None, **options: Any) -> EvaluationRunn
     return EvaluationRunner(env, **options)
 
 
-def analyzer(artifacts, **options: Any):
+def analyzer(artifacts, **options: Any) -> Analyzer:
     """Open one or multiple runs for structured measurement and figure export."""
     from alphadiana.analysis.analyzer import Analyzer
 
