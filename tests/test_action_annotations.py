@@ -45,3 +45,74 @@ def test_annotations_cache_exact_request_and_reject_invalid_labels(tmp_path):
     with pytest.raises(ValueError, match="Invalid action"):
         annotator._classify(evidence)
     annotator.client.close()
+
+
+def test_explicit_response_schema_is_detached_and_part_of_cache_identity(tmp_path):
+    schema = {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "label",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": {"label": {"type": "string", "enum": ["Reasoning"]}},
+                "required": ["label"],
+                "additionalProperties": False,
+            },
+        },
+    }
+    configured = ActionAnnotations(
+        model="fixture",
+        model_version="revision-1",
+        base_url="http://127.0.0.1:1/v1",
+        cache_dir=tmp_path,
+        response_format=schema,
+    )
+    default = ActionAnnotations(
+        model="fixture",
+        model_version="revision-1",
+        base_url="http://127.0.0.1:1/v1",
+        cache_dir=tmp_path,
+    )
+    calls = []
+
+    def create(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    finish_reason="stop",
+                    message=SimpleNamespace(content='{"label":"Reasoning"}'),
+                )
+            ],
+            model="fixture",
+            id="response-1",
+            usage=None,
+        )
+
+    schema["json_schema"]["schema"]["properties"]["label"]["enum"].append(
+        "Changed by caller"
+    )
+    try:
+        for annotator in [configured, default]:
+            annotator.client.chat.completions.create = create
+        evidence = {"target": "2 + 2 = 4"}
+        _, strict_digest = configured._classify(evidence)
+        _, default_digest = default._classify(evidence)
+        assert strict_digest != default_digest and len(calls) == 2
+        assert calls[0]["response_format"]["json_schema"]["schema"]["properties"][
+            "label"
+        ]["enum"] == ["Reasoning"]
+        cached = json.loads((tmp_path / f"{strict_digest}.json").read_text())
+        assert cached["request"]["response_format"] == calls[0]["response_format"]
+        assert (
+            configured.measure([]).coverage["method"]["response_format"]
+            == calls[0]["response_format"]
+        )
+        with pytest.raises(ValueError, match="Invalid action"):
+            configured._validate(
+                {"Reasoning": "A definition rather than the required label key"}
+            )
+    finally:
+        configured.client.close()
+        default.client.close()

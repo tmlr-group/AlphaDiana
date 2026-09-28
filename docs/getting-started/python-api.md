@@ -151,6 +151,13 @@ must accompany comparisons. These are model annotations, not human-reviewed
 labels. Cache entries bind the complete request, model/version, prompt, response
 ID and usage; malformed responses fail rather than becoming heuristic labels.
 
+For providers supporting structured outputs, pass an explicit `response_format`
+with a JSON schema requiring a single `label` string drawn from your taxonomy.
+The default remains `{"type": "json_object"}` for provider compatibility. The
+selected format is included in cache identity and coverage metadata; comparisons
+should use the same annotation protocol. Schema enforcement does not replace
+validation or human review of model labels.
+
 Rescored artifacts refer to their original sidecars. Keep both directories when
 reopening or analyzing a derived score file. Binary task attachments are stored by
 content hash and verified before rescoring.
