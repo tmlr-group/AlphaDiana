@@ -168,6 +168,10 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
         self._onboard_timeout_sec = int(config.get("onboard_timeout_sec", min(self._solver_timeout_sec, 180)))
         self._min_context_window = int(config.get("min_context_window", 32768))
         self._max_tokens = int(config.get("max_tokens", 0) or 0)
+        self._enable_thinking = config.get("enable_thinking")
+        if self._enable_thinking is not None and not isinstance(self._enable_thinking, bool):
+            raise ValueError("enable_thinking must be a boolean")
+        self._temperature = config.get("temperature")
         self._logprob_capture = resolve_logprob_capture_config(config)
         self._fail_on_small_context_window = bool(config.get("fail_on_small_context_window", True))
         self._context_probe_timeout_sec = int(config.get("context_probe_timeout_sec", 10))
@@ -186,6 +190,16 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
             config,
             agent_type="openclaw",
         )
+
+    def _provider_request_overrides(self) -> dict[str, Any]:
+        overrides: dict[str, Any] = {}
+        if self._max_tokens > 0:
+            overrides["max_tokens"] = self._max_tokens
+        if self._temperature is not None:
+            overrides["temperature"] = float(self._temperature)
+        if self._enable_thinking is not None:
+            overrides["chat_template_kwargs"] = {"enable_thinking": self._enable_thinking}
+        return overrides
 
     @staticmethod
     def _resolve_setting(config: dict, key: str, env_var: str) -> str:
@@ -574,7 +588,7 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
                 self._container_engine == "docker"
                 and self._container_reachable_url(self._api_base) != self._api_base
             )
-            if self._logprob_capture["enabled"] or needs_provider_bridge:
+            if self._logprob_capture["enabled"] or needs_provider_bridge or self._provider_request_overrides():
                 upstream = self._api_base.rstrip("/")
                 advertise_host = (
                     self._docker_host_alias
@@ -589,6 +603,7 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
                     client_timeout=max(120.0, float(self._solver_timeout_sec)),
                     upstream_api_key=self._api_key,
                     inject_logprobs=self._logprob_capture["enabled"],
+                    request_overrides=self._provider_request_overrides() or None,
                 )
                 logprob_proxy.start()
                 proxy_base_url = f"{logprob_proxy.proxy_url.rstrip('/')}/v1"

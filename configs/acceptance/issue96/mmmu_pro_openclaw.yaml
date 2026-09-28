@@ -1,0 +1,63 @@
+run_id: issue96_accept_mmmu_pro_openclaw
+agent:
+  name: openclaw
+  version: 2026.3.2
+  config:
+    rock_agent_config_path: alphadiana/harness/openclaw/deploy/rock_agent_config.prebuilt.yaml
+    openclaw_config_path: alphadiana/harness/openclaw/deploy/openclaw.json
+    network_mode: host
+    gateway_startup_timeout: 240
+    gateway_warmup_timeout: 240
+    OPENAI_BASE_URL: ${ISSUE96_API_BASE}
+    OPENAI_API_KEY: ${ISSUE96_API_KEY}
+    OPENAI_MODEL_NAME: Qwen/Qwen3.5-27B
+    model: openclaw
+    gateway_token: ${ISSUE96_GATEWAY_TOKEN}
+    max_tokens: 8192
+    request_timeout: 1200
+    max_attempts: 1
+    include_attachments: true
+    system_prompt: 'You are an expert at multimodal multiple-choice reasoning.
+
+      Carefully analyze any provided images along with the question text and options.
+
+      Think through the problem step by step before selecting your answer.
+
+      Respond with the final answer on the last line as:
+
+      $$\boxed{X}$$
+
+      where X is the single correct option letter.
+
+      '
+    temperature: 0.0
+    top_p: 0.95
+    stream_total_timeout: 1200
+    enable_thinking: false
+    capture_logprobs: true
+    top_logprobs: 20
+    runtime_backend: podman
+    podman_image: ${ISSUE96_OPENCLAW_IMAGE}
+    stream_idle_timeout: 240
+benchmark:
+  name: mmmu_pro
+  config:
+    dataset: MMMU/MMMU_Pro
+    data_config: vision
+    split: test
+    max_tasks: 3
+sandbox: null
+scorer:
+  name: exact_match
+  config: {}
+max_concurrent: 1
+num_samples: 1
+output_dir: ${ISSUE96_RESULTS}
+strict_report: true
+strict_isolation: true
+metadata:
+  acceptance_issue: 96
+  fixture: mmmu_pro
+  model_family: Qwen/Qwen3.5-27B
+  capture_requirement: report actual coverage; do not impute missing observations
+task_retries: 0

@@ -1,0 +1,56 @@
+run_id: issue96_accept_gpqa_zeroclaw
+agent:
+  name: zeroclaw
+  version: 0.6.9
+  config:
+    system_prompt: 'You are solving expert-level science multiple-choice questions.
+      Use
+
+      available tools when they help verify the reasoning. Put only the final
+
+      option letter in $$\boxed{A}$$, $$\boxed{B}$$, $$\boxed{C}$$, or
+
+      $$\boxed{D}$$ at the end.
+
+      '
+    model: Qwen/Qwen3.5-27B
+    api_base: ${ISSUE96_API_BASE}
+    api_key: ${ISSUE96_API_KEY}
+    provider_api_base: ${ISSUE96_API_BASE}
+    provider_api_key: ${ISSUE96_API_KEY}
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 8192
+    request_timeout: 1200
+    runtime_trace_mode: full
+    enable_thinking: false
+    capture_logprobs: true
+    top_logprobs: 20
+    network_mode: host
+    max_tool_iterations: 30
+    max_actions_per_hour: 200
+    runtime_backend: podman
+    podman_image: ${ISSUE96_ZEROCLAW_IMAGE}
+    podman_network: slirp4netns:allow_host_loopback=true
+    gateway_warmup_timeout: 120
+benchmark:
+  name: gpqa_diamond
+  config:
+    dataset: fingertap/GPQA-Diamond
+    split: test
+    seed: 42
+    max_tasks: 3
+scorer:
+  name: exact_match
+  config: {}
+max_concurrent: 1
+num_samples: 1
+task_retries: 0
+output_dir: ${ISSUE96_RESULTS}
+strict_report: true
+strict_isolation: true
+metadata:
+  acceptance_issue: 96
+  fixture: gpqa
+  model_family: Qwen/Qwen3.5-27B
+  capture_requirement: report actual coverage; do not impute missing observations

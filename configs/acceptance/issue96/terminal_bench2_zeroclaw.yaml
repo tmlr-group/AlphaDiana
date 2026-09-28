@@ -1,0 +1,47 @@
+run_id: issue96_accept_terminal_bench2_zeroclaw
+agent:
+  name: terminal_bench2_zeroclaw
+  version: 0.6.9
+  config:
+    container_engine: podman
+    model: Qwen/Qwen3.5-27B
+    model_name: Qwen/Qwen3.5-27B
+    api_base: ${ISSUE96_API_BASE}
+    api_key: ${ISSUE96_API_KEY}
+    runtime_source_image: ${ISSUE96_ZEROCLAW_IMAGE}
+    provider_proxy_enabled: true
+    normalize_provider_system_messages: true
+    logs_base_dir: ${ISSUE96_WORK}/tb2-logs
+    podman_network: host
+    zeroclaw_bin: zeroclaw
+    solver_timeout_sec: 1800
+    timeout_sec: 900
+    test_timeout_sec: 1200
+    capture_logprobs: true
+    top_logprobs: 20
+    max_tokens: 8192
+    temperature: 0.0
+    enable_thinking: false
+    retain_verifier_snapshot: true
+benchmark:
+  name: terminal_bench2
+  config:
+    tasks_dir: ${ISSUE96_TB2_DIR}
+    task_ids:
+    - db-wal-recovery
+    - overfull-hbox
+    - adaptive-rejection-sampler
+    max_tasks: 3
+scorer:
+  name: terminal_bench2
+max_concurrent: 1
+num_samples: 1
+output_dir: ${ISSUE96_RESULTS}
+strict_report: true
+strict_isolation: true
+metadata:
+  acceptance_issue: 96
+  fixture: terminal_bench2
+  model_family: Qwen/Qwen3.5-27B
+  capture_requirement: report actual coverage; do not impute missing observations
+task_retries: 0

@@ -356,7 +356,10 @@ class OpenClawContainerRuntimeManager:
         self._remote_openclaw_config_path = config.get("remote_openclaw_config_path", "/tmp/openclaw.json")
         self._install_openclaw_command = config.get(
             "install_openclaw_command",
-            DEFAULT_INSTALL_OPENCLAW_COMMAND,
+            DEFAULT_INSTALL_OPENCLAW_COMMAND.replace(
+                f"openclaw@{OPENCLAW_VERSION}",
+                shlex.quote(f"openclaw@{config.get('openclaw_version', OPENCLAW_VERSION)}"),
+            ),
         )
         self._gateway_port = int(config.get("container_gateway_port", config.get("gateway_port", 8080)))
         self._gateway_host = config.get("container_gateway_host", "127.0.0.1")

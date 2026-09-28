@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import subprocess
 import traceback
 from dataclasses import asdict
 from pathlib import Path
@@ -46,6 +47,79 @@ def execute(config: ExperimentConfig):
     )
 
 
+def task_fingerprint(task, fixture: dict) -> str:
+    """Hash semantic task inputs, named metadata and optional local task assets."""
+    payload = {
+        "task_id": task.task_id,
+        "problem": task.problem,
+        "ground_truth": task.ground_truth,
+        "attachments": {
+            name: hashlib.sha256(content).hexdigest()
+            for name, content in sorted(task.attachments.items())
+        },
+        "metadata": {
+            key: task.metadata[key] for key in fixture.get("metadata_fields", [])
+        },
+    }
+    tree_field = fixture.get("tree_metadata_field")
+    if tree_field:
+        root = Path(task.metadata[tree_field])
+        files = {}
+        for path in sorted(root.rglob("*")):
+            if path.is_symlink():
+                raise ValueError(
+                    f"Pinned task assets must not contain symlinks: {path}"
+                )
+            if path.is_file():
+                files[path.relative_to(root).as_posix()] = hashlib.sha256(
+                    path.read_bytes()
+                ).hexdigest()
+        if not files:
+            raise ValueError(f"Pinned task asset tree is empty: {root}")
+        payload["asset_files"] = files
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()
+    ).hexdigest()
+
+
+def validate_inputs(config, cell: dict, fixture: dict) -> dict:
+    from alphadiana.benchmarks.registry import BenchmarkRegistry
+    from alphadiana.engine.components import register_builtin_components
+
+    register_builtin_components()
+    tasks = BenchmarkRegistry.get(config.benchmark_name)().load_tasks(
+        config.benchmark_config
+    )
+    if [task.task_id for task in tasks] != cell["task_ids"]:
+        raise ValueError("Loaded tasks differ from the pinned task sequence")
+    observed = {task.task_id: task_fingerprint(task, fixture) for task in tasks}
+    if observed != fixture["task_fingerprints"]:
+        raise ValueError("Benchmark input content differs from the pinned fixture")
+    return observed
+
+
+def source_state() -> dict:
+    root = Path(__file__).resolve().parents[1]
+
+    def git(*args):
+        return subprocess.check_output(["git", *args], cwd=root, text=True).strip()
+
+    changed = subprocess.check_output(["git", "diff", "HEAD", "--"], cwd=root)
+    untracked = {}
+    for name in git("ls-files", "--others", "--exclude-standard").splitlines():
+        path = root / name
+        if path.is_file():
+            untracked[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+    digest = hashlib.sha256(
+        changed + json.dumps(untracked, sort_keys=True).encode()
+    ).hexdigest()
+    return {
+        "commit": git("rev-parse", "HEAD"),
+        "dirty": bool(git("status", "--porcelain")),
+        "changes_sha256": digest,
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("manifest", type=Path)
@@ -53,6 +127,16 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
     manifest = json.loads(args.manifest.read_text())
+    ids = [cell["id"] for cell in manifest["cells"]]
+    if not ids or len(set(ids)) != len(ids):
+        parser.error("Manifest requires nonempty, unique cell IDs")
+    if manifest.get("expected_cells", len(ids)) != len(ids):
+        parser.error("Manifest cell count differs from expected_cells")
+    if args.only is not None and (not args.only or set(args.only) - set(ids)):
+        parser.error("--only requires one or more known cell IDs")
+    fixtures = {}
+    if manifest.get("fixtures"):
+        fixtures = json.loads((args.manifest.parent / manifest["fixtures"]).read_text())
     args.output.mkdir(parents=True, exist_ok=True)
     failures = 0
     for cell in manifest["cells"]:
@@ -60,7 +144,21 @@ def main():
             continue
         receipt = {"id": cell["id"], "config": cell["config"], "status": "failed"}
         try:
-            config = ExperimentConfig.from_yaml(cell["config"])
+            config_path = Path(cell["config"])
+            if not config_path.is_absolute():
+                config_path = args.manifest.parent / config_path
+            config = ExperimentConfig.from_yaml(config_path)
+            receipt["source"] = source_state()
+            if manifest.get("require_clean_source") and receipt["source"]["dirty"]:
+                raise ValueError("Acceptance requires a clean source tree")
+            if manifest.get("require_pins") and (
+                not cell.get("task_ids") or cell.get("fixture") not in fixtures
+            ):
+                raise ValueError("Acceptance cell lacks pinned input evidence")
+            if cell.get("fixture") in fixtures:
+                receipt["input_fingerprints"] = validate_inputs(
+                    config, cell, fixtures[cell["fixture"]]
+                )
             if (
                 config.agent_config.get(cell.get("model_config_key", "model"))
                 != manifest["model"]
@@ -68,7 +166,6 @@ def main():
                 raise ValueError("Cell model differs from the pinned matrix model")
             if config.num_samples != 1 or config.task_retries != 0:
                 raise ValueError("Acceptance cells require one sample and no retries")
-            config_path = Path(cell["config"])
             receipt["config_sha256"] = hashlib.sha256(
                 config_path.read_bytes()
             ).hexdigest()
@@ -99,6 +196,10 @@ def main():
             ).hexdigest()
             report = ad.analyzer(artifacts).compute()
             receipt["analysis"] = report
+            if source_state() != receipt["source"]:
+                raise RuntimeError(
+                    "Source state changed during the cell; rerun on a fixed revision"
+                )
             receipt["status"] = "passed"
         except Exception:  # noqa: BLE001 - retain failed-cell evidence and continue the matrix
             receipt["failure"] = traceback.format_exc()

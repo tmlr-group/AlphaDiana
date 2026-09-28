@@ -1,0 +1,60 @@
+run_id: issue96_accept_gpqa_openclaw
+agent:
+  name: openclaw
+  version: 2026.3.2
+  config:
+    system_prompt: 'You are solving expert-level science multiple-choice questions.
+      Use
+
+      available tools when they help verify the reasoning. Put only the final
+
+      option letter in $$\boxed{A}$$, $$\boxed{B}$$, $$\boxed{C}$$, or
+
+      $$\boxed{D}$$ at the end.
+
+      '
+    rock_agent_config_path: alphadiana/harness/openclaw/deploy/rock_agent_config.prebuilt.yaml
+    openclaw_config_path: alphadiana/harness/openclaw/deploy/openclaw.json
+    network_mode: host
+    gateway_startup_timeout: 240
+    gateway_warmup_timeout: 240
+    OPENAI_BASE_URL: ${ISSUE96_API_BASE}
+    OPENAI_API_KEY: ${ISSUE96_API_KEY}
+    OPENAI_MODEL_NAME: Qwen/Qwen3.5-27B
+    model: openclaw
+    gateway_token: ${ISSUE96_GATEWAY_TOKEN}
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 8192
+    stream: true
+    request_timeout: 1200
+    stream_idle_timeout: 240
+    stream_total_timeout: 1200
+    enable_thinking: false
+    capture_logprobs: true
+    top_logprobs: 20
+    runtime_backend: podman
+    podman_image: ${ISSUE96_OPENCLAW_IMAGE}
+    max_attempts: 1
+benchmark:
+  name: gpqa_diamond
+  config:
+    dataset: fingertap/GPQA-Diamond
+    split: test
+    seed: 42
+    max_tasks: 3
+scorer:
+  name: exact_match
+  config: {}
+max_concurrent: 1
+num_samples: 1
+task_retries: 0
+task_retry_on_recoverable_only: true
+output_dir: ${ISSUE96_RESULTS}
+strict_report: true
+strict_isolation: true
+metadata:
+  acceptance_issue: 96
+  fixture: gpqa
+  model_family: Qwen/Qwen3.5-27B
+  capture_requirement: report actual coverage; do not impute missing observations

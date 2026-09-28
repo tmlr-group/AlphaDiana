@@ -55,7 +55,7 @@ def _load_swebench_runtime() -> dict[str, Any]:
         from swebench.harness.test_spec.test_spec import make_test_spec
     except ImportError as exc:
         raise RuntimeError(
-            "The 'swebench' package is required for the swe_bench scorer. "
+            "A compatible 'swebench' 4.x package is required for the swe_bench scorer. "
             "Install the SWE-bench optional dependencies with: pip install -e '.[swebench]'"
         ) from exc
 

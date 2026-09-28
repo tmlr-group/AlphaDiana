@@ -1,0 +1,87 @@
+{
+  "aime2026": {
+    "benchmark": "aime",
+    "dataset": "MathArena/aime_2026",
+    "metadata_fields": [],
+    "task_fingerprints": {
+      "aime_1": "0967b34b71e8e79b751d3a7c4173b360a2bceb7fb7755a16ba2aa4dee5d4facf",
+      "aime_2": "b00f631a99aa1d5d3e5f4504df4d518c86dad94a2cbd8e09064b9c8f40349b42",
+      "aime_3": "1cebf7eb473544a38600fab9fbb94f9dc9de168ce90b6cb4bcd01e2b2f41e9a1"
+    }
+  },
+  "gpqa": {
+    "benchmark": "gpqa_diamond",
+    "dataset": "fingertap/GPQA-Diamond",
+    "metadata_fields": [],
+    "task_fingerprints": {
+      "gpqa_0": "d5873c633fc7fa594ff93b32ce632224475019e1481fc6d4857ebb3190e0f11b",
+      "gpqa_1": "58f3f7d380005c3dfe7237cf5e754584452a12eafcb6c99a1de917aaab6406ed",
+      "gpqa_2": "36f26c76359f467b2ceffaeb47ee3878b364e4b0bfa17741c39c1d23013298cf"
+    }
+  },
+  "hle": {
+    "benchmark": "hle",
+    "dataset": "cais/hle",
+    "metadata_fields": [],
+    "task_fingerprints": {
+      "hle_1": "abcb70941b93b8ccb6da1bd492e6a4e81fe65eff3d119bd1f37648dfbef62414",
+      "hle_11": "5b64b257942c82dcf2edc135a4297d26fbe2aaa4a5ed34141f020450d5877765",
+      "hle_13": "8ee33c1143f8b5e0e36b60e306c999c9643f968a1db62b3e1ae56ea1f5c27ac0"
+    }
+  },
+  "imo_answerbench": {
+    "benchmark": "imo_answerbench",
+    "dataset": "Hwilner/imo-answerbench",
+    "metadata_fields": [],
+    "task_fingerprints": {
+      "imo-bench-algebra-001": "9567ce682b25fc6d45b87c0d12275346aeb9e5b99f35f982d11c3266fbb6f753",
+      "imo-bench-algebra-002": "69bc3ed4a48c56bad5004d6b3fffddc51d1f4d229450ecb56346d0237c34e474",
+      "imo-bench-algebra-003": "582061a3d80102b9744bd66f8a4008f97d9a93d4b91eb357a0633fa6f647acfd"
+    }
+  },
+  "mmmu_pro": {
+    "benchmark": "mmmu_pro",
+    "dataset": "MMMU/MMMU_Pro",
+    "metadata_fields": [],
+    "task_fingerprints": {
+      "mmmu_pro_test_History_1": "1e15fcb95c17d50ebb08bef4e67b4187c0c6acf83b42c19bd630443d36bffcd3",
+      "mmmu_pro_test_Art_113": "dc0b1b723628ec29cadf64046908ca569eff68011a1f5349291b3b0857a041ae",
+      "mmmu_pro_validation_Design_19": "e758b45605c146597cf61b68dc1986eca7e66dcf8fc484c466f9ecc56960e7b8"
+    }
+  },
+  "swe_mini": {
+    "benchmark": "swe_bench",
+    "dataset": "MariusHobbhahn/swe-bench-verified-mini",
+    "metadata_fields": [
+      "instance_id",
+      "repo",
+      "base_commit",
+      "version",
+      "FAIL_TO_PASS",
+      "PASS_TO_PASS",
+      "test_patch",
+      "environment_setup_commit"
+    ],
+    "task_fingerprints": {
+      "swe_django__django-11790": "b05dbfe54d48595c73fa82de7e75d5e341f50c6f294c946b8ab23534df260bed",
+      "swe_django__django-11815": "40b32d77df6f39a977f482ade6d40baad99f2008d8cf65b3a775dd362aba0e02",
+      "swe_django__django-11848": "b43aa10f1bf807909d35691f1f42804a79d58e938abf536f250aadb735171f7d"
+    }
+  },
+  "terminal_bench2": {
+    "benchmark": "terminal_bench2",
+    "dataset": null,
+    "metadata_fields": [
+      "docker_image",
+      "timeout_sec",
+      "category",
+      "difficulty"
+    ],
+    "tree_metadata_field": "task_dir",
+    "task_fingerprints": {
+      "tb2_adaptive-rejection-sampler": "cd72de84bea9c73a2a112c6769d558997c09cbe4f89462bc95e7000cbf29a485",
+      "tb2_db-wal-recovery": "7022b0ccf00ce6d14ed77eef03337450e3866c8a204dd0f06b9e9d89deb54236",
+      "tb2_overfull-hbox": "f80dc0e1cff867446d565be8048f4e2ff54442dfbc6d5f2323979babe84f6182"
+    }
+  }
+}

@@ -1,0 +1,89 @@
+run_id: issue96_accept_swe_mini_zeroclaw
+agent:
+  name: zeroclaw
+  version: 0.6.9
+  config:
+    model: Qwen/Qwen3.5-27B
+    api_base: ${ISSUE96_API_BASE}
+    provider_api_base: ${ISSUE96_API_BASE}
+    api_key: ${ISSUE96_API_KEY}
+    binary_source_image: ${ISSUE96_ZEROCLAW_IMAGE}
+    request_timeout: 1800
+    provider_timeout_secs: 1800
+    max_tool_iterations: 30
+    max_actions_per_hour: 200
+    workspace_only: false
+    runtime_trace_mode: full
+    system_prompt: 'You are an expert software engineer. You will be given a GitHub
+      issue description
+
+      for a Python repository. Your task is to fix the issue by making the minimal
+
+      necessary code changes.
+
+
+      Guidelines:
+
+      - Use your file reading, bash, and editing tools to inspect and modify the repository.
+
+      - Make the smallest correct change needed; avoid unrelated refactoring.
+
+      - Do not modify test files.
+
+      - After making your changes, ensure the code is syntactically correct.
+
+      - Present your final answer as a valid unified diff patch starting with "diff
+      --git".
+
+      '
+    provider_api_key: ${ISSUE96_API_KEY}
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 8192
+    enable_thinking: false
+    capture_logprobs: true
+    top_logprobs: 20
+benchmark:
+  name: swe_bench
+  config:
+    dataset: MariusHobbhahn/swe-bench-verified-mini
+    split: test
+    include_hints: false
+    max_tasks: 3
+    task_ids:
+    - django__django-11790
+    - django__django-11815
+    - django__django-11848
+sandbox:
+  name: swebench_container
+  config:
+    namespace: swebench
+    force_rebuild: false
+    keep_container: false
+    keep_logs: true
+    log_dir: ${ISSUE96_WORK}/swe-sandbox
+    gateway_host: 127.0.0.1
+    gateway_port: 8080
+    container_engine: podman
+    podman_socket_path: ${ISSUE96_PODMAN_SOCKET}
+scorer:
+  name: swe_bench
+  config:
+    timeout: 1800
+    cache_level: env
+    namespace: swebench
+    force_rebuild: false
+    log_dir: ${ISSUE96_WORK}/swe-verifier
+    container_engine: podman
+    podman_socket_path: ${ISSUE96_PODMAN_SOCKET}
+max_concurrent: 1
+num_samples: 1
+output_dir: ${ISSUE96_RESULTS}
+strict_report: true
+strict_isolation: true
+metadata:
+  acceptance_issue: 96
+  fixture: swe_mini
+  model_family: Qwen/Qwen3.5-27B
+  capture_requirement: report actual coverage; do not impute missing observations
+task_retries: 0

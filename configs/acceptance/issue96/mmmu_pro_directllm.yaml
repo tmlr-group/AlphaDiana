@@ -1,0 +1,39 @@
+run_id: issue96_accept_mmmu_pro_directllm
+agent:
+  name: direct_llm
+  version: '1.0'
+  config:
+    model: Qwen/Qwen3.5-27B
+    api_base: ${ISSUE96_API_BASE}
+    api_key: ${ISSUE96_API_KEY}
+    temperature: 0.0
+    max_tokens: 8192
+    top_p: 0.95
+    stream: true
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: false
+    capture_logprobs: true
+    top_logprobs: 20
+    enable_thinking: false
+benchmark:
+  name: mmmu_pro
+  config:
+    dataset: MMMU/MMMU_Pro
+    data_config: vision
+    split: test
+    max_tasks: 3
+scorer:
+  name: exact_match
+  config: {}
+max_concurrent: 1
+num_samples: 1
+output_dir: ${ISSUE96_RESULTS}
+strict_report: true
+strict_isolation: true
+metadata:
+  acceptance_issue: 96
+  fixture: mmmu_pro
+  model_family: Qwen/Qwen3.5-27B
+  capture_requirement: report actual coverage; do not impute missing observations
+task_retries: 0

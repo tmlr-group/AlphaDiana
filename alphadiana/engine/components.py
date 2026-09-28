@@ -6,6 +6,8 @@ Custom components register with the existing registries without editing this lis
 from importlib import import_module
 
 _BUILTINS = (
+    "alphadiana.benchmarks.swe_bench.sweagent",
+    "alphadiana.benchmarks.terminal_bench2.harness.terminus",
     "alphadiana.benchmarks.aime.benchmark",
     "alphadiana.benchmarks.custom.benchmark",
     "alphadiana.benchmarks.swe_bench.benchmark",

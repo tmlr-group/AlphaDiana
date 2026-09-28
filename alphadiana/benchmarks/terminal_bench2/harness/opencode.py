@@ -84,6 +84,9 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
         self._top_p = None if raw_top_p in (None, "") else float(raw_top_p)
         raw_max_tokens = config.get("max_tokens", None)
         self._max_tokens = None if raw_max_tokens in (None, "") else int(raw_max_tokens)
+        self._enable_thinking = config.get("enable_thinking")
+        if self._enable_thinking is not None and not isinstance(self._enable_thinking, bool):
+            raise ValueError("enable_thinking must be a boolean")
         self._streaming = config.get("streaming") if "streaming" in config else None
         self._logprob_capture = resolve_logprob_capture_config(config)
         self._logprob_proxy_bind_host = str(
@@ -117,6 +120,8 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
             overrides["top_p"] = self._top_p
         if self._max_tokens is not None:
             overrides["max_tokens"] = self._max_tokens
+        if self._enable_thinking is not None:
+            overrides["chat_template_kwargs"] = {"enable_thinking": self._enable_thinking}
         return overrides
 
     @staticmethod
@@ -275,7 +280,7 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
                 self._container_engine == "docker"
                 and self._container_reachable_url(self._api_base) != self._api_base
             )
-            if self._logprob_capture["enabled"] or needs_provider_bridge:
+            if self._logprob_capture["enabled"] or needs_provider_bridge or self._provider_request_overrides():
                 upstream = normalize_openai_proxy_upstream(self._api_base)
                 advertise_host = (
                     self._docker_host_alias
