@@ -8,6 +8,7 @@ own all benchmark/harness-specific configuration.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import traceback
 from dataclasses import asdict
@@ -60,6 +61,18 @@ def main():
         receipt = {"id": cell["id"], "config": cell["config"], "status": "failed"}
         try:
             config = ExperimentConfig.from_yaml(cell["config"])
+            if (
+                config.agent_config.get(cell.get("model_config_key", "model"))
+                != manifest["model"]
+            ):
+                raise ValueError("Cell model differs from the pinned matrix model")
+            if config.num_samples != 1 or config.task_retries != 0:
+                raise ValueError("Acceptance cells require one sample and no retries")
+            config_path = Path(cell["config"])
+            receipt["config_sha256"] = hashlib.sha256(
+                config_path.read_bytes()
+            ).hexdigest()
+            receipt["model"] = manifest["model"]
             artifacts = execute(config)
             rows = artifacts.records()
             expected = cell.get("expected_tasks", 3)
@@ -74,6 +87,16 @@ def main():
                 raise RuntimeError(
                     f"Expected {expected} valid records; observed {len(rows)} records/{valid} valid"
                 )
+            if len(set(receipt["task_ids"])) != expected:
+                raise RuntimeError("Cell contains duplicate task identities")
+            if "task_ids" in cell and receipt["task_ids"] != cell["task_ids"]:
+                raise RuntimeError(
+                    "Observed tasks differ from the pinned task sequence"
+                )
+            receipt["task_ids_pinned"] = "task_ids" in cell
+            receipt["artifacts_sha256"] = hashlib.sha256(
+                artifacts.path.read_bytes()
+            ).hexdigest()
             report = ad.analyzer(artifacts).compute()
             receipt["analysis"] = report
             receipt["status"] = "passed"

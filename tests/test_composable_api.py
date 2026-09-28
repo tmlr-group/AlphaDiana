@@ -230,3 +230,41 @@ def test_tb2_missing_snapshot_fails_before_container_start(custom, tmp_path):
     artifacts = execute(tmp_path)
     with pytest.raises(ValueError, match="snapshot"):
         artifacts.rescore(TerminalBench2Scorer(), allow_environment=True)
+
+
+def test_rescore_retains_binary_inputs_outside_source_directory(
+    custom, tmp_path, monkeypatch
+):
+    from alphadiana.benchmarks.base import BenchmarkTask
+
+    monkeypatch.setattr(
+        TinyBenchmark,
+        "load_tasks",
+        lambda self, config: [
+            BenchmarkTask(
+                "binary",
+                "image task",
+                "2",
+                attachments={"image.png": b"binary-image-input"},
+            )
+        ],
+    )
+    artifacts = execute(tmp_path / "source")
+
+    class AttachmentScorer(TinyScorer):
+        def score(self, task, response):
+            assert task.attachments["image.png"] == b"binary-image-input"
+            return super().score(task, response)
+
+    derived = artifacts.rescore(
+        AttachmentScorer(), output=tmp_path / "other/rescored.jsonl"
+    )
+    assert derived.task(derived.records()[0]).attachments == {
+        "image.png": b"binary-image-input"
+    }
+    assert derived.manifest()["expected_sample_count"] == 1
+    original = artifacts.records()[0]
+    reference = original["task_attachments"]["image.png"]
+    (artifacts.artifact_root(original) / reference["path"]).write_bytes(b"changed")
+    with pytest.raises(ValueError, match="changed"):
+        artifacts.rescore(AttachmentScorer())

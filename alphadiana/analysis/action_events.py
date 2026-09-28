@@ -236,7 +236,7 @@ def extract_action_events(bundle: RunBundle, *, harness: str) -> list[ActionEven
     """Extract canonical action rows from persisted task artifacts only."""
     events: list[ActionEvent] = []
     for record in normalized_records(bundle):
-        if harness == "directllm":
+        if harness in {"directllm", "direct_llm"}:
             events.extend(_extract_directllm_events(bundle, record, harness=harness))
         else:
             events.extend(_extract_agent_events(bundle, record, harness=harness))
@@ -290,6 +290,8 @@ def _extract_agent_events(bundle: RunBundle, record: dict[str, Any], *, harness:
     previous_observation_status = "none"
     for index, step in enumerate(steps):
         if not isinstance(step, dict):
+            continue
+        if step.get("role") in {"system", "developer", "user"}:
             continue
         text = _step_text(step)
         if harness == "opencode" and _is_opencode_lifecycle_metadata(text):
@@ -386,7 +388,11 @@ def _load_normalized_trace(bundle: RunBundle, record: dict[str, Any]) -> list[di
     if not rel_path:
         return []
     try:
-        path = resolve_run_relative_path(bundle.results_dir, rel_path)
+        root = Path(record.get("artifact_origin", bundle.run_dir / "artifacts"))
+        path = resolve_run_relative_path(root, rel_path)
+        if not path.exists():
+            # Older exports stored references relative to the results directory.
+            path = resolve_run_relative_path(bundle.results_dir, rel_path)
         parsed = json.loads(path.read_text(encoding="utf-8"))
     except (ValueError, FileNotFoundError, json.JSONDecodeError, OSError):
         return []

@@ -66,6 +66,29 @@ class Artifacts:
             selected[key] = record
         return list(selected.values())
 
+    def artifact_root(self, record: dict[str, Any]) -> Path:
+        """Locate retained sidecars, including rescored runs in another directory."""
+        return Path(record.get("artifact_origin", self.store.artifacts_dir)).resolve()
+
+    def task(self, record: dict[str, Any]) -> BenchmarkTask:
+        attachments = {}
+        root = self.artifact_root(record)
+        for name, reference in record.get("task_attachments", {}).items():
+            path = (root / reference["path"]).resolve()
+            if not path.is_relative_to(root):
+                raise ValueError("Attachment reference escapes its artifact directory")
+            content = path.read_bytes()
+            if hashlib.sha256(content).hexdigest() != reference["sha256"]:
+                raise ValueError(f"Attachment content changed: {name}")
+            attachments[name] = content
+        return BenchmarkTask(
+            record["task_id"],
+            record["problem"],
+            record.get("ground_truth"),
+            record.get("task_metadata", {}),
+            attachments,
+        )
+
     def manifest(self) -> dict[str, Any]:
         return self.store.load_manifest()
 
@@ -114,12 +137,7 @@ class Artifacts:
         source_digest = hashlib.sha256(self.path.read_bytes()).hexdigest()
         results = []
         for record in self.records():
-            task = BenchmarkTask(
-                record["task_id"],
-                record["problem"],
-                record.get("ground_truth"),
-                record.get("task_metadata", {}),
-            )
+            task = self.task(record)
             response_data = {
                 f.name: record[f.name]
                 for f in fields(AgentResponse)
@@ -128,6 +146,7 @@ class Artifacts:
             response = AgentResponse(answer=record.get("predicted"), **response_data)
             judgment = implementation.rescore(task, response, artifacts=self)
             derived = dict(record)
+            derived["artifact_origin"] = str(self.artifact_root(record))
             derived.update(
                 correct=judgment.correct,
                 score=judgment.score,
@@ -158,4 +177,12 @@ class Artifacts:
                 stream.write(
                     json.dumps(result, ensure_ascii=False, allow_nan=False) + "\n"
                 )
-        return Artifacts(destination)
+        derived_artifacts = Artifacts(destination)
+        manifest = self.manifest()
+        manifest.update(
+            scorer_name=implementation.name,
+            rescored_from=str(self.path),
+            source_sha256=source_digest,
+        )
+        derived_artifacts.store.save_manifest(manifest)
+        return derived_artifacts

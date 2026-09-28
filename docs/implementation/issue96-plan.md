@@ -256,3 +256,14 @@ Source: `/data2/weikai/AlphaDiana-all-runs/paper-figures/FIGURE_INDEX.md`.
 - Direct matrix: session 30667 (AIME/HLE/IMO/MMMU), session 41290 (GPQA using own cache). Logs under validation/evidence. Source manifest under validation/direct-manifest.json.
 - Supplied historical figure archive remains unmodified.
 - Remaining core gaps: attachment fidelity and portable rescoring references; fresh-run post-tool entropy and model annotation integration; all-harness matrix; native SWE-Agent/terminus-2 registry adapters; snapshot provenance/cleanup review; website page integration and full final checks.
+
+### Evidence fidelity checkpoint — 2026-09-29
+
+- Binary benchmark attachments now persist by content hash and are restored/hash-checked during rescoring. Derived runs retain explicit references to source sidecars and copy expected sample counts; source sidecars must remain available.
+- Fixed analysis trace resolution against the actual artifact root, including rescoring into another directory; prompt messages no longer count as agent actions. Both Direct registry spellings use the same extraction path.
+- Focused API/path tests: 16 passed. Combined API/native regression selection: 43 passed, 8 opt-in runtime checks skipped; `evidence/evidence-fidelity-tests.log`. Skips are not runtime acceptance.
+- Direct AIME, GPQA and HLE each completed three valid scored records. IMO/MMMU remain running; these are preliminary receipts, not final-commit matrix acceptance.
+- OpenCode 1.3.2 Podman GPQA validation started (session 17023); first upstream model request succeeded. Configs/manifest and log under task-owned validation directory.
+- Matrix receipts now include config/artifact hashes and model identity, enforce one sample/no retry, reject duplicate tasks and check a supplied pinned task sequence. Full committed 28-cell manifest still pending.
+- Native SWE-Agent and Harbor terminus-2 adapters are work in progress; no native baseline acceptance claimed.
+- Archive entropy axis semantics need further audit: historical trajectory token bins must not be described as independently verified offsets after tool feedback. Fresh capture attribution remains open.

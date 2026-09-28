@@ -167,6 +167,17 @@ class ResultStore:
                 normalized_trajectory=normalized_trajectory,
                 normalized_reasoning_trajectory=normalized_reasoning_trajectory,
             )
+            # Content-address inputs so offline scorers see the same attachments.
+            import hashlib
+            task_attachments = {}
+            for name, content in task.attachments.items():
+                digest = hashlib.sha256(content).hexdigest()
+                rel = Path("inputs") / digest
+                target = self.artifacts_dir / rel
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if not target.exists():
+                    target.write_bytes(content)
+                task_attachments[name] = {"path": str(rel), "sha256": digest}
             record = {
                 "task_id": task.task_id,
                 "sample_index": sample_index,
@@ -174,6 +185,7 @@ class ResultStore:
                 "problem": task.problem,
                 "ground_truth": task.ground_truth,
                 "task_metadata": task.metadata,
+                "task_attachments": task_attachments,
                 "predicted": response.answer,
                 "correct": score.correct,
                 "score": score.score,
