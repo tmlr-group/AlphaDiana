@@ -22,6 +22,12 @@ class ScoreResult:
 class Scorer(ABC):
     """Abstract base class for answer scorers."""
 
+    requires_environment: bool = False
+
+    def rescore(self, task, response, *, artifacts) -> ScoreResult:
+        """Re-evaluate saved output; override when verifier state needs restoration."""
+        return self.score(task, response)
+
     @property
     @abstractmethod
     def name(self) -> str:

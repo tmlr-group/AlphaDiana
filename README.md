@@ -224,3 +224,7 @@ If you use AlphaDiana in your research, please cite:
   url={https://openreview.net/forum?id=4vARlk9o95}
 }
 ```
+
+## Python API and analysis figures
+
+Use the [composable Python API](docs/getting-started/python-api.md) to execute existing adapters, reopen artifacts, rescore saved outputs, and export analysis figures with data provenance.

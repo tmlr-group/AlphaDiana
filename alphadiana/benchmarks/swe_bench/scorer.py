@@ -118,6 +118,8 @@ class SWEBenchScorer(Scorer):
         self._docker_api_version = ""
         self._runtime: dict[str, Any] | None = None
 
+    requires_environment = True
+
     @property
     def name(self) -> str:
         return "swe_bench"

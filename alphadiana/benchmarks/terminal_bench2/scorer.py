@@ -18,6 +18,18 @@ class TerminalBench2Scorer(Scorer):
       - anything else (including "0", empty, None, missing file) → correct=False, score=0.0
     """
 
+    requires_environment = True
+
+    def rescore(self, task, response, *, artifacts) -> ScoreResult:
+        from dataclasses import replace
+        from alphadiana.benchmarks.terminal_bench2.replay import VerifierReplay
+        result, snapshot = VerifierReplay().run(
+            task, output_dir=artifacts.path.parent / "verifier_replays")
+        score = self.score(task, replace(response, answer=result.reward))
+        score.metadata.update(verifier_snapshot=snapshot, verifier_status=result.status,
+                              reward_path=result.reward_path, replayed=True)
+        return score
+
     @property
     def name(self) -> str:
         return "terminal_bench2"

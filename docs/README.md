@@ -81,3 +81,7 @@ can plug into AlphaDiana as one candidate agent and have its solves scored here.
 - **[Results](./results.md)**: selected draft tables and process-analysis figures.
 - **[Dashboard](./dashboard.md)**: launch, monitor, browse, and compare local runs.
 - **[Contributing](./contribution/)**: adding harnesses and benchmarks, engineering conventions.
+
+## Composable Python API and paper figures
+
+See [Python composition and paper figures](getting-started/python-api.md) for execution, rescoring, extensible analysis, and vector figure exports.

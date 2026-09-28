@@ -726,43 +726,9 @@ class Runner:
         """Resolve and instantiate all components from their registries."""
         _validate_stateful_run_policy(self.config)
         _stabilize_openclaw_gateway_token(self.config)
-        # Import all benchmark/agent/sandbox/scorer modules to trigger registration.
-        import alphadiana.benchmarks.aime.benchmark  # noqa: F401
-        import alphadiana.benchmarks.custom.benchmark  # noqa: F401
-        import alphadiana.benchmarks.swe_bench.benchmark  # noqa: F401
-        import alphadiana.benchmarks.gpqa.benchmark  # noqa: F401
-        import alphadiana.benchmarks.hle.benchmark  # noqa: F401
-        import alphadiana.benchmarks.imo.benchmark  # noqa: F401
-        import alphadiana.benchmarks.mmmu_pro.benchmark  # noqa: F401
-        import alphadiana.benchmarks.terminal_bench2.benchmark  # noqa: F401
+        from alphadiana.engine.components import register_builtin_components
 
-        # Import agent modules to trigger registration.
-        import alphadiana.harness.direct_llm  # noqa: F401
-        import alphadiana.harness.openclaw.agent  # noqa: F401
-        import alphadiana.harness.pi.agent  # noqa: F401
-        import alphadiana.harness.deepseek_harness.agent  # noqa: F401
-        import alphadiana.harness.opencode.agent  # noqa: F401
-        import alphadiana.benchmarks.swe_bench.harness  # noqa: F401
-        import alphadiana.benchmarks.terminal_bench2.harness.docker  # noqa: F401
-        import alphadiana.benchmarks.terminal_bench2.harness.openclaw  # noqa: F401
-        import alphadiana.benchmarks.terminal_bench2.harness.opencode  # noqa: F401
-        import alphadiana.benchmarks.terminal_bench2.harness.zeroclaw  # noqa: F401
-        import alphadiana.harness.zeroclaw.agent  # noqa: F401
-
-        # Import sandbox modules to trigger registration.
-        import alphadiana.engine.sandbox.local  # noqa: F401
-        import alphadiana.engine.sandbox.podman  # noqa: F401
-        import alphadiana.engine.sandbox.rock  # noqa: F401
-        import alphadiana.engine.sandbox.swebench_container  # noqa: F401
-
-        # Import scorer modules to trigger registration.
-        import alphadiana.scorer.exact_match  # noqa: F401
-        import alphadiana.benchmarks.imo.verify  # noqa: F401
-        import alphadiana.scorer.llm_judge  # noqa: F401
-        import alphadiana.scorer.math_verify_scorer  # noqa: F401
-        import alphadiana.scorer.numeric  # noqa: F401
-        import alphadiana.benchmarks.swe_bench.scorer  # noqa: F401
-        import alphadiana.benchmarks.terminal_bench2.scorer  # noqa: F401
+        register_builtin_components()
 
         try:
             # Resolve and instantiate benchmark.
