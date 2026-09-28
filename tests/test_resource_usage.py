@@ -116,7 +116,7 @@ def test_persisted_usage_and_custom_extractors_remain_supported(tmp_path):
 def opencode_session(tmp_path):
     source, record, _, _ = session(tmp_path)
     record["artifact_manifest"]["files"] = {
-        "opencode_output": "events.jsonl",
+        "opencode_output": "opencode_output.jsonl",
         "prompt_text": "prompt.txt",
     }
     record["metadata"] = {"session_id": "s1"}
@@ -133,13 +133,16 @@ def opencode_session(tmp_path):
             if event == "step_finish":
                 part["tokens"] = {"input": 10, "output": tokens, "reasoning": 2}
             rows.append({"type": event, "sessionID": "s1", "part": part})
-    path = root / "events.jsonl"
+    path = root / "opencode_output.jsonl"
     path.write_text("\n".join(map(json.dumps, rows)))
     return source, record, rows, path
 
 
-def test_opencode_completed_steps_preserve_native_output_semantics(tmp_path):
+@pytest.mark.parametrize("alias", ["opencode_output", "response_stream"])
+def test_opencode_completed_steps_preserve_native_output_semantics(tmp_path, alias):
     source, record, _, _ = opencode_session(tmp_path)
+    files = record["artifact_manifest"]["files"]
+    files[alias] = files.pop("opencode_output")
     result = measured_usage(source, record)
     assert result.output_tokens == 9  # Do not add native reasoning to native output.
     assert result.provenance["completed_steps"] == 2

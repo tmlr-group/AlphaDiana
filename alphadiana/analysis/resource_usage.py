@@ -6,6 +6,7 @@ import hashlib
 import json
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 from alphadiana.artifacts import Artifacts
 
@@ -109,13 +110,21 @@ def openclaw_session_usage(source: Artifacts, record: dict) -> MeasuredUsage | N
 def opencode_event_usage(source: Artifacts, record: dict) -> MeasuredUsage | None:
     """Aggregate completed native steps from one retained, task-bound session."""
     files = (record.get("artifact_manifest") or {}).get("files", {})
-    if not files.get("opencode_output"):
-        return None
-    path = source.file(record, "opencode_output")
+    key = "opencode_output"
+    if not files.get(key):
+        reference = files.get("response_stream")
+        if (
+            not isinstance(reference, str)
+            or Path(reference).name != "opencode_output.jsonl"
+        ):
+            return None
+        key = "response_stream"
+    path = source.file(record, key)
     raw = path.read_bytes()
     rows = [json.loads(line) for line in raw.splitlines() if line.strip()]
     evidence = {
         "source": "opencode_output",
+        "artifact_key": key,
         "path": str(path),
         "sha256": hashlib.sha256(raw).hexdigest(),
     }

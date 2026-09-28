@@ -360,10 +360,45 @@ def _classify_opencode_error(name: str, message: str) -> str:
     return "agent_error"
 
 
-def _extract_opencode_error(events: list[dict[str, Any]]) -> dict[str, str] | None:
-    """Return the last OpenCode error event, if present."""
-    for event in reversed(events):
+def _completed_after_error(events: list[dict[str, Any]], index: int) -> bool:
+    """Require an explicit terminal response in the same native session."""
+    session = events[index].get("sessionID")
+    if not session:
+        return False
+    following = [
+        event for event in events[index + 1:] if event.get("sessionID") == session
+    ]
+    states = [
+        event for event in following
+        if event.get("type") in {"step_start", "step_finish", "error"}
+    ]
+    if not states or states[-1].get("type") != "step_finish":
+        return False
+    finish = states[-1].get("part")
+    if not isinstance(finish, dict):
+        return False
+    message = finish.get("messageID")
+    if finish.get("reason") != "stop" or finish.get("sessionID") != session or not message:
+        return False
+    return any(
+        event.get("type") == "text"
+        and isinstance(event.get("part"), dict)
+        and event["part"].get("sessionID") == session
+        and event["part"].get("messageID") == message
+        and str(event["part"].get("text") or "").strip()
+        for event in following
+    )
+
+
+def _extract_opencode_error(
+    events: list[dict[str, Any]], *, returncode: int | None = None
+) -> dict[str, str] | None:
+    """Return the last unrecovered error; preserve all events in raw artifacts."""
+    for index in range(len(events) - 1, -1, -1):
+        event = events[index]
         if str(event.get("type", "")).strip().lower() != "error":
+            continue
+        if returncode == 0 and _completed_after_error(events, index):
             continue
         error_obj = event.get("error")
         if not isinstance(error_obj, dict):
@@ -975,7 +1010,7 @@ class OpenCodeAgent(Agent):
             },
         )
 
-        error_info = _extract_opencode_error(events)
+        error_info = _extract_opencode_error(events, returncode=exit_code)
         response_metadata = {
             "runtime": "swebench_container",
             "returncode": exit_code,
@@ -1772,7 +1807,7 @@ class OpenCodeAgent(Agent):
             else ("opencode_cli_podman" if self._controller_mode == "podman" else "opencode_cli")
         )
 
-        error_info = _extract_opencode_error(events)
+        error_info = _extract_opencode_error(events, returncode=returncode)
         response_metadata = {
             "returncode": returncode,
             "stderr": stderr[:2000] if stderr else "",
