@@ -166,6 +166,11 @@ in the runtime directory: startup probes and unrelated sessions are excluded.
 Each recovered sample includes the source path/hash, request count and native
 totals in `usage_provenance`. Original result records remain unchanged.
 
+OpenCode usage can likewise be read from the retained event stream. The saved
+prompt must contain the task, session identities must agree, and native step
+starts/finishes must pair completely. Output counts retain the native meaning;
+reasoning/cache fields are preserved as provenance, not added again to output.
+
 Missing or unverified session data remains unavailable; partial sums are not
 presented as total task cost. Native output counts and captured logprob counts
 are separate measurements, and request attribution coverage applies only to

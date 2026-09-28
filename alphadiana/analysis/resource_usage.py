@@ -106,10 +106,75 @@ def openclaw_session_usage(source: Artifacts, record: dict) -> MeasuredUsage | N
     )
 
 
+def opencode_event_usage(source: Artifacts, record: dict) -> MeasuredUsage | None:
+    """Aggregate completed native steps from one retained, task-bound session."""
+    files = (record.get("artifact_manifest") or {}).get("files", {})
+    if not files.get("opencode_output"):
+        return None
+    path = source.file(record, "opencode_output")
+    raw = path.read_bytes()
+    rows = [json.loads(line) for line in raw.splitlines() if line.strip()]
+    evidence = {
+        "source": "opencode_output",
+        "path": str(path),
+        "sha256": hashlib.sha256(raw).hexdigest(),
+    }
+    prompt = source.file(record, "prompt_text")
+    problem = str(record.get("problem") or "").strip()
+    if prompt is None or not problem or problem not in prompt.read_text():
+        return MeasuredUsage(None, dict(evidence, missing="task_identity_unverified"))
+    evidence["prompt_sha256"] = hashlib.sha256(prompt.read_bytes()).hexdigest()
+    sessions = {row.get("sessionID") for row in rows}
+    expected = (record.get("metadata") or {}).get("session_id")
+    if len(sessions) != 1 or None in sessions or (expected and sessions != {expected}):
+        return MeasuredUsage(
+            None, dict(evidence, missing="session_identity_unverified")
+        )
+    pending, seen_parts, outputs, native = {}, set(), [], []
+    for row in rows:
+        if row.get("type") not in {"step_start", "step_finish"}:
+            continue
+        part = row.get("part") or {}
+        part_id, message = part.get("id"), part.get("messageID")
+        if not part_id or part_id in seen_parts or not message:
+            raise ValueError(f"Missing or duplicate native step identity: {path}")
+        seen_parts.add(part_id)
+        if part.get("sessionID") != row["sessionID"]:
+            raise ValueError(f"Native step session identity disagrees: {path}")
+        if row["type"] == "step_start":
+            pending[message] = pending.get(message, 0) + 1
+            continue
+        if not pending.get(message):
+            raise ValueError(f"Native step finish has no matching start: {path}")
+        pending[message] -= 1
+        tokens = part.get("tokens") or {}
+        output = _count(tokens.get("output"))
+        if output is None:
+            return MeasuredUsage(
+                None, dict(evidence, missing="incomplete_request_usage")
+            )
+        outputs.append(output)
+        native.append({"message_id": message, "part_id": part_id, "tokens": tokens})
+    if not outputs or any(pending.values()):
+        return MeasuredUsage(None, dict(evidence, missing="incomplete_native_steps"))
+    return MeasuredUsage(
+        sum(outputs),
+        dict(
+            evidence,
+            completed_steps=len(outputs),
+            native_usage=native,
+            task_identity_verified=True,
+        ),
+    )
+
+
+DEFAULT_USAGE_EXTRACTORS = (openclaw_session_usage, opencode_event_usage)
+
+
 def measured_usage(
     source: Artifacts,
     record: dict,
-    extractors: Sequence[UsageExtractor] = (openclaw_session_usage,),
+    extractors: Sequence[UsageExtractor] = DEFAULT_USAGE_EXTRACTORS,
 ) -> MeasuredUsage:
     usage = record.get("token_usage") or {}
     output = _count(usage.get("completion_tokens", usage.get("output_tokens")))

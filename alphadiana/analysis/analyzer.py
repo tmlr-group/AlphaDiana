@@ -17,9 +17,9 @@ from typing import Any, Protocol
 from alphadiana.analysis.action_events import extract_action_event_rows
 from alphadiana.analysis.io.status import VALID_SCORE_STATUS
 from alphadiana.analysis.resource_usage import (
+    DEFAULT_USAGE_EXTRACTORS,
     UsageExtractor,
     measured_usage,
-    openclaw_session_usage,
 )
 from alphadiana.analysis.result_reader import RunBundle
 from alphadiana.artifacts import Artifacts
@@ -70,7 +70,7 @@ class ExecutionMetrics:
     name = "execution"
 
     def __init__(
-        self, *, usage_extractors: Sequence[UsageExtractor] = (openclaw_session_usage,)
+        self, *, usage_extractors: Sequence[UsageExtractor] = DEFAULT_USAGE_EXTRACTORS
     ):
         self.usage_extractors = tuple(usage_extractors)
 
