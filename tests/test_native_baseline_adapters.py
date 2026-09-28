@@ -188,10 +188,10 @@ def test_opencode_context_limits_reach_native_model_config(tmp_path):
 def test_openclaw_native_failure_cannot_be_scored_as_verifier_zero(
     stderr, returncode, expected
 ):
+    from alphadiana.analysis.io.status import infer_score_status
     from alphadiana.benchmarks.terminal_bench2.harness.openclaw import (
         _classify_openclaw_failure,
     )
-    from alphadiana.analysis.io.status import infer_score_status
 
     failure = _classify_openclaw_failure("", stderr, returncode)
     assert failure == expected
