@@ -16,6 +16,8 @@ full-matrix acceptance.
 | Failed attempts did not retain binary inputs, so reopening multimodal failures lost task context. | Both success and failure paths use the same content-addressed input writer; reject corrupted reused content. | `test_failed_attempt_retains_binary_inputs_for_reopening`; cross-directory attachment rescoring regression. |
 | SWE OpenCode container execution ignored native context/output limits. | Pass configured limits through its existing native provider configuration; preserve custom installation commands and optionally verify installed version. | Container contract tests; real rerun still required for acceptance. |
 
+| Wheel omitted native runtime configuration/templates, and package-prefixed defaults depended on repository cwd. | Explicitly package required runtime assets; resolve bundled defaults relative to installed package while preserving caller overrides. | Actual wheel install outside checkout: seven extension/resource cases pass, all AlphaDiana modules loaded from installed target. |
+
 ## Extension boundaries
 
 | Boundary | Reviewed behavior | Verification |

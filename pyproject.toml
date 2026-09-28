@@ -48,3 +48,8 @@ include = ["alphadiana*"]
 
 [tool.setuptools.package-data]
 "alphadiana.harness._internal" = ["deploy/*"]
+
+"alphadiana.harness.openclaw" = ["deploy/*.json", "deploy/*.yaml", "deploy/*.js", "deploy/Dockerfile*"]
+"alphadiana.harness.opencode" = ["deploy/Containerfile*"]
+"alphadiana.harness.zeroclaw" = ["deploy/Dockerfile*"]
+"alphadiana.benchmarks.swe_bench" = ["assets/*.sh", "assets/*.json", "assets/*.template"]

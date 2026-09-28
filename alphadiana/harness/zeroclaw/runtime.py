@@ -180,6 +180,7 @@ class ZeroClawRuntimeManager:
         for candidate in [
             (PROJECT_ROOT / path).resolve(),
             path.resolve(),
+            (PROJECT_ROOT.parent / path).resolve(),
         ]:
             if candidate.exists():
                 return candidate

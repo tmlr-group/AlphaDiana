@@ -384,7 +384,11 @@ class OpenClawContainerRuntimeManager:
         path = Path(path_str).expanduser()
         if path.is_absolute():
             return path.resolve()
-        for candidate in ((PROJECT_ROOT / path).resolve(), path.resolve()):
+        for candidate in (
+            (PROJECT_ROOT / path).resolve(),
+            path.resolve(),
+            (PROJECT_ROOT.parent / path).resolve(),
+        ):
             if candidate.exists():
                 return candidate
         return (PROJECT_ROOT / path).resolve()
