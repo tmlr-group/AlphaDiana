@@ -84,6 +84,13 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
         self._top_p = None if raw_top_p in (None, "") else float(raw_top_p)
         raw_max_tokens = config.get("max_tokens", None)
         self._max_tokens = None if raw_max_tokens in (None, "") else int(raw_max_tokens)
+        self._model_limits = {
+            target: int(config[source])
+            for source, target in (("context_limit", "context"), ("output_limit", "output"))
+            if config.get(source) is not None
+        }
+        if any(value <= 0 for value in self._model_limits.values()):
+            raise ValueError("Model context/output limits must be positive")
         self._enable_thinking = config.get("enable_thinking")
         if self._enable_thinking is not None and not isinstance(self._enable_thinking, bool):
             raise ValueError("enable_thinking must be a boolean")
@@ -179,6 +186,7 @@ class TerminalBench2OpenCodeAgent(TerminalBench2InContainerMixin, Agent):
                         self._model_name: {
                             "name": self._model_name,
                             "tool_call": self._tool_call,
+                            **({"limit": self._model_limits} if self._model_limits else {}),
                         }
                     },
                 }

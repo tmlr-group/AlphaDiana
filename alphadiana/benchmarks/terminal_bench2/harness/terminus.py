@@ -63,6 +63,11 @@ class Terminus2Agent(Agent):
                         "api_base": self.config["api_base"],
                         "temperature": self.config.get("temperature", 0.0),
                         "llm_call_kwargs": llm_call_kwargs,
+                        **(
+                            {"model_info": deepcopy(self.config["model_info"])}
+                            if self.config.get("model_info") is not None
+                            else {}
+                        ),
                     },
                 }
             ],

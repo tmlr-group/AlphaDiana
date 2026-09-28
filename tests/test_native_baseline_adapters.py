@@ -20,6 +20,7 @@ def test_harbor_requires_binary_observed_reward(tmp_path, monkeypatch, reward):
         job = json.loads(Path(argv[3]).read_text())
         assert job["agents"][0]["name"] == "terminus-2"
         assert job["retry"]["max_retries"] == 0
+        assert job["agents"][0]["kwargs"]["model_info"] == {"max_input_tokens": 32768}
         assert job["agents"][0]["kwargs"]["llm_call_kwargs"] == {
             "max_tokens": 512,
             "extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
@@ -42,6 +43,7 @@ def test_harbor_requires_binary_observed_reward(tmp_path, monkeypatch, reward):
     agent.setup(
         {
             "executable": "harbor",
+            "model_info": {"max_input_tokens": 32768},
             "model": "fixture-model",
             "api_base": "http://localhost:1/v1",
             "output_dir": str(tmp_path / "out"),
@@ -105,3 +107,102 @@ def test_openclaw_install_version_is_explicit_and_override_is_preserved():
         {"install_openclaw_command": "custom installer"}
     )
     assert manager._install_openclaw_command == "custom installer"
+
+
+def test_sweagent_image_override_and_solver_visible_inputs(tmp_path, monkeypatch):
+    from alphadiana.benchmarks.swe_bench import sweagent
+
+    config_path = tmp_path / "default.yaml"
+    config_path.write_text("agent: {}")
+    task = BenchmarkTask(
+        "swe_example",
+        "Fix the bug",
+        None,
+        {
+            "instance_id": "example",
+            "base_commit": "pinned-base",
+            "patch": "REFERENCE PATCH",
+            "test_patch": "REFERENCE TEST",
+        },
+    )
+
+    def native(argv, **kwargs):
+        instances = Path(argv[argv.index("--instances.path") + 1])
+        data = json.loads(instances.read_text())
+        assert data == [
+            {
+                "instance_id": "example",
+                "problem_statement": "Fix the bug",
+                "image_name": "owned-image@sha256:fixture",
+                "repo_name": "testbed",
+                "base_commit": "pinned-base",
+            }
+        ]
+        output = Path(argv[argv.index("--output_dir") + 1])
+        output.mkdir()
+        (output / "preds.json").write_text(
+            json.dumps({"example": {"model_patch": "predicted diff"}})
+        )
+
+    monkeypatch.setattr(sweagent, "run_native", native)
+    agent = sweagent.SWEAgent()
+    agent.setup(
+        {
+            "executable": "sweagent",
+            "config_path": str(config_path),
+            "model": "fixture",
+            "api_base": "http://localhost:1/v1",
+            "output_dir": str(tmp_path / "out"),
+            "image_overrides": {"example": "owned-image@sha256:fixture"},
+        }
+    )
+    response = agent.solve(task)
+    assert response.answer == "predicted diff"
+    assert response.metadata["native_image"] == "owned-image@sha256:fixture"
+
+
+def test_opencode_context_limits_reach_native_model_config(tmp_path):
+    from alphadiana.benchmarks.terminal_bench2.harness.opencode import (
+        TerminalBench2OpenCodeAgent,
+    )
+
+    agent = TerminalBench2OpenCodeAgent()
+    agent.setup({"model_name": "fixture", "context_limit": 32768, "output_limit": 8192})
+    path = tmp_path / "provider.json"
+    agent._write_provider_config(path)
+    model = json.loads(path.read_text())["provider"]["custom"]["models"]["fixture"]
+    assert model["limit"] == {"context": 32768, "output": 8192}
+
+
+@pytest.mark.parametrize(
+    "stderr,returncode,expected",
+    [
+        ('FailoverError: No API key found for provider "custom".', 1, "provider_error"),
+        ("unexpected native CLI failure", 1, "control_plane_unavailable"),
+        ("", 1, "control_plane_unavailable"),
+        ("", 0, ""),
+    ],
+)
+def test_openclaw_native_failure_cannot_be_scored_as_verifier_zero(
+    stderr, returncode, expected
+):
+    from alphadiana.benchmarks.terminal_bench2.harness.openclaw import (
+        _classify_openclaw_failure,
+    )
+    from alphadiana.analysis.io.status import infer_score_status
+
+    failure = _classify_openclaw_failure("", stderr, returncode)
+    assert failure == expected
+    row = {
+        "benchmark_name": "terminal_bench2",
+        "score_status": "valid_scored",
+        "score": 0,
+        "correct": False,
+        "metadata": {
+            "failure_reason": failure,
+            "verifier_status": "ok",
+            "verifier_reward_observed": True,
+        },
+    }
+    if failure:
+        assert infer_score_status(row) != "valid_scored"

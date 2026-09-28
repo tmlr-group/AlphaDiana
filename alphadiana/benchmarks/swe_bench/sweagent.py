@@ -55,7 +55,8 @@ class SWEAgent(Agent):
         if not base_commit:
             raise ValueError("SWE-agent requires a benchmark task with base_commit")
         image = (
-            metadata.get("docker_image")
+            self.config.get("image_overrides", {}).get(instance_id)
+            or metadata.get("docker_image")
             or f"docker.io/swebench/sweb.eval.x86_64.{instance_id.replace('__', '_1776_')}:latest".lower()
         )
         # Select only solver-visible inputs; reference patches and tests never enter prompts.
@@ -158,6 +159,7 @@ class SWEAgent(Agent):
             wall_time_sec=time.monotonic() - started,
             metadata={
                 "native_runtime": "sweagent",
+                "native_image": image,
                 "native_output_dir": str(directory),
                 "exit_status": (trajectory.get("info") or {}).get("exit_status"),
             },

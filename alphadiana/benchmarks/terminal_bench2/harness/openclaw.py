@@ -75,10 +75,10 @@ def _build_openclaw_reasoning_trajectory(trajectory: list[dict[str, Any]]) -> li
     return reasoning
 
 
-def _classify_openclaw_failure(trajectory_error: str, agent_stderr: str) -> str:
+def _classify_openclaw_failure(
+    trajectory_error: str, agent_stderr: str, returncode: int = 0
+) -> str:
     evidence = "\n".join([trajectory_error or "", agent_stderr or ""]).lower()
-    if not evidence.strip():
-        return ""
     if (
         "connection error" in evidence
         or "llm request timed out" in evidence
@@ -86,9 +86,10 @@ def _classify_openclaw_failure(trajectory_error: str, agent_stderr: str) -> str:
         or "custom api error" in evidence
         or "badrequesterror" in evidence
         or "vllmvalidationerror" in evidence
+        or "no api key found" in evidence
     ):
         return "provider_error"
-    return ""
+    return "control_plane_unavailable" if returncode else ""
 
 
 def _openclaw_agent_timed_out(returncode: int, agent_stderr: str) -> bool:
@@ -754,7 +755,9 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
             ]
         if not reasoning_trajectory:
             reasoning_trajectory = _extract_reasoning_trajectory_from_payload(response_json)
-        solver_failure_reason = _classify_openclaw_failure(trajectory_error, agent_stderr)
+        solver_failure_reason = _classify_openclaw_failure(
+            trajectory_error, agent_stderr, agent_returncode
+        )
         timed_out = _openclaw_agent_timed_out(agent_returncode, agent_stderr)
         if timed_out:
             solver_failure_reason = "timeout"
@@ -819,7 +822,7 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
             "session_id": session_id,
             "session_trace_source": session_trace_source,
             "trajectory_error": trajectory_error,
-            "trajectory_status": "abnormal" if (timed_out or trajectory_error) else "pass",
+            "trajectory_status": "abnormal" if (solver_failure_reason or trajectory_error) else "pass",
             "trajectory_failure_reason": "timeout" if timed_out else trajectory_error,
             "failure_reason": solver_failure_reason,
             "openclaw_selected_classification": solver_failure_reason,

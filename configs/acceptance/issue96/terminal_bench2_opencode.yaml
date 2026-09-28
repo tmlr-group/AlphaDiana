@@ -22,6 +22,8 @@ agent:
     temperature: 0.0
     enable_thinking: false
     retain_verifier_snapshot: true
+    context_limit: 32768
+    output_limit: 8192
 benchmark:
   name: terminal_bench2
   config:
