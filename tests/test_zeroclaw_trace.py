@@ -70,3 +70,23 @@ def test_legacy_message_trace_retains_shared_projection():
     )
     assert trajectory == [{"role": "assistant", "type": "text", "content": "old format"}]
     assert usage == {} and coverage == {"native_records": 0}
+
+
+def test_native_final_prevents_reappending_cli_transcript():
+    trajectory, _, _, _ = normalize_trace(
+        [], records(), final_output="Earlier assistant text\n5017"
+    )
+    assert len(trajectory) == 3
+    assert trajectory[-1]["content"] == "5017"
+
+
+def test_persisted_tools_keep_call_arguments_and_result_role():
+    from alphadiana.analysis.io.normalized_trace import normalize_persisted_trajectory
+
+    trajectory, _, _, _ = normalize_trace([], records(), final_output="5017")
+    persisted = normalize_persisted_trajectory(trajectory)
+    assert persisted[0]["type"] == "tool_use"
+    assert "173 * 29" in str(persisted[0]["tool_calls"][0]["input"])
+    assert persisted[1]["type"] == "tool_result"
+    assert persisted[1]["role"] == "tool"
+    assert persisted[1]["tool_results"][0]["content"] == "5017"

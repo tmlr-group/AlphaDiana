@@ -31,6 +31,7 @@ def normalize_trace(
     counts: Counter = Counter()
     unknown: Counter = Counter()
     inputs = outputs = observed_usage = 0
+    native_final_seen = False
     for row in native:
         kind = str(row.get("event_type", ""))
         counts[kind] += 1
@@ -51,6 +52,7 @@ def normalize_trace(
         elif kind == "turn_final_response":
             content = payload.get("text")
             if isinstance(content, str) and content.strip():
+                native_final_seen = True
                 step = {"role": "assistant", "type": "answer", "content": content}
         elif kind in {"tool_call_start", "tool_call_result"}:
             tool = str(payload.get("tool", ""))
@@ -64,6 +66,8 @@ def normalize_trace(
                 "name": tool,
                 "content": str(content),
             }
+            if is_call:
+                step["arguments"] = content
             if not is_call and isinstance(row.get("success"), bool):
                 step["success"] = row["success"]
         elif kind != "llm_request":
@@ -84,7 +88,7 @@ def normalize_trace(
         step["timestamp"] = row.get("timestamp")
         trajectory.append(step)
 
-    if final_output.strip():
+    if final_output.strip() and not native_final_seen:
         last = trajectory[-1] if trajectory else {}
         if last.get("role") != "assistant" or last.get("type") not in {None, "answer"} or str(
             last.get("content", "")

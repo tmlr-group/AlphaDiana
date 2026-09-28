@@ -309,10 +309,11 @@ def _canonical_step_type(raw_step: dict[str, Any]) -> str:
 
     if raw_type in _REASONING_TYPES or raw_role == "reasoning":
         return "reasoning"
-    if raw_type in _TOOL_USE_TYPES or raw_role in _TOOL_USE_TYPES:
-        return "tool_use"
+    # An explicit result wins over the generic role="tool" alias for calls.
     if raw_type in _TOOL_RESULT_TYPES or raw_role in _TOOL_RESULT_TYPES:
         return "tool_result"
+    if raw_type in _TOOL_USE_TYPES or raw_role in _TOOL_USE_TYPES:
+        return "tool_use"
     if raw_step.get("tool_calls"):
         return "tool_use"
     if raw_step.get("tool_results"):
