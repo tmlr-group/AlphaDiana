@@ -22,6 +22,8 @@ agent:
       litellm_provider: openai
       mode: chat
     max_turns: 30
+    retain_verifier_snapshot: true
+    python_executable: ${ISSUE96_HARBOR_PYTHON}
 benchmark:
   name: terminal_bench2
   config:

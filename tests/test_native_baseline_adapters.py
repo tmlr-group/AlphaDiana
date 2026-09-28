@@ -208,3 +208,90 @@ def test_openclaw_native_failure_cannot_be_scored_as_verifier_zero(
     }
     if failure:
         assert infer_score_status(row) != "valid_scored"
+
+
+def test_harbor_snapshot_requires_explicit_native_python(tmp_path):
+    agent = terminus.Terminus2Agent()
+    with pytest.raises(ValueError, match="python_executable"):
+        agent.setup(
+            {
+                "retain_verifier_snapshot": True,
+                "executable": "harbor",
+                "model": "fixture",
+                "api_base": "http://localhost:1/v1",
+                "output_dir": str(tmp_path),
+            }
+        )
+
+
+def test_harbor_snapshot_hook_refuses_ambiguous_container(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from alphadiana.benchmarks.terminal_bench2.harness import harbor_job
+
+    event = SimpleNamespace(
+        task_name=tmp_path.name,
+        config=SimpleNamespace(task=SimpleNamespace(path=tmp_path)),
+    )
+    monkeypatch.setattr(
+        harbor_job.subprocess, "check_output", lambda *a, **k: "first\nsecond\n"
+    )
+    with pytest.raises(RuntimeError, match="one owned"):
+        harbor_job.snapshot_trial(
+            event,
+            project="owned",
+            task_id="fixture",
+            destination=tmp_path / "snapshot.json",
+        )
+    assert not (tmp_path / "snapshot.json").exists()
+
+
+@pytest.mark.parametrize(
+    "exception_type,has_timing,accepted",
+    [
+        ("AgentTimeoutError", True, True),
+        ("AgentTimeoutError", False, False),
+        ("AgentSetupTimeoutError", True, False),
+        ("EnvironmentStartTimeoutError", True, False),
+        ("NonZeroAgentExitCodeError", True, False),
+    ],
+)
+def test_harbor_only_owned_agent_deadline_can_use_observed_reward(
+    tmp_path, monkeypatch, exception_type, has_timing, accepted
+):
+    task_dir = tmp_path / "fixture"
+    task_dir.mkdir()
+    (task_dir / "task.toml").write_text('version = "1.0"')
+    task = BenchmarkTask("fixture", "Solve", None, {"task_dir": str(task_dir)})
+
+    def native(argv, **kwargs):
+        result_dir = kwargs["cwd"] / "evaluation/trial"
+        result_dir.mkdir(parents=True)
+        result = {
+            "task_name": "fixture",
+            "exception_info": {"exception_type": exception_type},
+            "verifier_result": {"rewards": {"reward": 0}},
+            "agent_execution": {"started_at": "start", "finished_at": "end"}
+            if has_timing
+            else None,
+        }
+        (result_dir / "result.json").write_text(json.dumps(result))
+
+    monkeypatch.setattr(terminus, "run_native", native)
+    agent = terminus.Terminus2Agent()
+    agent.setup(
+        {
+            "executable": "harbor",
+            "model": "fixture",
+            "api_base": "http://localhost:1/v1",
+            "output_dir": str(tmp_path / "out"),
+        }
+    )
+    if accepted:
+        response = agent.solve(task)
+        assert response.finish_reason == "timeout"
+        assert response.metadata["verifier_reward_observed"]
+        assert response.metadata["native_exception"]["exception_type"] == exception_type
+    else:
+        with pytest.raises(RuntimeError, match="trial failed"):
+            agent.solve(task)

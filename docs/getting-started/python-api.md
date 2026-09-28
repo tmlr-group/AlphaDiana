@@ -19,7 +19,7 @@ data = report.compute()
 report.export("figures/example", formats=("pdf", "svg", "png"))
 ```
 
-Install plotting support with `pip install 'alphadiana[analysis]'`. Execution and
+From the cloned checkout, install plotting support with `pip install -e '.[analysis]'`. Execution and
 structured analysis do not import Matplotlib. Figure exports contain `report.json`,
 source hashes, coverage, each figure's exact plotted data, and `export.json` listing
 outputs and inapplicable plots. Export to a new directory to preserve prior evidence.
@@ -73,6 +73,13 @@ verifier files while rescoring is required. Replay checks image identity and the
 verifier digest, uses fresh logs, runs only the verifier, and cleans up its runtime.
 Missing snapshots or changed verifier inputs fail explicitly. Snapshot images are
 private execution evidence, not public report assets.
+
+For native `terminus2`, also set `python_executable` to the Python executable of
+your Harbor installation. With `retain_verifier_snapshot=True`, its native
+pre-verification callback captures the Docker task state; Harbor still owns the
+solver, verifier and container lifecycle. Other Harbor environment backends are
+rejected for snapshot capture. The existing replay path restores the retained
+image and invokes only the verifier.
 
 ## Historical paper concepts
 

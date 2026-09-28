@@ -34,6 +34,8 @@ Set these environment variables explicitly before loading YAML:
 - `ISSUE96_SWEAGENT_BIN`, `ISSUE96_SWEAGENT_CHECKOUT`: native SWE-Agent executable
   and checkout with its default configuration.
 - `ISSUE96_HARBOR_BIN`: native Harbor executable.
+- `ISSUE96_HARBOR_PYTHON`: Python executable from that Harbor installation, used
+  for its native pre-verification snapshot callback.
 
 The preliminary environment uses SWE-Agent 1.1.0 at
 `0f4f3bba990e01ca8460b9963abdcd89e38042f2`, SWE-ReX 1.4.0, Harbor 0.6.1,

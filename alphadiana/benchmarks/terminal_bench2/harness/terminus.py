@@ -22,6 +22,17 @@ class Terminus2Agent(Agent):
 
     def setup(self, config: dict) -> None:
         self.config = dict(config)
+        self.retain_snapshot = bool(config.get("retain_verifier_snapshot", False))
+        self.native_python = str(config.get("python_executable", ""))
+        if self.retain_snapshot:
+            if config.get("environment_type", "docker") != "docker":
+                raise ValueError(
+                    "Harbor verifier snapshots require the Docker environment"
+                )
+            if not self.native_python or not shutil.which(self.native_python):
+                raise ValueError(
+                    "Verifier snapshots require python_executable from the Harbor environment"
+                )
         self.executable = str(config.get("executable") or shutil.which("harbor") or "")
         if not self.executable or not config.get("model") or not config.get("api_base"):
             raise ValueError(
@@ -78,19 +89,50 @@ class Terminus2Agent(Agent):
             ],
             "environment": {
                 "type": self.config.get("environment_type", "docker"),
-                "delete": True,
+                # Harbor's delete=True also removes the shared prebuilt image.
+                # False still tears down the task's containers and network.
+                "delete": False,
             },
         }
         config_path = directory / "job.json"
         config_path.write_text(json.dumps(job))
         env = dict(os.environ, OPENAI_API_KEY=self.config.get("api_key", "EMPTY"))
+        snapshot_path = directory / "verifier_snapshot.json"
+        argv = [self.executable, "run", "--config", str(config_path), "--yes"]
+        if self.retain_snapshot:
+            env["PYTHONPATH"] = os.pathsep.join(
+                filter(
+                    None,
+                    [
+                        str(Path(__file__).resolve().parents[4]),
+                        env.get("PYTHONPATH", ""),
+                    ],
+                )
+            )
+            argv = [
+                self.native_python,
+                "-m",
+                "alphadiana.benchmarks.terminal_bench2.harness.harbor_job",
+                str(config_path),
+                str(snapshot_path),
+                task.task_id,
+            ]
         run_native(
-            [self.executable, "run", "--config", str(config_path), "--yes"],
+            argv,
             cwd=directory,
             env=env,
             log=directory / "native.log",
             timeout=float(self.config.get("timeout", 1800)),
         )
+        if self.retain_snapshot:
+            snapshot = json.loads(snapshot_path.read_text())
+            if snapshot.get("task_id") != task.task_id or not snapshot.get(
+                "captured_before_verification"
+            ):
+                raise RuntimeError(
+                    "Harbor snapshot does not match this task and capture phase"
+                )
+            task.metadata["verifier_snapshot"] = snapshot
         results = []
         for path in (directory / "evaluation").glob("*/result.json"):
             result = json.loads(path.read_text())
@@ -99,7 +141,14 @@ class Terminus2Agent(Agent):
         if len(results) != 1:
             raise RuntimeError(f"Expected one native trial result, got {len(results)}")
         path, result = results[0]
-        if result.get("exception_info"):
+        exception = result.get("exception_info") or {}
+        agent_timing = result.get("agent_execution") or {}
+        owned_timeout = (
+            exception.get("exception_type") == "AgentTimeoutError"
+            and bool(agent_timing.get("started_at"))
+            and bool(agent_timing.get("finished_at"))
+        )
+        if exception and not owned_timeout:
             raise RuntimeError(f"Harbor trial failed; evidence: {path}")
         rewards = (result.get("verifier_result") or {}).get("rewards") or {}
         if "reward" not in rewards:
@@ -132,13 +181,15 @@ class Terminus2Agent(Agent):
             trajectory=steps,
             token_usage=usage,
             wall_time_sec=time.monotonic() - started,
-            finish_reason="stop",
+            finish_reason="timeout" if owned_timeout else "stop",
             metadata={
                 "native_runtime": "terminus-2",
                 "native_output_dir": str(directory),
                 "verifier_status": "ok",
                 "verifier_reward_observed": True,
                 "reward": rewards["reward"],
+                "native_exception": exception,
+                "timed_out": owned_timeout,
             },
             workspace_file_contents={
                 "harbor_result.json": json.dumps(result),
