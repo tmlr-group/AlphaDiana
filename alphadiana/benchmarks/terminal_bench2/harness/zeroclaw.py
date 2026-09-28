@@ -17,12 +17,12 @@ from alphadiana.harness.proxies.logprob_proxy import (
 )
 from alphadiana.harness.proxies.preservation import (
     add_artifact_file_refs,
-    build_event_trajectories,
     build_text_step_trajectories,
     build_runtime_trace_summary,
     parse_jsonl_records,
 )
 from alphadiana.harness.base import AgentResponse
+from alphadiana.harness.zeroclaw.trace import normalize_trace
 from alphadiana.harness.registry import AgentRegistry
 from alphadiana.benchmarks.terminal_bench2.harness.incontainer import (
     IN_CONTAINER_AGENT_PROMPT,
@@ -481,10 +481,10 @@ class TerminalBench2ZeroClawAgent(TerminalBench2InContainerMixin, ZeroClawAgent)
             solver_failure_reason = _classify_cli_error_output(
                 raw_stderr or sanitized_output or raw_output
             )
-        trajectory, reasoning_trajectory = build_event_trajectories(
+        trajectory, reasoning_trajectory, token_usage, trace_coverage = normalize_trace(
             request_messages,
             runtime_records,
-            final_output=assistant_text,
+            final_output=sanitized_output,
         )
         if not runtime_records:
             fallback_trajectory, fallback_reasoning = build_text_step_trajectories(
@@ -579,6 +579,7 @@ class TerminalBench2ZeroClawAgent(TerminalBench2InContainerMixin, ZeroClawAgent)
             metadata=metadata_extra,
         )
 
+        response_metadata["native_trace_coverage"] = trace_coverage
         response = AgentResponse(
             answer=reward_content,
             trajectory=trajectory,
@@ -592,6 +593,7 @@ class TerminalBench2ZeroClawAgent(TerminalBench2InContainerMixin, ZeroClawAgent)
                 runner="zeroclaw",
                 extra=response_metadata,
             ),
+            token_usage=token_usage,
             token_entropy_stats=token_entropy_stats,
             request_messages=request_messages,
             response_json=build_runtime_trace_summary(
