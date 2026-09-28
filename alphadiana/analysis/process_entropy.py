@@ -118,7 +118,7 @@ class RequestEntropy:
                     "line",
                     "token_position",
                     "entropy_nats",
-                    "Generation after tool feedback",
+                    "Entropy by request position",
                     "Token position within model request",
                     "Top-K entropy (nats)",
                     group="series",

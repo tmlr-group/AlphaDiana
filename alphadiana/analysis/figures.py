@@ -173,6 +173,11 @@ def _render(plt, spec: dict, rows: list[dict]):
                     label=group or None,
                     color=color,
                     marker=("o", "s", "^", "D")[index % 4],
+                    markersize=4,
+                    linewidth=1.25,
+                    # Bound marker density for long series, including log axes.
+                    # Every measured point remains in the line and data export.
+                    markevery=max(1, (len(subset) + 23) // 24),
                 )
         else:
             plt.close(fig)

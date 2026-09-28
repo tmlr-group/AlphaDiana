@@ -408,3 +408,9 @@ Source: `/data2/weikai/AlphaDiana-all-runs/paper-figures/FIGURE_INDEX.md`.
 - [ ] Rerun all three affected native cells (SWE-Agent, TB2/Terminus, TB2/ZeroClaw) on a clean pinned revision.
 - [ ] Inspect actual probability/action/usage coverage and regenerated figures; retain source-impact and supersession evidence.
 - [ ] Integrate analysis/runtime fixes into delivery PR and perform final package/acceptance audit.
+
+### Dense-figure review
+
+- Visual review of fresh HLE entropy found that drawing a marker for every 32-token bin obscured long requests on a log axis. Bound marker density while retaining every measured line point and all exported data; use the neutral title `Entropy by request position` because some tasks never invoke a tool.
+- Actual SVG/data regression: **3 passed in 1.10s** (`evidence/dense-line-export-tests.log`). An initial display-distance marker setting still placed 300 markers on an oscillating line; the regression caught it and the final bounded marker count passes. This correction is presentation-only in a separate delivery worktree; running execution revisions remain frozen.
+- First corrected native TB2/ZeroClaw task now retains 93 native events, 23 command/result pairs, complete native usage and 853 probability observations; SWE-Agent first task retains 2,552 probability observations. These are partial-run observations, not complete-cell acceptance.
