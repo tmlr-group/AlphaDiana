@@ -16,6 +16,11 @@ from typing import Any, Protocol
 
 from alphadiana.analysis.action_events import extract_action_event_rows
 from alphadiana.analysis.io.status import VALID_SCORE_STATUS
+from alphadiana.analysis.resource_usage import (
+    UsageExtractor,
+    measured_usage,
+    openclaw_session_usage,
+)
 from alphadiana.analysis.result_reader import RunBundle
 from alphadiana.artifacts import Artifacts
 
@@ -64,6 +69,11 @@ def _number(value: Any) -> float | None:
 class ExecutionMetrics:
     name = "execution"
 
+    def __init__(
+        self, *, usage_extractors: Sequence[UsageExtractor] = (openclaw_session_usage,)
+    ):
+        self.usage_extractors = tuple(usage_extractors)
+
     def measure(self, artifacts: Sequence[Artifacts]) -> Measurement:
         summary, samples, actions, transitions = [], [], [], []
         coverage = {}
@@ -83,10 +93,8 @@ class ExecutionMetrics:
             scored = sum(r.get("score_status") == VALID_SCORE_STATUS for r in records)
             tokens, times = [], []
             for row in records:
-                usage = row.get("token_usage") or {}
-                token_count = _number(
-                    usage.get("completion_tokens", usage.get("output_tokens"))
-                )
+                usage = measured_usage(source, row, self.usage_extractors)
+                token_count = usage.output_tokens
                 elapsed = _number(row.get("wall_time_sec"))
                 entropy_stats = row.get("token_entropy_stats") or {}
                 entropy = (
@@ -106,6 +114,7 @@ class ExecutionMetrics:
                         "correct": row.get("correct"),
                         "score_status": row.get("score_status"),
                         "output_tokens": token_count,
+                        "usage_provenance": usage.provenance,
                         "seconds": elapsed,
                         "entropy_nats": entropy,
                     }

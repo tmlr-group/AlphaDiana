@@ -154,3 +154,24 @@ ID and usage; malformed responses fail rather than becoming heuristic labels.
 Rescored artifacts refer to their original sidecars. Keep both directories when
 reopening or analyzing a derived score file. Binary task attachments are stored by
 content hash and verified before rescoring.
+
+## Measured resource usage
+
+Efficiency analysis prefers persisted output-token usage. If the gateway omits
+that summary, it can read the retained selected OpenClaw v3 task session offline.
+It verifies that the session contains the task text, requires unique assistant
+message IDs and complete native usage on every assistant message, and checks the
+native input/output/cache totals before aggregation. It does not sum all sessions
+in the runtime directory: startup probes and unrelated sessions are excluded.
+Each recovered sample includes the source path/hash, request count and native
+totals in `usage_provenance`. Original result records remain unchanged.
+
+Missing or unverified session data remains unavailable; partial sums are not
+presented as total task cost. Native output counts and captured logprob counts
+are separate measurements, and request attribution coverage applies only to
+observed probability records. It does not assert complete output-token capture.
+
+Additional usage schemas can be supplied as callable extractors through
+`ExecutionMetrics(usage_extractors=[...])`. An extractor receives `(artifacts,
+record)` and returns `MeasuredUsage(output_tokens, provenance)`, or `None` when
+its schema does not apply. Supply an empty list to use only persisted usage.
