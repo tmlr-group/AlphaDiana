@@ -72,7 +72,13 @@ def build_event_trajectories(
     final_output = final_output.strip()
     if final_output:
         final_step = {"role": "assistant", "content": final_output}
-        if not _step_already_present(trajectory, final_step):
+        last = trajectory[-1] if trajectory else {}
+        already_final = (
+            last.get("role") == "assistant"
+            and last.get("type") in {None, "assistant", "message", "text", "answer"}
+            and str(last.get("content", "")).strip() == final_output
+        )
+        if not already_final:
             trajectory.append(final_step)
     return trajectory, reasoning_trajectory
 

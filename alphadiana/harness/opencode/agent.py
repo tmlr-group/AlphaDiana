@@ -223,6 +223,29 @@ def _opencode_event_type(obj: dict[str, Any]) -> str:
     return ""
 
 
+def _opencode_trajectory_records(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Translate native events; lifecycle bookkeeping is not an agent action."""
+    records = []
+    for event in events:
+        if _opencode_event_type(event) in _LIFECYCLE_EVENT_TYPES:
+            continue
+        part = event.get("part")
+        if isinstance(part, dict) and part.get("type") == "tool":
+            state = part.get("state") or {}
+            records.append({"type": "tool_use", "message": {
+                "role": "assistant", "content": json.dumps({
+                    "tool": part.get("tool"), "input": state.get("input"),
+                    "call_id": part.get("callID")}, ensure_ascii=False)}})
+            if "output" in state or "error" in state:
+                records.append({"type": "tool_result", "message": {
+                    "role": "tool", "content": json.dumps({
+                        "output": state.get("output"), "error": state.get("error"),
+                        "call_id": part.get("callID")}, ensure_ascii=False)}})
+        else:
+            records.append(event)
+    return records
+
+
 def _opencode_event_types(events: list[dict[str, Any]]) -> list[str]:
     return [event_type for event_type in (_opencode_event_type(event) for event in events) if event_type]
 
@@ -896,7 +919,7 @@ class OpenCodeAgent(Agent):
         full_content = assistant_text or raw_stdout
         trajectory, reasoning_trajectory = build_event_trajectories(
             request_messages,
-            events,
+            _opencode_trajectory_records(events),
             final_output=full_content,
         )
 
@@ -1823,7 +1846,7 @@ class OpenCodeAgent(Agent):
 
         trajectory, reasoning_trajectory = build_event_trajectories(
             request_messages,
-            events,
+            _opencode_trajectory_records(events),
             final_output=full_content,
         )
 

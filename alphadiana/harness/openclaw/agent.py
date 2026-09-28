@@ -1326,6 +1326,11 @@ class OpenClawAgent(Agent):
             if started is None:
                 return None
             proxy, proxy_api_base, proxy_api_key = started
+            configure_proxy = getattr(self._runtime_manager, "set_external_provider_proxy", None)
+            if callable(configure_proxy):
+                configure_proxy(proxy_api_base, proxy_api_key)
+                self._logprob_proxy = proxy
+                return proxy
             setter = getattr(self._runtime_manager, "set_provider_api_base", None)
             if callable(setter):
                 setter(proxy_api_base)

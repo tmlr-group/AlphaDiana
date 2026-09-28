@@ -61,6 +61,7 @@ MAX_TOOL_ITERATIONS = int(os.environ.get("ZEROCLAW_MAX_TOOL_ITERATIONS", "100"))
 MAX_ACTIONS_PER_HOUR = int(os.environ.get("ZEROCLAW_MAX_ACTIONS_PER_HOUR", "200"))
 WORKSPACE_ONLY = os.environ.get("ZEROCLAW_WORKSPACE_ONLY", "false").strip().lower() == "true"
 MODEL_NAME = os.environ.get("OPENAI_MODEL_NAME", "zeroclaw")
+RUNTIME_TRACE_MODE = os.environ.get("ZEROCLAW_RUNTIME_TRACE_MODE", "none")
 API_BASE = os.environ.get("OPENAI_BASE_URL", "")
 API_KEY = os.environ.get("OPENAI_API_KEY", "")
 DEFAULT_TEMPERATURE = float(os.environ.get("ZEROCLAW_TEMPERATURE", "0.0"))
@@ -653,9 +654,9 @@ def _build_config_toml(
         "[provider]\n\n"
         "[observability]\n"
         'backend = "none"\n'
-        'runtime_trace_mode = "none"\n'
+        f"runtime_trace_mode = {_quote_toml(RUNTIME_TRACE_MODE)}\n"
         'runtime_trace_path = "state/runtime-trace.jsonl"\n'
-        "runtime_trace_max_entries = 200\n\n"
+        "runtime_trace_max_entries = 10000\n\n"
         "[autonomy]\n"
         'level = "full"\n'
         f"workspace_only = {workspace_only}\n"

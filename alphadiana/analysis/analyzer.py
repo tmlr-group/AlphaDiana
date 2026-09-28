@@ -198,6 +198,16 @@ class ExecutionMetrics:
                 "Output tokens / correct",
             ),
             Figure(
+                "time_efficiency",
+                "performance",
+                "bar",
+                "run",
+                "seconds_per_correct",
+                "Elapsed cost per correct outcome",
+                "Run",
+                "Seconds / correct",
+            ),
+            Figure(
                 "action_composition",
                 "action_composition",
                 "bar",
@@ -212,8 +222,8 @@ class ExecutionMetrics:
                 "action_transitions",
                 "action_transitions",
                 "heatmap",
-                "source",
                 "target",
+                "source",
                 "Consecutive action transitions",
                 "Next action",
                 "Previous action",
@@ -295,7 +305,12 @@ class Analyzer:
             raise ValueError(
                 "Duplicate artifact sources would double count observations"
             )
-        self.plugins = list(plugins) if plugins is not None else [ExecutionMetrics()]
+        if plugins is None:
+            from alphadiana.analysis.process_entropy import RequestEntropy
+
+            self.plugins = [ExecutionMetrics(), RequestEntropy()]
+        else:
+            self.plugins = list(plugins)
         if len({p.name for p in self.plugins}) != len(self.plugins):
             raise ValueError("Analysis plugin names must be unique")
 

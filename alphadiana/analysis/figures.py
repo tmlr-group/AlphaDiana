@@ -89,13 +89,14 @@ def _render(plt, spec: dict, rows: list[dict]):
     colors = ["#0072B2", "#D55E00", "#009E73", "#CC79A7", "#E69F00", "#56B4E9"]
     if spec["kind"] == "heatmap":
         import math
+        import textwrap
 
         columns = min(2, len(groups))
         rows_count = math.ceil(len(groups) / columns)
         fig, axes = plt.subplots(
             rows_count,
             columns,
-            figsize=(3.8 * columns, 3.5 * rows_count),
+            figsize=(5.8 * columns, 5.0 * rows_count),
             squeeze=False,
             layout="constrained",
         )
@@ -112,7 +113,7 @@ def _render(plt, spec: dict, rows: list[dict]):
                     sum(
                         float(r.get("count", 0))
                         for r in subset
-                        if str(r[x]) == a and str(r[y]) == b
+                        if str(r[y]) == a and str(r[x]) == b
                     )
                     for b in labels
                 ]
@@ -122,7 +123,7 @@ def _render(plt, spec: dict, rows: list[dict]):
             ax.set_xticks(range(len(labels)), labels, rotation=45, ha="right")
             ax.set_yticks(range(len(labels)), labels)
             ax.set(
-                title=group or spec["title"],
+                title="\n".join(textwrap.wrap(group or spec["title"], width=32)),
                 xlabel=spec["xlabel"],
                 ylabel=spec["ylabel"],
             )

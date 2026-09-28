@@ -88,7 +88,7 @@ paper.export("figures/paper-concepts")
 ```
 
 It renders macro/interactive accuracy; overlapping error incidence; action
-composition/transitions; entropy/length and post-tool entropy; macro efficiency;
+composition/transitions; entropy/length and archived trajectory-position entropy; macro efficiency;
 matched tool/skill/memory interventions; library access; memory accumulation;
 solution cost and unsuccessful-token allocation. Historical input hashes and its
 status as historical evidence are retained. These plots do not certify new runs.
@@ -103,3 +103,47 @@ consume those tables separately, so adding a measurement cannot change execution
 or scoring. `TableAnalysis` accepts existing measurement tables with explicit
 source provenance. Built-in action extraction currently identifies its heuristic
 labels; they must not be represented as human or model-verified annotations.
+
+
+## Request attribution and model annotations
+
+Default analysis includes request-conditioned top-K entropy when the capture proxy
+recorded `call_id`, `call_token_index` and `follows_tool_result`. Bins average each
+call first, then average calls with observations in that bin. Tables include token
+and call counts, source hashes and missingness. This is a descriptive comparison,
+not a causal estimate. Old sidecars without attribution do not become post-tool
+observations; Direct has no tool feedback. Historical archive token-position bins
+also do not establish offsets after a tool response.
+
+Model annotation is explicit and separate from the execution model:
+
+```python
+from alphadiana.analysis.analyzer import ExecutionMetrics
+from alphadiana.analysis.process_entropy import RequestEntropy
+from alphadiana.analysis.action_annotations import ActionAnnotations
+
+labels = ActionAnnotations(
+    model="Qwen/Qwen3.5-27B", model_version="your-pinned-model-revision",
+    base_url="http://localhost:18960/v1", cache_dir="analysis-cache",
+    extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+)
+try:
+    ad.analyzer(saved, plugins=[ExecutionMetrics(), RequestEntropy(), labels]).export(
+        "figures/annotated-run"
+    )
+finally:
+    labels.client.close()
+```
+
+The default taxonomy reuses the six functional categories from the action-alignment
+work: Understanding, Planning, Reasoning, Tool Use, Verification and Finalization.
+A caller can supply another `taxonomy={label: definition}`. Annotations cover fixed
+character spans within assistant steps, excluding prompt and tool-result rows;
+neighboring text is context. The span size and context policy affect counts and
+must accompany comparisons. These are model annotations, not human-reviewed
+labels. Cache entries bind the complete request, model/version, prompt, response
+ID and usage; malformed responses fail rather than becoming heuristic labels.
+
+Rescored artifacts refer to their original sidecars. Keep both directories when
+reopening or analyzing a derived score file. Binary task attachments are stored by
+content hash and verified before rescoring.

@@ -70,6 +70,29 @@ class Artifacts:
         """Locate retained sidecars, including rescored runs in another directory."""
         return Path(record.get("artifact_origin", self.store.artifacts_dir)).resolve()
 
+    def file(self, record: dict[str, Any], key: str) -> Path | None:
+        """Resolve a declared sidecar using the ResultStore reference namespace.
+
+        Logprob files are relative to the run directory; other manifest files
+        are relative to its artifacts directory. Missing declarations return None;
+        declared but missing files raise so damaged evidence cannot look complete.
+        """
+        reference = (record.get("artifact_manifest") or {}).get("files", {}).get(key)
+        if reference is None:
+            return None
+        if not isinstance(reference, str):
+            raise TypeError(f"Artifact {key!r} is not a file reference")
+        root = self.artifact_root(record)
+        if key in {"logprobs_float", "logprobs_int16"}:
+            root = root.parent
+        relative = Path(reference)
+        path = (root / relative).resolve()
+        if relative.is_absolute() or not path.is_relative_to(root):
+            raise ValueError(f"Artifact reference escapes its directory: {key}")
+        if not path.is_file():
+            raise FileNotFoundError(path)
+        return path
+
     def task(self, record: dict[str, Any]) -> BenchmarkTask:
         attachments = {}
         root = self.artifact_root(record)

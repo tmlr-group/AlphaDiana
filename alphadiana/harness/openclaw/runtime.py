@@ -465,6 +465,7 @@ class OpenClawRuntimeManager:
     def __init__(self, config: dict) -> None:
         self._gateway_token = _resolve_gateway_token(config.get("gateway_token", "OPENCLAW"))
         self._gateway_model = config.get("model", "openclaw")
+        self._external_provider_proxy = False
         self._gateway_port = int(config.get("gateway_port", 8080))
         self._rock_agent_config_path = str(self._resolve_config_path(config.get("rock_agent_config_path", ""))) if config.get("rock_agent_config_path") else ""
         self._openclaw_config_path = str(self._resolve_config_path(config.get("openclaw_config_path", ""))) if config.get("openclaw_config_path") else ""
@@ -602,6 +603,12 @@ class OpenClawRuntimeManager:
 
     def set_provider_api_key(self, api_key: str) -> None:
         self._provider_env["OPENAI_API_KEY"] = str(api_key or "").strip()
+
+    def set_external_provider_proxy(self, api_base: str, api_key: str) -> None:
+        """Use the agent-owned capture endpoint without creating a second proxy."""
+        self.set_provider_api_base(api_base)
+        self.set_provider_api_key(api_key)
+        self._external_provider_proxy = True
 
     def inject_agent_md(self, sandbox: Any) -> None:
         """Inject or modify AGENTS.md in the sandbox based on mode."""
@@ -1168,7 +1175,7 @@ class OpenClawRuntimeManager:
         # Start Docker-accessible MITM logprob proxy when capture is enabled.
         # The proxy intercepts calls from the OpenClaw container to vLLM,
         # captures per-token logprob dicts, and is accessible via the host bridge IP.
-        if self._logprob_capture.get("enabled"):
+        if self._logprob_capture.get("enabled") and not self._external_provider_proxy:
             upstream_base_url = env_cfg.get("OPENAI_BASE_URL", "").rstrip("/")
             if upstream_base_url:
                 top_logprobs = int(self._logprob_capture.get("top_logprobs", 20))
@@ -1814,7 +1821,7 @@ class OpenClawPodmanRuntimeManager(OpenClawRuntimeManager):
                 f"OpenClaw Podman runtime requires {key} to be set either in agent.config "
                 f"or the local environment."
             )
-        if self._logprob_capture.get("enabled"):
+        if self._logprob_capture.get("enabled") and not self._external_provider_proxy:
             upstream_base_url = env_cfg.get("OPENAI_BASE_URL", "").rstrip("/")
             if upstream_base_url:
                 top_logprobs = int(self._logprob_capture.get("top_logprobs", 20))
