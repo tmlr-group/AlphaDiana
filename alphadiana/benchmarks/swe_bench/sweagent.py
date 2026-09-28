@@ -15,6 +15,48 @@ from alphadiana.harness.proxies.native_capture import NativeProviderCapture
 from alphadiana.harness.registry import register_agent
 
 
+def project_sweagent_history(history):
+    """Use native message roles, not trajectory rows containing whole queries.
+
+    SWE-Agent's trajectory rows mix decisions, observations and repeated prompt
+    history. Its retained history provides the actual assistant/tool boundaries.
+    """
+    projected = []
+    for message in history:
+        role = message.get("role")
+        if role not in {"system", "user", "assistant", "tool"}:
+            raise ValueError(f"Unsupported SWE-Agent history role: {role!r}")
+        content = message.get("content") or message.get("thought") or ""
+        entry = {"role": role, "content": content}
+        if role == "tool":
+            entry["type"] = "tool_result"
+            entry["tool_results"] = [
+                {"tool_use_id": identity, "content": content}
+                for identity in (message.get("tool_call_ids") or [""])
+            ]
+        calls = []
+        for call in message.get("tool_calls") or []:
+            function = call.get("function") or {}
+            arguments = function.get("arguments", {})
+            if isinstance(arguments, str):
+                try:
+                    arguments = json.loads(arguments)
+                except json.JSONDecodeError:
+                    # A malformed model call is still native evidence.
+                    arguments = {"unparsed_arguments": arguments}
+            calls.append(
+                {
+                    "id": call.get("id", ""),
+                    "name": function.get("name", ""),
+                    "input": arguments,
+                }
+            )
+        if calls:
+            entry.update(type="tool_use", tool_calls=calls)
+        projected.append(entry)
+    return projected
+
+
 @register_agent("sweagent")
 class SWEAgent(Agent):
     name = "sweagent"
@@ -162,11 +204,12 @@ class SWEAgent(Agent):
         }
         return AgentResponse(
             answer=prediction["model_patch"],
-            trajectory=trajectory.get("trajectory", []),
+            trajectory=project_sweagent_history(trajectory.get("history", [])),
             token_usage={},
             wall_time_sec=time.monotonic() - started,
             metadata={
                 "native_runtime": "sweagent",
+                "native_history_messages": len(trajectory.get("history", [])),
                 "native_token_usage_estimate": usage,
                 "native_usage_semantics": "SWE-Agent tokenizer estimate of message text; excludes tool-call output",
                 "native_image": image,

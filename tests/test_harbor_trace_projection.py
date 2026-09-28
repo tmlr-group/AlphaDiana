@@ -11,6 +11,7 @@ from alphadiana.analysis.analyzer import ExecutionMetrics
 from alphadiana.analysis.io.result_store import ResultStore
 from alphadiana.artifacts import Artifacts
 from alphadiana.benchmarks.base import BenchmarkTask
+from alphadiana.benchmarks.swe_bench.sweagent import project_sweagent_history
 from alphadiana.benchmarks.terminal_bench2.harness.terminus import project_harbor_steps
 from alphadiana.harness.base import AgentResponse
 from alphadiana.scorer.base import ScoreResult
@@ -116,3 +117,63 @@ def test_harbor_handoff_reference_is_retained_only_in_native_evidence():
         ]
     )
     assert steps == [{"role": "system", "content": "Handoff"}]
+
+
+def test_sweagent_uses_history_not_queries_or_observations_as_actions(tmp_path):
+    history = [
+        {"role": "system", "content": "SYSTEM PROMPT"},
+        {"role": "user", "content": [{"type": "text", "text": "USER INSTRUCTION"}]},
+        {
+            "role": "assistant",
+            "content": "Inspect files",
+            "tool_calls": [
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "bash", "arguments": '{"command":"ls"}'},
+                }
+            ],
+        },
+        {"role": "tool", "content": "TOOL OUTPUT", "tool_call_ids": ["call_1"]},
+        {"role": "assistant", "content": "Final answer: done"},
+    ]
+    original = deepcopy(history)
+    store = ResultStore(str(tmp_path), "swe", run_metadata={"agent_name": "sweagent"})
+    store.append(
+        BenchmarkTask("task", "fixture", "1"),
+        AgentResponse("patch", trajectory=project_sweagent_history(history)),
+        ScoreResult(False, 0, "1", "patch"),
+    )
+    assert history == original
+    artifacts = Artifacts(Path(store.path))
+    record = artifacts.records()[0]
+    steps = json.loads(artifacts.file(record, "normalized_trace").read_text())["steps"]
+    assert [s["role"] for s in steps] == [
+        "system",
+        "user",
+        "assistant",
+        "tool",
+        "assistant",
+    ]
+    assert steps[2]["tool_calls"][0]["input"] == {"command": "ls"}
+    assert steps[3]["tool_results"][0]["tool_use_id"] == "call_1"
+    events = ExecutionMetrics().measure([artifacts]).tables["actions"]
+    assert len(events) == 2 and events[0]["canonical_action"] == "tool_use"
+    assert all(
+        "USER INSTRUCTION" not in r["text_span"] and "TOOL OUTPUT" not in r["text_span"]
+        for r in events
+    )
+
+
+def test_sweagent_malformed_native_call_is_preserved_and_unknown_roles_fail():
+    steps = project_sweagent_history(
+        [
+            {
+                "role": "assistant",
+                "tool_calls": [{"function": {"name": "bash", "arguments": "not JSON"}}],
+            }
+        ]
+    )
+    assert steps[0]["tool_calls"][0]["input"] == {"unparsed_arguments": "not JSON"}
+    with pytest.raises(ValueError, match="Unsupported SWE-Agent"):
+        project_sweagent_history([{"role": "new_role"}])
