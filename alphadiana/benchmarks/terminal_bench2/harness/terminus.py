@@ -17,6 +17,53 @@ from alphadiana.harness.proxies.native_capture import NativeProviderCapture
 from alphadiana.harness.registry import register_agent
 
 
+def project_harbor_steps(steps):
+    """Translate native ATIF roles/calls/observations at the adapter boundary.
+
+    Raw Harbor evidence remains in the workspace sidecar. A task instruction is
+    never an assistant action, and terminal output is a separate tool result.
+    """
+    projected = []
+    for step in steps:
+        source = step.get("source")
+        roles = {"agent": "assistant", "user": "user", "system": "system"}
+        if source not in roles:
+            raise ValueError(f"Unsupported Harbor trajectory source: {source!r}")
+        entry = {"role": roles[source], "content": step.get("message", "")}
+        if step.get("reasoning_content"):
+            entry["thinking"] = step["reasoning_content"]
+        calls = [
+            {
+                "id": call.get("tool_call_id", ""),
+                "name": call["function_name"],
+                "input": deepcopy(call.get("arguments", {})),
+            }
+            for call in (step.get("tool_calls") or [])
+        ]
+        if calls:
+            entry.update(type="tool_use", tool_calls=calls)
+        projected.append(entry)
+        for result in (step.get("observation") or {}).get("results", []):
+            # Handoff references with no text remain in the native sidecar.
+            content = result.get("content")
+            if content is None:
+                continue
+            projected.append(
+                {
+                    "role": "tool",
+                    "type": "tool_result",
+                    "content": content,
+                    "tool_results": [
+                        {
+                            "tool_use_id": result.get("source_call_id", ""),
+                            "content": content,
+                        }
+                    ],
+                }
+            )
+    return projected
+
+
 def attribute_terminal_feedback(records, requests, steps):
     """Match textual terminal feedback to observed Harbor command observations.
 
@@ -112,6 +159,7 @@ class Terminus2Agent(Agent):
         attribute_terminal_feedback(
             capture.records, capture.requests, response.trajectory
         )
+        response.trajectory = project_harbor_steps(response.trajectory)
         return capture.apply(response)
 
     def _solve_native(self, task, directory, api_base, started) -> AgentResponse:
