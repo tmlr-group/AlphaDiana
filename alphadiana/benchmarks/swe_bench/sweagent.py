@@ -48,7 +48,9 @@ class SWEAgent(Agent):
         started = time.monotonic()
         directory = self.output / uuid4().hex
         directory.mkdir(mode=0o700)
-        with NativeProviderCapture(self.config, directory) as capture:
+        with NativeProviderCapture(
+            self.config, directory, measure_usage=True
+        ) as capture:
             response = self._solve_native(task, directory, capture.api_base, started)
         return capture.apply(response)
 
@@ -161,10 +163,12 @@ class SWEAgent(Agent):
         return AgentResponse(
             answer=prediction["model_patch"],
             trajectory=trajectory.get("trajectory", []),
-            token_usage=usage,
+            token_usage={},
             wall_time_sec=time.monotonic() - started,
             metadata={
                 "native_runtime": "sweagent",
+                "native_token_usage_estimate": usage,
+                "native_usage_semantics": "SWE-Agent tokenizer estimate of message text; excludes tool-call output",
                 "native_image": image,
                 "native_output_dir": str(directory),
                 "exit_status": (trajectory.get("info") or {}).get("exit_status"),

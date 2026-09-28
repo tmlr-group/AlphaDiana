@@ -13,7 +13,10 @@ from alphadiana.benchmarks.terminal_bench2.harness.terminus import (
     attribute_terminal_feedback,
 )
 from alphadiana.harness.base import AgentResponse
-from alphadiana.harness.proxies.native_capture import NativeProviderCapture
+from alphadiana.harness.proxies.native_capture import (
+    NativeProviderCapture,
+    complete_provider_usage,
+)
 from alphadiana.harness.zeroclaw.agent import ZeroClawAgent
 
 
@@ -31,6 +34,11 @@ def test_native_capture_preserves_request_and_closes_on_failure(tmp_path, failur
             )
             body = json.dumps(
                 {
+                    "usage": {
+                        "prompt_tokens": 11,
+                        "completion_tokens": 3,
+                        "total_tokens": 14,
+                    },
                     "choices": [
                         {
                             "message": {"content": "answer"},
@@ -46,7 +54,7 @@ def test_native_capture_preserves_request_and_closes_on_failure(tmp_path, failur
                                 ]
                             },
                         }
-                    ]
+                    ],
                 }
             ).encode()
             self.send_response(200)
@@ -65,6 +73,7 @@ def test_native_capture_preserves_request_and_closes_on_failure(tmp_path, failur
             "api_base": f"http://127.0.0.1:{provider.server_port}/v1",
         },
         tmp_path,
+        measure_usage=True,
     )
     payload = {
         "model": "fixture",
@@ -104,6 +113,14 @@ def test_native_capture_preserves_request_and_closes_on_failure(tmp_path, failur
         response = capture.apply(AgentResponse(answer="answer"))
         assert response.metadata["logprobs_capture_status"] == "captured"
         assert "provider_requests.jsonl" in response.workspace_file_contents
+        assert "provider_responses.jsonl" in response.workspace_file_contents
+        assert response.token_usage == {
+            "prompt_tokens": 11,
+            "completion_tokens": 3,
+            "total_tokens": 14,
+        }
+        assert response.metadata["token_usage_provenance"]["complete"]
+        assert capture.responses[0]["call_id"] == capture.requests[0]["call_id"]
     finally:
         provider.shutdown()
         provider.server_close()
@@ -178,3 +195,54 @@ def test_explicit_trace_path_preserves_default_and_other_config(tmp_path):
     )
     explicit["observability"]["runtime_trace_path"] = "state/runtime-trace.jsonl"
     assert explicit == default
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "complete",
+        "missing",
+        "duplicate",
+        "failed",
+        "absent_usage",
+        "invalid_total",
+        "zero",
+        "boolean",
+    ],
+)
+def test_provider_totals_require_complete_request_coverage(case):
+    requests = [{"call_id": "a"}, {"call_id": "b"}]
+    responses = [
+        {
+            "call_id": identity,
+            "status_code": 200,
+            "prompt_tokens": 4,
+            "completion_tokens": 2,
+            "total_tokens": 6,
+        }
+        for identity in ["b", "a"]
+    ]
+    if case == "missing":
+        responses.pop()
+    if case == "duplicate":
+        responses[0]["call_id"] = "a"
+    if case == "failed":
+        responses[0]["status_code"] = 400
+    if case == "absent_usage":
+        responses[0].pop("completion_tokens")
+    if case == "invalid_total":
+        responses[0]["total_tokens"] = 10
+    if case == "boolean":
+        responses[0]["completion_tokens"] = True
+    if case == "zero":
+        responses[0].update(completion_tokens=0, total_tokens=4)
+    usage, provenance = complete_provider_usage(requests, responses)
+    if case in {"complete", "zero"}:
+        assert usage == {
+            "prompt_tokens": 8,
+            "completion_tokens": 4 if case == "complete" else 2,
+            "total_tokens": 12 if case == "complete" else 10,
+        }
+        assert provenance["complete"]
+    else:
+        assert usage == {} and not provenance["complete"]

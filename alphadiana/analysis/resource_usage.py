@@ -188,7 +188,13 @@ def measured_usage(
     usage = record.get("token_usage") or {}
     output = _count(usage.get("completion_tokens", usage.get("output_tokens")))
     if output is not None:
-        return MeasuredUsage(output, {"source": "persisted_token_usage"})
+        return MeasuredUsage(
+            output,
+            {
+                "source": "persisted_token_usage",
+                **((record.get("metadata") or {}).get("token_usage_provenance") or {}),
+            },
+        )
     for extractor in extractors:
         result = extractor(source, record)
         if result is not None:

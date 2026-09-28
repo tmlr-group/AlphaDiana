@@ -911,13 +911,16 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
                     if is_completions and self.server.capture_request_summary:
                         with self.server.lock:
                             self.server.response_summaries.append(
-                                summarize_chat_completion_error_response(
-                                    path=path,
-                                    model=payload.get("model", "")
-                                    if isinstance(payload, dict)
-                                    else "",
-                                    status_code=resp.status_code,
-                                    response_body_length=len(err_body),
+                                dict(
+                                    summarize_chat_completion_error_response(
+                                        path=path,
+                                        model=payload.get("model", "")
+                                        if isinstance(payload, dict)
+                                        else "",
+                                        status_code=resp.status_code,
+                                        response_body_length=len(err_body),
+                                    ),
+                                    **self._capture_context,
                                 )
                             )
                     logger.warning(
@@ -1005,7 +1008,10 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
                     if stream_summary is not None:
                         with self.server.lock:
                             self.server.response_summaries.append(
-                                finalize_chat_completion_stream_summary(stream_summary)
+                                dict(
+                                    finalize_chat_completion_stream_summary(stream_summary),
+                                    **self._capture_context,
+                                )
                             )
                     if aggregate_downstream:
                         response_payload = finalize_chat_completion_stream_aggregate(
@@ -1036,10 +1042,13 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
                                 )
                                 if self.server.capture_request_summary:
                                     self.server.response_summaries.append(
-                                        summarize_chat_completion_response(
-                                            path=path,
-                                            payload=response_payload,
-                                            status_code=resp.status_code,
+                                        dict(
+                                            summarize_chat_completion_response(
+                                                path=path,
+                                                payload=response_payload,
+                                                status_code=resp.status_code,
+                                            ),
+                                            **self._capture_context,
                                         )
                                     )
                     response_started = True

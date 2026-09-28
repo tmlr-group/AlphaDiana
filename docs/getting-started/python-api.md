@@ -228,3 +228,8 @@ loop. Capture defaults to off. Missing provider probabilities remain missing;
 observed top-K entropy is not full-distribution entropy. Terminus terminal-feedback
 attribution requires exact matches to saved native command observations; unmatched
 requests are not inferred from their user role alone.
+
+SWE-Agent's native text-token estimate is retained in metadata. Measured efficiency
+uses complete provider response usage collected with capture enabled; tool-call
+output is included according to provider counters. Incomplete usage is reported as
+missing, including when capture is disabled.

@@ -64,6 +64,7 @@ def test_stream_and_json_calls_keep_distinct_attribution(aggregate, reverse):
         upstream=f"http://127.0.0.1:{upstream.server_port}",
         top_logprobs=1,
         upstream_stream=aggregate,
+        capture_request_summary=True,
     )
     proxy.start()
     try:
@@ -93,6 +94,8 @@ def test_stream_and_json_calls_keep_distinct_attribution(aggregate, reverse):
             assert compact["call_id"] == record["call_id"]
             assert compact["call_token_index"] == record["call_token_index"]
         assert len(calls) == 2
+        assert {r["call_id"] for r in proxy.response_summaries()} == set(calls)
+        assert {r["call_id"] for r in proxy.request_summaries()} == set(calls)
         assert {group[0]["follows_tool_result"] for group in calls.values()} == {
             True,
             False,
