@@ -2,7 +2,7 @@
 
 Deliver a usable AlphaDiana implementation of draft Fig. 4 this week, with Tian handing an integrated, validated version to the original request owner and Zongze for review.
 
-Acceptance is based on **Fig. 4 functionality working end to end**, rather than the number of repository components migrated. Implementation is underway; completion is determined by the evidence and unchecked gates below.
+Acceptance is based on **Fig. 4 functionality working end to end**, rather than the number of repository components migrated. Implementation and local validation are complete; human review and manuscript synchronization remain tracked below. See [acceptance evidence](issue96-acceptance.md).
 
 | Owner | Responsibility |
 | --- | --- |
@@ -92,12 +92,13 @@ M4 Final reviewer acceptance
 
 **Owners:** Weikai + Tian. **Dependencies:** None.
 
-- [ ] Map every Fig. 4 capability to existing implementation, required changes, and acceptance evidence.
+- [x] Map every Fig. 4 capability to existing implementation, required changes, and acceptance evidence.
 - [x] Define factory composition, configuration precedence, artifact return/reopen behavior, rescoring, and analyzer outputs.
 - [x] Resolve environment shorthand and versioned harness identifiers without silent substitution; record the support decision for the figure's Docker example.
-- [ ] Pin three tasks per benchmark, dataset versions, harness versions, execution budgets, and the fixed model.
-- [ ] Identify capture requirements for action transitions, entropy, costs, and environment restoration.
-- [ ] Record agreed API changes requiring synchronized Fig. 4 edits and schedule implementation/review checkpoints.
+- [x] Pin three tasks per benchmark, dataset versions, harness versions, execution budgets, and the fixed model.
+- [x] Identify capture requirements for action transitions, entropy, costs, and environment restoration.
+- [x] Document API signature changes and implementation checkpoints.
+- [ ] Tian/team agreement and corresponding manuscript edits; schedule human review.
 
 **Acceptance:** Every figure capability has a concrete implementation path and test; the 28-combination validation manifest is fixed.
 
@@ -107,8 +108,8 @@ M4 Final reviewer acceptance
 
 - [x] Implement the six public interfaces and `runner.compute(...)`.
 - [x] Route Python and CLI/YAML entry points through shared validation, execution, scoring, persistence, and cleanup.
-- [ ] Connect all components necessary for the acceptance matrix.
-- [ ] Preserve native execution and lifecycle behavior.
+- [x] Connect all components necessary for the acceptance matrix.
+- [x] Preserve native execution and lifecycle behavior.
 - [x] Provide runnable Fig. 4 examples with explicit configuration.
 
 **Acceptance:** Equivalent Python and CLI/YAML configurations exercise the same execution logic and produce compatible persisted artifacts.
@@ -118,11 +119,11 @@ M4 Final reviewer acceptance
 **Owner:** Weikai. **Reviewer:** Tian. **Dependencies:** M1.
 
 - [x] Reopen saved artifacts and rescore with compatible scorers without invoking the agent.
-- [ ] Restore required environments and rerun SWE/TB2 verifiers from saved execution evidence.
-- [ ] Connect accuracy, action-transition, post-tool entropy, and efficiency analysis through the public analyzer.
-- [ ] Add missing probability capture, trace normalization, or annotation needed to produce actual analysis results.
+- [x] Restore required environments and rerun SWE/TB2 verifiers from saved execution evidence.
+- [x] Connect accuracy, action-transition, post-tool entropy, and efficiency analysis through the public analyzer.
+- [x] Add missing probability capture, trace normalization, or annotation needed to produce actual analysis results.
 - [x] Preserve score history, analysis provenance, execution failures, and missing-score distinctions.
-- [ ] Report mathematically inapplicable measurements explicitly—for example, post-tool entropy for Direct with no tool calls.
+- [x] Report mathematically inapplicable measurements explicitly—for example, post-tool entropy for Direct with no tool calls.
 
 **Acceptance:** Saved artifacts support independent rescoring and analysis. All four analysis capabilities produce real results on applicable new execution evidence; missing instrumentation is not accepted as completion.
 
@@ -130,11 +131,12 @@ M4 Final reviewer acceptance
 
 **Owner:** Tian. **Implementation/fix owner:** Weikai. **Dependencies:** M2.
 
-- [ ] Run the complete matrix below.
-- [ ] Review API boundaries, control flow, compatibility, persistence, and failure handling.
-- [ ] Fix blocking findings and rerun affected checks.
-- [ ] Verify offline rescoring, environment-backed rescoring, and analysis from reopened artifacts.
-- [ ] Deliver one fixed commit/PR with examples, source mapping, validation manifest, logs, artifact references, and known limitations.
+- [x] Run the complete matrix below.
+- [x] Independently review API boundaries, control flow, compatibility, persistence, and failure handling (agent-conducted review).
+- [ ] Tian completes human review and delivery handoff.
+- [x] Fix blocking findings and rerun affected checks.
+- [x] Verify offline rescoring, environment-backed rescoring, and analysis from reopened artifacts.
+- [x] Deliver one fixed commit/PR with examples, source mapping, validation manifest, logs, artifact references, and known limitations.
 
 **Acceptance:** All 28 combinations pass functional validation, all Fig. 4 capabilities have evidence, and Tian delivers a reviewable version this week.
 
@@ -191,12 +193,12 @@ M4 Final reviewer acceptance
 - Read-only inspection found existing orchestration, registries, adapters, and persistence to reuse; the inspected package initializer does not expose the Fig. 4 factories.
 - No repository issue template was found during planning. Open/closed issue and PR searches for `interface`, followed by an issue search for `Fig. 4`, did not surface an apparent equivalent migration issue.
 - Related work includes [process analysis #93](https://github.com/tmlr-group/AlphaDiana/issues/93) and [native execution #81](https://github.com/tmlr-group/AlphaDiana/issues/81). Reuse applicable implementations while preserving their scope and scientific definitions.
-- **Current evidence:** planning and read-only inspection only. No implementation or validation was performed for this issue; CI has not been assessed.
+- **Evidence at issue creation:** planning and read-only inspection only. Later implementation/validation evidence is recorded below; this historical observation is not current status.
 - Record final reviewer GitHub handles when requesting review; the original request owner's identity is not inferred here.
 
 ## Final acceptance evidence
 
-Pending. At delivery, record the exact commit/PR, completed matrix with artifact links, rescoring and analysis evidence, actual check results, unresolved limitations, CI status, and reviewer decisions. No acceptance boxes are complete at issue creation.
+Implementation and local validation completed on code `0919857d`; see [acceptance report](issue96-acceptance.md) and [machine-readable evidence](issue96-acceptance.json). Human approval, CI and merge remain separate. All later entries below are chronological checkpoints and may describe superseded states.
 
 
 ## Execution ledger and updated requirements
@@ -205,10 +207,10 @@ Working branch: `feat/issue96-composable-api`; base: `f22bd993`.
 
 User-approved changes supersede the original plotting non-goal:
 - [x] Typed, extensible public contracts; independent extensibility audit using custom components, with no benchmark/harness-specific routing added to the composition layer.
-- [ ] Analyzer exports publication-quality PDF/SVG/PNG figures and machine-readable plotted data. Cover concepts in the supplied paper figure index, not pixel matching or copied result constants.
+- [x] Analyzer exports publication-quality PDF/SVG/PNG figures and machine-readable plotted data. Cover concepts in the supplied paper figure index, not pixel matching or copied result constants.
 - [x] Update Diana website/documentation to expose the APIs and figure workflows.
 - [x] Real 27B verification may use two genuinely idle GPUs; never stop another user's processes.
-- [ ] Update this ledger and GitHub issue after milestones; continue work on incomplete acceptance items.
+- [x] Update this ledger and GitHub issue after milestones; continue work on incomplete acceptance items.
 
 ### Figure concept coverage
 
@@ -448,3 +450,18 @@ Source: `/data2/weikai/AlphaDiana-all-runs/paper-figures/FIGURE_INDEX.md`.
 - MMMU/OpenClaw exposed a runtime failure and silent image loss: the pinned 2026.3.2 Chat Completions handler extracts text only and limits request bodies to 1 MiB. Retained native session rows confirm image blocks were absent, including on scored answers. The whole original vision cell is excluded. Pinned gateway bundle retained under `evidence/pinned-openclaw-gateway.js`.
 - Route image-bearing requests through the native Responses endpoint, mapping source objects at the OpenClaw adapter boundary. Preserve image bytes, token limits, streaming deltas, actual usage and native response evidence. Require a completed native response; partial text from a failed/incomplete stream cannot certify success. Text-only requests retain their existing path, and gateway endpoint enablement does not change their model requests. No native source/image or shared Runner modifications.
 - Local regression: **202 passed, 11 skipped in 9.20s** (`evidence/openclaw-responses-full-tests.log`). New tests exercise image transport through the agent, JSON/SSE decoding, missing/failed terminal events, multiple images and runtime endpoint configuration; targeted Ruff/diff checks pass. Real whole-cell validation is pending.
+
+### Completed implementation and validation handoff — 2026-09-29
+
+- [x] Integrated source code `0919857d` in PR #98; docs/evidence follow in the handoff commit. Website changes in PR #97.
+- [x] Full selected matrix: **28/28 cells, 84/84 valid scored executions**, with whole-cell supersession and source-impact evidence. MMMU/OpenClaw images are now verified in every native session; original image bytes match request sources.
+- [x] Reopen and re-score **60 offline + 24 environment-dependent** records without agent resolution; preserve source hashes, predictions and score history.
+- [x] Seven four-system measurement/annotation comparisons: **61 figures / 183 files**; historical archive: **79 figures / 237 files**. All plotted data, category labels and file hashes checked.
+- [x] Independently recomputed **2,344 entropy bins**, accuracy/task-local transitions and **1,207 model annotations across 84 task samples**. Direct post-tool inapplicability, missing usage, and two TB2 undefined efficiency-panel skips remain explicit.
+- [x] Source **202 passed / 11 external opt-in skips**; installed wheel **54 passed**, 128 modules from the installed target, 261 packaged source files verified against git.
+- [x] Independent extensibility re-review: no new shared Runner/API agent switches; native transport/role projection stays in adapters, optional response schema stays in annotation plugin configuration.
+- [x] Website examples previously passed desktop/mobile browser and nine-download checks; final prose production build passes.
+- [ ] Tian human review/handoff and manuscript synchronization.
+- [ ] Original owner/Zongze final review, reported CI checks, merge/deployment. No human/CI approval is inferred from local validation.
+
+Detailed matrix, source selection, reproducibility paths, observed limits and artifact hashes: [acceptance report](issue96-acceptance.md), [evidence index](issue96-acceptance.json). Earlier failed pilots, superseded cells, malformed annotation and replay warnings remain retained.

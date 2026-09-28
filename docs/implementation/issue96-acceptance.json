@@ -1,0 +1,2201 @@
+{
+  "implementation_commit": "0919857d6117be4d8aa2cc5e6356f176d4645083",
+  "validation_root": "/data0/weikaihuang/issue96-validation",
+  "execution_model": "Qwen/Qwen3.5-27B",
+  "matrix": {
+    "cells": 28,
+    "valid_executions": 84,
+    "selection": "Whole-cell reruns, fixed ordered tasks, immutable inputs; superseded failures retained in delivery-matrix-audit.json",
+    "entries": [
+      {
+        "id": "aime2026_directllm",
+        "fixture": "aime2026",
+        "source_commit": "f719bbc37232bb8c1a7f0527c643d4b401d8a891",
+        "artifacts": "/data0/weikaihuang/issue96-validation/final-f719bbc3/results/issue96_accept_aime2026_directllm.jsonl",
+        "artifacts_sha256": "554ab60d94181edc1bce762080d0906c5dd3802abbca639ce69eec5e52fd18b7",
+        "tasks": [
+          {
+            "task_id": "aime_1",
+            "score_status": "valid_scored",
+            "correct": true
+          },
+          {
+            "task_id": "aime_2",
+            "score_status": "valid_scored",
+            "correct": true
+          },
+          {
+            "task_id": "aime_3",
+            "score_status": "valid_scored",
+            "correct": true
+          }
+        ]
+      },
+      {
+        "id": "aime2026_openclaw",
+        "fixture": "aime2026",
+        "source_commit": "f719bbc37232bb8c1a7f0527c643d4b401d8a891",
+        "artifacts": "/data0/weikaihuang/issue96-validation/final-f719bbc3/results/issue96_accept_aime2026_openclaw.jsonl",
+        "artifacts_sha256": "66e1827ba4c2e01ab4e5869890963b9838a78a4ec432d3726f6bb175f08ad6a2",
+        "tasks": [
+          {
+            "task_id": "aime_1",
+            "score_status": "valid_scored",
+            "correct": true
+          },
+          {
+            "task_id": "aime_2",
+            "score_status": "valid_scored",
+            "correct": true
+          },
+          {
+            "task_id": "aime_3",
+            "score_status": "valid_scored",
+            "correct": true
+          }
+        ]
+      },
+      {
+        "id": "aime2026_zeroclaw",
+        "fixture": "aime2026",
+        "source_commit": "f719bbc37232bb8c1a7f0527c643d4b401d8a891",
+        "artifacts": "/data0/weikaihuang/issue96-validation/final-f719bbc3/results/issue96_accept_aime2026_zeroclaw.jsonl",
+        "artifacts_sha256": "7df037d6ec0b4ac272471811e9a7bf9bb40328f1baace63eb34ac10fb9200cf2",
+        "tasks": [
+          {
+            "task_id": "aime_1",
+            "score_status": "valid_scored",
+            "correct": true
+          },
+          {
+            "task_id": "aime_2",
+            "score_status": "valid_scored",
+            "correct": false
+          },
+          {
+            "task_id": "aime_3",
+            "score_status": "valid_scored",
+            "correct": true
+          }
+        ]
+      },
+      {
+        "id": "aime2026_opencode",
+        "fixture": "aime2026",
+        "source_commit": "882b1a380495ae2b737fdb06aac6a7409a81a5ad",
+        "artifacts": "/data0/weikaihuang/issue96-validation/opencode-recovery-882b1a38/results/issue96_accept_aime2026_opencode.jsonl",
+        "artifacts_sha256": "8a5260f94912da43660d42cc9433ef0571f5c5556759be87dd4b47b29049be8d",
+        "tasks": [
+          {
+            "task_id": "aime_1",
+            "score_status": "valid_scored",
+            "correct": true
+          },
+          {
+            "task_id": "aime_2",
+            "score_status": "valid_scored",
+            "correct": false
+          },
+          {
+            "task_id": "aime_3",
+            "score_status": "valid_scored",
+            "correct": true
+          }
+        ]
+      },
+      {
+        "id": "gpqa_directllm",
+        "fixture": "gpqa",
+        "source_commit": "f719bbc37232bb8c1a7f0527c643d4b401d8a891",
+        "artifacts": "/data0/weikaihuang/issue96-validation/final-f719bbc3/results/issue96_accept_gpqa_directllm.jsonl",
+        "artifacts_sha256": "5d01da6b4fe7507885f3f3b73828ae61ea0141e838448ea80a4e961f90153f48",
+        "tasks": [
+          {
+            "task_id": "gpqa_0",
+            "score_status": "valid_scored",
+            "correct": true
+          },
+          {
+            "task_id": "gpqa_1",
+            "score_status": "valid_scored",
+            "correct": true
+          },
+          {
+            "task_id": "gpqa_2",
+            "score_status": "valid_scored",
+            "correct": true
+          }
+        ]
+      },
+      {
+        "id": "gpqa_openclaw",
+        "fixture": "gpqa",
+        "source_commit": "f719bbc37232bb8c1a7f0527c643d4b401d8a891",
+        "artifacts": "/data0/weikaihuang/issue96-validation/final-f719bbc3/results/issue96_accept_gpqa_openclaw.jsonl",
+        "artifacts_sha256": "52eab73b97d7e369ddcf703c554b0e990017d1dfc7c21e37207a6337b276f731",
+        "tasks": [
+          {
+            "task_id": "gpqa_0",
+            "score_status": "valid_scored",
+            "correct": true
+          },
+          {
+            "task_id": "gpqa_1",
+            "score_status": "valid_scored",
+            "correct": true
+          },
+          {
+            "task_id": "gpqa_2",
+            "score_status": "valid_scored",
+            "correct": true
+          }
+        ]
+      },
+      {
+        "id": "gpqa_zeroclaw",
+        "fixture": "gpqa",
+        "source_commit": "f719bbc37232bb8c1a7f0527c643d4b401d8a891",
+        "artifacts": "/data0/weikaihuang/issue96-validation/final-f719bbc3/results/issue96_accept_gpqa_zeroclaw.jsonl",
+        "artifacts_sha256": "57b1c6019feffcca6b3c4c32323113013f09ee0f8f5f7a019f0003b079c76e28",
+        "tasks": [
+          {
+            "task_id": "gpqa_0",
+            "score_status": "valid_scored",
+            "correct": true
+          },
+          {
+            "task_id": "gpqa_1",
+            "score_status": "valid_scored",
+            "correct": true
+          },
+          {
+            "task_id": "gpqa_2",
+            "score_status": "valid_scored",
+            "correct": true
+          }
+        ]
+      },
+      {
+        "id": "gpqa_opencode",
+        "fixture": "gpqa",
+        "source_commit": "882b1a380495ae2b737fdb06aac6a7409a81a5ad",
+        "artifacts": "/data0/weikaihuang/issue96-validation/opencode-recovery-882b1a38/results/issue96_accept_gpqa_opencode.jsonl",
+        "artifacts_sha256": "f5d4758ee4f432c4a8d8aa38fc280d0c73c8e1ad8f53c4f116f01055c082bef6",
+        "tasks": [
+          {
+            "task_id": "gpqa_0",
+            "score_status": "valid_scored",
+            "correct": true
+          },
+          {
+            "task_id": "gpqa_1",
+            "score_status": "valid_scored",
+            "correct": true
+          },
+          {
+            "task_id": "gpqa_2",
+            "score_status": "valid_scored",
+            "correct": true
+          }
+        ]
+      },
+      {
+        "id": "hle_directllm",
+        "fixture": "hle",
+        "source_commit": "f719bbc37232bb8c1a7f0527c643d4b401d8a891",
+        "artifacts": "/data0/weikaihuang/issue96-validation/final-f719bbc3/results/issue96_accept_hle_directllm.jsonl",
+        "artifacts_sha256": "ff5d351b12a342773481812da89831d996c4e4f724d19914677ba979389beb92",
+        "tasks": [
+          {
+            "task_id": "hle_1",
+            "score_status": "valid_scored",
+            "correct": false
+          },
+          {
+            "task_id": "hle_11",
+            "score_status": "valid_scored",
+            "correct": false
+          },
+          {
+            "task_id": "hle_13",
+            "score_status": "valid_scored",
+            "correct": true
+          }
+        ]
+      },
+      {
+        "id": "hle_openclaw",
+        "fixture": "hle",
+        "source_commit": "f719bbc37232bb8c1a7f0527c643d4b401d8a891",
+        "artifacts": "/data0/weikaihuang/issue96-validation/final-f719bbc3/results/issue96_accept_hle_openclaw.jsonl",
+        "artifacts_sha256": "1d3728efd4ebc87fd97d6d264e856c798c9c4f51ba924d391bb0440443d20d21",
+        "tasks": [
+          {
+            "task_id": "hle_1",
+            "score_status": "valid_scored",
+            "correct": true
+          },
+          {
+            "task_id": "hle_11",
+            "score_status": "valid_scored",
+            "correct": true
+          },
+          {
+            "task_id": "hle_13",
+            "score_status": "valid_scored",
+            "correct": true
+          }
+        ]
+      },
+      {
+        "id": "hle_zeroclaw",
+        "fixture": "hle",
+        "source_commit": "f719bbc37232bb8c1a7f0527c643d4b401d8a891",
+        "artifacts": "/data0/weikaihuang/issue96-validation/final-f719bbc3/results/issue96_accept_hle_zeroclaw.jsonl",
+        "artifacts_sha256": "4428f63e2723d072c429327c472ae2306939d90d26c0755b77353d56de29c2b6",
+        "tasks": [
+          {
+            "task_id": "hle_1",
+            "score_status": "valid_scored",
+            "correct": true
+          },
+          {
+            "task_id": "hle_11",
+            "score_status": "valid_scored",
+            "correct": true
+          },
+          {
+            "task_id": "hle_13",
+            "score_status": "valid_scored",
+            "correct": true
+          }
+        ]
+      },
+      {
+        "id": "hle_opencode",
+        "fixture": "hle",
+        "source_commit": "882b1a380495ae2b737fdb06aac6a7409a81a5ad",
+        "artifacts": "/data0/weikaihuang/issue96-validation/opencode-recovery-882b1a38/results/issue96_accept_hle_opencode.jsonl",
+        "artifacts_sha256": "e6e0474b1a0f37b3a46a243d123e45b4781a5a26e98c4a824737b4ac86913053",
+        "tasks": [
+          {
+            "task_id": "hle_1",
+            "score_status": "valid_scored",
+            "correct": true
+          },
+          {
+            "task_id": "hle_11",
+            "score_status": "valid_scored",
+            "correct": false
+          },
+          {
+            "task_id": "hle_13",
+            "score_status": "valid_scored",
+            "correct": true
+          }
+        ]
+      },
+      {
+        "id": "imo_answerbench_directllm",
+        "fixture": "imo_answerbench",
+        "source_commit": "f719bbc37232bb8c1a7f0527c643d4b401d8a891",
+        "artifacts": "/data0/weikaihuang/issue96-validation/final-f719bbc3/results/issue96_accept_imo_answerbench_directllm.jsonl",
+        "artifacts_sha256": "eab4b5bc15be969a8836d750615d6da6687d8bc3337a1b6876c6bfd078e3c3c1",
+        "tasks": [
+          {
+            "task_id": "imo-bench-algebra-001",
+            "score_status": "valid_scored",
+            "correct": true
+          },
+          {
+            "task_id": "imo-bench-algebra-002",
+            "score_status": "valid_scored",
+            "correct": false
+          },
+          {
+            "task_id": "imo-bench-algebra-003",
+            "score_status": "valid_scored",
+            "correct": false
+          }
+        ]
+      },
+      {
+        "id": "imo_answerbench_openclaw",
+        "fixture": "imo_answerbench",
+        "source_commit": "f719bbc37232bb8c1a7f0527c643d4b401d8a891",
+        "artifacts": "/data0/weikaihuang/issue96-validation/final-f719bbc3/results/issue96_accept_imo_answerbench_openclaw.jsonl",
+        "artifacts_sha256": "40bfda91a5b184e316c4f7943654c898bcbfc522d194ab254e2ba00e91ecd027",
+        "tasks": [
+          {
+            "task_id": "imo-bench-algebra-001",
+            "score_status": "valid_scored",
+            "correct": false
+          },
+          {
+            "task_id": "imo-bench-algebra-002",
+            "score_status": "valid_scored",
+            "correct": false
+          },
+          {
+            "task_id": "imo-bench-algebra-003",
+            "score_status": "valid_scored",
+            "correct": false
+          }
+        ]
+      },
+      {
+        "id": "imo_answerbench_zeroclaw",
+        "fixture": "imo_answerbench",
+        "source_commit": "f719bbc37232bb8c1a7f0527c643d4b401d8a891",
+        "artifacts": "/data0/weikaihuang/issue96-validation/final-f719bbc3/results/issue96_accept_imo_answerbench_zeroclaw.jsonl",
+        "artifacts_sha256": "6e844decc0d0caedd5c926c97ad4e33d97b0968d35a068fdbb596c26582ef346",
+        "tasks": [
+          {
+            "task_id": "imo-bench-algebra-001",
+            "score_status": "valid_scored",
+            "correct": false
+          },
+          {
+            "task_id": "imo-bench-algebra-002",
+            "score_status": "valid_scored",
+            "correct": false
+          },
+          {
+            "task_id": "imo-bench-algebra-003",
+            "score_status": "valid_scored",
+            "correct": false
+          }
+        ]
+      },
+      {
+        "id": "imo_answerbench_opencode",
+        "fixture": "imo_answerbench",
+        "source_commit": "882b1a380495ae2b737fdb06aac6a7409a81a5ad",
+        "artifacts": "/data0/weikaihuang/issue96-validation/opencode-recovery-882b1a38/results/issue96_accept_imo_answerbench_opencode.jsonl",
+        "artifacts_sha256": "928d353bb5b24bb5a0fe57f5284577c264d0f70560aaedcd3d71a5b01364c5f5",
+        "tasks": [
+          {
+            "task_id": "imo-bench-algebra-001",
+            "score_status": "valid_scored",
+            "correct": true
+          },
+          {
+            "task_id": "imo-bench-algebra-002",
+            "score_status": "valid_scored",
+            "correct": false
+          },
+          {
+            "task_id": "imo-bench-algebra-003",
+            "score_status": "valid_scored",
+            "correct": false
+          }
+        ]
+      },
+      {
+        "id": "mmmu_pro_directllm",
+        "fixture": "mmmu_pro",
+        "source_commit": "f719bbc37232bb8c1a7f0527c643d4b401d8a891",
+        "artifacts": "/data0/weikaihuang/issue96-validation/final-f719bbc3/results/issue96_accept_mmmu_pro_directllm.jsonl",
+        "artifacts_sha256": "8b2d32484a5d967eb645030e6d8afe7064eca449f4f9667d1fa883b538d2c3a8",
+        "tasks": [
+          {
+            "task_id": "mmmu_pro_test_History_1",
+            "score_status": "valid_scored",
+            "correct": false
+          },
+          {
+            "task_id": "mmmu_pro_test_Art_113",
+            "score_status": "valid_scored",
+            "correct": false
+          },
+          {
+            "task_id": "mmmu_pro_validation_Design_19",
+            "score_status": "valid_scored",
+            "correct": false
+          }
+        ]
+      },
+      {
+        "id": "mmmu_pro_openclaw",
+        "fixture": "mmmu_pro",
+        "source_commit": "0919857d6117be4d8aa2cc5e6356f176d4645083",
+        "artifacts": "/data0/weikaihuang/issue96-validation/openclaw-vision-responses/results/issue96_accept_mmmu_pro_openclaw.jsonl",
+        "artifacts_sha256": "d36bc86d2b0c9fe0d003fe89708ae23b406e23f14f004a3255487ddaa3024e7c",
+        "tasks": [
+          {
+            "task_id": "mmmu_pro_test_History_1",
+            "score_status": "valid_scored",
+            "correct": true
+          },
+          {
+            "task_id": "mmmu_pro_test_Art_113",
+            "score_status": "valid_scored",
+            "correct": true
+          },
+          {
+            "task_id": "mmmu_pro_validation_Design_19",
+            "score_status": "valid_scored",
+            "correct": true
+          }
+        ]
+      },
+      {
+        "id": "mmmu_pro_zeroclaw",
+        "fixture": "mmmu_pro",
+        "source_commit": "f719bbc37232bb8c1a7f0527c643d4b401d8a891",
+        "artifacts": "/data0/weikaihuang/issue96-validation/final-f719bbc3/results/issue96_accept_mmmu_pro_zeroclaw.jsonl",
+        "artifacts_sha256": "69b17f0ad807cafcfafbcd9d521546f799f32713b2d53e02c06bab3dd766e838",
+        "tasks": [
+          {
+            "task_id": "mmmu_pro_test_History_1",
+            "score_status": "valid_scored",
+            "correct": true
+          },
+          {
+            "task_id": "mmmu_pro_test_Art_113",
+            "score_status": "valid_scored",
+            "correct": true
+          },
+          {
+            "task_id": "mmmu_pro_validation_Design_19",
+            "score_status": "valid_scored",
+            "correct": true
+          }
+        ]
+      },
+      {
+        "id": "mmmu_pro_opencode",
+        "fixture": "mmmu_pro",
+        "source_commit": "882b1a380495ae2b737fdb06aac6a7409a81a5ad",
+        "artifacts": "/data0/weikaihuang/issue96-validation/opencode-recovery-882b1a38/results/issue96_accept_mmmu_pro_opencode.jsonl",
+        "artifacts_sha256": "1c2ee6938d83548eb22ec34350c2c210ea2d4afe06463972f60fcee00b936be0",
+        "tasks": [
+          {
+            "task_id": "mmmu_pro_test_History_1",
+            "score_status": "valid_scored",
+            "correct": false
+          },
+          {
+            "task_id": "mmmu_pro_test_Art_113",
+            "score_status": "valid_scored",
+            "correct": false
+          },
+          {
+            "task_id": "mmmu_pro_validation_Design_19",
+            "score_status": "valid_scored",
+            "correct": true
+          }
+        ]
+      },
+      {
+        "id": "swe_mini_openclaw",
+        "fixture": "swe_mini",
+        "source_commit": "f719bbc37232bb8c1a7f0527c643d4b401d8a891",
+        "artifacts": "/data0/weikaihuang/issue96-validation/final-f719bbc3/results/issue96_accept_swe_mini_openclaw.jsonl",
+        "artifacts_sha256": "2bbdfe8f5bd7ff63a4f5ef8caeea07193211c7118eb5fcfaf01ce04578a8a5b7",
+        "tasks": [
+          {
+            "task_id": "swe_django__django-11790",
+            "score_status": "valid_scored",
+            "correct": true
+          },
+          {
+            "task_id": "swe_django__django-11815",
+            "score_status": "valid_scored",
+            "correct": true
+          },
+          {
+            "task_id": "swe_django__django-11848",
+            "score_status": "valid_scored",
+            "correct": false
+          }
+        ]
+      },
+      {
+        "id": "swe_mini_zeroclaw",
+        "fixture": "swe_mini",
+        "source_commit": "f719bbc37232bb8c1a7f0527c643d4b401d8a891",
+        "artifacts": "/data0/weikaihuang/issue96-validation/final-f719bbc3/results/issue96_accept_swe_mini_zeroclaw.jsonl",
+        "artifacts_sha256": "2b02edd798c75b786ccf74afc2348c145db6ece55ce34aa0dc6f2a7c91777d10",
+        "tasks": [
+          {
+            "task_id": "swe_django__django-11790",
+            "score_status": "valid_scored",
+            "correct": false
+          },
+          {
+            "task_id": "swe_django__django-11815",
+            "score_status": "valid_scored",
+            "correct": false
+          },
+          {
+            "task_id": "swe_django__django-11848",
+            "score_status": "valid_scored",
+            "correct": false
+          }
+        ]
+      },
+      {
+        "id": "swe_mini_opencode",
+        "fixture": "swe_mini",
+        "source_commit": "882b1a380495ae2b737fdb06aac6a7409a81a5ad",
+        "artifacts": "/data0/weikaihuang/issue96-validation/opencode-recovery-882b1a38/results/issue96_accept_swe_mini_opencode.jsonl",
+        "artifacts_sha256": "ce09c8b206e9d0d9969269b8bab9151df6304514dcd16cca19c67f7882633f28",
+        "tasks": [
+          {
+            "task_id": "swe_django__django-11790",
+            "score_status": "valid_scored",
+            "correct": false
+          },
+          {
+            "task_id": "swe_django__django-11815",
+            "score_status": "valid_scored",
+            "correct": false
+          },
+          {
+            "task_id": "swe_django__django-11848",
+            "score_status": "valid_scored",
+            "correct": false
+          }
+        ]
+      },
+      {
+        "id": "swe_mini_sweagent",
+        "fixture": "swe_mini",
+        "source_commit": "123b0c25df6dce716c6c394a5c5a7439f02b7bc1",
+        "artifacts": "/data0/weikaihuang/issue96-validation/swe-history-123b0c25/results/issue96_accept_swe_mini_sweagent.jsonl",
+        "artifacts_sha256": "5bd7cc0e63e4a499102dc50138a06d6335d116828c083ea888b75b0a0c8c5447",
+        "tasks": [
+          {
+            "task_id": "swe_django__django-11790",
+            "score_status": "valid_scored",
+            "correct": false
+          },
+          {
+            "task_id": "swe_django__django-11815",
+            "score_status": "valid_scored",
+            "correct": false
+          },
+          {
+            "task_id": "swe_django__django-11848",
+            "score_status": "valid_scored",
+            "correct": false
+          }
+        ]
+      },
+      {
+        "id": "terminal_bench2_openclaw",
+        "fixture": "terminal_bench2",
+        "source_commit": "f719bbc37232bb8c1a7f0527c643d4b401d8a891",
+        "artifacts": "/data0/weikaihuang/issue96-validation/final-f719bbc3/results/issue96_accept_terminal_bench2_openclaw.jsonl",
+        "artifacts_sha256": "e1da61143c0fb5efbda7301433beed10a8adbcd24bc190eaf971c54529cb8c76",
+        "tasks": [
+          {
+            "task_id": "tb2_adaptive-rejection-sampler",
+            "score_status": "valid_scored",
+            "correct": false
+          },
+          {
+            "task_id": "tb2_db-wal-recovery",
+            "score_status": "valid_scored",
+            "correct": false
+          },
+          {
+            "task_id": "tb2_overfull-hbox",
+            "score_status": "valid_scored",
+            "correct": false
+          }
+        ]
+      },
+      {
+        "id": "terminal_bench2_zeroclaw",
+        "fixture": "terminal_bench2",
+        "source_commit": "beb683516e4f4ae236295ea6ffcea9984a3460b6",
+        "artifacts": "/data0/weikaihuang/issue96-validation/native-instrumentation-beb68351/results/issue96_accept_terminal_bench2_zeroclaw.jsonl",
+        "artifacts_sha256": "a8df6a63735ec784f44d410aa435de0677249d722e45e9274c7b9f16b2dd275d",
+        "tasks": [
+          {
+            "task_id": "tb2_adaptive-rejection-sampler",
+            "score_status": "valid_scored",
+            "correct": false
+          },
+          {
+            "task_id": "tb2_db-wal-recovery",
+            "score_status": "valid_scored",
+            "correct": false
+          },
+          {
+            "task_id": "tb2_overfull-hbox",
+            "score_status": "valid_scored",
+            "correct": false
+          }
+        ]
+      },
+      {
+        "id": "terminal_bench2_opencode",
+        "fixture": "terminal_bench2",
+        "source_commit": "882b1a380495ae2b737fdb06aac6a7409a81a5ad",
+        "artifacts": "/data0/weikaihuang/issue96-validation/opencode-recovery-882b1a38/results/issue96_accept_terminal_bench2_opencode.jsonl",
+        "artifacts_sha256": "900b1a6ac1ee0ecb631d52c210629090fdc73080fd41499dc904030bd9844d43",
+        "tasks": [
+          {
+            "task_id": "tb2_adaptive-rejection-sampler",
+            "score_status": "valid_scored",
+            "correct": false
+          },
+          {
+            "task_id": "tb2_db-wal-recovery",
+            "score_status": "valid_scored",
+            "correct": false
+          },
+          {
+            "task_id": "tb2_overfull-hbox",
+            "score_status": "valid_scored",
+            "correct": false
+          }
+        ]
+      },
+      {
+        "id": "terminal_bench2_terminus2",
+        "fixture": "terminal_bench2",
+        "source_commit": "d13e7baf756f138a8243ee92c56aefb6c4802a63",
+        "artifacts": "/data0/weikaihuang/issue96-validation/terminus-projection-d13e7baf/results/issue96_accept_terminal_bench2_terminus2.jsonl",
+        "artifacts_sha256": "3bc1033e77c718f511d74bfcb49d4dfe51a1fe9483ea96a18bf7d74ddefd6ffb",
+        "tasks": [
+          {
+            "task_id": "tb2_adaptive-rejection-sampler",
+            "score_status": "valid_scored",
+            "correct": false
+          },
+          {
+            "task_id": "tb2_db-wal-recovery",
+            "score_status": "valid_scored",
+            "correct": false
+          },
+          {
+            "task_id": "tb2_overfull-hbox",
+            "score_status": "valid_scored",
+            "correct": false
+          }
+        ]
+      }
+    ]
+  },
+  "local_tests": {
+    "passed": 202,
+    "skipped": 11,
+    "log": "evidence/openclaw-responses-full-tests.log"
+  },
+  "installed_tests": {
+    "passed": 54,
+    "loaded_modules": 128,
+    "source_files_verified": 261,
+    "log": "evidence/wheel-vision-runtime.log"
+  },
+  "rescoring": {
+    "offline_records": 60,
+    "environment_records": 24,
+    "receipts": [
+      {
+        "id": "terminal_bench2_opencode",
+        "receipt": "/data0/weikaihuang/issue96-validation/delivery-replay-04c5ce2d/terminal_bench2_opencode-check.json",
+        "sha256": "32f3cb35dccf17cc46bee240e08a6c51da0482e2b315570cdacc25221b8bb131"
+      },
+      {
+        "id": "swe_mini_sweagent",
+        "receipt": "/data0/weikaihuang/issue96-validation/delivery-replay-04c5ce2d/swe_mini_sweagent-check.json",
+        "sha256": "2f481fa95870ba9b7853ea75e4d4253d20fcdbf9823f8c096863cfb4adb3b5db"
+      },
+      {
+        "id": "swe_mini_openclaw",
+        "receipt": "/data0/weikaihuang/issue96-validation/delivery-replay-04c5ce2d/swe_mini_openclaw-check.json",
+        "sha256": "1a222276c421f2f0c3806342d21b8737904f50bcc0adda83b2b39928f5994f85"
+      },
+      {
+        "id": "terminal_bench2_openclaw",
+        "receipt": "/data0/weikaihuang/issue96-validation/delivery-replay-04c5ce2d/terminal_bench2_openclaw-check.json",
+        "sha256": "6a0a81a27b4398030ffffd685da02dfe06db7c624cb3999b9e40edeee694498a"
+      },
+      {
+        "id": "swe_mini_zeroclaw",
+        "receipt": "/data0/weikaihuang/issue96-validation/delivery-replay-04c5ce2d/swe_mini_zeroclaw-check.json",
+        "sha256": "39ded32d88d29e8b271f77cfd23df2c403650bd15c210cfa6b820e0fccd0a4d3"
+      },
+      {
+        "id": "terminal_bench2_zeroclaw",
+        "receipt": "/data0/weikaihuang/issue96-validation/delivery-replay-04c5ce2d/terminal_bench2_zeroclaw-check.json",
+        "sha256": "e01a641590ea1bce148e0dbfb084593389d7e972202bd85d9c64c6abde6fe27d"
+      },
+      {
+        "id": "swe_mini_opencode",
+        "receipt": "/data0/weikaihuang/issue96-validation/delivery-replay-04c5ce2d/swe_mini_opencode-check.json",
+        "sha256": "7807aaf29d42d22d11bb31c4eba436b3d0a4a38e6b44b73f197370c6cfeaaf97"
+      },
+      {
+        "id": "terminal_bench2_terminus2",
+        "receipt": "/data0/weikaihuang/issue96-validation/delivery-replay-04c5ce2d/terminal_bench2_terminus2-check.json",
+        "sha256": "a757b03d3f864174661a256c2a8150bd812073246145bd917800171f903d2b6b"
+      },
+      {
+        "id": "aime2026_directllm",
+        "receipt": "/data0/weikaihuang/issue96-validation/delivery-offline-rescore-04c5ce2d/aime2026_directllm-check.json",
+        "sha256": "404d2d09718403cda52d727842d688acf9183406909587977612d8bf303a6348"
+      },
+      {
+        "id": "gpqa_directllm",
+        "receipt": "/data0/weikaihuang/issue96-validation/delivery-offline-rescore-04c5ce2d/gpqa_directllm-check.json",
+        "sha256": "305eebfe5d82e6a3b8825f64ffcf8f5175bc2d9e3200e8460f1615e8abdc9264"
+      },
+      {
+        "id": "gpqa_openclaw",
+        "receipt": "/data0/weikaihuang/issue96-validation/delivery-offline-rescore-04c5ce2d/gpqa_openclaw-check.json",
+        "sha256": "5d2fb6c5e37ccd4e5d735a833c18ae9244703a4cef9e69af105144eee265e1e6"
+      },
+      {
+        "id": "mmmu_pro_directllm",
+        "receipt": "/data0/weikaihuang/issue96-validation/delivery-offline-rescore-04c5ce2d/mmmu_pro_directllm-check.json",
+        "sha256": "17370fa495b8cadc2d32bf636f5e8a1eca1e5b8cef39f6cf46e39882d54719a1"
+      },
+      {
+        "id": "imo_answerbench_openclaw",
+        "receipt": "/data0/weikaihuang/issue96-validation/delivery-offline-rescore-04c5ce2d/imo_answerbench_openclaw-check.json",
+        "sha256": "5926dc1fb18976761c80c8cc6329cc7d41f5001ee3bd1b03976fbb5e7a0c22d3"
+      },
+      {
+        "id": "hle_openclaw",
+        "receipt": "/data0/weikaihuang/issue96-validation/delivery-offline-rescore-04c5ce2d/hle_openclaw-check.json",
+        "sha256": "d9cf513989d9703f493a15284ee4dfc7362daa12d0e5d31f4d96e679549e6bb0"
+      },
+      {
+        "id": "hle_zeroclaw",
+        "receipt": "/data0/weikaihuang/issue96-validation/delivery-offline-rescore-04c5ce2d/hle_zeroclaw-check.json",
+        "sha256": "eb98c4fa3988eb65fa35a0ec67d61be443bb2ea866020bd9b28c69a921c09381"
+      },
+      {
+        "id": "gpqa_zeroclaw",
+        "receipt": "/data0/weikaihuang/issue96-validation/delivery-offline-rescore-04c5ce2d/gpqa_zeroclaw-check.json",
+        "sha256": "79eb9ea534f27698b0164da1342521a008f985fdccdec46819b3241c3afa660e"
+      },
+      {
+        "id": "mmmu_pro_opencode",
+        "receipt": "/data0/weikaihuang/issue96-validation/delivery-offline-rescore-04c5ce2d/mmmu_pro_opencode-check.json",
+        "sha256": "629ff2d9c569c578cf0e0b51ca4cad9db23d00967a02be399912e9b4ffb11916"
+      },
+      {
+        "id": "mmmu_pro_openclaw",
+        "receipt": "/data0/weikaihuang/issue96-validation/delivery-offline-rescore-04c5ce2d/mmmu_pro_openclaw-check.json",
+        "sha256": "4b1c0be0caf090aa896448a064a9e8ec43f726806a3670398b3b51e982dc5474"
+      },
+      {
+        "id": "aime2026_zeroclaw",
+        "receipt": "/data0/weikaihuang/issue96-validation/delivery-offline-rescore-04c5ce2d/aime2026_zeroclaw-check.json",
+        "sha256": "51cc40879285a42192f5f070967fbdcfc4bcd801b5449d95d80d605174943884"
+      },
+      {
+        "id": "imo_answerbench_zeroclaw",
+        "receipt": "/data0/weikaihuang/issue96-validation/delivery-offline-rescore-04c5ce2d/imo_answerbench_zeroclaw-check.json",
+        "sha256": "fd0e234923134e5a9796f09f509af3f6f503451096d1803430e81092618598e1"
+      },
+      {
+        "id": "aime2026_opencode",
+        "receipt": "/data0/weikaihuang/issue96-validation/delivery-offline-rescore-04c5ce2d/aime2026_opencode-check.json",
+        "sha256": "4f966e56f379ae2ed126da432b6bf7d70b10903a38082ad0f001ed1f175b0710"
+      },
+      {
+        "id": "hle_directllm",
+        "receipt": "/data0/weikaihuang/issue96-validation/delivery-offline-rescore-04c5ce2d/hle_directllm-check.json",
+        "sha256": "e24838e2949754d31c5407a7a7be9ee1431c32baa3d6524636a095f75afd122b"
+      },
+      {
+        "id": "mmmu_pro_zeroclaw",
+        "receipt": "/data0/weikaihuang/issue96-validation/delivery-offline-rescore-04c5ce2d/mmmu_pro_zeroclaw-check.json",
+        "sha256": "3d9a0683a4255296358f3333582d612320f18cffdd02e1efdf9041f2d0a504e1"
+      },
+      {
+        "id": "hle_opencode",
+        "receipt": "/data0/weikaihuang/issue96-validation/delivery-offline-rescore-04c5ce2d/hle_opencode-check.json",
+        "sha256": "806f6363a59345f65f3b7f2d13b0cb6b92f61a75c578f44de4d1045e89c09049"
+      },
+      {
+        "id": "imo_answerbench_opencode",
+        "receipt": "/data0/weikaihuang/issue96-validation/delivery-offline-rescore-04c5ce2d/imo_answerbench_opencode-check.json",
+        "sha256": "e6234b1fe46010cc4f7e430add3a6874df210efca83798c24f39c4c30fdc8411"
+      },
+      {
+        "id": "gpqa_opencode",
+        "receipt": "/data0/weikaihuang/issue96-validation/delivery-offline-rescore-04c5ce2d/gpqa_opencode-check.json",
+        "sha256": "c0c03b23e7b02793b2c3f87851575143973d63a25469c4b0d9a847643777991a"
+      },
+      {
+        "id": "imo_answerbench_directllm",
+        "receipt": "/data0/weikaihuang/issue96-validation/delivery-offline-rescore-04c5ce2d/imo_answerbench_directllm-check.json",
+        "sha256": "6c8e07854b1975a67adde0df9f5ed0a238c081e9afe01b6eb9450fb6df28929c"
+      },
+      {
+        "id": "aime2026_openclaw",
+        "receipt": "/data0/weikaihuang/issue96-validation/delivery-offline-rescore-04c5ce2d/aime2026_openclaw-check.json",
+        "sha256": "ddc398b26fc97d3a34efb23c3e65eae576bd1eeb9d9730c29ddb27d74d694aae"
+      }
+    ]
+  },
+  "figures": [
+    {
+      "directory": "/data0/weikaihuang/issue96-validation/delivery-figures-04c5ce2d/gpqa-measurements",
+      "report_sha256": "0e208c414fe8aa7a27778aaadc25a7a8d8e0628397b04d68b09dbf5bc00dfd3b",
+      "integrity": {
+        "figures_checked": 7,
+        "bar_charts_checked": 4,
+        "files_checked": 21,
+        "skipped": [],
+        "details": [
+          {
+            "figure": "execution-accuracy",
+            "kind": "bar",
+            "rows": 4,
+            "checked_category_labels": [
+              "Direct",
+              "OpenClaw",
+              "OpenCode",
+              "ZeroClaw"
+            ],
+            "files_sha256": {
+              "svg": "dabda923dc4797e260104329121bf92d3520446cff7f8353aa32a02d2427f1ee",
+              "png": "8f0964800ee02250beff4c906eca4a19a845ca96318328cff821bdf5122847b5",
+              "pdf": "a2f5204052989179ba32d52692acfe90883eb3bb62efc31caad4a962a9b6a131"
+            }
+          },
+          {
+            "figure": "execution-efficiency",
+            "kind": "bar",
+            "rows": 4,
+            "checked_category_labels": [
+              "Direct",
+              "OpenClaw",
+              "OpenCode",
+              "ZeroClaw"
+            ],
+            "files_sha256": {
+              "svg": "79078285b6183dec5319b4ba207d7384b2bcaf787baad6a77e8c3e302a172248",
+              "png": "668f77a1253a528f5308201cfe6543fe0d2ba376d9e4d22dc8dc16540fa3e2eb",
+              "pdf": "1b87b7e5c1834d5e0d3c503e4369dd8d5bc06a12f6414d1606bf24594ea4fa0c"
+            }
+          },
+          {
+            "figure": "execution-time_efficiency",
+            "kind": "bar",
+            "rows": 4,
+            "checked_category_labels": [
+              "Direct",
+              "OpenClaw",
+              "OpenCode",
+              "ZeroClaw"
+            ],
+            "files_sha256": {
+              "svg": "0a14036de9346f2db85d5d703da4d1b76799873c26a55adb5e332b409a5fb906",
+              "png": "14816144a3c0d7aed7e638fc5781be3cedccbc7fcc62eb483734f3df4c080fbf",
+              "pdf": "3e74ffdda8f7927cd8809e2804155d234f366f2cbfa4e5a70fdd910fc1bef4b1"
+            }
+          },
+          {
+            "figure": "execution-action_composition",
+            "kind": "bar",
+            "rows": 12,
+            "checked_category_labels": [
+              "answer",
+              "plan",
+              "reason",
+              "tool_use",
+              "verify"
+            ],
+            "files_sha256": {
+              "svg": "f1e5013363abe36313e8a7d1ed6bfb60d50e81156d4542ea45ece6958a3bd381",
+              "png": "4d63c87e8b5d99511b90a9c5f077cddce8d945d6874317831f682f97be565a4a",
+              "pdf": "3e61282c7808faa7a4354e02131291700b6b6a5b38e1564f10630c93c104075a"
+            }
+          },
+          {
+            "figure": "execution-action_transitions",
+            "kind": "heatmap",
+            "rows": 5,
+            "checked_category_labels": [],
+            "files_sha256": {
+              "svg": "044c5dde3523bc412129f412ff11f9ecbcbed0ad3dfd1d4083db0144d2176545",
+              "png": "52b6cd39cd24430921e4f82114a52d3db1050b21bda46ece3222737403ae70f3",
+              "pdf": "e0eefe367c9c88365d4b6bf1cb55f3e14fa2c10d099d48dcc8d3a0570a9fab01"
+            }
+          },
+          {
+            "figure": "execution-entropy_tokens",
+            "kind": "scatter",
+            "rows": 12,
+            "checked_category_labels": [],
+            "files_sha256": {
+              "svg": "bf2c62ff2b2ccf311381c30cf67e411bc05a5aecaa06d9a3fb5c81beed32ff30",
+              "png": "6f7158ed601e6316cdf2e15b53ba665e6678d26e444b9f3349b53d5ab05cf4e6",
+              "pdf": "696e939cc966332552034aacd3cd7a816a2a70a3fc1c4d214520bfdd0c1719a2"
+            }
+          },
+          {
+            "figure": "request_entropy-entropy_by_request_position",
+            "kind": "line",
+            "rows": 155,
+            "checked_category_labels": [],
+            "files_sha256": {
+              "svg": "0e9be55c24ddc8885a5b366aa507d47161b238751126d6b2dceb1ff8f07f26b7",
+              "png": "9a2ae9c1ccabdbb58e2b678c3f8c926bfed20ca7e2b7fa59be940dcfdab1d727",
+              "pdf": "9d4ed47d91258ec443cebdbfca479b2c5fd9a7b3f914f54604f97771f8d5bb29"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "directory": "/data0/weikaihuang/issue96-validation/delivery-figures-04c5ce2d/aime2026-measurements",
+      "report_sha256": "60fbbcae03b65f62bbf2619e35de81400345ccc95b640034ee8e96ce5202bc4a",
+      "integrity": {
+        "figures_checked": 7,
+        "bar_charts_checked": 4,
+        "files_checked": 21,
+        "skipped": [],
+        "details": [
+          {
+            "figure": "execution-accuracy",
+            "kind": "bar",
+            "rows": 4,
+            "checked_category_labels": [
+              "Direct",
+              "OpenClaw",
+              "OpenCode",
+              "ZeroClaw"
+            ],
+            "files_sha256": {
+              "svg": "3fdafedfd306c16c4a36615460c539cde1da3b7f18516735ee538b94b149860d",
+              "png": "661490eb816867c2d5a152d5a5201bd7d79509f4df90b0c4083b2f315d995a71",
+              "pdf": "b9ad4859ec789d0c2ca5864d4f117b0e3765d9dd2b7e2655903476101512cbac"
+            }
+          },
+          {
+            "figure": "execution-efficiency",
+            "kind": "bar",
+            "rows": 4,
+            "checked_category_labels": [
+              "Direct",
+              "OpenClaw",
+              "OpenCode",
+              "ZeroClaw"
+            ],
+            "files_sha256": {
+              "svg": "3115519d4cb958e91cc0a9f9895939eb827f2af2dcde12cf484afbdf6e1584bc",
+              "png": "63600428d53bb47439bea829f8478e0ac21b3ae439fff1edbe91a5fcfcffa22b",
+              "pdf": "589df13b539f0f37657570c49c0f3378093f17959fded8d5cea5930c6c66c0cc"
+            }
+          },
+          {
+            "figure": "execution-time_efficiency",
+            "kind": "bar",
+            "rows": 4,
+            "checked_category_labels": [
+              "Direct",
+              "OpenClaw",
+              "OpenCode",
+              "ZeroClaw"
+            ],
+            "files_sha256": {
+              "svg": "1f36bc98ab341110aca6af08aa37cc61f60598c0ea14d9d8b18a5279d6fa1e72",
+              "png": "ed3c584f4556a0d432b7a15fc650200403f6911cfcfa2f1be0a49828a280d253",
+              "pdf": "548849d49f3614907509f89551b6f3da89fde76e39ca286fcec245e95a1bf570"
+            }
+          },
+          {
+            "figure": "execution-action_composition",
+            "kind": "bar",
+            "rows": 9,
+            "checked_category_labels": [
+              "answer",
+              "plan",
+              "reason",
+              "tool_use",
+              "verify"
+            ],
+            "files_sha256": {
+              "svg": "a9950f2e8f2e260230e5a32cd382b494b0836cd8b373e5412570423c04eb0a62",
+              "png": "61fdba71f678267f3732d57d1a9a29c420f34a332ff7ac2378d0606ffa4a17a0",
+              "pdf": "b13bd3ccf2172c03e5e5fc6403f428b8bf286b29a14fdad8f2b02c4dcf649c42"
+            }
+          },
+          {
+            "figure": "execution-action_transitions",
+            "kind": "heatmap",
+            "rows": 5,
+            "checked_category_labels": [],
+            "files_sha256": {
+              "svg": "ed0c7ae2548dc0efc2a888b2b5f4f29c378e4d87a4634801e787480c6f1b5623",
+              "png": "dd230e88538ba9986f4d750f63cb4909d3d9b3aac8f1addb6e8718a914fd93a3",
+              "pdf": "8432465f687104afd40da7376f6b1cddcfdc6b204b022bb7dad7f37d378ca1b3"
+            }
+          },
+          {
+            "figure": "execution-entropy_tokens",
+            "kind": "scatter",
+            "rows": 12,
+            "checked_category_labels": [],
+            "files_sha256": {
+              "svg": "a3627d0aed374cf7443d84a0c0dfd051d84ae4e1c54d550fe3b28fcab959db99",
+              "png": "5a76bd90f5b2e094f1ac3ba53c6c5db1613cf3bcaa0e8831c8c4c2be97fb6c95",
+              "pdf": "cb9f00d123d8c49c60985ae49825b91ba05442794ca783742e863e3e75d26ed0"
+            }
+          },
+          {
+            "figure": "request_entropy-entropy_by_request_position",
+            "kind": "line",
+            "rows": 322,
+            "checked_category_labels": [],
+            "files_sha256": {
+              "svg": "2173e16de00853dd053c59c5b12e8370503c9bb3fa2491359bb344f5e89ede79",
+              "png": "3e43e9ac45340a6759aa22c8527fbc5e7525bfda0cf3ead57252c5c4d7e8440b",
+              "pdf": "17819c01a0ea5d876a81f0fd2b34721c02caec471adc8134174dda88724581a1"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "directory": "/data0/weikaihuang/issue96-validation/delivery-figures-04c5ce2d/hle-measurements",
+      "report_sha256": "1a74cc748e34fb703862b3a469e3b540629ecc60caaa58489aa624c40499b8c6",
+      "integrity": {
+        "figures_checked": 7,
+        "bar_charts_checked": 4,
+        "files_checked": 21,
+        "skipped": [],
+        "details": [
+          {
+            "figure": "execution-accuracy",
+            "kind": "bar",
+            "rows": 4,
+            "checked_category_labels": [
+              "Direct",
+              "OpenClaw",
+              "OpenCode",
+              "ZeroClaw"
+            ],
+            "files_sha256": {
+              "svg": "acb8e09c883b022be2887f4bb2d3bb0a6ae74312529c64b33d57b9bd044ce27b",
+              "png": "a7e0882d2367d51436b7fba31c5fe9abc85381518ae554b08c9d23f07350a461",
+              "pdf": "16134aaacfc8df3759c85861464011254e3bd9f04c1d4ac76845a9114c0731d4"
+            }
+          },
+          {
+            "figure": "execution-efficiency",
+            "kind": "bar",
+            "rows": 4,
+            "checked_category_labels": [
+              "Direct",
+              "OpenClaw",
+              "OpenCode",
+              "ZeroClaw"
+            ],
+            "files_sha256": {
+              "svg": "f945607304e3c0a7557118764a0eb1f25dcbe100a74afd5f554ece247b9509b7",
+              "png": "42045a17b34dfbfd415add0512aa2576a6b468802a2bf31e717f66e36698fc0f",
+              "pdf": "fb0f5b6517c7e36e9de1b3ca9612025cbba07e9ed64bc3c9101d850495fd0150"
+            }
+          },
+          {
+            "figure": "execution-time_efficiency",
+            "kind": "bar",
+            "rows": 4,
+            "checked_category_labels": [
+              "Direct",
+              "OpenClaw",
+              "OpenCode",
+              "ZeroClaw"
+            ],
+            "files_sha256": {
+              "svg": "16b39575d2a173e7aabcb8fae5a90583fe9379d88fdf02fb28eb29ff81602d83",
+              "png": "682178bc54bff1fa1d52ba24c2daca54f9cc9a1cd99123a1f9f78e8d87cb8da6",
+              "pdf": "55baa81b561a3a02f26465fdd365857585b6e8972928cb447ad7c79596f8ef14"
+            }
+          },
+          {
+            "figure": "execution-action_composition",
+            "kind": "bar",
+            "rows": 8,
+            "checked_category_labels": [
+              "answer",
+              "plan",
+              "reason",
+              "verify"
+            ],
+            "files_sha256": {
+              "svg": "cf6e245e527dfb4afa0bf5f871bb57bcb225f19416aa1031fa502e96105bc185",
+              "png": "bfe5851561b5fe93ac4c196038a7711941d44b81ff3afe87c6936c0f5749bf9a",
+              "pdf": "da614c1b613565354966813119b343984b60993db2635d0beefb1756c838473b"
+            }
+          },
+          {
+            "figure": "execution-action_transitions",
+            "kind": "heatmap",
+            "rows": 1,
+            "checked_category_labels": [],
+            "files_sha256": {
+              "svg": "431fb1ca0a4a9d423183cf0ed321564252bbb3e5a8996e1cb0ecc2d960895b5a",
+              "png": "13a1b23c59f110463a5073fb59ec45ff4299ad71fd960b715e9661274a37711b",
+              "pdf": "59881effe46d793871857b3d580a7934f4f36750f4922f1936f3b981aab09234"
+            }
+          },
+          {
+            "figure": "execution-entropy_tokens",
+            "kind": "scatter",
+            "rows": 12,
+            "checked_category_labels": [],
+            "files_sha256": {
+              "svg": "225a3ca225e86642534f258389d90b00028a66e4e75afe6fbad8516f0814147e",
+              "png": "e56440b17b540c21cb0f2d8faacf19488927b9bd6592656a57d4b54dbd6d4877",
+              "pdf": "ab0928e80af988a1180864b32ac631fffc736e97e7f1fefa91a5e1690ea1440a"
+            }
+          },
+          {
+            "figure": "request_entropy-entropy_by_request_position",
+            "kind": "line",
+            "rows": 367,
+            "checked_category_labels": [],
+            "files_sha256": {
+              "svg": "317b41d8bbffd179d1f4d26e5de0acc8f6c98626f5511d850f57f00e6504d8f5",
+              "png": "dd0433db1a4081c29b7f969f3e27534e82652ba50b7ddc774c95ac7e4e896b78",
+              "pdf": "a220b7e78efe6c1494c749ab1fe7a00881ae6d4081935aab4989e66e5b84b390"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "directory": "/data0/weikaihuang/issue96-validation/delivery-figures-123b0c25/imo_answerbench-measurements",
+      "report_sha256": "d36926b81e9d4d84b9df611c66b1318a5c912998a10d7f2a0e63985916c89655",
+      "integrity": {
+        "figures_checked": 7,
+        "bar_charts_checked": 4,
+        "files_checked": 21,
+        "skipped": [],
+        "details": [
+          {
+            "figure": "execution-accuracy",
+            "kind": "bar",
+            "rows": 4,
+            "checked_category_labels": [
+              "Direct",
+              "OpenClaw",
+              "OpenCode",
+              "ZeroClaw"
+            ],
+            "files_sha256": {
+              "svg": "f994cd2158ecde39ce08c30fcfd4d1d906ae7c94372c07a8f53db1614c0e6120",
+              "png": "9feea396fd654dd4b3c0a7e4b71f73aedc031c53ebb31380093ba191917ad742",
+              "pdf": "d6bb2a8af14421c072410fc60aca1f7d3092fc3bdbe4a659b6acb46b4b5bf97b"
+            }
+          },
+          {
+            "figure": "execution-efficiency",
+            "kind": "bar",
+            "rows": 2,
+            "checked_category_labels": [
+              "Direct",
+              "OpenCode"
+            ],
+            "files_sha256": {
+              "svg": "a94c27c5d06343f21dcb72d1421376dea0ec694a94dea839a0f168c776e62d09",
+              "png": "cc64af3208eb2a04af0f96c59f6a7c27e4522d514b5b56891810287727bc8b42",
+              "pdf": "1610b9b64c95731c604428a0b7ae725a4fb9dac3ae6a0b50fdf78abd72a8dc8f"
+            }
+          },
+          {
+            "figure": "execution-time_efficiency",
+            "kind": "bar",
+            "rows": 2,
+            "checked_category_labels": [
+              "Direct",
+              "OpenCode"
+            ],
+            "files_sha256": {
+              "svg": "63e9dd85c3411f766382c3cf11706a10b092253c733ff97cee0f0791975a13d0",
+              "png": "8fcfd2ea93eb4f26ca16e14770b78f7515521369f150f963ae6c6fe554fe962a",
+              "pdf": "d510bd21fdc8a45c99ecccea7d710d566e60f4c871f155b7101c34112a5a6f87"
+            }
+          },
+          {
+            "figure": "execution-action_composition",
+            "kind": "bar",
+            "rows": 5,
+            "checked_category_labels": [
+              "answer",
+              "reason",
+              "verify"
+            ],
+            "files_sha256": {
+              "svg": "17a53ed648728c8d9ae97fe551d81682e17656c5ceeff853b45fe369980b65dc",
+              "png": "ac7fdab8cb350ecb01870a3f78977ebd927dbb830acb3c257e1f46bb390ef869",
+              "pdf": "9c2d33371c6b66a9d95069b44347fcb6606004f91486861783ec9770f8e95eb5"
+            }
+          },
+          {
+            "figure": "execution-action_transitions",
+            "kind": "heatmap",
+            "rows": 1,
+            "checked_category_labels": [],
+            "files_sha256": {
+              "svg": "de51fef4b2e27d5c7986c389a7b6d0b2f56f80a4563175f80299ecc906ff1c38",
+              "png": "13a1b23c59f110463a5073fb59ec45ff4299ad71fd960b715e9661274a37711b",
+              "pdf": "4b14fcc1a571ebec677e532595d78569e440333dc56da7585eaa969184b6d525"
+            }
+          },
+          {
+            "figure": "execution-entropy_tokens",
+            "kind": "scatter",
+            "rows": 12,
+            "checked_category_labels": [],
+            "files_sha256": {
+              "svg": "b35c2b577dd49c564ada46b228b0e30879f2b74348bba6946d849753860a3281",
+              "png": "ca63498df96ff2d940b3f8c34dacc8c84c01044ba90cd5ae848546ea39acbde5",
+              "pdf": "82e26f8da9a7e63ecb82b2a17726a69910f90b912febfae4e7441677cc6bdac6"
+            }
+          },
+          {
+            "figure": "request_entropy-entropy_by_request_position",
+            "kind": "line",
+            "rows": 768,
+            "checked_category_labels": [],
+            "files_sha256": {
+              "svg": "54f6e32e5c9f19f868f2926697dfc8d9aa1cd172b9f3b6c15e979b0e21892bfc",
+              "png": "c1705d91fb20621e1f825a0fadc0e58be8567296f29007963d553c0869188230",
+              "pdf": "7e26902955176dac3871965699fa88901bbe4654699be1e1ae220675b8723e76"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "directory": "/data0/weikaihuang/issue96-validation/delivery-figures-a0f941c2/swe_mini-measurements",
+      "report_sha256": "c111ca1bf82b1b7dd4ea704c3c761de68c2fe19e3ed1534c7c9d171bcce8e1c0",
+      "integrity": {
+        "figures_checked": 7,
+        "bar_charts_checked": 4,
+        "files_checked": 21,
+        "skipped": [],
+        "details": [
+          {
+            "figure": "execution-accuracy",
+            "kind": "bar",
+            "rows": 4,
+            "checked_category_labels": [
+              "OpenClaw",
+              "OpenCode",
+              "SWE-Agent",
+              "ZeroClaw"
+            ],
+            "files_sha256": {
+              "svg": "1151dff171eb95a2e7b62e28ca2706cfc11d3abf64e20e91351809674c83cc94",
+              "png": "fccb5d918cb392059608e1432275478cafc6073dae79fcf0be907aadc3ab33b5",
+              "pdf": "83f138c60de4547ca5e6deae5c8893f2ff2df776401bcdf82904ea805fa87d8c"
+            }
+          },
+          {
+            "figure": "execution-efficiency",
+            "kind": "bar",
+            "rows": 1,
+            "checked_category_labels": [
+              "OpenClaw"
+            ],
+            "files_sha256": {
+              "svg": "44a45cb9bae7f2a379a0f0636a6bb2ed22a20ad0839dadb6fb8381d74a032e19",
+              "png": "c043c012dec9f01a51df5e89d6919ae4eb8005a3bebd7c4b35cef00805ba2b8f",
+              "pdf": "ce05f79836b5aef22b63612c2b89da4b817c59362f4e1fed57be9f34e619b6e2"
+            }
+          },
+          {
+            "figure": "execution-time_efficiency",
+            "kind": "bar",
+            "rows": 1,
+            "checked_category_labels": [
+              "OpenClaw"
+            ],
+            "files_sha256": {
+              "svg": "f1ae5e34511006804af673a0baa89253ad2f089ce251aa7ff6634c194f1a14cf",
+              "png": "95fc8407c97a7e714fa61da025c3ef6af9cf47090c1484c435061b0f6a38ed48",
+              "pdf": "a45dd8e81682ad05fcb3c6648d3621c18727e65b5b42ed71de7146cf73e2e3c0"
+            }
+          },
+          {
+            "figure": "execution-action_composition",
+            "kind": "bar",
+            "rows": 18,
+            "checked_category_labels": [
+              "answer",
+              "plan",
+              "reason",
+              "recover",
+              "tool_use",
+              "verify"
+            ],
+            "files_sha256": {
+              "svg": "c1e0b7f6a5c33bb9931177a0882415e203ec1d7507445f1c595449852b2c281e",
+              "png": "bdd6b9b6f92184b892444df4722b37ffa63a05964cea2092c074668dfe83b9dc",
+              "pdf": "9577764abc48a37bcebb203c8ab62005785c2fd7de2088de861b96ed3d31ed03"
+            }
+          },
+          {
+            "figure": "execution-action_transitions",
+            "kind": "heatmap",
+            "rows": 45,
+            "checked_category_labels": [],
+            "files_sha256": {
+              "svg": "ca2a413d09ae0f54bb4cbc4beca595107b075a66bb9784e1ae8a7a49e57005d7",
+              "png": "85f4c4c1ed260d7173e7dcc1e4f597ceefe4b1ed0fa414c193e138f5398f9260",
+              "pdf": "a2c9a0499caf3d4ce15fc2da6b159e1cd4e48b3cef63e84de6403677fa29c887"
+            }
+          },
+          {
+            "figure": "execution-entropy_tokens",
+            "kind": "scatter",
+            "rows": 10,
+            "checked_category_labels": [],
+            "files_sha256": {
+              "svg": "2cfdc42c64d775e0858d7e54f64b2ad0a03e8d02e119006273328a04706d8c5b",
+              "png": "53e7e54659dde81d644f17e0cbbbd2b68d7377e3045a5afde994fef243d0f8f4",
+              "pdf": "03b16cfada6659e4b4c7fd131b2a755b65098f7f182c9c636a4613d08d859aa2"
+            }
+          },
+          {
+            "figure": "request_entropy-entropy_by_request_position",
+            "kind": "line",
+            "rows": 143,
+            "checked_category_labels": [],
+            "files_sha256": {
+              "svg": "ac8956ddf58b6c083c4e2272a2973e2c4a5f97062650239ed65a0322e10043d2",
+              "png": "873fa899d84fbc64b7c339d759957c8bc0e6cadfa0ad0f43d434623b482c017e",
+              "pdf": "20d6007da53f9e68e965f1c9137bf2a6d231929d5f50028793ba68cc6805168f"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "directory": "/data0/weikaihuang/issue96-validation/delivery-figures-0919857d/terminal_bench2-measurements",
+      "report_sha256": "22f0e83e9b783ad83ad7aadd43e909310352a7a88890cf267802afe441d4f77a",
+      "integrity": {
+        "figures_checked": 5,
+        "bar_charts_checked": 2,
+        "files_checked": 15,
+        "skipped": [
+          {
+            "figure": "execution-efficiency",
+            "reason": "No applicable measured observations"
+          },
+          {
+            "figure": "execution-time_efficiency",
+            "reason": "No applicable measured observations"
+          }
+        ],
+        "details": [
+          {
+            "figure": "execution-accuracy",
+            "kind": "bar",
+            "rows": 4,
+            "checked_category_labels": [
+              "OpenClaw",
+              "OpenCode",
+              "Terminus 2",
+              "ZeroClaw"
+            ],
+            "files_sha256": {
+              "svg": "c74ee1d4f5ac004602ebf9efc17833bd3ee11c685e3203dc4eba5a6beb7247fa",
+              "png": "58911a9d7968d00cbd5fdf45321d854bdad53ae3a2002451955f18249e169b51",
+              "pdf": "2e8ca1b619b3fc3f4772c6fc1ee6c183387758c03b0865b264eed7a945313cf0"
+            }
+          },
+          {
+            "figure": "execution-action_composition",
+            "kind": "bar",
+            "rows": 14,
+            "checked_category_labels": [
+              "plan",
+              "reason",
+              "recover",
+              "tool_use",
+              "verify"
+            ],
+            "files_sha256": {
+              "svg": "afe7687b3dd250b9b8a65138508d9eaa36e9cb6def26a92907198371c3ed874c",
+              "png": "da2ec08a8e2a76dded3d1139e73eb59bcf89fa4c77ade34ed33fe693c7d94335",
+              "pdf": "804f16709588e84669c239256ac07c84b15c679b0e5586d8b4e5a8b221fd0af2"
+            }
+          },
+          {
+            "figure": "execution-action_transitions",
+            "kind": "heatmap",
+            "rows": 33,
+            "checked_category_labels": [],
+            "files_sha256": {
+              "svg": "3793670b457962abe68e50f94d056286504fc27baa041719d15aa0e617eba24c",
+              "png": "fa8244430208238f4d0dda404c0ada2614d771a047f25bcacb4738cde19dcd64",
+              "pdf": "5b95f9d0b2cdf8348e2c10e1ce2cb4737698ac9578441470a6d30bf9a5078c5c"
+            }
+          },
+          {
+            "figure": "execution-entropy_tokens",
+            "kind": "scatter",
+            "rows": 6,
+            "checked_category_labels": [],
+            "files_sha256": {
+              "svg": "8c7d628a4085cc2e267e173d68bccc741b4161f6bce009c40df5e50d5d6b432c",
+              "png": "aa4f054338cce4a20c41f6c491085139e3eb0133c3ce3e342d5987d72a919483",
+              "pdf": "6ae32570f9c06f72b720089161a54315f5ff7ef6c9451e9ec9848e26513dd8df"
+            }
+          },
+          {
+            "figure": "request_entropy-entropy_by_request_position",
+            "kind": "line",
+            "rows": 545,
+            "checked_category_labels": [],
+            "files_sha256": {
+              "svg": "3f34bc0f90f38950b1bfb08ad41c7b14bf4655063a5e1696d4657d658529bfc4",
+              "png": "195de21537573ccf95dff03fbcbc64d9e3c5fe36744ef7d2d847b3767f8793c5",
+              "pdf": "ca49ae3cf79fb20a5c579fea01ecda30b5aca046ea88deb2aa85800ad542b831"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "directory": "/data0/weikaihuang/issue96-validation/delivery-figures-0919857d/mmmu_pro-measurements",
+      "report_sha256": "ef43dbe93600acdb0689b31f03b006a9dfbcac2c4708a454adbda9ec7a0a51dd",
+      "integrity": {
+        "figures_checked": 7,
+        "bar_charts_checked": 4,
+        "files_checked": 21,
+        "skipped": [],
+        "details": [
+          {
+            "figure": "execution-accuracy",
+            "kind": "bar",
+            "rows": 4,
+            "checked_category_labels": [
+              "Direct",
+              "OpenClaw",
+              "OpenCode",
+              "ZeroClaw"
+            ],
+            "files_sha256": {
+              "svg": "cd8cbe62fd9e5fe9117ce214243472c61111eb429d7577a3653a6ef7c514ea2e",
+              "png": "eae22edad1671031569a6b72e5137b97cf1ef19414a83e4b7e8079413c62ae4f",
+              "pdf": "fcc5626d6c834294490b3e5a6de65239ee08b2e9432d8d582aa5a6640d2d77eb"
+            }
+          },
+          {
+            "figure": "execution-efficiency",
+            "kind": "bar",
+            "rows": 3,
+            "checked_category_labels": [
+              "OpenClaw",
+              "OpenCode",
+              "ZeroClaw"
+            ],
+            "files_sha256": {
+              "svg": "2a49a2b8fe33684e129a8335b01f127430d2494868fbf0c81934cdcd2aae1167",
+              "png": "64e90a8eadccaf177c6b0afd29c40b40e275bbc4645c991e12a23c84660aa71f",
+              "pdf": "453fdf8ef6e4550f32c4f219bffe14d733752df7fe8c7d4b86b025722981be2a"
+            }
+          },
+          {
+            "figure": "execution-time_efficiency",
+            "kind": "bar",
+            "rows": 3,
+            "checked_category_labels": [
+              "OpenClaw",
+              "OpenCode",
+              "ZeroClaw"
+            ],
+            "files_sha256": {
+              "svg": "33e47989c56f518d8d6d286d8e1191fdab27a3c15fe203ba8e68f920d754b5e3",
+              "png": "b3155f54659003da189a9b5d13ee8dfd12e8b618b4875c9b988328a0db5dc153",
+              "pdf": "0847a06906f016e3c299398b9ecbd1da5e32c01fc49678a31900a65f359647c1"
+            }
+          },
+          {
+            "figure": "execution-action_composition",
+            "kind": "bar",
+            "rows": 9,
+            "checked_category_labels": [
+              "answer",
+              "plan",
+              "reason",
+              "tool_use",
+              "verify"
+            ],
+            "files_sha256": {
+              "svg": "88258f3c91c61a96b00edd0bae16ae30d41edc3612e5c7355e4f8c6baec6f019",
+              "png": "4234d53c24b0bb2982efc6f2331d7cf585a2f9ef4a5f97e45b3bafe457d21f43",
+              "pdf": "97f729c921ba702689bf3f37f770fb0c6ded39c8d1419e22653a35fca378195e"
+            }
+          },
+          {
+            "figure": "execution-action_transitions",
+            "kind": "heatmap",
+            "rows": 5,
+            "checked_category_labels": [],
+            "files_sha256": {
+              "svg": "02da17f586f0533c0fb1dc8af4b5676e1c526bc1d34cba779261e85558763fc6",
+              "png": "101c960894f952f0e4f1eca1ffd8b92174f37fec4e789efb1c00e8dd8b29cbac",
+              "pdf": "17b9208dddf0be45d5d49c13622a0b489b2cc195c337ca9d77ee1c8a36dd927f"
+            }
+          },
+          {
+            "figure": "execution-entropy_tokens",
+            "kind": "scatter",
+            "rows": 12,
+            "checked_category_labels": [],
+            "files_sha256": {
+              "svg": "8868cb01317f7bcf05b716550a98bb065eed53f5b957097bc1c5f2b0e6041312",
+              "png": "0820b5a34198d391d5e7179014c0f1a195dd652227bfeea239beaefba9db3a7e",
+              "pdf": "0f138f5376ed1fc3d5acc0033e33e47891a13cc8bdff3f9faedca6eb61898e8c"
+            }
+          },
+          {
+            "figure": "request_entropy-entropy_by_request_position",
+            "kind": "line",
+            "rows": 44,
+            "checked_category_labels": [],
+            "files_sha256": {
+              "svg": "1a7ae8fc5ef8cffc9f54d59535fd66028e3fa30f5136234854d40c57a62bddea",
+              "png": "edd0168f9af62dc44107bbfaffa64a8dd8df88063ab1b44e7c134fe72efd8bd0",
+              "pdf": "dee1264e07d232723269afa5509c3869f0b8c0db4f3c59c6c36cd3582fa8007f"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "directory": "/data0/weikaihuang/issue96-validation/delivery-figures-a0f941c2/aime2026-annotations",
+      "report_sha256": "ad751acbe40e570cc2da52371d933a4b96e390b8ae6259e8831eff6d98c9c20d",
+      "integrity": {
+        "figures_checked": 2,
+        "bar_charts_checked": 1,
+        "files_checked": 6,
+        "skipped": [],
+        "details": [
+          {
+            "figure": "annotated_actions-composition",
+            "kind": "bar",
+            "rows": 10,
+            "checked_category_labels": [
+              "Finalization",
+              "Planning",
+              "Reasoning",
+              "Tool Use",
+              "Verification"
+            ],
+            "files_sha256": {
+              "svg": "e94281cd2a1d96718f9745580d83beac80dede7f9c52e9028b0158efa89168e9",
+              "png": "32aed208e4165fd734a87849f2805699563da420e22c19887658906ebe649e97",
+              "pdf": "313b0e343009212242ff558b78a7a7c72dfb519f0ff378fc8c444275bdc4d5b1"
+            }
+          },
+          {
+            "figure": "annotated_actions-transitions",
+            "kind": "heatmap",
+            "rows": 10,
+            "checked_category_labels": [],
+            "files_sha256": {
+              "svg": "bb22b1514bd0e413040afc7c90d3cda76c6852bcb72b2d2e896baa0abb4b0ca0",
+              "png": "8dd2fceb856bbc6343a39f0457bd874641ceb95d179741accc2891d2937d5e7f",
+              "pdf": "142509bfc0af7f2be31180af09a97d26ade46500edf0a4e208e064ce6727e818"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "directory": "/data0/weikaihuang/issue96-validation/delivery-figures-a0f941c2/hle-annotations",
+      "report_sha256": "e47316d7f0221f24c74928b4611b90d56b7f67205704076660023d0072eeba5a",
+      "integrity": {
+        "figures_checked": 2,
+        "bar_charts_checked": 1,
+        "files_checked": 6,
+        "skipped": [],
+        "details": [
+          {
+            "figure": "annotated_actions-composition",
+            "kind": "bar",
+            "rows": 9,
+            "checked_category_labels": [
+              "Finalization",
+              "Reasoning",
+              "Verification"
+            ],
+            "files_sha256": {
+              "svg": "cd524e908fdda2a65b5c678bf4fd689b29dc547a2f3f886d7cbfe710a5952477",
+              "png": "ab6c3f197ebaeab7b05db9df415365e3b9f84c69be658ab48745d53af9bb5812",
+              "pdf": "cf72cb2a6207999f26dd18423ff0b852dd057bc6041240e821331a5985ef68cb"
+            }
+          },
+          {
+            "figure": "annotated_actions-transitions",
+            "kind": "heatmap",
+            "rows": 9,
+            "checked_category_labels": [],
+            "files_sha256": {
+              "svg": "4e1975bd49c3b8a4d241e5bdaa773204b01fe2876bb1e7a523200d6c2b8801ff",
+              "png": "afef58e070342e5afb6f6db593567492dc5452f589c2bd61db1ae642bfb77a12",
+              "pdf": "7bf26144b4c150af9066b0cc9b5c6fb155c376e31810f6b0621ba17050f486b7"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "directory": "/data0/weikaihuang/issue96-validation/delivery-figures-a0f941c2/gpqa-annotations",
+      "report_sha256": "b6bd2b631d2b76b2e66c41754eb20f66a067dea8eacee3494521cf16e0421e3a",
+      "integrity": {
+        "figures_checked": 2,
+        "bar_charts_checked": 1,
+        "files_checked": 6,
+        "skipped": [],
+        "details": [
+          {
+            "figure": "annotated_actions-composition",
+            "kind": "bar",
+            "rows": 9,
+            "checked_category_labels": [
+              "Finalization",
+              "Reasoning",
+              "Tool Use"
+            ],
+            "files_sha256": {
+              "svg": "662081b5fad7390f6a5b5b1b3c8056fcc0082df3572bc125e3a35e7ec0854464",
+              "png": "45852147c1b22a826c7c7bea651d60c090e4f62124656dcf0902302f13e57cb7",
+              "pdf": "16be75363e34cf6f44e0e7fed589a50b54a1ee331ac69762aca5c55a5c1233c3"
+            }
+          },
+          {
+            "figure": "annotated_actions-transitions",
+            "kind": "heatmap",
+            "rows": 5,
+            "checked_category_labels": [],
+            "files_sha256": {
+              "svg": "fba6c601e85b22e9da0f6ec1c3fc18d2ff8a429b0ca2f5d3f00e08a7927e591a",
+              "png": "5779c1c4ac928810ddab5ce7adc536571724e7bb94d1883c76e91ee9efe0b8d7",
+              "pdf": "f1b387e55e54730fc51c7781bd279697d046d48746f2c72aec177118326599bd"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "directory": "/data0/weikaihuang/issue96-validation/delivery-figures-a0f941c2/swe_mini-annotations",
+      "report_sha256": "87d634069d9488b1f7d9bfd1b103acacaac8587e2afe515ce15210fa7aac0165",
+      "integrity": {
+        "figures_checked": 2,
+        "bar_charts_checked": 1,
+        "files_checked": 6,
+        "skipped": [],
+        "details": [
+          {
+            "figure": "annotated_actions-composition",
+            "kind": "bar",
+            "rows": 19,
+            "checked_category_labels": [
+              "Finalization",
+              "Planning",
+              "Reasoning",
+              "Tool Use",
+              "Verification"
+            ],
+            "files_sha256": {
+              "svg": "72af86226d598bdf381fd218c39aee3f8548c57283765cd831512493f38f8805",
+              "png": "64f0593ecaae605222f6779c2420b34d6435a6c016823c90dea8c726453d3e4e",
+              "pdf": "e5dd2088117bf58ed31931b510fcf7d5820b739ae4458c9549c778e058443247"
+            }
+          },
+          {
+            "figure": "annotated_actions-transitions",
+            "kind": "heatmap",
+            "rows": 46,
+            "checked_category_labels": [],
+            "files_sha256": {
+              "svg": "92578d22978d2094a9c8efff41b8038d36804ce1ebfc76014f6bdfe0cce8e023",
+              "png": "d5a0ddb71f611da1d4ba4ef3f873ddbd7062eb11e99f49550521c0ab815f8943",
+              "pdf": "2ea09658920f3449920fee0fc7f3842d84b422a305574aa6384be6c3c55138c9"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "directory": "/data0/weikaihuang/issue96-validation/delivery-figures-a0f941c2/imo_answerbench-annotations",
+      "report_sha256": "43beea3eeed94db09062d6f09063a69e6619636e72394e65069ffa27d15d875b",
+      "integrity": {
+        "figures_checked": 2,
+        "bar_charts_checked": 1,
+        "files_checked": 6,
+        "skipped": [],
+        "details": [
+          {
+            "figure": "annotated_actions-composition",
+            "kind": "bar",
+            "rows": 9,
+            "checked_category_labels": [
+              "Finalization",
+              "Reasoning",
+              "Verification"
+            ],
+            "files_sha256": {
+              "svg": "ac4675d5ac15c6e8de57d977ac4208b5ea19041c86ca8eea7500606aff9d18d1",
+              "png": "4322fd63e2dd93754d3621a9c40cb3c0d16536336d9200614a52bb6c8cd2493e",
+              "pdf": "c7a9aa5033a5398f41259fdaab7a11d4dc1437f71ae5620b5fbff8a87368d93d"
+            }
+          },
+          {
+            "figure": "annotated_actions-transitions",
+            "kind": "heatmap",
+            "rows": 12,
+            "checked_category_labels": [],
+            "files_sha256": {
+              "svg": "ab141f8434ae39d25acb74515d7cabd665642492322450fdd8abb7e333fb23e9",
+              "png": "a43dc11003909a5c8748437fd87f2af03bbd626d7034f1a606bfdf8a8ab83c3f",
+              "pdf": "e882d3364c8824a4d51c22a28fa6cbe529f5977d1edf7c665e10f96af5cda98c"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "directory": "/data0/weikaihuang/issue96-validation/delivery-figures-0919857d/mmmu_pro-annotations",
+      "report_sha256": "02aa946fd6d2a5ca22261e2394a8c5db68fbc2c14ba3779a56df2f2ca28b77a4",
+      "integrity": {
+        "figures_checked": 2,
+        "bar_charts_checked": 1,
+        "files_checked": 6,
+        "skipped": [],
+        "details": [
+          {
+            "figure": "annotated_actions-composition",
+            "kind": "bar",
+            "rows": 7,
+            "checked_category_labels": [
+              "Finalization",
+              "Planning",
+              "Reasoning",
+              "Tool Use"
+            ],
+            "files_sha256": {
+              "svg": "1a8ee155ffd4ccdf47109ecb9a804a7c26005647bb2f1f4b325cfb5ac39e4874",
+              "png": "bf934652607658b79e9fd90a3851d70f889f09760c6baac8d7103f50479810b2",
+              "pdf": "a3c6216a5044b407dc9d339e58b21ceed2ff8d1cfa5f30f17aa272cfb759d596"
+            }
+          },
+          {
+            "figure": "annotated_actions-transitions",
+            "kind": "heatmap",
+            "rows": 3,
+            "checked_category_labels": [],
+            "files_sha256": {
+              "svg": "14b9ff430122f43c755f4c52eb3d089af1439ffaaf444f1f835b32ebdf84b5ea",
+              "png": "e787930b9880ce579d9fb10ff5136b3810120ae1576d458622b024c1e7441981",
+              "pdf": "e9099df0c113f45f7a9d10833385664292503ba0875add565d8b93d56a86a77e"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "directory": "/data0/weikaihuang/issue96-validation/delivery-figures-0919857d/terminal_bench2-annotations",
+      "report_sha256": "47ebd5015c0ab0f3b9d837f39485ee9dd770d4656b3bb402bd8305af46f3cae4",
+      "integrity": {
+        "figures_checked": 2,
+        "bar_charts_checked": 1,
+        "files_checked": 6,
+        "skipped": [],
+        "details": [
+          {
+            "figure": "annotated_actions-composition",
+            "kind": "bar",
+            "rows": 15,
+            "checked_category_labels": [
+              "Finalization",
+              "Planning",
+              "Reasoning",
+              "Tool Use",
+              "Understanding"
+            ],
+            "files_sha256": {
+              "svg": "3da679005420857d4897a7aad817202d56bd30dcff915325730cb881403909c0",
+              "png": "c241b209940f4573af619478c5e66892233fcd1e62d8ab6ae40f923d6b9939fd",
+              "pdf": "df654ca1ce98bbe26f6210bcbdb188e9272c07eafbcb749d09b5de566ef925e9"
+            }
+          },
+          {
+            "figure": "annotated_actions-transitions",
+            "kind": "heatmap",
+            "rows": 34,
+            "checked_category_labels": [],
+            "files_sha256": {
+              "svg": "2c2af0cb2a88fe464bae2f927617d6cbbf57e84d7631e3cdb5b0e79bec61ebe5",
+              "png": "c1e17417f4258ed2e36732faf4854e3305738f7d8c053d6b3bc3d5742ad63048",
+              "pdf": "91e32c3fedbaa7b3934ee4380e9bb9b839d70c00fbc32302ef152b45eeaeaedf"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "independent_measurements": [
+    {
+      "fixture": "aime2026",
+      "analysis_commit": "04c5ce2de64fd321b5304b2c59ee518b50711fc5",
+      "independently_recomputed": [
+        "accuracy denominator",
+        "equal-call top-K entropy and bin counts",
+        "task-local transition counts"
+      ],
+      "entropy_bins": 322,
+      "applicability": [
+        {
+          "run": "Direct",
+          "observed_probability_records": 6094,
+          "request_attributed_records": 0,
+          "post_tool_records": 0,
+          "post_tool_interpretation": "Inapplicable for Direct (no tools)"
+        },
+        {
+          "run": "OpenClaw",
+          "observed_probability_records": 7899,
+          "request_attributed_records": 7899,
+          "post_tool_records": 172,
+          "post_tool_interpretation": "Observed conditional data, descriptive not causal"
+        },
+        {
+          "run": "ZeroClaw",
+          "observed_probability_records": 7289,
+          "request_attributed_records": 7289,
+          "post_tool_records": 0,
+          "post_tool_interpretation": "No attributed tool-feedback generation observed in these three tasks; do not infer a population effect."
+        },
+        {
+          "run": "OpenCode",
+          "observed_probability_records": 3564,
+          "request_attributed_records": 3564,
+          "post_tool_records": 0,
+          "post_tool_interpretation": "No attributed tool-feedback generation observed in these three tasks; do not infer a population effect."
+        }
+      ]
+    },
+    {
+      "fixture": "gpqa",
+      "analysis_commit": "04c5ce2de64fd321b5304b2c59ee518b50711fc5",
+      "independently_recomputed": [
+        "accuracy denominator",
+        "equal-call top-K entropy and bin counts",
+        "task-local transition counts"
+      ],
+      "entropy_bins": 155,
+      "applicability": [
+        {
+          "run": "Direct",
+          "observed_probability_records": 3559,
+          "request_attributed_records": 0,
+          "post_tool_records": 0,
+          "post_tool_interpretation": "Inapplicable for Direct (no tools)"
+        },
+        {
+          "run": "OpenClaw",
+          "observed_probability_records": 2470,
+          "request_attributed_records": 2470,
+          "post_tool_records": 0,
+          "post_tool_interpretation": "No attributed tool-feedback generation observed in these three tasks; do not infer a population effect."
+        },
+        {
+          "run": "ZeroClaw",
+          "observed_probability_records": 2236,
+          "request_attributed_records": 2236,
+          "post_tool_records": 583,
+          "post_tool_interpretation": "Observed conditional data, descriptive not causal"
+        },
+        {
+          "run": "OpenCode",
+          "observed_probability_records": 3063,
+          "request_attributed_records": 3063,
+          "post_tool_records": 0,
+          "post_tool_interpretation": "No attributed tool-feedback generation observed in these three tasks; do not infer a population effect."
+        }
+      ]
+    },
+    {
+      "fixture": "hle",
+      "analysis_commit": "04c5ce2de64fd321b5304b2c59ee518b50711fc5",
+      "independently_recomputed": [
+        "accuracy denominator",
+        "equal-call top-K entropy and bin counts",
+        "task-local transition counts"
+      ],
+      "entropy_bins": 367,
+      "applicability": [
+        {
+          "run": "Direct",
+          "observed_probability_records": 18990,
+          "request_attributed_records": 0,
+          "post_tool_records": 0,
+          "post_tool_interpretation": "Inapplicable for Direct (no tools)"
+        },
+        {
+          "run": "OpenClaw",
+          "observed_probability_records": 13574,
+          "request_attributed_records": 13574,
+          "post_tool_records": 0,
+          "post_tool_interpretation": "No attributed tool-feedback generation observed in these three tasks; do not infer a population effect."
+        },
+        {
+          "run": "ZeroClaw",
+          "observed_probability_records": 4511,
+          "request_attributed_records": 4511,
+          "post_tool_records": 0,
+          "post_tool_interpretation": "No attributed tool-feedback generation observed in these three tasks; do not infer a population effect."
+        },
+        {
+          "run": "OpenCode",
+          "observed_probability_records": 1857,
+          "request_attributed_records": 1857,
+          "post_tool_records": 0,
+          "post_tool_interpretation": "No attributed tool-feedback generation observed in these three tasks; do not infer a population effect."
+        }
+      ]
+    },
+    {
+      "fixture": "mmmu_pro",
+      "analysis_commit": "0919857d6117be4d8aa2cc5e6356f176d4645083",
+      "independently_recomputed": [
+        "accuracy denominator",
+        "equal-call top-K entropy and bin counts",
+        "task-local transition counts"
+      ],
+      "entropy_bins": 44,
+      "applicability": [
+        {
+          "run": "Direct",
+          "observed_probability_records": 1423,
+          "request_attributed_records": 0,
+          "post_tool_records": 0,
+          "post_tool_interpretation": "Inapplicable for Direct (no tools)"
+        },
+        {
+          "run": "OpenClaw",
+          "observed_probability_records": 1272,
+          "request_attributed_records": 1272,
+          "post_tool_records": 0,
+          "post_tool_interpretation": "No attributed tool-feedback generation observed in these three tasks; do not infer a population effect."
+        },
+        {
+          "run": "ZeroClaw",
+          "observed_probability_records": 868,
+          "request_attributed_records": 868,
+          "post_tool_records": 202,
+          "post_tool_interpretation": "Observed conditional data, descriptive not causal"
+        },
+        {
+          "run": "OpenCode",
+          "observed_probability_records": 597,
+          "request_attributed_records": 597,
+          "post_tool_records": 0,
+          "post_tool_interpretation": "No attributed tool-feedback generation observed in these three tasks; do not infer a population effect."
+        }
+      ]
+    },
+    {
+      "fixture": "terminal_bench2",
+      "analysis_commit": "0919857d6117be4d8aa2cc5e6356f176d4645083",
+      "independently_recomputed": [
+        "accuracy denominator",
+        "equal-call top-K entropy and bin counts",
+        "task-local transition counts"
+      ],
+      "entropy_bins": 545,
+      "applicability": [
+        {
+          "run": "OpenClaw",
+          "observed_probability_records": 15544,
+          "request_attributed_records": 15544,
+          "post_tool_records": 15446,
+          "post_tool_interpretation": "Observed conditional data, descriptive not causal"
+        },
+        {
+          "run": "ZeroClaw",
+          "observed_probability_records": 3428,
+          "request_attributed_records": 3428,
+          "post_tool_records": 3279,
+          "post_tool_interpretation": "Observed conditional data, descriptive not causal"
+        },
+        {
+          "run": "OpenCode",
+          "observed_probability_records": 2981,
+          "request_attributed_records": 2981,
+          "post_tool_records": 1671,
+          "post_tool_interpretation": "Observed conditional data, descriptive not causal"
+        },
+        {
+          "run": "Terminus 2",
+          "observed_probability_records": 37230,
+          "request_attributed_records": 37230,
+          "post_tool_records": 31849,
+          "post_tool_interpretation": "Observed conditional data, descriptive not causal"
+        }
+      ]
+    },
+    {
+      "fixture": "imo_answerbench",
+      "analysis_commit": "123b0c25df6dce716c6c394a5c5a7439f02b7bc1",
+      "independently_recomputed": [
+        "accuracy denominator",
+        "equal-call top-K entropy and bin counts",
+        "task-local transition counts"
+      ],
+      "entropy_bins": 768,
+      "applicability": [
+        {
+          "run": "Direct",
+          "observed_probability_records": 24576,
+          "request_attributed_records": 0,
+          "post_tool_records": 0,
+          "post_tool_interpretation": "Inapplicable for Direct (no tools)"
+        },
+        {
+          "run": "OpenClaw",
+          "observed_probability_records": 24576,
+          "request_attributed_records": 24576,
+          "post_tool_records": 0,
+          "post_tool_interpretation": "No attributed tool-feedback generation observed in these three tasks; do not infer a population effect."
+        },
+        {
+          "run": "ZeroClaw",
+          "observed_probability_records": 24576,
+          "request_attributed_records": 24576,
+          "post_tool_records": 0,
+          "post_tool_interpretation": "No attributed tool-feedback generation observed in these three tasks; do not infer a population effect."
+        },
+        {
+          "run": "OpenCode",
+          "observed_probability_records": 20097,
+          "request_attributed_records": 20097,
+          "post_tool_records": 0,
+          "post_tool_interpretation": "No attributed tool-feedback generation observed in these three tasks; do not infer a population effect."
+        }
+      ]
+    },
+    {
+      "fixture": "swe_mini",
+      "analysis_commit": "a0f941c2cc9c45d0e532f3083c76d4f8d68c4b36",
+      "independently_recomputed": [
+        "accuracy denominator",
+        "equal-call top-K entropy and bin counts",
+        "task-local transition counts"
+      ],
+      "entropy_bins": 143,
+      "applicability": [
+        {
+          "run": "OpenClaw",
+          "observed_probability_records": 2972,
+          "request_attributed_records": 2972,
+          "post_tool_records": 2934,
+          "post_tool_interpretation": "Observed conditional data, descriptive not causal"
+        },
+        {
+          "run": "ZeroClaw",
+          "observed_probability_records": 7784,
+          "request_attributed_records": 7784,
+          "post_tool_records": 6594,
+          "post_tool_interpretation": "Observed conditional data, descriptive not causal"
+        },
+        {
+          "run": "OpenCode",
+          "observed_probability_records": 5038,
+          "request_attributed_records": 5038,
+          "post_tool_records": 2084,
+          "post_tool_interpretation": "Observed conditional data, descriptive not causal"
+        },
+        {
+          "run": "SWE-Agent",
+          "observed_probability_records": 12422,
+          "request_attributed_records": 12422,
+          "post_tool_records": 12195,
+          "post_tool_interpretation": "Observed conditional data, descriptive not causal"
+        }
+      ]
+    }
+  ],
+  "independent_annotations": [
+    {
+      "fixture": "aime2026",
+      "spans": 23,
+      "annotated_task_samples": 12,
+      "report_sha256": "ad751acbe40e570cc2da52371d933a4b96e390b8ae6259e8831eff6d98c9c20d",
+      "cache_request_hashes_verified": true,
+      "task_local_counts_verified": true
+    },
+    {
+      "fixture": "hle",
+      "spans": 35,
+      "annotated_task_samples": 12,
+      "report_sha256": "e47316d7f0221f24c74928b4611b90d56b7f67205704076660023d0072eeba5a",
+      "cache_request_hashes_verified": true,
+      "task_local_counts_verified": true
+    },
+    {
+      "fixture": "gpqa",
+      "spans": 18,
+      "annotated_task_samples": 12,
+      "report_sha256": "b6bd2b631d2b76b2e66c41754eb20f66a067dea8eacee3494521cf16e0421e3a",
+      "cache_request_hashes_verified": true,
+      "task_local_counts_verified": true
+    },
+    {
+      "fixture": "swe_mini",
+      "spans": 403,
+      "annotated_task_samples": 12,
+      "report_sha256": "87d634069d9488b1f7d9bfd1b103acacaac8587e2afe515ce15210fa7aac0165",
+      "cache_request_hashes_verified": true,
+      "task_local_counts_verified": true
+    },
+    {
+      "fixture": "imo_answerbench",
+      "spans": 50,
+      "annotated_task_samples": 12,
+      "report_sha256": "43beea3eeed94db09062d6f09063a69e6619636e72394e65069ffa27d15d875b",
+      "cache_request_hashes_verified": true,
+      "task_local_counts_verified": true
+    },
+    {
+      "fixture": "mmmu_pro",
+      "spans": 16,
+      "annotated_task_samples": 12,
+      "report_sha256": "02aa946fd6d2a5ca22261e2394a8c5db68fbc2c14ba3779a56df2f2ca28b77a4",
+      "cache_request_hashes_verified": true,
+      "task_local_counts_verified": true
+    },
+    {
+      "fixture": "terminal_bench2",
+      "spans": 662,
+      "annotated_task_samples": 12,
+      "report_sha256": "47ebd5015c0ab0f3b9d837f39485ee9dd770d4656b3bb402bd8305af46f3cae4",
+      "cache_request_hashes_verified": true,
+      "task_local_counts_verified": true
+    }
+  ],
+  "historical_archive": {
+    "directory": "/data0/weikaihuang/issue96-validation/paper-archive-analysis-04c5ce2d",
+    "figures": 79,
+    "files": 237
+  },
+  "pending": [
+    "Tian human review and handoff",
+    "original owner and Zongze final review",
+    "manuscript signature synchronization",
+    "CI: no reported checks",
+    "merge/deployment"
+  ]
+}

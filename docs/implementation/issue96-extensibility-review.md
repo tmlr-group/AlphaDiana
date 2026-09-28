@@ -58,3 +58,27 @@ Provider usage aggregation is another explicit observer option, selected by SWE-
 Harbor ATIF projection remains at the native adapter boundary, with no special Terminus branch in Runner or generic analysis. A persistence-to-analysis test verifies that both deterministic action extraction and optional model annotation exclude user/system prompts and tool observations. Raw ATIF evidence is retained. Unsupported future source roles fail explicitly rather than silently becoming model behavior.
 
 SWE-Agent likewise projects native message history at its adapter boundary. Generic analysis receives canonical roles and function-call/result fields, while full query-bearing trajectories remain raw evidence rather than annotation targets. Six actual native traces and constructed persistence tests verify role counts and excluded prompt/observation targets. The two new adapters therefore use the existing generic schema without a new harness switch in analysis or Runner.
+
+### Final review at code revision 0919857d
+
+All functional gates cited as pending in the chronological review above now have
+separate acceptance evidence: 28 selected cells/84 valid executions, 24 real
+environment verifier replays, custom component lifecycle checks, and 54 installed
+wheel tests. See `issue96-acceptance.md`; this does not imply human approval.
+
+The final image fix introduces an OpenClaw-only native protocol module and selects
+it from actual image-bearing messages. It preserves the existing text path and
+shared Runner, and enables an additional native endpoint without rewriting the
+harness. Tests exercise real adapter request/response processing, image byte
+fidelity and failed/missing completion states. Actual native sessions retain
+images for all three pinned vision tasks. No image/name branch was added to
+public API composition or generic analysis.
+
+Structured annotation format is optional plugin configuration. It is detached
+from caller mutation, hashed into cache identity, and reported in provenance;
+providers may retain JSON-object mode. Malformed responses still fail. No model
+service or taxonomy is imposed on custom measurements or the execution Runner.
+
+The final source-impact review finds no unresolved blocking extensibility issue
+within this scope. Existing architecture limitations and missing observation
+coverage remain documented, rather than being hidden behind the Fig. 4 mapping.
