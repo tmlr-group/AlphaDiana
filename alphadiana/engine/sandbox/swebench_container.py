@@ -436,6 +436,15 @@ class SWEBenchContainerSandbox(Sandbox):
             client = self._docker_client(runtime["docker"])
 
             try:
+                if test_spec.is_remote_image:
+                    if self._config.get("force_rebuild"):
+                        client.images.pull(image_name)
+                    else:
+                        try:
+                            client.images.get(image_name)
+                        except runtime["docker"].errors.ImageNotFound:
+                            client.images.pull(image_name)
+                    return build_dir
                 if self._config.get("force_rebuild") and image_name:
                     try:
                         client.images.remove(image_name, force=True)

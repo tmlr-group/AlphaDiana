@@ -20,6 +20,7 @@ def test_harbor_requires_binary_observed_reward(tmp_path, monkeypatch, reward):
         job = json.loads(Path(argv[3]).read_text())
         assert job["agents"][0]["name"] == "terminus-2"
         assert job["retry"]["max_retries"] == 0
+        assert job["agents"][0]["kwargs"]["max_turns"] == 30
         assert job["agents"][0]["kwargs"]["model_info"] == {"max_input_tokens": 32768}
         assert job["agents"][0]["kwargs"]["llm_call_kwargs"] == {
             "max_tokens": 512,
@@ -43,6 +44,7 @@ def test_harbor_requires_binary_observed_reward(tmp_path, monkeypatch, reward):
     agent.setup(
         {
             "executable": "harbor",
+            "max_turns": 30,
             "model_info": {"max_input_tokens": 32768},
             "model": "fixture-model",
             "api_base": "http://localhost:1/v1",

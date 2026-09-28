@@ -173,7 +173,6 @@ class Artifacts:
             derived.update(
                 correct=judgment.correct,
                 score=judgment.score,
-                predicted=judgment.predicted,
                 rationale=judgment.rationale,
                 score_metadata=judgment.metadata,
                 scorer_name=implementation.name,
@@ -184,6 +183,7 @@ class Artifacts:
                 "source_timestamp": record.get("timestamp"),
                 "original_score": record.get("score"),
                 "original_scorer": record.get("scorer_name"),
+                "scorer_predicted": judgment.predicted,
                 "environment_allowed": allow_environment,
                 "created_at": datetime.now(timezone.utc).isoformat(),
             }

@@ -268,3 +268,16 @@ def test_rescore_retains_binary_inputs_outside_source_directory(
     (artifacts.artifact_root(original) / reference["path"]).write_bytes(b"changed")
     with pytest.raises(ValueError, match="changed"):
         artifacts.rescore(AttachmentScorer())
+
+
+def test_repeated_rescoring_preserves_solver_output(custom, tmp_path):
+    class LabelScorer(TinyScorer):
+        def score(self, task, response):
+            assert response.answer == "2"
+            return ScoreResult(True, 1.0, "2", "resolved")
+
+    artifacts = execute(tmp_path)
+    first = artifacts.rescore(LabelScorer())
+    second = first.rescore(LabelScorer())
+    assert all(row["predicted"] == "2" for row in second.records())
+    assert second.records()[0]["rescoring"]["scorer_predicted"] == "resolved"

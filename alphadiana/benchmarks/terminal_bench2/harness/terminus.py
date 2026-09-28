@@ -64,6 +64,11 @@ class Terminus2Agent(Agent):
                         "temperature": self.config.get("temperature", 0.0),
                         "llm_call_kwargs": llm_call_kwargs,
                         **(
+                            {"max_turns": int(self.config["max_turns"])}
+                            if self.config.get("max_turns") is not None
+                            else {}
+                        ),
+                        **(
                             {"model_info": deepcopy(self.config["model_info"])}
                             if self.config.get("model_info") is not None
                             else {}
