@@ -23,7 +23,7 @@
   "chat_template_kwargs": {
     "enable_thinking": false
   },
-  "schema": "alphadiana.pi-training-request.v1",
+  "schema": "alphadiana.native-training-request.v1",
   "enabled": true,
   "task_id": "addition",
   "sample_index": 0,

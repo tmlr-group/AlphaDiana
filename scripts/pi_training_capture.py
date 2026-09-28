@@ -22,7 +22,7 @@ if __package__ in {None, ""}:
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.engine.config.experiment_config import ExperimentConfig
 from alphadiana.harness.pi.agent import PiAgent
-from alphadiana.harness.pi.training import PiTrainingCollector, SamplingPlan
+from alphadiana.harness._internal.training import NativeTrainingCollector, SamplingPlan
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -94,7 +94,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         for row in raw_tasks
     ]
-    collector = PiTrainingCollector(PiAgent)
+    collector = NativeTrainingCollector(PiAgent)
     batch = collector.collect(
         tasks,
         plan,

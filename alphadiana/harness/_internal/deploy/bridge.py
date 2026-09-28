@@ -265,6 +265,10 @@ def deepseek_run(request):
     for field, target in (("reasoning", "reasoning_effort"), ("max_tokens", "max_tokens")):
         if field in config:
             options[target] = config[field]
+    if config.get("training", {}).get("enabled", True) and "training" in config:
+        # The checkpoint contract freezes enable_thinking=False. The SDK's
+        # default is high reasoning, which would otherwise change that policy.
+        options["reasoning_effort"] = "off"
     if "candidate_entry" in config:
         # JSON is valid YAML. The runtime compiles the local TS plugin; no package
         # installation or candidate-controlled startup command is involved.

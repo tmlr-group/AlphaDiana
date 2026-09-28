@@ -12,11 +12,11 @@ from urllib.request import Request, urlopen
 import pytest
 
 from alphadiana.benchmarks.base import BenchmarkTask
-from alphadiana.harness.pi.training import (
+from alphadiana.harness._internal.training import (
     Backend,
     ModelIdentity,
     NativeCapture,
-    PiTrainingCollector,
+    NativeTrainingCollector,
     PolicyIdentity,
     SamplingPlan,
     TokenCaptureEndpoint,
@@ -343,11 +343,11 @@ def test_checked_in_versioned_contract_examples_are_parseable():
     assert evaluation["predicted"] == "5"
     assert evaluation["correct"] is True
     request_value = json.loads((root / "pi-training-episode-request.json").read_text())
-    assert request_value["schema"] == "alphadiana.pi-training-request.v1"
+    assert request_value["schema"] == "alphadiana.native-training-request.v1"
     assert request_value["model_identity"]["model_revision"]
     assert request_value["chat_template_kwargs"] == {"enable_thinking": False}
     result_value = json.loads((root / "pi-training-episode-result.json").read_text())
-    assert result_value["schema"] == "alphadiana.pi-training.v1"
+    assert result_value["schema"] == "alphadiana.native-training.v1"
     assert result_value["tokens_native"] is True
     assert result_value["trajectory_complete"] is True
     failure = json.loads((root / "pi-rollout-failure-cancellation.json").read_text())
@@ -405,7 +405,7 @@ def test_collector_invalidates_partial_group_and_preserves_sample_isolation():
         def teardown(self):
             calls.append(("teardown",))
 
-    collector = PiTrainingCollector(FakeAgent)
+    collector = NativeTrainingCollector(FakeAgent)
     with pytest.raises(TrainingCollectionError, match="sample task-a/1 failed"):
         collector.collect(
             [BenchmarkTask("task-a", "public", None)],
@@ -714,7 +714,7 @@ def test_prepare_rejects_chat_template_override_off_plan():
 
 def test_collector_rejects_a_missing_scorer():
     current = plan()
-    collector = PiTrainingCollector(lambda: None)
+    collector = NativeTrainingCollector(lambda: None)
     with pytest.raises(TypeError, match="score"):
         collector.collect(
             [BenchmarkTask("task-a", "public", None)],
@@ -753,7 +753,7 @@ def test_collector_merges_base_training_settings_and_emits_hebe_batch():
         def teardown(self):
             pass
 
-    collector = PiTrainingCollector(FakeAgent)
+    collector = NativeTrainingCollector(FakeAgent)
     batch = collector.collect(
         [BenchmarkTask("task-a", "public", None)],
         current,
@@ -800,7 +800,7 @@ def test_legacy_diana_batch_schema_is_still_readable():
         ),
     )
     native = batch.diana_dict()
-    assert native["schema"] == "alphadiana.pi-training-batch.v1"
+    assert native["schema"] == "alphadiana.native-training-batch.v1"
     restored = TrainingBatch.from_dict(native)
     assert restored == batch
 

@@ -5,6 +5,7 @@ from alphadiana.harness.registry import AgentRegistry
 
 
 class PiAgent(NativePodmanAgent):
+    supports_training_capture = True
     name = "pi"
 
 
