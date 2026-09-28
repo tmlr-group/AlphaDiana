@@ -220,3 +220,11 @@ Additional usage schemas can be supplied as callable extractors through
 `ExecutionMetrics(usage_extractors=[...])`. An extractor receives `(artifacts,
 record)` and returns `MeasuredUsage(output_tokens, provenance)`, or `None` when
 its schema does not apply. Supply an empty list to use only persisted usage.
+
+Native SWE-Agent and Terminus adapters accept `capture_logprobs: true` and
+`top_logprobs` for OpenAI-compatible providers that support probability output.
+This observes requests around the upstream subprocess without replacing its tool
+loop. Capture defaults to off. Missing provider probabilities remain missing;
+observed top-K entropy is not full-distribution entropy. Terminus terminal-feedback
+attribution requires exact matches to saved native command observations; unmatched
+requests are not inferred from their user role alone.

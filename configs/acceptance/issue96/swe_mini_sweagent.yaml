@@ -7,6 +7,8 @@ agent:
     model: Qwen/Qwen3.5-27B
     api_base: ${ISSUE96_API_BASE}
     api_key: ${ISSUE96_API_KEY}
+    capture_logprobs: true
+    top_logprobs: 20
     max_tokens: 8192
     max_calls: 30
     timeout: 1800

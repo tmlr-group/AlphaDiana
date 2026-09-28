@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from alphadiana.harness._internal.native_process import run_native
 from alphadiana.harness.base import Agent, AgentResponse
+from alphadiana.harness.proxies.native_capture import NativeProviderCapture
 from alphadiana.harness.registry import register_agent
 
 
@@ -47,6 +48,11 @@ class SWEAgent(Agent):
         started = time.monotonic()
         directory = self.output / uuid4().hex
         directory.mkdir(mode=0o700)
+        with NativeProviderCapture(self.config, directory) as capture:
+            response = self._solve_native(task, directory, capture.api_base, started)
+        return capture.apply(response)
+
+    def _solve_native(self, task, directory, api_base, started) -> AgentResponse:
         metadata = task.metadata
         instance_id = str(
             metadata.get("instance_id") or task.task_id.removeprefix("swe_")
@@ -87,7 +93,7 @@ class SWEAgent(Agent):
             "--agent.model.name",
             model,
             "--agent.model.api_base",
-            self.config["api_base"],
+            api_base,
             "--agent.model.per_instance_cost_limit",
             "0",
             "--agent.model.total_cost_limit",

@@ -395,3 +395,16 @@ Source: `/data2/weikai/AlphaDiana-all-runs/paper-figures/FIGURE_INDEX.md`.
 - Seven recovery-status cases pass, including a check against the actual retained 131-event trace. Full local regression: **170 passed, 11 skipped in 7.16s** (`evidence/opencode-recovery-full-tests.log`). Original failed result remains invalid; real rerun is required.
 - OpenCode container artifacts expose the same event file through `response_stream`; the offline usage extractor now supports that alias. Actual SWE traces recover counts across 32, 16 and 11 completed steps, with hashes/provenance. This is measured usage, not retroactive execution acceptance.
 - Keep the baseline campaign running to expose remaining issues. Rerun affected OpenCode combinations on the corrected clean revision and explicitly track superseded failures/source revisions. The final handoff must verify unchanged execution paths for any retained unaffected baseline cells and recompute offline analysis on the delivered revision; do not claim old agent executions ran newer code.
+
+### Native instrumentation follow-up — isolated from active campaigns
+
+- Coverage inspection found that SWE-Agent and Terminus lacked provider probability capture, while TB2/ZeroClaw looked for its native trace outside the actual workspace-relative location. These are analysis gaps even where scoring is valid; the affected cells require new executions.
+- Add optional shared provider capture around the two upstream-owned subprocesses. Native messages, generation settings, tool loops and retry behavior remain upstream-owned. Capture is opt-in; both acceptance configs enable it. Partial observations survive native failures.
+- Terminus sends terminal output as user text. Attribute only exact SHA-256 matches to saved Harbor observations containing native `bash_command` evidence, excluding initial instructions, parser errors, completion-only and ambiguous observations. Preserve request/call/step provenance; do not label every user request as tool feedback.
+- Pinned ZeroClaw 0.6.9 `observability/runtime_trace.rs::resolve_trace_path` joins relative paths to the workspace. TB2 now passes an absolute task-owned trace path; the base adapter default and all other generated configuration remain equivalent.
+- Local regression: **181 passed, 11 skipped in 8.59s** (`evidence/native-instrumentation-full-tests.log`), including actual HTTP capture, failure cleanup, unchanged native request content and conservative attribution cases. External skips are not native validation.
+- [x] Isolate changes from active `f719bbc3` and `882b1a38` execution checkouts.
+- [x] Verify local capture/attribution/path contracts and shared-extension boundaries.
+- [ ] Rerun all three affected native cells (SWE-Agent, TB2/Terminus, TB2/ZeroClaw) on a clean pinned revision.
+- [ ] Inspect actual probability/action/usage coverage and regenerated figures; retain source-impact and supersession evidence.
+- [ ] Integrate analysis/runtime fixes into delivery PR and perform final package/acceptance audit.

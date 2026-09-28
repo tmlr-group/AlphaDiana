@@ -48,3 +48,7 @@ full-matrix acceptance.
 
 No unresolved blocking finding in the reviewed composition extension boundary.
 Functional acceptance remains pending until its separate execution gates pass.
+
+### Native instrumentation review
+
+The provider observer is an optional helper used by native command adapters, not a new required `Agent`/Runner API or an agent-name switch in orchestration. Default-off capture retains native API URLs. Enabled capture preserves request messages and generation parameters, injecting only supported probability fields; HTTP tests cover this boundary and failure cleanup. Terminus-specific textual observation matching stays in the Terminus adapter. Generic proxy summaries expose only a content hash and call identity. ZeroClaw gains an optional explicit trace path; a parsed-TOML equivalence test proves its default and unrelated configuration unchanged. Real executions and final integration review remain pending.

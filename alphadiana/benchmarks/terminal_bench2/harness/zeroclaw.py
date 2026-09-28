@@ -265,7 +265,10 @@ class TerminalBench2ZeroClawAgent(TerminalBench2InContainerMixin, ZeroClawAgent)
             local_config_path = runtime.workdir / ".zeroclaw-home" / ".zeroclaw" / "config.toml"
             local_config_path.parent.mkdir(parents=True, exist_ok=True)
             local_config_path.write_text(
-                self._build_config_toml(provider_api_base=provider_proxy_api_base),
+                self._build_config_toml(
+                    provider_api_base=provider_proxy_api_base,
+                    runtime_trace_path=remote_runtime_trace_path,
+                ),
                 encoding="utf-8",
             )
             os.chmod(local_config_path, 0o600)

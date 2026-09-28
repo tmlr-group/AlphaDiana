@@ -1034,6 +1034,7 @@ class ZeroClawAgent(Agent):
         *,
         provider: str | None = None,
         provider_api_base: str | None = None,
+        runtime_trace_path: str = "state/runtime-trace.jsonl",
     ) -> str:
         resolved_provider = provider
         if resolved_provider is None and provider_api_base is not None:
@@ -1083,7 +1084,7 @@ class ZeroClawAgent(Agent):
             "[observability]\n"
             'backend = "none"\n'
             f"runtime_trace_mode = {_quote_toml(self._runtime_trace_mode)}\n"
-            'runtime_trace_path = "state/runtime-trace.jsonl"\n'
+            f"runtime_trace_path = {_quote_toml(runtime_trace_path)}\n"
             "runtime_trace_max_entries = 200\n\n"
             "[autonomy]\n"
             'level = "full"\n'

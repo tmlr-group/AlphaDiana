@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import http.server
 import ipaddress
 import json
@@ -239,7 +240,13 @@ def summarize_chat_completion_request(
     outbound_messages = payload.get("messages")
     original_roles = _message_roles(original_messages)
     outbound_roles = _message_roles(outbound_messages)
+    last = original_messages[-1] if isinstance(original_messages, list) and original_messages else None
+    last_content = last.get("content") if isinstance(last, dict) else None
     return {
+        "last_message_content_sha256": (
+            hashlib.sha256(last_content.encode("utf-8")).hexdigest()
+            if isinstance(last_content, str) else None
+        ),
         "path": path,
         "model": payload.get("model", ""),
         "stream": bool(payload.get("stream", False)),
@@ -863,6 +870,7 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
                     normalized_system_messages=normalized,
                     inserted_user_message=inserted_user_message,
                 )
+                summary.update(self._capture_context)
                 if downstream_stream != bool(payload.get("stream", False)):
                     summary["downstream_stream"] = downstream_stream
                     summary["upstream_stream_forced"] = True

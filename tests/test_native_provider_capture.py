@@ -1,0 +1,180 @@
+"""Observe upstream runtimes without rewriting their messages or control loop."""
+
+import hashlib
+import json
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+import httpx
+import pytest
+import tomllib
+
+from alphadiana.benchmarks.terminal_bench2.harness.terminus import (
+    attribute_terminal_feedback,
+)
+from alphadiana.harness.base import AgentResponse
+from alphadiana.harness.proxies.native_capture import NativeProviderCapture
+from alphadiana.harness.zeroclaw.agent import ZeroClawAgent
+
+
+@pytest.mark.parametrize("failure", [False, True])
+def test_native_capture_preserves_request_and_closes_on_failure(tmp_path, failure):
+    observed = []
+
+    class Provider(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_POST(self):
+            observed.append(
+                json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            )
+            body = json.dumps(
+                {
+                    "choices": [
+                        {
+                            "message": {"content": "answer"},
+                            "logprobs": {
+                                "content": [
+                                    {
+                                        "token": "answer",
+                                        "logprob": -0.1,
+                                        "top_logprobs": [
+                                            {"token": "answer", "logprob": -0.1}
+                                        ],
+                                    }
+                                ]
+                            },
+                        }
+                    ]
+                }
+            ).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    provider = ThreadingHTTPServer(("127.0.0.1", 0), Provider)
+    thread = threading.Thread(target=provider.serve_forever, daemon=True)
+    thread.start()
+    capture = NativeProviderCapture(
+        {
+            "capture_logprobs": True,
+            "top_logprobs": 1,
+            "api_base": f"http://127.0.0.1:{provider.server_port}/v1",
+        },
+        tmp_path,
+    )
+    payload = {
+        "model": "fixture",
+        "temperature": 0.2,
+        "max_tokens": 128,
+        "stream": False,
+        "messages": [
+            {"role": "user", "content": "instruction"},
+            {"role": "system", "content": "preserve position"},
+            {"role": "tool", "content": "terminal output"},
+        ],
+    }
+    try:
+        try:
+            with capture:
+                with httpx.Client(trust_env=False) as client:
+                    client.post(
+                        capture.api_base + "/chat/completions", json=payload
+                    ).raise_for_status()
+                if failure:
+                    raise RuntimeError("native failure")
+        except RuntimeError as exc:
+            assert failure and str(exc) == "native failure"
+        assert observed == [{**payload, "logprobs": True, "top_logprobs": 1}]
+        assert capture.proxy._server is None
+        assert len(capture.records) == 1
+        assert capture.records[0]["follows_tool_result"]
+        assert capture.requests[0]["call_id"] == capture.records[0]["call_id"]
+        assert (
+            capture.requests[0]["last_message_content_sha256"]
+            == hashlib.sha256(b"terminal output").hexdigest()
+        )
+        assert (
+            json.loads((tmp_path / "provider_logprobs.jsonl").read_text())["token"]
+            == "answer"
+        )
+        response = capture.apply(AgentResponse(answer="answer"))
+        assert response.metadata["logprobs_capture_status"] == "captured"
+        assert "provider_requests.jsonl" in response.workspace_file_contents
+    finally:
+        provider.shutdown()
+        provider.server_close()
+        thread.join()
+
+
+def test_capture_disabled_keeps_direct_native_url(tmp_path):
+    with NativeProviderCapture({"api_base": "http://provider/v1"}, tmp_path) as capture:
+        assert capture.api_base == "http://provider/v1" and capture.proxy is None
+    assert not list(tmp_path.iterdir())
+    assert (
+        capture.apply(AgentResponse(answer="x")).metadata["logprobs_capture_status"]
+        == "not_requested"
+    )
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["command", "first", "parser", "completion", "ambiguous", "intervening", "missing"],
+)
+def test_terminal_feedback_requires_native_command_observation(case):
+    content = "observed terminal output"
+    step = {
+        "step_id": 2,
+        "source": "agent",
+        "tool_calls": [{"function_name": "bash_command"}],
+        "observation": {"results": [{"content": content}]},
+    }
+    if case == "parser":
+        step["tool_calls"] = []
+    if case == "completion":
+        step["tool_calls"] = [{"function_name": "mark_task_complete"}]
+    steps = [step]
+    if case == "ambiguous":
+        steps.append({"source": "user", "message": content})
+    requests = [
+        {
+            "call_id": "call",
+            "call_index": 0 if case == "first" else 1,
+            "message_roles_before": ["assistant", "user"]
+            if case != "intervening"
+            else ["user", "user"],
+            "last_message_content_sha256": hashlib.sha256(content.encode()).hexdigest()
+            if case != "missing"
+            else None,
+        }
+    ]
+    records = [{"call_id": "call", "follows_tool_result": False}]
+    attribute_terminal_feedback(records, requests, steps)
+    assert records[0]["follows_tool_result"] == (case == "command")
+    if case == "command":
+        assert records[0]["terminal_feedback_attribution"]["step_ids"] == [2]
+
+
+def test_explicit_trace_path_preserves_default_and_other_config(tmp_path):
+    agent = ZeroClawAgent()
+    agent.setup(
+        {
+            "model": "fixture",
+            "api_base": "http://localhost:1/v1",
+            "logs_base_dir": str(tmp_path),
+        }
+    )
+    default = tomllib.loads(agent._build_config_toml())
+    explicit = tomllib.loads(
+        agent._build_config_toml(runtime_trace_path="/owned/task/state/trace.jsonl")
+    )
+    assert default["observability"]["runtime_trace_path"] == "state/runtime-trace.jsonl"
+    assert (
+        explicit["observability"]["runtime_trace_path"]
+        == "/owned/task/state/trace.jsonl"
+    )
+    explicit["observability"]["runtime_trace_path"] = "state/runtime-trace.jsonl"
+    assert explicit == default

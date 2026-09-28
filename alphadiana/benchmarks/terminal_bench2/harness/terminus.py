@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -12,7 +13,61 @@ from uuid import uuid4
 
 from alphadiana.harness._internal.native_process import run_native
 from alphadiana.harness.base import Agent, AgentResponse
+from alphadiana.harness.proxies.native_capture import NativeProviderCapture
 from alphadiana.harness.registry import register_agent
+
+
+def attribute_terminal_feedback(records, requests, steps):
+    """Match textual terminal feedback to observed Harbor command observations.
+
+    Harbor sends terminal output as a user message, not an OpenAI tool message.
+    Require exact content hashes and unambiguous native command evidence; parser
+    errors, initial instructions and completion-only observations are excluded.
+    Unmatched requests keep their original provider-level attribution.
+    """
+    eligible = {}
+    excluded = set()
+    for step in steps:
+        command = any(
+            tool.get("function_name") == "bash_command"
+            for tool in (step.get("tool_calls") or [])
+            if isinstance(tool, dict)
+        )
+        contents = [
+            item.get("content")
+            for item in (step.get("observation") or {}).get("results", [])
+            if isinstance(item, dict)
+        ]
+        if step.get("source") != "agent":
+            contents.append(step.get("message"))
+        for content in contents:
+            if not isinstance(content, str) or not content:
+                continue
+            digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+            if command and step.get("source") == "agent":
+                eligible.setdefault(digest, []).append(step.get("step_id"))
+            else:
+                excluded.add(digest)
+    matched = {}
+    for request in requests:
+        digest = request.get("last_message_content_sha256")
+        roles = request.get("message_roles_before") or []
+        if (
+            digest in eligible
+            and digest not in excluded
+            and request.get("call_index", 0) > 0
+            and len(roles) >= 2
+            and roles[-2:] == ["assistant", "user"]
+        ):
+            request["terminal_feedback_attribution"] = {
+                "method": "harbor_command_observation_sha256",
+                "step_ids": eligible[digest],
+            }
+            matched[request["call_id"]] = request["terminal_feedback_attribution"]
+    for record in records:
+        if record.get("call_id") in matched:
+            record["follows_tool_result"] = True
+            record["terminal_feedback_attribution"] = matched[record["call_id"]]
 
 
 @register_agent("terminus2")
@@ -52,6 +107,15 @@ class Terminus2Agent(Agent):
         started = time.monotonic()
         directory = self.output / uuid4().hex
         directory.mkdir(mode=0o700)
+        with NativeProviderCapture(self.config, directory) as capture:
+            response = self._solve_native(task, directory, capture.api_base, started)
+        attribute_terminal_feedback(
+            capture.records, capture.requests, response.trajectory
+        )
+        return capture.apply(response)
+
+    def _solve_native(self, task, directory, api_base, started) -> AgentResponse:
+        task_dir = Path(task.metadata["task_dir"])
         model = str(self.config["model"])
         model = model if model.startswith("openai/") else "openai/" + model
         llm_call_kwargs = deepcopy(self.config.get("llm_call_kwargs", {}))
@@ -71,7 +135,7 @@ class Terminus2Agent(Agent):
                         self.config.get("agent_timeout", 900)
                     ),
                     "kwargs": {
-                        "api_base": self.config["api_base"],
+                        "api_base": api_base,
                         "temperature": self.config.get("temperature", 0.0),
                         "llm_call_kwargs": llm_call_kwargs,
                         **(
