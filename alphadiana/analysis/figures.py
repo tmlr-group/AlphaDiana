@@ -178,7 +178,10 @@ def _render(plt, spec: dict, rows: list[dict]):
             plt.close(fig)
             raise ValueError(f"Unsupported plot kind: {spec['kind']}")
     ax.set(title=spec["title"], xlabel=spec["xlabel"], ylabel=spec["ylabel"])
-    ax.set_xscale(spec.get("xscale", "linear"))
+    # A scale reset replaces the fixed categorical tick locator/formatter.
+    # Bar positions are numeric internally, but their visible labels are data.
+    if spec["kind"] != "bar":
+        ax.set_xscale(spec.get("xscale", "linear"))
     ax.grid(axis="y", alpha=0.2)
     ax.set_axisbelow(True)
     if spec.get("group"):

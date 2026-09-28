@@ -371,3 +371,9 @@ Source: `/data2/weikai/AlphaDiana-all-runs/paper-figures/FIGURE_INDEX.md`.
 - Actual retained SWE observations recovered 3,029 and 5,908 output tokens across 30 and 50 assistant messages respectively. Native totals include repeated prompt tokens. AIME/OpenClaw also recovers all three task usages. Do not equate native output totals with observed logprob count.
 - Follow-up tests: **153 passed, 11 skipped in 7.54s**, including missing usage, wrong task identity/schema, duplicate messages, inconsistent totals, persisted zero counts and custom extractors (`evidence/native-usage-followup-full-tests.log`). Code passes Ruff. Integration into the delivery branch and final analysis at a pinned revision remain pending.
 - Final AIME/Direct and AIME/OpenClaw cells now pass (six valid executions). OpenClaw has 7,899/7,899 observed probability records attributed, with actual post-tool bins. New model annotation exports use explicit Qwen3.5-27B weight-manifest provenance; visual/data checks remain in progress. Full matrix not complete.
+
+### Visual review correction — categorical bar labels
+
+- Inspecting fresh native-usage and annotation exports exposed numeric x ticks where category labels should appear. The renderer reset the x scale after installing categorical ticks, replacing Matplotlib's fixed locator/formatter. Preserve categorical bar ticks by applying numeric scales only to non-bar plots.
+- Actual exported SVG regression checks grouped and ungrouped category text: **2 passed in 0.85s** (`evidence/category-label-regression.log`). Earlier render/visual evidence does not prove bar-label correctness; regenerate affected historical/new-run exports and website assets and inspect them again before final acceptance.
+- This is an offline renderer correction in the isolated analysis branch; active model execution source remains `f719bbc3`.
