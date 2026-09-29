@@ -34,8 +34,9 @@ agent:
     api_key: ${OPENAI_API_KEY}
     system_prompt: Solve the task using available tools.
     timeout: 120
-    # The endpoint limit is 49152; code-heavy prompts can need a wide margin.
-    context_window: 40960
+    # The endpoint limit is 49152; code-heavy prompts can exceed Pi's estimate
+    # by 8192 tokens, so retain additional headroom beyond that observed skew.
+    context_window: 40000
 benchmark:
   name: custom
   config:
