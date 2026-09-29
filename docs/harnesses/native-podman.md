@@ -34,8 +34,8 @@ agent:
     api_key: ${OPENAI_API_KEY}
     system_prompt: Solve the task using available tools.
     timeout: 120
-    # The endpoint limit is 49152; leave room for tokenizer-estimate skew.
-    context_window: 47104
+    # The endpoint limit is 49152; code-heavy prompts can need a wide margin.
+    context_window: 40960
 benchmark:
   name: custom
   config:
