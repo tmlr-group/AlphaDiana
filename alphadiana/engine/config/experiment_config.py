@@ -109,6 +109,12 @@ def _apply_agent_env_defaults(agent_name: str, agent_config: Any) -> dict:
             "terminal_bench2_zeroclaw",
         }:
             env_defaults["model_name"] = "OPENAI_MODEL_NAME"
+            # These adapters consume model_name as the provider model. Resolve an
+            # explicit model before applying environment fallbacks (Python and YAML).
+            if _is_blank_config_value(resolved.get("model_name")) and not _is_blank_config_value(
+                resolved.get("model")
+            ):
+                resolved["model_name"] = str(resolved["model"]).removeprefix("custom/")
 
         for key, env_var in env_defaults.items():
             if not _is_blank_config_value(resolved.get(key, "")):

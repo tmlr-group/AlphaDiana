@@ -251,6 +251,20 @@ def infer_score_status(record: dict[str, Any]) -> str:
     metadata = _as_dict(record.get("metadata"))
     finish_reason = str(record.get("finish_reason", "") or "").strip()
     error = _as_dict(record.get("error"))
+    # Rescoring keeps solver evidence intact. The fresh verifier judgment owns
+    # verdict status/reward; source provider/runtime failures still apply below.
+    score_metadata = _as_dict(record.get("score_metadata"))
+    rescoring = _as_dict(record.get("rescoring"))
+    if (
+        benchmark_name == "terminal_bench2"
+        and rescoring.get("environment_allowed") is True
+        and score_metadata.get("replayed") is True
+    ):
+        metadata = dict(
+            metadata,
+            verifier_status=score_metadata.get("verifier_status", ""),
+            reward=rescoring.get("scorer_predicted"),
+        )
     verifier_status = str(metadata.get("verifier_status", "") or "").strip()
     zeroclaw_classification = str(
         metadata.get("zeroclaw_selected_classification", "") or ""

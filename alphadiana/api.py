@@ -146,10 +146,15 @@ class EvaluationRunner:
         execution = Runner(config)
         try:
             execution.setup()
-            execution.run()
+            summary = execution.run()
         finally:
             execution.teardown()
         artifacts = Artifacts(Path(config.output_dir) / f"{config.run_id}.jsonl")
+        if config.strict_report and summary.strict_report_failed:
+            raise RuntimeError(
+                "Strict report failed: " + ", ".join(summary.strict_report_issues)
+                + f"; evidence: {artifacts.path}"
+            )
         records = artifacts.records()
         if not any(record.get("score_status") == "valid_scored" for record in records):
             raise RuntimeError(

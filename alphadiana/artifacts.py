@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from copy import deepcopy
 from dataclasses import dataclass, fields
 from datetime import datetime, timezone
 from pathlib import Path
@@ -162,7 +163,7 @@ class Artifacts:
         for record in self.records():
             task = self.task(record)
             response_data = {
-                f.name: record[f.name]
+                f.name: deepcopy(record[f.name])
                 for f in fields(AgentResponse)
                 if f.name in record and f.name != "answer"
             }
@@ -183,6 +184,8 @@ class Artifacts:
                 "source_timestamp": record.get("timestamp"),
                 "original_score": record.get("score"),
                 "original_scorer": record.get("scorer_name"),
+                "original_score_status": record.get("score_status"),
+                "original_score_metadata": record.get("score_metadata"),
                 "scorer_predicted": judgment.predicted,
                 "environment_allowed": allow_environment,
                 "created_at": datetime.now(timezone.utc).isoformat(),

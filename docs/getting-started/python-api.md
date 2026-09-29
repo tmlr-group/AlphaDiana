@@ -62,6 +62,10 @@ Custom components register through `BenchmarkRegistry`, `AgentRegistry`,
 `SandboxRegistry`, and `ScorerRegistry`. No public-API routing table needs editing.
 Existing CLI/YAML configurations and imports remain supported.
 
+`strict_report=True` also applies to Python execution: missing or invalid results
+raise an exception after runtime cleanup, with the retained evidence path. Without
+strict mode, a partially successful run remains inspectable through `Artifacts`.
+
 ## Reopen and rescore
 
 ```python
@@ -76,6 +80,18 @@ The latest attempt for each task/sample is used for analysis; failures are not
 hidden by preferring older successes. Rescoring writes a new JSONL, preserves the
 original file, and records the source hash and original score. It never runs the
 agent. Malformed JSONL is rejected rather than silently losing observations.
+
+New result records carry an `artifact_manifest.attempt_id` and reference retained
+copies of their trace, native files and probability files. Repeating the same
+task/sample cannot replace those copies. Historical task/sample paths remain
+latest-view copies for older scripts, so retention uses additional disk space.
+Use declared references (`saved.file(record, key)`) to inspect a particular attempt.
+Already-overwritten files from older runs cannot be recovered by this change;
+archive legacy runs before reusing their run IDs.
+
+For Terminal-Bench replay, the fresh verifier result determines score validity;
+original solver/provider errors remain disqualifying. Source metadata is retained,
+and the `rescoring` entry includes the original score status and score metadata.
 
 Environment-backed scorers require `allow_environment=True`. SWE-bench rebuilds
 its verifier environment from the saved task and predicted patch through the
