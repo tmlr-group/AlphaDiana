@@ -52,8 +52,10 @@ candidate fields below. `_execution_id` is reserved for the evaluator. Unsupport
 model reasoning settings fail in the native harness. DeepSeek uses its official
 `sdk-minimal` profile and `deepseek-official` adapter; an endpoint must implement
 that adapter's compatible chat protocol. Pi uses an explicit OpenAI-compatible
-provider. Set `context_window` to the serving endpoint's actual model limit so Pi
-compacts multi-turn sessions before `prompt + max_tokens` exceeds that limit.
+provider. Set `context_window` to the serving endpoint's model limit, minus a
+small safety margin when the client and server tokenizers may count differently,
+so Pi compacts multi-turn sessions before `prompt + max_tokens` exceeds the
+provider limit.
 No host credentials/configuration are discovered by the solvers.
 
 ## Candidate modules
