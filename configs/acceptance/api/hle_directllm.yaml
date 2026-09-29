@@ -1,0 +1,52 @@
+run_id: api_accept_hle_directllm
+agent:
+  name: direct_llm
+  version: '1.0'
+  config:
+    model: Qwen/Qwen3.5-27B
+    api_base: ${AD_ACCEPTANCE_API_BASE}
+    api_key: ${AD_ACCEPTANCE_API_KEY}
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 8192
+    max_retries: 3
+    stream: true
+    system_prompt: 'You are solving expert-level multimodal multiple-choice questions.
+
+      Read the question and image carefully, then choose the single best option.
+
+
+      At the end of your response, output only one of:
+
+      \boxed{A}, \boxed{B}, \boxed{C}, \boxed{D}, \boxed{E}, \boxed{F}, \boxed{G},
+      \boxed{H}, \boxed{I}, or \boxed{J}
+
+      '
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: false
+    capture_logprobs: true
+    top_logprobs: 20
+    enable_thinking: false
+benchmark:
+  name: hle
+  config:
+    dataset: cais/hle
+    split: test
+    answer_types:
+    - multipleChoice
+    max_tasks: 3
+scorer:
+  name: exact_match
+  config: {}
+max_concurrent: 1
+num_samples: 1
+output_dir: ${AD_ACCEPTANCE_RESULTS}
+strict_report: true
+strict_isolation: true
+metadata:
+  validation_suite: api
+  fixture: hle
+  model_family: Qwen/Qwen3.5-27B
+  capture_requirement: report actual coverage; do not impute missing observations
+task_retries: 0

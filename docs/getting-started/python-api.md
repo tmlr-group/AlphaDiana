@@ -24,6 +24,11 @@ structured analysis do not import Matplotlib. Figure exports contain `report.jso
 source hashes, coverage, each figure's exact plotted data, and `export.json` listing
 outputs and inapplicable plots. Export to a new directory to preserve prior evidence.
 
+The [API acceptance configurations](../../configs/acceptance/api/README.md) provide
+28 explicit benchmark/harness combinations. Execute a configuration through the
+existing CLI or validation driver; reopen and analyze its artifacts separately.
+Model service setup and container installation remain explicit prerequisites.
+
 ## Explicit composition
 
 Factories return typed component specifications. Options are copied into the

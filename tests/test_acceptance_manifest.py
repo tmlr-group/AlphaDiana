@@ -10,7 +10,7 @@ from alphadiana.benchmarks.base import Benchmark, BenchmarkTask
 from alphadiana.benchmarks.registry import BenchmarkRegistry
 from scripts.validate_api_matrix import task_fingerprint, validate_inputs
 
-ROOT = Path(__file__).resolve().parents[1] / "configs/acceptance/issue96"
+ROOT = Path(__file__).resolve().parents[1] / "configs/acceptance/api"
 
 
 def test_manifest_covers_all_required_combinations():
@@ -93,7 +93,7 @@ def test_all_cell_configs_pass_normal_runner_validation(monkeypatch, tmp_path):
         path = ROOT / cell["config"]
         for name in re.findall(r"\$\{([^}]+)\}", path.read_text()):
             monkeypatch.setenv(name, str(tmp_path / name))
-            if name == "ISSUE96_TB2_DIR":
+            if name == "AD_ACCEPTANCE_TB2_DIR":
                 (tmp_path / name).mkdir(exist_ok=True)
         config = ExperimentConfig.from_yaml(path)
         assert ConfigValidator().validate(config) == [], cell["id"]
