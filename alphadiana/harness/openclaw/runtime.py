@@ -1710,11 +1710,11 @@ class OpenClawPodmanRuntimeManager(OpenClawRuntimeManager):
         if size > size_limit:
             return f"[truncated: file size {size} bytes exceeds {size_limit} byte cap]\n"
 
-        return self._podman_exec_stdout(
-            rt,
-            f"cat {shlex.quote(path)} 2>/dev/null || true",
-            timeout=30.0,
-        )
+        try:
+            return rt.read_text(path, max_bytes=size_limit, timeout=30.0)
+        except Exception as exc:
+            _logger.warning("Could not capture complete OpenClaw file %s: %s", path, exc)
+            return ""
 
     def teardown(self) -> None:
         try:
