@@ -1,0 +1,44 @@
+# Native-token GRPO capture. The serving adapter must echo policy_publication
+# and return native_log_probs for every generated token.
+run_id: pi-training-grpo
+num_samples: 2
+output_dir: ./results/pi-training-grpo
+agent:
+  name: pi
+  version: model-deployment-v1
+  config:
+    image: ${HARNESS_IMAGE}
+    model: ${OPENAI_MODEL_NAME}
+    api_base: ${OPENAI_BASE_URL}
+    api_key: ${OPENAI_API_KEY}
+    timeout: 120
+    training:
+      enabled: true
+      algorithm: grpo
+      round_id: grpo-round-001
+      task_ids: [addition]
+      group_size: 2
+      max_new_tokens: 128
+      temperature: 1.0
+      seed: 17
+      policy_publication: ${POLICY_PUBLICATION}
+      require_logprobs: true
+      require_policy_attestation: true
+      policy:
+        weights_digest: ${POLICY_WEIGHTS_DIGEST}
+        tokenizer_digest: ${POLICY_TOKENIZER_DIGEST}
+        chat_template_digest: ${POLICY_TEMPLATE_DIGEST}
+      model_identity:
+        model_name: ${OPENAI_MODEL_NAME}
+        model_revision: ${MODEL_REVISION}
+        tokenizer_digest: ${POLICY_TOKENIZER_DIGEST}
+        chat_template_digest: ${POLICY_TEMPLATE_DIGEST}
+benchmark:
+  name: custom
+  config:
+    problems:
+      - id: addition
+        problem: What is 2 + 3? Return only the number.
+        answer: '5'
+scorer:
+  name: exact_match

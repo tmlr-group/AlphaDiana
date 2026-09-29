@@ -76,3 +76,4 @@ Do not infer capture from config inspection alone. Verify task metadata and side
 Harness tool controls, prompt filtering, and container execution are separate mechanisms. None alone is a formal security guarantee. Review mounts, network access, secrets, controller mode, task artifacts, and sandbox provenance for the exact run.
 
 - [Pi and DeepSeek Harness (rootless Podman)](native-podman.md)
+- [Pi native-token SFT and GRPO capture](pi-training.md)

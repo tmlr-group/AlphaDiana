@@ -1,0 +1,52 @@
+{
+  "schema": "alphadiana.pi-training.v1",
+  "tokens_native": true,
+  "trajectory_complete": true,
+  "round_id": "sft-round-001",
+  "task_id": "addition",
+  "sample_index": 0,
+  "attempt_id": "0123456789abcdef0123456789abcdef",
+  "policy": {
+    "weights_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "tokenizer_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "chat_template_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "model_identity": {
+    "model_name": "served-model",
+    "model_revision": "revision-1",
+    "tokenizer_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "chat_template_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "turns": [
+    {
+      "prompt_token_ids": [
+        101,
+        102
+      ],
+      "response_token_ids": [
+        201,
+        202
+      ],
+      "response_mask": [
+        1,
+        1
+      ],
+      "behavior_log_probs": null
+    }
+  ],
+  "termination_reason": "eos",
+  "usage": {
+    "prompt_tokens": 2,
+    "completion_tokens": 2,
+    "total_tokens": 4
+  },
+  "policy_publication": "policy-step-001",
+  "policy_attestation": "verified",
+  "calls": [],
+  "evidence_refs": {
+    "result_metadata": "metadata.training_capture",
+    "response_json": "response_json.native_training_capture"
+  },
+  "sampling_plan": {},
+  "sampling_plan_details": {}
+}

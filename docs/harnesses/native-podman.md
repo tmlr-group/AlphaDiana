@@ -81,6 +81,14 @@ below. Cleanup failures also raise.
 Pi role/content parsing is adapted from PR #78 at
 198d4db0638a69e57a6de16cf2898ab3420cbe2a without Harbor reward logic.
 
+For training-capable SFT or GRPO episodes, add the `training` block described in
+[Pi native-token capture](pi-training.md). The host-side proxy captures native
+prompt/output IDs and (for GRPO) behavior log probabilities from the configured
+serving endpoint. It sends Pi only a normal chat-completion projection; no
+answer re-tokenization is used. Every sample receives a fresh capture endpoint,
+and any missing ID, policy attestation, usage mismatch, context reset or
+incomplete termination enters the native error path.
+
 ## Self-validation
 
 ```bash
