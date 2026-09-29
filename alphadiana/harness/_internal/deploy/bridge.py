@@ -36,7 +36,7 @@ def pi_run(request):
         "name": config["model"],
         "reasoning": bool(config.get("reasoning")),
         "input": ["text"],
-        "contextWindow": 128000,
+        "contextWindow": config.get("context_window", 128000),
         "maxTokens": config.get("max_tokens", 4096),
         "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
     }
@@ -108,7 +108,9 @@ def pi_run(request):
         raise ValueError("Pi extension failed to load")
     PHASE = "protocol"
     events = [json.loads(line) for line in process.stdout.splitlines() if line.strip()]
-    messages = [event["message"] for event in events if event.get("type") == "message_end"]
+    messages = [
+        event["message"] for event in events if event.get("type") == "message_end"
+    ]
     assistants = [m for m in messages if m.get("role") == "assistant"]
     if not assistants:
         raise ValueError("Pi returned no assistant message")
@@ -126,7 +128,9 @@ def pi_run(request):
                 + values.get("cacheRead", 0)
                 + values.get("cacheWrite", 0)
             )
-            usage["completion_tokens"] = usage.get("completion_tokens", 0) + values.get("output", 0)
+            usage["completion_tokens"] = usage.get("completion_tokens", 0) + values.get(
+                "output", 0
+            )
     return {
         "answer": text_blocks(final.get("content", [])),
         "trajectory": pi_messages(messages),
@@ -160,7 +164,10 @@ def pi_messages(messages):
                 }
             )
             continue
-        step = {"role": message["role"], "content": text_blocks(message.get("content", []))}
+        step = {
+            "role": message["role"],
+            "content": text_blocks(message.get("content", [])),
+        }
         thinking = text_blocks(message.get("content", []), "thinking")
         if thinking:
             step["thinking"] = thinking
@@ -208,7 +215,9 @@ def deepseek_events(events):
                 if source in values:
                     usage[target] = usage.get(target, 0) + values[source]
         elif kind == "user/message":
-            trajectory.append({"role": "user", "content": text_blocks(data.get("content", []))})
+            trajectory.append(
+                {"role": "user", "content": text_blocks(data.get("content", []))}
+            )
         elif kind == "tool/call":
             arguments = data.get("arguments", {})
             if isinstance(arguments, str):
@@ -262,7 +271,10 @@ def deepseek_run(request):
             )
         },
     }
-    for field, target in (("reasoning", "reasoning_effort"), ("max_tokens", "max_tokens")):
+    for field, target in (
+        ("reasoning", "reasoning_effort"),
+        ("max_tokens", "max_tokens"),
+    ):
         if field in config:
             options[target] = config[field]
     if config.get("training", {}).get("enabled", True) and "training" in config:
@@ -321,5 +333,7 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as exc:
-        print(json.dumps({"error": type(exc).__name__, "stage": PHASE}), file=sys.stderr)
+        print(
+            json.dumps({"error": type(exc).__name__, "stage": PHASE}), file=sys.stderr
+        )
         sys.exit(1)

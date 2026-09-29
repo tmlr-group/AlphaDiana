@@ -26,6 +26,7 @@ FIELDS = frozenset(
         "system_prompt",
         "timeout",
         "max_tokens",
+        "context_window",
         "reasoning",
         "candidate_root",
         "candidate_entry",
@@ -91,6 +92,14 @@ def validate_config(config: dict) -> None:
         type(config["max_tokens"]) is not int or config["max_tokens"] < 1
     ):
         raise ValueError("max_tokens must be a positive integer")
+    if "context_window" in config and (
+        type(config["context_window"]) is not int or config["context_window"] < 1
+    ):
+        raise ValueError("context_window must be a positive integer")
+    if config.get("context_window", 128000) <= config.get("max_tokens", 4096):
+        raise ValueError(
+            "context_window must leave room for the prompt beyond max_tokens"
+        )
     if "system_prompt" in config and not isinstance(config["system_prompt"], str):
         raise ValueError("system_prompt must be a string")
     if "reasoning" in config and (

@@ -21,6 +21,9 @@ CONFIG = {"image": IMAGE, "model": "fixture-v1", "api_base": "http://model.inval
         {"timeout": float("nan")},
         {"timeout": True},
         {"max_tokens": 0},
+        {"context_window": 0},
+        {"context_window": True},
+        {"context_window": 4096},
         {"candidate_root": "/tmp"},
         {"shell_command": "echo forged"},
         {"_execution_id": "unsafe"},
@@ -48,6 +51,12 @@ def test_candidate_digest_and_symlinks(tmp_path):
     source.symlink_to("/etc/passwd")
     with pytest.raises(ValueError, match="symlinks"):
         native.tree_digest(tmp_path)
+
+
+def test_explicit_context_window_reserves_prompt_tokens():
+    native.validate_config({**CONFIG, "context_window": 49152, "max_tokens": 32768})
+    with pytest.raises(ValueError, match="leave room"):
+        native.validate_config({**CONFIG, "context_window": 32768, "max_tokens": 32768})
 
 
 @pytest.mark.parametrize("agent_class", [PiAgent, DeepSeekHarnessAgent])
@@ -98,7 +107,12 @@ def test_public_task_stdin_and_container_contract(monkeypatch, agent_class):
     assert result.answer == "done"
     assert calls[0]["volumes"][0].endswith(":/input:ro")
     assert "--read-only" in calls[0]["extra_args"]
-    assert calls[1][1] == {"force": True, "ignore_missing": True, "check": True, "timeout": 15}
+    assert calls[1][1] == {
+        "force": True,
+        "ignore_missing": True,
+        "check": True,
+        "timeout": 15,
+    }
 
 
 def test_runtime_failure_is_not_scored_and_removes_container(monkeypatch):
@@ -207,7 +221,9 @@ def test_transient_mount_cleanup_retries_but_other_failures_do_not(monkeypatch):
             pass
 
         def rm(self, *args, **kwargs):
-            raise PodmanError(PodmanResult(("podman", "rm"), 125, "", "permission denied"))
+            raise PodmanError(
+                PodmanResult(("podman", "rm"), 125, "", "permission denied")
+            )
 
     with pytest.raises(PodmanError):
         native.remove_container(Broken(), "owned")
