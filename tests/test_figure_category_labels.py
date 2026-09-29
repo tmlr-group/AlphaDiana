@@ -18,8 +18,13 @@ def test_grouped_bars_keep_larger_later_groups_visible(kind):
         {"run": "OpenCode", "action": "recover", "count": 80},
     ]
     spec = dict(
-        kind=kind, x="action", y="count", group="run",
-        title="Actions", xlabel="Action", ylabel="Events",
+        kind=kind,
+        x="action",
+        y="count",
+        group="run",
+        title="Actions",
+        xlabel="Action",
+        ylabel="Events",
     )
     fig = _render(plt, spec, rows)
     try:
@@ -119,8 +124,12 @@ def test_custom_signed_measurements_remain_visible(kind, values):
         {"category": "Second", "delta": values[1]},
     ]
     spec = dict(
-        kind=kind, x="category", y="delta", title="Custom plugin",
-        xlabel="Category", ylabel="Delta",
+        kind=kind,
+        x="category",
+        y="delta",
+        title="Custom plugin",
+        xlabel="Category",
+        ylabel="Delta",
     )
     fig = _render(plt, spec, rows)
     try:
@@ -130,5 +139,44 @@ def test_custom_signed_measurements_remain_visible(kind, values):
         assert low <= min(values) and high >= max(values)
         if min(values) >= 0:
             assert low == 0
+    finally:
+        plt.close(fig)
+
+
+def test_transition_titles_do_not_overlap_colorbars():
+    import matplotlib.pyplot as plt
+    from alphadiana.analysis.figures import _render
+
+    labels = [
+        "Understanding",
+        "Planning",
+        "Reasoning",
+        "Tool Use",
+        "Verification",
+        "Finalization",
+    ]
+    groups = ["OpenClaw / correct", "OpenClaw / incorrect"]
+    rows = [
+        dict(source=a, target=b, setting=group, count=1)
+        for group in groups
+        for a in labels
+        for b in labels
+    ]
+    spec = dict(
+        kind="heatmap",
+        x="target",
+        y="source",
+        group="setting",
+        title="Transitions",
+        xlabel="Next action",
+        ylabel="Previous action",
+    )
+    fig = _render(plt, spec, rows)
+    try:
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        for panel, colorbar in zip(fig.axes[:2], fig.axes[2:]):
+            title = panel.title.get_window_extent(renderer)
+            assert not title.overlaps(colorbar.get_window_extent(renderer))
     finally:
         plt.close(fig)

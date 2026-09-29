@@ -160,7 +160,7 @@ def _render(plt, spec: dict, rows: list[dict]):
         fig, axes = plt.subplots(
             rows_count,
             columns,
-            figsize=(2.75 * columns, 2.6 * rows_count),
+            figsize=(4.4 * columns, 3.5 * rows_count),
             squeeze=False,
             layout="constrained",
         )
@@ -191,7 +191,7 @@ def _render(plt, spec: dict, rows: list[dict]):
                 xlabel=spec["xlabel"],
                 ylabel=spec["ylabel"],
             )
-            fig.colorbar(im, ax=ax, label="Transitions")
+            fig.colorbar(im, ax=ax, label="Transitions", shrink=0.75)
         for ax in list(axes.flat)[len(groups) :]:
             ax.set_visible(False)
         return fig
