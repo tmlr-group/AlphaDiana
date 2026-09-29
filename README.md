@@ -56,7 +56,8 @@ export OPENAI_MODEL_NAME="your-model-id"
 
 LLM judges also require an explicitly configured endpoint, key and model.
 `OPENAI_MODEL` takes precedence over `OPENAI_MODEL_NAME` for judging. Offline
-analysis requires no model service. See [Python API and analysis](docs/getting-started/python-api.md)
+analysis requires no model service. Optional Analyzer judgments can use separate
+`ANALYSIS_MODEL`, `ANALYSIS_BASE_URL` and `ANALYSIS_API_KEY` settings. See [Python API and analysis](docs/getting-started/python-api.md)
 for composition, saved-run analysis and optional model annotations.
 
 ### Run an evaluation

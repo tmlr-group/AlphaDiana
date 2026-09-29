@@ -24,12 +24,17 @@ class CachedJudge:
         extra_body=None,
         response_format=None,
     ):
-        config = JudgeConfig.resolve(model=model, base_url=base_url, api_key=api_key)
+        config = JudgeConfig.resolve(
+            model=model, base_url=base_url, api_key=api_key, analysis=True
+        )
         from openai import OpenAI
 
         self.model = config.model
         self.model_version = (
-            model_version or os.getenv("OPENAI_MODEL_VERSION") or config.model
+            model_version
+            or os.getenv("ANALYSIS_MODEL_VERSION")
+            or os.getenv("OPENAI_MODEL_VERSION")
+            or config.model
         )
         self.base_url = config.base_url
         self.cache = Path(cache_dir)

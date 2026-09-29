@@ -442,6 +442,17 @@ def test_openai_compatible_judges_and_exports(tmp_path, monkeypatch):
                 } <= set(receipt["files"])
                 report.compute()
         assert len(requests) == 3
+        monkeypatch.setenv("ANALYSIS_MODEL", "independent-analysis-fixture")
+        managed = ad.analyzer(artifacts, judge=True, cache_dir=tmp_path / "managed")
+        measured = managed.compute()
+        assert len(requests) == 5
+        assert all(
+            body["model"] == "independent-analysis-fixture"
+            for _, _, body in requests[-2:]
+        )
+        assert measured["analyses"]["failure_annotations"]["tables"]["incidence"]
+        managed.compute()
+        assert len(requests) == 5  # Reuses persistent judgments across managed clients.
         assert all(
             path == "/v1/chat/completions" and auth == "Bearer fixture-secret"
             for path, auth, _ in requests
@@ -461,3 +472,72 @@ def test_comparison_rejects_ambiguous_run_names(tmp_path):
     second.mkdir()
     with pytest.raises(ValueError, match="run names must be unique"):
         ad.analyzer([source(first, [record("a")]), source(second, [record("b")])])
+
+
+def test_analysis_environment_is_independent_and_explicit_overrides_win(monkeypatch):
+    monkeypatch.setenv("OPENAI_MODEL", "execution")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://execution.example/v1")
+    monkeypatch.setenv("OPENAI_API_KEY", "execution-key")
+    monkeypatch.setenv("ANALYSIS_MODEL", "analysis")
+    monkeypatch.setenv("ANALYSIS_BASE_URL", "https://analysis.example/v1")
+    monkeypatch.setenv("ANALYSIS_API_KEY", "analysis-key")
+    judge = JudgeConfig.resolve(analysis=True)
+    assert (judge.model, judge.base_url, judge.api_key) == (
+        "analysis",
+        "https://analysis.example/v1",
+        "analysis-key",
+    )
+    scoring = JudgeConfig.resolve()
+    assert scoring.model == "execution" and scoring.api_key == "execution-key"
+    explicit = JudgeConfig.resolve(
+        analysis=True,
+        model="explicit",
+        base_url="https://explicit.example/v1",
+        api_key="explicit-key",
+    )
+    assert explicit.model == "explicit" and explicit.api_key == "explicit-key"
+    for name in ["ANALYSIS_MODEL", "ANALYSIS_BASE_URL", "ANALYSIS_API_KEY"]:
+        monkeypatch.delenv(name)
+    assert JudgeConfig.resolve(analysis=True) == scoring
+
+
+def test_analyzer_owns_only_its_judges_and_closes_them_on_failure(
+    tmp_path, monkeypatch
+):
+    import alphadiana as ad
+    from alphadiana.analysis.analyzer import Measurement
+
+    monkeypatch.setenv("ANALYSIS_MODEL", "analysis")
+    monkeypatch.setenv("ANALYSIS_BASE_URL", "https://analysis.example/v1")
+    monkeypatch.setenv("ANALYSIS_API_KEY", "analysis-key")
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    clients = []
+
+    def measure(plugin, artifacts):
+        clients.append(plugin.client)
+        assert plugin.model == "override"
+        assert plugin.base_url == "https://analysis.example/v1"
+        assert plugin.cache.is_relative_to(tmp_path / "alphadiana" / "annotations")
+        return Measurement()
+
+    monkeypatch.setattr(ActionAnnotations, "measure", measure)
+    monkeypatch.setattr(FailureAnnotations, "measure", measure)
+    offline = ad.analyzer([]).compute()
+    assert set(offline["analyses"]) == {"execution", "request_entropy", "entropy"}
+    assert not clients
+    report = ad.analyzer([], model="override")
+    assert {"annotated_actions", "failure_annotations"} <= set(
+        report.compute()["analyses"]
+    )
+    assert all(client.is_closed for client in clients)
+
+    def fail(plugin, artifacts):
+        measure(plugin, artifacts)
+        raise ValueError("fixture failure")
+
+    monkeypatch.setattr(FailureAnnotations, "measure", fail)
+    with pytest.raises(ValueError, match="fixture failure"):
+        report.compute()
+    assert all(client.is_closed for client in clients)
+    with pytest.raises(ValueError, match="not both"):
+        ad.analyzer([], plugins=[], judge=True)

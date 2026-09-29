@@ -14,7 +14,21 @@ class JudgeConfig:
     api_key: str = field(repr=False)
 
     @classmethod
-    def resolve(cls, *, model=None, base_url=None, api_key=None):
+    def resolve(cls, *, model=None, base_url=None, api_key=None, analysis=False):
+        if analysis:
+            model = (
+                model if model is not None else (os.getenv("ANALYSIS_MODEL") or None)
+            )
+            base_url = (
+                base_url
+                if base_url is not None
+                else (os.getenv("ANALYSIS_BASE_URL") or None)
+            )
+            api_key = (
+                api_key
+                if api_key is not None
+                else (os.getenv("ANALYSIS_API_KEY") or None)
+            )
         values = {
             "OPENAI_MODEL": model
             if model is not None

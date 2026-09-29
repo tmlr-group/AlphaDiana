@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import hashlib
 import itertools
+import os
+from contextlib import ExitStack
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field
@@ -353,7 +355,44 @@ class Analyzer:
         artifacts: Artifacts | str | Path | Sequence[Artifacts | str | Path],
         *,
         plugins: Sequence[AnalysisPlugin] | None = None,
+        judge: bool = False,
+        model: str | None = None,
+        base_url: str | None = None,
+        api_key: str | None = None,
+        cache_dir: str | Path | None = None,
     ):
+        enabled = judge or any(
+            value is not None for value in (model, base_url, api_key)
+        )
+        if plugins is not None and enabled:
+            raise ValueError(
+                "Configure judges through plugins or Analyzer options, not both"
+            )
+        if cache_dir is not None and not enabled:
+            raise ValueError(
+                "cache_dir requires judge=True or explicit judge configuration"
+            )
+        self._judge_options = None
+        if enabled:
+            from alphadiana.scorer.judge_config import JudgeConfig
+
+            provider = JudgeConfig.resolve(
+                model=model, base_url=base_url, api_key=api_key, analysis=True
+            )
+            self._judge_options = dict(
+                model=provider.model,
+                base_url=provider.base_url,
+                api_key=provider.api_key,
+            )
+            self._judge_cache = (
+                Path(cache_dir)
+                if cache_dir is not None
+                else (
+                    Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
+                    / "alphadiana"
+                    / "annotations"
+                )
+            )
         sources = (
             [artifacts]
             if isinstance(artifacts, (Artifacts, str, Path))
@@ -381,14 +420,28 @@ class Analyzer:
 
     def compute(self) -> dict[str, Any]:
         results = {}
-        for plugin in self.plugins:
-            result = plugin.measure(self.artifacts)
-            for figure in result.figures:
-                if figure.table not in result.tables:
-                    raise ValueError(
-                        f"Figure {figure.name} refers to missing table {figure.table}"
+        with ExitStack() as stack:
+            plugins = list(self.plugins)
+            if self._judge_options is not None:
+                from alphadiana.analysis.action_annotations import ActionAnnotations
+                from alphadiana.analysis.failure_annotations import FailureAnnotations
+
+                for factory, directory in (
+                    (ActionAnnotations, "actions"),
+                    (FailureAnnotations, "failures"),
+                ):
+                    plugin = factory(
+                        cache_dir=self._judge_cache / directory, **self._judge_options
                     )
-            results[plugin.name] = asdict(result)
+                    plugins.append(stack.enter_context(plugin))
+            for plugin in plugins:
+                result = plugin.measure(self.artifacts)
+                for figure in result.figures:
+                    if figure.table not in result.tables:
+                        raise ValueError(
+                            f"Figure {figure.name} refers to missing table {figure.table}"
+                        )
+                results[plugin.name] = asdict(result)
         return {
             "schema_version": 1,
             "sources": [

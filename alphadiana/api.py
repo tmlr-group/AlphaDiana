@@ -11,7 +11,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from alphadiana.engine.config.experiment_config import ExperimentConfig
+from alphadiana.engine.config.experiment_config import (
+    ExperimentConfig,
+    _apply_agent_env_defaults,
+)
 
 if TYPE_CHECKING:
     from alphadiana.analysis.analyzer import Analyzer
@@ -103,7 +106,7 @@ class EvaluationRunner:
         return ExperimentConfig(
             agent_name=agent.name,
             agent_version=agent.version,
-            agent_config=deepcopy(agent.config),
+            agent_config=_apply_agent_env_defaults(agent.name, agent.config),
             benchmark_name=data.name,
             benchmark_config=deepcopy(data.config),
             scorer_name=scorer.name,

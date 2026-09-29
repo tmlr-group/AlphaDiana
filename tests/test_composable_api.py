@@ -299,3 +299,44 @@ def test_failed_attempt_retains_binary_inputs_for_reopening(tmp_path):
     (artifact.artifact_root(record) / reference["path"]).write_bytes(b"corrupt")
     with pytest.raises(ValueError, match="attachment changed"):
         store.append_error(task, error={"error": "still failed"})
+
+
+def test_python_agent_env_defaults_match_yaml_and_preserve_gateways(
+    tmp_path, monkeypatch
+):
+    from alphadiana.engine.config.experiment_config import ExperimentConfig
+    from alphadiana.engine.config.validator import ConfigValidator
+
+    monkeypatch.setenv("OPENAI_MODEL_NAME", "execution-model")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://execution.example/v1")
+    monkeypatch.setenv("OPENAI_API_KEY", "execution-key")
+    agent = ad.agent("direct_llm", version="1.0")
+    runner = ad.runner()
+    config = runner.configuration(
+        agent=agent, data=ad.dataset("aime"), scorer=ad.scorer.create("numeric")
+    )
+    assert not ConfigValidator().validate(config)
+    path = tmp_path / "run.yaml"
+    path.write_text(
+        "agent:\n  name: direct_llm\n  version: '1.0'\nbenchmark:\n  name: aime\nscorer:\n  name: numeric\n"
+    )
+    assert config.agent_config == ExperimentConfig.from_yaml(str(path)).agent_config
+    assert agent.config == {}  # Resolve a copy, never mutate a reusable specification.
+    explicit = ad.agent(
+        "direct_llm",
+        version="1.0",
+        model="override",
+        api_base="https://explicit.example/v1",
+    )
+    result = runner.configuration(
+        agent=explicit, data=ad.dataset("aime"), scorer=ad.scorer.create("numeric")
+    )
+    assert result.agent_config["model"] == "override"
+    assert result.agent_config["api_base"] == "https://explicit.example/v1"
+    native = ad.agent("openclaw", version="2026.3.2", runtime_backend="podman")
+    result = runner.configuration(
+        agent=native, data=ad.dataset("aime"), scorer=ad.scorer.create("numeric")
+    )
+    assert not result.agent_config.get(
+        "api_base"
+    )  # Provider URL is not a deployed gateway.

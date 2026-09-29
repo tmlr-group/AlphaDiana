@@ -5,28 +5,24 @@ Runner, session lifecycle, scoring, and result store as the CLI. It does not rep
 native harness control loops.
 
 ```python
-import os
 import alphadiana as ad
 
-api_base = os.environ["OPENAI_BASE_URL"]
-api_key = os.environ["OPENAI_API_KEY"]
-
-agent = ad.agent(
-    "direct_llm", version="1.0", model=os.environ["OPENAI_MODEL"],
-    api_base=api_base, api_key=api_key,
-    max_tokens=8192, capture_logprobs=True, top_logprobs=20,
-)
-data = ad.dataset("MathArena/aime_2026", benchmark="aime", split="train", max_tasks=3)
-scorer = ad.scorer.create("numeric", tolerance=1e-6)
-runner = ad.runner(output_dir="results", run_id="example", num_samples=1)
+agent = ad.agent("direct_llm", model="Qwen/Qwen3.5-27B", version="1.0")
+data = ad.dataset("MathArena/aime_2026", benchmark="aime", max_tasks=3)
+scorer = ad.scorer.create("numeric")
+runner = ad.runner(run_id="example")
 
 artifacts = runner.compute(agent=agent, data=data, scorer=scorer)
 report = ad.analyzer(artifacts)
-metrics = report.compute()
-report.export("figures/example", formats=("pdf", "svg", "png"))
+report.export("figures/example")
 ```
 
-Set the endpoint variables for an existing OpenAI-compatible model service.
+Set `OPENAI_BASE_URL` and `OPENAI_API_KEY` once for your existing model service;
+Python code reads them automatically. An omitted execution `model` uses
+`OPENAI_MODEL_NAME`. Explicit agent settings take precedence, using the same
+resolver as YAML; native harness gateway/provider boundaries are preserved.
+The example uses one attempt per task and the default `results/` directory.
+`export()` defaults to PDF, SVG and PNG; `formats` remains an optional override.
 Install the example dependencies with `pip install -e '.[analysis,benchmarks,agents]'`. Execution and
 structured analysis do not import Matplotlib. Figure exports contain `report.json`,
 source hashes, coverage, each figure's exact plotted data, and `export.json` listing
@@ -166,22 +162,50 @@ plugin remains available with its distinct equal-call, fixed-width-bin statistic
 ## Optional model judgments
 
 Install `pip install -e '.[judges]'` for model annotations and the `llm_judge` scorer.
-Configure an existing OpenAI-compatible service before constructing a judge:
+Execution and analysis may use separate models, endpoints and credentials.
+Configure the execution provider through `OPENAI_BASE_URL`, `OPENAI_API_KEY` and
+`OPENAI_MODEL_NAME` (or an explicit agent `model`). For independent analysis:
 
 ```bash
-export OPENAI_BASE_URL="https://your-provider.example/v1"
-export OPENAI_API_KEY="your-api-key"
-export OPENAI_MODEL="your-model-id"
-# Optional reproducibility pin; otherwise the model ID is recorded as the version.
-export OPENAI_MODEL_VERSION="your-provider-model-revision"
+export ANALYSIS_MODEL="your-judge-model"
+export ANALYSIS_BASE_URL="https://your-judge-provider.example/v1"
+export ANALYSIS_API_KEY="your-judge-api-key"
+# Optional immutable revision for provenance:
+export ANALYSIS_MODEL_VERSION="your-judge-revision"
 ```
 
-There is no default endpoint, model or placeholder credential. Missing required
-configuration raises before a request is sent. `OPENAI_MODEL_NAME` is a model
-alias; legacy `JUDGE_MODEL` and `JUDGE_API_BASE` remain lower-priority fallbacks.
-Explicit constructor/scorer configuration overrides environment values. Configuring
-a provider does not enable annotations automatically. The `llm_judge` scorer reads
-the same environment when selected with `ad.scorer.create("llm_judge")`.
+```python
+report = ad.analyzer(saved, judge=True)
+report.export("figures/annotated-run")
+```
+
+This adds action and failure annotations to the default offline measurements.
+The Analyzer creates and closes its judge clients for each computation, including
+error paths. Responses are cached under `$XDG_CACHE_HOME/alphadiana/annotations`
+(or `~/.cache/alphadiana/annotations`); override with `cache_dir=` when needed.
+
+Explicit analysis settings override environment defaults and enable annotations:
+
+```python
+report = ad.analyzer(saved, model="another-judge", base_url="https://judge.example/v1")
+report.export("figures/another-judge")
+```
+
+Analysis precedence is explicit `model/base_url/api_key` → corresponding
+`ANALYSIS_*` variable → existing judge fallback (`OPENAI_MODEL`, then
+`OPENAI_MODEL_NAME`, then `JUDGE_MODEL`; `OPENAI_BASE_URL`, then `JUDGE_API_BASE`;
+`OPENAI_API_KEY`). Each field resolves independently. Configure `ANALYSIS_API_KEY`
+when the analysis provider uses a different credential. Merely setting environment
+variables does not enable annotations: `ad.analyzer(saved)` remains offline.
+There is no built-in judge endpoint/model/credential; missing required values fail
+at construction. The scoring `llm_judge` remains independent and ignores
+`ANALYSIS_*`; use its existing explicit `judge_model/api_base/api_key` settings
+for a separate grading provider.
+
+For custom taxonomies, provider options or individual plugins, retain the explicit
+plugin interface below. Supply either `plugins=` or Analyzer judge options; mixing
+them raises rather than silently overriding plugin configuration. Caller-created
+plugins retain their own lifecycle:
 
 ```python
 from alphadiana.analysis.analyzer import ExecutionMetrics
