@@ -86,6 +86,7 @@ def test_native_projection_excludes_prompts_and_observations_from_actions(
         model_version="fixture-1",
         cache_dir=tmp_path / "cache",
         base_url="http://localhost:1/v1",
+        api_key="fixture-key",
     )
     targets = []
 

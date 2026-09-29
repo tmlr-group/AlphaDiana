@@ -111,12 +111,47 @@ def _render(plt, spec: dict, rows: list[dict]):
         "openclaw": "#B7CDDE",
         "zeroclaw": "#527DA5",
         "opencode": "#0A366B",
+        "understanding": "#E41A1C",
+        "planning": "#377EB8",
+        "reasoning": "#4DAF4A",
+        "tool use": "#984EA3",
+        "verification": "#FF7F00",
+        "finalization": "#A65628",
     }
 
     def series_color(label, index):
         name = str(label).split(" / ", 1)[0].casefold()
         return paper_colors.get(name, colors[index % len(colors)])
 
+    if spec["kind"] == "matrix":
+        xlabels = list(dict.fromkeys(str(r[x]) for r in rows))
+        ylabels = list(dict.fromkeys(str(r[y]) for r in rows))
+        value = spec.get("value", "count")
+        cells = {}
+        for row in rows:
+            key = str(row[x]), str(row[y])
+            if key in cells:
+                raise ValueError("Matrix requires one measured value per cell")
+            cells[key] = row[value]
+        matrix = [[cells.get((a, b), float("nan")) for a in xlabels] for b in ylabels]
+        fig, ax = plt.subplots(
+            figsize=(max(5.5, len(xlabels) * 0.6 + 3), max(2.2, len(ylabels) * 0.28)),
+            layout="constrained",
+        )
+        limits = spec.get("color_limits") or (None, None)
+        im = ax.imshow(
+            matrix, cmap="Blues", aspect="auto", vmin=limits[0], vmax=limits[1]
+        )
+        ax.set_xticks(
+            range(len(xlabels)),
+            [textwrap.fill(v, 18) for v in xlabels],
+            rotation=30,
+            ha="right",
+        )
+        ax.set_yticks(range(len(ylabels)), [textwrap.fill(v, 28) for v in ylabels])
+        ax.set(title=spec["title"], xlabel=spec["xlabel"], ylabel=spec["ylabel"])
+        fig.colorbar(im, ax=ax, label=spec.get("value_label", value))
+        return fig
     if spec["kind"] == "heatmap":
         import math
 
@@ -162,10 +197,14 @@ def _render(plt, spec: dict, rows: list[dict]):
         return fig
     categories = list(dict.fromkeys(str(r[x]) for r in rows))
     height = (
-        max(2.1, 0.38 * len(categories) * len(groups))
-        if spec["kind"] == "barh" else 2.6
+        max(
+            2.1, 0.38 * len(categories) * (len(groups) if spec["kind"] == "barh" else 1)
+        )
+        if spec["kind"] in {"barh", "stacked_barh"}
+        else 2.6
     )
     fig, ax = plt.subplots(figsize=(5.5, height), layout="constrained")
+    stacked = [0.0] * len(categories)
     for index, group in enumerate(groups):
         subset = [
             r
@@ -173,21 +212,51 @@ def _render(plt, spec: dict, rows: list[dict]):
             if not spec.get("group") or str(r.get(spec["group"], "")) == group
         ]
         color = series_color(group, index)
-        if spec["kind"] in {"bar", "barh"}:
+        if spec["kind"] == "stacked_barh":
+            values = {str(row[x]): row[y] for row in subset}
+            if len(values) != len(subset):
+                raise ValueError("Stacked bars require one value per category/series")
+            heights = [values.get(category, 0) for category in categories]
+            if any(value < 0 for value in heights):
+                raise ValueError("Stacked composition requires nonnegative values")
+            ax.barh(
+                range(len(categories)),
+                heights,
+                left=stacked,
+                height=0.7,
+                color=color,
+                edgecolor="white",
+                linewidth=0.4,
+                label=group,
+            )
+            stacked = [left + value for left, value in zip(stacked, heights)]
+            ax.set_yticks(
+                range(len(categories)), [textwrap.fill(c, 24) for c in categories]
+            )
+        elif spec["kind"] in {"bar", "barh"}:
             width = 0.8 / len(groups)
             positions = [
                 categories.index(str(r[x])) - 0.4 + width * (index + 0.5)
                 for r in subset
             ]
             values = [r[y] for r in subset]
-            bar_colors = color if spec.get("group") else [
-                series_color(r.get("agent", r[x]), categories.index(str(r[x])))
-                for r in subset
-            ]
+            bar_colors = (
+                color
+                if spec.get("group")
+                else [
+                    series_color(r.get("agent", r[x]), categories.index(str(r[x])))
+                    for r in subset
+                ]
+            )
             draw = ax.barh if spec["kind"] == "barh" else ax.bar
             bars = draw(
-                positions, values, width, color=bar_colors,
-                label=group or None, edgecolor="white", linewidth=0.5,
+                positions,
+                values,
+                width,
+                color=bar_colors,
+                label=group or None,
+                edgecolor="white",
+                linewidth=0.5,
             )
             labels = [textwrap.fill(c.replace("_", " "), width=18) for c in categories]
             if spec["kind"] == "barh":
@@ -207,7 +276,42 @@ def _render(plt, spec: dict, rows: list[dict]):
                     alpha=0.65,
                     s=12,
                 )
+                if spec.get("ellipse") and len(subset) >= 10:
+                    import numpy as np
+                    from matplotlib.patches import Ellipse
+
+                    points = np.array([[r[x], r[y]] for r in subset], dtype=float)
+                    covariance = np.cov(points, rowvar=False)
+                    if np.isfinite(covariance).all():
+                        values, vectors = np.linalg.eigh(covariance)
+                        order = values.argsort()[::-1]
+                        values, vectors = values[order], vectors[:, order]
+                        angle = np.degrees(np.arctan2(vectors[1, 0], vectors[0, 0]))
+                        center = points.mean(axis=0)
+                        axes = 4 * np.sqrt(np.maximum(values, 0))
+                        ax.add_patch(
+                            Ellipse(
+                                center,
+                                axes[0],
+                                axes[1],
+                                angle=angle,
+                                facecolor=color,
+                                edgecolor=color,
+                                alpha=0.15,
+                            )
+                        )
+                        ax.autoscale_view()
+
             else:
+                if spec.get("lower") and spec.get("upper"):
+                    ax.fill_between(
+                        [r[x] for r in subset],
+                        [r[spec["lower"]] for r in subset],
+                        [r[spec["upper"]] for r in subset],
+                        color=color,
+                        alpha=0.18,
+                        linewidth=0,
+                    )
                 ax.plot(
                     [r[x] for r in subset],
                     [r[y] for r in subset],
@@ -224,7 +328,7 @@ def _render(plt, spec: dict, rows: list[dict]):
         else:
             plt.close(fig)
             raise ValueError(f"Unsupported plot kind: {spec['kind']}")
-    if spec["kind"] == "barh":
+    if spec["kind"] in {"barh", "stacked_barh"}:
         ax.margins(x=0.15)
         ax.set_xlim(left=min(0, min(r[y] for r in rows) * 1.15))
         ax.invert_yaxis()
@@ -237,15 +341,23 @@ def _render(plt, spec: dict, rows: list[dict]):
             ax.set_xscale(spec.get("xscale", "linear"))
         ax.set(xlabel=spec["xlabel"], ylabel=spec["ylabel"])
     ax.set_title(spec["title"], loc="left", pad=8)
-    ax.grid(axis="x" if spec["kind"] == "barh" else "y", color="#E9EDF1", linewidth=0.5)
+    ax.grid(
+        axis="x" if spec["kind"] in {"barh", "stacked_barh"} else "y",
+        color="#E9EDF1",
+        linewidth=0.5,
+    )
     ax.tick_params(length=2, width=0.5)
     ax.set_axisbelow(True)
     if spec.get("group"):
         handles, labels = ax.get_legend_handles_labels()
         fig.legend(
-            handles, [textwrap.fill(label, 30) for label in labels],
-            loc="outside upper center", frameon=False, fontsize=8,
+            handles,
+            [textwrap.fill(label, 30) for label in labels],
+            loc="outside upper center",
+            frameon=False,
+            fontsize=8,
             ncol=min(len(groups), 4 if max(map(len, labels)) <= 16 else 3),
-            handlelength=1.5, columnspacing=1.2,
+            handlelength=1.5,
+            columnspacing=1.2,
         )
     return fig

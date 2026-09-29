@@ -22,6 +22,7 @@ from alphadiana.analysis.resource_usage import (
     measured_usage,
 )
 from alphadiana.analysis.result_reader import RunBundle
+from alphadiana.analysis.reliability import compute_reliability_summary
 from alphadiana.artifacts import Artifacts
 
 
@@ -37,6 +38,12 @@ class Figure:
     ylabel: str
     group: str | None = None
     xscale: str = "linear"
+    value: str = "count"
+    value_label: str = "Transitions"
+    color_limits: tuple[float, float] | None = None
+    lower: str | None = None
+    upper: str | None = None
+    ellipse: bool = False
 
 
 @dataclass
@@ -75,7 +82,7 @@ class ExecutionMetrics:
         self.usage_extractors = tuple(usage_extractors)
 
     def measure(self, artifacts: Sequence[Artifacts]) -> Measurement:
-        summary, samples, actions, transitions = [], [], [], []
+        summary, samples, actions, transitions, reliability = [], [], [], [], []
         coverage = {}
         for source in artifacts:
             records = source.records()
@@ -119,6 +126,17 @@ class ExecutionMetrics:
                         "entropy_nats": entropy,
                     }
                 )
+            rates = compute_reliability_summary(records, manifest)
+            for key, title in (("pass_at_k", "Pass"), ("avg_at_k", "Avg")):
+                reliability.append(
+                    {
+                        "run": label,
+                        "metric": f"{title}@{rates['num_samples']}",
+                        "value": rates[key] if expected else None,
+                        "requested": expected,
+                        "observed": len(records),
+                    }
+                )
             summary.append(
                 {
                     "run": label,
@@ -135,6 +153,9 @@ class ExecutionMetrics:
                     "scored": scored,
                     "correct": correct,
                     "accuracy": correct / expected if expected else None,
+                    "num_samples": rates["num_samples"],
+                    "pass_at_k": rates["pass_at_k"] if expected else None,
+                    "avg_at_k": rates["avg_at_k"] if expected else None,
                     "mean_output_tokens": sum(tokens) / len(tokens) if tokens else None,
                     "mean_seconds": sum(times) / len(times) if times else None,
                     "tokens_per_correct": sum(tokens) / correct
@@ -186,6 +207,37 @@ class ExecutionMetrics:
             }
         composition = Counter((row["run"], row["canonical_action"]) for row in actions)
         figures = [
+            Figure(
+                "reliability",
+                "reliability",
+                "bar",
+                "run",
+                "value",
+                "Task reliability",
+                "Run",
+                "Fraction",
+                group="metric",
+            ),
+            Figure(
+                "mean_tokens",
+                "performance",
+                "barh",
+                "run",
+                "mean_output_tokens",
+                "Mean output tokens per attempt",
+                "Run",
+                "Output tokens",
+            ),
+            Figure(
+                "mean_time",
+                "performance",
+                "barh",
+                "run",
+                "mean_seconds",
+                "Mean elapsed time per attempt",
+                "Run",
+                "Seconds",
+            ),
             Figure(
                 "accuracy",
                 "performance",
@@ -253,6 +305,7 @@ class ExecutionMetrics:
         return Measurement(
             {
                 "performance": summary,
+                "reliability": reliability,
                 "samples": samples,
                 "actions": actions,
                 "action_composition": [
@@ -314,10 +367,13 @@ class Analyzer:
             raise ValueError(
                 "Duplicate artifact sources would double count observations"
             )
+        if len({a.path.stem for a in self.artifacts}) != len(self.artifacts):
+            raise ValueError("Artifact run names must be unique across a comparison")
         if plugins is None:
+            from alphadiana.analysis.entropy_analysis import EntropyAnalysis
             from alphadiana.analysis.process_entropy import RequestEntropy
 
-            self.plugins = [ExecutionMetrics(), RequestEntropy()]
+            self.plugins = [ExecutionMetrics(), RequestEntropy(), EntropyAnalysis()]
         else:
             self.plugins = list(plugins)
         if len({p.name for p in self.plugins}) != len(self.plugins):

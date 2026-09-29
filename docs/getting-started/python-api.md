@@ -1,4 +1,4 @@
-# Python composition and paper figures
+# Python API and analysis
 
 AlphaDiana's Python API uses the same component registries, configuration validator,
 Runner, session lifecycle, scoring, and result store as the CLI. It does not replace
@@ -8,11 +8,11 @@ native harness control loops.
 import os
 import alphadiana as ad
 
-api_base = os.environ["AD_ACCEPTANCE_API_BASE"]
-api_key = os.environ["AD_ACCEPTANCE_API_KEY"]
+api_base = os.environ["OPENAI_BASE_URL"]
+api_key = os.environ["OPENAI_API_KEY"]
 
 agent = ad.agent(
-    "direct_llm", version="1.0", model="Qwen/Qwen3.5-27B",
+    "direct_llm", version="1.0", model=os.environ["OPENAI_MODEL"],
     api_base=api_base, api_key=api_key,
     max_tokens=8192, capture_logprobs=True, top_logprobs=20,
 )
@@ -31,7 +31,7 @@ Install the example dependencies with `pip install -e '.[analysis,benchmarks,age
 structured analysis do not import Matplotlib. Figure exports contain `report.json`,
 source hashes, coverage, each figure's exact plotted data, and `export.json` listing
 outputs and inapplicable plots. Export to a new directory to preserve prior evidence.
-The default renderer follows the paper's compact gray/blue style with horizontal
+The default renderer uses a compact gray/blue style with horizontal
 performance bars, light grids and thin axes. It uses installed Arial, then Arimo,
 then DejaVu Sans; no proprietary font or machine-specific font path is required.
 PDF/SVG are vector exports; PNG is a review preview. All formats retain the same
@@ -51,8 +51,7 @@ Choose environments explicitly, for example `ad.environment("podman", image=...)
 and pass them as `ad.runner(env=...)` where the selected harness supports an
 external environment. Native runtimes that own their containers retain that policy.
 
-The functional figure uses shorthand. The implementation makes three boundaries
-explicit, which should also be reflected in the manuscript example:
+The API keeps three boundaries explicit:
 
 - `ad.scorer.create(...)` preserves the existing `alphadiana.scorer` Python package
   and all downstream submodule imports. `alphadiana.api.scorer(...)` is also a factory.
@@ -99,7 +98,7 @@ solver, verifier and container lifecycle. Other Harbor environment backends are
 rejected for snapshot capture. The existing replay path restores the retained
 image and invokes only the verifier.
 
-## Historical paper concepts
+## Optional historical data adapter
 
 The archive adapter reads the supplied frozen numerical inputs without running
 legacy scripts, changing archived files, or embedding result constants in code:
@@ -109,7 +108,7 @@ from alphadiana.analysis.paper_archive import PaperArchive
 
 archive = PaperArchive("/path/to/paper-figures")
 paper = ad.analyzer([], plugins=[archive])
-paper.export("figures/paper-concepts")
+paper.export("figures/archive")
 ```
 
 It renders macro/interactive accuracy; overlapping error incidence; action
@@ -130,55 +129,107 @@ source provenance. Built-in action extraction currently identifies its heuristic
 labels; they must not be represented as human or model-verified annotations.
 
 
-## Request attribution and model annotations
+## Built-in measurements
 
-Default analysis includes request-conditioned top-K entropy when the capture proxy
-recorded `call_id`, `call_token_index` and `follows_tool_result`. Bins average each
-call first, then average calls with observations in that bin. Tables include token
-and call counts, source hashes and missingness. This is a descriptive comparison,
-not a causal estimate. Old sidecars without attribution do not become post-tool
-observations; Direct has no tool feedback. Historical archive token-position bins
-also do not establish offsets after a tool response.
+Default analysis is offline and reads saved artifacts. It includes:
 
-Model annotation is explicit and separate from the execution model:
+| Measurement | Tables and figures | Required evidence |
+|---|---|---|
+| Performance and reliability | Accuracy, empirical Pass@k and Avg@k | Scores, expected tasks and configured repeat count |
+| Resource usage | Mean output tokens and elapsed seconds per observed attempt; cost per correct answer | Provider/native usage counters and elapsed time |
+| Process entropy | Outcome-conditioned post-tool entropy with standard-error bands; log10 output length versus mean entropy | Observed top-K probabilities; request attribution for post-tool curves; measured usage for length |
+| Logged action events | Heuristic event composition and transitions | Canonical traces; these are not model-verified functional labels |
+
+Pass@k is the fraction of expected tasks with at least one successful attempt;
+Avg@k averages successes over the configured k attempts per task. Missing attempts
+and execution/scoring failures do not count as successes. These are empirical
+run statistics, not a subsampling estimator. Resource means use only measured
+attempts; token and timing coverage are reported separately. Missing usage is
+not a zero cost. Three-task checks demonstrate functionality, not benchmark rankings.
+
+`EntropyAnalysis` aligns position 1 to the first token of each request explicitly
+marked as following tool feedback. Geometric bins use a ratio of 2 by default,
+plot their geometric midpoints on a logarithmic x-axis, and require at least five
+observations per run/outcome/bin. The y-axis is renormalized observed top-K entropy
+in nats, not full-vocabulary entropy. Values are token-weighted; bands show
+mean ± descriptive standard error, not confidence intervals (tokens are correlated).
+All bins, boundaries, token/call counts and suppressed-bin counts remain available.
+
+The length scatter uses log10 **measured output tokens**, not the number of captured
+probability records, against mean entropy over observed probability records.
+A two-standard-deviation covariance ellipse is drawn only for groups with at
+least ten samples; it is not a confidence region for the mean. Incomplete capture
+remains visible in coverage. Direct inference has no post-tool curve. Legacy
+sidecars without explicit attribution cannot supply one. The older `RequestEntropy`
+plugin remains available with its distinct equal-call, fixed-width-bin statistics.
+
+## Optional model judgments
+
+Install `pip install -e '.[judges]'` for model annotations and the `llm_judge` scorer.
+Configure an existing OpenAI-compatible service before constructing a judge:
+
+```bash
+export OPENAI_BASE_URL="https://your-provider.example/v1"
+export OPENAI_API_KEY="your-api-key"
+export OPENAI_MODEL="your-model-id"
+# Optional reproducibility pin; otherwise the model ID is recorded as the version.
+export OPENAI_MODEL_VERSION="your-provider-model-revision"
+```
+
+There is no default endpoint, model or placeholder credential. Missing required
+configuration raises before a request is sent. `OPENAI_MODEL_NAME` is a model
+alias; legacy `JUDGE_MODEL` and `JUDGE_API_BASE` remain lower-priority fallbacks.
+Explicit constructor/scorer configuration overrides environment values. Configuring
+a provider does not enable annotations automatically. The `llm_judge` scorer reads
+the same environment when selected with `ad.scorer.create("llm_judge")`.
 
 ```python
 from alphadiana.analysis.analyzer import ExecutionMetrics
-from alphadiana.analysis.process_entropy import RequestEntropy
+from alphadiana.analysis.entropy_analysis import EntropyAnalysis
 from alphadiana.analysis.action_annotations import ActionAnnotations
+from alphadiana.analysis.failure_annotations import FailureAnnotations
 
-labels = ActionAnnotations(
-    model="Qwen/Qwen3.5-27B", model_version="your-pinned-model-revision",
-    base_url="http://localhost:18960/v1", cache_dir="analysis-cache",
-    extra_body={"chat_template_kwargs": {"enable_thinking": False}},
-)
-try:
-    ad.analyzer(saved, plugins=[ExecutionMetrics(), RequestEntropy(), labels]).export(
-        "figures/annotated-run"
-    )
-finally:
-    labels.client.close()
+execution = ExecutionMetrics()
+entropy = EntropyAnalysis(bin_ratio=2, min_observations=5)
+with ActionAnnotations(cache_dir="analysis-cache/actions") as actions:
+    with FailureAnnotations(cache_dir="analysis-cache/failures") as failures:
+        plugins = [execution, entropy, actions, failures]
+        report = ad.analyzer(saved, plugins=plugins)
+        report.export("figures/annotated-run")
 ```
 
-The default taxonomy reuses the six functional categories from the action-alignment
-work: Understanding, Planning, Reasoning, Tool Use, Verification and Finalization.
-A caller can supply another `taxonomy={label: definition}`. Annotations cover fixed
-character spans within assistant steps, excluding prompt and tool-result rows;
-neighboring text is context. The span size and context policy affect counts and
-must accompany comparisons. These are model annotations, not human-reviewed
-labels. Cache entries bind the complete request, model/version, prompt, response
-ID and usage; malformed responses fail rather than becoming heuristic labels.
+Action annotations classify fixed character spans within assistant steps into
+Understanding, Planning, Reasoning, Tool Use, Verification and Finalization.
+Prompt and tool-result rows are excluded; neighboring text supplies context.
+Composition percentages and within-sample transition matrices are grouped by
+correct/incorrect/unscored outcome. Span size and context policy affect counts
+and must accompany comparisons. Supply `taxonomy={label: definition}` to extend it.
 
-For providers supporting structured outputs, pass an explicit `response_format`
-with a JSON schema requiring a single `label` string drawn from your taxonomy.
-The default remains `{"type": "json_object"}` for provider compatibility. The
-selected format is included in cache identity and coverage metadata; comparisons
-should use the same annotation protocol. Schema enforcement does not replace
-validation or human review of model labels.
+Failure annotations assign overlapping labels to unsuccessful or unscored traces.
+The default 17 categories cover task/interface, reasoning, tool interaction,
+verification and operational failures; custom taxonomies use `taxonomy={code: definition}`.
+Each positive label requires an exact quote from the supplied trace. Percentages
+use successfully annotated eligible traces as the denominator and can sum above
+100%. Missing traces are excluded and reported, never treated as negative labels.
+Oversized traces fail explicitly at `max_trace_chars`; they are not silently truncated.
+An exact quote checks evidence presence, not whether the model's interpretation is
+correct. Model labels require human sampling before scientific conclusions.
+
+Persistent caches bind the endpoint, model/version, full evidence, prompt,
+generation settings and response format. They retain response ID/model and usage,
+but not the API key. Keep caches private if task traces contain private material.
+Malformed, unsupported or incomplete responses fail explicitly; cached answers
+are revalidated. A model ID alone is not an immutable weight revision.
+
+Providers default to JSON-object output. Pass `response_format` for a provider's
+supported structured-output schema and `extra_body` for explicit provider options.
+Use a single `label` string for action responses; failure responses require a
+`labels` array of `{code, quote}` objects. Schema enforcement does not replace
+validation or human review. The scoring judge requires an actual boolean
+`correct` and a string `rationale`; strings such as `"false"` are rejected.
 
 Rescored artifacts refer to their original sidecars. Keep both directories when
-reopening or analyzing a derived score file. Binary task attachments are stored by
-content hash and verified before rescoring.
+reopening a derived score file. Binary attachments are verified by content hash.
 
 ## Readable figure labels
 
@@ -188,7 +239,7 @@ without renaming artifacts or changing measured values:
 ```python
 from copy import deepcopy
 from alphadiana.analysis.analyzer import ExecutionMetrics
-from alphadiana.analysis.process_entropy import RequestEntropy
+from alphadiana.analysis.entropy_analysis import EntropyAnalysis
 
 class DisplayLabels:
     def __init__(self, plugin, labels):
@@ -212,14 +263,14 @@ class DisplayLabels:
 names = {saved.path.stem: "OpenClaw"}
 plugins = [
     DisplayLabels(ExecutionMetrics(), names),
-    DisplayLabels(RequestEntropy(), names),
+    DisplayLabels(EntropyAnalysis(), names),
 ]
 report = ad.analyzer(saved, plugins=plugins)
 report.export("figures/readable-labels")
 ```
 
 The label map accompanies the report. For a multi-run comparison, supply all
-artifact objects and one label per run. Keep labels distinct so different runs
+artifact objects and one label per run. Run file stems and display labels must be distinct so different runs
 cannot be merged visually.
 
 ## Measured resource usage
@@ -244,7 +295,8 @@ are separate measurements, and request attribution coverage applies only to
 observed probability records. It does not assert complete output-token capture.
 
 Additional usage schemas can be supplied as callable extractors through
-`ExecutionMetrics(usage_extractors=[...])`. An extractor receives `(artifacts,
+`ExecutionMetrics(usage_extractors=[...])` and
+`EntropyAnalysis(usage_extractors=[...])`. An extractor receives `(artifacts,
 record)` and returns `MeasuredUsage(output_tokens, provenance)`, or `None` when
 its schema does not apply. Supply an empty list to use only persisted usage.
 

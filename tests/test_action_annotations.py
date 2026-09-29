@@ -13,6 +13,7 @@ def test_annotations_cache_exact_request_and_reject_invalid_labels(tmp_path):
         model="fixture",
         model_version="revision-1",
         base_url="http://127.0.0.1:1/v1",
+        api_key="fixture-key",
         cache_dir=tmp_path,
     )
     requests = []
@@ -65,6 +66,7 @@ def test_explicit_response_schema_is_detached_and_part_of_cache_identity(tmp_pat
         model="fixture",
         model_version="revision-1",
         base_url="http://127.0.0.1:1/v1",
+        api_key="fixture-key",
         cache_dir=tmp_path,
         response_format=schema,
     )
@@ -72,6 +74,7 @@ def test_explicit_response_schema_is_detached_and_part_of_cache_identity(tmp_pat
         model="fixture",
         model_version="revision-1",
         base_url="http://127.0.0.1:1/v1",
+        api_key="fixture-key",
         cache_dir=tmp_path,
     )
     calls = []
