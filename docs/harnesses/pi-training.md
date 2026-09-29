@@ -23,7 +23,7 @@ that metadata record; the full native requests/responses are stored once under
 
 ```json
 {
-  "schema": "alphadiana.pi-training.v1",
+  "schema": "alphadiana.native-training.v1",
   "tokens_native": true,
   "trajectory_complete": true,
   "round_id": "grpo-round-001",
@@ -71,7 +71,7 @@ tool observations are represented in the next call's prompt IDs.
 The cross-repository batch contract is `alphahebe.training-batch.v2`: exactly
 the seven shared plan fields and Hebe's standard sample rows, so AlphaHebe's
 `TrainingBatch.from_dict` can load it unchanged. AlphaDiana's own archives keep
-the full-fidelity `alphadiana.pi-training-batch.v1` form with algorithm,
+the full-fidelity `alphadiana.native-training-batch.v1` form with algorithm,
 publication, model identity and per-sample provenance. Calling
 `TrainingBatch.validate_for("grpo")` additionally requires at least two samples
 per task and native behavior log probabilities for every turn.
@@ -206,3 +206,28 @@ controller, and the Pi container never receives ground truth through its input.
   filtering and context compaction are rejected.
 * Apollo, optimizer state, checkpoint mutation, and evaluator gold data stay in
   AlphaHebe or the private evaluator boundary.
+
+
+## Shared native capture and DeepSeek
+
+Native capture now lives in `alphadiana.harness._internal.training` and the
+collector is `NativeTrainingCollector`. The unreleased Pi-specific module and
+package re-exports were removed; callers must update their imports. Request,
+capture and reference schemas use `alphadiana.native-training*.v1`; old Pi
+request/capture records are not silently reused for new executions.
+
+Both Pi and DeepSeek run their real pinned Podman runtimes. DeepSeek training
+explicitly selects reasoning effort `off`, matching the frozen non-thinking
+chat template. Its adapter verifies disabled thinking and the pinned SDK's
+model-hidden plugin inventory before forwarding unchanged messages and tools.
+It rejects enabled thinking rather than silently dropping it. The capture keeps
+raw harness requests alongside normalized serving requests, original token IDs,
+behavior log probabilities, tool continuity and policy/model attestations.
+`training_capture.harness` identifies the executing harness and survives reload.
+
+The bridge must be rebuilt into an immutable image; an older bridge leaves
+DeepSeek reasoning enabled and is rejected. Ordinary evaluation retains its
+existing reasoning behavior. No token reconstruction or generic single-turn
+fallback is used. Reasoning-enabled, multimodal and compacted training episodes
+remain unsupported. SFT/GRPO model updates and final held-out scoring are separate
+from container capture tests.

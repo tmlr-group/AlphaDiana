@@ -1,5 +1,5 @@
 {
-  "schema": "alphadiana.pi-training.v1",
+  "schema": "alphadiana.native-training.v1",
   "tokens_native": true,
   "trajectory_complete": true,
   "round_id": "sft-round-001",

@@ -1,13 +1,13 @@
-"""Native-token training capture for the Pi harness.
+"""Native-token training capture for native Podman harnesses.
 
-The Pi process remains an ordinary CLI client.  When training capture is
+The native harness process remains an ordinary CLI client.  When training capture is
 enabled, the host starts a short-lived OpenAI-compatible proxy in front of the
 configured serving endpoint.  The proxy records the IDs and likelihoods that
-the serving endpoint returned, then sends a text/stream projection to Pi.  No
+the serving endpoint returned, then sends a text/stream projection to the harness.  No
 training record is reconstructed by tokenizing the final answer.
 
 Hebe owns the sampling policy and optimizer.  This module owns only the
-execution contract and the validation of one isolated Pi episode or one
+execution contract and the validation of one isolated native episode or one
 complete GRPO group.
 """
 
@@ -30,12 +30,12 @@ except ImportError:  # pragma: no cover - exercised by a minimal core install
     httpx = None  # type: ignore[assignment]
 
 
-SCHEMA = "alphadiana.pi-training.v1"
+SCHEMA = "alphadiana.native-training.v1"
 # The collector emits the cross-repository batch schema accepted by Hebe's
 # ``TrainingBatch.from_dict``; Diana provenance stays in the capture records.
 BATCH_SCHEMA = "alphahebe.training-batch.v2"
-_LEGACY_BATCH_SCHEMA = "alphadiana.pi-training-batch.v1"
-REQUEST_SCHEMA = "alphadiana.pi-training-request.v1"
+_LEGACY_BATCH_SCHEMA = "alphadiana.native-training-batch.v1"
+REQUEST_SCHEMA = "alphadiana.native-training-request.v1"
 MAX_MESSAGE_BYTES = 8 * 1024 * 1024
 MAX_CAPTURE_BYTES = 64 * 1024 * 1024
 _SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -217,18 +217,13 @@ class SamplingPlan:
             or self.temperature <= 0
         ):
             raise ValueError("temperature must be positive and finite")
-        if self.model_identity is not None and not isinstance(
-            self.model_identity, ModelIdentity
-        ):
+        if self.model_identity is not None and not isinstance(self.model_identity, ModelIdentity):
             raise TypeError("model_identity must be a ModelIdentity")
         if self.model_identity is not None and (
             self.policy.tokenizer_digest != self.model_identity.tokenizer_digest
-            or self.policy.chat_template_digest
-            != self.model_identity.chat_template_digest
+            or self.policy.chat_template_digest != self.model_identity.chat_template_digest
         ):
-            raise ValueError(
-                "policy and model tokenizer/chat-template identities differ"
-            )
+            raise ValueError("policy and model tokenizer/chat-template identities differ")
         if not isinstance(self.policy_publication, str):
             raise TypeError("policy_publication must be a string")
         if self.policy_publication:
@@ -269,14 +264,10 @@ class SamplingPlan:
             max_new_tokens=value.get("max_new_tokens"),
             temperature=value.get("temperature"),
             seed=value.get("seed"),
-            model_identity=ModelIdentity.from_dict(raw_model)
-            if raw_model is not None
-            else None,
+            model_identity=ModelIdentity.from_dict(raw_model) if raw_model is not None else None,
             policy_publication=value.get("policy_publication", ""),
             algorithm=value.get("algorithm", "sft"),
-            chat_template_kwargs=value.get(
-                "chat_template_kwargs", {"enable_thinking": False}
-            ),
+            chat_template_kwargs=value.get("chat_template_kwargs", {"enable_thinking": False}),
         )
 
 
@@ -303,19 +294,13 @@ class TokenTurn:
             raise ValueError("response_mask must be binary with a trainable token")
         if self.behavior_log_probs is not None:
             values = self.behavior_log_probs
-            if not isinstance(values, (tuple, list)) or len(values) != len(
-                self.response_mask
-            ):
-                raise ValueError(
-                    "behavior_log_probs must align with response_token_ids"
-                )
+            if not isinstance(values, (tuple, list)) or len(values) != len(self.response_mask):
+                raise ValueError("behavior_log_probs must align with response_token_ids")
             if any(
                 type(value) not in (int, float) or not math.isfinite(value) or value > 0
                 for value in values
             ):
-                raise ValueError(
-                    "behavior_log_probs must be finite nonpositive numbers"
-                )
+                raise ValueError("behavior_log_probs must be finite nonpositive numbers")
             object.__setattr__(self, "behavior_log_probs", tuple(values))
 
 
@@ -410,13 +395,8 @@ class TrainingBatch:
         for sample in self.samples:
             if not isinstance(sample, TrainingSample):
                 raise TypeError("samples must contain TrainingSample records")
-            if (
-                sample.round_id != self.plan.round_id
-                or sample.policy != self.plan.policy
-            ):
-                raise ValueError(
-                    "sample round/policy identity does not match sampling plan"
-                )
+            if sample.round_id != self.plan.round_id or sample.policy != self.plan.policy:
+                raise ValueError("sample round/policy identity does not match sampling plan")
             identity = (sample.task_id, sample.sample_index)
             if identity in actual:
                 raise ValueError("duplicate task/sample identity")
@@ -426,12 +406,9 @@ class TrainingBatch:
             if not 0 <= sample.sample_index < self.plan.group_size:
                 raise ValueError("sample index is outside the sampling plan")
             if any(
-                len(turn.response_token_ids) > self.plan.max_new_tokens
-                for turn in sample.turns
+                len(turn.response_token_ids) > self.plan.max_new_tokens for turn in sample.turns
             ):
-                raise ValueError(
-                    "response exceeds sampling plan's per-call token limit"
-                )
+                raise ValueError("response exceeds sampling plan's per-call token limit")
         expected = {
             (task_id, index)
             for task_id in self.plan.task_ids
@@ -447,9 +424,7 @@ class TrainingBatch:
             if self.plan.group_size < 2:
                 raise ValueError("GRPO requires at least two samples per task")
             if any(
-                turn.behavior_log_probs is None
-                for sample in self.samples
-                for turn in sample.turns
+                turn.behavior_log_probs is None for sample in self.samples for turn in sample.turns
             ):
                 raise ValueError("GRPO requires native behavior log probabilities")
 
@@ -464,9 +439,7 @@ class TrainingBatch:
         return {
             "schema": BATCH_SCHEMA,
             "plan": _legacy_sampling_plan(asdict(self.plan)),
-            "samples": [
-                TrainingSample._hebe_fields(asdict(sample)) for sample in self.samples
-            ],
+            "samples": [TrainingSample._hebe_fields(asdict(sample)) for sample in self.samples],
         }
 
     def diana_dict(self) -> dict[str, Any]:
@@ -501,7 +474,7 @@ class TrainingBatch:
 
 @dataclass(frozen=True, slots=True)
 class TrainingCapture:
-    """Durable result of one complete native-token Pi episode."""
+    """Durable result of one complete native-token episode."""
 
     round_id: str
     task_id: str
@@ -518,25 +491,25 @@ class TrainingCapture:
     evidence_refs: dict[str, str] | None = None
     sampling_plan: dict[str, Any] | None = None
 
+    harness: str = ""
+
     def __post_init__(self) -> None:
+        if self.harness not in {"", "pi", "deepseek_harness"}:
+            raise ValueError("Unsupported capture harness identity")
         _nonempty(self.round_id, "round_id")
         _nonempty(self.task_id, "task_id")
         _integer(self.sample_index, 0, "sample_index")
         _nonempty(self.attempt_id, "attempt_id")
         if not isinstance(self.policy, PolicyIdentity):
             raise TypeError("policy must be a PolicyIdentity")
-        if self.model_identity is not None and not isinstance(
-            self.model_identity, ModelIdentity
-        ):
+        if self.model_identity is not None and not isinstance(self.model_identity, ModelIdentity):
             raise TypeError("model_identity must be a ModelIdentity")
         if not isinstance(self.turns, (tuple, list)) or not self.turns:
             raise ValueError("turns must be a nonempty sequence")
         if any(not isinstance(turn, TokenTurn) for turn in self.turns):
             raise TypeError("turns must contain TokenTurn records")
         object.__setattr__(self, "turns", tuple(self.turns))
-        if not isinstance(
-            self.termination_reason, str
-        ) or self.termination_reason not in {
+        if not isinstance(self.termination_reason, str) or self.termination_reason not in {
             "eos",
             "token_budget",
         }:
@@ -554,16 +527,12 @@ class TrainingCapture:
         if normalized_usage["prompt_tokens"] != prompt_total:
             raise ValueError("usage.prompt_tokens differs from captured prompt IDs")
         if normalized_usage["completion_tokens"] != completion_total:
-            raise ValueError(
-                "usage.completion_tokens differs from captured response IDs"
-            )
+            raise ValueError("usage.completion_tokens differs from captured response IDs")
         if normalized_usage["total_tokens"] != prompt_total + completion_total:
             raise ValueError("usage.total_tokens differs from captured token IDs")
         if not isinstance(self.policy_publication, str):
             raise TypeError("policy_publication must be a string")
-        if not isinstance(
-            self.policy_attestation, str
-        ) or self.policy_attestation not in {
+        if not isinstance(self.policy_attestation, str) or self.policy_attestation not in {
             "declared",
             "verified",
         }:
@@ -588,6 +557,7 @@ class TrainingCapture:
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema": SCHEMA,
+            "harness": self.harness,
             "tokens_native": True,
             "trajectory_complete": True,
             "round_id": self.round_id,
@@ -595,9 +565,7 @@ class TrainingCapture:
             "sample_index": self.sample_index,
             "attempt_id": self.attempt_id,
             "policy": asdict(self.policy),
-            "model_identity": asdict(self.model_identity)
-            if self.model_identity
-            else None,
+            "model_identity": asdict(self.model_identity) if self.model_identity else None,
             "turns": [asdict(turn) for turn in self.turns],
             "termination_reason": self.termination_reason,
             "usage": dict(self.usage),
@@ -626,14 +594,13 @@ class TrainingCapture:
         if not isinstance(turns, list):
             raise TypeError("training capture turns must be a list")
         return cls(
+            harness=value.get("harness", ""),
             round_id=value["round_id"],
             task_id=value["task_id"],
             sample_index=value["sample_index"],
             attempt_id=value["attempt_id"],
             policy=PolicyIdentity(**dict(value["policy"])),
-            model_identity=(
-                ModelIdentity.from_dict(raw_model) if raw_model is not None else None
-            ),
+            model_identity=(ModelIdentity.from_dict(raw_model) if raw_model is not None else None),
             turns=tuple(TokenTurn(**dict(turn)) for turn in turns),
             termination_reason=value["termination_reason"],
             usage=dict(value["usage"]),
@@ -641,9 +608,7 @@ class TrainingCapture:
             policy_attestation=value.get("policy_attestation", "declared"),
             calls=tuple(value.get("calls", ())),
             evidence_refs=dict(value.get("evidence_refs", {})),
-            sampling_plan=dict(
-                value.get("sampling_plan_details", value.get("sampling_plan", {}))
-            ),
+            sampling_plan=dict(value.get("sampling_plan_details", value.get("sampling_plan", {}))),
         )
 
 
@@ -677,9 +642,7 @@ class CaptureConfig:
             raise ValueError("sample_index is outside sampling plan")
         if self.plan.model_identity is not None:
             if self.plan.model_identity.model_name != self.model_name:
-                raise ValueError(
-                    "sampling plan model identity differs from harness model"
-                )
+                raise ValueError("sampling plan model identity differs from harness model")
         if self.require_logprobs and self.plan.algorithm != "grpo":
             raise ValueError("native logprob capture is only required for GRPO plans")
         if self.require_policy_attestation and not self.plan.policy_publication:
@@ -755,9 +718,7 @@ def capture_config_from_dict(
         raise ValueError("training task/sample identity differs from runner dispatch")
     model_identity = plan.model_identity
     if model_identity is None:
-        raise ValueError(
-            "training requires model_identity with tokenizer/template digests"
-        )
+        raise ValueError("training requires model_identity with tokenizer/template digests")
     if model_identity.model_name != model_name:
         raise ValueError("training model_identity differs from harness model")
     algorithm = plan.algorithm
@@ -841,9 +802,7 @@ def _tool_identity(tools: Any) -> tuple[tuple[str, str, Any], ...]:
             arguments = json.loads(function["arguments"])
         except (KeyError, TypeError, json.JSONDecodeError) as exc:
             raise ValueError("tool arguments are not valid JSON") from exc
-        identities.append(
-            (str(tool.get("id", "")), str(function.get("name", "")), arguments)
-        )
+        identities.append((str(tool.get("id", "")), str(function.get("name", "")), arguments))
     if any(not identity[0] or not identity[1] for identity in identities):
         raise ValueError("tool call identity is incomplete")
     if len({identity[0] for identity in identities}) != len(identities):
@@ -870,7 +829,7 @@ def _weights_digest_from_response(response: Mapping[str, Any]) -> str:
 
 
 class NativeCapture:
-    """Validate and retain native completion records for one Pi episode."""
+    """Validate and retain native completion records for one native episode."""
 
     def __init__(
         self,
@@ -962,25 +921,19 @@ class NativeCapture:
             if choice["finish_reason"] != "tool_calls" or not tools:
                 raise ValueError("unexpected model call after terminal answer")
             if messages[: len(before)] != before:
-                raise ValueError(
-                    "context reset/compaction is not supported by native capture"
-                )
+                raise ValueError("context reset/compaction is not supported by native capture")
             following = messages[len(before) :]
             if not following or following[0].get("role") != "assistant":
                 raise ValueError("missing previous assistant tool call")
             if _tool_identity(following[0].get("tool_calls")) != _tool_identity(tools):
                 raise ValueError("harness changed the generated tool calls")
             results = following[1:]
-            if len(results) != len(tools) or any(
-                row.get("role") != "tool" for row in results
-            ):
+            if len(results) != len(tools) or any(row.get("role") != "tool" for row in results):
                 raise ValueError("missing or unexpected tool observations")
             if sorted(row.get("tool_call_id", "") for row in results) != sorted(
                 row["id"] for row in tools
             ):
-                raise ValueError(
-                    "tool result identity does not match the generated call"
-                )
+                raise ValueError("tool result identity does not match the generated call")
 
         allowed = {
             "model",
@@ -1013,9 +966,7 @@ class NativeCapture:
         }
         unsupported = set(request) - allowed
         if unsupported:
-            raise ValueError(
-                f"unsupported provider request fields: {sorted(unsupported)}"
-            )
+            raise ValueError(f"unsupported provider request fields: {sorted(unsupported)}")
         for key in ("reasoning_effort", "response_format", "stop"):
             if key in request:
                 raise ValueError(
@@ -1026,9 +977,7 @@ class NativeCapture:
         if requested_template is not None and dict(requested_template) != dict(
             self.plan.chat_template_kwargs
         ):
-            raise ValueError(
-                "chat_template_kwargs override differs from the sampling plan"
-            )
+            raise ValueError("chat_template_kwargs override differs from the sampling plan")
         payload = {
             key: copy.deepcopy(request[key])
             for key in (
@@ -1100,9 +1049,7 @@ class NativeCapture:
                 break
         expected_weights = self.plan.policy.weights_digest
         reported_weights = _weights_digest_from_response(response)
-        attested = (
-            actual == expected and bool(actual) and reported_weights == expected_weights
-        )
+        attested = actual == expected and bool(actual) and reported_weights == expected_weights
         server_reported = bool(actual) or bool(reported_weights)
         if server_reported and not attested:
             raise ValueError(
@@ -1171,9 +1118,7 @@ class NativeCapture:
         for key, expected_value in expected_usage.items():
             if usage.get(key) != expected_value:
                 raise ValueError("native token count differs from provider usage")
-        if usage.get("total_tokens", len(prompt) + len(tokens)) != len(prompt) + len(
-            tokens
-        ):
+        if usage.get("total_tokens", len(prompt) + len(tokens)) != len(prompt) + len(tokens):
             raise ValueError("native token count differs from provider usage")
         if len(tokens) > self.plan.max_new_tokens:
             raise ValueError("provider exceeded per-call token budget")
@@ -1185,9 +1130,7 @@ class NativeCapture:
             # field; accept it only when it is explicitly aligned to this choice.
             logprobs = response.get("native_log_probs")
         if self.require_logprobs and logprobs is None:
-            raise ValueError(
-                "on-policy capture requires native behavior log probabilities"
-            )
+            raise ValueError("on-policy capture requires native behavior log probabilities")
         turn = TokenTurn(
             tuple(prompt),
             tuple(tokens),
@@ -1221,9 +1164,7 @@ class NativeCapture:
     def capture(self) -> TrainingCapture:
         self.finish()
         last = self.calls[-1]["response"]["choices"][0]
-        termination_reason = (
-            "eos" if last["finish_reason"] == "stop" else "token_budget"
-        )
+        termination_reason = "eos" if last["finish_reason"] == "stop" else "token_budget"
         usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         for call in self.calls:
             values = call["response"]["usage"]
@@ -1326,9 +1267,7 @@ def _aggregate_sse(raw: bytes) -> dict[str, Any]:
                     function = current.setdefault("function", {})
                     for key in ("name", "arguments"):
                         if call["function"].get(key):
-                            function[key] = str(function.get(key, "")) + str(
-                                call["function"][key]
-                            )
+                            function[key] = str(function.get(key, "")) + str(call["function"][key])
             if raw_choice.get("finish_reason"):
                 state["finish_reason"] = raw_choice["finish_reason"]
     choices = []
@@ -1360,9 +1299,7 @@ def completion_sse(response: Mapping[str, Any]) -> bytes:
 
     choice = response["choices"][0]
     message = choice["message"]
-    delta = {
-        key: message[key] for key in ("role", "content", "tool_calls") if key in message
-    }
+    delta = {key: message[key] for key in ("role", "content", "tool_calls") if key in message}
     if delta.get("tool_calls"):
         delta["tool_calls"] = [
             dict(tool, index=index) for index, tool in enumerate(delta["tool_calls"])
@@ -1373,15 +1310,12 @@ def completion_sse(response: Mapping[str, Any]) -> bytes:
         {**base, "choices": [{"index": 0, "delta": delta, "finish_reason": None}]},
         {
             **base,
-            "choices": [
-                {"index": 0, "delta": {}, "finish_reason": choice["finish_reason"]}
-            ],
+            "choices": [{"index": 0, "delta": {}, "finish_reason": choice["finish_reason"]}],
         },
         {**base, "choices": [], "usage": response.get("usage")},
     ]
     return (
-        "".join("data: " + json.dumps(chunk) + "\n\n" for chunk in chunks)
-        + "data: [DONE]\n\n"
+        "".join("data: " + json.dumps(chunk) + "\n\n" for chunk in chunks) + "data: [DONE]\n\n"
     ).encode()
 
 
@@ -1410,26 +1344,20 @@ class TokenCaptureEndpoint:
         if isinstance(backend, Backend):
             resolved_backend = backend
         elif isinstance(backend, Mapping):
-            resolved_backend = Backend(
-                str(backend.get("url", "")), str(backend.get("key", ""))
-            )
+            resolved_backend = Backend(str(backend.get("url", "")), str(backend.get("key", "")))
         else:
             resolved_backend = Backend(
                 str(getattr(backend, "url", "")), str(getattr(backend, "key", ""))
             )
         if not resolved_backend.url.strip():
             raise ValueError("capture backend URL is required")
-        if (
-            type(timeout) not in (int, float)
-            or not math.isfinite(timeout)
-            or timeout <= 0
-        ):
+        if type(timeout) not in (int, float) or not math.isfinite(timeout) or timeout <= 0:
             raise ValueError("capture timeout must be positive and finite")
         if type(max_bytes) is not int or max_bytes < 1024:
             raise ValueError("max_bytes must be a positive bound")
         if httpx is None:
             raise RuntimeError(
-                "Pi training capture requires the AlphaDiana 'agents' extra (httpx)"
+                "Native training capture requires the AlphaDiana 'agents' extra (httpx)"
             )
         self.key = secrets.token_hex(32)
         self.backend = resolved_backend
@@ -1493,9 +1421,7 @@ class TokenCaptureEndpoint:
                         raise ValueError("completion callback returned a non-object")
                     return dict(response)
                 headers = (
-                    {"Authorization": "Bearer " + owner.backend.key}
-                    if owner.backend.key
-                    else {}
+                    {"Authorization": "Bearer " + owner.backend.key} if owner.backend.key else {}
                 )
                 content = bytearray()
                 with owner.client.stream(
@@ -1529,21 +1455,22 @@ class TokenCaptureEndpoint:
                         payload = owner.capture.prepare(request)
                         response = self._backend_request(payload)
                         owner.capture.record(payload, response)
+                        request_bytes = len(_json_bytes(request))
+                        if owner.capture._captured_bytes + request_bytes > MAX_CAPTURE_BYTES:
+                            raise ValueError("native capture exceeds its byte budget")
+                        owner.capture._captured_bytes += request_bytes
+                        owner.capture.calls[-1]["harness_request"] = copy.deepcopy(request)
                         body = (
                             completion_sse(response)
                             if request.get("stream")
                             else _json_bytes(response)
                         )
                         if len(body) > owner.max_bytes:
-                            raise ValueError(
-                                "completion projection exceeds capture bound"
-                            )
+                            raise ValueError("completion projection exceeds capture bound")
                         self._reply(
                             200,
                             body,
-                            "text/event-stream"
-                            if request.get("stream")
-                            else "application/json",
+                            "text/event-stream" if request.get("stream") else "application/json",
                         )
                 except Exception:
                     with owner.lock:
@@ -1627,7 +1554,7 @@ class TrainingCollectionError(RuntimeError):
     """No partial group may be handed to a trainer."""
 
 
-class PiTrainingCollector:
+class NativeTrainingCollector:
     """Collect complete SFT/GRPO groups with one fresh agent per sample.
 
     The collector accepts a Hebe-provided scoring callback but never owns the
@@ -1676,9 +1603,7 @@ class PiTrainingCollector:
                 attempt_id = secrets.token_hex(16)
                 config["_execution_id"] = attempt_id
                 metadata = dict(getattr(task, "metadata", {}) or {})
-                metadata.update(
-                    {"sample_index": sample_index, "execution_id": attempt_id}
-                )
+                metadata.update({"sample_index": sample_index, "execution_id": attempt_id})
                 dispatch = replace(task, metadata=metadata)
                 try:
                     agent.setup(config)
@@ -1689,9 +1614,13 @@ class PiTrainingCollector:
                     ) or response_metadata.get("hebe_training")
                     if not isinstance(capture_value, Mapping):
                         raise TrainingCollectionError(
-                            "Pi response omitted training capture"
+                            "Native harness response omitted training capture"
                         )
                     capture = _capture_from_dict(capture_value)
+                    if capture.harness and capture.harness != getattr(agent, "name", None):
+                        raise TrainingCollectionError(
+                            "Capture harness differs from executing agent"
+                        )
                     if (
                         capture.round_id != plan.round_id
                         or capture.task_id != task_id
@@ -1700,18 +1629,18 @@ class PiTrainingCollector:
                         or capture.model_identity != plan.model_identity
                     ):
                         raise TrainingCollectionError(
-                            "Pi capture identity differs from sampling plan"
+                            "Native capture identity differs from sampling plan"
                         )
                     if capture_value.get("trajectory_complete") is not True:
                         raise TrainingCollectionError(
-                            "Pi response contains an incomplete training capture"
+                            "Native harness response contains an incomplete training capture"
                         )
                     expected_sampling = _legacy_sampling_plan(asdict(plan))
                     if _json_bytes(capture_value.get("sampling_plan")) != _json_bytes(
                         expected_sampling
                     ):
                         raise TrainingCollectionError(
-                            "Pi capture sampling settings differ from plan"
+                            "Native capture sampling settings differ from plan"
                         )
                     if plan.algorithm == "grpo":
                         if capture.policy_attestation != "verified":

@@ -7,5 +7,7 @@ RUN cd /opt/pi && npm ci --ignore-scripts --omit=dev --no-audit --no-fund
 COPY bridge.py /opt/bridge.py
 ENV PATH="/opt/runtime/bin:/usr/local/bin:/usr/bin:/bin" HOME="/tmp/home"
 WORKDIR /work
+# Some rootless Podman versions copy the image mode onto the task tmpfs.
+RUN chmod 1777 /work
 USER 1000:1000
 CMD ["/opt/runtime/bin/python", "/opt/bridge.py"]

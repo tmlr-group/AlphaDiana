@@ -7,14 +7,14 @@ from pathlib import Path
 import pytest
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.harness._internal.podman_agent import NativeHarnessError, tree_digest
-from alphadiana.harness.deepseek_harness.agent import DeepSeekHarnessAgent
-from alphadiana.harness.pi.agent import PiAgent
-from alphadiana.harness.pi.training import (
+from alphadiana.harness._internal.training import (
     ModelIdentity,
-    PiTrainingCollector,
+    NativeTrainingCollector,
     PolicyIdentity,
     SamplingPlan,
 )
+from alphadiana.harness.deepseek_harness.agent import DeepSeekHarnessAgent
+from alphadiana.harness.pi.agent import PiAgent
 
 spec = importlib.util.spec_from_file_location(
     "native_fixture", Path(__file__).parents[1] / "scripts/native_model_fixture.py"
@@ -98,24 +98,13 @@ def test_real_baseline_and_plugin(tmp_path, agent_class):
                 assert row["token_usage"]["prompt_tokens"] == 20
                 assert row["token_usage"]["completion_tokens"] == 8
                 assert row["response_json"]["native_events"]
-                assert (
-                    row["reasoning_trajectory"][0]["content"]
-                    == "Check the observed marker."
-                )
+                assert row["reasoning_trajectory"][0]["content"] == "Check the observed marker."
                 trace = json.loads(
-                    (
-                        store.artifacts_dir / "persist/agent/normalized_trace.json"
-                    ).read_text()
+                    (store.artifacts_dir / "persist/agent/normalized_trace.json").read_text()
                 )
-                calls = [
-                    call
-                    for step in trace["steps"]
-                    for call in step.get("tool_calls", [])
-                ]
+                calls = [call for step in trace["steps"] for call in step.get("tool_calls", [])]
                 results = [
-                    result
-                    for step in trace["steps"]
-                    for result in step.get("tool_results", [])
+                    result for step in trace["steps"] for result in step.get("tool_results", [])
                 ]
                 assert len(calls) == len(results) == 1
                 assert calls[0]["id"] == results[0]["tool_use_id"]
@@ -129,19 +118,11 @@ def test_real_baseline_and_plugin(tmp_path, agent_class):
                 before = len(requests)
                 with pytest.raises(NativeHarnessError, match="plugin"):
                     agent.solve(BenchmarkTask("callback", "Read marker.", "private"))
-                assert (
-                    len(requests) > before
-                )  # Pi still called the model after callback failure.
-            (root / "candidate.ts").write_text(
-                "export default {{{ definitely invalid syntax"
-            )
+                assert len(requests) > before  # Pi still called the model after callback failure.
+            (root / "candidate.ts").write_text("export default {{{ definitely invalid syntax")
             agent.config["candidate_digest"] = tree_digest(root)
             with pytest.raises(NativeHarnessError):
-                agent.solve(
-                    BenchmarkTask(
-                        task_id="broken", problem="test", ground_truth="hidden"
-                    )
-                )
+                agent.solve(BenchmarkTask(task_id="broken", problem="test", ground_truth="hidden"))
             assert len(requests) >= 4
             assert any(
                 "TOOL_RAN" in str(m.get("content"))
@@ -149,9 +130,7 @@ def test_real_baseline_and_plugin(tmp_path, agent_class):
                 for m in r["messages"]
                 if m.get("role") == "tool"
             )
-            assert all(
-                "PRIVATE_GOLD_73afdd7e" not in str(request) for request in requests
-            )
+            assert all("PRIVATE_GOLD_73afdd7e" not in str(request) for request in requests)
         finally:
             agent.teardown()
 
@@ -169,14 +148,10 @@ def test_real_timeout_cleanup(agent_class):
             "timeout": 0.5,
         }
     )
-    response = agent.solve(
-        BenchmarkTask(task_id="timeout", problem="test", ground_truth="hidden")
-    )
+    response = agent.solve(BenchmarkTask(task_id="timeout", problem="test", ground_truth="hidden"))
     assert response.answer is None and response.finish_reason == "timeout"
     assert response.metadata["native_harness_timeout_scored_zero"] is True
-    assert (
-        PodmanCLI().list_ids(labels={"alphadiana.execution": agent.execution_id}) == []
-    )
+    assert PodmanCLI().list_ids(labels={"alphadiana.execution": agent.execution_id}) == []
     agent.teardown()
 
 
@@ -190,18 +165,14 @@ def test_real_nested_attachments_under_private_umask(agent_class):
     ):
         root = Path(directory)
         root.chmod(0o755)
-        action = 'writeFileSync("/work/marker.txt", readFileSync("/work/attachments/nested/input.txt"));'
+        action = (
+            'writeFileSync("/work/marker.txt", readFileSync("/work/attachments/nested/input.txt"));'
+        )
         prefix = 'import {readFileSync,writeFileSync} from "node:fs";'
         code = (
-            prefix
-            + 'export default function(pi) {pi.on("session_start", () => {'
-            + action
-            + "});}"
+            prefix + 'export default function(pi) {pi.on("session_start", () => {' + action + "});}"
             if agent_class is PiAgent
-            else prefix
-            + 'export const name="input";export function apply(){'
-            + action
-            + "}"
+            else prefix + 'export const name="input";export function apply(){' + action + "}"
         )
         (root / "candidate.ts").write_text(code)
         agent = agent_class()
@@ -235,9 +206,7 @@ def test_real_nested_attachments_under_private_umask(agent_class):
 def test_real_pi_token_limit_answer_is_scored(tmp_path):
     with fixture.model_server(final_finish_reason="length") as (endpoint, requests):
         agent = PiAgent()
-        agent.setup(
-            {"image": IMAGE, "model": "fixture-v1", "api_base": endpoint, "timeout": 90}
-        )
+        agent.setup({"image": IMAGE, "model": "fixture-v1", "api_base": endpoint, "timeout": 90})
         try:
             task = BenchmarkTask("length", "Read marker with shell.", "0")
             response = agent.solve(task)
@@ -250,7 +219,8 @@ def test_real_pi_token_limit_answer_is_scored(tmp_path):
             agent.teardown()
 
 
-def test_real_pi_training_capture_uses_native_ids_and_policy_attestation():
+@pytest.mark.parametrize("agent_class", [PiAgent, DeepSeekHarnessAgent])
+def test_real_native_training_capture_uses_native_ids_and_policy_attestation(agent_class, tmp_path):
     """Opt-in integration through the actual Pi image and fixture server."""
 
     import hashlib
@@ -267,7 +237,7 @@ def test_real_pi_training_capture_uses_native_ids_and_policy_attestation():
         # The host-side capture proxy connects to the fixture over loopback;
         # only the proxy URL is advertised to the disposable Pi container.
         host_endpoint = endpoint.replace("host.containers.internal", "127.0.0.1")
-        agent = PiAgent()
+        agent = agent_class()
         agent.setup(
             {
                 "image": IMAGE,
@@ -302,6 +272,22 @@ def test_real_pi_training_capture_uses_native_ids_and_policy_attestation():
         try:
             response = agent.solve(BenchmarkTask("training", "Read marker.", None))
             capture = response.metadata["training_capture"]
+            from alphadiana.analysis.io.result_store import ResultStore
+            from alphadiana.harness._internal.training import TrainingCapture
+            from alphadiana.scorer.numeric import NumericScorer
+
+            persisted_task = BenchmarkTask("training", "Read marker.", "0")
+            store = ResultStore(str(tmp_path / "capture"), "native-training")
+            store.append(persisted_task, response, NumericScorer().score(persisted_task, response))
+            row = store.load()[0]
+            restored = TrainingCapture.from_dict(row["metadata"]["training_capture"])
+            assert restored.harness == agent_class.name
+            assert len(restored.calls) == 2
+            if agent_class is DeepSeekHarnessAgent:
+                assert restored.calls[0]["harness_request"]["thinking"] == {"type": "disabled"}
+            assert row["response_json"]["native_events"]
+            assert capture["harness"] == agent_class.name
+            assert len(capture["turns"]) == 2
             assert capture["tokens_native"] is True
             assert capture["policy_attestation"] == "verified"
             assert capture["model_identity"]["model_revision"] == "fixture-revision-1"
@@ -315,7 +301,8 @@ def test_real_pi_training_capture_uses_native_ids_and_policy_attestation():
             agent.teardown()
 
 
-def test_real_pi_grpo_collector_isolates_samples_and_keeps_behavior_logprobs():
+@pytest.mark.parametrize("agent_class", [PiAgent, DeepSeekHarnessAgent])
+def test_real_native_grpo_collector_isolates_samples_and_keeps_behavior_logprobs(agent_class):
     """The real Pi containers produce a complete, native-token GRPO group."""
 
     import hashlib
@@ -343,7 +330,7 @@ def test_real_pi_grpo_collector_isolates_samples_and_keeps_behavior_logprobs():
         tokenizer_digest=digest,
         chat_template_digest=digest,
     ) as (endpoint, requests):
-        collector = PiTrainingCollector(PiAgent)
+        collector = NativeTrainingCollector(agent_class)
         batch = collector.collect(
             [BenchmarkTask("training", "Read marker.", None)],
             plan,
@@ -354,13 +341,14 @@ def test_real_pi_grpo_collector_isolates_samples_and_keeps_behavior_logprobs():
                 "api_key": "test-native-secret",
                 "timeout": 90,
             },
-            score=lambda _task, _response: 0.5,
+            score=lambda _task, response: float(
+                response.metadata["training_capture"]["sample_index"]
+            ),
         )
     assert [sample.sample_index for sample in batch.samples] == [0, 1]
+    assert [sample.reward for sample in batch.samples] == [0.0, 1.0]
     assert all(
-        turn.behavior_log_probs is not None
-        for sample in batch.samples
-        for turn in sample.turns
+        turn.behavior_log_probs is not None for sample in batch.samples for turn in sample.turns
     )
     assert all(request["return_token_ids"] for request in requests)
     assert all(request["logprobs"] for request in requests)

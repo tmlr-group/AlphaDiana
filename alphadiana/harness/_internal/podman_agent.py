@@ -103,7 +103,7 @@ def validate_config(config: dict) -> None:
         # Keep the optional HTTP client and training contract out of ordinary
         # native imports.  Native SFT/GRPO runs opt in explicitly and require
         # the pinned AlphaDiana agent extra at runtime.
-        from alphadiana.harness.pi.training import validate_training_config
+        from alphadiana.harness._internal.training import validate_training_config
 
         validate_training_config(config["training"])
     if "_execution_id" in config and not re.fullmatch(
@@ -163,11 +163,18 @@ class NativeHarnessError(RuntimeError):
 class NativePodmanAgent(Agent):
     """One container per solve, including when Runner reuses an agent instance."""
 
+    supports_training_capture = False
+
+    def _capture_class(self):
+        from alphadiana.harness._internal.training import NativeCapture
+
+        return NativeCapture
+
     def setup(self, config: dict) -> None:
         validate_config(config)
-        if config.get("training") is not None and self.name != "pi":
+        if config.get("training") is not None and not self.supports_training_capture:
             raise ValueError(
-                "native-token training capture is currently supported by the Pi harness only"
+                "native-token training capture is unsupported by this harness"
             )
         self.config = dict(config)
         self._containers = set()
@@ -214,9 +221,8 @@ class NativePodmanAgent(Agent):
                 if k not in {"candidate_root", "_execution_id"}
             }
             if self.config.get("training") is not None:
-                from alphadiana.harness.pi.training import (
+                from alphadiana.harness._internal.training import (
                     Backend,
-                    NativeCapture,
                     TokenCaptureEndpoint,
                     capture_config_from_dict,
                 )
@@ -231,7 +237,7 @@ class NativePodmanAgent(Agent):
                     attempt_id=attempt_id,
                 )
                 if capture_config is not None:
-                    capture = NativeCapture(
+                    capture = self._capture_class()(
                         capture_config.plan,
                         capture_config.task_id,
                         capture_config.sample_index,
@@ -349,6 +355,7 @@ class NativePodmanAgent(Agent):
                 training_capture = None
                 if capture is not None:
                     training_capture = capture.capture().to_dict()
+                    training_capture["harness"] = self.name
                     response["training_capture"] = training_capture
                     # Cross-repository consumers read a slimmed projection and
                     # dereference the full native calls through the evidence
@@ -365,7 +372,7 @@ class NativePodmanAgent(Agent):
                     # Keep the exact native requests/responses for replay and
                     # contract audits, referenced rather than duplicated.
                     response_json["native_training_capture"] = {
-                        "schema": "alphadiana.pi-training-ref.v1",
+                        "schema": "alphadiana.native-training-ref.v1",
                         "reference": "metadata.training_capture",
                     }
                     response["response_json"] = response_json
