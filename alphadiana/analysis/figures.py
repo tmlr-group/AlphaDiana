@@ -155,7 +155,6 @@ def _render(plt, spec: dict, rows: list[dict]):
                 hatch=("", "//", "..", "xx")[index % 4],
             )
             ax.set_xticks(range(len(categories)), categories, rotation=35, ha="right")
-            ax.set_ylim(bottom=0)
         elif spec["kind"] in {"scatter", "line"}:
             if spec["kind"] == "scatter":
                 ax.scatter(
@@ -182,6 +181,9 @@ def _render(plt, spec: dict, rows: list[dict]):
         else:
             plt.close(fig)
             raise ValueError(f"Unsupported plot kind: {spec['kind']}")
+    if spec["kind"] == "bar":
+        # Keep autoscaling active until every group's bars have been added.
+        ax.set_ylim(bottom=0)
     ax.set(title=spec["title"], xlabel=spec["xlabel"], ylabel=spec["ylabel"])
     # A scale reset replaces the fixed categorical tick locator/formatter.
     # Bar positions are numeric internally, but their visible labels are data.

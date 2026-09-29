@@ -5,6 +5,32 @@ import pytest
 from alphadiana.analysis.analyzer import Analyzer, Figure, TableAnalysis
 
 
+def test_grouped_bars_keep_larger_later_groups_visible():
+    pytest.importorskip("matplotlib")
+    import matplotlib.pyplot as plt
+
+    from alphadiana.analysis.figures import _render
+
+    # Observed SWE Mini counts: the later OpenCode group exceeds OpenClaw.
+    rows = [
+        {"run": "OpenClaw", "action": "tool_use", "count": 49},
+        {"run": "OpenCode", "action": "recover", "count": 80},
+    ]
+    spec = dict(
+        kind="bar", x="action", y="count", group="run",
+        title="Actions", xlabel="Action", ylabel="Events",
+    )
+    fig = _render(plt, spec, rows)
+    try:
+        fig.canvas.draw()
+        ax = fig.axes[0]
+        assert ax.get_ylim()[0] == 0
+        assert ax.get_ylim()[1] >= 80
+        assert [bar.get_height() for bar in ax.patches] == [49, 80]
+    finally:
+        plt.close(fig)
+
+
 @pytest.mark.parametrize("grouped", [False, True])
 def test_exported_bar_preserves_measured_category_labels(tmp_path: Path, grouped):
     pytest.importorskip("matplotlib")
