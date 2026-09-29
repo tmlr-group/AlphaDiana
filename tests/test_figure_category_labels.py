@@ -5,7 +5,8 @@ import pytest
 from alphadiana.analysis.analyzer import Analyzer, Figure, TableAnalysis
 
 
-def test_grouped_bars_keep_larger_later_groups_visible():
+@pytest.mark.parametrize("kind", ["bar", "barh"])
+def test_grouped_bars_keep_larger_later_groups_visible(kind):
     pytest.importorskip("matplotlib")
     import matplotlib.pyplot as plt
 
@@ -17,22 +18,28 @@ def test_grouped_bars_keep_larger_later_groups_visible():
         {"run": "OpenCode", "action": "recover", "count": 80},
     ]
     spec = dict(
-        kind="bar", x="action", y="count", group="run",
+        kind=kind, x="action", y="count", group="run",
         title="Actions", xlabel="Action", ylabel="Events",
     )
     fig = _render(plt, spec, rows)
     try:
         fig.canvas.draw()
         ax = fig.axes[0]
-        assert ax.get_ylim()[0] == 0
-        assert ax.get_ylim()[1] >= 80
-        assert [bar.get_height() for bar in ax.patches] == [49, 80]
+        limits = ax.get_xlim() if kind == "barh" else ax.get_ylim()
+        values = [
+            bar.get_width() if kind == "barh" else bar.get_height()
+            for bar in ax.patches
+        ]
+        assert limits[0] == 0
+        assert limits[1] >= 80
+        assert values == [49, 80]
     finally:
         plt.close(fig)
 
 
 @pytest.mark.parametrize("grouped", [False, True])
-def test_exported_bar_preserves_measured_category_labels(tmp_path: Path, grouped):
+@pytest.mark.parametrize("kind", ["bar", "barh"])
+def test_exported_bar_preserves_measured_category_labels(tmp_path: Path, grouped, kind):
     pytest.importorskip("matplotlib")
     rows = [
         {"category": "Direct", "count": 2, "group": "Observed"},
@@ -45,7 +52,7 @@ def test_exported_bar_preserves_measured_category_labels(tmp_path: Path, grouped
             Figure(
                 "counts",
                 "counts",
-                "bar",
+                kind,
                 "category",
                 "count",
                 "Counts",
@@ -94,6 +101,34 @@ def test_dense_log_line_keeps_data_with_readable_marker_density(tmp_path: Path):
     markers = [
         node
         for node in root.iter()
-        if node.tag.endswith("}use") and "fill: #0072b2" in node.get("style", "")
+        if node.tag.endswith("}use") and "fill: #527da5" in node.get("style", "")
     ]
     assert 0 < len(markers) < 50
+
+
+@pytest.mark.parametrize("kind", ["bar", "barh"])
+@pytest.mark.parametrize("values", [(-4, 9), (0, 0)])
+def test_custom_signed_measurements_remain_visible(kind, values):
+    pytest.importorskip("matplotlib")
+    import matplotlib.pyplot as plt
+
+    from alphadiana.analysis.figures import _render
+
+    rows = [
+        {"category": "First", "delta": values[0]},
+        {"category": "Second", "delta": values[1]},
+    ]
+    spec = dict(
+        kind=kind, x="category", y="delta", title="Custom plugin",
+        xlabel="Category", ylabel="Delta",
+    )
+    fig = _render(plt, spec, rows)
+    try:
+        fig.canvas.draw()
+        ax = fig.axes[0]
+        low, high = ax.get_xlim() if kind == "barh" else ax.get_ylim()
+        assert low <= min(values) and high >= max(values)
+        if min(values) >= 0:
+            assert low == 0
+    finally:
+        plt.close(fig)

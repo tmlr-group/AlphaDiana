@@ -5,24 +5,37 @@ Runner, session lifecycle, scoring, and result store as the CLI. It does not rep
 native harness control loops.
 
 ```python
+import os
 import alphadiana as ad
 
-artifacts = ad.runner(output_dir="results", run_id="example", num_samples=1).compute(
-    agent=ad.agent("direct_llm", version="1.0", model="Qwen/Qwen3.5-27B",
-                   api_base="http://localhost:18960/v1", api_key="EMPTY",
-                   max_tokens=8192, capture_logprobs=True, top_logprobs=20),
-    data=ad.dataset("MathArena/aime_2026", benchmark="aime", split="train", max_tasks=3),
-    scorer=ad.scorer.create("numeric", tolerance=1e-6),
+api_base = os.environ["AD_ACCEPTANCE_API_BASE"]
+api_key = os.environ["AD_ACCEPTANCE_API_KEY"]
+
+agent = ad.agent(
+    "direct_llm", version="1.0", model="Qwen/Qwen3.5-27B",
+    api_base=api_base, api_key=api_key,
+    max_tokens=8192, capture_logprobs=True, top_logprobs=20,
 )
+data = ad.dataset("MathArena/aime_2026", benchmark="aime", split="train", max_tasks=3)
+scorer = ad.scorer.create("numeric", tolerance=1e-6)
+runner = ad.runner(output_dir="results", run_id="example", num_samples=1)
+
+artifacts = runner.compute(agent=agent, data=data, scorer=scorer)
 report = ad.analyzer(artifacts)
-data = report.compute()
+metrics = report.compute()
 report.export("figures/example", formats=("pdf", "svg", "png"))
 ```
 
-From the cloned checkout, install plotting support with `pip install -e '.[analysis]'`. Execution and
+Set the endpoint variables for an existing OpenAI-compatible model service.
+Install the example dependencies with `pip install -e '.[analysis,benchmarks,agents]'`. Execution and
 structured analysis do not import Matplotlib. Figure exports contain `report.json`,
 source hashes, coverage, each figure's exact plotted data, and `export.json` listing
 outputs and inapplicable plots. Export to a new directory to preserve prior evidence.
+The default renderer follows the paper's compact gray/blue style with horizontal
+performance bars, light grids and thin axes. It uses installed Arial, then Arimo,
+then DejaVu Sans; no proprietary font or machine-specific font path is required.
+PDF/SVG are vector exports; PNG is a review preview. All formats retain the same
+measured data, and line styles/markers distinguish overlapping series.
 
 The [API acceptance configurations](../../configs/acceptance/api/README.md) provide
 28 explicit benchmark/harness combinations. Execute a configuration through the
@@ -197,10 +210,12 @@ class DisplayLabels:
         return result
 
 names = {saved.path.stem: "OpenClaw"}
-ad.analyzer(saved, plugins=[
+plugins = [
     DisplayLabels(ExecutionMetrics(), names),
     DisplayLabels(RequestEntropy(), names),
-]).export("figures/readable-labels")
+]
+report = ad.analyzer(saved, plugins=plugins)
+report.export("figures/readable-labels")
 ```
 
 The label map accompanies the report. For a multi-run comparison, supply all

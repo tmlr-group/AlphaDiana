@@ -189,7 +189,7 @@ class ExecutionMetrics:
             Figure(
                 "accuracy",
                 "performance",
-                "bar",
+                "barh",
                 "run",
                 "accuracy",
                 "Task accuracy",
@@ -199,7 +199,7 @@ class ExecutionMetrics:
             Figure(
                 "efficiency",
                 "performance",
-                "bar",
+                "barh",
                 "run",
                 "tokens_per_correct",
                 "Output cost per correct outcome",
@@ -209,7 +209,7 @@ class ExecutionMetrics:
             Figure(
                 "time_efficiency",
                 "performance",
-                "bar",
+                "barh",
                 "run",
                 "seconds_per_correct",
                 "Elapsed cost per correct outcome",
