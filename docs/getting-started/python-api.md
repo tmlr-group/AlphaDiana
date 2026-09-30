@@ -38,6 +38,18 @@ The [API acceptance configurations](../../configs/acceptance/api/README.md) prov
 existing CLI or validation driver; reopen and analyze its artifacts separately.
 Model service setup and container installation remain explicit prerequisites.
 
+For a local pipeline check, run:
+
+```bash
+python -m pytest -q tests/test_api_pipeline_demo.py
+```
+
+This uses the actual DirectLLM client against a local HTTP fixture with three
+scripted answers. It checks execution, persistence, reopening, rescoring without
+another solver call, rerunning without replacing earlier evidence, and PDF/SVG/PNG
+exports. Answers, usage and probabilities are synthetic; this does not validate a
+real model, the seven-benchmark matrix, native containers or semantic annotations.
+
 ## Explicit composition
 
 Factories return typed component specifications. Options are copied into the
