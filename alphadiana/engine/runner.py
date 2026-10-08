@@ -74,7 +74,11 @@ def _measure_observational_metrics(metrics, task, response, score) -> None:
                 deepcopy(response),
                 deepcopy(score),
             )
-            response.evaluation_metrics[metric.name] = observation.to_dict()
+            measured = observation.to_dict()
+            # Reject unpersistable observations inside the metric boundary so
+            # an optional plugin cannot prevent the primary score being saved.
+            json.dumps(measured, allow_nan=False)
+            response.evaluation_metrics[metric.name] = measured
         except Exception as metric_exc:  # noqa: BLE001
             logger.exception("Metric %s failed for %s", metric.name, task.task_id)
             response.evaluation_metric_errors[metric.name] = str(metric_exc)
