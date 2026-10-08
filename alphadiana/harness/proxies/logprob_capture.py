@@ -50,6 +50,16 @@ def raw_token_logprob_to_record(token_logprob: object, token_index: int) -> dict
 
 def raw_token_logprob_dict_to_record(raw: dict, token_index: int) -> dict:
     return {
+        **{
+            key: raw[key]
+            for key in (
+                "call_id",
+                "call_index",
+                "call_token_index",
+                "follows_tool_result",
+            )
+            if key in raw
+        },
         "token_index": token_index,
         "token": raw.get("token", ""),
         "logprob": float(raw.get("logprob", 0.0)),
@@ -80,7 +90,9 @@ def _choice_logprobs_content(choice: Any) -> list[Any]:
     return content if isinstance(content, list) else []
 
 
-def extract_openai_logprob_records(payload: object, *, start_index: int = 0) -> tuple[list[dict], int]:
+def extract_openai_logprob_records(
+    payload: object, *, start_index: int = 0
+) -> tuple[list[dict], int]:
     records: list[dict] = []
     token_index = start_index
     choices = _payload_choices(payload)

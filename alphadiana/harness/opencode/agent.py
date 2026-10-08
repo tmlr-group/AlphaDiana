@@ -223,6 +223,29 @@ def _opencode_event_type(obj: dict[str, Any]) -> str:
     return ""
 
 
+def _opencode_trajectory_records(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Translate native events; lifecycle bookkeeping is not an agent action."""
+    records = []
+    for event in events:
+        if _opencode_event_type(event) in _LIFECYCLE_EVENT_TYPES:
+            continue
+        part = event.get("part")
+        if isinstance(part, dict) and part.get("type") == "tool":
+            state = part.get("state") or {}
+            records.append({"type": "tool_use", "message": {
+                "role": "assistant", "content": json.dumps({
+                    "tool": part.get("tool"), "input": state.get("input"),
+                    "call_id": part.get("callID")}, ensure_ascii=False)}})
+            if "output" in state or "error" in state:
+                records.append({"type": "tool_result", "message": {
+                    "role": "tool", "content": json.dumps({
+                        "output": state.get("output"), "error": state.get("error"),
+                        "call_id": part.get("callID")}, ensure_ascii=False)}})
+        else:
+            records.append(event)
+    return records
+
+
 def _opencode_event_types(events: list[dict[str, Any]]) -> list[str]:
     return [event_type for event_type in (_opencode_event_type(event) for event in events) if event_type]
 
@@ -337,10 +360,45 @@ def _classify_opencode_error(name: str, message: str) -> str:
     return "agent_error"
 
 
-def _extract_opencode_error(events: list[dict[str, Any]]) -> dict[str, str] | None:
-    """Return the last OpenCode error event, if present."""
-    for event in reversed(events):
+def _completed_after_error(events: list[dict[str, Any]], index: int) -> bool:
+    """Require an explicit terminal response in the same native session."""
+    session = events[index].get("sessionID")
+    if not session:
+        return False
+    following = [
+        event for event in events[index + 1:] if event.get("sessionID") == session
+    ]
+    states = [
+        event for event in following
+        if event.get("type") in {"step_start", "step_finish", "error"}
+    ]
+    if not states or states[-1].get("type") != "step_finish":
+        return False
+    finish = states[-1].get("part")
+    if not isinstance(finish, dict):
+        return False
+    message = finish.get("messageID")
+    if finish.get("reason") != "stop" or finish.get("sessionID") != session or not message:
+        return False
+    return any(
+        event.get("type") == "text"
+        and isinstance(event.get("part"), dict)
+        and event["part"].get("sessionID") == session
+        and event["part"].get("messageID") == message
+        and str(event["part"].get("text") or "").strip()
+        for event in following
+    )
+
+
+def _extract_opencode_error(
+    events: list[dict[str, Any]], *, returncode: int | None = None
+) -> dict[str, str] | None:
+    """Return the last unrecovered error; preserve all events in raw artifacts."""
+    for index in range(len(events) - 1, -1, -1):
+        event = events[index]
         if str(event.get("type", "")).strip().lower() != "error":
+            continue
+        if returncode == 0 and _completed_after_error(events, index):
             continue
         error_obj = event.get("error")
         if not isinstance(error_obj, dict):
@@ -896,7 +954,7 @@ class OpenCodeAgent(Agent):
         full_content = assistant_text or raw_stdout
         trajectory, reasoning_trajectory = build_event_trajectories(
             request_messages,
-            events,
+            _opencode_trajectory_records(events),
             final_output=full_content,
         )
 
@@ -952,7 +1010,7 @@ class OpenCodeAgent(Agent):
             },
         )
 
-        error_info = _extract_opencode_error(events)
+        error_info = _extract_opencode_error(events, returncode=exit_code)
         response_metadata = {
             "runtime": "swebench_container",
             "returncode": exit_code,
@@ -1452,6 +1510,8 @@ class OpenCodeAgent(Agent):
                     "context": int(self._context_limit),
                     "output": int(self._output_limit) if self._output_limit else 32000,
                 }
+            if self._config.get("input_limit") is not None:
+                model_spec.setdefault("limit", {})["input"] = int(self._config["input_limit"])
             if _has_image_attachments(task.attachments):
                 model_spec["attachment"] = True
                 model_spec["modalities"] = {
@@ -1534,6 +1594,7 @@ class OpenCodeAgent(Agent):
                     self._logprob_capture["top_logprobs"],
                     client_timeout=logprob_proxy_client_timeout,
                     request_overrides=request_overrides or None,
+                    upstream_api_key=self._api_key,
                 )
                 proxy.start()
                 effective_api_base = proxy.proxy_url + "/v1"
@@ -1747,7 +1808,7 @@ class OpenCodeAgent(Agent):
             else ("opencode_cli_podman" if self._controller_mode == "podman" else "opencode_cli")
         )
 
-        error_info = _extract_opencode_error(events)
+        error_info = _extract_opencode_error(events, returncode=returncode)
         response_metadata = {
             "returncode": returncode,
             "stderr": stderr[:2000] if stderr else "",
@@ -1823,7 +1884,7 @@ class OpenCodeAgent(Agent):
 
         trajectory, reasoning_trajectory = build_event_trajectories(
             request_messages,
-            events,
+            _opencode_trajectory_records(events),
             final_output=full_content,
         )
 

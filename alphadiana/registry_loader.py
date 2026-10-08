@@ -15,6 +15,8 @@ def load_builtin_benchmarks() -> None:
 
 
 def load_builtin_agents() -> None:
+    import alphadiana.benchmarks.swe_bench.sweagent  # noqa: F401
+    import alphadiana.benchmarks.terminal_bench2.harness.terminus  # noqa: F401
     import alphadiana.benchmarks.swe_bench.harness  # noqa: F401
     import alphadiana.benchmarks.terminal_bench2.harness.docker  # noqa: F401
     import alphadiana.benchmarks.terminal_bench2.harness.openclaw  # noqa: F401

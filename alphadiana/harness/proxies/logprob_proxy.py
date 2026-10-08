@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import http.server
 import ipaddress
 import json
@@ -14,6 +15,7 @@ import threading
 import time
 from typing import Any
 from urllib.parse import urlsplit
+from uuid import uuid4
 
 import httpx
 
@@ -25,6 +27,23 @@ from alphadiana.harness.proxies.logprob_capture import (
 logger = logging.getLogger(__name__)
 
 _LOOPBACK_HOSTS = {"", "localhost", "127.0.0.1", "::1"}
+
+
+def follows_tool_result(messages: Any) -> bool:
+    """Whether the immediate model request ends with explicit tool feedback."""
+    if (
+        not isinstance(messages, list)
+        or not messages
+        or not isinstance(messages[-1], dict)
+    ):
+        return False
+    last = messages[-1]
+    if last.get("role") in {"tool", "function"}:
+        return True
+    content = last.get("content")
+    return isinstance(content, list) and any(
+        isinstance(part, dict) and part.get("type") == "tool_result" for part in content
+    )
 
 
 def _valid_gateway_address(value: str) -> str:
@@ -137,7 +156,10 @@ def normalize_chat_system_messages(messages: Any) -> tuple[Any, bool]:
         return messages, False
 
     merged_system = "\n\n".join(system_parts)
-    normalized_messages = [{"role": "system", "content": merged_system}, *non_system_messages]
+    normalized_messages = [
+        {"role": "system", "content": merged_system},
+        *non_system_messages,
+    ]
     return normalized_messages, normalized_messages != messages
 
 
@@ -145,10 +167,17 @@ def ensure_chat_has_user_message(messages: Any) -> tuple[Any, bool]:
     """Insert a minimal user turn when pruning leaves a tool-only chat history."""
     if not isinstance(messages, list) or not messages:
         return messages, False
-    if any(isinstance(message, dict) and message.get("role") == "user" for message in messages):
+    if any(
+        isinstance(message, dict) and message.get("role") == "user"
+        for message in messages
+    ):
         return messages, False
 
-    insertion_index = 1 if isinstance(messages[0], dict) and messages[0].get("role") == "system" else 0
+    insertion_index = (
+        1
+        if isinstance(messages[0], dict) and messages[0].get("role") == "system"
+        else 0
+    )
     normalized_messages = [
         *messages[:insertion_index],
         {"role": "user", "content": "Continue with the task."},
@@ -211,7 +240,13 @@ def summarize_chat_completion_request(
     outbound_messages = payload.get("messages")
     original_roles = _message_roles(original_messages)
     outbound_roles = _message_roles(outbound_messages)
+    last = original_messages[-1] if isinstance(original_messages, list) and original_messages else None
+    last_content = last.get("content") if isinstance(last, dict) else None
     return {
+        "last_message_content_sha256": (
+            hashlib.sha256(last_content.encode("utf-8")).hexdigest()
+            if isinstance(last_content, str) else None
+        ),
         "path": path,
         "model": payload.get("model", ""),
         "stream": bool(payload.get("stream", False)),
@@ -238,7 +273,9 @@ def summarize_chat_completion_request(
         "reasoning": payload.get("reasoning", None),
         "stream_options": payload.get("stream_options", None),
         "has_tools": bool(payload.get("tools")),
-        "tool_count": len(payload.get("tools") or []) if isinstance(payload.get("tools"), list) else 0,
+        "tool_count": len(payload.get("tools") or [])
+        if isinstance(payload.get("tools"), list)
+        else 0,
     }
 
 
@@ -261,7 +298,11 @@ def summarize_chat_completion_response(
         choice_dict = choice if isinstance(choice, dict) else {}
         message = choice_dict.get("message")
         if not isinstance(message, dict):
-            message = choice_dict.get("delta") if isinstance(choice_dict.get("delta"), dict) else {}
+            message = (
+                choice_dict.get("delta")
+                if isinstance(choice_dict.get("delta"), dict)
+                else {}
+            )
         content_lengths.append(_content_length(message.get("content")))
         reasoning_value = (
             message.get("reasoning")
@@ -277,7 +318,9 @@ def summarize_chat_completion_response(
     usage = usage if isinstance(usage, dict) else {}
     empty_content_and_reasoning = [
         index
-        for index, (content_len, reasoning_len) in enumerate(zip(content_lengths, reasoning_lengths))
+        for index, (content_len, reasoning_len) in enumerate(
+            zip(content_lengths, reasoning_lengths)
+        )
         if content_len == 0 and reasoning_len == 0
     ]
     empty_content_reasoning_and_tool = [
@@ -296,8 +339,12 @@ def summarize_chat_completion_response(
         "content_lengths": content_lengths,
         "reasoning_lengths": reasoning_lengths,
         "tool_call_counts": tool_call_counts,
-        "empty_content_choice_count": sum(1 for length in content_lengths if length == 0),
-        "empty_reasoning_choice_count": sum(1 for length in reasoning_lengths if length == 0),
+        "empty_content_choice_count": sum(
+            1 for length in content_lengths if length == 0
+        ),
+        "empty_reasoning_choice_count": sum(
+            1 for length in reasoning_lengths if length == 0
+        ),
         "empty_content_and_reasoning_choice_count": len(empty_content_and_reasoning),
         "empty_content_and_reasoning_choice_indices": empty_content_and_reasoning,
         "empty_content_reasoning_and_tool_choice_count": len(
@@ -387,12 +434,16 @@ def update_chat_completion_stream_summary(
 
         delta = choice.get("delta")
         if not isinstance(delta, dict):
-            delta = choice.get("message") if isinstance(choice.get("message"), dict) else {}
+            delta = (
+                choice.get("message") if isinstance(choice.get("message"), dict) else {}
+            )
         content_lengths[index] += _content_from_stream_delta(delta, "content")
         if "reasoning" in delta:
             reasoning_lengths[index] += _content_from_stream_delta(delta, "reasoning")
         else:
-            reasoning_lengths[index] += _content_from_stream_delta(delta, "reasoning_content")
+            reasoning_lengths[index] += _content_from_stream_delta(
+                delta, "reasoning_content"
+            )
 
         tool_calls = delta.get("tool_calls")
         if isinstance(tool_calls, list):
@@ -416,7 +467,9 @@ def finalize_chat_completion_stream_summary(summary: dict[str, Any]) -> dict[str
     content_lengths = list(summary.get("content_lengths") or [])
     reasoning_lengths = list(summary.get("reasoning_lengths") or [])
     tool_call_sets = list(summary.pop("_tool_call_sets", []) or [])
-    choice_count = max(len(content_lengths), len(reasoning_lengths), len(tool_call_sets))
+    choice_count = max(
+        len(content_lengths), len(reasoning_lengths), len(tool_call_sets)
+    )
     while len(content_lengths) < choice_count:
         content_lengths.append(0)
     while len(reasoning_lengths) < choice_count:
@@ -428,7 +481,9 @@ def finalize_chat_completion_stream_summary(summary: dict[str, Any]) -> dict[str
 
     empty_content_and_reasoning = [
         index
-        for index, (content_len, reasoning_len) in enumerate(zip(content_lengths, reasoning_lengths))
+        for index, (content_len, reasoning_len) in enumerate(
+            zip(content_lengths, reasoning_lengths)
+        )
         if content_len == 0 and reasoning_len == 0
     ]
     empty_content_reasoning_and_tool = [
@@ -442,9 +497,15 @@ def finalize_chat_completion_stream_summary(summary: dict[str, Any]) -> dict[str
     summary["content_lengths"] = content_lengths
     summary["reasoning_lengths"] = reasoning_lengths
     summary["tool_call_counts"] = tool_call_counts
-    summary["empty_content_choice_count"] = sum(1 for value in content_lengths if value == 0)
-    summary["empty_reasoning_choice_count"] = sum(1 for value in reasoning_lengths if value == 0)
-    summary["empty_content_and_reasoning_choice_count"] = len(empty_content_and_reasoning)
+    summary["empty_content_choice_count"] = sum(
+        1 for value in content_lengths if value == 0
+    )
+    summary["empty_reasoning_choice_count"] = sum(
+        1 for value in reasoning_lengths if value == 0
+    )
+    summary["empty_content_and_reasoning_choice_count"] = len(
+        empty_content_and_reasoning
+    )
     summary["empty_content_and_reasoning_choice_indices"] = empty_content_and_reasoning
     summary["empty_content_reasoning_and_tool_choice_count"] = len(
         empty_content_reasoning_and_tool
@@ -470,16 +531,18 @@ def _empty_stream_aggregate(model: str) -> dict[str, Any]:
 def _stream_choice_state(aggregate: dict[str, Any], index: int) -> dict[str, Any]:
     states = aggregate.setdefault("_choice_states", [])
     while len(states) <= index:
-        states.append({
-            "index": len(states),
-            "role": None,
-            "content_parts": [],
-            "reasoning_parts": [],
-            "reasoning_content_parts": [],
-            "tool_calls": {},
-            "finish_reason": None,
-            "logprob_content": [],
-        })
+        states.append(
+            {
+                "index": len(states),
+                "role": None,
+                "content_parts": [],
+                "reasoning_parts": [],
+                "reasoning_content_parts": [],
+                "tool_calls": {},
+                "finish_reason": None,
+                "logprob_content": [],
+            }
+        )
     return states[index]
 
 
@@ -501,7 +564,9 @@ def _merge_stream_tool_call(
     fallback_index: int,
 ) -> None:
     raw_index = call.get("index")
-    index = raw_index if isinstance(raw_index, int) and raw_index >= 0 else fallback_index
+    index = (
+        raw_index if isinstance(raw_index, int) and raw_index >= 0 else fallback_index
+    )
     tool_calls = state.setdefault("tool_calls", {})
     current = tool_calls.setdefault(index, {"index": index})
     if call.get("id"):
@@ -513,14 +578,13 @@ def _merge_stream_tool_call(
     if isinstance(function, dict):
         current_function = current.setdefault("function", {})
         if function.get("name"):
-            current_function["name"] = (
-                str(current_function.get("name") or "") + str(function.get("name"))
+            current_function["name"] = str(current_function.get("name") or "") + str(
+                function.get("name")
             )
         if function.get("arguments"):
-            current_function["arguments"] = (
-                str(current_function.get("arguments") or "")
-                + str(function.get("arguments"))
-            )
+            current_function["arguments"] = str(
+                current_function.get("arguments") or ""
+            ) + str(function.get("arguments"))
 
 
 def update_chat_completion_stream_aggregate(
@@ -560,7 +624,9 @@ def update_chat_completion_stream_aggregate(
         state = _stream_choice_state(aggregate, index)
         delta = choice.get("delta")
         if not isinstance(delta, dict):
-            delta = choice.get("message") if isinstance(choice.get("message"), dict) else {}
+            delta = (
+                choice.get("message") if isinstance(choice.get("message"), dict) else {}
+            )
 
         if delta.get("role"):
             state["role"] = str(delta.get("role"))
@@ -674,7 +740,9 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
         self.send_error(401, "Unauthorized")
         return False
 
-    def _forward_headers(self, resp: httpx.Response, *, skip_length: bool = False) -> None:
+    def _forward_headers(
+        self, resp: httpx.Response, *, skip_length: bool = False
+    ) -> None:
         self.send_response(resp.status_code)
         for key, value in resp.headers.items():
             normalized = key.lower()
@@ -703,10 +771,27 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
             self.close_connection = True
         self.end_headers()
 
+    def _capture_tokens(self, tokens: list[dict]) -> list[dict]:
+        captured = []
+        for token in tokens:
+            captured.append(
+                dict(
+                    token,
+                    **self._capture_context,
+                    call_token_index=self._call_token_index,
+                )
+            )
+            self._call_token_index += 1
+        return captured
+
+    def _captured_payload(self, payload: dict) -> dict:
+        # This metadata belongs to local evidence, never the downstream response.
+        return dict(payload, _alphadiana_capture=dict(self._capture_context))
+
     def _extract_sse_logprobs(self, line: str) -> None:
         if not line.startswith("data:") or line.strip() == "data: [DONE]":
             return
-        raw_json = line[len("data:"):].strip()
+        raw_json = line[len("data:") :].strip()
         if not raw_json or raw_json == "[DONE]":
             return
         try:
@@ -716,7 +801,9 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
                 lp_content = (choices[0].get("logprobs") or {}).get("content") or []
                 if lp_content:
                     with self.server.lock:
-                        self.server.streaming_logprobs.extend(lp_content)
+                        self.server.streaming_logprobs.extend(
+                            self._capture_tokens(lp_content)
+                        )
         except (json.JSONDecodeError, KeyError, TypeError):
             pass
 
@@ -736,14 +823,25 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
                 payload = {}
             downstream_stream = bool(payload.get("stream", False))
             original_messages = payload.get("messages")
+            with self.server.lock:
+                call_index = self.server.next_call_index
+                self.server.next_call_index += 1
+            self._capture_context = {
+                "call_index": call_index,
+                "call_id": uuid4().hex,
+                "follows_tool_result": follows_tool_result(original_messages),
+            }
+            self._call_token_index = 0
             normalized = False
             inserted_user_message = False
             if self.server.normalize_system_messages:
-                normalized_messages, normalized = normalize_chat_system_messages(original_messages)
+                normalized_messages, normalized = normalize_chat_system_messages(
+                    original_messages
+                )
                 if normalized:
                     payload["messages"] = normalized_messages
-                user_normalized_messages, inserted_user_message = ensure_chat_has_user_message(
-                    payload.get("messages")
+                user_normalized_messages, inserted_user_message = (
+                    ensure_chat_has_user_message(payload.get("messages"))
                 )
                 if inserted_user_message:
                     payload["messages"] = user_normalized_messages
@@ -751,6 +849,12 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
                 payload["logprobs"] = True
                 payload["top_logprobs"] = self.server.top_logprobs
             payload.update(self.server.request_overrides)
+            # OpenAI-compatible servers may prioritize max_completion_tokens.
+            # An explicit evaluation budget must not leave a conflicting alias.
+            if "max_tokens" in self.server.request_overrides:
+                payload.pop("max_completion_tokens", None)
+            elif "max_completion_tokens" in self.server.request_overrides:
+                payload.pop("max_tokens", None)
             if self.server.upstream_stream:
                 payload["stream"] = True
                 stream_options = payload.get("stream_options")
@@ -766,6 +870,7 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
                     normalized_system_messages=normalized,
                     inserted_user_message=inserted_user_message,
                 )
+                summary.update(self._capture_context)
                 if downstream_stream != bool(payload.get("stream", False)):
                     summary["downstream_stream"] = downstream_stream
                     summary["upstream_stream_forced"] = True
@@ -777,7 +882,8 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
         fwd_headers = {
             key: value
             for key, value in self.headers.items()
-            if key.lower() not in (
+            if key.lower()
+            not in (
                 "host",
                 "transfer-encoding",
                 "content-length",
@@ -805,11 +911,16 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
                     if is_completions and self.server.capture_request_summary:
                         with self.server.lock:
                             self.server.response_summaries.append(
-                                summarize_chat_completion_error_response(
-                                    path=path,
-                                    model=payload.get("model", "") if isinstance(payload, dict) else "",
-                                    status_code=resp.status_code,
-                                    response_body_length=len(err_body),
+                                dict(
+                                    summarize_chat_completion_error_response(
+                                        path=path,
+                                        model=payload.get("model", "")
+                                        if isinstance(payload, dict)
+                                        else "",
+                                        status_code=resp.status_code,
+                                        response_body_length=len(err_body),
+                                    ),
+                                    **self._capture_context,
                                 )
                             )
                     logger.warning(
@@ -823,7 +934,11 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
                     response_started = True
                     self.send_response(resp.status_code)
                     for key, value in resp.headers.items():
-                        if key.lower() in ("transfer-encoding", "content-encoding", "content-length"):
+                        if key.lower() in (
+                            "transfer-encoding",
+                            "content-encoding",
+                            "content-length",
+                        ):
                             continue
                         self.send_header(key, value)
                     self.send_header("Content-Length", str(len(err_body)))
@@ -833,22 +948,25 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
 
                 if is_sse and is_completions:
                     aggregate_downstream = (
-                        not downstream_stream
-                        and bool(payload.get("stream", False))
+                        not downstream_stream and bool(payload.get("stream", False))
                         if isinstance(payload, dict)
                         else False
                     )
                     stream_summary = (
                         _empty_stream_summary(
                             path,
-                            str(payload.get("model") or "") if isinstance(payload, dict) else "",
+                            str(payload.get("model") or "")
+                            if isinstance(payload, dict)
+                            else "",
                             resp.status_code,
                         )
                         if self.server.capture_request_summary
                         else None
                     )
                     stream_aggregate = _empty_stream_aggregate(
-                        str(payload.get("model") or "") if isinstance(payload, dict) else ""
+                        str(payload.get("model") or "")
+                        if isinstance(payload, dict)
+                        else ""
                     )
                     if not aggregate_downstream:
                         sse_response = True
@@ -890,7 +1008,10 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
                     if stream_summary is not None:
                         with self.server.lock:
                             self.server.response_summaries.append(
-                                finalize_chat_completion_stream_summary(stream_summary)
+                                dict(
+                                    finalize_chat_completion_stream_summary(stream_summary),
+                                    **self._capture_context,
+                                )
                             )
                     if aggregate_downstream:
                         response_payload = finalize_chat_completion_stream_aggregate(
@@ -898,7 +1019,9 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
                         )
                         resp_body = json.dumps(response_payload).encode("utf-8")
                         with self.server.lock:
-                            self.server.raw_responses.append(response_payload)
+                            self.server.raw_responses.append(
+                                self._captured_payload(response_payload)
+                            )
                         response_started = True
                         self.send_response(resp.status_code)
                         self.send_header("Content-Type", "application/json")
@@ -914,19 +1037,28 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
                             response_payload = None
                         if isinstance(response_payload, dict):
                             with self.server.lock:
-                                self.server.raw_responses.append(response_payload)
+                                self.server.raw_responses.append(
+                                    self._captured_payload(response_payload)
+                                )
                                 if self.server.capture_request_summary:
                                     self.server.response_summaries.append(
-                                        summarize_chat_completion_response(
-                                            path=path,
-                                            payload=response_payload,
-                                            status_code=resp.status_code,
+                                        dict(
+                                            summarize_chat_completion_response(
+                                                path=path,
+                                                payload=response_payload,
+                                                status_code=resp.status_code,
+                                            ),
+                                            **self._capture_context,
                                         )
                                     )
                     response_started = True
                     self.send_response(resp.status_code)
                     for key, value in resp.headers.items():
-                        if key.lower() in ("transfer-encoding", "content-encoding", "content-length"):
+                        if key.lower() in (
+                            "transfer-encoding",
+                            "content-encoding",
+                            "content-length",
+                        ):
                             continue
                         self.send_header(key, value)
                     self.send_header("Content-Length", str(len(resp_body)))
@@ -964,7 +1096,11 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
         resp_body = resp.content
         self.send_response(resp.status_code)
         for key, value in resp.headers.items():
-            if key.lower() in ("transfer-encoding", "content-encoding", "content-length"):
+            if key.lower() in (
+                "transfer-encoding",
+                "content-encoding",
+                "content-length",
+            ):
                 continue
             self.send_header(key, value)
         self.send_header("Content-Length", str(len(resp_body)))
@@ -1008,6 +1144,7 @@ class _LogprobCaptureServer(socketserver.ThreadingMixIn, http.server.HTTPServer)
         self.response_summaries: list[dict] = []
         self.raw_responses: list[dict] = []
         self.streaming_logprobs: list[dict] = []
+        self.next_call_index = 0
         self.lock = threading.Lock()
         self.client = httpx.Client(timeout=client_timeout, trust_env=False)
 
@@ -1143,18 +1280,30 @@ class LogprobCaptureProxy:
         return summaries
 
     @staticmethod
-    def _records_from_buffers(sse_tokens: list[dict], payloads: list[dict]) -> list[dict]:
-        records: list[dict] = []
-        token_index = 0
-        if sse_tokens:
-            for item in sse_tokens:
-                records.append(raw_token_logprob_dict_to_record(item, token_index))
-                token_index += 1
-        else:
-            for payload in payloads:
-                new_records, token_index = extract_openai_logprob_records(
-                    payload,
-                    start_index=token_index,
-                )
-                records.extend(new_records)
+    def _records_from_buffers(
+        sse_tokens: list[dict], payloads: list[dict]
+    ) -> list[dict]:
+        records = [
+            raw_token_logprob_dict_to_record(item, index)
+            for index, item in enumerate(sse_tokens)
+        ]
+        streamed_calls = {item.get("call_id") for item in sse_tokens}
+        for payload in payloads:
+            context = payload.get("_alphadiana_capture", {})
+            # Aggregated streaming payloads duplicate the captured SSE tokens.
+            if context.get("call_id") in streamed_calls:
+                continue
+            new_records, _ = extract_openai_logprob_records(
+                payload, start_index=len(records)
+            )
+            for index, record in enumerate(new_records):
+                if context:
+                    record.update(context, call_token_index=index)
+            records.extend(new_records)
+        if records and all("call_index" in record for record in records):
+            records.sort(
+                key=lambda record: (record["call_index"], record["call_token_index"])
+            )
+            for index, record in enumerate(records):
+                record["token_index"] = index
         return records

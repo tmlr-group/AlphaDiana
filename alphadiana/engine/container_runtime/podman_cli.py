@@ -335,6 +335,10 @@ class PodmanCLI:
     ) -> PodmanResult:
         return self._run(["inspect", target], timeout=timeout, check=check)
 
+    def commit(self, container_id: str, *, timeout: float = 600.0) -> PodmanResult:
+        """Retain a stopped-in-time filesystem image for explicit verifier replay."""
+        return self._run(["commit", "--pause=true", container_id], timeout=timeout)
+
     def image_exists(self, image: str, *, timeout: float | None = None) -> bool:
         if self._run(["image", "inspect", image], timeout=timeout, check=False).ok:
             return True

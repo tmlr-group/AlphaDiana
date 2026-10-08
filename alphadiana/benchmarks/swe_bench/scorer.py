@@ -55,7 +55,7 @@ def _load_swebench_runtime() -> dict[str, Any]:
         from swebench.harness.test_spec.test_spec import make_test_spec
     except ImportError as exc:
         raise RuntimeError(
-            "The 'swebench' package is required for the swe_bench scorer. "
+            "A compatible 'swebench' 4.x package is required for the swe_bench scorer. "
             "Install the SWE-bench optional dependencies with: pip install -e '.[swebench]'"
         ) from exc
 
@@ -117,6 +117,8 @@ class SWEBenchScorer(Scorer):
         self._podman_socket_path = ""
         self._docker_api_version = ""
         self._runtime: dict[str, Any] | None = None
+
+    requires_environment = True
 
     @property
     def name(self) -> str:
@@ -262,10 +264,10 @@ class SWEBenchScorer(Scorer):
     def score(self, task, response) -> ScoreResult:
         patch = ""
         if response.answer is not None:
-            patch = str(response.answer).strip()
+            patch = str(response.answer)
         expected = str(task.ground_truth)
         instance_id = infer_instance_id(task)
-        if not patch:
+        if not patch.strip():
             return ScoreResult(
                 correct=False,
                 score=0.0,
@@ -274,6 +276,9 @@ class SWEBenchScorer(Scorer):
                 rationale="Empty patch produced; skipping SWE-bench evaluation.",
                 metadata={"resolved": False, "instance_id": instance_id},
             )
+        # Unified diff context whitespace is significant; only complete the final line.
+        if not patch.endswith("\n"):
+            patch += "\n"
 
         runtime = self._runtime_api()
         self._set_eval_log_dir(runtime)
@@ -304,23 +309,26 @@ class SWEBenchScorer(Scorer):
             qualify_swebench_test_spec_for_podman(test_spec)
         with self._container_runtime_env():
             client = self._docker_client(runtime["docker"])
-            _, failed = runtime["build_env_images"](
-                client,
-                [test_spec] if self._container_engine == "podman" else [instance],
-                force_rebuild=self._force_rebuild,
-                max_workers=1,
-                namespace=self._namespace,
-                instance_image_tag=self._instance_image_tag,
-                env_image_tag=self._env_image_tag,
-            )
-            if failed:
-                raise RuntimeError(f"Failed to build SWE-bench environment images: {failed}")
-            runtime["build_instance_image"](
-                test_spec,
-                client,
-                None,
-                nocache=self._force_rebuild,
-            )
+            if not test_spec.is_remote_image:
+                _, failed = runtime["build_env_images"](
+                    client,
+                    [test_spec] if self._container_engine == "podman" else [instance],
+                    force_rebuild=self._force_rebuild,
+                    max_workers=1,
+                    namespace=self._namespace,
+                    instance_image_tag=self._instance_image_tag,
+                    env_image_tag=self._env_image_tag,
+                )
+                if failed:
+                    raise RuntimeError(f"Failed to build SWE-bench environment images: {failed}")
+                runtime["build_instance_image"](
+                    test_spec,
+                    client,
+                    None,
+                    nocache=self._force_rebuild,
+                )
+            elif self._force_rebuild:
+                client.images.pull(test_spec.instance_image_key)
 
         model_name = self._model_name_or_path(response)
         prediction = {

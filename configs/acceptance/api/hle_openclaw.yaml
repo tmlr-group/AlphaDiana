@@ -1,0 +1,79 @@
+run_id: api_accept_hle_openclaw
+agent:
+  name: openclaw
+  version: 2026.3.2
+  config:
+    rock_agent_config_path: alphadiana/harness/openclaw/deploy/rock_agent_config.prebuilt.yaml
+    openclaw_config_path: alphadiana/harness/openclaw/deploy/openclaw.json
+    network_mode: host
+    gateway_startup_timeout: 240
+    gateway_warmup_timeout: 240
+    OPENAI_BASE_URL: ${AD_ACCEPTANCE_API_BASE}
+    OPENAI_API_KEY: ${AD_ACCEPTANCE_API_KEY}
+    OPENAI_MODEL_NAME: Qwen/Qwen3.5-27B
+    model: openclaw
+    gateway_token: ${AD_ACCEPTANCE_GATEWAY_TOKEN}
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 8192
+    request_timeout: 1200
+    stream_idle_timeout: 240
+    max_attempts: 1
+    system_prompt: 'You are solving expert-level multimodal multiple-choice questions.
+
+      Read the question and image carefully, reason step by step, and choose the single
+      best option.
+
+
+      Your final answer must be on the last line in exactly one of these forms:
+
+      $$\boxed{A}$$
+
+      $$\boxed{B}$$
+
+      $$\boxed{C}$$
+
+      $$\boxed{D}$$
+
+      $$\boxed{E}$$
+
+      $$\boxed{F}$$
+
+      $$\boxed{G}$$
+
+      $$\boxed{H}$$
+
+      $$\boxed{I}$$
+
+      $$\boxed{J}$$
+
+      '
+    stream_total_timeout: 1200
+    enable_thinking: false
+    capture_logprobs: true
+    top_logprobs: 20
+    runtime_backend: podman
+    podman_image: ${AD_ACCEPTANCE_OPENCLAW_IMAGE}
+benchmark:
+  name: hle
+  config:
+    dataset: cais/hle
+    split: test
+    answer_types:
+    - multipleChoice
+    max_tasks: 3
+sandbox: null
+scorer:
+  name: exact_match
+  config: {}
+max_concurrent: 1
+num_samples: 1
+output_dir: ${AD_ACCEPTANCE_RESULTS}
+strict_report: true
+strict_isolation: true
+metadata:
+  validation_suite: api
+  fixture: hle
+  model_family: Qwen/Qwen3.5-27B
+  capture_requirement: report actual coverage; do not impute missing observations
+task_retries: 0

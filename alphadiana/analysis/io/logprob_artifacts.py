@@ -1,4 +1,5 @@
 """Helpers for compact token logprob result artifacts."""
+
 from __future__ import annotations
 
 import math
@@ -83,14 +84,30 @@ def top_logprob_to_int16_record(
     )
 
 
-def raw_record_to_int16_record(record: dict, *, top_k: int = DEFAULT_TOP_LOGPROBS) -> dict:
+def raw_record_to_int16_record(
+    record: dict, *, top_k: int = DEFAULT_TOP_LOGPROBS
+) -> dict:
     """Convert a raw Phase 9 logprob JSONL record into compact Int16 form."""
-    top_entries = [_candidate_to_raw(entry) for entry in record.get("top_logprobs", [])[:top_k]]
-    return _int16_record(
-        int(record.get("token_index", 0)),
-        str(record.get("token", "")),
-        top_entries,
-    )
+    top_entries = [
+        _candidate_to_raw(entry) for entry in record.get("top_logprobs", [])[:top_k]
+    ]
+    return {
+        **{
+            key: record[key]
+            for key in (
+                "call_id",
+                "call_index",
+                "call_token_index",
+                "follows_tool_result",
+            )
+            if key in record
+        },
+        **_int16_record(
+            int(record.get("token_index", 0)),
+            str(record.get("token", "")),
+            top_entries,
+        ),
+    }
 
 
 def entropy_stats_from_int16_records(records: list[dict]) -> dict:

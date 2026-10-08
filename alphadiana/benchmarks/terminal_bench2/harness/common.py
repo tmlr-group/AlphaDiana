@@ -135,6 +135,7 @@ class TerminalBench2ContainerMixin:
     """Container lifecycle helpers shared by terminal-bench-2 agents."""
 
     def _setup_container_config(self, config: dict) -> None:
+        self._retain_verifier_snapshot = bool(config.get("retain_verifier_snapshot", False))
         self._timeout_sec = int(config.get("timeout_sec", 300))
         self._test_timeout_sec = int(config.get("test_timeout_sec", 120))
         self._logs_base_dir = Path(config.get("logs_base_dir", "/tmp/tb2_logs")).expanduser().resolve()
@@ -1035,6 +1036,9 @@ chmod +x /usr/local/bin/curl /usr/local/bin/uvx /root/.local/bin/env
         *,
         timeout_sec: int | None = None,
     ) -> VerifierResult:
+        if getattr(self, "_retain_verifier_snapshot", False) and "verifier_snapshot" not in runtime.task.metadata:
+            from alphadiana.benchmarks.terminal_bench2.replay import capture_snapshot
+            runtime.task.metadata["verifier_snapshot"] = capture_snapshot(self, runtime)
         reward_path = self._verifier_reward_path(runtime.logs_dir)
         verifier_output_path = reward_path.parent
         existing_reward = self._read_reward_if_exists(runtime.logs_dir, runtime.task.task_id)

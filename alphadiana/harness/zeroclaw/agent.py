@@ -29,13 +29,13 @@ from alphadiana.harness.proxies.logprob_proxy import (
 from alphadiana.harness.base import Agent, AgentResponse
 from alphadiana.harness.proxies.preservation import (
     add_artifact_file_refs,
-    build_event_trajectories,
     build_runtime_trace_summary,
     build_text_step_trajectories,
     parse_jsonl_records,
 )
 from alphadiana.harness.registry import AgentRegistry
 from alphadiana.harness.zeroclaw.runtime import _resolve_zeroclaw_provider
+from alphadiana.harness.zeroclaw.trace import normalize_trace
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.utils.math_answer import extract_answer_candidate
 
@@ -882,10 +882,10 @@ class ZeroClawAgent(Agent):
         sanitized_output, dropped_runtime_logs = _sanitize_cli_output(raw_output)
         combined_output = sanitized_output or raw_stderr or runtime_trace
         runtime_records = parse_jsonl_records(runtime_trace)
-        trajectory, reasoning_trajectory = build_event_trajectories(
+        trajectory, reasoning_trajectory, token_usage, trace_coverage = normalize_trace(
             list(request_messages or []),
             runtime_records,
-            final_output=combined_output,
+            final_output=sanitized_output,
         )
         if not runtime_records:
             trajectory, reasoning_trajectory = self._apply_text_fallback_trajectory(
@@ -918,6 +918,7 @@ class ZeroClawAgent(Agent):
         )
 
         response_metadata = dict(metadata)
+        response_metadata["native_trace_coverage"] = trace_coverage
         if dropped_runtime_logs:
             response_metadata["runtime_logs_dropped_from_output"] = dropped_runtime_logs
         if sanitized_output != raw_output:
@@ -959,6 +960,7 @@ class ZeroClawAgent(Agent):
             reasoning_trajectory=reasoning_trajectory,
             raw_output=combined_output,
             wall_time_sec=wall_time_sec,
+            token_usage=token_usage,
             token_entropy_stats=token_entropy_stats,
             workspace_file_contents=workspace_files,
             artifact_manifest=manifest,
@@ -1032,6 +1034,7 @@ class ZeroClawAgent(Agent):
         *,
         provider: str | None = None,
         provider_api_base: str | None = None,
+        runtime_trace_path: str = "state/runtime-trace.jsonl",
     ) -> str:
         resolved_provider = provider
         if resolved_provider is None and provider_api_base is not None:
@@ -1081,7 +1084,7 @@ class ZeroClawAgent(Agent):
             "[observability]\n"
             'backend = "none"\n'
             f"runtime_trace_mode = {_quote_toml(self._runtime_trace_mode)}\n"
-            'runtime_trace_path = "state/runtime-trace.jsonl"\n'
+            f"runtime_trace_path = {_quote_toml(runtime_trace_path)}\n"
             "runtime_trace_max_entries = 200\n\n"
             "[autonomy]\n"
             'level = "full"\n'

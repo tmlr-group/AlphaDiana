@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
 import re
 import shutil
 import threading
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from alphadiana.harness.base import AgentResponse
 from alphadiana.harness.proxies.preservation import add_artifact_file_refs
@@ -167,6 +170,9 @@ class ResultStore:
                 normalized_trajectory=normalized_trajectory,
                 normalized_reasoning_trajectory=normalized_reasoning_trajectory,
             )
+            artifact_manifest, logprob_sidecars = self._archive_attempt(
+                artifact_manifest, logprob_sidecars
+            )
             record = {
                 "task_id": task.task_id,
                 "sample_index": sample_index,
@@ -174,6 +180,7 @@ class ResultStore:
                 "problem": task.problem,
                 "ground_truth": task.ground_truth,
                 "task_metadata": task.metadata,
+                "task_attachments": self._persist_task_attachments(task),
                 "predicted": response.answer,
                 "correct": score.correct,
                 "score": score.score,
@@ -246,6 +253,9 @@ class ResultStore:
                 normalized_trajectory=normalized_trajectory,
                 normalized_reasoning_trajectory=normalized_reasoning_trajectory,
             )
+            artifact_manifest, logprob_sidecars = self._archive_attempt(
+                artifact_manifest, logprob_sidecars
+            )
             record = {
                 "task_id": task.task_id,
                 "sample_index": sample_index,
@@ -253,6 +263,7 @@ class ResultStore:
                 "problem": task.problem,
                 "ground_truth": task.ground_truth,
                 "task_metadata": task.metadata,
+                "task_attachments": self._persist_task_attachments(task),
                 "predicted": response.answer,
                 "correct": None,
                 "score": None,
@@ -291,6 +302,95 @@ class ResultStore:
                     f.write(json.dumps(record) + "\n")
             self._save_per_task_json(task.task_id, record)
 
+    def _archive_attempt(self, manifest: dict, logprob_sidecars: dict) -> tuple[dict, dict]:
+        """Freeze declared local evidence before appending its immutable record.
+
+        Historic task/sample paths remain latest-view copies for existing analysis
+        scripts. New records point to attempt-specific copies, including trace refs
+        and logprobs, so retries/resume never replace the evidence of earlier rows.
+        """
+        manifest = deepcopy(manifest)
+        logprob_sidecars = deepcopy(logprob_sidecars)
+        attempt_id = uuid4().hex
+        prefix = Path("attempts") / attempt_id
+        copied: dict[tuple[Path, Path], str] = {}
+
+        def retain(value: Any, root: Path) -> Any:
+            if isinstance(value, dict):
+                return {key: retain(item, root) for key, item in value.items()}
+            if isinstance(value, list):
+                return [retain(item, root) for item in value]
+            if not isinstance(value, str):
+                return value
+            relative = Path(value)
+            source = (root / relative).resolve()
+            # Undeclared/unavailable external evidence stays visibly unavailable;
+            # never copy paths outside the ResultStore namespace.
+            if relative.is_absolute() or not source.is_relative_to(root.resolve()):
+                return value
+            if not source.is_file():
+                return value
+            relative = source.relative_to(root.resolve())
+            key = root, source
+            if key not in copied:
+                destination = root / prefix / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                with destination.open("xb") as target, source.open("rb") as original:
+                    shutil.copyfileobj(original, target)
+                copied[key] = (prefix / relative).as_posix()
+            return copied[key]
+
+        logprob_keys = {
+            "logprobs_float": "logprobs_path",
+            "logprobs_int16": "logprobs_int16_path",
+        }
+        files = manifest.get("files", {})
+        for key, value in list(files.items()):
+            root = self.artifacts_dir.parent if key in logprob_keys else self.artifacts_dir
+            files[key] = retain(value, root)
+        # A normalized trace is itself an evidence index, so freeze its references
+        # too. Keep the legacy copy unchanged for older path-based readers.
+        trace_ref = files.get("normalized_trace")
+        if trace_ref:
+            trace_path = self.artifacts_dir / trace_ref
+            trace = json.loads(trace_path.read_text(encoding="utf-8"))
+            trace["refs"] = {
+                key: value for key, value in files.items() if key != "normalized_trace"
+            }
+            trace["attempt_id"] = attempt_id
+            trace_path.write_text(
+                json.dumps(_redact_for_persistence(trace), indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        for key, field in logprob_keys.items():
+            if logprob_sidecars.get(field):
+                # The top-level paths are relative to results/, unlike manifest refs.
+                relative = Path(logprob_sidecars[field]).relative_to(self.run_id).as_posix()
+                retained = retain(relative, self.artifacts_dir.parent)
+                logprob_sidecars[field] = (Path(self.run_id) / retained).as_posix()
+        manifest["attempt_id"] = attempt_id
+        if manifest.get("local_artifact_root"):
+            manifest["local_artifact_root"] = (prefix / manifest["local_artifact_root"]).as_posix()
+        return manifest, logprob_sidecars
+
+    def _persist_task_attachments(self, task: BenchmarkTask) -> dict:
+        """Retain identical binary inputs for successful and failed attempts."""
+        references = {}
+        # Different tasks may share the same content hash and execute concurrently.
+        with self._write_lock:
+            for name, content in task.attachments.items():
+                digest = hashlib.sha256(content).hexdigest()
+                relative = Path("inputs") / digest
+                target = self.artifacts_dir / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if target.exists():
+                    if hashlib.sha256(target.read_bytes()).hexdigest() != digest:
+                        raise ValueError(f"Persisted task attachment changed: {name}")
+                else:
+                    target.write_bytes(content)
+                references[name] = {"path": str(relative), "sha256": digest}
+        return references
+
     def _persist_artifacts(
         self,
         task: BenchmarkTask,
@@ -301,7 +401,7 @@ class ResultStore:
         normalized_reasoning_trajectory: list[dict[str, Any]] | None = None,
     ) -> dict:
         """Write gateway logs, response JSON, and workspace files to disk."""
-        manifest = dict(response.artifact_manifest)
+        manifest = deepcopy(response.artifact_manifest)
         files = manifest.setdefault("files", {})
 
         # For multi-sample runs, nest artifacts under sample_<N> subdirectory.
@@ -796,7 +896,7 @@ class ResultStore:
                         )
                         self._merge_task_json_record(target_path=target_path, incoming=annotated)
 
-            for dirname in ("artifacts", "lifecycle", "status", "logprobs", "logprobs_int16"):
+            for dirname in ("artifacts", "attempts", "lifecycle", "status", "logprobs", "logprobs_int16"):
                 self._copy_tree_contents(shard_dir / dirname, target_run_dir / dirname)
 
         ordered_records = sorted(

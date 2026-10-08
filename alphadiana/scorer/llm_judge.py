@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 
 from alphadiana.scorer.base import Scorer, ScoreResult
+from alphadiana.scorer.judge_config import JudgeConfig
 from alphadiana.scorer.registry import register_scorer
 
 logger = logging.getLogger(__name__)
@@ -45,8 +45,8 @@ class LLMJudgeScorer(Scorer):
     completions endpoint."""
 
     def __init__(self) -> None:
-        self._judge_model: str = os.environ.get("JUDGE_MODEL", "gpt-4o")
-        self._api_base: str = os.environ.get("JUDGE_API_BASE", "https://api.openai.com/v1")
+        self._judge_model: str = ""
+        self._api_base: str = ""
         self._api_key: str = ""
         self._timeout: int = 60
 
@@ -60,9 +60,16 @@ class LLMJudgeScorer(Scorer):
                 "The 'requests' package is required for LLMJudgeScorer. "
                 "Install it with: pip install requests"
             )
-        self._judge_model = config.get("judge_model", self._judge_model)
-        self._api_base = config.get("api_base", self._api_base).rstrip("/")
-        self._api_key = config.get("api_key", self._api_key)
+        provider = JudgeConfig.resolve(
+            model=config.get("judge_model"),
+            base_url=config.get("api_base"),
+            api_key=config.get("api_key"),
+        )
+        self._judge_model, self._api_base, self._api_key = (
+            provider.model,
+            provider.base_url,
+            provider.api_key,
+        )
         self._timeout = int(config.get("timeout", self._timeout))
 
     def _call_llm(self, question: str, expected: str, predicted: str) -> dict:
@@ -106,7 +113,7 @@ class LLMJudgeScorer(Scorer):
                 timeout=self._timeout,
             )
             if resp.status_code in (429, 502, 503, 504) and attempt < max_retries:
-                delay = min(2.0 * (2 ** attempt), 30.0)
+                delay = min(2.0 * (2**attempt), 30.0)
                 jitter = random.uniform(0, delay * 0.3)
                 # Respect Retry-After header if present.
                 retry_after = resp.headers.get("Retry-After")
@@ -117,7 +124,10 @@ class LLMJudgeScorer(Scorer):
                         pass
                 logger.warning(
                     "LLM judge attempt %d/%d got %d, retrying in %.1fs",
-                    attempt + 1, max_retries, resp.status_code, delay + jitter,
+                    attempt + 1,
+                    max_retries,
+                    resp.status_code,
+                    delay + jitter,
                 )
                 time.sleep(delay + jitter)
                 continue
@@ -125,7 +135,10 @@ class LLMJudgeScorer(Scorer):
             break
 
         data = resp.json()
-        content = data["choices"][0]["message"]["content"]
+        choice = data["choices"][0]
+        if choice.get("finish_reason") != "stop":
+            raise ValueError("Judge did not finish with a complete response")
+        content = choice["message"]["content"]
         return self._parse_judge_response(content)
 
     @staticmethod
@@ -136,24 +149,24 @@ class LLMJudgeScorer(Scorer):
         text = re.sub(r"^```(?:json)?\s*", "", text)
         text = re.sub(r"\s*```$", "", text)
 
-        try:
-            result = json.loads(text)
-        except json.JSONDecodeError:
-            # Fallback: look for "correct": true/false anywhere in the text.
-            correct_match = re.search(r'"correct"\s*:\s*(true|false)', text, re.IGNORECASE)
-            correct = correct_match.group(1).lower() == "true" if correct_match else False
-            return {"correct": correct, "rationale": text}
-
-        return {
-            "correct": bool(result.get("correct", False)),
-            "rationale": str(result.get("rationale", "")),
-        }
+        result = json.loads(text)
+        if (
+            not isinstance(result, dict)
+            or type(result.get("correct")) is not bool
+            or not isinstance(result.get("rationale"), str)
+        ):
+            raise ValueError(
+                "Judge must return a boolean correct and a string rationale"
+            )
+        return {"correct": result["correct"], "rationale": result["rationale"]}
 
     def score(self, task, response) -> ScoreResult:
         if response.answer is None:
             return ScoreResult(
-                correct=False, score=0.0,
-                expected=str(task.ground_truth), predicted=None,
+                correct=False,
+                score=0.0,
+                expected=str(task.ground_truth),
+                predicted=None,
                 rationale="No answer produced (answer is None).",
             )
         expected_raw = str(task.ground_truth)

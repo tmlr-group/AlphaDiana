@@ -92,4 +92,8 @@ def resolve_run_relative_path(results_dir: Path, rel_path: str) -> Path:
     path = Path(rel_path)
     if path.is_absolute():
         raise ValueError("absolute paths are not allowed in ResultStore artifact refs")
-    return results_dir / path
+    root = results_dir.resolve()
+    resolved = (root / path).resolve()
+    if not resolved.is_relative_to(root):
+        raise ValueError("artifact reference escapes its results directory")
+    return resolved

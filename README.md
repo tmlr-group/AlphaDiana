@@ -2,13 +2,6 @@
 
 **AlphaDiana** is an open-source framework for **system-level evaluation of LLM-based reasoning agents**. It enables standardized, reproducible benchmarking of agentic systems—such as **[OpenClaw](https://github.com/openclaw/openclaw)**—on frontier reasoning tasks, with support for sandboxed code execution, multi-turn tool use, and full trajectory logging.
 
-<p align="center">
-  <img src="./docs/assets/motivation.png" width="100%">
-</p>
-<p align="center">
-  <em><strong>Figure 1.</strong> Why agentic reasoning requires system-level evaluation: foundation models are evaluated like engines, agents behave like cars shaped by tools and state, and AlphaDiana serves as the tournament organizer that standardizes evaluation and records canonical traces.</em>
-</p>
-
 ## Why AlphaDiana?
 
 Reasoning performance in agent systems depends on more than the base model alone. It is also shaped by the **agent framework, tool interface, execution environment, and evaluation protocol**.
@@ -44,65 +37,30 @@ Typical questions AlphaDiana helps answer:
 
 ## Quick Start
 
-### Prerequisites
+### Install and configure
 
-- Linux
-- Python >= 3.10, Conda
-- Docker (the current user should be in the `docker` group)
-- An API key for a model provider (e.g., [OpenRouter](https://openrouter.ai/))
-
-### 1. Install
+Python 3.10 or newer is required. Container runtimes are optional for direct
+inference; native agent harnesses have their own runtime prerequisites.
 
 ```bash
-git clone https://github.com/tmlr-group/AlphaDiana
+git clone https://github.com/tmlr-group/AlphaDiana.git
 cd AlphaDiana
+python -m venv .venv
+source .venv/bin/activate
+pip install -e '.[analysis,benchmarks,agents]'
 
-# One-click core setup: creates a checkout-local conda env, installs runtime
-# and benchmark dependencies, and starts ROCK services
-export OPENCLAW_GATEWAY_TOKEN="$(openssl rand -hex 32)"
-bash scripts/quickstart.sh
-
-# Note: If quickstart fails, or you want to reset the ports/RAY clusters, please run: bash scripts/cleanup_rock_ports.sh (USE WITH CAUTION!)
-
-# Pull the reasoning image (OpenClaw pre-installed)
-docker pull tmlrgroup/alphadiana:v1
+export OPENAI_BASE_URL="https://your-provider.example/v1"
+export OPENAI_API_KEY="your-api-key"
+export OPENAI_MODEL_NAME="your-model-id"
 ```
 
-### 2. Configure your model
+LLM judges also require an explicitly configured endpoint, key and model.
+`OPENAI_MODEL` takes precedence over `OPENAI_MODEL_NAME` for judging. Offline
+analysis requires no model service. Optional Analyzer judgments can use separate
+`ANALYSIS_MODEL`, `ANALYSIS_BASE_URL` and `ANALYSIS_API_KEY` settings. See [Python API and analysis](docs/getting-started/python-api.md)
+for composition, saved-run analysis and optional model annotations.
 
-Create a `.env` file in the project root with your model endpoint and set your api key:
-
-```bash
-touch .env
-echo "OPENAI_BASE_URL=https://openrouter.ai/api/v1" >> .env
-echo "OPENAI_API_KEY=<your-api-key>" >> .env
-echo "OPENAI_MODEL_NAME=Qwen/Qwen3.5-27B" >> .env
-```
-
-### 3. Activate the environment
-
-Run this **once per terminal** before using AlphaDiana. It handles conda activation, proxy cleanup, port loading, and API key loading automatically:
-
-```bash
-source scripts/activate.sh
-```
-
-### 4. Check optional ROCK services
-
-```bash
-alphadiana env
-```
-
-If you ran the full quickstart and plan to use ROCK, all four checks should pass:
-
-```
-  ✓ admin
-  ✓ proxy
-  ✓ redis
-  ✓ docker
-```
-
-### 5. Run your first evaluation
+### Run an evaluation
 
 ```bash
 alphadiana validate configs/macro_runs/aime2026_directllm_qwen35_27b.yaml \
@@ -116,7 +74,29 @@ alphadiana run configs/macro_runs/aime2026_directllm_qwen35_27b.yaml \
 This DirectLLM path does not require ROCK. A successful provider call writes one
 scored task record; the accuracy depends on the model response and is not fixed.
 
-### 6. Print a report
+### Use the Python API
+
+The same evaluation pipeline is available from Python on this branch:
+
+```python
+import alphadiana as ad
+
+agent = ad.agent("direct_llm", version="1.0")
+data = ad.dataset("MathArena/aime_2026", benchmark="aime", max_tasks=3)
+scorer = ad.scorer.create("numeric")
+artifacts = ad.runner(run_id="python_demo").compute(
+    agent=agent, data=data, scorer=scorer,
+)
+ad.analyzer(artifacts).export("figures/python_demo")
+```
+
+This uses the provider environment settings above. Results and execution evidence
+are saved under `results/`; analysis exports include tables and PDF/SVG/PNG figures.
+See [Python API and analysis](docs/getting-started/python-api.md) for reopening,
+rescoring and comparing saved runs. Native harnesses still require their own
+container/runtime configuration.
+
+### Print a report
 
 ```bash
 alphadiana report results/
@@ -224,3 +204,7 @@ If you use AlphaDiana in your research, please cite:
   url={https://openreview.net/forum?id=4vARlk9o95}
 }
 ```
+
+## Python API and analysis figures
+
+Use the [composable Python API](docs/getting-started/python-api.md) to execute existing adapters, reopen artifacts, rescore saved outputs, and export analysis figures with data provenance.

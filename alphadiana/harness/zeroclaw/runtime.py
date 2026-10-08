@@ -135,6 +135,9 @@ class ZeroClawRuntimeManager:
         self._remote_bridge_path = config.get("remote_bridge_path", "/tmp/zeroclaw_bridge.py")
         self._bridge_pidfile = config.get("bridge_pidfile", "/tmp/zeroclaw-bridge.pid")
         self._artifact_root = str(config.get("artifact_root", "/tmp/zeroclaw-bridge-artifacts") or "/tmp/zeroclaw-bridge-artifacts").strip()
+        self._runtime_trace_mode = str(config.get("runtime_trace_mode", "full" if config.get("capture_logprobs") else "none"))
+        if self._runtime_trace_mode == "all":
+            self._runtime_trace_mode = "full"
         self._request_timeout = int(config.get("request_timeout", 1200))
         raw_provider_timeout = config.get("provider_timeout_secs", None)
         if raw_provider_timeout in ("", None):
@@ -177,6 +180,7 @@ class ZeroClawRuntimeManager:
         for candidate in [
             (PROJECT_ROOT / path).resolve(),
             path.resolve(),
+            (PROJECT_ROOT.parent / path).resolve(),
         ]:
             if candidate.exists():
                 return candidate
@@ -214,6 +218,7 @@ class ZeroClawRuntimeManager:
             "ZEROCLAW_BRIDGE_PORT": str(self._bridge_port),
             "ZEROCLAW_PROVIDER": self._provider,
             "ZEROCLAW_ARTIFACT_ROOT": self._artifact_root,
+            "ZEROCLAW_RUNTIME_TRACE_MODE": self._runtime_trace_mode,
             "ZEROCLAW_TEMPERATURE": str(self._temperature),
             "ZEROCLAW_TOP_P": "" if self._top_p is None else str(self._top_p),
             "ZEROCLAW_PROVIDER_REQUEST_OVERRIDES": json.dumps(
@@ -491,7 +496,11 @@ class ZeroClawPodmanRuntimeManager(ZeroClawRuntimeManager):
         spec = self._build_podman_spec()
         _progress(f"starting ZeroClaw Podman bridge image={spec.image}")
         self._podman_result = self._podman_runtime.start(spec)
-        self._warmup_podman_gateway(self._podman_result.api_base)
+        try:
+            self._warmup_podman_gateway(self._podman_result.api_base)
+        except BaseException:
+            self.teardown()
+            raise
         self.drain_logprob_records()
         return self.runtime_info(sandbox)
 
