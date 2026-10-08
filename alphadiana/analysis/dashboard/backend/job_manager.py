@@ -794,6 +794,7 @@ class JobManager:
                 redo_all=req.redo_all,
                 num_samples=req.num_samples,
                 metadata=req.metadata,
+                metrics=req.metrics,
             )
 
             # Save config as YAML so RunDetail page can display it

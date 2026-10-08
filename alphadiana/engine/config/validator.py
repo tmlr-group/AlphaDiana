@@ -56,6 +56,23 @@ class ConfigValidator:
             errors.append("benchmark_name is required")
         if not config.scorer_name:
             errors.append("scorer_name is required")
+        if not isinstance(config.metrics, list):
+            errors.append("metrics must be a list")
+        else:
+            metric_names: set[str] = set()
+            for index, metric in enumerate(config.metrics):
+                if not isinstance(metric, dict):
+                    errors.append(f"metrics[{index}] must be a mapping")
+                    continue
+                if not self._has_nonempty_value(metric.get("name")):
+                    errors.append(f"metrics[{index}].name is required")
+                else:
+                    metric_name = str(metric["name"]).strip()
+                    if metric_name in metric_names:
+                        errors.append(f"metrics[{index}].name duplicates '{metric_name}'")
+                    metric_names.add(metric_name)
+                if "config" in metric and not isinstance(metric["config"], dict):
+                    errors.append(f"metrics[{index}].config must be a mapping")
         max_concurrent = self._validate_int_field(errors, "max_concurrent", config.max_concurrent)
         if max_concurrent is not None:
             if max_concurrent < 1:
@@ -225,6 +242,22 @@ class ConfigValidator:
         task_retries = self._validate_int_field(errors, "task_retries", getattr(config, "task_retries", 0))
         if task_retries is not None and task_retries < 0:
             errors.append("task_retries must be >= 0")
+
+        from alphadiana.harness.registry import AgentRegistry
+        from alphadiana.registry_loader import load_builtin_agent_validators
+
+        load_builtin_agent_validators()
+        try:
+            agent_cls = AgentRegistry.get(config.agent_name)
+        except KeyError:
+            pass
+        else:
+            if agent_cls.owns_task_runtime and config.sandbox_name:
+                errors.append(
+                    f"agent '{config.agent_name}' owns its task runtime; "
+                    "do not configure an additional AlphaDiana sandbox"
+                )
+            errors.extend(agent_cls.validate_experiment_config(config))
 
         return errors
 

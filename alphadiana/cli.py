@@ -140,6 +140,11 @@ def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
         click.echo(f"  {pass_label}@{summary.num_samples}:    {summary.pass_at_k:.4f}")
         click.echo(f"  {avg_label}@{summary.num_samples}:     {summary.avg_at_k:.4f}")
         click.echo(f"  Tasks:      {summary.completed}/{summary.total_tasks} completed")
+        for name, metric in sorted(summary.evaluation_metrics.items()):
+            click.echo(
+                f"  Metric {name}: mean={metric['mean']:.3f} "
+                f"{metric['unit']} (n={metric['count']})"
+            )
         if config.strict_report and summary.strict_report_failed:
             click.echo(
                 "Strict report failed: " + ", ".join(summary.strict_report_issues),

@@ -217,6 +217,34 @@ def _build_summary(run_id: str, records: list[dict[str, Any]]) -> RunSummaryResp
     if records:
         timestamp = records[-1].get("timestamp", "")
 
+    # Observational metrics are aggregated independently of score validity.
+    # Their presence never changes completed/failed counts or primary scores.
+    metric_values: dict[str, list[tuple[float, str]]] = defaultdict(list)
+    for record in records:
+        observations = record.get("evaluation_metrics", {})
+        if not isinstance(observations, dict):
+            continue
+        for name, observation in observations.items():
+            if not isinstance(observation, dict):
+                continue
+            value = observation.get("value")
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                continue
+            metric_values[str(name)].append(
+                (float(value), str(observation.get("unit", "")))
+            )
+    evaluation_metrics: dict[str, dict[str, Any]] = {}
+    for name, values_and_units in sorted(metric_values.items()):
+        values = [value for value, _ in values_and_units]
+        units = {unit for _, unit in values_and_units if unit}
+        evaluation_metrics[name] = {
+            "count": len(values),
+            "mean": sum(values) / len(values),
+            "min": min(values),
+            "max": max(values),
+            "unit": next(iter(units)) if len(units) == 1 else "mixed",
+        }
+
     return RunSummaryResponse(
         run_id=run_id,
         agent=agent,
@@ -242,6 +270,7 @@ def _build_summary(run_id: str, records: list[dict[str, Any]]) -> RunSummaryResp
         avg_at_k=avg_at_k,
         per_category_pass_at_k=per_category_pass_at_k,
         per_category_avg_at_k=per_category_avg_at_k,
+        evaluation_metrics=evaluation_metrics,
         timestamp=timestamp,
     )
 
@@ -265,6 +294,8 @@ def _record_to_task_result(record: dict[str, Any]) -> TaskResult:
         error=record.get("error"),
         task_metadata=record.get("task_metadata", {}),
         finish_reason=record.get("finish_reason", ""),
+        evaluation_metrics=record.get("evaluation_metrics", {}),
+        evaluation_metric_errors=record.get("evaluation_metric_errors", {}),
     )
 
 

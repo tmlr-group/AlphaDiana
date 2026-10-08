@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from alphadiana.benchmarks.base import BenchmarkTask
+
+if TYPE_CHECKING:
+    from alphadiana.engine.config.experiment_config import ExperimentConfig
 
 
 @dataclass
@@ -34,6 +37,9 @@ class AgentResponse:
     sandbox_metadata: dict = field(default_factory=dict)
     system_prompt: str = ""
     finish_reason: str = ""
+    # Observational post-run metrics. These never determine benchmark score.
+    evaluation_metrics: dict[str, dict] = field(default_factory=dict)
+    evaluation_metric_errors: dict[str, str] = field(default_factory=dict)
 
 
 class Agent(ABC):
@@ -41,6 +47,13 @@ class Agent(ABC):
 
     name: str = ""
     version: str = ""
+    owns_task_runtime: bool = False
+    runtime_isolation_mode: str = ""
+
+    @classmethod
+    def validate_experiment_config(cls, config: "ExperimentConfig") -> list[str]:
+        """Return adapter-specific config errors without starting the runtime."""
+        return []
 
     @abstractmethod
     def setup(self, config: dict) -> None:

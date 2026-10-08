@@ -98,6 +98,20 @@ For `terminal_bench2`, ordinary score fields are not sufficient. `verifier_statu
 
 Strict reporting compares the manifest's expected samples with written valid/invalid records and can fail the command when required samples are missing or inconsistent.
 
+## Observational evaluation metrics
+
+Top-level `metrics` are post-run observations, not scorers. The runner first
+creates the authoritative `ScoreResult`, then invokes each metric with deep
+copies of the task, response, and score. Results are persisted under
+`evaluation_metrics`; plugin exceptions are persisted under
+`evaluation_metric_errors` and do not alter the primary score.
+
+Reports and dashboard summaries aggregate numeric observation values
+separately as count, mean, minimum, maximum, and unit. This aggregation includes
+any record that contains the metric, independently of score validity. Use the
+canonical `score_status` fields for benchmark accuracy and the observational
+section only for behavioral analysis.
+
 ## Reading results safely
 
 1. Load the run manifest and task JSON/JSONL records.
