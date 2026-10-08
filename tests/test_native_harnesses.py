@@ -59,6 +59,34 @@ def test_explicit_context_window_reserves_prompt_tokens():
         native.validate_config({**CONFIG, "context_window": 32768, "max_tokens": 32768})
 
 
+def test_deepseek_rejects_pi_window_before_runtime_start(monkeypatch):
+    def unexpected_runtime():
+        pytest.fail("Unsupported configuration must fail before creating a runtime")
+
+    monkeypatch.setattr(native, "PodmanCLI", unexpected_runtime)
+    with pytest.raises(ValueError, match="supported only by Pi"):
+        DeepSeekHarnessAgent().setup({**CONFIG, "context_window": 49152})
+
+
+def test_deepseek_does_not_inherit_pi_default_window():
+    native.validate_config({**CONFIG, "max_tokens": 128000}, harness="deepseek_harness")
+    with pytest.raises(ValueError, match="leave room"):
+        native.validate_config({**CONFIG, "max_tokens": 128000}, harness="pi")
+
+
+@pytest.mark.parametrize("agent_name", ["pi", "deepseek_harness"])
+def test_experiment_validation_applies_harness_window_scope(agent_name):
+    from alphadiana.engine.config.experiment_config import ExperimentConfig
+    from alphadiana.engine.config.validator import ConfigValidator
+
+    config = ExperimentConfig(
+        agent_name=agent_name, agent_version="fixture", benchmark_name="custom",
+        scorer_name="numeric", agent_config={**CONFIG, "context_window": 49152},
+    )
+    errors = ConfigValidator().validate(config)
+    assert ("context_window is supported only by Pi" in errors) == (agent_name == "deepseek_harness")
+
+
 @pytest.mark.parametrize("agent_class", [PiAgent, DeepSeekHarnessAgent])
 def test_public_task_stdin_and_container_contract(monkeypatch, agent_class):
     calls = []
