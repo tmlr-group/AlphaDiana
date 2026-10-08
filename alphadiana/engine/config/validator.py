@@ -76,7 +76,7 @@ class ConfigValidator:
         if config.agent_name in {"pi", "deepseek_harness"}:
             from alphadiana.harness._internal.podman_agent import validate_config
             try:
-                validate_config(config.agent_config)
+                validate_config(config.agent_config, harness=config.agent_name)
             except (ValueError, TypeError, OSError) as exc:
                 errors.append(str(exc))
             if config.sandbox_name:

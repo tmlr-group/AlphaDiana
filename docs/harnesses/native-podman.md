@@ -34,6 +34,9 @@ agent:
     api_key: ${OPENAI_API_KEY}
     system_prompt: Solve the task using available tools.
     timeout: 120
+    # The endpoint limit is 49152; code-heavy prompts can exceed Pi's estimate
+    # by 8192 tokens, so retain additional headroom beyond that observed skew.
+    context_window: 40000
 benchmark:
   name: custom
   config:
@@ -46,12 +49,16 @@ scorer:
 ```
 
 Only documented fields are accepted: image, model, api_base, api_key,
-system_prompt, timeout, max_tokens, reasoning, runtime (podman only), and the
+system_prompt, timeout, max_tokens, context_window, reasoning, runtime (podman only), and the
 candidate fields below. `_execution_id` is reserved for the evaluator. Unsupported
 model reasoning settings fail in the native harness. DeepSeek uses its official
 `sdk-minimal` profile and `deepseek-official` adapter; an endpoint must implement
 that adapter's compatible chat protocol. Pi uses an explicit OpenAI-compatible
-provider. No host credentials/configuration are discovered by the solvers.
+provider. `context_window` is Pi-only; DeepSeek rejects it because its SDK path
+does not expose this setting. Set `context_window` below the serving endpoint's model limit by a
+safety margin appropriate for client/server tokenizer skew, so Pi compacts
+multi-turn sessions before `prompt + max_tokens` exceeds the provider limit.
+No host credentials/configuration are discovered by the solvers.
 
 ## Candidate modules
 
