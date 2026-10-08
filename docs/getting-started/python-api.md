@@ -101,9 +101,12 @@ Use declared references (`saved.file(record, key)`) to inspect a particular atte
 Already-overwritten files from older runs cannot be recovered by this change;
 archive legacy runs before reusing their run IDs.
 
-For Terminal-Bench replay, the fresh verifier result determines score validity;
-original solver/provider errors remain disqualifying. Source metadata is retained,
-and the `rescoring` entry includes the original score status and score metadata.
+A returned rescore judgment replaces an earlier scoring error, whether the new
+answer is correct or incorrect. The original error is retained in
+`rescoring.original_error`, alongside the original score status and score
+metadata. Solver/provider failures remain disqualifying, and the source files
+are unchanged. For Terminal-Bench replay, the fresh verifier result determines
+verifier validity while retaining those solver failures.
 
 Environment-backed scorers require `allow_environment=True`. SWE-bench rebuilds
 its verifier environment from the saved task and predicted patch through the

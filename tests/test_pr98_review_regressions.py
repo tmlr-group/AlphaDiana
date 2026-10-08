@@ -277,6 +277,32 @@ def test_rescoring_does_not_mutate_saved_solver_metadata(tmp_path):
     assert rescored.records()[0]["metadata"]["nested"]["value"] == "original"
 
 
+def test_rescoring_keeps_original_task_inputs_when_scorer_mutates_them(tmp_path):
+    class MutatingTaskScorer(ReviewScorer):
+        def score(self, task, response):
+            task.metadata["nested"]["value"] = "scorer working state"
+            task.ground_truth["expected"] = "scorer working answer"
+            response.answer["value"] = "scorer working prediction"
+            return super().score(task, response)
+
+    store = ResultStore(str(tmp_path), "task-inputs")
+    store.append(
+        BenchmarkTask(
+            "task", "Return 2", {"expected": "2"}, {"nested": {"value": "original"}}
+        ),
+        AgentResponse({"value": "2"}),
+        ScoreResult(True, 1, "2", "2"),
+    )
+    source = Artifacts(store.path)
+    original = source.records()[0]
+    rescored = source.rescore(MutatingTaskScorer())
+    derived = rescored.records()[0]
+    assert derived["task_metadata"] == original["task_metadata"]
+    assert derived["ground_truth"] == original["ground_truth"]
+    assert derived["predicted"] == original["predicted"]
+    assert source.records()[0] == original
+
+
 def test_shard_merge_retains_attempt_logprob_namespace(tmp_path):
     task = BenchmarkTask("task", "Return 2", "2")
     shard = ResultStore(str(tmp_path), "shard")

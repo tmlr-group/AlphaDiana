@@ -1,12 +1,15 @@
 # Registries
 
-AlphaDiana has four class registries: benchmarks, agents, sandboxes, and scorers. Configuration selects a key; `Runner.setup()` imports built-in modules, resolves each key, instantiates the class, and calls `setup()`.
+AlphaDiana has five class registries: benchmarks, agents, sandboxes, scorers,
+and observational metrics. Configuration selects a key; the centralized
+`registry_loader` imports built-in modules, then `Runner.setup()` resolves each
+key, instantiates the class, and calls `setup()`.
 
-Registration is import-triggered, not discovered by scanning the filesystem. A new implementation normally requires no orchestration-logic change, but its module must be imported by the runner so registration executes.
+Registration is import-triggered, not discovered by scanning the filesystem. A new implementation normally requires no orchestration-logic change, but its module must be included in `registry_loader` so registration executes.
 
 ## Live inventory
 
-The tables below reflect the registrations imported by `Runner.setup()` in the current source tree.
+The tables below reflect the registrations imported by `registry_loader` in the current source tree.
 
 ### Benchmarks
 
@@ -36,6 +39,7 @@ The first four are generic harness families. The remaining keys are benchmark-sp
 | `terminal_bench2_openclaw` | TerminalBench 2 OpenClaw adapter |
 | `terminal_bench2_opencode` | TerminalBench 2 OpenCode adapter |
 | `terminal_bench2_zeroclaw` | TerminalBench 2 ZeroClaw adapter |
+| `terminal_bench2_pi_harbor` | Exact local Pi runtime in Harbor-owned TerminalBench 2 trials |
 
 ### Sandboxes
 
@@ -57,6 +61,16 @@ The first four are generic harness families. The remaining keys are benchmark-sp
 | `imo_verify` | Required verifier for `imo_answerbench` |
 | `swe_bench` | Official SWE-bench evaluation adapter |
 | `terminal_bench2` | Verifier reward scorer |
+
+### Observational metrics
+
+| Key | Scope |
+| --- | --- |
+| `answer_length` | Post-run final-answer length plus byte, word, and line metadata |
+
+Metric plugins implement `EvaluationMetric`, register through
+`MetricRegistry`, and are configured in the top-level `metrics` list. They run
+after the scorer and cannot replace `ScoreResult`.
 
 ## Registration forms
 
@@ -84,8 +98,8 @@ Both forms mutate a process-local registry. Duplicate names raise instead of sil
 
 1. Implement the appropriate base class.
 2. Register a stable, lowercase config key in that module.
-3. Add the module import to the relevant import block in `Runner.setup()`.
-4. Add validation for any cross-component constraint.
+3. Add the module import to the relevant function in `registry_loader`.
+4. Put adapter-specific checks in `validate_experiment_config()` and keep only cross-component rules in the core validator.
 5. Add focused registry/setup tests and one real smoke before claiming runtime support.
 6. Document the new key in the relevant inventory and runbook.
 

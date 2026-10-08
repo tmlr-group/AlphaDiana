@@ -207,6 +207,8 @@ class ResultStore:
                 "system_prompt": response.system_prompt,
                 "finish_reason": getattr(response, "finish_reason", ""),
                 "metadata": response_metadata,
+                "evaluation_metrics": response.evaluation_metrics,
+                "evaluation_metric_errors": response.evaluation_metric_errors,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
             record = _redact_for_persistence(record)
@@ -287,6 +289,8 @@ class ResultStore:
                 "sandbox_metadata": response.sandbox_metadata,
                 "system_prompt": response.system_prompt,
                 "metadata": response_metadata,
+                "evaluation_metrics": response.evaluation_metrics,
+                "evaluation_metric_errors": response.evaluation_metric_errors,
                 "finish_reason": getattr(response, "finish_reason", ""),
                 "error": error,
                 "timestamp": datetime.now(timezone.utc).isoformat(),

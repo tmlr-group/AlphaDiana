@@ -26,10 +26,21 @@ def run_native(
             if code:
                 raise RuntimeError(f"Native harness exited {code}; diagnostics: {log}")
         finally:
-            if process.poll() is None:
+            # The leader can exit while a tool process remains alive. Always
+            # clean the owned group, including after normal/native-error exits.
+            try:
                 os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                pass
+            finally:
+                # Waiting for the leader does not wait for its descendants.
+                # A child may ignore SIGTERM even after the leader has exited.
                 try:
-                    process.wait(timeout=10)
-                except subprocess.TimeoutExpired:
                     os.killpg(process.pid, signal.SIGKILL)
-                    process.wait()
+                except ProcessLookupError:
+                    pass
+                process.wait()

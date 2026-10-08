@@ -7,7 +7,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import httpx
 import pytest
-import tomllib
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10
+    import tomli as tomllib
 
 from alphadiana.benchmarks.terminal_bench2.harness.terminus import (
     attribute_terminal_feedback,

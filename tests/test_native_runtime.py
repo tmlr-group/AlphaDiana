@@ -7,6 +7,12 @@ from pathlib import Path
 import pytest
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.harness._internal.podman_agent import NativeHarnessError, tree_digest
+from alphadiana.harness._internal.training import (
+    ModelIdentity,
+    NativeTrainingCollector,
+    PolicyIdentity,
+    SamplingPlan,
+)
 from alphadiana.harness.deepseek_harness.agent import DeepSeekHarnessAgent
 from alphadiana.harness.pi.agent import PiAgent
 
@@ -211,3 +217,139 @@ def test_real_pi_token_limit_answer_is_scored(tmp_path):
             assert len(requests) == 2
         finally:
             agent.teardown()
+
+
+@pytest.mark.parametrize("agent_class", [PiAgent, DeepSeekHarnessAgent])
+def test_real_native_training_capture_uses_native_ids_and_policy_attestation(agent_class, tmp_path):
+    """Opt-in integration through the actual Pi image and fixture server."""
+
+    import hashlib
+
+    digest = hashlib.sha256(b"fixture-policy").hexdigest()
+    with fixture.model_server(
+        api_key="test-native-secret",
+        native_capture=True,
+        policy_publication="policy-step-001",
+        weights_digest=digest,
+        tokenizer_digest=digest,
+        chat_template_digest=digest,
+    ) as (endpoint, requests):
+        # The host-side capture proxy connects to the fixture over loopback;
+        # only the proxy URL is advertised to the disposable Pi container.
+        host_endpoint = endpoint.replace("host.containers.internal", "127.0.0.1")
+        agent = agent_class()
+        agent.setup(
+            {
+                "image": IMAGE,
+                "model": "fixture-v1",
+                "api_base": host_endpoint,
+                "api_key": "test-native-secret",
+                "timeout": 90,
+                "training": {
+                    "enabled": True,
+                    "algorithm": "sft",
+                    "round_id": "sft-round-001",
+                    "task_ids": ["training"],
+                    "group_size": 1,
+                    "max_new_tokens": 8,
+                    "temperature": 1.0,
+                    "seed": 17,
+                    "policy_publication": "policy-step-001",
+                    "policy": {
+                        "weights_digest": digest,
+                        "tokenizer_digest": digest,
+                        "chat_template_digest": digest,
+                    },
+                    "model_identity": {
+                        "model_name": "fixture-v1",
+                        "model_revision": "fixture-revision-1",
+                        "tokenizer_digest": digest,
+                        "chat_template_digest": digest,
+                    },
+                },
+            }
+        )
+        try:
+            response = agent.solve(BenchmarkTask("training", "Read marker.", None))
+            capture = response.metadata["training_capture"]
+            from alphadiana.analysis.io.result_store import ResultStore
+            from alphadiana.harness._internal.training import TrainingCapture
+            from alphadiana.scorer.numeric import NumericScorer
+
+            persisted_task = BenchmarkTask("training", "Read marker.", "0")
+            store = ResultStore(str(tmp_path / "capture"), "native-training")
+            store.append(persisted_task, response, NumericScorer().score(persisted_task, response))
+            row = store.load()[0]
+            restored = TrainingCapture.from_dict(row["metadata"]["training_capture"])
+            assert restored.harness == agent_class.name
+            assert len(restored.calls) == 2
+            if agent_class is DeepSeekHarnessAgent:
+                assert restored.calls[0]["harness_request"]["thinking"] == {"type": "disabled"}
+            assert row["response_json"]["native_events"]
+            assert capture["harness"] == agent_class.name
+            assert len(capture["turns"]) == 2
+            assert capture["tokens_native"] is True
+            assert capture["policy_attestation"] == "verified"
+            assert capture["model_identity"]["model_revision"] == "fixture-revision-1"
+            assert capture["turns"][0]["response_token_ids"]
+            assert all(request.get("return_token_ids") for request in requests)
+            assert all(
+                request.get("chat_template_kwargs") == {"enable_thinking": False}
+                for request in requests
+            )
+        finally:
+            agent.teardown()
+
+
+@pytest.mark.parametrize("agent_class", [PiAgent, DeepSeekHarnessAgent])
+def test_real_native_grpo_collector_isolates_samples_and_keeps_behavior_logprobs(agent_class):
+    """The real Pi containers produce a complete, native-token GRPO group."""
+
+    import hashlib
+
+    digest = hashlib.sha256(b"fixture-policy").hexdigest()
+    policy = PolicyIdentity(digest, digest, digest)
+    identity = ModelIdentity("fixture-v1", "fixture-revision-1", digest, digest)
+    plan = SamplingPlan(
+        "grpo-round-001",
+        policy,
+        ("training",),
+        2,
+        8,
+        1.0,
+        17,
+        identity,
+        "policy-step-001",
+        "grpo",
+    )
+    with fixture.model_server(
+        api_key="test-native-secret",
+        native_capture=True,
+        policy_publication="policy-step-001",
+        weights_digest=digest,
+        tokenizer_digest=digest,
+        chat_template_digest=digest,
+    ) as (endpoint, requests):
+        collector = NativeTrainingCollector(agent_class)
+        batch = collector.collect(
+            [BenchmarkTask("training", "Read marker.", None)],
+            plan,
+            {
+                "image": IMAGE,
+                "model": "fixture-v1",
+                "api_base": endpoint.replace("host.containers.internal", "127.0.0.1"),
+                "api_key": "test-native-secret",
+                "timeout": 90,
+            },
+            score=lambda _task, response: float(
+                response.metadata["training_capture"]["sample_index"]
+            ),
+        )
+    assert [sample.sample_index for sample in batch.samples] == [0, 1]
+    assert [sample.reward for sample in batch.samples] == [0.0, 1.0]
+    assert all(
+        turn.behavior_log_probs is not None for sample in batch.samples for turn in sample.turns
+    )
+    assert all(request["return_token_ids"] for request in requests)
+    assert all(request["logprobs"] for request in requests)
+    assert len(requests) == 4

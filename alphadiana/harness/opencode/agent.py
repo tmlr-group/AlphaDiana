@@ -1594,6 +1594,7 @@ class OpenCodeAgent(Agent):
                     self._logprob_capture["top_logprobs"],
                     client_timeout=logprob_proxy_client_timeout,
                     request_overrides=request_overrides or None,
+                    upstream_api_key=self._api_key,
                 )
                 proxy.start()
                 effective_api_base = proxy.proxy_url + "/v1"

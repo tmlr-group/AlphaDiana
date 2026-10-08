@@ -9,6 +9,7 @@ import queue
 import re
 import threading
 import time
+from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -37,6 +38,7 @@ if TYPE_CHECKING:
     from alphadiana.engine.config.experiment_config import ExperimentConfig
     from alphadiana.engine.sandbox.base import Sandbox
     from alphadiana.scorer.base import Scorer
+    from alphadiana.metrics.base import EvaluationMetric
 
 logger = logging.getLogger(__name__)
 OPENCLAW_CONCURRENCY_PER_SANDBOX = 1
@@ -55,6 +57,31 @@ _SECRET_ASSIGNMENT_RE = re.compile(
     + "|".join(re.escape(key) for key in _SECRET_ENV_KEYS)
     + r")=([^\s\"']+|\"[^\"]*\"|'[^']*')"
 )
+
+
+def _measure_observational_metrics(metrics, task, response, score) -> None:
+    """Measure optional metrics without exposing authoritative result objects.
+
+    A metric receives snapshots taken after the primary scorer has completed.
+    This prevents a buggy plugin from mutating the task, response, or score that
+    AlphaDiana persists as the benchmark result. Metric failures remain
+    observations on the real response and never become task failures.
+    """
+    for metric in metrics:
+        try:
+            observation = metric.measure(
+                deepcopy(task),
+                deepcopy(response),
+                deepcopy(score),
+            )
+            measured = observation.to_dict()
+            # Reject unpersistable observations inside the metric boundary so
+            # an optional plugin cannot prevent the primary score being saved.
+            json.dumps(measured, allow_nan=False)
+            response.evaluation_metrics[metric.name] = measured
+        except Exception as metric_exc:  # noqa: BLE001
+            logger.exception("Metric %s failed for %s", metric.name, task.task_id)
+            response.evaluation_metric_errors[metric.name] = str(metric_exc)
 
 
 def _redact_secret_assignments(text: str) -> str:
@@ -689,6 +716,7 @@ class Runner:
         self.agent: Agent | None = None
         self.sandbox: Sandbox | None = None
         self.scorer: Scorer | None = None
+        self.metrics: list[EvaluationMetric] = []
         self.result_store: ResultStore | None = None
         self.report_generator: ReportGenerator | None = None
 
@@ -726,9 +754,9 @@ class Runner:
         """Resolve and instantiate all components from their registries."""
         _validate_stateful_run_policy(self.config)
         _stabilize_openclaw_gateway_token(self.config)
-        from alphadiana.engine.components import register_builtin_components
+        from alphadiana.registry_loader import load_builtin_components
 
-        register_builtin_components()
+        load_builtin_components()
 
         try:
             # Resolve and instantiate benchmark.
@@ -751,6 +779,15 @@ class Runner:
             scorer_cls = ScorerRegistry.get(self.config.scorer_name)
             self.scorer = scorer_cls()
             self.scorer.setup(self.config.scorer_config)
+
+            from alphadiana.metrics.registry import MetricRegistry
+
+            self.metrics = []
+            for metric_spec in self.config.metrics:
+                metric_cls = MetricRegistry.get(str(metric_spec["name"]))
+                metric = metric_cls()
+                metric.setup(dict(metric_spec.get("config", {}) or {}))
+                self.metrics.append(metric)
         except Exception:
             self.teardown()
             raise
@@ -766,6 +803,7 @@ class Runner:
                 "benchmark_name": self.config.benchmark_name,
                 "scorer_name": self.config.scorer_name,
                 "num_samples": getattr(self.config, "num_samples", 1),
+                "metric_names": [metric.name for metric in self.metrics],
             },
         )
         self.report_generator = ReportGenerator()
@@ -813,6 +851,7 @@ class Runner:
             "config_metadata": {
                 "benchmark_config": self.config.benchmark_config,
                 "metadata": self.config.metadata,
+                "metrics": self.config.metrics,
             },
         })
 
@@ -1369,8 +1408,11 @@ class Runner:
                 )
                 _auto_sandbox = None
 
-        isolation_mode = "shared_gateway"
-        if predeployed_sessions:
+        declared_isolation_mode = str(
+            getattr(self.agent, "runtime_isolation_mode", "") or ""
+        ).strip()
+        isolation_mode = declared_isolation_mode or "shared_gateway"
+        if not declared_isolation_mode and predeployed_sessions:
             if fresh_predeployed_mode:
                 isolation_mode = (
                     "partial_fresh_predeployed_pool"
@@ -2171,6 +2213,15 @@ class Runner:
                 )
                 persisted_task = _strip_lifecycle_metadata(runtime_task)
                 score = self.scorer.score(persisted_task, response)
+                # Metrics are read-only observations computed after the primary
+                # scorer. A broken optional metric is recorded but cannot turn
+                # a valid benchmark result into a different score.
+                _measure_observational_metrics(
+                    self.metrics,
+                    persisted_task,
+                    response,
+                    score,
+                )
                 # Store the result.
                 self.result_store.append(persisted_task, response, score, sample_index=sample_index)
                 _record_lifecycle(

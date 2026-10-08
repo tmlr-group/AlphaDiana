@@ -43,7 +43,7 @@ Python 3.10 or newer is required. Container runtimes are optional for direct
 inference; native agent harnesses have their own runtime prerequisites.
 
 ```bash
-git clone https://github.com/tmlr-group/AlphaDiana
+git clone https://github.com/tmlr-group/AlphaDiana.git
 cd AlphaDiana
 python -m venv .venv
 source .venv/bin/activate
@@ -73,6 +73,28 @@ alphadiana run configs/macro_runs/aime2026_directllm_qwen35_27b.yaml \
 
 This DirectLLM path does not require ROCK. A successful provider call writes one
 scored task record; the accuracy depends on the model response and is not fixed.
+
+### Use the Python API
+
+The same evaluation pipeline is available from Python on this branch:
+
+```python
+import alphadiana as ad
+
+agent = ad.agent("direct_llm", version="1.0")
+data = ad.dataset("MathArena/aime_2026", benchmark="aime", max_tasks=3)
+scorer = ad.scorer.create("numeric")
+artifacts = ad.runner(run_id="python_demo").compute(
+    agent=agent, data=data, scorer=scorer,
+)
+ad.analyzer(artifacts).export("figures/python_demo")
+```
+
+This uses the provider environment settings above. Results and execution evidence
+are saved under `results/`; analysis exports include tables and PDF/SVG/PNG figures.
+See [Python API and analysis](docs/getting-started/python-api.md) for reopening,
+rescoring and comparing saved runs. Native harnesses still require their own
+container/runtime configuration.
 
 ### Print a report
 

@@ -7,6 +7,7 @@ import json
 from collections import Counter
 
 from alphadiana.analysis.analyzer import Figure, Measurement
+from alphadiana.analysis.io.status import VALID_SCORE_STATUS
 from alphadiana.analysis.judge import CachedJudge
 
 
@@ -92,7 +93,10 @@ class FailureAnnotations(CachedJudge):
             counts = Counter()
             sources = []
             for record in source.records():
-                if record.get("correct") is True:
+                if (
+                    record.get("score_status") == VALID_SCORE_STATUS
+                    and record.get("correct") is True
+                ):
                     continue
                 eligible += 1
                 path = source.file(record, "normalized_trace")
@@ -100,13 +104,10 @@ class FailureAnnotations(CachedJudge):
                     missing += 1
                     continue
                 steps = json.loads(path.read_text())["steps"]
+                # Content alone omits tool arguments, result linkage/error flags
+                # and thinking. Retain those fields in both judgment and cache identity.
                 trace = "\n".join(
-                    f"{step.get('role', step.get('type', 'step'))}: "
-                    + (
-                        step.get("content")
-                        if isinstance(step.get("content"), str)
-                        else json.dumps(step, ensure_ascii=False)
-                    )
+                    json.dumps(step, ensure_ascii=False, sort_keys=True)
                     for step in steps
                 )
                 if not trace.strip():

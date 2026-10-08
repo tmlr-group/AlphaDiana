@@ -224,6 +224,7 @@ class ExperimentConfig:
     strict_report: bool = False
     strict_isolation: bool = False
     metadata: dict = field(default_factory=dict)
+    metrics: list[dict] = field(default_factory=list)
 
     def __post_init__(self):
         if not self.run_id:
@@ -279,4 +280,5 @@ class ExperimentConfig:
             strict_report=data.get("strict_report", False),
             strict_isolation=data.get("strict_isolation", False),
             metadata=data.get("metadata", {}),
+            metrics=data.get("metrics", []),
         )

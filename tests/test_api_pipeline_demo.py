@@ -119,12 +119,14 @@ def _run_pipeline(output):
             "output_dir": str(output / "results"),
             "run_id": "demo",
             "strict_report": True,
+            "metrics": [{"name": "answer_length", "config": {"source": "answer"}}],
         }
         first = ad.runner(**options).compute(agent=agent, data=data, scorer=scorer)
         assert len(server.calls) == 3
         before = first.path.read_bytes()
         original_rows = first.records()
         assert sum(row["correct"] for row in original_rows) == 2
+        assert all(row["evaluation_metrics"]["answer_length"]["value"] == 1 for row in original_rows)
         old_files = {
             first.file(row, key): hashlib.sha256(
                 first.file(row, key).read_bytes()

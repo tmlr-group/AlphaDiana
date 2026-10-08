@@ -108,8 +108,8 @@ class Artifacts:
         return BenchmarkTask(
             record["task_id"],
             record["problem"],
-            record.get("ground_truth"),
-            record.get("task_metadata", {}),
+            deepcopy(record.get("ground_truth")),
+            deepcopy(record.get("task_metadata", {})),
             attachments,
         )
 
@@ -167,7 +167,9 @@ class Artifacts:
                 for f in fields(AgentResponse)
                 if f.name in record and f.name != "answer"
             }
-            response = AgentResponse(answer=record.get("predicted"), **response_data)
+            response = AgentResponse(
+                answer=deepcopy(record.get("predicted")), **response_data
+            )
             judgment = implementation.rescore(task, response, artifacts=self)
             derived = dict(record)
             derived["artifact_origin"] = str(self.artifact_root(record))
@@ -186,11 +188,15 @@ class Artifacts:
                 "original_scorer": record.get("scorer_name"),
                 "original_score_status": record.get("score_status"),
                 "original_score_metadata": record.get("score_metadata"),
+                "original_error": deepcopy(record.get("error")),
                 "scorer_predicted": judgment.predicted,
                 "environment_allowed": allow_environment,
                 "created_at": datetime.now(timezone.utc).isoformat(),
             }
-            # A new score does not erase execution failures in source metadata.
+            # The new judgment supersedes a scoring error, not a solver failure.
+            # Classify the error itself: solver metadata may mask its score status.
+            if infer_score_status({"error": record.get("error")}) == "scorer_error":
+                derived.pop("error", None)
             derived.pop("score_status", None)
             derived["score_status"] = infer_score_status(derived)
             results.append(derived)

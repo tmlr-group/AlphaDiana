@@ -14,11 +14,13 @@ def normalize_trace(
     *,
     final_output: str,
 ) -> tuple[list[dict], list[dict], dict, dict]:
-    """Return trajectories, complete observed usage and explicit coverage.
+    """Return trajectories and observed usage with explicit coverage limits.
 
     Native 0.6.9 emits event_type/payload, whereas legacy traces use the shared
     message format. Raw records remain persisted by the caller. Native event IDs
     identify observations; they are not fabricated provider tool-call IDs.
+    The native log is rolling and carries no whole-run retention receipt, so
+    its observed token counts are diagnostic metadata, never run totals.
     """
     native = [row for row in records if "event_type" in row]
     if not native:
@@ -41,7 +43,10 @@ def normalize_trace(
             continue
         step = None
         if kind == "llm_response":
-            incoming, outgoing = payload.get("input_tokens"), payload.get("output_tokens")
+            incoming, outgoing = (
+                payload.get("input_tokens"),
+                payload.get("output_tokens"),
+            )
             if all(type(value) is int and value >= 0 for value in (incoming, outgoing)):
                 observed_usage += 1
                 inputs += incoming
@@ -90,17 +95,23 @@ def normalize_trace(
 
     if final_output.strip() and not native_final_seen:
         last = trajectory[-1] if trajectory else {}
-        if last.get("role") != "assistant" or last.get("type") not in {None, "answer"} or str(
-            last.get("content", "")
-        ).strip() != final_output.strip():
+        if (
+            last.get("role") != "assistant"
+            or last.get("type") not in {None, "answer"}
+            or str(last.get("content", "")).strip() != final_output.strip()
+        ):
             trajectory.append({"role": "assistant", "content": final_output.strip()})
-    complete = (
-        observed_usage > 0
-        and observed_usage == counts["llm_response"] == counts["llm_request"]
-    )
-    usage = (
-        {"prompt_tokens": inputs, "completion_tokens": outputs, "total_tokens": inputs + outputs}
-        if complete else {}
+    # Balanced counts (or a final event) cannot prove that earlier complete
+    # pairs/turns were retained. Publish totals only when whole-run capture can
+    # be independently verified; the current native trace has no such evidence.
+    observed_token_usage = (
+        {
+            "prompt_tokens": inputs,
+            "completion_tokens": outputs,
+            "total_tokens": inputs + outputs,
+        }
+        if observed_usage
+        else {}
     )
     coverage = {
         "native_records": len(native),
@@ -108,6 +119,8 @@ def normalize_trace(
         "unmapped_event_counts": dict(unknown),
         "non_native_records": len(records) - len(native),
         "responses_with_usage": observed_usage,
-        "usage_complete": complete,
+        "observed_token_usage": observed_token_usage,
+        "usage_complete": False,
+        "usage_incomplete_reason": "whole_run_coverage_unverified",
     }
-    return trajectory, reasoning, usage, coverage
+    return trajectory, reasoning, {}, coverage

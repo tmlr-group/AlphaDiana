@@ -34,6 +34,9 @@ agent:
     api_key: ${OPENAI_API_KEY}
     system_prompt: Solve the task using available tools.
     timeout: 120
+    # The endpoint limit is 49152; code-heavy prompts can exceed Pi's estimate
+    # by 8192 tokens, so retain additional headroom beyond that observed skew.
+    context_window: 40000
 benchmark:
   name: custom
   config:
@@ -46,12 +49,16 @@ scorer:
 ```
 
 Only documented fields are accepted: image, model, api_base, api_key,
-system_prompt, timeout, max_tokens, reasoning, runtime (podman only), and the
+system_prompt, timeout, max_tokens, context_window, reasoning, runtime (podman only), and the
 candidate fields below. `_execution_id` is reserved for the evaluator. Unsupported
 model reasoning settings fail in the native harness. DeepSeek uses its official
 `sdk-minimal` profile and `deepseek-official` adapter; an endpoint must implement
 that adapter's compatible chat protocol. Pi uses an explicit OpenAI-compatible
-provider. No host credentials/configuration are discovered by the solvers.
+provider. `context_window` is Pi-only; DeepSeek rejects it because its SDK path
+does not expose this setting. Set `context_window` below the serving endpoint's model limit by a
+safety margin appropriate for client/server tokenizer skew, so Pi compacts
+multi-turn sessions before `prompt + max_tokens` exceeds the provider limit.
+No host credentials/configuration are discovered by the solvers.
 
 ## Candidate modules
 
@@ -80,6 +87,14 @@ valid scored zero, except for the explicitly supported task deadline described
 below. Cleanup failures also raise.
 Pi role/content parsing is adapted from PR #78 at
 198d4db0638a69e57a6de16cf2898ab3420cbe2a without Harbor reward logic.
+
+For training-capable SFT or GRPO episodes, add the `training` block described in
+[Pi native-token capture](pi-training.md). The host-side proxy captures native
+prompt/output IDs and (for GRPO) behavior log probabilities from the configured
+serving endpoint. It sends Pi only a normal chat-completion projection; no
+answer re-tokenization is used. Every sample receives a fresh capture endpoint,
+and any missing ID, policy attestation, usage mismatch, context reset or
+incomplete termination enters the native error path.
 
 ## Self-validation
 

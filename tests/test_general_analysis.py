@@ -244,6 +244,93 @@ def test_failure_incidence_overlapping_labels_and_missing_evidence(tmp_path):
             labels.measure([artifacts])
 
 
+def test_failure_annotations_include_invalid_runs_with_correct_answers(tmp_path):
+    artifacts = source(
+        tmp_path,
+        [
+            record(
+                "interrupted",
+                True,
+                metadata={"failure_reason": "provider_error"},
+                artifact_manifest={"files": {"normalized_trace": "trace.json"}},
+            ),
+            record("completed", True),
+        ],
+        {
+            "artifacts/trace.json": json.dumps(
+                {
+                    "steps": [
+                        {"role": "assistant", "content": "Provider connection failed"}
+                    ]
+                }
+            )
+        },
+    )
+    with FailureAnnotations(**judge_options(tmp_path)) as labels:
+        labels.client.chat.completions.create = lambda **kw: response(
+            {"labels": [{"code": "OR-2", "quote": "Provider connection failed"}]}
+        )
+        result = labels.measure([artifacts])
+    assert result.coverage["run"]["eligible"] == 1
+    assert result.coverage["run"]["annotated"] == 1
+    assert result.tables["annotations"][0]["task_id"] == "interrupted"
+
+
+def test_failure_annotations_preserve_tool_and_reasoning_evidence(tmp_path):
+    from alphadiana.analysis.io.result_store import ResultStore
+    from alphadiana.benchmarks.base import BenchmarkTask
+    from alphadiana.harness.base import AgentResponse
+    from alphadiana.scorer.base import ScoreResult
+
+    sources = []
+    for index, command in enumerate(["python missing_a.py", "python missing_b.py"]):
+        store = ResultStore(str(tmp_path), f"attempt-{index}")
+        store.append(
+            BenchmarkTask("task", "Run the supplied script", "done"),
+            AgentResponse(
+                "failed",
+                trajectory=[
+                    {
+                        "role": "assistant",
+                        "content": "I will run the script.",
+                        "thinking": "The script is named main.py.",
+                        "tool_calls": [
+                            {"id": "call-1", "tool": "bash", "input": {"command": command}}
+                        ],
+                    },
+                    {
+                        "role": "tool_result",
+                        "type": "tool_result",
+                        "tool_use_id": "call-1",
+                        "content": "File not found",
+                        "is_error": True,
+                    },
+                ],
+            ),
+            ScoreResult(False, 0.0, "done", "failed"),
+        )
+        sources.append(Artifacts(store.path))
+
+    requests = []
+    with FailureAnnotations(**judge_options(tmp_path)) as labels:
+        def classify(**kwargs):
+            evidence = json.loads(kwargs["messages"][-1]["content"])
+            requests.append(evidence)
+            command = ["python missing_a.py", "python missing_b.py"][len(requests) - 1]
+            assert command in evidence["trace"]
+            assert "The script is named main.py." in evidence["trace"]
+            assert '"tool_use_id": "call-1"' in evidence["trace"]
+            assert '"is_error": true' in evidence["trace"]
+            return response({"labels": [{"code": "TE-2", "quote": command}]})
+
+        labels.client.chat.completions.create = classify
+        result = labels.measure(sources)
+        assert len(requests) == 2  # Different calls must not share an annotation cache entry.
+        assert len({row["annotation_sha256"] for row in result.tables["annotations"]}) == 2
+        assert labels.measure(sources).tables == result.tables
+        assert len(requests) == 2
+
+
 def test_action_percentages_and_transitions_stay_within_samples(tmp_path):
     trace = json.dumps(
         {

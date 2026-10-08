@@ -11,6 +11,10 @@ dependencies = [
     "pyyaml>=6.0",
     "click>=8.0",
     "scipy>=1.10",
+    "datasets>=2.0",
+    "openai>=1.0",
+    "httpx>=0.24",
+    "requests>=2.28",
 ]
 
 [project.optional-dependencies]
@@ -28,6 +32,7 @@ rock = [
     "nacos-sdk-python==2.0.9",
 ]
 all = [
+    "matplotlib>=3.7,<4",
     "datasets>=2.0",
     "tomli>=2.0; python_version<'3.11'",
     "openai>=1.0",
@@ -48,6 +53,7 @@ where = ["."]
 include = ["alphadiana*"]
 
 [tool.setuptools.package-data]
+"alphadiana.benchmarks.terminal_bench2.harness" = ["assets/*.ts", "deploy/*.yaml"]
 "alphadiana.harness._internal" = ["deploy/*"]
 
 "alphadiana.harness.openclaw" = ["deploy/*.json", "deploy/*.yaml", "deploy/*.js", "deploy/Dockerfile*"]

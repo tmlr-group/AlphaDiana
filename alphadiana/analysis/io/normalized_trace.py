@@ -168,6 +168,10 @@ def build_normalized_trace(
         "metrics": {
             "wall_time_sec": float(getattr(response, "wall_time_sec", 0.0) or 0.0),
             "token_usage": deepcopy(getattr(response, "token_usage", {}) or {}),
+            "evaluation_metrics": deepcopy(getattr(response, "evaluation_metrics", {}) or {}),
+            "evaluation_metric_errors": deepcopy(
+                getattr(response, "evaluation_metric_errors", {}) or {}
+            ),
         },
         "refs": refs,
     }
