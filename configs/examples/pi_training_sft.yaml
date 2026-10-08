@@ -1,0 +1,41 @@
+# Native-token SFT capture. Replace every digest and set the serving endpoint.
+run_id: pi-training-sft
+num_samples: 1
+output_dir: ./results/pi-training-sft
+agent:
+  name: pi
+  version: model-deployment-v1
+  config:
+    image: ${HARNESS_IMAGE}
+    model: ${OPENAI_MODEL_NAME}
+    api_base: ${OPENAI_BASE_URL}
+    api_key: ${OPENAI_API_KEY}
+    timeout: 120
+    training:
+      enabled: true
+      algorithm: sft
+      round_id: sft-round-001
+      task_ids: [addition]
+      group_size: 1
+      max_new_tokens: 128
+      temperature: 0.7
+      seed: 17
+      policy_publication: ${POLICY_PUBLICATION}
+      policy:
+        weights_digest: ${POLICY_WEIGHTS_DIGEST}
+        tokenizer_digest: ${POLICY_TOKENIZER_DIGEST}
+        chat_template_digest: ${POLICY_TEMPLATE_DIGEST}
+      model_identity:
+        model_name: ${OPENAI_MODEL_NAME}
+        model_revision: ${MODEL_REVISION}
+        tokenizer_digest: ${POLICY_TOKENIZER_DIGEST}
+        chat_template_digest: ${POLICY_TEMPLATE_DIGEST}
+benchmark:
+  name: custom
+  config:
+    problems:
+      - id: addition
+        problem: What is 2 + 3? Return only the number.
+        answer: '5'
+scorer:
+  name: exact_match

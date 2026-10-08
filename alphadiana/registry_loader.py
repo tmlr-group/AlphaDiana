@@ -22,6 +22,8 @@ def load_builtin_agents() -> None:
     import alphadiana.benchmarks.terminal_bench2.harness.pi_harbor  # noqa: F401
     import alphadiana.benchmarks.terminal_bench2.harness.zeroclaw  # noqa: F401
     import alphadiana.harness.direct_llm  # noqa: F401
+    import alphadiana.harness.pi.agent  # noqa: F401
+    import alphadiana.harness.deepseek_harness.agent  # noqa: F401
     import alphadiana.harness.openclaw.agent  # noqa: F401
     import alphadiana.harness.opencode.agent  # noqa: F401
     import alphadiana.harness.zeroclaw.agent  # noqa: F401

@@ -29,6 +29,7 @@ agent:
     opencode_bin: string
     zeroclaw_bin: string
     api_key: string
+    training: object                 # Pi native-token SFT/GRPO capture contract; see docs/harnesses/pi-training.md
     dockerhub_repo: string           # `swebench_docker` image repo prefix (default: "jefzda/sweap-images")
     image: string                    # Explicit SWE-bench image override
     output_dir: string               # Local artifact directory for Docker-backed agents

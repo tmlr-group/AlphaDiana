@@ -46,7 +46,5 @@ where = ["."]
 include = ["alphadiana*"]
 
 [tool.setuptools.package-data]
-"alphadiana.benchmarks.terminal_bench2.harness" = [
-    "assets/*.ts",
-    "deploy/*.yaml",
-]
+"alphadiana.benchmarks.terminal_bench2.harness" = ["assets/*.ts", "deploy/*.yaml"]
+"alphadiana.harness._internal" = ["deploy/*"]
