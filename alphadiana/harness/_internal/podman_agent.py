@@ -26,6 +26,7 @@ FIELDS = frozenset(
         "system_prompt",
         "timeout",
         "max_tokens",
+        "context_window",
         "reasoning",
         "candidate_root",
         "candidate_entry",
@@ -67,7 +68,7 @@ def tree_digest(root: Path) -> str:
     return digest.hexdigest()
 
 
-def validate_config(config: dict) -> None:
+def validate_config(config: dict, *, harness: str = "pi") -> None:
     if set(config) - FIELDS:
         raise ValueError("Unsupported native Podman harness configuration fields")
     if config.get("runtime", "podman") != "podman":
@@ -91,6 +92,16 @@ def validate_config(config: dict) -> None:
         type(config["max_tokens"]) is not int or config["max_tokens"] < 1
     ):
         raise ValueError("max_tokens must be a positive integer")
+    if harness != "pi" and "context_window" in config:
+        raise ValueError("context_window is supported only by Pi")
+    if "context_window" in config and (
+        type(config["context_window"]) is not int or config["context_window"] < 1
+    ):
+        raise ValueError("context_window must be a positive integer")
+    if harness == "pi" and config.get("context_window", 128000) <= config.get("max_tokens", 4096):
+        raise ValueError(
+            "context_window must leave room for the prompt beyond max_tokens"
+        )
     if "system_prompt" in config and not isinstance(config["system_prompt"], str):
         raise ValueError("system_prompt must be a string")
     if "reasoning" in config and (
@@ -171,7 +182,7 @@ class NativePodmanAgent(Agent):
         return NativeCapture
 
     def setup(self, config: dict) -> None:
-        validate_config(config)
+        validate_config(config, harness=self.name)
         if config.get("training") is not None and not self.supports_training_capture:
             raise ValueError(
                 "native-token training capture is unsupported by this harness"
@@ -192,7 +203,7 @@ class NativePodmanAgent(Agent):
             raise ValueError(
                 "This agent owns Podman isolation; an additional sandbox is unsupported"
             )
-        validate_config(self.config)
+        validate_config(self.config, harness=self.name)
         name = f"diana-{self.name.replace('_', '-')}-{uuid.uuid4().hex}"
         started = time.monotonic()
         timeout = float(self.config.get("timeout", 120))

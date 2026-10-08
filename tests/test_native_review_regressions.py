@@ -17,10 +17,14 @@ from alphadiana.harness.base import AgentResponse
 from alphadiana.harness.pi.agent import PiAgent
 from alphadiana.scorer.numeric import NumericScorer
 
-CONFIG = {"image": "sha256:" + "a" * 64, "model": "fixture", "api_base": "http://fixture/v1"}
+CONFIG = {
+    "image": "sha256:" + "a" * 64,
+    "model": "fixture",
+    "api_base": "http://fixture/v1",
+}
 
 
-def bridge_response(tmp_path, monkeypatch, *, stderr=""):
+def bridge_response(tmp_path, monkeypatch, *, stderr="", config=None):
     path = Path(__file__).parents[1] / "alphadiana/harness/_internal/deploy/bridge.py"
     spec = importlib.util.spec_from_file_location("bridge_regression", path)
     bridge = importlib.util.module_from_spec(spec)
@@ -38,16 +42,19 @@ def bridge_response(tmp_path, monkeypatch, *, stderr=""):
         bridge.subprocess,
         "run",
         lambda *a, **kw: SimpleNamespace(
-            stdout=json.dumps({"type": "message_end", "message": message}), stderr=stderr
+            stdout=json.dumps({"type": "message_end", "message": message}),
+            stderr=stderr,
         ),
     )
-    return bridge.pi_run({"config": CONFIG, "problem": "2+2?"})
+    return bridge.pi_run({"config": config or CONFIG, "problem": "2+2?"})
 
 
 def test_callback_failure_rejects_successful_model_answer(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="extension failed"):
         bridge_response(
-            tmp_path, monkeypatch, stderr="Extension error (session_start): candidate failed\n"
+            tmp_path,
+            monkeypatch,
+            stderr="Extension error (session_start): candidate failed\n",
         )
 
 
@@ -57,10 +64,26 @@ def test_pi_thinking_survives_result_and_trace_persistence(tmp_path, monkeypatch
     store = ResultStore(str(tmp_path / "results"), "review")
     store.append(task, response, NumericScorer().score(task, response))
     row = store.load()[0]
-    assert row["reasoning_trajectory"][0]["content"] == "Check the sum before answering."
-    trace = json.loads((store.artifacts_dir / "reasoning/agent/normalized_trace.json").read_text())
+    assert (
+        row["reasoning_trajectory"][0]["content"] == "Check the sum before answering."
+    )
+    trace = json.loads(
+        (store.artifacts_dir / "reasoning/agent/normalized_trace.json").read_text()
+    )
     assert trace["reasoning_steps"][0]["content"] == "Check the sum before answering."
     assert store.completed_task_ids() == {"reasoning"}
+
+
+def test_pi_model_uses_explicit_provider_context_window(tmp_path, monkeypatch):
+    bridge_response(
+        tmp_path,
+        monkeypatch,
+        config={**CONFIG, "context_window": 49152, "max_tokens": 32768},
+    )
+    payload = json.loads((tmp_path / "home/.pi/agent/models.json").read_text())
+    model = payload["providers"]["diana"]["models"][0]
+    assert model["contextWindow"] == 49152
+    assert model["maxTokens"] == 32768
 
 
 class Runtime:
@@ -74,7 +97,9 @@ class Runtime:
         self.mount = Path(kwargs["volumes"][0].split(":")[0])
 
     def start_attached(self, *args, **kwargs):
-        return SimpleNamespace(stdout=json.dumps({"answer": "4", "finish_reason": "stop"}))
+        return SimpleNamespace(
+            stdout=json.dumps({"answer": "4", "finish_reason": "stop"})
+        )
 
     def stop(self, *args, **kwargs):
         pass
@@ -87,8 +112,12 @@ def test_nested_public_attachments_ignore_restrictive_umask(monkeypatch):
     class Inspect(Runtime):
         def start_attached(self, *args, **kwargs):
             for path in [self.mount, *self.mount.rglob("*")]:
-                assert path.stat().st_mode & 0o777 == (0o755 if path.is_dir() else 0o644)
-            assert (self.mount / "attachments/nested/input.txt").read_bytes() == b"public input"
+                assert path.stat().st_mode & 0o777 == (
+                    0o755 if path.is_dir() else 0o644
+                )
+            assert (
+                self.mount / "attachments/nested/input.txt"
+            ).read_bytes() == b"public input"
             return super().start_attached(*args, **kwargs)
 
     monkeypatch.setattr(native, "PodmanCLI", Inspect)
@@ -116,7 +145,9 @@ def test_only_owned_task_deadline_is_completed_zero(tmp_path, monkeypatch, phase
     class Deadline(Runtime):
         def create(self, *args, **kwargs):
             if phase == "create":
-                raise PodmanError(PodmanResult(("podman", "create"), 124, "", "timeout"))
+                raise PodmanError(
+                    PodmanResult(("podman", "create"), 124, "", "timeout")
+                )
             return super().create(*args, **kwargs)
 
         def start_attached(self, *args, **kwargs):
@@ -124,7 +155,10 @@ def test_only_owned_task_deadline_is_completed_zero(tmp_path, monkeypatch, phase
                 raise PodmanError(PodmanResult(("podman", "start"), 124, "", "timeout"))
             raise PodmanError(
                 PodmanResult(
-                    ("podman", "start"), 1, "", '{"error":"TimeoutError","stage":"execution"}'
+                    ("podman", "start"),
+                    1,
+                    "",
+                    '{"error":"TimeoutError","stage":"execution"}',
                 )
             )
 
@@ -184,9 +218,13 @@ def test_captured_deepseek_usage_and_tools_survive_persistence(tmp_path):
     store.append(task, response, NumericScorer().score(task, response))
     row = store.load()[0]
     assert row["token_usage"] == usage
-    trace = json.loads((store.artifacts_dir / "tools/agent/normalized_trace.json").read_text())
+    trace = json.loads(
+        (store.artifacts_dir / "tools/agent/normalized_trace.json").read_text()
+    )
     calls = [call for step in trace["steps"] for call in step.get("tool_calls", [])]
-    results = [result for step in trace["steps"] for result in step.get("tool_results", [])]
+    results = [
+        result for step in trace["steps"] for result in step.get("tool_results", [])
+    ]
     assert len(calls) == len(results) == 1
     assert calls[0]["id"] == results[0]["tool_use_id"] == "fixture_call"
     assert calls[0]["tool"] == "bash" and "command" in calls[0]["input"]
@@ -198,7 +236,9 @@ def test_captured_deepseek_usage_and_tools_survive_persistence(tmp_path):
 def test_token_limit_is_scored_instead_of_protocol_error(tmp_path, monkeypatch, answer):
     class Length(Runtime):
         def start_attached(self, *args, **kwargs):
-            return SimpleNamespace(stdout=json.dumps({"answer": answer, "finish_reason": "length"}))
+            return SimpleNamespace(
+                stdout=json.dumps({"answer": answer, "finish_reason": "length"})
+            )
 
     monkeypatch.setattr(native, "PodmanCLI", Length)
     agent = PiAgent()
