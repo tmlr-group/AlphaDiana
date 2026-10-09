@@ -1,0 +1,36 @@
+{
+  "source_commit": "26da77dd03f3977bc3cda77bb96f6bd77ee37636",
+  "source_sha256": "4f323a34db4b247b2f1bc7dcf104808891d4cfb24b7f9cb7e0f986812e5d53c0",
+  "captured_records": [
+    {
+      "task_id": "mmmu_pro_validation_Design_19",
+      "problem": "\n\n(A) A memory\n(B) A transition\n(C) An opportunity\n(D) A common experience\n(E) A journey\n(F) A warning\n(G) A clock\n(H) Time waits for no man\n(I) An obstacle\n(J) A mystery",
+      "ground_truth": "H",
+      "predicted": "\\text{(H) Time waits for no man}",
+      "metadata": {
+        "question_type": "multiple-choice",
+        "num_options": 10
+      }
+    },
+    {
+      "task_id": "mmmu_pro_test_History_1",
+      "problem": "\n\n(A) Political instability leading to population decline\n(B) The spread of pathogens across the Silk Road\n(C) Development of new trade routes\n(D) Climate change affecting the Silk Road\n(E) Migrations to areas of Central Asia for resettlement\n(F) Technological advancements in transportation\n(G) Invasions by Mongol tribes\n(H) Large-scale famine due to crop failures\n(I) Economic prosperity and population growth\n(J) Rise of religious conflicts along the Silk Road",
+      "ground_truth": "B",
+      "predicted": "\\text{(B) The spread of pathogens across the Silk Road}",
+      "metadata": {
+        "question_type": "multiple-choice",
+        "num_options": 10
+      }
+    },
+    {
+      "task_id": "mmmu_pro_test_Art_113",
+      "problem": "\n\n(A) James Irvine\n(B) John Duncan\n(C) Gavin Hamilton\n(D) David Gauld\n(E) Arthur Melville\n(F) Francis Cadell\n(G) Mary Cameron\n(H) John Lavery\n(I) Samuel Peploe\n(J) William York Macgregor",
+      "ground_truth": "A",
+      "predicted": "\\text{(H) John Lavery}",
+      "metadata": {
+        "question_type": "multiple-choice",
+        "num_options": 10
+      }
+    }
+  ]
+}
