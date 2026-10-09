@@ -75,3 +75,22 @@ def test_declared_official_test_report_must_exist_before_accepting_zero(tmp_path
     result = owner._run_verifier_and_read_reward(runtime)
     assert result.status == expected_status
     assert result.reward == ('0' if expected_status == 'ok' else None)
+
+
+def test_container_owned_reward_directory_need_not_be_host_writable(tmp_path, monkeypatch):
+    owner = TerminalBench2ContainerMixin()
+    owner._setup_container_config({'container_engine': 'docker'})
+    runtime = SimpleNamespace(logs_dir=tmp_path, container_id='fixture', task=SimpleNamespace(task_id='task', metadata={}))
+    verifier = tmp_path / 'verifier'
+    verifier.mkdir()
+    monkeypatch.setattr(owner, '_probe_running_verifier', lambda container_id: (False, 'ok'))
+    def run_tests(container_id, timeout_sec):
+        (verifier / 'reward.txt').write_text('0')
+        verifier.chmod(0o500)
+        return '7 failed in 0.09s'
+    monkeypatch.setattr(owner, '_run_tests', run_tests)
+    try:
+        result = owner._run_verifier_and_read_reward(runtime)
+        assert result.status == 'ok' and result.reward == '0'
+    finally:
+        verifier.chmod(0o700)

@@ -1019,8 +1019,8 @@ class TerminalBench2ContainerMixin:
                 )
 
         test_output = self._run_tests(runtime.container_id, timeout_sec)
-        verifier_output_path.mkdir(parents=True, exist_ok=True)
-        (verifier_output_path / "test-output.txt").write_text(test_output, encoding="utf-8")
+        # The container may create /logs/verifier as root. The host owns logs_dir.
+        (runtime.logs_dir / "verifier-test-output.txt").write_text(test_output, encoding="utf-8")
         reward = self._read_reward_if_exists(runtime.logs_dir, runtime.task.task_id)
         if not self._verifier_results_ready(runtime):
             status, reward = "bootstrap_error", None
