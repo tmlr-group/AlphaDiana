@@ -60,6 +60,7 @@ class CachedJudge:
             "evidence": evidence,
             "extra_body": self.extra_body,
             "response_format": self.response_format,
+            "user_instruction": "Respond with a JSON object.\n",
         }
         request[self.token_limit_parameter] = max_tokens
         if self.temperature is not None:
@@ -86,7 +87,10 @@ class CachedJudge:
                 extra_body=self.extra_body,
                 messages=[
                     {"role": "system", "content": prompt},
-                    {"role": "user", "content": json.dumps(evidence)},
+                    {
+                        "role": "user",
+                        "content": request["user_instruction"] + json.dumps(evidence),
+                    },
                 ],
             )
             try:

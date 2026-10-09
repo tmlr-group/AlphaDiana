@@ -55,7 +55,7 @@ def test_default_llm_chooses_boundary_one_call_and_never_reads_fixed_targets(tmp
 
         def create(**kw):
             calls.append(kw)
-            evidence = json.loads(kw["messages"][1]["content"])
+            evidence = json.loads(kw["messages"][1]["content"].split("\n", 1)[1])
             assert "SECRET GOLD" not in str(evidence)
             # A model-selected boundary inside one unbroken source paragraph.
             return response(
@@ -125,7 +125,7 @@ def test_tools_thinking_and_repeated_events_keep_order_and_observations_are_cont
     with ActionAnnotations(**judge_options(tmp_path)) as plugin:
 
         def create(**kw):
-            evidence = json.loads(kw["messages"][1]["content"])
+            evidence = json.loads(kw["messages"][1]["content"].split("\n", 1)[1])
             assert any(
                 b["text"] == "error" and not b["target"] for b in evidence["sources"]
             )
@@ -194,7 +194,7 @@ def test_windowing_preserves_source_coverage_and_cache(tmp_path):
 
         def create(**kw):
             calls.append(kw)
-            return response(whole_blocks(json.loads(kw["messages"][1]["content"])))
+            return response(whole_blocks(json.loads(kw["messages"][1]["content"].split("\n", 1)[1])))
 
         plugin.client.chat.completions.create = create
         measured = plugin.measure([artifacts])

@@ -37,6 +37,7 @@ def test_provider_controls_are_explicit_and_part_of_cache_identity(tmp_path):
         assert "temperature" not in requests[0]
         assert "max_tokens" not in requests[0]
         assert requests[0]["max_completion_tokens"] == 2048
+        assert requests[0]["messages"][1]["content"].startswith("Respond with a JSON object.\n")
         cached = json.loads((tmp_path / (digest + ".json")).read_text())
         assert "temperature" not in cached["request"]
         assert cached["request"]["max_completion_tokens"] == 2048
