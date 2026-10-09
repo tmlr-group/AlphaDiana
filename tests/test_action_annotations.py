@@ -11,6 +11,7 @@ from alphadiana.analysis.action_protocol import request_for, validate_response
 
 def test_annotations_cache_exact_request_and_reject_invalid_labels(tmp_path):
     annotator = ActionAnnotations(
+        protocol="human-protocol-v2",
         model="fixture",
         model_version="revision-1",
         base_url="http://127.0.0.1:1/v1",
@@ -81,6 +82,7 @@ def test_explicit_response_schema_is_detached_and_part_of_cache_identity(tmp_pat
         },
     }
     configured = ActionAnnotations(
+        protocol="human-protocol-v2",
         model="fixture",
         model_version="revision-1",
         base_url="http://127.0.0.1:1/v1",
@@ -89,6 +91,7 @@ def test_explicit_response_schema_is_detached_and_part_of_cache_identity(tmp_pat
         response_format=schema,
     )
     default = ActionAnnotations(
+        protocol="human-protocol-v2",
         model="fixture",
         model_version="revision-1",
         base_url="http://127.0.0.1:1/v1",

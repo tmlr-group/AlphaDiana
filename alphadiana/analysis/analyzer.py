@@ -7,23 +7,19 @@ harness internals or recompute statistics; every figure has its plotted data.
 from __future__ import annotations
 
 import hashlib
-import itertools
 import os
 from contextlib import ExitStack
-from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
-from alphadiana.analysis.action_events import extract_action_event_rows
 from alphadiana.analysis.io.status import VALID_SCORE_STATUS
 from alphadiana.analysis.resource_usage import (
     DEFAULT_USAGE_EXTRACTORS,
     UsageExtractor,
     measured_usage,
 )
-from alphadiana.analysis.result_reader import RunBundle
 from alphadiana.analysis.reliability import compute_reliability_summary
 from alphadiana.artifacts import Artifacts
 
@@ -84,7 +80,7 @@ class ExecutionMetrics:
         self.usage_extractors = tuple(usage_extractors)
 
     def measure(self, artifacts: Sequence[Artifacts]) -> Measurement:
-        summary, samples, actions, transitions, reliability = [], [], [], [], []
+        summary, samples, reliability = [], [], []
         coverage = {}
         for source in artifacts:
             records = source.records()
@@ -168,35 +164,6 @@ class ExecutionMetrics:
                     else None,
                 }
             )
-            bundle = RunBundle(
-                source.path.parent,
-                label,
-                source.path,
-                source.path.parent / label,
-                manifest,
-                records,
-                {},
-            )
-            harness = manifest.get(
-                "agent_name", records[0].get("agent_name", "") if records else ""
-            )
-            event_rows = extract_action_event_rows(bundle, harness=harness)
-            # Existing action extractor exposes strict versus heuristic provenance.
-            for event in event_rows:
-                event["run"] = label
-            actions.extend(event_rows)
-            counts = Counter()
-            sequences: dict[tuple, list[str]] = {}
-            for event in event_rows:
-                sequences.setdefault(
-                    (event["task_id"], event["sample_index"]), []
-                ).append(event["canonical_action"])
-            for sequence in sequences.values():
-                counts.update(itertools.pairwise(sequence))
-            transitions.extend(
-                {"run": label, "source": a, "target": b, "count": count}
-                for (a, b), count in counts.items()
-            )
             coverage[label] = {
                 "requested": expected,
                 "observed": len(records),
@@ -204,10 +171,8 @@ class ExecutionMetrics:
                 "missing_samples": expected - len(records),
                 "tokens_observed": len(tokens),
                 "time_observed": len(times),
-                "action_events": len(event_rows),
-                "action_labeling": "existing deterministic extractor; heuristic labels are marked",
+                "action_labeling": "not run; enable judge=True for LLM segmentation and labels",
             }
-        composition = Counter((row["run"], row["canonical_action"]) for row in actions)
         figures = [
             Figure(
                 "reliability",
@@ -271,28 +236,6 @@ class ExecutionMetrics:
                 "Seconds / correct",
             ),
             Figure(
-                "action_composition",
-                "action_composition",
-                "bar",
-                "action",
-                "count",
-                "Action composition",
-                "Action",
-                "Events",
-                "run",
-            ),
-            Figure(
-                "action_transitions",
-                "action_transitions",
-                "heatmap",
-                "target",
-                "source",
-                "Consecutive action transitions",
-                "Next action",
-                "Previous action",
-                "run",
-            ),
-            Figure(
                 "entropy_tokens",
                 "samples",
                 "scatter",
@@ -309,12 +252,7 @@ class ExecutionMetrics:
                 "performance": summary,
                 "reliability": reliability,
                 "samples": samples,
-                "actions": actions,
-                "action_composition": [
-                    {"run": r, "action": a, "count": c}
-                    for (r, a), c in composition.items()
-                ],
-                "action_transitions": transitions,
+
             },
             figures,
             coverage,
@@ -443,7 +381,7 @@ class Analyzer:
                         )
                 results[plugin.name] = asdict(result)
         return {
-            "schema_version": 1,
+            "schema_version": 2,
             "sources": [
                 {
                     "path": str(a.path),

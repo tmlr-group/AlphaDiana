@@ -42,7 +42,9 @@ def test_fixed_target_and_context_survive_exactly_without_label_leakage(tmp_path
     item.update(label="Finalization", outcome="Correct", action_pred="Planning")
     artifacts = artifacts_with_targets(tmp_path, [item])
     calls = []
-    with ActionAnnotations(**judge_options(tmp_path)) as classifier:
+    with ActionAnnotations(
+        protocol="human-protocol-v2", **judge_options(tmp_path)
+    ) as classifier:
 
         def create(**kwargs):
             calls.append(kwargs)
@@ -82,7 +84,9 @@ def test_fixed_target_and_context_survive_exactly_without_label_leakage(tmp_path
     ],
 )
 def test_reject_wrong_schema_id_and_labels(tmp_path, answer):
-    with ActionAnnotations(**judge_options(tmp_path)) as classifier:
+    with ActionAnnotations(
+        protocol="human-protocol-v2", **judge_options(tmp_path)
+    ) as classifier:
         classifier.client.chat.completions.create = lambda **kw: response(answer)
         with pytest.raises(ValueError):
             classifier._classify(request_for(fixed_item("A1", "target")))
@@ -94,7 +98,9 @@ def test_targets_are_required_instead_of_silently_resegmenting(tmp_path):
     rows = artifacts.records()
     del rows[0]["artifact_manifest"]["files"]["action_targets"]
     artifacts.path.write_text(json.dumps(rows[0]) + "\n")
-    with ActionAnnotations(**judge_options(tmp_path)) as classifier:
+    with ActionAnnotations(
+        protocol="human-protocol-v2", **judge_options(tmp_path)
+    ) as classifier:
         classifier.client.chat.completions.create = lambda **kw: pytest.fail(
             "No model call"
         )
@@ -123,7 +129,9 @@ def test_bad_target_manifest_fails_before_model_calls(tmp_path, mutation):
     else:
         document["items"] = ["bad"]
     path.write_text(json.dumps(document))
-    with ActionAnnotations(**judge_options(tmp_path)) as classifier:
+    with ActionAnnotations(
+        protocol="human-protocol-v2", **judge_options(tmp_path)
+    ) as classifier:
         classifier.client.chat.completions.create = lambda **kw: pytest.fail(
             "No model call"
         )
@@ -141,7 +149,9 @@ def test_transitions_use_only_declared_adjacent_positions(tmp_path):
     ]
     artifacts = artifacts_with_targets(tmp_path, items)
     labels = dict(A="Understanding", B="Reasoning", C="Finalization", X="Planning")
-    with ActionAnnotations(**judge_options(tmp_path)) as classifier:
+    with ActionAnnotations(
+        protocol="human-protocol-v2", **judge_options(tmp_path)
+    ) as classifier:
 
         def create(**kw):
             identity = json.loads(kw["messages"][1]["content"])["actions"][0][
@@ -170,7 +180,9 @@ def test_legacy_cache_is_not_reused_and_context_changes_invalidate_cache(tmp_pat
             {"label": "Reasoning"}
         )
         _, old_digest = legacy._classify({"target": "target"})
-    with ActionAnnotations(**judge_options(tmp_path)) as canonical:
+    with ActionAnnotations(
+        protocol="human-protocol-v2", **judge_options(tmp_path)
+    ) as canonical:
         calls = []
 
         def create(**kw):

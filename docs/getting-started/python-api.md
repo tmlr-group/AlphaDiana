@@ -253,62 +253,54 @@ with ActionAnnotations(cache_dir="analysis-cache/actions") as actions:
         report.export("figures/annotated-run")
 ```
 
-Action annotations use the same [human-protocol v2 prompt](../../alphadiana/analysis/action_prompt.md),
-request projection and response validation as the human-audit runner. The six
-labels are Understanding, Planning, Reasoning, Tool Use, Verification and
-Finalization. For overlapping functions actually evidenced in a target, the
-priority is Finalization > Tool Use > Verification > Reasoning > Planning >
-Understanding. This is not a keyword classifier.
+Action annotation now defaults to **LLM-selected semantic boundaries and labels
+over complete saved trajectories** (`llm-trajectory-actions-v1`). Both
+`ActionAnnotations(...)` and `ad.analyzer(saved, judge=True)` use this method.
+The normal case makes one judge request per trajectory, not one per action.
+No `action_targets` artifact or rule-based split is required.
 
-**Input migration:** default annotation no longer creates 4096-character chunks.
-Each sample with a normalized trace must declare an `action_targets` file in
-`artifact_manifest.files`, relative to its artifact directory, just like
-`normalized_trace`. Prepare these targets from the original fixed annotation
-units, keeping the exact target text, ID and before/after context. Do not turn
-whole messages or arbitrary chunks into supposedly human-calibrated units.
-For retained evidence, write a derived result index with this additional file
-reference; keep the original result index and trace unchanged.
+The classifier reuses the definitions and operational rules from the canonical
+[human protocol](../../alphadiana/analysis/action_prompt.md), including the priority
+Finalization > Tool Use > Verification > Reasoning > Planning > Understanding
+between functions actually evidenced by a span. It does not use keyword labels.
+The model chooses ranges inside logged text; Python validates ordered, complete,
+nonoverlapping Unicode source ranges. Actual logged calls remain indivisible;
+user/system messages and tool observations are context, not targets. Reports save
+exact selected text, source pointers, offsets, trace hashes, action IDs, request
+digests and labels. The raw trace and result index are never rewritten.
 
-```json
-{
-  "schema_version": 1,
-  "trace_sha256": "SHA256 of the exact normalized_trace file bytes",
-  "items": [
-    {
-      "item_id": "A17",
-      "full_text": "Exact original target text, including relevant tool evidence.",
-      "context_text": "Exact original before context.",
-      "following_text": "Exact original after context."
-    }
-  ]
-}
-```
+Input defaults to a conservative 200,000-token budget, 262,144-token context and
+16,384 output tokens. **Set `context_window` and `output_budget` to the judge's
+documented capacity** when using a different model. The estimator uses UTF-8
+bytes plus framing allowance, an upper bound for byte-based tokenizers rather
+than a measured provider token count. Large requests are windowed only between
+logged source blocks with context-only overlap. An indivisible source that does
+not fit fails explicitly; no text is truncated or divided by character rules.
+Malformed/incomplete model output fails the analysis instead of producing a
+partial action count or falling back to rules. Retry is explicit; valid cache
+entries are reused only for the exact source, prompt, model and settings.
 
-The item fields match the original human UI export. Context may be null to denote
-absence. Human labels, old predictions, outcomes and other fields are not sent
-to the judge. Missing targets, changed trace bytes, duplicate IDs and malformed
-responses fail explicitly; no target or context is silently split or truncated.
-The file hash binds the target set to a trace, but does not certify that a supplied
-excerpt was correctly selected; that remains the responsibility of its producer.
+For the original fixed-target human audit only, explicitly select
+`ActionAnnotations(protocol="human-protocol-v2", cache_dir="audit-cache")`.
+That mode still requires the trace-bound `action_targets` artifact, with
+`schema_version: 1`, `trace_sha256`, and `items` containing the original `item_id`,
+`full_text`, `context_text`, `following_text`, and optional `sequence_index`.
+Do not resegment the original human targets when reproducing that comparison.
 
-Composition uses annotated targets. Optional `sequence_index` is the zero-based
-position in the original complete action sequence for that sample. Provide it
-only when that order is known. Transitions use consecutive positions only, never
-UI display order, list order, gaps or cross-sample pairs. An unordered human-audit
-sample yields composition but no transition observations; coverage reports this.
+Historical character segmentation is retained in
+`analysis/legacy/character_spans.py`; the deprecated explicit `custom-spans-v1`
+option writes `legacy_custom_annotated_actions`. Historical keyword labels remain
+available at `analysis/action_events.py` for old scripts. Neither is called by
+the standard Analyzer pipeline. Analyzer report schema v2 removes the old `execution.actions`,
+`execution.action_composition` and `execution.action_transitions` tables and figures.
+Use `annotated_actions` for the new measurement; keep historical exports unchanged.
+Offline analysis without a judge still computes
+scores/resources/entropy, but produces no substitute action labels or action plots.
 
-Matching the protocol does **not** transfer the old development-set calibration
-to new targets, data or judge models. Reports record protocol, prompt digest,
-input hashes and `calibration_inherited: false`. Changed prompts/requests produce
-new cache entries; old caches and historical reports are not rewritten.
-
-For exploratory custom taxonomies, explicitly use
-`ActionAnnotations(protocol="custom-spans-v1", span_chars=4096,
-taxonomy={"My label": "Definition"}, cache_dir="analysis-cache/custom")`.
-This retains character-based analysis under the separate `custom_annotated_actions`
-report key. Even if labels have the same names, it is a different measurement and
-does not inherit the human protocol or its calibration. Default `judge=True`
-uses the human protocol and therefore also requires prepared target artifacts.
+All new action reports declare `calibration_inherited: false`. Sharing six label
+names or classification rules does not transfer agreement measured on different
+boundaries, models or data. The LLM segmentation needs its own inspected pilot;
+the original fixed-target agreement study does not validate it.
 
 Failure annotations assign overlapping labels to unsuccessful or unscored traces.
 The default 17 categories cover task/interface, reasoning, tool interaction,

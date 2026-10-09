@@ -15,6 +15,33 @@ from alphadiana.benchmarks.swe_bench.sweagent import project_sweagent_history
 from alphadiana.benchmarks.terminal_bench2.harness.terminus import project_harbor_steps
 from alphadiana.harness.base import AgentResponse
 from alphadiana.scorer.base import ScoreResult
+from test_general_analysis import judge_options, response as judge_response
+
+
+def llm_actions(artifacts, tmp_path):
+    with ActionAnnotations(**judge_options(tmp_path)) as classifier:
+
+        def create(**kw):
+            blocks = json.loads(kw["messages"][1]["content"])["sources"]
+            return judge_response(
+                {
+                    "actions": [
+                        {
+                            "source_id": b["source_id"],
+                            "start": 0,
+                            "end": b["length"],
+                            "label": (
+                                "Tool Use" if b["kind"] == "tool_call" else "Reasoning"
+                            ),
+                        }
+                        for b in blocks
+                        if b["target"]
+                    ]
+                }
+            )
+
+        classifier.client.chat.completions.create = create
+        return classifier.measure([artifacts]).tables["annotations"]
 
 
 def test_native_projection_excludes_prompts_and_observations_from_actions(
@@ -72,13 +99,12 @@ def test_native_projection_excludes_prompts_and_observations_from_actions(
         }
     ]
     assert steps[3]["tool_results"][0]["tool_use_id"] == "call_1"
-    metrics = ExecutionMetrics().measure([artifacts])
-    actions = metrics.tables["actions"]
-    assert len(actions) == 2
-    assert actions[0]["canonical_action"] == "tool_use"
+    assert "actions" not in ExecutionMetrics().measure([artifacts]).tables
+    actions = llm_actions(artifacts, tmp_path)
+    assert len(actions) == 3
+    assert actions[1]["action"] == "Tool Use"
     assert all(
-        "USER INSTRUCTION" not in event["text_span"]
-        and "TOOL OUTPUT" not in event["text_span"]
+        "USER INSTRUCTION" not in event["text"] and "TOOL OUTPUT" not in event["text"]
         for event in actions
     )
     # Boundaries are explicitly supplied, not invented by the classifier.
@@ -90,6 +116,7 @@ def test_native_projection_excludes_prompts_and_observations_from_actions(
         ],
     )
     classifier = ActionAnnotations(
+        protocol="human-protocol-v2",
         model="fixture",
         model_version="fixture-1",
         cache_dir=tmp_path / "cache",
@@ -167,10 +194,10 @@ def test_sweagent_uses_history_not_queries_or_observations_as_actions(tmp_path):
     ]
     assert steps[2]["tool_calls"][0]["input"] == {"command": "ls"}
     assert steps[3]["tool_results"][0]["tool_use_id"] == "call_1"
-    events = ExecutionMetrics().measure([artifacts]).tables["actions"]
-    assert len(events) == 2 and events[0]["canonical_action"] == "tool_use"
+    events = llm_actions(artifacts, tmp_path)
+    assert len(events) == 3 and events[1]["action"] == "Tool Use"
     assert all(
-        "USER INSTRUCTION" not in r["text_span"] and "TOOL OUTPUT" not in r["text_span"]
+        "USER INSTRUCTION" not in r["text"] and "TOOL OUTPUT" not in r["text"]
         for r in events
     )
 
