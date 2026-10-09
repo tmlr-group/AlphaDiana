@@ -1,4 +1,9 @@
-"""Action-intent event rows for persisted trajectory analysis."""
+"""Archived deterministic action-intent baseline for historical reproduction.
+
+Not used by Analyzer's production pipeline. Its six labels and keyword priority
+are a different measurement from LLM segmentation with the human protocol.
+The legacy import path is retained for old paper scripts and result readers.
+"""
 
 from __future__ import annotations
 

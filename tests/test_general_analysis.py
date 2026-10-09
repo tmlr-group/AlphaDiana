@@ -364,7 +364,9 @@ def test_action_percentages_and_transitions_stay_within_samples(tmp_path):
         {"artifacts/trace.json": trace},
     )
     attach_targets(artifacts, [fixed_item("A1", "a", 0), fixed_item("A2", "b", 1)])
-    with ActionAnnotations(**judge_options(tmp_path)) as labels:
+    with ActionAnnotations(
+        protocol="human-protocol-v2", **judge_options(tmp_path)
+    ) as labels:
         labels.client.chat.completions.create = lambda **kw: response(
             {
                 "actions": [
@@ -462,18 +464,41 @@ def test_openai_compatible_judges_and_exports(tmp_path, monkeypatch):
             answer = (
                 {"labels": [{"code": "TE-2", "quote": "tool failed"}]}
                 if "unsuccessful execution" in prompt
-                else {
-                    "actions": [
+                else (
+                    {
+                        "actions": [
+                            {
+                                "action_id": json.loads(body["messages"][1]["content"])[
+                                    "actions"
+                                ][0]["action_id"],
+                                "label": "Reasoning",
+                            }
+                        ]
+                    }
+                    if "human-protocol alignment v2" in prompt
+                    else (
                         {
-                            "action_id": json.loads(body["messages"][1]["content"])[
-                                "actions"
-                            ][0]["action_id"],
-                            "label": "Reasoning",
+                            "actions": [
+                                {
+                                    "source_id": b["source_id"],
+                                    "start": 0,
+                                    "end": b["length"],
+                                    "label": (
+                                        "Tool Use"
+                                        if b["kind"] == "tool_call"
+                                        else "Reasoning"
+                                    ),
+                                }
+                                for b in json.loads(body["messages"][1]["content"])[
+                                    "sources"
+                                ]
+                                if b["target"]
+                            ]
                         }
-                    ]
-                }
-                if "human-protocol alignment v2" in prompt
-                else {"correct": False, "rationale": "Fixture judgment"}
+                        if "retrospectively divide" in prompt
+                        else {"correct": False, "rationale": "Fixture judgment"}
+                    )
+                )
             )
             payload = json.dumps(
                 {

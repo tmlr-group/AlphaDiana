@@ -78,10 +78,40 @@ class CachedJudge:
                     {"role": "user", "content": json.dumps(evidence)},
                 ],
             )
-            if not response.choices or response.choices[0].finish_reason != "stop":
-                raise ValueError("Annotation did not finish with a complete response")
-            answer = json.loads(response.choices[0].message.content or "")
-            validate(answer)
+            try:
+                if not response.choices or response.choices[0].finish_reason != "stop":
+                    raise ValueError(
+                        "Annotation did not finish with a complete response"
+                    )
+                answer = json.loads(response.choices[0].message.content or "")
+                validate(answer)
+            except (ValueError, TypeError, KeyError) as exc:
+                # Failed evidence must not look like a reusable valid result.
+                attempts = self.cache / "failed-attempts"
+                attempts.mkdir(exist_ok=True)
+                (attempts / f"{digest}-{uuid4().hex}.json").write_text(
+                    json.dumps(
+                        {
+                            "request": request,
+                            "response_id": response.id,
+                            "response_model": response.model,
+                            "choices": [
+                                {
+                                    "finish_reason": c.finish_reason,
+                                    "content": c.message.content,
+                                }
+                                for c in response.choices
+                            ],
+                            "usage": (
+                                response.usage.model_dump() if response.usage else None
+                            ),
+                            "error": str(exc),
+                        },
+                        indent=2,
+                    ),
+                    encoding="utf8",
+                )
+                raise
             stored = {
                 "request": request,
                 "answer": answer,
