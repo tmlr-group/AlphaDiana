@@ -120,6 +120,18 @@ def source_state() -> dict:
     }
 
 
+def validate_records(rows: list[dict], cell: dict, samples: int) -> list[str]:
+    """Check every task/sample exactly once, independent of completion order."""
+    tasks = cell["task_ids"]
+    expected = {(task, sample) for task in tasks for sample in range(samples)}
+    observed = [(row["task_id"], row.get("sample_index", 0)) for row in rows]
+    if len(observed) != len(expected) or set(observed) != expected:
+        raise RuntimeError(
+            "Observed task/sample identities differ from the pinned matrix"
+        )
+    return tasks
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("manifest", type=Path)
@@ -164,8 +176,13 @@ def main():
                 != manifest["model"]
             ):
                 raise ValueError("Cell model differs from the pinned matrix model")
-            if config.num_samples != 1 or config.task_retries != 0:
-                raise ValueError("Acceptance cells require one sample and no retries")
+            samples = cell.get("num_samples", 1)
+            if type(samples) is not int or samples < 1:
+                raise ValueError("num_samples must be a positive integer")
+            if config.num_samples != samples or config.task_retries != 0:
+                raise ValueError(
+                    "Acceptance cells require the pinned sample count and no retries"
+                )
             receipt["config_sha256"] = hashlib.sha256(
                 config_path.read_bytes()
             ).hexdigest()
@@ -179,12 +196,13 @@ def main():
                 if observed != provenance["sha256"]:
                     raise ValueError("Runtime provenance file changed")
                 receipt["runtime_provenance"] = {
-                    "path": str(provenance_path.resolve()), "sha256": observed,
+                    "path": str(provenance_path.resolve()),
+                    "sha256": observed,
                 }
             receipt["model"] = manifest["model"]
             artifacts = execute(config)
             rows = artifacts.records()
-            expected = cell.get("expected_tasks", 3)
+            expected = cell.get("expected_tasks", 3) * samples
             valid = sum(r["score_status"] == "valid_scored" for r in rows)
             receipt.update(
                 records=len(rows),
@@ -196,12 +214,13 @@ def main():
                 raise RuntimeError(
                     f"Expected {expected} valid records; observed {len(rows)} records/{valid} valid"
                 )
-            if len(set(receipt["task_ids"])) != expected:
-                raise RuntimeError("Cell contains duplicate task identities")
-            if "task_ids" in cell and receipt["task_ids"] != cell["task_ids"]:
-                raise RuntimeError(
-                    "Observed tasks differ from the pinned task sequence"
-                )
+            if "task_ids" in cell:
+                receipt["task_ids"] = validate_records(rows, cell, samples)
+            elif (
+                len(set((r["task_id"], r.get("sample_index", 0)) for r in rows))
+                != expected
+            ):
+                raise RuntimeError("Cell contains duplicate task/sample identities")
             receipt["task_ids_pinned"] = "task_ids" in cell
             receipt["artifacts_sha256"] = hashlib.sha256(
                 artifacts.path.read_bytes()
@@ -213,7 +232,9 @@ def main():
                     "Source state changed during the cell; rerun on a fixed revision"
                 )
             receipt["status"] = "passed"
-        except Exception:  # noqa: BLE001 - retain failed-cell evidence and continue the matrix
+        except (
+            Exception
+        ):  # noqa: BLE001 - retain failed-cell evidence and continue the matrix
             receipt["failure"] = traceback.format_exc()
             failures += 1
         with (args.output / "receipts.jsonl").open("a") as stream:

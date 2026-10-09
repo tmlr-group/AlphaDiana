@@ -52,6 +52,8 @@ class ActionAnnotations(CachedJudge):
         span_chars: int | None = None,
         extra_body: dict | None = None,
         response_format: dict | None = None,
+        temperature: float | None = 0,
+        token_limit_parameter: str = "max_tokens",
     ):
         if protocol not in {PROTOCOL, TRAJECTORY_PROTOCOL, "custom-spans-v1"}:
             raise ValueError("Unsupported action annotation protocol")
@@ -100,6 +102,8 @@ class ActionAnnotations(CachedJudge):
             api_key=api_key,
             extra_body=extra_body,
             response_format=response_format,
+            temperature=temperature,
+            token_limit_parameter=token_limit_parameter,
         )
         self.span_chars = span_chars
         self.prompt = (
