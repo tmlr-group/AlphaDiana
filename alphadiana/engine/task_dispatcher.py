@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from contextvars import copy_context
+
 import logging
 import random
 import threading
@@ -131,7 +133,9 @@ class TaskDispatcher:
                 if self.cancelled:
                     logger.info("Dispatch cancelled, not submitting remaining tasks")
                     break
-                future = executor.submit(self._solve_with_retry, task, solve_fn)
+                # Each submission needs its own context: one Context cannot be
+                # entered concurrently by workers from the same or another job.
+                future = executor.submit(copy_context().run, self._solve_with_retry, task, solve_fn)
                 future_to_task[future] = task
 
             completed = 0

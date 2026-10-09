@@ -56,9 +56,8 @@ def _mask_secret_fields(value: Any) -> Any:
         return [_mask_secret_fields(item) for item in value]
     return value
 
-# Context variable to tag the current job ID.  Inherited by
-# ThreadPoolExecutor workers (Python 3.12+), so logs from worker
-# threads are correctly routed to their owning job's buffer.
+# TaskDispatcher explicitly copies this context for each worker submission;
+# ThreadPoolExecutor does not propagate ContextVars automatically.
 _current_job_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "_current_job_id", default=None
 )

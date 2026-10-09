@@ -19,7 +19,7 @@ Common `agent.config` keys are:
 | `max_retries` | Retry count for retryable provider failures |
 | `system_prompt` | Optional system message |
 | `capture_logprobs` / `top_logprobs` | Provider logprob capture |
-| `logprobs_format` | Capture representation; see caveat below |
+| `logprobs_format` | Accepts `float` or `int16`; persistence retains both raw and compact evidence |
 
 The provider client uses `trust_env=False`, so inherited `ALL_PROXY`, `HTTP_PROXY`, and `HTTPS_PROXY` values do not silently redirect the request. Configure the intended provider URL explicitly.
 
@@ -37,9 +37,11 @@ When the total streaming budget is exhausted, DirectLLM returns `answer=None`, `
 
 ## Logprob capture
 
-Float capture is the stable path: raw records are passed to `ResultStore`, which can write the float sidecar and derive a compact Int16 sidecar. Select it explicitly with `logprobs_format: float`.
+Raw records are passed to `ResultStore`, which writes the float sidecar and derives a compact Int16 sidecar. Both the default `logprobs_format: int16` and explicit `float` use this persistence boundary.
 
-Current caveat: DirectLLM defaults to `logprobs_format: int16`. That mode quantizes records inside DirectLLM but stores them under `logprob_records` instead of `logprob_int16_records`. The result store then treats the values as raw and may quantize them again. Until that field contract is fixed and artifact-shape-tested, do not use the default setting as evidence of a valid float/Int16 pair. Set `logprobs_format: float` explicitly and verify both referenced sidecars when artifact fidelity matters.
+DirectLLM no longer replaces raw records with Int16 values before persistence. This fixes double quantization in the default mode; historical damaged sidecars cannot recover missing candidate data without their original raw evidence.
+
+`stream_total_timeout` starts before sending a streaming request, includes the response-header wait and all SSE reads, and also bounds the unsupported-`stream_options` fallback. Expiry cancels the request and closes its connection. Partial text, reasoning, usage and logprobs already observed remain saved, while the final answer follows the existing timeout-as-zero contract. Client setup and cleanup are outside the request budget. Non-streaming requests continue to use `request_timeout`.
 
 ## Example
 

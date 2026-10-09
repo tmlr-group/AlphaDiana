@@ -30,6 +30,13 @@ class RunSummaryResponse(BaseModel):
     per_category_pass_at_k: dict[str, float] = {}
     per_category_avg_at_k: dict[str, float] = {}
     evaluation_metrics: dict[str, dict[str, Any]] = {}
+    # Existing total_tasks/completed/failed remain task counts. New explicit
+    # fields expose sample completeness without changing those units.
+    expected_sample_count: int = 0
+    valid_scored: int = 0
+    missing_samples: int = 0
+    missing_tasks: int = 0
+    strict_report_issues: list[str] = []
     timestamp: str = ""
 
 
