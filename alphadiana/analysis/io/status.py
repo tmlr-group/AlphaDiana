@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 VALID_SCORE_STATUS = "valid_scored"
@@ -93,6 +94,18 @@ def _scorer_failure_status(record: dict[str, Any]) -> str | None:
     """Reject unmeasured fallbacks, including lossy historical EvoX records."""
     score_metadata = _as_dict(record.get("score_metadata"))
     benchmark_name = str(record.get("benchmark_name", "") or "").strip()
+    if benchmark_name == "terminal_bench2":
+        if score_metadata.get("verifier_status") == "bootstrap_error":
+            return "verifier_error"
+        replay = _as_dict(record.get("rescoring"))
+        if not (replay.get("environment_allowed") is True and score_metadata.get("replayed") is True):
+            # Historical reward=0 also covers failures before pytest started.
+            output = str(_as_dict(record.get("metadata")).get("test_output", "") or "")
+            if re.search(
+                r"(?m)^(?:/usr/local/bin/uvx: line \d+: python3: command not found|"
+                r"/usr/bin/python3: No module named (?:pip|ensurepip))$", output
+            ):
+                return "verifier_error"
     if (
         benchmark_name == "ale_bench"
         and score_metadata.get("judge_result") == "INTERNAL_ERROR"

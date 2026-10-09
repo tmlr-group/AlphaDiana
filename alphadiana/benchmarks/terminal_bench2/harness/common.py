@@ -1097,7 +1097,13 @@ chmod +x /usr/local/bin/curl /usr/local/bin/uvx /root/.local/bin/env
 
         test_output = self._run_tests(runtime.container_id, timeout_sec)
         reward = self._read_reward_if_exists(runtime.logs_dir, runtime.task.task_id)
-        if reward is not None:
+        if re.search(
+            r"(?m)^(?:/usr/local/bin/uvx: line \d+: python3: command not found|"
+            r"/usr/bin/python3: No module named (?:pip|ensurepip))$", test_output
+        ):
+            # The official script writes zero even when dependencies prevent tests.
+            status, reward = "bootstrap_error", None
+        elif reward is not None:
             status = "ok"
         elif "[TIMEOUT" in test_output:
             reward = "0"
