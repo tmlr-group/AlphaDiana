@@ -95,14 +95,28 @@ class ReportGenerator:
         JSONL records first.  *config* is an optional fallback for legacy
         files that lack these fields.
         """
-        results = result_store.load()
-        manifest = result_store.load_manifest()
+        return self.summarize(
+            result_store.load(), result_store.load_manifest(),
+            run_id=result_store.run_id, config=config,
+        )
+
+    def summarize(self, records: list[dict], manifest: dict | None = None, *,
+                  run_id: str = "", config: "ExperimentConfig | None" = None) -> RunSummary:
+        """Aggregate the latest attempt per sample; retain source history unchanged."""
+        from alphadiana.analysis.io.status import normalize_legacy_timeout_zero_record
+
+        latest = {}
+        for record in records:
+            record = normalize_legacy_timeout_zero_record(record)
+            latest[(record["task_id"], record.get("sample_index", 0))] = record
+        results = list(latest.values())
+        manifest = manifest or {}
         written_records = len(results)
 
         # Infer run-level metadata from data; fall back to config.
         _cfg = config  # may be None
         run_id = self._infer_from_results(results, "run_id") or (
-            getattr(_cfg, "run_id", "") if _cfg else "") or result_store.run_id
+            getattr(_cfg, "run_id", "") if _cfg else "") or run_id
         agent_name = self._infer_from_results(results, "agent_name") or (
             getattr(_cfg, "agent_name", "") if _cfg else "unknown")
         agent_version = self._infer_from_results(results, "agent_version") or (

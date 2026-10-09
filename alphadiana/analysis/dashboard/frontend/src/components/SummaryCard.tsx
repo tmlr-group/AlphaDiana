@@ -64,9 +64,15 @@ export default function SummaryCard({ summary }: { summary: RunSummary }) {
         {summary.model && <Tag color="geekblue" style={{ borderRadius: 6 }}>{summary.model}</Tag>}
       </div>
 
+      {!!summary.strict_report_issues?.length && (
+        <div role="status" style={{ marginBottom: 12 }}>
+          Incomplete or invalid run: {summary.strict_report_issues.join(', ')}.
+          Planned-sample denominators are retained.
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'baseline', gap: '16px 24px', flexWrap: 'wrap' }}>
         <StatItem
-          label="Accuracy"
+          label="Planned sample accuracy"
           value={Math.round(summary.accuracy_total * 100)}
           suffix="%"
           icon={<CheckCircleOutlined />}

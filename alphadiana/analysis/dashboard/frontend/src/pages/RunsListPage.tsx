@@ -155,7 +155,7 @@ export default function RunsListPage() {
       key: 'accuracy',
       sorter: (a, b) => a.accuracy - b.accuracy,
       render: (_acc: number, r: RunSummary) => {
-        const correct = Math.round(r.accuracy_total * r.total_tasks);
+        const correct = Math.round(r.accuracy_total * (r.expected_sample_count ?? r.total_tasks));
         return (
           <div>
             <Progress
@@ -164,7 +164,7 @@ export default function RunsListPage() {
               status={r.accuracy_total >= 0.8 ? 'success' : r.accuracy_total >= 0.5 ? 'normal' : 'exception'}
             />
             <div style={{ fontSize: 11, color: '#595959', marginTop: 1 }}>
-              {correct}/{r.total_tasks}
+              {correct}/{r.expected_sample_count ?? r.total_tasks} samples
             </div>
             {r.num_samples > 1 && (
               <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 1 }}>

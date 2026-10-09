@@ -109,7 +109,6 @@ def _run_pipeline(output):
             stream=False,
             max_tokens=16,
             capture_logprobs=True,
-            logprobs_format="float",
             request_timeout=5,
             max_retries=0,
         )

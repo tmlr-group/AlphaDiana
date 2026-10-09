@@ -17,7 +17,6 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-from alphadiana.analysis.logprobs import INT16_PROB_SCALE, quantize_records_int16
 from alphadiana.harness.proxies.logprob_capture import (
     apply_openai_logprob_request,
     extract_openai_logprob_records,
@@ -289,10 +288,8 @@ class DirectLLMAgent(Agent):
             records=logprob_records,
             metadata={},
         )
-        if self._capture_logprobs and self._logprobs_format == "int16" and logprob_records:
-            response_metadata["logprob_records"] = quantize_records_int16(
-                logprob_records, top_k=self._top_logprobs or 20
-            )
+        # Keep raw evidence in the response. ResultStore owns compact sidecar
+        # conversion for both supported logprobs_format settings.
 
         # Extract answer: try raw_output first, fall back to reasoning
         timeout_scored_zero = finish_reason == "timeout"
@@ -411,66 +408,84 @@ class DirectLLMAgent(Agent):
 
     def _call_streaming(self, request_kwargs: dict) -> tuple[str, str, dict, str, list[dict]]:
         """Call the API in streaming mode, returning (raw_output, finish_reason, token_usage, raw_reasoning, logprob_records)."""
-        kwargs = {**request_kwargs, "stream": True}
-        if self._stream_options_supported:
-            kwargs["stream_options"] = {"include_usage": True}
-
-        try:
-            stream = self._client.chat.completions.create(**kwargs)
-        except Exception as exc:
-            # Fallback: some APIs don't support stream_options.
-            if self._stream_options_supported and (
-                "stream_options" in str(exc).lower()
-                or getattr(exc, "status_code", 0) == 400
-            ):
-                logger.info("stream_options not supported by API, retrying without it")
-                self._stream_options_supported = False
-                kwargs.pop("stream_options", None)
-                stream = self._client.chat.completions.create(**kwargs)
-            else:
-                raise
+        import asyncio
+        from concurrent.futures import ThreadPoolExecutor
+        import httpx
+        from openai import AsyncOpenAI
 
         content_parts: list[str] = []
         reasoning_parts: list[str] = []
         finish_reason = ""
         token_usage: dict = {}
         logprob_records: list[dict] = []
-        token_index = 0
-        stream_started = time.monotonic()
-        for chunk in stream:
-            if (
-                self._stream_total_timeout is not None
-                and time.monotonic() - stream_started >= self._stream_total_timeout
-            ):
-                close = getattr(stream, "close", None)
-                if callable(close):
-                    close()
-                finish_reason = "timeout"
-                break
-            if chunk.choices:
-                delta = chunk.choices[0].delta
-                if delta:
-                    if delta.content:
-                        content_parts.append(delta.content)
-                    # Collect reasoning from model_extra (Kimi/OpenRouter/Volcengine)
-                    rc = _extract_reasoning_from_model_extra(delta)
-                    if rc:
-                        reasoning_parts.append(rc)
-                if chunk.choices[0].finish_reason:
-                    finish_reason = chunk.choices[0].finish_reason
-                chunk_logprobs = getattr(chunk.choices[0], "logprobs", None)
-                if chunk_logprobs is not None and getattr(chunk_logprobs, "content", None):
-                    chunk_records, token_index = extract_openai_logprob_records(
-                        {"choices": [{"logprobs": {"content": chunk_logprobs.content}}]},
-                        start_index=token_index,
-                    )
-                    logprob_records.extend(chunk_records)
-            if hasattr(chunk, "usage") and chunk.usage:
-                token_usage = {
-                    "prompt_tokens": chunk.usage.prompt_tokens or 0,
-                    "completion_tokens": chunk.usage.completion_tokens or 0,
-                    "total_tokens": chunk.usage.total_tokens or 0,
-                }
+
+        async def consume(client):
+            nonlocal finish_reason, token_usage
+            kwargs = {**request_kwargs, "stream": True}
+            if self._stream_options_supported:
+                kwargs["stream_options"] = {"include_usage": True}
+            try:
+                stream = await client.chat.completions.create(**kwargs)
+            except Exception as exc:
+                if self._stream_options_supported and (
+                    "stream_options" in str(exc).lower()
+                    or getattr(exc, "status_code", 0) == 400
+                ):
+                    self._stream_options_supported = False
+                    kwargs.pop("stream_options", None)
+                    stream = await client.chat.completions.create(**kwargs)
+                else:
+                    raise
+            token_index = 0
+            try:
+                async for chunk in stream:
+                    if chunk.choices:
+                        delta = chunk.choices[0].delta
+                        if delta:
+                            if delta.content:
+                                content_parts.append(delta.content)
+                            rc = _extract_reasoning_from_model_extra(delta)
+                            if rc:
+                                reasoning_parts.append(rc)
+                        if chunk.choices[0].finish_reason:
+                            finish_reason = chunk.choices[0].finish_reason
+                        chunk_logprobs = getattr(chunk.choices[0], "logprobs", None)
+                        if chunk_logprobs is not None and getattr(chunk_logprobs, "content", None):
+                            records, token_index = extract_openai_logprob_records(
+                                {"choices": [{"logprobs": {"content": chunk_logprobs.content}}]},
+                                start_index=token_index,
+                            )
+                            logprob_records.extend(records)
+                    if getattr(chunk, "usage", None):
+                        token_usage = {
+                            "prompt_tokens": chunk.usage.prompt_tokens or 0,
+                            "completion_tokens": chunk.usage.completion_tokens or 0,
+                            "total_tokens": chunk.usage.total_tokens or 0,
+                        }
+            finally:
+                await stream.close()
+
+        async def run():
+            nonlocal finish_reason
+            # Cancellation interrupts header waits and stalled reads, including
+            # endless partial SSE frames. Closing the client reclaims sockets.
+            async with AsyncOpenAI(
+                base_url=self._api_base, api_key=self._api_key,
+                timeout=self._request_timeout, max_retries=0,
+                http_client=httpx.AsyncClient(trust_env=False),
+            ) as client:
+                try:
+                    # One deadline begins before the first request and also
+                    # covers the stream_options fallback, if it is necessary.
+                    await asyncio.wait_for(consume(client), timeout=self._stream_total_timeout)
+                except asyncio.TimeoutError:
+                    finish_reason = "timeout"
+
+        # The public Agent interface is synchronous and may be called by an
+        # async host. A private loop avoids nesting or altering the host's loop;
+        # joining the worker waits for cancellation and socket cleanup as well.
+        with ThreadPoolExecutor(max_workers=1) as worker:
+            worker.submit(lambda: asyncio.run(run())).result()
 
         raw_content = "".join(content_parts)
         raw_reasoning = "".join(reasoning_parts)

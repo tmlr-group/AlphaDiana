@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import json
 import logging
-from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from alphadiana.analysis.report import ReportGenerator
+from alphadiana.analysis.io.result_store import ResultStore
+from alphadiana.analysis.io.status import VALID_SCORE_STATUS, infer_score_status
 
 from alphadiana.analysis.dashboard.backend.models import (
     CompareRunEntry,
@@ -26,152 +29,19 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
     The last record for each (task_id, sample_index) pair wins, matching
     ResultStore.load() semantics so that retried tasks replace error records.
     """
-    records: dict[tuple[str, int], dict[str, Any]] = {}
-    with open(path, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                try:
-                    record = json.loads(line)
-                except json.JSONDecodeError:
-                    logger.warning("Skipping malformed JSONL line in %s: %s", path, line[:100])
-                    continue
-                key = (record.get("task_id", ""), record.get("sample_index", 0))
-                records[key] = record
-    return list(records.values())
+    return ResultStore(str(path.parent), path.stem).load()
 
 
-def _get_category(r: dict[str, Any]) -> str:
-    """Extract category from a result record."""
-    task_meta = r.get("task_metadata", {})
-    resp_meta = r.get("metadata", {})
-    if isinstance(task_meta, dict) and task_meta.get("category"):
-        return task_meta["category"]
-    if isinstance(resp_meta, dict) and resp_meta.get("category"):
-        return resp_meta["category"]
-    return "default"
-
-
-def _build_summary(run_id: str, records: list[dict[str, Any]]) -> RunSummaryResponse:
-    """Compute summary statistics from a list of result records."""
-    # Count unique tasks (by task_id), not raw JSONL records.
-    # For multi-sample runs, each task may have multiple records.
-    unique_task_ids = {r.get("task_id", "") for r in records}
-    total = len(unique_task_ids)
-
-    # A task is "completed" if at least one sample has a score.
-    completed_task_ids: set[str] = set()
-    for r in records:
-        if r.get("score") is not None:
-            completed_task_ids.add(r.get("task_id", ""))
-    completed_records = [r for r in records if r.get("score") is not None]
-    completed = len(completed_task_ids)
-    failed = total - completed
-
-    # For accuracy, count unique tasks with at least one correct sample.
-    correct_task_ids: set[str] = set()
-    for r in completed_records:
-        if r.get("correct", False):
-            correct_task_ids.add(r.get("task_id", ""))
-    correct_count = len(correct_task_ids)
-    accuracy = correct_count / completed if completed > 0 else 0.0
-    accuracy_total = correct_count / total if total > 0 else 0.0
-
-    scores = [r.get("score", 0.0) for r in completed_records]
-    mean_score = sum(scores) / len(scores) if scores else 0.0
-
-    wall_times = [r.get("wall_time_sec", 0.0) for r in completed_records]
-    mean_wall_time = sum(wall_times) / len(wall_times) if wall_times else 0.0
-
-    total_prompt = 0
-    total_completion = 0
-    for r in records:
-        usage = r.get("token_usage", {})
-        total_prompt += usage.get("prompt_tokens", 0)
-        total_completion += usage.get("completion_tokens", 0)
-
-    # Per-category accuracy
-    cat_correct: dict[str, int] = {}
-    cat_total: dict[str, int] = {}
-    for r in completed_records:
-        cat = _get_category(r)
-        cat_total[cat] = cat_total.get(cat, 0) + 1
-        if r.get("correct", False):
-            cat_correct[cat] = cat_correct.get(cat, 0) + 1
-    per_category = {
-        cat: cat_correct.get(cat, 0) / cat_total[cat] for cat in cat_total
-    }
-
-    # Error distribution
-    error_dist: dict[str, int] = {}
-    for r in records:
-        err = r.get("error")
-        if isinstance(err, dict):
-            etype = err.get("error_type", "unknown")
-            error_dist[etype] = error_dist.get(etype, 0) + 1
-
-    # Group results by task_id for pass@k / avg@k computation.
-    by_task: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for r in records:
-        by_task[r.get("task_id", "")].append(r)
-
-    # Compute actual max samples per task from data — this is the ground truth.
-    actual_max_samples = max((len(samples) for samples in by_task.values()), default=1)
-    # Stored num_samples can be wrong (e.g. set to 1 in records that actually have 32 samples).
-    # Always take the larger of stored value vs observed data.
-    num_samples_raw = next((r.get("num_samples") for r in records if r.get("num_samples") is not None), None)
-    num_samples = max(int(num_samples_raw), actual_max_samples) if num_samples_raw is not None else actual_max_samples
-    memory_scope = next(
-        (
-            str((r.get("task_metadata") or {}).get("memory_scope", ""))
-            for r in records
-            if isinstance(r.get("task_metadata"), dict)
-            and (r.get("task_metadata") or {}).get("memory_scope")
-        ),
-        "",
-    )
-    samples_independent = memory_scope not in {"cross_sample", "cross_task"}
-
-    # Pass@K: fraction of unique tasks where at least 1 sample is correct.
-    num_unique_tasks = len(by_task)
-    tasks_passed = sum(
-        1 for samples in by_task.values()
-        if any(s.get("correct", False) for s in samples)
-    )
-    pass_at_k = tasks_passed / num_unique_tasks if num_unique_tasks > 0 else 0.0
-
-    # Per-category pass@k
-    cat_tasks_total: dict[str, set[str]] = defaultdict(set)
-    cat_tasks_passed: dict[str, set[str]] = defaultdict(set)
-    for task_id, samples in by_task.items():
-        cat = _get_category(samples[0])
-        cat_tasks_total[cat].add(task_id)
-        if any(s.get("correct", False) for s in samples):
-            cat_tasks_passed[cat].add(task_id)
-    per_category_pass_at_k = {
-        cat: len(cat_tasks_passed.get(cat, set())) / len(task_ids)
-        for cat, task_ids in cat_tasks_total.items()
-    }
-
-    # Avg@K: per-task average correctness rate, then averaged across tasks.
-    task_avg_scores: list[float] = []
-    for samples in by_task.values():
-        n_total = len(samples)
-        n_correct = sum(1 for s in samples if s.get("correct", False))
-        task_avg_scores.append(n_correct / n_total if n_total > 0 else 0.0)
-    avg_at_k = sum(task_avg_scores) / len(task_avg_scores) if task_avg_scores else 0.0
-
-    # Per-category avg@k
-    cat_task_avgs: dict[str, list[float]] = defaultdict(list)
-    for task_id, samples in by_task.items():
-        cat = _get_category(samples[0])
-        n_total = len(samples)
-        n_correct = sum(1 for s in samples if s.get("correct", False))
-        cat_task_avgs[cat].append(n_correct / n_total if n_total > 0 else 0.0)
-    per_category_avg_at_k = {
-        cat: sum(avgs) / len(avgs) if avgs else 0.0
-        for cat, avgs in cat_task_avgs.items()
-    }
+def _build_summary(run_id: str, records: list[dict[str, Any]],
+                   manifest: dict | None = None) -> RunSummaryResponse:
+    """Adapt canonical statistics while retaining legacy dashboard task counters."""
+    core = ReportGenerator().summarize(records, manifest, run_id=run_id)
+    latest = {(r["task_id"], r.get("sample_index", 0)): r for r in records}
+    records = list(latest.values())
+    completed = len({r["task_id"] for r in records
+                     if infer_score_status(r) == VALID_SCORE_STATUS})
+    total = core.expected_task_count
+    failed = max(total - completed, 0)
 
     # Infer agent/benchmark from record-level fields first, then metadata fallback.
     agent = ""
@@ -217,34 +87,6 @@ def _build_summary(run_id: str, records: list[dict[str, Any]]) -> RunSummaryResp
     if records:
         timestamp = records[-1].get("timestamp", "")
 
-    # Observational metrics are aggregated independently of score validity.
-    # Their presence never changes completed/failed counts or primary scores.
-    metric_values: dict[str, list[tuple[float, str]]] = defaultdict(list)
-    for record in records:
-        observations = record.get("evaluation_metrics", {})
-        if not isinstance(observations, dict):
-            continue
-        for name, observation in observations.items():
-            if not isinstance(observation, dict):
-                continue
-            value = observation.get("value")
-            if isinstance(value, bool) or not isinstance(value, (int, float)):
-                continue
-            metric_values[str(name)].append(
-                (float(value), str(observation.get("unit", "")))
-            )
-    evaluation_metrics: dict[str, dict[str, Any]] = {}
-    for name, values_and_units in sorted(metric_values.items()):
-        values = [value for value, _ in values_and_units]
-        units = {unit for _, unit in values_and_units if unit}
-        evaluation_metrics[name] = {
-            "count": len(values),
-            "mean": sum(values) / len(values),
-            "min": min(values),
-            "max": max(values),
-            "unit": next(iter(units)) if len(units) == 1 else "mixed",
-        }
-
     return RunSummaryResponse(
         run_id=run_id,
         agent=agent,
@@ -253,24 +95,26 @@ def _build_summary(run_id: str, records: list[dict[str, Any]]) -> RunSummaryResp
         total_tasks=total,
         completed=completed,
         failed=failed,
-        accuracy=accuracy,
-        accuracy_total=accuracy_total,
-        mean_score=mean_score,
-        mean_wall_time_sec=mean_wall_time,
-        total_tokens={
-            "prompt_tokens": total_prompt,
-            "completion_tokens": total_completion,
-        },
-        per_category=per_category,
-        error_distribution=error_dist,
+        accuracy=core.accuracy,
+        accuracy_total=core.accuracy_total,
+        mean_score=core.mean_score,
+        mean_wall_time_sec=core.mean_wall_time_sec,
+        total_tokens=core.total_tokens,
+        per_category={k: v["pass_rate"] for k, v in core.per_category.items()},
+        expected_sample_count=core.expected_sample_count,
+        valid_scored=core.valid_scored,
+        missing_samples=core.missing_samples,
+        missing_tasks=core.missing_tasks,
+        strict_report_issues=core.strict_report_issues,
+        error_distribution=core.error_distribution,
         model=model,
-        num_samples=num_samples,
-        samples_independent=samples_independent,
-        pass_at_k=pass_at_k,
-        avg_at_k=avg_at_k,
-        per_category_pass_at_k=per_category_pass_at_k,
-        per_category_avg_at_k=per_category_avg_at_k,
-        evaluation_metrics=evaluation_metrics,
+        num_samples=core.num_samples,
+        samples_independent=core.samples_independent,
+        pass_at_k=core.pass_at_k,
+        avg_at_k=core.avg_at_k,
+        per_category_pass_at_k=core.per_category_pass_at_k,
+        per_category_avg_at_k=core.per_category_avg_at_k,
+        evaluation_metrics=core.evaluation_metrics,
         timestamp=timestamp,
     )
 
@@ -317,9 +161,7 @@ class DataLoader:
                 continue
             run_id = jsonl_path.stem
             records = _load_jsonl(jsonl_path)
-            if not records:
-                continue
-            summary = _build_summary(run_id, records)
+            summary = _build_summary(run_id, records, ResultStore(str(self.results_dir), run_id).load_manifest())
             # Try to enrich from YAML config
             config = self._load_config(run_id)
             if config:
@@ -352,7 +194,7 @@ class DataLoader:
         if jsonl_path is None or not jsonl_path.exists():
             return None
         records = _load_jsonl(jsonl_path)
-        summary = _build_summary(run_id, records)
+        summary = _build_summary(run_id, records, ResultStore(str(self.results_dir), run_id).load_manifest())
         config = self._load_config(run_id)
         if config:
             agent_cfg = config.get("agent", {})

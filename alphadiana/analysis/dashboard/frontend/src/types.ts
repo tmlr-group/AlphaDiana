@@ -8,6 +8,11 @@ export interface RunSummary {
   failed: number;
   accuracy: number;
   accuracy_total: number;
+  expected_sample_count?: number;
+  valid_scored?: number;
+  missing_samples?: number;
+  missing_tasks?: number;
+  strict_report_issues?: string[];
   mean_score: number;
   mean_wall_time_sec: number;
   total_tokens: { prompt_tokens: number; completion_tokens: number };
