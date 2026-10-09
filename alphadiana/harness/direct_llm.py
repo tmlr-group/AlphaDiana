@@ -222,8 +222,9 @@ class DirectLLMAgent(Agent):
         request_kwargs: dict[str, Any] = {
             "model": self._model,
             "messages": messages,
-            "temperature": self._temperature,
         }
+        if self._temperature is not None:
+            request_kwargs["temperature"] = self._temperature
         if self._max_completion_tokens is not None:
             request_kwargs["max_completion_tokens"] = self._max_completion_tokens
         else:
