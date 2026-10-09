@@ -14,7 +14,7 @@ Use a new checkout so existing work is untouched. Pin the tested code revision b
 git clone --branch refactor/shared-main-contracts --single-branch \
   https://github.com/tmlr-group/AlphaDiana.git AlphaDiana-smoke
 cd AlphaDiana-smoke
-git switch --detach 26da77dd03f3977bc3cda77bb96f6bd77ee37636
+git switch --detach 90ec6de6a98ce35d030418f6126d69aadc8dff9b
 export PYTHONPATH="$PWD"
 export MPLBACKEND=Agg
 ```
@@ -27,7 +27,7 @@ These use fixtures; they do not consume provider credits or start the real model
 python -m pytest tests -q -rs
 ```
 
-The tested code revision `26da77dd03f3977bc3cda77bb96f6bd77ee37636` produced **387 passed, 15 skipped** on Linux/Python 3.12. Inspect skip reasons, rather than treating skipped native-runtime tests as passed. The suite includes the scripted HTTP API pipeline, saved-artifact reopening, independent rescoring, action/failure annotation contracts and PDF/SVG/PNG export. It does not replace real model execution.
+The tested code revision `90ec6de6a98ce35d030418f6126d69aadc8dff9b` produced **393 passed, 15 skipped** on Linux/Python 3.12. Inspect skip reasons, rather than treating skipped native-runtime tests as passed. The suite includes the scripted HTTP API pipeline, saved-artifact reopening, independent rescoring, action/failure annotation contracts and PDF/SVG/PNG export. It does not replace real model execution.
 
 ## 3. Choose one provider per terminal
 
