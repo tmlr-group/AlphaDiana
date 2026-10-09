@@ -81,3 +81,34 @@ def test_remote_sandbox_uses_image_cache_or_pull(tmp_path, monkeypatch, cached, 
     sandbox._build_image(task, spec)
     assert client.images.pull.call_count == int(force or not cached)
     runtime["close_logger"].assert_called_once()
+
+
+@pytest.mark.parametrize("owner", ["sandbox", "scorer"])
+@pytest.mark.parametrize("engine", ["docker", "podman"])
+@pytest.mark.parametrize("configured", [None, 240])
+def test_container_start_can_exceed_sdk_default_timeout(tmp_path, owner, engine, configured):
+    from alphadiana.engine.sandbox.swebench_container import SWEBenchContainerSandbox
+
+    settings = {"container_engine": engine, "docker_api_version": "1.40", "log_dir": str(tmp_path)}
+    if configured is not None:
+        settings["docker_api_timeout"] = configured
+    provider = SWEBenchContainerSandbox() if owner == "sandbox" else module.SWEBenchScorer()
+    provider.setup(settings)
+    observed = {}
+
+    def from_env(**kwargs):
+        observed.update(kwargs)
+        deadline = kwargs.get("timeout", 60)
+
+        def start():
+            # Real A100 startup took 60.6s; the SDK's default 60s fails first.
+            if deadline <= 61:
+                raise TimeoutError("Container startup exceeded Docker SDK deadline")
+            return "running"
+
+        return SimpleNamespace(containers=SimpleNamespace(run=start))
+
+    client = provider._docker_client(SimpleNamespace(from_env=from_env))
+    assert client.containers.run() == "running"
+    assert observed["timeout"] == (configured if configured is not None else 180)
+    assert observed.get("version") == ("1.40" if engine == "podman" else None)

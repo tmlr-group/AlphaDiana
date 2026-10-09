@@ -101,6 +101,7 @@ class SWEBenchScorer(Scorer):
 
     def __init__(self) -> None:
         self._timeout = 1800
+        self._docker_api_timeout = 180.0
         self._namespace = "swebench"
         self._force_rebuild = False
         self._rm_image = False
@@ -126,6 +127,7 @@ class SWEBenchScorer(Scorer):
 
     def setup(self, config: dict) -> None:
         self._timeout = int(config.get("timeout", self._timeout))
+        self._docker_api_timeout = float(config.get("docker_api_timeout", 180))
         self._namespace = str(config.get("namespace", self._namespace)).strip() or self._namespace
         self._force_rebuild = bool(config.get("force_rebuild", self._force_rebuild))
         self._rm_image = bool(config.get("rm_image", self._rm_image))
@@ -215,9 +217,10 @@ class SWEBenchScorer(Scorer):
                     os.environ[key] = value
 
     def _docker_client(self, docker_module: Any) -> Any:
+        options: dict[str, Any] = {"timeout": self._docker_api_timeout}
         if self._container_engine == "podman" and self._docker_api_version:
-            return docker_module.from_env(version=self._docker_api_version)
-        return docker_module.from_env()
+            options["version"] = self._docker_api_version
+        return docker_module.from_env(**options)
 
     def _log_dir_for(self, runtime: dict[str, Any], run_id: str, model_name: str, instance_id: str) -> Path:
         return (
