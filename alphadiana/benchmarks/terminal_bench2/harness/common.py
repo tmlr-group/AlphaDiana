@@ -354,6 +354,19 @@ class TerminalBench2ContainerMixin:
         ]
         if tests_host_dir and Path(tests_host_dir).is_dir():
             cmd += ["-v", f"{tests_host_dir}:/tests:ro"]
+        if self._forward_proxy_env:
+            no_proxy_hosts = _proxy_bypass_hosts_from_urls(
+                str(getattr(self, "_api_base", "") or ""),
+                os.environ.get("OPENAI_BASE_URL", ""),
+                os.environ.get("OPENAI_API_BASE", ""),
+                os.environ.get("CUSTOM_API_BASE", ""),
+            )
+            for key, value in podman_proxy_env(
+                os.environ,
+                host_alias=self._docker_host_alias,
+                no_proxy_hosts=no_proxy_hosts,
+            ).items():
+                cmd += ["-e", f"{key}={value}"]
         cmd += [docker_image, "-lc", "sleep infinity"]
 
         logger.info("Task %s — starting container: %s", task.task_id, docker_image)
@@ -910,7 +923,6 @@ class TerminalBench2ContainerMixin:
 
     def _run_tests(self, container_id: str, timeout_sec: int | None = None) -> str:
         timeout = timeout_sec if timeout_sec is not None else self._test_timeout_sec
-        self._ensure_verifier_tooling(container_id)
         if getattr(self, "_container_engine", "docker") == "podman":
             try:
                 result = self._podman.exec(
@@ -943,112 +955,6 @@ class TerminalBench2ContainerMixin:
         except Exception as exc:
             logger.warning("tests/test.sh exec error: %s", exc)
             return f"[ERROR: {exc}]"
-
-    def _ensure_verifier_tooling(self, container_id: str) -> None:
-        bootstrap = r"""
-mkdir -p /root/.local/bin /usr/local/bin
-cat >/root/.local/bin/env <<'EOF'
-export PATH="/usr/local/bin:/root/.local/bin:$PATH"
-EOF
-cat >/usr/local/bin/curl <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-
-# Terminal-Bench tasks commonly bootstrap uv with
-# `curl https://astral.sh/uv/<version>/install.sh | sh`. The harness already
-# provides a compatible uvx shim below, so avoid making verifier execution
-# depend on GitHub availability while leaving every other curl call unchanged.
-case " $* " in
-  *" https://astral.sh/uv/"*"/install.sh "*)
-    cat <<'INSTALLER'
-#!/usr/bin/env bash
-mkdir -p "$HOME/.local/bin"
-cat >"$HOME/.local/bin/env" <<'ENV'
-export PATH="/usr/local/bin:/root/.local/bin:$PATH"
-ENV
-INSTALLER
-    exit 0
-    ;;
-esac
-exec /usr/bin/curl "$@"
-EOF
-cat >/usr/local/bin/uvx <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-
-export PATH="/usr/local/bin:/root/.local/bin:$PATH"
-packages=()
-cmd=()
-while (($#)); do
-  case "$1" in
-    -p)
-      shift
-      [ "$#" -gt 0 ] && shift || true
-      ;;
-    -w)
-      shift
-      [ "$#" -gt 0 ] || break
-      packages+=("$1")
-      shift
-      ;;
-    *)
-      cmd=("$@")
-      break
-      ;;
-  esac
-done
-
-if [ ${#cmd[@]} -eq 0 ]; then
-  echo "uvx shim: missing command" >&2
-  exit 2
-fi
-
-python3 -m ensurepip --upgrade >/dev/null 2>&1 || true
-if [ ${#packages[@]} -gt 0 ]; then
-  attempt=1
-  while true; do
-    if python3 -m pip install \
-      --disable-pip-version-check \
-      --user \
-      --break-system-packages \
-      --retries 5 \
-      --timeout 120 \
-      "${packages[@]}"; then
-      break
-    fi
-    if [ "$attempt" -ge 3 ]; then
-      exit 1
-    fi
-    attempt=$((attempt + 1))
-    sleep 5
-  done
-fi
-
-if [ "${cmd[0]}" = "pytest" ]; then
-  exec python3 -m pytest "${cmd[@]:1}"
-fi
-exec "${cmd[@]}"
-EOF
-chmod +x /usr/local/bin/curl /usr/local/bin/uvx /root/.local/bin/env
-""".strip()
-        try:
-            if getattr(self, "_container_engine", "docker") == "podman":
-                self._podman.exec(
-                    container_id,
-                    ["bash", "-lc", bootstrap],
-                    user="0:0",
-                    timeout=30,
-                    check=False,
-                )
-                return
-            subprocess.run(
-                ["docker", "exec", container_id, "bash", "-lc", bootstrap],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-        except Exception as exc:
-            logger.warning("Failed to pre-bootstrap verifier tooling in %s: %s", container_id[:12], exc)
 
     def _run_verifier_and_read_reward(
         self,
