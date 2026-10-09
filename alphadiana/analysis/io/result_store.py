@@ -710,21 +710,20 @@ class ResultStore:
             return []
         from alphadiana.analysis.run_summary import latest_samples
 
-        records: list[dict] = []
-        with open(self.path, "r", encoding="utf-8") as f:
-            for line_num, line in enumerate(f, 1):
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    record = json.loads(line)
-                except json.JSONDecodeError:
-                    logger.warning(
-                        "Skipping malformed JSONL line %d in %s", line_num, self.path,
-                    )
-                    continue
-                records.append(record)
-        return latest_samples(records)
+        def records():
+            with open(self.path, "r", encoding="utf-8") as f:
+                for line_num, line in enumerate(f, 1):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        yield json.loads(line)
+                    except json.JSONDecodeError:
+                        logger.warning(
+                            "Skipping malformed JSONL line %d in %s", line_num, self.path,
+                        )
+
+        return latest_samples(records())
 
     def save_manifest(self, manifest: dict[str, Any]) -> None:
         self.manifest_path.parent.mkdir(parents=True, exist_ok=True)

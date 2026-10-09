@@ -4,6 +4,7 @@ import importlib
 import json
 import subprocess
 import sys
+import tracemalloc
 from copy import deepcopy
 from types import SimpleNamespace
 
@@ -232,6 +233,69 @@ def test_legacy_k_missing_sample_keys_and_error_after_success():
     stats = compute_reliability_summary(rows, {})
     assert stats["written_records"] == 1 and stats["valid_scored"] == 0
     assert stats["pass_at_k"] == 0
+
+
+@pytest.mark.parametrize(
+    "manifest,rows,missing",
+    [
+        ({"expected_sample_count": 2}, [{"task_id": "a"}], 1),
+        ({"expected_sample_count": 2}, [], 2),
+        ({"expected_sample_count": 2}, [{"task_id": "a"}] * 3, 1),
+        ({"expected_sample_count": 4, "num_samples": 2}, [{"task_id": "a"}], 3),
+        (
+            {"expected_task_ids": ["a", "b"], "expected_sample_count": 2},
+            [{"task_id": "a", "sample_index": 1}, {"task_id": "other"}],
+            2,
+        ),
+    ],
+)
+def test_legacy_explicit_sample_count_preserves_missing_coverage(
+    tmp_path, manifest, rows, missing
+):
+    rows = [dict(score=1, correct=True, **row) for row in rows]
+    store = ResultStore(str(tmp_path), "run")
+    path = tmp_path / "run.jsonl"
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf8")
+    store.save_manifest(manifest)
+    core = ReportGenerator().summarize(rows, manifest)
+    dashboard = _build_summary("run", rows, manifest)
+    reliability = compute_reliability_summary(rows, manifest)
+    coverage = ExecutionMetrics().measure([Artifacts(path)]).coverage["run"]
+    assert core.missing_samples == dashboard.missing_samples == missing
+    assert reliability["missing_samples"] == coverage["missing_samples"] == missing
+    assert coverage["requested"] == manifest["expected_sample_count"]
+    assert coverage["observed"] == len(latest_samples(rows))
+    assert not reliability["pass_power_k_available"]
+
+
+def test_result_store_deduplicates_large_attempt_history_while_reading(tmp_path, caplog):
+    # Constructed regression: old attempts must not all stay resident during load.
+    store = ResultStore(str(tmp_path), "run")
+    sample_count, attempts, output_bytes = 100, 4, 64 * 1024
+    with open(store.path, "w", encoding="utf8") as stream:
+        for attempt in range(attempts):
+            for sample in range(sample_count):
+                row = dict(task_id=str(sample), raw_output="x" * output_bytes,
+                           score=1, correct=True, attempt=attempt)
+                if attempt == attempts - 1:
+                    row["error"] = {"error_type": "RuntimeError"}
+                stream.write(json.dumps(row) + "\n")
+        stream.write("\n{incomplete\n")
+    tracemalloc.start()
+    try:
+        rows = store.load()
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert len(rows) == sample_count
+    assert all(row["attempt"] == attempts - 1 for row in rows)
+    assert all(row["score_status"] == "runtime_error" for row in rows)
+    assert [row["task_id"] for row in rows] == list(map(str, range(sample_count)))
+    assert "Skipping malformed JSONL line" in caplog.text
+    # Allow over 2x the retained payload for decoder/container overhead; the
+    # four-attempt history alone is 25 MiB and must not fit under this bound.
+    assert peak < sample_count * output_bytes * 2.5
+    assert latest_samples(iter(rows)) == rows
 
 
 def test_retained_rule_method_is_available_but_never_default(tmp_path):

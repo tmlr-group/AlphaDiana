@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
@@ -21,7 +22,7 @@ if TYPE_CHECKING:
 ERROR_STATUSES = {"agent_error", "provider_error", "runtime_error", "scorer_error"}
 
 
-def latest_samples(records: list[dict]) -> list[dict]:
+def latest_samples(records: Iterable[dict]) -> list[dict]:
     """Last persisted attempt per (task, sample) within one run, never best score.
 
     Normalize legacy status on copies; callers retain their original attempt
@@ -126,10 +127,13 @@ class RunStatistics:
         missing_tasks = sum(t not in by_task for t in task_ids) + unknown_tasks
         expected_keys = {(t, i) for t in task_ids for i in range(num_samples)}
         observed_keys = {(r["task_id"], r.get("sample_index", 0)) for r in results}
-        missing_samples = (
-            len(expected_keys - observed_keys) + unknown_tasks * num_samples
-            if task_ids
-            else max(expected_samples - len(results), 0)
+        # Legacy manifests may declare only a total, without enough task IDs or
+        # per-task counts to enumerate all planned keys. Keep that lower bound
+        # as well as key-level gaps, which out-of-plan records cannot fill.
+        missing_samples = max(
+            len(expected_keys - observed_keys) + unknown_tasks * num_samples,
+            expected_samples - len(results),
+            0,
         )
         return cls(
             list(records),
