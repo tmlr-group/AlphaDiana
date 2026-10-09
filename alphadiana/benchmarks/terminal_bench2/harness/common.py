@@ -956,6 +956,21 @@ class TerminalBench2ContainerMixin:
             logger.warning("tests/test.sh exec error: %s", exc)
             return f"[ERROR: {exc}]"
 
+    def _verifier_results_ready(self, runtime: TerminalBench2RuntimeContext) -> bool:
+        """Require the test report explicitly requested by the official script."""
+        task_dir = runtime.task.metadata.get("task_dir")
+        if not task_dir:
+            return True
+        script = Path(task_dir) / "tests/test.sh"
+        if not script.is_file() or "--ctrf /logs/verifier/ctrf.json" not in script.read_text():
+            return True
+        try:
+            report = json.loads((runtime.logs_dir / "verifier/ctrf.json").read_text())
+            count = report["results"]["summary"]["tests"]
+            return type(count) is int and count > 0
+        except (OSError, ValueError, KeyError, TypeError):
+            return False
+
     def _run_verifier_and_read_reward(
         self,
         runtime: TerminalBench2RuntimeContext,
@@ -969,10 +984,11 @@ class TerminalBench2ContainerMixin:
         verifier_output_path = reward_path.parent
         existing_reward = self._read_reward_if_exists(runtime.logs_dir, runtime.task.task_id)
         if existing_reward is not None:
+            results_ready = self._verifier_results_ready(runtime)
             return VerifierResult(
                 test_output="[reused existing verifier reward.txt]",
-                reward=existing_reward,
-                status="ok",
+                reward=existing_reward if results_ready else None,
+                status="ok" if results_ready else "bootstrap_error",
                 reward_path=str(reward_path),
                 verifier_output_path=str(verifier_output_path),
             )
@@ -985,10 +1001,11 @@ class TerminalBench2ContainerMixin:
                 timeout_sec=wait_timeout,
             )
             if reused_reward is not None:
+                results_ready = self._verifier_results_ready(runtime)
                 return VerifierResult(
                     test_output=reused_output,
-                    reward=reused_reward,
-                    status="ok",
+                    reward=reused_reward if results_ready else None,
+                    status="ok" if results_ready else "bootstrap_error",
                     reward_path=str(reward_path),
                     verifier_output_path=str(verifier_output_path),
                 )
@@ -1002,8 +1019,12 @@ class TerminalBench2ContainerMixin:
                 )
 
         test_output = self._run_tests(runtime.container_id, timeout_sec)
+        verifier_output_path.mkdir(parents=True, exist_ok=True)
+        (verifier_output_path / "test-output.txt").write_text(test_output, encoding="utf-8")
         reward = self._read_reward_if_exists(runtime.logs_dir, runtime.task.task_id)
-        if re.search(
+        if not self._verifier_results_ready(runtime):
+            status, reward = "bootstrap_error", None
+        elif re.search(
             r"(?m)^(?:/usr/local/bin/uvx: line \d+: python3: command not found|"
             r"/usr/bin/python3: No module named (?:pip|ensurepip))$", test_output
         ):

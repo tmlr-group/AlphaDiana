@@ -48,3 +48,30 @@ def test_fresh_verified_result_supersedes_old_bootstrap_error(tmp_path):
                             'score_metadata':{'replayed':True,'verifier_status':'ok'},
                             'rescoring':{'environment_allowed':True,'scorer_predicted':'1'}})+'\n')
     assert Artifacts(p).records()[0]['score_status']=='valid_scored'
+
+
+@pytest.mark.parametrize('cached', [False, True])
+@pytest.mark.parametrize('summary,expected_status', [(None, 'bootstrap_error'), ({'tests': 0}, 'bootstrap_error'), ({'tests': 7, 'failed': 7}, 'ok')])
+def test_declared_official_test_report_must_exist_before_accepting_zero(tmp_path, monkeypatch, cached, summary, expected_status):
+    task_dir = tmp_path / 'task'
+    (task_dir / 'tests').mkdir(parents=True)
+    (task_dir / 'tests/test.sh').write_text('uvx -p 3.13 pytest --ctrf /logs/verifier/ctrf.json /tests/test_outputs.py\n')
+    logs = tmp_path / 'logs'
+    (logs / 'verifier').mkdir(parents=True)
+    def write_results():
+        (logs / 'verifier/reward.txt').write_text('0')
+        if summary is not None:
+            (logs / 'verifier/ctrf.json').write_text(json.dumps({'results': {'summary': summary}}))
+    if cached:
+        write_results()
+    owner = TerminalBench2ContainerMixin()
+    owner._setup_container_config({'container_engine': 'docker'})
+    runtime = SimpleNamespace(logs_dir=logs, container_id='fixture', task=SimpleNamespace(task_id='task', metadata={'task_dir': str(task_dir)}))
+    monkeypatch.setattr(owner, '_probe_running_verifier', lambda container_id: (False, 'ok'))
+    def run_tests(container_id, timeout_sec):
+        write_results()
+        return 'error: Failed to download Python from GitHub' if summary is None else 'pytest finished'
+    monkeypatch.setattr(owner, '_run_tests', run_tests)
+    result = owner._run_verifier_and_read_reward(runtime)
+    assert result.status == expected_status
+    assert result.reward == ('0' if expected_status == 'ok' else None)
