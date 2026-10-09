@@ -294,6 +294,32 @@ def test_tb2_failed_start_removes_only_the_container_recorded_by_docker(tmp_path
     assert removed == ["b" * 64]
 
 
+def test_tb2_startup_timeout_stays_runtime_failure_when_normalized_twice():
+    from alphadiana.analysis.io.status import infer_score_status, normalize_legacy_timeout_zero_record
+
+    captured = json.loads((Path(__file__).parent / "fixtures/tb2-startup-timeout.json").read_text())
+    first = dict(normalize_legacy_timeout_zero_record(captured))
+    first["score_status"] = infer_score_status(first)
+    second = dict(normalize_legacy_timeout_zero_record(first))
+    second["score_status"] = infer_score_status(second)
+    assert first["score_status"] == "runtime_error"
+    assert second == first
+
+
+def test_reopened_tb2_startup_timeout_has_no_measured_score(tmp_path):
+    from alphadiana.artifacts import Artifacts
+    from alphadiana.analysis.run_summary import RunStatistics
+
+    path = tmp_path / "captured.jsonl"
+    captured = json.loads((Path(__file__).parent / "fixtures/tb2-startup-timeout.json").read_text())
+    path.write_text(json.dumps(captured) + "\n")
+    row = Artifacts(path).records()[0]
+    assert row["score_status"] == "runtime_error" and row["score"] is None
+    assert row["error"] == captured["error"]
+    stats = RunStatistics.from_records([row])
+    assert stats.valid == stats.metric_results == []
+
+
 @pytest.mark.parametrize(
     "stderr,returncode,expected",
     [

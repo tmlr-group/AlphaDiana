@@ -59,6 +59,8 @@ def _is_control_plane_runtime_error(error: dict[str, Any], evidence_text: str) -
         "docker image inspect",
         "docker pull",
         "docker run",
+        "'docker', 'run'",
+        "'docker', 'start'",
         "container runtime",
         "control_plane",
     )
