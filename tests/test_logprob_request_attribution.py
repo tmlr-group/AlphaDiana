@@ -118,3 +118,57 @@ def test_tool_feedback_detection_does_not_search_past_intervening_user():
         [{"role": "tool"}, {"role": "user", "content": "next"}]
     )
     assert not follows_tool_result(None)
+
+
+@pytest.mark.parametrize("drop_store", [False, True])
+@pytest.mark.parametrize("stream", [False, True])
+def test_explicit_field_drop_preserves_native_request(drop_store, stream):
+    observed = []
+
+    class StrictProvider(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_POST(self):
+            payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            observed.append(payload)
+            rejected = "store" in payload
+            body = json.dumps({"error": "property store should not exist"} if rejected
+                              else {"choices": [{"message": {"content": "ready"}}]}).encode()
+            self.send_response(400 if rejected else 200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    upstream = ThreadingHTTPServer(("127.0.0.1", 0), StrictProvider)
+    thread = threading.Thread(target=upstream.serve_forever, daemon=True)
+    thread.start()
+    proxy = None
+    payload = {"model": "native", "store": False, "stream": stream,
+               "temperature": None, "max_completion_tokens": 8192,
+               "messages": [{"role": "user", "content": "instruction"},
+                            {"role": "tool", "tool_call_id": "call-1", "content": "feedback"}],
+               "tools": [{"type": "function", "function": {"name": "terminal"}}]}
+    try:
+        options = {"drop_request_fields": ("store",)} if drop_store else {}
+        proxy = LogprobCaptureProxy(
+            f"http://127.0.0.1:{upstream.server_port}", 1,
+            inject_logprobs=False, normalize_system_messages=False,
+            capture_request_summary=True, **options,
+        )
+        proxy.start()
+        with httpx.Client(trust_env=False) as client:
+            response = client.post(proxy.local_url + "/v1/chat/completions", json=payload)
+        assert response.status_code == (200 if drop_store else 400)
+        expected = {k: v for k, v in payload.items() if not (drop_store and k == "store")}
+        assert observed == [expected]
+        assert payload["store"] is False
+        summary = proxy.request_summaries()[0]
+        assert summary.get("dropped_request_fields", []) == (["store"] if drop_store else [])
+    finally:
+        if proxy is not None:
+            proxy.stop()
+        upstream.shutdown()
+        upstream.server_close()
+        thread.join()

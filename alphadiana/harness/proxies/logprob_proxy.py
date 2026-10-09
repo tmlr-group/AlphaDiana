@@ -849,6 +849,11 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
                 payload["logprobs"] = True
                 payload["top_logprobs"] = self.server.top_logprobs
             payload.update(self.server.request_overrides)
+            dropped_fields = [
+                field for field in self.server.drop_request_fields if field in payload
+            ]
+            for field in dropped_fields:
+                payload.pop(field)
             # OpenAI-compatible servers may prioritize max_completion_tokens.
             # An explicit evaluation budget must not leave a conflicting alias.
             if "max_tokens" in self.server.request_overrides:
@@ -871,6 +876,8 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
                     inserted_user_message=inserted_user_message,
                 )
                 summary.update(self._capture_context)
+                if dropped_fields:
+                    summary["dropped_request_fields"] = dropped_fields
                 if downstream_stream != bool(payload.get("stream", False)):
                     summary["downstream_stream"] = downstream_stream
                     summary["upstream_stream_forced"] = True
@@ -1125,6 +1132,7 @@ class _LogprobCaptureServer(socketserver.ThreadingMixIn, http.server.HTTPServer)
         upstream_api_key: str = "",
         proxy_api_key: str = "",
         request_overrides: dict[str, Any] | None = None,
+        drop_request_fields: tuple[str, ...] = (),
         inject_logprobs: bool = True,
         normalize_system_messages: bool = True,
         capture_request_summary: bool = False,
@@ -1136,6 +1144,7 @@ class _LogprobCaptureServer(socketserver.ThreadingMixIn, http.server.HTTPServer)
         self.upstream_api_key = upstream_api_key
         self.proxy_api_key = proxy_api_key
         self.request_overrides = dict(request_overrides or {})
+        self.drop_request_fields = tuple(drop_request_fields)
         self.inject_logprobs = bool(inject_logprobs)
         self.normalize_system_messages = bool(normalize_system_messages)
         self.capture_request_summary = bool(capture_request_summary)
@@ -1163,6 +1172,7 @@ class LogprobCaptureProxy:
         upstream_api_key: str = "",
         proxy_api_key: str = "",
         request_overrides: dict[str, Any] | None = None,
+        drop_request_fields: tuple[str, ...] = (),
         inject_logprobs: bool = True,
         normalize_system_messages: bool = True,
         capture_request_summary: bool = False,
@@ -1176,6 +1186,7 @@ class LogprobCaptureProxy:
         self._upstream_api_key = str(upstream_api_key or "").strip()
         self._proxy_api_key = str(proxy_api_key or "").strip()
         self._request_overrides = dict(request_overrides or {})
+        self._drop_request_fields = tuple(drop_request_fields)
         self._inject_logprobs = bool(inject_logprobs)
         self._normalize_system_messages = bool(normalize_system_messages)
         self._capture_request_summary = bool(capture_request_summary)
@@ -1194,6 +1205,7 @@ class LogprobCaptureProxy:
             upstream_api_key=self._upstream_api_key,
             proxy_api_key=self._proxy_api_key,
             request_overrides=self._request_overrides,
+            drop_request_fields=self._drop_request_fields,
             inject_logprobs=self._inject_logprobs,
             normalize_system_messages=self._normalize_system_messages,
             capture_request_summary=self._capture_request_summary,
