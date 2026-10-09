@@ -163,6 +163,10 @@ def test_sweagent_image_override_and_solver_visible_inputs(tmp_path, monkeypatch
     )
 
     def native(argv, **kwargs):
+        sampling = Path(argv[argv.index("--output_dir") + 1]).parent / "model-sampling.json"
+        assert sampling.is_file()
+        assert json.loads(sampling.read_text()) == {"agent": {"model": {"top_p": None}}}
+        assert argv[argv.index(str(sampling)) - 1] == "--config"
         instances = Path(argv[argv.index("--instances.path") + 1])
         data = json.loads(instances.read_text())
         assert data == [
@@ -188,6 +192,7 @@ def test_sweagent_image_override_and_solver_visible_inputs(tmp_path, monkeypatch
             "config_path": str(config_path),
             "model": "fixture",
             "api_base": "http://localhost:1/v1",
+            "top_p": None,
             "output_dir": str(tmp_path / "out"),
             "image_overrides": {"example": "owned-image@sha256:fixture"},
         }
@@ -208,6 +213,85 @@ def test_opencode_context_limits_reach_native_model_config(tmp_path):
     agent._write_provider_config(path)
     model = json.loads(path.read_text())["provider"]["custom"]["models"]["fixture"]
     assert model["limit"] == {"context": 32768, "output": 8192}
+
+
+def test_sweagent_native_exit_error_retains_evidence_and_is_not_scored(tmp_path, monkeypatch):
+    from alphadiana.benchmarks.swe_bench import sweagent
+    from alphadiana.analysis.io.status import infer_score_status
+
+    # Captured on A100: upstream run-batch exited zero, emitted an empty
+    # prediction, and recorded UnsupportedParamsError before any API call.
+    trajectory = json.loads(
+        (Path(__file__).parent / "fixtures/sweagent-unsupported-params.json").read_text()
+    )
+    config_path = tmp_path / "default.yaml"
+    config_path.write_text("agent: {}")
+    task = BenchmarkTask("swe_example", "Fix", None, {"instance_id": "example", "base_commit": "base"})
+
+    def native(argv, **kwargs):
+        output = Path(argv[argv.index("--output_dir") + 1])
+        (output / "example").mkdir(parents=True)
+        (output / "preds.json").write_text(json.dumps({"example": {"model_patch": ""}}))
+        (output / "example/example.traj").write_text(json.dumps(trajectory))
+
+    monkeypatch.setattr(sweagent, "run_native", native)
+    agent = sweagent.SWEAgent()
+    agent.setup({"executable": "sweagent", "config_path": str(config_path), "model": "fixture", "api_base": "http://localhost:1/v1", "output_dir": str(tmp_path / "out")})
+    with pytest.raises(RuntimeError, match="exit_error") as caught:
+        agent.solve(task)
+    response = caught.value.partial_response
+    assert response.metadata["exit_status"] == "exit_error"
+    assert "UnsupportedParamsError" in response.workspace_file_contents["sweagent_trajectory.json"]
+    assert response.metadata["token_usage_provenance"]["requests"] == 0
+    assert infer_score_status({"benchmark_name": "swe_bench", "metadata": response.metadata, "error": {"error_type": caught.value.error_type}}) == "runtime_error"
+
+
+@pytest.mark.parametrize("status,expected", [("exit_error", "runtime_error"), ("exit_api", "provider_error"), ("exit_environment_error", "runtime_error"), ("submitted", "valid_scored"), ("exit_format", "valid_scored")])
+def test_saved_sweagent_native_failure_overrides_legacy_valid_score(status, expected):
+    from alphadiana.analysis.io.status import infer_score_status
+
+    assert infer_score_status({"benchmark_name": "swe_bench", "score_status": "valid_scored", "score": 0, "correct": False, "metadata": {"native_runtime": "sweagent", "exit_status": status}}) == expected
+
+
+@pytest.mark.parametrize("configured", [None, 240])
+def test_tb2_docker_start_accepts_observed_startup_over_sixty_seconds(tmp_path, monkeypatch, configured):
+    import subprocess
+    from alphadiana.benchmarks.terminal_bench2.harness import common
+
+    def docker(command, **kwargs):
+        if command[:2] == ["docker", "run"]:
+            if kwargs["timeout"] <= 61:
+                raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+            assert kwargs["timeout"] == (180 if configured is None else configured)
+            return subprocess.CompletedProcess(command, 0, "a" * 64, "")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(common.subprocess, "run", docker)
+    owner = common.TerminalBench2ContainerMixin()
+    owner._setup_container_config({} if configured is None else {"docker_start_timeout_sec": configured})
+    assert owner._start_container("fixture", tmp_path, BenchmarkTask("fixture", "Solve", None)) == "a" * 64
+
+
+def test_tb2_failed_start_removes_only_the_container_recorded_by_docker(tmp_path, monkeypatch):
+    import subprocess
+    from alphadiana.benchmarks.terminal_bench2.harness import common
+
+    removed = []
+    def docker(command, **kwargs):
+        if command[:2] == ["docker", "run"]:
+            cidfile = Path(command[command.index("--cidfile") + 1])
+            cidfile.write_text("b" * 64)
+            raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+        assert command == ["docker", "rm", "-f", "b" * 64]
+        removed.append(command[-1])
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(common.subprocess, "run", docker)
+    owner = common.TerminalBench2ContainerMixin()
+    owner._setup_container_config({})
+    with pytest.raises(subprocess.TimeoutExpired):
+        owner._start_container("fixture", tmp_path, BenchmarkTask("fixture", "Solve", None))
+    assert removed == ["b" * 64]
 
 
 @pytest.mark.parametrize(

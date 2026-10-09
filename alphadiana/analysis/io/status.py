@@ -249,6 +249,14 @@ def infer_score_status(record: dict[str, Any]) -> str:
         return VALID_SCORE_STATUS
 
     metadata = _as_dict(record.get("metadata"))
+    # Older SWE-Agent adapters scored empty predictions despite native startup
+    # or provider failure. Retained native evidence outranks that legacy status.
+    if metadata.get("native_runtime") == "sweagent":
+        native_exit = metadata.get("exit_status")
+        if native_exit == "exit_api":
+            return "provider_error"
+        if native_exit in {"exit_error", "exit_environment_error"}:
+            return "runtime_error"
     finish_reason = str(record.get("finish_reason", "") or "").strip()
     error = _as_dict(record.get("error"))
     # Rescoring keeps solver evidence intact. The fresh verifier judgment owns

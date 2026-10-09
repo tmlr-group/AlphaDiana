@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
+from uuid import uuid4
 
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.engine.container_runtime.podman_cli import PodmanCLI, PodmanError
@@ -138,6 +139,10 @@ class TerminalBench2ContainerMixin:
         self._retain_verifier_snapshot = bool(config.get("retain_verifier_snapshot", False))
         self._timeout_sec = int(config.get("timeout_sec", 300))
         self._test_timeout_sec = int(config.get("test_timeout_sec", 120))
+        # A100 official task-image startup exceeded the original 60s deadline.
+        self._docker_start_timeout_sec = int(config.get("docker_start_timeout_sec", 180))
+        if self._docker_start_timeout_sec <= 0:
+            raise ValueError("docker_start_timeout_sec must be positive")
         self._logs_base_dir = Path(config.get("logs_base_dir", "/tmp/tb2_logs")).expanduser().resolve()
         self._container_engine = str(config.get("container_engine", "docker") or "docker").strip().lower()
         if self._container_engine not in {"docker", "podman"}:
@@ -332,9 +337,12 @@ class TerminalBench2ContainerMixin:
                 raise last_mkdir_error
             return container_id
 
+        cidfile = logs_dir / f"container-{uuid4().hex}.cid"
         cmd = [
             "docker",
             "run",
+            "--cidfile",
+            str(cidfile),
             "-d",
             "--rm",
             "--add-host",
@@ -349,21 +357,33 @@ class TerminalBench2ContainerMixin:
         cmd += [docker_image, "-lc", "sleep infinity"]
 
         logger.info("Task %s — starting container: %s", task.task_id, docker_image)
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"docker run failed for task {task.task_id} "
-                f"(image: {docker_image}): {result.stderr.strip()}\n"
-                f"Pre-pull the image with: docker pull {docker_image}"
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=self._docker_start_timeout_sec)
+            if result.returncode != 0:
+                raise RuntimeError(
+                    f"docker run failed for task {task.task_id} "
+                    f"(image: {docker_image}): {result.stderr.strip()}\n"
+                    f"Pre-pull the image with: docker pull {docker_image}"
+                )
+            container_id = result.stdout.strip()
+            if not container_id:
+                raise RuntimeError(f"docker run produced no container ID for task {task.task_id}")
+            subprocess.run(
+                ["docker", "exec", container_id, "mkdir", "-p", "/logs/verifier"],
+                capture_output=True,
+                timeout=10,
             )
-        container_id = result.stdout.strip()
-        if not container_id:
-            raise RuntimeError(f"docker run produced no container ID for task {task.task_id}")
-        subprocess.run(
-            ["docker", "exec", container_id, "mkdir", "-p", "/logs/verifier"],
-            capture_output=True,
-            timeout=10,
-        )
+        except BaseException:
+            # Docker writes the ID before starting. A timed-out CLI can leave
+            # the daemon's container alive; only this invocation's ID is owned.
+            if cidfile.is_file():
+                owned_id = cidfile.read_text().strip()
+                if re.fullmatch(r"[0-9a-f]{64}", owned_id):
+                    try:
+                        subprocess.run(["docker", "rm", "-f", owned_id], capture_output=True, timeout=30)
+                    except Exception as exc:
+                        logger.warning("Task %s — failed startup cleanup for %s: %s", task.task_id, owned_id, exc)
+            raise
         return container_id
 
     def _podman_container_name(self, task: BenchmarkTask) -> str:

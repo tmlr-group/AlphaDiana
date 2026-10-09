@@ -1,6 +1,7 @@
 """Capture request boundaries without changing model or client payloads."""
 
 import json
+from pathlib import Path
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -166,6 +167,60 @@ def test_explicit_field_drop_preserves_native_request(drop_store, stream):
         assert payload["store"] is False
         summary = proxy.request_summaries()[0]
         assert summary.get("dropped_request_fields", []) == (["store"] if drop_store else [])
+    finally:
+        if proxy is not None:
+            proxy.stop()
+        upstream.shutdown()
+        upstream.server_close()
+        thread.join()
+
+
+@pytest.mark.parametrize("normalize", [False, True])
+def test_native_empty_tool_content_is_null_only_when_declared(normalize):
+    observed = []
+
+    class StrictProvider(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_POST(self):
+            payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            observed.append(payload)
+            rejected = payload["messages"][1]["content"] == ""
+            body = json.dumps({"error": "invalid messages.1.content"} if rejected else {"choices": [{"message": {"content": "ready"}}]}).encode()
+            self.send_response(400 if rejected else 200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    # Actual assistant/tool messages captured from pinned OpenCode 1.3.2
+    # using a local provider fixture; no benchmark solver was called.
+    turn = json.loads((Path(__file__).parent / "fixtures/opencode-1.3.2-tool-turn.json").read_text())
+    untouched = [
+        {"role": "user", "content": ""},
+        {"role": "assistant", "content": ""},
+        {"role": "assistant", "content": None, "tool_calls": turn[0]["tool_calls"]},
+        {"role": "assistant", "content": "explanation", "tool_calls": turn[0]["tool_calls"]},
+        {"role": "assistant", "content": [], "tool_calls": turn[0]["tool_calls"]},
+    ]
+    payload = {"model": "fixture", "messages": [{"role": "user", "content": "Run"}, *turn, *untouched]}
+    upstream = ThreadingHTTPServer(("127.0.0.1", 0), StrictProvider)
+    thread = threading.Thread(target=upstream.serve_forever, daemon=True)
+    thread.start()
+    proxy = None
+    try:
+        proxy = LogprobCaptureProxy(f"http://127.0.0.1:{upstream.server_port}", 1, inject_logprobs=False, normalize_system_messages=False, normalize_empty_tool_content=normalize, capture_request_summary=True)
+        proxy.start()
+        with httpx.Client(trust_env=False) as client:
+            response = client.post(proxy.local_url + "/v1/chat/completions", json=payload)
+        assert response.status_code == (200 if normalize else 400)
+        expected = json.loads(json.dumps(payload))
+        if normalize:
+            expected["messages"][1]["content"] = None
+        assert observed == [expected]
+        assert payload["messages"][1]["content"] == ""
+        assert proxy.request_summaries()[0].get("normalized_empty_tool_content_indices", []) == ([1] if normalize else [])
     finally:
         if proxy is not None:
             proxy.stop()

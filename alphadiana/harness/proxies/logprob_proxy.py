@@ -848,6 +848,22 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
             if self.server.inject_logprobs:
                 payload["logprobs"] = True
                 payload["top_logprobs"] = self.server.top_logprobs
+            empty_tool_indices = []
+            messages = payload.get("messages")
+            if self.server.normalize_empty_tool_content and isinstance(messages, list):
+                empty_tool_indices = [
+                    i for i, message in enumerate(messages)
+                    if isinstance(message, dict)
+                    and message.get("role") == "assistant"
+                    and message.get("content") == ""
+                    and isinstance(message.get("tool_calls"), list)
+                    and message["tool_calls"]
+                ]
+                if empty_tool_indices:
+                    payload["messages"] = [
+                        dict(message, content=None) if i in empty_tool_indices else message
+                        for i, message in enumerate(messages)
+                    ]
             payload.update(self.server.request_overrides)
             dropped_fields = [
                 field for field in self.server.drop_request_fields if field in payload
@@ -878,6 +894,8 @@ class _LogprobProxyHandler(http.server.BaseHTTPRequestHandler):
                 summary.update(self._capture_context)
                 if dropped_fields:
                     summary["dropped_request_fields"] = dropped_fields
+                if empty_tool_indices:
+                    summary["normalized_empty_tool_content_indices"] = empty_tool_indices
                 if downstream_stream != bool(payload.get("stream", False)):
                     summary["downstream_stream"] = downstream_stream
                     summary["upstream_stream_forced"] = True
@@ -1135,6 +1153,7 @@ class _LogprobCaptureServer(socketserver.ThreadingMixIn, http.server.HTTPServer)
         drop_request_fields: tuple[str, ...] = (),
         inject_logprobs: bool = True,
         normalize_system_messages: bool = True,
+        normalize_empty_tool_content: bool = False,
         capture_request_summary: bool = False,
         upstream_stream: bool = False,
     ) -> None:
@@ -1147,6 +1166,7 @@ class _LogprobCaptureServer(socketserver.ThreadingMixIn, http.server.HTTPServer)
         self.drop_request_fields = tuple(drop_request_fields)
         self.inject_logprobs = bool(inject_logprobs)
         self.normalize_system_messages = bool(normalize_system_messages)
+        self.normalize_empty_tool_content = bool(normalize_empty_tool_content)
         self.capture_request_summary = bool(capture_request_summary)
         self.upstream_stream = bool(upstream_stream)
         self.request_summaries: list[dict] = []
@@ -1175,6 +1195,7 @@ class LogprobCaptureProxy:
         drop_request_fields: tuple[str, ...] = (),
         inject_logprobs: bool = True,
         normalize_system_messages: bool = True,
+        normalize_empty_tool_content: bool = False,
         capture_request_summary: bool = False,
         upstream_stream: bool = False,
     ) -> None:
@@ -1189,6 +1210,7 @@ class LogprobCaptureProxy:
         self._drop_request_fields = tuple(drop_request_fields)
         self._inject_logprobs = bool(inject_logprobs)
         self._normalize_system_messages = bool(normalize_system_messages)
+        self._normalize_empty_tool_content = bool(normalize_empty_tool_content)
         self._capture_request_summary = bool(capture_request_summary)
         self._upstream_stream = bool(upstream_stream)
         self._server: _LogprobCaptureServer | None = None
@@ -1208,6 +1230,7 @@ class LogprobCaptureProxy:
             drop_request_fields=self._drop_request_fields,
             inject_logprobs=self._inject_logprobs,
             normalize_system_messages=self._normalize_system_messages,
+            normalize_empty_tool_content=self._normalize_empty_tool_content,
             capture_request_summary=self._capture_request_summary,
             upstream_stream=self._upstream_stream,
         )
