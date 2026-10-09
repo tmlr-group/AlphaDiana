@@ -145,7 +145,8 @@ def test_openclaw_install_version_is_explicit_and_override_is_preserved():
     assert manager._install_openclaw_command == "custom installer"
 
 
-def test_sweagent_image_override_and_solver_visible_inputs(tmp_path, monkeypatch):
+@pytest.mark.parametrize("history_processors", [None, []])
+def test_sweagent_image_override_and_solver_visible_inputs(tmp_path, monkeypatch, history_processors):
     from alphadiana.benchmarks.swe_bench import sweagent
 
     config_path = tmp_path / "default.yaml"
@@ -167,6 +168,12 @@ def test_sweagent_image_override_and_solver_visible_inputs(tmp_path, monkeypatch
         assert sampling.is_file()
         assert json.loads(sampling.read_text()) == {"agent": {"model": {"top_p": None}}}
         assert argv[argv.index(str(sampling)) - 1] == "--config"
+        history = sampling.parent / "history-processors.json"
+        if history_processors is not None:
+            assert json.loads(history.read_text()) == {"agent": {"history_processors": history_processors}}
+            assert argv[argv.index(str(history)) - 1] == "--config"
+        else:
+            assert not history.exists()
         instances = Path(argv[argv.index("--instances.path") + 1])
         data = json.loads(instances.read_text())
         assert data == [
@@ -195,6 +202,7 @@ def test_sweagent_image_override_and_solver_visible_inputs(tmp_path, monkeypatch
             "top_p": None,
             "output_dir": str(tmp_path / "out"),
             "image_overrides": {"example": "owned-image@sha256:fixture"},
+            **({"history_processors": history_processors} if history_processors is not None else {}),
         }
     )
     response = agent.solve(task)

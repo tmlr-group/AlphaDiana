@@ -72,6 +72,8 @@ class SWEAgent(Agent):
     version = "1.1.0"
 
     def setup(self, config: dict) -> None:
+        if "history_processors" in config and not isinstance(config["history_processors"], list):
+            raise ValueError("history_processors must be a native configuration list")
         self.config = dict(config)
         self.executable = str(
             config.get("executable") or shutil.which("sweagent") or ""
@@ -169,6 +171,11 @@ class SWEAgent(Agent):
             sampling = directory / "model-sampling.json"
             sampling.write_text(json.dumps({"agent": {"model": {"top_p": self.config["top_p"]}}}))
             argv.extend(["--config", str(sampling)])
+        if "history_processors" in self.config:
+            # A typed empty list explicitly disables provider-specific cache marks.
+            history = directory / "history-processors.json"
+            history.write_text(json.dumps({"agent": {"history_processors": self.config["history_processors"]}}))
+            argv.extend(["--config", str(history)])
         if "python_standalone_dir" in self.config:
             argv.extend(
                 [
