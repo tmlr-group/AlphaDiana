@@ -6,7 +6,7 @@ from dataclasses import asdict
 from types import SimpleNamespace
 
 import pytest
-
+from action_target_fixtures import attach_targets, fixed_item
 from alphadiana.analysis.action_annotations import ActionAnnotations
 from alphadiana.analysis.analyzer import ExecutionMetrics, Figure
 from alphadiana.analysis.entropy_analysis import EntropyAnalysis
@@ -295,7 +295,11 @@ def test_failure_annotations_preserve_tool_and_reasoning_evidence(tmp_path):
                         "content": "I will run the script.",
                         "thinking": "The script is named main.py.",
                         "tool_calls": [
-                            {"id": "call-1", "tool": "bash", "input": {"command": command}}
+                            {
+                                "id": "call-1",
+                                "tool": "bash",
+                                "input": {"command": command},
+                            }
                         ],
                     },
                     {
@@ -313,6 +317,7 @@ def test_failure_annotations_preserve_tool_and_reasoning_evidence(tmp_path):
 
     requests = []
     with FailureAnnotations(**judge_options(tmp_path)) as labels:
+
         def classify(**kwargs):
             evidence = json.loads(kwargs["messages"][-1]["content"])
             requests.append(evidence)
@@ -325,8 +330,12 @@ def test_failure_annotations_preserve_tool_and_reasoning_evidence(tmp_path):
 
         labels.client.chat.completions.create = classify
         result = labels.measure(sources)
-        assert len(requests) == 2  # Different calls must not share an annotation cache entry.
-        assert len({row["annotation_sha256"] for row in result.tables["annotations"]}) == 2
+        assert (
+            len(requests) == 2
+        )  # Different calls must not share an annotation cache entry.
+        assert (
+            len({row["annotation_sha256"] for row in result.tables["annotations"]}) == 2
+        )
         assert labels.measure(sources).tables == result.tables
         assert len(requests) == 2
 
@@ -354,9 +363,19 @@ def test_action_percentages_and_transitions_stay_within_samples(tmp_path):
         ],
         {"artifacts/trace.json": trace},
     )
+    attach_targets(artifacts, [fixed_item("A1", "a", 0), fixed_item("A2", "b", 1)])
     with ActionAnnotations(**judge_options(tmp_path)) as labels:
         labels.client.chat.completions.create = lambda **kw: response(
-            {"label": "Reasoning"}
+            {
+                "actions": [
+                    {
+                        "action_id": json.loads(kw["messages"][1]["content"])[
+                            "actions"
+                        ][0]["action_id"],
+                        "label": "Reasoning",
+                    }
+                ]
+            }
         )
         result = labels.measure([artifacts])
         assert sum(r["count"] for r in result.tables["transitions"]) == 2
@@ -443,8 +462,17 @@ def test_openai_compatible_judges_and_exports(tmp_path, monkeypatch):
             answer = (
                 {"labels": [{"code": "TE-2", "quote": "tool failed"}]}
                 if "unsuccessful execution" in prompt
-                else {"label": "Reasoning"}
-                if "action classifier" in prompt
+                else {
+                    "actions": [
+                        {
+                            "action_id": json.loads(body["messages"][1]["content"])[
+                                "actions"
+                            ][0]["action_id"],
+                            "label": "Reasoning",
+                        }
+                    ]
+                }
+                if "human-protocol alignment v2" in prompt
                 else {"correct": False, "rationale": "Fixture judgment"}
             )
             payload = json.dumps(
@@ -506,6 +534,7 @@ def test_openai_compatible_judges_and_exports(tmp_path, monkeypatch):
             "tokens.jsonl": "".join(json.dumps(t) + "\n" for t in tokens),
         },
     )
+    attach_targets(artifacts, [fixed_item("A1", "tool failed", 0)])
     try:
         scorer = LLMJudgeScorer()
         scorer.setup({})

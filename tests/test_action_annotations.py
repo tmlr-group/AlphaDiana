@@ -4,8 +4,9 @@ import json
 from types import SimpleNamespace
 
 import pytest
-
+from action_target_fixtures import fixed_item
 from alphadiana.analysis.action_annotations import ActionAnnotations
+from alphadiana.analysis.action_protocol import request_for, validate_response
 
 
 def test_annotations_cache_exact_request_and_reject_invalid_labels(tmp_path):
@@ -24,7 +25,9 @@ def test_annotations_cache_exact_request_and_reject_invalid_labels(tmp_path):
             choices=[
                 SimpleNamespace(
                     finish_reason="stop",
-                    message=SimpleNamespace(content='{"label":"Reasoning"}'),
+                    message=SimpleNamespace(
+                        content='{"actions":[{"action_id":"A1","label":"Reasoning"}]}'
+                    ),
                 )
             ],
             model="fixture",
@@ -33,7 +36,7 @@ def test_annotations_cache_exact_request_and_reject_invalid_labels(tmp_path):
         )
 
     annotator.client.chat.completions.create = create
-    evidence = {"target": "2 + 2 = 4"}
+    evidence = request_for(fixed_item("A1", "2 + 2 = 4"))
     label, digest = annotator._classify(evidence)
     assert label == "Reasoning"
     assert annotator._classify(evidence) == (label, digest)
@@ -41,7 +44,7 @@ def test_annotations_cache_exact_request_and_reject_invalid_labels(tmp_path):
     cached = json.loads((tmp_path / f"{digest}.json").read_text())
     assert cached["request"]["model_version"] == "revision-1"
     assert cached["response_id"] == "response-1"
-    cached["answer"]["label"] = "Invented label"
+    cached["answer"]["actions"][0]["label"] = "Invented label"
     (tmp_path / f"{digest}.json").write_text(json.dumps(cached))
     with pytest.raises(ValueError, match="Invalid action"):
         annotator._classify(evidence)
@@ -56,8 +59,23 @@ def test_explicit_response_schema_is_detached_and_part_of_cache_identity(tmp_pat
             "strict": True,
             "schema": {
                 "type": "object",
-                "properties": {"label": {"type": "string", "enum": ["Reasoning"]}},
-                "required": ["label"],
+                "properties": {
+                    "actions": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "action_id": {"type": "string"},
+                                "label": {"type": "string", "enum": ["Reasoning"]},
+                            },
+                            "required": ["action_id", "label"],
+                            "additionalProperties": False,
+                        },
+                        "minItems": 1,
+                        "maxItems": 1,
+                    }
+                },
+                "required": ["actions"],
                 "additionalProperties": False,
             },
         },
@@ -85,7 +103,9 @@ def test_explicit_response_schema_is_detached_and_part_of_cache_identity(tmp_pat
             choices=[
                 SimpleNamespace(
                     finish_reason="stop",
-                    message=SimpleNamespace(content='{"label":"Reasoning"}'),
+                    message=SimpleNamespace(
+                        content='{"actions":[{"action_id":"A1","label":"Reasoning"}]}'
+                    ),
                 )
             ],
             model="fixture",
@@ -93,29 +113,27 @@ def test_explicit_response_schema_is_detached_and_part_of_cache_identity(tmp_pat
             usage=None,
         )
 
-    schema["json_schema"]["schema"]["properties"]["label"]["enum"].append(
-        "Changed by caller"
-    )
+    schema["json_schema"]["schema"]["properties"]["actions"]["items"]["properties"][
+        "label"
+    ]["enum"].append("Changed by caller")
     try:
         for annotator in [configured, default]:
             annotator.client.chat.completions.create = create
-        evidence = {"target": "2 + 2 = 4"}
+        evidence = request_for(fixed_item("A1", "2 + 2 = 4"))
         _, strict_digest = configured._classify(evidence)
         _, default_digest = default._classify(evidence)
         assert strict_digest != default_digest and len(calls) == 2
         assert calls[0]["response_format"]["json_schema"]["schema"]["properties"][
-            "label"
-        ]["enum"] == ["Reasoning"]
+            "actions"
+        ]["items"]["properties"]["label"]["enum"] == ["Reasoning"]
         cached = json.loads((tmp_path / f"{strict_digest}.json").read_text())
         assert cached["request"]["response_format"] == calls[0]["response_format"]
         assert (
             configured.measure([]).coverage["method"]["response_format"]
             == calls[0]["response_format"]
         )
-        with pytest.raises(ValueError, match="Invalid action"):
-            configured._validate(
-                {"Reasoning": "A definition rather than the required label key"}
-            )
+        with pytest.raises(ValueError, match="Expected only"):
+            validate_response({"Reasoning": "A definition, not a response"}, "A1")
     finally:
         configured.client.close()
         default.client.close()
