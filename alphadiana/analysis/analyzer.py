@@ -169,7 +169,7 @@ class ExecutionMetrics:
                 "missing_samples": base.missing_samples,
                 "tokens_observed": len(tokens),
                 "time_observed": len(times),
-                "action_labeling": "reported separately in annotated_actions when enabled",
+                "action_labeling": "reported separately in annotated_actions; enable judge=True or an explicit annotation plugin",
             }
         figures = [
             Figure(
