@@ -330,6 +330,20 @@ COPY --from=runtime /usr/local/bin/zeroclaw /usr/local/bin/zeroclaw
                 return
             cmd = ["docker", "build", "--tag", image]
             for key, value in sorted(build_args.items()):
+                if key.upper().endswith("IMAGE") and re.fullmatch(r"sha256:[0-9a-f]{64}", value):
+                    # BuildKit treats a bare config digest as a registry name.
+                    # Keep the pinned ID in metadata and give FROM a local tag.
+                    alias = f"{_RUNTIME_IMAGE_REPO}-source:{value[7:]}"
+                    tagged = subprocess.run(
+                        ["docker", "image", "tag", value, alias],
+                        capture_output=True,
+                        text=True,
+                        timeout=60,
+                    )
+                    if tagged.returncode != 0:
+                        detail = tagged.stderr.strip() or tagged.stdout.strip()
+                        raise RuntimeError(f"Cannot tag local build image {value}: {detail}")
+                    value = alias
                 cmd.extend(["--build-arg", f"{key}={value}"])
             cmd.extend(["-f", "-", context_dir])
             result = subprocess.run(

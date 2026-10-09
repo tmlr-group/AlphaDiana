@@ -5,6 +5,40 @@ from pathlib import Path
 
 import pytest
 
+
+@pytest.mark.parametrize("reference", ["sha256:" + "a" * 64, "runtime:v1"])
+def test_tb2_docker_build_uses_local_identity_as_a_valid_from_reference(
+    monkeypatch, reference
+):
+    import subprocess
+    from alphadiana.benchmarks.terminal_bench2.harness import incontainer
+
+    aliases = {}
+    commands = []
+
+    def docker(command, **kwargs):
+        commands.append(command)
+        if command[:3] == ["docker", "image", "tag"]:
+            aliases[command[4]] = command[3]
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[:2] == ["docker", "build"]:
+            argument = next(value for value in command if value.startswith("RUNTIME_IMAGE="))
+            resolved = argument.split("=", 1)[1]
+            if resolved.startswith("sha256:"):
+                return subprocess.CompletedProcess(command, 1, "", "BuildKit interpreted a local image ID as a registry repository")
+            assert aliases.get(resolved, resolved) == reference
+            return subprocess.CompletedProcess(command, 0, "", "")
+        raise AssertionError(command)
+
+    monkeypatch.setattr(incontainer.subprocess, "run", docker)
+    arguments = {"RUNTIME_IMAGE": reference}
+    incontainer.TerminalBench2InContainerMixin()._docker_build_image(
+        "owned-test-runtime", "ARG RUNTIME_IMAGE\nFROM ${RUNTIME_IMAGE}",
+        build_args=arguments,
+    )
+    assert arguments == {"RUNTIME_IMAGE": reference}
+    assert bool(aliases) == reference.startswith("sha256:")
+
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.benchmarks.terminal_bench2.harness import terminus
 
