@@ -17,6 +17,7 @@ from alphadiana.benchmarks.terminal_bench2.harness.common import (
     TerminalBench2ContainerMixin,
 )
 from alphadiana.benchmarks.terminal_bench2.snapshot import (
+    _snapshot_image_id,
     capture_snapshot,
     verifier_digest,
 )
@@ -49,7 +50,7 @@ class VerifierReplay(TerminalBench2ContainerMixin):
                 "test_timeout_sec": timeout,
             }
         )
-        image_id = snapshot["image_id"]
+        image_id = _snapshot_image_id(snapshot["image_id"], engine=engine)
         if engine == "podman":
             inspected = self._podman.inspect(image_id)
         else:
