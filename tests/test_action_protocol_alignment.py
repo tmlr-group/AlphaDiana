@@ -54,7 +54,7 @@ def test_fixed_target_and_context_survive_exactly_without_label_leakage(tmp_path
         measured = classifier.measure([artifacts])
         assert len(calls) == 1
         assert calls[0]["messages"][0]["content"].encode() == prompt_bytes()
-        assert json.loads(calls[0]["messages"][1]["content"]) == request_for(item)
+        assert json.loads(calls[0]["messages"][1]["content"].split("\n", 1)[1]) == request_for(item)
         assert len(measured.tables["annotations"]) == 1
         assert measured.tables["transitions"] == []
         method = measured.coverage["method"]
@@ -154,7 +154,7 @@ def test_transitions_use_only_declared_adjacent_positions(tmp_path):
     ) as classifier:
 
         def create(**kw):
-            identity = json.loads(kw["messages"][1]["content"])["actions"][0][
+            identity = json.loads(kw["messages"][1]["content"].split("\n", 1)[1])["actions"][0][
                 "action_id"
             ]
             return response(

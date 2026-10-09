@@ -22,7 +22,7 @@ def llm_actions(artifacts, tmp_path):
     with ActionAnnotations(**judge_options(tmp_path)) as classifier:
 
         def create(**kw):
-            blocks = json.loads(kw["messages"][1]["content"])["sources"]
+            blocks = json.loads(kw["messages"][1]["content"].split("\n", 1)[1])["sources"]
             return judge_response(
                 {
                     "actions": [

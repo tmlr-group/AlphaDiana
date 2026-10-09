@@ -1,7 +1,6 @@
 """Prepare three pinned tasks per reasoning benchmark for either provider."""
 
 import argparse
-import copy
 import json
 from pathlib import Path
 import shutil
