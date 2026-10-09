@@ -18,7 +18,7 @@ from uuid import uuid4
 from alphadiana.harness.base import AgentResponse
 from alphadiana.harness.proxies.preservation import add_artifact_file_refs
 from alphadiana.benchmarks.base import BenchmarkTask
-from alphadiana.analysis.io.logprob_artifacts import INT16_PROB_SCALE, raw_record_to_int16_record
+from alphadiana.logprobs import INT16_PROB_SCALE, raw_record_to_int16_record
 from alphadiana.analysis.io.normalized_trace import (
     TRACE_ARTIFACT_NAME,
     build_normalized_trace,
@@ -708,7 +708,9 @@ class ResultStore:
         """
         if not os.path.exists(self.path):
             return []
-        records: dict[tuple[str, int], dict] = {}
+        from alphadiana.analysis.run_summary import latest_samples
+
+        records: list[dict] = []
         with open(self.path, "r", encoding="utf-8") as f:
             for line_num, line in enumerate(f, 1):
                 line = line.strip()
@@ -721,11 +723,8 @@ class ResultStore:
                         "Skipping malformed JSONL line %d in %s", line_num, self.path,
                     )
                     continue
-                record = normalize_legacy_timeout_zero_record(record)
-                record["score_status"] = infer_score_status(record)
-                key = (record["task_id"], record.get("sample_index", 0))
-                records[key] = record
-        return list(records.values())
+                records.append(record)
+        return latest_samples(records)
 
     def save_manifest(self, manifest: dict[str, Any]) -> None:
         self.manifest_path.parent.mkdir(parents=True, exist_ok=True)

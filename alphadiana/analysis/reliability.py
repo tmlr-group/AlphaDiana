@@ -1,127 +1,39 @@
-"""Reliability summaries for persisted ResultStore records."""
+"""Reliability projections of the canonical latest-sample statistics."""
 
 from __future__ import annotations
-
-from collections import defaultdict
 from typing import Any
-
-from alphadiana.analysis.io.status import VALID_SCORE_STATUS, infer_score_status
-
-ERROR_STATUSES = {"agent_error", "provider_error", "runtime_error", "scorer_error"}
+from alphadiana.analysis.run_summary import ERROR_STATUSES, RunStatistics
 
 
-def _num_samples(records: list[dict[str, Any]], manifest: dict[str, Any]) -> int:
-    if manifest.get("num_samples"):
-        return int(manifest["num_samples"])
-    by_task: dict[str, int] = defaultdict(int)
-    for record in records:
-        task_id = str(record.get("task_id") or "")
-        if task_id:
-            by_task[task_id] += 1
-    return max(by_task.values(), default=1)
-
-
-def _expected_task_ids(records: list[dict[str, Any]], manifest: dict[str, Any]) -> list[str]:
-    raw_task_ids = manifest.get("expected_task_ids")
-    if isinstance(raw_task_ids, list) and raw_task_ids:
-        task_ids = [str(task_id) for task_id in raw_task_ids]
-    else:
-        task_ids = list(dict.fromkeys(str(record.get("task_id")) for record in records if record.get("task_id")))
-
-    expected_task_count = int(manifest.get("expected_task_count") or len(task_ids))
-    if expected_task_count > len(task_ids):
-        task_ids.extend(f"__missing_{idx}" for idx in range(expected_task_count - len(task_ids)))
-    return task_ids
-
-
-def _expected_sample_count(
-    records: list[dict[str, Any]],
-    manifest: dict[str, Any],
-    task_ids: list[str],
-    num_samples: int,
-) -> int:
-    if manifest.get("expected_sample_count") is not None:
-        return int(manifest["expected_sample_count"])
-    if task_ids and num_samples:
-        return len(task_ids) * num_samples
-    return len(records)
-
-
-def compute_reliability_summary(records: list[dict[str, Any]], manifest: dict[str, Any]) -> dict[str, Any]:
-    """Compute score-status-aware reliability metrics for persisted records."""
-    num_samples = _num_samples(records, manifest)
-    task_ids = _expected_task_ids(records, manifest)
-    expected_sample_count = _expected_sample_count(records, manifest, task_ids, num_samples)
-    status_by_record = [infer_score_status(record) for record in records]
-    valid_records = [
-        record
-        for record, status in zip(records, status_by_record)
-        if status == VALID_SCORE_STATUS
-    ]
-    correct_valid_records = [record for record in valid_records if record.get("correct") is True]
-    error_records = sum(1 for status in status_by_record if status in ERROR_STATUSES)
-
-    missing_samples = max(expected_sample_count - len(records), 0)
-
-    by_task: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    status_by_key: dict[tuple[str, int], str] = {}
-    for record, status in zip(records, status_by_record):
-        task_id = str(record.get("task_id") or "")
-        if not task_id:
-            continue
-        sample_index = int(record.get("sample_index") or 0)
-        by_task[task_id].append(record)
-        status_by_key[(task_id, sample_index)] = status
-
-    task_ids_for_summary = task_ids or list(by_task)
-    expected_task_count = len(task_ids_for_summary)
-    tasks_passed = 0
-    task_avg_scores: list[float] = []
-    task_power_scores: list[float] = []
-    for task_id in task_ids_for_summary:
-        samples = by_task.get(task_id, [])
-        correct_valid_samples = sum(
-            1
-            for sample in samples
-            if status_by_key[(task_id, int(sample.get("sample_index") or 0))] == VALID_SCORE_STATUS
-            and sample.get("correct") is True
-        )
-        if correct_valid_samples:
-            tasks_passed += 1
-        sample_rate = correct_valid_samples / num_samples if num_samples > 0 else 0.0
-        task_avg_scores.append(sample_rate)
-        task_power_scores.append(sample_rate**num_samples if num_samples > 0 else 0.0)
-
-    pass_power_k_available = num_samples > 1 and all(
-        len(by_task.get(task_id, [])) >= num_samples
-        for task_id in task_ids_for_summary
+def compute_reliability_summary(
+    records: list[dict[str, Any]], manifest: dict[str, Any]
+) -> dict[str, Any]:
+    """Keep observed-valid and planned-sample accuracy as distinct views."""
+    base = RunStatistics.from_records(records, manifest)
+    n, expected, k = len(base.results), base.expected_sample_count, base.num_samples
+    power_available = (
+        k > 1
+        and base.missing_samples == 0
+        and all(len(base.by_task.get(t, [])) >= k for t in base.task_ids)
     )
-    pass_power_k = (
-        sum(task_power_scores) / len(task_power_scores)
-        if pass_power_k_available and task_power_scores
-        else None
-    )
-
     return {
-        "num_samples": num_samples,
-        "expected_sample_count": expected_sample_count,
-        "written_records": len(records),
-        "valid_scored": len(valid_records),
+        "num_samples": k,
+        "expected_sample_count": expected,
+        "written_records": n,
+        "valid_scored": len(base.valid),
         "observed_valid_accuracy": (
-            len(correct_valid_records) / len(valid_records)
-            if valid_records
-            else 0.0
+            base.correct / len(base.valid) if base.valid else 0.0
         ),
-        "expected_sample_accuracy": (
-            len(correct_valid_records) / expected_sample_count
-            if expected_sample_count > 0
-            else 0.0
+        "expected_sample_accuracy": base.correct / expected if expected > 0 else 0.0,
+        "coverage": n / expected if expected > 0 else 0.0,
+        "missing_samples": base.missing_samples,
+        "error_records": base.errors,
+        "pass_at_k": base.pass_at_k,
+        "avg_at_k": base.avg_at_k,
+        "pass_power_k_available": power_available,
+        "pass_power_k": (
+            sum(rate**k for rate in base.task_rates) / base.expected_task_count
+            if power_available and base.expected_task_count > 0
+            else None
         ),
-        "coverage": len(records) / expected_sample_count if expected_sample_count > 0 else 0.0,
-        "missing_samples": missing_samples,
-        "error_records": error_records,
-        "pass_at_k": tasks_passed / expected_task_count if expected_task_count > 0 else 0.0,
-        "avg_at_k": sum(task_avg_scores) / len(task_avg_scores) if task_avg_scores else 0.0,
-        "pass_power_k_available": pass_power_k_available,
-        "pass_power_k": pass_power_k,
     }

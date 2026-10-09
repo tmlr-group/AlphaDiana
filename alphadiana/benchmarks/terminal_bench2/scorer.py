@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from alphadiana.scorer.base import Scorer, ScoreResult
-from alphadiana.scorer.registry import register_scorer
+from alphadiana.registry import register_scorer
 
 
 @register_scorer("terminal_bench2")

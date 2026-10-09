@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from alphadiana.engine.sandbox.base import ExecutionResult, Sandbox, SandboxSession
-from alphadiana.engine.sandbox.registry import register_sandbox
+from alphadiana.registry import register_sandbox
 
 
 _UNSAFE_SHELL_TOKENS = (";", "|", "&", "\n", "`", "$(")

@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
-from alphadiana.analysis.io.status import VALID_SCORE_STATUS
+from alphadiana.analysis.run_summary import RunStatistics
 from alphadiana.analysis.resource_usage import (
     DEFAULT_USAGE_EXTRACTORS,
     UsageExtractor,
@@ -85,17 +85,15 @@ class ExecutionMetrics:
         for source in artifacts:
             records = source.records()
             manifest = source.manifest()
-            expected = manifest.get("expected_sample_count", len(records))
+            base = RunStatistics.from_records(records, manifest)
+            records = base.results
+            expected = base.expected_sample_count
             if expected < len(records):
                 raise ValueError(
                     f"Manifest sample count smaller than records: {source.path}"
                 )
             label = source.path.stem
-            correct = sum(
-                r.get("score_status") == VALID_SCORE_STATUS and r.get("correct") is True
-                for r in records
-            )
-            scored = sum(r.get("score_status") == VALID_SCORE_STATUS for r in records)
+            correct, scored = base.correct, len(base.valid)
             tokens, times = [], []
             for row in records:
                 usage = measured_usage(source, row, self.usage_extractors)
@@ -168,7 +166,7 @@ class ExecutionMetrics:
                 "requested": expected,
                 "observed": len(records),
                 "scored": scored,
-                "missing_samples": expected - len(records),
+                "missing_samples": base.missing_samples,
                 "tokens_observed": len(tokens),
                 "time_observed": len(times),
                 "action_labeling": "not run; enable judge=True for LLM segmentation and labels",

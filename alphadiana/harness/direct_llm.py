@@ -24,7 +24,7 @@ from alphadiana.harness.proxies.logprob_capture import (
     resolve_logprob_capture_config,
 )
 from alphadiana.harness.base import Agent, AgentResponse
-from alphadiana.harness.registry import AgentRegistry
+from alphadiana.registry import AgentRegistry
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.utils.math_answer import extract_answer_candidate
 

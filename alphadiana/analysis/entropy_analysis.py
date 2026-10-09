@@ -8,7 +8,7 @@ import math
 from collections import defaultdict
 
 from alphadiana.analysis.analyzer import Figure, Measurement
-from alphadiana.analysis.entropy import _compute_entropy
+from alphadiana.logprobs import _compute_entropy
 from alphadiana.analysis.io.status import VALID_SCORE_STATUS
 from alphadiana.analysis.resource_usage import DEFAULT_USAGE_EXTRACTORS, measured_usage
 

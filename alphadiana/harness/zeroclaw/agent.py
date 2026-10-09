@@ -33,7 +33,7 @@ from alphadiana.harness.proxies.preservation import (
     build_text_step_trajectories,
     parse_jsonl_records,
 )
-from alphadiana.harness.registry import AgentRegistry
+from alphadiana.registry import AgentRegistry
 from alphadiana.harness.zeroclaw.runtime import _resolve_zeroclaw_provider
 from alphadiana.harness.zeroclaw.trace import normalize_trace
 from alphadiana.benchmarks.base import BenchmarkTask

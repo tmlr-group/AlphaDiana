@@ -8,7 +8,7 @@ from collections import defaultdict
 from collections.abc import Sequence
 
 from alphadiana.analysis.analyzer import Figure, Measurement
-from alphadiana.analysis.entropy import _compute_entropy
+from alphadiana.logprobs import _compute_entropy
 from alphadiana.artifacts import Artifacts
 
 

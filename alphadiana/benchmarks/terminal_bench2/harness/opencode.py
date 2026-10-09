@@ -32,7 +32,7 @@ from alphadiana.harness.proxies.preservation import (
     build_runtime_trace_summary,
     parse_jsonl_records,
 )
-from alphadiana.harness.registry import AgentRegistry
+from alphadiana.registry import AgentRegistry
 from alphadiana.benchmarks.terminal_bench2.harness.incontainer import (
     IN_CONTAINER_AGENT_PROMPT,
     TerminalBench2InContainerMixin,

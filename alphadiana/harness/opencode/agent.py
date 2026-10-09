@@ -31,7 +31,7 @@ from alphadiana.harness.proxies.preservation import (
     build_event_trajectories,
     build_runtime_trace_summary,
 )
-from alphadiana.harness.registry import AgentRegistry
+from alphadiana.registry import AgentRegistry
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.engine.container_runtime import (
     PodmanAgentRuntime,

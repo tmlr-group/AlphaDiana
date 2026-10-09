@@ -15,7 +15,7 @@ from alphadiana.engine.container_runtime.podman_socket import (
     resolve_podman_docker_api_version,
 )
 from alphadiana.scorer.base import Scorer, ScoreResult
-from alphadiana.scorer.registry import register_scorer
+from alphadiana.registry import register_scorer
 from alphadiana.utils.swebench import (
     build_swebench_instance,
     ensure_swebench_build_network_mode,

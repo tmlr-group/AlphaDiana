@@ -12,7 +12,7 @@ from uuid import uuid4
 from alphadiana.harness._internal.native_process import run_native
 from alphadiana.harness.base import Agent, AgentResponse
 from alphadiana.harness.proxies.native_capture import NativeProviderCapture
-from alphadiana.harness.registry import register_agent
+from alphadiana.registry import register_agent
 
 
 def project_sweagent_history(history):

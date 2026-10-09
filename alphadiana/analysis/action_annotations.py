@@ -78,13 +78,6 @@ class ActionAnnotations(CachedJudge):
                 )
             self.taxonomy = list(LABELS)
         else:
-            import warnings
-
-            warnings.warn(
-                "custom-spans-v1 is archived baseline reproduction, not the analysis pipeline",
-                DeprecationWarning,
-                stacklevel=2,
-            )
             self.name = "legacy_custom_annotated_actions"
             if type(span_chars) is not int or span_chars <= 0:
                 raise ValueError("Custom protocol requires positive integer span_chars")

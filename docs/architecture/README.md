@@ -55,6 +55,13 @@ Provider failures, context overflow, control-plane failures, verifier anomalies,
 
 `ResultStore` persists one sample per task JSON file entry and one JSONL record per `(task_id, sample_index)`. Result records include the response, score, status, trajectories, metadata, and references to larger artifacts. Reports compute accuracy, mean score, Pass@k, Avg@k, completion/error counts, and per-category variants.
 
+Shared registry mechanics live in `alphadiana/registry.py`; deferred built-in
+imports stay in `registry_loader.py`. Low-level logprob conversion and entropy
+math live in `alphadiana/logprobs.py`. `analysis/run_summary.py` owns latest-sample
+selection and common run statistics; `analysis/action_report.py` renders action
+reports. Legacy modules forward to these owners. See the
+[compatibility and field-unit contracts](../validation/shared-main-contracts.md).
+
 ## Terminology
 
 - **Dashboard UI**: the React analysis application.
