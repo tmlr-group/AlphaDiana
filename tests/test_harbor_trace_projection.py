@@ -5,7 +5,7 @@ from copy import deepcopy
 from pathlib import Path
 
 import pytest
-
+from action_target_fixtures import attach_targets, fixed_item
 from alphadiana.analysis.action_annotations import ActionAnnotations
 from alphadiana.analysis.analyzer import ExecutionMetrics
 from alphadiana.analysis.io.result_store import ResultStore
@@ -81,6 +81,14 @@ def test_native_projection_excludes_prompts_and_observations_from_actions(
         and "TOOL OUTPUT" not in event["text_span"]
         for event in actions
     )
+    # Boundaries are explicitly supplied, not invented by the classifier.
+    attach_targets(
+        artifacts,
+        [
+            fixed_item("call", json.dumps(steps[2], sort_keys=True), 0),
+            fixed_item("answer", "Final answer: done", 1),
+        ],
+    )
     classifier = ActionAnnotations(
         model="fixture",
         model_version="fixture-1",
@@ -91,7 +99,7 @@ def test_native_projection_excludes_prompts_and_observations_from_actions(
     targets = []
 
     def classify(evidence):
-        targets.append(evidence["target"])
+        targets.append(evidence["actions"][0]["text"])
         return "Planning", "fixture-digest"
 
     monkeypatch.setattr(classifier, "_classify", classify)
@@ -99,7 +107,8 @@ def test_native_projection_excludes_prompts_and_observations_from_actions(
         classifier.measure([artifacts])
     finally:
         classifier.client.close()
-    assert targets == ["Inspect the directory", "Final answer: done"]
+    assert targets == [json.dumps(steps[2], sort_keys=True), "Final answer: done"]
+    assert '"tool_calls"' in targets[0]
 
 
 def test_harbor_unknown_role_is_not_silently_an_assistant():

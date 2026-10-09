@@ -253,12 +253,62 @@ with ActionAnnotations(cache_dir="analysis-cache/actions") as actions:
         report.export("figures/annotated-run")
 ```
 
-Action annotations classify fixed character spans within assistant steps into
-Understanding, Planning, Reasoning, Tool Use, Verification and Finalization.
-Prompt and tool-result rows are excluded; neighboring text supplies context.
-Composition percentages and within-sample transition matrices are grouped by
-correct/incorrect/unscored outcome. Span size and context policy affect counts
-and must accompany comparisons. Supply `taxonomy={label: definition}` to extend it.
+Action annotations use the same [human-protocol v2 prompt](../../alphadiana/analysis/action_prompt.md),
+request projection and response validation as the human-audit runner. The six
+labels are Understanding, Planning, Reasoning, Tool Use, Verification and
+Finalization. For overlapping functions actually evidenced in a target, the
+priority is Finalization > Tool Use > Verification > Reasoning > Planning >
+Understanding. This is not a keyword classifier.
+
+**Input migration:** default annotation no longer creates 4096-character chunks.
+Each sample with a normalized trace must declare an `action_targets` file in
+`artifact_manifest.files`, relative to its artifact directory, just like
+`normalized_trace`. Prepare these targets from the original fixed annotation
+units, keeping the exact target text, ID and before/after context. Do not turn
+whole messages or arbitrary chunks into supposedly human-calibrated units.
+For retained evidence, write a derived result index with this additional file
+reference; keep the original result index and trace unchanged.
+
+```json
+{
+  "schema_version": 1,
+  "trace_sha256": "SHA256 of the exact normalized_trace file bytes",
+  "items": [
+    {
+      "item_id": "A17",
+      "full_text": "Exact original target text, including relevant tool evidence.",
+      "context_text": "Exact original before context.",
+      "following_text": "Exact original after context."
+    }
+  ]
+}
+```
+
+The item fields match the original human UI export. Context may be null to denote
+absence. Human labels, old predictions, outcomes and other fields are not sent
+to the judge. Missing targets, changed trace bytes, duplicate IDs and malformed
+responses fail explicitly; no target or context is silently split or truncated.
+The file hash binds the target set to a trace, but does not certify that a supplied
+excerpt was correctly selected; that remains the responsibility of its producer.
+
+Composition uses annotated targets. Optional `sequence_index` is the zero-based
+position in the original complete action sequence for that sample. Provide it
+only when that order is known. Transitions use consecutive positions only, never
+UI display order, list order, gaps or cross-sample pairs. An unordered human-audit
+sample yields composition but no transition observations; coverage reports this.
+
+Matching the protocol does **not** transfer the old development-set calibration
+to new targets, data or judge models. Reports record protocol, prompt digest,
+input hashes and `calibration_inherited: false`. Changed prompts/requests produce
+new cache entries; old caches and historical reports are not rewritten.
+
+For exploratory custom taxonomies, explicitly use
+`ActionAnnotations(protocol="custom-spans-v1", span_chars=4096,
+taxonomy={"My label": "Definition"}, cache_dir="analysis-cache/custom")`.
+This retains character-based analysis under the separate `custom_annotated_actions`
+report key. Even if labels have the same names, it is a different measurement and
+does not inherit the human protocol or its calibration. Default `judge=True`
+uses the human protocol and therefore also requires prepared target artifacts.
 
 Failure annotations assign overlapping labels to unsuccessful or unscored traces.
 The default 17 categories cover task/interface, reasoning, tool interaction,
