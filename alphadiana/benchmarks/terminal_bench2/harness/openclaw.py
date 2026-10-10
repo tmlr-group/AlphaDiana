@@ -26,7 +26,7 @@ from alphadiana.harness.openclaw.agent import (
     _recover_partial_output_from_trajectory,
 )
 from alphadiana.harness.proxies.preservation import add_artifact_file_refs
-from alphadiana.harness.registry import AgentRegistry
+from alphadiana.registry import AgentRegistry
 from alphadiana.benchmarks.terminal_bench2.harness.incontainer import (
     IN_CONTAINER_AGENT_PROMPT,
     TerminalBench2InContainerMixin,

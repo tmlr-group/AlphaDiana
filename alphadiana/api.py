@@ -121,13 +121,13 @@ class EvaluationRunner:
     ) -> Artifacts:
         """Execute and persist evidence, releasing resources even on failure."""
         from alphadiana.artifacts import Artifacts
-        from alphadiana.benchmarks.registry import BenchmarkRegistry
+        from alphadiana.registry import BenchmarkRegistry
         from alphadiana.engine.components import register_builtin_components
         from alphadiana.engine.config.validator import ConfigValidator
         from alphadiana.engine.runner import Runner
-        from alphadiana.engine.sandbox.registry import SandboxRegistry
-        from alphadiana.harness.registry import AgentRegistry
-        from alphadiana.scorer.registry import ScorerRegistry
+        from alphadiana.registry import SandboxRegistry
+        from alphadiana.registry import AgentRegistry
+        from alphadiana.registry import ScorerRegistry
 
         config = self.configuration(agent=agent, data=data, scorer=scorer)
         register_builtin_components()

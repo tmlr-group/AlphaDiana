@@ -18,6 +18,7 @@ from alphadiana.analysis.action_protocol import (
 )
 from alphadiana.analysis.action_segmentation import (
     PROTOCOL as TRAJECTORY_PROTOCOL,
+    NoSavedAssistantActions,
     annotate_trajectory,
     segmentation_prompt,
 )
@@ -52,6 +53,8 @@ class ActionAnnotations(CachedJudge):
         span_chars: int | None = None,
         extra_body: dict | None = None,
         response_format: dict | None = None,
+        temperature: float | None = 0,
+        token_limit_parameter: str = "max_tokens",
     ):
         if protocol not in {PROTOCOL, TRAJECTORY_PROTOCOL, "custom-spans-v1"}:
             raise ValueError("Unsupported action annotation protocol")
@@ -78,13 +81,6 @@ class ActionAnnotations(CachedJudge):
                 )
             self.taxonomy = list(LABELS)
         else:
-            import warnings
-
-            warnings.warn(
-                "custom-spans-v1 is archived baseline reproduction, not the analysis pipeline",
-                DeprecationWarning,
-                stacklevel=2,
-            )
             self.name = "legacy_custom_annotated_actions"
             if type(span_chars) is not int or span_chars <= 0:
                 raise ValueError("Custom protocol requires positive integer span_chars")
@@ -107,6 +103,8 @@ class ActionAnnotations(CachedJudge):
             api_key=api_key,
             extra_body=extra_body,
             response_format=response_format,
+            temperature=temperature,
+            token_limit_parameter=token_limit_parameter,
         )
         self.span_chars = span_chars
         self.prompt = (
@@ -166,6 +164,7 @@ class ActionAnnotations(CachedJudge):
             run = source.path.stem
             missing, unordered, adjacent, sources = 0, 0, 0, []
             window_count = 0
+            traces_without_actions = []
             for record in source.records():
                 path = source.file(record, "normalized_trace")
                 if path is None:
@@ -178,12 +177,22 @@ class ActionAnnotations(CachedJudge):
                     }
                 )
                 if self.protocol == TRAJECTORY_PROTOCOL:
-                    segmented, windows = annotate_trajectory(
-                        self,
-                        json.loads(path.read_bytes()),
-                        sources[-1]["sha256"],
-                        record.get("problem", ""),
-                    )
+                    try:
+                        segmented, windows = annotate_trajectory(
+                            self,
+                            json.loads(path.read_bytes()),
+                            sources[-1]["sha256"],
+                            record.get("problem", ""),
+                        )
+                    except NoSavedAssistantActions:
+                        if record.get("score_status") == VALID_SCORE_STATUS:
+                            raise
+                        traces_without_actions.append({
+                            "task_id": record["task_id"],
+                            "sample_index": record.get("sample_index", 0),
+                            "score_status": record.get("score_status"),
+                        })
+                        continue
                     window_count += windows
                     targets = [(None, row) for row in segmented]
                 elif self.protocol == PROTOCOL:
@@ -293,6 +302,7 @@ class ActionAnnotations(CachedJudge):
                 )
             coverage[run] = {
                 "missing_traces": missing,
+                "traces_without_assistant_actions": traces_without_actions,
                 "annotation_windows": window_count,
                 "targets_without_sequence_position": unordered,
                 "observed_adjacent_pairs": adjacent,

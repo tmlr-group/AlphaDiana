@@ -5,6 +5,40 @@ from pathlib import Path
 
 import pytest
 
+
+@pytest.mark.parametrize("reference", ["sha256:" + "a" * 64, "runtime:v1"])
+def test_tb2_docker_build_uses_local_identity_as_a_valid_from_reference(
+    monkeypatch, reference
+):
+    import subprocess
+    from alphadiana.benchmarks.terminal_bench2.harness import incontainer
+
+    aliases = {}
+    commands = []
+
+    def docker(command, **kwargs):
+        commands.append(command)
+        if command[:3] == ["docker", "image", "tag"]:
+            aliases[command[4]] = command[3]
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[:2] == ["docker", "build"]:
+            argument = next(value for value in command if value.startswith("RUNTIME_IMAGE="))
+            resolved = argument.split("=", 1)[1]
+            if resolved.startswith("sha256:"):
+                return subprocess.CompletedProcess(command, 1, "", "BuildKit interpreted a local image ID as a registry repository")
+            assert aliases.get(resolved, resolved) == reference
+            return subprocess.CompletedProcess(command, 0, "", "")
+        raise AssertionError(command)
+
+    monkeypatch.setattr(incontainer.subprocess, "run", docker)
+    arguments = {"RUNTIME_IMAGE": reference}
+    incontainer.TerminalBench2InContainerMixin()._docker_build_image(
+        "owned-test-runtime", "ARG RUNTIME_IMAGE\nFROM ${RUNTIME_IMAGE}",
+        build_args=arguments,
+    )
+    assert arguments == {"RUNTIME_IMAGE": reference}
+    assert bool(aliases) == reference.startswith("sha256:")
+
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.benchmarks.terminal_bench2.harness import terminus
 
@@ -111,7 +145,8 @@ def test_openclaw_install_version_is_explicit_and_override_is_preserved():
     assert manager._install_openclaw_command == "custom installer"
 
 
-def test_sweagent_image_override_and_solver_visible_inputs(tmp_path, monkeypatch):
+@pytest.mark.parametrize("history_processors", [None, []])
+def test_sweagent_image_override_and_solver_visible_inputs(tmp_path, monkeypatch, history_processors):
     from alphadiana.benchmarks.swe_bench import sweagent
 
     config_path = tmp_path / "default.yaml"
@@ -129,6 +164,16 @@ def test_sweagent_image_override_and_solver_visible_inputs(tmp_path, monkeypatch
     )
 
     def native(argv, **kwargs):
+        sampling = Path(argv[argv.index("--output_dir") + 1]).parent / "model-sampling.json"
+        assert sampling.is_file()
+        assert json.loads(sampling.read_text()) == {"agent": {"model": {"top_p": None}}}
+        assert argv[argv.index(str(sampling)) - 1] == "--config"
+        history = sampling.parent / "history-processors.json"
+        if history_processors is not None:
+            assert json.loads(history.read_text()) == {"agent": {"history_processors": history_processors}}
+            assert argv[argv.index(str(history)) - 1] == "--config"
+        else:
+            assert not history.exists()
         instances = Path(argv[argv.index("--instances.path") + 1])
         data = json.loads(instances.read_text())
         assert data == [
@@ -154,8 +199,10 @@ def test_sweagent_image_override_and_solver_visible_inputs(tmp_path, monkeypatch
             "config_path": str(config_path),
             "model": "fixture",
             "api_base": "http://localhost:1/v1",
+            "top_p": None,
             "output_dir": str(tmp_path / "out"),
             "image_overrides": {"example": "owned-image@sha256:fixture"},
+            **({"history_processors": history_processors} if history_processors is not None else {}),
         }
     )
     response = agent.solve(task)
@@ -174,6 +221,111 @@ def test_opencode_context_limits_reach_native_model_config(tmp_path):
     agent._write_provider_config(path)
     model = json.loads(path.read_text())["provider"]["custom"]["models"]["fixture"]
     assert model["limit"] == {"context": 32768, "output": 8192}
+
+
+def test_sweagent_native_exit_error_retains_evidence_and_is_not_scored(tmp_path, monkeypatch):
+    from alphadiana.benchmarks.swe_bench import sweagent
+    from alphadiana.analysis.io.status import infer_score_status
+
+    # Captured on A100: upstream run-batch exited zero, emitted an empty
+    # prediction, and recorded UnsupportedParamsError before any API call.
+    trajectory = json.loads(
+        (Path(__file__).parent / "fixtures/sweagent-unsupported-params.json").read_text()
+    )
+    config_path = tmp_path / "default.yaml"
+    config_path.write_text("agent: {}")
+    task = BenchmarkTask("swe_example", "Fix", None, {"instance_id": "example", "base_commit": "base"})
+
+    def native(argv, **kwargs):
+        output = Path(argv[argv.index("--output_dir") + 1])
+        (output / "example").mkdir(parents=True)
+        (output / "preds.json").write_text(json.dumps({"example": {"model_patch": ""}}))
+        (output / "example/example.traj").write_text(json.dumps(trajectory))
+
+    monkeypatch.setattr(sweagent, "run_native", native)
+    agent = sweagent.SWEAgent()
+    agent.setup({"executable": "sweagent", "config_path": str(config_path), "model": "fixture", "api_base": "http://localhost:1/v1", "output_dir": str(tmp_path / "out")})
+    with pytest.raises(RuntimeError, match="exit_error") as caught:
+        agent.solve(task)
+    response = caught.value.partial_response
+    assert response.metadata["exit_status"] == "exit_error"
+    assert "UnsupportedParamsError" in response.workspace_file_contents["sweagent_trajectory.json"]
+    assert response.metadata["token_usage_provenance"]["requests"] == 0
+    assert infer_score_status({"benchmark_name": "swe_bench", "metadata": response.metadata, "error": {"error_type": caught.value.error_type}}) == "runtime_error"
+
+
+@pytest.mark.parametrize("status,expected", [("exit_error", "runtime_error"), ("exit_api", "provider_error"), ("exit_environment_error", "runtime_error"), ("submitted", "valid_scored"), ("exit_format", "valid_scored")])
+def test_saved_sweagent_native_failure_overrides_legacy_valid_score(status, expected):
+    from alphadiana.analysis.io.status import infer_score_status
+
+    assert infer_score_status({"benchmark_name": "swe_bench", "score_status": "valid_scored", "score": 0, "correct": False, "metadata": {"native_runtime": "sweagent", "exit_status": status}}) == expected
+
+
+@pytest.mark.parametrize("configured", [None, 240])
+def test_tb2_docker_start_accepts_observed_startup_over_sixty_seconds(tmp_path, monkeypatch, configured):
+    import subprocess
+    from alphadiana.benchmarks.terminal_bench2.harness import common
+
+    def docker(command, **kwargs):
+        if command[:2] == ["docker", "run"]:
+            if kwargs["timeout"] <= 61:
+                raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+            assert kwargs["timeout"] == (180 if configured is None else configured)
+            return subprocess.CompletedProcess(command, 0, "a" * 64, "")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(common.subprocess, "run", docker)
+    owner = common.TerminalBench2ContainerMixin()
+    owner._setup_container_config({} if configured is None else {"docker_start_timeout_sec": configured})
+    assert owner._start_container("fixture", tmp_path, BenchmarkTask("fixture", "Solve", None)) == "a" * 64
+
+
+def test_tb2_failed_start_removes_only_the_container_recorded_by_docker(tmp_path, monkeypatch):
+    import subprocess
+    from alphadiana.benchmarks.terminal_bench2.harness import common
+
+    removed = []
+    def docker(command, **kwargs):
+        if command[:2] == ["docker", "run"]:
+            cidfile = Path(command[command.index("--cidfile") + 1])
+            cidfile.write_text("b" * 64)
+            raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+        assert command == ["docker", "rm", "-f", "b" * 64]
+        removed.append(command[-1])
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(common.subprocess, "run", docker)
+    owner = common.TerminalBench2ContainerMixin()
+    owner._setup_container_config({})
+    with pytest.raises(subprocess.TimeoutExpired):
+        owner._start_container("fixture", tmp_path, BenchmarkTask("fixture", "Solve", None))
+    assert removed == ["b" * 64]
+
+
+def test_tb2_startup_timeout_stays_runtime_failure_when_normalized_twice():
+    from alphadiana.analysis.io.status import infer_score_status, normalize_legacy_timeout_zero_record
+
+    captured = json.loads((Path(__file__).parent / "fixtures/tb2-startup-timeout.json").read_text())
+    first = dict(normalize_legacy_timeout_zero_record(captured))
+    first["score_status"] = infer_score_status(first)
+    second = dict(normalize_legacy_timeout_zero_record(first))
+    second["score_status"] = infer_score_status(second)
+    assert first["score_status"] == "runtime_error"
+    assert second == first
+
+
+def test_reopened_tb2_startup_timeout_has_no_measured_score(tmp_path):
+    from alphadiana.artifacts import Artifacts
+    from alphadiana.analysis.run_summary import RunStatistics
+
+    path = tmp_path / "captured.jsonl"
+    captured = json.loads((Path(__file__).parent / "fixtures/tb2-startup-timeout.json").read_text())
+    path.write_text(json.dumps(captured) + "\n")
+    row = Artifacts(path).records()[0]
+    assert row["score_status"] == "runtime_error" and row["score"] is None
+    assert row["error"] == captured["error"]
+    stats = RunStatistics.from_records([row])
+    assert stats.valid == stats.metric_results == []
 
 
 @pytest.mark.parametrize(
@@ -295,3 +447,131 @@ def test_harbor_only_owned_agent_deadline_can_use_observed_reward(
     else:
         with pytest.raises(RuntimeError, match="trial failed"):
             agent.solve(task)
+
+
+@pytest.mark.parametrize("native_exits", [True, False, "timeout"])
+@pytest.mark.parametrize(
+    "exception_type,expected_status",
+    [("APIError", "provider_error"), ("EnvironmentStartTimeoutError", "runtime_error")],
+)
+def test_harbor_failure_retains_native_evidence_before_snapshot(
+    tmp_path, monkeypatch, native_exits, exception_type, expected_status
+):
+    from alphadiana.analysis.io.status import infer_score_status
+
+    result = json.loads(
+        (
+            Path(__file__).parent / "fixtures/harbor-dbwal-provider-failure.json"
+        ).read_text()
+    )
+    result["exception_info"]["exception_type"] = exception_type
+    task_dir = tmp_path / result["task_name"]
+    task_dir.mkdir()
+    (task_dir / "task.toml").write_text('version = "1.0"')
+    task = BenchmarkTask(
+        "tb2_db-wal-recovery", "Solve", None, {"task_dir": str(task_dir)}
+    )
+
+    def native(argv, **kwargs):
+        trial = kwargs["cwd"] / "evaluation/db-wal-recovery__Gt6uAiT"
+        trial.mkdir(parents=True)
+        (trial / "result.json").write_text(json.dumps(result))
+        (trial / "agent").mkdir()
+        (trial / "agent/trajectory.json").write_text(
+            json.dumps({"steps": [{"source": "user", "message": "Solve"}]})
+        )
+        if native_exits == "timeout":
+            import subprocess
+            raise subprocess.TimeoutExpired(argv, 1)
+        if native_exits:
+            raise RuntimeError("Native harness exited 1; diagnostics: native.log")
+
+    monkeypatch.setattr(terminus, "run_native", native)
+    agent = terminus.Terminus2Agent()
+    agent.setup(
+        {
+            "executable": "harbor",
+            "model": "fixture",
+            "api_base": "http://localhost:1/v1",
+            "output_dir": str(tmp_path / "out"),
+        }
+    )
+    agent.retain_snapshot = True
+    agent.native_python = "unused-by-stub"
+    with pytest.raises(RuntimeError) as caught:
+        agent.solve(task)
+    assert getattr(caught.value, "error_type", None) == expected_status
+    response = caught.value.partial_response
+    assert response.answer is None
+    assert response.metadata["failure_reason"] == expected_status
+    assert response.metadata["native_exception"]["exception_type"] == exception_type
+    assert response.trajectory == [{"role": "user", "content": "Solve"}]
+    assert "harbor_result.json" in response.workspace_file_contents
+    assert response.metadata["verifier_reward_observed"] is False
+    assert "verifier_snapshot" not in task.metadata
+    assert (
+        infer_score_status(
+            {
+                "benchmark_name": "terminal_bench2",
+                "metadata": response.metadata,
+                "error": {"error_type": caught.value.error_type},
+            }
+        )
+        == expected_status
+    )
+
+
+@pytest.mark.parametrize("wrapper_timeout", [False, True])
+@pytest.mark.parametrize("result_task", [None, "other-task", "db-wal-recovery"])
+def test_harbor_nonzero_exit_without_matching_failure_cannot_use_reward(
+    tmp_path, monkeypatch, result_task, wrapper_timeout
+):
+    task_dir = tmp_path / "db-wal-recovery"
+    task_dir.mkdir()
+    (task_dir / "task.toml").write_text('version = "1.0"')
+    task = BenchmarkTask(
+        "tb2_db-wal-recovery", "Solve", None, {"task_dir": str(task_dir)}
+    )
+
+    def native(argv, **kwargs):
+        if result_task is not None:
+            trial = kwargs["cwd"] / "evaluation/trial"
+            trial.mkdir(parents=True)
+            (trial / "result.json").write_text(
+                json.dumps(
+                    {
+                        "task_name": result_task,
+                        "verifier_result": {"rewards": {"reward": 1}},
+                    }
+                )
+            )
+        if wrapper_timeout:
+            import subprocess
+            raise subprocess.TimeoutExpired(argv, 1)
+        raise RuntimeError("Native harness exited 1")
+
+    monkeypatch.setattr(terminus, "run_native", native)
+    agent = terminus.Terminus2Agent()
+    agent.setup(
+        {
+            "executable": "harbor",
+            "model": "fixture",
+            "api_base": "http://localhost:1/v1",
+            "output_dir": str(tmp_path / "out"),
+        }
+    )
+    import subprocess
+    expected = subprocess.TimeoutExpired if wrapper_timeout else RuntimeError
+    with pytest.raises(expected):
+        agent.solve(task)
+
+
+@pytest.mark.parametrize('native_exit,expected', [('exit_api', 'provider_error'), ('exit_error', 'runtime_error'), ('exit_environment_error', 'runtime_error')])
+def test_native_swe_failure_is_not_normalized_as_legacy_timeout(native_exit, expected):
+    from alphadiana.analysis.io.status import infer_score_status, normalize_legacy_timeout_zero_record
+    record = {'benchmark_name': 'swe_bench', 'score': None, 'correct': None,
+              'score_status': 'runtime_error',
+              'metadata': {'native_runtime': 'sweagent', 'exit_status': native_exit},
+              'error': {'error_type': 'RuntimeError', 'message': 'request timed out'}}
+    assert infer_score_status(record) == expected
+    assert normalize_legacy_timeout_zero_record(record) == record

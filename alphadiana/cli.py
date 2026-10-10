@@ -197,7 +197,7 @@ def validate(config_yaml: str, override: tuple[str, ...]):
 @click.argument("results_dir", type=click.Path(exists=True))
 def report(results_dir: str):
     """Generate reports from existing result files in a directory."""
-    from alphadiana.analysis.report import ReportGenerator
+    from alphadiana.analysis.run_summary import ReportGenerator
     from alphadiana.analysis.io.result_store import ResultStore
 
     jsonl_files = [
@@ -388,17 +388,11 @@ LOCALHOST = "127.0.0.1"
 @main.command("list-benchmarks")
 def list_benchmarks():
     """List all registered benchmarks."""
-    # Import benchmark modules to trigger registration.
-    import alphadiana.benchmarks.aime.benchmark  # noqa: F401
-    import alphadiana.benchmarks.custom.benchmark  # noqa: F401
-    import alphadiana.benchmarks.gpqa.benchmark  # noqa: F401
-    import alphadiana.benchmarks.hle.benchmark  # noqa: F401
-    import alphadiana.benchmarks.imo.benchmark  # noqa: F401
-    import alphadiana.benchmarks.mmmu_pro.benchmark  # noqa: F401
-    import alphadiana.benchmarks.swe_bench.benchmark  # noqa: F401
-    import alphadiana.benchmarks.terminal_bench2.benchmark  # noqa: F401
+    from alphadiana.registry_loader import load_builtin_benchmarks
 
-    from alphadiana.benchmarks.registry import BenchmarkRegistry
+    load_builtin_benchmarks()
+
+    from alphadiana.registry import BenchmarkRegistry
 
     benchmarks = BenchmarkRegistry.list()
     if benchmarks:

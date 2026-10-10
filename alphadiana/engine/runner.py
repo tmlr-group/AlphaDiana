@@ -17,15 +17,15 @@ from uuid import uuid4
 
 import httpx
 
-from alphadiana.harness.registry import AgentRegistry
+from alphadiana.registry import AgentRegistry
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.utils.rock_ports import resolve_rock_ports_from_env
-from alphadiana.benchmarks.registry import BenchmarkRegistry
-from alphadiana.analysis.report import ReportGenerator, RunSummary
+from alphadiana.registry import BenchmarkRegistry
+from alphadiana.analysis.run_summary import ReportGenerator, RunSummary
 from alphadiana.analysis.io.result_store import ResultStore
 from alphadiana.engine.task_dispatcher import TaskDispatcher
-from alphadiana.engine.sandbox.registry import SandboxRegistry
-from alphadiana.scorer.registry import ScorerRegistry
+from alphadiana.registry import SandboxRegistry
+from alphadiana.registry import ScorerRegistry
 from alphadiana.utils.math_answer import (
     extract_numeric_answer_candidate,
     parse_numeric_answer,
@@ -780,7 +780,7 @@ class Runner:
             self.scorer = scorer_cls()
             self.scorer.setup(self.config.scorer_config)
 
-            from alphadiana.metrics.registry import MetricRegistry
+            from alphadiana.registry import MetricRegistry
 
             self.metrics = []
             for metric_spec in self.config.metrics:
@@ -1040,7 +1040,7 @@ class Runner:
                 deployment_results = []
                 try:
                     import alphadiana.engine.sandbox.rock  # noqa: F401 — trigger registration
-                    from alphadiana.engine.sandbox.registry import SandboxRegistry
+                    from alphadiana.registry import SandboxRegistry
 
                     auto_sandbox_config = {
                         "admin_base_url": self.config.agent_config.get(
@@ -1328,7 +1328,7 @@ class Runner:
         ):
             try:
                 import alphadiana.engine.sandbox.rock  # noqa: F401 — trigger registration
-                from alphadiana.engine.sandbox.registry import SandboxRegistry
+                from alphadiana.registry import SandboxRegistry
                 rock_cls = SandboxRegistry.get("rock")
                 _auto_sandbox = rock_cls()
                 # Build sandbox config from agent config, with gateway-friendly defaults.

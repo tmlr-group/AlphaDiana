@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from alphadiana.benchmarks.base import Benchmark, BenchmarkTask
-from alphadiana.benchmarks.registry import BenchmarkRegistry
+from alphadiana.registry import BenchmarkRegistry
 
 
 class CustomBenchmark(Benchmark):

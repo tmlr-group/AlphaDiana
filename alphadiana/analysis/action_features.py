@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from alphadiana.analysis.result_reader import RunBundle, load_jsonl_records, resolve_run_relative_path
-from alphadiana.analysis.io.logprob_artifacts import entropy_stats_from_int16_records
+from alphadiana.logprobs import entropy_stats_from_int16_records
 from alphadiana.analysis.io.status import infer_score_status
 
 
@@ -76,6 +76,7 @@ def build_record_feature_rows(bundle: RunBundle) -> list[dict[str, Any]]:
         scale = record.get("int16_probability_scale") or 0
         rows.append(
             {
+                "data_view": "all_attempts",
                 "run_id": str(record.get("run_id") or bundle.run_id),
                 "task_id": str(record.get("task_id") or ""),
                 "sample_index": int(record.get("sample_index") or 0),

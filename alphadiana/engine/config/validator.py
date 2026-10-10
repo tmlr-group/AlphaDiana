@@ -243,7 +243,7 @@ class ConfigValidator:
         if task_retries is not None and task_retries < 0:
             errors.append("task_retries must be >= 0")
 
-        from alphadiana.harness.registry import AgentRegistry
+        from alphadiana.registry import AgentRegistry
         from alphadiana.registry_loader import load_builtin_agent_validators
 
         load_builtin_agent_validators()

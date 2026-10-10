@@ -57,15 +57,9 @@ class Artifacts:
                 records.append(record)
         if not latest:
             return records
-        selected = {}
-        for record in records:
-            key = (
-                record.get("run_id", self.path.stem),
-                record["task_id"],
-                record.get("sample_index", 0),
-            )
-            selected[key] = record
-        return list(selected.values())
+        from alphadiana.analysis.run_summary import latest_samples
+
+        return latest_samples(records)
 
     def artifact_root(self, record: dict[str, Any]) -> Path:
         """Locate retained sidecars, including rescored runs in another directory."""
@@ -132,7 +126,7 @@ class Artifacts:
         from alphadiana.api import ScorerSpec
         from alphadiana.engine.components import register_builtin_components
         from alphadiana.scorer.base import Scorer
-        from alphadiana.scorer.registry import ScorerRegistry
+        from alphadiana.registry import ScorerRegistry
 
         register_builtin_components()
         if isinstance(scorer, ScorerSpec):

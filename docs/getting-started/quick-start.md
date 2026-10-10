@@ -251,7 +251,7 @@ timeout-classified harness outcomes are the exception to the intuitive
 ## Accuracy, Pass@k, and Avg@k
 
 The report metrics come from `ReportGenerator.generate`
-(`alphadiana/analysis/report.py`):
+(`alphadiana/analysis/run_summary.py`):
 
 | Metric | Definition |
 |---|---|

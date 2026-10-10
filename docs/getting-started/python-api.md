@@ -288,7 +288,7 @@ That mode still requires the trace-bound `action_targets` artifact, with
 Do not resegment the original human targets when reproducing that comparison.
 
 Historical character segmentation is retained in
-`analysis/legacy/character_spans.py`; the deprecated explicit `custom-spans-v1`
+`analysis/legacy/character_spans.py`; the supported explicit `custom-spans-v1`
 option writes `legacy_custom_annotated_actions`. Historical keyword labels remain
 available at `analysis/action_events.py` for old scripts. Neither is called by
 the standard Analyzer pipeline. Analyzer report schema v2 removes the old `execution.actions`,
@@ -296,6 +296,31 @@ the standard Analyzer pipeline. Analyzer report schema v2 removes the old `execu
 Use `annotated_actions` for the new measurement; keep historical exports unchanged.
 Offline analysis without a judge still computes
 scores/resources/entropy, but produces no substitute action labels or action plots.
+
+To run the retained character method explicitly, use your historical taxonomy
+and an independent output directory:
+
+```python
+from alphadiana.analysis.action_annotations import ActionAnnotations
+
+with ActionAnnotations(
+    protocol="custom-spans-v1",
+    span_chars=4096,
+    taxonomy=historical_taxonomy,
+    model=judge_model,
+    base_url=judge_base_url,
+    api_key=judge_api_key,
+    cache_dir="historical-character-cache",
+) as method:
+    result = method.measure([artifacts])
+```
+
+This retains the old rule for choosing boundaries and still uses a model for
+labels. For the separate, fully deterministic historical method, explicitly call
+`extract_action_event_rows(bundle, harness="directllm")` from
+`alphadiana.analysis.action_events`; `bundle` is a `RunBundle` loaded through
+`alphadiana.analysis.result_reader.load_run_bundle`. Neither method replaces the
+LLM default. Compare their outputs as different measurements.
 
 All new action reports declare `calibration_inherited: false`. Sharing six label
 names or classification rules does not transfer agreement measured on different

@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 from alphadiana.engine.sandbox.base import ExecutionResult, Sandbox, SandboxSession
-from alphadiana.engine.sandbox.registry import register_sandbox
+from alphadiana.registry import register_sandbox
 from alphadiana.engine.container_runtime.podman_socket import (
     podman_socket_env,
     resolve_podman_docker_api_version,
@@ -326,6 +326,7 @@ class SWEBenchContainerSandbox(Sandbox):
         self._podman_socket_path = ""
         self._docker_api_version = ""
         self._network_mode = ""
+        self._docker_api_timeout = 180.0
 
     @property
     def name(self) -> str:
@@ -333,6 +334,7 @@ class SWEBenchContainerSandbox(Sandbox):
 
     def setup(self, config: dict) -> None:
         self._config = dict(config)
+        self._docker_api_timeout = float(config.get("docker_api_timeout", 180))
         self._log_dir = Path(config.get("log_dir", "./logs/swebench_container"))
         self._container_engine = str(config.get("container_engine", "docker") or "docker").strip().lower()
         if self._container_engine not in {"docker", "podman"}:
@@ -387,9 +389,10 @@ class SWEBenchContainerSandbox(Sandbox):
                     os.environ[key] = value
 
     def _docker_client(self, docker_module: Any) -> Any:
+        options: dict[str, Any] = {"timeout": self._docker_api_timeout}
         if self._container_engine == "podman" and self._docker_api_version:
-            return docker_module.from_env(version=self._docker_api_version)
-        return docker_module.from_env()
+            options["version"] = self._docker_api_version
+        return docker_module.from_env(**options)
 
     def _build_test_spec(self, task: "BenchmarkTask") -> tuple[dict[str, Any], Any]:
         runtime = self._runtime_api()

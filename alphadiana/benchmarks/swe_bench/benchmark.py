@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from alphadiana.benchmarks.base import Benchmark, BenchmarkTask, load_dataset_with_retry
-from alphadiana.benchmarks.registry import BenchmarkRegistry
+from alphadiana.registry import BenchmarkRegistry
 
 
 class SWEBenchBenchmark(Benchmark):

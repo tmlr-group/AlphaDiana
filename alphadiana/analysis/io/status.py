@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 VALID_SCORE_STATUS = "valid_scored"
@@ -59,6 +60,8 @@ def _is_control_plane_runtime_error(error: dict[str, Any], evidence_text: str) -
         "docker image inspect",
         "docker pull",
         "docker run",
+        "'docker', 'run'",
+        "'docker', 'start'",
         "container runtime",
         "control_plane",
     )
@@ -91,6 +94,18 @@ def _scorer_failure_status(record: dict[str, Any]) -> str | None:
     """Reject unmeasured fallbacks, including lossy historical EvoX records."""
     score_metadata = _as_dict(record.get("score_metadata"))
     benchmark_name = str(record.get("benchmark_name", "") or "").strip()
+    if benchmark_name == "terminal_bench2":
+        if score_metadata.get("verifier_status") == "bootstrap_error":
+            return "verifier_error"
+        replay = _as_dict(record.get("rescoring"))
+        if not (replay.get("environment_allowed") is True and score_metadata.get("replayed") is True):
+            # Historical reward=0 also covers failures before pytest started.
+            output = str(_as_dict(record.get("metadata")).get("test_output", "") or "")
+            if re.search(
+                r"(?m)^(?:/usr/local/bin/uvx: line \d+: python3: command not found|"
+                r"/usr/bin/python3: No module named (?:pip|ensurepip))$", output
+            ):
+                return "verifier_error"
     if (
         benchmark_name == "ale_bench"
         and score_metadata.get("judge_result") == "INTERNAL_ERROR"
@@ -117,11 +132,23 @@ def _scorer_failure_status(record: dict[str, Any]) -> str | None:
     return None
 
 
+def _native_failure_status(metadata: dict[str, Any]) -> str | None:
+    if metadata.get("native_runtime") == "sweagent":
+        native_exit = metadata.get("exit_status")
+        if native_exit == "exit_api":
+            return "provider_error"
+        if native_exit in {"exit_error", "exit_environment_error"}:
+            return "runtime_error"
+    return None
+
+
 def is_legacy_timeout_zero_record(record: dict[str, Any]) -> bool:
     """Return whether an old error record should now count as timeout score 0."""
     if _scorer_failure_status(record):
         return False
     metadata = _as_dict(record.get("metadata"))
+    if _native_failure_status(metadata):
+        return False
     error = _as_dict(record.get("error"))
     explicit = str(record.get("score_status", "") or "").strip()
     if explicit in {"verifier_error", "scorer_error"} or (
@@ -249,6 +276,11 @@ def infer_score_status(record: dict[str, Any]) -> str:
         return VALID_SCORE_STATUS
 
     metadata = _as_dict(record.get("metadata"))
+    # Older SWE-Agent adapters scored empty predictions despite native startup
+    # or provider failure. Retained native evidence outranks that legacy status.
+    native_failure = _native_failure_status(metadata)
+    if native_failure:
+        return native_failure
     finish_reason = str(record.get("finish_reason", "") or "").strip()
     error = _as_dict(record.get("error"))
     # Rescoring keeps solver evidence intact. The fresh verifier judgment owns

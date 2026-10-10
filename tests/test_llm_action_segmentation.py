@@ -55,7 +55,7 @@ def test_default_llm_chooses_boundary_one_call_and_never_reads_fixed_targets(tmp
 
         def create(**kw):
             calls.append(kw)
-            evidence = json.loads(kw["messages"][1]["content"])
+            evidence = json.loads(kw["messages"][1]["content"].split("\n", 1)[1])
             assert "SECRET GOLD" not in str(evidence)
             # A model-selected boundary inside one unbroken source paragraph.
             return response(
@@ -125,7 +125,7 @@ def test_tools_thinking_and_repeated_events_keep_order_and_observations_are_cont
     with ActionAnnotations(**judge_options(tmp_path)) as plugin:
 
         def create(**kw):
-            evidence = json.loads(kw["messages"][1]["content"])
+            evidence = json.loads(kw["messages"][1]["content"].split("\n", 1)[1])
             assert any(
                 b["text"] == "error" and not b["target"] for b in evidence["sources"]
             )
@@ -194,7 +194,7 @@ def test_windowing_preserves_source_coverage_and_cache(tmp_path):
 
         def create(**kw):
             calls.append(kw)
-            return response(whole_blocks(json.loads(kw["messages"][1]["content"])))
+            return response(whole_blocks(json.loads(kw["messages"][1]["content"].split("\n", 1)[1])))
 
         plugin.client.chat.completions.create = create
         measured = plugin.measure([artifacts])
@@ -264,3 +264,37 @@ def test_failed_llm_does_not_fall_back_to_rules(tmp_path):
             == '{"actions": []}'
         )
         assert not list(plugin.cache.glob("*.json"))
+
+
+@pytest.mark.parametrize('status', ['provider_error', 'runtime_error'])
+def test_failed_execution_without_assistant_actions_keeps_other_annotations(tmp_path, status):
+    artifacts = source(tmp_path, [
+        dict(task_id='blocked', score_status=status, error='failed before response', correct=None, score=None,
+             artifact_manifest={'files': {'normalized_trace': 'blocked.json'}}),
+        record('answered', False, artifact_manifest={'files': {'normalized_trace': 'answered.json'}}),
+    ], {
+        'artifacts/blocked.json': json.dumps({'steps': [{'role': 'user', 'content': 'solve'}]}),
+        'artifacts/answered.json': json.dumps({'steps': [{'role': 'assistant', 'content': 'actual answer'}]}),
+    })
+    calls = []
+    with ActionAnnotations(**judge_options(tmp_path)) as plugin:
+        def create(**kw):
+            calls.append(kw)
+            return response(whole_blocks(json.loads(kw['messages'][1]['content'].split('\n', 1)[1])))
+        plugin.client.chat.completions.create = create
+        result = plugin.measure([artifacts])
+        assert len(calls) == 1
+        assert {r['task_id'] for r in result.tables['annotations']} == {'answered'}
+        assert result.coverage['run']['traces_without_assistant_actions'] == [
+            {'task_id': 'blocked', 'sample_index': 0, 'score_status': status}
+        ]
+        assert len(result.coverage['run']['sources']) == 2
+
+
+def test_valid_wrong_answer_without_saved_actions_still_fails_before_api(tmp_path):
+    artifacts = source(tmp_path, [record('answered', False, artifact_manifest={'files': {'normalized_trace': 'trace.json'}})],
+                       {'artifacts/trace.json': json.dumps({'steps': [{'role': 'user', 'content': 'solve'}]})})
+    with ActionAnnotations(**judge_options(tmp_path)) as plugin:
+        plugin.client.chat.completions.create = lambda **kw: pytest.fail('must not call')
+        with pytest.raises(ValueError, match='No saved assistant actions'):
+            plugin.measure([artifacts])

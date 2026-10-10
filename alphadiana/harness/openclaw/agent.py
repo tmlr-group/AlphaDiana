@@ -49,7 +49,7 @@ from alphadiana.harness.proxies.logprob_proxy import (
 )
 from alphadiana.harness.base import Agent, AgentResponse
 from alphadiana.harness.proxies.preservation import add_artifact_file_refs
-from alphadiana.harness.registry import AgentRegistry
+from alphadiana.registry import AgentRegistry
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.utils.attachments import build_openai_multimodal_user_content
 from alphadiana.harness.openclaw.responses import (

@@ -24,7 +24,7 @@ from alphadiana.harness.proxies.logprob_capture import (
     resolve_logprob_capture_config,
 )
 from alphadiana.harness.base import Agent, AgentResponse
-from alphadiana.harness.registry import AgentRegistry
+from alphadiana.registry import AgentRegistry
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.utils.math_answer import extract_answer_candidate
 
@@ -222,8 +222,9 @@ class DirectLLMAgent(Agent):
         request_kwargs: dict[str, Any] = {
             "model": self._model,
             "messages": messages,
-            "temperature": self._temperature,
         }
+        if self._temperature is not None:
+            request_kwargs["temperature"] = self._temperature
         if self._max_completion_tokens is not None:
             request_kwargs["max_completion_tokens"] = self._max_completion_tokens
         else:

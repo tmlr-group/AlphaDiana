@@ -182,3 +182,56 @@ def test_snapshot_capture_keeps_existing_import_contract():
 
     assert replay.capture_snapshot is snapshot.capture_snapshot
     assert replay.verifier_digest is snapshot.verifier_digest
+
+
+DOCKER_PAUSE_NOTICE = 'Flag --pause has been deprecated, and enabled by default. Use --no-pause to disable pausing during commit.'
+SNAPSHOT_IMAGE = 'sha256:' + 'a' * 64
+
+
+def test_capture_snapshot_excludes_docker29_stdout_notice(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from alphadiana.benchmarks.terminal_bench2 import snapshot
+    tests = tmp_path / 'tests'
+    tests.mkdir()
+    (tests / 'test.sh').write_text('echo official')
+    runtime = SimpleNamespace(container_engine='docker', container_id='owned',
+                              task=SimpleNamespace(task_id='task', metadata={'task_dir': str(tmp_path)}))
+    monkeypatch.setattr(snapshot.subprocess, 'run', lambda *a, **kw: SimpleNamespace(stdout=DOCKER_PAUSE_NOTICE+'\n'+SNAPSHOT_IMAGE+'\n'))
+    assert capture_snapshot(None, runtime)['image_id'] == SNAPSHOT_IMAGE
+
+
+def test_replay_reads_saved_docker_notice_without_editing_snapshot(tmp_path, monkeypatch):
+    import json
+    from types import SimpleNamespace
+    from alphadiana.benchmarks.terminal_bench2 import replay
+    tests=tmp_path/'tests'; tests.mkdir(); (tests/'test.sh').write_text('echo official')
+    saved={'schema_version':1,'task_id':'task','engine':'docker',
+           'captured_before_verification':True,'verifier_sha256':verifier_digest(str(tmp_path)),
+           'image_id':DOCKER_PAUSE_NOTICE+'\n'+SNAPSHOT_IMAGE}
+    original=dict(saved)
+    task=BenchmarkTask('task','instruction','1',{'task_dir':str(tmp_path),'verifier_snapshot':saved})
+    def inspect(command, **kwargs):
+        assert command==['docker','image','inspect',SNAPSHOT_IMAGE]
+        return SimpleNamespace(stdout=json.dumps([{'Id':SNAPSHOT_IMAGE}]))
+    monkeypatch.setattr(replay.subprocess,'run',inspect)
+    owner=VerifierReplay()
+    def prepare(task, **kw):
+        assert task.metadata['docker_image']==SNAPSHOT_IMAGE
+        return SimpleNamespace(logs_dir=tmp_path/'logs')
+    monkeypatch.setattr(owner,'_prepare_runtime',prepare)
+    monkeypatch.setattr(owner,'_run_verifier_and_read_reward',lambda *a, **kw: SimpleNamespace(status='ok',reward='1'))
+    monkeypatch.setattr(owner,'_cleanup_runtime',lambda *a: None)
+    result, snapshot=owner.run(task,output_dir=tmp_path/'replay')
+    assert result.reward=='1' and snapshot==original and saved==original
+
+
+@pytest.mark.parametrize('output', ['', 'other notice\n'+SNAPSHOT_IMAGE, SNAPSHOT_IMAGE+'\n'+SNAPSHOT_IMAGE])
+def test_snapshot_capture_rejects_ambiguous_image_output(tmp_path, monkeypatch, output):
+    from types import SimpleNamespace
+    from alphadiana.benchmarks.terminal_bench2 import snapshot
+    tests=tmp_path/'tests';tests.mkdir();(tests/'test.sh').write_text('echo official')
+    runtime=SimpleNamespace(container_engine='docker',container_id='owned',
+                            task=SimpleNamespace(task_id='task',metadata={'task_dir':str(tmp_path)}))
+    monkeypatch.setattr(snapshot.subprocess,'run',lambda *a, **kw: SimpleNamespace(stdout=output))
+    with pytest.raises((ValueError, RuntimeError),match='image identity'):
+        capture_snapshot(None,runtime)

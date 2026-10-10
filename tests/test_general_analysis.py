@@ -319,7 +319,7 @@ def test_failure_annotations_preserve_tool_and_reasoning_evidence(tmp_path):
     with FailureAnnotations(**judge_options(tmp_path)) as labels:
 
         def classify(**kwargs):
-            evidence = json.loads(kwargs["messages"][-1]["content"])
+            evidence = json.loads(kwargs["messages"][-1]["content"].split("\n", 1)[1])
             requests.append(evidence)
             command = ["python missing_a.py", "python missing_b.py"][len(requests) - 1]
             assert command in evidence["trace"]
@@ -371,7 +371,7 @@ def test_action_percentages_and_transitions_stay_within_samples(tmp_path):
             {
                 "actions": [
                     {
-                        "action_id": json.loads(kw["messages"][1]["content"])[
+                        "action_id": json.loads(kw["messages"][1]["content"].split("\n", 1)[1])[
                             "actions"
                         ][0]["action_id"],
                         "label": "Reasoning",
@@ -468,7 +468,7 @@ def test_openai_compatible_judges_and_exports(tmp_path, monkeypatch):
                     {
                         "actions": [
                             {
-                                "action_id": json.loads(body["messages"][1]["content"])[
+                                "action_id": json.loads(body["messages"][1]["content"].split("\n", 1)[1])[
                                     "actions"
                                 ][0]["action_id"],
                                 "label": "Reasoning",
@@ -489,7 +489,7 @@ def test_openai_compatible_judges_and_exports(tmp_path, monkeypatch):
                                         else "Reasoning"
                                     ),
                                 }
-                                for b in json.loads(body["messages"][1]["content"])[
+                                for b in json.loads(body["messages"][1]["content"].split("\n", 1)[1])[
                                     "sources"
                                 ]
                                 if b["target"]

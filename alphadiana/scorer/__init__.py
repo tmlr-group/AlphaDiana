@@ -1,5 +1,5 @@
 from alphadiana.scorer.base import Scorer, ScoreResult
-from alphadiana.scorer.registry import ScorerRegistry
+from alphadiana.registry import ScorerRegistry
 
 __all__ = ["ScoreResult", "Scorer", "ScorerRegistry"]
 

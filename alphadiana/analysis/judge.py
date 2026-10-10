@@ -23,7 +23,13 @@ class CachedJudge:
         api_key=None,
         extra_body=None,
         response_format=None,
+        temperature=0,
+        token_limit_parameter="max_tokens",
     ):
+        if token_limit_parameter not in {"max_tokens", "max_completion_tokens"}:
+            raise ValueError("Unsupported token limit parameter")
+        self.temperature = temperature
+        self.token_limit_parameter = token_limit_parameter
         config = JudgeConfig.resolve(
             model=model, base_url=base_url, api_key=api_key, analysis=True
         )
@@ -52,11 +58,13 @@ class CachedJudge:
             "base_url": self.base_url,
             "prompt": prompt,
             "evidence": evidence,
-            "temperature": 0,
-            "max_tokens": max_tokens,
             "extra_body": self.extra_body,
             "response_format": self.response_format,
+            "user_instruction": "Respond with a JSON object.\n",
         }
+        request[self.token_limit_parameter] = max_tokens
+        if self.temperature is not None:
+            request["temperature"] = self.temperature
         digest = hashlib.sha256(
             json.dumps(request, sort_keys=True).encode()
         ).hexdigest()
@@ -69,13 +77,20 @@ class CachedJudge:
         else:
             response = self.client.chat.completions.create(
                 model=self.model,
-                temperature=0,
-                max_tokens=max_tokens,
+                **{self.token_limit_parameter: max_tokens},
+                **(
+                    {"temperature": self.temperature}
+                    if self.temperature is not None
+                    else {}
+                ),
                 response_format=self.response_format,
                 extra_body=self.extra_body,
                 messages=[
                     {"role": "system", "content": prompt},
-                    {"role": "user", "content": json.dumps(evidence)},
+                    {
+                        "role": "user",
+                        "content": request["user_instruction"] + json.dumps(evidence),
+                    },
                 ],
             )
             try:

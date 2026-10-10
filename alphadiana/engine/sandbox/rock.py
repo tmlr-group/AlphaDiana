@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from alphadiana.engine.sandbox.base import ExecutionResult, Sandbox, SandboxSession
-from alphadiana.engine.sandbox.registry import register_sandbox
+from alphadiana.registry import register_sandbox
 from alphadiana.utils.rock_runtime import DEFAULT_SANDBOX_IMAGE, configure_rock_runtime_for_image
 
 logger = logging.getLogger(__name__)

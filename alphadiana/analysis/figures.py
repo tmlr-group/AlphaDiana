@@ -196,9 +196,20 @@ def _render(plt, spec: dict, rows: list[dict]):
             ax.set_visible(False)
         return fig
     categories = list(dict.fromkeys(str(r[x]) for r in rows))
+    category_labels = [
+        textwrap.fill(c, 24)
+        if spec["kind"] == "stacked_barh"
+        else textwrap.fill(c.replace("_", " "), width=18)
+        for c in categories
+    ]
+    # Wrapped run names need enough vertical space between neighboring ticks.
     height = (
         max(
-            2.1, 0.38 * len(categories) * (len(groups) if spec["kind"] == "barh" else 1)
+            2.1,
+            0.8 + len(categories) * max(
+                0.38 * (len(groups) if spec["kind"] == "barh" else 1),
+                0.16 * max(len(label.splitlines()) for label in category_labels) + 0.08,
+            ),
         )
         if spec["kind"] in {"barh", "stacked_barh"}
         else 2.6
@@ -230,9 +241,7 @@ def _render(plt, spec: dict, rows: list[dict]):
                 label=group,
             )
             stacked = [left + value for left, value in zip(stacked, heights)]
-            ax.set_yticks(
-                range(len(categories)), [textwrap.fill(c, 24) for c in categories]
-            )
+            ax.set_yticks(range(len(categories)), category_labels)
         elif spec["kind"] in {"bar", "barh"}:
             width = 0.8 / len(groups)
             positions = [
@@ -258,7 +267,7 @@ def _render(plt, spec: dict, rows: list[dict]):
                 edgecolor="white",
                 linewidth=0.5,
             )
-            labels = [textwrap.fill(c.replace("_", " "), width=18) for c in categories]
+            labels = category_labels
             if spec["kind"] == "barh":
                 ax.set_yticks(range(len(categories)), labels)
                 if not spec.get("group"):

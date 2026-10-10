@@ -12,7 +12,16 @@ from uuid import uuid4
 from alphadiana.harness._internal.native_process import run_native
 from alphadiana.harness.base import Agent, AgentResponse
 from alphadiana.harness.proxies.native_capture import NativeProviderCapture
-from alphadiana.harness.registry import register_agent
+from alphadiana.registry import register_agent
+
+
+class SWEAgentRuntimeError(RuntimeError):
+    """Native per-instance failure, even when run-batch exits successfully."""
+
+    def __init__(self, response: AgentResponse, *, error_type: str):
+        super().__init__(f"SWE-Agent {response.metadata['exit_status']}; evidence: {response.metadata['native_output_dir']}")
+        self.error_type = error_type
+        self.partial_response = response
 
 
 def project_sweagent_history(history):
@@ -63,6 +72,8 @@ class SWEAgent(Agent):
     version = "1.1.0"
 
     def setup(self, config: dict) -> None:
+        if "history_processors" in config and not isinstance(config["history_processors"], list):
+            raise ValueError("history_processors must be a native configuration list")
         self.config = dict(config)
         self.executable = str(
             config.get("executable") or shutil.which("sweagent") or ""
@@ -90,10 +101,13 @@ class SWEAgent(Agent):
         started = time.monotonic()
         directory = self.output / uuid4().hex
         directory.mkdir(mode=0o700)
-        with NativeProviderCapture(
-            self.config, directory, measure_usage=True
-        ) as capture:
-            response = self._solve_native(task, directory, capture.api_base, started)
+        capture = NativeProviderCapture(self.config, directory, measure_usage=True)
+        try:
+            with capture:
+                response = self._solve_native(task, directory, capture.api_base, started)
+        except SWEAgentRuntimeError as exc:
+            capture.apply(exc.partial_response)
+            raise
         return capture.apply(response)
 
     def _solve_native(self, task, directory, api_base, started) -> AgentResponse:
@@ -151,6 +165,17 @@ class SWEAgent(Agent):
             "--progress_bar",
             "False",
         ]
+        if "top_p" in self.config:
+            # Upstream's dotted CLI parser preserves strings, so a second
+            # config file is needed to pass an actual null instead of "null".
+            sampling = directory / "model-sampling.json"
+            sampling.write_text(json.dumps({"agent": {"model": {"top_p": self.config["top_p"]}}}))
+            argv.extend(["--config", str(sampling)])
+        if "history_processors" in self.config:
+            # A typed empty list explicitly disables provider-specific cache marks.
+            history = directory / "history-processors.json"
+            history.write_text(json.dumps({"agent": {"history_processors": self.config["history_processors"]}}))
+            argv.extend(["--config", str(history)])
         if "python_standalone_dir" in self.config:
             argv.extend(
                 [
@@ -202,7 +227,7 @@ class SWEAgent(Agent):
             )
             if source in stats
         }
-        return AgentResponse(
+        response = AgentResponse(
             answer=prediction["model_patch"],
             trajectory=project_sweagent_history(trajectory.get("history", [])),
             token_usage={},
@@ -221,3 +246,10 @@ class SWEAgent(Agent):
             },
             finish_reason="stop",
         )
+        exit_status = response.metadata["exit_status"]
+        if exit_status in {"exit_api", "exit_error", "exit_environment_error"}:
+            raise SWEAgentRuntimeError(
+                response,
+                error_type="provider_error" if exit_status == "exit_api" else "runtime_error",
+            )
+        return response

@@ -34,7 +34,7 @@ from alphadiana.analysis.case_studies import (
 )
 from alphadiana.analysis.clustering import cluster_analysis_views, cluster_rows
 from alphadiana.analysis.reliability import compute_reliability_summary
-from alphadiana.analysis.reports import render_markdown_report, write_feature_csv, write_json
+from alphadiana.analysis.action_report import render_markdown_report, write_feature_csv, write_json
 from alphadiana.analysis.trajectory_metrics import (
     ERROR_STATUSES,
     MAIN_METRIC_NAMES,

@@ -9,9 +9,8 @@ from typing import Any
 
 import yaml
 
-from alphadiana.analysis.report import ReportGenerator
+from alphadiana.analysis.run_summary import ReportGenerator, RunStatistics
 from alphadiana.analysis.io.result_store import ResultStore
-from alphadiana.analysis.io.status import VALID_SCORE_STATUS, infer_score_status
 
 from alphadiana.analysis.dashboard.backend.models import (
     CompareRunEntry,
@@ -36,10 +35,9 @@ def _build_summary(run_id: str, records: list[dict[str, Any]],
                    manifest: dict | None = None) -> RunSummaryResponse:
     """Adapt canonical statistics while retaining legacy dashboard task counters."""
     core = ReportGenerator().summarize(records, manifest, run_id=run_id)
-    latest = {(r["task_id"], r.get("sample_index", 0)): r for r in records}
-    records = list(latest.values())
-    completed = len({r["task_id"] for r in records
-                     if infer_score_status(r) == VALID_SCORE_STATUS})
+    base = RunStatistics.from_records(records, manifest)
+    records = base.results
+    completed = base.completed_tasks
     total = core.expected_task_count
     failed = max(total - completed, 0)
 

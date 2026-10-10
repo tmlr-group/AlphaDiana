@@ -10,7 +10,7 @@ from pathlib import Path
 from alphadiana.analysis.action_features import build_record_feature_rows
 from alphadiana.analysis.clustering import cluster_analysis_views
 from alphadiana.analysis.reliability import compute_reliability_summary
-from alphadiana.analysis.reports import render_markdown_report, write_feature_csv, write_json
+from alphadiana.analysis.action_report import render_markdown_report, write_feature_csv, write_json
 from alphadiana.analysis.result_reader import load_run_bundle
 
 
@@ -40,6 +40,7 @@ def main(argv: list[str] | None = None) -> int:
     output_files = {name: f"{args.run_id}/{path.name}" for name, path in output_paths.items()}
     cluster_payload = {
         "run_id": args.run_id,
+        "data_view": "all_attempts",
         "feature_level": "record",
         "views": clusters,
     }
