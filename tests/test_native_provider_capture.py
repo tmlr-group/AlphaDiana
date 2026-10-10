@@ -261,3 +261,36 @@ def test_provider_totals_require_complete_request_coverage(case):
         assert provenance["complete"]
     else:
         assert usage == {} and not provenance["complete"]
+
+
+def test_usage_capture_preserves_environment_proxy_egress(tmp_path, monkeypatch):
+    observed = []
+    class EgressProxy(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+        def do_POST(self):
+            observed.append(self.path)
+            self.rfile.read(int(self.headers['Content-Length']))
+            body = b'{"choices": [], "usage": {"prompt_tokens": 1, "completion_tokens": 0, "total_tokens": 1}}'
+            self.send_response(200)
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+    proxy = ThreadingHTTPServer(('127.0.0.1', 0), EgressProxy)
+    thread = threading.Thread(target=proxy.serve_forever, daemon=True)
+    thread.start()
+    monkeypatch.setenv('HTTP_PROXY', f'http://127.0.0.1:{proxy.server_port}')
+    monkeypatch.setenv('NO_PROXY', '127.0.0.1,localhost')
+    for name in ('http_proxy', 'https_proxy', 'all_proxy', 'no_proxy', 'HTTPS_PROXY', 'ALL_PROXY'):
+        monkeypatch.delenv(name, raising=False)
+    try:
+        with NativeProviderCapture({'api_base': 'http://native-provider.invalid/v1'}, tmp_path, measure_usage=True) as capture:
+            with httpx.Client(trust_env=False) as client:
+                response = client.post(capture.api_base + '/chat/completions', json={'model': 'fixture', 'messages': []})
+                assert response.status_code == 200
+        assert observed == ['http://native-provider.invalid/v1/chat/completions']
+        assert capture.responses[0]['prompt_tokens'] == 1
+    finally:
+        proxy.shutdown()
+        proxy.server_close()
+        thread.join()

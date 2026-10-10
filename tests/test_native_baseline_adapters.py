@@ -449,7 +449,7 @@ def test_harbor_only_owned_agent_deadline_can_use_observed_reward(
             agent.solve(task)
 
 
-@pytest.mark.parametrize("native_exits", [True, False])
+@pytest.mark.parametrize("native_exits", [True, False, "timeout"])
 @pytest.mark.parametrize(
     "exception_type,expected_status",
     [("APIError", "provider_error"), ("EnvironmentStartTimeoutError", "runtime_error")],
@@ -480,6 +480,9 @@ def test_harbor_failure_retains_native_evidence_before_snapshot(
         (trial / "agent/trajectory.json").write_text(
             json.dumps({"steps": [{"source": "user", "message": "Solve"}]})
         )
+        if native_exits == "timeout":
+            import subprocess
+            raise subprocess.TimeoutExpired(argv, 1)
         if native_exits:
             raise RuntimeError("Native harness exited 1; diagnostics: native.log")
 
@@ -518,9 +521,10 @@ def test_harbor_failure_retains_native_evidence_before_snapshot(
     )
 
 
+@pytest.mark.parametrize("wrapper_timeout", [False, True])
 @pytest.mark.parametrize("result_task", [None, "other-task", "db-wal-recovery"])
 def test_harbor_nonzero_exit_without_matching_failure_cannot_use_reward(
-    tmp_path, monkeypatch, result_task
+    tmp_path, monkeypatch, result_task, wrapper_timeout
 ):
     task_dir = tmp_path / "db-wal-recovery"
     task_dir.mkdir()
@@ -541,6 +545,9 @@ def test_harbor_nonzero_exit_without_matching_failure_cannot_use_reward(
                     }
                 )
             )
+        if wrapper_timeout:
+            import subprocess
+            raise subprocess.TimeoutExpired(argv, 1)
         raise RuntimeError("Native harness exited 1")
 
     monkeypatch.setattr(terminus, "run_native", native)
@@ -553,5 +560,18 @@ def test_harbor_nonzero_exit_without_matching_failure_cannot_use_reward(
             "output_dir": str(tmp_path / "out"),
         }
     )
-    with pytest.raises(RuntimeError, match="Native harness exited 1"):
+    import subprocess
+    expected = subprocess.TimeoutExpired if wrapper_timeout else RuntimeError
+    with pytest.raises(expected):
         agent.solve(task)
+
+
+@pytest.mark.parametrize('native_exit,expected', [('exit_api', 'provider_error'), ('exit_error', 'runtime_error'), ('exit_environment_error', 'runtime_error')])
+def test_native_swe_failure_is_not_normalized_as_legacy_timeout(native_exit, expected):
+    from alphadiana.analysis.io.status import infer_score_status, normalize_legacy_timeout_zero_record
+    record = {'benchmark_name': 'swe_bench', 'score': None, 'correct': None,
+              'score_status': 'runtime_error',
+              'metadata': {'native_runtime': 'sweagent', 'exit_status': native_exit},
+              'error': {'error_type': 'RuntimeError', 'message': 'request timed out'}}
+    assert infer_score_status(record) == expected
+    assert normalize_legacy_timeout_zero_record(record) == record

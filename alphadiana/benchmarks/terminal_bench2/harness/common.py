@@ -956,8 +956,13 @@ class TerminalBench2ContainerMixin:
             logger.warning("tests/test.sh exec error: %s", exc)
             return f"[ERROR: {exc}]"
 
-    def _verifier_results_ready(self, runtime: TerminalBench2RuntimeContext) -> bool:
-        """Require the test report explicitly requested by the official script."""
+    def _verifier_results_ready(self, runtime: TerminalBench2RuntimeContext, test_output: str) -> bool:
+        """Reject dependency failures and require the official script's report."""
+        if re.search(
+            r"(?m)^(?:/usr/local/bin/uvx: line \d+: python3: command not found|"
+            r"/usr/bin/python3: No module named (?:pip|ensurepip))$", test_output
+        ):
+            return False
         task_dir = runtime.task.metadata.get("task_dir")
         if not task_dir:
             return True
@@ -982,11 +987,13 @@ class TerminalBench2ContainerMixin:
             runtime.task.metadata["verifier_snapshot"] = capture_snapshot(self, runtime)
         reward_path = self._verifier_reward_path(runtime.logs_dir)
         verifier_output_path = reward_path.parent
+        saved_output_path = runtime.logs_dir / "verifier-test-output.txt"
         existing_reward = self._read_reward_if_exists(runtime.logs_dir, runtime.task.task_id)
         if existing_reward is not None:
-            results_ready = self._verifier_results_ready(runtime)
+            saved_output = saved_output_path.read_text() if saved_output_path.is_file() else ""
+            results_ready = self._verifier_results_ready(runtime, saved_output)
             return VerifierResult(
-                test_output="[reused existing verifier reward.txt]",
+                test_output=saved_output or "[reused existing verifier reward.txt]",
                 reward=existing_reward if results_ready else None,
                 status="ok" if results_ready else "bootstrap_error",
                 reward_path=str(reward_path),
@@ -1001,9 +1008,10 @@ class TerminalBench2ContainerMixin:
                 timeout_sec=wait_timeout,
             )
             if reused_reward is not None:
-                results_ready = self._verifier_results_ready(runtime)
+                saved_output = saved_output_path.read_text() if saved_output_path.is_file() else reused_output
+                results_ready = self._verifier_results_ready(runtime, saved_output)
                 return VerifierResult(
-                    test_output=reused_output,
+                    test_output=saved_output,
                     reward=reused_reward if results_ready else None,
                     status="ok" if results_ready else "bootstrap_error",
                     reward_path=str(reward_path),
@@ -1020,15 +1028,9 @@ class TerminalBench2ContainerMixin:
 
         test_output = self._run_tests(runtime.container_id, timeout_sec)
         # The container may create /logs/verifier as root. The host owns logs_dir.
-        (runtime.logs_dir / "verifier-test-output.txt").write_text(test_output, encoding="utf-8")
+        saved_output_path.write_text(test_output, encoding="utf-8")
         reward = self._read_reward_if_exists(runtime.logs_dir, runtime.task.task_id)
-        if not self._verifier_results_ready(runtime):
-            status, reward = "bootstrap_error", None
-        elif re.search(
-            r"(?m)^(?:/usr/local/bin/uvx: line \d+: python3: command not found|"
-            r"/usr/bin/python3: No module named (?:pip|ensurepip))$", test_output
-        ):
-            # The official script writes zero even when dependencies prevent tests.
+        if not self._verifier_results_ready(runtime, test_output):
             status, reward = "bootstrap_error", None
         elif reward is not None:
             status = "ok"

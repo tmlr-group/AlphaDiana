@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
 import time
 from copy import deepcopy
 from pathlib import Path
@@ -264,7 +265,7 @@ class Terminus2Agent(Agent):
                 log=directory / "native.log",
                 timeout=float(self.config.get("timeout", 1800)),
             )
-        except RuntimeError as exc:
+        except (RuntimeError, subprocess.TimeoutExpired) as exc:
             process_error = exc
         results = []
         for path in (directory / "evaluation").glob("*/result.json"):

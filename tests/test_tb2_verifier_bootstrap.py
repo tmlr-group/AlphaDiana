@@ -38,6 +38,8 @@ def test_runtime_keeps_dependency_failure_separate_from_test_failure(tmp_path, m
     result=owner._run_verifier_and_read_reward(runtime)
     assert result.status==expected_status and result.reward==expected_reward
     assert (tmp_path/'verifier/reward.txt').read_text()=='0'
+    reused = owner._run_verifier_and_read_reward(runtime)
+    assert reused.status == expected_status and reused.reward == expected_reward
 
 
 def test_fresh_verified_result_supersedes_old_bootstrap_error(tmp_path):
@@ -94,3 +96,17 @@ def test_container_owned_reward_directory_need_not_be_host_writable(tmp_path, mo
         assert result.status == 'ok' and result.reward == '0'
     finally:
         verifier.chmod(0o700)
+
+
+def test_waited_verifier_keeps_saved_dependency_failure(tmp_path, monkeypatch):
+    owner = TerminalBench2ContainerMixin()
+    owner._setup_container_config({'container_engine': 'docker'})
+    runtime = SimpleNamespace(logs_dir=tmp_path, container_id='fixture', task=SimpleNamespace(task_id='task', metadata={}))
+    monkeypatch.setattr(owner, '_probe_running_verifier', lambda _: (True, 'ok'))
+    def wait(runtime, *, timeout_sec):
+        (tmp_path / 'verifier-test-output.txt').write_text('/usr/bin/python3: No module named pip')
+        return '[reused reward.txt from existing verifier]', '0', 'ok'
+    monkeypatch.setattr(owner, '_wait_for_existing_verifier', wait)
+    result = owner._run_verifier_and_read_reward(runtime)
+    assert result.status == 'bootstrap_error' and result.reward is None
+    assert 'No module named pip' in result.test_output

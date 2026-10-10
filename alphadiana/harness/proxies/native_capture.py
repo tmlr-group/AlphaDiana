@@ -38,6 +38,8 @@ class NativeProviderCapture:
                 inject_logprobs=self.capture["enabled"],
                 normalize_system_messages=False,
                 capture_request_summary=True,
+                # Match the native HTTP client's environment proxy/CA routing.
+                trust_env=True,
                 client_timeout=float(self.config.get("timeout", 1800)),
             )
             try:

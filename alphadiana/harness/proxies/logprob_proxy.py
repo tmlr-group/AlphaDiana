@@ -1156,6 +1156,7 @@ class _LogprobCaptureServer(socketserver.ThreadingMixIn, http.server.HTTPServer)
         normalize_empty_tool_content: bool = False,
         capture_request_summary: bool = False,
         upstream_stream: bool = False,
+        trust_env: bool = False,
     ) -> None:
         super().__init__((bind_host, 0), _LogprobProxyHandler)
         self.upstream = upstream
@@ -1175,7 +1176,7 @@ class _LogprobCaptureServer(socketserver.ThreadingMixIn, http.server.HTTPServer)
         self.streaming_logprobs: list[dict] = []
         self.next_call_index = 0
         self.lock = threading.Lock()
-        self.client = httpx.Client(timeout=client_timeout, trust_env=False)
+        self.client = httpx.Client(timeout=client_timeout, trust_env=trust_env)
 
 
 class LogprobCaptureProxy:
@@ -1198,6 +1199,7 @@ class LogprobCaptureProxy:
         normalize_empty_tool_content: bool = False,
         capture_request_summary: bool = False,
         upstream_stream: bool = False,
+        trust_env: bool = False,
     ) -> None:
         self._upstream = normalize_openai_proxy_upstream(upstream)
         self._top_logprobs = int(top_logprobs)
@@ -1213,6 +1215,7 @@ class LogprobCaptureProxy:
         self._normalize_empty_tool_content = bool(normalize_empty_tool_content)
         self._capture_request_summary = bool(capture_request_summary)
         self._upstream_stream = bool(upstream_stream)
+        self._trust_env = bool(trust_env)
         self._server: _LogprobCaptureServer | None = None
         self._thread: threading.Thread | None = None
 
@@ -1233,6 +1236,7 @@ class LogprobCaptureProxy:
             normalize_empty_tool_content=self._normalize_empty_tool_content,
             capture_request_summary=self._capture_request_summary,
             upstream_stream=self._upstream_stream,
+            trust_env=self._trust_env,
         )
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
