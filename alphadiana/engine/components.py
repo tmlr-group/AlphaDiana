@@ -150,15 +150,15 @@ def load_builtin_benchmarks() -> None:
 
 
 def load_builtin_agents() -> None:
-    import alphadiana.harness.swe_bench.sweagent  # noqa: F401
-    import alphadiana.harness.terminal_bench2.terminus  # noqa: F401
-    import alphadiana.harness.swe_bench.agent  # noqa: F401
-    import alphadiana.harness.terminal_bench2.docker  # noqa: F401
-    import alphadiana.harness.terminal_bench2.openclaw  # noqa: F401
-    import alphadiana.harness.terminal_bench2.opencode  # noqa: F401
-    import alphadiana.harness.terminal_bench2.pi_harbor  # noqa: F401
-    import alphadiana.harness.terminal_bench2.zeroclaw  # noqa: F401
-    import alphadiana.harness.direct_llm  # noqa: F401
+    import alphadiana.harness.sweagent  # noqa: F401
+    import alphadiana.harness.terminus2.agent  # noqa: F401
+    import alphadiana.harness.container_patch.agent  # noqa: F401
+    import alphadiana.harness.direct_llm.terminal  # noqa: F401
+    import alphadiana.harness.openclaw.terminal  # noqa: F401
+    import alphadiana.harness.opencode.terminal  # noqa: F401
+    import alphadiana.harness.pi.harbor  # noqa: F401
+    import alphadiana.harness.zeroclaw.terminal  # noqa: F401
+    import alphadiana.harness.direct_llm.agent  # noqa: F401
     import alphadiana.harness.pi.agent  # noqa: F401
     import alphadiana.harness.deepseek_harness.agent  # noqa: F401
     import alphadiana.harness.openclaw.agent  # noqa: F401
@@ -168,7 +168,7 @@ def load_builtin_agents() -> None:
 
 def load_builtin_agent_validators() -> None:
     """Load only adapters that expose config hooks without optional runtimes."""
-    import alphadiana.harness.terminal_bench2.pi_harbor  # noqa: F401
+    import alphadiana.harness.pi.harbor  # noqa: F401
 
 
 def load_builtin_sandboxes() -> None:

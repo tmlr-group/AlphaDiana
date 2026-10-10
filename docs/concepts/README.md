@@ -83,14 +83,14 @@ The registered keys map to the four built-in harnesses:
 
 | `agent.name` | Harness | Source |
 |---|---|---|
-| `direct_llm` | single-turn baseline, no tools | `alphadiana/harness/direct_llm.py` |
+| `direct_llm` | single-turn baseline, no tools | `alphadiana/harness/direct_llm/agent.py` |
 | `openclaw` | multi-turn agent + tools + code execution | [OpenClaw](../harnesses/openclaw.md) |
 | `opencode` | wraps the `opencode` CLI | [OpenCode](../harnesses/opencode.md) |
 | `zeroclaw` | ZeroClaw CLI bridge | [ZeroClaw](../harnesses/zeroclaw.md) |
 
 ## The baseline: `direct_llm`
 
-`DirectLLMAgent` (`alphadiana/harness/direct_llm.py`, `name="direct_llm"`) is
+`DirectLLMAgent` (`alphadiana/harness/direct_llm/agent.py`, `name="direct_llm"`) is
 the clean comparison point: a single system+user chat to an OpenAI-compatible
 endpoint, with **no tools, no multi-turn loop, and no code execution**. It is
 the "engine on a test bench" used as the reference for matched harness

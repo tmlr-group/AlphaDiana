@@ -14,7 +14,7 @@ import sys
 from alphadiana.engine.components import {discover}
 {discover}()
 assert not any(name.startswith((
-    'alphadiana.harness.swe_bench', 'alphadiana.harness.terminal_bench2',
+    'alphadiana.harness.container_patch', 'alphadiana.harness.terminus2', 'alphadiana.harness.sweagent', 'alphadiana.harness.direct_llm.agent',
     'alphadiana.harness.openclaw.agent', 'alphadiana.harness.opencode.agent',
     'alphadiana.harness.zeroclaw.agent', 'harbor', 'sweagent',
 )) for name in sys.modules)

@@ -1,6 +1,6 @@
 # direct_llm (Baseline)
 
-`DirectLLMAgent` in `alphadiana/harness/direct_llm.py` calls an OpenAI-compatible provider directly. It is the baseline for measuring provider/model behavior without a separate agent CLI or harness tool loop.
+`DirectLLMAgent` in `alphadiana/harness/direct_llm/agent.py` calls an OpenAI-compatible provider directly. It is the baseline for measuring provider/model behavior without a separate agent CLI or harness tool loop.
 
 ## Configuration
 

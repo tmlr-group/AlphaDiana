@@ -11,8 +11,8 @@ from alphadiana.analysis.measurements import ExecutionMetrics
 from alphadiana.results.store import ResultStore
 from alphadiana.results.artifacts import Artifacts
 from alphadiana.benchmarks.base import BenchmarkTask
-from alphadiana.harness.swe_bench.sweagent import project_sweagent_history
-from alphadiana.harness.terminal_bench2.terminus import project_harbor_steps
+from alphadiana.harness.sweagent import project_sweagent_history
+from alphadiana.harness.terminus2.agent import project_harbor_steps
 from alphadiana.harness.base import AgentResponse
 from alphadiana.scorer.base import ScoreResult
 from tests.analysis.test_general_analysis import judge_options, response as judge_response

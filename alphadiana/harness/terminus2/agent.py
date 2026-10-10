@@ -251,7 +251,7 @@ class Terminus2Agent(Agent):
             argv = [
                 self.native_python,
                 "-m",
-                "alphadiana.harness.terminal_bench2.harbor_job",
+                "alphadiana.harness.terminus2.job",
                 str(config_path),
                 str(snapshot_path),
                 task.task_id,

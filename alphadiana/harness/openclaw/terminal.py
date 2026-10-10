@@ -14,7 +14,7 @@ from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.engine.sandbox.terminal_bench2 import (
     _proxy_bypass_hosts_from_urls,
 )
-from alphadiana.harness.terminal_bench2.incontainer import (
+from alphadiana.harness._internal.container_agent_runtime import (
     IN_CONTAINER_AGENT_PROMPT,
     TerminalBench2InContainerMixin,
 )

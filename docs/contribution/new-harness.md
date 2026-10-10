@@ -116,7 +116,7 @@ each agent module explicitly in `Runner.setup()` in
 
 ```python
 # alphadiana/engine/runner.py, in Runner.setup()
-import alphadiana.harness.direct_llm        # noqa: F401
+import alphadiana.harness.direct_llm.agent        # noqa: F401
 import alphadiana.harness.openclaw.agent    # noqa: F401
 import alphadiana.harness.opencode.agent    # noqa: F401
 import alphadiana.harness.zeroclaw.agent    # noqa: F401

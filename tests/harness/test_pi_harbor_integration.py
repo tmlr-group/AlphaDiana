@@ -11,7 +11,7 @@ from alphadiana.results.store import ResultStore
 from alphadiana.analysis.export import ReportGenerator
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.benchmarks.terminal_bench2.benchmark import TerminalBench2Benchmark
-from alphadiana.harness.terminal_bench2.pi_harbor import (
+from alphadiana.harness.pi.harbor import (
     HarborTrialError,
     TerminalBench2PiHarborAgent,
     _read_pi_trace,

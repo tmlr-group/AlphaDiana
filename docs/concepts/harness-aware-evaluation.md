@@ -73,7 +73,7 @@ the `register()` call *and* an import line in the runner.
 
 ## The direct_llm baseline
 
-`DirectLLMAgent` (`alphadiana/harness/direct_llm.py`, `name = "direct_llm"`) is
+`DirectLLMAgent` (`alphadiana/harness/direct_llm/agent.py`, `name = "direct_llm"`) is
 the **no-harness reference**: a single-turn system+user chat to an
 OpenAI-compatible endpoint with **no tools, no multi-turn loop, and no code
 execution**. It is the floor every scaffold is measured against, useful for

@@ -1,4 +1,4 @@
-"""Shared in-container runtime helpers for terminal-bench-2 agents."""
+"""Build and run native agent payloads inside disposable task containers."""
 
 from __future__ import annotations
 

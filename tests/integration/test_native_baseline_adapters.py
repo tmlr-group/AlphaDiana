@@ -11,7 +11,7 @@ def test_tb2_docker_build_uses_local_identity_as_a_valid_from_reference(
     monkeypatch, reference
 ):
     import subprocess
-    from alphadiana.harness.terminal_bench2 import incontainer
+    from alphadiana.harness._internal import container_agent_runtime as incontainer
 
     aliases = {}
     commands = []
@@ -40,7 +40,7 @@ def test_tb2_docker_build_uses_local_identity_as_a_valid_from_reference(
     assert bool(aliases) == reference.startswith("sha256:")
 
 from alphadiana.benchmarks.base import BenchmarkTask
-from alphadiana.harness.terminal_bench2 import terminus
+from alphadiana.harness.terminus2 import agent as terminus
 
 
 @pytest.mark.parametrize("reward", [0, 1, 0.5, True, None])
@@ -100,10 +100,10 @@ def test_harbor_requires_binary_observed_reward(tmp_path, monkeypatch, reward):
 
 @pytest.mark.parametrize("harness", ["openclaw", "opencode"])
 def test_tb2_generation_settings_reach_provider_overrides(tmp_path, harness):
-    from alphadiana.harness.terminal_bench2.openclaw import (
+    from alphadiana.harness.openclaw.terminal import (
         TerminalBench2OpenClawAgent,
     )
-    from alphadiana.harness.terminal_bench2.opencode import (
+    from alphadiana.harness.opencode.terminal import (
         TerminalBench2OpenCodeAgent,
     )
 
@@ -147,7 +147,7 @@ def test_openclaw_install_version_is_explicit_and_override_is_preserved():
 
 @pytest.mark.parametrize("history_processors", [None, []])
 def test_sweagent_image_override_and_solver_visible_inputs(tmp_path, monkeypatch, history_processors):
-    from alphadiana.harness.swe_bench import sweagent
+    from alphadiana.harness import sweagent
 
     config_path = tmp_path / "default.yaml"
     config_path.write_text("agent: {}")
@@ -211,7 +211,7 @@ def test_sweagent_image_override_and_solver_visible_inputs(tmp_path, monkeypatch
 
 
 def test_opencode_context_limits_reach_native_model_config(tmp_path):
-    from alphadiana.harness.terminal_bench2.opencode import (
+    from alphadiana.harness.opencode.terminal import (
         TerminalBench2OpenCodeAgent,
     )
 
@@ -224,7 +224,7 @@ def test_opencode_context_limits_reach_native_model_config(tmp_path):
 
 
 def test_sweagent_native_exit_error_retains_evidence_and_is_not_scored(tmp_path, monkeypatch):
-    from alphadiana.harness.swe_bench import sweagent
+    from alphadiana.harness import sweagent
     from alphadiana.results.status import infer_score_status
 
     # Captured on A100: upstream run-batch exited zero, emitted an empty
@@ -341,7 +341,7 @@ def test_openclaw_native_failure_cannot_be_scored_as_verifier_zero(
     stderr, returncode, expected
 ):
     from alphadiana.results.status import infer_score_status
-    from alphadiana.harness.terminal_bench2.openclaw import (
+    from alphadiana.harness.openclaw.terminal import (
         _classify_openclaw_failure,
     )
 
@@ -379,7 +379,7 @@ def test_harbor_snapshot_requires_explicit_native_python(tmp_path):
 def test_harbor_snapshot_hook_refuses_ambiguous_container(tmp_path, monkeypatch):
     from types import SimpleNamespace
 
-    from alphadiana.harness.terminal_bench2 import harbor_job
+    from alphadiana.harness.terminus2 import job as harbor_job
 
     event = SimpleNamespace(
         task_name=tmp_path.name,

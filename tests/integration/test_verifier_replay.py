@@ -114,7 +114,7 @@ def test_native_harbor_hook_captures_pre_verifier_state(tmp_path):
             [
                 os.environ["ALPHADIANA_HARBOR_PYTHON"],
                 "-m",
-                "alphadiana.harness.terminal_bench2.harbor_job",
+                "alphadiana.harness.terminus2.job",
                 str(config),
                 str(snapshot_path),
                 "harbor-fixture",

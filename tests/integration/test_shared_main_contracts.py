@@ -59,7 +59,7 @@ import importlib, sys
 importlib.import_module({first!r})
 from alphadiana.engine import components as r
 assert not any(name in sys.modules for name in (
-    'alphadiana.harness.direct_llm', 'alphadiana.harness.pi.agent',
+    'alphadiana.harness.direct_llm.agent', 'alphadiana.harness.pi.agent',
     'alphadiana.engine.sandbox.podman', 'docker', 'harbor', 'swebench'))
 families = [r.BenchmarkRegistry, r.AgentRegistry, r.SandboxRegistry, r.ScorerRegistry, r.MetricRegistry]
 assert len({{id(f._registry) for f in families}}) == 5

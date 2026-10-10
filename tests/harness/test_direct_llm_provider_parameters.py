@@ -3,7 +3,7 @@
 from types import SimpleNamespace
 
 from alphadiana.benchmarks.base import BenchmarkTask
-from alphadiana.harness.direct_llm import DirectLLMAgent
+from alphadiana.harness.direct_llm.agent import DirectLLMAgent
 
 
 def test_explicit_null_temperature_omits_sampling_controls(monkeypatch):

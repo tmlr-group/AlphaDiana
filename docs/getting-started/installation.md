@@ -294,7 +294,7 @@ alphadiana report results/
 | Config dataclass + loader | `alphadiana/engine/config/experiment_config.py` (`ExperimentConfig`) |
 | Config validator | `alphadiana/engine/config/validator.py` (`ConfigValidator`) |
 | Annotated core config shape | `configs/schema.yaml` |
-| Harness implementations | `alphadiana/harness/` (`direct_llm.py`, `openclaw/`, `opencode/`, `zeroclaw/`) |
+| Harness implementations | `alphadiana/harness/` (`direct_llm/agent.py`, `openclaw/`, `opencode/`, `zeroclaw/`) |
 | Result store | `alphadiana/results/store.py` |
 
 ## Next steps

@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 from alphadiana.benchmarks.base import BenchmarkTask
-from alphadiana.harness.terminal_bench2.pi_harbor_support import (
+from alphadiana.harness.pi.harbor_results import (
     _artifact_entry,
     _duration_seconds,
     _explicit_provider_error,
@@ -158,7 +158,7 @@ class TerminalBench2PiHarborAgent(Agent):
             self._harbor_bin,
             "run",
             "--agent-import-path",
-            "alphadiana.harness.terminal_bench2.pi_harbor_adapter:PiHarborInstalledAgent",
+            "alphadiana.harness.pi.harbor_adapter:PiHarborInstalledAgent",
             "--agent-kwarg",
             f"candidate_path={self._candidate}",
             "--agent-kwarg",

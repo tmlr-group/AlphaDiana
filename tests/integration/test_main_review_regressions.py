@@ -20,7 +20,7 @@ from alphadiana.results.store import ResultStore
 from alphadiana.analysis.export import ReportGenerator
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.engine.task_dispatcher import TaskDispatcher
-from alphadiana.harness.direct_llm import DirectLLMAgent
+from alphadiana.harness.direct_llm.agent import DirectLLMAgent
 from alphadiana.scorer.numeric import NumericScorer
 from tests.api.test_api_pipeline_demo import ScriptedProvider
 

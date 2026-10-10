@@ -231,7 +231,7 @@ The sections above are the AlphaDiana container-agent path. To run the
 *official/leaderboard* configuration instead (standalone Harbor CLI + the
 upstream `terminus-2` agent), use the path below. Harbor owns the system prompt;
 the AlphaDiana task-container harness at
-`alphadiana/harness/terminal_bench2/docker.py` is not on this path.
+`alphadiana/harness/direct_llm/terminal.py` is not on this path.
 
 vLLM endpoint (Qwen3.5-27B; the serve-side flags match the official spec):
 

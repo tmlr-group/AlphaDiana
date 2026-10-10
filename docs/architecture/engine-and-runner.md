@@ -132,8 +132,11 @@ scoring/replay. `harness/` owns agent execution and response projection. Both us
 concrete dataset. `engine/components.py` explicitly loads each registry family.
 The `benchmarks` package no longer registers GPQA/MMMU merely on import.
 
-SWE execution adapters and their assets live in `harness/swe_bench/`. TB2
-execution adapters live in `harness/terminal_bench2/`. TB2 task-container startup,
+Execution adapters live under the executor that runs them: `harness/openclaw/`,
+`harness/opencode/`, `harness/zeroclaw/`, `harness/pi/`, `harness/direct_llm/`,
+`harness/terminus2/`, and `harness/sweagent.py`. The shared Docker patch controller
+and its resources live in `harness/container_patch/`. Native agent image preparation and in-container execution
+are shared in `harness/_internal/container_agent_runtime.py`. TB2 task-container startup,
 workspace commands, verifier execution, snapshots, and cleanup share one owner:
 `engine/sandbox/terminal_bench2.py`. Official replay uses that owner directly and
 never imports solver adapters. Controller Dockerfiles live in each agent's
@@ -169,9 +172,9 @@ Old internal entrypoints were removed; update callers as follows:
 
 | Previous path | Current path |
 | --- | --- |
-| `alphadiana.benchmarks.swe_bench.harness` | `alphadiana.harness.swe_bench.agent` |
-| `alphadiana.benchmarks.swe_bench.sweagent` | `alphadiana.harness.swe_bench.sweagent` |
-| `alphadiana.benchmarks.terminal_bench2.harness.<adapter>` | `alphadiana.harness.terminal_bench2.<adapter>` |
+| `alphadiana.benchmarks.swe_bench.harness` | `alphadiana.harness.container_patch.agent` |
+| `alphadiana.benchmarks.swe_bench.sweagent` | `alphadiana.harness.sweagent` |
+| `alphadiana.benchmarks.terminal_bench2.harness.<adapter>` | `alphadiana.harness.<executor>.terminal` (OpenClaw/OpenCode/ZeroClaw), `direct_llm.terminal`, `terminus2.agent`, or `pi.harbor` |
 | TB2 `harness.common` and `snapshot` | `alphadiana.engine.sandbox.terminal_bench2` |
 | Snapshot functions imported from TB2 `replay` | `alphadiana.engine.sandbox.terminal_bench2` |
 | `alphadiana.metrics.base` / `answer_length` | `alphadiana.engine.observations` |
@@ -186,3 +189,13 @@ from alphadiana.engine.components import register_metric
 
 Custom plugins keep their registry names and configuration. External deep-import
 callers must update their paths; their usage is not discoverable from this repo.
+
+### Executor import migration
+
+Internal benchmark-named harness packages are removed. Configuration registry keys
+remain unchanged. Import DirectLLMAgent from `alphadiana.harness.direct_llm.agent`;
+SWEAgent from `alphadiana.harness.sweagent`; SWEBenchDockerAgent from
+`alphadiana.harness.container_patch.agent`. Terminus2 execution and its child job
+now live in `alphadiana.harness.terminus2.agent` and `.job`. Pi Harbor execution,
+optional installed adapter and result projection live beside Pi in `.pi.harbor`,
+`.pi.harbor_adapter` and `.pi.harbor_results`. No forwarding entry points remain.
