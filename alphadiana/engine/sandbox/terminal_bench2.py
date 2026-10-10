@@ -425,18 +425,16 @@ class TerminalBench2ContainerMixin:
         )
 
     def _cleanup_runtime(self, runtime: TerminalBench2RuntimeContext) -> None:
+        self._stop_container(runtime.container_id, runtime.task.task_id)
         try:
-            self._stop_container(runtime.container_id, runtime.task.task_id)
-        finally:
-            try:
-                runtime.cleanup()
-            except Exception as exc:
-                logger.warning(
-                    "Task %s — failed to clean temp runtime %s: %s",
-                    runtime.task.task_id,
-                    runtime.workdir,
-                    exc,
-                )
+            runtime.cleanup()
+        except Exception as exc:
+            logger.warning(
+                "Task %s — failed to clean temp runtime %s: %s",
+                runtime.task.task_id,
+                runtime.workdir,
+                exc,
+            )
 
     def _write_helper_scripts(
         self,
@@ -1156,12 +1154,27 @@ exit 1
                 if not result.ok:
                     self._podman.rm(container_id, force=True, timeout=120, check=False)
                 return
-            subprocess.run(
+            stopped = subprocess.run(
                 ["docker", "stop", container_id],
                 capture_output=True,
                 text=True,
                 timeout=30,
             )
+            if stopped.returncode:
+                logger.warning("Task %s — Docker stop failed: %s", task_id, stopped.stderr)
+            # --rm teardown may still be in progress when Docker stop returns.
+            removed = subprocess.run(
+                ["docker", "rm", "--force", container_id],
+                capture_output=True, text=True, timeout=120,
+            )
+            remaining = subprocess.run(
+                ["docker", "ps", "-aq", "--no-trunc", "--filter", f"id={container_id}"],
+                capture_output=True, text=True, check=True, timeout=30,
+            )
+            if remaining.stdout.strip():
+                raise RuntimeError(
+                    f"Owned Docker container {container_id} remains: {removed.stderr}"
+                )
         except Exception as exc:
             logger.warning(
                 "Task %s — failed to stop container %s: %s",
@@ -1169,6 +1182,8 @@ exit 1
                 container_id[:12],
                 exc,
             )
+            if getattr(self, "_container_engine", "docker") == "docker":
+                raise
 
 
 def verifier_digest(task_dir: str) -> str:

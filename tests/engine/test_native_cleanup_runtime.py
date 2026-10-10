@@ -49,3 +49,31 @@ def test_real_orphan_cleanup_preserves_other_executions():
     finally:
         cleanup_execution(execution, runtime)
         cleanup_execution(sibling, runtime)
+
+
+@pytest.mark.parametrize('remaining', ['', 'owned-container\n'])
+def test_docker_cleanup_confirms_removal_before_deleting_workdir(tmp_path, monkeypatch, remaining):
+    from types import SimpleNamespace
+    from alphadiana.engine.sandbox import terminal_bench2 as sandbox
+
+    calls = []
+    def run(command, **kwargs):
+        calls.append(command)
+        if command[1] == 'stop':
+            return SimpleNamespace(returncode=1, stdout='', stderr='constructed stop failure')
+        if command[1] == 'rm':
+            return SimpleNamespace(returncode=bool(remaining), stdout='', stderr='constructed remove failure' if remaining else '')
+        return SimpleNamespace(returncode=0, stdout=remaining, stderr='')
+    monkeypatch.setattr(sandbox.subprocess, 'run', run)
+    cleaned = []
+    runtime = SimpleNamespace(container_id='owned-container', task=SimpleNamespace(task_id='task'),
+                              workdir=tmp_path, cleanup=lambda: cleaned.append(True))
+    owner = sandbox.TerminalBench2ContainerMixin()
+    if remaining:
+        with pytest.raises(RuntimeError, match='constructed remove failure'):
+            owner._cleanup_runtime(runtime)
+        assert not cleaned
+    else:
+        owner._cleanup_runtime(runtime)
+        assert cleaned
+    assert ['docker', 'rm', '--force', 'owned-container'] in calls
