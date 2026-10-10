@@ -67,6 +67,20 @@ def test_multiple_image_sources_and_text_are_preserved():
     assert messages[0]["content"][1]["type"] == "image_url"
 
 
+def test_default_sampling_omits_null_native_response_parameters():
+    chat = {
+        "model": "native", "stream": False,
+        "messages": [{"role": "user", "content": "fixture"}],
+        "temperature": None, "top_p": None,
+    }
+    payload = build_responses_payload(chat)
+    assert "temperature" not in payload and "top_p" not in payload
+    assert payload["stream"] is False
+    assert chat["temperature"] is None
+    payload = build_responses_payload({**chat, "temperature": 0.0, "top_p": 1.0})
+    assert payload["temperature"] == 0.0 and payload["top_p"] == 1.0
+
+
 @pytest.mark.parametrize(
     "stream,status",
     [(True, "completed"), (False, "completed"), (True, "failed"), (True, "missing")],

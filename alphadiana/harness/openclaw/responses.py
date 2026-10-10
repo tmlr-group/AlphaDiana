@@ -45,7 +45,7 @@ def build_responses_payload(chat: dict) -> dict:
     payload = {
         key: deepcopy(chat[key])
         for key in ("model", "stream", "temperature", "top_p", "user")
-        if key in chat
+        if key in chat and chat[key] is not None
     }
     payload["input"] = items
     if "max_tokens" in chat:
