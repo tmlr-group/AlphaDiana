@@ -447,3 +447,111 @@ def test_harbor_only_owned_agent_deadline_can_use_observed_reward(
     else:
         with pytest.raises(RuntimeError, match="trial failed"):
             agent.solve(task)
+
+
+@pytest.mark.parametrize("native_exits", [True, False])
+@pytest.mark.parametrize(
+    "exception_type,expected_status",
+    [("APIError", "provider_error"), ("EnvironmentStartTimeoutError", "runtime_error")],
+)
+def test_harbor_failure_retains_native_evidence_before_snapshot(
+    tmp_path, monkeypatch, native_exits, exception_type, expected_status
+):
+    from alphadiana.analysis.io.status import infer_score_status
+
+    result = json.loads(
+        (
+            Path(__file__).parent / "fixtures/harbor-dbwal-provider-failure.json"
+        ).read_text()
+    )
+    result["exception_info"]["exception_type"] = exception_type
+    task_dir = tmp_path / result["task_name"]
+    task_dir.mkdir()
+    (task_dir / "task.toml").write_text('version = "1.0"')
+    task = BenchmarkTask(
+        "tb2_db-wal-recovery", "Solve", None, {"task_dir": str(task_dir)}
+    )
+
+    def native(argv, **kwargs):
+        trial = kwargs["cwd"] / "evaluation/db-wal-recovery__Gt6uAiT"
+        trial.mkdir(parents=True)
+        (trial / "result.json").write_text(json.dumps(result))
+        (trial / "agent").mkdir()
+        (trial / "agent/trajectory.json").write_text(
+            json.dumps({"steps": [{"source": "user", "message": "Solve"}]})
+        )
+        if native_exits:
+            raise RuntimeError("Native harness exited 1; diagnostics: native.log")
+
+    monkeypatch.setattr(terminus, "run_native", native)
+    agent = terminus.Terminus2Agent()
+    agent.setup(
+        {
+            "executable": "harbor",
+            "model": "fixture",
+            "api_base": "http://localhost:1/v1",
+            "output_dir": str(tmp_path / "out"),
+        }
+    )
+    agent.retain_snapshot = True
+    agent.native_python = "unused-by-stub"
+    with pytest.raises(RuntimeError) as caught:
+        agent.solve(task)
+    assert getattr(caught.value, "error_type", None) == expected_status
+    response = caught.value.partial_response
+    assert response.answer is None
+    assert response.metadata["failure_reason"] == expected_status
+    assert response.metadata["native_exception"]["exception_type"] == exception_type
+    assert response.trajectory == [{"role": "user", "content": "Solve"}]
+    assert "harbor_result.json" in response.workspace_file_contents
+    assert response.metadata["verifier_reward_observed"] is False
+    assert "verifier_snapshot" not in task.metadata
+    assert (
+        infer_score_status(
+            {
+                "benchmark_name": "terminal_bench2",
+                "metadata": response.metadata,
+                "error": {"error_type": caught.value.error_type},
+            }
+        )
+        == expected_status
+    )
+
+
+@pytest.mark.parametrize("result_task", [None, "other-task", "db-wal-recovery"])
+def test_harbor_nonzero_exit_without_matching_failure_cannot_use_reward(
+    tmp_path, monkeypatch, result_task
+):
+    task_dir = tmp_path / "db-wal-recovery"
+    task_dir.mkdir()
+    (task_dir / "task.toml").write_text('version = "1.0"')
+    task = BenchmarkTask(
+        "tb2_db-wal-recovery", "Solve", None, {"task_dir": str(task_dir)}
+    )
+
+    def native(argv, **kwargs):
+        if result_task is not None:
+            trial = kwargs["cwd"] / "evaluation/trial"
+            trial.mkdir(parents=True)
+            (trial / "result.json").write_text(
+                json.dumps(
+                    {
+                        "task_name": result_task,
+                        "verifier_result": {"rewards": {"reward": 1}},
+                    }
+                )
+            )
+        raise RuntimeError("Native harness exited 1")
+
+    monkeypatch.setattr(terminus, "run_native", native)
+    agent = terminus.Terminus2Agent()
+    agent.setup(
+        {
+            "executable": "harbor",
+            "model": "fixture",
+            "api_base": "http://localhost:1/v1",
+            "output_dir": str(tmp_path / "out"),
+        }
+    )
+    with pytest.raises(RuntimeError, match="Native harness exited 1"):
+        agent.solve(task)
