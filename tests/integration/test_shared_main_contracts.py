@@ -16,7 +16,7 @@ from alphadiana.results.store import ResultStore
 from alphadiana.results.statistics import compute_reliability_summary
 from alphadiana.analysis.export import ReportGenerator
 from alphadiana.results.statistics import RunStatistics, latest_samples
-from alphadiana.artifacts import Artifacts
+from alphadiana.results.artifacts import Artifacts
 
 FAMILIES = [
     ("benchmarks", "Benchmark", "benchmark"),
@@ -29,7 +29,7 @@ FAMILIES = [
 
 @pytest.mark.parametrize("path,family,arg", FAMILIES)
 def test_registry_identity_keywords_and_replacement(path, family, arg):
-    canonical = importlib.import_module("alphadiana.registry")
+    canonical = importlib.import_module("alphadiana.engine.components")
     legacy = importlib.import_module(f"alphadiana.{path}.registry")
     registry = getattr(canonical, family + "Registry")
     assert registry is getattr(legacy, family + "Registry")
@@ -50,13 +50,13 @@ def test_registry_identity_keywords_and_replacement(path, family, arg):
 
 
 @pytest.mark.parametrize(
-    "first", ["alphadiana.registry", "alphadiana.harness.registry"]
+    "first", ["alphadiana.engine.components", "alphadiana.harness.registry"]
 )
 def test_fresh_process_discovery_isolated_families_and_optional_imports(first):
     code = f"""
 import importlib, sys
 importlib.import_module({first!r})
-from alphadiana import registry as r
+from alphadiana.engine import components as r
 assert not any(name in sys.modules for name in (
     'alphadiana.harness.direct_llm', 'alphadiana.harness.pi.agent',
     'alphadiana.engine.sandbox.podman', 'docker', 'harbor', 'swebench'))
@@ -65,14 +65,14 @@ assert len({{id(f._registry) for f in families}}) == 5
 for i, family in enumerate(families):
     family.register('__shared_key', type('Impl' + str(i), (), {{}}))
 assert len({{f.get('__shared_key') for f in families}}) == 5
-from alphadiana.registry_loader import load_builtin_components, load_builtin_benchmarks
+from alphadiana.engine.components import register_builtin_components, load_builtin_benchmarks
 load_builtin_benchmarks()
 assert '__shared_key' in r.BenchmarkRegistry.list()
-load_builtin_components()
+register_builtin_components()
 before = [dict(f._registry) for f in families]
 replacement = type('Replacement', (), {{}})
 r.AgentRegistry.register('direct_llm', replacement)
-load_builtin_components()
+register_builtin_components()
 assert r.AgentRegistry.get('direct_llm') is replacement
 assert before[0] == r.BenchmarkRegistry._registry
 from click.testing import CliRunner
@@ -88,7 +88,7 @@ assert 'aime' in result.output and '__shared_key' in result.output
 
 
 def test_logprob_attribution_and_sdk_equivalence():
-    from alphadiana import logprobs as canonical
+    from alphadiana.results import logprobs as canonical
 
     raw = dict(
         token_index=3,

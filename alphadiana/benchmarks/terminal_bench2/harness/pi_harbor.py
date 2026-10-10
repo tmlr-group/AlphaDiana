@@ -24,7 +24,7 @@ from alphadiana.benchmarks.terminal_bench2.harness.pi_harbor_support import (
     validate_pi_harbor_experiment_config,
 )
 from alphadiana.harness.base import Agent, AgentResponse
-from alphadiana.registry import AgentRegistry
+from alphadiana.engine.components import AgentRegistry
 
 if TYPE_CHECKING:
     from alphadiana.engine.config.experiment_config import ExperimentConfig

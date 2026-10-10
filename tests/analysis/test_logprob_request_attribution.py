@@ -8,7 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import httpx
 import pytest
 
-from alphadiana.logprobs import raw_record_to_int16_record
+from alphadiana.results.logprobs import raw_record_to_int16_record
 from alphadiana.harness.proxies.logprob_proxy import (
     LogprobCaptureProxy,
     follows_tool_result,

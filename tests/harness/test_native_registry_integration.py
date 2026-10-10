@@ -6,7 +6,6 @@ import pytest
 
 
 @pytest.mark.parametrize("entrypoint", [
-    "from alphadiana.registry_loader import load_builtin_components as register",
     "from alphadiana.engine.components import register_builtin_components as register",
 ])
 def test_fresh_registry_keeps_native_and_api_adapters(entrypoint):

@@ -6,12 +6,12 @@ This implements the revised boundaries in #109 on main `8faa2ce12ad9f63bef51521b
 
 | Previous internal surface | Canonical owner | Contract |
 | --- | --- | --- |
-| Engine component registry copies | `registry.py` | Family namespaces, aliases, decorators, overwrite order and loaders remain unchanged. |
-| Analysis logprob forwarding paths | `alphadiana/logprobs.py` | Raw candidates stay separate from compact Int16 output; both conversions preserve request attribution. |
+| Engine component registry copies | `engine/components.py` | Family namespaces, aliases, decorators, overwrite order and loaders remain unchanged. |
+| Analysis logprob forwarding paths | `alphadiana/results/logprobs.py` | Raw candidates stay separate from compact Int16 output; both conversions preserve request attribution. |
 | Report/reliability/execution aggregation | `results/statistics.py`; `analysis/export.py` | Statistics owns sample selection and denominators; export owns ReportGenerator/RunSummary and rendering. |
 | `analysis/reports.py`, `analysis/action_report.py` | `analysis/actions/action_space_report.py` | Internal imports migrate; artifact filenames and explicit data-view labels remain. |
 
-`registry_loader.py` still owns deferred built-in imports and its family-specific loaders. CLI `list-benchmarks` now calls that loader. `engine/components.py` stays a forwarding entry point. Registry-only imports do not load native adapters. Internal imports use the canonical paths. Public composition entry points remain supported; see the [analysis migration map](../../alphadiana/analysis/README.md) for internal paths that moved.
+`engine/components.py` owns registry mechanics and deferred built-in imports, including family-specific loaders. CLI `list-benchmarks` calls that owner. Registry-only imports do not load native adapters. Internal imports use the canonical paths. Public composition entry points remain supported. See the [package migration map](../../alphadiana/README.md) and [analysis migration map](../../alphadiana/analysis/README.md) for relocated paths.
 
 Benchmark package flattening is deferred. Removing packages such as `benchmarks.aime` would break supported nested imports such as `benchmarks.aime.benchmark`; a separate migration decision is needed. Skills, paper resources, research scripts, native harness directories, scorer/metric boundaries and Runner lifecycle remain in place.
 

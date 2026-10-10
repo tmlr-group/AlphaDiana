@@ -260,7 +260,7 @@ uv tool install harbor          # installs the `harbor` binary
 
 No official Terminal-Bench 2 campaign manifest is checked into this checkout.
 Use Harbor directly for that leaderboard path, or add and review a campaign
-manifest before invoking `alphadiana.benchmark_rollout_cli`.
+manifest before invoking `alphadiana.cli.campaign`.
 
 The intended campaign command runs `harbor run --dataset terminal-bench@2.0 --agent
 terminus-2 --model openai/qwen3.5-27b ...` at `temperature=0.0`,

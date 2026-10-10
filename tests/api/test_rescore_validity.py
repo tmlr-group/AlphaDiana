@@ -4,7 +4,7 @@ import pytest
 
 import alphadiana as ad
 from alphadiana.results.store import ResultStore
-from alphadiana.artifacts import Artifacts
+from alphadiana.results.artifacts import Artifacts
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.harness.base import AgentResponse
 from alphadiana.scorer.numeric import NumericScorer

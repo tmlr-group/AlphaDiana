@@ -61,7 +61,7 @@ alphadiana batch \
 not an `ExperimentConfig`. Use it only with:
 
 ```bash
-python -m alphadiana.benchmark_rollout_cli summary \
+python -m alphadiana.cli.campaign summary \
   --manifest configs/macro_runs/swe_bench_verified_sweagent_qwen35_27b_campaign.yaml
 ```
 

@@ -6,7 +6,7 @@ import pytest
 
 import alphadiana as ad
 from alphadiana.results.store import ResultStore
-from alphadiana.artifacts import Artifacts
+from alphadiana.results.artifacts import Artifacts
 from alphadiana.benchmarks.base import Benchmark, BenchmarkTask
 from alphadiana.benchmarks.registry import BenchmarkRegistry
 from alphadiana.harness.base import Agent, AgentResponse

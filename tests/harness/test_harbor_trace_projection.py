@@ -9,7 +9,7 @@ from tests.analysis.action_target_fixtures import attach_targets, fixed_item
 from alphadiana.analysis.actions.llm_annotations import ActionAnnotations
 from alphadiana.analysis.measurements import ExecutionMetrics
 from alphadiana.results.store import ResultStore
-from alphadiana.artifacts import Artifacts
+from alphadiana.results.artifacts import Artifacts
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.benchmarks.swe_bench.sweagent import project_sweagent_history
 from alphadiana.benchmarks.terminal_bench2.harness.terminus import project_harbor_steps

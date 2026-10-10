@@ -315,7 +315,7 @@ def test_tb2_startup_timeout_stays_runtime_failure_when_normalized_twice():
 
 
 def test_reopened_tb2_startup_timeout_has_no_measured_score(tmp_path):
-    from alphadiana.artifacts import Artifacts
+    from alphadiana.results.artifacts import Artifacts
     from alphadiana.results.statistics import RunStatistics
 
     path = tmp_path / "captured.jsonl"

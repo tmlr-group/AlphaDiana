@@ -18,7 +18,7 @@ from alphadiana.engine.config.experiment_config import (
 
 if TYPE_CHECKING:
     from alphadiana.analysis.pipeline import Analyzer
-    from alphadiana.artifacts import Artifacts
+    from alphadiana.results.artifacts import Artifacts
 
 
 @dataclass(frozen=True)
@@ -120,14 +120,14 @@ class EvaluationRunner:
         self, *, agent: AgentSpec, data: DatasetSpec, scorer: ScorerSpec
     ) -> Artifacts:
         """Execute and persist evidence, releasing resources even on failure."""
-        from alphadiana.artifacts import Artifacts
-        from alphadiana.registry import BenchmarkRegistry
+        from alphadiana.results.artifacts import Artifacts
+        from alphadiana.engine.components import BenchmarkRegistry
         from alphadiana.engine.components import register_builtin_components
         from alphadiana.engine.config.validator import ConfigValidator
         from alphadiana.engine.runner import Runner
-        from alphadiana.registry import SandboxRegistry
-        from alphadiana.registry import AgentRegistry
-        from alphadiana.registry import ScorerRegistry
+        from alphadiana.engine.components import SandboxRegistry
+        from alphadiana.engine.components import AgentRegistry
+        from alphadiana.engine.components import ScorerRegistry
 
         config = self.configuration(agent=agent, data=data, scorer=scorer)
         register_builtin_components()

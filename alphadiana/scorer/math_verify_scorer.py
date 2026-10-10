@@ -14,12 +14,12 @@ or fails to parse either expression.
 
 from __future__ import annotations
 
-from alphadiana.answers import (
+from alphadiana.scorer.answers import (
     is_numeric_literal_answer,
     normalize_math_text,
     parse_numeric_answer,
 )
-from alphadiana.registry import register_scorer
+from alphadiana.engine.components import register_scorer
 from alphadiana.scorer.base import Scorer, ScoreResult
 
 

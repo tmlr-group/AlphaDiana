@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from alphadiana.engine.sandbox.base import ExecutionResult, Sandbox, SandboxSession
-from alphadiana.registry import register_sandbox
+from alphadiana.engine.components import register_sandbox
 
 # ROCK image and installation policy.
 DEFAULT_SANDBOX_IMAGE: str = os.environ.get(

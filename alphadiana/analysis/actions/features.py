@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 
-from alphadiana.logprobs import entropy_stats_from_int16_records
+from alphadiana.results.logprobs import entropy_stats_from_int16_records
 from alphadiana.results.reader import (
     RunBundle,
     load_jsonl_records,

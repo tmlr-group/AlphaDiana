@@ -1,7 +1,7 @@
 """Pi JSON CLI in a disposable Podman task container."""
 
 from alphadiana.harness._internal.podman_agent import NativePodmanAgent
-from alphadiana.registry import AgentRegistry
+from alphadiana.engine.components import AgentRegistry
 
 
 class PiAgent(NativePodmanAgent):

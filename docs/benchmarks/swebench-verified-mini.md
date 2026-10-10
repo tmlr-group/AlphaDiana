@@ -1,7 +1,7 @@
 # SWE-Bench Verified-Mini Guide
 
 Run Qwen3.5-27B on `MariusHobbhahn/swe-bench-verified-mini` (50 tasks) via the
-standalone SWE-agent CLI, orchestrated by `alphadiana.benchmark_rollout_cli`
+standalone SWE-agent CLI, orchestrated by `alphadiana.cli.campaign`
 with backend `official_swebench_verified`.
 
 Wall time estimate: 8–15 h at `max_concurrent=10`.
@@ -156,16 +156,16 @@ path_templates:
 
 ```bash
 # Sanity (prints the expanded run list)
-python -m alphadiana.benchmark_rollout_cli summary \
+python -m alphadiana.cli.campaign summary \
   --manifest configs/macro_runs/swe_bench_verified_sweagent_qwen35_27b_campaign.yaml
 
 # Env + docker preflight (non-zero exit on error)
-python -m alphadiana.benchmark_rollout_cli preflight \
+python -m alphadiana.cli.campaign preflight \
   --manifest configs/macro_runs/swe_bench_verified_sweagent_qwen35_27b_campaign.yaml \
   --probe-vllm --check-docker
 
 # Materialize the run script
-python -m alphadiana.benchmark_rollout_cli materialize \
+python -m alphadiana.cli.campaign materialize \
   --manifest configs/macro_runs/swe_bench_verified_sweagent_qwen35_27b_campaign.yaml \
   --output-dir generated/swe_verified_mini
 
@@ -244,6 +244,6 @@ which time out the single-shot uploader.
 - Reference HF run summary: `T-MARS/alphadiana-benchmark-results/full_run/YYYYMMDD-swe-bench-verified-mini-sweagent-qwen35-27b-local-v1/`
 - Renderer: `alphadiana/engine/rollout_campaign.py::_render_official_swebench_verified_command`
 - Dispatch: `alphadiana/engine/rollout_campaign.py::render_run_command`
-- CLI: `alphadiana/benchmark_rollout_cli.py`
+- CLI: `alphadiana/cli/campaign.py`
 - SWE-agent upstream: https://github.com/SWE-agent/SWE-agent
 - SWE-bench harness: https://github.com/SWE-bench/SWE-bench

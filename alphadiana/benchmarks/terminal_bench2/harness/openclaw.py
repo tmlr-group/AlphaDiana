@@ -34,7 +34,7 @@ from alphadiana.harness.proxies.logprob_proxy import (
     resolve_logprob_proxy_advertise_host,
 )
 from alphadiana.harness.proxies.preservation import add_artifact_file_refs
-from alphadiana.registry import AgentRegistry
+from alphadiana.engine.components import AgentRegistry
 
 logger = logging.getLogger(__name__)
 

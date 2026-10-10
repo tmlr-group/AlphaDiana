@@ -17,8 +17,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from alphadiana.answers import extract_answer_candidate, extract_boxed
-from alphadiana.attachments import iter_binary_attachments, write_attachments
+from alphadiana.scorer.answers import extract_answer_candidate, extract_boxed
+from alphadiana.harness.attachments import iter_binary_attachments, write_attachments
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.engine.config.experiment_config import resolve_agent_setting
 from alphadiana.engine.container_runtime import (
@@ -42,7 +42,7 @@ from alphadiana.harness.proxies.preservation import (
     build_event_trajectories,
     build_runtime_trace_summary,
 )
-from alphadiana.registry import AgentRegistry
+from alphadiana.engine.components import AgentRegistry
 
 logger = logging.getLogger(__name__)
 

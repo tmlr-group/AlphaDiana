@@ -118,7 +118,7 @@ See [openclaw](../harnesses/openclaw.md) for details.
 Generic ZeroClaw still requires a live sandbox/container session. The ROCK preflight only fires
 for ROCK-backed runs (`sandbox.name == 'rock'` or a gateway-autodeploy agent),
 checking admin/proxy/Redis reachability and port ownership in
-`alphadiana/cli.py`; non-ROCK runs skip it.
+`alphadiana/cli/commands.py`; non-ROCK runs skip it.
 
 `scripts/setup/quickstart.sh` brings these services up for you. For an already
 installed checkout, the supported harness launchers are safer than assembling
@@ -290,7 +290,7 @@ alphadiana report results/
 
 | Component | Path |
 |---|---|
-| CLI entry point | `alphadiana/cli.py` (console script `alphadiana`; module form `python -m alphadiana.cli`) |
+| CLI entry point | `alphadiana/cli/commands.py` (console script `alphadiana`; module form `python -m alphadiana.cli`) |
 | Config dataclass + loader | `alphadiana/engine/config/experiment_config.py` (`ExperimentConfig`) |
 | Config validator | `alphadiana/engine/config/validator.py` (`ConfigValidator`) |
 | Annotated core config shape | `configs/schema.yaml` |

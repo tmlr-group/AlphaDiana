@@ -404,11 +404,11 @@ LOCALHOST = "127.0.0.1"
 @main.command("list-benchmarks")
 def list_benchmarks():
     """List all registered benchmarks."""
-    from alphadiana.registry_loader import load_builtin_benchmarks
+    from alphadiana.engine.components import load_builtin_benchmarks
 
     load_builtin_benchmarks()
 
-    from alphadiana.registry import BenchmarkRegistry
+    from alphadiana.engine.components import BenchmarkRegistry
 
     benchmarks = BenchmarkRegistry.list()
     if benchmarks:
@@ -417,7 +417,3 @@ def list_benchmarks():
             click.echo(f"  - {name}")
     else:
         click.echo("No benchmarks registered.")
-
-
-if __name__ == "__main__":
-    main()

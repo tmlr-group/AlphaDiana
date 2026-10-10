@@ -36,7 +36,7 @@ results/<run_id>.jsonl  +  results/<run_id>/{tasks,artifacts,lifecycle}/
 
 ## How to Run
 
-A run is launched with the `alphadiana` CLI, a Click group defined in `alphadiana/cli.py` (the console entry point maps to `alphadiana.cli:main`). From a local checkout the equivalent module form is `python -m alphadiana.cli`.
+A run is launched with the `alphadiana` CLI, a Click group defined in `alphadiana/cli/commands.py` (the console entry point maps to `alphadiana.cli:main`). From a local checkout the equivalent module form is `python -m alphadiana.cli`.
 
 ```bash
 # Validate first; prints "Config is valid." or lists "  - <error>" lines and exits 1.

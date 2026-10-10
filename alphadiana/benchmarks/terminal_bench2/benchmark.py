@@ -11,7 +11,7 @@ except ModuleNotFoundError:
     import tomli
 
 from alphadiana.benchmarks.base import Benchmark, BenchmarkTask
-from alphadiana.registry import BenchmarkRegistry
+from alphadiana.engine.components import BenchmarkRegistry
 
 logger = logging.getLogger(__name__)
 

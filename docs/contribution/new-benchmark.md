@@ -104,7 +104,7 @@ set `max_tasks` together with a pre-sliced split.
 Two things make a benchmark discoverable.
 
 1. **Self-register at the module bottom.** Every shipped benchmark ends with an
-   explicit call (the `register_benchmark` decorator in `registry.py` exists but
+   explicit call (the `register_benchmark` decorator in `alphadiana/engine/components.py` exists but
    is unused by the shipped loaders):
 
    ```python

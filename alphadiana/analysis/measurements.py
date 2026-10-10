@@ -11,8 +11,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
-from alphadiana.artifacts import Artifacts
-from alphadiana.logprobs import _compute_entropy, _compute_entropy_stats
+from alphadiana.results.artifacts import Artifacts
+from alphadiana.results.logprobs import _compute_entropy, _compute_entropy_stats
 from alphadiana.results.statistics import RunStatistics, compute_reliability_summary
 from alphadiana.results.status import VALID_SCORE_STATUS
 

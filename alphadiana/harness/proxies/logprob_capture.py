@@ -3,8 +3,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from alphadiana.logprobs import _compute_entropy_stats
-from alphadiana.logprobs import DEFAULT_TOP_LOGPROBS
+from alphadiana.results.logprobs import _compute_entropy_stats
+from alphadiana.results.logprobs import DEFAULT_TOP_LOGPROBS
 
 logger = logging.getLogger(__name__)
 

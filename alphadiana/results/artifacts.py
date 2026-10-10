@@ -126,7 +126,7 @@ class Artifacts:
         from alphadiana.api import ScorerSpec
         from alphadiana.engine.components import register_builtin_components
         from alphadiana.scorer.base import Scorer
-        from alphadiana.registry import ScorerRegistry
+        from alphadiana.engine.components import ScorerRegistry
 
         register_builtin_components()
         if isinstance(scorer, ScorerSpec):

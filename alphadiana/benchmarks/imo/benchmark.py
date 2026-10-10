@@ -5,7 +5,7 @@ import logging
 import os
 
 from alphadiana.benchmarks.base import Benchmark, BenchmarkTask, load_dataset_with_retry
-from alphadiana.registry import BenchmarkRegistry
+from alphadiana.engine.components import BenchmarkRegistry
 
 logger = logging.getLogger(__name__)
 

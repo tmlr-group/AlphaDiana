@@ -19,7 +19,7 @@ from alphadiana.engine.config.experiment_config import resolve_agent_setting
 
 logger = logging.getLogger(__name__)
 
-from alphadiana.answers import extract_answer_candidate
+from alphadiana.scorer.answers import extract_answer_candidate
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.harness.base import Agent, AgentResponse
 from alphadiana.harness.proxies.logprob_capture import (
@@ -28,7 +28,7 @@ from alphadiana.harness.proxies.logprob_capture import (
     finalize_logprob_capture,
     resolve_logprob_capture_config,
 )
-from alphadiana.registry import AgentRegistry
+from alphadiana.engine.components import AgentRegistry
 
 _DEFAULT_SYSTEM_PROMPT = (
     "You are a helpful assistant that solves problems step by step. "

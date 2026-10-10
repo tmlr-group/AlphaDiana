@@ -11,12 +11,12 @@ from __future__ import annotations
 
 import re
 
-from alphadiana.answers import (
+from alphadiana.scorer.answers import (
     is_numeric_literal_answer,
     normalize_math_text,
     parse_numeric_answer,
 )
-from alphadiana.registry import register_scorer
+from alphadiana.engine.components import register_scorer
 from alphadiana.scorer.base import Scorer, ScoreResult
 from alphadiana.scorer.math_verify_scorer import math_verify_equal
 

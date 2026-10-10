@@ -33,7 +33,7 @@ one sample or worker. Provider settings use `OPENAI_MODEL_NAME`,
 `OPENAI_BASE_URL`, and `OPENAI_API_KEY`; never commit a real key.
 
 The sole `_campaign.yaml` file is intentionally different: it is a SWE-agent
-rollout manifest consumed by `python -m alphadiana.benchmark_rollout_cli`, not
+rollout manifest consumed by `python -m alphadiana.cli.campaign`, not
 by `alphadiana run`. The macro README documents that exception and all external
 runtime prerequisites.
 

@@ -49,7 +49,7 @@ from alphadiana.harness.proxies.preservation import (
     build_text_step_trajectories,
     parse_jsonl_records,
 )
-from alphadiana.registry import register_agent
+from alphadiana.engine.components import register_agent
 
 logger = logging.getLogger(__name__)
 

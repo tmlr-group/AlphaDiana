@@ -22,7 +22,7 @@ from alphadiana.engine.container_runtime.swebench_build import (
     qualify_swebench_test_spec_for_podman,
     swebench_runtime_environment,
 )
-from alphadiana.registry import register_scorer
+from alphadiana.engine.components import register_scorer
 from alphadiana.scorer.base import Scorer, ScoreResult
 
 logger = logging.getLogger(__name__)

@@ -18,7 +18,7 @@ from uuid import uuid4
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.harness.base import AgentResponse
 from alphadiana.harness.proxies.preservation import add_artifact_file_refs
-from alphadiana.logprobs import INT16_PROB_SCALE, raw_record_to_int16_record
+from alphadiana.results.logprobs import INT16_PROB_SCALE, raw_record_to_int16_record
 from alphadiana.results.status import (
     VALID_SCORE_STATUS,
     infer_score_status,

@@ -2,7 +2,7 @@
 import json
 from types import SimpleNamespace
 import pytest
-from alphadiana.artifacts import Artifacts
+from alphadiana.results.artifacts import Artifacts
 from alphadiana.analysis.measurements import ExecutionMetrics
 from alphadiana.benchmarks.terminal_bench2.harness.common import TerminalBench2ContainerMixin
 

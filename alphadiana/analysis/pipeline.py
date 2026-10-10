@@ -20,7 +20,7 @@ from alphadiana.analysis.measurements import (
     Figure,
     Measurement,
 )
-from alphadiana.artifacts import Artifacts
+from alphadiana.results.artifacts import Artifacts
 
 
 class TableAnalysis:

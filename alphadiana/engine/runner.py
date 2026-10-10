@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from alphadiana.analysis.export import ReportGenerator, RunSummary
-from alphadiana.answers import (
+from alphadiana.scorer.answers import (
     extract_numeric_answer_candidate,
     parse_numeric_answer,
 )
@@ -34,7 +34,7 @@ from alphadiana.harness.openclaw.integrity import (
     OpenClawResponseRejected,
     integrity_guard_reason,
 )
-from alphadiana.registry import (
+from alphadiana.engine.components import (
     AgentRegistry,
     BenchmarkRegistry,
     SandboxRegistry,
@@ -435,9 +435,9 @@ class Runner:
         """Resolve and instantiate all components from their registries."""
         _validate_stateful_run_policy(self.config)
         stabilize_gateway_token(self.config)
-        from alphadiana.registry_loader import load_builtin_components
+        from alphadiana.engine.components import register_builtin_components
 
-        load_builtin_components()
+        register_builtin_components()
 
         try:
             # Resolve and instantiate benchmark.
@@ -461,7 +461,7 @@ class Runner:
             self.scorer = scorer_cls()
             self.scorer.setup(self.config.scorer_config)
 
-            from alphadiana.registry import MetricRegistry
+            from alphadiana.engine.components import MetricRegistry
 
             self.metrics = []
             for metric_spec in self.config.metrics:
@@ -665,7 +665,7 @@ class Runner:
         ):
             try:
                 import alphadiana.engine.sandbox.rock  # noqa: F401 — trigger registration
-                from alphadiana.registry import SandboxRegistry
+                from alphadiana.engine.components import SandboxRegistry
                 rock_cls = SandboxRegistry.get("rock")
                 _auto_sandbox = rock_cls()
                 # Build sandbox config from agent config, with gateway-friendly defaults.

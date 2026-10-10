@@ -12,7 +12,7 @@ from alphadiana.analysis.measurements import ExecutionMetrics, Figure
 from alphadiana.analysis.measurements import EntropyAnalysis
 from alphadiana.analysis.failure_annotations import FailureAnnotations
 from alphadiana.analysis.export import _render
-from alphadiana.artifacts import Artifacts
+from alphadiana.results.artifacts import Artifacts
 from alphadiana.scorer.judge_config import JudgeConfig
 from alphadiana.scorer.llm_judge import LLMJudgeScorer
 

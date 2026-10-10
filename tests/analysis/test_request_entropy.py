@@ -7,7 +7,7 @@ import pytest
 
 import alphadiana as ad
 from alphadiana.analysis.measurements import RequestEntropy
-from alphadiana.artifacts import Artifacts
+from alphadiana.results.artifacts import Artifacts
 
 
 def test_entropy_uses_observed_request_boundaries_and_survives_rescoring(tmp_path):

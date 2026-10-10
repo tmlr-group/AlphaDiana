@@ -11,7 +11,7 @@ new machine.
 
 All ordinary experiment configs were checked individually with
 `alphadiana validate`. The SWE-agent campaign manifest was checked with its
-documented `benchmark_rollout_cli summary` command.
+documented `python -m alphadiana.cli.campaign summary` command.
 
 | Configuration group | Files | Validation result |
 | --- | ---: | --- |

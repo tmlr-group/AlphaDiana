@@ -36,8 +36,8 @@ from collections import deque
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
-from alphadiana.answers import extract_answer_candidate
-from alphadiana.attachments import build_openai_multimodal_user_content
+from alphadiana.scorer.answers import extract_answer_candidate
+from alphadiana.harness.attachments import build_openai_multimodal_user_content
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.engine.sandbox.rock_ports import resolve_rock_ports_from_env
 from alphadiana.harness.base import Agent, AgentResponse
@@ -73,7 +73,7 @@ from alphadiana.harness.proxies.logprob_proxy import (
     resolve_logprob_proxy_advertise_host,
 )
 from alphadiana.harness.proxies.preservation import add_artifact_file_refs
-from alphadiana.registry import AgentRegistry
+from alphadiana.engine.components import AgentRegistry
 from alphadiana.results.lifecycle import append_lifecycle_event
 
 logger = logging.getLogger(__name__)

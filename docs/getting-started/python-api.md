@@ -81,7 +81,7 @@ strict mode, a partially successful run remains inspectable through `Artifacts`.
 ## Reopen and rescore
 
 ```python
-from alphadiana.artifacts import Artifacts
+from alphadiana.results.artifacts import Artifacts
 
 saved = Artifacts("results/example.jsonl")
 all_attempts = saved.records(latest=False)

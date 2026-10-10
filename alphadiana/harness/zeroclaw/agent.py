@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from alphadiana.answers import extract_answer_candidate
+from alphadiana.scorer.answers import extract_answer_candidate
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.engine.config.experiment_config import resolve_agent_setting
 from alphadiana.harness.base import Agent, AgentResponse, resolve_runtime_skill_folder
@@ -38,7 +38,7 @@ from alphadiana.harness.proxies.preservation import (
 )
 from alphadiana.harness.zeroclaw.runtime import _resolve_zeroclaw_provider
 from alphadiana.harness.zeroclaw.trace import normalize_trace
-from alphadiana.registry import AgentRegistry
+from alphadiana.engine.components import AgentRegistry
 
 logger = logging.getLogger(__name__)
 

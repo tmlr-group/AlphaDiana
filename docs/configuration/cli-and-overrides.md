@@ -1,7 +1,7 @@
 # CLI & Overrides
 
 The `alphadiana` command-line tool is a [Click](https://click.palletsclick.com/) group
-(`main` in `alphadiana/cli.py`). Every workflow, from a single
+(`main` in `alphadiana/cli/commands.py`). Every workflow, from a single
 run to a batch sweep, goes through one of its subcommands. This page documents those
 subcommands, the `-o` dotted-override syntax, and the `run_id` / `num_samples` conventions
 that govern where results land and how many samples each task produces.

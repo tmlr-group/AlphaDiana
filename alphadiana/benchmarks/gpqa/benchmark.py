@@ -6,7 +6,7 @@ import os
 import random
 
 from alphadiana.benchmarks.base import Benchmark, BenchmarkTask, load_dataset_with_retry
-from alphadiana.registry import BenchmarkRegistry
+from alphadiana.engine.components import BenchmarkRegistry
 
 _OPTION_LABELS = ["A", "B", "C", "D"]
 

@@ -8,7 +8,7 @@ import re
 
 from alphadiana.scorer.base import Scorer, ScoreResult
 from alphadiana.scorer.judge_config import JudgeConfig
-from alphadiana.registry import register_scorer
+from alphadiana.engine.components import register_scorer
 
 logger = logging.getLogger(__name__)
 

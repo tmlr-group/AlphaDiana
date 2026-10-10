@@ -356,7 +356,7 @@ Fixes:
 `configs/macro_runs/` contains release configs that may load a full selected
 split. Inspect the selectors before launch and add a bounded override for a
 smoke. The `_campaign.yaml` file is a rollout manifest for
-`alphadiana.benchmark_rollout_cli`, not a generic `alphadiana run` config.
+`alphadiana.cli.campaign`, not a generic `alphadiana run` config.
 
 ## Quick checklist
 

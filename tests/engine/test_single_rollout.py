@@ -15,7 +15,7 @@ from alphadiana.harness.base import Agent, AgentResponse
 from alphadiana.harness.registry import AgentRegistry
 from alphadiana.scorer.base import ScoreResult, Scorer
 from alphadiana.scorer.registry import ScorerRegistry
-from alphadiana.single_rollout import _record_payload, _select_task, main, run_single
+from alphadiana.cli.single_rollout import _record_payload, _select_task, main, run_single
 
 
 def _task(task_id: str) -> BenchmarkTask:

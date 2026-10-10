@@ -87,7 +87,7 @@ BenchmarkRegistry.register("my_bench", MyBenchmark)
 
 The built-in benchmarks call `BenchmarkRegistry.register(...)` directly at the
 bottom of each implementation module; a `register_benchmark(name)` decorator also
-exists in `registry.py`. For network datasets, prefer
+exists in `alphadiana/engine/components.py`. For network datasets, prefer
 `load_dataset_with_retry(...)` from `benchmarks/base.py`, which handles HF hub
 rate limits and read-only cache errors. See [Adding a Benchmark](./new-benchmark.md)
 for the full walkthrough, and the existing [Benchmarks](../benchmarks/) for

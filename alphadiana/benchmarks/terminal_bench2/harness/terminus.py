@@ -15,7 +15,7 @@ from uuid import uuid4
 from alphadiana.harness._internal.native_process import run_native
 from alphadiana.harness.base import Agent, AgentResponse
 from alphadiana.harness.proxies.native_capture import NativeProviderCapture
-from alphadiana.registry import register_agent
+from alphadiana.engine.components import register_agent
 
 
 class Terminus2RuntimeError(RuntimeError):

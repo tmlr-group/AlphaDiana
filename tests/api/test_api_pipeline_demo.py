@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import alphadiana as ad
-from alphadiana.artifacts import Artifacts
+from alphadiana.results.artifacts import Artifacts
 from alphadiana.benchmarks.base import Benchmark, BenchmarkTask
 from alphadiana.benchmarks.registry import BenchmarkRegistry
 

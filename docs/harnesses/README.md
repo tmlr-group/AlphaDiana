@@ -40,7 +40,7 @@ special-casing the adapter name.
 
 ## Registration
 
-Agent registration is import-triggered. `registry_loader` imports all built-in
+Agent registration is import-triggered. `engine/components.py` imports all built-in
 harness and adapter modules before the runner resolves the configured key. The
 config validator loads only lightweight adapter-local validation hooks. The current complete inventory is maintained in
 [Registries](../architecture/registries.md).
@@ -49,7 +49,7 @@ To add an agent:
 
 1. implement `Agent`;
 2. register a stable key;
-3. import its module from `alphadiana.registry_loader`;
+3. import its module from `alphadiana.engine.components`;
 4. add adapter-local config validation and focused tests;
 5. run a real task in the intended container runtime before claiming support;
 6. preserve intermediate artifacts needed to review the integration.

@@ -11,7 +11,7 @@ from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.engine.config.experiment_config import ExperimentConfig
 from alphadiana.engine.runner import Runner
 from alphadiana.harness.base import AgentResponse
-from alphadiana.registry import SandboxRegistry
+from alphadiana.engine.components import SandboxRegistry
 from alphadiana.scorer.numeric import NumericScorer
 
 

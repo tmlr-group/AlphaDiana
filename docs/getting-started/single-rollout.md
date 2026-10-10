@@ -1,13 +1,13 @@
 # Single-Task Rollout
 
-`alphadiana.single_rollout` runs exactly one task with one agent and prints a
+`alphadiana.cli.single_rollout` runs exactly one task with one agent and prints a
 compact JSON result. It is meant for external controllers such as AlphaHebe that
 schedule individual rollouts themselves. It wraps the normal `Runner`, so
 harnesses, benchmarks, scorers, and result files behave exactly as in
 `alphadiana run`.
 
 ```bash
-python -m alphadiana.single_rollout configs/examples/single_rollout/pi_hle_verified.yaml \
+python -m alphadiana.cli.single_rollout configs/examples/single_rollout/pi_hle_verified.yaml \
   --import alphahebe.integrations.diana.benchmarks.hle_verified \
   --output result.json
 ```
@@ -96,11 +96,11 @@ For Pi, run each template as a separate rollout (set the prerequisites below
 first). These commands are examples, not claims of a live end-to-end run:
 
 ```bash
-python -m alphadiana.single_rollout configs/examples/single_rollout/pi_hle_verified.yaml \
+python -m alphadiana.cli.single_rollout configs/examples/single_rollout/pi_hle_verified.yaml \
   --import alphahebe.integrations.diana.benchmarks.hle_verified --output hle-result.json
-python -m alphadiana.single_rollout configs/examples/single_rollout/pi_ale_bench.yaml \
+python -m alphadiana.cli.single_rollout configs/examples/single_rollout/pi_ale_bench.yaml \
   --import alphahebe.integrations.diana.benchmarks.ale_bench --output ale-result.json
-python -m alphadiana.single_rollout configs/examples/single_rollout/pi_evox_problems.yaml \
+python -m alphadiana.cli.single_rollout configs/examples/single_rollout/pi_evox_problems.yaml \
   --import alphahebe.integrations.diana.benchmarks.evox_problems --output evox-result.json
 ```
 

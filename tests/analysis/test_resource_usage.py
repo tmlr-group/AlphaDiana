@@ -3,7 +3,7 @@ import json
 import pytest
 
 from alphadiana.analysis.measurements import MeasuredUsage, measured_usage
-from alphadiana.artifacts import Artifacts
+from alphadiana.results.artifacts import Artifacts
 
 
 def session(tmp_path):

@@ -83,7 +83,7 @@ def test_native_response_boundary_persists_usage_and_raw_trace():
 def test_balanced_rolling_suffix_is_not_published_as_whole_run_usage(tmp_path):
     import alphadiana as ad
     from alphadiana.results.store import ResultStore
-    from alphadiana.artifacts import Artifacts
+    from alphadiana.results.artifacts import Artifacts
     from alphadiana.benchmarks.base import BenchmarkTask
     from alphadiana.scorer.numeric import NumericScorer
 

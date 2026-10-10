@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 from alphadiana.metrics.base import EvaluationMetric, MetricResult
-from alphadiana.registry import register_metric
+from alphadiana.engine.components import register_metric
 
 
 @register_metric("answer_length")

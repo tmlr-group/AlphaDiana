@@ -257,7 +257,7 @@ class OpenClawGatewayPool:
             if self._target_size > 1 or self._fresh:
                 deployment_results = []
                 try:
-                    from alphadiana.registry import SandboxRegistry
+                    from alphadiana.engine.components import SandboxRegistry
 
                     auto_sandbox_config = {
                         "admin_base_url": self.config.agent_config.get(

@@ -18,7 +18,7 @@ from alphadiana.analysis.actions.protocol import (
 )
 from alphadiana.analysis.judge_client import CachedJudge
 from alphadiana.analysis.measurements import Figure, Measurement
-from alphadiana.artifacts import Artifacts
+from alphadiana.results.artifacts import Artifacts
 from alphadiana.results.status import VALID_SCORE_STATUS
 
 TRAJECTORY_PROTOCOL = "llm-trajectory-actions-v1"

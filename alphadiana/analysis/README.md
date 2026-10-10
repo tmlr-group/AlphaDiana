@@ -21,7 +21,7 @@ Use `ad.analyzer(...)` to compose measurements and export their results.
 
 Persisted records, traces, score status and latest-sample statistics live in
 `alphadiana/results/`. Raw/Int16 logprob conversion remains in
-`alphadiana/logprobs.py`, shared by execution and measurement.
+`alphadiana/results/logprobs.py`, shared by execution and measurement.
 
 Default action annotations use LLM segmentation of the full trajectory.
 Fixed-target audit and historical custom spans require explicit protocols.
@@ -39,7 +39,7 @@ The former internal forwarding files are removed; migrate deep imports:
 | `entropy`, `entropy_analysis`, `resource_usage` | `measurements` |
 | `report`, `run_summary`, `figures` | `export` for ReportGenerator/RunSummary/rendering; `results.statistics` for RunStatistics/reliability/selection |
 | `result_reader`, `io/*` | `results.reader`, `results.store`, `results.trace`, `results.status` |
-| `logprobs`, `io/logprob_artifacts` | `alphadiana.logprobs` |
+| `logprobs`, `io/logprob_artifacts` | `alphadiana.results.logprobs` |
 | `action_annotations`, `annotations/actions`, `annotations/segmentation`, `legacy/character_spans` | `actions.llm_annotations` |
 | `annotations/failures`, `annotations/judge` | `failure_annotations`, `judge_client` |
 | `action_events`, `actions/events` | `actions.keyword_baseline` |

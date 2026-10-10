@@ -29,7 +29,7 @@ from alphadiana.engine.container_runtime.swebench_build import (
     swebench_runtime_environment,
 )
 from alphadiana.engine.sandbox.base import ExecutionResult, Sandbox, SandboxSession
-from alphadiana.registry import register_sandbox
+from alphadiana.engine.components import register_sandbox
 
 if TYPE_CHECKING:
     from alphadiana.benchmarks.base import BenchmarkTask

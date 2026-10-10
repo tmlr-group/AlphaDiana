@@ -28,7 +28,7 @@ config.yaml
   → results/<run_id>.jsonl  (+ results/<run_id>/...)
 ```
 
-The CLI entry point is the Click group `main` in `alphadiana/cli.py`; the
+The CLI entry point is the Click group `main` in `alphadiana/cli/commands.py`; the
 orchestrator is `Runner` in `alphadiana/engine/runner.py`; results are written by
 `ResultStore` in `alphadiana/results/store.py`.
 
