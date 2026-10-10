@@ -10,11 +10,11 @@
     "execution_id": "2d2886196d2646d1b4b7506faa067203"
   },
   "error": {
-    "error": "Command '['docker', 'run', '-d', '--rm', '--add-host', 'host.docker.internal:host-gateway', '--entrypoint', '/bin/sh', '-v', '/data/xuan/alphadiana-validation/hkbu-native-20261010/run-007/runtime/tb2-logs/tb2_db-wal-recovery_s0_2d288619:/logs', '-v', '/data/xuan/alphadiana-validation/hkbu-native-20261010/tasks/db-wal-recovery/tests:/tests:ro', 'hkbu-native-tb2-runtime-20261010:openclaw-e9050bef90fbfd18', '-lc', 'sleep infinity']' timed out after 60 seconds",
+    "error": "Command '['docker', 'run', '-d', '--rm', '--add-host', 'host.docker.internal:host-gateway', '--entrypoint', '/bin/sh', '-v', '/validation/native-smoke/run-007/runtime/tb2-logs/tb2_db-wal-recovery_s0_2d288619:/logs', '-v', '/validation/native-smoke/tasks/db-wal-recovery/tests:/tests:ro', 'hkbu-native-tb2-runtime-20261010:openclaw-e9050bef90fbfd18', '-lc', 'sleep infinity']' timed out after 60 seconds",
     "error_type": "TimeoutExpired",
     "request_payload": null,
     "response_body": null
   },
   "finish_reason": "",
-  "rationale": "Command '['docker', 'run', '-d', '--rm', '--add-host', 'host.docker.internal:host-gateway', '--entrypoint', '/bin/sh', '-v', '/data/xuan/alphadiana-validation/hkbu-native-20261010/run-007/runtime/tb2-logs/tb2_db-wal-recovery_s0_2d288619:/logs', '-v', '/data/xuan/alphadiana-validation/hkbu-native-20261010/tasks/db-wal-recovery/tests:/tests:ro', 'hkbu-native-tb2-runtime-20261010:openclaw-e9050bef90fbfd18', '-lc', 'sleep infinity']' timed out after 60 seconds"
+  "rationale": "Command '['docker', 'run', '-d', '--rm', '--add-host', 'host.docker.internal:host-gateway', '--entrypoint', '/bin/sh', '-v', '/validation/native-smoke/run-007/runtime/tb2-logs/tb2_db-wal-recovery_s0_2d288619:/logs', '-v', '/validation/native-smoke/tasks/db-wal-recovery/tests:/tests:ro', 'hkbu-native-tb2-runtime-20261010:openclaw-e9050bef90fbfd18', '-lc', 'sleep infinity']' timed out after 60 seconds"
 }

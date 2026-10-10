@@ -1,5 +1,5 @@
 {
-  "source": "/data/xuan/alphadiana-validation/hkbu-native-20261010/run-008/runtime/native-terminus/825992ac41b84ed6aabb23a957f8b6ba/evaluation/db-wal-recovery__Gt6uAiT/result.json",
+  "source": "Harbor db-wal-recovery trial result.json (host path omitted)",
   "source_sha256": "42b4d8f5d50eabf00681a6fee801a398340b78e180bbbd5b0d10b265dbacd0a6",
   "task_name": "db-wal-recovery",
   "exception_info": {
