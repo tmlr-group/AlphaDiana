@@ -3,6 +3,7 @@
 import hashlib
 import importlib
 import json
+import runpy
 from pathlib import Path
 
 import pytest
@@ -64,3 +65,71 @@ def test_audit_frozen_code_paths_are_preserved():
     assert hashlib.sha256(prompt_bytes()).digest() == hashlib.sha256(
         (root / "alphadiana/analysis/action_prompt.md").read_bytes()
     ).digest()
+
+
+def test_relocated_dashboard_creates_reads_and_restores_jobs(tmp_path, monkeypatch):
+    """Exercise the HTTP and persistence boundaries without starting a solver."""
+    import threading
+
+    pytest.importorskip("fastapi")
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from alphadiana.dashboard.backend import api
+    from alphadiana.dashboard.backend.job_manager import JobManager
+    from alphadiana.dashboard.backend.main import PROJECT_ROOT, app
+    from alphadiana.analysis.dashboard.backend.main import app as old_app
+
+    assert app is old_app
+    assert PROJECT_ROOT == Path(__file__).resolve().parents[2]
+    results = tmp_path / "results"
+    manager = JobManager(str(results), str(tmp_path / "configs"))
+    done = threading.Event()
+    observed = []
+
+    def finish_job(job_id, run_id, request):
+        observed.append((run_id, request.agent_name, request.benchmark_name))
+        manager._jobs[job_id].status = "completed"
+        manager._persist_jobs()
+        done.set()
+
+    monkeypatch.setattr(manager, "_run_job", finish_job)
+    monkeypatch.setattr(api, "job_manager", manager)
+    test_app = FastAPI()
+    test_app.include_router(api.router)
+    with TestClient(test_app) as client:
+        response = client.post("/api/jobs", json={
+            "run_id": "layout-smoke",
+            "agent_name": "direct_llm",
+            "benchmark_name": "aime",
+        })
+        assert response.status_code == 201
+        assert done.wait(5), "isolated job did not finish"
+        job_id = response.json()["job_id"]
+        detail = client.get(f"/api/jobs/{job_id}")
+        assert detail.status_code == 200
+        assert detail.json()["status"] == "completed"
+        assert client.get("/api/jobs").json()[0]["job_id"] == job_id
+
+    assert observed == [("layout-smoke", "direct_llm", "aime")]
+    restored = JobManager(str(results), str(tmp_path / "configs"))
+    assert restored.get_job(job_id).status == "completed"
+    for log in manager._job_logs.values():
+        log.close()
+
+
+@pytest.mark.parametrize("inputs", ["missing", "empty"])
+def test_chord_plot_rejects_unobserved_inputs(tmp_path, inputs):
+    """A missing archive must not become fabricated padded transition plots."""
+    pytest.importorskip("matplotlib")
+    root = Path(__file__).resolve().parents[2]
+    namespace = runpy.run_path(str(root / "scripts/paper_analysis/plot_action_chords.py"))
+    load = namespace["load_transitions"]
+    load.__globals__["DATA_DIR"] = tmp_path
+    if inputs == "empty":
+        for folder in ("six_action_statistics", "six_action_statistics_gemma"):
+            path = tmp_path / folder / "action_transitions_by_outcome.csv"
+            path.parent.mkdir()
+            path.write_text("benchmark,harness,outcome,from_action,to_action,transition_count\n")
+    with pytest.raises(FileNotFoundError if inputs == "missing" else ValueError):
+        load()
+    assert not list(tmp_path.rglob("*.pdf"))
