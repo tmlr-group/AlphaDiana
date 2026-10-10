@@ -145,22 +145,25 @@ def test_native_harbor_hook_captures_pre_verifier_state(tmp_path):
             text=True,
         )
         assert not remaining.strip()
-        subprocess.run(
-            [
-                "docker",
-                "run",
-                "--rm",
-                "--network",
-                "none",
-                snapshot["image_id"],
-                "sh",
-                "-c",
-                "test -f /solver-marker && test ! -e /verifier-marker",
-            ],
-            check=True,
-            capture_output=True,
-            timeout=30,
+        # Use the production startup/cleanup owner and its measured A100 budget.
+        snapshot_task = BenchmarkTask(
+            "harbor-fixture", "fixture", "1",
+            {"task_dir": str(task_dir), "docker_image": snapshot["image_id"]},
         )
+        owner = TerminalBench2ContainerMixin()
+        owner._setup_container_config({
+            "container_engine": "docker", "forward_proxy_env": False,
+            "logs_base_dir": str(tmp_path / "snapshot-check"),
+        })
+        restored = owner._prepare_runtime(snapshot_task)
+        try:
+            assert owner._exec_command(
+                restored.container_id,
+                "test -f /solver-marker && test ! -e /verifier-marker && printf snapshot-valid",
+                timeout_sec=30,
+            ) == "snapshot-valid"
+        finally:
+            owner._cleanup_runtime(restored)
         task = BenchmarkTask(
             "harbor-fixture",
             "fixture",
