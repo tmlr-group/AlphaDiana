@@ -190,7 +190,7 @@ def test_native_harbor_hook_captures_pre_verifier_state(tmp_path):
                     text=True,
                 ).strip()
                 assert Path(working_dir).resolve() == (task_dir / "environment").resolve()
-                subprocess.run(["docker", "rm", "-f", container], check=True, capture_output=True)
+                TerminalBench2ContainerMixin()._stop_container(container, "harbor-fixture")
         if snapshot:
             cleanup = subprocess.run(
                 ["docker", "rmi", snapshot["image_id"]], capture_output=True, text=True
