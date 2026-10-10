@@ -155,6 +155,12 @@ class RunStatistics:
         return sum(self.correct_by_task.values())
 
     @property
+    def metric_accuracy(self) -> float:
+        """Core score accuracy, including explicitly zero-contributing answers."""
+        correct = sum(1 for r in self.metric_results if r.get("correct", False))
+        return correct / len(self.metric_results) if self.metric_results else 0.0
+
+    @property
     def errors(self) -> int:
         return sum(r["score_status"] in ERROR_STATUSES for r in self.results)
 

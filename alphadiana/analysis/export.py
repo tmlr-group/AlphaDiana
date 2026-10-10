@@ -162,10 +162,7 @@ class ReportGenerator:
         failed = max(expected_sample_count - completed, 0)
 
         correct_count = sum(1 for r in metric_results if r.get("correct", False))
-        accuracy_denominator = len(metric_results)
-        accuracy = (
-            correct_count / accuracy_denominator if accuracy_denominator > 0 else 0.0
-        )
+        accuracy = base.metric_accuracy
         accuracy_total = (
             correct_count / expected_sample_count if expected_sample_count > 0 else 0.0
         )

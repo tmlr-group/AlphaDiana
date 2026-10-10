@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from alphadiana.dashboard.backend.models import CreateJobRequest, JobStatus
+from alphadiana.results.statistics import RunStatistics
 
 logger = logging.getLogger(__name__)
 
@@ -217,17 +218,15 @@ class JobManager:
         return 0
 
     @staticmethod
-    def _count_jsonl(jsonl_path: str) -> tuple[int, int, int]:
-        """Recover unique sample counts using the same validity as Runs."""
+    def _load_statistics(jsonl_path: str) -> RunStatistics:
+        """Use the canonical latest sample, completion, and metric views."""
         from alphadiana.results.reader import load_jsonl_records
-        from alphadiana.results.statistics import RunStatistics
         from pathlib import Path
 
         try:
-            base = RunStatistics.from_records(load_jsonl_records(Path(jsonl_path)))
+            return RunStatistics.from_records(load_jsonl_records(Path(jsonl_path)))
         except (OSError, ValueError, KeyError, TypeError):
-            return 0, 0, 0
-        return len(base.results), base.correct, len(base.results) - len(base.valid)
+            return RunStatistics.from_records([])
 
     def _recover_progress(self, job: JobStatus) -> None:
         """Read the JSONL file to recover progress/accuracy for an interrupted job.
@@ -251,18 +250,18 @@ class JobManager:
         jsonl_path = Path(self._results_dir) / f"{job.run_id}.jsonl"
         if not jsonl_path.exists():
             return
-        count, correct, error_count = self._count_jsonl(str(jsonl_path))
-        if count > 0:
-            job.progress = count - error_count
-            job.accuracy = correct / (count - error_count) if count > error_count else 0.0
+        base = self._load_statistics(str(jsonl_path))
+        if base.results:
+            job.progress = len(base.valid)
+            job.accuracy = base.metric_accuracy
             # If all tasks are now done with no errors, auto-complete the job.
             # This handles retries done outside the dashboard (e.g. CLI) or
             # jobs that were interrupted after the run actually finished.
             if (
                 job.status == "interrupted"
                 and job.total_tasks > 0
-                and count >= job.total_tasks
-                and error_count == 0
+                and len(base.valid) >= job.total_tasks
+                and len(base.valid) == len(base.results)
             ):
                 job.status = "completed"
 
@@ -774,8 +773,8 @@ class JobManager:
         from pathlib import Path as _Path
         _baseline_path = _Path(self._results_dir) / f"{run_id}.jsonl"
         if _baseline_path.exists():
-            _bc, _, _be = self._count_jsonl(str(_baseline_path))
-            self._job_progress_offsets[job_id] = _bc - _be  # non-errored = will be skipped
+            baseline = self._load_statistics(str(_baseline_path))
+            self._job_progress_offsets[job_id] = len(baseline.valid)
         else:
             self._job_progress_offsets[job_id] = 0
 
@@ -1008,12 +1007,12 @@ class JobManager:
                         job.total_tasks = current_total
             return
 
-        count, correct, error_count = self._count_jsonl(str(jsonl_path))
+        base = self._load_statistics(str(jsonl_path))
 
         # Non-errored records are tasks that have been scored (correct or wrong).
         # Subtract the baseline recorded at job start so retried jobs show delta
         # progress (0 → N) instead of inheriting the old error count as progress.
-        non_error_count = count - error_count
+        non_error_count = len(base.valid)
         offset = self._job_progress_offsets.get(job_id, 0)
         displayed_progress = max(0, non_error_count - offset)
         # Adjust total_tasks to reflect only the work for this run
@@ -1024,9 +1023,11 @@ class JobManager:
             if job:
                 if adjusted_total > 0 and job.total_tasks != adjusted_total:
                     job.total_tasks = adjusted_total
-                changed = job.progress != displayed_progress
+                changed = (
+                    job.progress != displayed_progress
+                    or job.accuracy != base.metric_accuracy
+                )
                 job.progress = displayed_progress
-                if non_error_count > 0:
-                    job.accuracy = correct / non_error_count
+                job.accuracy = base.metric_accuracy
                 if changed:
                     self._persist_jobs()
