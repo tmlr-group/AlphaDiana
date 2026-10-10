@@ -108,10 +108,29 @@ def test_docker_cleanup_waits_for_observed_removal_in_progress(monkeypatch, remo
         return SimpleNamespace(returncode=0, stdout='', stderr='')
     monkeypatch.setattr(sandbox.subprocess, 'run', run)
     monkeypatch.setattr(sandbox.time, 'sleep', lambda _: None)
-    times=iter([0,1,121]);monkeypatch.setattr(sandbox.time, 'monotonic', lambda: next(times))
+    times=iter([0,1,2,3] if removal_finishes else [0,1,2,121]);monkeypatch.setattr(sandbox.time, 'monotonic', lambda: next(times))
     owner=sandbox.TerminalBench2ContainerMixin()
     if removal_finishes:owner._stop_container('owned','task')
     else:
         with pytest.raises(RuntimeError, match='remains'):owner._stop_container('owned','task')
     assert len([c for c in calls if c[1]=='rm'])==1
-    assert len(probes)>1
+    assert len(probes)==(2 if removal_finishes else 1)
+
+
+def test_docker_removal_deadline_prevents_a_late_probe(monkeypatch):
+    from types import SimpleNamespace
+    from alphadiana.engine.sandbox import terminal_bench2 as sandbox
+    clock=[0.0];probes=[]
+    def run(command, **kwargs):
+        if command[1]=='rm':return SimpleNamespace(returncode=1, stderr='removal is already in progress')
+        if command[1]=='ps':
+            probes.append(kwargs['timeout'])
+            clock[0]=119.9 if len(probes)==1 else 140.1
+            return SimpleNamespace(stdout='owned' if len(probes)==1 else '')
+        return SimpleNamespace(returncode=0, stderr='')
+    monkeypatch.setattr(sandbox.subprocess,'run',run)
+    monkeypatch.setattr(sandbox.time,'monotonic',lambda:clock[0])
+    monkeypatch.setattr(sandbox.time,'sleep',lambda duration:clock.__setitem__(0,clock[0]+duration))
+    with pytest.raises(RuntimeError,match='remains'):
+        sandbox.TerminalBench2ContainerMixin()._stop_container('owned','task')
+    assert len(probes)==1 and clock[0]<=120.0

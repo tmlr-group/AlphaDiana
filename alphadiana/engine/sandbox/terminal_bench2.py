@@ -1190,18 +1190,24 @@ exit 1
             )
             deadline = time.monotonic() + 120
             while True:
+                remaining_seconds = deadline - time.monotonic()
+                if remaining_seconds <= 0:
+                    raise RuntimeError(
+                        f"Owned Docker container {container_id} remains: {removed.stderr}"
+                    )
                 remaining = subprocess.run(
                     ["docker", "ps", "-aq", "--no-trunc", "--filter", f"id={container_id}"],
-                    capture_output=True, text=True, check=True, timeout=30,
+                    capture_output=True, text=True, check=True, timeout=min(30, remaining_seconds),
                 )
                 if not remaining.stdout.strip():
                     return
                 removing = removed.returncode == 0 or "is already in progress" in removed.stderr
-                if not removing or time.monotonic() >= deadline:
+                remaining_seconds = deadline - time.monotonic()
+                if not removing or remaining_seconds <= 0:
                     raise RuntimeError(
                         f"Owned Docker container {container_id} remains: {removed.stderr}"
                     )
-                time.sleep(0.2)
+                time.sleep(min(0.2, remaining_seconds))
         except Exception as exc:
             logger.warning(
                 "Task %s — failed to stop container %s: %s",
