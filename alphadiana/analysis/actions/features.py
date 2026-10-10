@@ -147,9 +147,9 @@ def _numeric_value(value: Any) -> float:
 def numeric_matrix(
     rows: list[dict[str, Any]], feature_columns: Sequence[str]
 ) -> np.ndarray:
+    """Convert feature rows into a numeric matrix, coercing missing values to zero."""
     import numpy as np
 
-    """Convert feature rows into a numeric matrix, coercing missing values to zero."""
     return np.array(
         [
             [_numeric_value(row.get(column)) for column in feature_columns]
