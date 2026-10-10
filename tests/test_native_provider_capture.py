@@ -279,10 +279,11 @@ def test_usage_capture_preserves_environment_proxy_egress(tmp_path, monkeypatch)
     proxy = ThreadingHTTPServer(('127.0.0.1', 0), EgressProxy)
     thread = threading.Thread(target=proxy.serve_forever, daemon=True)
     thread.start()
-    monkeypatch.setenv('HTTP_PROXY', f'http://127.0.0.1:{proxy.server_port}')
-    monkeypatch.setenv('NO_PROXY', '127.0.0.1,localhost')
+    # Windows environment names are case-insensitive; clear aliases before setting them.
     for name in ('http_proxy', 'https_proxy', 'all_proxy', 'no_proxy', 'HTTPS_PROXY', 'ALL_PROXY'):
         monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv('HTTP_PROXY', f'http://127.0.0.1:{proxy.server_port}')
+    monkeypatch.setenv('NO_PROXY', '127.0.0.1,localhost')
     try:
         with NativeProviderCapture({'api_base': 'http://native-provider.invalid/v1'}, tmp_path, measure_usage=True) as capture:
             with httpx.Client(trust_env=False) as client:
