@@ -92,7 +92,9 @@ class MyScorer(Scorer):
     ...
 ```
 
-Both forms mutate a process-local registry. Duplicate names raise instead of silently replacing an implementation.
+Both forms mutate a process-local registry. Registering an existing name replaces
+its implementation within that family. Benchmark, agent, sandbox, scorer and
+metric names remain independent.
 
 ## Adding a component
 

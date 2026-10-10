@@ -39,3 +39,6 @@ runtime prerequisites.
 
 See the [release validation matrix](../docs/configuration/release-validation.md)
 for the latest config-validation and real-smoke evidence.
+
+Single-task controller commands are documented in
+[the single-rollout examples](examples/single_rollout/README.md).
