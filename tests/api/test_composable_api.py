@@ -6,12 +6,88 @@ import pytest
 
 import alphadiana as ad
 from alphadiana.results.artifacts import Artifacts
+from alphadiana.results.store import ResultStore
 from alphadiana.benchmarks.base import Benchmark, BenchmarkTask
 from alphadiana.benchmarks.registry import BenchmarkRegistry
 from alphadiana.harness.base import Agent, AgentResponse
 from alphadiana.harness.registry import AgentRegistry
 from alphadiana.scorer.base import Scorer, ScoreResult
 from alphadiana.scorer.registry import ScorerRegistry
+
+
+@pytest.mark.parametrize("remote_path", ["openclaw_runtime_config.json", "/tmp/openclaw.json"])
+def test_workspace_json_credentials_redacted_before_persistence(tmp_path, remote_path):
+    configuration = {
+        "env": {
+            "OPENAI_API_KEY": "fixture-upstream-key",
+            "OPENCLAW_GATEWAY_TOKEN": "fixture-local-token",
+        },
+        "models": {
+            "providers": {"local": {"apiKey": "fixture-proxy-key", "maxTokens": 8192}}
+        },
+        "gateway": {"auth": {"mode": "token", "token": "fixture-local-token"}},
+        "token_usage": {"completion_tokens": 5},
+    }
+    original = json.dumps(configuration, indent=2)
+    task = BenchmarkTask("credential-task", "Saved runtime configuration", "patch")
+    response = AgentResponse("patch", workspace_file_contents={remote_path: original})
+    store = ResultStore(str(tmp_path), "credential-run")
+    store.append(task, response, ScoreResult(False, 0, "patch", "patch"))
+    artifacts = Artifacts(store.path)
+    record = artifacts.records()[0]
+    for reference in record["artifact_manifest"]["files"]["workspace_files"].values():
+        saved = json.loads((artifacts.artifact_root(record) / reference).read_text())
+        assert saved["env"]["OPENAI_API_KEY"] == "<redacted>"
+        assert saved["env"]["OPENCLAW_GATEWAY_TOKEN"] == "<redacted>"
+        assert saved["models"]["providers"]["local"]["apiKey"] == "<redacted>"
+        assert saved["gateway"]["auth"]["token"] == "<redacted>"
+        assert saved["gateway"]["auth"]["mode"] == "token"
+        assert saved["models"]["providers"]["local"]["maxTokens"] == 8192
+        assert saved["token_usage"]["completion_tokens"] == 5
+    for path in tmp_path.rglob("*"):
+        if path.is_file():
+            assert all(
+                secret.encode() not in path.read_bytes()
+                for secret in (
+                    "fixture-upstream-key", "fixture-proxy-key", "fixture-local-token"
+                )
+            )
+    assert response.workspace_file_contents[remote_path] == original
+
+
+@pytest.mark.parametrize(
+    "content",
+    ['{ "answer" : "λ", "tokens" : 12 }\n', "diff --git a/a.py b/a.py\n+value = 3\n"],
+)
+def test_nonsecret_workspace_bytes_preserved(tmp_path, content):
+    task = BenchmarkTask("plain-task", "Retain original bytes", "patch")
+    store = ResultStore(str(tmp_path), "plain-run")
+    store.append(
+        task,
+        AgentResponse("patch", workspace_file_contents={"original.txt": content}),
+        ScoreResult(False, 0, "patch", "patch"),
+    )
+    artifacts = Artifacts(store.path)
+    record = artifacts.records()[0]
+    reference = record["artifact_manifest"]["files"]["workspace_files"]["original.txt"]
+    assert (artifacts.artifact_root(record) / reference).read_text() == content
+
+
+def test_logprob_token_text_preserved_in_response_and_record(tmp_path):
+    payload = {
+        "choices": [{"logprobs": {"content": [{"token": "2", "logprob": -0.5}]}}]
+    }
+    store = ResultStore(str(tmp_path), "logprob-run")
+    store.append(
+        BenchmarkTask("token-task", "Return two", "2"),
+        AgentResponse("2", response_json=payload),
+        ScoreResult(True, 1.0, "2", "2"),
+    )
+    artifacts = Artifacts(store.path)
+    record = artifacts.records()[0]
+    assert record["response_json"] == payload
+    reference = record["artifact_manifest"]["files"]["response_json"]
+    assert json.loads((artifacts.artifact_root(record) / reference).read_text()) == payload
 
 
 class TinyBenchmark(Benchmark):

@@ -41,6 +41,8 @@ _SECRET_KEY_PARTS = (
     "access_token",
     "refresh_token",
     "bearer_token",
+    "gateway_token",
+    "gatewaytoken",
     "authorization",
     "password",
     "secret",
@@ -67,9 +69,16 @@ def _redact_text(value: str) -> str:
     return _AUTH_HEADER_RE.sub(r"\1" + _REDACTED, value)
 
 
-def _redact_for_persistence(value: Any, *, key: object | None = None) -> Any:
+def _redact_for_persistence(
+    value: Any, *, key: object | None = None, parent_key: object | None = None
+) -> Any:
     """Return a copy safe for persisted result records and artifacts."""
-    if _looks_sensitive_key(key):
+    if _looks_sensitive_key(key) or (
+        isinstance(key, str)
+        and key.lower() == "token"
+        and isinstance(parent_key, str)
+        and parent_key.lower() in {"auth", "authentication", "credentials"}
+    ):
         return _REDACTED
     if isinstance(value, str):
         return _redact_text(value)
@@ -79,10 +88,22 @@ def _redact_for_persistence(value: Any, *, key: object | None = None) -> Any:
         return [_redact_for_persistence(item) for item in value]
     if isinstance(value, dict):
         return {
-            item_key: _redact_for_persistence(item_value, key=item_key)
+            item_key: _redact_for_persistence(item_value, key=item_key, parent_key=key)
             for item_key, item_value in value.items()
         }
     return value
+
+
+def _redact_workspace_content(content: str) -> str:
+    """Use structured credential keys for JSON; preserve other workspace bytes."""
+    try:
+        value = json.loads(content)
+    except (ValueError, TypeError):
+        return _redact_text(content)
+    sanitized = _redact_for_persistence(value)
+    if sanitized != value:
+        return json.dumps(sanitized, indent=2, ensure_ascii=False)
+    return _redact_text(content)
 
 
 class ResultStore:
@@ -488,7 +509,7 @@ class ResultStore:
                 rel = sample_prefix / "workspace" / normalized
                 path = self.artifacts_dir / rel
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(_redact_text(content), encoding="utf-8")
+                path.write_text(_redact_workspace_content(content), encoding="utf-8")
                 workspace_files[remote_path] = str(rel)
             files["workspace_files"] = workspace_files
             self._resolve_workspace_artifact_refs(files, workspace_files)
