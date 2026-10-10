@@ -64,6 +64,23 @@ def test_real_restoration_without_solver(tmp_path):
         with pytest.raises(ValueError, match="changed"):
             VerifierReplay().run(task, output_dir=tmp_path / "drift")
     finally:
+        # A startup timeout can happen before Harbor's snapshot/teardown hook.
+        for trial_config in (tmp_path / "jobs/capture").glob("*/config.json"):
+            trial = json.loads(trial_config.read_text())
+            assert Path(trial["task"]["path"]).resolve() == task_dir.resolve()
+            project = trial["trial_name"].lower()
+            containers = subprocess.check_output(
+                ["docker", "ps", "-aq", "--filter",
+                 "label=com.docker.compose.project=" + project], text=True,
+            ).split()
+            for container in containers:
+                working_dir = subprocess.check_output(
+                    ["docker", "inspect", container, "--format",
+                     '{{index .Config.Labels "com.docker.compose.project.working_dir"}}'],
+                    text=True,
+                ).strip()
+                assert Path(working_dir).resolve() == (task_dir / "environment").resolve()
+                subprocess.run(["docker", "rm", "-f", container], check=True, capture_output=True)
         if snapshot:
             subprocess.run(
                 ["podman", "rmi", snapshot["image_id"]], check=True, capture_output=True
@@ -85,6 +102,10 @@ def test_native_harbor_hook_captures_pre_verifier_state(tmp_path):
         (task_dir / directory).mkdir(parents=True)
     (task_dir / "instruction.md").write_text("Create a solver marker.\n")
     (task_dir / "environment/Dockerfile").write_text(f"FROM {image}\n")
+    # Oracle fixtures do not start the gateway inherited from controller images.
+    (task_dir / "environment/docker-compose.yaml").write_text(
+        'services:\n  main:\n    healthcheck:\n      test: [NONE]\n'
+    )
     (task_dir / "task.toml").write_text(
         'version = "1.0"\n[agent]\ntimeout_sec = 30\n[verifier]\ntimeout_sec = 30\n'
         f'[environment]\ndocker_image = "{image}"\ncpus = 1\nmemory = "1G"\n'
