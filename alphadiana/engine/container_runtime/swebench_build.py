@@ -1,8 +1,7 @@
-"""Helpers for normalizing SWE-bench task metadata."""
+"""SWE-bench Docker/Podman image names, setup hardening, and build network hooks."""
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import shlex
@@ -10,11 +9,16 @@ import time
 from collections.abc import Mapping
 from typing import Any
 
-from alphadiana.benchmarks.base import BenchmarkTask
-
 
 _PODMAN_TEST_SPEC_CLASS_CACHE: dict[type, type] = {}
-_PROXY_ENV_KEYS = ("http_proxy", "https_proxy", "no_proxy", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY")
+_PROXY_ENV_KEYS = (
+    "http_proxy",
+    "https_proxy",
+    "no_proxy",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "NO_PROXY",
+)
 
 
 def _image_has_registry(image_ref: str) -> bool:
@@ -44,7 +48,9 @@ def strip_from_platform_directives_for_podman(dockerfile: str) -> str:
     return re.sub(r"(?m)^(FROM)\s+--platform=\S+\s+", r"\1 ", dockerfile)
 
 
-def podman_proxy_buildargs_from_env(env: Mapping[str, str] | None = None) -> dict[str, str]:
+def podman_proxy_buildargs_from_env(
+    env: Mapping[str, str] | None = None,
+) -> dict[str, str]:
     """Return proxy build args safe to pass to Podman builds."""
     source = os.environ if env is None else env
     return {
@@ -70,24 +76,26 @@ def _podman_setup_network_retry_block(
     sleep_sec: int,
 ) -> str:
     quoted_command = shlex.quote(shell_command)
-    return "\n".join([
-        f"# AlphaDiana Podman network retry: {label}",
-        f"for setup_attempt in $(seq 1 {attempts}); do",
-        "  set +e",
-        "  if command -v timeout >/dev/null 2>&1; then",
-        f"    timeout {timeout_sec} bash -lc {quoted_command}",
-        "  else",
-        f"    bash -lc {quoted_command}",
-        "  fi",
-        "  setup_status=$?",
-        "  set -e",
-        '  if [ "$setup_status" -eq 0 ]; then break; fi',
-        f"  echo \"{label} attempt ${{setup_attempt}}/{attempts} failed or timed out with exit "
-        "${setup_status}; retrying...\" >&2",
-        f"  if [ \"$setup_attempt\" -eq {attempts} ]; then exit \"$setup_status\"; fi",
-        f"  sleep {max(0, sleep_sec)}",
-        "done",
-    ])
+    return "\n".join(
+        [
+            f"# AlphaDiana Podman network retry: {label}",
+            f"for setup_attempt in $(seq 1 {attempts}); do",
+            "  set +e",
+            "  if command -v timeout >/dev/null 2>&1; then",
+            f"    timeout {timeout_sec} bash -lc {quoted_command}",
+            "  else",
+            f"    bash -lc {quoted_command}",
+            "  fi",
+            "  setup_status=$?",
+            "  set -e",
+            '  if [ "$setup_status" -eq 0 ]; then break; fi',
+            f'  echo "{label} attempt ${{setup_attempt}}/{attempts} failed or timed out with exit '
+            '${setup_status}; retrying..." >&2',
+            f'  if [ "$setup_attempt" -eq {attempts} ]; then exit "$setup_status"; fi',
+            f"  sleep {max(0, sleep_sec)}",
+            "done",
+        ]
+    )
 
 
 def harden_swebench_podman_setup_script(setup_script: str) -> str:
@@ -133,8 +141,7 @@ def harden_swebench_podman_setup_script(setup_script: str) -> str:
                 _podman_setup_network_retry_block(
                     label="pip install",
                     shell_command=(
-                        "source /opt/miniconda3/bin/activate testbed && "
-                        f"{stripped}"
+                        "source /opt/miniconda3/bin/activate testbed && " f"{stripped}"
                     ),
                     attempts=attempts,
                     timeout_sec=timeout_sec,
@@ -176,7 +183,9 @@ def qualify_swebench_test_spec_for_podman(test_spec: Any) -> Any:
 
                     @property
                     def instance_image_key(self):  # type: ignore[no-untyped-def]
-                        return qualify_swebench_podman_image_ref(super().instance_image_key)
+                        return qualify_swebench_podman_image_ref(
+                            super().instance_image_key
+                        )
 
                 PodmanQualifiedTestSpec.__name__ = f"PodmanQualified{spec_cls.__name__}"
                 qualified_cls = PodmanQualifiedTestSpec
@@ -210,46 +219,6 @@ def qualify_swebench_test_spec_for_podman(test_spec: Any) -> Any:
             except AttributeError:
                 pass
     return test_spec
-
-
-def json_field_to_string(value: Any, *, default: str = "[]") -> str:
-    """Return a stable JSON-string representation expected by swebench."""
-    if value is None:
-        return default
-    if isinstance(value, str):
-        stripped = value.strip()
-        return stripped or default
-    return json.dumps(value)
-
-
-def infer_instance_id(task: BenchmarkTask) -> str:
-    """Infer the SWE-bench instance id from task metadata."""
-    metadata = getattr(task, "metadata", None) or {}
-    raw = metadata.get("instance_id")
-    if raw:
-        return str(raw)
-    if task.task_id.startswith("swe_"):
-        return task.task_id[len("swe_") :]
-    return task.task_id
-
-
-def build_swebench_instance(task: BenchmarkTask) -> dict[str, Any]:
-    """Reconstruct a SWE-bench instance dict from a benchmark task."""
-    metadata = getattr(task, "metadata", None) or {}
-    return {
-        "instance_id": infer_instance_id(task),
-        "repo": str(metadata.get("repo", "")),
-        "base_commit": str(metadata.get("base_commit", "")),
-        "patch": str(task.ground_truth or ""),
-        "test_patch": str(metadata.get("test_patch", "")),
-        "problem_statement": task.problem,
-        "hints_text": str(metadata.get("hints_text", "")),
-        "created_at": str(metadata.get("created_at", "")),
-        "version": str(metadata.get("version", "")),
-        "FAIL_TO_PASS": json_field_to_string(metadata.get("FAIL_TO_PASS")),
-        "PASS_TO_PASS": json_field_to_string(metadata.get("PASS_TO_PASS")),
-        "environment_setup_commit": str(metadata.get("environment_setup_commit", "")),
-    }
 
 
 def harden_test_spec_repo_clone(
@@ -301,7 +270,9 @@ def harden_test_spec_repo_clone(
                 )
                 continue
             if stripped.startswith("git tag -l | while read tag; do "):
-                updated.append(": # skipped tag timestamp cleanup for Podman partial clone stability")
+                updated.append(
+                    ": # skipped tag timestamp cleanup for Podman partial clone stability"
+                )
                 continue
             if stripped.startswith("git gc "):
                 updated.append(": # skipped git gc for Podman partial clone stability")
@@ -311,80 +282,92 @@ def harden_test_spec_repo_clone(
                 or stripped.startswith("COMMIT_COUNT=")
                 or stripped == '[ "$COMMIT_COUNT" -eq 0 ] || exit 1'
             ):
-                updated.append(": # skipped commit-count check for Podman partial clone stability")
+                updated.append(
+                    ": # skipped commit-count check for Podman partial clone stability"
+                )
                 continue
         if not replaced and stripped.startswith("git clone "):
             clone_parts = shlex.split(stripped)
             if fallback_commit and "--no-tags" not in clone_parts:
                 clone_parts.insert(2, "--no-tags")
-            if filter_text and not any(part.startswith("--filter") for part in clone_parts):
+            if filter_text and not any(
+                part.startswith("--filter") for part in clone_parts
+            ):
                 clone_parts.insert(2, f"--filter={filter_text}")
             clone_command = shlex.join(clone_parts)
             clone_target = clone_parts[-1] if len(clone_parts) >= 2 else ""
             clone_remote = clone_parts[-2] if len(clone_parts) >= 3 else ""
-            cleanup_target = shlex.quote(clone_target) if clone_target and not clone_target.startswith("-") else ""
+            cleanup_target = (
+                shlex.quote(clone_target)
+                if clone_target and not clone_target.startswith("-")
+                else ""
+            )
             retry_count = max(1, int(clone_retries))
             sleep_count = max(0, int(retry_sleep_sec))
             fetch_filter = f"--filter={filter_text} " if filter_text else ""
             if fallback_commit and clone_remote and cleanup_target:
                 quoted_remote = shlex.quote(clone_remote)
                 quoted_commit = shlex.quote(fallback_commit)
-                updated.extend([
+                updated.extend(
+                    [
+                        "git config --global http.version HTTP/1.1",
+                        "git config --global http.lowSpeedLimit 0",
+                        "git config --global http.lowSpeedTime 999999",
+                        "cd /",
+                        f"rm -rf {cleanup_target}",
+                        f"mkdir -p {cleanup_target}",
+                        f"cd {cleanup_target}",
+                        "git init",
+                        f"git remote add origin {quoted_remote}",
+                        f"for fetch_attempt in $(seq 1 {retry_count}); do",
+                        "  git -c http.version=HTTP/1.1 fetch "
+                        f"{fetch_filter}--depth=50 --no-tags origin {quoted_commit} && break",
+                        "  fetch_status=$?",
+                        '  echo "git fetch attempt '
+                        f"${{fetch_attempt}}/{retry_count} failed with exit "
+                        '${fetch_status}; retrying..." >&2',
+                        f'  if [ "$fetch_attempt" -eq {retry_count} ]; then exit "$fetch_status"; fi',
+                        f"  sleep {sleep_count}",
+                        "done",
+                        f"for checkout_attempt in $(seq 1 {retry_count}); do",
+                        "  if command -v timeout >/dev/null 2>&1; then",
+                        f"    timeout 180 git checkout -f {quoted_commit} && break",
+                        "  else",
+                        f"    git checkout -f {quoted_commit} && break",
+                        "  fi",
+                        "  checkout_status=$?",
+                        '  echo "git checkout attempt '
+                        f"${{checkout_attempt}}/{retry_count} failed with exit "
+                        '${checkout_status}; hydrating blobs and retrying..." >&2',
+                        f"  git -c http.version=HTTP/1.1 fetch --depth=50 --no-tags origin {quoted_commit} || true",
+                        f'  if [ "$checkout_attempt" -eq {retry_count} ]; then exit "$checkout_status"; fi',
+                        f"  sleep {sleep_count}",
+                        "done",
+                        "cd /",
+                    ]
+                )
+                replaced = True
+                continue
+
+            updated.extend(
+                [
                     "git config --global http.version HTTP/1.1",
                     "git config --global http.lowSpeedLimit 0",
                     "git config --global http.lowSpeedTime 999999",
                     "cd /",
-                    f"rm -rf {cleanup_target}",
-                    f"mkdir -p {cleanup_target}",
-                    f"cd {cleanup_target}",
-                    "git init",
-                    f"git remote add origin {quoted_remote}",
-                    f"for fetch_attempt in $(seq 1 {retry_count}); do",
-                    "  git -c http.version=HTTP/1.1 fetch "
-                    f"{fetch_filter}--depth=50 --no-tags origin {quoted_commit} && break",
-                    "  fetch_status=$?",
-                    "  echo \"git fetch attempt "
-                    f"${{fetch_attempt}}/{retry_count} failed with exit "
-                    "${fetch_status}; retrying...\" >&2",
-                    f"  if [ \"$fetch_attempt\" -eq {retry_count} ]; then exit \"$fetch_status\"; fi",
-                    f"  sleep {sleep_count}",
-                    "done",
-                    f"for checkout_attempt in $(seq 1 {retry_count}); do",
-                    "  if command -v timeout >/dev/null 2>&1; then",
-                    f"    timeout 180 git checkout -f {quoted_commit} && break",
-                    "  else",
-                    f"    git checkout -f {quoted_commit} && break",
+                    f"for attempt in $(seq 1 {retry_count}); do",
+                    f"  {'rm -rf ' + cleanup_target if cleanup_target else ':'}",
+                    f"  git -c http.version=HTTP/1.1 {clone_command[4:]} && break",
+                    "  status=$?",
+                    f'  echo "git clone attempt ${{attempt}}/{retry_count} failed with exit ${{status}}; retrying..." >&2',
+                    f"  {'rm -rf ' + cleanup_target if cleanup_target else ':'}",
+                    f'  if [ "$attempt" -eq {retry_count} ]; then',
+                    '    exit "$status"',
                     "  fi",
-                    "  checkout_status=$?",
-                    "  echo \"git checkout attempt "
-                    f"${{checkout_attempt}}/{retry_count} failed with exit "
-                    "${checkout_status}; hydrating blobs and retrying...\" >&2",
-                    f"  git -c http.version=HTTP/1.1 fetch --depth=50 --no-tags origin {quoted_commit} || true",
-                    f"  if [ \"$checkout_attempt\" -eq {retry_count} ]; then exit \"$checkout_status\"; fi",
                     f"  sleep {sleep_count}",
                     "done",
-                    "cd /",
-                ])
-                replaced = True
-                continue
-
-            updated.extend([
-                "git config --global http.version HTTP/1.1",
-                "git config --global http.lowSpeedLimit 0",
-                "git config --global http.lowSpeedTime 999999",
-                "cd /",
-                f"for attempt in $(seq 1 {retry_count}); do",
-                f"  {'rm -rf ' + cleanup_target if cleanup_target else ':'}",
-                f"  git -c http.version=HTTP/1.1 {clone_command[4:]} && break",
-                "  status=$?",
-                f"  echo \"git clone attempt ${{attempt}}/{retry_count} failed with exit ${{status}}; retrying...\" >&2",
-                f"  {'rm -rf ' + cleanup_target if cleanup_target else ':'}",
-                f"  if [ \"$attempt\" -eq {retry_count} ]; then",
-                '    exit "$status"',
-                "  fi",
-                f"  sleep {sleep_count}",
-                "done",
-            ])
+                ]
+            )
             replaced = True
             continue
         updated.append(str(command))

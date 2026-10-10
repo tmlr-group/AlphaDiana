@@ -22,11 +22,10 @@ from alphadiana.engine.container_runtime.podman_socket import (
     podman_socket_env,
     resolve_podman_docker_api_version,
 )
-from alphadiana.utils.swebench import (
-    build_swebench_instance,
+from alphadiana.benchmarks.swe_bench.tasks import build_swebench_instance, infer_instance_id
+from alphadiana.engine.container_runtime.swebench_build import (
     ensure_swebench_build_network_mode,
     harden_test_spec_repo_clone,
-    infer_instance_id,
     qualify_swebench_test_spec_for_podman,
 )
 

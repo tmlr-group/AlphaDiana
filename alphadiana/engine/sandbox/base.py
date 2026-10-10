@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+import json
 
 
 @dataclass
@@ -107,3 +108,57 @@ class Sandbox(ABC):
     def teardown(self) -> None:
         """Tear down the sandbox provider. Override if cleanup is needed."""
         pass
+
+
+def response_evidence_text(value: object) -> str:
+    """Serialize nested response evidence for integrity and session checks."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    try:
+        return json.dumps(value, ensure_ascii=True, sort_keys=True, default=str)
+    except Exception:
+        return str(value)
+
+
+def session_failure_reason(exc: Exception, response: object | None = None) -> str:
+    """Return a quarantine reason when runtime evidence identifies a dead session."""
+    error_type = str(getattr(exc, "error_type", "") or "").lower()
+    if error_type == "control_plane_unavailable":
+        return "control_plane_unavailable"
+
+    chunks: list[str] = [
+        str(exc),
+        error_type,
+        response_evidence_text(getattr(exc, "response_body", None)),
+        response_evidence_text(getattr(exc, "retry_responses", None)),
+    ]
+    if response is not None:
+        chunks.extend(
+            [
+                response_evidence_text(getattr(response, "metadata", None)),
+                response_evidence_text(getattr(response, "response_json", None)),
+                response_evidence_text(getattr(response, "sandbox_metadata", None)),
+                str(getattr(response, "gateway_url", "") or ""),
+                str(getattr(response, "gateway_log_excerpt", "") or ""),
+            ]
+        )
+    text = "\n".join(chunk for chunk in chunks if chunk).lower()
+    if "not started" in text:
+        return "sandbox_not_started"
+    if "not alive" in text:
+        return "sandbox_not_alive"
+    if "upstream server is not reachable" in text:
+        return "sandbox_upstream_unreachable"
+    if "run in session failed" in text and "service unavailable" in text:
+        return "sandbox_upstream_unreachable"
+    if "connection refused" in text or "[errno 111]" in text:
+        return "gateway_connection_refused"
+    if "failed to connect" in text or "connecterror" in text:
+        return "gateway_connect_failed"
+    if "connection reset by peer" in text or "[errno 104]" in text:
+        return "gateway_connection_reset"
+    if "peer closed connection" in text or "incomplete chunked read" in text:
+        return "gateway_stream_interrupted"
+    return ""

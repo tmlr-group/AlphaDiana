@@ -20,8 +20,22 @@ contract. The human audit also hashes these files. Default action annotations us
 LLM segmentation of the full trajectory; explicit fixed-target audit inputs do
 not change that default.
 
-Older flat modules forward to their canonical owners to preserve Python imports.
-Add implementation changes to the owners above, rather than the forwarding files.
+Six compatibility modules preserve documented imports and the shared report contract:
+`action_annotations`, `failure_annotations`, `action_events`, `result_reader`,
+`entropy_analysis`, and `action_report`. Add implementation changes to their owners.
+The package-level public API and existing `report`, `reports`, and `logprobs`
+entry points remain available. Internal imports use the owners above.
+
+Internal flat-module imports now require these paths:
+
+| Previous internal module | Current owner |
+| --- | --- |
+| `judge`, `action_segmentation` | `annotations/judge`, `annotations/segmentation` |
+| `action_features`, `clustering`, `case_studies` | `actions/features`, `actions/clustering`, `actions/cases` |
+| `trajectory_metrics`, `trajectory_reports` | `actions/metrics`, `actions/trajectory_reports` |
+| `insight_corpus`, `insight_measurements`, `insight_cases`, `insight_reports` | `insights/corpus`, `insights/measurements`, `insights/cases`, `insights/reports` |
+| `reliability`, `process_entropy` | `run_summary`, `entropy` |
+| `dashboard/backend/*` | `alphadiana/dashboard/backend/*` |
 
 Related workflows live outside this package:
 

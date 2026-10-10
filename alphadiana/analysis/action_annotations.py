@@ -1,25 +1,6 @@
-"""Compatibility imports; implementation: alphadiana.analysis.annotations.actions."""
+"""Documented compatibility import; canonical owner: analysis.annotations.actions."""
 from alphadiana.analysis.annotations.actions import (
-    hashlib,
-    json,
-    Counter,
-    Mapping,
-    Sequence,
-    deepcopy,
-    Path,
-    LABELS,
-    PROTOCOL,
-    prompt_bytes,
-    request_for,
-    validate_response,
-    TRAJECTORY_PROTOCOL,
-    NoSavedAssistantActions,
-    annotate_trajectory,
-    segmentation_prompt,
-    Figure,
-    Measurement,
-    VALID_SCORE_STATUS,
-    CachedJudge,
-    Artifacts,
     ActionAnnotations,
 )
+
+__all__ = ['ActionAnnotations']

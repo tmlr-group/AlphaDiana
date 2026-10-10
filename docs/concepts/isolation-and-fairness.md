@@ -103,7 +103,7 @@ explicit `runtime_backend: podman` container, never directly on the host.
 
 Beyond the runtime boundary, the engine adds defenses against state that escapes a single task:
 
-- **OpenClaw integrity guard.** Responses flagged as session-tainted, stream-incomplete, or carrying heartbeat taint text are rejected by `_openclaw_integrity_guard_reason` in `alphadiana/engine/runner.py` and recorded as errors rather than scored, guarding against leaked cross-task state.
+- **OpenClaw integrity guard.** `integrity_guard_reason` in `alphadiana/harness/openclaw/integrity.py` rejects session-tainted, stream-incomplete, and heartbeat-tainted responses. Runner persists these responses as errors before scoring.
 - **Secret redaction.** Runner and result-store helpers scrub recognized credential assignments and sensitive keys before persistence. This is best-effort defense in depth, not a substitute for reviewing artifacts and running a secret scan before publication.
 - **ROCK TTL safety net.** `auto_clear_seconds` is a server-side container TTL. Explicit ROCK sandbox config defaults to 3600 seconds; auto-created OpenClaw/ZeroClaw paths default to 7200 seconds, and dashboard-oriented paths may use 28800 seconds. Record the effective value rather than assuming one global default.
 

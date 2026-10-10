@@ -1,2 +1,6 @@
-"""Compatibility imports for token entropy measurements."""
-from alphadiana.analysis.entropy import EntropyAnalysis
+"""Documented compatibility import; canonical owner: analysis.entropy."""
+from alphadiana.analysis.entropy import (
+    EntropyAnalysis,
+)
+
+__all__ = ['EntropyAnalysis']

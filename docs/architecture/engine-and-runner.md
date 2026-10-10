@@ -50,6 +50,19 @@ The normal dispatcher limits concurrency with `max_concurrent`. Sandbox acquisit
 - `swebench_container` receives the current `BenchmarkTask`;
 - OpenClaw gateway predeployment uses its own pool and quarantines dead sessions rather than requeueing them.
 
+`OpenClawGatewayPool` in `harness/openclaw/gateway_pool.py` owns predeployment,
+leases, health probes, replenishment, resets, quarantine, and session shutdown.
+Runner prepares this pool, acquires a session for each task, persists the outcome,
+then releases the session. `harness/openclaw/integrity.py` checks response integrity
+before Runner invokes the scorer.
+
+SWE task projection lives in `benchmarks/swe_bench/tasks.py`. Both the sandbox and
+the scorer use that schema. Container build hooks live in
+`engine/container_runtime/swebench_build.py`; official SWE-bench runtime imports
+remain deferred until a build is requested. `utils/swebench.py` and
+`utils/rollout_campaign.py` are replaced by these owners and
+`engine/rollout_campaign.py` respectively.
+
 Recoverable task failures may be retried on fresh infrastructure according to `task_retries` and `task_retry_on_recoverable_only`. This retry layer is distinct from checkpoint resume across separate CLI invocations.
 
 ## Checkpoint resume

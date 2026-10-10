@@ -282,3 +282,19 @@ class ExperimentConfig:
             metadata=data.get("metadata", {}),
             metrics=data.get("metrics", []),
         )
+
+
+def coerce_config_bool(value: object, *, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+    return default
