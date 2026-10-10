@@ -14,6 +14,34 @@ from typing import Any
 TRACE_SCHEMA_VERSION = "alphadiana_trace.v1"
 TRACE_ARTIFACT_NAME = "normalized_trace.json"
 
+
+def is_empty_timeout_trace(record: dict, trace: dict, response_json: dict) -> bool:
+    """Recognize empty DirectLLM timeouts using the retained raw response.
+
+    Older traces turned the empty assistant message into its JSON display text.
+    This check lets analysis exclude that wrapper without editing saved evidence.
+    """
+    if record.get("metadata", {}).get("directllm_timeout_scored_zero") is not True:
+        return False
+    final = trace.get("final_output", {})
+    if final.get("finish_reason") != "timeout" or final.get("raw_output") or final.get("answer") is not None:
+        return False
+    choices = response_json.get("choices", [])
+    if len(choices) != 1 or choices[0].get("finish_reason") != "timeout":
+        return False
+    message = choices[0].get("message", {})
+    if message.get("role") != "assistant" or any(message.get(k) for k in ("content", "thinking", "reasoning_content", "tool_calls")):
+        return False
+    for step in trace.get("steps", []):
+        if step.get("role") != "assistant":
+            continue
+        if any(step.get(k) for k in ("thinking", "tool_calls", "tool_results")):
+            return False
+        content = step.get("content", "")
+        if content and content != json.dumps({"content": "", "role": "assistant"}, sort_keys=True):
+            return False
+    return True
+
 _TOOL_USE_TYPES = {"tool", "tool_use", "toolcall", "tool_call", "tooluse"}
 _TOOL_RESULT_TYPES = {"tool_result", "toolresult"}
 _REASONING_TYPES = {"reasoning", "thinking"}
@@ -200,6 +228,14 @@ def _normalize_trace_step(raw_step: dict[str, Any]) -> dict[str, Any] | None:
 
     if not content and not thinking and not tool_calls and not tool_results:
         if not raw_step:
+            return None
+        # Empty standard messages carry no action. Preserve unknown event data
+        # through the fallback below, rather than inventing text for emptiness.
+        if (
+            raw_step.get("role") == "assistant"
+            and raw_step.get("type", "message") == "message"
+            and set(raw_step) <= {"role", "type", "content", "text", "message", "thinking"}
+        ):
             return None
         content = json.dumps(raw_step, ensure_ascii=False, sort_keys=True)
 

@@ -203,7 +203,7 @@ def validate_segments(answer: dict, blocks: list[dict]) -> list[dict]:
 
 
 def annotate_trajectory(
-    judge, trace: dict, trace_sha: str, problem: str
+    judge, trace: dict, trace_sha: str, problem: str, *, raw_messages=None, media_prompt_tokens=None
 ) -> tuple[list[dict], int]:
     blocks = source_blocks(trace)
     # Use only input context, never answer/score/task metadata or old labels.
@@ -219,10 +219,42 @@ def annotate_trajectory(
     system = request.get("system_prompt", "")
     if system and ("system", system) not in existing:
         context["system_prompt"] = system
+    media = []
+    media_sources = []
+    # Only raw typed messages can establish media; serialized display strings
+    # are not a transport format. Keep pure-text evidence/cache keys unchanged.
+    for index, message in enumerate(raw_messages or []):
+        content = message.get("content")
+        if not isinstance(content, list):
+            continue
+        for part_index, part in enumerate(content):
+            if part.get("type") == "image_url":
+                media.append(deepcopy(part))
+                media_sources.append({
+                    "source_id": f"request_messages/{index}/content/{part_index}",
+                    "type": "image_url",
+                    "sha256": hashlib.sha256(json.dumps(part, sort_keys=True).encode()).hexdigest(),
+                })
+            elif part.get("type") != "text":
+                raise ValueError("Unsupported media in action annotation context")
+    if media:
+        if type(media_prompt_tokens) is not int or media_prompt_tokens <= 0:
+            raise ValueError("Multimodal annotation requires observed provider prompt token usage")
+        context["messages"] = []
+        for message in raw_messages:
+            if message.get("role") not in {"system", "developer", "user"}:
+                continue
+            content = message.get("content", "")
+            text = content if isinstance(content, str) else "\n".join(
+                part["text"] for part in content if part.get("type") == "text"
+            ).strip()
+            if text and (message["role"], text) not in existing:
+                context["messages"].append({"role": message["role"], "content": text})
+        context["media"] = media_sources
     budget = min(judge.input_budget, judge.context_window - judge.output_budget)
 
     def evidence_for(window):
-        return {
+        evidence = {
             "protocol": TRAJECTORY_PROTOCOL,
             "trace_sha256": trace_sha,
             "context": context,
@@ -234,6 +266,13 @@ def annotate_trajectory(
                 "estimator": "utf8-byte-upper-bound-plus-1024",
             },
         }
+        if media:
+            evidence["capacity"].update(
+                estimator="text-utf8-byte-bound-plus-observed-original-prompt-tokens-plus-1024",
+                media_reference_prompt_tokens=media_prompt_tokens,
+                media_budget_basis="Observed original same-provider prompt usage includes these images; an estimate, not a tokenizer guarantee",
+            )
+        return evidence
 
     def fits(window):
         # Conservative bound for byte-based provider tokenizers, including chat
@@ -248,7 +287,7 @@ def annotate_trajectory(
                 "extra_body": judge.extra_body,
             }
         )
-        return len((data + options + judge.prompt).encode("utf8")) + 1024 <= budget
+        return len((data + options + judge.prompt).encode("utf8")) + 1024 + (media_prompt_tokens if media else 0) <= budget
 
     if fits(blocks):
         windows = [blocks]
@@ -282,6 +321,7 @@ def annotate_trajectory(
             prompt=judge.prompt,
             validate=lambda value: validate_segments(value, window),
             max_tokens=judge.output_budget,
+            **({"content_parts": media} if media else {}),
         )
         for row in validate_segments(answer, window):
             identity = (
@@ -496,12 +536,29 @@ class ActionAnnotations(CachedJudge):
                     }
                 )
                 if self.protocol == TRAJECTORY_PROTOCOL:
+                    trace = json.loads(path.read_bytes())
+                    raw_response_path = source.file(record, "response_json")
+                    from alphadiana.results.trace import is_empty_timeout_trace
+                    if raw_response_path is not None and is_empty_timeout_trace(
+                        record, trace, json.loads(raw_response_path.read_bytes())
+                    ):
+                        traces_without_actions.append({
+                            "task_id": record["task_id"],
+                            "sample_index": record.get("sample_index", 0),
+                            "score_status": record.get("score_status"),
+                            "reason": "raw response proves an empty timeout; legacy wrapper is not an action",
+                        })
+                        continue
+                    request_path = source.file(record, "request_messages")
+                    raw_messages = json.loads(request_path.read_bytes()) if request_path else None
                     try:
                         segmented, windows = annotate_trajectory(
                             self,
-                            json.loads(path.read_bytes()),
+                            trace,
                             sources[-1]["sha256"],
                             record.get("problem", ""),
+                            raw_messages=raw_messages,
+                            media_prompt_tokens=record.get("token_usage", {}).get("prompt_tokens"),
                         )
                     except NoSavedAssistantActions:
                         if record.get("score_status") == VALID_SCORE_STATUS:

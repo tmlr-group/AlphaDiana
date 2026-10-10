@@ -102,7 +102,15 @@ class FailureAnnotations(CachedJudge):
                 if path is None:
                     missing += 1
                     continue
-                steps = json.loads(path.read_text())["steps"]
+                saved_trace = json.loads(path.read_text())
+                raw_response_path = source.file(record, "response_json")
+                from alphadiana.results.trace import is_empty_timeout_trace
+                if raw_response_path is not None and is_empty_timeout_trace(
+                    record, saved_trace, json.loads(raw_response_path.read_text())
+                ):
+                    missing += 1
+                    continue
+                steps = saved_trace["steps"]
                 # Content alone omits tool arguments, result linkage/error flags
                 # and thinking. Retain those fields in both judgment and cache identity.
                 trace = "\n".join(

@@ -51,7 +51,7 @@ class CachedJudge:
             base_url=config.base_url, api_key=config.api_key, max_retries=0, timeout=180
         )
 
-    def judge(self, evidence, *, prompt, validate, max_tokens=2048):
+    def judge(self, evidence, *, prompt, validate, max_tokens=2048, content_parts=None):
         request = {
             "model": self.model,
             "model_version": self.model_version,
@@ -63,6 +63,8 @@ class CachedJudge:
             "user_instruction": "Respond with a JSON object.\n",
         }
         request[self.token_limit_parameter] = max_tokens
+        if content_parts:
+            request["content_parts"] = deepcopy(content_parts)
         if self.temperature is not None:
             request["temperature"] = self.temperature
         digest = hashlib.sha256(
@@ -89,7 +91,11 @@ class CachedJudge:
                     {"role": "system", "content": prompt},
                     {
                         "role": "user",
-                        "content": request["user_instruction"] + json.dumps(evidence),
+                        "content": (
+                            [{"type": "text", "text": request["user_instruction"] + json.dumps(evidence)},
+                             *request["content_parts"]]
+                            if content_parts else request["user_instruction"] + json.dumps(evidence)
+                        ),
                     },
                 ],
             )
