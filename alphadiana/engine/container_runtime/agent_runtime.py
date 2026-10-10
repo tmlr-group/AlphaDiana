@@ -214,7 +214,9 @@ class PodmanAgentRuntime:
                 command=list(spec.container_command),
                 detach=True,
                 env=dict(spec.env),
-                workdir=spec.workdir,
+                # A pinned controller image need not contain the task workspace.
+                # Start the container at its root; agent commands use spec.workdir.
+                workdir="/",
                 ports=spec.port_mapping(),
                 network=spec.network,
                 entrypoint=spec.container_entrypoint,
@@ -226,6 +228,13 @@ class PodmanAgentRuntime:
             self._container_id = container_id
             self._runtime_identity = self._inspect_runtime_identity(container_id)
 
+            self._runtime.exec(
+                container_id,
+                ["mkdir", "-p", "--", spec.workdir],
+                workdir="/",
+                timeout=spec.startup_timeout,
+                check=True,
+            )
             self._copy_files(spec, container_id)
             self._run_install_commands(spec, container_id)
             self._process_id = self._launch_process(spec, container_id)
