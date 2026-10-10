@@ -21,7 +21,7 @@ dashboard dependencies:
 source scripts/activate.sh
 pip install -e '.[dashboard]'
 
-cd alphadiana/analysis/dashboard/frontend
+cd alphadiana/dashboard/frontend
 npm install
 cd ../../../..
 ```
@@ -32,7 +32,7 @@ Production mode builds the frontend before serving it from FastAPI.
 ## Start
 
 ```bash
-cd alphadiana/analysis/dashboard
+cd alphadiana/dashboard
 ./run.sh
 ```
 
@@ -42,7 +42,7 @@ The launcher prints the selected URLs. It prefers ports `5173` (frontend) and
 To build and serve the frontend and API together:
 
 ```bash
-cd alphadiana/analysis/dashboard
+cd alphadiana/dashboard
 ./run.sh --prod
 ```
 

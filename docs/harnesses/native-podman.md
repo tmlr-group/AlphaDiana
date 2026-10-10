@@ -101,7 +101,7 @@ incomplete termination enters the native error path.
 ```bash
 python -m pytest -c pyproject.toml tests -q -rs
 ALPHADIANA_NATIVE_IMAGE=sha256:<built-image-id> \
-  python -m pytest -c pyproject.toml tests/test_native_runtime.py -q
+  python -m pytest -c pyproject.toml tests/harness/test_native_runtime.py -q
 ```
 
 The runtime tests use actual Pi/DeepSeek tools and a deterministic HTTP model

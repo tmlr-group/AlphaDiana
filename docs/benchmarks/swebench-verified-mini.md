@@ -242,8 +242,8 @@ which time out the single-shot uploader.
 ## 7. References
 
 - Reference HF run summary: `T-MARS/alphadiana-benchmark-results/full_run/YYYYMMDD-swe-bench-verified-mini-sweagent-qwen35-27b-local-v1/`
-- Renderer: `alphadiana/utils/rollout_campaign.py::_render_official_swebench_verified_command`
-- Dispatch: `alphadiana/utils/rollout_campaign.py::render_run_command`
+- Renderer: `alphadiana/engine/rollout_campaign.py::_render_official_swebench_verified_command`
+- Dispatch: `alphadiana/engine/rollout_campaign.py::render_run_command`
 - CLI: `alphadiana/benchmark_rollout_cli.py`
 - SWE-agent upstream: https://github.com/SWE-agent/SWE-agent
 - SWE-bench harness: https://github.com/SWE-bench/SWE-bench

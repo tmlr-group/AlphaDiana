@@ -9,22 +9,22 @@ import sys
 from pathlib import Path
 from typing import Any, Mapping
 
-from alphadiana.analysis.action_events import extract_action_event_rows
-from alphadiana.analysis.insight_cases import select_insight_case_anchors
-from alphadiana.analysis.insight_corpus import (
+from alphadiana.analysis.actions.events import extract_action_event_rows
+from alphadiana.analysis.insights.cases import select_insight_case_anchors
+from alphadiana.analysis.insights.corpus import (
     ENV_CORPUS_VARS,
     build_denominator_ledger,
     load_phase15_corpus_specs,
     load_selected_task_records,
 )
-from alphadiana.analysis.insight_measurements import build_insight_claims
-from alphadiana.analysis.insight_reports import write_phase15_outputs
-from alphadiana.analysis.result_reader import load_run_bundle
-from alphadiana.analysis.trajectory_metrics import compute_outcome_conditioned_metrics
+from alphadiana.analysis.insights.measurements import build_insight_claims
+from alphadiana.analysis.insights.reports import write_phase15_outputs
+from alphadiana.analysis.io.result_reader import load_run_bundle
+from alphadiana.analysis.actions.metrics import compute_outcome_conditioned_metrics
 
 DEFAULT_OUTPUT_DIR = Path("results/phase15_behavior_insights")
 DEFAULT_MEASUREMENT_SUMMARY = (
-    Path(__file__).resolve().parent / "analyze_tools" / "data" / "measurement_summary.json"
+    Path(__file__).resolve().parents[3] / "scripts" / "paper_analysis" / "data" / "measurement_summary.json"
 )
 PHASE15_INPUT_ENV_VARS = (
     "PHASE15_HLE_OPENCODE_LOGPROBS",

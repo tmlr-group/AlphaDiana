@@ -1,5 +1,5 @@
 """Compatibility exports; canonical implementation: analysis.action_report."""
-from alphadiana.analysis.action_report import (
+from alphadiana.analysis.actions.report import (
     _field_order,
     write_feature_csv,
     write_json,

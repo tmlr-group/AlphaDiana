@@ -7,11 +7,11 @@ import argparse
 import sys
 from pathlib import Path
 
-from alphadiana.analysis.action_features import build_record_feature_rows
-from alphadiana.analysis.clustering import cluster_analysis_views
-from alphadiana.analysis.reliability import compute_reliability_summary
-from alphadiana.analysis.action_report import render_markdown_report, write_feature_csv, write_json
-from alphadiana.analysis.result_reader import load_run_bundle
+from alphadiana.analysis.actions.features import build_record_feature_rows
+from alphadiana.analysis.actions.clustering import cluster_analysis_views
+from alphadiana.analysis.run_summary import compute_reliability_summary
+from alphadiana.analysis.actions.report import render_markdown_report, write_feature_csv, write_json
+from alphadiana.analysis.io.result_reader import load_run_bundle
 
 
 def _build_parser() -> argparse.ArgumentParser:

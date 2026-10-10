@@ -92,7 +92,7 @@ ZeroClaw benchmark smoke is documented only for sandboxed execution:
 Start ROCK first:
 
 ```bash
-bash scripts/start_zeroclaw.sh
+bash scripts/setup/start_zeroclaw.sh
 source scripts/rock_env.sh
 ```
 

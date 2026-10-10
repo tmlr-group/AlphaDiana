@@ -158,12 +158,12 @@ Dashboard dependencies are optional and are not installed by `quickstart.sh`:
 
 ```bash
 pip install -e '.[dashboard]'
-cd alphadiana/analysis/dashboard/frontend && npm install
+cd alphadiana/dashboard/frontend && npm install
 ```
 
 <p align="center">
-  <img src="./assets/dashboard_0.png" width="50%" alt="Dashboard — Results view">
-  <img src="./assets/dashboard_2.png" width="47%" alt="Dashboard — New Evaluation">
+  <img src="./docs/assets/dashboard_0.png" width="50%" alt="Dashboard — Results view">
+  <img src="./docs/assets/dashboard_2.png" width="47%" alt="Dashboard — New Evaluation">
 </p>
 
 ### Dashboard features

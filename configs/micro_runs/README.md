@@ -48,7 +48,7 @@ docker build --network host \
   -f alphadiana/harness/zeroclaw/deploy/Dockerfile \
   -t zeroclaw-reasoning:0.6.9 .
 
-bash scripts/start_zeroclaw.sh
+bash scripts/setup/start_zeroclaw.sh
 source scripts/rock_env.sh
 
 export OPENAI_BASE_URL=http://HOST_REACHABLE_FROM_SANDBOX:PORT/v1

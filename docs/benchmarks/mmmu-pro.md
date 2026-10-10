@@ -70,7 +70,7 @@ export HF_HOME=<hf-cache-dir>
 export HF_DATASETS_CACHE=<hf-datasets-cache-dir>
 export PODMAN_MMMU_RUN_PREFIX=podman_mmmu_pro_$(date +%Y%m%d_%H%M%S)
 
-bash scripts/run_podman_mmmu_pro_readiness.sh all
+bash scripts/validation/run_podman_mmmu_pro_readiness.sh all
 ```
 
 The patched preflight runs inside Podman, keeps thinking mode on, uses at
@@ -222,7 +222,7 @@ ZeroClaw benchmark smoke is documented only for sandboxed execution:
 Start ROCK first:
 
 ```bash
-bash scripts/start_zeroclaw.sh
+bash scripts/setup/start_zeroclaw.sh
 source scripts/rock_env.sh
 ```
 

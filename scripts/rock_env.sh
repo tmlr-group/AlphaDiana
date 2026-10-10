@@ -66,7 +66,7 @@ fi
 
 if [ ! -d "${_rock_env_rock_root}" ]; then
   echo "ROCK repository not found at ${_rock_env_rock_root}" >&2
-  echo "Set ALPHADIANA_ROCK_ROOT=/abs/path/to/ROCK or run bash scripts/quickstart.sh" >&2
+  echo "Set ALPHADIANA_ROCK_ROOT=/abs/path/to/ROCK or run bash scripts/setup/quickstart.sh" >&2
   return 1 2>/dev/null || exit 1
 fi
 

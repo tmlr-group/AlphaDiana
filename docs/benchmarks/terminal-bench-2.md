@@ -37,7 +37,7 @@ Entry points:
 - Config:
   `configs/macro_runs/terminal_bench2_opencode_qwen35_27b.yaml`
 - Runner:
-  `scripts/run_podman_terminal_bench2_readiness.sh`
+  `scripts/validation/run_podman_terminal_bench2_readiness.sh`
 
 Run shape:
 
@@ -50,10 +50,10 @@ export TB2_OPENCODE_RUNTIME_IMAGE=localhost/alphadiana/tb2-opencode-controller:l
 export ALPHADIANA_TB2_LOGS_DIR="$PWD/logs/podman-terminal-bench2-readiness/task-logs"
 export PODMAN_TB2_RUN_PREFIX=podman_tb2_$(date +%Y%m%d_%H%M%S)
 
-bash scripts/run_podman_terminal_bench2_readiness.sh validate
-bash scripts/run_podman_terminal_bench2_readiness.sh preflight
-bash scripts/run_podman_terminal_bench2_readiness.sh pilot
-bash scripts/run_podman_terminal_bench2_readiness.sh audit
+bash scripts/validation/run_podman_terminal_bench2_readiness.sh validate
+bash scripts/validation/run_podman_terminal_bench2_readiness.sh preflight
+bash scripts/validation/run_podman_terminal_bench2_readiness.sh pilot
+bash scripts/validation/run_podman_terminal_bench2_readiness.sh audit
 ```
 
 Passing evidence:
@@ -266,7 +266,7 @@ The intended campaign command runs `harbor run --dataset terminal-bench@2.0 --ag
 terminus-2 --model openai/qwen3.5-27b ...` at `temperature=0.0`,
 `reasoning_effort=high`, `top_p=0.95`, `max_tokens=131072`, `--n-concurrent 10`
 (pass@1). Outputs land in `$DIRECTLLM_TB2_ROOT/jobs/<run_id>/`. Renderer and
-dispatch live in `alphadiana/utils/rollout_campaign.py`
+dispatch live in `alphadiana/engine/rollout_campaign.py`
 (`_render_official_tb2_command`, `render_run_command`); Harbor upstream is
 [github.com/laude-institute/harbor](https://github.com/laude-institute/harbor).
 

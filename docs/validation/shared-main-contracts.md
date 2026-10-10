@@ -43,7 +43,7 @@ The old methods remain static implementations in the main source tree, callable 
 
 ## Acceptance evidence
 
-`tests/test_shared_main_contracts.py` covers canonical/legacy identity, registry isolation and replacement, fresh-process discovery, optional import boundaries, raw/compact candidate and attribution preservation, all four statistics consumers, failed retries, missing tasks/samples, count-only manifests and callable historical action methods. The #108 regressions still exercise default-mode DirectLLM persistence and actual localhost streaming failures.
+`tests/integration/test_shared_main_contracts.py` covers canonical/legacy identity, registry isolation and replacement, fresh-process discovery, optional import boundaries, raw/compact candidate and attribution preservation, all four statistics consumers, failed retries, missing tasks/samples, count-only manifests and callable historical action methods. The #108 regressions still exercise default-mode DirectLLM persistence and actual localhost streaming failures.
 
 Delivery receipts identify the exact source tree and actual test results. Installed-wheel checks must run outside the checkout and verify imports, registration, public API operation and packaged skill bytes. The frontend contract is unchanged by this refactor; backend response and unit tests cover its existing fields.
 

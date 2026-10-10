@@ -9,15 +9,15 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from alphadiana.analysis.action_events import extract_action_event_rows, inventory_corpus, select_directllm_baseline
-from alphadiana.analysis.case_studies import select_case_studies
-from alphadiana.analysis.result_reader import load_run_bundle
-from alphadiana.analysis.trajectory_metrics import compute_outcome_conditioned_metrics
-from alphadiana.analysis.trajectory_reports import write_phase14_outputs
+from alphadiana.analysis.actions.events import extract_action_event_rows, inventory_corpus, select_directllm_baseline
+from alphadiana.analysis.actions.cases import select_case_studies
+from alphadiana.analysis.io.result_reader import load_run_bundle
+from alphadiana.analysis.actions.metrics import compute_outcome_conditioned_metrics
+from alphadiana.analysis.actions.trajectory_reports import write_phase14_outputs
 
 DEFAULT_OUTPUT_DIR = Path("results/phase14_gpqa_trajectory_analysis")
 DEFAULT_MEASUREMENT_SUMMARY = (
-    Path(__file__).resolve().parent / "analyze_tools" / "data" / "measurement_summary.json"
+    Path(__file__).resolve().parents[3] / "scripts" / "paper_analysis" / "data" / "measurement_summary.json"
 )
 DEFAULT_PRIMARY_RUNS = {
     "openclaw": "full_gpqa_v2_openclaw_qwen35_27b_logprobs",

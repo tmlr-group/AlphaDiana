@@ -34,13 +34,13 @@ No fields are borrowed from draft #82 without checking their units.
 
 ## Validation scope
 
-`tests/test_main_review_regressions.py` exercises a real localhost HTTP provider,
+`tests/integration/test_main_review_regressions.py` exercises a real localhost HTTP provider,
 ResultStore sidecars, streaming stalls (headers, first chunk, partial text, and
 keepalive-only streams), incomplete/invalid/retried reports and simultaneous jobs.
-`tests/test_api_pipeline_demo.py` uses the default DirectLLM format through the
+`tests/api/test_api_pipeline_demo.py` uses the default DirectLLM format through the
 public Runner API, rescores saved evidence and exports analysis figures.
 
-`tests/test_packaged_runtime_resources.py` checks resource lookup from an unrelated
+`tests/integration/test_packaged_runtime_resources.py` checks resource lookup from an unrelated
 working directory. Release checks must also run it against an installed wheel,
 compare packaged skill resources with the source snapshot, and build/lint the
 dashboard. Exact command results and tested commits are recorded on the delivery PR.

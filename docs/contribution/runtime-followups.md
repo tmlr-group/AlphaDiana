@@ -12,7 +12,7 @@ the [Podman runbook](../benchmarks/podman.md).
 | ZeroClaw port consistency | `agent.config.bridge_port` controls the bridge listener, container exposure, health probe, and published API URL. Invalid or unavailable ports fail before evaluation begins. |
 | Local and remote proxy routing | Podman host aliases, loopback names, and the selected provider are added consistently to `NO_PROXY` and `no_proxy`. Remote providers can continue to use the operator's outbound proxy. |
 | Image compatibility | The runtime overrides task-specific image entrypoints, checks the required shell, interpreter, modules, and agent binary, and records the resolved image identity and preflight output. |
-| Readiness gate | `scripts/run_podman_scale_readiness.sh gate` runs every pilot cell and then audits results, logs, provenance, and artifacts. A scored answer may be correct or incorrect; missing or invalid execution evidence fails the gate. |
+| Readiness gate | `scripts/validation/run_podman_scale_readiness.sh gate` runs every pilot cell and then audits results, logs, provenance, and artifacts. A scored answer may be correct or incorrect; missing or invalid execution evidence fails the gate. |
 | OpenClaw version contract | Podman configs declare the version installed by the repository image. Startup verifies `openclaw --version` against that declaration and records the expected version in runtime metadata. |
 
 OpenClaw runtime-managed paths generate a strong gateway token when a standalone
@@ -26,11 +26,11 @@ After changing one of these paths, check the launcher syntax and config matrix
 before a real smoke:
 
 ```bash
-bash -n scripts/run_podman_scale_readiness.sh
+bash -n scripts/validation/run_podman_scale_readiness.sh
 
 export OPENCLAW_GATEWAY_TOKEN="$(python3 -c \
   'import secrets; print(secrets.token_urlsafe(32))')"
-bash scripts/run_podman_scale_readiness.sh validate
+bash scripts/validation/run_podman_scale_readiness.sh validate
 ```
 
 For release evidence, use `gate`, keep its raw logs and audit report, and inspect

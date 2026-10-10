@@ -20,7 +20,7 @@ from alphadiana.analysis.resource_usage import (
     UsageExtractor,
     measured_usage,
 )
-from alphadiana.analysis.reliability import compute_reliability_summary
+from alphadiana.analysis.run_summary import compute_reliability_summary
 from alphadiana.artifacts import Artifacts
 
 
@@ -345,8 +345,8 @@ class Analyzer:
         if len({a.path.stem for a in self.artifacts}) != len(self.artifacts):
             raise ValueError("Artifact run names must be unique across a comparison")
         if plugins is None:
-            from alphadiana.analysis.entropy_analysis import EntropyAnalysis
-            from alphadiana.analysis.process_entropy import RequestEntropy
+            from alphadiana.analysis.entropy import EntropyAnalysis
+            from alphadiana.analysis.entropy import RequestEntropy
 
             self.plugins = [ExecutionMetrics(), RequestEntropy(), EntropyAnalysis()]
         else:
@@ -359,8 +359,8 @@ class Analyzer:
         with ExitStack() as stack:
             plugins = list(self.plugins)
             if self._judge_options is not None:
-                from alphadiana.analysis.action_annotations import ActionAnnotations
-                from alphadiana.analysis.failure_annotations import FailureAnnotations
+                from alphadiana.analysis.annotations.actions import ActionAnnotations
+                from alphadiana.analysis.annotations.failures import FailureAnnotations
 
                 for factory, directory in (
                     (ActionAnnotations, "actions"),

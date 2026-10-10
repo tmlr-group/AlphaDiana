@@ -73,7 +73,7 @@ shared caches and container daemons must not be reconfigured for this campaign.
 Run from a clean checkout, with output outside that checkout:
 
 ```bash
-python scripts/validate_api_matrix.py configs/acceptance/api/manifest.json \
+python scripts/validation/validate_api_matrix.py configs/acceptance/api/manifest.json \
   --output "$AD_ACCEPTANCE_WORK/acceptance"
 ```
 
@@ -102,7 +102,7 @@ python -m alphadiana run configs/acceptance/api/aime2026_directllm.yaml
 Or validate one configuration through the public Python API with the test driver:
 
 ```bash
-python scripts/validate_api_matrix.py configs/acceptance/api/manifest.json \
+python scripts/validation/validate_api_matrix.py configs/acceptance/api/manifest.json \
   --only aime2026_directllm --output "$AD_ACCEPTANCE_WORK/receipts"
 ```
 

@@ -76,20 +76,20 @@ The first dataset load may download files. For an existing offline installation,
 Generate the provider-specific settings once:
 
 ```bash
-python scripts/prepare_smoke_matrix.py --provider "$PROVIDER" --output "$SMOKE_ROOT/configs"
+python scripts/validation/prepare_smoke_matrix.py --provider "$PROVIDER" --output "$SMOKE_ROOT/configs"
 ```
 
 For all five datasets:
 
 ```bash
-python scripts/validate_api_matrix.py "$SMOKE_ROOT/configs/manifest.json" \
+python scripts/validation/validate_api_matrix.py "$SMOKE_ROOT/configs/manifest.json" \
   --output "$SMOKE_ROOT/receipts"
 ```
 
 For a shorter first check, use the following command **instead of** the all-five command:
 
 ```bash
-python scripts/validate_api_matrix.py "$SMOKE_ROOT/configs/manifest.json" \
+python scripts/validation/validate_api_matrix.py "$SMOKE_ROOT/configs/manifest.json" \
   --only gpqa_directllm hle_directllm --output "$SMOKE_ROOT/receipts"
 ```
 
@@ -104,14 +104,14 @@ Always use a fresh run directory for a rerun and retain the failed attempt separ
 Once generation finishes, export statistics for every saved dataset without further model calls:
 
 ```bash
-python scripts/analyze_smoke.py "$AD_ACCEPTANCE_RESULTS"/smoke_"${PROVIDER}"_*.jsonl \
+python scripts/validation/analyze_smoke.py "$AD_ACCEPTANCE_RESULTS"/smoke_"${PROVIDER}"_*.jsonl \
   --provider "$PROVIDER" --output "$SMOKE_ROOT/analysis-statistics"
 ```
 
 To exercise the complete LLM analysis path on the six GPQA/HLE traces:
 
 ```bash
-python scripts/analyze_smoke.py \
+python scripts/validation/analyze_smoke.py \
   "$AD_ACCEPTANCE_RESULTS/smoke_${PROVIDER}_gpqa_directllm.jsonl" \
   "$AD_ACCEPTANCE_RESULTS/smoke_${PROVIDER}_hle_directllm.jsonl" \
   --provider "$PROVIDER" --judge --output "$SMOKE_ROOT/analysis-with-llm"

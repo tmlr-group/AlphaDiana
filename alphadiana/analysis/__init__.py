@@ -1,12 +1,12 @@
 """Offline analysis helpers for persisted AlphaDiana result artifacts."""
 
-from alphadiana.analysis.result_reader import (
+from alphadiana.analysis.io.result_reader import (
     RunBundle,
     load_jsonl_records,
     load_run_bundle,
     resolve_run_relative_path,
 )
-from alphadiana.analysis.action_events import (
+from alphadiana.analysis.actions.events import (
     ACTION_LABEL_CONFIDENCES,
     ACTION_PRIORITY,
     BACKUP_EXCLUDE_PREFIX,
@@ -26,16 +26,16 @@ from alphadiana.analysis.action_events import (
     observation_status_from_text,
     select_directllm_baseline,
 )
-from alphadiana.analysis.action_features import build_record_feature_rows
-from alphadiana.analysis.case_studies import (
+from alphadiana.analysis.actions.features import build_record_feature_rows
+from alphadiana.analysis.actions.cases import (
     CASE_STUDY_MOTIFS,
     select_case_studies,
     summarize_event_sequence,
 )
-from alphadiana.analysis.clustering import cluster_analysis_views, cluster_rows
-from alphadiana.analysis.reliability import compute_reliability_summary
-from alphadiana.analysis.action_report import render_markdown_report, write_feature_csv, write_json
-from alphadiana.analysis.trajectory_metrics import (
+from alphadiana.analysis.actions.clustering import cluster_analysis_views, cluster_rows
+from alphadiana.analysis.run_summary import compute_reliability_summary
+from alphadiana.analysis.actions.report import render_markdown_report, write_feature_csv, write_json
+from alphadiana.analysis.actions.metrics import (
     ERROR_STATUSES,
     MAIN_METRIC_NAMES,
     compute_outcome_conditioned_metrics,
@@ -47,12 +47,12 @@ from alphadiana.analysis.trajectory_metrics import (
     has_tool_grounded_reasoning,
     trajectory_key,
 )
-from alphadiana.analysis.trajectory_reports import (
+from alphadiana.analysis.actions.trajectory_reports import (
     render_chinese_discussion,
     render_latex_appendix,
     write_phase14_outputs,
 )
-from alphadiana.analysis.insight_corpus import (
+from alphadiana.analysis.insights.corpus import (
     CorpusInventoryRow,
     CorpusSpec,
     build_denominator_ledger,
@@ -62,17 +62,17 @@ from alphadiana.analysis.insight_corpus import (
     sanitize_path_text,
     write_denominator_ledger,
 )
-from alphadiana.analysis.insight_measurements import (
+from alphadiana.analysis.insights.measurements import (
     INSIGHT_MECHANISMS,
     InsightClaim,
     build_insight_claims,
 )
-from alphadiana.analysis.insight_cases import (
+from alphadiana.analysis.insights.cases import (
     CASE_ANCHOR_TYPES,
     case_anchor_id,
     select_insight_case_anchors,
 )
-from alphadiana.analysis.insight_reports import (
+from alphadiana.analysis.insights.reports import (
     PHASE15_OUTPUT_FILENAMES,
     render_behavior_insights_markdown,
     render_behavior_insights_zh,

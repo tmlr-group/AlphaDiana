@@ -120,7 +120,7 @@ def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
                 click.echo(f"  ✗ {svc}: {err}", err=True)
             click.echo(
                 "\nFix: regenerate isolated ports with "
-                "'python scripts/find_rock_ports.py --write-env scripts/.rock_ports.env' "
+                "'python scripts/setup/find_rock_ports.py --write-env scripts/.rock_ports.env' "
                 "and restart ROCK services from this checkout.",
                 err=True,
             )
@@ -350,15 +350,15 @@ def env():
         click.echo()
         if ownership_failures:
             click.echo("Isolation fix:")
-            click.echo("  python scripts/find_rock_ports.py --write-env scripts/.rock_ports.env")
+            click.echo("  python scripts/setup/find_rock_ports.py --write-env scripts/.rock_ports.env")
             click.echo("  source scripts/activate.sh")
-            click.echo("  bash scripts/start_openclaw.sh   # or bash scripts/start_zeroclaw.sh")
+            click.echo("  bash scripts/setup/start_openclaw.sh   # or bash scripts/setup/start_zeroclaw.sh")
             click.echo()
         click.echo("To start services, run:")
-        click.echo("  bash scripts/start_openclaw.sh   # or bash scripts/start_zeroclaw.sh")
-        click.echo("  # both paths run scripts/security_guard.py --check first")
+        click.echo("  bash scripts/setup/start_openclaw.sh   # or bash scripts/setup/start_zeroclaw.sh")
+        click.echo("  # both paths run scripts/setup/security_guard.py --check first")
         click.echo()
-        click.echo("Or start manually (remember to run scripts/security_guard.py --check first):")
+        click.echo("Or start manually (remember to run scripts/setup/security_guard.py --check first):")
         click.echo("  # Redis")
         click.echo(
             f"  docker run -d --name {redis_container} -p 127.0.0.1:{ports.redis_port}:6379 "

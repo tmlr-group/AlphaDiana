@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Sequence
 
-from alphadiana.utils.rollout_campaign import (
+from alphadiana.engine.rollout_campaign import (
     DEFAULT_MANIFEST_PATH,
     collect_preflight_failures,
     expand_campaign,

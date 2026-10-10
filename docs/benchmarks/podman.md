@@ -75,7 +75,7 @@ it:
 ```bash
 export OPENCLAW_GATEWAY_TOKEN="$(python3 -c \
   'import secrets; print(secrets.token_urlsafe(32))')"
-python scripts/security_guard.py --check
+python scripts/setup/security_guard.py --check
 ```
 
 ## Network choices
@@ -109,8 +109,8 @@ Validate before making real provider requests:
 
 ```bash
 export PODMAN_SCALE_RUN_PREFIX=podman_scale_$(date +%Y%m%d_%H%M%S)
-bash scripts/run_podman_scale_readiness.sh validate
-bash scripts/run_podman_scale_readiness.sh gate
+bash scripts/validation/run_podman_scale_readiness.sh validate
+bash scripts/validation/run_podman_scale_readiness.sh gate
 ```
 
 `gate` attempts every matrix cell, preserves each exit code and raw log, and

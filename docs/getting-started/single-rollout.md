@@ -156,7 +156,7 @@ verifies that orphan cleanup removes only its execution, including on retry:
 
 ```bash
 ALPHADIANA_LIFECYCLE_IMAGE=sha256:<installed-image-with-sleep> \
-  python -m pytest tests/test_native_cleanup_runtime.py -q
+  python -m pytest tests/engine/test_native_cleanup_runtime.py -q
 ```
 
 This tests the real cleanup primitive, not a killed Pi process or a live model.
@@ -182,8 +182,8 @@ To reproduce the EvoX seed smoke after installing both repositories in one
 environment, use a clean checkout at the commit above:
 
 ```bash
-python scripts/validate_evox_evaluator.py /path/to/skydiscover
-python scripts/validate_evox_evaluator.py /path/to/skydiscover --invalid-source
+python scripts/validation/validate_evox_evaluator.py /path/to/skydiscover
+python scripts/validation/validate_evox_evaluator.py /path/to/skydiscover --invalid-source
 ```
 
 These commands require the companion [Hebe EvoX error-handling fix](https://github.com/AndrewZhou924/AlphaHebe-dev/pull/16). They invoke
@@ -199,8 +199,8 @@ To replay the accepted ALE candidate using the pinned installed ALE checkout,
 cached published data (`ahc027.zip` and `problem_ids_lite.txt`), and Docker:
 
 ```bash
-python scripts/validate_ale_evaluator.py /path/to/ALE-Bench /path/to/data \
-  scripts/fixtures/ahc027_dfs.cpp
+python scripts/validation/validate_ale_evaluator.py /path/to/ALE-Bench /path/to/data \
+  scripts/validation/fixtures/ahc027_dfs.cpp
 ```
 
 The script verifies the clean source commit and dataset digest and reports the

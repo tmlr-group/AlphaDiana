@@ -189,7 +189,7 @@ Unlike the AIME quickstart in the main `README.md`, the formal benchmark smoke h
 Start ROCK first:
 
 ```bash
-bash scripts/start_zeroclaw.sh
+bash scripts/setup/start_zeroclaw.sh
 source scripts/rock_env.sh
 ```
 

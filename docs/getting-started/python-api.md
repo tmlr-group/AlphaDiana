@@ -41,7 +41,7 @@ Model service setup and container installation remain explicit prerequisites.
 For a local pipeline check, run:
 
 ```bash
-python -m pytest -q tests/test_api_pipeline_demo.py
+python -m pytest -q tests/api/test_api_pipeline_demo.py
 ```
 
 This uses the actual DirectLLM client against a local HTTP fixture with three
@@ -240,9 +240,9 @@ plugins retain their own lifecycle:
 
 ```python
 from alphadiana.analysis.analyzer import ExecutionMetrics
-from alphadiana.analysis.entropy_analysis import EntropyAnalysis
-from alphadiana.analysis.action_annotations import ActionAnnotations
-from alphadiana.analysis.failure_annotations import FailureAnnotations
+from alphadiana.analysis.entropy import EntropyAnalysis
+from alphadiana.analysis.annotations.actions import ActionAnnotations
+from alphadiana.analysis.annotations.failures import FailureAnnotations
 
 execution = ExecutionMetrics()
 entropy = EntropyAnalysis(bin_ratio=2, min_observations=5)
@@ -301,7 +301,7 @@ To run the retained character method explicitly, use your historical taxonomy
 and an independent output directory:
 
 ```python
-from alphadiana.analysis.action_annotations import ActionAnnotations
+from alphadiana.analysis.annotations.actions import ActionAnnotations
 
 with ActionAnnotations(
     protocol="custom-spans-v1",
@@ -318,8 +318,8 @@ with ActionAnnotations(
 This retains the old rule for choosing boundaries and still uses a model for
 labels. For the separate, fully deterministic historical method, explicitly call
 `extract_action_event_rows(bundle, harness="directllm")` from
-`alphadiana.analysis.action_events`; `bundle` is a `RunBundle` loaded through
-`alphadiana.analysis.result_reader.load_run_bundle`. Neither method replaces the
+`alphadiana.analysis.actions.events`; `bundle` is a `RunBundle` loaded through
+`alphadiana.analysis.io.result_reader.load_run_bundle`. Neither method replaces the
 LLM default. Compare their outputs as different measurements.
 
 All new action reports declare `calibration_inherited: false`. Sharing six label
@@ -361,7 +361,7 @@ without renaming artifacts or changing measured values:
 ```python
 from copy import deepcopy
 from alphadiana.analysis.analyzer import ExecutionMetrics
-from alphadiana.analysis.entropy_analysis import EntropyAnalysis
+from alphadiana.analysis.entropy import EntropyAnalysis
 
 class DisplayLabels:
     def __init__(self, plugin, labels):
