@@ -635,6 +635,12 @@ def _render(plt, spec: dict, rows: list[dict]):
             ax.set_visible(False)
         return fig
     categories = list(dict.fromkeys(str(r[x]) for r in rows))
+    # Long or numerous run labels collide on a shared horizontal category axis.
+    # Reuse the horizontal renderer without changing saved measurements/specs.
+    if spec["kind"] == "bar" and (
+        len(categories) > 8 or any(len(label) > 18 for label in categories)
+    ):
+        return _render(plt, {**spec, "kind": "barh"}, rows)
     category_labels = [
         textwrap.fill(c, 24)
         if spec["kind"] == "stacked_barh"
