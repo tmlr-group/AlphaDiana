@@ -5,8 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from alphadiana.analysis.io.result_store import ResultStore
-from alphadiana.analysis.run_summary import ReportGenerator
+from alphadiana.results.store import ResultStore
+from alphadiana.analysis.export import ReportGenerator
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.engine.config.experiment_config import ExperimentConfig
 from alphadiana.engine.runner import Runner

@@ -203,7 +203,7 @@ and special-case `"frozen"` to suppress the post-task memory store. See
 ## Where results land
 
 Scored results are written by `ResultStore`
-(`alphadiana/analysis/io/result_store.py`): one redacted JSON record per
+(`alphadiana/results/store.py`): one redacted JSON record per
 `(task_id, sample_index)` appended to `{run_id}.jsonl`, plus per-task JSON sample
 lists (even when `num_samples=1`),
 artifacts, and logprob sidecars under `{run_id}/`. See

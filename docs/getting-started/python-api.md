@@ -127,13 +127,14 @@ image and invokes only the verifier.
 
 ## Optional historical data adapter
 
-The archive adapter reads the supplied frozen numerical inputs without running
+This optional operator requires a source checkout; it is not installed in the
+`alphadiana` wheel. The paper-table loader reads frozen numerical inputs without running
 legacy scripts, changing archived files, or embedding result constants in code:
 
 ```python
-from alphadiana.analysis.paper_archive import PaperArchive
+from scripts.paper_analysis.load_figure_tables import PaperFigureTables
 
-archive = PaperArchive("/path/to/paper-figures")
+archive = PaperFigureTables("/path/to/paper-figures")
 paper = ad.analyzer([], plugins=[archive])
 paper.export("figures/archive")
 ```
@@ -239,10 +240,10 @@ them raises rather than silently overriding plugin configuration. Caller-created
 plugins retain their own lifecycle:
 
 ```python
-from alphadiana.analysis.analyzer import ExecutionMetrics
-from alphadiana.analysis.entropy import EntropyAnalysis
-from alphadiana.analysis.annotations.actions import ActionAnnotations
-from alphadiana.analysis.annotations.failures import FailureAnnotations
+from alphadiana.analysis.pipeline import ExecutionMetrics
+from alphadiana.analysis.measurements import EntropyAnalysis
+from alphadiana.analysis.actions.llm_annotations import ActionAnnotations
+from alphadiana.analysis.failure_annotations import FailureAnnotations
 
 execution = ExecutionMetrics()
 entropy = EntropyAnalysis(bin_ratio=2, min_observations=5)
@@ -260,7 +261,7 @@ The normal case makes one judge request per trajectory, not one per action.
 No `action_targets` artifact or rule-based split is required.
 
 The classifier reuses the definitions and operational rules from the canonical
-[human protocol](../../alphadiana/analysis/action_prompt.md), including the priority
+[human protocol](../../alphadiana/analysis/actions/action_prompt.md), including the priority
 Finalization > Tool Use > Verification > Reasoning > Planning > Understanding
 between functions actually evidenced by a span. It does not use keyword labels.
 The model chooses ranges inside logged text; Python validates ordered, complete,
@@ -301,7 +302,7 @@ To run the retained character method explicitly, use your historical taxonomy
 and an independent output directory:
 
 ```python
-from alphadiana.analysis.annotations.actions import ActionAnnotations
+from alphadiana.analysis.actions.llm_annotations import ActionAnnotations
 
 with ActionAnnotations(
     protocol="custom-spans-v1",
@@ -318,8 +319,8 @@ with ActionAnnotations(
 This retains the old rule for choosing boundaries and still uses a model for
 labels. For the separate, fully deterministic historical method, explicitly call
 `extract_action_event_rows(bundle, harness="directllm")` from
-`alphadiana.analysis.actions.events`; `bundle` is a `RunBundle` loaded through
-`alphadiana.analysis.io.result_reader.load_run_bundle`. Neither method replaces the
+`alphadiana.analysis.actions.keyword_baseline`; `bundle` is a `RunBundle` loaded through
+`alphadiana.results.reader.load_run_bundle`. Neither method replaces the
 LLM default. Compare their outputs as different measurements.
 
 All new action reports declare `calibration_inherited: false`. Sharing six label
@@ -360,8 +361,8 @@ without renaming artifacts or changing measured values:
 
 ```python
 from copy import deepcopy
-from alphadiana.analysis.analyzer import ExecutionMetrics
-from alphadiana.analysis.entropy import EntropyAnalysis
+from alphadiana.analysis.pipeline import ExecutionMetrics
+from alphadiana.analysis.measurements import EntropyAnalysis
 
 class DisplayLabels:
     def __init__(self, plugin, labels):

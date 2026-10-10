@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence
 
-from alphadiana.analysis.io.status import VALID_SCORE_STATUS, infer_score_status
+from alphadiana.results.status import VALID_SCORE_STATUS, infer_score_status
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.engine.config.experiment_config import (
     ExperimentConfig,

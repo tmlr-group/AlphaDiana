@@ -152,7 +152,7 @@ incomplete and are retried.
 (`ExperimentConfig.__post_init__`), and any `/` in the value is replaced with `_` so the id
 is always a safe path segment.
 
-Given `run_id: my-run`, the result store (`alphadiana/analysis/io/result_store.py`) writes:
+Given `run_id: my-run`, the result store (`alphadiana/results/store.py`) writes:
 
 ```
 results/

@@ -233,7 +233,7 @@ Re-invoking the same config **resumes**: `run` loads the existing `<run_id>` rec
 skips already-completed tasks (or samples, when `num_samples > 1`) unless `--redo-all` is
 given. The checkpoint source of truth is `output_dir/<run_id>.jsonl`; the
 manifest, task JSON, lifecycle events, and artifacts live under
-`output_dir/<run_id>/` (see `alphadiana/analysis/io/result_store.py`).
+`output_dir/<run_id>/` (see `alphadiana/results/store.py`).
 
 ## Editing configs
 

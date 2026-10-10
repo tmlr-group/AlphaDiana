@@ -5,7 +5,7 @@ import json
 import pytest
 
 import alphadiana as ad
-from alphadiana.analysis.io.result_store import ResultStore
+from alphadiana.results.store import ResultStore
 from alphadiana.artifacts import Artifacts
 from alphadiana.benchmarks.base import Benchmark, BenchmarkTask
 from alphadiana.benchmarks.registry import BenchmarkRegistry

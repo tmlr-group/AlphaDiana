@@ -339,7 +339,7 @@ echo "      Ray address in config = ${RAY_GCS_ADDRESS}"
 echo "[5/6] Starting ROCK admin (port ${ROCK_ADMIN_PORT})..."
 (
     cd "${ROCK_ROOT}"
-    nohup "${PYTHON}" ../../scripts/setup/run_rock_admin_local.py \
+    nohup "${PYTHON}" "$SCRIPT_DIR/run_rock_admin_local.py" \
         --env local-proxy --role admin --port "${ROCK_ADMIN_PORT}" \
         < /dev/null > "${LOG_DIR}/rock-admin.log" 2>&1 &
     disown || true
@@ -386,7 +386,7 @@ done
 echo "      Starting ROCK proxy (port ${ROCK_PROXY_PORT})..."
 (
     cd "${ROCK_ROOT}"
-    nohup "${PYTHON}" ../../scripts/setup/run_rock_admin_local.py \
+    nohup "${PYTHON}" "$SCRIPT_DIR/run_rock_admin_local.py" \
         --env local-proxy --role proxy --port "${ROCK_PROXY_PORT}" \
         < /dev/null > "${LOG_DIR}/rock-proxy.log" 2>&1 &
     disown || true

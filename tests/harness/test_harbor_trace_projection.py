@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 from tests.analysis.action_target_fixtures import attach_targets, fixed_item
-from alphadiana.analysis.annotations.actions import ActionAnnotations
-from alphadiana.analysis.analyzer import ExecutionMetrics
-from alphadiana.analysis.io.result_store import ResultStore
+from alphadiana.analysis.actions.llm_annotations import ActionAnnotations
+from alphadiana.analysis.measurements import ExecutionMetrics
+from alphadiana.results.store import ResultStore
 from alphadiana.artifacts import Artifacts
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.benchmarks.swe_bench.sweagent import project_sweagent_history

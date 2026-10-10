@@ -9,29 +9,36 @@ from pathlib import Path
 import pytest
 
 
-@pytest.mark.parametrize(
-    "old,new,name",
-    [
-        (
-            "analysis.action_annotations",
-            "analysis.annotations.actions",
-            "ActionAnnotations",
-        ),
-        (
-            "analysis.failure_annotations",
-            "analysis.annotations.failures",
-            "FailureAnnotations",
-        ),
-        ("analysis.action_events", "analysis.actions.events", "ActionEvent"),
-        ("analysis.action_report", "analysis.actions.report", "render_markdown_report"),
-        ("analysis.result_reader", "analysis.io.result_reader", "RunBundle"),
-        ("analysis.entropy_analysis", "analysis.entropy", "EntropyAnalysis"),
-    ],
-)
-def test_compatibility_names_are_the_canonical_objects(old, new, name):
-    assert getattr(importlib.import_module("alphadiana." + old), name) is getattr(
-        importlib.import_module("alphadiana." + new), name
-    )
+def test_public_analysis_entry_uses_canonical_pipeline(tmp_path):
+    import alphadiana as ad
+    from alphadiana.analysis.pipeline import Analyzer
+
+    results = tmp_path / "public-api.jsonl"
+    results.write_text("")
+    assert isinstance(ad.analyzer(results, plugins=[]), Analyzer)
+
+
+def test_results_and_measurement_imports_do_not_load_plotting_or_clustering():
+    import os
+    import subprocess
+    import sys
+
+    code = """
+import importlib.abc
+import sys
+class RejectOptional(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.split('.')[0] in {'scipy', 'matplotlib'}:
+            raise AssertionError('unexpected eager optional import: ' + fullname)
+sys.meta_path.insert(0, RejectOptional())
+from alphadiana.results.store import ResultStore
+from alphadiana.results.statistics import RunStatistics
+from alphadiana.analysis.measurements import RequestEntropy
+assert RunStatistics.from_records([]).correct == 0
+"""
+    root = str(Path(__file__).resolve().parents[2])
+    env = dict(os.environ, PYTHONPATH=root, PYTHONDONTWRITEBYTECODE="1")
+    subprocess.run([sys.executable, "-c", code], env=env, check=True)
 
 
 def test_source_analysis_entry_points_find_the_same_paper_summary():
@@ -53,14 +60,14 @@ def test_audit_frozen_code_paths_are_preserved():
     """The human audit hashes these paths relative to the workflow directory."""
     root = Path(__file__).resolve().parents[2]
     code = root / "scripts/action_audit"
-    protocol = code / "../../alphadiana/analysis/action_protocol.py"
-    assert protocol.resolve() == root / "alphadiana/analysis/action_protocol.py"
-    from alphadiana.analysis.action_protocol import prompt_bytes
+    protocol = code / "../../alphadiana/analysis/actions/protocol.py"
+    assert protocol.resolve() == root / "alphadiana/analysis/actions/protocol.py"
+    from alphadiana.analysis.actions.protocol import prompt_bytes
 
     assert (
         hashlib.sha256(prompt_bytes()).digest()
         == hashlib.sha256(
-            (root / "alphadiana/analysis/action_prompt.md").read_bytes()
+            (root / "alphadiana/analysis/actions/action_prompt.md").read_bytes()
         ).digest()
     )
 
@@ -137,3 +144,55 @@ def test_chord_plot_rejects_unobserved_inputs(tmp_path, inputs):
     with pytest.raises(FileNotFoundError if inputs == "missing" else ValueError):
         load()
     assert not list(tmp_path.rglob("*.pdf"))
+
+
+@pytest.mark.parametrize(
+    "history",
+    [
+        [{"correct": True, "score": 1.0, "score_metadata": {"error": "judge failure"}}],
+        [
+            {"correct": True, "score": 1.0},
+            {
+                "correct": False,
+                "score": 0.0,
+                "error": {"error_type": "TimeoutError", "message": "deadline"},
+            },
+        ],
+    ],
+)
+def test_jobs_and_runs_reject_invalid_latest_sample(tmp_path, history):
+    from alphadiana.dashboard.backend.data_loader import DataLoader
+    from alphadiana.dashboard.backend.job_manager import JobManager
+    from alphadiana.dashboard.backend.models import JobStatus
+
+    records = [
+        dict(task_id="task", sample_index=0, run_id="run", **row) for row in history
+    ]
+    path = tmp_path / "run.jsonl"
+    path.write_text("".join(json.dumps(row) + "\n" for row in records))
+    manager = JobManager.__new__(JobManager)
+    manager._results_dir = manager._logs_dir = str(tmp_path)
+    job = JobStatus(job_id="job", run_id="run", status="interrupted", total_tasks=1)
+    assert manager._count_jsonl(str(path)) == (1, 0, 1)
+    manager._recover_progress(job)
+    summary = DataLoader(str(tmp_path)).get_run("run").summary
+    assert job.status == "interrupted"
+    assert job.progress == summary.completed == 0
+    assert job.accuracy == summary.accuracy == 0.0
+
+
+def test_jobs_recover_valid_wrong_answer_as_completed(tmp_path):
+    from alphadiana.dashboard.backend.job_manager import JobManager
+    from alphadiana.dashboard.backend.models import JobStatus
+
+    (tmp_path / "run.jsonl").write_text(
+        json.dumps(dict(task_id="task", sample_index=0, score=0.0, correct=False))
+        + "\n"
+    )
+    manager = JobManager.__new__(JobManager)
+    manager._results_dir = manager._logs_dir = str(tmp_path)
+    job = JobStatus(job_id="job", run_id="run", status="interrupted", total_tasks=1)
+    manager._recover_progress(job)
+    assert job.status == "completed"
+    assert job.progress == 1
+    assert job.accuracy == 0.0

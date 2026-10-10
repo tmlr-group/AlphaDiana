@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from alphadiana.analysis.actions.events import extract_action_event_rows
-from alphadiana.analysis.io.result_reader import RunBundle, resolve_run_relative_path
+from alphadiana.analysis.actions.keyword_baseline import extract_action_event_rows
+from alphadiana.results.reader import RunBundle, resolve_run_relative_path
 
 
 def test_trace_survives_rescore_in_another_directory(tmp_path):

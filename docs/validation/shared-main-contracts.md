@@ -4,14 +4,14 @@ This implements the revised boundaries in #109 on main `8faa2ce12ad9f63bef51521b
 
 ## Ownership and compatibility
 
-| Before | Canonical owner | Compatibility |
+| Previous internal surface | Canonical owner | Contract |
 | --- | --- | --- |
-| Five family registry modules | `alphadiana/registry.py` | Old modules export the same classes, decorators and backing maps. Each family has its own namespace. Register/get/list, keyword arguments and replacement registration remain supported. |
-| `analysis/entropy.py`, `analysis/logprobs.py`, `analysis/io/logprob_artifacts.py` | `alphadiana/logprobs.py` | Old imports forward to the same functions. Raw candidates remain separate from compact Int16 output; both conversion entry points preserve request attribution. |
-| `analysis/report.py`, duplicated reliability and execution aggregation | `analysis/run_summary.py` | `ReportGenerator` and `RunSummary` remain available through the old import. `RunStatistics` and `latest_samples` own the shared rules. |
-| `analysis/reports.py`, `analysis/action_report.py` | `analysis/actions/report.py` | Rendering functions retain their old imports and artifact filenames. Action-space outputs explicitly label their data views and denominators. |
+| Engine component registry copies | `registry.py` | Family namespaces, aliases, decorators, overwrite order and loaders remain unchanged. |
+| Analysis logprob forwarding paths | `alphadiana/logprobs.py` | Raw candidates stay separate from compact Int16 output; both conversions preserve request attribution. |
+| Report/reliability/execution aggregation | `results/statistics.py`; `analysis/export.py` | Statistics owns sample selection and denominators; export owns ReportGenerator/RunSummary and rendering. |
+| `analysis/reports.py`, `analysis/action_report.py` | `analysis/actions/action_space_report.py` | Internal imports migrate; artifact filenames and explicit data-view labels remain. |
 
-`registry_loader.py` still owns deferred built-in imports and its family-specific loaders. CLI `list-benchmarks` now calls that loader. `engine/components.py` stays a forwarding entry point. Registry-only imports do not load native adapters. Internal imports use the canonical paths. Documented Python imports and shared-contract entry points remain supported; see the [analysis migration map](../../alphadiana/analysis/README.md) for internal paths that moved.
+`registry_loader.py` still owns deferred built-in imports and its family-specific loaders. CLI `list-benchmarks` now calls that loader. `engine/components.py` stays a forwarding entry point. Registry-only imports do not load native adapters. Internal imports use the canonical paths. Public composition entry points remain supported; see the [analysis migration map](../../alphadiana/analysis/README.md) for internal paths that moved.
 
 Benchmark package flattening is deferred. Removing packages such as `benchmarks.aime` would break supported nested imports such as `benchmarks.aime.benchmark`; a separate migration decision is needed. Skills, paper resources, research scripts, native harness directories, scorer/metric boundaries and Runner lifecycle remain in place.
 
@@ -39,7 +39,7 @@ Draft #82 was inspected before reuse. Its report code sets `total_tasks=expected
 
 ## Retained action methods
 
-The old methods remain static implementations in the main source tree, callable for comparison or reproduction. `analysis/legacy/character_spans.py` contains the historical fixed-character splitter; `analysis/action_events.py` contains the historical deterministic keyword method. Neither is a default or an error fallback. The explicit `custom-spans-v1` plugin remains supported and produces a separately named report. Ordinary action analysis uses the LLM-selected trajectory ranges and main's label definitions/priority. Old calibration is not inherited.
+The old methods remain static implementations in the main source tree, callable for comparison or reproduction. `analysis/actions/llm_annotations.py` contains the historical fixed-character splitter; `analysis/actions/keyword_baseline.py` contains the historical deterministic keyword method. Neither is a default or an error fallback. The explicit `custom-spans-v1` plugin remains supported and produces a separately named report. Ordinary action analysis uses the LLM-selected trajectory ranges and main's label definitions/priority. Old calibration is not inherited.
 
 ## Acceptance evidence
 

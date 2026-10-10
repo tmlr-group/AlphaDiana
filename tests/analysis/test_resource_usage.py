@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from alphadiana.analysis.resource_usage import MeasuredUsage, measured_usage
+from alphadiana.analysis.measurements import MeasuredUsage, measured_usage
 from alphadiana.artifacts import Artifacts
 
 

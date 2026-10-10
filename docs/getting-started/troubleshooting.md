@@ -9,7 +9,7 @@ A quick mental model: a run is defined by one YAML, parsed into
 `ExperimentConfig` (`alphadiana/engine/config/experiment_config.py`), validated
 by `ConfigValidator` (`alphadiana/engine/config/validator.py`), and executed by
 the runner (`alphadiana/engine/runner.py`). Results are written through the
-result store (`alphadiana/analysis/io/result_store.py`). When something breaks,
+result store (`alphadiana/results/store.py`). When something breaks,
 the symptom usually points to one of those layers.
 
 If a run fails to even start, run `alphadiana validate <config.yaml>` first. It

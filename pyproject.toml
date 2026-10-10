@@ -10,7 +10,6 @@ requires-python = ">=3.10"
 dependencies = [
     "pyyaml>=6.0",
     "click>=8.0",
-    "scipy>=1.10",
     "datasets>=2.0",
     "openai>=1.0",
     "httpx>=0.24",
@@ -18,7 +17,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-analysis = ["matplotlib>=3.7,<4"]
+analysis = ["matplotlib>=3.7,<4", "scipy>=1.10"]
 judges = ["openai>=1.0", "requests>=2.28"]
 benchmarks = ["datasets>=2.0", "tomli>=2.0; python_version<'3.11'"]
 agents = ["openai>=1.0", "httpx>=0.24"]
@@ -32,6 +31,7 @@ rock = [
     "nacos-sdk-python==2.0.9",
 ]
 all = [
+    "scipy>=1.10",
     "matplotlib>=3.7,<4",
     "datasets>=2.0",
     "tomli>=2.0; python_version<'3.11'",
@@ -54,7 +54,7 @@ include = ["alphadiana*"]
 
 [tool.setuptools.package-data]
 "alphadiana.harness" = ["skills/**/*", "skills/**/.claude-plugin/*.json"]
-"alphadiana.analysis" = ["action_prompt.md"]
+"alphadiana.analysis.actions" = ["action_prompt.md"]
 "alphadiana.benchmarks.terminal_bench2.harness" = ["assets/*.ts", "deploy/*.yaml"]
 "alphadiana.harness._internal" = ["deploy/*"]
 

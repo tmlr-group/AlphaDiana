@@ -9,7 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from alphadiana.analysis.io.result_store import ResultStore
+from alphadiana.results.store import ResultStore
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.engine.container_runtime.podman_cli import PodmanError, PodmanResult
 from alphadiana.harness._internal import podman_agent as native

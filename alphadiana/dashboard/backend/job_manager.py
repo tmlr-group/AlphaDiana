@@ -218,31 +218,16 @@ class JobManager:
 
     @staticmethod
     def _count_jsonl(jsonl_path: str) -> tuple[int, int, int]:
-        """Count unique results, correct count, and error count from a JSONL file.
+        """Recover unique sample counts using the same validity as Runs."""
+        from alphadiana.results.reader import load_jsonl_records
+        from alphadiana.results.statistics import RunStatistics
+        from pathlib import Path
 
-        Deduplicates by (task_id, sample_index) keeping the latest entry,
-        so retried tasks replace their error records correctly.
-        Returns (unique_count, correct_count, error_count).
-        """
-        seen: dict[tuple[str, int], dict] = {}
         try:
-            with open(jsonl_path, encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        record = json.loads(line)
-                        key = (record.get("task_id", ""), record.get("sample_index", 0))
-                        seen[key] = record
-                    except json.JSONDecodeError:
-                        pass
-        except Exception:
+            base = RunStatistics.from_records(load_jsonl_records(Path(jsonl_path)))
+        except (OSError, ValueError, KeyError, TypeError):
             return 0, 0, 0
-        count = len(seen)
-        correct = sum(1 for r in seen.values() if r.get("correct"))
-        error_count = sum(1 for r in seen.values() if r.get("score") is None)
-        return count, correct, error_count
+        return len(base.results), base.correct, len(base.results) - len(base.valid)
 
     def _recover_progress(self, job: JobStatus) -> None:
         """Read the JSONL file to recover progress/accuracy for an interrupted job.
@@ -268,8 +253,8 @@ class JobManager:
             return
         count, correct, error_count = self._count_jsonl(str(jsonl_path))
         if count > 0:
-            job.progress = count
-            job.accuracy = correct / count
+            job.progress = count - error_count
+            job.accuracy = correct / (count - error_count) if count > error_count else 0.0
             # If all tasks are now done with no errors, auto-complete the job.
             # This handles retries done outside the dashboard (e.g. CLI) or
             # jobs that were interrupted after the run actually finished.

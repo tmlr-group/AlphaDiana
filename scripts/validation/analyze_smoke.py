@@ -6,11 +6,11 @@ import os
 from pathlib import Path
 
 import alphadiana as ad
-from alphadiana.analysis.annotations.actions import ActionAnnotations
-from alphadiana.analysis.analyzer import ExecutionMetrics
-from alphadiana.analysis.entropy import EntropyAnalysis
-from alphadiana.analysis.annotations.failures import FailureAnnotations
-from alphadiana.analysis.entropy import RequestEntropy
+from alphadiana.analysis.actions.llm_annotations import ActionAnnotations
+from alphadiana.analysis.measurements import ExecutionMetrics
+from alphadiana.analysis.measurements import EntropyAnalysis
+from alphadiana.analysis.failure_annotations import FailureAnnotations
+from alphadiana.analysis.measurements import RequestEntropy
 
 
 def main():

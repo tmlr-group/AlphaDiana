@@ -11,8 +11,8 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from alphadiana.analysis.io.result_store import ResultStore
-from alphadiana.analysis.io.status import (
+from alphadiana.results.store import ResultStore
+from alphadiana.results.status import (
     infer_score_status,
     normalize_legacy_timeout_zero_record,
 )
@@ -57,7 +57,7 @@ class Artifacts:
                 records.append(record)
         if not latest:
             return records
-        from alphadiana.analysis.run_summary import latest_samples
+        from alphadiana.results.statistics import latest_samples
 
         return latest_samples(records)
 

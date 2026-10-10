@@ -120,7 +120,8 @@ alphadiana/
   engine/        # execution, configuration, and rollout campaigns
   harness/       # agent implementations and runtime skills
   benchmarks/    # task loaders and official verifier integrations
-  analysis/      # saved-run measurements, annotations, and reports
+  results/       # persistence, traces, score status, and sample statistics
+  analysis/      # measurement plugins, Analyzer composition, and exports
   dashboard/     # React frontend and FastAPI backend
 scripts/
   setup/         # environment and dependency setup

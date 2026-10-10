@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, replace
 from typing import Any, Mapping, Sequence
 
-from alphadiana.analysis.actions.metrics import summarize_analyze_tool_measurements
+from alphadiana.analysis.actions.trajectories import summarize_analyze_tool_measurements
 
 INSIGHT_MECHANISMS = (
     "Model-Harness Composite",
@@ -97,7 +97,8 @@ def build_insight_claims(
             denominator_rows=denominator_rows,
             metrics=metrics,
             measurement_summary=measurement_summary,
-            case_anchor_ids=anchor_ids.get("paired_rescue", ()) + anchor_ids.get("paired_regression", ()),
+            case_anchor_ids=anchor_ids.get("paired_rescue", ())
+            + anchor_ids.get("paired_regression", ()),
         ),
     ]
     return [claim.to_dict() for claim in claims]
@@ -129,7 +130,8 @@ def validate_claim_denominators(
         benchmark
         for benchmark in required
         if not any(
-            str(row.get("benchmark") or "").lower() == benchmark and _has_validated_records(row)
+            str(row.get("benchmark") or "").lower() == benchmark
+            and _has_validated_records(row)
             for row in denominator_rows
         )
     ]
@@ -139,7 +141,9 @@ def validate_claim_denominators(
         "No validated_records denominator row with valid_scored samples for "
         f"{', '.join(sorted(missing))}; treat this as a measurement template, not established evidence."
     )
-    return replace(claim, failure_to_establish=_append_caveat(claim.failure_to_establish, caveat))
+    return replace(
+        claim, failure_to_establish=_append_caveat(claim.failure_to_establish, caveat)
+    )
 
 
 def claim_model_harness_composite(
@@ -155,7 +159,10 @@ def claim_model_harness_composite(
     tax_rows = _rows(insights.get("operational_tax_adjusted_accuracy"))
     failure = ""
     if not scaffold_rows:
-        failure = _append_caveat(failure, "Cross-harness score differences lack action-space distance evidence.")
+        failure = _append_caveat(
+            failure,
+            "Cross-harness score differences lack action-space distance evidence.",
+        )
     if not _tax_rows_complete(tax_rows):
         failure = _append_caveat(
             failure,
@@ -214,7 +221,9 @@ def claim_scaffold_dominance(
             if rows
             else "Scaffold dominance is not established without action-space distance rows."
         ),
-        failure_to_establish="" if rows else "No action-space distance rows are available.",
+        failure_to_establish=""
+        if rows
+        else "No action-space distance rows are available.",
     )
     return validate_claim_denominators(claim, denominator_rows)
 
@@ -246,7 +255,9 @@ def claim_state_update_yield(
         support_scope=support_scope_from_denominators(denominator_rows),
         result={
             "strongest_turn": strongest,
-            "boundary_shock_integral_0_15": posttool.get("boundary_shock_integral_0_15", 0.0),
+            "boundary_shock_integral_0_15": posttool.get(
+                "boundary_shock_integral_0_15", 0.0
+            ),
         },
         case_anchor_ids=tuple(case_anchor_ids),
         interpretation=(
@@ -271,20 +282,30 @@ def claim_verification_conversion_gap(
     lifts = _rows(dict(insights.get("verification_conversion") or {}).get("lifts"))
     best = max(
         lifts,
-        key=lambda row: abs(_float(row.get("post_verify_action_change_lift")))
-        + abs(_float(row.get("verify_before_answer_lift"))),
+        key=lambda row: (
+            abs(_float(row.get("post_verify_action_change_lift")))
+            + abs(_float(row.get("verify_before_answer_lift")))
+        ),
         default={},
     )
-    result = {
-        "harness": best.get("harness"),
-        "verify_before_answer_lift": _float(best.get("verify_before_answer_lift")),
-        "post_verify_action_change_lift": _float(best.get("post_verify_action_change_lift")),
-        "correct_n": _int(best.get("correct_n")),
-        "wrong_n": _int(best.get("wrong_n")),
-    } if best else {}
+    result = (
+        {
+            "harness": best.get("harness"),
+            "verify_before_answer_lift": _float(best.get("verify_before_answer_lift")),
+            "post_verify_action_change_lift": _float(
+                best.get("post_verify_action_change_lift")
+            ),
+            "correct_n": _int(best.get("correct_n")),
+            "wrong_n": _int(best.get("wrong_n")),
+        }
+        if best
+        else {}
+    )
     failure = "Use conversion fields; raw verify rate alone is not sufficient evidence."
     if not best:
-        failure = _append_caveat(failure, "No verification conversion lift rows are available.")
+        failure = _append_caveat(
+            failure, "No verification conversion lift rows are available."
+        )
     claim = InsightClaim(
         claim_id="verification_conversion_gap",
         mechanism_name="Verification Conversion Gap",
@@ -314,8 +335,19 @@ def claim_low_entropy_long_collapse(
     """Claim that low entropy becomes risky specifically in long-output strata."""
     insights = _measurement_insights(metrics, measurement_summary)
     result = dict(insights.get("low_entropy_long_collapse") or {})
-    required = {"n", "wrong_rate", "median_tokens", "median_entropy", "token_threshold_q75", "entropy_threshold_q25"}
-    failure = "" if required <= set(result) else "Low-entropy long collapse requires both token-count and entropy strata."
+    required = {
+        "n",
+        "wrong_rate",
+        "median_tokens",
+        "median_entropy",
+        "token_threshold_q75",
+        "entropy_threshold_q25",
+    }
+    failure = (
+        ""
+        if required <= set(result)
+        else "Low-entropy long collapse requires both token-count and entropy strata."
+    )
     claim = InsightClaim(
         claim_id="low_entropy_long_collapse",
         mechanism_name="Low-Entropy Long Collapse",
@@ -349,8 +381,12 @@ def claim_operational_tax(
     """Claim that deployable accuracy needs behavioral and operational denominators."""
     insights = _measurement_insights(metrics, measurement_summary)
     rows = _rows(insights.get("operational_tax_adjusted_accuracy"))
-    failure = "" if _tax_rows_complete(rows) else (
-        "Operational tax requires behavioral_accuracy, operational_tax, and deployable_accuracy fields."
+    failure = (
+        ""
+        if _tax_rows_complete(rows)
+        else (
+            "Operational tax requires behavioral_accuracy, operational_tax, and deployable_accuracy fields."
+        )
     )
     claim = InsightClaim(
         claim_id="operational_tax",
@@ -385,9 +421,7 @@ def claim_paired_rescue_regression(
     """Claim that scaffolds can rescue and regress paired DirectLLM outcomes."""
     insights = _measurement_insights(metrics, measurement_summary)
     rows = _rows(insights.get("paired_net_gain"))
-    complete = [
-        row for row in rows if {"rescue", "regression", "net_gain"} <= set(row)
-    ]
+    complete = [row for row in rows if {"rescue", "regression", "net_gain"} <= set(row)]
     claim = InsightClaim(
         claim_id="paired_rescue_regression",
         mechanism_name="Paired Rescue Regression",
@@ -406,7 +440,9 @@ def claim_paired_rescue_regression(
             if complete
             else "No paired rescue/regression claim is established without all three fields."
         ),
-        failure_to_establish="" if complete else "Paired net gain requires rescue, regression, and net_gain fields.",
+        failure_to_establish=""
+        if complete
+        else "Paired net gain requires rescue, regression, and net_gain fields.",
     )
     return validate_claim_denominators(claim, denominator_rows)
 
@@ -422,7 +458,9 @@ def _measurement_insights(
     return {}
 
 
-def _case_anchor_ids_by_type(case_anchors: Sequence[Mapping[str, Any]]) -> dict[str, tuple[str, ...]]:
+def _case_anchor_ids_by_type(
+    case_anchors: Sequence[Mapping[str, Any]],
+) -> dict[str, tuple[str, ...]]:
     grouped: dict[str, list[str]] = {}
     for anchor in case_anchors:
         anchor_type = str(anchor.get("anchor_type") or "")
@@ -433,10 +471,15 @@ def _case_anchor_ids_by_type(case_anchors: Sequence[Mapping[str, Any]]) -> dict[
 
 
 def _has_validated_records(row: Mapping[str, Any]) -> bool:
-    return str(row.get("status") or "") == "validated_records" and _int(row.get("valid_scored")) > 0
+    return (
+        str(row.get("status") or "") == "validated_records"
+        and _int(row.get("valid_scored")) > 0
+    )
 
 
-def _required_benchmarks(denominator_filter: str, support_scope: str) -> tuple[str, ...]:
+def _required_benchmarks(
+    denominator_filter: str, support_scope: str
+) -> tuple[str, ...]:
     text = f"{denominator_filter} {support_scope}".lower()
     required: list[str] = []
     if "gpqa" in text:

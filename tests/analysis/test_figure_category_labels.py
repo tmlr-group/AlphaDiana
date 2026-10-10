@@ -2,7 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from alphadiana.analysis.analyzer import Analyzer, Figure, TableAnalysis
+from alphadiana.analysis.pipeline import Analyzer, TableAnalysis
+from alphadiana.analysis.measurements import Figure
 
 
 @pytest.mark.parametrize("kind", ["bar", "barh"])
@@ -10,7 +11,7 @@ def test_grouped_bars_keep_larger_later_groups_visible(kind):
     pytest.importorskip("matplotlib")
     import matplotlib.pyplot as plt
 
-    from alphadiana.analysis.figures import _render
+    from alphadiana.analysis.export import _render
 
     # Observed SWE Mini counts: the later OpenCode group exceeds OpenClaw.
     rows = [
@@ -117,7 +118,7 @@ def test_custom_signed_measurements_remain_visible(kind, values):
     pytest.importorskip("matplotlib")
     import matplotlib.pyplot as plt
 
-    from alphadiana.analysis.figures import _render
+    from alphadiana.analysis.export import _render
 
     rows = [
         {"category": "First", "delta": values[0]},
@@ -145,7 +146,7 @@ def test_custom_signed_measurements_remain_visible(kind, values):
 
 def test_transition_titles_do_not_overlap_colorbars():
     import matplotlib.pyplot as plt
-    from alphadiana.analysis.figures import _render
+    from alphadiana.analysis.export import _render
 
     labels = [
         "Understanding",

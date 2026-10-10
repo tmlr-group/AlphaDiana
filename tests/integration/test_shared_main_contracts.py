@@ -10,15 +10,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from alphadiana.analysis.analyzer import ExecutionMetrics
+from alphadiana.analysis.measurements import ExecutionMetrics
 from alphadiana.dashboard.backend.data_loader import _build_summary
-from alphadiana.analysis.io.result_store import ResultStore
-from alphadiana.analysis.run_summary import compute_reliability_summary
-from alphadiana.analysis.run_summary import (
-    ReportGenerator,
-    RunStatistics,
-    latest_samples,
-)
+from alphadiana.results.store import ResultStore
+from alphadiana.results.statistics import compute_reliability_summary
+from alphadiana.analysis.export import ReportGenerator
+from alphadiana.results.statistics import RunStatistics, latest_samples
 from alphadiana.artifacts import Artifacts
 
 FAMILIES = [
@@ -90,18 +87,9 @@ assert 'aime' in result.output and '__shared_key' in result.output
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_logprob_compatibility_math_attribution_and_sdk_equivalence():
+def test_logprob_attribution_and_sdk_equivalence():
     from alphadiana import logprobs as canonical
-    from alphadiana.analysis import entropy, logprobs
-    from alphadiana.analysis.io import logprob_artifacts
 
-    assert entropy._compute_entropy is canonical._compute_entropy
-    assert logprobs.quantize_record_int16 is canonical.quantize_record_int16
-    assert (
-        logprob_artifacts.raw_record_to_int16_record
-        is canonical.raw_record_to_int16_record
-    )
-    assert logprobs._softmax_from_logprobs is logprob_artifacts.softmax_from_logprobs
     raw = dict(
         token_index=3,
         token="α",
@@ -128,19 +116,6 @@ def test_logprob_compatibility_math_attribution_and_sdk_equivalence():
     assert canonical._compute_entropy_stats(
         [raw]
     ) == canonical.entropy_stats_from_int16_records([compact])
-
-
-def test_report_module_identity_and_unchanged_renderers():
-    from alphadiana.analysis import report, reports, run_summary, action_report
-
-    assert report.ReportGenerator is run_summary.ReportGenerator
-    assert report.RunSummary is run_summary.RunSummary
-    for name in ("render_markdown_report", "write_json", "write_feature_csv"):
-        assert getattr(reports, name) is getattr(action_report, name)
-    summary = report.ReportGenerator().summarize([])
-    assert report.ReportGenerator().to_markdown(
-        summary
-    ) == run_summary.ReportGenerator().to_markdown(summary)
 
 
 @pytest.mark.parametrize("named_tasks", [True, False])
@@ -268,15 +243,22 @@ def test_legacy_explicit_sample_count_preserves_missing_coverage(
     assert not reliability["pass_power_k_available"]
 
 
-def test_result_store_deduplicates_large_attempt_history_while_reading(tmp_path, caplog):
+def test_result_store_deduplicates_large_attempt_history_while_reading(
+    tmp_path, caplog
+):
     # Constructed regression: old attempts must not all stay resident during load.
     store = ResultStore(str(tmp_path), "run")
     sample_count, attempts, output_bytes = 100, 4, 64 * 1024
     with open(store.path, "w", encoding="utf8") as stream:
         for attempt in range(attempts):
             for sample in range(sample_count):
-                row = dict(task_id=str(sample), raw_output="x" * output_bytes,
-                           score=1, correct=True, attempt=attempt)
+                row = dict(
+                    task_id=str(sample),
+                    raw_output="x" * output_bytes,
+                    score=1,
+                    correct=True,
+                    attempt=attempt,
+                )
                 if attempt == attempts - 1:
                     row["error"] = {"error_type": "RuntimeError"}
                 stream.write(json.dumps(row) + "\n")
@@ -299,10 +281,12 @@ def test_result_store_deduplicates_large_attempt_history_while_reading(tmp_path,
 
 
 def test_retained_rule_method_is_available_but_never_default(tmp_path):
-    from alphadiana.analysis.annotations.actions import ActionAnnotations
-    from alphadiana.analysis.legacy.character_spans import character_targets
-    from alphadiana.analysis import action_events
-    from alphadiana.analysis.annotations.segmentation import PROTOCOL
+    from alphadiana.analysis.actions.llm_annotations import ActionAnnotations
+    from alphadiana.analysis.actions.llm_annotations import character_targets
+    from alphadiana.analysis.actions import keyword_baseline as action_events
+    from alphadiana.analysis.actions.llm_annotations import (
+        TRAJECTORY_PROTOCOL as PROTOCOL,
+    )
 
     text = "a" * 4100
     spans = character_targets([dict(role="assistant", content=text)], 4096)

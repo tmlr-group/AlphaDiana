@@ -1,44 +1,59 @@
-# Analysis module map
+# Saved-run analysis
 
-Start with `analyzer.py` for the public saved-run analysis API. It reads persisted
-records, computes statistics, optionally requests model annotations, and exports
-reports and figures.
+Use `ad.analyzer(...)` to compose measurements and export their results.
 
-| Owner | Responsibility |
+| Owner | Job |
 | --- | --- |
-| `io/` | Load and normalize saved records, traces, statuses, and logprob artifacts |
-| `run_summary.py` | Select latest samples and compute shared statistics and reliability |
-| `entropy.py`, `resource_usage.py` | Measure entropy and execution resources |
-| `annotations/` | Model-based action segmentation, failure annotations, and cached judging |
-| `actions/` | Build action features, cluster trajectories, select cases, and render action reports |
-| `insights/` | Assemble the comparison corpus, measurements, cases, and insight reports |
-| `figures.py`, `reports.py`, `report.py` | Export analysis figures and reports |
-| `scripts/` | Supported `python -m` analysis entry points |
+| `pipeline.py` | Compose Analyzer plugins, validate their output and manage judge lifetimes |
+| `measurements.py` | Define measurement/figure contracts; compute execution resources and token/request entropy |
+| `export.py` | Project canonical sample statistics into run reports; export declared tables and figures |
+| `judge_client.py` | Resolve model settings, call the judge and cache validated responses |
+| `failure_annotations.py` | Annotate failure evidence with the failure taxonomy |
+| `actions/llm_annotations.py` | Segment and label full saved trajectories with an LLM |
+| `actions/protocol.py`, `actions/action_prompt.md` | Share action labels and the explicit fixed-target audit contract |
+| `actions/keyword_baseline.py` | Run the historical keyword classification method explicitly |
+| `actions/features.py` | Extract record features and cluster their views |
+| `actions/trajectories.py` | Compute action-sequence motifs/outcomes and select representative cases |
+| `actions/action_space_report.py` | Export action-space views with their explicit data-view labels |
+| `actions/trajectory_report.py` | Export trajectory discussion and LaTeX |
+| `insights/` | Assemble comparison corpora, claims, case anchors and insight reports |
+| `scripts/` | Published `python -m` analysis entry points |
 
-`action_protocol.py` and `action_prompt.md` remain the single shared action
-contract. The human audit also hashes these files. Default action annotations use
-LLM segmentation of the full trajectory; explicit fixed-target audit inputs do
-not change that default.
+Persisted records, traces, score status and latest-sample statistics live in
+`alphadiana/results/`. Raw/Int16 logprob conversion remains in
+`alphadiana/logprobs.py`, shared by execution and measurement.
 
-Six compatibility modules preserve documented imports and the shared report contract:
-`action_annotations`, `failure_annotations`, `action_events`, `result_reader`,
-`entropy_analysis`, and `action_report`. Add implementation changes to their owners.
-The package-level public API and existing `report`, `reports`, and `logprobs`
-entry points remain available. Internal imports use the owners above.
+Default action annotations use LLM segmentation of the full trajectory.
+Fixed-target audit and historical custom spans require explicit protocols.
+Keyword classification never substitutes for an unsuccessful LLM annotation.
 
-Internal flat-module imports now require these paths:
+## Import migration
 
-| Previous internal module | Current owner |
+Public `ad.runner(...)`, `ad.analyzer(...)` and `Artifacts` behavior remains.
+Package-level documented analysis functions load their actual owner lazily.
+The former internal forwarding files are removed; migrate deep imports:
+
+| Previous path | Current owner |
 | --- | --- |
-| `judge`, `action_segmentation` | `annotations/judge`, `annotations/segmentation` |
-| `action_features`, `clustering`, `case_studies` | `actions/features`, `actions/clustering`, `actions/cases` |
-| `trajectory_metrics`, `trajectory_reports` | `actions/metrics`, `actions/trajectory_reports` |
-| `insight_corpus`, `insight_measurements`, `insight_cases`, `insight_reports` | `insights/corpus`, `insights/measurements`, `insights/cases`, `insights/reports` |
-| `reliability`, `process_entropy` | `run_summary`, `entropy` |
-| `dashboard/backend/*` | `alphadiana/dashboard/backend/*` |
+| `analyzer` | `pipeline` for Analyzer/TableAnalysis; `measurements` for plugins and contracts |
+| `entropy`, `entropy_analysis`, `resource_usage` | `measurements` |
+| `report`, `run_summary`, `figures` | `export` for ReportGenerator/RunSummary/rendering; `results.statistics` for RunStatistics/reliability/selection |
+| `result_reader`, `io/*` | `results.reader`, `results.store`, `results.trace`, `results.status` |
+| `logprobs`, `io/logprob_artifacts` | `alphadiana.logprobs` |
+| `action_annotations`, `annotations/actions`, `annotations/segmentation`, `legacy/character_spans` | `actions.llm_annotations` |
+| `annotations/failures`, `annotations/judge` | `failure_annotations`, `judge_client` |
+| `action_events`, `actions/events` | `actions.keyword_baseline` |
+| `action_report`, `reports`, `actions/report` | `actions.action_space_report` |
+| `actions/clustering` | `actions.features` |
+| `actions/metrics`, `actions/cases` | `actions.trajectories` |
+| `actions/trajectory_reports` | `actions.trajectory_report` |
+| `insights/measurements` | `insights.claims` |
+| `action_protocol`, `action_prompt.md` | `actions/protocol`, `actions/action_prompt.md` |
+| `paper_archive.PaperArchive` | Source-checkout operator `scripts.paper_analysis.load_figure_tables.PaperFigureTables` |
 
-Related workflows live outside this package:
+The paper input loader preserves its historical output identity `paper_archive`
+and schema. It is used explicitly from a source checkout, outside the installed
+runtime package. Archived inputs and figures stay unchanged.
 
-- `scripts/action_audit/`: human annotation and agreement checks.
-- `scripts/paper_analysis/`: archived paper inputs, plotting scripts, and figures.
-- `alphadiana/dashboard/`: Dashboard backend and frontend.
+Human audits created after this migration hash the relocated protocol files.
+Existing audits retain their original source revision and hashes.

@@ -13,8 +13,12 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Sequence
 
-from alphadiana.analysis.io.result_reader import RunBundle, load_run_bundle, resolve_run_relative_path
-from alphadiana.analysis.io.status import VALID_SCORE_STATUS, infer_score_status
+from alphadiana.results.reader import (
+    RunBundle,
+    load_run_bundle,
+    resolve_run_relative_path,
+)
+from alphadiana.results.status import VALID_SCORE_STATUS, infer_score_status
 
 CANONICAL_ACTIONS = ("plan", "reason", "tool_use", "verify", "recover", "answer")
 ACTION_PRIORITY = ("answer", "recover", "verify", "tool_use", "plan", "reason")
@@ -32,7 +36,15 @@ TOOL_SUBTYPES = (
     "browser",
     "other",
 )
-OBSERVATION_STATUSES = ("none", "info", "success", "fail", "error", "timeout", "truncated")
+OBSERVATION_STATUSES = (
+    "none",
+    "info",
+    "success",
+    "fail",
+    "error",
+    "timeout",
+    "truncated",
+)
 PRIMARY_CORPORA = {
     "openclaw": "full_gpqa_v2_openclaw_qwen35_27b_logprobs",
     "opencode": "full_gpqa_v2_opencode_qwen35_27b_logprobs",
@@ -78,15 +90,38 @@ def classify_tool_subtype(name: str, text: str = "") -> str:
     haystack = f"{name} {text}".lower()
     if "search" in haystack:
         return "search"
-    if any(token in haystack for token in ("memory_write", "save memory", "save this memory", "write memory", "store memory")):
+    if any(
+        token in haystack
+        for token in (
+            "memory_write",
+            "save memory",
+            "save this memory",
+            "write memory",
+            "store memory",
+        )
+    ):
         return "memory_write"
-    if any(token in haystack for token in ("memory_read", "read memory", "recall", "retrieve memory", "memory")):
+    if any(
+        token in haystack
+        for token in (
+            "memory_read",
+            "read memory",
+            "recall",
+            "retrieve memory",
+            "memory",
+        )
+    ):
         return "memory_read"
     if any(token in haystack for token in ("read", "view", "cat", "open_file")):
         return "read"
-    if any(token in haystack for token in ("write", "edit", "patch", "replace", "create_file")):
+    if any(
+        token in haystack
+        for token in ("write", "edit", "patch", "replace", "create_file")
+    ):
         return "write"
-    if any(token in haystack for token in ("bash", "shell", "terminal", "exec", "command")):
+    if any(
+        token in haystack for token in ("bash", "shell", "terminal", "exec", "command")
+    ):
         return "shell"
     if "python" in haystack:
         return "python"
@@ -104,9 +139,15 @@ def observation_status_from_text(text: str) -> str:
         return "none"
     if "timeout" in normalized or "timed out" in normalized:
         return "timeout"
-    if "incorrect" in normalized or "assertion failed" in normalized or "nonzero" in normalized:
+    if (
+        "incorrect" in normalized
+        or "assertion failed" in normalized
+        or "nonzero" in normalized
+    ):
         return "fail"
-    if any(token in normalized for token in ("traceback", "exception", "error", "failed")):
+    if any(
+        token in normalized for token in ("traceback", "exception", "error", "failed")
+    ):
         return "error"
     if any(token in normalized for token in ("success", "passed", "valid", "ok")):
         return "success"
@@ -129,7 +170,11 @@ def classify_action_intent(
         _first_tool_call_name(step),
     )
     tool_subtype = classify_tool_subtype(tool_name, text)
-    has_tool = bool(tool_name or step.get("tool_calls") or step_type in {"tool", "tool_use", "toolcall", "tool_call"})
+    has_tool = bool(
+        tool_name
+        or step.get("tool_calls")
+        or step_type in {"tool", "tool_use", "toolcall", "tool_call"}
+    )
 
     if _looks_like_answer(step_type, text_lower):
         return "answer", "strict", tool_subtype
@@ -146,7 +191,9 @@ def classify_action_intent(
 
 def normalized_records(bundle: RunBundle) -> list[dict[str, Any]]:
     """Return scorer-aware, duplicate-normalized records for behavior metrics."""
-    source_records = _raw_task_records(bundle) if bundle.task_records else list(bundle.records)
+    source_records = (
+        _raw_task_records(bundle) if bundle.task_records else list(bundle.records)
+    )
     selected: dict[tuple[str, int], dict[str, Any]] = {}
     selected_statuses: dict[tuple[str, int], str] = {}
 
@@ -180,7 +227,9 @@ def inventory_corpus(results_dir: Path, run_id: str, harness: str) -> dict[str, 
     normalized = normalized_records(bundle)
     key_counts = Counter(
         key
-        for key in (_sample_key(record) for record in (raw_task_records or bundle.records))
+        for key in (
+            _sample_key(record) for record in (raw_task_records or bundle.records)
+        )
         if key is not None
     )
     status_counts = Counter(infer_score_status(record) for record in normalized)
@@ -196,7 +245,9 @@ def inventory_corpus(results_dir: Path, run_id: str, harness: str) -> dict[str, 
         "task_records": len(raw_task_records),
         "expected_sample_count": int(expected_sample_count),
         "status_counts": dict(status_counts),
-        "duplicate_sample_keys": sorted(key for key, count in key_counts.items() if count > 1),
+        "duplicate_sample_keys": sorted(
+            key for key, count in key_counts.items() if count > 1
+        ),
     }
 
 
@@ -210,15 +261,23 @@ def select_directllm_baseline(
         if _is_backup_candidate(candidate):
             continue
         candidate_path = Path(candidate)
-        candidate_results_dir = candidate_path.parent if candidate_path.is_absolute() else results_dir
-        candidate_run_id = candidate_path.name if candidate_path.is_absolute() else candidate
+        candidate_results_dir = (
+            candidate_path.parent if candidate_path.is_absolute() else results_dir
+        )
+        candidate_run_id = (
+            candidate_path.name if candidate_path.is_absolute() else candidate
+        )
         bundle = load_run_bundle(candidate_results_dir, candidate_run_id)
         records = normalized_records(bundle)
         raw_task_records = _raw_task_records(bundle)
         summary = {
             "candidate": candidate,
             "run_id": candidate_run_id,
-            "valid_scored": sum(1 for record in records if infer_score_status(record) == VALID_SCORE_STATUS),
+            "valid_scored": sum(
+                1
+                for record in records
+                if infer_score_status(record) == VALID_SCORE_STATUS
+            ),
             "task_records": len(raw_task_records),
             "jsonl_records": len(bundle.records),
             "bundle": bundle,
@@ -248,14 +307,24 @@ def extract_action_events(bundle: RunBundle, *, harness: str) -> list[ActionEven
     return events
 
 
-def extract_action_event_rows(bundle: RunBundle, *, harness: str) -> list[dict[str, Any]]:
+def extract_action_event_rows(
+    bundle: RunBundle, *, harness: str
+) -> list[dict[str, Any]]:
     """Extract action events and return plain row dictionaries."""
     return [event.to_row() for event in extract_action_events(bundle, harness=harness)]
 
 
 def _step_text(step: dict[str, Any]) -> str:
     values: list[str] = []
-    for key in ("content", "text", "message", "reasoning_content", "thinking", "raw_output", "predicted"):
+    for key in (
+        "content",
+        "text",
+        "message",
+        "reasoning_content",
+        "thinking",
+        "raw_output",
+        "predicted",
+    ):
         value = step.get(key)
         if isinstance(value, str) and value:
             values.append(value)
@@ -289,7 +358,9 @@ def _directllm_score(summary: dict[str, Any]) -> tuple[int, int, int]:
     )
 
 
-def _extract_agent_events(bundle: RunBundle, record: dict[str, Any], *, harness: str) -> list[ActionEvent]:
+def _extract_agent_events(
+    bundle: RunBundle, record: dict[str, Any], *, harness: str
+) -> list[ActionEvent]:
     steps, source = _record_steps(bundle, record)
     events: list[ActionEvent] = []
     previous_observation_status = "none"
@@ -318,7 +389,8 @@ def _extract_agent_events(bundle: RunBundle, record: dict[str, Any], *, harness:
             action_label_confidence=confidence,
             tool_subtype=tool_subtype,
             observation_status="none",
-            recovery_context=previous_observation_status in _RECOVERY_OBSERVATION_STATUSES,
+            recovery_context=previous_observation_status
+            in _RECOVERY_OBSERVATION_STATUSES,
             text_span=text,
         )
         events.append(event)
@@ -326,7 +398,9 @@ def _extract_agent_events(bundle: RunBundle, record: dict[str, Any], *, harness:
     return events
 
 
-def _extract_directllm_events(bundle: RunBundle, record: dict[str, Any], *, harness: str) -> list[ActionEvent]:
+def _extract_directllm_events(
+    bundle: RunBundle, record: dict[str, Any], *, harness: str
+) -> list[ActionEvent]:
     events: list[ActionEvent] = []
     raw_output = _string_value(record.get("raw_output"))
     predicted = _string_value(record.get("predicted"))
@@ -365,7 +439,9 @@ def _extract_directllm_events(bundle: RunBundle, record: dict[str, Any], *, harn
     return events
 
 
-def _record_steps(bundle: RunBundle, record: dict[str, Any]) -> tuple[list[dict[str, Any]], str]:
+def _record_steps(
+    bundle: RunBundle, record: dict[str, Any]
+) -> tuple[list[dict[str, Any]], str]:
     trace = _load_normalized_trace(bundle, record)
     if trace:
         return trace, "normalized_trace"
@@ -388,7 +464,9 @@ def _record_steps(bundle: RunBundle, record: dict[str, Any]) -> tuple[list[dict[
     return steps, "raw_text"
 
 
-def _load_normalized_trace(bundle: RunBundle, record: dict[str, Any]) -> list[dict[str, Any]]:
+def _load_normalized_trace(
+    bundle: RunBundle, record: dict[str, Any]
+) -> list[dict[str, Any]]:
     rel_path = _normalized_trace_ref(record)
     if not rel_path:
         return []
@@ -447,7 +525,9 @@ def _make_event(
         recovery_context=recovery_context,
         text_span=text_span,
         score_status=infer_score_status(record),
-        correct=record.get("correct") if isinstance(record.get("correct"), bool) else None,
+        correct=record.get("correct")
+        if isinstance(record.get("correct"), bool)
+        else None,
     )
 
 
@@ -480,7 +560,9 @@ def _first_tool_call_name(step: dict[str, Any]) -> str:
     for raw_call in raw_calls:
         if not isinstance(raw_call, dict):
             continue
-        name = _first_text(raw_call.get("name"), raw_call.get("tool"), raw_call.get("tool_name"))
+        name = _first_text(
+            raw_call.get("name"), raw_call.get("tool"), raw_call.get("tool_name")
+        )
         if name:
             return name
     return ""
@@ -489,16 +571,29 @@ def _first_tool_call_name(step: dict[str, Any]) -> str:
 def _looks_like_answer(step_type: str, text_lower: str) -> bool:
     if step_type in {"final", "answer", "final_answer"}:
         return True
-    return any(token in text_lower for token in ("final answer", "answer:", "the answer is", "therefore the answer"))
+    return any(
+        token in text_lower
+        for token in (
+            "final answer",
+            "answer:",
+            "the answer is",
+            "therefore the answer",
+        )
+    )
 
 
 def _looks_like_verification(step_type: str, text_lower: str) -> bool:
     if step_type in {"verification", "verify"}:
         return True
-    return any(token in text_lower for token in ("verify", "verification", "check", "validate", "test"))
+    return any(
+        token in text_lower
+        for token in ("verify", "verification", "check", "validate", "test")
+    )
 
 
 def _looks_like_plan(step_type: str, text_lower: str) -> bool:
     if step_type in {"plan", "planning"}:
         return True
-    return any(token in text_lower for token in ("plan:", "i will", "first ", "next ", "step "))
+    return any(
+        token in text_lower for token in ("plan:", "i will", "first ", "next ", "step ")
+    )

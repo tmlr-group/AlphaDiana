@@ -93,7 +93,7 @@ run starts; non-ROCK runs skip it.
 `ExperimentConfig` lives in
 `alphadiana/engine/config/experiment_config.py`;
 `ConfigValidator` lives at `alphadiana/engine/config/validator.py`. Result files
-are written and read through `alphadiana/analysis/io/result_store.py`.
+are written and read through `alphadiana/results/store.py`.
 
 ## agent.config: the open pass-through
 

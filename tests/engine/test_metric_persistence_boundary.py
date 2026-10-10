@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from alphadiana.analysis.io.result_store import ResultStore
+from alphadiana.results.store import ResultStore
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.engine.runner import _measure_observational_metrics
 from alphadiana.harness.base import AgentResponse

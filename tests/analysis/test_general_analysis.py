@@ -7,11 +7,11 @@ from types import SimpleNamespace
 
 import pytest
 from tests.analysis.action_target_fixtures import attach_targets, fixed_item
-from alphadiana.analysis.annotations.actions import ActionAnnotations
-from alphadiana.analysis.analyzer import ExecutionMetrics, Figure
-from alphadiana.analysis.entropy import EntropyAnalysis
-from alphadiana.analysis.annotations.failures import FailureAnnotations
-from alphadiana.analysis.figures import _render
+from alphadiana.analysis.actions.llm_annotations import ActionAnnotations
+from alphadiana.analysis.measurements import ExecutionMetrics, Figure
+from alphadiana.analysis.measurements import EntropyAnalysis
+from alphadiana.analysis.failure_annotations import FailureAnnotations
+from alphadiana.analysis.export import _render
 from alphadiana.artifacts import Artifacts
 from alphadiana.scorer.judge_config import JudgeConfig
 from alphadiana.scorer.llm_judge import LLMJudgeScorer
@@ -277,7 +277,7 @@ def test_failure_annotations_include_invalid_runs_with_correct_answers(tmp_path)
 
 
 def test_failure_annotations_preserve_tool_and_reasoning_evidence(tmp_path):
-    from alphadiana.analysis.io.result_store import ResultStore
+    from alphadiana.results.store import ResultStore
     from alphadiana.benchmarks.base import BenchmarkTask
     from alphadiana.harness.base import AgentResponse
     from alphadiana.scorer.base import ScoreResult
@@ -646,7 +646,7 @@ def test_analyzer_owns_only_its_judges_and_closes_them_on_failure(
     tmp_path, monkeypatch
 ):
     import alphadiana as ad
-    from alphadiana.analysis.analyzer import Measurement
+    from alphadiana.analysis.measurements import Measurement
 
     monkeypatch.setenv("ANALYSIS_MODEL", "analysis")
     monkeypatch.setenv("ANALYSIS_BASE_URL", "https://analysis.example/v1")

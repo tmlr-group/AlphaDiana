@@ -3,7 +3,7 @@
 import pytest
 
 import alphadiana as ad
-from alphadiana.analysis.io.result_store import ResultStore
+from alphadiana.results.store import ResultStore
 from alphadiana.artifacts import Artifacts
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.harness.base import AgentResponse

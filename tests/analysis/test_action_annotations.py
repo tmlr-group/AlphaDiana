@@ -5,8 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 from tests.analysis.action_target_fixtures import fixed_item
-from alphadiana.analysis.annotations.actions import ActionAnnotations
-from alphadiana.analysis.action_protocol import request_for, validate_response
+from alphadiana.analysis.actions.llm_annotations import ActionAnnotations
+from alphadiana.analysis.actions.protocol import request_for, validate_response
 
 
 def test_annotations_cache_exact_request_and_reject_invalid_labels(tmp_path):

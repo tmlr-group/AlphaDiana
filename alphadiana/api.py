@@ -17,7 +17,7 @@ from alphadiana.engine.config.experiment_config import (
 )
 
 if TYPE_CHECKING:
-    from alphadiana.analysis.analyzer import Analyzer
+    from alphadiana.analysis.pipeline import Analyzer
     from alphadiana.artifacts import Artifacts
 
 
@@ -169,6 +169,6 @@ def runner(env: EnvironmentSpec | None = None, **options: Any) -> EvaluationRunn
 
 def analyzer(artifacts, **options: Any) -> Analyzer:
     """Open one or multiple runs for structured measurement and figure export."""
-    from alphadiana.analysis.analyzer import Analyzer
+    from alphadiana.analysis.pipeline import Analyzer
 
     return Analyzer(artifacts, **options)

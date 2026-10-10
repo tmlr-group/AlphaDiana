@@ -279,7 +279,7 @@ alphadiana run configs/macro_runs/aime2026_directllm_qwen35_27b.yaml \
 `validate` prints `Config is valid.` on success and exits non-zero with
 `  - <error>` lines otherwise. A completed run writes scored records under
 `output_dir` (default `./results`); results are persisted through the result
-store at `alphadiana/analysis/io/result_store.py`. Regenerate a markdown report
+store at `alphadiana/results/store.py`. Regenerate a markdown report
 from existing run files with:
 
 ```bash
@@ -295,7 +295,7 @@ alphadiana report results/
 | Config validator | `alphadiana/engine/config/validator.py` (`ConfigValidator`) |
 | Annotated core config shape | `configs/schema.yaml` |
 | Harness implementations | `alphadiana/harness/` (`direct_llm.py`, `openclaw/`, `opencode/`, `zeroclaw/`) |
-| Result store | `alphadiana/analysis/io/result_store.py` |
+| Result store | `alphadiana/results/store.py` |
 
 ## Next steps
 

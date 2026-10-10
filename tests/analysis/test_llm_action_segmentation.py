@@ -4,15 +4,16 @@ import json
 
 import pytest
 
-from alphadiana.analysis.annotations.actions import ActionAnnotations
-from alphadiana.analysis.action_protocol import prompt_bytes
-from alphadiana.analysis.annotations.segmentation import (
-    PROTOCOL,
+from alphadiana.analysis.actions.llm_annotations import ActionAnnotations
+from alphadiana.analysis.actions.protocol import prompt_bytes
+from alphadiana.analysis.actions.llm_annotations import (
+    TRAJECTORY_PROTOCOL as PROTOCOL,
     segmentation_prompt,
     source_blocks,
     validate_segments,
 )
-from alphadiana.analysis.analyzer import Analyzer, ExecutionMetrics
+from alphadiana.analysis.pipeline import Analyzer
+from alphadiana.analysis.measurements import ExecutionMetrics
 from tests.analysis.test_general_analysis import judge_options, record, response, source
 
 
@@ -230,7 +231,7 @@ def test_oversized_indivisible_source_and_unlinked_reasoning_fail_before_calls(
 
 
 def test_offline_execution_has_no_rule_based_action_results(tmp_path, monkeypatch):
-    from alphadiana.analysis import action_events
+    from alphadiana.analysis.actions import keyword_baseline as action_events
 
     monkeypatch.setattr(
         action_events,

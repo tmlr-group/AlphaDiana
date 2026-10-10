@@ -3,13 +3,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from alphadiana.analysis.io.result_store import ResultStore
-from alphadiana.analysis.io.status import (
+from alphadiana.results.store import ResultStore
+from alphadiana.results.status import (
     infer_score_status,
     is_legacy_timeout_zero_record,
     is_valid_completed_record,
 )
-from alphadiana.analysis.report import ReportGenerator
+from alphadiana.analysis.export import ReportGenerator
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.harness.base import Agent, AgentResponse
 from alphadiana.harness.registry import AgentRegistry

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from alphadiana.analysis.actions.events import classify_action_intent
+from alphadiana.analysis.actions.keyword_baseline import classify_action_intent
 from alphadiana.harness.zeroclaw.agent import ZeroClawAgent
 from alphadiana.harness.zeroclaw.trace import normalize_trace
 
@@ -82,7 +82,7 @@ def test_native_response_boundary_persists_usage_and_raw_trace():
 
 def test_balanced_rolling_suffix_is_not_published_as_whole_run_usage(tmp_path):
     import alphadiana as ad
-    from alphadiana.analysis.io.result_store import ResultStore
+    from alphadiana.results.store import ResultStore
     from alphadiana.artifacts import Artifacts
     from alphadiana.benchmarks.base import BenchmarkTask
     from alphadiana.scorer.numeric import NumericScorer
@@ -144,7 +144,7 @@ def test_native_final_prevents_reappending_cli_transcript():
 
 
 def test_persisted_tools_keep_call_arguments_and_result_role():
-    from alphadiana.analysis.io.normalized_trace import normalize_persisted_trajectory
+    from alphadiana.results.trace import normalize_persisted_trajectory
 
     trajectory, _, _, _ = normalize_trace([], records(), final_output="5017")
     persisted = normalize_persisted_trajectory(trajectory)

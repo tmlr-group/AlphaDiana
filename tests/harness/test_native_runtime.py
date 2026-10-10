@@ -88,7 +88,7 @@ def test_real_baseline_and_plugin(tmp_path, agent_class):
             if agent_class in {PiAgent, DeepSeekHarnessAgent}:
                 import json
 
-                from alphadiana.analysis.io.result_store import ResultStore
+                from alphadiana.results.store import ResultStore
                 from alphadiana.scorer.numeric import NumericScorer
 
                 task = BenchmarkTask("persist", "Read marker.", "1")
@@ -272,7 +272,7 @@ def test_real_native_training_capture_uses_native_ids_and_policy_attestation(age
         try:
             response = agent.solve(BenchmarkTask("training", "Read marker.", None))
             capture = response.metadata["training_capture"]
-            from alphadiana.analysis.io.result_store import ResultStore
+            from alphadiana.results.store import ResultStore
             from alphadiana.harness._internal.training import TrainingCapture
             from alphadiana.scorer.numeric import NumericScorer
 

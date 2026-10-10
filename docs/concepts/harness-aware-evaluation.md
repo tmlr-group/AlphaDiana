@@ -47,7 +47,7 @@ extended observability fields such as `reasoning_trajectory`, `request_messages`
 two harnesses are compared on an identical record schema. Raw harness runtime
 artifacts are normalized into these fields by
 `alphadiana/harness/proxies/preservation.py`, and the result store at
-[`alphadiana/analysis/io/result_store.py`](../architecture/) writes them
+[`alphadiana/results/store.py`](../architecture/) writes them
 to disk.
 
 ### The registry

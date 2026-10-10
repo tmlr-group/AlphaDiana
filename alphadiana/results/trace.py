@@ -28,7 +28,9 @@ def normalize_request_messages(
     for message in request_messages or []:
         if not isinstance(message, dict):
             continue
-        role = _canonical_role(str(message.get("role") or "").strip(), step_type="message")
+        role = _canonical_role(
+            str(message.get("role") or "").strip(), step_type="message"
+        )
         content = _coerce_text(message.get("content", ""))
         entry: dict[str, Any] = {
             "role": role,
@@ -168,7 +170,9 @@ def build_normalized_trace(
         "metrics": {
             "wall_time_sec": float(getattr(response, "wall_time_sec", 0.0) or 0.0),
             "token_usage": deepcopy(getattr(response, "token_usage", {}) or {}),
-            "evaluation_metrics": deepcopy(getattr(response, "evaluation_metrics", {}) or {}),
+            "evaluation_metrics": deepcopy(
+                getattr(response, "evaluation_metrics", {}) or {}
+            ),
             "evaluation_metric_errors": deepcopy(
                 getattr(response, "evaluation_metric_errors", {}) or {}
             ),
@@ -186,10 +190,7 @@ def _normalize_trace_step(raw_step: dict[str, Any]) -> dict[str, Any] | None:
     tool_results = _normalize_tool_results(raw_step)
 
     if not content and tool_calls:
-        content = "\n".join(
-            _summarize_tool_call(call)
-            for call in tool_calls
-        ).strip()
+        content = "\n".join(_summarize_tool_call(call) for call in tool_calls).strip()
     if not content and tool_results:
         content = "\n".join(
             result.get("content", "")
@@ -298,11 +299,17 @@ def _normalize_tool_result(raw_value: Any) -> dict[str, Any] | None:
     if not content:
         content = _coerce_text(raw_value.get("observation", ""))
     normalized = {
-        "tool_use_id": _stringify(raw_value.get("tool_use_id", raw_value.get("id", ""))),
+        "tool_use_id": _stringify(
+            raw_value.get("tool_use_id", raw_value.get("id", ""))
+        ),
         "content": content,
         "is_error": bool(raw_value.get("is_error", raw_value.get("isError", False))),
     }
-    if not normalized["tool_use_id"] and not normalized["content"] and not normalized["is_error"]:
+    if (
+        not normalized["tool_use_id"]
+        and not normalized["content"]
+        and not normalized["is_error"]
+    ):
         return None
     return normalized
 

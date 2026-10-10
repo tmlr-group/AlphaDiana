@@ -4,13 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from alphadiana.analysis.analyzer import Analyzer
-from alphadiana.analysis.paper_archive import PaperArchive
+from alphadiana.analysis.pipeline import Analyzer
+from scripts.paper_analysis.load_figure_tables import PaperFigureTables
 
 
 @pytest.mark.skipif(not os.environ.get("ALPHADIANA_PAPER_ARCHIVE"), reason="external paper archive not configured")
 def test_archive_concepts_and_export(tmp_path):
-    archive=PaperArchive(os.environ["ALPHADIANA_PAPER_ARCHIVE"])
+    archive=PaperFigureTables(os.environ["ALPHADIANA_PAPER_ARCHIVE"])
     analysis=Analyzer([],plugins=[archive])
     report=analysis.compute()
     measured=report["analyses"]["paper_archive"]

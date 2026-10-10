@@ -68,12 +68,16 @@ def _is_control_plane_runtime_error(error: dict[str, Any], evidence_text: str) -
     return any(marker in evidence_text for marker in control_markers)
 
 
-def _terminal_bench2_has_observed_reward(record: dict[str, Any], metadata: dict[str, Any]) -> bool:
+def _terminal_bench2_has_observed_reward(
+    record: dict[str, Any], metadata: dict[str, Any]
+) -> bool:
     reward_value = record.get("reward", metadata.get("reward", record.get("predicted")))
     return reward_value not in (None, "")
 
 
-def _terminal_bench2_verifier_scored(record: dict[str, Any], metadata: dict[str, Any]) -> bool:
+def _terminal_bench2_verifier_scored(
+    record: dict[str, Any], metadata: dict[str, Any]
+) -> bool:
     if str(record.get("benchmark_name", "") or "").strip() != "terminal_bench2":
         return False
     if record.get("score") is None or record.get("correct") is None:
@@ -83,10 +87,9 @@ def _terminal_bench2_verifier_scored(record: dict[str, Any], metadata: dict[str,
     if verifier_status == "ok":
         return _terminal_bench2_has_observed_reward(record, metadata)
     if verifier_status == "skipped_duplicate":
-        return (
-            metadata.get("verifier_reward_observed") is True
-            and _terminal_bench2_has_observed_reward(record, metadata)
-        )
+        return metadata.get(
+            "verifier_reward_observed"
+        ) is True and _terminal_bench2_has_observed_reward(record, metadata)
     return False
 
 
@@ -98,12 +101,16 @@ def _scorer_failure_status(record: dict[str, Any]) -> str | None:
         if score_metadata.get("verifier_status") == "bootstrap_error":
             return "verifier_error"
         replay = _as_dict(record.get("rescoring"))
-        if not (replay.get("environment_allowed") is True and score_metadata.get("replayed") is True):
+        if not (
+            replay.get("environment_allowed") is True
+            and score_metadata.get("replayed") is True
+        ):
             # Historical reward=0 also covers failures before pytest started.
             output = str(_as_dict(record.get("metadata")).get("test_output", "") or "")
             if re.search(
                 r"(?m)^(?:/usr/local/bin/uvx: line \d+: python3: command not found|"
-                r"/usr/bin/python3: No module named (?:pip|ensurepip))$", output
+                r"/usr/bin/python3: No module named (?:pip|ensurepip))$",
+                output,
             ):
                 return "verifier_error"
     if (
@@ -159,7 +166,11 @@ def is_legacy_timeout_zero_record(record: dict[str, Any]) -> bool:
         return False
     if record.get("score") is not None or record.get("correct") is not None:
         return False
-    if not error and explicit not in {"agent_error", "runtime_error", "preserved_failure"}:
+    if not error and explicit not in {
+        "agent_error",
+        "runtime_error",
+        "preserved_failure",
+    }:
         return False
     if str(record.get("finish_reason", "") or "").strip() == "preserved_failure":
         return False
@@ -184,16 +195,21 @@ def is_legacy_timeout_zero_record(record: dict[str, Any]) -> bool:
         return False
 
     response_json = _as_dict(record.get("response_json"))
-    evidence_text = "\n".join([
-        str(record.get("finish_reason", "") or ""),
-        str(record.get("rationale", "") or ""),
-        _safe_json_text(error),
-        _safe_json_text(metadata),
-        _safe_json_text(response_json),
-        str(record.get("raw_output", "") or "")[:20000],
-    ]).lower()
+    evidence_text = "\n".join(
+        [
+            str(record.get("finish_reason", "") or ""),
+            str(record.get("rationale", "") or ""),
+            _safe_json_text(error),
+            _safe_json_text(metadata),
+            _safe_json_text(response_json),
+            str(record.get("raw_output", "") or "")[:20000],
+        ]
+    ).lower()
 
-    if "contextoverflowerror" in evidence_text or "vllmvalidationerror" in evidence_text:
+    if (
+        "contextoverflowerror" in evidence_text
+        or "vllmvalidationerror" in evidence_text
+    ):
         return False
     if "openclaw_session_tainted" in evidence_text or "heartbeat" in evidence_text:
         return False
@@ -244,23 +260,28 @@ def normalize_legacy_timeout_zero_record(record: dict[str, Any]) -> dict[str, An
         return record
     normalized = dict(record)
     metadata = dict(_as_dict(record.get("metadata")))
-    metadata.update({
-        "failure_reason": "timeout",
-        "legacy_timeout_scored_zero": True,
-    })
+    metadata.update(
+        {
+            "failure_reason": "timeout",
+            "legacy_timeout_scored_zero": True,
+        }
+    )
     score_metadata = dict(_as_dict(record.get("score_metadata")))
     score_metadata["legacy_timeout_scored_zero"] = True
-    normalized.update({
-        "predicted": None,
-        "correct": False,
-        "score": 0.0,
-        "rationale": record.get("rationale") or "Legacy timeout counted as score 0.",
-        "score_metadata": score_metadata,
-        "finish_reason": "timeout",
-        "metadata": metadata,
-        "error": None,
-        "score_status": VALID_SCORE_STATUS,
-    })
+    normalized.update(
+        {
+            "predicted": None,
+            "correct": False,
+            "score": 0.0,
+            "rationale": record.get("rationale")
+            or "Legacy timeout counted as score 0.",
+            "score_metadata": score_metadata,
+            "finish_reason": "timeout",
+            "metadata": metadata,
+            "error": None,
+            "score_status": VALID_SCORE_STATUS,
+        }
+    )
     return normalized
 
 
@@ -331,7 +352,9 @@ def infer_score_status(record: dict[str, Any]) -> str:
     if explicit:
         return explicit
 
-    if finish_reason == "preserved_failure" or metadata.get("zeroclaw_preserved_failure"):
+    if finish_reason == "preserved_failure" or metadata.get(
+        "zeroclaw_preserved_failure"
+    ):
         return "preserved_failure"
     if failure_reason in {
         "provider_error",
@@ -354,7 +377,8 @@ def infer_score_status(record: dict[str, Any]) -> str:
         finish_reason == "agent_empty_output"
         or metadata.get("opencode_empty_assistant_output")
         or metadata.get("zeroclaw_empty_assistant_output")
-        or failure_reason in {"opencode_lifecycle_only_events", "opencode_empty_assistant_output"}
+        or failure_reason
+        in {"opencode_lifecycle_only_events", "opencode_empty_assistant_output"}
         or failure_reason == "zeroclaw_empty_assistant_output"
     ):
         return "agent_empty_output"

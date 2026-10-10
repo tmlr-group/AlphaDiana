@@ -9,8 +9,9 @@ from typing import Any
 
 import yaml
 
-from alphadiana.analysis.run_summary import ReportGenerator, RunStatistics
-from alphadiana.analysis.io.result_store import ResultStore
+from alphadiana.analysis.export import ReportGenerator
+from alphadiana.results.statistics import RunStatistics
+from alphadiana.results.store import ResultStore
 
 from alphadiana.dashboard.backend.models import (
     CompareRunEntry,

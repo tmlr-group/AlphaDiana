@@ -57,11 +57,12 @@ Provider failures, context overflow, control-plane failures, verifier anomalies,
 
 Shared registry mechanics live in `alphadiana/registry.py`; deferred built-in
 imports stay in `registry_loader.py`. Low-level logprob conversion and entropy
-math live in `alphadiana/logprobs.py`. `analysis/run_summary.py` owns latest-sample
-selection, reliability, and common run statistics; `analysis/actions/report.py` renders action
-reports. Documented compatibility imports remain available; internal imports use
-these owners. See the
-[compatibility and field-unit contracts](../validation/shared-main-contracts.md).
+math live in `alphadiana/logprobs.py`. `results/statistics.py` owns latest-sample
+selection, reliability, and common run statistics; `analysis/export.py` projects
+those statistics into run reports and exports figures. Action-space reports live
+in `analysis/actions/action_space_report.py`. Public `ad.*` entry points remain;
+old internal module paths migrate according to the
+[import map](../../alphadiana/analysis/README.md).
 
 For module ownership, see the [analysis map](../../alphadiana/analysis/README.md).
 The [operator workflow map](../../scripts/README.md) separates setup, validation,

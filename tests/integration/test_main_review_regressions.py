@@ -16,8 +16,8 @@ from alphadiana.dashboard.backend.job_manager import (
     _current_job_id,
     _JobLogCapture,
 )
-from alphadiana.analysis.io.result_store import ResultStore
-from alphadiana.analysis.report import ReportGenerator
+from alphadiana.results.store import ResultStore
+from alphadiana.analysis.export import ReportGenerator
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.engine.task_dispatcher import TaskDispatcher
 from alphadiana.harness.direct_llm import DirectLLMAgent

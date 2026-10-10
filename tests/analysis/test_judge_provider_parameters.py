@@ -1,7 +1,7 @@
 import json
 from types import SimpleNamespace
 
-from alphadiana.analysis.annotations.judge import CachedJudge
+from alphadiana.analysis.judge_client import CachedJudge
 
 
 def test_provider_controls_are_explicit_and_part_of_cache_identity(tmp_path):

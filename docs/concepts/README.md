@@ -169,7 +169,7 @@ Runner.run          # per task:
    ├── benchmark.load_tasks
    ├── agent.solve(task, sandbox)  -> AgentResponse
    ├── scorer.score
-   └── result_store.append          # alphadiana/analysis/io/result_store.py
+   └── result_store.append          # alphadiana/results/store.py
    │
 Runner.teardown
    ▼
@@ -177,6 +177,6 @@ results/<run_id>.jsonl  ->  report generation / dashboard
 ```
 
 The orchestration code lives in `alphadiana/engine/`, the result store in
-`alphadiana/analysis/io/result_store.py`. Continue with
+`alphadiana/results/store.py`. Continue with
 [Harness-Aware Evaluation](./harness-aware-evaluation.md) for the rationale, or
 jump to a specific harness under [Harnesses](../harnesses/openclaw.md).

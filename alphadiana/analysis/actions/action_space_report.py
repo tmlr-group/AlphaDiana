@@ -7,9 +7,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-from alphadiana.analysis.run_summary import ERROR_STATUSES, compute_reliability_summary
-from alphadiana.analysis.io.result_reader import RunBundle
-from alphadiana.analysis.io.status import VALID_SCORE_STATUS, infer_score_status
+from alphadiana.results.reader import RunBundle
+from alphadiana.results.statistics import ERROR_STATUSES, compute_reliability_summary
+from alphadiana.results.status import VALID_SCORE_STATUS, infer_score_status
 
 
 def _field_order(rows: list[dict[str, Any]]) -> list[str]:
@@ -57,7 +57,11 @@ def _expected_samples(bundle: RunBundle, reliability: dict[str, Any]) -> int:
     """Keep the legacy export while using the canonical planned sample count."""
     if "expected_sample_count" in reliability:
         return int(reliability["expected_sample_count"])
-    return int(compute_reliability_summary(bundle.records, bundle.manifest)["expected_sample_count"])
+    return int(
+        compute_reliability_summary(bundle.records, bundle.manifest)[
+            "expected_sample_count"
+        ]
+    )
 
 
 def _cluster_lines(view_name: str, view: dict[str, Any]) -> list[str]:
@@ -81,15 +85,26 @@ def _cluster_lines(view_name: str, view: dict[str, Any]) -> list[str]:
         return lines
 
     for cluster in clusters:
-        score_counts = ", ".join(
-            f"{key}={value}"
-            for key, value in (cluster.get("score_status_counts") or {}).items()
-        ) or "n/a"
-        correct_counts = ", ".join(
-            f"{key}={value}"
-            for key, value in (cluster.get("correct_counts") or {}).items()
-        ) or "n/a"
-        exemplars = ", ".join(f"`{task_id}`" for task_id in cluster.get("exemplar_task_ids", [])) or "n/a"
+        score_counts = (
+            ", ".join(
+                f"{key}={value}"
+                for key, value in (cluster.get("score_status_counts") or {}).items()
+            )
+            or "n/a"
+        )
+        correct_counts = (
+            ", ".join(
+                f"{key}={value}"
+                for key, value in (cluster.get("correct_counts") or {}).items()
+            )
+            or "n/a"
+        )
+        exemplars = (
+            ", ".join(
+                f"`{task_id}`" for task_id in cluster.get("exemplar_task_ids", [])
+            )
+            or "n/a"
+        )
         lines.append(
             f"| {cluster.get('cluster_id')} | {cluster.get('n', 0)} | "
             f"{score_counts} | {correct_counts} | {_fmt_ratio(cluster.get('entropy_mean_avg'))} | {exemplars} |"
@@ -111,7 +126,9 @@ def render_markdown_report(
     missing_samples = int(reliability.get("missing_samples") or 0)
     denominators = reliability.get("denominators")
     if denominators is None:
-        denominators = compute_reliability_summary(bundle.records, bundle.manifest)["denominators"]
+        denominators = compute_reliability_summary(bundle.records, bundle.manifest)[
+            "denominators"
+        ]
 
     lines = [
         f"# Action Space Analysis: {bundle.run_id}",

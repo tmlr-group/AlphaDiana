@@ -5,9 +5,12 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any, Mapping, Sequence
 
+from alphadiana.analysis.actions.trajectories import (
+    group_event_sequences,
+    has_answer_after_verification,
+)
 from alphadiana.analysis.insights.corpus import sanitize_path_text
-from alphadiana.analysis.actions.metrics import group_event_sequences, has_answer_after_verification
-from alphadiana.analysis.io.status import VALID_SCORE_STATUS
+from alphadiana.results.status import VALID_SCORE_STATUS
 
 CASE_ANCHOR_TYPES = (
     "paired_rescue",
@@ -18,7 +21,12 @@ CASE_ANCHOR_TYPES = (
     "operational_error",
 )
 
-ERROR_SCORE_STATUSES = {"agent_error", "provider_error", "runtime_error", "scorer_error"}
+ERROR_SCORE_STATUSES = {
+    "agent_error",
+    "provider_error",
+    "runtime_error",
+    "scorer_error",
+}
 
 
 def select_insight_case_anchors(
@@ -33,14 +41,18 @@ def select_insight_case_anchors(
     sequences = group_event_sequences(event_rows)
     candidates.extend(_verify_without_conversion_cases(sequences))
     candidates.extend(_tool_without_state_shift_cases(sequences))
-    candidates.extend(_low_entropy_long_cases(sequences, selected_records, measurement_summary))
+    candidates.extend(
+        _low_entropy_long_cases(sequences, selected_records, measurement_summary)
+    )
     candidates.extend(_operational_error_cases(selected_records))
     candidates.extend(_paired_flip_cases(selected_records))
 
     selected: list[dict[str, Any]] = []
     by_type: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for candidate in candidates:
-        by_type[str(candidate.get("anchor_type") or "")].append(sanitize_case_anchor(candidate))
+        by_type[str(candidate.get("anchor_type") or "")].append(
+            sanitize_case_anchor(candidate)
+        )
 
     for anchor_type in CASE_ANCHOR_TYPES:
         ranked = sorted(by_type.get(anchor_type, ()), key=_candidate_rank)
@@ -80,7 +92,9 @@ def sanitize_case_anchor(case: Mapping[str, Any]) -> dict[str, Any]:
     return sanitized
 
 
-def _verify_without_conversion_cases(sequences: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+def _verify_without_conversion_cases(
+    sequences: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
     cases: list[dict[str, Any]] = []
     for sequence in sequences:
         if sequence.get("score_status") != VALID_SCORE_STATUS:
@@ -89,13 +103,18 @@ def _verify_without_conversion_cases(sequences: Sequence[Mapping[str, Any]]) -> 
         if "verify" not in actions or has_answer_after_verification(actions):
             continue
         verify_index = actions.index("verify")
-        if any(action in {"reason", "plan", "tool_use", "recover"} for action in actions[verify_index + 1 :]):
+        if any(
+            action in {"reason", "plan", "tool_use", "recover"}
+            for action in actions[verify_index + 1 :]
+        ):
             continue
         cases.append(_case_from_sequence("verify_without_conversion", sequence))
     return cases
 
 
-def _tool_without_state_shift_cases(sequences: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+def _tool_without_state_shift_cases(
+    sequences: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
     cases: list[dict[str, Any]] = []
     for sequence in sequences:
         if sequence.get("score_status") != VALID_SCORE_STATUS:
@@ -104,7 +123,10 @@ def _tool_without_state_shift_cases(sequences: Sequence[Mapping[str, Any]]) -> l
         if "tool_use" not in actions:
             continue
         tool_index = actions.index("tool_use")
-        if any(action in {"verify", "answer", "reason"} for action in actions[tool_index + 1 :]):
+        if any(
+            action in {"verify", "answer", "reason"}
+            for action in actions[tool_index + 1 :]
+        ):
             continue
         cases.append(_case_from_sequence("tool_without_state_shift", sequence))
     return cases
@@ -119,11 +141,19 @@ def _low_entropy_long_cases(
     if not case_ids:
         return []
     by_key = {
-        (str(sequence.get("harness") or ""), str(sequence.get("task_id") or ""), int(sequence.get("sample_index") or 0)): sequence
+        (
+            str(sequence.get("harness") or ""),
+            str(sequence.get("task_id") or ""),
+            int(sequence.get("sample_index") or 0),
+        ): sequence
         for sequence in sequences
     }
     record_by_key = {
-        (str(record.get("harness") or ""), str(record.get("task_id") or ""), int(record.get("sample_index") or 0)): record
+        (
+            str(record.get("harness") or ""),
+            str(record.get("task_id") or ""),
+            int(record.get("sample_index") or 0),
+        ): record
         for record in selected_records
     }
     cases: list[dict[str, Any]] = []
@@ -137,12 +167,16 @@ def _low_entropy_long_cases(
             case = _case_from_sequence("low_entropy_long_wrong", sequence)
         else:
             record = record_by_key.get((harness, task_id, sample_index), {})
-            case = _case_from_record("low_entropy_long_wrong", record, harness, task_id, sample_index)
+            case = _case_from_record(
+                "low_entropy_long_wrong", record, harness, task_id, sample_index
+            )
         cases.append(case)
     return cases
 
 
-def _operational_error_cases(selected_records: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+def _operational_error_cases(
+    selected_records: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
     cases: list[dict[str, Any]] = []
     for record in selected_records:
         status = str(record.get("score_status") or "")
@@ -160,7 +194,9 @@ def _operational_error_cases(selected_records: Sequence[Mapping[str, Any]]) -> l
     return cases
 
 
-def _paired_flip_cases(selected_records: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+def _paired_flip_cases(
+    selected_records: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
     direct: dict[tuple[str, int], Mapping[str, Any]] = {}
     agents: list[Mapping[str, Any]] = []
     for record in selected_records:
@@ -205,7 +241,9 @@ def _paired_flip_cases(selected_records: Sequence[Mapping[str, Any]]) -> list[di
     return cases
 
 
-def _case_from_sequence(anchor_type: str, sequence: Mapping[str, Any]) -> dict[str, Any]:
+def _case_from_sequence(
+    anchor_type: str, sequence: Mapping[str, Any]
+) -> dict[str, Any]:
     rows = list(sequence.get("rows") or ())
     return {
         "anchor_type": anchor_type,

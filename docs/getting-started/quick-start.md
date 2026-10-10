@@ -30,7 +30,7 @@ config.yaml
 
 The CLI entry point is the Click group `main` in `alphadiana/cli.py`; the
 orchestrator is `Runner` in `alphadiana/engine/runner.py`; results are written by
-`ResultStore` in `alphadiana/analysis/io/result_store.py`.
+`ResultStore` in `alphadiana/results/store.py`.
 
 ## 1. Point the agent at a model
 
@@ -251,7 +251,7 @@ timeout-classified harness outcomes are the exception to the intuitive
 ## Accuracy, Pass@k, and Avg@k
 
 The report metrics come from `ReportGenerator.generate`
-(`alphadiana/analysis/run_summary.py`):
+(`alphadiana/results/statistics.py`):
 
 | Metric | Definition |
 |---|---|

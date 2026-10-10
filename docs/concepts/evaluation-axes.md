@@ -174,7 +174,7 @@ pass@k estimates.
 ### Reading the results
 
 Memory results land through the result store at
-`alphadiana/analysis/io/result_store.py`; the run loop lives under
+`alphadiana/results/store.py`; the run loop lives under
 `alphadiana/engine/` (`alphadiana/engine/runner.py`). The plots and the scope
 ladder are regenerated from the recorded results.
 

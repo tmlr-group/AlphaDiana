@@ -10,7 +10,7 @@ import json
 import math
 from pathlib import Path
 
-from alphadiana.analysis.io.status import infer_score_status
+from alphadiana.results.status import infer_score_status
 from alphadiana.harness.base import AgentResponse
 from alphahebe.integrations.diana.benchmarks.evox_problems import (
     EvoXProblemsBenchmark,

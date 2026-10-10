@@ -7,8 +7,6 @@ import json
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from alphadiana.analysis.actions.events import CANONICAL_ACTIONS
-
 
 def render_latex_appendix(
     inventory: Mapping[str, Any],
@@ -141,8 +139,12 @@ def write_phase14_outputs(
         "chinese_discussion": output_dir / "gpqa_trajectory_discussion_zh.md",
     }
     output_refs = {name: path for name, path in paths.items()}
-    latex = render_latex_appendix(inventory, metrics, case_studies, output_files=output_refs)
-    chinese = render_chinese_discussion(inventory, metrics, case_studies, output_files=output_refs)
+    latex = render_latex_appendix(
+        inventory, metrics, case_studies, output_files=output_refs
+    )
+    chinese = render_chinese_discussion(
+        inventory, metrics, case_studies, output_files=output_refs
+    )
 
     _write_json(_jsonable(inventory), paths["corpus_inventory"])
     _write_csv(event_rows, paths["action_events"])
@@ -176,8 +178,14 @@ def _latex_corpus_table(corpus_rows: Sequence[Mapping[str, Any]]) -> str:
 
 
 def _latex_metrics_summary(metrics: Mapping[str, Any]) -> str:
-    names = ", ".join(f"\\texttt{{{_tex(name)}}}" for name in metrics.get("metric_names", []))
-    diagnostics = metrics.get("diagnostics", {}) if isinstance(metrics.get("diagnostics"), Mapping) else {}
+    names = ", ".join(
+        f"\\texttt{{{_tex(name)}}}" for name in metrics.get("metric_names", [])
+    )
+    diagnostics = (
+        metrics.get("diagnostics", {})
+        if isinstance(metrics.get("diagnostics"), Mapping)
+        else {}
+    )
     return "\n".join(
         [
             f"Metric families: {names}.",
@@ -220,7 +228,11 @@ def _markdown_corpus_table(corpus_rows: Sequence[Mapping[str, Any]]) -> str:
 
 
 def _markdown_metrics_summary(metrics: Mapping[str, Any]) -> str:
-    diagnostics = metrics.get("diagnostics", {}) if isinstance(metrics.get("diagnostics"), Mapping) else {}
+    diagnostics = (
+        metrics.get("diagnostics", {})
+        if isinstance(metrics.get("diagnostics"), Mapping)
+        else {}
+    )
     names = ", ".join(f"`{name}`" for name in metrics.get("metric_names", []))
     return "\n".join(
         [
@@ -268,7 +280,8 @@ def _markdown_action_delta_table(metrics: Mapping[str, Any]) -> str:
     selected = [
         row
         for row in rows
-        if isinstance(row, Mapping) and row.get("canonical_action") in {"verify", "tool_use"}
+        if isinstance(row, Mapping)
+        and row.get("canonical_action") in {"verify", "tool_use"}
     ]
     if not selected:
         return ""
@@ -359,7 +372,12 @@ def _markdown_failure_cost_table(metrics: Mapping[str, Any]) -> str:
             continue
         breakdown = ", ".join(
             f"{status}={int(row.get(status) or 0)}"
-            for status in ("agent_error", "provider_error", "runtime_error", "scorer_error")
+            for status in (
+                "agent_error",
+                "provider_error",
+                "runtime_error",
+                "scorer_error",
+            )
         )
         lines.append(
             "| {harness} | {valid} | {errors} | {ratio} | {breakdown} |".format(
@@ -374,7 +392,11 @@ def _markdown_failure_cost_table(metrics: Mapping[str, Any]) -> str:
 
 
 def _markdown_pooled_distribution_table(metrics: Mapping[str, Any]) -> str:
-    diagnostics = metrics.get("diagnostics", {}) if isinstance(metrics.get("diagnostics"), Mapping) else {}
+    diagnostics = (
+        metrics.get("diagnostics", {})
+        if isinstance(metrics.get("diagnostics"), Mapping)
+        else {}
+    )
     rows = diagnostics.get("pooled_action_distribution")
     if not isinstance(rows, list) or not rows:
         return ""
@@ -408,7 +430,10 @@ def _markdown_metric_takeaways(metrics: Mapping[str, Any]) -> str:
         if isinstance(row, Mapping) and row.get("canonical_action") == "tool_use"
     ]
     if tool_rows:
-        strongest_tool = max(tool_rows, key=lambda row: float(row.get("delta_correct_minus_incorrect") or 0.0))
+        strongest_tool = max(
+            tool_rows,
+            key=lambda row: float(row.get("delta_correct_minus_incorrect") or 0.0),
+        )
         lines.append(
             "- `DeltaToolUseShare` 最大的是 `{}`（{}），说明工具使用在该 harness 的正确轨迹中更集中。".format(
                 strongest_tool.get("harness", ""),
@@ -422,8 +447,14 @@ def _markdown_metric_takeaways(metrics: Mapping[str, Any]) -> str:
         if isinstance(row, Mapping) and row.get("canonical_action") == "verify"
     ]
     if verify_rows:
-        strongest_verify = max(verify_rows, key=lambda row: float(row.get("delta_correct_minus_incorrect") or 0.0))
-        weakest_verify = min(verify_rows, key=lambda row: float(row.get("delta_correct_minus_incorrect") or 0.0))
+        strongest_verify = max(
+            verify_rows,
+            key=lambda row: float(row.get("delta_correct_minus_incorrect") or 0.0),
+        )
+        weakest_verify = min(
+            verify_rows,
+            key=lambda row: float(row.get("delta_correct_minus_incorrect") or 0.0),
+        )
         lines.append(
             "- `DeltaVerifyShare` 范围从 `{}` 的 {} 到 `{}` 的 {}；负值不表示没有验证，而是错误轨迹中的验证占比更高或验证未带来正确答案。".format(
                 weakest_verify.get("harness", ""),
@@ -463,10 +494,14 @@ def _markdown_metric_takeaways(metrics: Mapping[str, Any]) -> str:
         lift_candidates = [
             row
             for row in lift_rows
-            if isinstance(row, Mapping) and int(row.get("with_motif_n") or 0) > 0 and int(row.get("without_motif_n") or 0) > 0
+            if isinstance(row, Mapping)
+            and int(row.get("with_motif_n") or 0) > 0
+            and int(row.get("without_motif_n") or 0) > 0
         ]
         if lift_candidates:
-            strongest_lift = max(lift_candidates, key=lambda row: float(row.get("lift") or 0.0))
+            strongest_lift = max(
+                lift_candidates, key=lambda row: float(row.get("lift") or 0.0)
+            )
             lines.append(
                 "- `MotifOutcomeLift` 最大的可比较 motif 是 `{}`（{}，with/without={}/{}）。这是相关性证据，不应解读成因果提升。".format(
                     strongest_lift.get("motif", ""),
@@ -477,7 +512,9 @@ def _markdown_metric_takeaways(metrics: Mapping[str, Any]) -> str:
             )
 
     if isinstance(failure_rows, list):
-        worst_failure = max(failure_rows, key=lambda row: float(row.get("failure_cost_ratio") or 0.0))
+        worst_failure = max(
+            failure_rows, key=lambda row: float(row.get("failure_cost_ratio") or 0.0)
+        )
         lines.append(
             "- `FailureCostRatio` 最高的是 `{}`（{}，{} 个错误记录），因此 readiness 成本主要来自该 harness；这些错误没有混入 valid-scored 行为对比。".format(
                 worst_failure.get("harness", ""),
@@ -497,12 +534,16 @@ def _latex_measurement_insights(metrics: Mapping[str, Any]) -> str:
     low = insights.get("low_entropy_long_collapse", {})
     inversion = insights.get("confidence_inversion", {})
     posttool = insights.get("posttool_entropy_separation", {})
-    strongest_turn = posttool.get("strongest_turn", {}) if isinstance(posttool, Mapping) else {}
+    strongest_turn = (
+        posttool.get("strongest_turn", {}) if isinstance(posttool, Mapping) else {}
+    )
     operational_rows = _mapping_list(insights.get("operational_tax_adjusted_accuracy"))
     paired_rows = _mapping_list(insights.get("paired_net_gain"))
     dominance_rows = _mapping_list(insights.get("scaffold_dominance"))
     verification = insights.get("verification_conversion", {})
-    verification_lifts = _mapping_list(verification.get("lifts") if isinstance(verification, Mapping) else None)
+    verification_lifts = _mapping_list(
+        verification.get("lifts") if isinstance(verification, Mapping) else None
+    )
 
     lines = [
         "The analyze_tools measurement layer adds entropy, state-shift, verification-conversion, operational-tax, paired-gain, and scaffold-dominance signals.",
@@ -524,19 +565,29 @@ def _latex_measurement_insights(metrics: Mapping[str, Any]) -> str:
             rf"for \texttt{{{_tex(strongest_verification.get('harness'))}}}."
         )
     if operational_rows:
-        deployable = max(operational_rows, key=lambda row: float(row.get("deployable_accuracy") or 0.0))
-        taxed = max(operational_rows, key=lambda row: float(row.get("operational_tax") or 0.0))
+        deployable = max(
+            operational_rows,
+            key=lambda row: float(row.get("deployable_accuracy") or 0.0),
+        )
+        taxed = max(
+            operational_rows, key=lambda row: float(row.get("operational_tax") or 0.0)
+        )
         lines.append(
             rf"OperationalTaxAdjustedAccuracy: best deployable accuracy is \texttt{{{_tex(deployable.get('harness'))}}} at {_tex(_pct(deployable.get('deployable_accuracy')))}, "
             rf"while highest operational tax is \texttt{{{_tex(taxed.get('harness'))}}} at {_tex(_pct(taxed.get('operational_tax')))}."
         )
     if paired_rows:
-        best_gain = max(paired_rows, key=lambda row: int(row.get("paired_net_gain") or 0))
+        best_gain = max(
+            paired_rows, key=lambda row: int(row.get("paired_net_gain") or 0)
+        )
         lines.append(
             rf"PairedNetGain: best paired net gain is \texttt{{{_tex(best_gain.get('harness'))}}} with {int(best_gain.get('paired_net_gain') or 0)}."
         )
     if dominance_rows:
-        strongest_distance = max(dominance_rows, key=lambda row: float(row.get("canonical_action_jsd") or 0.0))
+        strongest_distance = max(
+            dominance_rows,
+            key=lambda row: float(row.get("canonical_action_jsd") or 0.0),
+        )
         pair = f"{strongest_distance.get('harness_a')} vs {strongest_distance.get('harness_b')}"
         lines.append(
             rf"ScaffoldDominance: largest action-space JSD is {_tex(_ratio(strongest_distance.get('canonical_action_jsd')))} for \texttt{{{_tex(pair)}}}."
@@ -552,12 +603,16 @@ def _markdown_measurement_insights(metrics: Mapping[str, Any]) -> str:
     low = insights.get("low_entropy_long_collapse", {})
     inversion = insights.get("confidence_inversion", {})
     posttool = insights.get("posttool_entropy_separation", {})
-    strongest_turn = posttool.get("strongest_turn", {}) if isinstance(posttool, Mapping) else {}
+    strongest_turn = (
+        posttool.get("strongest_turn", {}) if isinstance(posttool, Mapping) else {}
+    )
     operational_rows = _mapping_list(insights.get("operational_tax_adjusted_accuracy"))
     paired_rows = _mapping_list(insights.get("paired_net_gain"))
     dominance_rows = _mapping_list(insights.get("scaffold_dominance"))
     verification = insights.get("verification_conversion", {})
-    verification_lifts = _mapping_list(verification.get("lifts") if isinstance(verification, Mapping) else None)
+    verification_lifts = _mapping_list(
+        verification.get("lifts") if isinstance(verification, Mapping) else None
+    )
 
     lines = [
         "这些指标来自 `scripts/paper_analysis/data/measurement_summary.json`，补充 entropy、tool-boundary state shift、verification conversion、operational tax、paired gain 和 scaffold dominance。",
@@ -592,8 +647,13 @@ def _markdown_measurement_insights(metrics: Mapping[str, Any]) -> str:
             )
         )
     if operational_rows:
-        deployable = max(operational_rows, key=lambda row: float(row.get("deployable_accuracy") or 0.0))
-        taxed = max(operational_rows, key=lambda row: float(row.get("operational_tax") or 0.0))
+        deployable = max(
+            operational_rows,
+            key=lambda row: float(row.get("deployable_accuracy") or 0.0),
+        )
+        taxed = max(
+            operational_rows, key=lambda row: float(row.get("operational_tax") or 0.0)
+        )
         lines.append(
             "| Operational tax | `OperationalTaxAdjustedAccuracy` | best deployable `{}` {}; max tax `{}` {} | scaffold 收益必须同时扣除非 valid 的系统成本。 |".format(
                 deployable.get("harness", ""),
@@ -603,7 +663,9 @@ def _markdown_measurement_insights(metrics: Mapping[str, Any]) -> str:
             )
         )
     if paired_rows:
-        best_gain = max(paired_rows, key=lambda row: int(row.get("paired_net_gain") or 0))
+        best_gain = max(
+            paired_rows, key=lambda row: int(row.get("paired_net_gain") or 0)
+        )
         lines.append(
             "| Paired rescue/regression | `PairedNetGain` | `{}` {:+d} | agent harness 会 rescue 也会 regression，不能只报 aggregate accuracy。 |".format(
                 best_gain.get("harness", ""),
@@ -611,7 +673,10 @@ def _markdown_measurement_insights(metrics: Mapping[str, Any]) -> str:
             )
         )
     if dominance_rows:
-        strongest_distance = max(dominance_rows, key=lambda row: float(row.get("canonical_action_jsd") or 0.0))
+        strongest_distance = max(
+            dominance_rows,
+            key=lambda row: float(row.get("canonical_action_jsd") or 0.0),
+        )
         lines.append(
             "| Scaffold dominance | `ScaffoldDominance` | JSD {} for `{}` vs `{}` | 跨 harness accuracy 先要报告 action-space distance。 |".format(
                 _ratio(strongest_distance.get("canonical_action_jsd")),
@@ -628,7 +693,11 @@ def _measurement_insights(metrics: Mapping[str, Any]) -> Mapping[str, Any]:
 
 
 def _mapping_list(value: Any) -> list[Mapping[str, Any]]:
-    return [row for row in value if isinstance(row, Mapping)] if isinstance(value, list) else []
+    return (
+        [row for row in value if isinstance(row, Mapping)]
+        if isinstance(value, list)
+        else []
+    )
 
 
 def _find_metric_row(rows: Sequence[Any], metric_name: str) -> Mapping[str, Any] | None:
@@ -644,7 +713,11 @@ def _markdown_case_studies(case_studies: Sequence[Mapping[str, Any]]) -> str:
     lines = []
     for case in case_studies[:8]:
         motifs = ", ".join(str(motif) for motif in case.get("motifs", [])) or "none"
-        snippets = case.get("evidence_snippets") if isinstance(case.get("evidence_snippets"), list) else []
+        snippets = (
+            case.get("evidence_snippets")
+            if isinstance(case.get("evidence_snippets"), list)
+            else []
+        )
         snippet = str(snippets[0]) if snippets else ""
         lines.append(
             f"- `{case.get('harness')}` / `{case.get('task_id')}`: score={case.get('score_status')}, correct={case.get('correct')}, motifs={motifs}. {snippet}"
@@ -653,7 +726,10 @@ def _markdown_case_studies(case_studies: Sequence[Mapping[str, Any]]) -> str:
 
 
 def _markdown_output_files(output_files: Mapping[str, Path | str]) -> str:
-    return "\n".join(f"- `{name}`: `{_path_text(path)}`" for name, path in sorted(output_files.items()))
+    return "\n".join(
+        f"- `{name}`: `{_path_text(path)}`"
+        for name, path in sorted(output_files.items())
+    )
 
 
 def _status_count(row: Mapping[str, Any], status: str) -> int:
@@ -701,7 +777,9 @@ def _fieldnames(rows: Sequence[Mapping[str, Any]]) -> list[str]:
 
 def _jsonable(value: Any) -> Any:
     if isinstance(value, Mapping):
-        return {str(key): _jsonable(item) for key, item in value.items() if key != "bundle"}
+        return {
+            str(key): _jsonable(item) for key, item in value.items() if key != "bundle"
+        }
     if isinstance(value, (list, tuple)):
         return [_jsonable(item) for item in value]
     if isinstance(value, Path):

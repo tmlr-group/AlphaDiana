@@ -15,7 +15,7 @@ import subprocess
 from pathlib import Path
 
 import ale_bench
-from alphadiana.analysis.io.status import infer_score_status
+from alphadiana.results.status import infer_score_status
 from alphadiana.harness.base import AgentResponse
 from alphahebe.integrations.diana.benchmarks.ale_bench import (
     ALEBenchBenchmark,

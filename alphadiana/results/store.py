@@ -15,23 +15,22 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.harness.base import AgentResponse
 from alphadiana.harness.proxies.preservation import add_artifact_file_refs
-from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.logprobs import INT16_PROB_SCALE, raw_record_to_int16_record
-from alphadiana.analysis.io.normalized_trace import (
+from alphadiana.results.status import (
+    VALID_SCORE_STATUS,
+    infer_score_status,
+    is_valid_completed_record,
+)
+from alphadiana.results.trace import (
     TRACE_ARTIFACT_NAME,
     build_normalized_trace,
     normalize_persisted_trajectory,
     normalize_reasoning_trajectory,
 )
 from alphadiana.scorer.base import ScoreResult
-from alphadiana.analysis.io.status import (
-    VALID_SCORE_STATUS,
-    infer_score_status,
-    is_valid_completed_record,
-    normalize_legacy_timeout_zero_record,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -302,7 +301,9 @@ class ResultStore:
                     f.write(json.dumps(record) + "\n")
             self._save_per_task_json(task.task_id, record)
 
-    def _archive_attempt(self, manifest: dict, logprob_sidecars: dict) -> tuple[dict, dict]:
+    def _archive_attempt(
+        self, manifest: dict, logprob_sidecars: dict
+    ) -> tuple[dict, dict]:
         """Freeze declared local evidence before appending its immutable record.
 
         Historic task/sample paths remain latest-view copies for existing analysis
@@ -346,7 +347,9 @@ class ResultStore:
         }
         files = manifest.get("files", {})
         for key, value in list(files.items()):
-            root = self.artifacts_dir.parent if key in logprob_keys else self.artifacts_dir
+            root = (
+                self.artifacts_dir.parent if key in logprob_keys else self.artifacts_dir
+            )
             files[key] = retain(value, root)
         # A normalized trace is itself an evidence index, so freeze its references
         # too. Keep the legacy copy unchanged for older path-based readers.
@@ -359,18 +362,24 @@ class ResultStore:
             }
             trace["attempt_id"] = attempt_id
             trace_path.write_text(
-                json.dumps(_redact_for_persistence(trace), indent=2, ensure_ascii=False),
+                json.dumps(
+                    _redact_for_persistence(trace), indent=2, ensure_ascii=False
+                ),
                 encoding="utf-8",
             )
         for key, field in logprob_keys.items():
             if logprob_sidecars.get(field):
                 # The top-level paths are relative to results/, unlike manifest refs.
-                relative = Path(logprob_sidecars[field]).relative_to(self.run_id).as_posix()
+                relative = (
+                    Path(logprob_sidecars[field]).relative_to(self.run_id).as_posix()
+                )
                 retained = retain(relative, self.artifacts_dir.parent)
                 logprob_sidecars[field] = (Path(self.run_id) / retained).as_posix()
         manifest["attempt_id"] = attempt_id
         if manifest.get("local_artifact_root"):
-            manifest["local_artifact_root"] = (prefix / manifest["local_artifact_root"]).as_posix()
+            manifest["local_artifact_root"] = (
+                prefix / manifest["local_artifact_root"]
+            ).as_posix()
         return manifest, logprob_sidecars
 
     def _persist_task_attachments(self, task: BenchmarkTask) -> dict:
@@ -405,13 +414,19 @@ class ResultStore:
         files = manifest.setdefault("files", {})
 
         # For multi-sample runs, nest artifacts under sample_<N> subdirectory.
-        sample_prefix = Path(task.task_id) / f"sample_{sample_index}" if sample_index > 0 else Path(task.task_id)
+        sample_prefix = (
+            Path(task.task_id) / f"sample_{sample_index}"
+            if sample_index > 0
+            else Path(task.task_id)
+        )
 
         if response.gateway_log_excerpt:
             rel = sample_prefix / "agent" / "gateway.log"
             path = self.artifacts_dir / rel
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(_redact_text(response.gateway_log_excerpt), encoding="utf-8")
+            path.write_text(
+                _redact_text(response.gateway_log_excerpt), encoding="utf-8"
+            )
             files["gateway_log"] = str(rel)
 
         if response.response_json:
@@ -429,7 +444,9 @@ class ResultStore:
             path = self.artifacts_dir / rel
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(
-                json.dumps(_redact_for_persistence(response.request_messages), indent=2),
+                json.dumps(
+                    _redact_for_persistence(response.request_messages), indent=2
+                ),
                 encoding="utf-8",
             )
             files["request_messages"] = str(rel)
@@ -439,7 +456,9 @@ class ResultStore:
             path = self.artifacts_dir / rel
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(
-                json.dumps(_redact_for_persistence(response.sandbox_metadata), indent=2),
+                json.dumps(
+                    _redact_for_persistence(response.sandbox_metadata), indent=2
+                ),
                 encoding="utf-8",
             )
             files["sandbox_metadata"] = str(rel)
@@ -487,7 +506,9 @@ class ResultStore:
         path = self.artifacts_dir / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
-            json.dumps(_redact_for_persistence(normalized_trace), indent=2, ensure_ascii=False),
+            json.dumps(
+                _redact_for_persistence(normalized_trace), indent=2, ensure_ascii=False
+            ),
             encoding="utf-8",
         )
         files["normalized_trace"] = str(rel)
@@ -519,10 +540,7 @@ class ResultStore:
             if isinstance(value, list):
                 return [_resolve(item) for item in value]
             if isinstance(value, dict):
-                return {
-                    key: _resolve(item)
-                    for key, item in value.items()
-                }
+                return {key: _resolve(item) for key, item in value.items()}
             return value
 
         for key, value in list(files.items()):
@@ -562,7 +580,9 @@ class ResultStore:
             if not replaced:
                 existing.append(record)
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8")
+            path.write_text(
+                json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
 
     def _add_missing_artifact_file_refs(
         self,
@@ -578,9 +598,7 @@ class ResultStore:
             if not isinstance(existing_files, dict):
                 existing_files = {}
         refs_to_add = {
-            key: value
-            for key, value in file_refs.items()
-            if key not in existing_files
+            key: value for key, value in file_refs.items() if key not in existing_files
         }
         if refs_to_add:
             response.artifact_manifest = add_artifact_file_refs(
@@ -593,7 +611,9 @@ class ResultStore:
             return Path("logprobs") / f"{task_id}.jsonl"
         return Path("logprobs") / task_id / f"sample_{sample_index}.jsonl"
 
-    def _logprobs_int16_relative_path(self, task_id: str, sample_index: int = 0) -> Path:
+    def _logprobs_int16_relative_path(
+        self, task_id: str, sample_index: int = 0
+    ) -> Path:
         if sample_index <= 0:
             return Path("logprobs_int16") / f"{task_id}.jsonl"
         return Path("logprobs_int16") / task_id / f"sample_{sample_index}.jsonl"
@@ -633,7 +653,9 @@ class ResultStore:
         logprob_records = response_metadata.pop("logprob_records", None)
         logprob_int16_records = response_metadata.pop("logprob_int16_records", None)
         raw_records = logprob_records if isinstance(logprob_records, list) else []
-        int16_records = logprob_int16_records if isinstance(logprob_int16_records, list) else []
+        int16_records = (
+            logprob_int16_records if isinstance(logprob_int16_records, list) else []
+        )
         raw_record_count = len(raw_records)
 
         logprobs_path_rel = ""
@@ -653,8 +675,7 @@ class ResultStore:
 
         if not int16_records and raw_records:
             int16_records = [
-                raw_record_to_int16_record(record)
-                for record in raw_records
+                raw_record_to_int16_record(record) for record in raw_records
             ]
 
         if int16_records:
@@ -692,7 +713,9 @@ class ResultStore:
                 completed.add(record["task_id"])
         return completed
 
-    def completed_sample_ids(self, scorer_name: str | None = None) -> set[tuple[str, int]]:
+    def completed_sample_ids(
+        self, scorer_name: str | None = None
+    ) -> set[tuple[str, int]]:
         """Return (task_id, sample_index) pairs that have been completed."""
         completed: set[tuple[str, int]] = set()
         for record in self.load():
@@ -708,7 +731,7 @@ class ResultStore:
         """
         if not os.path.exists(self.path):
             return []
-        from alphadiana.analysis.run_summary import latest_samples
+        from alphadiana.results.statistics import latest_samples
 
         def records():
             with open(self.path, "r", encoding="utf-8") as f:
@@ -720,7 +743,9 @@ class ResultStore:
                         yield json.loads(line)
                     except json.JSONDecodeError:
                         logger.warning(
-                            "Skipping malformed JSONL line %d in %s", line_num, self.path,
+                            "Skipping malformed JSONL line %d in %s",
+                            line_num,
+                            self.path,
                         )
 
         return latest_samples(records())
@@ -764,7 +789,9 @@ class ResultStore:
         return 0
 
     @staticmethod
-    def _annotate_shard_record(record: dict, *, target_run_id: str, shard_run_id: str, shard_index: int) -> dict:
+    def _annotate_shard_record(
+        record: dict, *, target_run_id: str, shard_run_id: str, shard_index: int
+    ) -> dict:
         annotated = dict(record)
         annotated["run_id"] = target_run_id
         annotated["shard_run_id"] = shard_run_id
@@ -772,7 +799,9 @@ class ResultStore:
         for path_key in ("logprobs_path", "logprobs_int16_path"):
             value = annotated.get(path_key)
             if isinstance(value, str) and value.startswith(f"{shard_run_id}/"):
-                annotated[path_key] = f"{target_run_id}/{value[len(shard_run_id) + 1:]}"
+                annotated[path_key] = (
+                    f"{target_run_id}/{value[len(shard_run_id) + 1 :]}"
+                )
         metadata = annotated.get("metadata")
         if isinstance(metadata, dict):
             metadata = dict(metadata)
@@ -843,11 +872,15 @@ class ResultStore:
             shard_manifest_path = shard_dir / "run_manifest.json"
             if shard_manifest_path.exists():
                 try:
-                    payload = json.loads(shard_manifest_path.read_text(encoding="utf-8"))
+                    payload = json.loads(
+                        shard_manifest_path.read_text(encoding="utf-8")
+                    )
                     if isinstance(payload, dict):
                         shard_manifests[shard_run_id] = payload
                 except (OSError, json.JSONDecodeError):
-                    logger.warning("Failed to read shard manifest: %s", shard_manifest_path)
+                    logger.warning(
+                        "Failed to read shard manifest: %s", shard_manifest_path
+                    )
 
             if shard_jsonl.exists():
                 with shard_jsonl.open("r", encoding="utf-8") as handle:
@@ -858,7 +891,11 @@ class ResultStore:
                         try:
                             record = json.loads(line)
                         except json.JSONDecodeError:
-                            logger.warning("Skipping malformed shard JSONL line %s:%d", shard_jsonl, line_num)
+                            logger.warning(
+                                "Skipping malformed shard JSONL line %s:%d",
+                                shard_jsonl,
+                                line_num,
+                            )
                             continue
                         if not isinstance(record, dict) or not record.get("task_id"):
                             continue
@@ -868,9 +905,14 @@ class ResultStore:
                             shard_run_id=shard_run_id,
                             shard_index=shard_index,
                         )
-                        key = (str(annotated["task_id"]), int(annotated.get("sample_index", 0) or 0))
+                        key = (
+                            str(annotated["task_id"]),
+                            int(annotated.get("sample_index", 0) or 0),
+                        )
                         existing = records_by_key.get(key)
-                        if existing is None or self._record_score_rank(annotated) >= self._record_score_rank(existing):
+                        if existing is None or self._record_score_rank(
+                            annotated
+                        ) >= self._record_score_rank(existing):
                             records_by_key[key] = annotated
 
             shard_tasks_dir = shard_dir / "tasks"
@@ -879,10 +921,14 @@ class ResultStore:
                     try:
                         payload = json.loads(task_json.read_text(encoding="utf-8"))
                     except (OSError, json.JSONDecodeError):
-                        logger.warning("Skipping unreadable shard task JSON: %s", task_json)
+                        logger.warning(
+                            "Skipping unreadable shard task JSON: %s", task_json
+                        )
                         continue
                     rows = payload if isinstance(payload, list) else [payload]
-                    target_path = target_tasks_dir / task_json.relative_to(shard_tasks_dir)
+                    target_path = target_tasks_dir / task_json.relative_to(
+                        shard_tasks_dir
+                    )
                     for row in rows:
                         if not isinstance(row, dict):
                             continue
@@ -892,14 +938,26 @@ class ResultStore:
                             shard_run_id=shard_run_id,
                             shard_index=shard_index,
                         )
-                        self._merge_task_json_record(target_path=target_path, incoming=annotated)
+                        self._merge_task_json_record(
+                            target_path=target_path, incoming=annotated
+                        )
 
-            for dirname in ("artifacts", "attempts", "lifecycle", "status", "logprobs", "logprobs_int16"):
+            for dirname in (
+                "artifacts",
+                "attempts",
+                "lifecycle",
+                "status",
+                "logprobs",
+                "logprobs_int16",
+            ):
                 self._copy_tree_contents(shard_dir / dirname, target_run_dir / dirname)
 
         ordered_records = sorted(
             records_by_key.values(),
-            key=lambda record: (str(record.get("task_id", "")), int(record.get("sample_index", 0) or 0)),
+            key=lambda record: (
+                str(record.get("task_id", "")),
+                int(record.get("sample_index", 0) or 0),
+            ),
         )
         tmp_jsonl = target_jsonl.with_suffix(target_jsonl.suffix + ".tmp")
         with tmp_jsonl.open("w", encoding="utf-8") as handle:
@@ -907,7 +965,9 @@ class ResultStore:
                 handle.write(json.dumps(record, ensure_ascii=False) + "\n")
         tmp_jsonl.replace(target_jsonl)
 
-        expected_task_ids = [str(getattr(task, "task_id", "")) for task in expected_tasks]
+        expected_task_ids = [
+            str(getattr(task, "task_id", "")) for task in expected_tasks
+        ]
         task_metadata_by_id = {
             str(getattr(task, "task_id", "")): getattr(task, "metadata", {})
             for task in expected_tasks

@@ -11,9 +11,9 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from alphadiana.analysis.actions.events import normalized_records
-from alphadiana.analysis.io.result_reader import RunBundle, load_run_bundle
-from alphadiana.analysis.io.status import VALID_SCORE_STATUS, infer_score_status
+from alphadiana.analysis.actions.keyword_baseline import normalized_records
+from alphadiana.results.reader import RunBundle, load_run_bundle
+from alphadiana.results.status import VALID_SCORE_STATUS, infer_score_status
 
 CORPUS_STATUS_VALUES = ("unavailable", "manifest_only", "validated_records")
 ENV_CORPUS_VARS = (
@@ -23,7 +23,12 @@ ENV_CORPUS_VARS = (
 )
 MODEL_LABEL_QWEN35_27B = "Qwen/Qwen3.5-27B"
 HF_ALPHADIANA_PUBLIC_REF = "T-MARS/alphadiana-benchmark-results"
-ERROR_SCORE_STATUSES = {"agent_error", "provider_error", "runtime_error", "scorer_error"}
+ERROR_SCORE_STATUSES = {
+    "agent_error",
+    "provider_error",
+    "runtime_error",
+    "scorer_error",
+}
 
 
 @dataclass(frozen=True)
@@ -106,7 +111,9 @@ _ENV_SPEC_METADATA = {
     "PHASE15_HLE_ZEROCLAW_LOGPROBS": ("hle-zeroclaw-env", "hle", "zeroclaw"),
     "PHASE15_COLLAB_RESULTS_ROOT": ("collab-results-env", "collaborator", "unknown"),
 }
-_LOCAL_PATH_RE = re.compile(r"(?<!\w)(?:/data\d*|/home|/tmp|/mnt|/scratch)(?:/[^\s,;:)\\]}>\"']*)*")
+_LOCAL_PATH_RE = re.compile(
+    r"(?<!\w)(?:/data\d*|/home|/tmp|/mnt|/scratch)(?:/[^\s,;:)\\]}>\"']*)*"
+)
 _SECRET_RE = re.compile(
     r"(?i)(sk-[A-Za-z0-9_-]{6,}|api[_-]?key\s*=\s*[^\s,;]+|api[_-]?key['\"]?\s*:\s*['\"][^'\"]+['\"]?)"
 )
@@ -119,7 +126,11 @@ def sanitize_path_text(text: str) -> str:
         value = os.environ.get(env_var)
         if value:
             sanitized = sanitized.replace(value, env_var)
-    sanitized = re.sub(r"/\S*datasets--T-MARS--alphadiana-benchmark-results\S*", HF_ALPHADIANA_PUBLIC_REF, sanitized)
+    sanitized = re.sub(
+        r"/\S*datasets--T-MARS--alphadiana-benchmark-results\S*",
+        HF_ALPHADIANA_PUBLIC_REF,
+        sanitized,
+    )
     sanitized = re.sub(r"/\S*datasets--cais--hle\S*", "cais/hle local cache", sanitized)
     sanitized = _SECRET_RE.sub("[secret]", sanitized)
     return _LOCAL_PATH_RE.sub("[local-path]", sanitized)
@@ -161,7 +172,9 @@ def load_env_corpus_specs(env: Mapping[str, str] | None = None) -> list[CorpusSp
                 model_label=MODEL_LABEL_QWEN35_27B,
                 results_dir=root.parent,
                 run_id=root.name,
-                source_kind="env_local" if env_var != "PHASE15_COLLAB_RESULTS_ROOT" else "collaborator",
+                source_kind="env_local"
+                if env_var != "PHASE15_COLLAB_RESULTS_ROOT"
+                else "collaborator",
                 public_ref=env_var,
                 env_var=env_var,
             )
@@ -192,7 +205,9 @@ def inventory_corpus_spec(spec: CorpusSpec) -> CorpusInventoryRow:
     run_dir = spec.results_dir / spec.run_id
     jsonl_path = spec.results_dir / f"{spec.run_id}.jsonl"
     if not run_dir.exists() and not jsonl_path.exists():
-        return _empty_inventory_row(spec, status="unavailable", unavailable_reason="missing run artifacts")
+        return _empty_inventory_row(
+            spec, status="unavailable", unavailable_reason="missing run artifacts"
+        )
 
     bundle = load_run_bundle(spec.results_dir, spec.run_id)
     selected_records = load_selected_task_records(bundle)
@@ -227,8 +242,12 @@ def inventory_corpus_spec(spec: CorpusSpec) -> CorpusInventoryRow:
         for record, status in zip(selected_records, statuses)
         if status == VALID_SCORE_STATUS
     ]
-    behavioral_correct = sum(1 for record in valid_records if record.get("correct") is True)
-    behavioral_wrong = sum(1 for record in valid_records if record.get("correct") is False)
+    behavioral_correct = sum(
+        1 for record in valid_records if record.get("correct") is True
+    )
+    behavioral_wrong = sum(
+        1 for record in valid_records if record.get("correct") is False
+    )
     error_records = sum(1 for status in statuses if status in ERROR_SCORE_STATUSES)
 
     return CorpusInventoryRow(
@@ -259,23 +278,31 @@ def build_denominator_ledger(specs: Sequence[CorpusSpec]) -> list[dict[str, Any]
     return sorted(rows, key=lambda row: str(row["corpus_label"]))
 
 
-def write_denominator_ledger(output_dir: Path, rows: Sequence[Mapping[str, Any]]) -> dict[str, Path]:
+def write_denominator_ledger(
+    output_dir: Path, rows: Sequence[Mapping[str, Any]]
+) -> dict[str, Path]:
     """Write JSON and CSV denominator ledgers."""
     output_dir.mkdir(parents=True, exist_ok=True)
     json_path = output_dir / "corpus_inventory.json"
     csv_path = output_dir / "corpus_inventory.csv"
     serializable_rows = [dict(row) for row in rows]
-    json_path.write_text(json.dumps(serializable_rows, indent=2, sort_keys=True), encoding="utf-8")
+    json_path.write_text(
+        json.dumps(serializable_rows, indent=2, sort_keys=True), encoding="utf-8"
+    )
 
     fieldnames = _ledger_fieldnames(serializable_rows)
     with csv_path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         for row in serializable_rows:
-            writer.writerow({
-                key: json.dumps(value, sort_keys=True) if isinstance(value, (dict, list)) else value
-                for key, value in row.items()
-            })
+            writer.writerow(
+                {
+                    key: json.dumps(value, sort_keys=True)
+                    if isinstance(value, (dict, list))
+                    else value
+                    for key, value in row.items()
+                }
+            )
     return {"json": json_path, "csv": csv_path}
 
 
@@ -283,7 +310,9 @@ def _load_hf_synced_specs(results_dir: Path) -> list[CorpusSpec]:
     hf_root = results_dir / "hf-alphadiana-benchmark-results"
     if not hf_root.exists():
         return []
-    manifests = sorted(path for path in hf_root.rglob("run_manifest.json") if path.parent != hf_root)
+    manifests = sorted(
+        path for path in hf_root.rglob("run_manifest.json") if path.parent != hf_root
+    )
     if not manifests:
         return [
             CorpusSpec(
@@ -346,7 +375,9 @@ def _empty_inventory_row(
     )
 
 
-def _expected_sample_count(manifest: Mapping[str, Any], selected_records: Sequence[Mapping[str, Any]]) -> int:
+def _expected_sample_count(
+    manifest: Mapping[str, Any], selected_records: Sequence[Mapping[str, Any]]
+) -> int:
     if manifest.get("expected_sample_count") is not None:
         return int(manifest["expected_sample_count"])
     expected_task_count = manifest.get("expected_task_count")

@@ -9,22 +9,26 @@ import sys
 from pathlib import Path
 from typing import Any, Mapping
 
-from alphadiana.analysis.actions.events import extract_action_event_rows
+from alphadiana.analysis.actions.keyword_baseline import extract_action_event_rows
+from alphadiana.analysis.actions.trajectories import compute_outcome_conditioned_metrics
 from alphadiana.analysis.insights.cases import select_insight_case_anchors
+from alphadiana.analysis.insights.claims import build_insight_claims
 from alphadiana.analysis.insights.corpus import (
     ENV_CORPUS_VARS,
     build_denominator_ledger,
     load_phase15_corpus_specs,
     load_selected_task_records,
 )
-from alphadiana.analysis.insights.measurements import build_insight_claims
 from alphadiana.analysis.insights.reports import write_phase15_outputs
-from alphadiana.analysis.io.result_reader import load_run_bundle
-from alphadiana.analysis.actions.metrics import compute_outcome_conditioned_metrics
+from alphadiana.results.reader import load_run_bundle
 
 DEFAULT_OUTPUT_DIR = Path("results/phase15_behavior_insights")
 DEFAULT_MEASUREMENT_SUMMARY = (
-    Path(__file__).resolve().parents[3] / "scripts" / "paper_analysis" / "data" / "measurement_summary.json"
+    Path(__file__).resolve().parents[3]
+    / "scripts"
+    / "paper_analysis"
+    / "data"
+    / "measurement_summary.json"
 )
 PHASE15_INPUT_ENV_VARS = (
     "PHASE15_HLE_OPENCODE_LOGPROBS",
@@ -45,8 +49,15 @@ def _build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_MEASUREMENT_SUMMARY,
         help="Optional analyze_tools measurement_summary.json to fold into insight measurements.",
     )
-    parser.add_argument("--include-hf-synced", dest="include_hf_synced", action="store_true", default=True)
-    parser.add_argument("--no-include-hf-synced", dest="include_hf_synced", action="store_false")
+    parser.add_argument(
+        "--include-hf-synced",
+        dest="include_hf_synced",
+        action="store_true",
+        default=True,
+    )
+    parser.add_argument(
+        "--no-include-hf-synced", dest="include_hf_synced", action="store_false"
+    )
     parser.add_argument("--stdout", action="store_true")
     return parser
 
@@ -54,9 +65,13 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     measurement_summary = _load_measurement_summary(args.measurement_summary)
-    specs = load_phase15_corpus_specs(args.results_dir, include_hf_synced=args.include_hf_synced)
+    specs = load_phase15_corpus_specs(
+        args.results_dir, include_hf_synced=args.include_hf_synced
+    )
     denominator_rows = build_denominator_ledger(specs)
-    denominator_by_label = {str(row.get("corpus_label") or ""): row for row in denominator_rows}
+    denominator_by_label = {
+        str(row.get("corpus_label") or ""): row for row in denominator_rows
+    }
 
     selected_records: list[dict[str, Any]] = []
     event_rows: list[dict[str, Any]] = []
@@ -65,7 +80,10 @@ def main(argv: list[str] | None = None) -> int:
         if not row or row.get("status") != "validated_records":
             continue
         bundle = load_run_bundle(spec.results_dir, spec.run_id)
-        spec_records = [_record_with_spec_defaults(record, spec) for record in load_selected_task_records(bundle)]
+        spec_records = [
+            _record_with_spec_defaults(record, spec)
+            for record in load_selected_task_records(bundle)
+        ]
         selected_records.extend(spec_records)
         event_rows.extend(extract_action_event_rows(bundle, harness=spec.harness))
 

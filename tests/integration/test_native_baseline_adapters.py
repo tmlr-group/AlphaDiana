@@ -225,7 +225,7 @@ def test_opencode_context_limits_reach_native_model_config(tmp_path):
 
 def test_sweagent_native_exit_error_retains_evidence_and_is_not_scored(tmp_path, monkeypatch):
     from alphadiana.benchmarks.swe_bench import sweagent
-    from alphadiana.analysis.io.status import infer_score_status
+    from alphadiana.results.status import infer_score_status
 
     # Captured on A100: upstream run-batch exited zero, emitted an empty
     # prediction, and recorded UnsupportedParamsError before any API call.
@@ -256,7 +256,7 @@ def test_sweagent_native_exit_error_retains_evidence_and_is_not_scored(tmp_path,
 
 @pytest.mark.parametrize("status,expected", [("exit_error", "runtime_error"), ("exit_api", "provider_error"), ("exit_environment_error", "runtime_error"), ("submitted", "valid_scored"), ("exit_format", "valid_scored")])
 def test_saved_sweagent_native_failure_overrides_legacy_valid_score(status, expected):
-    from alphadiana.analysis.io.status import infer_score_status
+    from alphadiana.results.status import infer_score_status
 
     assert infer_score_status({"benchmark_name": "swe_bench", "score_status": "valid_scored", "score": 0, "correct": False, "metadata": {"native_runtime": "sweagent", "exit_status": status}}) == expected
 
@@ -303,7 +303,7 @@ def test_tb2_failed_start_removes_only_the_container_recorded_by_docker(tmp_path
 
 
 def test_tb2_startup_timeout_stays_runtime_failure_when_normalized_twice():
-    from alphadiana.analysis.io.status import infer_score_status, normalize_legacy_timeout_zero_record
+    from alphadiana.results.status import infer_score_status, normalize_legacy_timeout_zero_record
 
     captured = json.loads((Path(__file__).parents[1] / "fixtures/tb2-startup-timeout.json").read_text())
     first = dict(normalize_legacy_timeout_zero_record(captured))
@@ -316,7 +316,7 @@ def test_tb2_startup_timeout_stays_runtime_failure_when_normalized_twice():
 
 def test_reopened_tb2_startup_timeout_has_no_measured_score(tmp_path):
     from alphadiana.artifacts import Artifacts
-    from alphadiana.analysis.run_summary import RunStatistics
+    from alphadiana.results.statistics import RunStatistics
 
     path = tmp_path / "captured.jsonl"
     captured = json.loads((Path(__file__).parents[1] / "fixtures/tb2-startup-timeout.json").read_text())
@@ -340,7 +340,7 @@ def test_reopened_tb2_startup_timeout_has_no_measured_score(tmp_path):
 def test_openclaw_native_failure_cannot_be_scored_as_verifier_zero(
     stderr, returncode, expected
 ):
-    from alphadiana.analysis.io.status import infer_score_status
+    from alphadiana.results.status import infer_score_status
     from alphadiana.benchmarks.terminal_bench2.harness.openclaw import (
         _classify_openclaw_failure,
     )
@@ -457,7 +457,7 @@ def test_harbor_only_owned_agent_deadline_can_use_observed_reward(
 def test_harbor_failure_retains_native_evidence_before_snapshot(
     tmp_path, monkeypatch, native_exits, exception_type, expected_status
 ):
-    from alphadiana.analysis.io.status import infer_score_status
+    from alphadiana.results.status import infer_score_status
 
     result = json.loads(
         (
@@ -568,7 +568,7 @@ def test_harbor_nonzero_exit_without_matching_failure_cannot_use_reward(
 
 @pytest.mark.parametrize('native_exit,expected', [('exit_api', 'provider_error'), ('exit_error', 'runtime_error'), ('exit_environment_error', 'runtime_error')])
 def test_native_swe_failure_is_not_normalized_as_legacy_timeout(native_exit, expected):
-    from alphadiana.analysis.io.status import infer_score_status, normalize_legacy_timeout_zero_record
+    from alphadiana.results.status import infer_score_status, normalize_legacy_timeout_zero_record
     record = {'benchmark_name': 'swe_bench', 'score': None, 'correct': None,
               'score_status': 'runtime_error',
               'metadata': {'native_runtime': 'sweagent', 'exit_status': native_exit},

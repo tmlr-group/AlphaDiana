@@ -4,8 +4,8 @@ import json
 
 import pytest
 from tests.analysis.action_target_fixtures import attach_targets, fixed_item
-from alphadiana.analysis.annotations.actions import ActionAnnotations
-from alphadiana.analysis.action_protocol import PROTOCOL, prompt_bytes, request_for
+from alphadiana.analysis.actions.llm_annotations import ActionAnnotations
+from alphadiana.analysis.actions.protocol import PROTOCOL, prompt_bytes, request_for
 from tests.analysis.test_general_analysis import judge_options, record, response, source
 
 

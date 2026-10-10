@@ -48,7 +48,7 @@ This is defense in depth, not a guarantee that a result bundle is safe to publis
 
 ## `score_status` validity
 
-`infer_score_status()` in `alphadiana/analysis/io/status.py` is the canonical classifier. `valid_scored` requires normal score fields and no disqualifying failure evidence. Common invalid statuses include `unscored`, `preserved_failure`, `no_answer`, `agent_empty_output`, `agent_error`, `provider_error`, `runtime_error`, `verifier_error`, and `scorer_error`.
+`infer_score_status()` in `alphadiana/results/status.py` is the canonical classifier. `valid_scored` requires normal score fields and no disqualifying failure evidence. Common invalid statuses include `unscored`, `preserved_failure`, `no_answer`, `agent_empty_output`, `agent_error`, `provider_error`, `runtime_error`, `verifier_error`, and `scorer_error`.
 
 Some scorer adapters retain a numeric fallback when the evaluator throws and
 record the exception in `score_metadata.error`. That row is `verifier_error`

@@ -170,7 +170,7 @@ def test_python_and_yaml_configuration_parity(tmp_path):
 
 
 def test_custom_analysis_plugin_has_no_core_routing(custom, tmp_path):
-    from alphadiana.analysis.analyzer import Figure, Measurement
+    from alphadiana.analysis.measurements import Figure, Measurement
 
     class Plugin:
         name = "custom_measurement"
@@ -284,7 +284,7 @@ def test_repeated_rescoring_preserves_solver_output(custom, tmp_path):
 
 
 def test_failed_attempt_retains_binary_inputs_for_reopening(tmp_path):
-    from alphadiana.analysis.io.result_store import ResultStore
+    from alphadiana.results.store import ResultStore
 
     store = ResultStore(str(tmp_path), "failed-binary")
     task = BenchmarkTask(

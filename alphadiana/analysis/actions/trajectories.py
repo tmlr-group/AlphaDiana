@@ -1,11 +1,12 @@
-"""Outcome-conditioned behavioral metrics for Phase 14 trajectory events."""
+"""Action-sequence motifs, outcome metrics and representative trajectory selection."""
 
 from __future__ import annotations
 
+import re
 from collections import Counter, defaultdict
 from typing import Any, Mapping, Sequence
 
-from alphadiana.analysis.io.status import VALID_SCORE_STATUS
+from alphadiana.results.status import VALID_SCORE_STATUS
 
 MAIN_METRIC_NAMES = (
     "DeltaVerifyShare",
@@ -39,9 +40,13 @@ def trajectory_key(row: Mapping[str, Any]) -> tuple[str, int, str]:
     )
 
 
-def group_event_sequences(event_rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+def group_event_sequences(
+    event_rows: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
     """Group flat event rows into ordered task/sample action sequences."""
-    grouped: dict[tuple[str, str, int, str], list[Mapping[str, Any]]] = defaultdict(list)
+    grouped: dict[tuple[str, str, int, str], list[Mapping[str, Any]]] = defaultdict(
+        list
+    )
     for row in event_rows:
         run_id = str(row.get("run_id") or "")
         harness = str(row.get("harness") or "")
@@ -60,14 +65,26 @@ def group_event_sequences(event_rows: Sequence[Mapping[str, Any]]) -> list[dict[
                 "task_id": task_id,
                 "sample_index": sample_index,
                 "actions": [str(row.get("canonical_action") or "") for row in ordered],
-                "tool_subtypes": [str(row.get("tool_subtype") or "other") for row in ordered],
-                "observation_statuses": [str(row.get("observation_status") or "none") for row in ordered],
+                "tool_subtypes": [
+                    str(row.get("tool_subtype") or "other") for row in ordered
+                ],
+                "observation_statuses": [
+                    str(row.get("observation_status") or "none") for row in ordered
+                ],
                 "correct": _coerce_correct(first.get("correct")),
                 "score_status": str(first.get("score_status") or ""),
                 "rows": [dict(row) for row in ordered],
             }
         )
-    return sorted(sequences, key=lambda item: (item["harness"], item["task_id"], item["sample_index"], item["run_id"]))
+    return sorted(
+        sequences,
+        key=lambda item: (
+            item["harness"],
+            item["task_id"],
+            item["sample_index"],
+            item["run_id"],
+        ),
+    )
 
 
 def has_answer_after_verification(actions: Sequence[str]) -> bool:
@@ -81,7 +98,9 @@ def has_answer_after_verification(actions: Sequence[str]) -> bool:
     return False
 
 
-def has_error_recovery(actions: Sequence[str], observation_statuses: Sequence[str]) -> bool:
+def has_error_recovery(
+    actions: Sequence[str], observation_statuses: Sequence[str]
+) -> bool:
     """Return whether a recovery action follows a failed/error observation."""
     seen_error = False
     for action, status in zip(actions, observation_statuses):
@@ -129,7 +148,8 @@ def compute_outcome_conditioned_metrics(
     valid_sequences = [
         sequence
         for sequence in sequences
-        if sequence["score_status"] == VALID_SCORE_STATUS and sequence["correct"] in {True, False}
+        if sequence["score_status"] == VALID_SCORE_STATUS
+        and sequence["correct"] in {True, False}
     ]
 
     return {
@@ -138,7 +158,9 @@ def compute_outcome_conditioned_metrics(
         "motif_metrics": _motif_metrics(valid_sequences),
         "motif_outcome_lift": _motif_outcome_lift(valid_sequences),
         "failure_cost": _failure_cost(sequences, inventory_rows),
-        "measurement_insights": summarize_analyze_tool_measurements(measurement_summary),
+        "measurement_insights": summarize_analyze_tool_measurements(
+            measurement_summary
+        ),
         "diagnostics": {
             "pooled_action_distribution": _pooled_action_distribution(sequences),
             "sequence_count": len(sequences),
@@ -189,8 +211,16 @@ def _action_allocation(sequences: Sequence[Mapping[str, Any]]) -> list[dict[str,
 def _motif_metrics(sequences: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for metric_name, motif_name, _ in _resolved_motif_specs():
-        correct_flags = [_motif_flag(sequence, motif_name) for sequence in sequences if sequence["correct"] is True]
-        incorrect_flags = [_motif_flag(sequence, motif_name) for sequence in sequences if sequence["correct"] is False]
+        correct_flags = [
+            _motif_flag(sequence, motif_name)
+            for sequence in sequences
+            if sequence["correct"] is True
+        ]
+        incorrect_flags = [
+            _motif_flag(sequence, motif_name)
+            for sequence in sequences
+            if sequence["correct"] is False
+        ]
         correct_rate = _rate(correct_flags)
         incorrect_rate = _rate(incorrect_flags)
         rows.append(
@@ -210,8 +240,12 @@ def _motif_metrics(sequences: Sequence[Mapping[str, Any]]) -> list[dict[str, Any
 def _motif_outcome_lift(sequences: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for _metric_name, motif_name, _ in _resolved_motif_specs():
-        with_motif = [sequence for sequence in sequences if _motif_flag(sequence, motif_name)]
-        without_motif = [sequence for sequence in sequences if not _motif_flag(sequence, motif_name)]
+        with_motif = [
+            sequence for sequence in sequences if _motif_flag(sequence, motif_name)
+        ]
+        without_motif = [
+            sequence for sequence in sequences if not _motif_flag(sequence, motif_name)
+        ]
         p_with = _correct_rate(with_motif)
         p_without = _correct_rate(without_motif)
         rows.append(
@@ -232,7 +266,9 @@ def _failure_cost(
     sequences: Sequence[Mapping[str, Any]],
     inventory_rows: Sequence[Mapping[str, Any]] | None,
 ) -> list[dict[str, Any]]:
-    by_harness: dict[str, dict[str, Any]] = defaultdict(lambda: {"valid_scored": 0, "status_counts": Counter()})
+    by_harness: dict[str, dict[str, Any]] = defaultdict(
+        lambda: {"valid_scored": 0, "status_counts": Counter()}
+    )
     for sequence in sequences:
         harness = str(sequence["harness"])
         status = str(sequence.get("score_status") or "")
@@ -267,16 +303,24 @@ def _failure_cost(
     return rows
 
 
-def _pooled_action_distribution(sequences: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+def _pooled_action_distribution(
+    sequences: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
     counts = Counter(action for sequence in sequences for action in sequence["actions"])
     total = sum(counts.values())
     return [
-        {"canonical_action": action, "n": counts[action], "share": _safe_div(counts[action], total)}
+        {
+            "canonical_action": action,
+            "n": counts[action],
+            "share": _safe_div(counts[action], total),
+        }
         for action in _ACTION_ORDER
     ]
 
 
-def summarize_analyze_tool_measurements(measurement_summary: Mapping[str, Any] | None) -> dict[str, Any]:
+def summarize_analyze_tool_measurements(
+    measurement_summary: Mapping[str, Any] | None,
+) -> dict[str, Any]:
     """Return compact Phase 14 metrics derived from analyze_tools measurement outputs."""
     if not measurement_summary:
         return {
@@ -285,10 +329,14 @@ def summarize_analyze_tool_measurements(measurement_summary: Mapping[str, Any] |
             "metric_names": ANALYZE_TOOLS_METRIC_NAMES,
         }
 
-    entropy_quadrants = _mapping_rows(measurement_summary.get("entropy_token_quadrants"))
+    entropy_quadrants = _mapping_rows(
+        measurement_summary.get("entropy_token_quadrants")
+    )
     confidence_rows = _mapping_rows(measurement_summary.get("confidence_inversion"))
     posttool_rows = _mapping_rows(measurement_summary.get("posttool_state_shift"))
-    verification_rows = _mapping_rows(measurement_summary.get("verification_conversion"))
+    verification_rows = _mapping_rows(
+        measurement_summary.get("verification_conversion")
+    )
 
     return {
         "source": "scripts/paper_analysis/data/measurement_summary.json",
@@ -302,7 +350,9 @@ def summarize_analyze_tool_measurements(measurement_summary: Mapping[str, Any] |
             measurement_summary.get("operational_tax_adjusted_accuracy")
         ),
         "paired_net_gain": _mapping_rows(measurement_summary.get("paired_net_gain")),
-        "scaffold_dominance": _mapping_rows(measurement_summary.get("action_space_distance")),
+        "scaffold_dominance": _mapping_rows(
+            measurement_summary.get("action_space_distance")
+        ),
     }
 
 
@@ -339,20 +389,30 @@ def _posttool_entropy_separation(rows: Sequence[Mapping[str, Any]]) -> dict[str,
     turn_rows = [
         {
             "turn_label": str(row.get("turn_label") or ""),
-            "wrong_minus_correct_entropy": _float(row.get("wrong_minus_correct_entropy")),
-            "separation_gain_vs_baseline": _float(row.get("separation_gain_vs_baseline")),
+            "wrong_minus_correct_entropy": _float(
+                row.get("wrong_minus_correct_entropy")
+            ),
+            "separation_gain_vs_baseline": _float(
+                row.get("separation_gain_vs_baseline")
+            ),
             "correct_n": _int(row.get("correct_n")),
             "wrong_n": _int(row.get("wrong_n")),
         }
         for row in rows
         if str(row.get("turn_label") or "").startswith("after_tool_")
     ]
-    strongest = max(turn_rows, key=lambda row: row["separation_gain_vs_baseline"], default={})
+    strongest = max(
+        turn_rows, key=lambda row: row["separation_gain_vs_baseline"], default={}
+    )
     boundary = _find_row(rows, "turn_label", "boundary_shock_integral_0_15")
     return {
         "turns": turn_rows,
         "strongest_turn": strongest,
-        "boundary_shock_integral_0_15": _float(boundary.get("wrong_minus_correct_entropy")) if boundary else 0.0,
+        "boundary_shock_integral_0_15": _float(
+            boundary.get("wrong_minus_correct_entropy")
+        )
+        if boundary
+        else 0.0,
     }
 
 
@@ -373,10 +433,15 @@ def _verification_conversion(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any
         lift_rows.append(
             {
                 "harness": harness,
-                "verify_rate_lift": _float(correct.get("verify_rate")) - _float(wrong.get("verify_rate")),
-                "verify_before_answer_lift": _float(correct.get("verify_before_answer_rate"))
+                "verify_rate_lift": _float(correct.get("verify_rate"))
+                - _float(wrong.get("verify_rate")),
+                "verify_before_answer_lift": _float(
+                    correct.get("verify_before_answer_rate")
+                )
                 - _float(wrong.get("verify_before_answer_rate")),
-                "post_verify_action_change_lift": _float(correct.get("post_verify_action_change_rate"))
+                "post_verify_action_change_lift": _float(
+                    correct.get("post_verify_action_change_rate")
+                )
                 - _float(wrong.get("post_verify_action_change_rate")),
                 "correct_n": _int(correct.get("n")),
                 "wrong_n": _int(wrong.get("n")),
@@ -391,7 +456,9 @@ def _mapping_rows(value: Any) -> list[dict[str, Any]]:
     return [dict(row) for row in value if isinstance(row, Mapping)]
 
 
-def _find_row(rows: Sequence[Mapping[str, Any]], key: str, value: str) -> Mapping[str, Any] | None:
+def _find_row(
+    rows: Sequence[Mapping[str, Any]], key: str, value: str
+) -> Mapping[str, Any] | None:
     for row in rows:
         if str(row.get(key) or "") == value:
             return row
@@ -417,10 +484,18 @@ def _motif_flag(sequence: Mapping[str, Any], motif_name: str) -> bool:
 
 def _resolved_motif_specs() -> tuple[tuple[str, str, Any], ...]:
     return (
-        ("AnswerAfterVerificationRate", "answer_after_verification", has_answer_after_verification),
+        (
+            "AnswerAfterVerificationRate",
+            "answer_after_verification",
+            has_answer_after_verification,
+        ),
         ("ErrorRecoveryRate", "error_recovery", has_error_recovery),
         ("PrematureAnswerRate", "premature_answer", has_premature_answer),
-        ("tool_grounded_reasoning", "tool_grounded_reasoning", has_tool_grounded_reasoning),
+        (
+            "tool_grounded_reasoning",
+            "tool_grounded_reasoning",
+            has_tool_grounded_reasoning,
+        ),
         ("budget_collapse", "budget_collapse", has_budget_collapse),
     )
 
@@ -444,7 +519,9 @@ def _rate(flags: Sequence[bool]) -> float:
 
 
 def _correct_rate(sequences: Sequence[Mapping[str, Any]]) -> float:
-    return _safe_div(sum(1 for sequence in sequences if sequence["correct"] is True), len(sequences))
+    return _safe_div(
+        sum(1 for sequence in sequences if sequence["correct"] is True), len(sequences)
+    )
 
 
 def _safe_div(numerator: int | float, denominator: int | float) -> float:
@@ -463,3 +540,144 @@ def _int(value: Any) -> int:
         return int(value)
     except (TypeError, ValueError):
         return 0
+
+
+CASE_STUDY_MOTIFS = (
+    "verification_circuit",
+    "recovery_circuit",
+    "premature_answer",
+    "tool_grounded_reasoning",
+    "budget_collapse",
+)
+
+_ABSOLUTE_PATH_RE = re.compile(
+    r"(?<!\w)/(?:data\d*|home|tmp|var|mnt|scratch)/[^\s,;:)\]]+"
+)
+_SECRET_RE = re.compile(
+    r"(?i)\b(?:sk-[a-z0-9_-]{8,}|(?:api[_-]?key|token|secret)\s*[:=]\s*[a-z0-9_.-]{8,})"
+)
+
+
+def summarize_event_sequence(events: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Summarize one grouped event sequence as a reviewer-facing case anchor."""
+    if not events:
+        raise ValueError("cannot summarize an empty event sequence")
+
+    sequence = group_event_sequences(events)[0]
+    rows = sequence["rows"]
+    actions = list(sequence["actions"])
+    statuses = list(sequence["observation_statuses"])
+    score_status = str(sequence.get("score_status") or "")
+
+    return {
+        "run_id": sequence["run_id"],
+        "harness": sequence["harness"],
+        "task_id": sequence["task_id"],
+        "sample_index": sequence["sample_index"],
+        "correct": sequence["correct"],
+        "score_status": score_status,
+        "actions": actions,
+        "motifs": _motif_labels(actions, statuses, score_status),
+        "evidence_snippets": _evidence_snippets(rows),
+        "strict_label_count": sum(
+            1
+            for row in rows
+            if str(row.get("action_label_confidence") or "") == "strict"
+        ),
+    }
+
+
+def select_case_studies(
+    event_rows: Sequence[Mapping[str, Any]], *, per_harness: int = 2
+) -> list[dict[str, Any]]:
+    """Select deterministic correct/incorrect micro cases from event rows."""
+    grouped: dict[tuple[str, str, str, int], list[Mapping[str, Any]]] = defaultdict(
+        list
+    )
+    for row in event_rows:
+        run_id = str(row.get("run_id") or "")
+        harness = str(row.get("harness") or "")
+        task_id = str(row.get("task_id") or "")
+        sample_index = int(row.get("sample_index") or 0)
+        grouped[(run_id, harness, task_id, sample_index)].append(row)
+
+    summaries = [summarize_event_sequence(rows) for rows in grouped.values()]
+    by_harness: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for summary in summaries:
+        by_harness[str(summary["harness"])].append(summary)
+
+    selected: list[dict[str, Any]] = []
+    for harness in sorted(by_harness):
+        candidates = sorted(by_harness[harness], key=_selection_rank)
+        chosen: list[dict[str, Any]] = []
+        for desired_correct in (True, False):
+            match = next(
+                (
+                    candidate
+                    for candidate in candidates
+                    if candidate["correct"] is desired_correct
+                    and candidate not in chosen
+                ),
+                None,
+            )
+            if match is not None and len(chosen) < per_harness:
+                chosen.append(match)
+
+        for candidate in candidates:
+            if len(chosen) >= per_harness:
+                break
+            if candidate not in chosen:
+                chosen.append(candidate)
+
+        selected.extend(chosen)
+
+    return selected
+
+
+def _motif_labels(
+    actions: Sequence[str], statuses: Sequence[str], score_status: str
+) -> list[str]:
+    labels: list[str] = []
+    if has_answer_after_verification(actions):
+        labels.append("verification_circuit")
+    if has_error_recovery(actions, statuses):
+        labels.append("recovery_circuit")
+    if has_premature_answer(actions):
+        labels.append("premature_answer")
+    if has_tool_grounded_reasoning(actions):
+        labels.append("tool_grounded_reasoning")
+    if has_budget_collapse(actions, score_status):
+        labels.append("budget_collapse")
+    return labels
+
+
+def _evidence_snippets(rows: Sequence[Mapping[str, Any]]) -> list[str]:
+    snippets: list[str] = []
+    for row in rows:
+        text = str(row.get("text_span") or "")
+        normalized = " ".join(text.split())
+        if not normalized:
+            continue
+        sanitized = _sanitize_snippet(normalized)
+        snippets.append(sanitized[:240])
+        if len(snippets) >= 3:
+            break
+    return snippets
+
+
+def _sanitize_snippet(text: str) -> str:
+    without_paths = _ABSOLUTE_PATH_RE.sub("[path]", text)
+    return _SECRET_RE.sub("[secret]", without_paths)
+
+
+def _selection_rank(case: Mapping[str, Any]) -> tuple[int, int, int, str, int]:
+    has_motif = bool(case.get("motifs"))
+    is_valid = case.get("score_status") == VALID_SCORE_STATUS
+    strict_count = int(case.get("strict_label_count") or 0)
+    return (
+        0 if is_valid else 1,
+        0 if has_motif else 1,
+        -strict_count,
+        str(case.get("task_id") or ""),
+        int(case.get("sample_index") or 0),
+    )

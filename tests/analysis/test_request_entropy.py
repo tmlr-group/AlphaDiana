@@ -6,7 +6,7 @@ import math
 import pytest
 
 import alphadiana as ad
-from alphadiana.analysis.entropy import RequestEntropy
+from alphadiana.analysis.measurements import RequestEntropy
 from alphadiana.artifacts import Artifacts
 
 

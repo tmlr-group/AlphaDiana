@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 
 from alphadiana.dashboard.backend.data_loader import _build_summary
-from alphadiana.analysis.io.result_store import ResultStore
-from alphadiana.analysis.report import ReportGenerator
+from alphadiana.results.store import ResultStore
+from alphadiana.analysis.export import ReportGenerator
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.benchmarks.terminal_bench2.benchmark import TerminalBench2Benchmark
 from alphadiana.benchmarks.terminal_bench2.harness.pi_harbor import (

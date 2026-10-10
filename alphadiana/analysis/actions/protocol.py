@@ -14,7 +14,9 @@ LABELS = (
 
 
 def prompt_bytes() -> bytes:
-    return files("alphadiana.analysis").joinpath("action_prompt.md").read_bytes()
+    return (
+        files("alphadiana.analysis.actions").joinpath("action_prompt.md").read_bytes()
+    )
 
 
 def request_for(row: dict) -> dict:
