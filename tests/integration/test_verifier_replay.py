@@ -6,13 +6,12 @@ import subprocess
 import pytest
 
 from alphadiana.benchmarks.base import BenchmarkTask
-from alphadiana.benchmarks.terminal_bench2.harness.common import (
+from alphadiana.engine.sandbox.terminal_bench2 import (
     TerminalBench2ContainerMixin,
 )
+from alphadiana.engine.sandbox.terminal_bench2 import capture_snapshot, verifier_digest
 from alphadiana.benchmarks.terminal_bench2.replay import (
     VerifierReplay,
-    capture_snapshot,
-    verifier_digest,
 )
 
 
@@ -115,7 +114,7 @@ def test_native_harbor_hook_captures_pre_verifier_state(tmp_path):
             [
                 os.environ["ALPHADIANA_HARBOR_PYTHON"],
                 "-m",
-                "alphadiana.benchmarks.terminal_bench2.harness.harbor_job",
+                "alphadiana.harness.terminal_bench2.harbor_job",
                 str(config),
                 str(snapshot_path),
                 "harbor-fixture",
@@ -177,10 +176,11 @@ def test_native_harbor_hook_captures_pre_verifier_state(tmp_path):
             )
 
 
-def test_snapshot_capture_keeps_existing_import_contract():
-    from alphadiana.benchmarks.terminal_bench2 import replay, snapshot
+def test_replay_uses_the_shared_environment_owner():
+    from alphadiana.benchmarks.terminal_bench2 import replay
+    from alphadiana.engine.sandbox import terminal_bench2 as snapshot
 
-    assert replay.capture_snapshot is snapshot.capture_snapshot
+    assert replay.TerminalBench2ContainerMixin is snapshot.TerminalBench2ContainerMixin
     assert replay.verifier_digest is snapshot.verifier_digest
 
 
@@ -190,7 +190,7 @@ SNAPSHOT_IMAGE = 'sha256:' + 'a' * 64
 
 def test_capture_snapshot_excludes_docker29_stdout_notice(tmp_path, monkeypatch):
     from types import SimpleNamespace
-    from alphadiana.benchmarks.terminal_bench2 import snapshot
+    from alphadiana.engine.sandbox import terminal_bench2 as snapshot
     tests = tmp_path / 'tests'
     tests.mkdir()
     (tests / 'test.sh').write_text('echo official')
@@ -228,7 +228,7 @@ def test_replay_reads_saved_docker_notice_without_editing_snapshot(tmp_path, mon
 @pytest.mark.parametrize('output', ['', 'other notice\n'+SNAPSHOT_IMAGE, SNAPSHOT_IMAGE+'\n'+SNAPSHOT_IMAGE])
 def test_snapshot_capture_rejects_ambiguous_image_output(tmp_path, monkeypatch, output):
     from types import SimpleNamespace
-    from alphadiana.benchmarks.terminal_bench2 import snapshot
+    from alphadiana.engine.sandbox import terminal_bench2 as snapshot
     tests=tmp_path/'tests';tests.mkdir();(tests/'test.sh').write_text('echo official')
     runtime=SimpleNamespace(container_engine='docker',container_id='owned',
                             task=SimpleNamespace(task_id='task',metadata={'task_dir':str(tmp_path)}))

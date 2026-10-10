@@ -1,4 +1,8 @@
-"""Measurement contracts and execution, resource-usage, token-entropy and request-entropy calculations. Token and request weighting remain distinct."""
+"""Batch measurements over saved runs: reliability, usage, and token/request entropy.
+
+Per-task observations computed by Runner belong to ``engine.observations``.
+Token and request weighting remain distinct.
+"""
 
 from __future__ import annotations
 

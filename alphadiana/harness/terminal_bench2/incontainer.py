@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from alphadiana.benchmarks.base import BenchmarkTask
-from alphadiana.benchmarks.terminal_bench2.harness.common import (
+from alphadiana.engine.sandbox.terminal_bench2 import (
     LocalCommandResult,
     TerminalBench2ContainerMixin,
     TerminalBench2RuntimeContext,

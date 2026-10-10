@@ -8,15 +8,43 @@ from typing import Any, Optional
 
 from alphadiana.harness.base import Agent, AgentResponse
 from alphadiana.engine.components import AgentRegistry
-from alphadiana.benchmarks.terminal_bench2.harness.common import (
-    SYSTEM_PROMPT,
+from alphadiana.engine.sandbox.terminal_bench2 import (
     TerminalBench2ContainerMixin,
-    is_done,
-    parse_commands,
 )
 from alphadiana.benchmarks.base import BenchmarkTask
 
 logger = logging.getLogger(__name__)
+
+
+SYSTEM_PROMPT = (
+    "You are an expert software engineer working from a local control workspace "
+    "against a running terminal-bench-2 Docker task.\n"
+    "Use only the helper scripts in the current directory:\n"
+    "- `./tb2-exec 'cmd'` runs `cmd` inside the target container.\n"
+    "- `./tb2-copy-from <remote_path> <local_path>` copies files out of the container.\n"
+    "- `./tb2-copy-to <local_path> <remote_path>` copies files into the container.\n"
+    "- `./tb2-test` runs the benchmark verifier.\n"
+    "Do not call docker directly. Output shell commands on their own lines, "
+    "prefixed with `$ `, and I will execute them locally in this control workspace.\n"
+    "When the task is complete, output DONE on its own line.\n"
+    "Do not use \\boxed{} format. This is a shell task."
+)
+
+def parse_commands(text: str) -> list[str]:
+    """Extract shell commands from LLM output."""
+    commands: list[str] = []
+    for line in text.splitlines():
+        stripped = line.lstrip()
+        if stripped.startswith("$ "):
+            cmd = stripped[2:].rstrip()
+            if cmd:
+                commands.append(cmd)
+    return commands
+
+
+def is_done(text: str) -> bool:
+    """Return True if the output contains a standalone DONE line."""
+    return any(line.strip() == "DONE" for line in text.splitlines())
 
 
 class TerminalBench2DockerAgent(TerminalBench2ContainerMixin, Agent):

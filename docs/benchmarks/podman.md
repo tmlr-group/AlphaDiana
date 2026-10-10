@@ -140,8 +140,8 @@ checks in addition to the benchmark-specific preflight:
 - Put results, task logs, and dual logprob sidecars on a large data volume; do
   not assume the home filesystem can hold a full sweep.
 - Confirm every selected image digest and run its required binary/Python
-  preflight. TerminalBench2 controller definitions live under
-  `alphadiana/benchmarks/terminal_bench2/deploy/dockerfiles/`.
+  preflight. Controller definitions live with their harnesses:
+  `alphadiana/harness/{openclaw,opencode,zeroclaw}/deploy/Dockerfile.controller`.
 - Confirm the network mode matches provider reachability. A loopback provider
   requires host networking unless the harness explicitly advertises a host
   proxy through rootless networking.

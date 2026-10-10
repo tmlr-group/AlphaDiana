@@ -68,6 +68,10 @@ The first four are generic harness families. The remaining keys are benchmark-sp
 | --- | --- |
 | `answer_length` | Post-run final-answer length plus byte, word, and line metadata |
 
+Per-task observation contracts and the built-in answer-length implementation
+live together in `alphadiana.engine.observations`. Batch analysis over saved
+runs lives in `alphadiana.analysis.measurements`.
+
 Metric plugins implement `EvaluationMetric`, register through
 `MetricRegistry`, and are configured in the top-level `metrics` list. They run
 after the scorer and cannot replace `ScoreResult`.

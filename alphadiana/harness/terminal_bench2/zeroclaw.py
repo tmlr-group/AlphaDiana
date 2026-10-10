@@ -24,7 +24,7 @@ from alphadiana.harness.proxies.preservation import (
 from alphadiana.harness.base import AgentResponse
 from alphadiana.harness.zeroclaw.trace import normalize_trace
 from alphadiana.engine.components import AgentRegistry
-from alphadiana.benchmarks.terminal_bench2.harness.incontainer import (
+from alphadiana.harness.terminal_bench2.incontainer import (
     IN_CONTAINER_AGENT_PROMPT,
     TerminalBench2InContainerMixin,
 )

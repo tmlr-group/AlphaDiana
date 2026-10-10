@@ -11,7 +11,7 @@ from alphadiana.results.store import ResultStore
 from alphadiana.analysis.export import ReportGenerator
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.benchmarks.terminal_bench2.benchmark import TerminalBench2Benchmark
-from alphadiana.benchmarks.terminal_bench2.harness.pi_harbor import (
+from alphadiana.harness.terminal_bench2.pi_harbor import (
     HarborTrialError,
     TerminalBench2PiHarborAgent,
     _read_pi_trace,
@@ -21,7 +21,7 @@ from alphadiana.benchmarks.terminal_bench2.harness.pi_harbor import (
 from alphadiana.benchmarks.terminal_bench2.scorer import TerminalBench2Scorer
 from alphadiana.engine.config.experiment_config import ExperimentConfig
 from alphadiana.engine.config.validator import ConfigValidator
-from alphadiana.metrics.answer_length import AnswerLengthMetric
+from alphadiana.engine.observations import AnswerLengthMetric
 
 
 def _write(path: Path, value: str = "x") -> Path:

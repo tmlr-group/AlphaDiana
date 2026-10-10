@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from alphadiana.harness.base import Agent
     from alphadiana.engine.sandbox.base import Sandbox
     from alphadiana.scorer.base import Scorer
-    from alphadiana.metrics.base import EvaluationMetric
+    from alphadiana.engine.observations import EvaluationMetric
 
 T = TypeVar("T")
 
@@ -150,14 +150,14 @@ def load_builtin_benchmarks() -> None:
 
 
 def load_builtin_agents() -> None:
-    import alphadiana.benchmarks.swe_bench.sweagent  # noqa: F401
-    import alphadiana.benchmarks.terminal_bench2.harness.terminus  # noqa: F401
-    import alphadiana.benchmarks.swe_bench.harness  # noqa: F401
-    import alphadiana.benchmarks.terminal_bench2.harness.docker  # noqa: F401
-    import alphadiana.benchmarks.terminal_bench2.harness.openclaw  # noqa: F401
-    import alphadiana.benchmarks.terminal_bench2.harness.opencode  # noqa: F401
-    import alphadiana.benchmarks.terminal_bench2.harness.pi_harbor  # noqa: F401
-    import alphadiana.benchmarks.terminal_bench2.harness.zeroclaw  # noqa: F401
+    import alphadiana.harness.swe_bench.sweagent  # noqa: F401
+    import alphadiana.harness.terminal_bench2.terminus  # noqa: F401
+    import alphadiana.harness.swe_bench.agent  # noqa: F401
+    import alphadiana.harness.terminal_bench2.docker  # noqa: F401
+    import alphadiana.harness.terminal_bench2.openclaw  # noqa: F401
+    import alphadiana.harness.terminal_bench2.opencode  # noqa: F401
+    import alphadiana.harness.terminal_bench2.pi_harbor  # noqa: F401
+    import alphadiana.harness.terminal_bench2.zeroclaw  # noqa: F401
     import alphadiana.harness.direct_llm  # noqa: F401
     import alphadiana.harness.pi.agent  # noqa: F401
     import alphadiana.harness.deepseek_harness.agent  # noqa: F401
@@ -168,7 +168,7 @@ def load_builtin_agents() -> None:
 
 def load_builtin_agent_validators() -> None:
     """Load only adapters that expose config hooks without optional runtimes."""
-    import alphadiana.benchmarks.terminal_bench2.harness.pi_harbor  # noqa: F401
+    import alphadiana.harness.terminal_bench2.pi_harbor  # noqa: F401
 
 
 def load_builtin_sandboxes() -> None:
@@ -189,7 +189,7 @@ def load_builtin_scorers() -> None:
 
 
 def load_builtin_metrics() -> None:
-    import alphadiana.metrics.answer_length  # noqa: F401
+    import alphadiana.engine.observations  # noqa: F401
 
 
 def register_builtin_components() -> None:

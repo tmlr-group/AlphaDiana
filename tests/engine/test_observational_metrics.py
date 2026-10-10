@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from alphadiana.benchmarks.base import BenchmarkTask
-from alphadiana.engine.runner import _measure_observational_metrics
+from alphadiana.engine.observations import measure_observations
 from alphadiana.harness.base import AgentResponse
-from alphadiana.metrics.answer_length import AnswerLengthMetric
-from alphadiana.metrics.base import EvaluationMetric, MetricResult
+from alphadiana.engine.observations import AnswerLengthMetric
+from alphadiana.engine.observations import EvaluationMetric, MetricResult
 from alphadiana.scorer.base import ScoreResult
 
 
@@ -25,7 +25,7 @@ def test_answer_length_records_text_shape_without_changing_score() -> None:
     metric = AnswerLengthMetric()
     metric.setup({"source": "final_answer"})
 
-    _measure_observational_metrics([metric], task, response, score)
+    measure_observations([metric], task, response, score)
 
     observation = response.evaluation_metrics["answer_length"]
     assert observation["value"] == 5
@@ -52,7 +52,7 @@ def test_metric_failure_cannot_mutate_primary_result() -> None:
             raise RuntimeError("metric exploded")
 
     task, response, score = _result_objects()
-    _measure_observational_metrics([MutatingBrokenMetric()], task, response, score)
+    measure_observations([MutatingBrokenMetric()], task, response, score)
 
     assert task.problem == "do it"
     assert response.answer == "1"

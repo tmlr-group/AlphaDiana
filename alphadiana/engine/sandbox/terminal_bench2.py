@@ -1,7 +1,11 @@
-"""Shared helpers for terminal-bench-2 agents."""
+"""TB2 task containers: workspace protocol, verifier execution, and retained snapshots.
+
+Agents and official replay share this resource lifecycle without importing each other.
+"""
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import json
 import os
@@ -40,34 +44,6 @@ def _proxy_bypass_hosts_from_urls(*urls: str) -> list[str]:
         if host and host not in hosts:
             hosts.append(host)
     return hosts
-
-SYSTEM_PROMPT = (
-    "You are an expert software engineer working from a local control workspace "
-    "against a running terminal-bench-2 Docker task.\n"
-    "Use only the helper scripts in the current directory:\n"
-    "- `./tb2-exec 'cmd'` runs `cmd` inside the target container.\n"
-    "- `./tb2-copy-from <remote_path> <local_path>` copies files out of the container.\n"
-    "- `./tb2-copy-to <local_path> <remote_path>` copies files into the container.\n"
-    "- `./tb2-test` runs the benchmark verifier.\n"
-    "Do not call docker directly. Output shell commands on their own lines, "
-    "prefixed with `$ `, and I will execute them locally in this control workspace.\n"
-    "When the task is complete, output DONE on its own line.\n"
-    "Do not use \\boxed{} format. This is a shell task."
-)
-
-NATIVE_AGENT_PROMPT = """You are solving a terminal-bench-2 task against a running Docker container.
-
-Use only the helper scripts in the current directory:
-- `./tb2-exec 'cmd'` runs `cmd` inside the target container via `docker exec`.
-- `./tb2-copy-from <remote_path> <local_path>` copies a file from the container.
-- `./tb2-copy-to <local_path> <remote_path>` copies a file into the container.
-- `./tb2-test` runs the benchmark verifier, but do not call it during normal solving.
-
-Do not call docker directly. Do not stop or replace the target container.
-Inspect `TASK.md` for the benchmark instruction.
-Inspect `TASK_HINTS.md` as well if it exists.
-After you have copied the final answer into the container, stop. The harness will run the verifier for you.
-"""
 
 AGENT_GUIDANCE = """# Terminal Bench 2 Workspace
 
@@ -115,25 +91,8 @@ class VerifierResult:
     verifier_output_path: str
 
 
-def parse_commands(text: str) -> list[str]:
-    """Extract shell commands from LLM output."""
-    commands: list[str] = []
-    for line in text.splitlines():
-        stripped = line.lstrip()
-        if stripped.startswith("$ "):
-            cmd = stripped[2:].rstrip()
-            if cmd:
-                commands.append(cmd)
-    return commands
-
-
-def is_done(text: str) -> bool:
-    """Return True if the output contains a standalone DONE line."""
-    return any(line.strip() == "DONE" for line in text.splitlines())
-
-
 class TerminalBench2ContainerMixin:
-    """Container lifecycle helpers shared by terminal-bench-2 agents."""
+    """Container lifecycle shared by task execution and official verifier replay."""
 
     def _setup_container_config(self, config: dict) -> None:
         self._retain_verifier_snapshot = bool(config.get("retain_verifier_snapshot", False))
@@ -491,7 +450,7 @@ class TerminalBench2ContainerMixin:
     ) -> dict[str, Path]:
         quoted_container = shlex.quote(container_id)
         container_engine = getattr(self, "_container_engine", "docker")
-        runtime_pythonpath = shlex.quote(str(Path(__file__).resolve().parents[2]))
+        runtime_pythonpath = shlex.quote(str(Path(__file__).resolve().parents[3]))
         runtime_python = shlex.quote(sys.executable or "python3")
         runtime_env = f"export PYTHONPATH={runtime_pythonpath}:\"${{PYTHONPATH:-}}\""
         if container_engine == "podman":
@@ -983,7 +942,6 @@ class TerminalBench2ContainerMixin:
         timeout_sec: int | None = None,
     ) -> VerifierResult:
         if getattr(self, "_retain_verifier_snapshot", False) and "verifier_snapshot" not in runtime.task.metadata:
-            from alphadiana.benchmarks.terminal_bench2.replay import capture_snapshot
             runtime.task.metadata["verifier_snapshot"] = capture_snapshot(self, runtime)
         reward_path = self._verifier_reward_path(runtime.logs_dir)
         verifier_output_path = reward_path.parent
@@ -1211,3 +1169,57 @@ exit 1
                 container_id[:12],
                 exc,
             )
+
+
+def verifier_digest(task_dir: str) -> str:
+    tests = Path(task_dir) / "tests"
+    if not tests.is_dir():
+        raise ValueError(f"Missing verifier tests: {tests}")
+    digest = hashlib.sha256()
+    for path in sorted(tests.rglob("*")):
+        if path.is_symlink():
+            raise ValueError(f"Verifier symlinks are not supported for replay: {path}")
+        if path.is_file():
+            digest.update(str(path.relative_to(tests)).encode())
+            digest.update(b"\0")
+            digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def _snapshot_image_id(value: str, *, engine: str) -> str:
+    """Read an immutable ID, including Docker 29's known stdout notice."""
+    notice = (
+        "Flag --pause has been deprecated, and enabled by default. "
+        "Use --no-pause to disable pausing during commit."
+    )
+    if not isinstance(value, str):
+        raise ValueError("Invalid snapshot image identity")
+    identity = value.strip()
+    if engine == "docker" and identity.startswith(notice + "\n"):
+        identity = identity[len(notice) + 1:]
+    if not re.fullmatch(r"(?:sha256:)?[0-9a-f]{64}", identity):
+        raise ValueError("Invalid snapshot image identity")
+    return identity
+
+
+def capture_snapshot(owner, runtime) -> dict:
+    tests_hash = verifier_digest(runtime.task.metadata.get("task_dir", ""))
+    if runtime.container_engine == "podman":
+        result = owner._podman.commit(runtime.container_id)
+    else:
+        result = subprocess.run(
+            ["docker", "commit", "--pause=true", runtime.container_id],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=600,
+        )
+    image_id = _snapshot_image_id(result.stdout, engine=runtime.container_engine)
+    return {
+        "schema_version": 1,
+        "image_id": image_id,
+        "engine": runtime.container_engine,
+        "verifier_sha256": tests_hash,
+        "task_id": runtime.task.task_id,
+        "captured_before_verification": True,
+    }

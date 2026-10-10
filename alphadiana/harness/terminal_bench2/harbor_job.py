@@ -15,7 +15,7 @@ import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
-from alphadiana.benchmarks.terminal_bench2.snapshot import capture_snapshot
+from alphadiana.engine.sandbox.terminal_bench2 import capture_snapshot
 
 
 def snapshot_trial(event, *, project: str, task_id: str, destination: Path) -> None:

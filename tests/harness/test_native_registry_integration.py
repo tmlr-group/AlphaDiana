@@ -13,7 +13,7 @@ def test_fresh_registry_keeps_native_and_api_adapters(entrypoint):
         [sys.executable, "-c", "\n".join([
             entrypoint,
             "from alphadiana.harness.registry import AgentRegistry",
-            "from alphadiana.metrics.registry import MetricRegistry",
+            "from alphadiana.engine.components import MetricRegistry",
             "register()",
             "for name in ('pi', 'deepseek_harness', 'sweagent', 'terminus2', 'terminal_bench2_pi_harbor'):",
             "    assert AgentRegistry.get(name).name == name",

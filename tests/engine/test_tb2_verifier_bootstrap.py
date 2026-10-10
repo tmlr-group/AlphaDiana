@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 from alphadiana.results.artifacts import Artifacts
 from alphadiana.analysis.measurements import ExecutionMetrics
-from alphadiana.benchmarks.terminal_bench2.harness.common import TerminalBench2ContainerMixin
+from alphadiana.engine.sandbox.terminal_bench2 import TerminalBench2ContainerMixin
 
 @pytest.mark.parametrize('output', [
     '/usr/local/bin/uvx: line 35: python3: command not found',

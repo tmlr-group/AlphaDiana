@@ -2,7 +2,7 @@
 from types import SimpleNamespace
 
 from alphadiana.benchmarks.base import BenchmarkTask
-from alphadiana.benchmarks.terminal_bench2.harness import common
+from alphadiana.engine.sandbox import terminal_bench2 as common
 
 
 def test_verifier_executes_official_script_without_replacing_tools(monkeypatch):

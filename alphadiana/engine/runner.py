@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 import threading
 import time
-from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -25,6 +23,7 @@ from alphadiana.engine.config.experiment_config import (
 from alphadiana.engine.sandbox.base import session_failure_reason
 from alphadiana.engine.sandbox.rock_ports import resolve_rock_ports_from_env
 from alphadiana.engine.task_dispatcher import TaskDispatcher
+from alphadiana.engine.observations import measure_observations
 from alphadiana.harness.openclaw.gateway_pool import (
     OpenClawGatewayPool,
     is_openclaw_autodeploy,
@@ -48,7 +47,7 @@ if TYPE_CHECKING:
     from alphadiana.engine.config.experiment_config import ExperimentConfig
     from alphadiana.engine.sandbox.base import Sandbox
     from alphadiana.harness.base import Agent
-    from alphadiana.metrics.base import EvaluationMetric
+    from alphadiana.engine.observations import EvaluationMetric
     from alphadiana.scorer.base import Scorer
 
 logger = logging.getLogger(__name__)
@@ -66,31 +65,6 @@ _SECRET_ASSIGNMENT_RE = re.compile(
     + "|".join(re.escape(key) for key in _SECRET_ENV_KEYS)
     + r")=([^\s\"']+|\"[^\"]*\"|'[^']*')"
 )
-
-
-def _measure_observational_metrics(metrics, task, response, score) -> None:
-    """Measure optional metrics without exposing authoritative result objects.
-
-    A metric receives snapshots taken after the primary scorer has completed.
-    This prevents a buggy plugin from mutating the task, response, or score that
-    AlphaDiana persists as the benchmark result. Metric failures remain
-    observations on the real response and never become task failures.
-    """
-    for metric in metrics:
-        try:
-            observation = metric.measure(
-                deepcopy(task),
-                deepcopy(response),
-                deepcopy(score),
-            )
-            measured = observation.to_dict()
-            # Reject unpersistable observations inside the metric boundary so
-            # an optional plugin cannot prevent the primary score being saved.
-            json.dumps(measured, allow_nan=False)
-            response.evaluation_metrics[metric.name] = measured
-        except Exception as metric_exc:  # noqa: BLE001
-            logger.exception("Metric %s failed for %s", metric.name, task.task_id)
-            response.evaluation_metric_errors[metric.name] = str(metric_exc)
 
 
 def _redact_secret_assignments(text: str) -> str:
@@ -994,7 +968,7 @@ class Runner:
                 # Metrics are read-only observations computed after the primary
                 # scorer. A broken optional metric is recorded but cannot turn
                 # a valid benchmark result into a different score.
-                _measure_observational_metrics(
+                measure_observations(
                     self.metrics,
                     persisted_task,
                     response,

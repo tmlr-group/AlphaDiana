@@ -12,7 +12,7 @@ try:
 except ModuleNotFoundError:  # Python 3.10
     import tomli as tomllib
 
-from alphadiana.benchmarks.terminal_bench2.harness.terminus import (
+from alphadiana.harness.terminal_bench2.terminus import (
     attribute_terminal_feedback,
 )
 from alphadiana.harness.base import AgentResponse

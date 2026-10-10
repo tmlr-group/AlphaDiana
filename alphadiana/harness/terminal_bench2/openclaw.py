@@ -11,10 +11,10 @@ from pathlib import Path
 from typing import Any, Optional
 
 from alphadiana.benchmarks.base import BenchmarkTask
-from alphadiana.benchmarks.terminal_bench2.harness.common import (
+from alphadiana.engine.sandbox.terminal_bench2 import (
     _proxy_bypass_hosts_from_urls,
 )
-from alphadiana.benchmarks.terminal_bench2.harness.incontainer import (
+from alphadiana.harness.terminal_bench2.incontainer import (
     IN_CONTAINER_AGENT_PROMPT,
     TerminalBench2InContainerMixin,
 )

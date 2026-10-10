@@ -13,16 +13,15 @@ from dataclasses import replace
 from pathlib import Path
 from uuid import uuid4
 
-from alphadiana.benchmarks.terminal_bench2.harness.common import (
+from alphadiana.engine.sandbox.terminal_bench2 import (
     TerminalBench2ContainerMixin,
 )
-from alphadiana.benchmarks.terminal_bench2.snapshot import (
+from alphadiana.engine.sandbox.terminal_bench2 import (
     _snapshot_image_id,
-    capture_snapshot,
     verifier_digest,
 )
 
-__all__ = ["VerifierReplay", "capture_snapshot", "verifier_digest"]
+__all__ = ["VerifierReplay"]
 
 class VerifierReplay(TerminalBench2ContainerMixin):
     """Reuse existing startup/verifier/cleanup contracts, with a fresh log scope."""

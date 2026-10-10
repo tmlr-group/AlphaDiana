@@ -243,7 +243,7 @@ class Terminus2Agent(Agent):
                 filter(
                     None,
                     [
-                        str(Path(__file__).resolve().parents[4]),
+                        str(Path(__file__).resolve().parents[3]),
                         env.get("PYTHONPATH", ""),
                     ],
                 )
@@ -251,7 +251,7 @@ class Terminus2Agent(Agent):
             argv = [
                 self.native_python,
                 "-m",
-                "alphadiana.benchmarks.terminal_bench2.harness.harbor_job",
+                "alphadiana.harness.terminal_bench2.harbor_job",
                 str(config_path),
                 str(snapshot_path),
                 task.task_id,

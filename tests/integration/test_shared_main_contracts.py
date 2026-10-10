@@ -23,14 +23,15 @@ FAMILIES = [
     ("harness", "Agent", "agent"),
     ("engine.sandbox", "Sandbox", "sandbox"),
     ("scorer", "Scorer", "scorer"),
-    ("metrics", "Metric", "metric"),
+    ("engine.components", "Metric", "metric"),
 ]
 
 
 @pytest.mark.parametrize("path,family,arg", FAMILIES)
 def test_registry_identity_keywords_and_replacement(path, family, arg):
     canonical = importlib.import_module("alphadiana.engine.components")
-    legacy = importlib.import_module(f"alphadiana.{path}.registry")
+    legacy = (canonical if path == "engine.components" else
+              importlib.import_module(f"alphadiana.{path}.registry"))
     registry = getattr(canonical, family + "Registry")
     assert registry is getattr(legacy, family + "Registry")
     decorator = getattr(canonical, "register_" + arg)

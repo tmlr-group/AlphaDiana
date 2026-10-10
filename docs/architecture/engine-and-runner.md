@@ -123,3 +123,66 @@ Use the exact command syntax shown by `python -m alphadiana.cli --help` in the c
 - `results/lifecycle.py` appends redacted task lifecycle evidence.
 
 Former internal `utils.*` imports migrate to these owners. No forwarding package remains.
+
+## Dataset, harness, and observation ownership
+
+`benchmarks/` owns dataset loading, task projection, and benchmark-specific
+scoring/replay. `harness/` owns agent execution and response projection. Both use
+`BenchmarkTask` from `benchmarks/base.py`; that contract does not discover any
+concrete dataset. `engine/components.py` explicitly loads each registry family.
+The `benchmarks` package no longer registers GPQA/MMMU merely on import.
+
+SWE execution adapters and their assets live in `harness/swe_bench/`. TB2
+execution adapters live in `harness/terminal_bench2/`. TB2 task-container startup,
+workspace commands, verifier execution, snapshots, and cleanup share one owner:
+`engine/sandbox/terminal_bench2.py`. Official replay uses that owner directly and
+never imports solver adapters. Controller Dockerfiles live in each agent's
+`deploy/` directory because those images also serve reasoning and SWE tasks.
+
+```mermaid
+flowchart LR
+    B["benchmarks: dataset → BenchmarkTask"] --> R["Runner"]
+    R --> H["harness: task → AgentResponse"]
+    H --> E["engine/sandbox: task container"]
+    S["benchmark scorer / official replay"] --> E
+    H --> R
+    R --> S
+    S --> O["engine/observations: per-task observations"]
+    O --> D["results: saved evidence"]
+    D --> M["analysis/measurements: batch tables and figures"]
+```
+
+`engine/observations.py` holds `EvaluationMetric`, `MetricResult`, the built-in
+`AnswerLengthMetric`, and isolated observation execution. Plugins receive copies
+of the task, response, and score after scoring. Unserializable observations and
+plugin failures are recorded separately, so the primary result remains saveable.
+The configuration key `metrics` and saved `evaluation_metrics` /
+`evaluation_metric_errors` fields keep their existing meanings.
+
+`analysis/measurements.py` reads saved `Artifacts` and computes batch reliability,
+usage, and token/request entropy. It produces measurement tables and figure
+specifications for `analysis/export.py`; it does not run per-task plugins.
+
+### Import migration
+
+Old internal entrypoints were removed; update callers as follows:
+
+| Previous path | Current path |
+| --- | --- |
+| `alphadiana.benchmarks.swe_bench.harness` | `alphadiana.harness.swe_bench.agent` |
+| `alphadiana.benchmarks.swe_bench.sweagent` | `alphadiana.harness.swe_bench.sweagent` |
+| `alphadiana.benchmarks.terminal_bench2.harness.<adapter>` | `alphadiana.harness.terminal_bench2.<adapter>` |
+| TB2 `harness.common` and `snapshot` | `alphadiana.engine.sandbox.terminal_bench2` |
+| Snapshot functions imported from TB2 `replay` | `alphadiana.engine.sandbox.terminal_bench2` |
+| `alphadiana.metrics.base` / `answer_length` | `alphadiana.engine.observations` |
+| `alphadiana.metrics.registry` | `alphadiana.engine.components` |
+
+For example:
+
+```python
+from alphadiana.engine.observations import EvaluationMetric, MetricResult
+from alphadiana.engine.components import register_metric
+```
+
+Custom plugins keep their registry names and configuration. External deep-import
+callers must update their paths; their usage is not discoverable from this repo.
