@@ -201,7 +201,7 @@ def main():
                 }
             receipt["model"] = manifest["model"]
             artifacts = execute(config)
-            rows = artifacts.records()
+            rows = artifacts.records(latest=False)
             expected = cell.get("expected_tasks", 3) * samples
             valid = sum(r["score_status"] == "valid_scored" for r in rows)
             receipt.update(
