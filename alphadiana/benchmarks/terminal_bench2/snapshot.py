@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import subprocess
 from pathlib import Path
 
@@ -22,6 +23,22 @@ def verifier_digest(task_dir: str) -> str:
     return digest.hexdigest()
 
 
+def _snapshot_image_id(value: str, *, engine: str) -> str:
+    """Read an immutable ID, including Docker 29's known stdout notice."""
+    notice = (
+        "Flag --pause has been deprecated, and enabled by default. "
+        "Use --no-pause to disable pausing during commit."
+    )
+    if not isinstance(value, str):
+        raise ValueError("Invalid snapshot image identity")
+    identity = value.strip()
+    if engine == "docker" and identity.startswith(notice + "\n"):
+        identity = identity[len(notice) + 1:]
+    if not re.fullmatch(r"(?:sha256:)?[0-9a-f]{64}", identity):
+        raise ValueError("Invalid snapshot image identity")
+    return identity
+
+
 def capture_snapshot(owner, runtime) -> dict:
     tests_hash = verifier_digest(runtime.task.metadata.get("task_dir", ""))
     if runtime.container_engine == "podman":
@@ -34,9 +51,7 @@ def capture_snapshot(owner, runtime) -> dict:
             check=True,
             timeout=600,
         )
-    image_id = result.stdout.strip()
-    if not image_id:
-        raise RuntimeError("Snapshot capture returned no image identity")
+    image_id = _snapshot_image_id(result.stdout, engine=runtime.container_engine)
     return {
         "schema_version": 1,
         "image_id": image_id,

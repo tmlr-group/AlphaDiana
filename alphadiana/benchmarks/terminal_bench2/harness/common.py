@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
+from uuid import uuid4
 
 from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.engine.container_runtime.podman_cli import PodmanCLI, PodmanError
@@ -138,6 +139,10 @@ class TerminalBench2ContainerMixin:
         self._retain_verifier_snapshot = bool(config.get("retain_verifier_snapshot", False))
         self._timeout_sec = int(config.get("timeout_sec", 300))
         self._test_timeout_sec = int(config.get("test_timeout_sec", 120))
+        # A100 official task-image startup exceeded the original 60s deadline.
+        self._docker_start_timeout_sec = int(config.get("docker_start_timeout_sec", 180))
+        if self._docker_start_timeout_sec <= 0:
+            raise ValueError("docker_start_timeout_sec must be positive")
         self._logs_base_dir = Path(config.get("logs_base_dir", "/tmp/tb2_logs")).expanduser().resolve()
         self._container_engine = str(config.get("container_engine", "docker") or "docker").strip().lower()
         if self._container_engine not in {"docker", "podman"}:
@@ -332,9 +337,12 @@ class TerminalBench2ContainerMixin:
                 raise last_mkdir_error
             return container_id
 
+        cidfile = logs_dir / f"container-{uuid4().hex}.cid"
         cmd = [
             "docker",
             "run",
+            "--cidfile",
+            str(cidfile),
             "-d",
             "--rm",
             "--add-host",
@@ -346,24 +354,49 @@ class TerminalBench2ContainerMixin:
         ]
         if tests_host_dir and Path(tests_host_dir).is_dir():
             cmd += ["-v", f"{tests_host_dir}:/tests:ro"]
+        if self._forward_proxy_env:
+            no_proxy_hosts = _proxy_bypass_hosts_from_urls(
+                str(getattr(self, "_api_base", "") or ""),
+                os.environ.get("OPENAI_BASE_URL", ""),
+                os.environ.get("OPENAI_API_BASE", ""),
+                os.environ.get("CUSTOM_API_BASE", ""),
+            )
+            for key, value in podman_proxy_env(
+                os.environ,
+                host_alias=self._docker_host_alias,
+                no_proxy_hosts=no_proxy_hosts,
+            ).items():
+                cmd += ["-e", f"{key}={value}"]
         cmd += [docker_image, "-lc", "sleep infinity"]
 
         logger.info("Task %s — starting container: %s", task.task_id, docker_image)
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"docker run failed for task {task.task_id} "
-                f"(image: {docker_image}): {result.stderr.strip()}\n"
-                f"Pre-pull the image with: docker pull {docker_image}"
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=self._docker_start_timeout_sec)
+            if result.returncode != 0:
+                raise RuntimeError(
+                    f"docker run failed for task {task.task_id} "
+                    f"(image: {docker_image}): {result.stderr.strip()}\n"
+                    f"Pre-pull the image with: docker pull {docker_image}"
+                )
+            container_id = result.stdout.strip()
+            if not container_id:
+                raise RuntimeError(f"docker run produced no container ID for task {task.task_id}")
+            subprocess.run(
+                ["docker", "exec", container_id, "mkdir", "-p", "/logs/verifier"],
+                capture_output=True,
+                timeout=10,
             )
-        container_id = result.stdout.strip()
-        if not container_id:
-            raise RuntimeError(f"docker run produced no container ID for task {task.task_id}")
-        subprocess.run(
-            ["docker", "exec", container_id, "mkdir", "-p", "/logs/verifier"],
-            capture_output=True,
-            timeout=10,
-        )
+        except BaseException:
+            # Docker writes the ID before starting. A timed-out CLI can leave
+            # the daemon's container alive; only this invocation's ID is owned.
+            if cidfile.is_file():
+                owned_id = cidfile.read_text().strip()
+                if re.fullmatch(r"[0-9a-f]{64}", owned_id):
+                    try:
+                        subprocess.run(["docker", "rm", "-f", owned_id], capture_output=True, timeout=30)
+                    except Exception as exc:
+                        logger.warning("Task %s — failed startup cleanup for %s: %s", task.task_id, owned_id, exc)
+            raise
         return container_id
 
     def _podman_container_name(self, task: BenchmarkTask) -> str:
@@ -890,7 +923,6 @@ class TerminalBench2ContainerMixin:
 
     def _run_tests(self, container_id: str, timeout_sec: int | None = None) -> str:
         timeout = timeout_sec if timeout_sec is not None else self._test_timeout_sec
-        self._ensure_verifier_tooling(container_id)
         if getattr(self, "_container_engine", "docker") == "podman":
             try:
                 result = self._podman.exec(
@@ -924,111 +956,25 @@ class TerminalBench2ContainerMixin:
             logger.warning("tests/test.sh exec error: %s", exc)
             return f"[ERROR: {exc}]"
 
-    def _ensure_verifier_tooling(self, container_id: str) -> None:
-        bootstrap = r"""
-mkdir -p /root/.local/bin /usr/local/bin
-cat >/root/.local/bin/env <<'EOF'
-export PATH="/usr/local/bin:/root/.local/bin:$PATH"
-EOF
-cat >/usr/local/bin/curl <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-
-# Terminal-Bench tasks commonly bootstrap uv with
-# `curl https://astral.sh/uv/<version>/install.sh | sh`. The harness already
-# provides a compatible uvx shim below, so avoid making verifier execution
-# depend on GitHub availability while leaving every other curl call unchanged.
-case " $* " in
-  *" https://astral.sh/uv/"*"/install.sh "*)
-    cat <<'INSTALLER'
-#!/usr/bin/env bash
-mkdir -p "$HOME/.local/bin"
-cat >"$HOME/.local/bin/env" <<'ENV'
-export PATH="/usr/local/bin:/root/.local/bin:$PATH"
-ENV
-INSTALLER
-    exit 0
-    ;;
-esac
-exec /usr/bin/curl "$@"
-EOF
-cat >/usr/local/bin/uvx <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-
-export PATH="/usr/local/bin:/root/.local/bin:$PATH"
-packages=()
-cmd=()
-while (($#)); do
-  case "$1" in
-    -p)
-      shift
-      [ "$#" -gt 0 ] && shift || true
-      ;;
-    -w)
-      shift
-      [ "$#" -gt 0 ] || break
-      packages+=("$1")
-      shift
-      ;;
-    *)
-      cmd=("$@")
-      break
-      ;;
-  esac
-done
-
-if [ ${#cmd[@]} -eq 0 ]; then
-  echo "uvx shim: missing command" >&2
-  exit 2
-fi
-
-python3 -m ensurepip --upgrade >/dev/null 2>&1 || true
-if [ ${#packages[@]} -gt 0 ]; then
-  attempt=1
-  while true; do
-    if python3 -m pip install \
-      --disable-pip-version-check \
-      --user \
-      --break-system-packages \
-      --retries 5 \
-      --timeout 120 \
-      "${packages[@]}"; then
-      break
-    fi
-    if [ "$attempt" -ge 3 ]; then
-      exit 1
-    fi
-    attempt=$((attempt + 1))
-    sleep 5
-  done
-fi
-
-if [ "${cmd[0]}" = "pytest" ]; then
-  exec python3 -m pytest "${cmd[@]:1}"
-fi
-exec "${cmd[@]}"
-EOF
-chmod +x /usr/local/bin/curl /usr/local/bin/uvx /root/.local/bin/env
-""".strip()
+    def _verifier_results_ready(self, runtime: TerminalBench2RuntimeContext, test_output: str) -> bool:
+        """Reject dependency failures and require the official script's report."""
+        if re.search(
+            r"(?m)^(?:/usr/local/bin/uvx: line \d+: python3: command not found|"
+            r"/usr/bin/python3: No module named (?:pip|ensurepip))$", test_output
+        ):
+            return False
+        task_dir = runtime.task.metadata.get("task_dir")
+        if not task_dir:
+            return True
+        script = Path(task_dir) / "tests/test.sh"
+        if not script.is_file() or "--ctrf /logs/verifier/ctrf.json" not in script.read_text():
+            return True
         try:
-            if getattr(self, "_container_engine", "docker") == "podman":
-                self._podman.exec(
-                    container_id,
-                    ["bash", "-lc", bootstrap],
-                    user="0:0",
-                    timeout=30,
-                    check=False,
-                )
-                return
-            subprocess.run(
-                ["docker", "exec", container_id, "bash", "-lc", bootstrap],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-        except Exception as exc:
-            logger.warning("Failed to pre-bootstrap verifier tooling in %s: %s", container_id[:12], exc)
+            report = json.loads((runtime.logs_dir / "verifier/ctrf.json").read_text())
+            count = report["results"]["summary"]["tests"]
+            return type(count) is int and count > 0
+        except (OSError, ValueError, KeyError, TypeError):
+            return False
 
     def _run_verifier_and_read_reward(
         self,
@@ -1041,12 +987,15 @@ chmod +x /usr/local/bin/curl /usr/local/bin/uvx /root/.local/bin/env
             runtime.task.metadata["verifier_snapshot"] = capture_snapshot(self, runtime)
         reward_path = self._verifier_reward_path(runtime.logs_dir)
         verifier_output_path = reward_path.parent
+        saved_output_path = runtime.logs_dir / "verifier-test-output.txt"
         existing_reward = self._read_reward_if_exists(runtime.logs_dir, runtime.task.task_id)
         if existing_reward is not None:
+            saved_output = saved_output_path.read_text() if saved_output_path.is_file() else ""
+            results_ready = self._verifier_results_ready(runtime, saved_output)
             return VerifierResult(
-                test_output="[reused existing verifier reward.txt]",
-                reward=existing_reward,
-                status="ok",
+                test_output=saved_output or "[reused existing verifier reward.txt]",
+                reward=existing_reward if results_ready else None,
+                status="ok" if results_ready else "bootstrap_error",
                 reward_path=str(reward_path),
                 verifier_output_path=str(verifier_output_path),
             )
@@ -1059,10 +1008,12 @@ chmod +x /usr/local/bin/curl /usr/local/bin/uvx /root/.local/bin/env
                 timeout_sec=wait_timeout,
             )
             if reused_reward is not None:
+                saved_output = saved_output_path.read_text() if saved_output_path.is_file() else reused_output
+                results_ready = self._verifier_results_ready(runtime, saved_output)
                 return VerifierResult(
-                    test_output=reused_output,
-                    reward=reused_reward,
-                    status="ok",
+                    test_output=saved_output,
+                    reward=reused_reward if results_ready else None,
+                    status="ok" if results_ready else "bootstrap_error",
                     reward_path=str(reward_path),
                     verifier_output_path=str(verifier_output_path),
                 )
@@ -1076,8 +1027,12 @@ chmod +x /usr/local/bin/curl /usr/local/bin/uvx /root/.local/bin/env
                 )
 
         test_output = self._run_tests(runtime.container_id, timeout_sec)
+        # The container may create /logs/verifier as root. The host owns logs_dir.
+        saved_output_path.write_text(test_output, encoding="utf-8")
         reward = self._read_reward_if_exists(runtime.logs_dir, runtime.task.task_id)
-        if reward is not None:
+        if not self._verifier_results_ready(runtime, test_output):
+            status, reward = "bootstrap_error", None
+        elif reward is not None:
             status = "ok"
         elif "[TIMEOUT" in test_output:
             reward = "0"

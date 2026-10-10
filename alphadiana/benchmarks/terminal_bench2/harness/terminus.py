@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
 import time
 from copy import deepcopy
 from pathlib import Path
@@ -15,6 +16,19 @@ from alphadiana.harness._internal.native_process import run_native
 from alphadiana.harness.base import Agent, AgentResponse
 from alphadiana.harness.proxies.native_capture import NativeProviderCapture
 from alphadiana.registry import register_agent
+
+
+class Terminus2RuntimeError(RuntimeError):
+    """Retain the native trial failure even when its snapshot hook never ran."""
+
+    def __init__(self, response: AgentResponse):
+        exception_type = response.metadata["native_exception"]["exception_type"]
+        super().__init__(
+            f"Harbor trial failed with {exception_type}; "
+            f"evidence: {response.metadata['native_output_dir']}"
+        )
+        self.error_type = response.metadata["failure_reason"]
+        self.partial_response = response
 
 
 def project_harbor_steps(steps):
@@ -154,8 +168,21 @@ class Terminus2Agent(Agent):
         started = time.monotonic()
         directory = self.output / uuid4().hex
         directory.mkdir(mode=0o700)
-        with NativeProviderCapture(self.config, directory) as capture:
-            response = self._solve_native(task, directory, capture.api_base, started)
+        capture = NativeProviderCapture(self.config, directory)
+        try:
+            with capture:
+                response = self._solve_native(
+                    task, directory, capture.api_base, started
+                )
+        except Terminus2RuntimeError as exc:
+            attribute_terminal_feedback(
+                capture.records, capture.requests, exc.partial_response.trajectory
+            )
+            exc.partial_response.trajectory = project_harbor_steps(
+                exc.partial_response.trajectory
+            )
+            capture.apply(exc.partial_response)
+            raise
         attribute_terminal_feedback(
             capture.records, capture.requests, response.trajectory
         )
@@ -229,28 +256,25 @@ class Terminus2Agent(Agent):
                 str(snapshot_path),
                 task.task_id,
             ]
-        run_native(
-            argv,
-            cwd=directory,
-            env=env,
-            log=directory / "native.log",
-            timeout=float(self.config.get("timeout", 1800)),
-        )
-        if self.retain_snapshot:
-            snapshot = json.loads(snapshot_path.read_text())
-            if snapshot.get("task_id") != task.task_id or not snapshot.get(
-                "captured_before_verification"
-            ):
-                raise RuntimeError(
-                    "Harbor snapshot does not match this task and capture phase"
-                )
-            task.metadata["verifier_snapshot"] = snapshot
+        process_error = None
+        try:
+            run_native(
+                argv,
+                cwd=directory,
+                env=env,
+                log=directory / "native.log",
+                timeout=float(self.config.get("timeout", 1800)),
+            )
+        except (RuntimeError, subprocess.TimeoutExpired) as exc:
+            process_error = exc
         results = []
         for path in (directory / "evaluation").glob("*/result.json"):
             result = json.loads(path.read_text())
             if result.get("task_name") == task_dir.name:
                 results.append((path, result))
         if len(results) != 1:
+            if process_error is not None:
+                raise process_error
             raise RuntimeError(f"Expected one native trial result, got {len(results)}")
         path, result = results[0]
         exception = result.get("exception_info") or {}
@@ -261,7 +285,62 @@ class Terminus2Agent(Agent):
             and bool(agent_timing.get("finished_at"))
         )
         if exception and not owned_timeout:
-            raise RuntimeError(f"Harbor trial failed; evidence: {path}")
+            # The native API exception is authoritative. A missing snapshot or
+            # nonzero wrapper exit must not replace it with a runtime failure.
+            failure_reason = (
+                "provider_error"
+                if exception.get("exception_type")
+                in {
+                    "APIError",
+                    "APIConnectionError",
+                    "APITimeoutError",
+                    "AuthenticationError",
+                    "PermissionDeniedError",
+                    "BadRequestError",
+                    "RateLimitError",
+                    "InternalServerError",
+                    "NotFoundError",
+                    "UnprocessableEntityError",
+                }
+                else "runtime_error"
+            )
+            trajectory_path = path.parent / "agent/trajectory.json"
+            trace = (
+                json.loads(trajectory_path.read_text())
+                if trajectory_path.is_file()
+                else {}
+            )
+            steps = trace.get("steps", []) if isinstance(trace, dict) else trace
+            raise Terminus2RuntimeError(
+                AgentResponse(
+                    answer=None,
+                    trajectory=steps,
+                    wall_time_sec=time.monotonic() - started,
+                    finish_reason="error",
+                    metadata={
+                        "native_runtime": "terminus-2",
+                        "native_output_dir": str(directory),
+                        "native_exception": exception,
+                        "failure_reason": failure_reason,
+                        "verifier_reward_observed": False,
+                    },
+                    workspace_file_contents={
+                        "harbor_result.json": json.dumps(result),
+                        "harbor_trajectory.json": json.dumps(trace),
+                    },
+                )
+            ) from process_error
+        if process_error is not None:
+            raise process_error
+        if self.retain_snapshot:
+            snapshot = json.loads(snapshot_path.read_text())
+            if snapshot.get("task_id") != task.task_id or not snapshot.get(
+                "captured_before_verification"
+            ):
+                raise RuntimeError(
+                    "Harbor snapshot does not match this task and capture phase"
+                )
+            task.metadata["verifier_snapshot"] = snapshot
         rewards = (result.get("verifier_result") or {}).get("rewards") or {}
         if "reward" not in rewards:
             raise RuntimeError(f"Harbor verifier produced no reward; evidence: {path}")

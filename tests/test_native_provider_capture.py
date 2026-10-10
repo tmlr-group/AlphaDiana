@@ -24,7 +24,10 @@ from alphadiana.harness.zeroclaw.agent import ZeroClawAgent
 
 
 @pytest.mark.parametrize("failure", [False, True])
-def test_native_capture_preserves_request_and_closes_on_failure(tmp_path, failure):
+@pytest.mark.parametrize("capture_logprobs", [False, True])
+def test_native_capture_preserves_request_and_closes_on_failure(
+    tmp_path, failure, capture_logprobs
+):
     observed = []
 
     class Provider(BaseHTTPRequestHandler):
@@ -55,7 +58,7 @@ def test_native_capture_preserves_request_and_closes_on_failure(tmp_path, failur
                                         ],
                                     }
                                 ]
-                            },
+                            } if capture_logprobs else None,
                         }
                     ],
                 }
@@ -71,7 +74,7 @@ def test_native_capture_preserves_request_and_closes_on_failure(tmp_path, failur
     thread.start()
     capture = NativeProviderCapture(
         {
-            "capture_logprobs": True,
+            "capture_logprobs": capture_logprobs,
             "top_logprobs": 1,
             "api_base": f"http://127.0.0.1:{provider.server_port}/v1",
         },
@@ -100,21 +103,30 @@ def test_native_capture_preserves_request_and_closes_on_failure(tmp_path, failur
                     raise RuntimeError("native failure")
         except RuntimeError as exc:
             assert failure and str(exc) == "native failure"
-        assert observed == [{**payload, "logprobs": True, "top_logprobs": 1}]
+        probability_fields = (
+            {"logprobs": True, "top_logprobs": 1} if capture_logprobs else {}
+        )
+        assert observed == [{**payload, **probability_fields}]
         assert capture.proxy._server is None
-        assert len(capture.records) == 1
-        assert capture.records[0]["follows_tool_result"]
-        assert capture.requests[0]["call_id"] == capture.records[0]["call_id"]
+        if capture_logprobs:
+            assert len(capture.records) == 1
+            assert capture.records[0]["follows_tool_result"]
+            assert capture.requests[0]["call_id"] == capture.records[0]["call_id"]
+        else:
+            assert capture.records == []
         assert (
             capture.requests[0]["last_message_content_sha256"]
             == hashlib.sha256(b"terminal output").hexdigest()
         )
-        assert (
-            json.loads((tmp_path / "provider_logprobs.jsonl").read_text())["token"]
-            == "answer"
-        )
+        probability_file = tmp_path / "provider_logprobs.jsonl"
+        if capture_logprobs:
+            assert json.loads(probability_file.read_text())["token"] == "answer"
+        else:
+            assert probability_file.read_text() == ""
         response = capture.apply(AgentResponse(answer="answer"))
-        assert response.metadata["logprobs_capture_status"] == "captured"
+        assert response.metadata["logprobs_capture_status"] == (
+            "captured" if capture_logprobs else "not_requested"
+        )
         assert "provider_requests.jsonl" in response.workspace_file_contents
         assert "provider_responses.jsonl" in response.workspace_file_contents
         assert response.token_usage == {
@@ -249,3 +261,37 @@ def test_provider_totals_require_complete_request_coverage(case):
         assert provenance["complete"]
     else:
         assert usage == {} and not provenance["complete"]
+
+
+def test_usage_capture_preserves_environment_proxy_egress(tmp_path, monkeypatch):
+    observed = []
+    class EgressProxy(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+        def do_POST(self):
+            observed.append(self.path)
+            self.rfile.read(int(self.headers['Content-Length']))
+            body = b'{"choices": [], "usage": {"prompt_tokens": 1, "completion_tokens": 0, "total_tokens": 1}}'
+            self.send_response(200)
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+    proxy = ThreadingHTTPServer(('127.0.0.1', 0), EgressProxy)
+    thread = threading.Thread(target=proxy.serve_forever, daemon=True)
+    thread.start()
+    # Windows environment names are case-insensitive; clear aliases before setting them.
+    for name in ('http_proxy', 'https_proxy', 'all_proxy', 'no_proxy', 'HTTPS_PROXY', 'ALL_PROXY'):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv('HTTP_PROXY', f'http://127.0.0.1:{proxy.server_port}')
+    monkeypatch.setenv('NO_PROXY', '127.0.0.1,localhost')
+    try:
+        with NativeProviderCapture({'api_base': 'http://native-provider.invalid/v1'}, tmp_path, measure_usage=True) as capture:
+            with httpx.Client(trust_env=False) as client:
+                response = client.post(capture.api_base + '/chat/completions', json={'model': 'fixture', 'messages': []})
+                assert response.status_code == 200
+        assert observed == ['http://native-provider.invalid/v1/chat/completions']
+        assert capture.responses[0]['prompt_tokens'] == 1
+    finally:
+        proxy.shutdown()
+        proxy.server_close()
+        thread.join()

@@ -10,6 +10,10 @@ from alphadiana.analysis.action_protocol import LABELS, prompt_bytes
 PROTOCOL = "llm-trajectory-actions-v1"
 
 
+class NoSavedAssistantActions(ValueError):
+    """The saved trace contains context but no assistant action to annotate."""
+
+
 def segmentation_prompt() -> str:
     # Reuse the definitions, evidenced-function priority, and operational rules
     # verbatim. The audit's fixed-target input/output instructions do not apply.
@@ -120,7 +124,7 @@ def source_blocks(trace: dict) -> list[dict]:
                 "Unlinked reasoning_steps: persist source ordering before annotation"
             )
     if not any(b["target"] for b in blocks):
-        raise ValueError(
+        raise NoSavedAssistantActions(
             "No saved assistant actions; cannot reconstruct them from final answers"
         )
     return blocks

@@ -18,6 +18,7 @@ from alphadiana.analysis.action_protocol import (
 )
 from alphadiana.analysis.action_segmentation import (
     PROTOCOL as TRAJECTORY_PROTOCOL,
+    NoSavedAssistantActions,
     annotate_trajectory,
     segmentation_prompt,
 )
@@ -163,6 +164,7 @@ class ActionAnnotations(CachedJudge):
             run = source.path.stem
             missing, unordered, adjacent, sources = 0, 0, 0, []
             window_count = 0
+            traces_without_actions = []
             for record in source.records():
                 path = source.file(record, "normalized_trace")
                 if path is None:
@@ -175,12 +177,22 @@ class ActionAnnotations(CachedJudge):
                     }
                 )
                 if self.protocol == TRAJECTORY_PROTOCOL:
-                    segmented, windows = annotate_trajectory(
-                        self,
-                        json.loads(path.read_bytes()),
-                        sources[-1]["sha256"],
-                        record.get("problem", ""),
-                    )
+                    try:
+                        segmented, windows = annotate_trajectory(
+                            self,
+                            json.loads(path.read_bytes()),
+                            sources[-1]["sha256"],
+                            record.get("problem", ""),
+                        )
+                    except NoSavedAssistantActions:
+                        if record.get("score_status") == VALID_SCORE_STATUS:
+                            raise
+                        traces_without_actions.append({
+                            "task_id": record["task_id"],
+                            "sample_index": record.get("sample_index", 0),
+                            "score_status": record.get("score_status"),
+                        })
+                        continue
                     window_count += windows
                     targets = [(None, row) for row in segmented]
                 elif self.protocol == PROTOCOL:
@@ -290,6 +302,7 @@ class ActionAnnotations(CachedJudge):
                 )
             coverage[run] = {
                 "missing_traces": missing,
+                "traces_without_assistant_actions": traces_without_actions,
                 "annotation_windows": window_count,
                 "targets_without_sequence_position": unordered,
                 "observed_adjacent_pairs": adjacent,

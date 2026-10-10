@@ -30,13 +30,16 @@ class NativeProviderCapture:
         self.responses: list[dict] = []
 
     def __enter__(self):
-        if self.capture["enabled"]:
+        if self.capture["enabled"] or self.measure_usage:
             self.proxy = LogprobCaptureProxy(
                 self.api_base,
                 self.capture["top_logprobs"],
                 upstream_api_key=self.config.get("api_key", "EMPTY"),
+                inject_logprobs=self.capture["enabled"],
                 normalize_system_messages=False,
                 capture_request_summary=True,
+                # Match the native HTTP client's environment proxy/CA routing.
+                trust_env=True,
                 client_timeout=float(self.config.get("timeout", 1800)),
             )
             try:
@@ -78,7 +81,7 @@ class NativeProviderCapture:
             records=self.records,
             metadata=response.metadata,
         )
-        if self.capture["enabled"]:
+        if self.capture["enabled"] or self.measure_usage:
             response.workspace_file_contents["provider_requests.jsonl"] = "".join(
                 json.dumps(row) + "\n" for row in self.requests
             )
