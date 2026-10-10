@@ -22,7 +22,7 @@ from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.engine.task_dispatcher import TaskDispatcher
 from alphadiana.harness.direct_llm import DirectLLMAgent
 from alphadiana.scorer.numeric import NumericScorer
-from test_api_pipeline_demo import ScriptedProvider
+from tests.api.test_api_pipeline_demo import ScriptedProvider
 
 
 @pytest.fixture

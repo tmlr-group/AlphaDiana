@@ -280,7 +280,7 @@ def summarize_analyze_tool_measurements(measurement_summary: Mapping[str, Any] |
     """Return compact Phase 14 metrics derived from analyze_tools measurement outputs."""
     if not measurement_summary:
         return {
-            "source": "analyze_tools/data/measurement_summary.json",
+            "source": "scripts/paper_analysis/data/measurement_summary.json",
             "available": False,
             "metric_names": ANALYZE_TOOLS_METRIC_NAMES,
         }
@@ -291,7 +291,7 @@ def summarize_analyze_tool_measurements(measurement_summary: Mapping[str, Any] |
     verification_rows = _mapping_rows(measurement_summary.get("verification_conversion"))
 
     return {
-        "source": "analyze_tools/data/measurement_summary.json",
+        "source": "scripts/paper_analysis/data/measurement_summary.json",
         "available": True,
         "metric_names": ANALYZE_TOOLS_METRIC_NAMES,
         "low_entropy_long_collapse": _low_entropy_long_collapse(entropy_quadrants),

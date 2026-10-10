@@ -15,7 +15,7 @@ from alphadiana.benchmarks.swe_bench.sweagent import project_sweagent_history
 from alphadiana.benchmarks.terminal_bench2.harness.terminus import project_harbor_steps
 from alphadiana.harness.base import AgentResponse
 from alphadiana.scorer.base import ScoreResult
-from test_general_analysis import judge_options, response as judge_response
+from tests.analysis.test_general_analysis import judge_options, response as judge_response
 
 
 def llm_actions(artifacts, tmp_path):

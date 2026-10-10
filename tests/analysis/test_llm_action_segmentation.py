@@ -13,7 +13,7 @@ from alphadiana.analysis.annotations.segmentation import (
     validate_segments,
 )
 from alphadiana.analysis.analyzer import Analyzer, ExecutionMetrics
-from test_general_analysis import judge_options, record, response, source
+from tests.analysis.test_general_analysis import judge_options, record, response, source
 
 
 def saved_trace(tmp_path, steps, **fields):

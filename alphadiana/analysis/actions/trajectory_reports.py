@@ -547,7 +547,7 @@ def _latex_measurement_insights(metrics: Mapping[str, Any]) -> str:
 def _markdown_measurement_insights(metrics: Mapping[str, Any]) -> str:
     insights = _measurement_insights(metrics)
     if not insights.get("available"):
-        return "未找到 `analyze_tools/data/measurement_summary.json`，本次报告只包含轨迹动作指标。"
+        return "未找到 `scripts/paper_analysis/data/measurement_summary.json`，本次报告只包含轨迹动作指标。"
 
     low = insights.get("low_entropy_long_collapse", {})
     inversion = insights.get("confidence_inversion", {})
@@ -560,7 +560,7 @@ def _markdown_measurement_insights(metrics: Mapping[str, Any]) -> str:
     verification_lifts = _mapping_list(verification.get("lifts") if isinstance(verification, Mapping) else None)
 
     lines = [
-        "这些指标来自 `analyze_tools/data/measurement_summary.json`，补充 entropy、tool-boundary state shift、verification conversion、operational tax、paired gain 和 scaffold dominance。",
+        "这些指标来自 `scripts/paper_analysis/data/measurement_summary.json`，补充 entropy、tool-boundary state shift、verification conversion、operational tax、paired gain 和 scaffold dominance。",
         "",
         "| Insight | Metric | Key value | Interpretation |",
         "| --- | --- | ---: | --- |",

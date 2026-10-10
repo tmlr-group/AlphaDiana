@@ -23,7 +23,7 @@ pip install -e '.[dashboard]'
 
 cd alphadiana/dashboard/frontend
 npm install
-cd ../../../..
+cd ../../..
 ```
 
 Development mode starts Vite and FastAPI separately and reloads source changes.

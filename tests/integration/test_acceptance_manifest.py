@@ -8,7 +8,7 @@ import pytest
 
 from alphadiana.benchmarks.base import Benchmark, BenchmarkTask
 from alphadiana.benchmarks.registry import BenchmarkRegistry
-from scripts.validate_api_matrix import task_fingerprint, validate_inputs
+from scripts.validation.validate_api_matrix import task_fingerprint, validate_inputs
 
 ROOT = Path(__file__).resolve().parents[2] / "configs/acceptance/api"
 

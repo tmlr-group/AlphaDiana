@@ -16,6 +16,8 @@ from collections.abc import Sequence
 from alphadiana.artifacts import Artifacts
 from alphadiana.logprobs import _compute_entropy_stats
 
+__all__ = ["EntropyAnalysis", "RequestEntropy", "_compute_entropy", "_compute_entropy_stats"]
+
 class EntropyAnalysis:
     """Token-weighted entropy after observed tool feedback, plus length scatter.
 

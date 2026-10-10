@@ -5,7 +5,7 @@ import copy
 import pytest
 from alphadiana.harness._internal.training import NativeCapture, TrainingCapture
 from alphadiana.harness.deepseek_harness.training import DeepSeekCapture
-from test_pi_training import completion, plan, request
+from tests.harness.test_pi_training import completion, plan, request
 
 
 def wire_request():

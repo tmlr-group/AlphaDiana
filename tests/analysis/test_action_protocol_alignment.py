@@ -6,7 +6,7 @@ import pytest
 from tests.analysis.action_target_fixtures import attach_targets, fixed_item
 from alphadiana.analysis.annotations.actions import ActionAnnotations
 from alphadiana.analysis.action_protocol import PROTOCOL, prompt_bytes, request_for
-from test_general_analysis import judge_options, record, response, source
+from tests.analysis.test_general_analysis import judge_options, record, response, source
 
 
 def artifacts_with_targets(tmp_path, items):

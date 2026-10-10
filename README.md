@@ -113,6 +113,28 @@ and [Troubleshooting](docs/getting-started/troubleshooting.md).
 For ZeroClaw, see the [harness guide](docs/harnesses/zeroclaw.md) and
 [AIME benchmark page](docs/benchmarks/aime.md).
 
+## Repository map
+
+```text
+alphadiana/
+  engine/        # execution, configuration, and rollout campaigns
+  harness/       # agent implementations and runtime skills
+  benchmarks/    # task loaders and official verifier integrations
+  analysis/      # saved-run measurements, annotations, and reports
+  dashboard/     # React frontend and FastAPI backend
+scripts/
+  setup/         # environment and dependency setup
+  validation/    # preflight, smoke tests, and evaluator audits
+  action_audit/  # human action annotation and agreement
+  paper_analysis/# archived paper inputs and plotting workflows
+tests/           # grouped by analysis, API, engine, harness, and benchmark
+configs/         # experiment configurations
+docs/            # guides, contracts, and documentation assets
+```
+
+See the [analysis module map](alphadiana/analysis/README.md) and
+[operator workflow map](scripts/README.md) for implementation entry points.
+
 ## Configuration
 
 AlphaDiana is configured with a YAML file. At a high level, you specify:
