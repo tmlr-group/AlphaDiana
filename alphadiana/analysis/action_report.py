@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from alphadiana.analysis.reliability import ERROR_STATUSES
+from alphadiana.analysis.reliability import ERROR_STATUSES, compute_reliability_summary
 from alphadiana.analysis.result_reader import RunBundle
 from alphadiana.analysis.io.status import VALID_SCORE_STATUS, infer_score_status
 
@@ -54,19 +54,21 @@ def _record_counts(bundle: RunBundle) -> tuple[int, int]:
 
 
 def _expected_samples(bundle: RunBundle, reliability: dict[str, Any]) -> int:
-    if bundle.manifest.get("expected_sample_count") is not None:
-        return int(bundle.manifest["expected_sample_count"])
-    missing = int(reliability.get("missing_samples") or 0)
-    return len(bundle.records) + missing
+    """Keep the legacy export while using the canonical planned sample count."""
+    if "expected_sample_count" in reliability:
+        return int(reliability["expected_sample_count"])
+    return int(compute_reliability_summary(bundle.records, bundle.manifest)["expected_sample_count"])
 
 
 def _cluster_lines(view_name: str, view: dict[str, Any]) -> list[str]:
     lines = [
         f"### {view_name}",
         "",
+        "- Data view: `all_attempts` (includes superseded attempts)",
         f"- Method: `{view.get('method', '')}`",
         f"- Distance: `{view.get('distance', '')}`",
         f"- Rows: {view.get('n_rows', 0)}",
+        f"- Denominator: {view.get('n_rows', 0)} persisted attempts in this cluster view",
         f"- Feature Columns: {', '.join(str(column) for column in view.get('feature_columns', []))}",
         "",
         "| Cluster | Rows | Score Status | Correctness | Entropy Mean Avg | Exemplars |",
@@ -107,6 +109,9 @@ def render_markdown_report(
     written_records = len(bundle.records)
     valid_scored, error_records = _record_counts(bundle)
     missing_samples = int(reliability.get("missing_samples") or 0)
+    denominators = reliability.get("denominators")
+    if denominators is None:
+        denominators = compute_reliability_summary(bundle.records, bundle.manifest)["denominators"]
 
     lines = [
         f"# Action Space Analysis: {bundle.run_id}",
@@ -117,17 +122,23 @@ def render_markdown_report(
         "| --- | ---: |",
         f"| Run ID | `{bundle.run_id}` |",
         f"| Expected Samples | {expected_samples} |",
-        f"| Written Records | {written_records} |",
-        f"| Valid Scored | {valid_scored} |",
-        f"| Error Records | {error_records} |",
         f"| Missing Samples | {missing_samples} |",
+        "",
+        "All attempts retains every persisted record, including superseded retries. "
+        "Latest samples selects the last persisted attempt per `(task_id, sample_index)`, never the best score.",
+        "",
+        "| Count | All attempts | Latest samples |",
+        "| --- | ---: | ---: |",
+        f"| Written Records | {written_records} | {reliability['written_records']} |",
+        f"| Valid Scored | {valid_scored} | {reliability['valid_scored']} |",
+        f"| Error Records | {error_records} | {reliability['error_records']} |",
         "",
     ]
     if missing_samples > 0:
         lines.extend(
             [
                 "This run is incomplete; missing samples are reported separately and are not silently converted into model failures.",
-                "The current strongest run is incomplete when expected samples exceed written records, so reliability claims must cite coverage.",
+                "Coverage and missing counts use latest samples; historical retries cannot fill missing samples.",
                 "",
             ]
         )
@@ -136,19 +147,23 @@ def render_markdown_report(
 
     lines.extend(
         [
-            "## Reliability Metrics",
+            "## Reliability Metrics (latest samples)",
             "",
-            "| Metric | Value |",
-            "| --- | ---: |",
-            f"| Observed Valid Accuracy | {_fmt_ratio(reliability.get('observed_valid_accuracy'))} |",
-            f"| Expected-Sample Accuracy | {_fmt_ratio(reliability.get('expected_sample_accuracy'))} |",
-            f"| Coverage | {_fmt_ratio(reliability.get('coverage'))} |",
-            f"| Pass@k | {_fmt_ratio(reliability.get('pass_at_k'))} |",
-            f"| Avg@k | {_fmt_ratio(reliability.get('avg_at_k'))} |",
-            f"| Pass^k Available | {bool(reliability.get('pass_power_k_available'))} |",
-            f"| Pass^k | {_fmt_ratio(reliability.get('pass_power_k'))} |",
+            f"k = {reliability['num_samples']}. Avg@k averages correct/k over planned tasks; Pass^k averages (correct/k)^k when available.",
             "",
-            "## Cluster Views",
+            "| Metric | Value | Denominator |",
+            "| --- | ---: | --- |",
+            f"| Observed Valid Accuracy | {_fmt_ratio(reliability.get('observed_valid_accuracy'))} | {denominators['observed_valid_accuracy']} valid scored samples |",
+            f"| Expected-Sample Accuracy | {_fmt_ratio(reliability.get('expected_sample_accuracy'))} | {denominators['expected_sample_accuracy']} planned samples |",
+            f"| Coverage | {_fmt_ratio(reliability.get('coverage'))} | {denominators['coverage']} planned samples |",
+            f"| Pass@k | {_fmt_ratio(reliability.get('pass_at_k'))} | {denominators['pass_at_k']} planned tasks |",
+            f"| Avg@k | {_fmt_ratio(reliability.get('avg_at_k'))} | {denominators['avg_at_k']} planned tasks |",
+            f"| Pass^k Available | {bool(reliability.get('pass_power_k_available'))} | n/a |",
+            f"| Pass^k | {_fmt_ratio(reliability.get('pass_power_k'))} | {denominators['pass_power_k']} planned tasks |",
+            "",
+            "## Cluster Views (all attempts)",
+            "",
+            "Feature CSV and clustering retain historical attempts. Each cluster's counts refer to its selected attempt rows, not the latest-sample reliability denominator.",
             "",
         ]
     )

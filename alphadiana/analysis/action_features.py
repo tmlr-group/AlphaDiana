@@ -76,6 +76,7 @@ def build_record_feature_rows(bundle: RunBundle) -> list[dict[str, Any]]:
         scale = record.get("int16_probability_scale") or 0
         rows.append(
             {
+                "data_view": "all_attempts",
                 "run_id": str(record.get("run_id") or bundle.run_id),
                 "task_id": str(record.get("task_id") or ""),
                 "sample_index": int(record.get("sample_index") or 0),

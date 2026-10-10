@@ -17,6 +17,16 @@ def compute_reliability_summary(
         and all(len(base.by_task.get(t, [])) >= k for t in base.task_ids)
     )
     return {
+        "data_view": "latest_samples",
+        "selection": "last_persisted_attempt_per_task_sample",
+        "denominators": {
+            "observed_valid_accuracy": len(base.valid),
+            "expected_sample_accuracy": expected,
+            "coverage": expected,
+            "pass_at_k": base.expected_task_count,
+            "avg_at_k": base.expected_task_count,
+            "pass_power_k": base.expected_task_count,
+        },
         "num_samples": k,
         "expected_sample_count": expected,
         "written_records": n,

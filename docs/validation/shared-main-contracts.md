@@ -9,7 +9,7 @@ This implements the revised boundaries in #109 on main `8faa2ce12ad9f63bef51521b
 | Five family registry modules | `alphadiana/registry.py` | Old modules export the same classes, decorators and backing maps. Each family has its own namespace. Register/get/list, keyword arguments and replacement registration remain supported. |
 | `analysis/entropy.py`, `analysis/logprobs.py`, `analysis/io/logprob_artifacts.py` | `alphadiana/logprobs.py` | Old imports forward to the same functions. Raw candidates remain separate from compact Int16 output; both conversion entry points preserve request attribution. |
 | `analysis/report.py`, duplicated reliability and execution aggregation | `analysis/run_summary.py` | `ReportGenerator` and `RunSummary` remain available through the old import. `RunStatistics` and `latest_samples` own the shared rules. |
-| `analysis/reports.py` | `analysis/action_report.py` | Rendering functions retain their old imports, content and output formats. |
+| `analysis/reports.py` | `analysis/action_report.py` | Rendering functions retain their old imports and artifact filenames. Action-space outputs explicitly label their data views and denominators. |
 
 `registry_loader.py` still owns deferred built-in imports and its family-specific loaders. CLI `list-benchmarks` now calls that loader. `engine/components.py` stays a forwarding entry point. Registry-only imports do not load native adapters. Internal imports use the canonical paths; old paths remain supported during this transition, with no removal date set.
 
@@ -30,6 +30,8 @@ All four consumers—core reports, dashboard, reliability and Analyzer execution
 | Reliability `coverage`; execution resource coverage | Latest observed samples / planned samples; resource availability is counted separately, including failed samples. |
 
 The manifest determines planned counts and k, followed by record/config fallbacks. Missing samples are counted by expected task/sample keys, so an unrelated or out-of-range record cannot fill a missing sample. Resource statistics retain their existing choice of denominator rather than being equated with score accuracy.
+
+The offline `analyze_action_space` CLI deliberately retains two views. Its feature CSV and both cluster views use **all persisted attempts**, including superseded retries; `valid_scored_only` filters that history by score status, not by latest attempt. Reliability uses **latest samples**. Markdown shows both sets of record, valid-score and error counts side by side, plus the denominator for each reliability metric and each cluster view. JSON/CSV label the selection with `data_view`; reliability JSON also records metric denominators. With a correct attempt followed by an incorrect retry for the same sample, clustering keeps both attempts while reliability counts one incorrect sample. Historical clustering inputs, labels and algorithms remain unchanged, and source JSONL is never rewritten.
 
 Two inconsistencies are explicitly corrected: direct reliability calls no longer count retry history as additional samples, and a count-only manifest includes unnamed missing tasks in core Avg@k, matching reliability and explicit-ID manifests. Legacy rows without `score_status` use the common classifier. No field unit or persisted result schema is changed. Existing reports are not rewritten; recomputing affected incomplete/retried runs may produce corrected aggregates.
 

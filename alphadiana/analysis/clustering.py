@@ -112,9 +112,14 @@ def cluster_rows(
 
 
 def cluster_analysis_views(rows: list[dict[str, Any]], *, max_clusters: int = 4) -> dict[str, Any]:
-    """Build action-only and operational-status cluster views."""
+    """Keep historical attempts in both cluster views, including superseded ones."""
     valid_rows = [row for row in rows if row.get("score_status") == "valid_scored"]
     return {
-        "valid_scored_only": cluster_rows(valid_rows, max_clusters=max_clusters),
-        "all_records_status": cluster_rows(rows, max_clusters=max_clusters),
+        name: {
+            **cluster_rows(selected, max_clusters=max_clusters),
+            "data_view": "all_attempts",
+            "denominator": len(selected),
+            "denominator_unit": "persisted_attempts",
+        }
+        for name, selected in (("valid_scored_only", valid_rows), ("all_records_status", rows))
     }

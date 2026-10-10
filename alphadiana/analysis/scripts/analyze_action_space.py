@@ -40,6 +40,7 @@ def main(argv: list[str] | None = None) -> int:
     output_files = {name: f"{args.run_id}/{path.name}" for name, path in output_paths.items()}
     cluster_payload = {
         "run_id": args.run_id,
+        "data_view": "all_attempts",
         "feature_level": "record",
         "views": clusters,
     }
