@@ -44,51 +44,6 @@ def coerce_text_content(content: Any) -> str:
     return ""
 
 
-def extract_response_text(payload: Any) -> str:
-    """Extract assistant text from various gateway response formats."""
-    if not isinstance(payload, dict):
-        return ""
-
-    # Standard OpenAI format
-    choices = payload.get("choices")
-    if isinstance(choices, list) and choices:
-        message = choices[0].get("message", {})
-        if isinstance(message, dict):
-            content = coerce_text_content(message.get("content"))
-            if content:
-                return content
-        delta = choices[0].get("delta", {})
-        if isinstance(delta, dict):
-            content = coerce_text_content(delta.get("content"))
-            if content:
-                return content
-        text = choices[0].get("text")
-        if isinstance(text, str) and text.strip():
-            return text.strip()
-
-    # Gateway-specific variants
-    output_text = payload.get("output_text")
-    if isinstance(output_text, str) and output_text.strip():
-        return output_text.strip()
-
-    output = payload.get("output")
-    if isinstance(output, list):
-        for item in output:
-            if not isinstance(item, dict):
-                continue
-            content = coerce_text_content(item.get("content"))
-            if content:
-                return content
-
-    message = payload.get("message")
-    if isinstance(message, dict):
-        content = coerce_text_content(message.get("content"))
-        if content:
-            return content
-
-    return ""
-
-
 def extract_reasoning_trajectory(payload: Any) -> list[dict]:
     """Best-effort extraction of a structured reasoning/tool trajectory."""
     if not isinstance(payload, dict):

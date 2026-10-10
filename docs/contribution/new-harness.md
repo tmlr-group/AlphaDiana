@@ -153,8 +153,8 @@ python -m alphadiana.cli run <config.yaml>
 
 If your harness should expose AlphaDiana skill bundles to the model, read the
 `agent.config.skill_folder` key in `setup()` and mount the bundle into the
-sandbox. The existing agents resolve it with a per-harness `_resolve_skill_folder`:
-empty disables it; an absolute
+sandbox. Use `alphadiana.harness.base.resolve_runtime_skill_folder` to resolve it.
+An empty value disables it; an absolute
 path is used as-is; a value with `/` resolves against the cwd; a bare name
 resolves to `alphadiana/harness/skills/<name>/` (for example `advanced-maths`).
 Skills are **not** auto-injected into context, so your system prompt must instruct
