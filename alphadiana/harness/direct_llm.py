@@ -5,28 +5,30 @@ and the user's problem, returning the model's raw output.  It serves as
 a baseline to measure the LLM's own reasoning ability without any
 agentic orchestration (no tool calling, no multi-turn, no code execution).
 """
+
 from __future__ import annotations
 
 import base64
 import logging
-import os
 import random
 import re
 import time
 from typing import Any
 
+from alphadiana.engine.config.experiment_config import resolve_agent_setting
+
 logger = logging.getLogger(__name__)
 
+from alphadiana.answers import extract_answer_candidate
+from alphadiana.benchmarks.base import BenchmarkTask
+from alphadiana.harness.base import Agent, AgentResponse
 from alphadiana.harness.proxies.logprob_capture import (
     apply_openai_logprob_request,
     extract_openai_logprob_records,
     finalize_logprob_capture,
     resolve_logprob_capture_config,
 )
-from alphadiana.harness.base import Agent, AgentResponse
 from alphadiana.registry import AgentRegistry
-from alphadiana.benchmarks.base import BenchmarkTask
-from alphadiana.utils.math_answer import extract_answer_candidate
 
 _DEFAULT_SYSTEM_PROMPT = (
     "You are a helpful assistant that solves problems step by step. "
@@ -87,9 +89,11 @@ class DirectLLMAgent(Agent):
     _logprobs_format: str = "int16"
 
     def setup(self, config: dict) -> None:
-        self._model = self._resolve_setting(config, "model", "OPENAI_MODEL_NAME")
-        self._api_base = self._resolve_setting(config, "api_base", "OPENAI_BASE_URL")
-        self._api_key = self._resolve_setting(config, "api_key", "OPENAI_API_KEY", default="EMPTY")
+        self._model = resolve_agent_setting(config, "model", "OPENAI_MODEL_NAME")
+        self._api_base = resolve_agent_setting(config, "api_base", "OPENAI_BASE_URL")
+        self._api_key = resolve_agent_setting(
+            config, "api_key", "OPENAI_API_KEY", default="EMPTY"
+        )
         self._temperature = config.get("temperature", 0.7)
         self._top_p = config.get("top_p", None)
         self._max_tokens = config.get("max_tokens", None)
@@ -139,26 +143,6 @@ class DirectLLMAgent(Agent):
             max_retries=0,
             http_client=httpx.Client(trust_env=False),
         )
-
-    @staticmethod
-    def _resolve_setting(
-        config: dict,
-        key: str,
-        env_var: str,
-        *,
-        default: str = "",
-    ) -> str:
-        value = config.get(key, default)
-        if value is None:
-            value = default
-        if isinstance(value, str):
-            stripped = value.strip()
-            if stripped and stripped.upper() != "EMPTY":
-                return stripped
-        env_value = os.environ.get(env_var, "").strip()
-        if env_value:
-            return env_value
-        return value if isinstance(value, str) else default
 
     def _resolve_max_tokens(self) -> int:
         """Resolve max_tokens by querying the model endpoint or using a fallback."""
@@ -367,7 +351,14 @@ class DirectLLMAgent(Agent):
         ``incomplete chunked read``).
         """
         try:
-            from openai import RateLimitError, APITimeoutError, APIConnectionError, APIStatusError, APIError
+            from openai import (
+                APIConnectionError,
+                APIError,
+                APIStatusError,
+                APITimeoutError,
+                RateLimitError,
+            )
+
             if isinstance(exc, (RateLimitError, APITimeoutError, APIConnectionError)):
                 return True
             if isinstance(exc, APIStatusError) and exc.status_code >= 500:

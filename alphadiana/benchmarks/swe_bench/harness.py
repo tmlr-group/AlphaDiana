@@ -21,7 +21,18 @@ from pathlib import Path
 from typing import Any, Optional
 from uuid import uuid4
 
+from alphadiana.benchmarks.base import BenchmarkTask
+from alphadiana.engine.container_runtime.podman_cli import (
+    PodmanCLI,
+    normalize_podman_image_ref,
+)
+from alphadiana.engine.sandbox.rock import PREBUILT_SANDBOX_IMAGE
 from alphadiana.harness.base import Agent, AgentResponse
+from alphadiana.harness.openclaw.security import resolve_openclaw_gateway_token
+from alphadiana.harness.opencode.agent import (
+    _count_json_objects,
+    extract_opencode_logprob_records,
+)
 from alphadiana.harness.proxies.logprob_capture import (
     finalize_logprob_capture,
     resolve_logprob_capture_config,
@@ -31,22 +42,14 @@ from alphadiana.harness.proxies.logprob_proxy import (
     normalize_openai_proxy_upstream,
     resolve_logprob_proxy_advertise_host,
 )
-from alphadiana.harness.opencode.agent import (
-    _count_json_objects,
-    extract_opencode_logprob_records,
-)
 from alphadiana.harness.proxies.preservation import (
     add_artifact_file_refs,
     build_event_trajectories,
-    build_text_step_trajectories,
     build_runtime_trace_summary,
+    build_text_step_trajectories,
     parse_jsonl_records,
 )
 from alphadiana.registry import register_agent
-from alphadiana.benchmarks.base import BenchmarkTask
-from alphadiana.engine.container_runtime.podman_cli import PodmanCLI, normalize_podman_image_ref
-from alphadiana.utils.openclaw_security import resolve_openclaw_gateway_token
-from alphadiana.utils.rock_runtime import PREBUILT_SANDBOX_IMAGE
 
 logger = logging.getLogger(__name__)
 
@@ -1844,7 +1847,7 @@ RUN chmod +x /usr/local/bin/zeroclaw
             _raise_openclaw_failure(
                 f"OpenClaw run did not produce patch.diff{_runner_suffix()}."
                 f"{attempt_matrix_hint}",
-                raw_output=raw_output or gateway_log.strip(),
+                raw_output=gateway_log.strip(),
             )
 
         if selected_returncode != 0:
@@ -1910,9 +1913,9 @@ RUN chmod +x /usr/local/bin/zeroclaw
         )
         if openclaw_session_text:
             try:
-                from alphadiana.harness.openclaw.agent import _parse_openclaw_session
+                from alphadiana.harness.openclaw.trace import parse_session
 
-                trajectory = _parse_openclaw_session(openclaw_session_text)
+                trajectory = parse_session(openclaw_session_text)
             except Exception:
                 trajectory = []
         if not trajectory:
@@ -3465,8 +3468,6 @@ RUN chmod +x /usr/local/bin/zeroclaw
             return self._resolved_max_tokens
 
         try:
-            import httpx
-
             max_len = self._resolve_model_context_window(self._model)
             if isinstance(max_len, int) and max_len > 0:
                 self._resolved_max_tokens = max_len

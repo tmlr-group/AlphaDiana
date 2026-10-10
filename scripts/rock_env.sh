@@ -17,7 +17,7 @@ from pathlib import Path
 project_root = Path(sys.argv[1]).resolve()
 sys.path.insert(0, str(project_root))
 
-from alphadiana.utils.rock_ports import default_rock_instance_name
+from alphadiana.engine.sandbox.rock_ports import default_rock_instance_name
 
 print(default_rock_instance_name(project_root))
 PYEOF
@@ -33,7 +33,7 @@ from pathlib import Path
 project_root = Path(sys.argv[1]).resolve()
 sys.path.insert(0, str(project_root))
 
-from alphadiana.utils.rock_ports import default_rock_redis_container
+from alphadiana.engine.sandbox.rock_ports import default_rock_redis_container
 
 print(default_rock_redis_container(project_root))
 PYEOF
@@ -49,7 +49,7 @@ from pathlib import Path
 project_root = Path(sys.argv[1]).resolve()
 sys.path.insert(0, str(project_root))
 
-from alphadiana.utils.rock_ports import default_rock_ray_tmpdir
+from alphadiana.engine.sandbox.rock_ports import default_rock_ray_tmpdir
 
 print(default_rock_ray_tmpdir(project_root))
 PYEOF

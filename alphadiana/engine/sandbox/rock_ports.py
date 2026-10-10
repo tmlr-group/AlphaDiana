@@ -9,7 +9,6 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-
 LOCALHOST = "127.0.0.1"
 DEFAULT_RAY_PORT = 6380
 DEFAULT_RAY_DASHBOARD_PORT = 8265
@@ -17,7 +16,7 @@ DEFAULT_RAY_CLIENT_SERVER_PORT = 30001
 DEFAULT_REDIS_PORT = 6379
 DEFAULT_ADMIN_PORT = 9000
 DEFAULT_PROXY_PORT = 9001
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 # Search both scripts/ and dev/ for the ports file — the quickstart may write
 # to either location depending on how it was invoked.
 _PORTS_ENV_CANDIDATES = [
@@ -137,7 +136,9 @@ def is_port_available(port: int, host: str = LOCALHOST) -> bool:
     return True
 
 
-def find_available_port(start_port: int, host: str = LOCALHOST, limit: int = 200) -> int:
+def find_available_port(
+    start_port: int, host: str = LOCALHOST, limit: int = 200
+) -> int:
     """Find the first available TCP port starting from start_port."""
     for candidate in range(start_port, start_port + limit):
         if is_port_available(candidate, host=host):
@@ -215,7 +216,9 @@ def _read_proc_environ(pid: int) -> dict[str, str]:
 
 
 def _read_proc_cmdline(pid: int) -> str:
-    return " ".join(part for part in _read_proc_text(f"/proc/{pid}/cmdline").split("\0") if part)
+    return " ".join(
+        part for part in _read_proc_text(f"/proc/{pid}/cmdline").split("\0") if part
+    )
 
 
 def _read_proc_cwd(pid: int) -> str:
@@ -227,9 +230,7 @@ def _read_proc_cwd(pid: int) -> str:
 
 def _looks_like_project_root(path: Path) -> bool:
     return (
-        path.is_dir()
-        and (path / "alphadiana").exists()
-        and (path / "scripts").exists()
+        path.is_dir() and (path / "alphadiana").exists() and (path / "scripts").exists()
     )
 
 
@@ -372,7 +373,9 @@ def check_rock_service_ownership(
     return results
 
 
-def check_rock_services(ports: RockPorts | None = None, timeout: float = 5.0) -> dict[str, bool | str]:
+def check_rock_services(
+    ports: RockPorts | None = None, timeout: float = 5.0
+) -> dict[str, bool | str]:
     """Check connectivity of ROCK services (admin, proxy, Redis).
 
     Returns a dict with service names as keys and True/error-string as values.
@@ -429,7 +432,10 @@ def check_rock_services(ports: RockPorts | None = None, timeout: float = 5.0) ->
     # Check Docker availability
     try:
         result = subprocess.run(
-            ["docker", "ps"], capture_output=True, timeout=5, text=True,
+            ["docker", "ps"],
+            capture_output=True,
+            timeout=5,
+            text=True,
         )
         results["docker"] = True if result.returncode == 0 else result.stderr.strip()
     except Exception as exc:

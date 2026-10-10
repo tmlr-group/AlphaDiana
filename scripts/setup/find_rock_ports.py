@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import base64
-import os
 import re
 import secrets
 import subprocess
@@ -16,13 +15,13 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from alphadiana.utils.rock_ports import (
+from alphadiana.engine.sandbox.rock_ports import (
     DEFAULT_ADMIN_PORT,
     DEFAULT_PROXY_PORT,
-    DEFAULT_REDIS_PORT,
-    DEFAULT_RAY_PORT,
     DEFAULT_RAY_CLIENT_SERVER_PORT,
     DEFAULT_RAY_DASHBOARD_PORT,
+    DEFAULT_RAY_PORT,
+    DEFAULT_REDIS_PORT,
     LOCALHOST,
     RockPorts,
     default_rock_instance_name,

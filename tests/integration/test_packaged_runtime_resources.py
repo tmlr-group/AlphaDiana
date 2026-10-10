@@ -1,7 +1,7 @@
 """Runtime configs resolve from an unrelated working directory after install."""
 
-from pathlib import Path
 import shutil
+from pathlib import Path
 
 import pytest
 
@@ -48,10 +48,10 @@ def test_packaged_default_and_explicit_override(
 
 @pytest.mark.parametrize("bundle", ["advanced-maths", "anthropic-bundle"])
 def test_skill_bundle_loads_outside_source_directory(bundle, tmp_path, monkeypatch):
-    from alphadiana.harness.opencode.agent import _resolve_skill_folder
+    from alphadiana.harness.base import resolve_runtime_skill_folder
 
     monkeypatch.chdir(tmp_path)
-    path = Path(_resolve_skill_folder(bundle))
+    path = Path(resolve_runtime_skill_folder(bundle))
     assert path.is_dir() and not path.is_relative_to(tmp_path)
     assert list(path.rglob("SKILL.md")), bundle
     resources = [p for p in path.rglob("*") if p.is_file()]

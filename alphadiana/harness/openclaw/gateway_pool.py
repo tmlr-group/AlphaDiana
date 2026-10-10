@@ -5,6 +5,7 @@ resources and applies the configured fresh/reused-session policy.
 """
 
 from __future__ import annotations
+
 import json
 import logging
 import math
@@ -14,17 +15,19 @@ import time
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
+
 import httpx
+
 from alphadiana.engine.config.experiment_config import (
     coerce_config_bool as _coerce_config_bool,
 )
 from alphadiana.engine.sandbox.base import session_failure_reason
-from alphadiana.utils.rock_ports import resolve_rock_ports_from_env
+from alphadiana.engine.sandbox.rock_ports import resolve_rock_ports_from_env
 
 if TYPE_CHECKING:
     from alphadiana.engine.config.experiment_config import ExperimentConfig
-    from alphadiana.harness.base import Agent
     from alphadiana.engine.sandbox.base import SandboxSession
+    from alphadiana.harness.base import Agent
 
 logger = logging.getLogger(__name__)
 OPENCLAW_CONCURRENCY_PER_SANDBOX = 1
@@ -59,7 +62,7 @@ def stabilize_gateway_token(config: "ExperimentConfig") -> None:
     """Resolve one strong auto-deploy token shared by every runtime instance."""
     if not is_openclaw_autodeploy(config):
         return
-    from alphadiana.utils.openclaw_security import (
+    from alphadiana.harness.openclaw.security import (
         is_weak_openclaw_gateway_token,
         resolve_openclaw_gateway_token,
     )
@@ -254,7 +257,6 @@ class OpenClawGatewayPool:
             if self._target_size > 1 or self._fresh:
                 deployment_results = []
                 try:
-                    import alphadiana.engine.sandbox.rock
                     from alphadiana.registry import SandboxRegistry
 
                     auto_sandbox_config = {

@@ -13,14 +13,17 @@ import time
 from pathlib import Path
 from typing import Any
 
+from alphadiana.benchmarks.base import BenchmarkTask
 from alphadiana.benchmarks.terminal_bench2.harness.common import (
     LocalCommandResult,
     TerminalBench2ContainerMixin,
     TerminalBench2RuntimeContext,
 )
-from alphadiana.benchmarks.base import BenchmarkTask
-from alphadiana.engine.container_runtime.podman_cli import PodmanError, normalize_podman_image_ref
-from alphadiana.utils.rock_runtime import PREBUILT_SANDBOX_IMAGE
+from alphadiana.engine.container_runtime.podman_cli import (
+    PodmanError,
+    normalize_podman_image_ref,
+)
+from alphadiana.engine.sandbox.rock import PREBUILT_SANDBOX_IMAGE
 
 logger = logging.getLogger(__name__)
 

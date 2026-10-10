@@ -109,3 +109,17 @@ Use the exact command syntax shown by `python -m alphadiana.cli --help` in the c
 - [Architecture Overview](./)
 - [Scoring & Results](./scoring-and-results.md)
 - [Observability & Proxies](./observability.md)
+
+## Shared runtime and evidence owners
+
+- `engine/config/experiment_config.py` resolves provider fields for DirectLLM, OpenCode and ZeroClaw. Their explicit value, EMPTY and environment precedence remains unchanged.
+- `engine/container_runtime/swebench_build.py` owns the scoped Podman environment used by both the sandbox and official scorer. Class `_docker_client` hooks remain for their verifier test consumers.
+- `engine/sandbox/rock.py` owns ROCK image/install policy; `rock_ports.py` resolves service ports and ownership.
+- `harness/base.py` resolves runtime skill folders against the packaged `harness/skills/` bundle.
+- `harness/openclaw/trace.py` parses saved sessions and recovers partial response/reasoning/error evidence.
+- `harness/openclaw/security.py` owns gateway token creation and validation; `integrity.py` checks response completeness and request identity.
+- `harness/proxies/openclaw.py` owns the gateway-specific SSE/logprob wire protocol. Generic capture remains in `logprob_proxy.py`; their downstream contracts differ.
+- `answers.py` owns answer text parsing; `attachments.py` owns binary input conversion. These primitives are shared by execution and scoring.
+- `results/lifecycle.py` appends redacted task lifecycle evidence.
+
+Former internal `utils.*` imports migrate to these owners. No forwarding package remains.

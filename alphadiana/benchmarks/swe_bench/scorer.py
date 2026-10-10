@@ -4,24 +4,26 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import uuid
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from alphadiana.benchmarks.swe_bench.tasks import (
+    build_swebench_instance,
+    infer_instance_id,
+)
 from alphadiana.engine.container_runtime.podman_socket import (
     podman_socket_env,
     resolve_podman_docker_api_version,
 )
-from alphadiana.scorer.base import Scorer, ScoreResult
-from alphadiana.registry import register_scorer
-from alphadiana.benchmarks.swe_bench.tasks import build_swebench_instance, infer_instance_id
 from alphadiana.engine.container_runtime.swebench_build import (
     ensure_swebench_build_network_mode,
     harden_test_spec_repo_clone,
     qualify_swebench_test_spec_for_podman,
+    swebench_runtime_environment,
 )
+from alphadiana.registry import register_scorer
+from alphadiana.scorer.base import Scorer, ScoreResult
 
 logger = logging.getLogger(__name__)
 
@@ -194,27 +196,6 @@ class SWEBenchScorer(Scorer):
         self._log_dir.mkdir(parents=True, exist_ok=True)
         runtime["run_evaluation_module"].RUN_EVALUATION_LOG_DIR = self._log_dir
 
-    @contextmanager
-    def _container_runtime_env(self):
-        if self._container_engine != "podman":
-            yield
-            return
-
-        env = podman_socket_env(self._podman_socket_path or None)
-        env["ALPHADIANA_SWEBENCH_PODMAN_BUILD"] = "1"
-        if self._docker_api_version:
-            env["DOCKER_API_VERSION"] = self._docker_api_version
-        previous = {key: os.environ.get(key) for key in env}
-        os.environ.update(env)
-        try:
-            yield
-        finally:
-            for key, value in previous.items():
-                if value is None:
-                    os.environ.pop(key, None)
-                else:
-                    os.environ[key] = value
-
     def _docker_client(self, docker_module: Any) -> Any:
         options: dict[str, Any] = {"timeout": self._docker_api_timeout}
         if self._container_engine == "podman" and self._docker_api_version:
@@ -309,7 +290,9 @@ class SWEBenchScorer(Scorer):
         )
         if self._container_engine == "podman":
             qualify_swebench_test_spec_for_podman(test_spec)
-        with self._container_runtime_env():
+        with swebench_runtime_environment(
+            self._container_engine, self._podman_socket_path, self._docker_api_version
+        ):
             client = self._docker_client(runtime["docker"])
             if not test_spec.is_remote_image:
                 _, failed = runtime["build_env_images"](
@@ -339,7 +322,9 @@ class SWEBenchScorer(Scorer):
             runtime["KEY_PREDICTION"]: patch,
         }
         run_id = self._make_run_id(instance_id)
-        with self._container_runtime_env():
+        with swebench_runtime_environment(
+            self._container_engine, self._podman_socket_path, self._docker_api_version
+        ):
             run_result = runtime["run_instance"](
                 test_spec,
                 prediction,

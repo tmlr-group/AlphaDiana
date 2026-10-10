@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
-
-import logging
 
 import click
 
@@ -55,14 +54,24 @@ def main():
 @main.command()
 @click.argument("config_yaml", type=click.Path(exists=True))
 @click.option(
-    "--override", "-o",
+    "--override",
+    "-o",
     multiple=True,
     help="Override config values, e.g. -o agent.config.temperature=0.5",
 )
-@click.option("--redo-all", is_flag=True, default=False, help="Ignore checkpoint and redo all tasks.")
+@click.option(
+    "--redo-all",
+    is_flag=True,
+    default=False,
+    help="Ignore checkpoint and redo all tasks.",
+)
 def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
     """Run an evaluation experiment from a YAML config file."""
-    from alphadiana.engine.config.experiment_config import ExperimentConfig, deep_merge, parse_override
+    from alphadiana.engine.config.experiment_config import (
+        ExperimentConfig,
+        deep_merge,
+        parse_override,
+    )
     from alphadiana.engine.runner import Runner, _is_gateway_autodeploy_agent
 
     overrides: dict = {}
@@ -75,6 +84,7 @@ def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
 
     # Validate config before running.
     from alphadiana.engine.config.validator import ConfigValidator
+
     validator = ConfigValidator()
     errors = validator.validate(config)
     if errors:
@@ -97,11 +107,12 @@ def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
         or _is_gateway_autodeploy_agent(config)
     )
     if uses_rock_runtime:
-        from alphadiana.utils.rock_ports import (
+        from alphadiana.engine.sandbox.rock_ports import (
             check_rock_service_ownership,
             check_rock_services,
             resolve_rock_ports_from_env,
         )
+
         ports = resolve_rock_ports_from_env()
         click.echo(f"Pre-flight: checking ROCK services (admin={ports.admin_port}, proxy={ports.proxy_port}, redis={ports.redis_port})...")
         results = check_rock_services(ports, timeout=5.0)
@@ -231,15 +242,20 @@ def report(results_dir: str):
 @click.argument("config_yamls", nargs=-1, required=True, type=click.Path(exists=True))
 @click.option("--parallel", is_flag=True, help="Run experiments in parallel.")
 @click.option(
-    "--override", "-o",
+    "--override",
+    "-o",
     multiple=True,
     help="Override config values applied to all configs.",
 )
 def batch(config_yamls: tuple[str, ...], parallel: bool, override: tuple[str, ...]):
     """Run multiple experiment configs sequentially or in parallel."""
-    from alphadiana.engine.config.experiment_config import ExperimentConfig, deep_merge, parse_override
-    from alphadiana.engine.config.validator import ConfigValidator
     from alphadiana.engine.batch_runner import BatchRunner
+    from alphadiana.engine.config.experiment_config import (
+        ExperimentConfig,
+        deep_merge,
+        parse_override,
+    )
+    from alphadiana.engine.config.validator import ConfigValidator
 
     overrides: dict = {}
     for ov in override:
@@ -296,12 +312,12 @@ def env():
 
     If services are not running, prints the commands needed to start them.
     """
-    from alphadiana.utils.rock_ports import (
+    from alphadiana.engine.sandbox.rock_ports import (
+        _find_rock_ports_env_file,
         check_rock_service_ownership,
-        resolve_rock_ports_from_env,
         check_rock_services,
         default_rock_redis_container,
-        _find_rock_ports_env_file,
+        resolve_rock_ports_from_env,
     )
 
     ports = resolve_rock_ports_from_env()

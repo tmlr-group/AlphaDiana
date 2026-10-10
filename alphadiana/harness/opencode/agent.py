@@ -17,6 +17,18 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+from alphadiana.answers import extract_answer_candidate, extract_boxed
+from alphadiana.attachments import iter_binary_attachments, write_attachments
+from alphadiana.benchmarks.base import BenchmarkTask
+from alphadiana.engine.config.experiment_config import resolve_agent_setting
+from alphadiana.engine.container_runtime import (
+    PodmanAgentRuntime,
+    PodmanAgentSpec,
+    PodmanCLI,
+    PodmanError,
+    podman_proxy_env,
+)
+from alphadiana.harness.base import Agent, AgentResponse, resolve_runtime_skill_folder
 from alphadiana.harness.proxies.logprob_capture import (
     apply_openai_logprob_request,
     extract_openai_logprob_records,
@@ -25,44 +37,14 @@ from alphadiana.harness.proxies.logprob_capture import (
     resolve_logprob_capture_config,
 )
 from alphadiana.harness.proxies.logprob_proxy import LogprobCaptureProxy
-from alphadiana.harness.base import Agent, AgentResponse
 from alphadiana.harness.proxies.preservation import (
     add_artifact_file_refs,
     build_event_trajectories,
     build_runtime_trace_summary,
 )
 from alphadiana.registry import AgentRegistry
-from alphadiana.benchmarks.base import BenchmarkTask
-from alphadiana.engine.container_runtime import (
-    PodmanAgentRuntime,
-    PodmanAgentSpec,
-    PodmanCLI,
-    PodmanError,
-    podman_proxy_env,
-)
-from alphadiana.utils.attachments import iter_binary_attachments, write_attachments
-from alphadiana.utils.math_answer import extract_answer_candidate, extract_boxed
 
 logger = logging.getLogger(__name__)
-
-
-def _resolve_skill_folder(raw: Any) -> str | None:
-    """Resolve agent.config.skill_folder.
-
-    - Empty/None  -> None (skill mounting disabled)
-    - Absolute path -> use as-is
-    - Path with "/" -> resolve relative to cwd
-    - Bare name like "advanced-maths" -> alphadiana/harness/skills/<name>/
-    """
-    text = str(raw or "").strip()
-    if not text:
-        return None
-    if os.path.isabs(text):
-        return text
-    if "/" in text or os.path.exists(text):
-        return str(Path(text).resolve())
-    pkg_root = Path(__file__).resolve().parent.parent  # alphadiana/
-    return str(pkg_root / "skills" / text)
 
 
 _SUPPORTED_CONTROLLER_MODES = {"host", "docker", "podman"}
@@ -789,15 +771,17 @@ class OpenCodeAgent(Agent):
             or default_controller_image
         ).strip()
         self._controller_network = str(config.get("controller_network", "host") or "host").strip()
-        self._cli_model = self._resolve_setting(config, "model", "OPENAI_MODEL_NAME")
-        self._api_base = self._resolve_setting(config, "api_base", "OPENAI_BASE_URL")
-        self._api_key = self._resolve_setting(
+        self._cli_model = resolve_agent_setting(config, "model", "OPENAI_MODEL_NAME")
+        self._api_base = resolve_agent_setting(config, "api_base", "OPENAI_BASE_URL")
+        self._api_key = resolve_agent_setting(
             config,
             "api_key",
             "OPENAI_API_KEY",
             default="EMPTY",
         )
-        self._model_name = self._resolve_setting(config, "model_name", "OPENAI_MODEL_NAME")
+        self._model_name = resolve_agent_setting(
+            config, "model_name", "OPENAI_MODEL_NAME"
+        )
         if not self._cli_model and self._model_name:
             self._cli_model = f"custom/{self._model_name}"
         self._api_model = str(config.get("api_model", "")).strip() or _derive_api_model(
@@ -822,7 +806,9 @@ class OpenCodeAgent(Agent):
         self._print_logs = bool(config.get("print_logs", False))
         self._log_level = str(config.get("log_level", "")).strip()
         self._system_prompt = config.get("system_prompt", _DEFAULT_SYSTEM_PROMPT)
-        self._skill_folder = _resolve_skill_folder(config.get("skill_folder", ""))
+        self._skill_folder = resolve_runtime_skill_folder(
+            config.get("skill_folder", "")
+        )
         self._opencode_bin = config.get("opencode_bin", "opencode")
         self._streaming = config.get("streaming") if "streaming" in config else None
         self._logprob_capture = resolve_logprob_capture_config(config)
@@ -888,26 +874,6 @@ class OpenCodeAgent(Agent):
         }
         metadata.update(dict(self._last_controller_metadata or {}))
         return metadata
-
-    @staticmethod
-    def _resolve_setting(
-        config: dict,
-        key: str,
-        env_var: str,
-        *,
-        default: str = "",
-    ) -> str:
-        value = config.get(key, default)
-        if value is None:
-            value = default
-        if isinstance(value, str):
-            stripped = value.strip()
-            if stripped and stripped.upper() != "EMPTY":
-                return stripped
-        env_value = os.environ.get(env_var, "").strip()
-        if env_value:
-            return env_value
-        return value if isinstance(value, str) else default
 
     def solve(self, task: BenchmarkTask, sandbox: Any = None) -> AgentResponse:
         if self._runtime == "swebench_container":

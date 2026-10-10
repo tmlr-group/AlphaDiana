@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-
 LIFECYCLE_STAGES = (
     "selected",
     "launched",
@@ -43,7 +42,10 @@ def _redact_text(value: str) -> str:
 
 def _redact_value(value: Any, *, key: object | None = None) -> Any:
     normalized_key = str(key or "").lower().replace("-", "_")
-    if any(part in normalized_key for part in ("api_key", "token", "secret", "password", "authorization")):
+    if any(
+        part in normalized_key
+        for part in ("api_key", "token", "secret", "password", "authorization")
+    ):
         return _REDACTED
     if isinstance(value, str):
         return _redact_text(value)
@@ -52,7 +54,10 @@ def _redact_value(value: Any, *, key: object | None = None) -> Any:
     if isinstance(value, tuple):
         return [_redact_value(item) for item in value]
     if isinstance(value, dict):
-        return {item_key: _redact_value(item_value, key=item_key) for item_key, item_value in value.items()}
+        return {
+            item_key: _redact_value(item_value, key=item_key)
+            for item_key, item_value in value.items()
+        }
     return value
 
 

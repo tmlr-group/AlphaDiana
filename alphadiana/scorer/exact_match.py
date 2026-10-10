@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import re
 
-from alphadiana.scorer.base import Scorer, ScoreResult
+from alphadiana.answers import normalize_math_text
 from alphadiana.registry import register_scorer
-from alphadiana.utils.math_answer import normalize_math_text
-
+from alphadiana.scorer.base import Scorer, ScoreResult
 
 _SINGLE_CHOICE_RE = re.compile(r"^\(?([a-j])\)?$")
 

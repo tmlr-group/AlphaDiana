@@ -17,6 +17,26 @@ _ENV_PLACEHOLDER_RE = re.compile(
 )
 
 
+def resolve_agent_setting(
+    config: dict,
+    key: str,
+    env_var: str,
+    *,
+    default: str = "",
+) -> str:
+    value = config.get(key, default)
+    if value is None:
+        value = default
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped and stripped.upper() != "EMPTY":
+            return stripped
+    env_value = os.environ.get(env_var, "").strip()
+    if env_value:
+        return env_value
+    return value if isinstance(value, str) else default
+
+
 def _expand_env_vars(obj: Any) -> Any:
     """Recursively expand $VAR and ${VAR} in string values."""
     if isinstance(obj, str):

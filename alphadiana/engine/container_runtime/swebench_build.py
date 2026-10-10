@@ -7,8 +7,10 @@ import re
 import shlex
 import time
 from collections.abc import Mapping
+from contextlib import contextmanager
 from typing import Any
 
+from alphadiana.engine.container_runtime.podman_socket import podman_socket_env
 
 _PODMAN_TEST_SPEC_CLASS_CACHE: dict[type, type] = {}
 _PROXY_ENV_KEYS = (
@@ -517,3 +519,27 @@ def ensure_swebench_build_network_mode(
 
     docker_build.build_image = build_image
     docker_build._alphadiana_build_guard = guard
+
+
+@contextmanager
+def swebench_runtime_environment(
+    container_engine: str, socket_path: str = "", docker_api_version: str = ""
+):
+    if container_engine != "podman":
+        yield
+        return
+
+    env = podman_socket_env(socket_path or None)
+    env["ALPHADIANA_SWEBENCH_PODMAN_BUILD"] = "1"
+    if docker_api_version:
+        env["DOCKER_API_VERSION"] = docker_api_version
+    previous = {key: os.environ.get(key) for key in env}
+    os.environ.update(env)
+    try:
+        yield
+    finally:
+        for key, value in previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value

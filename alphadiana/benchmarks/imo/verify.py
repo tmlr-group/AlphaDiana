@@ -11,21 +11,14 @@ from __future__ import annotations
 
 import re
 
-from alphadiana.scorer.base import Scorer, ScoreResult
-from alphadiana.registry import register_scorer
-from alphadiana.utils.math_answer import (
+from alphadiana.answers import (
     is_numeric_literal_answer,
     normalize_math_text,
     parse_numeric_answer,
 )
-
-
-def _wrap_boxed(text: str) -> str:
-    stripped = text.strip()
-    if stripped.startswith(r"\boxed{"):
-        return stripped
-    return r"\boxed{" + stripped + "}"
-
+from alphadiana.registry import register_scorer
+from alphadiana.scorer.base import Scorer, ScoreResult
+from alphadiana.scorer.math_verify_scorer import math_verify_equal
 
 _FREE_VAR_RE = re.compile(r"[a-df-hj-np-tv-z]", re.IGNORECASE)
 _KNOWN_CONSTANTS = {"e", "i"}
@@ -39,24 +32,6 @@ def _has_free_variables(text: str) -> bool:
         if ch.lower() not in _KNOWN_CONSTANTS:
             return True
     return False
-
-
-def _math_verify_equal(expected: str, predicted: str) -> bool | None:
-    try:
-        from math_verify import verify, parse
-        from math_verify.parser import LatexExtractionConfig, ExprExtractionConfig
-    except ImportError:
-        return None
-
-    cfg = [LatexExtractionConfig(), ExprExtractionConfig()]
-    try:
-        gold = parse(_wrap_boxed(expected), extraction_config=cfg)
-        pred = parse(_wrap_boxed(predicted), extraction_config=cfg)
-        if not gold or not pred:
-            return None
-        return verify(gold, pred)
-    except Exception:
-        return None
 
 
 def _split_multi_valued(text: str) -> list[str]:
@@ -113,7 +88,7 @@ def _split_multi_valued(text: str) -> list[str]:
 
 def _single_match(expected: str, predicted: str) -> tuple[bool, str]:
     """Match a single expected value against predicted. Returns (matched, method)."""
-    sym = _math_verify_equal(expected, predicted)
+    sym = math_verify_equal(expected, predicted)
     if sym is not None:
         return sym, "math_verify"
 

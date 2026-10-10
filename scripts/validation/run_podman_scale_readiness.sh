@@ -59,7 +59,7 @@ require_openclaw_gateway_token() {
   if python - "${OPENCLAW_GATEWAY_TOKEN:-}" <<'PY'
 import sys
 
-from alphadiana.utils.openclaw_security import is_weak_openclaw_gateway_token
+from alphadiana.harness.openclaw.security import is_weak_openclaw_gateway_token
 
 raise SystemExit(1 if is_weak_openclaw_gateway_token(sys.argv[1]) else 0)
 PY

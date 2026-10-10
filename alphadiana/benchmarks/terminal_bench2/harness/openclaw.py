@@ -10,7 +10,21 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
+from alphadiana.benchmarks.base import BenchmarkTask
+from alphadiana.benchmarks.terminal_bench2.harness.common import (
+    _proxy_bypass_hosts_from_urls,
+)
+from alphadiana.benchmarks.terminal_bench2.harness.incontainer import (
+    IN_CONTAINER_AGENT_PROMPT,
+    TerminalBench2InContainerMixin,
+)
 from alphadiana.harness.base import Agent, AgentResponse
+from alphadiana.harness.openclaw.trace import (
+    extract_reasoning_trajectory,
+    extract_trajectory_error,
+    parse_session,
+    recover_partial_output,
+)
 from alphadiana.harness.proxies.logprob_capture import (
     finalize_logprob_capture,
     resolve_logprob_capture_config,
@@ -19,20 +33,8 @@ from alphadiana.harness.proxies.logprob_proxy import (
     LogprobCaptureProxy,
     resolve_logprob_proxy_advertise_host,
 )
-from alphadiana.harness.openclaw.agent import (
-    _extract_trajectory_error,
-    _extract_reasoning_trajectory_from_payload,
-    _parse_openclaw_session,
-    _recover_partial_output_from_trajectory,
-)
 from alphadiana.harness.proxies.preservation import add_artifact_file_refs
 from alphadiana.registry import AgentRegistry
-from alphadiana.benchmarks.terminal_bench2.harness.incontainer import (
-    IN_CONTAINER_AGENT_PROMPT,
-    TerminalBench2InContainerMixin,
-)
-from alphadiana.benchmarks.terminal_bench2.harness.common import _proxy_bypass_hosts_from_urls
-from alphadiana.benchmarks.base import BenchmarkTask
 
 logger = logging.getLogger(__name__)
 
@@ -493,7 +495,9 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
         )
         return result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ""
 
-    def solve(self, task: BenchmarkTask, sandbox: Optional[Any] = None) -> AgentResponse:
+    def solve(
+        self, task: BenchmarkTask, sandbox: Optional[Any] = None
+    ) -> AgentResponse:
         del sandbox
         t_start = time.time()
         reward_content = ""
@@ -685,9 +689,9 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
                             exc,
                         )
                     else:
-                        trajectory = _parse_openclaw_session(session_text)
-                        assistant_text, _ = _recover_partial_output_from_trajectory(trajectory)
-                        trajectory_error = _extract_trajectory_error(trajectory)
+                        trajectory = parse_session(session_text)
+                        assistant_text, _ = recover_partial_output(trajectory)
+                        trajectory_error = extract_trajectory_error(trajectory)
                         reasoning_trajectory = _build_openclaw_reasoning_trajectory(trajectory)
                         session_trace_source = "openclaw_session_file"
                 else:
@@ -706,8 +710,8 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
                         errors="replace",
                     )
                     session_file = candidate_session_file
-                    trajectory = _parse_openclaw_session(fallback_text)
-                    assistant_text, _ = _recover_partial_output_from_trajectory(trajectory)
+                    trajectory = parse_session(fallback_text)
+                    assistant_text, _ = recover_partial_output(trajectory)
                     reasoning_trajectory = _build_openclaw_reasoning_trajectory(trajectory)
                     session_trace_source = "stdout_jsonl_fallback"
                     logger.warning(
@@ -743,8 +747,11 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
             self._cleanup_runtime(runtime)
 
         trajectory = []
-        if session_file is not None and "/terminal_bench2/openclaw/session.jsonl" in artifact_files:
-            trajectory = _parse_openclaw_session(
+        if (
+            session_file is not None
+            and "/terminal_bench2/openclaw/session.jsonl" in artifact_files
+        ):
+            trajectory = parse_session(
                 artifact_files["/terminal_bench2/openclaw/session.jsonl"]
             )
             reasoning_trajectory = _build_openclaw_reasoning_trajectory(trajectory)
@@ -754,7 +761,7 @@ class TerminalBench2OpenClawAgent(TerminalBench2InContainerMixin, Agent):
                 {"role": "assistant", "content": assistant_text},
             ]
         if not reasoning_trajectory:
-            reasoning_trajectory = _extract_reasoning_trajectory_from_payload(response_json)
+            reasoning_trajectory = extract_reasoning_trajectory(response_json)
         solver_failure_reason = _classify_openclaw_failure(
             trajectory_error, agent_stderr, agent_returncode
         )

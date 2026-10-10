@@ -248,7 +248,7 @@ Ray head by re-running `bash scripts/setup/start_zeroclaw.sh` or
 ROCK admin and proxy bind to different ports, and `/start_async` is served by
 the admin. A `404` usually means the request hit the proxy port instead. The
 admin and proxy ports default to `9000` and `9001`
-(`alphadiana/utils/rock_ports.py`, overridable via `ROCK_ADMIN_PORT` /
+(`alphadiana/engine/sandbox/rock_ports.py`, overridable via `ROCK_ADMIN_PORT` /
 `ROCK_PROXY_PORT`). Disambiguate which process owns which port:
 
 ```bash

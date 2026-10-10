@@ -9,16 +9,21 @@ import os
 import sys
 import tempfile
 import time
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from alphadiana.engine.sandbox.base import Sandbox
+
 from pathlib import Path
 
 import httpx
 
-from alphadiana.utils.rock_ports import resolve_rock_ports_from_env
-from alphadiana.utils.rock_runtime import (
+from alphadiana.engine.sandbox.rock import (
     DEFAULT_SANDBOX_IMAGE,
     configure_rock_runtime_for_image,
     is_prebuilt_image,
 )
+from alphadiana.engine.sandbox.rock_ports import resolve_rock_ports_from_env
 
 logger = logging.getLogger(__name__)
 

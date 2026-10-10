@@ -5,22 +5,15 @@ from __future__ import annotations
 import json
 import re
 
-
 _ANSWER_RE = re.compile(
     r"(?:\*{0,2})(?:the\s+)?(?:final\s+)?answer(?:\*{0,2})\s*(?:[:：]|is|=)\s*(.+)",
     re.IGNORECASE,
 )
-_SIMPLE_FRAC_RE = re.compile(
-    r"\\(?:d|t)?frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}"
-)
+_SIMPLE_FRAC_RE = re.compile(r"\\(?:d|t)?frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}")
 _SIMPLE_SQRT_RE = re.compile(r"\\sqrt\s*\{([^{}]+)\}")
 _NUMERIC_LITERAL_RE = re.compile(r"-?\d+(?:\.\d+)?%?")
-_NUMERIC_FRACTION_RE = re.compile(
-    r"\(?-?\d+(?:\.\d+)?\)?/\(?-?\d+(?:\.\d+)?\)?"
-)
-_NUMERIC_VALUE_RE = re.compile(
-    r"-?\d+(?:\.\d+)?(?:/-?\d+(?:\.\d+)?)?%?"
-)
+_NUMERIC_FRACTION_RE = re.compile(r"\(?-?\d+(?:\.\d+)?\)?/\(?-?\d+(?:\.\d+)?\)?")
+_NUMERIC_VALUE_RE = re.compile(r"-?\d+(?:\.\d+)?(?:/-?\d+(?:\.\d+)?)?%?")
 _LEADING_NUMERIC_RE = re.compile(
     r"^\s*(?P<number>-?(?:\d[\d,]*)(?:\.\d+)?(?:\s*/\s*-?\d+(?:\.\d+)?)?%?)"
     r"(?P<tail>.*)$"
@@ -44,14 +37,12 @@ def _has_digit(text: str) -> bool:
 def _strip_markdown_emphasis(text: str) -> str:
     stripped = text.strip()
     while (
-        (stripped.startswith("**") and stripped.endswith("**") and len(stripped) >= 4)
-        or (stripped.startswith("__") and stripped.endswith("__") and len(stripped) >= 4)
-    ):
+        stripped.startswith("**") and stripped.endswith("**") and len(stripped) >= 4
+    ) or (stripped.startswith("__") and stripped.endswith("__") and len(stripped) >= 4):
         stripped = stripped[2:-2].strip()
     while (
-        (stripped.startswith("*") and stripped.endswith("*") and len(stripped) >= 2)
-        or (stripped.startswith("_") and stripped.endswith("_") and len(stripped) >= 2)
-    ):
+        stripped.startswith("*") and stripped.endswith("*") and len(stripped) >= 2
+    ) or (stripped.startswith("_") and stripped.endswith("_") and len(stripped) >= 2):
         stripped = stripped[1:-1].strip()
     return stripped
 
@@ -67,7 +58,11 @@ def _primary_answer_clause(text: str) -> str:
         if idx > 0:
             after = candidate[idx + len(marker) : idx + len(marker) + 1]
             before = candidate[:idx].strip()
-            if before and _has_digit(before) and (not after or after.isspace() or after in "([{'\""):
+            if (
+                before
+                and _has_digit(before)
+                and (not after or after.isspace() or after in "([{'\"")
+            ):
                 candidate = before
                 break
 
@@ -188,7 +183,7 @@ def extract_answer_candidate(text: str, *, source: str = "assistant_text") -> st
 
     # Fallback for long outputs (e.g. agentic multi-paragraph text without \boxed{}):
     # extract the last standalone integer from the text.
-    number_matches = list(re.finditer(r'\b(\d+)\b', text))
+    number_matches = list(re.finditer(r"\b(\d+)\b", text))
     if number_matches:
         return number_matches[-1].group(1)
 
@@ -196,7 +191,9 @@ def extract_answer_candidate(text: str, *, source: str = "assistant_text") -> st
     return lines[-1] if lines else stripped
 
 
-def extract_numeric_answer_candidate(text: str, *, source: str = "assistant_text") -> str:
+def extract_numeric_answer_candidate(
+    text: str, *, source: str = "assistant_text"
+) -> str:
     """Extract a candidate for numeric scoring without changing generic extraction.
 
     Numeric benchmarks often want the scalar value from explicit answer spans
@@ -285,7 +282,9 @@ def parse_numeric_answer(text: str) -> float | None:
         except ValueError:
             pass
 
-    frac_match = re.fullmatch(r"\(?(-?\d+(?:\.\d+)?)\)?/\(?(-?\d+(?:\.\d+)?)\)?", normalized)
+    frac_match = re.fullmatch(
+        r"\(?(-?\d+(?:\.\d+)?)\)?/\(?(-?\d+(?:\.\d+)?)\)?", normalized
+    )
     if frac_match:
         numer = float(frac_match.group(1))
         denom = float(frac_match.group(2))

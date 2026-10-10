@@ -8,26 +8,28 @@ import logging
 import os
 import shlex
 import tarfile
-import tempfile
 import time
 import uuid
-from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
-from alphadiana.engine.sandbox.base import ExecutionResult, Sandbox, SandboxSession
-from alphadiana.registry import register_sandbox
+from alphadiana.benchmarks.swe_bench.tasks import (
+    build_swebench_instance,
+    infer_instance_id,
+)
 from alphadiana.engine.container_runtime.podman_socket import (
     podman_socket_env,
     resolve_podman_docker_api_version,
 )
-from alphadiana.benchmarks.swe_bench.tasks import build_swebench_instance, infer_instance_id
 from alphadiana.engine.container_runtime.swebench_build import (
     ensure_swebench_build_network_mode,
     harden_test_spec_repo_clone,
     qualify_swebench_test_spec_for_podman,
+    swebench_runtime_environment,
 )
+from alphadiana.engine.sandbox.base import ExecutionResult, Sandbox, SandboxSession
+from alphadiana.registry import register_sandbox
 
 if TYPE_CHECKING:
     from alphadiana.benchmarks.base import BenchmarkTask
@@ -366,27 +368,6 @@ class SWEBenchContainerSandbox(Sandbox):
         )
         return self._runtime
 
-    @contextmanager
-    def _container_runtime_env(self):
-        if self._container_engine != "podman":
-            yield
-            return
-
-        env = podman_socket_env(self._podman_socket_path or None)
-        env["ALPHADIANA_SWEBENCH_PODMAN_BUILD"] = "1"
-        if self._docker_api_version:
-            env["DOCKER_API_VERSION"] = self._docker_api_version
-        previous = {key: os.environ.get(key) for key in env}
-        os.environ.update(env)
-        try:
-            yield
-        finally:
-            for key, value in previous.items():
-                if value is None:
-                    os.environ.pop(key, None)
-                else:
-                    os.environ[key] = value
-
     def _docker_client(self, docker_module: Any) -> Any:
         options: dict[str, Any] = {"timeout": self._docker_api_timeout}
         if self._container_engine == "podman" and self._docker_api_version:
@@ -434,7 +415,9 @@ class SWEBenchContainerSandbox(Sandbox):
         build_log = build_dir / "build_instance_image.log"
         build_logger = runtime["setup_logger"](instance_id, build_log)
         image_name = getattr(test_spec, "instance_image_key", "")
-        with self._container_runtime_env():
+        with swebench_runtime_environment(
+            self._container_engine, self._podman_socket_path, self._docker_api_version
+        ):
             client = self._docker_client(runtime["docker"])
 
             try:
@@ -482,13 +465,17 @@ class SWEBenchContainerSandbox(Sandbox):
             )
         return str(bindings[0]["HostPort"])
 
-    def create_session(self, task: "BenchmarkTask | None" = None) -> SWEBenchContainerSession:
+    def create_session(
+        self, task: "BenchmarkTask | None" = None
+    ) -> SWEBenchContainerSession:
         if task is None:
             raise ValueError("swebench_container.create_session() requires a benchmark task")
 
         runtime = self._runtime_api()
         docker = runtime["docker"]
-        with self._container_runtime_env():
+        with swebench_runtime_environment(
+            self._container_engine, self._podman_socket_path, self._docker_api_version
+        ):
             client = self._docker_client(docker)
         instance, test_spec = self._build_test_spec(task)
         instance_id = infer_instance_id(task)
@@ -527,7 +514,11 @@ class SWEBenchContainerSandbox(Sandbox):
             run_kwargs["ports"] = _build_gateway_port_bindings(container_port)
 
         try:
-            with self._container_runtime_env():
+            with swebench_runtime_environment(
+                self._container_engine,
+                self._podman_socket_path,
+                self._docker_api_version,
+            ):
                 container = client.containers.run(
                     image_name,
                     command=["/bin/bash", "-lc", "trap : TERM INT; sleep infinity & wait"],

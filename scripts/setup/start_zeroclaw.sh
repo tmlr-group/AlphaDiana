@@ -31,7 +31,7 @@ from pathlib import Path
 project_root = Path(sys.argv[1]).resolve()
 sys.path.insert(0, str(project_root))
 
-from alphadiana.utils.rock_ports import default_checkout_env_name
+from alphadiana.engine.sandbox.rock_ports import default_checkout_env_name
 
 print(default_checkout_env_name(project_root))
 PYEOF
@@ -106,7 +106,7 @@ from pathlib import Path
 project_root = Path(sys.argv[1]).resolve()
 sys.path.insert(0, str(project_root))
 
-from alphadiana.utils.rock_ports import check_rock_service_ownership, resolve_rock_ports_from_env
+from alphadiana.engine.sandbox.rock_ports import check_rock_service_ownership, resolve_rock_ports_from_env
 
 results = check_rock_service_ownership(resolve_rock_ports_from_env(), expected_project_root=project_root)
 foreign = {

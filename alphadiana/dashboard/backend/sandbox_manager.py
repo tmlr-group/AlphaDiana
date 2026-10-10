@@ -15,18 +15,20 @@ from typing import Any
 
 import httpx
 
-from alphadiana.utils.rock_ports import (
-    ROCK_PORTS_ENV_FILE as RESOLVED_ROCK_PORTS_ENV_FILE,
-    resolve_rock_ports_from_env,
-)
-from alphadiana.utils.rock_runtime import (
+from alphadiana.engine.sandbox.rock import (
     DEFAULT_SANDBOX_IMAGE,
     PREBUILT_SANDBOX_IMAGE,
     configure_rock_runtime_for_image,
     get_custom_install_cmd,
     is_prebuilt_image,
 )
-from alphadiana.utils.openclaw_security import is_weak_openclaw_gateway_token
+from alphadiana.engine.sandbox.rock_ports import (
+    ROCK_PORTS_ENV_FILE as RESOLVED_ROCK_PORTS_ENV_FILE,
+)
+from alphadiana.engine.sandbox.rock_ports import (
+    resolve_rock_ports_from_env,
+)
+from alphadiana.harness.openclaw.security import is_weak_openclaw_gateway_token
 
 logger = logging.getLogger(__name__)
 

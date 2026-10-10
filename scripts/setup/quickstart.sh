@@ -40,7 +40,7 @@ from pathlib import Path
 project_root = Path(sys.argv[1]).resolve()
 sys.path.insert(0, str(project_root))
 
-from alphadiana.utils.rock_ports import default_checkout_env_name
+from alphadiana.engine.sandbox.rock_ports import default_checkout_env_name
 
 print(default_checkout_env_name(project_root))
 PYEOF

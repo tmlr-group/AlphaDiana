@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import logging as _logging
 import os
 import re
 import shlex
@@ -15,9 +16,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from alphadiana.utils.openclaw_security import resolve_openclaw_gateway_token
-
-import logging as _logging
+from alphadiana.harness.openclaw.security import resolve_openclaw_gateway_token
 
 _logger = _logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]

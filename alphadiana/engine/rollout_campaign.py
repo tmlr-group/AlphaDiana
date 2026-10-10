@@ -14,7 +14,10 @@ import yaml
 
 from alphadiana.engine.config.experiment_config import ExperimentConfig
 from alphadiana.engine.config.validator import ConfigValidator
-from alphadiana.utils.rock_ports import check_rock_services, resolve_rock_ports_from_env
+from alphadiana.engine.sandbox.rock_ports import (
+    check_rock_services,
+    resolve_rock_ports_from_env,
+)
 
 DEFAULT_MANIFEST_PATH = Path(
     "configs/macro_runs/swe_bench_verified_sweagent_qwen35_27b_campaign.yaml"

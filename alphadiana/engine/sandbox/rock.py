@@ -23,7 +23,78 @@ from typing import Any
 
 from alphadiana.engine.sandbox.base import ExecutionResult, Sandbox, SandboxSession
 from alphadiana.registry import register_sandbox
-from alphadiana.utils.rock_runtime import DEFAULT_SANDBOX_IMAGE, configure_rock_runtime_for_image
+
+# ROCK image and installation policy.
+DEFAULT_SANDBOX_IMAGE: str = os.environ.get(
+    "OPENCLAW_SANDBOX_IMAGE",
+    os.environ.get("OPENCLAW_IMAGE", "tmlrgroup/alphadiana:v1"),
+)
+
+
+PREBUILT_SANDBOX_IMAGE: str = os.environ.get(
+    "OPENCLAW_PREBUILT_IMAGE", "tmlrgroup/alphadiana:v1"
+)
+
+
+OPENCLAW_NPM_INSTALL_CMD = "npm install -g openclaw@2026.3.14 --omit=optional"
+
+
+_NODE_MIRROR = os.environ.get("NPM_REGISTRY", "https://registry.npmmirror.com")
+
+
+_NODE_MIRROR_BASE = os.environ.get("NODE_MIRROR", "https://npmmirror.com/mirrors/node")
+
+
+NODE_RUNTIME_MIRROR_INSTALL_CMD = (
+    "[ -f node.tar.xz ] && rm node.tar.xz; "
+    "[ -d runtime-env ] && rm -rf runtime-env; "
+    "[ -d node-v22.18.0-linux-x64 ] && rm -rf node-v22.18.0-linux-x64; "
+    f"wget -q -O node.tar.xz --tries=10 --waitretry=2 "
+    f"{_NODE_MIRROR_BASE}/v22.18.0/node-v22.18.0-linux-x64.tar.xz "
+    "&& tar -xf node.tar.xz && mv node-v22.18.0-linux-x64 runtime-env"
+)
+
+
+NODE_PREBUILT_INSTALL_CMD = "ln -sfn /opt/node runtime-env"
+
+
+_PREBUILT_IMAGE_PREFIXES = (
+    "tmlrgroup/alphadiana:",
+    "openclaw-reasoning:",
+)
+
+
+def is_prebuilt_image(image: str) -> bool:
+    """Return True if *image* is a known pre-built sandbox image."""
+    return any(image.startswith(prefix) for prefix in _PREBUILT_IMAGE_PREFIXES)
+
+
+def get_custom_install_cmd(image: str) -> str:
+    """Return the ``custom_install_cmd`` appropriate for *image*."""
+    if is_prebuilt_image(image):
+        return "openclaw --version"
+    return OPENCLAW_NPM_INSTALL_CMD
+
+
+def configure_rock_runtime_for_image(image: str) -> None:
+    """Set ROCK env-vars appropriate for *image*.
+
+    For pre-built images the Node.js download is replaced by a symlink;
+    for bare images we use the fast npmmirror download.
+    """
+    if is_prebuilt_image(image):
+        os.environ["ROCK_RTENV_NODE_V22180_INSTALL_CMD"] = NODE_PREBUILT_INSTALL_CMD
+    else:
+        ensure_fast_rock_runtime_mirrors()
+
+
+def ensure_fast_rock_runtime_mirrors() -> None:
+    """Prefer faster public mirrors for ROCK runtime bootstrap downloads."""
+    os.environ.setdefault(
+        "ROCK_RTENV_NODE_V22180_INSTALL_CMD",
+        NODE_RUNTIME_MIRROR_INSTALL_CMD,
+    )
+
 
 logger = logging.getLogger(__name__)
 _PROFILE_CACHE: dict[tuple[str, str], tuple[str, float]] = {}

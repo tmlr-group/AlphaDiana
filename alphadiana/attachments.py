@@ -8,7 +8,9 @@ from pathlib import Path
 from typing import Any
 
 
-def iter_binary_attachments(attachments: dict[str, Any]) -> list[tuple[str, bytes, str]]:
+def iter_binary_attachments(
+    attachments: dict[str, Any],
+) -> list[tuple[str, bytes, str]]:
     """Return non-mime attachments as sorted ``(key, bytes, mime)`` tuples."""
     items: list[tuple[str, bytes, str]] = []
     for key in sorted(k for k in attachments if not k.endswith("_mime")):
@@ -37,10 +39,12 @@ def build_openai_multimodal_user_content(text: str, attachments: dict[str, Any])
     content: list[dict[str, Any]] = [{"type": "text", "text": text}]
     for _, payload, mime in items:
         b64 = base64.b64encode(payload).decode("ascii")
-        content.append({
-            "type": "image_url",
-            "image_url": {"url": f"data:{mime};base64,{b64}"},
-        })
+        content.append(
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:{mime};base64,{b64}"},
+            }
+        )
     return content
 
 
