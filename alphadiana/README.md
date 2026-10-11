@@ -15,6 +15,7 @@ alphadiana/
     campaign.py            # rollout matrix inspection and materialization
   engine/
     components.py          # independent registries and deferred built-in loading
+    observations.py        # optional per-task observations after scoring
     runner.py              # task execution and runtime lifecycle
     rollout_campaign.py    # campaign expansion, preflight and command planning
   harness/
@@ -34,7 +35,6 @@ alphadiana/
   analysis/
   benchmarks/
   dashboard/
-  metrics/
 ```
 
 `api.py` creates typed recipes and connects them to execution and analysis.
@@ -61,6 +61,8 @@ before using this revision. No forwarding files are installed for these paths.
 | `alphadiana.registry` | `alphadiana.engine.components` |
 | `alphadiana.registry_loader.load_builtin_components` | `alphadiana.engine.components.register_builtin_components` |
 | `alphadiana.registry_loader.load_builtin_*` family functions | same function names in `alphadiana.engine.components` |
+| `alphadiana.metrics.base` / `answer_length` | `alphadiana.engine.observations` |
+| `alphadiana.metrics.registry` | `alphadiana.engine.components` |
 | `python -m alphadiana.single_rollout` | `python -m alphadiana.cli.single_rollout` |
 | `python -m alphadiana.benchmark_rollout_cli` | `python -m alphadiana.cli.campaign` |
 
@@ -82,7 +84,7 @@ result fields are unchanged. External callers are not inventoried by repository
 search; this checkout updates its own callers, tests and documentation.
 
 Supported domain registry imports (`harness.registry`, `benchmarks.registry`,
-`scorer.registry`, `metrics.registry`, `engine.sandbox.registry`) continue to expose
+`scorer.registry`, `engine.sandbox.registry`) continue to expose
 identical registry classes and decorators from `engine.components`. These existing
 extension imports retain their published contract and contain no separate state.
 

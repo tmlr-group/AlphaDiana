@@ -85,3 +85,6 @@ can plug into AlphaDiana as one candidate agent and have its solves scored here.
 ## Python API and analysis
 
 See [Python API and analysis](getting-started/python-api.md) for execution, rescoring, extensible analysis, and vector figure exports.
+
+See [Layout migration and pipeline validation](validation/pipeline-layout-20261011.md)
+for the current import migrations, completed checks, and remaining live-test coverage.

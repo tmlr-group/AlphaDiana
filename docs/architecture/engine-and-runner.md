@@ -119,7 +119,7 @@ Use the exact command syntax shown by `python -m alphadiana.cli --help` in the c
 - `harness/openclaw/trace.py` parses saved sessions and recovers partial response/reasoning/error evidence.
 - `harness/openclaw/security.py` owns gateway token creation and validation; `integrity.py` checks response completeness and request identity.
 - `harness/proxies/openclaw.py` owns the gateway-specific SSE/logprob wire protocol. Generic capture remains in `logprob_proxy.py`; their downstream contracts differ.
-- `answers.py` owns answer text parsing; `attachments.py` owns binary input conversion. These primitives are shared by execution and scoring.
+- `scorer/answers.py` owns answer text parsing; `harness/attachments.py` owns binary input conversion. These primitives are shared by execution and scoring.
 - `results/lifecycle.py` appends redacted task lifecycle evidence.
 
 Former internal `utils.*` imports migrate to these owners. No forwarding package remains.
