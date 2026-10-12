@@ -1,4 +1,4 @@
-"""Phase 15 behavior insight report renderers and artifact writers."""
+"""Behavior insight report renderers and artifact writers."""
 
 from __future__ import annotations
 
@@ -10,14 +10,13 @@ from typing import Any, Mapping, Sequence
 from alphadiana.analysis.actions.keyword_baseline import ActionEvent
 from alphadiana.analysis.insights.corpus import sanitize_path_text
 
-PHASE15_OUTPUT_FILENAMES = {
+BEHAVIOR_INSIGHT_OUTPUT_FILENAMES = {
     "corpus_inventory_json": "corpus_inventory.json",
     "corpus_inventory_csv": "corpus_inventory.csv",
     "action_events_csv": "action_events.csv",
     "insight_claims": "insight_claims.json",
     "case_anchors": "case_anchors.json",
     "markdown": "behavior_insights.md",
-    "markdown_zh": "behavior_insights_zh.md",
 }
 
 HLE_DENOMINATOR_CAVEAT = "HLE/collaborator roots that are unavailable or manifest-only are denominator evidence only, not behavioral evidence."
@@ -31,7 +30,7 @@ def render_behavior_insights_markdown(
     case_anchors: Sequence[Mapping[str, Any]],
     output_files: Mapping[str, Path | str],
 ) -> str:
-    """Render the English Phase 15 mechanism insight report."""
+    """Render the English behavior insight report."""
     lines = [
         "# Model-Harness Behavior Insights",
         "",
@@ -63,46 +62,7 @@ def render_behavior_insights_markdown(
     return _sanitize_rendered("\n".join(lines))
 
 
-def render_behavior_insights_zh(
-    *,
-    denominator_rows: Sequence[Mapping[str, Any]],
-    insight_claims: Sequence[Mapping[str, Any]],
-    case_anchors: Sequence[Mapping[str, Any]],
-    output_files: Mapping[str, Path | str],
-) -> str:
-    """Render the Chinese Phase 15 mechanism insight report."""
-    lines = [
-        "# 模型-框架行为洞察",
-        "",
-        "本报告只读取已经持久化的 AlphaDiana 结果产物，不启动实时模型、benchmark、provider 或 agent runtime。",
-        "",
-        "## 分母账本",
-        "",
-        _denominator_table(_sort_denominators(denominator_rows)),
-        "",
-        "## 可证伪机制主张",
-        "",
-        _claims_section(_sort_claims(insight_claims)),
-        "",
-        "## 确定性案例锚点",
-        "",
-        _case_anchor_section(_sort_cases(case_anchors)),
-        "",
-        "## 语料可用性与注意事项",
-        "",
-        f"- {HLE_DENOMINATOR_CAVEAT}",
-        f"- {HF_DATASET_CAVEAT}",
-        "- 主张支持范围由分母限定；unavailable、manifest-only、missing、error-only 或 unsynced 语料不作为行为证据。",
-        "",
-        "## 输出文件",
-        "",
-        _output_files_section(output_files),
-        "",
-    ]
-    return _sanitize_rendered("\n".join(lines))
-
-
-def write_phase15_outputs(
+def write_behavior_insight_outputs(
     output_dir: Path,
     *,
     denominator_rows: Sequence[Mapping[str, Any]],
@@ -110,10 +70,10 @@ def write_phase15_outputs(
     insight_claims: Sequence[Mapping[str, Any]],
     case_anchors: Sequence[Mapping[str, Any]],
 ) -> dict[str, Path]:
-    """Write all Phase 15 machine-readable and human-facing outputs."""
+    """Write behavior insight data, claims, case anchors, and the report."""
     output_dir.mkdir(parents=True, exist_ok=True)
     paths = {
-        key: output_dir / filename for key, filename in PHASE15_OUTPUT_FILENAMES.items()
+        key: output_dir / filename for key, filename in BEHAVIOR_INSIGHT_OUTPUT_FILENAMES.items()
     }
 
     sorted_denominators = _sort_denominators(_sanitize_data(list(denominator_rows)))
@@ -122,15 +82,9 @@ def write_phase15_outputs(
     sanitized_events = _sanitize_data(list(event_rows))
 
     output_refs = {
-        key: Path(filename) for key, filename in PHASE15_OUTPUT_FILENAMES.items()
+        key: Path(filename) for key, filename in BEHAVIOR_INSIGHT_OUTPUT_FILENAMES.items()
     }
     markdown = render_behavior_insights_markdown(
-        denominator_rows=sorted_denominators,
-        insight_claims=sorted_claims,
-        case_anchors=sorted_cases,
-        output_files=output_refs,
-    )
-    markdown_zh = render_behavior_insights_zh(
         denominator_rows=sorted_denominators,
         insight_claims=sorted_claims,
         case_anchors=sorted_cases,
@@ -147,7 +101,6 @@ def write_phase15_outputs(
     _write_json(sorted_claims, paths["insight_claims"])
     _write_json(sorted_cases, paths["case_anchors"])
     paths["markdown"].write_text(markdown, encoding="utf-8")
-    paths["markdown_zh"].write_text(markdown_zh, encoding="utf-8")
     return paths
 
 

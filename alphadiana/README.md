@@ -1,7 +1,6 @@
 # Package ownership and import migration
 
-The package root exposes the Python composition API. Implementations live with
-execution, harness protocols, scoring or saved results.
+The package root exposes the Python composition API. Implementations live with execution, harness protocols, scoring or saved results.
 
 ```text
 alphadiana/
@@ -37,20 +36,13 @@ alphadiana/
   dashboard/
 ```
 
-`api.py` creates typed recipes and connects them to execution and analysis.
-`engine/components.py` owns registry state and explicit built-in registration;
-importing it does not load native runtimes. `results/logprobs.py` contains pure
-probability and encoding functions shared by capture, persistence and measurement;
-it does not import the analysis layer.
+`api.py` creates typed recipes and connects them to execution and analysis. `engine/components.py` owns registry state and explicit built-in registration; importing it does not load native runtimes. `results/logprobs.py` contains pure probability and encoding functions shared by capture, persistence and measurement; it does not import the analysis layer.
 
-The CLI package preserves `alphadiana`, `python -m alphadiana.cli`, and
-`from alphadiana.cli import main`. The package initializer exports that existing
-console contract; the implementations have one owner in `commands.py`.
+The CLI package preserves `alphadiana`, `python -m alphadiana.cli`, and `from alphadiana.cli import main`. The package initializer exports that existing console contract; the implementations have one owner in `commands.py`.
 
 ## Path migration
 
-The following old paths are removed. Update imports and controller launchers
-before using this revision. No forwarding files are installed for these paths.
+The following old paths are removed. Update imports and controller launchers before using this revision. No forwarding files are installed for these paths.
 
 | Removed path | New owner / command |
 | --- | --- |
@@ -78,18 +70,8 @@ python -m alphadiana.cli.single_rollout config.yaml --task-id TASK_ID
 python -m alphadiana.cli.campaign summary --manifest PATH_TO_MANIFEST.yaml
 ```
 
-An AlphaHebe launcher using the old single-rollout module must change its module
-argument to `alphadiana.cli.single_rollout`. Its configuration, options and JSON
-result fields are unchanged. External callers are not inventoried by repository
-search; this checkout updates its own callers, tests and documentation.
+An AlphaHebe launcher using the old single-rollout module must change its module argument to `alphadiana.cli.single_rollout`. Its configuration, options and JSON result fields are unchanged. External callers are not inventoried by repository search; this checkout updates its own callers, tests and documentation.
 
-Supported domain registry imports (`harness.registry`, `benchmarks.registry`,
-`scorer.registry`, `engine.sandbox.registry`) continue to expose
-identical registry classes and decorators from `engine.components`. These existing
-extension imports retain their published contract and contain no separate state.
+Supported domain registry imports (`harness.registry`, `benchmarks.registry`, `scorer.registry`, `engine.sandbox.registry`) continue to expose identical registry classes and decorators from `engine.components`. These existing extension imports retain their published contract and contain no separate state.
 
-The public `ad.*` factories and recipes, `scorer.create`, result JSONL schemas,
-artifact references and scoring policies remain unchanged. The relocated
-`Artifacts` and registry classes have new Python `__module__` paths; no in-repository
-pickle or reflection consumer was found. Saved AlphaDiana evidence is read through
-its existing JSON/JSONL contracts.
+The public `ad.*` factories and recipes, `scorer.create`, result JSONL schemas, artifact references and scoring policies remain unchanged. The relocated `Artifacts` and registry classes have new Python `__module__` paths; no in-repository pickle or reflection consumer was found. Saved AlphaDiana evidence is read through its existing JSON/JSONL contracts.

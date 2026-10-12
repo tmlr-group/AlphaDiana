@@ -1,4 +1,4 @@
-"""Deterministic case anchors for Phase 15 insight claims."""
+"""Deterministic case anchors for behavior insight claims."""
 
 from __future__ import annotations
 

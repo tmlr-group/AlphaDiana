@@ -32,18 +32,13 @@ These keys are selectable agents but are not additional generic harness families
 - optional `validate_experiment_config(config)` for adapter-owned validation;
 - optional `teardown()`.
 
-An adapter that owns its complete task runtime declares `owns_task_runtime` and
-`runtime_isolation_mode`. The runner consumes those capabilities without
-special-casing the adapter name.
+An adapter that owns its complete task runtime declares `owns_task_runtime` and `runtime_isolation_mode`. The runner consumes those capabilities without special-casing the adapter name.
 
 `solve()` returns an `AgentResponse`. Important fields include `answer`, `raw_output`, `finish_reason`, token/timing data, request/response envelopes, trajectories, sandbox metadata, workspace artifacts, and harness metadata. The scorer, not the harness, produces the universal top-level score.
 
 ## Registration
 
-Agent registration is import-triggered. `engine/components.py` imports all built-in
-harness and adapter modules before the runner resolves the configured key. The
-config validator loads only lightweight adapter-local validation hooks. The current complete inventory is maintained in
-[Registries](../architecture/registries.md).
+Agent registration is import-triggered. `engine/components.py` imports all built-in harness and adapter modules before the runner resolves the configured key. The config validator loads only lightweight adapter-local validation hooks. The current complete inventory is maintained in [Registries](../architecture/registries.md).
 
 To add an agent:
 

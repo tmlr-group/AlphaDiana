@@ -1,4 +1,4 @@
-"""Falsifier-backed mechanism claims for offline Phase 15 insight analysis."""
+"""Falsifier-backed mechanism claims for offline behavior insight analysis."""
 
 from __future__ import annotations
 

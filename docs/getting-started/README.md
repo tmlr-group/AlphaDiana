@@ -108,9 +108,7 @@ num_samples: 1
 output_dir: ./results
 ```
 
-`configs/schema.yaml` is an annotated core-shape reference. Harness and benchmark
-configuration dictionaries are open pass-throughs, so use their dedicated pages
-for the complete path-specific keys. Top-level keys and their defaults:
+`configs/schema.yaml` is an annotated core-shape reference. Harness and benchmark configuration dictionaries are open pass-throughs, so use their dedicated pages for the complete path-specific keys. Top-level keys and their defaults:
 
 | Key | Default | Notes |
 | --- | --- | --- |
@@ -127,9 +125,7 @@ for the complete path-specific keys. Top-level keys and their defaults:
 
 ### Provider env and the EMPTY sentinel
 
-For env-default provider paths (`direct_llm`, `zeroclaw`, `opencode`,
-`terminal_bench2_*`, and `swebench_docker`), blank `agent.config` fields are
-filled from the environment when left empty in the YAML:
+For env-default provider paths (`direct_llm`, `zeroclaw`, `opencode`, `terminal_bench2_*`, and `swebench_docker`), blank `agent.config` fields are filled from the environment when left empty in the YAML:
 
 ```bash
 export OPENAI_BASE_URL=http://127.0.0.1:8000/v1
@@ -139,22 +135,10 @@ export OPENAI_MODEL_NAME=Qwen/Qwen3.5-27B
 
 The validator treats `None`, `""`, the literal string `EMPTY` (case-insensitive), and an unresolved `${VAR}` placeholder as not populated. For local vLLM use `sk-EMPTY` (any non-literal-`EMPTY` string passes); the literal `EMPTY` fails validation.
 
-OpenClaw has a separate gateway/provider distinction: its lowercase
-`agent.config.api_base` is an already-running OpenClaw gateway, whereas the
-upstream model endpoint for runtime startup belongs in
-`agent.config.OPENAI_BASE_URL` (or `openai_base_url`). See
-[Installation](./installation.md#provider-endpoints-and-agent-gateways) before an
-OpenClaw auto-deploy run.
+OpenClaw has a separate gateway/provider distinction: its lowercase `agent.config.api_base` is an already-running OpenClaw gateway, whereas the upstream model endpoint for runtime startup belongs in `agent.config.OPENAI_BASE_URL` (or `openai_base_url`). See [Installation](./installation.md#provider-endpoints-and-agent-gateways) before an OpenClaw auto-deploy run.
 
 ## Where Results Go
 
-`run_id` namespaces all output. Per run you get `results/<run_id>.jsonl` (one
-JSON line per `(task_id, sample_index)`) plus a `results/<run_id>/` directory
-with `run_manifest.json`, `tasks/<task_id>.json`, `artifacts/<task_id>/`, and
-`lifecycle/`. Each task JSON is a sample list even when `num_samples: 1`.
-Checkpoint-resume is built on the JSONL: only scorer-matching `valid_scored`
-records count as complete. Provider/runtime failures remain retryable, while
-timeout outcomes normalized to scored zero are complete. Use `--redo-all` to
-recompute completed samples too.
+`run_id` namespaces all output. Per run you get `results/<run_id>.jsonl` (one JSON line per `(task_id, sample_index)`) plus a `results/<run_id>/` directory with `run_manifest.json`, `tasks/<task_id>.json`, `artifacts/<task_id>/`, and `lifecycle/`. Each task JSON is a sample list even when `num_samples: 1`. Checkpoint-resume is built on the JSONL: only scorer-matching `valid_scored` records count as complete. Provider/runtime failures remain retryable, while timeout outcomes normalized to scored zero are complete. Use `--redo-all` to recompute completed samples too.
 
 See [Quick Start](./quick-start.md) to walk through a first run, and [Troubleshooting](./troubleshooting.md) when a run does not produce valid scored records.

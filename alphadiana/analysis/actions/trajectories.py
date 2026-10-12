@@ -143,7 +143,7 @@ def compute_outcome_conditioned_metrics(
     inventory_rows: Sequence[Mapping[str, Any]] | None = None,
     measurement_summary: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Compute Phase 14 headline behavior metrics from event rows."""
+    """Compute outcome-conditioned behavior metrics from event rows."""
     sequences = group_event_sequences(event_rows)
     valid_sequences = [
         sequence
@@ -321,7 +321,7 @@ def _pooled_action_distribution(
 def summarize_analyze_tool_measurements(
     measurement_summary: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
-    """Return compact Phase 14 metrics derived from analyze_tools measurement outputs."""
+    """Return trajectory metrics derived from analyze_tools measurement outputs."""
     if not measurement_summary:
         return {
             "source": "scripts/paper_analysis/data/measurement_summary.json",

@@ -1,11 +1,8 @@
 # Single-rollout examples
 
-Use `alphadiana.cli.single_rollout` to run these configurations. YAML header
-comments retain the older module name; the current commands are listed below.
-Configuration fields, controller options and JSON output are unchanged.
+Use `alphadiana.cli.single_rollout` to run these configurations. YAML header comments retain the older module name; the current commands are listed below. Configuration fields, controller options and JSON output are unchanged.
 
-These examples use AlphaHebe benchmark plugins through `--import`. Install those
-plugins and configure the runtime variables declared by the selected YAML.
+These examples use AlphaHebe benchmark plugins through `--import`. Install those plugins and configure the runtime variables declared by the selected YAML.
 
 ## deepseek_ale_bench.yaml
 

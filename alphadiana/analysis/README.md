@@ -19,19 +19,13 @@ Use `ad.analyzer(...)` to compose measurements and export their results.
 | `insights/` | Assemble comparison corpora, claims, case anchors and insight reports |
 | `scripts/` | Published `python -m` analysis entry points |
 
-Persisted records, traces, score status and latest-sample statistics live in
-`alphadiana/results/`. Raw/Int16 logprob conversion remains in
-`alphadiana/results/logprobs.py`, shared by execution and measurement.
+Persisted records, traces, score status and latest-sample statistics live in `alphadiana/results/`. Raw/Int16 logprob conversion remains in `alphadiana/results/logprobs.py`, shared by execution and measurement.
 
-Default action annotations use LLM segmentation of the full trajectory.
-Fixed-target audit and historical custom spans require explicit protocols.
-Keyword classification never substitutes for an unsuccessful LLM annotation.
+Default action annotations use LLM segmentation of the full trajectory. Fixed-target audit and historical custom spans require explicit protocols. Keyword classification never substitutes for an unsuccessful LLM annotation.
 
 ## Import migration
 
-Public `ad.runner(...)`, `ad.analyzer(...)` and `Artifacts` behavior remains.
-Package-level documented analysis functions load their actual owner lazily.
-The former internal forwarding files are removed; migrate deep imports:
+Public `ad.runner(...)`, `ad.analyzer(...)` and `Artifacts` behavior remains. Package-level documented analysis functions load their actual owner lazily. The former internal forwarding files are removed; migrate deep imports:
 
 | Previous path | Current owner |
 | --- | --- |
@@ -51,9 +45,14 @@ The former internal forwarding files are removed; migrate deep imports:
 | `action_protocol`, `action_prompt.md` | `actions/protocol`, `actions/action_prompt.md` |
 | `paper_archive.PaperArchive` | Source-checkout operator `scripts.paper_analysis.load_figure_tables.PaperFigureTables` |
 
-The paper input loader preserves its historical output identity `paper_archive`
-and schema. It is used explicitly from a source checkout, outside the installed
-runtime package. Archived inputs and figures stay unchanged.
+The paper input loader preserves its historical output identity `paper_archive` and schema. It is used explicitly from a source checkout, outside the installed runtime package. Archived inputs and figures stay unchanged.
 
-Human audits created after this migration hash the relocated protocol files.
-Existing audits retain their original source revision and hashes.
+Human audits created after this migration hash the relocated protocol files. Existing audits retain their original source revision and hashes.
+
+## Report language
+
+Offline report writers generate English reports. Behavior insight exports contain one Markdown report, `behavior_insights.md`. Trajectory exports contain `gpqa_trajectory_appendix.tex` and `gpqa_trajectory_discussion.md`; the latter uses the `discussion` output key and `render_trajectory_discussion` public renderer.
+
+The former `render_behavior_insights_zh` and `render_chinese_discussion` exports are removed. Use `render_behavior_insights_markdown` and `render_trajectory_discussion`, respectively. Consumers of `markdown_zh` or `chinese_discussion` output keys should use `markdown` or `discussion`. New exports do not write `*_zh.md` reports.
+
+Report and corpus helpers use their purpose as the API name: `write_behavior_insight_outputs`, `write_trajectory_outputs`, and `load_insight_corpus_specs`. These replace `write_phase15_outputs`, `write_phase14_outputs`, and `load_phase15_corpus_specs`. The output filename map is `BEHAVIOR_INSIGHT_OUTPUT_FILENAMES`. Historical result directories and environment variable names remain valid.

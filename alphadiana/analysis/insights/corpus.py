@@ -1,4 +1,4 @@
-"""Corpus inventory contracts for offline Phase 15 insight analysis."""
+"""Corpus inventory contracts for offline behavior insight analysis."""
 
 from __future__ import annotations
 
@@ -182,12 +182,12 @@ def load_env_corpus_specs(env: Mapping[str, str] | None = None) -> list[CorpusSp
     return specs
 
 
-def load_phase15_corpus_specs(
+def load_insight_corpus_specs(
     results_dir: Path = Path("results"),
     env: Mapping[str, str] | None = None,
     include_hf_synced: bool = True,
 ) -> list[CorpusSpec]:
-    """Load repo, optional HF-synced, and env-provided Phase 15 corpus specs."""
+    """Load local, optional HF-synced, and environment-provided insight corpora."""
     specs = load_default_corpus_specs(results_dir)
     if include_hf_synced:
         specs.extend(_load_hf_synced_specs(results_dir))

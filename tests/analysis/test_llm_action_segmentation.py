@@ -49,7 +49,7 @@ def whole_blocks(evidence):
 
 
 def test_default_llm_chooses_boundary_one_call_and_never_reads_fixed_targets(tmp_path):
-    text = "计划先列式。继续推导并给出答案。"
+    text = "\u8ba1\u5212\u5148\u5217\u5f0f\u3002\u7ee7\u7eed\u63a8\u5bfc\u5e76\u7ed9\u51fa\u7b54\u6848\u3002"
     artifacts = saved_trace(tmp_path, [{"role": "assistant", "content": text}])
     calls = []
     with ActionAnnotations(**judge_options(tmp_path)) as plugin:

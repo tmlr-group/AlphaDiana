@@ -38,7 +38,7 @@ def target_path(artifacts):
 
 def test_fixed_target_and_context_survive_exactly_without_label_leakage(tmp_path):
     # Crosses the old 4096-character target and 1000-character context limits.
-    item = fixed_item("A1", "推导\n" * 3000, before="before" * 600, after="after" * 600)
+    item = fixed_item("A1", "\u63a8\u5bfc\n" * 3000, before="before" * 600, after="after" * 600)
     item.update(label="Finalization", outcome="Correct", action_pred="Planning")
     artifacts = artifacts_with_targets(tmp_path, [item])
     calls = []

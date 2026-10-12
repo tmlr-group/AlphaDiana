@@ -12,8 +12,7 @@ With AlphaDiana, you can:
 - evaluate **OpenClaw-style reasoning agents**
 - compare against a **direct LLM baseline**
 - run evaluations with **sandboxed execution**
-- benchmark on **AIME 2026, GPQA-Diamond, HLE, IMO-AnswerBench, MMMU-Pro,
-  SWE-bench Verified, Terminal-Bench 2, and custom tasks**
+- benchmark on **AIME 2026, GPQA-Diamond, HLE, IMO-AnswerBench, MMMU-Pro, SWE-bench Verified, Terminal-Bench 2, and custom tasks**
 - record and inspect **full execution traces**
 - launch and compare runs through both **CLI and dashboard**
 
@@ -29,8 +28,7 @@ Typical questions AlphaDiana helps answer:
 - **OpenClaw support** for multi-turn reasoning with tool use and code execution  
 - **ROCK sandbox integration** for safe, isolated execution  
 - **Direct LLM baseline** for clean agent-vs-model comparison  
-- **Built-in benchmarks** covering AIME 2026, GPQA-Diamond, HLE,
-  IMO-AnswerBench, MMMU-Pro, SWE-bench Verified, Terminal-Bench 2, and custom tasks
+- **Built-in benchmarks** covering AIME 2026, GPQA-Diamond, HLE, IMO-AnswerBench, MMMU-Pro, SWE-bench Verified, Terminal-Bench 2, and custom tasks
 - **Full trace logging** for debugging, inspection, and analysis  
 - **Web dashboard** for launching, monitoring, and comparing runs  
 - **Automatic sandbox management** with configurable concurrency
@@ -39,8 +37,7 @@ Typical questions AlphaDiana helps answer:
 
 ### Install and configure
 
-Python 3.10 or newer is required. Container runtimes are optional for direct
-inference; native agent harnesses have their own runtime prerequisites.
+Python 3.10 or newer is required. Container runtimes are optional for direct inference; native agent harnesses have their own runtime prerequisites.
 
 ```bash
 git clone https://github.com/tmlr-group/AlphaDiana.git
@@ -54,11 +51,7 @@ export OPENAI_API_KEY="your-api-key"
 export OPENAI_MODEL_NAME="your-model-id"
 ```
 
-LLM judges also require an explicitly configured endpoint, key and model.
-`OPENAI_MODEL` takes precedence over `OPENAI_MODEL_NAME` for judging. Offline
-analysis requires no model service. Optional Analyzer judgments can use separate
-`ANALYSIS_MODEL`, `ANALYSIS_BASE_URL` and `ANALYSIS_API_KEY` settings. See [Python API and analysis](docs/getting-started/python-api.md)
-for composition, saved-run analysis and optional model annotations.
+LLM judges also require an explicitly configured endpoint, key and model. `OPENAI_MODEL` takes precedence over `OPENAI_MODEL_NAME` for judging. Offline analysis requires no model service. Optional Analyzer judgments can use separate `ANALYSIS_MODEL`, `ANALYSIS_BASE_URL` and `ANALYSIS_API_KEY` settings. See [Python API and analysis](docs/getting-started/python-api.md) for composition, saved-run analysis and optional model annotations.
 
 ### Run an evaluation
 
@@ -71,8 +64,7 @@ alphadiana run configs/macro_runs/aime2026_directllm_qwen35_27b.yaml \
   -o num_samples=1
 ```
 
-This DirectLLM path does not require ROCK. A successful provider call writes one
-scored task record; the accuracy depends on the model response and is not fixed.
+This DirectLLM path does not require ROCK. A successful provider call writes one scored task record; the accuracy depends on the model response and is not fixed.
 
 ### Use the Python API
 
@@ -90,11 +82,7 @@ artifacts = ad.runner(run_id="python_demo").compute(
 ad.analyzer(artifacts).export("figures/python_demo")
 ```
 
-This uses the provider environment settings above. Results and execution evidence
-are saved under `results/`; analysis exports include tables and PDF/SVG/PNG figures.
-See [Python API and analysis](docs/getting-started/python-api.md) for reopening,
-rescoring and comparing saved runs. Native harnesses still require their own
-container/runtime configuration.
+This uses the provider environment settings above. Results and execution evidence are saved under `results/`; analysis exports include tables and PDF/SVG/PNG figures. See [Python API and analysis](docs/getting-started/python-api.md) for reopening, rescoring and comparing saved runs. Native harnesses still require their own container/runtime configuration.
 
 ### Print a report
 
@@ -102,16 +90,9 @@ container/runtime configuration.
 alphadiana report results/
 ```
 
-`alphadiana report` prints Markdown to standard output. Redirect it when you
-want a file, for example: `alphadiana report results/ > report.md`.
+`alphadiana report` prints Markdown to standard output. Redirect it when you want a file, for example: `alphadiana report results/ > report.md`.
 
-For a full walkthrough, see [Getting Started](docs/getting-started/quick-start.md).
-For the documentation entry point, see [Welcome to AlphaDiana](docs/README.md).
-For Podman-backed paths, start from the matching page under [Benchmarks](docs/benchmarks/README.md).
-For manual setup and recovery, see [Installation](docs/getting-started/installation.md)
-and [Troubleshooting](docs/getting-started/troubleshooting.md).
-For ZeroClaw, see the [harness guide](docs/harnesses/zeroclaw.md) and
-[AIME benchmark page](docs/benchmarks/aime.md).
+For a full walkthrough, see [Getting Started](docs/getting-started/quick-start.md). For the documentation entry point, see [Welcome to AlphaDiana](docs/README.md). For Podman-backed paths, start from the matching page under [Benchmarks](docs/benchmarks/README.md). For manual setup and recovery, see [Installation](docs/getting-started/installation.md) and [Troubleshooting](docs/getting-started/troubleshooting.md). For ZeroClaw, see the [harness guide](docs/harnesses/zeroclaw.md) and [AIME benchmark page](docs/benchmarks/aime.md).
 
 ## Repository map
 
@@ -133,8 +114,7 @@ configs/         # experiment configurations
 docs/            # guides, contracts, and documentation assets
 ```
 
-See the [analysis module map](alphadiana/analysis/README.md) and
-[operator workflow map](scripts/README.md) for implementation entry points.
+See the [analysis module map](alphadiana/analysis/README.md) and [operator workflow map](scripts/README.md) for implementation entry points.
 
 ## Configuration
 
@@ -145,8 +125,7 @@ AlphaDiana is configured with a YAML file. At a high level, you specify:
 - the **scorer**
 - the **runtime settings** such as concurrency and output directory
 
-Ready-to-run macro and micro experiments are indexed in
-[`configs/README.md`](configs/README.md).
+Ready-to-run macro and micro experiments are indexed in [`configs/README.md`](configs/README.md).
 
 ## CLI Reference
 
@@ -163,15 +142,9 @@ Use `-o key=value` to override config values from the command line (e.g., `-o ma
 
 ## Results and analysis
 
-AlphaDiana treats a score as a property of the model, harness, task, scorer,
-environment, and budget together. The [Results](docs/results.md) document presents
-selected draft tables and process-analysis figures; reports from saved results
-can be regenerated with `alphadiana report <results_dir>`.
+AlphaDiana treats a score as a property of the model, harness, task, scorer, environment, and budget together. The [Results](docs/results.md) document presents selected draft tables and process-analysis figures; reports from saved results can be regenerated with `alphadiana report <results_dir>`.
 
-When reviewing a result, start from `score_status`, scorer identity, expected
-sample count, and the recorded `isolation_mode`. Report Pass@k and Avg@k with
-the configured `num_samples`; do not compare rows whose runtime or evaluation
-contracts differ.
+When reviewing a result, start from `score_status`, scorer identity, expected sample count, and the recorded `isolation_mode`. Report Pass@k and Avg@k with the configured `num_samples`; do not compare rows whose runtime or evaluation contracts differ.
 
 ## Dashboard
 

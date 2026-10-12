@@ -1,8 +1,6 @@
 # Macro runs
 
-This directory contains the release matrix for end-to-end benchmark runs. All
-ordinary configs target Qwen3.5-27B, default to one sample and one worker, and
-follow `<benchmark>_<harness>_qwen35_27b.yaml`.
+This directory contains the release matrix for end-to-end benchmark runs. All ordinary configs target Qwen3.5-27B, default to one sample and one worker, and follow `<benchmark>_<harness>_qwen35_27b.yaml`.
 
 | Benchmark | DirectLLM | OpenClaw | OpenCode | ZeroClaw |
 | --- | :---: | :---: | :---: | :---: |
@@ -14,8 +12,7 @@ follow `<benchmark>_<harness>_qwen35_27b.yaml`.
 | SWE-bench Verified | — | ✓ | ✓ | ✓ |
 | Terminal-Bench 2 | — | ✓ | ✓ | ✓ |
 
-DirectLLM is omitted for SWE-bench and Terminal-Bench because those benchmarks
-require an interactive coding/terminal harness.
+DirectLLM is omitted for SWE-bench and Terminal-Bench because those benchmarks require an interactive coding/terminal harness.
 
 ## Quick smoke
 
@@ -34,14 +31,9 @@ alphadiana run configs/macro_runs/aime2026_directllm_qwen35_27b.yaml \
   -o benchmark.config.max_tasks=1 --redo-all
 ```
 
-For OpenClaw, also export a strong `OPENCLAW_GATEWAY_TOKEN`. For OpenCode,
-ensure its controller image is present on the execution host. OpenClaw and
-ZeroClaw require their runtime images and a reachable ROCK service.
+For OpenClaw, also export a strong `OPENCLAW_GATEWAY_TOKEN`. For OpenCode, ensure its controller image is present on the execution host. OpenClaw and ZeroClaw require their runtime images and a reachable ROCK service.
 
-MMMU-Pro requires a vision-capable model endpoint. Terminal-Bench 2 additionally
-requires `TERMINAL_BENCH2_DIR` and the `TB2_*_RUNTIME_IMAGE` variables. SWE-bench
-Verified requires its task images and a working Docker/Podman-compatible
-container runtime. Validate these configs on the actual execution machine.
+MMMU-Pro requires a vision-capable model endpoint. Terminal-Bench 2 additionally requires `TERMINAL_BENCH2_DIR` and the `TB2_*_RUNTIME_IMAGE` variables. SWE-bench Verified requires its task images and a working Docker/Podman-compatible container runtime. Validate these configs on the actual execution machine.
 
 ## Batch launch
 
@@ -57,8 +49,7 @@ alphadiana batch \
 
 ## Campaign manifest exception
 
-`swe_bench_verified_sweagent_qwen35_27b_campaign.yaml` is a campaign manifest,
-not an `ExperimentConfig`. Use it only with:
+`swe_bench_verified_sweagent_qwen35_27b_campaign.yaml` is a campaign manifest, not an `ExperimentConfig`. Use it only with:
 
 ```bash
 python -m alphadiana.cli.campaign summary \

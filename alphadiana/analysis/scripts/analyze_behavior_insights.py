@@ -14,12 +14,11 @@ from alphadiana.analysis.actions.trajectories import compute_outcome_conditioned
 from alphadiana.analysis.insights.cases import select_insight_case_anchors
 from alphadiana.analysis.insights.claims import build_insight_claims
 from alphadiana.analysis.insights.corpus import (
-    ENV_CORPUS_VARS,
     build_denominator_ledger,
-    load_phase15_corpus_specs,
+    load_insight_corpus_specs,
     load_selected_task_records,
 )
-from alphadiana.analysis.insights.reports import write_phase15_outputs
+from alphadiana.analysis.insights.reports import write_behavior_insight_outputs
 from alphadiana.results.reader import load_run_bundle
 
 DEFAULT_OUTPUT_DIR = Path("results/phase15_behavior_insights")
@@ -30,13 +29,6 @@ DEFAULT_MEASUREMENT_SUMMARY = (
     / "data"
     / "measurement_summary.json"
 )
-PHASE15_INPUT_ENV_VARS = (
-    "PHASE15_HLE_OPENCODE_LOGPROBS",
-    "PHASE15_HLE_ZEROCLAW_LOGPROBS",
-    "PHASE15_COLLAB_RESULTS_ROOT",
-)
-
-assert PHASE15_INPUT_ENV_VARS == ENV_CORPUS_VARS
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -65,7 +57,7 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     measurement_summary = _load_measurement_summary(args.measurement_summary)
-    specs = load_phase15_corpus_specs(
+    specs = load_insight_corpus_specs(
         args.results_dir, include_hf_synced=args.include_hf_synced
     )
     denominator_rows = build_denominator_ledger(specs)
@@ -103,7 +95,7 @@ def main(argv: list[str] | None = None) -> int:
         measurement_summary=measurement_summary,
         case_anchors=case_anchors,
     )
-    output_paths = write_phase15_outputs(
+    output_paths = write_behavior_insight_outputs(
         args.output_dir,
         denominator_rows=denominator_rows,
         event_rows=event_rows,
@@ -113,8 +105,6 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.stdout:
         sys.stdout.write(output_paths["markdown"].read_text(encoding="utf-8"))
-        sys.stdout.write("\n\n")
-        sys.stdout.write(output_paths["markdown_zh"].read_text(encoding="utf-8"))
         sys.stdout.write("\n")
 
     for path in output_paths.values():

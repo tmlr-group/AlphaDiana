@@ -18,7 +18,7 @@ from alphadiana.analysis.actions.trajectories import (
     compute_outcome_conditioned_metrics,
     select_case_studies,
 )
-from alphadiana.analysis.actions.trajectory_report import write_phase14_outputs
+from alphadiana.analysis.actions.trajectory_report import write_trajectory_outputs
 from alphadiana.results.reader import load_run_bundle
 
 DEFAULT_OUTPUT_DIR = Path("results/phase14_gpqa_trajectory_analysis")
@@ -108,7 +108,7 @@ def main(argv: list[str] | None = None) -> int:
         measurement_summary=_load_measurement_summary(args.measurement_summary),
     )
     case_studies = select_case_studies(event_rows)
-    output_paths = write_phase14_outputs(
+    output_paths = write_trajectory_outputs(
         args.output_dir,
         inventory=inventory,
         event_rows=event_rows,
@@ -120,7 +120,7 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write((output_paths["latex_appendix"]).read_text(encoding="utf-8"))
         sys.stdout.write("\n\n")
         sys.stdout.write(
-            (output_paths["chinese_discussion"]).read_text(encoding="utf-8")
+            (output_paths["discussion"]).read_text(encoding="utf-8")
         )
         sys.stdout.write("\n")
 

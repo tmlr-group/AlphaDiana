@@ -14,7 +14,7 @@ def _result_objects() -> tuple[BenchmarkTask, AgentResponse, ScoreResult]:
         AgentResponse(
             answer="1",
             raw_output="short answer",
-            metadata={"agent_final_answer": "答案 ok"},
+            metadata={"agent_final_answer": "\u7b54\u6848 ok"},
         ),
         ScoreResult(correct=True, score=1.0, expected="1", predicted="1"),
     )

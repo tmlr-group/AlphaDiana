@@ -1,26 +1,10 @@
 # Configuration
 
-Every AlphaDiana experiment is described by a single YAML file with four required
-sections (`agent`, `benchmark`, `scorer`, plus `sandbox` when needed) and a handful
-of top-level keys (`run_id`, `max_concurrent`, `num_samples`, `output_dir`,
-`metadata`). The file is parsed into the `ExperimentConfig` dataclass and launched
-through the `alphadiana` CLI, where dotted `-o key.path=value` flags can override any
-field at the command line. This page is the orientation map: see
-[Config Schema](./config-schema.md) for the core fields and
-[CLI and Overrides](./cli-and-overrides.md) for command syntax and run-id conventions.
-`configs/schema.yaml` is an annotated core-shape reference; harness- and
-benchmark-specific pass-through keys live on their dedicated pages. Release
-configs are split into `configs/macro_runs/` for end-to-end benchmarks and
-`configs/micro_runs/` for paper-aligned Tool/Skill ablations and the separately
-labeled Memory extension.
+Every AlphaDiana experiment is described by a single YAML file with four required sections (`agent`, `benchmark`, `scorer`, plus `sandbox` when needed) and a handful of top-level keys (`run_id`, `max_concurrent`, `num_samples`, `output_dir`, `metadata`). The file is parsed into the `ExperimentConfig` dataclass and launched through the `alphadiana` CLI, where dotted `-o key.path=value` flags can override any field at the command line. This page is the orientation map: see [Config Schema](./config-schema.md) for the core fields and [CLI and Overrides](./cli-and-overrides.md) for command syntax and run-id conventions. `configs/schema.yaml` is an annotated core-shape reference; harness- and benchmark-specific pass-through keys live on their dedicated pages. Release configs are split into `configs/macro_runs/` for end-to-end benchmarks and `configs/micro_runs/` for paper-aligned Tool/Skill ablations and the separately labeled Memory extension.
 
 ## The four sections
 
-A config has four blocks plus top-level run controls. The minimal, env-driven
-`direct_llm` example (`configs/macro_runs/aime2026_directllm_qwen35_27b.yaml`) is the basis for the shape
-below; the `sandbox: null` and `num_samples: 1` lines are shown here for
-illustration (both are optional and default to those values when omitted, so the
-on-disk example leaves them out):
+A config has four blocks plus top-level run controls. The minimal, env-driven `direct_llm` example (`configs/macro_runs/aime2026_directllm_qwen35_27b.yaml`) is the basis for the shape below; the `sandbox: null` and `num_samples: 1` lines are shown here for illustration (both are optional and default to those values when omitted, so the on-disk example leaves them out):
 
 ```yaml
 run_id: ""
@@ -63,8 +47,7 @@ output_dir: "./results"
 
 ## Valid names
 
-These are the values the validator and registries accept. Unknown keys inside any
-`config` block are passed through to the harness untouched.
+These are the values the validator and registries accept. Unknown keys inside any `config` block are passed through to the harness untouched.
 
 | Block | Accepted `name` values |
 | --- | --- |
@@ -72,11 +55,7 @@ These are the values the validator and registries accept. Unknown keys inside an
 | `scorer.name` | `numeric`, `math_verify`, `exact_match`, `llm_judge`, `swe_bench`, `terminal_bench2`, `imo_verify` |
 | `sandbox.name` | `null`, `local`, `rock`, `podman`, `swebench_container` |
 
-`sandbox: null` is correct for `direct_llm` and for OpenCode controller modes
-that self-manage their runtime. The generic ZeroClaw harness requires a live
-ROCK sandbox. ROCK-backed runs add a
-preflight that checks admin/proxy/redis reachability and port ownership before the
-run starts; non-ROCK runs skip it.
+`sandbox: null` is correct for `direct_llm` and for OpenCode controller modes that self-manage their runtime. The generic ZeroClaw harness requires a live ROCK sandbox. ROCK-backed runs add a preflight that checks admin/proxy/redis reachability and port ownership before the run starts; non-ROCK runs skip it.
 
 ## Top-level run controls
 
@@ -90,17 +69,11 @@ run starts; non-ROCK runs skip it.
 | `strict_report`, `strict_isolation` | `false` | stricter reporting / isolation gates |
 | `metadata` | `{}` | free-form `author` / `gpu` / `notes` tags |
 
-`ExperimentConfig` lives in
-`alphadiana/engine/config/experiment_config.py`;
-`ConfigValidator` lives at `alphadiana/engine/config/validator.py`. Result files
-are written and read through `alphadiana/results/store.py`.
+`ExperimentConfig` lives in `alphadiana/engine/config/experiment_config.py`; `ConfigValidator` lives at `alphadiana/engine/config/validator.py`. Result files are written and read through `alphadiana/results/store.py`.
 
 ## agent.config: the open pass-through
 
-`agent.config` is a free-form dict. The validator only enforces a small required
-core (a non-empty `model` for `direct_llm`, a non-empty `api_base` for most agents
-unless an auto-deploy or podman runtime supplies it); every other key flows straight
-to the harness. Common LLM fields:
+`agent.config` is a free-form dict. The validator only enforces a small required core (a non-empty `model` for `direct_llm`, a non-empty `api_base` for most agents unless an auto-deploy or podman runtime supplies it); every other key flows straight to the harness. Common LLM fields:
 
 | Key | Default | Notes |
 | --- | --- | --- |
@@ -113,35 +86,17 @@ to the harness. Common LLM fields:
 | `capture_logprobs` | harness-specific | DirectLLM defaults to `true`; other transports require explicit support/configuration |
 | `enable_thinking`, `extra_body` | none | reasoning controls; see below |
 
-When the LLM fields are blank, `_apply_agent_env_defaults` fills them from
-`OPENAI_BASE_URL` / `OPENAI_API_KEY` / `OPENAI_MODEL_NAME` (loaded via
-`source scripts/activate.sh`). Release configs use those environment variables
-directly or rely on the same defaults. Runtime-backed OpenClaw is the important
-exception: `OPENAI_BASE_URL` remains the upstream provider endpoint, while the
-runner resolves and supplies the deployed gateway's lower-case `api_base`.
+When the LLM fields are blank, `_apply_agent_env_defaults` fills them from `OPENAI_BASE_URL` / `OPENAI_API_KEY` / `OPENAI_MODEL_NAME` (loaded via `source scripts/activate.sh`). Release configs use those environment variables directly or rely on the same defaults. Runtime-backed OpenClaw is the important exception: `OPENAI_BASE_URL` remains the upstream provider endpoint, while the runner resolves and supplies the deployed gateway's lower-case `api_base`.
 
-> [!CAUTION] **api_key sentinel**
-> The validator treats `None`, `""`, and the literal string `EMPTY`
-> (case-insensitive) as missing. For a local vLLM endpoint use `api_key: "sk-EMPTY"`
-> or another non-empty placeholder. Literal `EMPTY` fails
-> validation.
+> [!CAUTION] **api_key sentinel** The validator treats `None`, `""`, and the literal string `EMPTY` (case-insensitive) as missing. For a local vLLM endpoint use `api_key: "sk-EMPTY"` or another non-empty placeholder. Literal `EMPTY` fails validation.
 
 
-> [!NOTE] **Reasoning is the experimental variable**
-> There is no single canonical reasoning field. `direct_llm` reads `enable_thinking`
-> and `extra_body`; OpenCode configs use `enable_thinking: true`; ZeroClaw uses
-> `runtime_trace_mode: full`. Do not push reasoning controls through CLI overrides on
-> contract runs; treat reasoning effort as the variable under study, not plumbing.
+> [!NOTE] **Reasoning is the experimental variable** There is no single canonical reasoning field. `direct_llm` reads `enable_thinking` and `extra_body`; OpenCode configs use `enable_thinking: true`; ZeroClaw uses `runtime_trace_mode: full`. Do not push reasoning controls through CLI overrides on contract runs; treat reasoning effort as the variable under study, not plumbing.
 
 
 ## Environment-variable expansion
 
-Strings are expanded in two phases at load time. First, `os.path.expandvars`
-resolves `$VAR` and `${VAR}` in every string (so `${SANDBOX_ID}`,
-`${ROCK_BASE_URL}`, `${OPENAI_BASE_URL}` come from the shell). After the CLI
-overrides are merged, any string that is *wholly* an unresolved `${VAR}` is blanked
-to `""`, so a missing variable degrades to empty rather than leaking a literal
-placeholder.
+Strings are expanded in two phases at load time. First, `os.path.expandvars` resolves `$VAR` and `${VAR}` in every string (so `${SANDBOX_ID}`, `${ROCK_BASE_URL}`, `${OPENAI_BASE_URL}` come from the shell). After the CLI overrides are merged, any string that is *wholly* an unresolved `${VAR}` is blanked to `""`, so a missing variable degrades to empty rather than leaking a literal placeholder.
 
 ## Running and overriding
 
@@ -155,26 +110,12 @@ alphadiana batch a.yaml b.yaml --parallel
 alphadiana env                            # ROCK service + port health
 ```
 
-`-o` (long form `--override`) is repeatable and takes a dotted `key.path=value`.
-Values are coerced automatically in order `bool -> int -> float -> str`, so
-`-o num_samples=4` becomes an int and `-o agent.config.stream=false` becomes a bool.
-There is no quoting escape, so a string-valued field that looks numeric will be
-coerced. Re-running the same config resumes from the existing `<run_id>` result
-files (skipping completed task or sample ids) unless `--redo-all` is passed. See
-[CLI and Overrides](./cli-and-overrides.md) for the full command and run-id reference.
+`-o` (long form `--override`) is repeatable and takes a dotted `key.path=value`. Values are coerced automatically in order `bool -> int -> float -> str`, so `-o num_samples=4` becomes an int and `-o agent.config.stream=false` becomes a bool. There is no quoting escape, so a string-valued field that looks numeric will be coerced. Re-running the same config resumes from the existing `<run_id>` result files (skipping completed task or sample ids) unless `--redo-all` is passed. See [CLI and Overrides](./cli-and-overrides.md) for the full command and run-id reference.
 
 ## Editing configs safely
 
-Edit YAML with `sed` or by hand, not by round-tripping through `yaml.safe_dump`:
-the dumper drops comments and block scalars and produces large spurious diffs.
-Downscaled or variant runs must use a distinct `run_id` suffix rather than CLI
-overrides of contract parameters.
+Edit YAML with `sed` or by hand, not by round-tripping through `yaml.safe_dump`: the dumper drops comments and block scalars and produces large spurious diffs. Downscaled or variant runs must use a distinct `run_id` suffix rather than CLI overrides of contract parameters.
 
 ## A note on the configs/ tree
 
-Two grammars coexist under `configs/`. Ordinary per-experiment configs use the
-`ExperimentConfig` shape and run with `alphadiana run`. Campaign manifests such as
-`configs/macro_runs/swe_bench_verified_sweagent_qwen35_27b_campaign.yaml` use a different top-level shape
-(`campaign_id`, `defaults.run_id_prefix`, `models[]`, `path_templates[]`) and are
-consumed by the `rollout_campaign` runner, not by `alphadiana run`. The
-[benchmark guides](../benchmarks/) cover those campaign flows.
+Two grammars coexist under `configs/`. Ordinary per-experiment configs use the `ExperimentConfig` shape and run with `alphadiana run`. Campaign manifests such as `configs/macro_runs/swe_bench_verified_sweagent_qwen35_27b_campaign.yaml` use a different top-level shape (`campaign_id`, `defaults.run_id_prefix`, `models[]`, `path_templates[]`) and are consumed by the `rollout_campaign` runner, not by `alphadiana run`. The [benchmark guides](../benchmarks/) cover those campaign flows.

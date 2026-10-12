@@ -1,4 +1,4 @@
-"""Phase 14 GPQA trajectory report renderers and artifact writers."""
+"""GPQA trajectory report renderers and artifact writers."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ def render_latex_appendix(
     *,
     output_files: Mapping[str, Path | str],
 ) -> str:
-    """Render the English Phase 14 appendix draft."""
+    """Render the English trajectory appendix."""
     corpus_rows = _inventory_corpora(inventory)
     lines = [
         r"\section{Harness-Induced Action Ecology}",
@@ -66,35 +66,35 @@ def render_latex_appendix(
     return "\n".join(lines)
 
 
-def render_chinese_discussion(
+def render_trajectory_discussion(
     inventory: Mapping[str, Any],
     metrics: Mapping[str, Any],
     case_studies: Sequence[Mapping[str, Any]],
     *,
     output_files: Mapping[str, Path | str],
 ) -> str:
-    """Render the Chinese Phase 14 discussion note."""
+    """Render the English trajectory discussion."""
     lines = [
-        "# GPQA-Diamond Qwen3.5 跨框架轨迹分析讨论",
+        "# GPQA-Diamond Qwen3.5 Cross-Harness Trajectory Discussion",
         "",
-        "这份记录讨论 DirectLLM、OpenClaw、OpenCode 和 ZeroClaw 在 GPQA-Diamond 上形成的动作生态。分析只读取已经持久化的结果文件，不重新调用模型或框架。",
+        "This note discusses the action ecology of DirectLLM, OpenClaw, OpenCode, and ZeroClaw on GPQA-Diamond. Analysis reads persisted results without rerunning models or harnesses.",
         "",
-        "## 动作意图语法",
+        "## Action-Intent Grammar",
         "",
-        "本文固定使用 `A = {plan, reason, tool_use, verify, recover, answer}`。`search/shell/python/browser` 是 `tool_subtype` 注解，而不是新的规范动作；每个事件只归入一个 canonical action。",
-        "DirectLLM 是非智能体的直接回答基线，因此只作为退化的 reason/answer 轨迹参与比较。",
+        "The canonical action grammar is `A = {plan, reason, tool_use, verify, recover, answer}`. `search/shell/python/browser` are `tool_subtype` annotations; each event belongs to one canonical action.",
+        "DirectLLM is a non-agentic direct-answer baseline and contributes only reason/answer trajectories to the comparison.",
         "",
-        "## 宏观结果",
+        "## Macro Results",
         "",
         _markdown_corpus_table(_inventory_corpora(inventory)),
         "",
         _markdown_metrics_summary(metrics),
         "",
-        "## 指标定义",
+        "## Metric Definitions",
         "",
         _markdown_metric_definitions(),
         "",
-        "## 指标分析",
+        "## Metric Analysis",
         "",
         _markdown_metric_analysis(metrics),
         "",
@@ -102,17 +102,17 @@ def render_chinese_discussion(
         "",
         _markdown_measurement_insights(metrics),
         "",
-        "## 微观案例",
+        "## Micro Case Studies",
         "",
         _markdown_case_studies(case_studies),
         "",
-        "## 注意事项",
+        "## Caveats",
         "",
-        "- `results/bkp_gpqa_20260425/` 下的备份产物已排除。",
-        "- 除非存在重复独立样本，否则不声称 `pass^k`。",
-        "- 正确/错误行为差异只在 `valid_scored` 记录上计算；运行错误单独作为 failure-cost 与 readiness 证据。",
+        "- Backup artifacts under `results/bkp_gpqa_20260425/` are excluded.",
+        "- `pass^k` is reported only when repeated independent samples exist.",
+        "- Correct/wrong behavior contrasts use `valid_scored` records; runtime errors are reported separately as failure-cost and readiness evidence.",
         "",
-        "## 输出文件",
+        "## Generated Artifacts",
         "",
         _markdown_output_files(output_files),
         "",
@@ -120,7 +120,7 @@ def render_chinese_discussion(
     return "\n".join(lines)
 
 
-def write_phase14_outputs(
+def write_trajectory_outputs(
     output_dir: Path,
     *,
     inventory: Mapping[str, Any],
@@ -128,7 +128,7 @@ def write_phase14_outputs(
     metrics: Mapping[str, Any],
     case_studies: Sequence[Mapping[str, Any]],
 ) -> dict[str, Path]:
-    """Write all machine-readable and human-facing Phase 14 outputs."""
+    """Write trajectory data, metrics, case studies, and reports."""
     output_dir.mkdir(parents=True, exist_ok=True)
     paths = {
         "corpus_inventory": output_dir / "corpus_inventory.json",
@@ -136,13 +136,13 @@ def write_phase14_outputs(
         "trajectory_metrics": output_dir / "trajectory_metrics.json",
         "case_studies": output_dir / "case_studies.json",
         "latex_appendix": output_dir / "gpqa_trajectory_appendix.tex",
-        "chinese_discussion": output_dir / "gpqa_trajectory_discussion_zh.md",
+        "discussion": output_dir / "gpqa_trajectory_discussion.md",
     }
     output_refs = {name: path for name, path in paths.items()}
     latex = render_latex_appendix(
         inventory, metrics, case_studies, output_files=output_refs
     )
-    chinese = render_chinese_discussion(
+    discussion = render_trajectory_discussion(
         inventory, metrics, case_studies, output_files=output_refs
     )
 
@@ -151,7 +151,7 @@ def write_phase14_outputs(
     _write_json(_jsonable(metrics), paths["trajectory_metrics"])
     _write_json({"case_studies": _jsonable(list(case_studies))}, paths["case_studies"])
     paths["latex_appendix"].write_text(latex, encoding="utf-8")
-    paths["chinese_discussion"].write_text(chinese, encoding="utf-8")
+    paths["discussion"].write_text(discussion, encoding="utf-8")
     return paths
 
 
@@ -236,8 +236,8 @@ def _markdown_metrics_summary(metrics: Mapping[str, Any]) -> str:
     names = ", ".join(f"`{name}`" for name in metrics.get("metric_names", []))
     return "\n".join(
         [
-            f"- 指标族：{names}",
-            f"- 轨迹数：{int(diagnostics.get('sequence_count') or 0)}；valid-scored 轨迹数：{int(diagnostics.get('valid_scored_sequence_count') or 0)}",
+            f"- Metric families: {names}",
+            f"- Sequences: {int(diagnostics.get('sequence_count') or 0)}; valid-scored sequences: {int(diagnostics.get('valid_scored_sequence_count') or 0)}",
         ]
     )
 
@@ -245,15 +245,15 @@ def _markdown_metrics_summary(metrics: Mapping[str, Any]) -> str:
 def _markdown_metric_definitions() -> str:
     return "\n".join(
         [
-            "| Metric | 定义 | 分母/作用域 | 解释方式 |",
+            "| Metric | Definition | Denominator / Scope | Interpretation |",
             "| --- | --- | --- | --- |",
-            "| `DeltaVerifyShare` | `verify` 在正确轨迹动作占比减去其在错误轨迹动作占比。 | 每个 harness 内的 `valid_scored` 且 `correct` 为布尔值的事件序列；动作占比按事件数计算。 | 正值表示正确轨迹更偏向显式核查；负值表示错误轨迹核查占比更高或核查未转化为正确答案。 |",
-            "| `DeltaToolUseShare` | `tool_use` 在正确轨迹动作占比减去其在错误轨迹动作占比。 | 同上，只读取 canonical action 为 `tool_use` 的事件。 | 正值表示工具调用更集中在正确轨迹；0 表示没有工具事件或正确/错误占比相同。 |",
-            "| `AnswerAfterVerificationRate` | 是否存在先 `verify` 后 `answer` 的动作序列。 | 所有 valid-scored 正确轨迹与错误轨迹分别计算比例。 | 衡量回答是否经过显式核查；报告同时给出正确率差。 |",
-            "| `ErrorRecoveryRate` | 是否在失败、错误、超时或截断 observation 后出现 `recover`。 | 所有 valid-scored 正确轨迹与错误轨迹分别计算比例。 | 衡量错误观察后的恢复链路；没有触发样本时比例为 0。 |",
-            "| `PrematureAnswerRate` | 首个 `answer` 出现前没有 `verify`。 | 所有 valid-scored 正确轨迹与错误轨迹分别计算比例。 | 衡量未验证先答的模式；由于 DirectLLM 是直接回答基线，该指标会天然偏高。 |",
-            "| `MotifOutcomeLift` | `P(correct | motif)` 减去 `P(correct | no motif)`。 | 所有 valid-scored 轨迹；每个 motif 独立计算。 | 正值表示该 motif 与更高正确率相关；不是因果结论。 |",
-            "| `FailureCostRatio` | `error_records / valid_scored`。 | 每个 harness 的全部序列与 inventory 中的错误状态记录。 | 衡量可用性成本；运行错误不混入正确/错误行为对比。 |",
+            "| `DeltaVerifyShare` | Correct-trajectory `verify` action share minus wrong-trajectory share. | Per-harness `valid_scored` sequences with boolean `correct`; action shares use event counts. | Positive values indicate more explicit verification in correct trajectories; negative values indicate a higher verification share in wrong trajectories or verification without a correct answer. |",
+            "| `DeltaToolUseShare` | Correct-trajectory `tool_use` action share minus wrong-trajectory share. | Same scope, restricted to canonical `tool_use` events. | Positive values indicate a higher tool-use share in correct trajectories; zero indicates no tool events or equal shares. |",
+            "| `AnswerAfterVerificationRate` | Whether a sequence contains `verify` before `answer`. | Rates are computed separately for correct and wrong valid-scored trajectories. | Measures explicit verification before answering; the report also gives the correct/wrong rate difference. |",
+            "| `ErrorRecoveryRate` | Whether `recover` follows a failed, erroneous, timed-out, or truncated observation. | Rates are computed separately for correct and wrong valid-scored trajectories. | Measures recovery after an error observation; the rate is zero when no samples trigger recovery. |",
+            "| `PrematureAnswerRate` | No `verify` before the first `answer`. | Rates are computed separately for correct and wrong valid-scored trajectories. | Measures answering before verification; the direct-answer DirectLLM baseline naturally has a high rate. |",
+            "| `MotifOutcomeLift` | `P(correct | motif)` minus `P(correct | no motif)`. | All valid-scored trajectories; each motif is computed independently. | Positive values indicate association with higher accuracy, rather than a causal effect. |",
+            "| `FailureCostRatio` | `error_records / valid_scored`. | All sequences per harness and error-status records in the inventory. | Measures availability cost; runtime errors remain separate from correct/wrong behavior comparisons. |",
         ]
     )
 
@@ -286,7 +286,7 @@ def _markdown_action_delta_table(metrics: Mapping[str, Any]) -> str:
     if not selected:
         return ""
     lines = [
-        "### 正确/错误动作占比差",
+        "### Correct/Wrong Action Share Differences",
         "",
         "| Harness | Action | Correct share | Incorrect share | Delta |",
         "| --- | --- | ---: | ---: | ---: |",
@@ -309,7 +309,7 @@ def _markdown_motif_rate_table(metrics: Mapping[str, Any]) -> str:
     if not isinstance(rows, list) or not rows:
         return ""
     lines = [
-        "### Motif 正确/错误轨迹发生率",
+        "### Motif Rates in Correct/Wrong Trajectories",
         "",
         "| Metric | Motif | Correct rate | Incorrect rate | Delta | N(correct/incorrect) |",
         "| --- | --- | ---: | ---: | ---: | ---: |",
@@ -401,9 +401,9 @@ def _markdown_pooled_distribution_table(metrics: Mapping[str, Any]) -> str:
     if not isinstance(rows, list) or not rows:
         return ""
     lines = [
-        "### 诊断性 pooled action distribution",
+        "### Diagnostic Pooled Action Distribution",
         "",
-        "这张表跨 harness 汇总所有序列，只用于检查动作生态的总体形状，不作为 headline 行为结论。",
+        "This table pools all sequences across harnesses to inspect the overall action ecology as a diagnostic.",
         "",
         "| Action | Events | Share |",
         "| --- | ---: | ---: |",
@@ -422,7 +422,7 @@ def _markdown_metric_takeaways(metrics: Mapping[str, Any]) -> str:
     motif_rows = metrics.get("motif_metrics")
     lift_rows = metrics.get("motif_outcome_lift")
     failure_rows = metrics.get("failure_cost")
-    lines = ["### 解读要点", ""]
+    lines = ["### Interpretation Notes", ""]
 
     tool_rows = [
         row
@@ -435,7 +435,7 @@ def _markdown_metric_takeaways(metrics: Mapping[str, Any]) -> str:
             key=lambda row: float(row.get("delta_correct_minus_incorrect") or 0.0),
         )
         lines.append(
-            "- `DeltaToolUseShare` 最大的是 `{}`（{}），说明工具使用在该 harness 的正确轨迹中更集中。".format(
+            "- `{}` has the largest `DeltaToolUseShare` ({}), indicating a higher tool-use share in its correct trajectories.".format(
                 strongest_tool.get("harness", ""),
                 _signed_pct(strongest_tool.get("delta_correct_minus_incorrect")),
             )
@@ -456,7 +456,7 @@ def _markdown_metric_takeaways(metrics: Mapping[str, Any]) -> str:
             key=lambda row: float(row.get("delta_correct_minus_incorrect") or 0.0),
         )
         lines.append(
-            "- `DeltaVerifyShare` 范围从 `{}` 的 {} 到 `{}` 的 {}；负值不表示没有验证，而是错误轨迹中的验证占比更高或验证未带来正确答案。".format(
+            "- `DeltaVerifyShare` ranges from `{}` ({}) to `{}` ({}); negative values indicate more verification in wrong trajectories or verification without a correct answer.".format(
                 weakest_verify.get("harness", ""),
                 _signed_pct(weakest_verify.get("delta_correct_minus_incorrect")),
                 strongest_verify.get("harness", ""),
@@ -470,7 +470,7 @@ def _markdown_metric_takeaways(metrics: Mapping[str, Any]) -> str:
         premature = _find_metric_row(motif_rows, "PrematureAnswerRate")
         if grounded:
             lines.append(
-                "- `tool_grounded_reasoning` 在正确轨迹中的发生率为 {}，错误轨迹为 {}，差值 {}，是当前 motif rate 中最强的正向差异。".format(
+                "- `tool_grounded_reasoning` occurs in {} of correct trajectories and {} of wrong trajectories (difference {}), the largest positive motif-rate difference.".format(
                     _pct(grounded.get("correct")),
                     _pct(grounded.get("incorrect")),
                     _signed_pct(grounded.get("delta_correct_minus_incorrect")),
@@ -478,13 +478,13 @@ def _markdown_metric_takeaways(metrics: Mapping[str, Any]) -> str:
             )
         if verified:
             lines.append(
-                "- `AnswerAfterVerificationRate` 的正确/错误差为 {}，提示“先验证再回答”与正确结果正相关。".format(
+                "- The correct/wrong `AnswerAfterVerificationRate` difference is {}, indicating a positive association between verification before answering and correct outcomes.".format(
                     _signed_pct(verified.get("delta_correct_minus_incorrect"))
                 )
             )
         if premature:
             lines.append(
-                "- `PrematureAnswerRate` 接近饱和（正确 {}，错误 {}），主要反映直接回答基线和多数轨迹都会产生未验证首答；它更适合做风险提示，而不是单独解释正确率。".format(
+                "- `PrematureAnswerRate` is nearly saturated (correct {}, wrong {}), reflecting unverified first answers in the direct baseline and most trajectories. Treat it as a risk indicator alongside other accuracy evidence.".format(
                     _pct(premature.get("correct")),
                     _pct(premature.get("incorrect")),
                 )
@@ -503,7 +503,7 @@ def _markdown_metric_takeaways(metrics: Mapping[str, Any]) -> str:
                 lift_candidates, key=lambda row: float(row.get("lift") or 0.0)
             )
             lines.append(
-                "- `MotifOutcomeLift` 最大的可比较 motif 是 `{}`（{}，with/without={}/{}）。这是相关性证据，不应解读成因果提升。".format(
+                "- `{}` has the largest comparable `MotifOutcomeLift` ({}, with/without={}/{}), measuring association with correctness.".format(
                     strongest_lift.get("motif", ""),
                     _signed_pct(strongest_lift.get("lift")),
                     int(strongest_lift.get("with_motif_n") or 0),
@@ -511,12 +511,12 @@ def _markdown_metric_takeaways(metrics: Mapping[str, Any]) -> str:
                 )
             )
 
-    if isinstance(failure_rows, list):
+    if isinstance(failure_rows, list) and failure_rows:
         worst_failure = max(
             failure_rows, key=lambda row: float(row.get("failure_cost_ratio") or 0.0)
         )
         lines.append(
-            "- `FailureCostRatio` 最高的是 `{}`（{}，{} 个错误记录），因此 readiness 成本主要来自该 harness；这些错误没有混入 valid-scored 行为对比。".format(
+            "- `{}` has the highest `FailureCostRatio` ({}, {} error records) and contributes the largest readiness cost. These errors are separate from valid-scored behavior comparisons.".format(
                 worst_failure.get("harness", ""),
                 _pct(worst_failure.get("failure_cost_ratio")),
                 int(worst_failure.get("error_records") or 0),
@@ -598,7 +598,7 @@ def _latex_measurement_insights(metrics: Mapping[str, Any]) -> str:
 def _markdown_measurement_insights(metrics: Mapping[str, Any]) -> str:
     insights = _measurement_insights(metrics)
     if not insights.get("available"):
-        return "未找到 `scripts/paper_analysis/data/measurement_summary.json`，本次报告只包含轨迹动作指标。"
+        return "`scripts/paper_analysis/data/measurement_summary.json` was not found; this report contains trajectory action metrics only."
 
     low = insights.get("low_entropy_long_collapse", {})
     inversion = insights.get("confidence_inversion", {})
@@ -615,22 +615,22 @@ def _markdown_measurement_insights(metrics: Mapping[str, Any]) -> str:
     )
 
     lines = [
-        "这些指标来自 `scripts/paper_analysis/data/measurement_summary.json`，补充 entropy、tool-boundary state shift、verification conversion、operational tax、paired gain 和 scaffold dominance。",
+        "Metrics from `scripts/paper_analysis/data/measurement_summary.json` add entropy, tool-boundary state shift, verification conversion, operational tax, paired gain, and scaffold dominance.",
         "",
         "| Insight | Metric | Key value | Interpretation |",
         "| --- | --- | ---: | --- |",
-        "| Low-entropy long collapse | `LowEntropyLongCollapseRate` | {} wrong, n={} | 低 entropy 只有和长输出同时出现时才是 collapse 风险信号。 |".format(
+        "| Low-entropy long collapse | `LowEntropyLongCollapseRate` | {} wrong, n={} | Low entropy combined with long output signals collapse risk. |".format(
             _pct(low.get("wrong_rate")),
             int(low.get("n") or 0),
         ),
-        "| Confidence inversion | `ConfidenceInversion` | {} at entropy <= {} | 最低 entropy 子集反而更容易错，说明不是普通 confidence calibration。 |".format(
+        "| Confidence inversion | `ConfidenceInversion` | {} at entropy <= {} | The lowest-entropy subset has more errors, indicating inverted confidence ranking. |".format(
             _signed_pct(inversion.get("inversion_lift")),
             _ratio(inversion.get("entropy_threshold")),
         ),
     ]
     if strongest_turn:
         lines.append(
-            "| Post-tool state shift | `PostToolEntropySeparation` | {} at `{}` | 工具结果后正确/错误轨迹的 entropy 才明显分叉。 |".format(
+            "| Post-tool state shift | `PostToolEntropySeparation` | {} at `{}` | Correct/wrong trajectory entropy separates after tool results. |".format(
                 _signed_ratio(strongest_turn.get("separation_gain_vs_baseline")),
                 strongest_turn.get("turn_label", ""),
             )
@@ -641,7 +641,7 @@ def _markdown_measurement_insights(metrics: Mapping[str, Any]) -> str:
             key=lambda row: float(row.get("verify_before_answer_lift") or 0.0),
         )
         lines.append(
-            "| Verification conversion | `VerificationConversionRate` | {} for `{}` | 只看 verify rate 不够，要看 verify 是否在 answer 前并触发后续动作变化。 |".format(
+            "| Verification conversion | `VerificationConversionRate` | {} for `{}` | Track whether verification precedes the answer and triggers a subsequent action change. |".format(
                 _signed_pct(strongest_verification.get("verify_before_answer_lift")),
                 strongest_verification.get("harness", ""),
             )
@@ -655,7 +655,7 @@ def _markdown_measurement_insights(metrics: Mapping[str, Any]) -> str:
             operational_rows, key=lambda row: float(row.get("operational_tax") or 0.0)
         )
         lines.append(
-            "| Operational tax | `OperationalTaxAdjustedAccuracy` | best deployable `{}` {}; max tax `{}` {} | scaffold 收益必须同时扣除非 valid 的系统成本。 |".format(
+            "| Operational tax | `OperationalTaxAdjustedAccuracy` | best deployable `{}` {}; max tax `{}` {} | Scaffold gains must account for system costs from non-valid records. |".format(
                 deployable.get("harness", ""),
                 _pct(deployable.get("deployable_accuracy")),
                 taxed.get("harness", ""),
@@ -667,7 +667,7 @@ def _markdown_measurement_insights(metrics: Mapping[str, Any]) -> str:
             paired_rows, key=lambda row: int(row.get("paired_net_gain") or 0)
         )
         lines.append(
-            "| Paired rescue/regression | `PairedNetGain` | `{}` {:+d} | agent harness 会 rescue 也会 regression，不能只报 aggregate accuracy。 |".format(
+            "| Paired rescue/regression | `PairedNetGain` | `{}` {:+d} | Agent harnesses produce both rescues and regressions; report paired changes alongside aggregate accuracy. |".format(
                 best_gain.get("harness", ""),
                 int(best_gain.get("paired_net_gain") or 0),
             )
@@ -678,7 +678,7 @@ def _markdown_measurement_insights(metrics: Mapping[str, Any]) -> str:
             key=lambda row: float(row.get("canonical_action_jsd") or 0.0),
         )
         lines.append(
-            "| Scaffold dominance | `ScaffoldDominance` | JSD {} for `{}` vs `{}` | 跨 harness accuracy 先要报告 action-space distance。 |".format(
+            "| Scaffold dominance | `ScaffoldDominance` | JSD {} for `{}` vs `{}` | Report action-space distance before comparing accuracy across harnesses. |".format(
                 _ratio(strongest_distance.get("canonical_action_jsd")),
                 strongest_distance.get("harness_a", ""),
                 strongest_distance.get("harness_b", ""),
@@ -709,7 +709,7 @@ def _find_metric_row(rows: Sequence[Any], metric_name: str) -> Mapping[str, Any]
 
 def _markdown_case_studies(case_studies: Sequence[Mapping[str, Any]]) -> str:
     if not case_studies:
-        return "暂无可选案例。"
+        return "No case studies are available."
     lines = []
     for case in case_studies[:8]:
         motifs = ", ".join(str(motif) for motif in case.get("motifs", [])) or "none"
