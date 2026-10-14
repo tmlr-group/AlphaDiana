@@ -1,55 +1,47 @@
 # AlphaDiana: A Measurement System for Agents in Verifiable Reasoning Tasks
 
-**AlphaDiana** is an open-source measurement system for **LLM-based agents on verifiable reasoning tasks**. It connects benchmarks, agents, environments, and scorers through modular interfaces while preserving native harness control loops. Saved results link evaluation outcomes to execution status, available trajectories, and resource use.
+**AlphaDiana** is an open-source measurement system for **LLM-based agents on verifiable reasoning tasks**. It runs configured agents against benchmarks, scores their outputs, and saves execution evidence. Researchers can compare correctness, execution failures, action patterns, and resource use across recorded conditions.
 
 ![Position of AlphaDiana](docs/assets/alphadiana-motivation.png)
 
+*A model, its harness, and its execution settings jointly shape an agent's behavior. AlphaDiana measures the resulting agent through task outcomes and execution evidence.*
+
 ## Why AlphaDiana?
 
-Reasoning performance in agent systems depends on more than the base model alone. It is also shaped by the **agent framework, tool interface, execution environment, and evaluation protocol**.
+AlphaDiana connects final scores with saved trajectories, failures, and resource measurements. It supports three research tasks:
 
-AlphaDiana supports comparisons of complete agents and controlled changes to components such as tools, skills, and memory. It measures answer correctness alongside execution failures, action patterns, and resource costs under recorded task and runtime settings.
+- **Compare complete agents.** Evaluate native harnesses against a direct LLM baseline under recorded task, model, environment, and budget settings.
+- **Inspect execution.** Connect correct and incorrect answers to execution status, available traces, token usage, and elapsed time.
+- **Compare component settings.** Examine how changes to tools, skills, and memory affect outcomes and execution patterns.
 
-![AlphaDiana executes configured agents, saves artifacts, and measures outcomes, failures, resource use, and component interventions.](docs/assets/alphadiana-overview.png)
-
-*Overview from the latest shared draft (Figure 2).*
-
-With AlphaDiana, you can:
-- evaluate native harnesses such as **OpenClaw, OpenCode, and ZeroClaw**
-- compare against a **direct LLM baseline**
-- run evaluations with **sandboxed execution**
-- benchmark on **AIME 2026, GPQA-Diamond, HLE, IMO-AnswerBench, MMMU-Pro, SWE-bench Verified, Terminal-Bench 2, and custom tasks**
-- record and inspect **full execution traces**
-- launch and compare runs through both **CLI and dashboard**
-
-Typical questions AlphaDiana helps answer:
-- How much does an agent improve over the base model?
-- How well does it perform on a target benchmark?
-- How much do tools and sandbox settings affect results?
-- What failure modes appear in execution traces?
-
-## Key Features
-
-- **Standardized evaluation** for reproducible benchmarking of agentic reasoning systems  
-- **Native harness adapters** for multi-turn reasoning with tool use and code execution
-- **ROCK sandbox integration** for safe, isolated execution  
-- **Direct LLM baseline** for clean agent-vs-model comparison  
-- **Built-in benchmarks** covering AIME 2026, GPQA-Diamond, HLE, IMO-AnswerBench, MMMU-Pro, SWE-bench Verified, Terminal-Bench 2, and custom tasks
-- **Full trace logging** for debugging, inspection, and analysis  
-- **Web dashboard** for launching, monitoring, and comparing runs  
-- **Automatic sandbox management** with configurable concurrency
+Built-in benchmarks cover **AIME 2026, GPQA-Diamond, HLE, IMO-AnswerBench, MMMU-Pro, SWE-bench Verified, and Terminal-Bench 2**. Custom tasks can use the same execution and scoring interfaces.
 
 ## How it works
 
+![AlphaDiana connects configured execution with saved evidence and analysis.](docs/assets/alphadiana-overview.png)
+
+*The upper panel connects agent configuration, benchmark tasks, and execution. The lower panels show benchmark scores, failure patterns, resource use, and component comparisons from the paper experiments.*
+
+The evaluation and analysis stages follow one evidence path:
+
+1. **Configure.** Select tasks, agents (model and harness), environments, scorers, and execution budgets.
+2. **Execute and score.** The runner coordinates sessions and native harness execution. Scorers evaluate task outputs.
+3. **Save evidence.** Result records link scores and execution status to retained outputs, available traces, and resource measurements.
+4. **Analyze and export.** Read saved evidence to compare runs, inspect execution, and produce tables and figures.
+
 ![AlphaDiana system design: configuration, runner, session management, native agent runtimes, inference endpoints, and artifact analysis.](docs/assets/alphadiana-system.png)
 
-Configuration selects tasks, agents (model and harness), environments, and scorers. The runner coordinates sessions and native harness execution, then saves available outputs, execution status, and scores for analysis. Model endpoints are separate from the environments that execute tools; file reuse and memory retention are recorded separately. See [Architecture](docs/architecture/README.md) for implementation details.
+*The runner coordinates configured sessions while native harnesses retain their control loops. Model endpoints supply inference; execution environments run tools. Saved artifacts connect execution to scoring and analysis. File reuse and memory retention are recorded separately.*
+
+See [Architecture](docs/architecture/README.md) for the component interfaces and session lifecycle.
 
 ## Quick Start
 
+This example runs one AIME 2026 task with one sample, then reads the saved result.
+
 ### 1. Install
 
-The commands below assume a Linux shell and Python 3.10 or newer. You also need an OpenAI-compatible model endpoint, its model ID, and an API key. The direct-model check needs no container runtime; the OpenCode example requires Podman and the controller image built below.
+Python 3.10 or newer is required. Native harnesses have additional runtime prerequisites, described in [Native harnesses](#native-harnesses).
 
 ```bash
 git clone https://github.com/tmlr-group/AlphaDiana.git
@@ -59,21 +51,19 @@ source .venv/bin/activate
 pip install -e '.[analysis,benchmarks,agents]'
 ```
 
-### 2. Configure your model
+### 2. Configure the model endpoint
 
-Replace the placeholders with your provider's values. Set these variables in the same terminal used to run the examples; in a new terminal, activate `.venv` and set them again.
+The following commands use the **Qwen3.5-27B experiment preset**. Set the model name to the ID served by your Qwen endpoint:
 
 ```bash
 export OPENAI_BASE_URL="https://your-provider.example/v1"
 export OPENAI_API_KEY="your-api-key"
-export OPENAI_MODEL_NAME="your-model-id"
+export OPENAI_MODEL_NAME="Qwen/Qwen3.5-27B"
 ```
 
-LLM judges also require an explicitly configured endpoint, key and model. `OPENAI_MODEL` takes precedence over `OPENAI_MODEL_NAME` for judging. Offline analysis requires no model service. Optional Analyzer judgments can use separate `ANALYSIS_MODEL`, `ANALYSIS_BASE_URL` and `ANALYSIS_API_KEY` settings. See [Python API and analysis](docs/getting-started/python-api.md) for composition, saved-run analysis and model annotations.
+The endpoint must support this preset's streaming, logprobs, and `extra_body.chat_template_kwargs.enable_thinking` fields. The preset sets `temperature=0.0`, `top_p=0.95`, and a 32768-token output budget. For another model or endpoint, select or adapt a configuration through the [Configuration guide](docs/configuration/README.md).
 
-### 3. Check the direct-model baseline
-
-This runs one AIME problem without an agent harness or ROCK. The checked-in configuration uses Qwen-style thinking options and requests log probabilities; use a compatible endpoint or adapt those options in the YAML to your provider before running it.
+### 3. Validate and run
 
 ```bash
 alphadiana validate configs/macro_runs/aime2026_directllm_qwen35_27b.yaml \
@@ -84,11 +74,25 @@ alphadiana run configs/macro_runs/aime2026_directllm_qwen35_27b.yaml \
   -o num_samples=1
 ```
 
-<a id="use-the-python-api"></a>
+`validate` checks the configuration locally. `run` downloads or loads the benchmark tasks and calls the configured model endpoint.
 
-### 4. Use the Python API
+### 4. Inspect the saved result
 
-Run OpenCode on three AIME 2026 problems, score its answers, and export the analysis from Python. From the repository root, build its controller image once with a working Podman installation:
+The run writes `results/quickstart_aime_directllm_t1_k1.jsonl` and linked execution artifacts. Print a Markdown report from the saved results:
+
+```bash
+alphadiana report results/
+```
+
+To save the report, use `alphadiana report results/ > report.md`. Start with each record's `score_status`, score, and execution status. See [Getting Started](docs/getting-started/quick-start.md) for the full walkthrough and [Troubleshooting](docs/getting-started/troubleshooting.md) for setup failures.
+
+## Python API
+
+The Python API composes the same Runner and component registries as the CLI. This example runs OpenCode on three AIME 2026 problems, scores its answers, and exports analysis from the saved evidence. It uses the provider environment variables from Quick Start and the agent's default execution settings.
+
+### Build the OpenCode controller image
+
+With a working Podman installation, run this command from the repository root:
 
 ```bash
 podman build \
@@ -97,11 +101,11 @@ podman build \
   alphadiana/harness/opencode/deploy
 ```
 
-The image pins OpenCode 1.3.2. The example uses the model service settings above; see the [Podman setup guide](docs/benchmarks/podman.md) for runtime checks.
+This builds a local container image from [`Containerfile.podman-controller`](alphadiana/harness/opencode/deploy/Containerfile.podman-controller). The recipe starts from Ubuntu 22.04 and installs Node.js 22, OpenCode **1.3.2**, and task tools. The final directory supplies the build context; `-t` assigns the image name `localhost/alphadiana-opencode-podman:latest`.
 
-![Figure 4: Functional interface of AlphaDiana, reproduced from the draft.](docs/assets/alphadiana-interface.png)
+Use that same image name in `controller_image` below. OpenCode runs inside this controller and calls the configured model endpoint for inference. See the [Podman setup guide](docs/benchmarks/podman.md) for runtime checks.
 
-The original manuscript figure illustrates the workflow; some API spellings still differ from the implementation. Use the executable example below: the harness name and version are separate, dataset paths specify `benchmark=`, and scorer construction uses `ad.scorer.create(...)`. OpenCode manages its own Podman controller, so this example does not pass `env="sandbox"`.
+### Run and analyze
 
 ```python
 import alphadiana as ad
@@ -123,25 +127,126 @@ artifacts = ad.runner(run_id="aime_opencode_demo").compute(
 ad.analyzer(artifacts).export("figures/aime_opencode_demo")
 ```
 
-This uses the provider environment settings above. Results and execution evidence are saved under `results/`; analysis exports include tables and PDF/SVG/PNG figures. See [Python API and analysis](docs/getting-started/python-api.md) for reopening, rescoring and comparing saved runs. Native harnesses still require their own container/runtime configuration.
+Results and execution evidence are saved under `results/`. The final line performs offline analysis and exports tables and PDF/SVG/PNG figures.
 
-### 5. Print a report
+![AlphaDiana functional interface: agent, dataset, environment, scorer, runner, and analysis composition.](docs/assets/alphadiana-interface.png)
 
-```bash
-alphadiana report results/
+*Functional interface from the AlphaDiana manuscript (Figure 4), rendered from `AlphaDiana-interface.pdf`. It connects execution components to analysis outputs; see [figure sources](docs/assets/README.md) for the source file and hashes.*
+
+The executable example above uses the current API: `ad.scorer.create(...)`, explicit harness `version=` values, and `benchmark=` for dataset hub paths. OpenCode manages its own Podman controller through `controller_mode` and `controller_image`. For harnesses that accept a separate environment, create a specification with `ad.environment(...)` and pass it to `ad.runner(env=...)`. See [Python API and analysis](docs/getting-started/python-api.md) for supported backends, saved-run analysis, rescoring, and component extensions.
+
+## Native harnesses
+
+Choose a harness and follow its runtime guide before running the corresponding experiment configuration. Native harnesses own their reasoning and tool-use loops; AlphaDiana coordinates tasks, captures available evidence, and applies the configured scorer.
+
+| Harness | Setup and execution entry point |
+|---|---|
+| **OpenClaw** | [Gateway and runtime guide](docs/harnesses/openclaw.md) |
+| **OpenCode** | [Native runtime guide](docs/harnesses/opencode.md) |
+| **ZeroClaw** | [Native runtime guide](docs/harnesses/zeroclaw.md) |
+| **SWE-Agent** | [SWE-bench Verified Mini runbook](docs/benchmarks/swebench-verified-mini.md) |
+| **Terminus2** | [Terminal-Bench 2 and Harbor runbook](docs/benchmarks/terminal-bench-2.md) |
+
+See the [Harnesses index](docs/harnesses/README.md) for adapters and the [Benchmarks index](docs/benchmarks/README.md) for task-specific setup. The [API acceptance matrix](configs/acceptance/api/README.md) documents explicit benchmark/harness combinations, runtime identities, and verification requirements.
+
+## Analysis and outputs
+
+Evaluation and analysis produce three kinds of output:
+
+| Output | What it contains |
+|---|---|
+| Result JSONL and linked artifacts | Task outputs, scores, execution status, runtime settings, available traces, and usage counters |
+| Markdown report | A summary of saved evaluation outcomes from `alphadiana report` |
+| Analysis export | Measurement tables, PDF/SVG/PNG figures, plotted data, source hashes, and coverage information |
+
+**Scoring** determines whether an answer satisfies the configured task evaluator. **Offline analysis** reads saved results to compute performance, reliability, resource use, and entropy where probability evidence is available. Reopen the Quick Start result in a separate Python session:
+
+```python
+import alphadiana as ad
+
+ad.analyzer("results/quickstart_aime_directllm_t1_k1.jsonl").export(
+    "figures/quickstart_aime"
+)
 ```
 
-`alphadiana report` prints Markdown to standard output. Redirect it when you want a file, for example: `alphadiana report results/ > report.md`.
+**Model annotations** label actions and failures from saved trajectories. Configure the analysis model, then enable these additional model calls with `judge=True`:
 
-For a full walkthrough, see [Getting Started](docs/getting-started/quick-start.md). For the documentation entry point, see [Welcome to AlphaDiana](docs/README.md). For Podman-backed paths, start from the matching page under [Benchmarks](docs/benchmarks/README.md). For manual setup and recovery, see [Installation](docs/getting-started/installation.md) and [Troubleshooting](docs/getting-started/troubleshooting.md). For ZeroClaw, see the [harness guide](docs/harnesses/zeroclaw.md) and [AIME benchmark page](docs/benchmarks/aime.md).
+```bash
+export ANALYSIS_BASE_URL="https://your-provider.example/v1"
+export ANALYSIS_API_KEY="your-api-key"
+export ANALYSIS_MODEL="your-analysis-model-id"
+```
 
-## Repository map
+```python
+ad.analyzer(
+    "results/quickstart_aime_directllm_t1_k1.jsonl", judge=True
+).export("figures/quickstart_aime_annotated")
+```
+
+Coverage records identify the evidence available for each measurement. Post-tool entropy uses requests following tool feedback; native tool-use runs provide those trajectories. The [Python API and analysis guide](docs/getting-started/python-api.md) describes measurement requirements, judge configuration, and cache provenance.
+
+For comparisons, inspect the scorer identity, expected sample count, recorded `isolation_mode`, and execution budget. Read Pass@k and Avg@k with the configured `num_samples`. The [Results](docs/results.md) page presents selected paper tables and process-analysis figures.
+
+## Dashboard
+
+The dashboard lets you launch evaluations, monitor job logs, inspect trajectories, and compare saved runs. From the repository root, with your Python environment active:
+
+```bash
+pip install -e '.[dashboard]'
+cd alphadiana/dashboard/frontend
+npm install
+cd ../../..
+cd alphadiana/dashboard
+./run.sh
+```
+
+Open the frontend URL printed by the launcher. See [Dashboard](docs/dashboard.md) for production mode, data directories, and supported ROCK sandbox controls.
+
+<p align="center">
+  <img src="./docs/assets/dashboard_0.png" width="50%" alt="Dashboard — New Evaluation">
+  <img src="./docs/assets/dashboard_2.png" width="47%" alt="Dashboard — Results view">
+</p>
+
+*Configure a run in New Evaluation (left) and inspect saved runs in the Results view (right). The dashboard connects run setup, monitoring, and result inspection.*
+
+## Documentation
+
+| Your next task | Entry point |
+|---|---|
+| Find the main concepts and guides | [Welcome](docs/README.md) |
+| Install, run, or troubleshoot | [Getting Started](docs/getting-started/README.md) |
+| Select a native harness | [Harnesses](docs/harnesses/README.md) |
+| Set up a benchmark and its verifier | [Benchmarks](docs/benchmarks/README.md) |
+| Configure an experiment | [Configuration](docs/configuration/README.md) and [experiment presets](configs/README.md) |
+| Compose, reopen, rescore, or analyze through Python | [Python API and analysis](docs/getting-started/python-api.md) |
+| Inspect the implementation | [Architecture](docs/architecture/README.md), [analysis modules](alphadiana/analysis/README.md), and [operator workflows](scripts/README.md) |
+
+<details>
+<summary>CLI reference</summary>
+
+| Command | Description |
+|---|---|
+| `alphadiana env` | Check configured service health |
+| `alphadiana run <config.yaml>` | Run an evaluation |
+| `alphadiana validate <config.yaml>` | Validate a config locally |
+| `alphadiana report <results_dir>` | Print Markdown reports from saved result JSONL files |
+| `alphadiana batch <config1> <config2> ...` | Run multiple experiments |
+| `alphadiana list-benchmarks` | List the benchmark registry used by the Runner |
+
+Use `-o key=value` to override configuration values, for example `-o max_concurrent=4`.
+
+</details>
+
+<details>
+<summary>Repository map</summary>
 
 ```text
 alphadiana/
+  cli/           # command-line entry points
   engine/        # execution, configuration, and rollout campaigns
   harness/       # agent implementations and runtime skills
   benchmarks/    # task loaders and official verifier integrations
+  scorer/        # answer evaluation and scorer interfaces
   results/       # persistence, traces, score status, and sample statistics
   analysis/      # measurement plugins, Analyzer composition, and exports
   dashboard/     # React frontend and FastAPI backend
@@ -149,80 +254,13 @@ scripts/
   setup/         # environment and dependency setup
   validation/    # preflight, smoke tests, and evaluator audits
   action_audit/  # human action annotation and agreement
-  paper_analysis/# archived paper inputs and plotting workflows
+  paper_analysis/ # archived paper inputs and plotting workflows
 tests/           # grouped by analysis, API, engine, harness, and benchmark
 configs/         # experiment configurations
 docs/            # guides, contracts, and documentation assets
 ```
 
-See the [analysis module map](alphadiana/analysis/README.md) and [operator workflow map](scripts/README.md) for implementation entry points.
-
-## Configuration
-
-AlphaDiana is configured with a YAML file. At a high level, you specify:
-
-- the **agent**
-- the **benchmark**
-- the **scorer**
-- the **runtime settings** such as concurrency and output directory
-
-Ready-to-run macro and micro experiments are indexed in [`configs/README.md`](configs/README.md).
-
-## CLI Reference
-
-| Command | Description |
-|---|---|
-| `alphadiana env` | Check service health before running |
-| `alphadiana run <config.yaml>` | Run an evaluation |
-| `alphadiana validate <config.yaml>` | Validate a config without running |
-| `alphadiana report <results_dir>` | Print Markdown reports from saved result JSONL files |
-| `alphadiana batch <config1> <config2> ...` | Run multiple experiments |
-| `alphadiana list-benchmarks` | List the complete benchmark registry used by the Runner |
-
-Use `-o key=value` to override config values from the command line (e.g., `-o max_concurrent=4`).
-
-## Results and analysis
-
-AlphaDiana treats a score as a property of the model, harness, task, scorer, environment, and budget together. The [Results](docs/results.md) document presents selected draft tables and process-analysis figures; reports from saved results can be regenerated with `alphadiana report <results_dir>`.
-
-When reviewing a result, start from `score_status`, scorer identity, expected sample count, and the recorded `isolation_mode`. Report Pass@k and Avg@k with the configured `num_samples`; do not compare rows whose runtime or evaluation contracts differ.
-
-## Dashboard
-
-AlphaDiana includes a web dashboard for launching, monitoring, and comparing evaluation runs without manually editing YAML or inspecting raw JSONL files.
-
-Dashboard dependencies are optional and are not installed by `quickstart.sh`:
-
-```bash
-pip install -e '.[dashboard]'
-cd alphadiana/dashboard/frontend && npm install
-```
-
-<p align="center">
-  <img src="./docs/assets/dashboard_0.png" width="50%" alt="Dashboard — Results view">
-  <img src="./docs/assets/dashboard_2.png" width="47%" alt="Dashboard — New Evaluation">
-</p>
-
-### Dashboard features
-
-- browse run history
-- compare multiple runs side by side
-- launch evaluations through forms
-- monitor job progress with real-time logs
-- manage ROCK sandboxes
-
-## Documentation
-
-| Document | Description |
-|---|---|
-| [Welcome](docs/README.md) | Documentation entry point and concept map |
-| [Getting Started](docs/getting-started/README.md) | Installation, first run, and troubleshooting |
-| [Architecture](docs/architecture/README.md) | Runner, registries, sandboxes, scoring, and observability |
-| [Harnesses](docs/harnesses/README.md) | DirectLLM, OpenClaw, OpenCode, and ZeroClaw behavior |
-| [Benchmarks](docs/benchmarks/README.md) | Supported benchmark loaders and runbooks |
-| [Configuration](docs/configuration/README.md) | YAML schema and CLI override semantics |
-| [Results](docs/results.md) | Selected draft tables and process-analysis figures |
-| [Dashboard](docs/dashboard.md) | Launch, monitor, browse, and compare runs locally |
+</details>
 
 ## Acknowledgements
 
@@ -241,7 +279,3 @@ If you use AlphaDiana in your research, please cite:
   url={https://openreview.net/forum?id=4vARlk9o95}
 }
 ```
-
-## Python API and analysis figures
-
-Use the [composable Python API](docs/getting-started/python-api.md) to execute existing adapters, reopen artifacts, rescore saved outputs, and export analysis figures with data provenance.
