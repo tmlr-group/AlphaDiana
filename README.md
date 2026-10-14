@@ -47,9 +47,9 @@ Configuration selects tasks, agents (model and harness), environments, and score
 
 ## Quick Start
 
-### Install and configure
+### 1. Install
 
-Python 3.10 or newer is required. Container runtimes are optional for direct inference; native agent harnesses have their own runtime prerequisites.
+The commands below assume a Linux shell and Python 3.10 or newer. You also need an OpenAI-compatible model endpoint, its model ID, and an API key. The direct-model check needs no container runtime; the OpenCode example requires Podman and the controller image built below.
 
 ```bash
 git clone https://github.com/tmlr-group/AlphaDiana.git
@@ -57,7 +57,13 @@ cd AlphaDiana
 python -m venv .venv
 source .venv/bin/activate
 pip install -e '.[analysis,benchmarks,agents]'
+```
 
+### 2. Configure your model
+
+Replace the placeholders with your provider's values. Set these variables in the same terminal used to run the examples; in a new terminal, activate `.venv` and set them again.
+
+```bash
 export OPENAI_BASE_URL="https://your-provider.example/v1"
 export OPENAI_API_KEY="your-api-key"
 export OPENAI_MODEL_NAME="your-model-id"
@@ -65,7 +71,9 @@ export OPENAI_MODEL_NAME="your-model-id"
 
 LLM judges also require an explicitly configured endpoint, key and model. `OPENAI_MODEL` takes precedence over `OPENAI_MODEL_NAME` for judging. Offline analysis requires no model service. Optional Analyzer judgments can use separate `ANALYSIS_MODEL`, `ANALYSIS_BASE_URL` and `ANALYSIS_API_KEY` settings. See [Python API and analysis](docs/getting-started/python-api.md) for composition, saved-run analysis and model annotations.
 
-### Run an evaluation
+### 3. Check the direct-model baseline
+
+This runs one AIME problem without an agent harness or ROCK. The checked-in configuration uses Qwen-style thinking options and requests log probabilities; use a compatible endpoint or adapt those options in the YAML to your provider before running it.
 
 ```bash
 alphadiana validate configs/macro_runs/aime2026_directllm_qwen35_27b.yaml \
@@ -76,27 +84,48 @@ alphadiana run configs/macro_runs/aime2026_directllm_qwen35_27b.yaml \
   -o num_samples=1
 ```
 
-### Use the Python API
+<a id="use-the-python-api"></a>
 
-The same evaluation pipeline is available from Python:
+### 4. Use the Python API
+
+Run OpenCode on three AIME 2026 problems, score its answers, and export the analysis from Python. From the repository root, build its controller image once with a working Podman installation:
+
+```bash
+podman build \
+  -f alphadiana/harness/opencode/deploy/Containerfile.podman-controller \
+  -t localhost/alphadiana-opencode-podman:latest \
+  alphadiana/harness/opencode/deploy
+```
+
+The image pins OpenCode 1.3.2. The example uses the model service settings above; see the [Podman setup guide](docs/benchmarks/podman.md) for runtime checks.
 
 ![Figure 4: Functional interface of AlphaDiana, reproduced from the draft.](docs/assets/alphadiana-interface.png)
+
+The original manuscript figure illustrates the workflow; some API spellings still differ from the implementation. Use the executable example below: the harness name and version are separate, dataset paths specify `benchmark=`, and scorer construction uses `ad.scorer.create(...)`. OpenCode manages its own Podman controller, so this example does not pass `env="sandbox"`.
 
 ```python
 import alphadiana as ad
 
-agent = ad.agent("direct_llm", version="1.0")
+# Select the agent harness and the problems to evaluate.
+agent = ad.agent(
+    "opencode", version="1.3.2", controller_mode="podman",
+    controller_image="localhost/alphadiana-opencode-podman:latest",
+)
 data = ad.dataset("MathArena/aime_2026", benchmark="aime", max_tasks=3)
 scorer = ad.scorer.create("numeric")
-artifacts = ad.runner(run_id="python_demo").compute(
+
+# Run the agent and save its answers, scores, and execution traces.
+artifacts = ad.runner(run_id="aime_opencode_demo").compute(
     agent=agent, data=data, scorer=scorer,
 )
-ad.analyzer(artifacts).export("figures/python_demo")
+
+# Analyze the saved run and export tables and figures.
+ad.analyzer(artifacts).export("figures/aime_opencode_demo")
 ```
 
 This uses the provider environment settings above. Results and execution evidence are saved under `results/`; analysis exports include tables and PDF/SVG/PNG figures. See [Python API and analysis](docs/getting-started/python-api.md) for reopening, rescoring and comparing saved runs. Native harnesses still require their own container/runtime configuration.
 
-### Print a report
+### 5. Print a report
 
 ```bash
 alphadiana report results/
