@@ -76,8 +76,6 @@ alphadiana run configs/macro_runs/aime2026_directllm_qwen35_27b.yaml \
   -o num_samples=1
 ```
 
-This DirectLLM path does not require ROCK. A successful provider call writes one scored task record; the accuracy depends on the model response and is not fixed.
-
 ### Use the Python API
 
 The same evaluation pipeline is available from Python:
