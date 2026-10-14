@@ -12,8 +12,7 @@ AlphaDiana supports comparisons of complete agents and controlled changes to com
 
 ![AlphaDiana executes configured agents, saves artifacts, and measures outcomes, failures, resource use, and component interventions.](docs/assets/alphadiana-overview.png)
 
-*Overview from the latest shared draft (Figure 2). The plotted values are paper
-results under the labeled settings, not results from the Quick Start below.*
+*Overview from the latest shared draft (Figure 2).*
 
 With AlphaDiana, you can:
 - evaluate native harnesses such as **OpenClaw, OpenCode, and ZeroClaw**
@@ -44,12 +43,7 @@ Typical questions AlphaDiana helps answer:
 
 ![AlphaDiana system design: configuration, runner, session management, native agent runtimes, inference endpoints, and artifact analysis.](docs/assets/alphadiana-system.png)
 
-Configuration selects tasks, agents, environments, and scorers. The runner
-coordinates sessions and native harness execution, then saves available outputs,
-execution status, and scores for analysis. Model endpoints are separate from the
-environments that execute tools; file reuse and memory retention are recorded
-separately. See [Architecture](docs/architecture/README.md) for implementation
-details and [figure sources](docs/assets/README.md) for the draft references.
+Configuration selects tasks, agents (model and harness), environments, and scorers. The runner coordinates sessions and native harness execution, then saves available outputs, execution status, and scores for analysis. Model endpoints are separate from the environments that execute tools; file reuse and memory retention are recorded separately. See [Architecture](docs/architecture/README.md) for implementation details.
 
 ## Quick Start
 
@@ -69,7 +63,7 @@ export OPENAI_API_KEY="your-api-key"
 export OPENAI_MODEL_NAME="your-model-id"
 ```
 
-LLM judges also require an explicitly configured endpoint, key and model. `OPENAI_MODEL` takes precedence over `OPENAI_MODEL_NAME` for judging. Offline analysis requires no model service. Optional Analyzer judgments can use separate `ANALYSIS_MODEL`, `ANALYSIS_BASE_URL` and `ANALYSIS_API_KEY` settings. See [Python API and analysis](docs/getting-started/python-api.md) for composition, saved-run analysis and optional model annotations.
+LLM judges also require an explicitly configured endpoint, key and model. `OPENAI_MODEL` takes precedence over `OPENAI_MODEL_NAME` for judging. Offline analysis requires no model service. Optional Analyzer judgments can use separate `ANALYSIS_MODEL`, `ANALYSIS_BASE_URL` and `ANALYSIS_API_KEY` settings. See [Python API and analysis](docs/getting-started/python-api.md) for composition, saved-run analysis and model annotations.
 
 ### Run an evaluation
 
