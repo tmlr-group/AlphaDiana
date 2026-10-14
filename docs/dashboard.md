@@ -18,7 +18,8 @@ From the repository root, activate the AlphaDiana environment and install the
 dashboard dependencies:
 
 ```bash
-source scripts/activate.sh
+# Activate the virtual environment used for the README quick start.
+source .venv/bin/activate
 pip install -e '.[dashboard]'
 
 cd alphadiana/dashboard/frontend

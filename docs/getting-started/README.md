@@ -4,13 +4,15 @@ This section gets you from a fresh checkout to a scored evaluation run: how to i
 
 - [Installation](./installation.md) — set up the environment, install the package, and bring up the optional ROCK sandbox.
 - [Quick Start](./quick-start.md) — validate a config and run your first Direct-LLM baseline end to end.
+- [Python API and analysis](./python-api.md) — build the OpenCode image, compose a run, reopen evidence, and export analysis.
+- [Single rollout](./single-rollout.md) — run controller-facing task executions.
 - [Troubleshooting](./troubleshooting.md) — fixes for config-validation, sandbox, and result-validity issues.
 
 ## What AlphaDiana Is
 
-AlphaDiana is an evaluation framework for foundation models and agent systems. A single YAML file fully defines a run: which agent (harness), benchmark, sandbox, and scorer to use, plus top-level controls like `run_id`, `max_concurrent`, and `num_samples`. The CLI parses that YAML into an `ExperimentConfig` dataclass and the `Runner` orchestrates loading, solving, scoring, and persistence.
+AlphaDiana is a measurement system for LLM-based agents on verifiable reasoning tasks. A single YAML file fully defines a run: which agent (harness), benchmark, sandbox, and scorer to use, plus top-level controls like `run_id`, `max_concurrent`, and `num_samples`. The CLI parses that YAML into an `ExperimentConfig` dataclass and the `Runner` orchestrates loading, solving, scoring, and persistence.
 
-The harnesses live under `alphadiana/harness/` — `direct_llm`, [openclaw](../harnesses/openclaw.md), [opencode](../harnesses/opencode.md), and [zeroclaw](../harnesses/zeroclaw.md). The engine (runner, dispatcher, sandboxes, config) lives under `alphadiana/engine/`, and scored records are written by the result store at `alphadiana/results/store.py`.
+The harnesses live under `alphadiana/harness/`; the [harness index](../harnesses/) covers DirectLLM, OpenClaw, OpenCode, ZeroClaw, SWE-Agent, Terminus2, and additional native executors. The engine (runner, dispatcher, sandboxes, config) lives under `alphadiana/engine/`, and scored records are written by the result store at `alphadiana/results/store.py`.
 
 ### Evaluation flow
 

@@ -6,12 +6,12 @@
 
 1. `ExperimentConfig.from_yaml()` loads YAML, expands environment references, applies `-o` overrides, and constructs typed component blocks.
 2. `ConfigValidator.validate()` checks component compatibility and numeric constraints.
-3. `Runner.setup()` imports built-in modules for registration side effects, resolves the configured components, calls their `setup()` methods, and creates the result store and report generator.
+3. `Runner.setup()` calls `register_builtin_components()` from `engine/components.py` for registration side effects, resolves the configured components, calls their `setup()` methods, and creates the result store and report generator.
 4. `Runner.run()` loads benchmark tasks, expands them by `num_samples`, removes checkpoint-complete samples, dispatches the remaining work, scores responses, and persists each outcome.
 5. The report generator reads persisted records and the run manifest to produce `RunSummary` and Markdown output.
 6. `Runner.teardown()` releases agent and sandbox resources.
 
-Registration is explicit: adding a backend normally does not change dispatch logic, but it does require importing the module in `Runner.setup()` so its registration call executes. See [Registries](./registries.md).
+Registration is explicit: adding a backend normally does not change dispatch logic, but it does require importing the module in the matching `load_builtin_*()` function in `engine/components.py` so its registration call executes. See [Registries](./registries.md).
 
 ## Core config
 

@@ -4,34 +4,72 @@ AlphaDiana's Python API uses the same component registries, configuration valida
 Runner, session lifecycle, scoring, and result store as the CLI. It does not replace
 native harness control loops.
 
+## Run OpenCode on three AIME tasks
+
+Install with `pip install -e '.[analysis,benchmarks,agents]'` in the environment
+described in [Installation](installation.md). Set `OPENAI_BASE_URL`,
+`OPENAI_API_KEY`, and `OPENAI_MODEL_NAME` for your existing model service.
+This is the same example as the repository README. It uses one sample per task,
+the default `results/` directory, and OpenCode's default execution settings.
+
+### Build the OpenCode controller image
+
+With a working Podman installation, run this command from the repository root:
+
+```bash
+podman build \
+  -f alphadiana/harness/opencode/deploy/Containerfile.podman-controller \
+  -t localhost/alphadiana-opencode-podman:latest \
+  alphadiana/harness/opencode/deploy
+```
+
+This builds a local container image from [`Containerfile.podman-controller`](../../alphadiana/harness/opencode/deploy/Containerfile.podman-controller). The recipe starts from Ubuntu 22.04 and installs Node.js 22, OpenCode **1.3.2**, and task tools. The final directory supplies the build context; `-t` assigns the image name `localhost/alphadiana-opencode-podman:latest`.
+
+Use that same image name in `controller_image` below. OpenCode runs inside this controller and calls the configured model endpoint for inference. See the [Podman setup guide](../benchmarks/podman.md) for runtime checks.
+
+### Run and analyze
+
 ```python
 import alphadiana as ad
 
-agent = ad.agent("direct_llm", model="Qwen/Qwen3.5-27B", version="1.0")
+# Select the agent harness and the problems to evaluate.
+agent = ad.agent(
+    "opencode", version="1.3.2", controller_mode="podman",
+    controller_image="localhost/alphadiana-opencode-podman:latest",
+)
 data = ad.dataset("MathArena/aime_2026", benchmark="aime", max_tasks=3)
 scorer = ad.scorer.create("numeric")
-runner = ad.runner(run_id="example")
 
-artifacts = runner.compute(agent=agent, data=data, scorer=scorer)
-report = ad.analyzer(artifacts)
-report.export("figures/example")
+# Run the agent and save its answers, scores, and execution traces.
+artifacts = ad.runner(run_id="aime_opencode_demo").compute(
+    agent=agent, data=data, scorer=scorer,
+)
+
+# Analyze the saved run and export tables and figures.
+ad.analyzer(artifacts).export("figures/aime_opencode_demo")
 ```
 
-Set `OPENAI_BASE_URL` and `OPENAI_API_KEY` once for your existing model service;
-Python code reads them automatically. An omitted execution `model` uses
-`OPENAI_MODEL_NAME`. Explicit agent settings take precedence, using the same
-resolver as YAML; native harness gateway/provider boundaries are preserved.
-The example uses one attempt per task and the default `results/` directory.
-`export()` defaults to PDF, SVG and PNG; `formats` remains an optional override.
-Install the example dependencies with `pip install -e '.[analysis,benchmarks,agents]'`. Execution and
-structured analysis do not import Matplotlib. Figure exports contain `report.json`,
-source hashes, coverage, each figure's exact plotted data, and `export.json` listing
-outputs and inapplicable plots. Export to a new directory to preserve prior evidence.
-The default renderer uses a compact gray/blue style with horizontal
-performance bars, light grids and thin axes. It uses installed Arial, then Arimo,
-then DejaVu Sans; no proprietary font or machine-specific font path is required.
-PDF/SVG are vector exports; PNG is a review preview. All formats retain the same
-measured data, and line styles/markers distinguish overlapping series.
+Results and execution evidence are saved under `results/`. The final line performs offline analysis and exports tables and PDF/SVG/PNG figures.
+
+`OPENAI_MODEL_NAME` supplies the execution model when `model` is omitted.
+Explicit agent settings take precedence. Each harness keeps its own provider
+and gateway boundary.
+
+`export()` defaults to PDF, SVG and PNG; `formats` is an optional override.
+Execution and structured analysis do not import Matplotlib. Figure exports
+contain `report.json`, source hashes, coverage, plotted data, and `export.json`.
+Use a new export directory to preserve earlier evidence.
+
+The default renderer uses gray/blue bars, light grids, and thin axes. It uses
+installed Arial, then Arimo, then DejaVu Sans. PDF/SVG are vector exports;
+PNG is a review preview. All formats retain the same measured data.
+
+### DirectLLM alternative
+
+For the sandbox-free baseline, replace the agent with
+`ad.agent("direct_llm", version="1.0")` and choose a separate run ID.
+To reproduce the README's Qwen preset, use its checked-in YAML through the CLI;
+the preset specifies sampling, thinking, and logprob options beyond API defaults.
 
 The [API acceptance configurations](../../configs/acceptance/api/README.md) provide
 28 explicit benchmark/harness combinations. Execute a configuration through the
@@ -83,7 +121,7 @@ strict mode, a partially successful run remains inspectable through `Artifacts`.
 ```python
 from alphadiana.results.artifacts import Artifacts
 
-saved = Artifacts("results/example.jsonl")
+saved = Artifacts("results/aime_opencode_demo.jsonl")
 all_attempts = saved.records(latest=False)
 rescored = saved.rescore(ad.scorer.create("numeric", tolerance=1e-6))
 ```
@@ -153,8 +191,8 @@ An `AnalysisPlugin` has a name and `measure(artifacts) -> Measurement`. A measur
 contains tables, declarative `Figure` objects, and coverage/provenance. Renderers
 consume those tables separately, so adding a measurement cannot change execution
 or scoring. `TableAnalysis` accepts existing measurement tables with explicit
-source provenance. Built-in action extraction currently identifies its heuristic
-labels; they must not be represented as human or model-verified annotations.
+source provenance. Model-based action and failure plugins require explicit opt-in. The default
+offline pipeline computes scores, resources, and entropy without action labels.
 
 
 ## Built-in measurements
@@ -166,7 +204,6 @@ Default analysis is offline and reads saved artifacts. It includes:
 | Performance and reliability | Accuracy, empirical Pass@k and Avg@k | Scores, expected tasks and configured repeat count |
 | Resource usage | Mean output tokens and elapsed seconds per observed attempt; cost per correct answer | Provider/native usage counters and elapsed time |
 | Process entropy | Outcome-conditioned post-tool entropy with standard-error bands; log10 output length versus mean entropy | Observed top-K probabilities; request attribution for post-tool curves; measured usage for length |
-| Logged action events | Heuristic event composition and transitions | Canonical traces; these are not model-verified functional labels |
 
 Pass@k is the fraction of expected tasks with at least one successful attempt;
 Avg@k averages successes over the configured k attempts per task. Missing attempts

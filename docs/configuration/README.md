@@ -1,10 +1,10 @@
 # Configuration
 
-Every AlphaDiana experiment is described by a single YAML file with four required sections (`agent`, `benchmark`, `scorer`, plus `sandbox` when needed) and a handful of top-level keys (`run_id`, `max_concurrent`, `num_samples`, `output_dir`, `metadata`). The file is parsed into the `ExperimentConfig` dataclass and launched through the `alphadiana` CLI, where dotted `-o key.path=value` flags can override any field at the command line. This page is the orientation map: see [Config Schema](./config-schema.md) for the core fields and [CLI and Overrides](./cli-and-overrides.md) for command syntax and run-id conventions. `configs/schema.yaml` is an annotated core-shape reference; harness- and benchmark-specific pass-through keys live on their dedicated pages. Release configs are split into `configs/macro_runs/` for end-to-end benchmarks and `configs/micro_runs/` for paper-aligned Tool/Skill ablations and the separately labeled Memory extension.
+Every AlphaDiana experiment is described by a single YAML file with three required sections (`agent`, `benchmark`, `scorer`) an optional `sandbox` section, and top-level run controls (`run_id`, `max_concurrent`, `num_samples`, `output_dir`, `metadata`). The file is parsed into the `ExperimentConfig` dataclass and launched through the `alphadiana` CLI, where dotted `-o key.path=value` flags can override any field at the command line. This page is the orientation map: see [Config Schema](./config-schema.md) for the core fields and [CLI and Overrides](./cli-and-overrides.md) for command syntax and run-id conventions. `configs/schema.yaml` is an annotated core-shape reference; harness- and benchmark-specific pass-through keys live on their dedicated pages. Release configs are split into `configs/macro_runs/` for end-to-end benchmarks and `configs/micro_runs/` for paper-aligned Tool/Skill ablations and the separately labeled Memory extension.
 
 ## The four sections
 
-A config has four blocks plus top-level run controls. The minimal, env-driven `direct_llm` example (`configs/macro_runs/aime2026_directllm_qwen35_27b.yaml`) is the basis for the shape below; the `sandbox: null` and `num_samples: 1` lines are shown here for illustration (both are optional and default to those values when omitted, so the on-disk example leaves them out):
+A config has four blocks plus top-level run controls. The following example illustrates composition with provider variables and one AIME task. The README uses `configs/macro_runs/aime2026_directllm_qwen35_27b.yaml`, which additionally sets Qwen sampling, thinking, and logprob options; use that file to reproduce the preset:
 
 ```yaml
 run_id: ""
@@ -13,7 +13,7 @@ agent:
   name: direct_llm
   version: "1.0"
   config:
-    # Leave blank to reuse OPENAI_* from .env via scripts/activate.sh.
+    # Leave blank to reuse exported OPENAI_* provider variables.
     model: ""
     api_base: ""
     api_key: ""
@@ -23,8 +23,9 @@ agent:
 benchmark:
   name: aime
   config:
-    dataset: "HuggingFaceH4/aime_2024"
+    dataset: "MathArena/aime_2026"
     split: "train"
+    max_tasks: 1
 
 sandbox: null            # null for direct_llm / self-managed OpenCode paths
 
@@ -42,7 +43,7 @@ output_dir: "./results"
 | --- | --- | --- | --- |
 | `agent` | yes | the harness | `name` + `version` + open pass-through `config` dict |
 | `benchmark` | yes | the task set | `name` + benchmark-specific `config` |
-| `sandbox` | optional | the execution environment | `null`, or `{name, config}`; required for `terminal_bench` / `osworld` |
+| `sandbox` | optional | the execution environment | `null`, or `{name, config}`; required by paths that use an external sandbox; native owners may manage their own runtime |
 | `scorer` | yes | the grader | `name` + scorer-specific `config` |
 
 ## Valid names
@@ -51,11 +52,11 @@ These are the values the validator and registries accept. Unknown keys inside an
 
 | Block | Accepted `name` values |
 | --- | --- |
-| `agent.name` | `direct_llm`, `openclaw`, `opencode`, `zeroclaw`, `swebench_docker`, `terminal_bench2_*` |
+| `agent.name` | See the complete [agent registry](../architecture/registries.md#agents), including native executors and task adapters |
 | `scorer.name` | `numeric`, `math_verify`, `exact_match`, `llm_judge`, `swe_bench`, `terminal_bench2`, `imo_verify` |
 | `sandbox.name` | `null`, `local`, `rock`, `podman`, `swebench_container` |
 
-`sandbox: null` is correct for `direct_llm` and for OpenCode controller modes that self-manage their runtime. The generic ZeroClaw harness requires a live ROCK sandbox. ROCK-backed runs add a preflight that checks admin/proxy/redis reachability and port ownership before the run starts; non-ROCK runs skip it.
+`sandbox: null` is correct for `direct_llm` and for OpenCode controller modes that self-manage their runtime. ZeroClaw requires a live sandbox or its configured Podman runtime. ROCK-backed runs add a preflight that checks admin/proxy/redis reachability and port ownership before the run starts; non-ROCK runs skip it.
 
 ## Top-level run controls
 
@@ -86,12 +87,12 @@ These are the values the validator and registries accept. Unknown keys inside an
 | `capture_logprobs` | harness-specific | DirectLLM defaults to `true`; other transports require explicit support/configuration |
 | `enable_thinking`, `extra_body` | none | reasoning controls; see below |
 
-When the LLM fields are blank, `_apply_agent_env_defaults` fills them from `OPENAI_BASE_URL` / `OPENAI_API_KEY` / `OPENAI_MODEL_NAME` (loaded via `source scripts/activate.sh`). Release configs use those environment variables directly or rely on the same defaults. Runtime-backed OpenClaw is the important exception: `OPENAI_BASE_URL` remains the upstream provider endpoint, while the runner resolves and supplies the deployed gateway's lower-case `api_base`.
+When the LLM fields are blank, `_apply_agent_env_defaults` fills them from `OPENAI_BASE_URL` / `OPENAI_API_KEY` / `OPENAI_MODEL_NAME` (exported in the shell, or loaded by the optional ROCK activation script). Release configs use those environment variables directly or rely on the same defaults. Runtime-backed OpenClaw is the important exception: `OPENAI_BASE_URL` remains the upstream provider endpoint, while the runner resolves and supplies the deployed gateway's lower-case `api_base`.
 
 > [!CAUTION] **api_key sentinel** The validator treats `None`, `""`, and the literal string `EMPTY` (case-insensitive) as missing. For a local vLLM endpoint use `api_key: "sk-EMPTY"` or another non-empty placeholder. Literal `EMPTY` fails validation.
 
 
-> [!NOTE] **Reasoning is the experimental variable** There is no single canonical reasoning field. `direct_llm` reads `enable_thinking` and `extra_body`; OpenCode configs use `enable_thinking: true`; ZeroClaw uses `runtime_trace_mode: full`. Do not push reasoning controls through CLI overrides on contract runs; treat reasoning effort as the variable under study, not plumbing.
+> [!NOTE] **Reasoning is the experimental variable** There is no single canonical reasoning field. `direct_llm` reads `enable_thinking` and `extra_body`; OpenCode configs use `enable_thinking: true`; ZeroClaw uses its provider-specific thinking setting; `runtime_trace_mode: full` controls captured evidence, not model reasoning. Do not push reasoning controls through CLI overrides on contract runs; treat reasoning effort as the variable under study, not plumbing.
 
 
 ## Environment-variable expansion

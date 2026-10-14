@@ -1,5 +1,32 @@
 # SWE-Bench Verified-Mini Guide
 
+SWE-bench Verified Mini uses the `swe_bench` loader with
+`MariusHobbhahn/swe-bench-verified-mini`. Choose the native Runner/API executor
+for ordinary AlphaDiana records, or the standalone campaign for the full Qwen
+reproduction. Both paths retain upstream SWE-Agent execution and official scoring.
+
+## Native executor through Runner and the Python API
+
+The README's native SWE-Agent route uses `agent.name: sweagent`, implemented
+in `alphadiana/harness/sweagent.py`. Runner supplies each selected SWE task;
+the installed upstream SWE-Agent executable owns its agent loop and environment.
+The configured `swe_bench` scorer evaluates the predicted patch through the
+official SWE-bench verifier. Omit an external `sandbox` for this executor.
+
+Use [swe_mini_sweagent.yaml](../../configs/acceptance/api/swe_mini_sweagent.yaml)
+for the content-pinned three-task, one-sample configuration. Its prerequisites
+include the installed SWE-Agent executable, its checkout/default config,
+matching local instance images, and Docker. The
+[API matrix guide](../../configs/acceptance/api/README.md#runtime-inputs) lists
+the required environment variables and runtime identities. These acceptance
+settings are distinct from the full Qwen campaign settings below.
+
+CLI and typed API calls both use this ordinary Runner configuration. See
+[Python API and analysis](../getting-started/python-api.md#explicit-composition)
+for composition and saved-patch rescoring.
+
+## Standalone campaign reproduction
+
 Run Qwen3.5-27B on `MariusHobbhahn/swe-bench-verified-mini` (50 tasks) via the
 standalone SWE-agent CLI, orchestrated by `alphadiana.cli.campaign`
 with backend `official_swebench_verified`.
@@ -9,7 +36,10 @@ Wall time estimate: 8–15 h at `max_concurrent=10`.
 Reference run for parity: `T-MARS/alphadiana-benchmark-results/full_run/YYYYMMDD-swe-bench-verified-mini-sweagent-qwen35-27b-local-v1`
 (23 / 50 = 46 % resolved).
 
----
+The remaining sections describe the full Qwen reproduction using
+`alphadiana.cli.campaign` and a campaign manifest. That manifest uses a
+different schema from `ExperimentConfig`; run it with the campaign commands
+shown below.
 
 ## 1. Parameter alignment
 

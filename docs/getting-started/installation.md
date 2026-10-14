@@ -9,87 +9,60 @@ For per-harness configuration, see the harness pages such as
 [direct_llm](../harnesses/direct-llm.md), [openclaw](../harnesses/openclaw.md),
 [opencode](../harnesses/opencode.md), and [zeroclaw](../harnesses/zeroclaw.md).
 
-## Prerequisites
+## Install the package
 
-| Requirement | Notes |
-|---|---|
-| OS | Linux |
-| Python | >= 3.10, 3.11/3.12 recommended. Do **not** use 3.13 — ROCK depends on a library that supports only `<= 3.12`. |
-| Conda | Used to create an isolated, checkout-local environment. |
-| NVIDIA GPU | One card with 40GB+ VRAM (A100/A800) to serve a local model via vLLM. Not required when targeting a hosted API. |
-| Docker | Required for the ROCK-backed harnesses (`openclaw`, `zeroclaw`). The current user must be in the `docker` group. |
-| Model access | Either a local vLLM endpoint or an API key for a provider such as OpenRouter. |
-
-A GPU is only needed if you serve the model yourself. `direct_llm` and the
-agent harnesses can all point at a remote OpenAI-compatible endpoint instead.
-
-## Install
-
-Clone the repository and create the environment. The service bootstrap creates
-a checkout-derived conda env (for example `alphadiana-9809e32f`) so that
-multiple checkouts on the same host do not collide.
-
-> [!WARNING] **Current bootstrap prerequisite**
-> `scripts/setup/quickstart.sh` runs `scripts/setup/security_guard.py --check` before the
-> setup helper gets a chance to generate an OpenClaw gateway token. In a fresh
-> shell you must export a strong token first. Do not use
-> `SECURITY_GUARD_BYPASS=1` for normal setup.
-
+Use Python 3.10 or later and an existing OpenAI-compatible model endpoint.
+Run from a checkout of this repository:
 
 ```bash
-git clone https://github.com/tmlr-group/AlphaDiana
+git clone https://github.com/tmlr-group/AlphaDiana.git
 cd AlphaDiana
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e '.[analysis,benchmarks,agents]'
+```
 
-# Required before quickstart's security preflight in the current release.
+The DirectLLM quick start needs neither a GPU nor container services on the
+client host. A GPU is needed when you serve the model yourself. OpenCode's
+README example additionally needs Podman and its locally built controller image;
+see [OpenCode](../harnesses/opencode.md#build-the-podman-controller-image).
+Other native runtimes have their own [harness prerequisites](../harnesses/).
+
+Set the provider variables as shown in [Quick Start](quick-start.md).
+The checked-in Qwen preset requires streaming, logprobs, and thinking-template
+support. Select or adapt a config for another endpoint through
+[Configuration](../configuration/).
+
+### Optional ROCK service installation
+
+ROCK-backed runs require Linux, Docker, Conda, and checkout-owned ROCK services.
+Use Python 3.10–3.12 for this stack; its dependencies do not support Python 3.13.
+The service bootstrap creates a checkout-derived Conda environment so multiple
+checkouts can coexist:
+
+```bash
+# Required by quickstart's security preflight before token generation.
 export OPENCLAW_GATEWAY_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
-
-# Checkout-local conda env + dependencies + Redis/Ray/ROCK services.
 bash scripts/setup/quickstart.sh
-```
-
-The preflight also rejects public Redis/ROCK bindings and other HIGH/CRITICAL
-findings. If it stops, fix the reported issue and rerun the same command.
-
-If you only want the package and its dependencies in a plain shared `alphadiana`
-env (no ROCK service bring-up), use the standalone installer instead:
-
-```bash
-bash installation.sh
-```
-
-`installation.sh` honours `ALPHADIANA_ENV` (default `alphadiana`) and
-`ALPHADIANA_PYTHON` (default `3.12`), creates the conda env if missing, then runs
-`pip install -e .` plus the core runtime dependencies. On shared hosts prefer
-`scripts/setup/quickstart.sh`, which derives an isolated per-checkout env name.
-
-### Activate the environment
-
-If you installed with `scripts/setup/quickstart.sh`, run this **once per terminal**.
-It activates the checkout-derived environment, cleans proxy variables, loads
-ROCK ports, and sources `.env`:
-
-```bash
 source scripts/activate.sh
 ```
 
-If you used the standalone `installation.sh`, it created the shared environment
-named by `ALPHADIANA_ENV` (default `alphadiana`) but did not create
-`scripts/.alphadiana_env`. Activate that environment directly instead:
+The preflight rejects public Redis/ROCK bindings and HIGH/CRITICAL findings.
+Fix reported issues before rerunning. The activation script selects the
+checkout-derived environment, loads ROCK ports, and sources `.env`.
+
+The alternative `bash installation.sh` creates a Conda environment named by
+`ALPHADIANA_ENV` (default `alphadiana`) with Python selected by
+`ALPHADIANA_PYTHON` (default `3.12`), without starting ROCK services. Activate
+that environment directly:
 
 ```bash
 source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate "${ALPHADIANA_ENV:-alphadiana}"
-
-# Load an optional local env file; otherwise export provider variables next.
-if [ -f .env ]; then
-  set -a
-  source .env
-  set +a
-fi
 ```
 
-Do not rely on `source scripts/activate.sh` to discover a standalone custom env;
-without quickstart's local state file it derives a checkout-specific name.
+This standalone route does not write quickstart's `scripts/.alphadiana_env`.
+For the plain virtual environment above, use `source .venv/bin/activate`.
 
 ### Serve a model with vLLM (optional)
 
@@ -112,7 +85,7 @@ agents) need the server started with `--enable-auto-tool-choice
 `qwen3_coder` for Qwen3.5, `hermes` for Qwen3). `direct_llm` does not require it.
 See [openclaw](../harnesses/openclaw.md) for details.
 
-## ROCK bring-up (optional, for openclaw / zeroclaw)
+## ROCK bring-up (for ROCK-backed configs)
 
 `direct_llm` and host/Docker-controller OpenCode paths do **not** need ROCK.
 Generic ZeroClaw still requires a live sandbox/container session. The ROCK preflight only fires
@@ -301,6 +274,6 @@ alphadiana report results/
 
 - [Quickstart](./quick-start.md) — run your first evaluation end to end.
 - [direct_llm](../harnesses/direct-llm.md) — single-turn baseline, no sandbox.
-- [openclaw](../harnesses/openclaw.md) — ROCK-sandboxed agent harness.
+- [openclaw](../harnesses/openclaw.md) — gateway, ROCK, and Podman runtime paths.
 - [zeroclaw](../harnesses/zeroclaw.md) — sandbox/container execution and ROCK auto-deploy modes.
-- [opencode](../harnesses/opencode.md) — host or Docker controller modes.
+- [opencode](../harnesses/opencode.md) — host, Docker, Podman, and SWE task-container modes.

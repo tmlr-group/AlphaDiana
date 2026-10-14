@@ -48,9 +48,9 @@ Harnesses are selected by name in YAML (`agent.name`). The `AgentRegistry` (`alp
 | `AgentRegistry.get(name)` | return the class, or raise `KeyError` listing available names |
 | `AgentRegistry.list()` | sorted list of registered names |
 
-Registration is **import-triggered, not auto-discovered**. The runner explicitly imports each harness module (with `# noqa: F401`) so the module-level `AgentRegistry.register(...)` call at the bottom of each file fires. The same import-for-side-effect pattern registers benchmarks, sandboxes, and scorers. Adding a new harness therefore means *both* a `register()` call in the module *and* an import line in `alphadiana/engine/runner.py`.
+Registration is **import-triggered, not auto-discovered**. `load_builtin_agents()` in `alphadiana/engine/components.py` explicitly imports each built-in harness module so its registration executes. The same import-for-side-effect pattern registers benchmarks, sandboxes, and scorers. Adding a new harness therefore means *both* a `register()` call in the module *and* an import line in `load_builtin_agents()`.
 
-The registered keys map to the four built-in harnesses:
+The core reasoning harness keys are shown below. [Registries](../architecture/registries.md) lists additional native executors and benchmark-specific adapters:
 
 | `agent.name` | Harness | Source |
 |---|---|---|

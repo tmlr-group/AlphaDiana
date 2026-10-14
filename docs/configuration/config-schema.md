@@ -34,7 +34,7 @@ metadata: {}                   # free-form tags
 ```
 
 `sandbox: null` is used for `direct_llm` and for OpenCode controller modes that
-self-manage their runtime. The generic ZeroClaw harness requires a live sandbox.
+self-manage their runtime. ZeroClaw requires a live sandbox or its configured Podman runtime.
 
 ## Top-level fields
 

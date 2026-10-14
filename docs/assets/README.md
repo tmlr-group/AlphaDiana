@@ -4,7 +4,7 @@ The README paper images are rendered from the sources supplied in
 `AlphaDiana-draft-main.zip` on 2026-10-12. They follow the PDF files referenced by
 `0-shared/sections/main.tex`, rather than similarly named legacy PNG files.
 
-| README asset | Paper source | Figure |
+| Repository asset | Paper source | Figure |
 | --- | --- | --- |
 | `alphadiana-motivation.png` | `0-shared/figures/AlphaDiana-motivation.pdf` | 1: Position of AlphaDiana; opening illustration |
 | `alphadiana-overview.png` | `0-shared/figures/AlphaDiana-Fig2.pdf` | 2: Overview |
@@ -12,6 +12,9 @@ The README paper images are rendered from the sources supplied in
 | `alphadiana-interface.png` | `0-shared/figures/AlphaDiana-interface.pdf` | 4: Functional interface; reproduced unchanged |
 | `alphadiana-action-patterns.png` | `0-shared/figures/revised_figures/fig_action_four_panels_final.pdf` | Functional-step patterns; results and analysis |
 | `alphadiana-resource-use.png` | `0-shared/figures/efficiency/AlphaDiana-macro-efficiency.pdf` | Output tokens and wall-clock time; results and analysis |
+
+The first four assets appear in the current README. The action-pattern and
+resource-use assets remain available for results documentation.
 
 Each one-page PDF was rendered with PDFium at scale 2.2 or higher for legibility, without changing its
 content. The overview includes the draft's experimental values; these are not

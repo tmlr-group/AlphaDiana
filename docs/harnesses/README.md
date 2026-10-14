@@ -1,6 +1,6 @@
 # Harnesses Overview
 
-AlphaDiana has four generic harness families plus benchmark-specific agent adapters. A harness implements the `Agent` contract; an adapter may bind one of those agents or a custom controller to a benchmark-specific container and verifier flow.
+AlphaDiana provides generic reasoning harnesses, dedicated native executors, and benchmark-specific agent adapters. A harness implements the `Agent` contract; an adapter may bind one of those agents or a custom controller to a benchmark-specific container and verifier flow.
 
 ## Generic harness families
 
@@ -12,6 +12,17 @@ AlphaDiana has four generic harness families plus benchmark-specific agent adapt
 | [`zeroclaw`](./zeroclaw.md) | Native ZeroClaw CLI in a live sandbox or Podman runtime | ZeroClaw tools | Optional shared HOME, vector recall, and post-solve store turn |
 
 These memory paths are opt-in and now exist in the current source. They are not implied by ordinary fresh-per-task runs, and their transfer-experiment controls must be configured explicitly.
+
+## Additional native executors
+
+| Key | Runtime guide |
+| --- | --- |
+| `pi`, `deepseek_harness` | [Rootless Podman native agents](native-podman.md) |
+| `sweagent` | [Native SWE-Agent on SWE-bench Verified Mini](../benchmarks/swebench-verified-mini.md) |
+| `terminus2` | [Native Terminus2 with Harbor on Terminal-Bench 2](../benchmarks/terminal-bench-2.md) |
+
+These executors retain their native agent loops. Their guides define runtime
+identities, task environments, and verification prerequisites.
 
 ## Benchmark-specific adapters
 

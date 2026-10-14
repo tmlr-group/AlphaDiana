@@ -8,14 +8,15 @@ GPQA-Diamond evaluates expert-level science multiple-choice questions from
 Run from the repository root:
 
 ```bash
-source scripts/activate.sh
+# Plain package installation; ROCK users instead use scripts/activate.sh.
+source .venv/bin/activate
 
 export OPENAI_BASE_URL=http://127.0.0.1:8011/v1
 export OPENAI_API_KEY=sk-EMPTY
 export OPENAI_MODEL_NAME=Qwen/Qwen3.5-27B
 ```
 
-When running from a local checkout, prefer the module entrypoint:
+For ROCK-backed configurations only, check service health:
 
 ```bash
 python -m alphadiana.cli env

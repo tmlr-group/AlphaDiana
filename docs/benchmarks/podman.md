@@ -32,7 +32,10 @@ The repository image and Podman configs pin OpenClaw `2026.3.14`. Runtime
 preflight compares the installed binary with `agent.version` and stops with a
 clear version-mismatch error before any benchmark request is made.
 
-Verify the required executable and Python runtime before starting a pilot. This
+Verify the required executable and Python runtime before starting a pilot.
+The checked-in images below include Python and SciPy; native historical images
+may instead provide only `python3`. Use the command required by the selected
+recipe, rather than assuming identical contents across image tags. This
 avoids waiting through a gateway timeout when a local tag points at an
 incompatible historical image:
 

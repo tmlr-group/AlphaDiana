@@ -53,17 +53,17 @@ The CLI also provides a quick diagnostic list:
 python -m alphadiana.cli list-benchmarks
 ```
 
-Because registration is import-side-effect driven, that command reports the modules imported by its own command path; use the `Runner.setup()` import block and the table above as the complete shipped inventory.
+This command calls `load_builtin_benchmarks()` from `alphadiana/engine/components.py`, the same loader used during Runner setup. It lists the complete built-in benchmark registry.
 
 ## How a benchmark is selected
 
-Registration is import-side-effect driven. Importing the package does not auto-load every loader, so `Runner.setup()` (`alphadiana/engine/runner.py`) explicitly imports all shipped benchmark registrations, plus scorer and harness modules, before resolving the class:
+Registration is import-side-effect driven. Importing the package does not auto-load every loader, so `register_builtin_components()` in `alphadiana/engine/components.py` explicitly loads benchmark, scorer, and harness registrations. `Runner.setup()` then resolves the class:
 
 ```python
 BenchmarkRegistry.get(self.config.benchmark_name)
 ```
 
-`Runner.run()` then calls `self.benchmark.load_tasks(self.config.benchmark_config)` and writes the resulting per-task metadata into the run manifest. Adding a new benchmark file without adding it to that explicit import block would make `get()` raise `KeyError` even though the file exists on disk.
+`Runner.run()` then calls `self.benchmark.load_tasks(self.config.benchmark_config)` and writes the resulting per-task metadata into the run manifest. Adding a new benchmark file without adding it to `load_builtin_benchmarks()` would make `get()` raise `KeyError` even though the file exists on disk.
 
 In config, you select the benchmark by its registry-name string:
 
@@ -112,7 +112,8 @@ For a single-task smoke, pin `benchmark.config.dataset_index=<i>`. Do not also s
 Common setup for the macro configs:
 
 ```bash
-source scripts/activate.sh
+# Plain package installation; ROCK users instead use scripts/activate.sh.
+source .venv/bin/activate
 
 export OPENAI_BASE_URL=http://127.0.0.1:8011/v1
 export OPENAI_API_KEY=sk-EMPTY

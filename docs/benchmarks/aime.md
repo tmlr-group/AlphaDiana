@@ -1,7 +1,7 @@
 # AIME
 
 AIME runs use `benchmark.name: aime`. The selected dataset and scorer are part
-of each config. The release matrix uses AIME 2026 and math-aware scoring. The loader's suggested default scorer is
+of each config. The README quick start selects AIME 2026 with `numeric` scoring. The loader's suggested default scorer is
 `numeric`, but the runner requires an explicit `scorer.name`.
 
 ## Prerequisites
@@ -9,8 +9,8 @@ of each config. The release matrix uses AIME 2026 and math-aware scoring. The lo
 Run from the repository root:
 
 ```bash
-source scripts/activate.sh
-export PYTHONPATH=$PWD
+# Plain package installation; ROCK users instead use scripts/activate.sh.
+source .venv/bin/activate
 
 export OPENAI_BASE_URL=http://127.0.0.1:8011/v1
 export OPENAI_API_KEY=sk-EMPTY

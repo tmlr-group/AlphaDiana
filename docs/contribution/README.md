@@ -18,28 +18,29 @@ Each registry exposes the same classmethod API:
 - `get(name)` — look up by name; raises `KeyError` with the available names embedded in the message when missing.
 - `list()` — sorted list of registered names.
 
-The key thing to understand is that **registration is not auto-discovery**. A class is only registered when its module is imported and the module-level `register(...)` call (or `@register_*` decorator) actually runs. The runner forces this by explicitly importing every component module in `Runner.setup()`, with `# noqa: F401`, purely for the side effect:
+The key thing to understand is that **registration is not auto-discovery**. A class is only registered when its module is imported and the module-level `register(...)` call (or `@register_*` decorator) actually runs. Deferred load functions in `alphadiana/engine/components.py` import built-in modules for this side effect. `Runner.setup()` calls `register_builtin_components()` before resolving config keys:
 
 ```python
-# benchmarks
+# alphadiana/engine/components.py: each family has its own load function
+# benchmarks: load_builtin_benchmarks()
 import alphadiana.benchmarks.aime.benchmark   # noqa: F401
 import alphadiana.benchmarks.gpqa.benchmark   # noqa: F401
 # ... more benchmarks ...
 
-# agents / harnesses
+# agents / harnesses: load_builtin_agents()
 import alphadiana.harness.direct_llm.agent          # noqa: F401
 import alphadiana.harness.openclaw.agent      # noqa: F401
 import alphadiana.harness.opencode.agent      # noqa: F401
 import alphadiana.harness.zeroclaw.agent      # noqa: F401
 
-# scorers
+# scorers: load_builtin_scorers()
 import alphadiana.scorer.exact_match          # noqa: F401
 import alphadiana.scorer.numeric              # noqa: F401
 import alphadiana.scorer.llm_judge            # noqa: F401
 import alphadiana.scorer.math_verify_scorer   # noqa: F401
 ```
 
-So adding any new component is always **two edits**: the `register(...)` call in your module, plus an import line in `runner.py` so it fires. The runner then resolves your config keys against the registries during `setup()`: `BenchmarkRegistry.get(self.config.benchmark_name)`, `AgentRegistry.get(self.config.agent_name)`, and `ScorerRegistry.get(self.config.scorer_name)`.
+So adding any new component is always **two edits**: the `register(...)` call in your module, plus an import line in the matching `load_builtin_*()` function in `engine/components.py` so it fires. The runner then resolves your config keys against the registries during `setup()`: `BenchmarkRegistry.get(self.config.benchmark_name)`, `AgentRegistry.get(self.config.agent_name)`, and `ScorerRegistry.get(self.config.scorer_name)`.
 
 ## Add a benchmark
 
@@ -129,4 +130,4 @@ The runner reads `scorer.name` into `scorer_name` and resolves it with `ScorerRe
 
 ## Don't forget the import line
 
-Whichever component you add, register the class **and** add its `# noqa: F401` import to the matching block in `Runner.setup()` in `alphadiana/engine/runner.py`. Without that import line the module never loads, the `register(...)` call never runs, and `get(name)` raises `KeyError` listing only the components that were imported.
+Whichever component you add, register the class **and** add its `# noqa: F401` import to the matching load function in `alphadiana/engine/components.py`. Without that import line the module never loads, the `register(...)` call never runs, and `get(name)` raises `KeyError` listing only the components that were imported.

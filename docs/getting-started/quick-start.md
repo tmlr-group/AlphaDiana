@@ -47,8 +47,10 @@ export OPENAI_API_KEY="sk-EMPTY"
 
 Use `sk-EMPTY` (any non-`EMPTY` string) for a keyless local server. The literal
 string `EMPTY` is treated as blank by both the validator and the agent. For a
-hosted provider, set `OPENAI_BASE_URL=https://openrouter.ai/api/v1` and a real
-key.
+hosted provider, use its OpenAI-compatible base URL and API key. The endpoint
+must support the preset's streaming, logprobs, and
+`extra_body.chat_template_kwargs.enable_thinking` fields. For another model or
+endpoint, select or adapt a [configuration](../configuration/).
 
 ## 2. Write (or point to) a config
 
@@ -70,6 +72,11 @@ agent:
     top_p: 0.95
     max_tokens: 32768
     stream: true
+    capture_logprobs: true
+    top_logprobs: 20
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: true
 
 benchmark:
   name: aime
@@ -196,7 +203,7 @@ finished run later, point `report` at the directory containing the `.jsonl`:
 alphadiana report ./results
 ```
 
-It loads `<run_id>.jsonl`, deduplicates by `(task_id, sample_index)`, and prints
+It loads `<run_id>.jsonl`, selects the latest attempt per `(task_id, sample_index)`, and prints
 the same `RunSummary` metrics broken out per category.
 
 ## Results layout
@@ -255,15 +262,15 @@ The report metrics come from `ReportGenerator.generate`
 
 | Metric | Definition |
 |---|---|
-| **Accuracy** | `correct / scored` — fraction correct among records that were actually scored |
+| **Accuracy** | Correct / eligible observed samples; the core report includes explicitly marked zero-contribution empty answers |
 | **Accuracy (total)** | `correct / expected_sample_count` — denominator is the planned count, so unfinished or errored samples count against it |
 | **Mean Score** | Mean of the `score` field over scored records (equals accuracy for binary scorers) |
 | **Pass@k** | Fraction of unique tasks with at least one correct sample (`k = num_samples`) |
 | **Avg@k** | Per task, the correct-sample rate `n_correct / num_samples`, then averaged across tasks |
 
-With `num_samples: 1` (the default), Pass@1 and Avg@1 both equal Accuracy
-because there is exactly one sample per task. They diverge only with
-multi-sample runs. With `num_samples: 4`, for example, Pass@4 rewards getting
+With `num_samples: 1`, Pass@1 and Avg@1 equal planned-sample accuracy.
+They also equal observed accuracy when every planned sample has a valid score.
+Missing samples and provider/runtime errors can make those denominators differ. With `num_samples: 4`, for example, Pass@4 rewards getting
 the answer at least once across four draws, while Avg@4 measures average
 per-draw reliability. Choose the sample count required by the study protocol;
 the validator only requires a positive integer.

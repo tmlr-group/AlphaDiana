@@ -7,8 +7,8 @@ HLE evaluates multiple-choice Humanity's Last Exam tasks from `cais/hle`.
 Run from the repository root:
 
 ```bash
-source scripts/activate.sh
-export PYTHONPATH=$PWD
+# Plain package installation; ROCK users instead use scripts/activate.sh.
+source .venv/bin/activate
 
 export OPENAI_BASE_URL=http://127.0.0.1:8011/v1
 export OPENAI_API_KEY=sk-EMPTY

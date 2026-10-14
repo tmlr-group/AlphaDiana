@@ -26,7 +26,7 @@ The tables below reflect the registrations imported by `engine/components.py` in
 
 ### Agents
 
-The first four are generic harness families. The remaining keys are benchmark-specific adapters and should not be conflated with additional general-purpose harness families.
+Generic harnesses and dedicated native executors are listed separately from benchmark-specific adapters in the scope column.
 
 | Key | Scope |
 | --- | --- |
@@ -34,6 +34,10 @@ The first four are generic harness families. The remaining keys are benchmark-sp
 | `openclaw` | Generic OpenClaw gateway and local-memory harness |
 | `opencode` | Generic OpenCode CLI harness |
 | `zeroclaw` | Generic ZeroClaw CLI harness |
+| `pi` | Generic Pi agent in a rootless Podman runtime |
+| `deepseek_harness` | Generic DeepSeek native harness in rootless Podman |
+| `sweagent` | Native SWE-Agent executor for SWE tasks |
+| `terminus2` | Native Terminus2 executor in Harbor-owned TB2 trials |
 | `swebench_docker` | SWE-bench task-container adapter |
 | `terminal_bench2_docker` | TerminalBench 2 baseline adapter |
 | `terminal_bench2_openclaw` | TerminalBench 2 OpenClaw adapter |

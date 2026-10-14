@@ -34,7 +34,11 @@ Task records include response content, `score`, `correct`, rationale, `score_sta
 
 The stable artifact references are `logprobs_float` and `logprobs_int16`, when those files exist.
 
-There is a current DirectLLM caveat: DirectLLM defaults to `logprobs_format: int16`, which places quantized records in `logprob_records` rather than `logprob_int16_records`. The result store therefore treats them as raw input and may quantize them again. Do not claim that this mode preserves a valid float-plus-compact pair until the field contract is corrected and covered by an artifact-shape test. Set `logprobs_format: float` explicitly when artifact fidelity matters.
+DirectLLM preserves raw float observations in `logprob_records` for both
+`logprobs_format` settings. ResultStore owns compact conversion, so captured
+records can produce raw and Int16 sidecars without double quantization. See
+[Main review corrections](../validation/main-review-fixes.md) for the repair and
+regression scope. Existing damaged historical sidecars remain unchanged.
 
 ## Redaction and sharing
 

@@ -13,7 +13,7 @@ inside a container. For the smaller reproduction set see
 ## Prerequisites
 
 ```bash
-source scripts/activate.sh        # activate the environment
+source .venv/bin/activate         # or scripts/activate.sh for a ROCK installation
 docker ps                         # the swebench_container sandbox needs Docker
 ```
 

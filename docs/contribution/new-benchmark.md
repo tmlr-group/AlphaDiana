@@ -6,7 +6,7 @@ returns a list of `BenchmarkTask` objects. Classes self-register into the
 trigger that registration, then resolves the class with
 `BenchmarkRegistry.get(benchmark_name)`. Adding a new benchmark is four edits:
 subclass `Benchmark`, set `name` and `default_scorer`, register at the module
-bottom, and add the import to `Runner.setup()`.
+bottom, and add the import to `load_builtin_benchmarks()` in `alphadiana/engine/components.py`.
 
 ## The `Benchmark` contract
 
@@ -115,10 +115,10 @@ Two things make a benchmark discoverable.
    `_registry` dict. `.get(name)` raises `KeyError` listing available names if
    the name is missing, and `.list()` returns the sorted names.
 
-2. **Add the import to `Runner.setup()`.** Registration is import-side-effect
+2. **Add the import to `load_builtin_benchmarks()`.** Registration is import-side-effect
    driven, and `benchmarks/__init__.py` does **not** auto-import every module.
-   `Runner.setup()` in `alphadiana/engine/runner.py` explicitly imports
-   all benchmark modules before resolving the class:
+   `load_builtin_benchmarks()` in `alphadiana/engine/components.py` imports
+   built-in benchmark modules. Both Runner setup and `list-benchmarks` call it:
 
    ```python
    import alphadiana.benchmarks.my_benchmark.benchmark  # noqa: F401
@@ -162,7 +162,7 @@ scorer:
 ```
 
 ```bash
-# Quick diagnostic only; the command imports a subset of Runner modules
+# List all built-in benchmarks loaded through the shared registry loader
 python -m alphadiana.cli list-benchmarks
 
 # Run it

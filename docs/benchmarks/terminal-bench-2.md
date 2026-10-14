@@ -225,6 +225,26 @@ Local repair follow-up in the same official checkout:
 Treat that repaired bundle as the current local smoke-valid signal for the
 official `direct_llm` path on OpenRouter/Qwen.
 
+## Native Terminus2 through Runner and the Python API
+
+Select `agent.name: terminus2` to use `alphadiana/harness/terminus2/agent.py`.
+Runner passes a native TB2 task directory to Harbor. Harbor owns the Terminus2
+agent loop, Docker task environment, and verifier lifecycle. AlphaDiana retains
+the native evidence and scores the observed verifier reward. Omit an external
+`sandbox` for this executor.
+
+The three-task, one-sample
+[acceptance config](../../configs/acceptance/api/terminal_bench2_terminus2.yaml)
+requires the installed Harbor executable, official task assets, and its model
+provider settings. With `retain_verifier_snapshot: true`, also supply the
+Harbor installation's `python_executable` for the native snapshot callback.
+Preserve the snapshot image and verifier inputs for independent replay.
+See [runtime inputs](../../configs/acceptance/api/README.md#runtime-inputs)
+and [saved-run rescoring](../getting-started/python-api.md#reopen-and-rescore).
+
+This Runner path is separate from the standalone `harbor run` reproduction
+below; each route keeps its own config and output schema.
+
 ## Official leaderboard path (Harbor + Terminus-2)
 
 The sections above are the AlphaDiana container-agent path. To run the

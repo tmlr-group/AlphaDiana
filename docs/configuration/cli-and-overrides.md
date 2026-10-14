@@ -79,8 +79,8 @@ alphadiana env
 ```
 
 Reports ROCK service status (admin, proxy, redis, docker) and ownership, and prints the
-commands to start anything that is down. See [Quickstart Commands](../getting-started/quick-start.md)
-for the full bring-up sequence.
+commands to start anything that is down. See [ROCK bring-up](../getting-started/installation.md#rock-bring-up-for-rock-backed-configs)
+for the service setup sequence. DirectLLM and self-managed native paths skip it.
 
 ### `list-benchmarks`
 
@@ -88,7 +88,7 @@ for the full bring-up sequence.
 alphadiana list-benchmarks
 ```
 
-Imports the same benchmark modules as `Runner.setup()` and lists the resulting
+Calls the shared `load_builtin_benchmarks()` loader and lists the resulting
 registry names. The [Benchmarks inventory](../benchmarks/) explains each value
 and its expected scorer/runtime contract.
 

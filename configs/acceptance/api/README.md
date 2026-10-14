@@ -48,7 +48,7 @@ Run-specific logs, reports and machine configuration belong in external output d
 Run one configured experiment with the existing CLI:
 
 ```bash
-python -m alphadiana run configs/acceptance/api/aime2026_directllm.yaml
+python -m alphadiana.cli run configs/acceptance/api/aime2026_directllm.yaml
 ```
 
 Or validate one configuration through the public Python API with the test driver:
