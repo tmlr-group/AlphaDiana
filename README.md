@@ -1,15 +1,22 @@
-# AlphaDiana: A System for Evaluating Agentic Reasoning
+# AlphaDiana: A Measurement System for Agents in Verifiable Reasoning Tasks
 
-**AlphaDiana** is an open-source framework for **system-level evaluation of LLM-based reasoning agents**. It enables standardized, reproducible benchmarking of agentic systems—such as **[OpenClaw](https://github.com/openclaw/openclaw)**—on frontier reasoning tasks, with support for sandboxed code execution, multi-turn tool use, and full trajectory logging.
+**AlphaDiana** is an open-source measurement system for **LLM-based agents on verifiable reasoning tasks**. It connects benchmarks, agents, environments, and scorers through modular interfaces while preserving native harness control loops. Saved results link evaluation outcomes to execution status, available trajectories, and resource use.
+
+![Position of AlphaDiana](docs/assets/alphadiana-motivation.png)
 
 ## Why AlphaDiana?
 
 Reasoning performance in agent systems depends on more than the base model alone. It is also shaped by the **agent framework, tool interface, execution environment, and evaluation protocol**.
 
-AlphaDiana is designed for **fair, reproducible, and transparent** evaluation of agentic reasoning systems.
+AlphaDiana supports comparisons of complete agents and controlled changes to components such as tools, skills, and memory. It measures answer correctness alongside execution failures, action patterns, and resource costs under recorded task and runtime settings.
+
+![AlphaDiana executes configured agents, saves artifacts, and measures outcomes, failures, resource use, and component interventions.](docs/assets/alphadiana-overview.png)
+
+*Overview from the latest shared draft (Figure 2). The plotted values are paper
+results under the labeled settings, not results from the Quick Start below.*
 
 With AlphaDiana, you can:
-- evaluate **OpenClaw-style reasoning agents**
+- evaluate native harnesses such as **OpenClaw, OpenCode, and ZeroClaw**
 - compare against a **direct LLM baseline**
 - run evaluations with **sandboxed execution**
 - benchmark on **AIME 2026, GPQA-Diamond, HLE, IMO-AnswerBench, MMMU-Pro, SWE-bench Verified, Terminal-Bench 2, and custom tasks**
@@ -25,13 +32,24 @@ Typical questions AlphaDiana helps answer:
 ## Key Features
 
 - **Standardized evaluation** for reproducible benchmarking of agentic reasoning systems  
-- **OpenClaw support** for multi-turn reasoning with tool use and code execution  
+- **Native harness adapters** for multi-turn reasoning with tool use and code execution
 - **ROCK sandbox integration** for safe, isolated execution  
 - **Direct LLM baseline** for clean agent-vs-model comparison  
 - **Built-in benchmarks** covering AIME 2026, GPQA-Diamond, HLE, IMO-AnswerBench, MMMU-Pro, SWE-bench Verified, Terminal-Bench 2, and custom tasks
 - **Full trace logging** for debugging, inspection, and analysis  
 - **Web dashboard** for launching, monitoring, and comparing runs  
 - **Automatic sandbox management** with configurable concurrency
+
+## How it works
+
+![AlphaDiana system design: configuration, runner, session management, native agent runtimes, inference endpoints, and artifact analysis.](docs/assets/alphadiana-system.png)
+
+Configuration selects tasks, agents, environments, and scorers. The runner
+coordinates sessions and native harness execution, then saves available outputs,
+execution status, and scores for analysis. Model endpoints are separate from the
+environments that execute tools; file reuse and memory retention are recorded
+separately. See [Architecture](docs/architecture/README.md) for implementation
+details and [figure sources](docs/assets/README.md) for the draft references.
 
 ## Quick Start
 
@@ -68,7 +86,9 @@ This DirectLLM path does not require ROCK. A successful provider call writes one
 
 ### Use the Python API
 
-The same evaluation pipeline is available from Python on this branch:
+The same evaluation pipeline is available from Python:
+
+![Figure 4: Functional interface of AlphaDiana, reproduced from the draft.](docs/assets/alphadiana-interface.png)
 
 ```python
 import alphadiana as ad
