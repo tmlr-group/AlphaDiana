@@ -27,6 +27,52 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+@pytest.mark.parametrize("scenario", ["compaction", "shell_timeout"])
+def test_real_pi_compaction_sampling_and_shell_budget(scenario):
+    from alphadiana.engine.container_runtime.podman_cli import PodmanCLI
+
+    compact = scenario == "compaction"
+    command = "printf '%49000s' X" if compact else "printf START; sleep 3; printf TOO_LATE"
+    with fixture.model_server(
+        shell_command=command, prompt_tokens=35000 if compact else 10
+    ) as (endpoint, requests):
+        agent = PiAgent()
+        agent.setup(
+            {
+                "image": IMAGE,
+                "model": "fixture-v1",
+                "api_base": endpoint,
+                "timeout": 90,
+                "context_window": 40000,
+                "max_tokens": 32000,
+                "presence_penalty": 1.5,
+                **({} if compact else {"bash_timeout": 1}),
+            }
+        )
+        try:
+            response = agent.solve(BenchmarkTask("pi-budget", "Run the shell task.", None))
+            assert response.answer == "0" and response.finish_reason == "stop"
+            assert all(r.get("presence_penalty") == 1.5 for r in requests)
+            if compact:
+                summaries = [r for r in requests if not r.get("tools")]
+                assert summaries, "Pi did not compact above the configured threshold"
+                budgets = {
+                    r.get("max_tokens", r.get("max_completion_tokens"))
+                    for r in summaries
+                }
+                assert budgets <= {int(16384 * 0.8), int(16384 * 0.5)}, budgets
+            else:
+                assert len(requests) == 2
+                tool = next(m for m in requests[-1]["messages"] if m.get("role") == "tool")
+                assert "START" in tool["content"] and "TOO_LATE" not in tool["content"]
+                assert "124" in tool["content"]
+            assert PodmanCLI().list_ids(
+                labels={"alphadiana.execution": agent.execution_id}
+            ) == []
+        finally:
+            agent.teardown()
+
+
 @pytest.mark.parametrize("agent_class", [PiAgent, DeepSeekHarnessAgent])
 def test_real_baseline_and_plugin(tmp_path, agent_class):
     tmp_path.chmod(0o755)
@@ -220,7 +266,10 @@ def test_real_pi_token_limit_answer_is_scored(tmp_path):
 
 
 @pytest.mark.parametrize("agent_class", [PiAgent, DeepSeekHarnessAgent])
-def test_real_native_training_capture_uses_native_ids_and_policy_attestation(agent_class, tmp_path):
+@pytest.mark.parametrize("finalize_at_budget", [False, True])
+def test_real_native_training_capture_uses_native_ids_and_policy_attestation(
+    agent_class, tmp_path, finalize_at_budget
+):
     """Opt-in integration through the actual Pi image and fixture server."""
 
     import hashlib
@@ -247,6 +296,8 @@ def test_real_native_training_capture_uses_native_ids_and_policy_attestation(age
                 "timeout": 90,
                 "training": {
                     "enabled": True,
+                    "max_calls": 2,
+                    "finalize_at_budget": finalize_at_budget,
                     "algorithm": "sft",
                     "round_id": "sft-round-001",
                     "task_ids": ["training"],
@@ -288,6 +339,9 @@ def test_real_native_training_capture_uses_native_ids_and_policy_attestation(age
             assert row["response_json"]["native_events"]
             assert capture["harness"] == agent_class.name
             assert len(capture["turns"]) == 2
+            if finalize_at_budget:
+                assert requests[-1]["tool_choice"] == "none"
+                assert restored.calls[-1]["request"]["tool_choice"] == "none"
             assert capture["tokens_native"] is True
             assert capture["policy_attestation"] == "verified"
             assert capture["model_identity"]["model_revision"] == "fixture-revision-1"

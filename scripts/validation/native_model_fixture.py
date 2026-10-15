@@ -25,6 +25,8 @@ def model_server(
     model_revision: str = "fixture-revision-1",
     tokenizer_digest: str = "a" * 64,
     chat_template_digest: str = "a" * 64,
+    shell_command: str | None = None,
+    prompt_tokens: int = 10,
 ):
     requests = []
 
@@ -41,7 +43,12 @@ def model_server(
             messages = request["messages"]
             tool_results = [m for m in messages if m.get("role") == "tool"]
             message = {"role": "assistant"}
-            if tool_results:
+            if not request.get("tools") and not tool_results:
+                message["content"] = (
+                    "The user requested a shell task. Continue from the recent tool result."
+                )
+                finish = "stop"
+            elif tool_results:
                 content = str(tool_results[-1].get("content", ""))
                 message["content"] = "1" if "CANDIDATE_GOOD" in content else "0"
                 if reasoning_text is not None:
@@ -68,6 +75,8 @@ def model_server(
                         "printf '\\n'; printf TOOL_RAN > tool-ran.txt; cat tool-ran.txt"
                     )
                 }
+                if shell_command is not None:
+                    arguments[field] = shell_command
                 if any(
                     "CANDIDATE_GOOD" in str(m.get("content", ""))
                     for m in messages
@@ -90,7 +99,11 @@ def model_server(
                 finish = "tool_calls"
             native_prompt = list(range(100, 100 + len(messages)))
             native_tokens = list(range(200, 204))
-            usage = {"prompt_tokens": 10, "completion_tokens": 4, "total_tokens": 14}
+            usage = {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": 4,
+                "total_tokens": prompt_tokens + 4,
+            }
             if native_capture and request.get("return_token_ids"):
                 # These IDs are emitted by the fixture server itself, before
                 # Pi sees the text projection; tests can therefore verify the

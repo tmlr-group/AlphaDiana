@@ -1,9 +1,9 @@
-# Pi and DeepSeek Harness in rootless Podman
+# Pi and DeepSeek Harness execution
 
 Select `agent.name: pi` or `deepseek_harness`. These are generic text/file agents,
-not Harbor/TB2 adapters. Each solve gets a disposable rootless Podman container,
-workspace, home and session. Do not configure a second sandbox. No host fallback
-exists. The host imports neither JavaScript candidates nor the DeepSeek SDK.
+not Harbor/TB2 adapters. By default, each solve gets a disposable rootless Podman container,
+workspace, home and session. Do not configure a second sandbox. Podman is the
+default runtime. Host execution requires the explicit process configuration below.
 
 ## Build and select the immutable runtime
 
@@ -48,17 +48,63 @@ scorer:
   name: exact_match
 ```
 
-Only documented fields are accepted: image, model, api_base, api_key,
-system_prompt, timeout, max_tokens, context_window, reasoning, runtime (podman only), and the
-candidate fields below. `_execution_id` is reserved for the evaluator. Unsupported
+Shared fields are image, model, api_base, api_key, system_prompt, timeout,
+max_tokens, reasoning, runtime (`podman` or `process`), training,
+and the candidate fields below. Process mode adds the local paths documented below. `_execution_id` is reserved for the evaluator. Unsupported
 model reasoning settings fail in the native harness. DeepSeek uses its official
 `sdk-minimal` profile and `deepseek-official` adapter; an endpoint must implement
 that adapter's compatible chat protocol. Pi uses an explicit OpenAI-compatible
-provider. `context_window` is Pi-only; DeepSeek rejects it because its SDK path
-does not expose this setting. Set `context_window` below the serving endpoint's model limit by a
-safety margin appropriate for client/server tokenizer skew, so Pi compacts
-multi-turn sessions before `prompt + max_tokens` exceeds the provider limit.
+provider. Pi also accepts `context_window`, `presence_penalty`, and `bash_timeout`;
+DeepSeek rejects these Pi-only settings.
+
+- Set `context_window` below the provider's model limit to account for tokenizer
+  differences. It must exceed `max(max_tokens, 16384) + 4096`. Pi keeps its native
+  16,384-token compaction reserve even when the solver has a larger output budget;
+  recent context retention shrinks for smaller windows.
+- `presence_penalty` is an optional finite number from -2 to 2, forwarded to each
+  OpenAI-compatible request. Omit it to keep the provider default. Do not combine
+  it with enabled `training`, whose capture policy owns the sampling parameters.
+- `bash_timeout` is an optional positive integer in seconds, below the overall
+  `timeout`, supported in Pi Podman images with GNU timeout and Bash. Each shell
+  call gets this budget; a timed-out shell returns exit 124 to Pi, allowing the
+  model to continue. GNU timeout sends TERM to the shell group, then KILL after
+  five seconds if needed. The overall task deadline still applies.
+
 No host credentials/configuration are discovered by the solvers.
+
+## Explicit host process execution
+
+For trusted tasks on Linux, select `runtime: process` and an installed executable.
+Pi uses `pi_bin`; DeepSeek uses `dsh_python`, the Python interpreter containing
+its SDK. Use absolute executable paths and an existing, owned `process_root`
+directory with mode `0700`. Do not combine these settings with `image`.
+
+```yaml
+agent:
+  name: pi
+  config:
+    runtime: process
+    pi_bin: /absolute/path/to/pi
+    process_root: /absolute/path/to/private/workspaces
+    model: your-model
+    api_base: http://127.0.0.1:8000/v1
+    timeout: 120
+```
+
+Each solve creates a fresh work directory and HOME, copies public attachments,
+and runs the shared JSON bridge in an owned process group. Success, failure and
+timeout all clean up that group, including surviving child processes. Runtime
+metadata records `process` and `host_process_workspace`. Host processes run with
+the user's permissions; use this mode for trusted code. Podman provides container
+isolation when required. Model settings and native token capture use the same
+contracts in both modes.
+
+Controllers that terminate an evaluator abruptly can reclaim its recorded process
+groups with `native_process.cleanup_execution(execution_id, process_root)` from
+`alphadiana.harness._internal`. Pass the evaluator's `_execution_id` and configured
+root. Cleanup checks recorded leader identities and uses the inherited execution
+marker to reclaim detached tool groups, including Pi shells. Other executions
+are left running.
 
 ## Candidate modules
 
@@ -70,10 +116,13 @@ Pi expects an extension's default export. DeepSeek expects a Cordis plugin's
 relative sibling modules and runtime-installed dependencies; install any extra
 fixed dependencies when building a new image, never during evaluation.
 Symlinks and special files are rejected. The complete candidate is read-only
-mounted; runtime compilation/loading happens in the container.
+mounted in Podman mode. Process mode resolves the candidate path from the caller's
+working directory before launching in the task workspace, and loads it with host
+permissions. Candidate identity is checked before execution.
 
 The driver passes problem and public attachments only. Attachments are copied
-under `/work/attachments`; ground truth and task metadata are never serialized.
+under the task workspace: `/work/attachments` in Podman, or `work/attachments` in
+the temporary process directory. Ground truth and task metadata are never serialized.
 No host checkout, evaluator output directory or container socket is mounted.
 Model networking uses slirp4netns; local model services can use
 `host.containers.internal`. This is container filesystem/process isolation, not
@@ -96,17 +145,44 @@ answer re-tokenization is used. Every sample receives a fresh capture endpoint,
 and any missing ID, policy attestation, usage mismatch, context reset or
 incomplete termination enters the native error path.
 
+### Delivery retries and model-call budget
+
+An exact retry of the latest provider request replays its recorded response.
+It retains the same native tokens and uses no additional model call. Changed
+requests pass through normal transition validation. Failed captures and older
+conversation states cannot replay.
+
+Set `training.finalize_at_budget: true` to request a final answer on the last
+permitted model call. The option defaults to `false`. When tools are present,
+that last request uses `tool_choice: none`; messages and tool declarations stay
+intact. A backend returning tool calls at that point fails validation. Record
+this execution policy consistently for baseline and candidate runs.
+
 ## Self-validation
 
 ```bash
 python -m pytest -c pyproject.toml tests -q -rs
-ALPHADIANA_NATIVE_IMAGE=sha256:<built-image-id> \
-  python -m pytest -c pyproject.toml tests/harness/test_native_runtime.py -q
+ALPHADIANA_NATIVE_IMAGE="$HARNESS_IMAGE" \
+ALPHADIANA_LIFECYCLE_IMAGE="$HARNESS_IMAGE" \
+  python -m pytest tests/harness/test_native_runtime.py \
+    tests/engine/test_native_cleanup_runtime.py -q
 ```
 
+To exercise an installed Pi executable in process mode:
+
+```bash
+ALPHADIANA_PI_BIN=/absolute/path/to/pi \
+  python -m pytest tests/harness/test_native_process.py \
+    tests/harness/test_pi_context_window.py tests/harness/test_pi_bash_timeout.py -q
+```
+
+Put the executable's Node runtime on `PATH`. These process tests run the actual
+CLI with a deterministic local model endpoint.
+
 The runtime tests use actual Pi/DeepSeek tools and a deterministic HTTP model
-fixture. They demonstrate integration, plugin loading and cleanup, not live
-model quality. Without the image variable those checks explicitly skip.
+fixture. They cover plugin loading, context compaction, sampling parameters,
+shell timeout recovery, training capture and cleanup. Model quality requires
+a live-model evaluation. Without the image variables the container checks skip.
 
 ### Authenticated endpoints
 

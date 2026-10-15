@@ -1,4 +1,4 @@
-"""Container-only solver driver. Candidate code must never import into the host.
+"""Solver driver for disposable containers or explicit trusted host processes.
 
 Pi final-message extraction follows the role/content approach in Diana PR #78
 (198d4db0638a69e57a6de16cf2898ab3420cbe2a), generalized without Harbor/TB2.
@@ -14,6 +14,25 @@ import sys
 from pathlib import Path
 
 PHASE = "initialization"
+
+
+def pi_compaction_settings(context_window, max_tokens):
+    # Pi also uses 80% of this reserve as the summary output budget. Scaling it
+    # with the solver's max_tokens produces oversized summaries; keep its default.
+    reserve = 16384
+    if (
+        type(context_window) is not int
+        or context_window <= max(reserve, max_tokens) + 4096
+    ):
+        raise ValueError(
+            "context_window must be an integer and leave room for "
+            "max(max_tokens, 16384) plus 4096 tokens"
+        )
+    return {
+        "enabled": True,
+        "reserveTokens": reserve,
+        "keepRecentTokens": min(20000, (context_window - reserve) // 2),
+    }
 
 
 def text_blocks(content, kind="text"):
@@ -40,6 +59,27 @@ def pi_run(request):
         "maxTokens": config.get("max_tokens", 4096),
         "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
     }
+    if "presence_penalty" in config:
+        model["samplingParams"] = {"presence_penalty": config["presence_penalty"]}
+    settings = {}
+    if "context_window" in config:
+        settings["compaction"] = pi_compaction_settings(
+            model["contextWindow"], model["maxTokens"]
+        )
+    if "bash_timeout" in config:
+        if not Path("/usr/bin/timeout").is_file() or not Path("/bin/bash").is_file():
+            raise ValueError("bash_timeout requires GNU timeout and bash in the image")
+        # Pi receives exit 124 as a tool failure and can continue the episode.
+        # GNU timeout terminates the shell's process group, including children.
+        shell = home / "bounded-bash"
+        shell.write_text(
+            "#!/bin/sh\nexec /usr/bin/timeout --verbose --kill-after=5s "
+            f'{config["bash_timeout"]}s /bin/bash "$@"\n'
+        )
+        shell.chmod(0o700)
+        settings["shellPath"] = str(shell)
+    if settings:
+        (home / "settings.json").write_text(json.dumps(settings))
     (home / "models.json").write_text(
         json.dumps(
             {
@@ -62,7 +102,7 @@ def pi_run(request):
         "DIANA_MODEL_API_KEY": config.get("api_key", "keyless"),
     }
     command = [
-        "/opt/pi/node_modules/.bin/pi",
+        config.get("pi_bin", "/opt/pi/node_modules/.bin/pi"),
         "--mode",
         "json",
         "--print",
@@ -82,7 +122,10 @@ def pi_run(request):
     if "reasoning" in config:
         command += ["--thinking", config["reasoning"]]
     if "candidate_entry" in config:
-        command += ["--extension", "/candidate/" + config["candidate_entry"]]
+        command += [
+            "--extension",
+            config.get("candidate_path", "/candidate/" + config["candidate_entry"]),
+        ]
     # stdin prevents a task string from becoming a CLI option or @file argument.
     PHASE = "execution"
     process = subprocess.run(
@@ -91,6 +134,7 @@ def pi_run(request):
         env=environment,
         text=True,
         capture_output=True,
+        cwd=request.get("work_dir"),
         check=True,
         timeout=config.get("timeout", 120),
     )
@@ -258,9 +302,11 @@ def deepseek_run(request):
     options = {
         "provider": "deepseek-official",
         "model": config["model"],
-        "cwd": "/work",
-        "runtime_cwd": "/work",
-        "dsh_home": "/tmp/dsh-home",
+        "cwd": request.get("work_dir", "/work"),
+        "runtime_cwd": request.get("work_dir", "/work"),
+        "dsh_home": str(Path(os.environ["HOME"]) / "dsh-home")
+        if config.get("runtime") == "process"
+        else "/tmp/dsh-home",
         "profile": "sdk-minimal",
         "base_url": config["api_base"],
         "api_key": config.get("api_key", "keyless"),
@@ -284,7 +330,11 @@ def deepseek_run(request):
     if "candidate_entry" in config:
         # JSON is valid YAML. The runtime compiles the local TS plugin; no package
         # installation or candidate-controlled startup command is involved.
-        patch = Path("/tmp/candidate.patch.yml")
+        patch = (
+            Path(os.environ["HOME"]) / "candidate.patch.yml"
+            if config.get("runtime") == "process"
+            else Path("/tmp/candidate.patch.yml")
+        )
         patch.write_text(
             json.dumps(
                 [
@@ -292,7 +342,10 @@ def deepseek_run(request):
                         "insert": [
                             {
                                 "id": "diana-candidate",
-                                "name": "/candidate/" + config["candidate_entry"],
+                                "name": config.get(
+                                    "candidate_path",
+                                    "/candidate/" + config["candidate_entry"],
+                                ),
                             }
                         ]
                     }
@@ -322,9 +375,11 @@ def deepseek_run(request):
 def main():
     request = json.load(sys.stdin)
     Path(os.environ["HOME"]).mkdir(parents=True, exist_ok=True)
-    attachments = Path("/input/attachments")
+    attachments = Path(request.get("input_dir", "/input")) / "attachments"
     if attachments.exists():
-        shutil.copytree(attachments, "/work/attachments")
+        shutil.copytree(
+            attachments, Path(request.get("work_dir", "/work")) / "attachments"
+        )
     result = pi_run(request) if request["harness"] == "pi" else deepseek_run(request)
     print(json.dumps(result, allow_nan=False))
 

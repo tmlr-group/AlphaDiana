@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
@@ -253,6 +254,136 @@ def test_endpoint_is_bearer_protected_and_projects_sse_without_retokenizing():
         assert capture.capture().turns[0].response_token_ids == (11, 12)
     finally:
         endpoint.close()
+
+
+@pytest.mark.parametrize("stream", [False, True])
+def test_endpoint_exact_retry_replays_without_resampling(stream):
+    capture = NativeCapture(plan(), "task-a", 0, "fixture-v1", 1)
+    calls = []
+
+    def complete(payload):
+        calls.append(payload)
+        return completion()
+
+    with TokenCaptureEndpoint(Backend("http://unused"), capture, 3, complete=complete) as endpoint:
+        body = json.dumps({**request(), "stream": stream}).encode()
+        posted = Request(endpoint.base_url + "/chat/completions", data=body, headers={
+            "Content-Type": "application/json", "Authorization": "Bearer " + endpoint.key,
+        })
+        first = urlopen(posted).read()
+        captured_bytes = capture._captured_bytes
+        assert urlopen(posted).read() == first
+        assert len(calls) == len(capture.calls) == len(capture.turns) == 1
+        assert capture._captured_bytes == captured_bytes
+        turn = capture.capture().turns[0]
+        assert turn.response_token_ids == (11, 12)
+        assert turn.behavior_log_probs == (-0.1, -0.2)
+
+
+def test_endpoint_delivery_failure_allows_exact_retry(monkeypatch):
+    capture = NativeCapture(plan(), "task-a", 0, "fixture-v1", 1)
+    calls = []
+
+    def complete(payload):
+        calls.append(payload)
+        return completion()
+
+    with TokenCaptureEndpoint(Backend("http://unused"), capture, 3, complete=complete) as endpoint:
+        handler = endpoint.server.RequestHandlerClass
+        reply = handler._reply
+        deliveries = []
+
+        def lose_first_delivery(self, *args):
+            deliveries.append(args)
+            if len(deliveries) == 1:
+                raise BrokenPipeError("client disconnected")
+            return reply(self, *args)
+
+        monkeypatch.setattr(handler, "_reply", lose_first_delivery)
+        posted = Request(endpoint.base_url + "/chat/completions", data=json.dumps(request()).encode(),
+                         headers={"Authorization": "Bearer " + endpoint.key})
+        with pytest.raises(Exception):
+            urlopen(posted).read()
+        assert capture.failed is False
+        assert json.loads(urlopen(posted).read()) == completion()
+        assert len(calls) == len(capture.turns) == 1
+
+
+def test_endpoint_concurrent_exact_retry_calls_backend_once():
+    capture = NativeCapture(plan(), "task-a", 0, "fixture-v1", 1)
+    started = threading.Event()
+    release = threading.Event()
+    generated = []
+
+    def complete(payload):
+        generated.append(payload)
+        started.set()
+        assert release.wait(3)
+        return completion()
+
+    with TokenCaptureEndpoint(Backend("http://unused"), capture, 3, complete=complete) as endpoint:
+        def post():
+            return urlopen(Request(
+                endpoint.base_url + "/chat/completions", data=json.dumps(request()).encode(),
+                headers={"Authorization": "Bearer " + endpoint.key},
+            ), timeout=5).read()
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first = pool.submit(post)
+            assert started.wait(3)
+            retry = pool.submit(post)
+            release.set()
+            assert first.result(timeout=5) == retry.result(timeout=5)
+        assert len(generated) == len(capture.turns) == 1
+        assert capture.failed is False
+
+
+def test_endpoint_changed_retry_poisoned_capture_cannot_replay():
+    capture = NativeCapture(plan(), "task-a", 0, "fixture-v1", 2)
+    with TokenCaptureEndpoint(Backend("http://unused"), capture, 3,
+                              complete=lambda _: completion()) as endpoint:
+        def post(value):
+            return urlopen(Request(endpoint.base_url + "/chat/completions",
+                                  data=json.dumps(value).encode(),
+                                  headers={"Authorization": "Bearer " + endpoint.key})).read()
+
+        post(request())
+        with pytest.raises(Exception):
+            post({**request(), "temperature": 0.5})
+        assert capture.failed is True
+        with pytest.raises(Exception):
+            post(request())
+        assert len(capture.calls) == len(capture.turns) == 1
+
+
+def test_endpoint_tool_retry_preserves_transition_validation():
+    capture = NativeCapture(plan(), "task-a", 0, "fixture-v1", 2)
+    generated = []
+
+    def complete(payload):
+        generated.append(payload)
+        return _tool_step() if len(generated) == 1 else completion()
+
+    with TokenCaptureEndpoint(Backend("http://unused"), capture, 3, complete=complete) as endpoint:
+        def post(value):
+            return json.loads(urlopen(Request(
+                endpoint.base_url + "/chat/completions", data=json.dumps(value).encode(),
+                headers={"Authorization": "Bearer " + endpoint.key},
+            )).read())
+
+        first = post(request())
+        assert post(request()) == first
+        followup = {**request(), "messages": [
+            *request()["messages"], first["choices"][0]["message"],
+            {"role": "tool", "tool_call_id": "call-1", "content": "output"},
+        ]}
+        second = post(followup)
+        assert post(followup) == second
+        assert len(generated) == len(capture.turns) == 2
+        # An older request cannot be replayed once the conversation advances.
+        with pytest.raises(Exception):
+            post(request())
+        assert capture.failed is True
 
 
 def test_batch_round_trip_and_grpo_completeness():

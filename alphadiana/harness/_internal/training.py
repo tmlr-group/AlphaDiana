@@ -47,6 +47,7 @@ _TRAINING_KEYS = frozenset(
         "task_id",
         "sample_index",
         "max_calls",
+        "finalize_at_budget",
         "require_logprobs",
         "require_policy_attestation",
         "require_model_attestation",
@@ -625,6 +626,7 @@ class CaptureConfig:
     require_logprobs: bool = False
     require_policy_attestation: bool = False
     require_model_attestation: bool = True
+    finalize_at_budget: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.plan, SamplingPlan):
@@ -651,6 +653,7 @@ class CaptureConfig:
             "require_logprobs",
             "require_policy_attestation",
             "require_model_attestation",
+            "finalize_at_budget",
         ):
             if type(getattr(self, name)) is not bool:
                 raise TypeError(f"{name} must be a boolean")
@@ -666,6 +669,7 @@ class CaptureConfig:
                 "model_name": self.model_name,
                 "attempt_id": self.attempt_id,
                 "max_calls": self.max_calls,
+                "finalize_at_budget": self.finalize_at_budget,
                 "require_logprobs": self.require_logprobs,
                 "require_policy_attestation": self.require_policy_attestation,
                 "require_model_attestation": self.require_model_attestation,
@@ -743,6 +747,7 @@ def capture_config_from_dict(
         require_logprobs=require_logs,
         require_policy_attestation=require_attestation,
         require_model_attestation=require_model_attestation,
+        finalize_at_budget=value.get("finalize_at_budget", False),
     )
 
 
@@ -781,6 +786,7 @@ def validate_training_config(value: object) -> None:
         "require_logprobs",
         "require_policy_attestation",
         "require_model_attestation",
+        "finalize_at_budget",
     ):
         if key in value and type(value[key]) is not bool:
             raise TypeError(f"{key} must be a boolean")
@@ -844,6 +850,7 @@ class NativeCapture:
         model_identity: ModelIdentity | None = None,
         require_policy_attestation: bool = False,
         require_model_attestation: bool | None = None,
+        finalize_at_budget: bool = False,
     ) -> None:
         if not isinstance(plan, SamplingPlan):
             raise TypeError("plan must be a SamplingPlan")
@@ -872,6 +879,7 @@ class NativeCapture:
             ("require_logprobs", require_logprobs),
             ("require_policy_attestation", require_policy_attestation),
             ("require_model_attestation", require_model_attestation),
+            ("finalize_at_budget", finalize_at_budget),
         ):
             if type(value) is not bool:
                 raise TypeError(f"{name} must be a boolean")
@@ -882,6 +890,7 @@ class NativeCapture:
         self.sample_index = sample_index
         self.attempt_id = attempt_id
         self.max_calls = max_calls
+        self.finalize_at_budget = finalize_at_budget
         self.require_logprobs = bool(require_logprobs)
         self.require_policy_attestation = bool(require_policy_attestation)
         self.require_model_attestation = bool(require_model_attestation)
@@ -1010,6 +1019,15 @@ class NativeCapture:
             seed=seed,
             chat_template_kwargs=dict(self.plan.chat_template_kwargs),
         )
+        if (
+            self.finalize_at_budget
+            and len(self.calls) == self.max_calls - 1
+            and payload.get("tools")
+        ):
+            # Reserve the last permitted real completion for a final answer.
+            # Messages and tool declarations remain intact; native evidence
+            # records this actual provider request, not a fabricated response.
+            payload["tool_choice"] = "none"
         return payload
 
     def _check_model_identity(self, response: Mapping[str, Any]) -> None:
@@ -1086,6 +1104,8 @@ class NativeCapture:
         if not isinstance(message, Mapping) or message.get("role") != "assistant":
             raise ValueError("completion is not an assistant message")
         tools = message.get("tool_calls") or []
+        if self.finalize_at_budget and len(self.calls) == self.max_calls - 1 and tools:
+            raise ValueError("final budget completion must not contain tool calls")
         if finish_reason == "tool_calls":
             _tool_identity(tools)
         elif tools:
@@ -1449,17 +1469,28 @@ class TokenCaptureEndpoint:
                 if self.path not in {"/v1/chat/completions", "/chat/completions"}:
                     self.send_error(404, "Not found")
                     return
-                try:
-                    with owner.lock:
+                with owner.lock:
+                    try:
                         request = self._read_json()
-                        payload = owner.capture.prepare(request)
-                        response = self._backend_request(payload)
-                        owner.capture.record(payload, response)
-                        request_bytes = len(_json_bytes(request))
-                        if owner.capture._captured_bytes + request_bytes > MAX_CAPTURE_BYTES:
-                            raise ValueError("native capture exceeds its byte budget")
-                        owner.capture._captured_bytes += request_bytes
-                        owner.capture.calls[-1]["harness_request"] = copy.deepcopy(request)
+                        if owner.capture.failed:
+                            raise ValueError("native capture has failed")
+                        previous = owner.capture.calls[-1] if owner.capture.calls else None
+                        if previous is not None and _json_bytes(request) == _json_bytes(
+                            previous.get("harness_request")
+                        ):
+                            # A provider delivery retry is not a new policy sample.
+                            # Replay only the last exact request in this episode;
+                            # NativeCapture still validates every new transition.
+                            response = previous["response"]
+                        else:
+                            payload = owner.capture.prepare(request)
+                            response = self._backend_request(payload)
+                            owner.capture.record(payload, response)
+                            request_bytes = len(_json_bytes(request))
+                            if owner.capture._captured_bytes + request_bytes > MAX_CAPTURE_BYTES:
+                                raise ValueError("native capture exceeds its byte budget")
+                            owner.capture._captured_bytes += request_bytes
+                            owner.capture.calls[-1]["harness_request"] = copy.deepcopy(request)
                         body = (
                             completion_sse(response)
                             if request.get("stream")
@@ -1467,21 +1498,25 @@ class TokenCaptureEndpoint:
                         )
                         if len(body) > owner.max_bytes:
                             raise ValueError("completion projection exceeds capture bound")
-                        self._reply(
-                            200,
-                            body,
-                            "text/event-stream" if request.get("stream") else "application/json",
-                        )
-                except Exception:
-                    with owner.lock:
+                        try:
+                            self._reply(
+                                200,
+                                body,
+                                "text/event-stream" if request.get("stream") else "application/json",
+                            )
+                        except (BrokenPipeError, ConnectionResetError, TimeoutError):
+                            # Evidence is already validated and recorded. A lost
+                            # client must retry identically or fail validation.
+                            return
+                    except Exception:
                         owner.capture.failed = True
-                    try:
-                        self.send_error(
-                            502,
-                            "native training capture failed; retry is not trainable",
-                        )
-                    except OSError:
-                        pass
+                        try:
+                            self.send_error(
+                                502,
+                                "native training capture failed; retry is not trainable",
+                            )
+                        except OSError:
+                            pass
 
             def do_GET(self) -> None:
                 if not self._authorized():
