@@ -72,7 +72,8 @@ def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
         deep_merge,
         parse_override,
     )
-    from alphadiana.engine.runner import Runner, _is_gateway_autodeploy_agent
+    from alphadiana.engine.runner import Runner
+    from alphadiana.harness.openclaw.gateway_pool import is_openclaw_autodeploy
 
     overrides: dict = {}
     for ov in override:
@@ -104,7 +105,7 @@ def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
     # Pre-flight: verify ROCK services only for ROCK-backed runs.
     uses_rock_runtime = (
         config.sandbox_name == "rock"
-        or _is_gateway_autodeploy_agent(config)
+        or is_openclaw_autodeploy(config)
     )
     if uses_rock_runtime:
         from alphadiana.engine.sandbox.rock_ports import (
