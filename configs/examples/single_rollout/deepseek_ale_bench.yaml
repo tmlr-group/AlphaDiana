@@ -1,5 +1,5 @@
 # One DeepSeek-harness rollout on one ALE-Bench lite problem, scored on public seeds.
-# python -m alphadiana.single_rollout configs/examples/single_rollout/deepseek_ale_bench.yaml \
+# python -m alphadiana.cli.single_rollout configs/examples/single_rollout/deepseek_ale_bench.yaml \
 #   --import alphahebe.integrations.diana.benchmarks.ale_bench --output result.json
 run_id: deepseek-ale-bench
 output_dir: ./results/single_rollout
