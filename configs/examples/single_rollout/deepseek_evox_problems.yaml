@@ -1,5 +1,5 @@
 # One DeepSeek-harness rollout on one EvoX problem from a clean SkyDiscover checkout.
-# python -m alphadiana.single_rollout configs/examples/single_rollout/deepseek_evox_problems.yaml \
+# python -m alphadiana.cli.single_rollout configs/examples/single_rollout/deepseek_evox_problems.yaml \
 #   --import alphahebe.integrations.diana.benchmarks.evox_problems --output result.json
 run_id: deepseek-evox-problems
 output_dir: ./results/single_rollout

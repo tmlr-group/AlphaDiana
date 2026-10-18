@@ -1,5 +1,5 @@
 # One DeepSeek-harness rollout on one HLE-Verified multiple-choice task.
-# python -m alphadiana.single_rollout configs/examples/single_rollout/deepseek_hle_verified.yaml \
+# python -m alphadiana.cli.single_rollout configs/examples/single_rollout/deepseek_hle_verified.yaml \
 #   --import alphahebe.integrations.diana.benchmarks.hle_verified --output result.json
 run_id: deepseek-hle-verified
 output_dir: ./results/single_rollout
