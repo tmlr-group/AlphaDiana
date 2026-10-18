@@ -326,9 +326,9 @@ That mode still requires the trace-bound `action_targets` artifact, with
 Do not resegment the original human targets when reproducing that comparison.
 
 Historical character segmentation is retained in
-`analysis/legacy/character_spans.py`; the supported explicit `custom-spans-v1`
+`analysis/actions/llm_annotations.py`; the supported explicit `custom-spans-v1`
 option writes `legacy_custom_annotated_actions`. Historical keyword labels remain
-available at `analysis/action_events.py` for old scripts. Neither is called by
+available at `analysis/actions/keyword_baseline.py` for old scripts. Neither is called by
 the standard Analyzer pipeline. Analyzer report schema v2 removes the old `execution.actions`,
 `execution.action_composition` and `execution.action_transitions` tables and figures.
 Use `annotated_actions` for the new measurement; keep historical exports unchanged.
