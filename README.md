@@ -309,8 +309,7 @@ docs/            # guides, contracts, and documentation assets
 
 ## Citation
 
-<details>
-<summary>BibTeX</summary>
+**BibTeX**
 
 ```bibtex
 @article{zhou2026alphadiana,
@@ -320,12 +319,10 @@ docs/            # guides, contracts, and documentation assets
   year = {2026}
 }
 ```
-
-</details>
-
-<details>
-<summary>Acknowledgements</summary>
+**Acknowledgements**
 
 We thank the contributors, collaborators and open-source communities behind [OpenClaw](https://github.com/openclaw/openclaw), [ROCK](https://github.com/alibaba/ROCK) and the other tools that support AlphaDiana.
 
-</details>
+## Related Project
+
+Please also check out [AlphaApollo](https://alphaapollo.org/), our system for deep agentic reasoning ([arXiv](https://arxiv.org/abs/2510.06261), [GitHub](https://github.com/tmlr-group/AlphaApollo)).
