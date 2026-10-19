@@ -187,6 +187,7 @@ Coverage records identify the evidence available for each measurement. Post-tool
 
 For comparisons, inspect the scorer identity, expected sample count, recorded `isolation_mode`, and execution budget. Read Pass@k and Avg@k with the configured `num_samples`. The [Results](docs/results.md) page presents selected paper tables and process-analysis figures.
 
+<!-- Temporarily hidden until the dashboard includes analyze content and interactions.
 ## Dashboard
 
 The dashboard lets you launch evaluations, monitor job logs, inspect trajectories, and compare saved runs. From the repository root, with your Python environment active:
@@ -208,6 +209,7 @@ Open the frontend URL printed by the launcher. See [Dashboard](docs/dashboard.md
 </p>
 
 *Configure a run in New Evaluation (left) and inspect saved runs in the Results view (right). The dashboard connects run setup, monitoring, and result inspection.*
+-->
 
 ## Documentation
 
