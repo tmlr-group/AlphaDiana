@@ -6,8 +6,8 @@ The README paper images are rendered from the sources supplied in
 
 | Repository asset | Paper source | Figure |
 | --- | --- | --- |
-| `alphadiana-motivation.png` | `0-shared/figures/AlphaDiana-motivation.pdf` | 1: Position of AlphaDiana; opening illustration |
-| `alphadiana-overview.png` | `0-shared/figures/AlphaDiana-Fig2.pdf` | 2: Overview |
+| `alphadiana-motivation.png` | `0-shared/figures/AlphaDiana-motivation.pdf` | 1: Position of AlphaDiana; follows measurement examples in Why AlphaDiana |
+| `alphadiana-overview.png` | `0-shared/figures/AlphaDiana-Fig2.pdf` | 2: Overview; measurement examples in Why AlphaDiana |
 | `alphadiana-system.png` | `0-shared/figures/AlphaDiana-system.pdf` | 3: System design |
 | `alphadiana-interface.png` | `0-shared/figures/AlphaDiana-interface.pdf` | 4: Functional interface; reproduced unchanged |
 | `alphadiana-action-patterns.png` | `0-shared/figures/revised_figures/fig_action_four_panels_final.pdf` | Functional-step patterns; results and analysis |

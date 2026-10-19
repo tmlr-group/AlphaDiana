@@ -2,13 +2,15 @@
 
 **AlphaDiana** is an open-source measurement system for **LLM-based agents on verifiable reasoning tasks**. It runs configured agents against benchmarks, scores their outputs, and saves execution evidence. Researchers can compare correctness, execution failures, action patterns, and resource use across recorded conditions.
 
-![Position of AlphaDiana](docs/assets/alphadiana-motivation.png)
-
-*A model, its harness, and its execution settings jointly shape an agent's behavior. AlphaDiana measures the resulting agent through task outcomes and execution evidence.*
-
 ## Why AlphaDiana?
 
-AlphaDiana connects final scores with saved trajectories, failures, and resource measurements. It supports three research tasks:
+AlphaDiana connects final scores with saved trajectories, failures, and resource measurements.
+
+![AlphaDiana measurement examples: benchmark scores, failure modes, output-token usage, and component ablations.](docs/assets/alphadiana-overview.png)
+
+*What can you measure? The lower panels show benchmark scores across model–harness combinations, failure-label incidence, output-token usage for correct and wrong trajectories, and score changes when tools are removed. The upper panel shows how execution produces the evidence for these measurements. Values come from the paper experiments.*
+
+These measurements support three research tasks:
 
 - **Compare complete agents.** Evaluate native harnesses against a direct LLM baseline under recorded task, model, environment, and budget settings.
 - **Inspect execution.** Connect correct and incorrect answers to execution status, available traces, token usage, and elapsed time.
@@ -16,11 +18,11 @@ AlphaDiana connects final scores with saved trajectories, failures, and resource
 
 Built-in benchmarks cover **AIME 2026, GPQA-Diamond, HLE, IMO-AnswerBench, MMMU-Pro, SWE-bench Verified, and Terminal-Bench 2**. Custom tasks can use the same execution and scoring interfaces.
 
+![Position of AlphaDiana](docs/assets/alphadiana-motivation.png)
+
+*A model, its harness, and its execution settings jointly shape an agent's behavior. AlphaDiana measures the resulting agent through task outcomes and execution evidence.*
+
 ## How it works
-
-![AlphaDiana connects configured execution with saved evidence and analysis.](docs/assets/alphadiana-overview.png)
-
-*The upper panel connects agent configuration, benchmark tasks, and execution. The lower panels show benchmark scores, failure patterns, resource use, and component comparisons from the paper experiments.*
 
 The evaluation and analysis stages follow one evidence path:
 
