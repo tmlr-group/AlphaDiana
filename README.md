@@ -40,14 +40,11 @@
 
 </details>
 
-<details>
-<summary>Positioning — why measure the model and harness together?</summary>
+### Positioning
 
 ![Position of AlphaDiana](docs/assets/alphadiana-motivation.png)
 
 *A model, its harness and its execution settings jointly shape agent behavior.*
-
-</details>
 
 ## Quick Start
 
@@ -143,12 +140,12 @@ ad.analyzer(artifacts).export("figures/aime_opencode_demo")
 **Results:** `results/`<br>
 **Exports:** tables + PDF/SVG/PNG.
 
-<details>
-<summary>API diagram & composition details</summary>
-
 ![AlphaDiana functional interface: agent, dataset, environment, scorer, runner, and analysis composition.](docs/assets/alphadiana-interface.png)
 
 *The paper's functional interface connects experiment components to analysis outputs. [Figure sources](docs/assets/README.md).*
+
+<details>
+<summary>API composition details</summary>
 
 Use the current API shown above: `ad.scorer.create(...)`, explicit harness `version=`, and `benchmark=` for dataset hub paths. OpenCode owns its Podman controller. Harnesses accepting a separate environment use `ad.environment(...)` and `ad.runner(env=...)`.
 
@@ -195,16 +192,11 @@ ad.analyzer(
 
 **Configure → Execute & score → Save evidence → Analyze & export**
 
-<details>
-<summary>System architecture</summary>
-
 ![AlphaDiana system design: configuration, runner, session management, native agent runtimes, inference endpoints, and artifact analysis.](docs/assets/alphadiana-system.png)
 
 *The runner coordinates sessions and native harnesses. Saved outputs, traces and resource measurements connect execution to scoring and analysis.*
 
 [Architecture →](docs/architecture/README.md)
-
-</details>
 
 <!-- Temporarily hidden until the dashboard includes analyze content and interactions.
 ## Dashboard
