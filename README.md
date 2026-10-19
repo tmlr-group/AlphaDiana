@@ -2,17 +2,23 @@
 
 **Measure LLM agents on verifiable reasoning tasks.** Compare scores, inspect trajectories, and test tools, skills and memory.
 
+AlphaDiana runs configured agents against benchmarks, scores their outputs, and saves the evidence needed to analyze each attempt.
+
 [**Scope**](#scope-at-a-glance) | [**Quick Start**](#quick-start) | [**Python API**](#python-api) | [**Analyze**](#analysis-and-outputs) | [**Docs**](#documentation)
 
 ## Why AlphaDiana?
 
-**Compare agents. Explain failures. Test components.**
+- **Compare agents:** run different model–harness combinations on the same tasks and compare their scores and resource use.
+- **Inspect failures:** connect wrong answers to execution status, tool interactions and action patterns in saved trajectories.
+- **Test components:** change tools, skills or memory settings and compare outcomes under recorded task and budget settings.
 
 ![AlphaDiana measurement examples: benchmark scores, failure modes, output-token usage, and component ablations.](docs/assets/alphadiana-overview.png)
 
-*Paper experiments: benchmark scores, failure-label incidence, output tokens by outcome, and tool-removal effects. Each panel labels its model, benchmark and metric.*
+*The upper panel shows how execution produces evidence. The lower panels use paper experiments to illustrate scores, failure-label incidence, output tokens by outcome, and tool-removal effects. Each plot labels its model, benchmark and metric.*
 
 ## Scope at a glance
+
+Read the table from experiment setup to analysis and extension. Linked rows lead to configuration options, runtime requirements and examples.
 
 | Layer | Dimension | Options |
 |---|---|---|
@@ -42,6 +48,8 @@
 
 ### Positioning
 
+A **harness** controls how a model uses prompts, tools and persistent state. Changing the harness can change the behavior of the same model. AlphaDiana compares the complete agent and connects score differences to its execution evidence.
+
 ![Position of AlphaDiana](docs/assets/alphadiana-motivation.png)
 
 *A model, its harness and its execution settings jointly shape agent behavior.*
@@ -51,7 +59,11 @@
 **Run:** one AIME 2026 task with DirectLLM.<br>
 **Requires:** Qwen3.5-27B endpoint, Python ≥ 3.10.
 
+This example uses a direct model call without a tool loop or task container. It produces one scored attempt and a saved result you can analyze afterward.
+
 ### 1. Install
+
+Create an isolated Python environment and install the execution and analysis dependencies:
 
 ```bash
 git clone https://github.com/tmlr-group/AlphaDiana.git
@@ -62,6 +74,8 @@ pip install -e '.[analysis,benchmarks,agents]'
 ```
 
 ### 2. Connect your model
+
+Replace the URL and key with your provider's values. The model name must match an ID served by that endpoint.
 
 ```bash
 export OPENAI_BASE_URL="https://your-provider.example/v1"
@@ -91,6 +105,8 @@ alphadiana run configs/macro_runs/aime2026_directllm_qwen35_27b.yaml \
 
 `validate` checks configuration locally; `run` loads tasks and calls the model endpoint.
 
+The overrides select one task and one sample, then assign a recognizable run ID to the output.
+
 ### 4. Read results
 
 ```bash
@@ -100,9 +116,13 @@ alphadiana report results/
 **Saved run:** `results/quickstart_aime_directllm_t1_k1.jsonl`<br>
 **Check:** score, `score_status` and execution status. [Troubleshooting →](docs/getting-started/troubleshooting.md)
 
+The report summarizes saved attempts. Check status alongside the score to distinguish an incorrect answer from an execution or scoring failure.
+
 ## Python API
 
 **OpenCode → 3 AIME tasks → scores, traces and figures.** Use the endpoint variables above.
+
+The Python API lets you select the agent, dataset and scorer separately, then pass them to the runner. This example runs OpenCode inside the Podman controller built below.
 
 <details>
 <summary><strong>Setup required:</strong> build the OpenCode controller image with Podman</summary>
@@ -140,6 +160,8 @@ ad.analyzer(artifacts).export("figures/aime_opencode_demo")
 **Results:** `results/`<br>
 **Exports:** tables + PDF/SVG/PNG.
 
+`compute()` executes and scores the tasks, then returns references to the saved artifacts. `ad.analyzer(artifacts).export(...)` reads those artifacts and generates measurement tables and figures.
+
 ![AlphaDiana functional interface: agent, dataset, environment, scorer, runner, and analysis composition.](docs/assets/alphadiana-interface.png)
 
 *The paper's functional interface connects experiment components to analysis outputs. [Figure sources](docs/assets/README.md).*
@@ -157,6 +179,8 @@ Use the current API shown above: `ad.scorer.create(...)`, explicit harness `vers
 
 **Already have a saved run? Export measurements without rerunning the agent.**
 
+Default analysis reads saved scores, usage counters and available probability evidence. It computes performance, resource use and entropy where the required evidence is present.
+
 ```python
 import alphadiana as ad
 
@@ -166,6 +190,10 @@ ad.analyzer("results/quickstart_aime_directllm_t1_k1.jsonl").export(
 ```
 
 **Outputs:** tables, figures, plotted data, source hashes and evidence coverage.
+
+Coverage records show which measurements have supporting evidence. For example, a run can report accuracy and output tokens even when logprobs are unavailable for entropy.
+
+**Need action or failure labels?** Enable the optional analysis model below to annotate saved trajectories.
 
 <details>
 <summary>Add action & failure labels — optional model calls</summary>
@@ -190,7 +218,10 @@ ad.analyzer(
 
 ## How it works
 
-**Configure → Execute & score → Save evidence → Analyze & export**
+1. **Configure:** select tasks, a model and harness, execution environments, a scorer and budgets.
+2. **Execute & score:** the runner coordinates task sessions; the native harness runs the agent, and the scorer evaluates its output.
+3. **Save evidence:** result records link scores and execution status to retained outputs, traces and resource measurements.
+4. **Analyze & export:** reopen those records to compare runs, inspect behavior and produce tables and figures.
 
 ![AlphaDiana system design: configuration, runner, session management, native agent runtimes, inference endpoints, and artifact analysis.](docs/assets/alphadiana-system.png)
 
