@@ -16,7 +16,24 @@ These measurements support three research tasks:
 - **Inspect execution.** Connect correct and incorrect answers to execution status, available traces, token usage, and elapsed time.
 - **Compare component settings.** Examine how changes to tools, skills, and memory affect outcomes and execution patterns.
 
-Built-in benchmarks cover **AIME 2026, GPQA-Diamond, HLE, IMO-AnswerBench, MMMU-Pro, SWE-bench Verified, and Terminal-Bench 2**. Custom tasks can use the same execution and scoring interfaces.
+### Scope at a glance
+
+| Dimension | Integrated options and capabilities |
+|---|---|
+| **Models** | **Qwen3.5-27B, Gemma-4-31B-IT, Kimi-K2.6** in the paper experiments; configurable model IDs and OpenAI-compatible endpoints. Execution and analysis can use separate models. |
+| **Harnesses** | **OpenClaw, OpenCode, ZeroClaw, Pi, DeepSeek Harness**; **SWE-Agent** for SWE-bench; **Terminus2** through Harbor for Terminal-Bench 2; **DirectLLM** as the direct-model baseline. [Runtime guides](docs/harnesses/README.md). |
+| **Harness components** | **Tools:** native tool sets, filtering and removal. **Skills:** math/general libraries and loading controls. **Memory:** within-task, cross-sample and cross-task persistence. **Prompts/context:** system instructions, workspace instructions and native compaction settings. [Component experiments](configs/micro_runs/README.md). |
+| **Containers** | **None** (direct API or supported host/process execution), **Docker**, **Podman**. Environment integration includes local execution, ROCK-managed sandboxes and benchmark-specific task containers. [Environment guide](docs/architecture/sandboxes.md). |
+| **Benchmarks** | **AIME 2026, GPQA-Diamond, HLE, IMO-AnswerBench, MMMU-Pro, SWE-bench Verified, Terminal-Bench 2**, plus custom tasks. Coverage spans mathematical/scientific reasoning, multimodal questions, repository repair and terminal tasks. [Benchmark guides](docs/benchmarks/README.md). |
+| **Scoring** | Exact match, numeric matching, mathematical equivalence, model judging, IMO answer verification, official SWE-bench evaluation and Terminal-Bench verifier rewards. [Scorer registry](docs/architecture/registries.md#scorers). |
+| **Experiment controls** | Model/harness/component comparisons; task selection; repeated samples; sampling, token, time and tool-call budgets; concurrency, retries, checkpoint resume and state-isolation settings. [Configuration](docs/configuration/README.md). |
+| **Measurements** | **Outcomes:** accuracy, Pass@k, Avg@k, execution/scoring status and failure-label incidence. **Resources:** output tokens, wall time and cost per correct answer. **Process:** action composition/transitions and token/post-tool entropy. **Components:** score and behavior comparisons across tool, skill and memory settings. [Analysis guide](docs/getting-started/python-api.md#built-in-measurements). |
+| **Evidence and exports** | Result JSONL, native trajectories, tool interactions, usage counters, available logprobs and retained artifacts; Markdown reports, analysis tables and PDF/SVG/PNG figures with source hashes and coverage records. [Saved-run analysis](docs/getting-started/python-api.md). |
+| **Interfaces** | **CLI + YAML** for validation, single runs and batches; **Python API** for composing experiments, reopening saved runs, rescoring and offline analysis. [Python API](docs/getting-started/python-api.md). |
+| **Training-data capture (Pi)** | Native-token **SFT/GRPO** rollout capture with token IDs, behavior logprobs, masks and task rewards. [Capture contract](docs/harnesses/pi-training.md). |
+| **Extensions** | Register custom harnesses, benchmarks, environments, scorers and observational metrics; add analysis plugins for saved-run measurements. [Registries](docs/architecture/registries.md) · [Analysis plugins](docs/getting-started/python-api.md#optional-model-judgments). |
+
+Choose runtime combinations through the harness guides and [API acceptance matrix](configs/acceptance/api/README.md). Entropy measurements use captured probability evidence; action and failure annotations use an explicitly enabled analysis model.
 
 ![Position of AlphaDiana](docs/assets/alphadiana-motivation.png)
 
