@@ -307,9 +307,8 @@ docs/            # guides, contracts, and documentation assets
 
 </details>
 
-## Citation
-
-**BibTeX**
+## Citation and acknowledgement
+If you find the project helpful, please cite:
 
 ```bibtex
 @article{zhou2026alphadiana,
@@ -319,7 +318,6 @@ docs/            # guides, contracts, and documentation assets
   year = {2026}
 }
 ```
-**Acknowledgements**
 
 We thank the contributors, collaborators and open-source communities behind [OpenClaw](https://github.com/openclaw/openclaw), [ROCK](https://github.com/alibaba/ROCK) and the other tools that support AlphaDiana.
 
