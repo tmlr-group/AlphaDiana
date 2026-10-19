@@ -8,6 +8,8 @@ AlphaDiana runs configured agents against benchmarks, scores their outputs, and 
 
 ## Why AlphaDiana?
 
+A **harness** controls how a model uses prompts, tools and persistent state.
+
 - **Compare agents:** run different model–harness combinations on the same tasks and compare their scores and resource use.
 - **Inspect failures:** connect wrong answers to execution status, tool interactions and action patterns in saved trajectories.
 - **Test components:** change tools, skills or memory settings and compare outcomes under recorded task and budget settings.
@@ -30,7 +32,10 @@ Read the table from experiment setup to analysis and extension. Linked rows lead
 | | [Scoring](docs/architecture/registries.md#scorers) | Exact/numeric match, Math equivalence, Model judge<br>IMO, SWE-bench and Terminal-Bench verifiers |
 | | [Controls](docs/configuration/README.md) | Task selection, Repeats, Sampling, Token/time/tool budgets<br>Concurrency, Retries, Resume, State isolation |
 | | [Interfaces](docs/getting-started/python-api.md) | **CLI/YAML and Python API**: run, batch, rescore, analyze |
-| **MEASURE** | [Measurements](docs/getting-started/python-api.md#built-in-measurements) | **Outcomes**: accuracy, Pass@k, Avg@k, status, failure labels<br>**Resources**: output tokens, wall time, cost per correct answer<br>**Process**: action composition/transitions, token/post-tool entropy<br>**Components**: score and behavior comparisons |
+| **MEASURE** | [Measurements](docs/getting-started/python-api.md#built-in-measurements) | **Outcomes**: accuracy, Pass@k, Avg@k, status, failure labels |
+| | | **Resources**: output tokens, wall time, cost per correct answer |
+| | | **Process**: action composition/transitions, token/post-tool entropy |
+| | | **Components**: score and behavior comparisons |
 | | [Evidence & exports](docs/getting-started/python-api.md) | JSONL, Traces, Tool calls, Usage, Available logprobs/artifacts<br>Markdown, Tables, PDF/SVG/PNG, Source hashes & coverage |
 | **EXTEND** | [Plugins](docs/architecture/registries.md) | Harnesses, Benchmarks, Environments, Scorers, Metrics<br>[Saved-run analysis plugins](docs/getting-started/python-api.md#optional-model-judgments) |
 
@@ -47,7 +52,7 @@ Read the table from experiment setup to analysis and extension. Linked rows lead
 
 ### Positioning
 
-A **harness** controls how a model uses prompts, tools and persistent state. Changing the harness can change the behavior of the same model. AlphaDiana compares the complete agent and connects score differences to its execution evidence.
+Changing the harness can change the behavior of the same model. AlphaDiana compares the complete agent and connects score differences to its execution evidence.
 
 ![Position of AlphaDiana](docs/assets/alphadiana-motivation.png)
 
