@@ -24,16 +24,15 @@ Read the table from experiment setup to analysis and extension. Linked rows lead
 |---|---|---|
 | **CONFIGURE** | Models | Qwen3.5-27B, Gemma-4-31B-IT, Kimi-K2.6 (paper)<br>Configurable OpenAI-compatible endpoints |
 | | [Harnesses](docs/harnesses/README.md) | OpenClaw, OpenCode, ZeroClaw, Pi, DeepSeek Harness<br>SWE-Agent (SWE-bench), Terminus2 (Harbor/TB2), DirectLLM baseline |
-| | [Components](configs/micro_runs/README.md) | **Tools** — sets, filters, removal<br>**Skills** — math/general libraries<br>**Memory** — within-task, cross-sample, cross-task<br>**Prompts/context** — instructions, native compaction |
+| | [Components](configs/micro_runs/README.md) | **Tools**: sets, filters, removal<br>**Skills**: math/general libraries<br>**Memory**: within-task, cross-sample, cross-task<br>**Prompts/context**: instructions, native compaction |
 | | [Containers](docs/architecture/sandboxes.md) | **None, Docker, Podman**<br>Host/process, ROCK-managed or benchmark-specific environments |
 | **RUN** | [Benchmarks](docs/benchmarks/README.md) | AIME 2026, GPQA-Diamond, HLE, IMO-AnswerBench<br>MMMU-Pro, SWE-bench Verified, Terminal-Bench 2, Custom |
 | | [Scoring](docs/architecture/registries.md#scorers) | Exact/numeric match, Math equivalence, Model judge<br>IMO, SWE-bench and Terminal-Bench verifiers |
 | | [Controls](docs/configuration/README.md) | Task selection, Repeats, Sampling, Token/time/tool budgets<br>Concurrency, Retries, Resume, State isolation |
-| | [Interfaces](docs/getting-started/python-api.md) | **CLI/YAML and Python API** — run, batch, rescore, analyze |
-| **MEASURE** | [Measurements](docs/getting-started/python-api.md#built-in-measurements) | **Outcomes** — accuracy, Pass@k, Avg@k, status, failure labels<br>**Resources** — output tokens, wall time, cost per correct answer<br>**Process** — action composition/transitions, token/post-tool entropy<br>**Components** — score and behavior comparisons |
+| | [Interfaces](docs/getting-started/python-api.md) | **CLI/YAML and Python API**: run, batch, rescore, analyze |
+| **MEASURE** | [Measurements](docs/getting-started/python-api.md#built-in-measurements) | **Outcomes**: accuracy, Pass@k, Avg@k, status, failure labels<br>**Resources**: output tokens, wall time, cost per correct answer<br>**Process**: action composition/transitions, token/post-tool entropy<br>**Components**: score and behavior comparisons |
 | | [Evidence & exports](docs/getting-started/python-api.md) | JSONL, Traces, Tool calls, Usage, Available logprobs/artifacts<br>Markdown, Tables, PDF/SVG/PNG, Source hashes & coverage |
-| **EXTEND** | [Training capture](docs/harnesses/pi-training.md) | **Pi SFT/GRPO** — native token IDs, logprobs, masks, rewards |
-| | [Plugins](docs/architecture/registries.md) | Harnesses, Benchmarks, Environments, Scorers, Metrics<br>[Saved-run analysis plugins](docs/getting-started/python-api.md#optional-model-judgments) |
+| **EXTEND** | [Plugins](docs/architecture/registries.md) | Harnesses, Benchmarks, Environments, Scorers, Metrics<br>[Saved-run analysis plugins](docs/getting-started/python-api.md#optional-model-judgments) |
 
 <details>
 <summary>Runtime combinations & measurement requirements</summary>
@@ -196,7 +195,7 @@ Coverage records show which measurements have supporting evidence. For example, 
 **Need action or failure labels?** Enable the optional analysis model below to annotate saved trajectories.
 
 <details>
-<summary>Add action & failure labels — optional model calls</summary>
+<summary>Add action & failure labels: optional model calls</summary>
 
 Configure the analysis model, then enable `judge=True`:
 
@@ -246,8 +245,8 @@ cd alphadiana/dashboard
 Open the frontend URL printed by the launcher. See [Dashboard](docs/dashboard.md) for production mode, data directories, and supported ROCK sandbox controls.
 
 <p align="center">
-  <img src="./docs/assets/dashboard_0.png" width="50%" alt="Dashboard — New Evaluation">
-  <img src="./docs/assets/dashboard_2.png" width="47%" alt="Dashboard — Results view">
+  <img src="./docs/assets/dashboard_0.png" width="50%" alt="Dashboard: New Evaluation">
+  <img src="./docs/assets/dashboard_2.png" width="47%" alt="Dashboard: Results view">
 </p>
 
 *Configure a run in New Evaluation (left) and inspect saved runs in the Results view (right). The dashboard connects run setup, monitoring, and result inspection.*
