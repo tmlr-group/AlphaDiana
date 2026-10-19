@@ -6,14 +6,15 @@ The README paper images are rendered from the sources supplied in
 
 | Repository asset | Paper source | Figure |
 | --- | --- | --- |
-| `alphadiana-motivation.png` | `0-shared/figures/AlphaDiana-motivation.pdf` | 1: Position of AlphaDiana; opening illustration |
-| `alphadiana-overview.png` | `0-shared/figures/AlphaDiana-Fig2.pdf` | 2: Overview |
+| `alphadiana-motivation.png` | `0-shared/figures/AlphaDiana-motivation.pdf` | 1: Position of AlphaDiana; follows the scope table |
+| `alphadiana-overview.png` | `0-shared/figures/AlphaDiana-Fig2.pdf` | 2: Overview; measurement examples in Why AlphaDiana |
 | `alphadiana-system.png` | `0-shared/figures/AlphaDiana-system.pdf` | 3: System design |
 | `alphadiana-interface.png` | `0-shared/figures/AlphaDiana-interface.pdf` | 4: Functional interface; reproduced unchanged |
 | `alphadiana-action-patterns.png` | `0-shared/figures/revised_figures/fig_action_four_panels_final.pdf` | Functional-step patterns; results and analysis |
 | `alphadiana-resource-use.png` | `0-shared/figures/efficiency/AlphaDiana-macro-efficiency.pdf` | Output tokens and wall-clock time; results and analysis |
 
-The first four assets appear in the current README. The action-pattern and
+The overview, positioning, system design and functional interface figures are
+all visible by default. The action-pattern and
 resource-use assets remain available for results documentation.
 
 Each one-page PDF was rendered with PDFium at scale 2.2 or higher for legibility, without changing its
