@@ -2,11 +2,11 @@
 
 **Measure LLM agents on verifiable reasoning tasks.** Compare scores, inspect trajectories, and test tools, skills and memory.
 
-[**Scope**](#scope-at-a-glance) · [**Quick Start**](#quick-start) · [**Python API**](#python-api) · [**Analyze**](#analysis-and-outputs) · [**Docs**](#documentation)
+[**Scope**](#scope-at-a-glance) | [**Quick Start**](#quick-start) | [**Python API**](#python-api) | [**Analyze**](#analysis-and-outputs) | [**Docs**](#documentation)
 
 ## Why AlphaDiana?
 
-**Compare agents · Explain failures · Test components**
+**Compare agents. Explain failures. Test components.**
 
 ![AlphaDiana measurement examples: benchmark scores, failure modes, output-token usage, and component ablations.](docs/assets/alphadiana-overview.png)
 
@@ -16,18 +16,18 @@
 
 | Layer | Dimension | Options |
 |---|---|---|
-| **CONFIGURE** | Models | Qwen3.5-27B · Gemma-4-31B-IT · Kimi-K2.6 (paper)<br>Configurable OpenAI-compatible endpoints |
-| | [Harnesses](docs/harnesses/README.md) | OpenClaw · OpenCode · ZeroClaw · Pi · DeepSeek Harness<br>SWE-Agent (SWE-bench) · Terminus2 (Harbor/TB2) · DirectLLM baseline |
+| **CONFIGURE** | Models | Qwen3.5-27B, Gemma-4-31B-IT, Kimi-K2.6 (paper)<br>Configurable OpenAI-compatible endpoints |
+| | [Harnesses](docs/harnesses/README.md) | OpenClaw, OpenCode, ZeroClaw, Pi, DeepSeek Harness<br>SWE-Agent (SWE-bench), Terminus2 (Harbor/TB2), DirectLLM baseline |
 | | [Components](configs/micro_runs/README.md) | **Tools** — sets, filters, removal<br>**Skills** — math/general libraries<br>**Memory** — within-task, cross-sample, cross-task<br>**Prompts/context** — instructions, native compaction |
-| | [Containers](docs/architecture/sandboxes.md) | **None · Docker · Podman**<br>Host/process, ROCK-managed or benchmark-specific environments |
-| **RUN** | [Benchmarks](docs/benchmarks/README.md) | AIME 2026 · GPQA-Diamond · HLE · IMO-AnswerBench<br>MMMU-Pro · SWE-bench Verified · Terminal-Bench 2 · Custom |
-| | [Scoring](docs/architecture/registries.md#scorers) | Exact/numeric match · Math equivalence · Model judge<br>IMO, SWE-bench and Terminal-Bench verifiers |
-| | [Controls](docs/configuration/README.md) | Task selection · Repeats · Sampling · Token/time/tool budgets<br>Concurrency · Retries · Resume · State isolation |
-| | [Interfaces](docs/getting-started/python-api.md) | **CLI/YAML · Python API** — run, batch, rescore, analyze |
+| | [Containers](docs/architecture/sandboxes.md) | **None, Docker, Podman**<br>Host/process, ROCK-managed or benchmark-specific environments |
+| **RUN** | [Benchmarks](docs/benchmarks/README.md) | AIME 2026, GPQA-Diamond, HLE, IMO-AnswerBench<br>MMMU-Pro, SWE-bench Verified, Terminal-Bench 2, Custom |
+| | [Scoring](docs/architecture/registries.md#scorers) | Exact/numeric match, Math equivalence, Model judge<br>IMO, SWE-bench and Terminal-Bench verifiers |
+| | [Controls](docs/configuration/README.md) | Task selection, Repeats, Sampling, Token/time/tool budgets<br>Concurrency, Retries, Resume, State isolation |
+| | [Interfaces](docs/getting-started/python-api.md) | **CLI/YAML and Python API** — run, batch, rescore, analyze |
 | **MEASURE** | [Measurements](docs/getting-started/python-api.md#built-in-measurements) | **Outcomes** — accuracy, Pass@k, Avg@k, status, failure labels<br>**Resources** — output tokens, wall time, cost per correct answer<br>**Process** — action composition/transitions, token/post-tool entropy<br>**Components** — score and behavior comparisons |
-| | [Evidence & exports](docs/getting-started/python-api.md) | JSONL · Traces · Tool calls · Usage · Available logprobs/artifacts<br>Markdown · Tables · PDF/SVG/PNG · Source hashes & coverage |
+| | [Evidence & exports](docs/getting-started/python-api.md) | JSONL, Traces, Tool calls, Usage, Available logprobs/artifacts<br>Markdown, Tables, PDF/SVG/PNG, Source hashes & coverage |
 | **EXTEND** | [Training capture](docs/harnesses/pi-training.md) | **Pi SFT/GRPO** — native token IDs, logprobs, masks, rewards |
-| | [Plugins](docs/architecture/registries.md) | Harnesses · Benchmarks · Environments · Scorers · Metrics<br>[Saved-run analysis plugins](docs/getting-started/python-api.md#optional-model-judgments) |
+| | [Plugins](docs/architecture/registries.md) | Harnesses, Benchmarks, Environments, Scorers, Metrics<br>[Saved-run analysis plugins](docs/getting-started/python-api.md#optional-model-judgments) |
 
 <details>
 <summary>Runtime combinations & measurement requirements</summary>
@@ -51,7 +51,8 @@
 
 ## Quick Start
 
-**One AIME 2026 task · DirectLLM · Qwen3.5-27B endpoint · Python ≥ 3.10**
+**Run:** one AIME 2026 task with DirectLLM.<br>
+**Requires:** Qwen3.5-27B endpoint, Python ≥ 3.10.
 
 ### 1. Install
 
@@ -139,7 +140,8 @@ artifacts = ad.runner(run_id="aime_opencode_demo").compute(
 ad.analyzer(artifacts).export("figures/aime_opencode_demo")
 ```
 
-**Results:** `results/` · **Exports:** tables + PDF/SVG/PNG.
+**Results:** `results/`<br>
+**Exports:** tables + PDF/SVG/PNG.
 
 <details>
 <summary>API diagram & composition details</summary>
@@ -232,10 +234,10 @@ Open the frontend URL printed by the launcher. See [Dashboard](docs/dashboard.md
 
 | I want to… | Start here |
 |---|---|
-| **Run** an experiment | [Getting Started](docs/getting-started/README.md) · [Configuration](docs/configuration/README.md) · [Presets](configs/README.md) |
-| **Choose** a harness or benchmark | [Harnesses](docs/harnesses/README.md) · [Benchmarks](docs/benchmarks/README.md) |
-| **Analyze** saved runs | [Python API](docs/getting-started/python-api.md) · [Paper results](docs/results.md) |
-| **Extend** the system | [Architecture](docs/architecture/README.md) · [Analysis modules](alphadiana/analysis/README.md) · [Scripts](scripts/README.md) |
+| **Run** an experiment | [Getting Started](docs/getting-started/README.md), [Configuration](docs/configuration/README.md), [Presets](configs/README.md) |
+| **Choose** a harness or benchmark | [Harnesses](docs/harnesses/README.md), [Benchmarks](docs/benchmarks/README.md) |
+| **Analyze** saved runs | [Python API](docs/getting-started/python-api.md), [Paper results](docs/results.md) |
+| **Extend** the system | [Architecture](docs/architecture/README.md), [Analysis modules](alphadiana/analysis/README.md), [Scripts](scripts/README.md) |
 
 <details>
 <summary>CLI reference</summary>
