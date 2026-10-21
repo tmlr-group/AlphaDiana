@@ -1,0 +1,17 @@
+run_id: aime_opencode_cli
+agent:
+  name: opencode
+  version: "1.3.2"
+  config:
+    controller_mode: podman
+    controller_image: localhost/alphadiana-opencode-podman:latest
+benchmark:
+  name: aime
+  config:
+    dataset: MathArena/aime_2026
+    max_tasks: 3
+scorer:
+  name: numeric
+num_samples: 1
+task_retries: 0
+strict_report: true
