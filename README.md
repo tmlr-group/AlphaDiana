@@ -6,6 +6,14 @@ AlphaDiana runs configured agents against benchmarks, scores their outputs, and 
 
 [**Scope**](#scope-at-a-glance) | [**Quick Start**](#quick-start) | [**Python API**](#python-api) | [**Analyze**](#analysis-and-outputs) | [**Docs**](#documentation)
 
+## Positioning
+
+Changing the harness can change the behavior of the same model. AlphaDiana compares the complete agent and connects score differences to its execution evidence.
+
+![Position of AlphaDiana](docs/assets/alphadiana-motivation.png)
+
+*A model, its harness and its execution settings jointly shape agent behavior.*
+
 ## Why AlphaDiana?
 
 A **harness** controls how a model uses prompts, tools and persistent state.
@@ -49,14 +57,6 @@ Read the table from experiment setup to analysis and extension. Linked rows lead
 - Read **Pass@k / Avg@k** with the configured repeat count; compare runs with matched scorer, isolation and budget settings.
 
 </details>
-
-### Positioning
-
-Changing the harness can change the behavior of the same model. AlphaDiana compares the complete agent and connects score differences to its execution evidence.
-
-![Position of AlphaDiana](docs/assets/alphadiana-motivation.png)
-
-*A model, its harness and its execution settings jointly shape agent behavior.*
 
 ## Quick Start
 
@@ -220,7 +220,7 @@ ad.analyzer(
 
 </details>
 
-## How it works
+## Documentation
 
 1. **Configure:** select tasks, a model and harness, execution environments, a scorer and budgets.
 2. **Execute & score:** the runner coordinates task sessions; the native harness runs the agent, and the scorer evaluates its output.
@@ -256,8 +256,6 @@ Open the frontend URL printed by the launcher. See [Dashboard](docs/dashboard.md
 
 *Configure a run in New Evaluation (left) and inspect saved runs in the Results view (right). The dashboard connects run setup, monitoring, and result inspection.*
 -->
-
-## Documentation
 
 | I want to… | Start here |
 |---|---|
