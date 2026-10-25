@@ -1,5 +1,7 @@
 # AlphaDiana: A Measurement System for Agents in Verifiable Reasoning Tasks
 
+[**Paper**](https://arxiv.org/abs/2610.20675) — More experiments and analysis of agent behavior, components and resource use.
+
 Compare scores and traces on verifiable reasoning tasks. Test tools, skills and memory.
 
 AlphaDiana runs agents on benchmarks, scores their answers and saves execution evidence for later analysis.
@@ -32,7 +34,7 @@ Follow setup, execution, measurement and extension in the table; links lead to c
 
 | Layer | Dimension | Options |
 |---|---|---|
-| **CONFIGURE** | Models | Qwen3.5-27B, Gemma-4-31B-IT, Kimi-K2.6 (paper)<br>Configurable OpenAI-compatible endpoints |
+| **CONFIGURE** | Models | Qwen3.5-27B, Gemma-4-31B-IT, Kimi-K2.6<br>Configurable OpenAI-compatible endpoints |
 | | [Harnesses](docs/harnesses/README.md) | OpenClaw, OpenCode, ZeroClaw, Pi, DeepSeek Harness<br>SWE-Agent (SWE-bench), Terminus2 (Harbor/TB2), DirectLLM baseline |
 | | [Components](configs/micro_runs/README.md) | **Tools**: sets, filters, removal<br>**Skills**: math/general libraries<br>**Memory**: within-task, cross-sample, cross-task<br>**Prompts/context**: instructions, native compaction |
 | | [Containers](docs/architecture/sandboxes.md) | **None, Docker, Podman**<br>Host/process, ROCK-managed or benchmark-specific environments |
@@ -60,7 +62,7 @@ Follow setup, execution, measurement and extension in the table; links lead to c
 
 ## Quick Start
 
-Run **OpenCode on 3 AIME 2026 tasks**, once per task, via the **CLI** or **Python API**. Analyze the saved results.
+The examples use **Qwen3.5-27B** as the model and **OpenCode 1.3.2** as the harness. Both the **CLI** and **Python API** run **3 AIME 2026 tasks**, with one sample per task, then analyze the saved results.
 
 You need uv, Python ≥ 3.10, Podman, and an OpenAI-compatible model endpoint.
 Complete steps 1–3, then choose the [CLI](#cli) or [Python API](#python-api) in step 4.
@@ -220,10 +222,14 @@ Use a new export directory. See [annotation requirements and caching](docs/getti
 
 ## Documentation
 
+AlphaDiana connects experiment setup, execution and analysis through four stages:
+
 1. **Configure:** select tasks, a model and harness, execution environments, a scorer and budgets.
 2. **Execute & score:** the runner manages sessions; the harness runs the agent; the scorer evaluates answers.
 3. **Save evidence:** retain scores, execution status, outputs, traces and resource measurements in result records.
 4. **Analyze & export:** reopen those records to compare runs, inspect behavior and produce tables and figures.
+
+**AlphaDiana system architecture**
 
 ![AlphaDiana system design: configuration, runner, session management, native agent runtimes, inference endpoints, and artifact analysis.](docs/assets/alphadiana-system.png)
 
