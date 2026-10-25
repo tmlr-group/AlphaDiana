@@ -1,4 +1,4 @@
-# AlphaDiana: Measure LLM agents
+# AlphaDiana: A Measurement System for Agents in Verifiable Reasoning Tasks
 
 Compare scores and traces on verifiable reasoning tasks. Test tools, skills and memory.
 
@@ -128,7 +128,7 @@ Run `python` from the repository root in the same terminal, then execute the exa
 
 ![AlphaDiana functional interface: agent, dataset, environment, scorer, runner, and analysis composition.](docs/assets/alphadiana-interface.png)
 
-*Functional interface: experiment components and analysis outputs. [Figure sources](docs/assets/README.md).*
+*Functional interface: experiment components and analysis outputs.*
 
 ```python
 import alphadiana as ad
