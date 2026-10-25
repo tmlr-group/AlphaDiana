@@ -53,8 +53,8 @@ Follow setup, execution, measurement and extension in the table; links lead to c
 - Select supported combinations in the [API acceptance matrix](configs/acceptance/api/README.md) and harness guides.
 - **None** means a direct API call or a supported host/process runtime.
 - **Entropy** uses captured probabilities; post-tool curves require tool-feedback attribution.
-- **Action/failure labels** require an explicitly enabled analysis model. Execution and analysis can use separate models.
-- Read **Pass@k / Avg@k** with the configured repeat count; compare runs with matched scorer, isolation and budget settings.
+- **Action/failure labels** use an explicitly enabled analysis model, which can differ from the execution model.
+- Read **Pass@k / Avg@k** with the repeat count; match scorers, isolation and budgets when comparing runs.
 
 </details>
 
@@ -154,9 +154,7 @@ ad.analyzer(artifacts).export("figures/aime_opencode_api")
 
 Set run controls such as `run_id`, `num_samples` and `task_retries` at the YAML top level or on `ad.runner(...)`. Use `agent`, `data`, `scorer` and optional `env` for components. Legacy `run`, `benchmark` and `sandbox` remain supported. Give each section one name: `data` or `benchmark`; `env`&nbsp;or&nbsp;`sandbox`.
 
-Use `ad.scorer.create(...)`, explicit harness `version=`, and `benchmark=` for dataset hub paths.
-OpenCode owns its Podman controller.
-Harnesses accepting a separate environment use `ad.environment(...)` and `ad.runner(env=...)`.
+Use `ad.scorer.create(...)`, harness `version=`, and `benchmark=` for hub datasets. OpenCode manages its Podman controller. Supported harnesses accept separate environments via `ad.environment(...)` and `ad.runner(env=...)`.
 
 [Full API guide: compose, reopen, rescore and extend →](docs/getting-started/python-api.md)
 
@@ -316,7 +314,7 @@ If you find the project helpful, please cite:
 }
 ```
 
-We thank our contributors, collaborators, and the open-source communities behind [OpenClaw](https://github.com/openclaw/openclaw), [ROCK](https://github.com/alibaba/ROCK) and other tools.
+We thank contributors, collaborators and open-source communities behind [OpenClaw](https://github.com/openclaw/openclaw), [ROCK](https://github.com/alibaba/ROCK) and other tools.
 
 ## Related Project
 
