@@ -10,7 +10,7 @@ AlphaDiana runs agents on benchmarks, scores their answers and saves execution e
 
 A **harness** controls how a model uses prompts, tools and persistent state.
 
-The same model can behave differently under different harnesses. AlphaDiana links agent scores to&nbsp;execution&nbsp;evidence.
+Changing the harness can change model behavior. AlphaDiana links scores to execution evidence.
 
 ![Position of AlphaDiana](docs/assets/alphadiana-motivation.png)
 
@@ -18,17 +18,17 @@ The same model can behave differently under different harnesses. AlphaDiana link
 
 ## Why AlphaDiana?
 
-- **Compare agents:** run different model–harness combinations on the same tasks and compare their scores and resource use.
-- **Inspect failures:** connect wrong answers to execution status, tool interactions and action patterns in saved trajectories.
-- **Test components:** change tools, skills or memory settings and compare outcomes under recorded task and budget settings.
+- **Compare agents:** compare scores and resource use across model–harness combinations on the same tasks.
+- **Inspect failures:** trace wrong answers through execution status, tool interactions and saved action patterns.
+- **Test components:** change tools, skills or memory and compare outcomes under recorded tasks and budgets.
 
 ![AlphaDiana measurement examples: benchmark scores, failure modes, output-token usage, and component ablations.](docs/assets/alphadiana-overview.png)
 
-*The upper panel shows how execution produces evidence. The lower panels use paper experiments to illustrate scores, failure-label incidence, output tokens by outcome, and tool-removal effects. Each plot labels its model, benchmark and metric.*
+*Execution produces traces and artifacts. The paper examples show benchmark scores, failure-label incidence, output-token use and tool-removal effects. Each plot identifies the model, benchmark and metric.*
 
 ## Scope at a glance
 
-Follow the table from setup to analysis and extension. Links provide configuration options&nbsp;and&nbsp;runtime&nbsp;requirements.
+Follow setup, execution, measurement and extension in the table; links lead to configuration and runtime guides.
 
 | Layer | Dimension | Options |
 |---|---|---|
@@ -60,7 +60,7 @@ Follow the table from setup to analysis and extension. Links provide configurati
 
 ## Quick Start
 
-Choose the **CLI** or **Python API**. Both examples run **OpenCode on 3 AIME 2026 tasks**, with one sample per task, then analyze&nbsp;the&nbsp;results.
+Run **OpenCode on 3 AIME 2026 tasks**, once per task, via the **CLI** or **Python API**. Analyze the saved results.
 
 You need uv, Python ≥ 3.10, Podman, and an OpenAI-compatible model endpoint.
 Complete steps 1–3, then choose the [CLI](#cli) or [Python API](#python-api) in step 4.
@@ -102,13 +102,11 @@ Both workflows use this image, which includes OpenCode **1.3.2** and task tools.
 
 ### 4. Run and analyze with the CLI or Python API
 
-Both interfaces use `agent`, `data`, `scorer` and optional `env` components. Use `compute` to run tasks and `analyzer` to read artifacts. Exports contain tables, PDF/SVG/PNG figures, plotted data, source hashes and evidence coverage.
+Use `agent`, `data`, `scorer` and optional `env` with either interface. `compute` runs tasks; `analyzer` reads saved artifacts. Exports include tables, PDF/SVG/PNG figures, plotted data, source hashes and evidence coverage.
 
 #### CLI
 
-The CLI uses [`configs/examples/aime2026_opencode.yaml`](configs/examples/aime2026_opencode.yaml).
-Its `agent`, `data` and `scorer` sections select the same components as the Python example.
-The config reads the endpoint variables from step 2 and selects the image built in step 3.
+The CLI uses [`configs/examples/aime2026_opencode.yaml`](configs/examples/aime2026_opencode.yaml). It matches the Python example's `agent`, `data` and `scorer`, with the endpoint from step 2 and image from step 3.
 
 Validate the config, compute the scored artifacts, then analyze and export them:
 
@@ -130,7 +128,7 @@ Run `python` from the repository root in the same terminal, then execute the exa
 
 ![AlphaDiana functional interface: agent, dataset, environment, scorer, runner, and analysis composition.](docs/assets/alphadiana-interface.png)
 
-*The functional interface connects experiment components to analysis outputs. [Interface&nbsp;figure&nbsp;sources](docs/assets/README.md).*
+*Functional interface: experiment components and analysis outputs. [Figure sources](docs/assets/README.md).*
 
 ```python
 import alphadiana as ad
@@ -223,13 +221,13 @@ Use a new export directory. See [annotation requirements and caching](docs/getti
 ## Documentation
 
 1. **Configure:** select tasks, a model and harness, execution environments, a scorer and budgets.
-2. **Execute & score:** the runner coordinates task sessions; the native harness runs the agent, and the scorer evaluates its output.
-3. **Save evidence:** result records link scores and execution status to retained outputs, traces and resource measurements.
+2. **Execute & score:** the runner manages sessions; the harness runs the agent; the scorer evaluates answers.
+3. **Save evidence:** retain scores, execution status, outputs, traces and resource measurements in result records.
 4. **Analyze & export:** reopen those records to compare runs, inspect behavior and produce tables and figures.
 
 ![AlphaDiana system design: configuration, runner, session management, native agent runtimes, inference endpoints, and artifact analysis.](docs/assets/alphadiana-system.png)
 
-*The runner coordinates sessions and native harnesses. Saved outputs, traces and measurements link execution, scoring&nbsp;and&nbsp;analysis.*
+*The runner manages sessions and harnesses; saved evidence connects execution, scoring and analysis.*
 
 [Architecture →](docs/architecture/README.md)
 
@@ -318,7 +316,7 @@ If you find the project helpful, please cite:
 }
 ```
 
-We thank the contributors, collaborators and open-source communities behind [OpenClaw](https://github.com/openclaw/openclaw), [ROCK](https://github.com/alibaba/ROCK) and other projects&nbsp;supporting&nbsp;AlphaDiana.
+We thank our contributors, collaborators, and the open-source communities behind [OpenClaw](https://github.com/openclaw/openclaw), [ROCK](https://github.com/alibaba/ROCK) and other tools.
 
 ## Related Project
 
