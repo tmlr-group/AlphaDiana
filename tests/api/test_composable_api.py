@@ -217,7 +217,9 @@ def test_legacy_scorer_imports_remain_modules():
     assert callable(ad.scorer.create)
 
 
-def test_python_and_yaml_configuration_parity(tmp_path):
+@pytest.mark.parametrize("data_key", ["data", "benchmark"])
+@pytest.mark.parametrize("env_key", ["env", "sandbox"])
+def test_python_and_yaml_configuration_parity(tmp_path, data_key, env_key):
     from dataclasses import asdict
 
     import yaml
@@ -231,13 +233,16 @@ def test_python_and_yaml_configuration_parity(tmp_path):
                 "run_id": "parity",
                 "output_dir": str(tmp_path),
                 "agent": {"name": "plugin", "version": "v1", "config": {"custom": 2}},
-                "benchmark": {"name": "plugin", "config": {}},
+                data_key: {"name": "plugin", "config": {}},
+                env_key: {"name": "local", "config": {"timeout": 20}},
                 "scorer": {"name": "plugin"},
             }
         )
     )
     cli = ExperimentConfig.from_yaml(str(path))
-    api = ad.runner(run_id="parity", output_dir=str(tmp_path)).configuration(
+    api = ad.runner(
+        env=ad.environment("local", timeout=20), run_id="parity", output_dir=str(tmp_path),
+    ).configuration(
         agent=ad.agent("plugin", version="v1", custom=2),
         data=ad.dataset("plugin"),
         scorer=ad.scorer.create("plugin"),
@@ -416,3 +421,69 @@ def test_python_agent_env_defaults_match_yaml_and_preserve_gateways(
     assert not result.agent_config.get(
         "api_base"
     )  # Provider URL is not a deployed gateway.
+
+
+@pytest.mark.parametrize("base_key", ["data", "benchmark"])
+@pytest.mark.parametrize("override_key", ["data", "benchmark"])
+def test_component_override_aliases_merge_before_loading(tmp_path, base_key, override_key):
+    import yaml
+    from alphadiana.engine.config.experiment_config import ExperimentConfig
+
+    path = tmp_path / "config.yaml"
+    path.write_text(yaml.safe_dump({
+        "agent": {"name": "plugin", "version": "v1"},
+        base_key: {"name": "aime", "config": {"max_tasks": 3, "split": "test"}},
+        "env": {"name": "local", "config": {"timeout": 10}},
+        "scorer": {"name": "numeric"},
+    }))
+    overrides = {
+        override_key: {"config": {"max_tasks": 1}},
+        "sandbox": {"config": {"timeout": 20}},
+    }
+    loaded = ExperimentConfig.from_yaml(str(path), overrides)
+    assert loaded.benchmark_name == "aime"
+    assert loaded.benchmark_config == {"max_tasks": 1, "split": "test"}
+    assert loaded.sandbox_name == "local" and loaded.sandbox_config == {"timeout": 20}
+    assert overrides == {
+        override_key: {"config": {"max_tasks": 1}},
+        "sandbox": {"config": {"timeout": 20}},
+    }
+
+
+@pytest.mark.parametrize("public,legacy", [("data", "benchmark"), ("env", "sandbox")])
+@pytest.mark.parametrize("in_overrides", [False, True])
+def test_conflicting_component_names_are_rejected(tmp_path, public, legacy, in_overrides):
+    import yaml
+    from alphadiana.engine.config.experiment_config import ExperimentConfig
+
+    path = tmp_path / "config.yaml"
+    conflict = {public: {"name": "first"}, legacy: {"name": "second"}}
+    path.write_text(yaml.safe_dump({} if in_overrides else conflict))
+    with pytest.raises(ValueError, match=f"Use either {public} or {legacy}, not both"):
+        ExperimentConfig.from_yaml(str(path), conflict if in_overrides else None)
+
+
+@pytest.mark.parametrize("command", ["compute", "run"])
+def test_cli_and_api_compute_real_runner_artifacts(custom, tmp_path, command):
+    import yaml
+    from click.testing import CliRunner
+    from alphadiana.cli import main
+
+    config = tmp_path / "cli.yaml"
+    config.write_text(yaml.safe_dump({
+        "run_id": "cli", "output_dir": str(tmp_path / "cli"),
+        "agent": {"name": "test_agent", "version": "fixture-1"},
+        "data": {"name": "test_tasks"}, "scorer": {"name": "test_score"},
+        "num_samples": 1, "task_retries": 0, "strict_report": True,
+    }))
+    result = CliRunner().invoke(main, [command, str(config)])
+    assert result.exit_code == 0, (result.output, result.exception)
+    cli = Artifacts(tmp_path / "cli/cli.jsonl")
+    api = execute(tmp_path / "api", strict_report=True)
+    for source in (cli, api):
+        assert len(source.records()) == 3
+        assert all(row["score_status"] == "valid_scored" for row in source.records())
+        assert all(row["correct"] for row in source.records())
+    measured = CliRunner().invoke(main, ["analyzer", str(cli.path)])
+    assert measured.exit_code == 0
+    assert json.loads(measured.output) == ad.analyzer(cli).compute()

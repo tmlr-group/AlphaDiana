@@ -1,6 +1,8 @@
 # AlphaDiana Experiment Configuration Schema
 #
 # All experiments are defined by a single YAML file with the following structure.
+# API-aligned names: data and env. Legacy benchmark and sandbox remain aliases.
+# Use only one spelling for each component.
 
 # run_id: (optional) Unique identifier for this run. Auto-generated if omitted.
 run_id: string
@@ -98,8 +100,8 @@ agent:
     #   - `agent_type: direct_llm` uses top-level `model/api_base/api_key`
     #   - `agent_type: openclaw|opencode|zeroclaw` uses nested `config.env.OPENAI_*`
 
-# benchmark: (required) Benchmark configuration.
-benchmark:
+# data: (required) Dataset/benchmark configuration (legacy alias: benchmark).
+data:
   name: string        # e.g. "aime", "gpqa_diamond", "hle", "mmmu_pro", "imo_answerbench", "swe_bench", "terminal_bench2", "custom"
   config:             # Benchmark-specific params
     split: string
@@ -113,8 +115,8 @@ benchmark:
     attempt_timeout_sec: integer
     total_timeout_sec: integer
 
-# sandbox: (optional) Execution environment. Set to null if not needed.
-sandbox:
+# env: (optional) Execution environment (legacy alias: sandbox). Set to null if not needed.
+env:
   name: string        # "local", "rock", "podman", or "swebench_container"
   config:             # Sandbox-specific params
     # ROCK SDK config

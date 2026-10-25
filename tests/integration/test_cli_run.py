@@ -12,17 +12,19 @@ from alphadiana.engine.runner import Runner
 from alphadiana.engine.sandbox import rock_ports
 
 
-def test_run_reaches_config_validation(tmp_path):
+@pytest.mark.parametrize("command", ["compute", "run"])
+def test_run_reaches_config_validation(tmp_path, command):
     path = tmp_path / "invalid.yaml"
     path.write_text("{}\n", encoding="utf-8")
 
-    result = CliRunner().invoke(main, ["run", str(path)])
+    result = CliRunner().invoke(main, [command, str(path)])
 
     assert result.exit_code == 1
     assert "Config validation failed:" in result.output
     assert "agent_name is required" in result.output
 
 
+@pytest.mark.parametrize("command", ["compute", "run"])
 @pytest.mark.parametrize(
     "agent,sandbox,settings,expects_rock",
     [
@@ -34,7 +36,7 @@ def test_run_reaches_config_validation(tmp_path):
         pytest.param("openclaw", "", {"runtime_backend": "podman"}, False, id="podman"),
     ],
 )
-def test_run_routes_rock_preflight(tmp_path, monkeypatch, agent, sandbox, settings, expects_rock):
+def test_run_routes_rock_preflight(tmp_path, monkeypatch, agent, sandbox, settings, expects_rock, command):
     agent_config = (
         {"rock_agent_config_path": "rock.yaml", "openclaw_config_path": "openclaw.json"}
         if agent == "openclaw"
@@ -68,7 +70,7 @@ def test_run_routes_rock_preflight(tmp_path, monkeypatch, agent, sandbox, settin
     monkeypatch.setattr(rock_ports, "check_rock_services", health)
     monkeypatch.setattr(rock_ports, "check_rock_service_ownership", ownership)
 
-    result = CliRunner().invoke(main, ["run", str(path)])
+    result = CliRunner().invoke(main, [command, str(path)])
 
     assert result.exit_code == 0, (result.output, result.exception)
     assert "Run completed: cli-fixture" in result.output

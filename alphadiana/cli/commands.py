@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sys
@@ -51,7 +52,7 @@ def main():
     pass
 
 
-@main.command()
+@main.command("compute")
 @click.argument("config_yaml", type=click.Path(exists=True))
 @click.option(
     "--override",
@@ -66,7 +67,7 @@ def main():
     help="Ignore checkpoint and redo all tasks.",
 )
 def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
-    """Run an evaluation experiment from a YAML config file."""
+    """Compute scored artifacts from a YAML configuration."""
     from alphadiana.engine.config.experiment_config import (
         ExperimentConfig,
         deep_merge,
@@ -169,6 +170,55 @@ def run(config_yaml: str, override: tuple[str, ...], redo_all: bool):
         sys.exit(1)
     finally:
         runner.teardown()
+
+
+# Keep existing scripts using "run" on the same execution path.
+main.add_command(run, name="run")
+
+
+@main.command()
+@click.argument(
+    "artifacts", nargs=-1, required=True,
+    type=click.Path(exists=True, dir_okay=False),
+)
+@click.option(
+    "--output-dir", type=click.Path(file_okay=False),
+    help="Export tables and figures here; omit to print computed measurements as JSON.",
+)
+@click.option(
+    "--formats", multiple=True, type=click.Choice(["pdf", "svg", "png"]),
+    help="Export format; repeat to select several. Default: pdf, svg, png.",
+)
+@click.option("--judge", is_flag=True, help="Enable model-based action and failure annotations.")
+@click.option("--model", help="Analysis model ID; defaults to ANALYSIS_MODEL.")
+@click.option("--base-url", help="Analysis endpoint; defaults to ANALYSIS_BASE_URL.")
+@click.option(
+    "--api-key",
+    help="Analysis API key; prefer the ANALYSIS_API_KEY environment variable.",
+)
+@click.option("--cache-dir", type=click.Path(file_okay=False), help="Judge annotation cache.")
+def analyzer(
+    artifacts: tuple[str, ...], output_dir: str | None, formats: tuple[str, ...],
+    judge: bool, model: str | None, base_url: str | None, api_key: str | None,
+    cache_dir: str | None,
+):
+    """Analyze saved artifacts with the same analyzer as the Python API."""
+    import alphadiana as ad
+
+    if formats and output_dir is None:
+        raise click.UsageError("--formats requires --output-dir")
+    try:
+        analysis = ad.analyzer(
+            artifacts, judge=judge, model=model, base_url=base_url,
+            api_key=api_key, cache_dir=cache_dir,
+        )
+        result = (
+            analysis.export(output_dir, formats=formats or ("pdf", "svg", "png"))
+            if output_dir is not None else analysis.compute()
+        )
+    except Exception as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(result, indent=2, ensure_ascii=False, allow_nan=False))
 
 
 @main.command()

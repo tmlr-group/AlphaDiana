@@ -1,10 +1,12 @@
 # Configuration
 
-Every AlphaDiana experiment is described by a single YAML file with three required sections (`agent`, `benchmark`, `scorer`) an optional `sandbox` section, and top-level run controls (`run_id`, `max_concurrent`, `num_samples`, `output_dir`, `metadata`). The file is parsed into the `ExperimentConfig` dataclass and launched through the `alphadiana` CLI, where dotted `-o key.path=value` flags can override any field at the command line. This page is the orientation map: see [Config Schema](./config-schema.md) for the core fields and [CLI and Overrides](./cli-and-overrides.md) for command syntax and run-id conventions. `configs/schema.yaml` is an annotated core-shape reference; harness- and benchmark-specific pass-through keys live on their dedicated pages. Release configs are split into `configs/macro_runs/` for end-to-end benchmarks and `configs/micro_runs/` for paper-aligned Tool/Skill ablations and the separately labeled Memory extension.
+Every AlphaDiana experiment is described by a single YAML file with three required sections (`agent`, `data`, `scorer`), an optional `env` section, and top-level run controls (`run_id`, `max_concurrent`, `num_samples`, `output_dir`, `metadata`). The file is parsed into the `ExperimentConfig` dataclass and launched through the `alphadiana` CLI, where dotted `-o key.path=value` flags can override any field at the command line. This page is the orientation map: see [Config Schema](./config-schema.md) for the core fields and [CLI and Overrides](./cli-and-overrides.md) for command syntax and run-id conventions. `configs/schema.yaml` is an annotated core-shape reference; harness- and benchmark-specific pass-through keys live on their dedicated pages. Release configs are split into `configs/macro_runs/` for end-to-end benchmarks and `configs/micro_runs/` for paper-aligned Tool/Skill ablations and the separately labeled Memory extension.
+
+The component names match the Python API. Legacy `benchmark` and `sandbox` sections remain aliases for `data` and `env`. Do not supply both names for one section. Overrides accept either spelling and merge into the same component.
 
 ## The four sections
 
-A config has four blocks plus top-level run controls. The following example illustrates composition with provider variables and one AIME task. The README uses `configs/macro_runs/aime2026_directllm_qwen35_27b.yaml`, which additionally sets Qwen sampling, thinking, and logprob options; use that file to reproduce the preset:
+A config has four blocks plus top-level run controls. The following example illustrates composition with provider variables and one AIME task. The README uses `configs/examples/aime2026_opencode.yaml` for OpenCode on three AIME tasks. This shorter DirectLLM example illustrates the same component names:
 
 ```yaml
 run_id: ""
@@ -20,14 +22,14 @@ agent:
     temperature: 0.6
     max_tokens:
 
-benchmark:
+data:
   name: aime
   config:
     dataset: "MathArena/aime_2026"
     split: "train"
     max_tasks: 1
 
-sandbox: null            # null for direct_llm / self-managed OpenCode paths
+env: null            # null for direct_llm / self-managed OpenCode paths
 
 scorer:
   name: numeric
@@ -42,8 +44,8 @@ output_dir: "./results"
 | Section | Required | Selects | Notes |
 | --- | --- | --- | --- |
 | `agent` | yes | the harness | `name` + `version` + open pass-through `config` dict |
-| `benchmark` | yes | the task set | `name` + benchmark-specific `config` |
-| `sandbox` | optional | the execution environment | `null`, or `{name, config}`; required by paths that use an external sandbox; native owners may manage their own runtime |
+| `data` | yes | the task set | `name` + benchmark-specific `config` |
+| `env` | optional | the execution environment | `null`, or `{name, config}`; required by paths that use an external sandbox; native owners may manage their own runtime |
 | `scorer` | yes | the grader | `name` + scorer-specific `config` |
 
 ## Valid names
@@ -54,9 +56,9 @@ These are the values the validator and registries accept. Unknown keys inside an
 | --- | --- |
 | `agent.name` | See the complete [agent registry](../architecture/registries.md#agents), including native executors and task adapters |
 | `scorer.name` | `numeric`, `math_verify`, `exact_match`, `llm_judge`, `swe_bench`, `terminal_bench2`, `imo_verify` |
-| `sandbox.name` | `null`, `local`, `rock`, `podman`, `swebench_container` |
+| `env.name` | `null`, `local`, `rock`, `podman`, `swebench_container` |
 
-`sandbox: null` is correct for `direct_llm` and for OpenCode controller modes that self-manage their runtime. ZeroClaw requires a live sandbox or its configured Podman runtime. ROCK-backed runs add a preflight that checks admin/proxy/redis reachability and port ownership before the run starts; non-ROCK runs skip it.
+`env: null` is correct for `direct_llm` and for OpenCode controller modes that self-manage their runtime. ZeroClaw requires a live sandbox or its configured Podman runtime. ROCK-backed runs add a preflight that checks admin/proxy/redis reachability and port ownership before the run starts; non-ROCK runs skip it.
 
 ## Top-level run controls
 
@@ -102,11 +104,11 @@ Strings are expanded in two phases at load time. First, `os.path.expandvars` res
 ## Running and overriding
 
 ```bash
-alphadiana run config.yaml
-alphadiana run config.yaml -o agent.config.temperature=0.5 -o max_concurrent=4
-alphadiana run config.yaml --redo-all     # == -o redo_all=true
+alphadiana compute config.yaml
+alphadiana compute config.yaml -o agent.config.temperature=0.5 -o max_concurrent=4
+alphadiana compute config.yaml --redo-all     # == -o redo_all=true
 alphadiana validate config.yaml
-alphadiana report ./results
+alphadiana analyzer results/<run_id>.jsonl --output-dir figures/<run_id>
 alphadiana batch a.yaml b.yaml --parallel
 alphadiana env                            # ROCK service + port health
 ```
@@ -119,4 +121,4 @@ Edit YAML with `sed` or by hand, not by round-tripping through `yaml.safe_dump`:
 
 ## A note on the configs/ tree
 
-Two grammars coexist under `configs/`. Ordinary per-experiment configs use the `ExperimentConfig` shape and run with `alphadiana run`. Campaign manifests such as `configs/macro_runs/swe_bench_verified_sweagent_qwen35_27b_campaign.yaml` use a different top-level shape (`campaign_id`, `defaults.run_id_prefix`, `models[]`, `path_templates[]`) and are consumed by the `rollout_campaign` runner, not by `alphadiana run`. The [benchmark guides](../benchmarks/) cover those campaign flows.
+Two grammars coexist under `configs/`. Ordinary per-experiment configs use the `ExperimentConfig` shape and run with `alphadiana compute`. Campaign manifests such as `configs/macro_runs/swe_bench_verified_sweagent_qwen35_27b_campaign.yaml` use a different top-level shape (`campaign_id`, `defaults.run_id_prefix`, `models[]`, `path_templates[]`) and are consumed by the `rollout_campaign` runner, not by `alphadiana compute`. The [benchmark guides](../benchmarks/) cover those campaign flows.

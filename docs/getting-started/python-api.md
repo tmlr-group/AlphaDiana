@@ -6,7 +6,7 @@ native harness control loops.
 
 ## Run OpenCode on three AIME tasks
 
-Install with `pip install -e '.[analysis,benchmarks,agents]'` in the environment
+Install with `uv pip install -e '.[analysis,benchmarks,agents]'` in the environment
 described in [Installation](installation.md). Set `OPENAI_BASE_URL`,
 `OPENAI_API_KEY`, and `OPENAI_MODEL_NAME` for your existing model service.
 This is the same example as the repository README. It uses one sample per task,
@@ -68,8 +68,8 @@ PNG is a review preview. All formats retain the same measured data.
 
 For the sandbox-free baseline, replace the agent with
 `ad.agent("direct_llm", version="1.0")` and choose a separate run ID.
-To reproduce the README's Qwen preset, use its checked-in YAML through the CLI;
-the preset specifies sampling, thinking, and logprob options beyond API defaults.
+Use checked-in YAML presets through the CLI when reproducing sampling, thinking,
+and logprob settings beyond the API defaults.
 
 The [API acceptance configurations](../../configs/acceptance/api/README.md) provide
 28 explicit benchmark/harness combinations. Execute a configuration through the
@@ -87,6 +87,24 @@ scripted answers. It checks execution, persistence, reopening, rescoring without
 another solver call, rerunning without replacing earlier evidence, and PDF/SVG/PNG
 exports. Answers, usage and probabilities are synthetic; this does not validate a
 real model, the seven-benchmark matrix, native containers or semantic annotations.
+
+## CLI equivalents
+
+The CLI uses the same `compute` and `analyzer` names:
+
+```bash
+alphadiana compute configs/examples/aime2026_opencode.yaml
+alphadiana analyzer results/aime_opencode_cli.jsonl --output-dir figures/aime_opencode_cli
+```
+
+The YAML component sections are `agent`, `data`, `scorer` and optional `env`,
+matching `compute(agent=..., data=..., scorer=...)` and `runner(env=...)`.
+Run controls stay at the YAML top level or on `ad.runner(...)`.
+Legacy `run`, `benchmark` and `sandbox` spellings remain supported.
+
+For structured measurements only, omit `--output-dir`, equivalent to `ad.analyzer(...).compute()`.
+For comparisons, pass multiple JSONL paths, equivalent to a list of sources in Python.
+Use `--judge` for `judge=True` and `--formats svg` for `formats=("svg",)`.
 
 ## Explicit composition
 

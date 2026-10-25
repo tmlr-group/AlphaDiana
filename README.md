@@ -1,6 +1,6 @@
-# AlphaDiana: Measure LLM agents on verifiable reasoning tasks
+# AlphaDiana: Measure LLM agents
 
-Compare scores, inspect trajectories, and test tools, skills and memory.
+Run verifiable reasoning tasks, compare scores, inspect trajectories, and test tools, skills and memory.
 
 AlphaDiana runs configured agents against benchmarks, scores their outputs, and saves the evidence needed to analyze each attempt.
 
@@ -38,7 +38,7 @@ Read the table from experiment setup to analysis and extension. Linked rows lead
 | | [Containers](docs/architecture/sandboxes.md) | **None, Docker, Podman**<br>Host/process, ROCK-managed or benchmark-specific environments |
 | **RUN** | [Benchmarks](docs/benchmarks/README.md) | AIME 2026, GPQA-Diamond, HLE, IMO-AnswerBench<br>MMMU-Pro, SWE-bench Verified, Terminal-Bench 2, Custom |
 | | [Controls](docs/configuration/README.md) | Task selection, Repeats, Sampling, Token/time/tool budgets<br>Concurrency, Retries, Resume, State isolation |
-| | [Interfaces](docs/getting-started/python-api.md) | **CLI/YAML and Python API**: run, batch, rescore, analyze |
+| | [Interfaces](docs/getting-started/python-api.md) | **CLI/YAML and Python API**: compute, analyze and export |
 | **MEASURE** | [Measurements](docs/getting-started/python-api.md#built-in-measurements) | **Outcomes**: accuracy, Pass@k, Avg@k, status, failure labels |
 | | | **Resources**: output tokens, wall time, cost per correct answer |
 | | | **Process**: action composition/transitions, token/post-tool entropy |
@@ -63,9 +63,8 @@ Read the table from experiment setup to analysis and extension. Linked rows lead
 AlphaDiana provides two ways to run experiments: the **CLI** and the **Python API**.
 Both examples below run **OpenCode on 3 AIME 2026 tasks**, with one sample per task, then analyze the saved results.
 
-**Requires:** uv, Python ≥ 3.10, Podman, and an OpenAI-compatible model endpoint.
-
-Complete steps 1–3, then choose the [CLI](#cli) or [Python API](#python-api) workflow.
+You need uv, Python ≥ 3.10, Podman, and an OpenAI-compatible model endpoint.
+Complete steps 1–3, then choose the [CLI](#cli) or [Python API](#python-api) in step 4.
 
 ### 1. Install
 
@@ -102,56 +101,39 @@ podman build \
 
 The image contains OpenCode **1.3.2** and task tools. Both examples use this image to run OpenCode. [Podman setup →](docs/benchmarks/podman.md)
 
-### CLI
+### 4. Run and analyze with the CLI or Python API
 
-#### Configure and run
+Both interfaces use the same component names: `agent`, `data`, `scorer`, and optional `env`.
+Use `compute` to execute tasks and `analyzer` to read the saved artifacts.
+Analysis exports include measurement tables, PDF/SVG/PNG figures, plotted data, source hashes and evidence coverage.
 
-The CLI uses [`configs/examples/aime2026_opencode.yaml`](configs/examples/aime2026_opencode.yaml). This config reads the endpoint variables from step 2 and selects the controller image built in step 3.
+#### CLI
 
-Validate the configuration, then run the experiment:
+The CLI uses [`configs/examples/aime2026_opencode.yaml`](configs/examples/aime2026_opencode.yaml).
+Its `agent`, `data` and `scorer` sections select the same components as the Python example.
+The config reads the endpoint variables from step 2 and selects the image built in step 3.
+
+Validate the config, compute the scored artifacts, then analyze and export them:
 
 ```bash
 alphadiana validate configs/examples/aime2026_opencode.yaml
-alphadiana run configs/examples/aime2026_opencode.yaml
+alphadiana compute configs/examples/aime2026_opencode.yaml
+alphadiana analyzer results/aime_opencode_cli.jsonl --output-dir figures/aime_opencode_cli
 ```
 
-`validate` checks configuration locally; `run` loads tasks, calls the model endpoint, and saves scored attempts to `results/aime_opencode_cli.jsonl`.
+The run saves scored attempts to `results/aime_opencode_cli.jsonl`.
+The analyzer reads those artifacts and exports measurements to `figures/aime_opencode_cli/`.
+Check the score, `score_status` and evidence coverage when reading the results.
+[Troubleshooting →](docs/getting-started/troubleshooting.md)
 
-#### Analyze outputs
+#### Python API
 
-Print a summary of saved runs:
-
-```bash
-alphadiana report results/
-```
-
-Check the score, `score_status` and execution status. [Troubleshooting →](docs/getting-started/troubleshooting.md)
-
-For token measurements, use the analyzer export below, which also reads native harness traces.
-
-To export measurement tables and figures from this run, execute:
-
-```bash
-python - <<'PY'
-import alphadiana as ad
-
-ad.analyzer("results/aime_opencode_cli.jsonl").export("figures/aime_opencode_cli")
-PY
-```
-
-**Exports:** `figures/aime_opencode_cli/` — measurement tables, PDF/SVG/PNG figures, plotted data, source hashes and evidence coverage.
-
-### Python API
-
-The Python API lets you compose the agent, dataset and scorer, then pass them to the runner.
+The Python API composes the same components and passes them to `compute()`.
+Run `python` from the repository root in the same terminal, then execute the example below.
 
 ![AlphaDiana functional interface: agent, dataset, environment, scorer, runner, and analysis composition.](docs/assets/alphadiana-interface.png)
 
-*The paper's functional interface connects experiment components to analysis outputs. [Figure sources](docs/assets/README.md).*
-
-#### Configure and run
-
-Start `python` from the repository root in the same terminal, then run:
+*The functional interface connects experiment components to analysis outputs. [Figure sources](docs/assets/README.md).*
 
 ```python
 import alphadiana as ad
@@ -166,24 +148,24 @@ scorer = ad.scorer.create("numeric")
 artifacts = ad.runner(
     run_id="aime_opencode_api", num_samples=1, task_retries=0, strict_report=True,
 ).compute(agent=agent, data=data, scorer=scorer)
-```
 
-`compute()` executes and scores the tasks, then returns references to the saved artifacts in `results/aime_opencode_api.jsonl`.
-
-#### Analyze outputs
-
-Continue in the same Python session:
-
-```python
 ad.analyzer(artifacts).export("figures/aime_opencode_api")
 ```
 
-**Exports:** `figures/aime_opencode_api/` — measurement tables, PDF/SVG/PNG figures, plotted data, source hashes and evidence coverage.
+The run saves scored attempts to `results/aime_opencode_api.jsonl` and returns their artifact references.
+The analyzer reads those artifacts and exports measurements to `figures/aime_opencode_api/`.
 
 <details>
-<summary>API composition details</summary>
+<summary>Configuration and API details</summary>
 
-Use `ad.scorer.create(...)`, explicit harness `version=`, and `benchmark=` for dataset hub paths. OpenCode owns its Podman controller. Harnesses accepting a separate environment use `ad.environment(...)` and `ad.runner(env=...)`.
+Set run controls such as `run_id`, `num_samples` and `task_retries` at the YAML top level or on `ad.runner(...)`.
+Use `agent`, `data`, `scorer` and optional `env` for components.
+Existing `run` commands and YAML `benchmark` / `sandbox` sections remain supported.
+Use one name for each section; do not supply both `data` and `benchmark`, or both `env` and `sandbox`.
+
+Use `ad.scorer.create(...)`, explicit harness `version=`, and `benchmark=` for dataset hub paths.
+OpenCode owns its Podman controller.
+Harnesses accepting a separate environment use `ad.environment(...)` and `ad.runner(env=...)`.
 
 [Full API guide: compose, reopen, rescore and extend →](docs/getting-started/python-api.md)
 
@@ -191,25 +173,37 @@ Use `ad.scorer.create(...)`, explicit harness `version=`, and `benchmark=` for d
 
 ### More analysis options
 
-Both workflows save result JSONL files that you can reopen for analysis. Default analysis reads saved scores, usage counters and available probability evidence. It computes performance, resource use and entropy where the required evidence is present. Coverage records identify the evidence available for each measurement.
+Both workflows save JSONL artifacts that you can reopen without rerunning the agent.
+Default analysis reads saved scores, usage counters and native harness traces.
+Entropy measurements use available probability evidence; coverage records identify missing evidence.
 
 <details>
-<summary>Reopen a saved run in a new Python session</summary>
+<summary>Reopen, compare and select export formats</summary>
 
-Use the saved result path from either workflow and a new export directory:
+Reopen either workflow's artifacts in a new session.
+For example, select SVG output through the CLI or Python API:
+
+```bash
+alphadiana analyzer results/aime_opencode_cli.jsonl \
+  --output-dir figures/aime_opencode_cli_reopened --formats svg
+```
 
 ```python
 import alphadiana as ad
 
-ad.analyzer("results/aime_opencode_cli.jsonl").export("figures/aime_opencode_cli_reopened")
+ad.analyzer("results/aime_opencode_cli.jsonl").export(
+    "figures/aime_opencode_cli_reopened", formats=("svg",),
+)
 ```
 
-For the Python API example, use `results/aime_opencode_api.jsonl`.
+Choose one command and a new export directory.
+To compare runs, pass multiple JSONL paths to the CLI or a list of paths to `ad.analyzer(...)`.
+Omit `--output-dir` to print the computed measurements as JSON, equivalent to `ad.analyzer(...).compute()`.
 
 </details>
 
 <details>
-<summary>Add action & failure labels: optional model calls for either workflow</summary>
+<summary>Add action and failure labels with an analysis model</summary>
 
 Configure an analysis model that can return structured JSON annotations:
 
@@ -219,16 +213,23 @@ export ANALYSIS_API_KEY="your-api-key"
 export ANALYSIS_MODEL="your-analysis-model-id"
 ```
 
-Enable `judge=True` when reopening a saved run. Use the result path from either workflow:
+Enable `--judge` in the CLI or `judge=True` in Python.
+Use the saved result path from either workflow:
+
+```bash
+alphadiana analyzer results/aime_opencode_cli.jsonl \
+  --judge --output-dir figures/aime_opencode_cli_annotated
+```
 
 ```python
 import alphadiana as ad
 
 ad.analyzer(
-    "results/aime_opencode_cli.jsonl", judge=True
+    "results/aime_opencode_cli.jsonl", judge=True,
 ).export("figures/aime_opencode_cli_annotated")
 ```
 
+Choose one command and a new export directory.
 [Measurement requirements and annotation caching →](docs/getting-started/python-api.md#built-in-measurements)
 
 </details>
@@ -283,7 +284,8 @@ Open the frontend URL printed by the launcher. See [Dashboard](docs/dashboard.md
 | Command | Description |
 |---|---|
 | `alphadiana env` | Check configured service health |
-| `alphadiana run <config.yaml>` | Run an evaluation |
+| `alphadiana compute <config.yaml>` | Compute scored artifacts (`run` remains an alias) |
+| `alphadiana analyzer <results.jsonl>...` | Compute measurements as JSON; add `--output-dir` to export figures |
 | `alphadiana validate <config.yaml>` | Validate a config locally |
 | `alphadiana report <results_dir>` | Print Markdown reports from saved result JSONL files |
 | `alphadiana batch <config1> <config2> ...` | Run multiple experiments |

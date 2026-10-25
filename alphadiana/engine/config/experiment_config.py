@@ -189,6 +189,17 @@ def deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
+def _normalize_component_names(config: dict) -> dict:
+    """Accept API component names while retaining legacy YAML and overrides."""
+    normalized = dict(config)
+    for public, internal in (("data", "benchmark"), ("env", "sandbox")):
+        if public in normalized:
+            if internal in normalized:
+                raise ValueError(f"Use either {public} or {internal}, not both")
+            normalized[internal] = normalized.pop(public)
+    return normalized
+
+
 def parse_override(s: str) -> dict:
     """Parse ``'a.b.c=value'`` into ``{'a': {'b': {'c': value}}}``."""
     if "=" not in s:
@@ -264,10 +275,10 @@ class ExperimentConfig:
         if not isinstance(data, dict):
             raise ValueError("top-level YAML document must be a mapping")
 
-        data = _expand_env_vars(data)
+        data = _normalize_component_names(_expand_env_vars(data))
 
         if overrides:
-            data = deep_merge(data, overrides)
+            data = deep_merge(data, _normalize_component_names(overrides))
 
         data = _clear_unresolved_env_placeholders(data)
 

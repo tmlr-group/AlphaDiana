@@ -5,7 +5,7 @@ agent:
   config:
     controller_mode: podman
     controller_image: localhost/alphadiana-opencode-podman:latest
-benchmark:
+data:
   name: aime
   config:
     dataset: MathArena/aime_2026
