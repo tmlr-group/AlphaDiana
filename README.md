@@ -62,10 +62,9 @@ Follow setup, execution, measurement and extension in the table; links lead to c
 
 ## Quick Start
 
-The examples use **Qwen3.5-27B** as the model and **OpenCode 1.3.2** as the harness. Both the **CLI** and **Python API** run **3 AIME 2026 tasks**, with one sample per task, then analyze the saved results.
+The examples use **Qwen3.5-27B** as the model and **OpenCode 1.3.2** as the harness. Both the [**CLI**](#cli) and [**Python API**](#python-api) run **3 AIME 2026 tasks**, with one sample per task, then analyze the saved results.
 
 You need uv, Python ≥ 3.10, Podman, and an OpenAI-compatible model endpoint.
-Complete steps 1–3, then choose the [CLI](#cli) or [Python API](#python-api) in step 4.
 
 ### 1. Install
 
