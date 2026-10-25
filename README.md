@@ -1,5 +1,5 @@
 <h1 align="center">
-<b>AlphaDiana: A Measurement System for Agents in Verifiable Reasoning Tasks</b>
+<b>AlphaDiana: A Measurement System for Agents <br> in Verifiable Reasoning Tasks</b>
 </h1>
 
 <p align="center">
