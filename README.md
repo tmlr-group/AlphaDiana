@@ -1,8 +1,8 @@
 # AlphaDiana: Measure LLM agents
 
-Run verifiable reasoning tasks, compare scores, inspect trajectories, and test tools, skills and memory.
+Compare scores and traces on verifiable reasoning tasks. Test tools, skills and memory.
 
-AlphaDiana runs configured agents against benchmarks, scores their outputs, and saves the evidence needed to analyze each attempt.
+AlphaDiana runs agents on benchmarks, scores their answers and saves execution evidence for later analysis.
 
 [**Positioning**](#positioning) | [**Motivation**](#why-alphadiana) | [**Scope**](#scope-at-a-glance) | [**Quick Start**](#quick-start) | [**Docs**](#documentation) | [**Citation and acknowledgement**](#citation-and-acknowledgement) | [**Related Project**](#related-project)
 
@@ -10,7 +10,7 @@ AlphaDiana runs configured agents against benchmarks, scores their outputs, and 
 
 A **harness** controls how a model uses prompts, tools and persistent state.
 
-Changing the harness can change the behavior of the same model. AlphaDiana compares the complete agent and connects score differences to its execution evidence.
+The same model can behave differently under different harnesses. AlphaDiana links agent scores to&nbsp;execution&nbsp;evidence.
 
 ![Position of AlphaDiana](docs/assets/alphadiana-motivation.png)
 
@@ -28,7 +28,7 @@ Changing the harness can change the behavior of the same model. AlphaDiana compa
 
 ## Scope at a glance
 
-Read the table from experiment setup to analysis and extension. Linked rows lead to configuration options, runtime requirements and examples.
+Follow the table from setup to analysis and extension. Links provide configuration options&nbsp;and&nbsp;runtime&nbsp;requirements.
 
 | Layer | Dimension | Options |
 |---|---|---|
@@ -60,8 +60,7 @@ Read the table from experiment setup to analysis and extension. Linked rows lead
 
 ## Quick Start
 
-AlphaDiana provides two ways to run experiments: the **CLI** and the **Python API**.
-Both examples below run **OpenCode on 3 AIME 2026 tasks**, with one sample per task, then analyze the saved results.
+Choose the **CLI** or **Python API**. Both examples run **OpenCode on 3 AIME 2026 tasks**, with one sample per task, then analyze&nbsp;the&nbsp;results.
 
 You need uv, Python ≥ 3.10, Podman, and an OpenAI-compatible model endpoint.
 Complete steps 1–3, then choose the [CLI](#cli) or [Python API](#python-api) in step 4.
@@ -99,13 +98,11 @@ podman build \
   alphadiana/harness/opencode/deploy
 ```
 
-The image contains OpenCode **1.3.2** and task tools. Both examples use this image to run OpenCode. [Podman setup →](docs/benchmarks/podman.md)
+Both workflows use this image, which includes OpenCode **1.3.2** and task tools. [Podman&nbsp;setup&nbsp;guide](docs/benchmarks/podman.md)
 
 ### 4. Run and analyze with the CLI or Python API
 
-Both interfaces use the same component names: `agent`, `data`, `scorer`, and optional `env`.
-Use `compute` to execute tasks and `analyzer` to read the saved artifacts.
-Analysis exports include measurement tables, PDF/SVG/PNG figures, plotted data, source hashes and evidence coverage.
+Both interfaces use `agent`, `data`, `scorer` and optional `env` components. Use `compute` to run tasks and `analyzer` to read artifacts. Exports contain tables, PDF/SVG/PNG figures, plotted data, source hashes and evidence coverage.
 
 #### CLI
 
@@ -133,7 +130,7 @@ Run `python` from the repository root in the same terminal, then execute the exa
 
 ![AlphaDiana functional interface: agent, dataset, environment, scorer, runner, and analysis composition.](docs/assets/alphadiana-interface.png)
 
-*The functional interface connects experiment components to analysis outputs. [Figure sources](docs/assets/README.md).*
+*The functional interface connects experiment components to analysis outputs. [Interface&nbsp;figure&nbsp;sources](docs/assets/README.md).*
 
 ```python
 import alphadiana as ad
@@ -152,16 +149,12 @@ artifacts = ad.runner(
 ad.analyzer(artifacts).export("figures/aime_opencode_api")
 ```
 
-The run saves scored attempts to `results/aime_opencode_api.jsonl` and returns their artifact references.
-The analyzer reads those artifacts and exports measurements to `figures/aime_opencode_api/`.
+`compute()` saves scored attempts in `results/aime_opencode_api.jsonl` and returns artifact references. The export in `figures/aime_opencode_api/` contains the matching tables&nbsp;and&nbsp;figures.
 
 <details>
 <summary>Configuration and API details</summary>
 
-Set run controls such as `run_id`, `num_samples` and `task_retries` at the YAML top level or on `ad.runner(...)`.
-Use `agent`, `data`, `scorer` and optional `env` for components.
-Existing `run` commands and YAML `benchmark` / `sandbox` sections remain supported.
-Use one name for each section; do not supply both `data` and `benchmark`, or both `env` and `sandbox`.
+Set run controls such as `run_id`, `num_samples` and `task_retries` at the YAML top level or on `ad.runner(...)`. Use `agent`, `data`, `scorer` and optional `env` for components. Legacy `run`, `benchmark` and `sandbox` remain supported. Give each section one name: `data` or `benchmark`; `env`&nbsp;or&nbsp;`sandbox`.
 
 Use `ad.scorer.create(...)`, explicit harness `version=`, and `benchmark=` for dataset hub paths.
 OpenCode owns its Podman controller.
@@ -173,15 +166,12 @@ Harnesses accepting a separate environment use `ad.environment(...)` and `ad.run
 
 ### More analysis options
 
-Both workflows save JSONL artifacts that you can reopen without rerunning the agent.
-Default analysis reads saved scores, usage counters and native harness traces.
-Entropy measurements use available probability evidence; coverage records identify missing evidence.
+Reopen either workflow's JSONL artifacts without rerunning the agent. Default analysis reads scores, usage counters and native traces. Entropy uses available probability evidence; coverage&nbsp;identifies&nbsp;missing&nbsp;measurements.
 
 <details>
 <summary>Reopen, compare and select export formats</summary>
 
-Reopen either workflow's artifacts in a new session.
-For example, select SVG output through the CLI or Python API:
+Reopen either run and export SVG figures through the CLI or Python API:
 
 ```bash
 alphadiana analyzer results/aime_opencode_cli.jsonl \
@@ -196,9 +186,7 @@ ad.analyzer("results/aime_opencode_cli.jsonl").export(
 )
 ```
 
-Choose one command and a new export directory.
-To compare runs, pass multiple JSONL paths to the CLI or a list of paths to `ad.analyzer(...)`.
-Omit `--output-dir` to print the computed measurements as JSON, equivalent to `ad.analyzer(...).compute()`.
+Use a new export directory. Omit `--output-dir` to print JSON measurements, matching `ad.analyzer(...).compute()`. Compare runs using multiple CLI paths or a Python list.
 
 </details>
 
@@ -213,8 +201,7 @@ export ANALYSIS_API_KEY="your-api-key"
 export ANALYSIS_MODEL="your-analysis-model-id"
 ```
 
-Enable `--judge` in the CLI or `judge=True` in Python.
-Use the saved result path from either workflow:
+Annotate either saved run with `--judge` in CLI or `judge=True` in Python:
 
 ```bash
 alphadiana analyzer results/aime_opencode_cli.jsonl \
@@ -229,8 +216,7 @@ ad.analyzer(
 ).export("figures/aime_opencode_cli_annotated")
 ```
 
-Choose one command and a new export directory.
-[Measurement requirements and annotation caching →](docs/getting-started/python-api.md#built-in-measurements)
+Use a new export directory. See [annotation requirements and caching](docs/getting-started/python-api.md#built-in-measurements).
 
 </details>
 
@@ -243,7 +229,7 @@ Choose one command and a new export directory.
 
 ![AlphaDiana system design: configuration, runner, session management, native agent runtimes, inference endpoints, and artifact analysis.](docs/assets/alphadiana-system.png)
 
-*The runner coordinates sessions and native harnesses. Saved outputs, traces and resource measurements connect execution to scoring and analysis.*
+*The runner coordinates sessions and native harnesses. Saved outputs, traces and measurements link execution, scoring&nbsp;and&nbsp;analysis.*
 
 [Architecture →](docs/architecture/README.md)
 
@@ -332,7 +318,7 @@ If you find the project helpful, please cite:
 }
 ```
 
-We thank the contributors, collaborators and open-source communities behind [OpenClaw](https://github.com/openclaw/openclaw), [ROCK](https://github.com/alibaba/ROCK) and the other tools that support AlphaDiana.
+We thank the contributors, collaborators and open-source communities behind [OpenClaw](https://github.com/openclaw/openclaw), [ROCK](https://github.com/alibaba/ROCK) and other projects&nbsp;supporting&nbsp;AlphaDiana.
 
 ## Related Project
 
