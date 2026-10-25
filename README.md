@@ -7,7 +7,7 @@
 </h1>
 
 <p align="center">
-  <a href="https://alphadiana/"><img src="https://img.shields.io/badge/Project%20Website-AlphaApollo"></a>
+  <a href="https://alphadiana.org/"><img src="https://img.shields.io/badge/Project%20Website-AlphaDiana"></a>
   <a href="https://arxiv.org/pdf/2610.20675"><img src="https://img.shields.io/badge/arXiv-2610.20675-b31b1b"></a>
 </p>
 
