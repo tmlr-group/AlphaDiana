@@ -154,7 +154,9 @@ ad.analyzer(artifacts).export("figures/aime_opencode_api")
 
 Set run controls such as `run_id`, `num_samples` and `task_retries` at the YAML top level or on `ad.runner(...)`. Use `agent`, `data`, `scorer` and optional `env` for components. Legacy `run`, `benchmark` and `sandbox` remain supported. Give each section one name: `data` or `benchmark`; `env`&nbsp;or&nbsp;`sandbox`.
 
-Use `ad.scorer.create(...)`, harness `version=`, and `benchmark=` for hub datasets. OpenCode manages its Podman controller. Supported harnesses accept separate environments via `ad.environment(...)` and `ad.runner(env=...)`.
+- Use `ad.scorer.create(...)`, an explicit harness `version=`, and `benchmark=` for hub datasets.
+- OpenCode manages its own Podman controller.
+- For supported harnesses, pass a separate `ad.environment(...)` to `ad.runner(env=...)`.
 
 [Full API guide: compose, reopen, rescore and extend →](docs/getting-started/python-api.md)
 
