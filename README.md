@@ -1,8 +1,13 @@
-# AlphaDiana: A Measurement System for Agents in Verifiable Reasoning Tasks
+<h1 align="center">
+<b>AlphaDiana: A Measurement System for Agents in Verifiable Reasoning Tasks</b>
+</h1>
 
-[**Paper**](https://arxiv.org/abs/2610.20675) — More experiments and analysis of agent behavior, components and resource use.
+<p align="center">
+  <a href="https://alphadiana/"><img src="https://img.shields.io/badge/Project%20Website-AlphaApollo"></a>
+  <a href="https://arxiv.org/pdf/2610.20675"><img src="https://img.shields.io/badge/arXiv-2610.20675-b31b1b"></a>
+</p>
 
-Compare scores and traces on verifiable reasoning tasks. Test tools, skills and memory.
+Compare scores and traces on verifiable reasoning tasks. Test tools, skills and memory. More experiments and analysis of agent behavior, components and resource use can be found in [**Paper**](https://arxiv.org/abs/2610.20675).
 
 AlphaDiana runs agents on benchmarks, scores their answers and saves execution evidence for later analysis.
 
