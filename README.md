@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/alphadiana-logo.png" alt="AlphaDiana" width="160">
+</p>
+
 <h1 align="center">
 <b>AlphaDiana: A Measurement System for Agents <br> in Verifiable Reasoning Tasks</b>
 </h1>
