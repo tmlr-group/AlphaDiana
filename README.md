@@ -130,29 +130,38 @@ Check the score, `score_status` and evidence coverage when reading the results.
 
 #### Python API
 
-The Python API composes the same components and passes them to `compute()`.
-Run `python` from the repository root in the same terminal, then execute the example below.
+Compose an agent, dataset and scorer, run the experiment, then analyze the saved results.
 
 ![AlphaDiana functional interface: agent, dataset, environment, scorer, runner, and analysis composition.](docs/assets/alphadiana-interface.png)
 
-*Functional interface: experiment components and analysis outputs.*
+*Component composition and analysis workflow. Use the runnable example below for current API calls.*
+
+Run `python` from the repository root in the same terminal, then execute:
 
 ```python
 import alphadiana as ad
 
 agent = ad.agent(
-    "opencode", version="1.3.2", controller_mode="podman",
+    "opencode",
+    version="1.3.2",
+    controller_mode="podman",
     controller_image="localhost/alphadiana-opencode-podman:latest",
 )
 data = ad.dataset("MathArena/aime_2026", benchmark="aime", max_tasks=3)
 scorer = ad.scorer.create("numeric")
+runner = ad.runner(
+    run_id="aime_opencode_api",
+    num_samples=1,
+    task_retries=0,
+    strict_report=True,
+)
 
-artifacts = ad.runner(
-    run_id="aime_opencode_api", num_samples=1, task_retries=0, strict_report=True,
-).compute(agent=agent, data=data, scorer=scorer)
+artifacts = runner.compute(agent=agent, data=data, scorer=scorer)
 
 ad.analyzer(artifacts).export("figures/aime_opencode_api")
 ```
+
+OpenCode manages its own Podman controller, configured through `ad.agent(...)`.
 
 `compute()` saves scored attempts in `results/aime_opencode_api.jsonl` and returns artifact references. The export in `figures/aime_opencode_api/` contains the matching tables&nbsp;and&nbsp;figures.
 
@@ -162,7 +171,6 @@ ad.analyzer(artifacts).export("figures/aime_opencode_api")
 Set run controls such as `run_id`, `num_samples` and `task_retries` at the YAML top level or on `ad.runner(...)`. Use `agent`, `data`, `scorer` and optional `env` for components. Legacy `run`, `benchmark` and `sandbox` remain supported. Give each section one name: `data` or `benchmark`; `env`&nbsp;or&nbsp;`sandbox`.
 
 - Use `ad.scorer.create(...)`, an explicit harness `version=`, and `benchmark=` for hub datasets.
-- OpenCode manages its own Podman controller.
 - For supported harnesses, pass a separate `ad.environment(...)` to `ad.runner(env=...)`.
 
 [Full API guide: compose, reopen, rescore and extend →](docs/getting-started/python-api.md)
