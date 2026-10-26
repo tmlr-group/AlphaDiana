@@ -51,7 +51,6 @@ AlphaDiana **evaluates**; it does not train. It runs inference-time agents and s
 - **[Harnesses](./harnesses/)**: `direct_llm`, `opencode`, `openclaw`, `zeroclaw`, and skills.
 - **[Benchmarks](./benchmarks/)**: the supported task sets and how to add one.
 - **[Configuration](./configuration/)**: the YAML schema, CLI overrides, and run-id conventions.
-- **[Results](./results.md)**: selected draft tables and process-analysis figures.
 - **[Dashboard](./dashboard.md)**: launch, monitor, browse, and compare local runs.
 - **[Contributing](./contribution/)**: adding harnesses and benchmarks, engineering conventions.
 
@@ -59,4 +58,4 @@ AlphaDiana **evaluates**; it does not train. It runs inference-time agents and s
 
 See [Python API and analysis](getting-started/python-api.md) for execution, rescoring, extensible analysis, and vector figure exports.
 
-See [Layout migration and pipeline validation](validation/pipeline-layout-20261011.md) for the current import migrations, completed checks, and remaining live-test coverage.
+See [Package paths](../alphadiana/README.md#path-migration) and [Analysis imports](../alphadiana/analysis/README.md#import-migration) for import migrations.

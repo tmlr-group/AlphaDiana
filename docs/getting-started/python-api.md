@@ -181,28 +181,6 @@ solver, verifier and container lifecycle. Other Harbor environment backends are
 rejected for snapshot capture. The existing replay path restores the retained
 image and invokes only the verifier.
 
-## Optional historical data adapter
-
-This optional operator requires a source checkout; it is not installed in the
-`alphadiana` wheel. The paper-table loader reads frozen numerical inputs without running
-legacy scripts, changing archived files, or embedding result constants in code:
-
-```python
-from scripts.paper_analysis.load_figure_tables import PaperFigureTables
-
-archive = PaperFigureTables("/path/to/paper-figures")
-paper = ad.analyzer([], plugins=[archive])
-paper.export("figures/archive")
-```
-
-It renders macro/interactive accuracy; overlapping error incidence; action
-composition/transitions; entropy/length and archived trajectory-position entropy; macro efficiency;
-matched tool/skill/memory interventions; library access; memory accumulation;
-solution cost and unsuccessful-token allocation. Historical input hashes and its
-status as historical evidence are retained. These plots do not certify new runs.
-Architecture diagrams, screenshots, and exact manuscript typography are outside
-empirical analysis. Labels, units, and measured values—not pixels—are preserved.
-
 ## Extend analysis
 
 An `AnalysisPlugin` has a name and `measure(artifacts) -> Measurement`. A measurement

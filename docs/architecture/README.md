@@ -57,7 +57,7 @@ Provider failures, context overflow, control-plane failures, verifier anomalies,
 
 Shared registry mechanics and deferred built-in imports live in `alphadiana/engine/components.py`. Low-level logprob conversion and entropy math live in `alphadiana/results/logprobs.py`. `results/statistics.py` owns latest-sample selection, reliability, and common run statistics; `analysis/export.py` projects those statistics into run reports and exports figures. Action-space reports live in `analysis/actions/action_space_report.py`. Public `ad.*` entry points remain; old internal module paths migrate according to the [import map](../../alphadiana/analysis/README.md).
 
-For module ownership, see the [analysis map](../../alphadiana/analysis/README.md). The [operator workflow map](../../scripts/README.md) separates setup, validation, human action audits, and paper reproduction. Dashboard code lives under `alphadiana/dashboard/`.
+For module ownership, see the [analysis map](../../alphadiana/analysis/README.md). The [operator workflow map](../../scripts/README.md) covers setup and validation. Dashboard code lives under `alphadiana/dashboard/`.
 
 ## Terminology
 

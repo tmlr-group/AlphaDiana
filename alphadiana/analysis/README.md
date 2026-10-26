@@ -43,9 +43,6 @@ Public `ad.runner(...)`, `ad.analyzer(...)` and `Artifacts` behavior remains. Pa
 | `actions/trajectory_reports` | `actions.trajectory_report` |
 | `insights/measurements` | `insights.claims` |
 | `action_protocol`, `action_prompt.md` | `actions/protocol`, `actions/action_prompt.md` |
-| `paper_archive.PaperArchive` | Source-checkout operator `scripts.paper_analysis.load_figure_tables.PaperFigureTables` |
-
-The paper input loader preserves its historical output identity `paper_archive` and schema. It is used explicitly from a source checkout, outside the installed runtime package. Archived inputs and figures stay unchanged.
 
 Human audits created after this migration hash the relocated protocol files. Existing audits retain their original source revision and hashes.
 

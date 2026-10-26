@@ -134,7 +134,7 @@ Compose an agent, dataset and scorer, run the experiment, then analyze the saved
 
 ![AlphaDiana functional interface: agent, dataset, environment, scorer, runner, and analysis composition.](docs/assets/alphadiana-interface.png)
 
-*Component composition and analysis workflow. Use the runnable example below for current API calls.*
+*Component composition and analysis workflow. Use the example below.*
 
 Run `python` from the repository root in the same terminal, then execute:
 
@@ -267,8 +267,8 @@ cd alphadiana/dashboard
 Open the frontend URL printed by the launcher. See [Dashboard](docs/dashboard.md) for production mode, data directories, and supported ROCK sandbox controls.
 
 <p align="center">
-  <img src="./docs/assets/dashboard_0.png" width="50%" alt="Dashboard: New Evaluation">
-  <img src="./docs/assets/dashboard_2.png" width="47%" alt="Dashboard: Results view">
+  <img src="./docs/assets/dashboard-create.png" width="50%" alt="Dashboard: New Evaluation">
+  <img src="./docs/assets/dashboard-results.png" width="47%" alt="Dashboard: Results view">
 </p>
 
 *Configure a run in New Evaluation (left) and inspect saved runs in the Results view (right). The dashboard connects run setup, monitoring, and result inspection.*
@@ -278,7 +278,7 @@ Open the frontend URL printed by the launcher. See [Dashboard](docs/dashboard.md
 |---|---|
 | **Run** an experiment | [Getting Started](docs/getting-started/README.md), [Configuration](docs/configuration/README.md), [Presets](configs/README.md) |
 | **Choose** a harness or benchmark | [Harnesses](docs/harnesses/README.md), [Benchmarks](docs/benchmarks/README.md) |
-| **Analyze** saved runs | [Python API](docs/getting-started/python-api.md), [Paper results](docs/results.md) |
+| **Analyze** saved runs | [Python API](docs/getting-started/python-api.md), [Analysis modules](alphadiana/analysis/README.md) |
 | **Extend** the system | [Architecture](docs/architecture/README.md), [Analysis modules](alphadiana/analysis/README.md), [Scripts](scripts/README.md) |
 
 <details>
@@ -314,8 +314,6 @@ alphadiana/
 scripts/
   setup/         # environment and dependency setup
   validation/    # preflight, smoke tests, and evaluator audits
-  action_audit/  # human action annotation and agreement
-  paper_analysis/ # archived paper inputs and plotting workflows
 tests/           # grouped by analysis, API, engine, harness, and benchmark
 configs/         # experiment configurations
 docs/            # guides, contracts, and documentation assets

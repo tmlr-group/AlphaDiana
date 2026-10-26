@@ -598,7 +598,7 @@ def _latex_measurement_insights(metrics: Mapping[str, Any]) -> str:
 def _markdown_measurement_insights(metrics: Mapping[str, Any]) -> str:
     insights = _measurement_insights(metrics)
     if not insights.get("available"):
-        return "`scripts/paper_analysis/data/measurement_summary.json` was not found; this report contains trajectory action metrics only."
+        return "No measurement summary was supplied or available; this report contains trajectory action metrics only."
 
     low = insights.get("low_entropy_long_collapse", {})
     inversion = insights.get("confidence_inversion", {})
@@ -615,7 +615,7 @@ def _markdown_measurement_insights(metrics: Mapping[str, Any]) -> str:
     )
 
     lines = [
-        "Metrics from `scripts/paper_analysis/data/measurement_summary.json` add entropy, tool-boundary state shift, verification conversion, operational tax, paired gain, and scaffold dominance.",
+        "Metrics from the supplied measurement summary add entropy, tool-boundary state shift, verification conversion, operational tax, paired gain, and scaffold dominance.",
         "",
         "| Insight | Metric | Key value | Interpretation |",
         "| --- | --- | ---: | --- |",

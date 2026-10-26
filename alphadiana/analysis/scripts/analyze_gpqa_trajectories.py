@@ -22,13 +22,6 @@ from alphadiana.analysis.actions.trajectory_report import write_trajectory_outpu
 from alphadiana.results.reader import load_run_bundle
 
 DEFAULT_OUTPUT_DIR = Path("results/phase14_gpqa_trajectory_analysis")
-DEFAULT_MEASUREMENT_SUMMARY = (
-    Path(__file__).resolve().parents[3]
-    / "scripts"
-    / "paper_analysis"
-    / "data"
-    / "measurement_summary.json"
-)
 DEFAULT_PRIMARY_RUNS = {
     "openclaw": "full_gpqa_v2_openclaw_qwen35_27b_logprobs",
     "opencode": "full_gpqa_v2_opencode_qwen35_27b_logprobs",
@@ -43,7 +36,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--measurement-summary",
         type=Path,
-        default=DEFAULT_MEASUREMENT_SUMMARY,
+        default=None,
         help="Optional analyze_tools measurement_summary.json to fold into trajectory metrics.",
     )
     parser.add_argument("--stdout", action="store_true")
@@ -139,8 +132,8 @@ def _resolve_directllm_bundle(results_dir: Path, run_id: str, bundle):
     return results_dir, bundle
 
 
-def _load_measurement_summary(path: Path) -> dict[str, Any] | None:
-    if not path.exists():
+def _load_measurement_summary(path: Path | None) -> dict[str, Any] | None:
+    if path is None or not path.exists():
         return None
     return json.loads(path.read_text(encoding="utf-8"))
 

@@ -11,7 +11,6 @@ from alphadiana.engine.config.experiment_config import resolve_agent_setting
 from alphadiana.engine.container_runtime.swebench_build import (
     swebench_runtime_environment,
 )
-from scripts.paper_analysis.output import ARCHIVE_ROOT, prepare_output_dir
 
 
 @pytest.mark.parametrize(
@@ -88,35 +87,6 @@ def test_math_backend_preserves_false_and_unavailable(monkeypatch, backend_resul
     elif expected is None:
         assert imo._single_match("1", "1") == (True, "normalized_string")
         assert imo._single_match("x", "2") == (False, "blocked_free_var")
-
-
-def test_output_boundary_preserves_archive_and_refuses_reuse(tmp_path):
-    with pytest.raises(ValueError, match="archive"):
-        prepare_output_dir(ARCHIVE_ROOT / "data")
-    with pytest.raises(ValueError, match="archive"):
-        prepare_output_dir(ARCHIVE_ROOT / "figures" / "new")
-    link = tmp_path / "archive-link"
-    link.symlink_to(ARCHIVE_ROOT / "data", target_is_directory=True)
-    with pytest.raises(ValueError, match="archive"):
-        prepare_output_dir(link)
-    source = tmp_path / "input"
-    source.mkdir()
-    (source / "values.csv").write_text("name,value\nitem,1\n")
-    output = prepare_output_dir(tmp_path / "fresh", data_dir=source)
-    receipt = json.loads((output / "input-provenance.json").read_text())
-    assert receipt["input_csv_sha256"]["values.csv"]
-    with pytest.raises(ValueError, match="empty"):
-        prepare_output_dir(output, data_dir=source)
-    with pytest.raises(ValueError, match="overlap"):
-        prepare_output_dir(source / "outputs", data_dir=source)
-    assert (source / "values.csv").read_text() == "name,value\nitem,1\n"
-
-
-def test_paper_missing_input_fails_before_creating_output(tmp_path):
-    output = tmp_path / "fresh"
-    with pytest.raises(FileNotFoundError):
-        prepare_output_dir(output, data_dir=tmp_path / "missing")
-    assert not output.exists()
 
 
 def test_openclaw_proxy_keeps_gateway_fields_and_capture_separate():

@@ -206,5 +206,4 @@ python scripts/validation/validate_ale_evaluator.py /path/to/ALE-Bench /path/to/
 The script verifies the clean source commit and dataset digest and reports the
 judge image ID, candidate digest, seed-set digest, and official score. The DFS
 fixture is derived from the earlier model-generated DFS candidate and is not
-a model-quality baseline. See the
-[validation record](../validation/issue14-evaluators.md) for exact provenance.
+a model-quality baseline.

@@ -1,6 +1,6 @@
 # Three-task smoke test
 
-This runbook covers the tests used in PR #112: CPU regression tests, real DirectLLM execution on five reasoning datasets with either local Qwen or HKBU, reopening saved results, statistics/figure export, and LLM action/failure analysis on GPQA and HLE. It does not certify the 28-cell native-harness matrix or reproduce the earlier full-AIME campaign. See the [observed checkpoint](smoke-20261009-results.md) for completed versus pending runs; runnable commands are not evidence that every path has passed.
+This runbook covers the tests used in PR #112: CPU regression tests, real DirectLLM execution on five reasoning datasets with either local Qwen or HKBU, reopening saved results, statistics/figure export, and LLM action/failure analysis on GPQA and HLE. It does not certify the 28-cell native-harness matrix or reproduce the earlier full-AIME campaign. Runnable commands are not evidence that every path has passed.
 
 Use Linux with Bash. Run the commands from the repository root. Python 3.12 was tested; the package supports 3.10+. You need GitHub access to this repository, Hugging Face access or a prepared dataset cache, and your own provider credentials. The API arm needs no GPU or container engine. The Qwen arm needs an existing compatible endpoint, matching the model-service reference below.
 
@@ -8,13 +8,13 @@ Use Linux with Bash. Run the commands from the repository root. Python 3.12 was 
 
 Prepare your own environment with the package's `analysis` extra and `pytest` installed. Environment installation, provider access and GPU allocation are managed by the person running the tests. The examples assume an activated environment and Bash; they do not set up the machine.
 
-Use a new checkout so existing work is untouched. Pin the tested code revision below, and do not pull while validation is running. Later runbook edits do not change that code.
+Use a new checkout so existing work is untouched. The command below selects `44cbe0193b3f012dd4ed531f5cc9174510b50e26`, the sanitized counterpart of the original tested revision `90ec6de6a98ce35d030418f6126d69aadc8dff9b`. Do not pull while validation is running.
 
 ```bash
-git clone --branch refactor/shared-main-contracts --single-branch \
+git clone --branch main --single-branch \
   https://github.com/tmlr-group/AlphaDiana.git AlphaDiana-smoke
 cd AlphaDiana-smoke
-git switch --detach 90ec6de6a98ce35d030418f6126d69aadc8dff9b
+git switch --detach 44cbe0193b3f012dd4ed531f5cc9174510b50e26
 export PYTHONPATH="$PWD"
 export MPLBACKEND=Agg
 ```

@@ -22,13 +22,6 @@ from alphadiana.analysis.insights.reports import write_behavior_insight_outputs
 from alphadiana.results.reader import load_run_bundle
 
 DEFAULT_OUTPUT_DIR = Path("results/phase15_behavior_insights")
-DEFAULT_MEASUREMENT_SUMMARY = (
-    Path(__file__).resolve().parents[3]
-    / "scripts"
-    / "paper_analysis"
-    / "data"
-    / "measurement_summary.json"
-)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -38,7 +31,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--measurement-summary",
         type=Path,
-        default=DEFAULT_MEASUREMENT_SUMMARY,
+        default=None,
         help="Optional analyze_tools measurement_summary.json to fold into insight measurements.",
     )
     parser.add_argument(
@@ -112,8 +105,8 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _load_measurement_summary(path: Path) -> dict[str, Any] | None:
-    if not path.exists():
+def _load_measurement_summary(path: Path | None) -> dict[str, Any] | None:
+    if path is None or not path.exists():
         return None
     return json.loads(path.read_text(encoding="utf-8"))
 

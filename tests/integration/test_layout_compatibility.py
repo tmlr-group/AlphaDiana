@@ -1,8 +1,7 @@
-"""Canonical owners keep the supported imports and archived inputs usable."""
+"""Canonical owners keep the supported imports and runtime interfaces usable."""
 
 import hashlib
 import json
-import runpy
 from pathlib import Path
 
 import pytest
@@ -40,27 +39,25 @@ assert RunStatistics.from_records([]).correct == 0
     subprocess.run([sys.executable, "-c", code], env=env, check=True)
 
 
-def test_source_analysis_entry_points_find_the_same_paper_summary():
-    from alphadiana.analysis.scripts import (
-        analyze_behavior_insights,
-        analyze_gpqa_trajectories,
-    )
+@pytest.mark.parametrize("module_name", ["analyze_behavior_insights", "analyze_gpqa_trajectories"])
+def test_source_analysis_entry_points_accept_optional_measurement_summary(tmp_path, module_name):
+    from importlib import import_module
 
+    cli = import_module(f"alphadiana.analysis.scripts.{module_name}")
+    assert cli._build_parser().parse_args([]).measurement_summary is None
+    assert cli._load_measurement_summary(None) is None
+    assert cli._load_measurement_summary(tmp_path / "missing.json") is None
+
+    summary = {"paired_net_gain": [{"harness": "fixture", "paired_net_gain": 2}]}
+    path = tmp_path / "measurement_summary.json"
+    path.write_text(json.dumps(summary))
+    args = cli._build_parser().parse_args(["--measurement-summary", str(path)])
+    assert cli._load_measurement_summary(args.measurement_summary) == summary
+
+
+def test_action_prompt_bytes_match_packaged_source():
+    """Action annotation uses the prompt bytes shipped with the package."""
     root = Path(__file__).resolve().parents[2]
-    path = root / "scripts/paper_analysis/data/measurement_summary.json"
-    assert analyze_behavior_insights.DEFAULT_MEASUREMENT_SUMMARY == path
-    assert analyze_gpqa_trajectories.DEFAULT_MEASUREMENT_SUMMARY == path
-    assert analyze_behavior_insights._load_measurement_summary(path) == json.loads(
-        path.read_text()
-    )
-
-
-def test_audit_frozen_code_paths_are_preserved():
-    """The human audit hashes these paths relative to the workflow directory."""
-    root = Path(__file__).resolve().parents[2]
-    code = root / "scripts/action_audit"
-    protocol = code / "../../alphadiana/analysis/actions/protocol.py"
-    assert protocol.resolve() == root / "alphadiana/analysis/actions/protocol.py"
     from alphadiana.analysis.actions.protocol import prompt_bytes
 
     assert (
@@ -122,28 +119,6 @@ def test_relocated_dashboard_creates_reads_and_restores_jobs(tmp_path, monkeypat
     assert restored.get_job(job_id).status == "completed"
     for log in manager._job_logs.values():
         log.close()
-
-
-@pytest.mark.parametrize("inputs", ["missing", "empty"])
-def test_chord_plot_rejects_unobserved_inputs(tmp_path, inputs):
-    """A missing archive must not become fabricated padded transition plots."""
-    pytest.importorskip("matplotlib")
-    root = Path(__file__).resolve().parents[2]
-    namespace = runpy.run_path(
-        str(root / "scripts/paper_analysis/plot_action_chords.py")
-    )
-    load = namespace["load_transitions"]
-    load.__globals__["DATA_DIR"] = tmp_path
-    if inputs == "empty":
-        for folder in ("six_action_statistics", "six_action_statistics_gemma"):
-            path = tmp_path / folder / "action_transitions_by_outcome.csv"
-            path.parent.mkdir()
-            path.write_text(
-                "benchmark,harness,outcome,from_action,to_action,transition_count\n"
-            )
-    with pytest.raises(FileNotFoundError if inputs == "missing" else ValueError):
-        load()
-    assert not list(tmp_path.rglob("*.pdf"))
 
 
 @pytest.mark.parametrize(

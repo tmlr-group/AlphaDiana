@@ -324,7 +324,7 @@ def summarize_analyze_tool_measurements(
     """Return trajectory metrics derived from analyze_tools measurement outputs."""
     if not measurement_summary:
         return {
-            "source": "scripts/paper_analysis/data/measurement_summary.json",
+            "source": "measurement_summary",
             "available": False,
             "metric_names": ANALYZE_TOOLS_METRIC_NAMES,
         }
@@ -339,7 +339,7 @@ def summarize_analyze_tool_measurements(
     )
 
     return {
-        "source": "scripts/paper_analysis/data/measurement_summary.json",
+        "source": "measurement_summary",
         "available": True,
         "metric_names": ANALYZE_TOOLS_METRIC_NAMES,
         "low_entropy_long_collapse": _low_entropy_long_collapse(entropy_quadrants),

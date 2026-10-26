@@ -55,7 +55,8 @@ def test_trajectory_writer_keeps_metric_values_in_english_discussion(tmp_path):
 
 
 @pytest.mark.parametrize("report_kind", ["behavior", "trajectory"])
-def test_offline_cli_stdout_reads_english_report(tmp_path, capsys, monkeypatch, report_kind):
+@pytest.mark.parametrize("summary_input", ["omitted", "missing", "provided"])
+def test_offline_cli_stdout_reads_english_report(tmp_path, capsys, monkeypatch, report_kind, summary_input):
     from alphadiana.analysis.scripts import analyze_behavior_insights, analyze_gpqa_trajectories
     from alphadiana.analysis.insights.corpus import ENV_CORPUS_VARS
 
@@ -64,8 +65,14 @@ def test_offline_cli_stdout_reads_english_report(tmp_path, capsys, monkeypatch, 
     results = tmp_path / "results"
     results.mkdir()
     output = tmp_path / "output"
-    args = ["--results-dir", str(results), "--output-dir", str(output),
-            "--measurement-summary", str(tmp_path / "missing.json"), "--stdout"]
+    args = ["--results-dir", str(results), "--output-dir", str(output), "--stdout"]
+    if summary_input != "omitted":
+        summary_path = tmp_path / "measurement_summary.json"
+        if summary_input == "provided":
+            summary_path.write_text(json.dumps({
+                "paired_net_gain": [{"harness": "fixture", "paired_net_gain": 2}]
+            }))
+        args.extend(["--measurement-summary", str(summary_path)])
     if report_kind == "behavior":
         cli = analyze_behavior_insights
         args.append("--no-include-hf-synced")
@@ -77,3 +84,9 @@ def test_offline_cli_stdout_reads_english_report(tmp_path, capsys, monkeypatch, 
     stdout = capsys.readouterr().out
     assert (output / filename).read_text() in stdout
     assert not list(output.glob("*_zh.md"))
+    if report_kind == "trajectory":
+        metrics = json.loads((output / "trajectory_metrics.json").read_text())
+        measurements = metrics["measurement_insights"]
+        assert measurements["available"] is (summary_input == "provided")
+        if summary_input == "provided":
+            assert measurements["paired_net_gain"][0]["paired_net_gain"] == 2
