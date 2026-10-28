@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import math
 
+from alphadiana.scorer.answers import normalize_math_text, parse_numeric_answer
+from alphadiana.engine.components import register_scorer
 from alphadiana.scorer.base import Scorer, ScoreResult
-from alphadiana.scorer.registry import register_scorer
-from alphadiana.utils.math_answer import normalize_math_text, parse_numeric_answer
 
 
 @register_scorer("numeric")

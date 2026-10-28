@@ -1,0 +1,46 @@
+run_id: api_accept_imo_answerbench_directllm
+agent:
+  name: direct_llm
+  version: '1.0'
+  config:
+    model: Qwen/Qwen3.5-27B
+    api_base: ${AD_ACCEPTANCE_API_BASE}
+    api_key: ${AD_ACCEPTANCE_API_KEY}
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 8192
+    max_retries: 3
+    stream: true
+    system_prompt: 'You are an expert mathematician. Solve the problem carefully.
+
+
+      The final line must be:
+
+      $$\boxed{your answer here}$$
+
+      '
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: false
+    capture_logprobs: true
+    top_logprobs: 20
+    enable_thinking: false
+benchmark:
+  name: imo_answerbench
+  config:
+    dataset: Hwilner/imo-answerbench
+    split: train
+    max_tasks: 3
+scorer:
+  name: imo_verify
+max_concurrent: 1
+num_samples: 1
+output_dir: ${AD_ACCEPTANCE_RESULTS}
+strict_report: true
+strict_isolation: true
+metadata:
+  validation_suite: api
+  fixture: imo_answerbench
+  model_family: Qwen/Qwen3.5-27B
+  capture_requirement: report actual coverage; do not impute missing observations
+task_retries: 0

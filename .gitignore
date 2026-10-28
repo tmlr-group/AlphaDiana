@@ -56,6 +56,14 @@ dump.rdb
 !/configs/macro_runs/**
 !/configs/micro_runs/
 !/configs/micro_runs/**
+!/configs/acceptance/
+!/configs/acceptance/**
+# Keep launcher documentation while ignoring generated example configs.
+!/configs/examples/
+/configs/examples/*
+!/configs/examples/single_rollout/
+/configs/examples/single_rollout/*
+!/configs/examples/single_rollout/README.md
 /artifacts/
 /.podman-storage/
 /.podman-run/

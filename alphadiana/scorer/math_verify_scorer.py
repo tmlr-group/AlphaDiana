@@ -14,13 +14,13 @@ or fails to parse either expression.
 
 from __future__ import annotations
 
-from alphadiana.scorer.base import Scorer, ScoreResult
-from alphadiana.scorer.registry import register_scorer
-from alphadiana.utils.math_answer import (
+from alphadiana.scorer.answers import (
     is_numeric_literal_answer,
     normalize_math_text,
     parse_numeric_answer,
 )
+from alphadiana.engine.components import register_scorer
+from alphadiana.scorer.base import Scorer, ScoreResult
 
 
 def _wrap_boxed(text: str) -> str:
@@ -31,11 +31,11 @@ def _wrap_boxed(text: str) -> str:
     return r"\boxed{" + stripped + "}"
 
 
-def _math_verify_equal(expected: str, predicted: str) -> bool | None:
+def math_verify_equal(expected: str, predicted: str) -> bool | None:
     """Return True/False via math-verify, or None if unavailable/parse failure."""
     try:
-        from math_verify import verify, parse
-        from math_verify.parser import LatexExtractionConfig, ExprExtractionConfig
+        from math_verify import parse, verify
+        from math_verify.parser import ExprExtractionConfig, LatexExtractionConfig
     except ImportError:
         return None
 
@@ -72,7 +72,7 @@ class MathVerifyScorer(Scorer):
         expected_raw = str(task.ground_truth)
         predicted_raw = str(response.answer)
 
-        symbolic_result = _math_verify_equal(expected_raw, predicted_raw)
+        symbolic_result = math_verify_equal(expected_raw, predicted_raw)
 
         if symbolic_result is not None:
             return ScoreResult(

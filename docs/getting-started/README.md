@@ -4,13 +4,15 @@ This section gets you from a fresh checkout to a scored evaluation run: how to i
 
 - [Installation](./installation.md) — set up the environment, install the package, and bring up the optional ROCK sandbox.
 - [Quick Start](./quick-start.md) — validate a config and run your first Direct-LLM baseline end to end.
+- [Python API and analysis](./python-api.md) — build the OpenCode image, compose a run, reopen evidence, and export analysis.
+- [Single rollout](./single-rollout.md) — run controller-facing task executions.
 - [Troubleshooting](./troubleshooting.md) — fixes for config-validation, sandbox, and result-validity issues.
 
 ## What AlphaDiana Is
 
-AlphaDiana is an evaluation framework for foundation models and agent systems. A single YAML file fully defines a run: which agent (harness), benchmark, sandbox, and scorer to use, plus top-level controls like `run_id`, `max_concurrent`, and `num_samples`. The CLI parses that YAML into an `ExperimentConfig` dataclass and the `Runner` orchestrates loading, solving, scoring, and persistence.
+AlphaDiana is a measurement system for LLM-based agents on verifiable reasoning tasks. A single YAML file fully defines a run: which agent (harness), benchmark, sandbox, and scorer to use, plus top-level controls like `run_id`, `max_concurrent`, and `num_samples`. The CLI parses that YAML into an `ExperimentConfig` dataclass and the `Runner` orchestrates loading, solving, scoring, and persistence.
 
-The harnesses live under `alphadiana/harness/` — `direct_llm`, [openclaw](../harnesses/openclaw.md), [opencode](../harnesses/opencode.md), and [zeroclaw](../harnesses/zeroclaw.md). The engine (runner, dispatcher, sandboxes, config) lives under `alphadiana/engine/`, and scored records are written by the result store at `alphadiana/analysis/io/result_store.py`.
+The harnesses live under `alphadiana/harness/`; the [harness index](../harnesses/) covers DirectLLM, OpenClaw, OpenCode, ZeroClaw, SWE-Agent, Terminus2, and additional native executors. The engine (runner, dispatcher, sandboxes, config) lives under `alphadiana/engine/`, and scored records are written by the result store at `alphadiana/results/store.py`.
 
 ### Evaluation flow
 
@@ -36,7 +38,7 @@ results/<run_id>.jsonl  +  results/<run_id>/{tasks,artifacts,lifecycle}/
 
 ## How to Run
 
-A run is launched with the `alphadiana` CLI, a Click group defined in `alphadiana/cli.py` (the console entry point maps to `alphadiana.cli:main`). From a local checkout the equivalent module form is `python -m alphadiana.cli`.
+A run is launched with the `alphadiana` CLI, a Click group defined in `alphadiana/cli/commands.py` (the console entry point maps to `alphadiana.cli:main`). From a local checkout the equivalent module form is `python -m alphadiana.cli`.
 
 ```bash
 # Validate first; prints "Config is valid." or lists "  - <error>" lines and exits 1.
@@ -108,9 +110,7 @@ num_samples: 1
 output_dir: ./results
 ```
 
-`configs/schema.yaml` is an annotated core-shape reference. Harness and benchmark
-configuration dictionaries are open pass-throughs, so use their dedicated pages
-for the complete path-specific keys. Top-level keys and their defaults:
+`configs/schema.yaml` is an annotated core-shape reference. Harness and benchmark configuration dictionaries are open pass-throughs, so use their dedicated pages for the complete path-specific keys. Top-level keys and their defaults:
 
 | Key | Default | Notes |
 | --- | --- | --- |
@@ -127,9 +127,7 @@ for the complete path-specific keys. Top-level keys and their defaults:
 
 ### Provider env and the EMPTY sentinel
 
-For env-default provider paths (`direct_llm`, `zeroclaw`, `opencode`,
-`terminal_bench2_*`, and `swebench_docker`), blank `agent.config` fields are
-filled from the environment when left empty in the YAML:
+For env-default provider paths (`direct_llm`, `zeroclaw`, `opencode`, `terminal_bench2_*`, and `swebench_docker`), blank `agent.config` fields are filled from the environment when left empty in the YAML:
 
 ```bash
 export OPENAI_BASE_URL=http://127.0.0.1:8000/v1
@@ -139,22 +137,10 @@ export OPENAI_MODEL_NAME=Qwen/Qwen3.5-27B
 
 The validator treats `None`, `""`, the literal string `EMPTY` (case-insensitive), and an unresolved `${VAR}` placeholder as not populated. For local vLLM use `sk-EMPTY` (any non-literal-`EMPTY` string passes); the literal `EMPTY` fails validation.
 
-OpenClaw has a separate gateway/provider distinction: its lowercase
-`agent.config.api_base` is an already-running OpenClaw gateway, whereas the
-upstream model endpoint for runtime startup belongs in
-`agent.config.OPENAI_BASE_URL` (or `openai_base_url`). See
-[Installation](./installation.md#provider-endpoints-and-agent-gateways) before an
-OpenClaw auto-deploy run.
+OpenClaw has a separate gateway/provider distinction: its lowercase `agent.config.api_base` is an already-running OpenClaw gateway, whereas the upstream model endpoint for runtime startup belongs in `agent.config.OPENAI_BASE_URL` (or `openai_base_url`). See [Installation](./installation.md#provider-endpoints-and-agent-gateways) before an OpenClaw auto-deploy run.
 
 ## Where Results Go
 
-`run_id` namespaces all output. Per run you get `results/<run_id>.jsonl` (one
-JSON line per `(task_id, sample_index)`) plus a `results/<run_id>/` directory
-with `run_manifest.json`, `tasks/<task_id>.json`, `artifacts/<task_id>/`, and
-`lifecycle/`. Each task JSON is a sample list even when `num_samples: 1`.
-Checkpoint-resume is built on the JSONL: only scorer-matching `valid_scored`
-records count as complete. Provider/runtime failures remain retryable, while
-timeout outcomes normalized to scored zero are complete. Use `--redo-all` to
-recompute completed samples too.
+`run_id` namespaces all output. Per run you get `results/<run_id>.jsonl` (one JSON line per `(task_id, sample_index)`) plus a `results/<run_id>/` directory with `run_manifest.json`, `tasks/<task_id>.json`, `artifacts/<task_id>/`, and `lifecycle/`. Each task JSON is a sample list even when `num_samples: 1`. Checkpoint-resume is built on the JSONL: only scorer-matching `valid_scored` records count as complete. Provider/runtime failures remain retryable, while timeout outcomes normalized to scored zero are complete. Use `--redo-all` to recompute completed samples too.
 
 See [Quick Start](./quick-start.md) to walk through a first run, and [Troubleshooting](./troubleshooting.md) when a run does not produce valid scored records.

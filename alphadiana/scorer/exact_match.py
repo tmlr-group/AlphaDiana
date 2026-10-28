@@ -4,12 +4,44 @@ from __future__ import annotations
 
 import re
 
+from alphadiana.scorer.answers import normalize_math_text
+from alphadiana.engine.components import register_scorer
 from alphadiana.scorer.base import Scorer, ScoreResult
-from alphadiana.scorer.registry import register_scorer
-from alphadiana.utils.math_answer import normalize_math_text
-
 
 _SINGLE_CHOICE_RE = re.compile(r"^\(?([a-j])\)?$")
+
+
+def _declared_choice_answer(task, predicted: str) -> str:
+    """Read one label, optionally with its exact declared option text."""
+    count = task.metadata.get("num_options")
+    if (
+        task.metadata.get("question_type") != "multiple-choice"
+        or type(count) is not int
+        or not 1 <= count <= 10
+        or re.fullmatch(r"[A-J]", str(task.ground_truth).strip()) is None
+    ):
+        return predicted
+
+    candidate = predicted.strip()
+    wrapper = re.fullmatch(r"\\text\{([^{}]*)\}", candidate)
+    if wrapper:
+        candidate = wrapper.group(1).strip()
+    label = re.fullmatch(r"([A-J])|\(([A-J])\)", candidate)
+    if label:
+        choice = label.group(1) or label.group(2)
+        return choice if choice in "ABCDEFGHIJ"[:count] else predicted
+
+    answer = re.fullmatch(r"\(([A-J])\)\s+(.+)", candidate)
+    if answer is None:
+        return predicted
+    options = re.findall(r"(?m)^\(([A-J])\) (.+)$", task.problem)
+    if [label for label, _ in options] != list("ABCDEFGHIJ"[:count]):
+        return predicted
+    choice, text = answer.groups()
+    option = dict(options).get(choice)
+    if option is not None and normalize_math_text(text) == normalize_math_text(option):
+        return choice
+    return predicted
 
 
 def _normalize_single_choice_label(expected_norm: str, predicted_norm: str) -> tuple[str, str]:
@@ -45,7 +77,7 @@ class ExactMatchScorer(Scorer):
         predicted_raw = str(response.answer)
 
         expected_norm = normalize_math_text(expected_raw)
-        predicted_norm = normalize_math_text(predicted_raw)
+        predicted_norm = normalize_math_text(_declared_choice_answer(task, predicted_raw))
         expected_norm, predicted_norm = _normalize_single_choice_label(
             expected_norm,
             predicted_norm,

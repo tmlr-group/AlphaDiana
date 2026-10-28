@@ -1,0 +1,51 @@
+{
+  "task_id": "addition",
+  "sample_index": 0,
+  "run_id": "pi-eval-001",
+  "benchmark_name": "custom",
+  "agent_name": "pi",
+  "agent_version": "model-deployment-v1",
+  "model": "served-model",
+  "problem": "What is 2 + 3?",
+  "ground_truth": "5",
+  "task_metadata": {
+    "task_type": "arithmetic"
+  },
+  "predicted": null,
+  "correct": null,
+  "score": null,
+  "rationale": "container start exceeded the task budget",
+  "score_metadata": {},
+  "trajectory": [],
+  "reasoning_trajectory": [],
+  "raw_output": "",
+  "request_messages": [],
+  "response_json": {},
+  "token_usage": {},
+  "token_entropy_stats": {},
+  "logprobs_path": "",
+  "logprobs_int16_path": "",
+  "top_logprobs": {},
+  "int16_probability_scale": null,
+  "wall_time_sec": 60.0,
+  "sandbox_id": null,
+  "gateway_url": "",
+  "artifact_manifest": {
+    "files": {}
+  },
+  "gateway_log_excerpt": "",
+  "workspace_snapshot_paths": [],
+  "sandbox_metadata": {},
+  "system_prompt": "",
+  "finish_reason": "exception",
+  "metadata": {
+    "failure_reason": "control_plane_unavailable",
+    "events_file": "runs/runs_pi_eval_001/addition/events.jsonl"
+  },
+  "error": {
+    "error_type": "podman_error",
+    "error": "podman run timed out after 60s"
+  },
+  "timestamp": "2026-09-18T12:00:00.000000+00:00",
+  "score_status": "runtime_error"
+}

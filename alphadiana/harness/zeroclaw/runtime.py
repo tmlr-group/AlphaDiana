@@ -135,6 +135,9 @@ class ZeroClawRuntimeManager:
         self._remote_bridge_path = config.get("remote_bridge_path", "/tmp/zeroclaw_bridge.py")
         self._bridge_pidfile = config.get("bridge_pidfile", "/tmp/zeroclaw-bridge.pid")
         self._artifact_root = str(config.get("artifact_root", "/tmp/zeroclaw-bridge-artifacts") or "/tmp/zeroclaw-bridge-artifacts").strip()
+        self._runtime_trace_mode = str(config.get("runtime_trace_mode", "full" if config.get("capture_logprobs") else "none"))
+        if self._runtime_trace_mode == "all":
+            self._runtime_trace_mode = "full"
         self._request_timeout = int(config.get("request_timeout", 1200))
         raw_provider_timeout = config.get("provider_timeout_secs", None)
         if raw_provider_timeout in ("", None):
@@ -177,6 +180,7 @@ class ZeroClawRuntimeManager:
         for candidate in [
             (PROJECT_ROOT / path).resolve(),
             path.resolve(),
+            (PROJECT_ROOT.parent / path).resolve(),
         ]:
             if candidate.exists():
                 return candidate
@@ -214,6 +218,7 @@ class ZeroClawRuntimeManager:
             "ZEROCLAW_BRIDGE_PORT": str(self._bridge_port),
             "ZEROCLAW_PROVIDER": self._provider,
             "ZEROCLAW_ARTIFACT_ROOT": self._artifact_root,
+            "ZEROCLAW_RUNTIME_TRACE_MODE": self._runtime_trace_mode,
             "ZEROCLAW_TEMPERATURE": str(self._temperature),
             "ZEROCLAW_TOP_P": "" if self._top_p is None else str(self._top_p),
             "ZEROCLAW_PROVIDER_REQUEST_OVERRIDES": json.dumps(
@@ -491,7 +496,11 @@ class ZeroClawPodmanRuntimeManager(ZeroClawRuntimeManager):
         spec = self._build_podman_spec()
         _progress(f"starting ZeroClaw Podman bridge image={spec.image}")
         self._podman_result = self._podman_runtime.start(spec)
-        self._warmup_podman_gateway(self._podman_result.api_base)
+        try:
+            self._warmup_podman_gateway(self._podman_result.api_base)
+        except BaseException:
+            self.teardown()
+            raise
         self.drain_logprob_records()
         return self.runtime_info(sandbox)
 
@@ -698,11 +707,10 @@ class ZeroClawPodmanRuntimeManager(ZeroClawRuntimeManager):
             request_timeout=float(self._request_timeout),
             cleanup_timeout=30.0,
             install_commands=(
-                "command -v python >/dev/null 2>&1 && python --version",
-                "python -c 'import scipy'",
+                "command -v python3 >/dev/null 2>&1 && python3 --version",
                 "command -v zeroclaw >/dev/null 2>&1 && zeroclaw --version",
             ),
-            run_command=f"python {shlex.quote(self._remote_bridge_path)}",
+            run_command=f"python3 {shlex.quote(self._remote_bridge_path)}",
             process_log_path=self._bridge_log_path,
             files=(RuntimeFile(self._remote_bridge_path, self._bridge_template_path.read_bytes()),),
             artifact_paths=tuple(artifact_paths),
@@ -725,21 +733,10 @@ class ZeroClawPodmanRuntimeManager(ZeroClawRuntimeManager):
     def _warmup_podman_gateway(self, api_base: str) -> None:
         import httpx
 
-        url = f"{api_base.rstrip('/')}/chat/completions"
+        url = f"{api_base.rstrip('/')}/models"
         headers = {
             "Authorization": f"bearer {self._gateway_token}",
             "Content-Type": "application/json",
-        }
-        payload = {
-            "model": self._gateway_model,
-            "messages": [
-                {"role": "system", "content": "Reply briefly."},
-                {"role": "user", "content": "Say READY."},
-            ],
-            "temperature": 0.0,
-            "max_tokens": 32,
-            "stream": False,
-            "disable_tools": True,
         }
         if self._gateway_warmup_initial_delay > 0:
             time.sleep(self._gateway_warmup_initial_delay)
@@ -747,13 +744,15 @@ class ZeroClawPodmanRuntimeManager(ZeroClawRuntimeManager):
         last_error: Exception | None = None
         while time.monotonic() < deadline:
             try:
-                resp = httpx.post(url, headers=headers, json=payload, timeout=120, trust_env=False)
+                resp = httpx.get(url, headers=headers, timeout=5, trust_env=False)
                 body = resp.json()
-                choices = body.get("choices", [])
-                if resp.status_code == 200 and choices:
-                    message = choices[0].get("message", {})
-                    if isinstance(message, dict) and str(message.get("content", "")).strip():
-                        return
+                # Read local bridge readiness; never spend a model call on startup.
+                models = body.get("data", [])
+                if resp.status_code == 200 and any(
+                    isinstance(model, dict) and model.get("id") == self._model_name
+                    for model in models
+                ):
+                    return
                 last_error = RuntimeError(f"warmup status={resp.status_code} body={body!r}")
             except Exception as exc:
                 last_error = exc

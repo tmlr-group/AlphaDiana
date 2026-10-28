@@ -1,0 +1,26 @@
+# One DeepSeek-harness rollout on one ALE-Bench lite problem, scored on public seeds.
+# python -m alphadiana.cli.single_rollout configs/examples/single_rollout/deepseek_ale_bench.yaml \
+#   --import alphahebe.integrations.diana.benchmarks.ale_bench --output result.json
+run_id: deepseek-ale-bench
+output_dir: ./results/single_rollout
+agent:
+  name: deepseek_harness
+  version: model-deployment-v1
+  config:
+    image: ${DEEPSEEK_HARNESS_IMAGE}
+    model: ${OPENAI_MODEL_NAME}
+    api_base: ${OPENAI_BASE_URL}
+    api_key: ${OPENAI_API_KEY}
+    timeout: 3600
+    max_tokens: 32768
+benchmark:
+  name: ale_bench
+  config:
+    lite_version: true
+    problem_ids: [ahc027]
+    code_language: cpp20
+    judge_version: "202301"
+scorer:
+  name: ale_bench
+  config:
+    evaluation_mode: public

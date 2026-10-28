@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import base64
+import json
 import logging
 import mimetypes
 import os
@@ -17,6 +17,10 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+from alphadiana.scorer.answers import extract_answer_candidate
+from alphadiana.benchmarks.base import BenchmarkTask
+from alphadiana.engine.config.experiment_config import resolve_agent_setting
+from alphadiana.harness.base import Agent, AgentResponse, resolve_runtime_skill_folder
 from alphadiana.harness.proxies.logprob_capture import (
     extract_openai_logprob_records,
     finalize_logprob_capture,
@@ -26,18 +30,15 @@ from alphadiana.harness.proxies.logprob_proxy import (
     LogprobCaptureProxy,
     resolve_logprob_proxy_advertise_host,
 )
-from alphadiana.harness.base import Agent, AgentResponse
 from alphadiana.harness.proxies.preservation import (
     add_artifact_file_refs,
-    build_event_trajectories,
     build_runtime_trace_summary,
     build_text_step_trajectories,
     parse_jsonl_records,
 )
-from alphadiana.harness.registry import AgentRegistry
 from alphadiana.harness.zeroclaw.runtime import _resolve_zeroclaw_provider
-from alphadiana.benchmarks.base import BenchmarkTask
-from alphadiana.utils.math_answer import extract_answer_candidate
+from alphadiana.harness.zeroclaw.trace import normalize_trace
+from alphadiana.engine.components import AgentRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -54,25 +55,6 @@ def _memory_entry_count(text: str) -> int | None:
         if match:
             return int(match.group(1))
     return None
-
-
-def _resolve_skill_folder(raw: Any) -> str | None:
-    """Resolve agent.config.skill_folder.
-
-    - Empty/None  -> None (skill upload disabled)
-    - Absolute path -> use as-is
-    - Path with "/" -> resolve relative to cwd
-    - Bare name like "advanced-maths" -> alphadiana/harness/skills/<name>/
-    """
-    text = str(raw or "").strip()
-    if not text:
-        return None
-    if os.path.isabs(text):
-        return text
-    if "/" in text or os.path.exists(text):
-        return str(Path(text).resolve())
-    pkg_root = Path(__file__).resolve().parent.parent  # alphadiana/
-    return str(pkg_root / "skills" / text)
 
 
 _DEFAULT_SYSTEM_PROMPT = (
@@ -466,14 +448,14 @@ class ZeroClawAgent(Agent):
                 f"Unsupported config keys: {unsupported_csv}"
             )
 
-        self._model = self._resolve_setting(config, "model", "OPENAI_MODEL_NAME")
-        self._provider_api_base = self._resolve_setting(
+        self._model = resolve_agent_setting(config, "model", "OPENAI_MODEL_NAME")
+        self._provider_api_base = resolve_agent_setting(
             config,
             "provider_api_base",
             "OPENAI_BASE_URL",
             default=str(config.get("api_base", "")),
         )
-        self._provider_api_key = self._resolve_setting(
+        self._provider_api_key = resolve_agent_setting(
             config,
             "provider_api_key",
             "OPENAI_API_KEY",
@@ -562,7 +544,9 @@ class ZeroClawAgent(Agent):
         configured_provider = str(config.get("provider", "")).strip().lower()
         self._provider = _resolve_zeroclaw_provider(configured_provider, self._provider_api_base)
         self._system_prompt = str(config.get("system_prompt", _DEFAULT_SYSTEM_PROMPT)).strip()
-        self._skill_folder = _resolve_skill_folder(config.get("skill_folder", ""))
+        self._skill_folder = resolve_runtime_skill_folder(
+            config.get("skill_folder", "")
+        )
         self._install_command = str(config.get("install_command", "")).strip()
         self._timeout_command = str(config.get("timeout_command", "timeout")).strip() or "timeout"
         self._persistent_memory = bool(config.get("persistent_memory", False))
@@ -667,26 +651,6 @@ class ZeroClawAgent(Agent):
             _extend(allowed_commands)
         _extend(extra_allowed_commands)
         return commands
-
-    @staticmethod
-    def _resolve_setting(
-        config: dict,
-        key: str,
-        env_var: str,
-        *,
-        default: str = "",
-    ) -> str:
-        value = config.get(key, default)
-        if value is None:
-            value = default
-        if isinstance(value, str):
-            stripped = value.strip()
-            if stripped and stripped.upper() != "EMPTY":
-                return stripped
-        env_value = os.environ.get(env_var, "").strip()
-        if env_value:
-            return env_value
-        return value if isinstance(value, str) else default
 
     @staticmethod
     def _decode_attachment_mime(value: Any) -> str:
@@ -882,10 +846,10 @@ class ZeroClawAgent(Agent):
         sanitized_output, dropped_runtime_logs = _sanitize_cli_output(raw_output)
         combined_output = sanitized_output or raw_stderr or runtime_trace
         runtime_records = parse_jsonl_records(runtime_trace)
-        trajectory, reasoning_trajectory = build_event_trajectories(
+        trajectory, reasoning_trajectory, token_usage, trace_coverage = normalize_trace(
             list(request_messages or []),
             runtime_records,
-            final_output=combined_output,
+            final_output=sanitized_output,
         )
         if not runtime_records:
             trajectory, reasoning_trajectory = self._apply_text_fallback_trajectory(
@@ -918,6 +882,7 @@ class ZeroClawAgent(Agent):
         )
 
         response_metadata = dict(metadata)
+        response_metadata["native_trace_coverage"] = trace_coverage
         if dropped_runtime_logs:
             response_metadata["runtime_logs_dropped_from_output"] = dropped_runtime_logs
         if sanitized_output != raw_output:
@@ -959,6 +924,7 @@ class ZeroClawAgent(Agent):
             reasoning_trajectory=reasoning_trajectory,
             raw_output=combined_output,
             wall_time_sec=wall_time_sec,
+            token_usage=token_usage,
             token_entropy_stats=token_entropy_stats,
             workspace_file_contents=workspace_files,
             artifact_manifest=manifest,
@@ -1032,6 +998,7 @@ class ZeroClawAgent(Agent):
         *,
         provider: str | None = None,
         provider_api_base: str | None = None,
+        runtime_trace_path: str = "state/runtime-trace.jsonl",
     ) -> str:
         resolved_provider = provider
         if resolved_provider is None and provider_api_base is not None:
@@ -1081,7 +1048,7 @@ class ZeroClawAgent(Agent):
             "[observability]\n"
             'backend = "none"\n'
             f"runtime_trace_mode = {_quote_toml(self._runtime_trace_mode)}\n"
-            'runtime_trace_path = "state/runtime-trace.jsonl"\n'
+            f"runtime_trace_path = {_quote_toml(runtime_trace_path)}\n"
             "runtime_trace_max_entries = 200\n\n"
             "[autonomy]\n"
             'level = "full"\n'

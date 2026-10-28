@@ -7,8 +7,8 @@ HLE evaluates multiple-choice Humanity's Last Exam tasks from `cais/hle`.
 Run from the repository root:
 
 ```bash
-source scripts/activate.sh
-export PYTHONPATH=$PWD
+# Plain package installation; ROCK users instead use scripts/activate.sh.
+source .venv/bin/activate
 
 export OPENAI_BASE_URL=http://127.0.0.1:8011/v1
 export OPENAI_API_KEY=sk-EMPTY
@@ -66,7 +66,7 @@ Build the controller image once before using the checked-in OpenCode configs:
 
 ```bash
 docker build --network host \
-  -f alphadiana/benchmarks/terminal_bench2/deploy/dockerfiles/Dockerfile.opencode-controller \
+  -f alphadiana/harness/opencode/deploy/Dockerfile.controller \
   -t alphadiana/tb2-opencode-controller:latest .
 ```
 
@@ -137,7 +137,7 @@ Unlike the AIME quickstart in the main `README.md`, the formal benchmark smoke h
 Start ROCK first:
 
 ```bash
-bash scripts/start_zeroclaw.sh
+bash scripts/setup/start_zeroclaw.sh
 source scripts/rock_env.sh
 ```
 
@@ -148,7 +148,7 @@ python -m alphadiana.cli run configs/macro_runs/hle_zeroclaw_qwen35_27b.yaml \
   -o run_id=hle_zeroclaw_smoke
 ```
 
-On an OpenAI-compatible `qwen3vl` endpoint, multimodal ZeroClaw currently works most
+On the SJTU `qwen3vl` endpoint, multimodal ZeroClaw currently works most
 reliably through the same single sandbox CLI path now used for text benchmarks
 on current main. No extra override is required: when a live ROCK sandbox is
 present and the HLE row has an image attachment, AlphaDiana uploads the image

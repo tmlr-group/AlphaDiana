@@ -7,24 +7,18 @@ workspace snapshots) after task execution.
 
 from __future__ import annotations
 
-import http.server
 import json
+import logging as _logging
 import os
 import re
 import shlex
-import socketserver
 import tempfile
-import threading
 import time
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
 import yaml
-from alphadiana.harness.proxies.logprob_proxy import (
-    resolve_logprob_proxy_advertise_host,
-)
-from alphadiana.utils.openclaw_security import resolve_openclaw_gateway_token
 
 from alphadiana.engine.container_runtime import (
     HTTPHealthcheck,
@@ -34,9 +28,11 @@ from alphadiana.engine.container_runtime import (
     RuntimeFile,
     podman_proxy_env,
 )
-
-
-import logging as _logging
+from alphadiana.harness.openclaw.security import resolve_openclaw_gateway_token
+from alphadiana.harness.proxies.logprob_proxy import (
+    resolve_logprob_proxy_advertise_host,
+)
+from alphadiana.harness.proxies.openclaw import OpenClawLogprobProxy
 
 _logger = _logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -63,272 +59,6 @@ def _resolve_gateway_token(value: Any) -> str:
     return resolve_openclaw_gateway_token(
         None if not token or _is_unresolved_placeholder(token) else token
     )
-
-
-# ---------------------------------------------------------------------------
-# MITM logprob capture proxy for Docker-backed OpenClaw sandboxes
-#
-# The OpenClaw gateway runs inside a Docker container and makes HTTP calls to
-# vLLM.  Since the gateway strips logprob data from its response to AlphaDiana,
-# we intercept the container-to-vLLM path by starting a host-side proxy that:
-#   1. Binds to 0.0.0.0 (accessible from Docker containers via host bridge IP)
-#   2. Forwards requests to the real vLLM endpoint (with logprobs=True injected)
-#   3. Captures logprob data from vLLM SSE responses in real time
-# ---------------------------------------------------------------------------
-
-
-def _rename_reasoning_field_in_delta(choice: dict) -> None:
-    """Rename ``delta.reasoning`` -> ``delta.reasoning_content`` in-place.
-
-    vLLM's qwen3 reasoning parser names the thinking-mode field ``reasoning``;
-    the OpenClaw gateway parser expects ``reasoning_content``. Normalising here
-    lets the gateway forward thinking chunks to AlphaDiana without dropping
-    them (root cause of finding #11).
-    """
-    delta = choice.get("delta")
-    if isinstance(delta, dict) and "reasoning" in delta and "reasoning_content" not in delta:
-        delta["reasoning_content"] = delta.pop("reasoning")
-    message = choice.get("message")
-    if isinstance(message, dict) and "reasoning" in message and "reasoning_content" not in message:
-        message["reasoning_content"] = message.pop("reasoning")
-
-
-def _rename_reasoning_field_in_message(payload: dict) -> None:
-    """Walk an OpenAI-style response payload and apply the rename to every choice."""
-    if not isinstance(payload, dict):
-        return
-    choices = payload.get("choices")
-    if isinstance(choices, list):
-        for choice in choices:
-            if isinstance(choice, dict):
-                _rename_reasoning_field_in_delta(choice)
-
-
-class _OpenClawLogprobProxyHandler(http.server.BaseHTTPRequestHandler):
-    """HTTP handler that forwards to vLLM and captures per-token logprob dicts."""
-
-    server: "_OpenClawLogprobServer"
-
-    def log_message(self, fmt: str, *args: Any) -> None:  # silence access log
-        pass
-
-    def do_POST(self) -> None:  # noqa: N802
-        import httpx
-
-        length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(length) if length else b""
-        try:
-            payload = json.loads(body)
-        except Exception:
-            payload = {}
-
-        # Inject logprob request parameters
-        payload["logprobs"] = True
-        payload["top_logprobs"] = self.server.top_logprobs
-        # vLLM with --reasoning-parser qwen3 emits thinking content under
-        # delta.reasoning / message.reasoning, but the OpenClaw gateway expects
-        # delta.reasoning_content / message.reasoning_content. We rewrite the
-        # SSE chunks below in _strip_and_capture_event so the gateway sees
-        # reasoning_content, which lets us honour enable_thinking=true without
-        # the gateway dropping reasoning chunks on the floor (#11 root cause).
-
-        upstream_url = self.server.upstream.rstrip("/") + self.path
-        headers = {
-            k: v for k, v in self.headers.items()
-            if k.lower() not in ("host", "content-length", "transfer-encoding")
-        }
-        is_stream = payload.get("stream", False)
-
-        try:
-            if is_stream:
-                self._handle_streaming(upstream_url, headers, payload, httpx)
-            else:
-                self._handle_non_streaming(upstream_url, headers, payload, httpx)
-        except Exception as exc:
-            _logger.debug("OpenClaw logprob proxy error: %s", exc)
-            self.send_error(502, f"Proxy error: {exc}")
-
-    def _handle_non_streaming(
-        self, url: str, headers: dict, payload: dict, httpx: Any
-    ) -> None:
-        resp = self.server.client.post(url, headers=headers, json=payload)
-        resp_bytes = resp.content
-
-        # Capture logprobs and rename reasoning->reasoning_content for gateway.
-        try:
-            resp_json = resp.json()
-            _rename_reasoning_field_in_message(resp_json)
-            resp_bytes = json.dumps(resp_json, separators=(",", ":")).encode()
-            with self.server.lock:
-                self.server.raw_responses.append(resp_json)
-        except Exception:
-            pass
-
-        self.send_response(resp.status_code)
-        for k, v in resp.headers.items():
-            if k.lower() not in ("transfer-encoding", "content-encoding", "content-length"):
-                self.send_header(k, v)
-        self.send_header("Content-Length", str(len(resp_bytes)))
-        self.end_headers()
-        self.wfile.write(resp_bytes)
-
-    def _strip_and_capture_event(self, event_bytes: bytes) -> bytes:
-        """Capture logprobs from an SSE event and return it with logprobs stripped.
-
-        Also renames vLLM's ``reasoning`` field (qwen3 reasoning parser) to the
-        ``reasoning_content`` name the OpenClaw gateway expects so thinking
-        chunks aren't dropped (finding #11).
-
-        The gateway's SSE parser fails on large data: lines produced when
-        top_logprobs=20 injects thousands of bytes per token. Strip logprobs
-        from the forwarded event so the gateway sees compact normal-sized chunks,
-        while still capturing the logprob data in streaming_logprobs.
-        """
-        out_lines: list[bytes] = []
-        for line_bytes in event_bytes.split(b"\n"):
-            line = line_bytes.decode("utf-8", errors="replace")
-            if line.startswith("data:") and line.strip() != "data: [DONE]":
-                data_str = line[5:].strip()
-                try:
-                    chunk = json.loads(data_str)
-                    choices = chunk.get("choices", [])
-                    if choices:
-                        logprob_data = choices[0].get("logprobs")
-                        if isinstance(logprob_data, dict):
-                            content = logprob_data.get("content") or []
-                            if content:
-                                with self.server.lock:
-                                    self.server.streaming_logprobs.extend(content)
-                        choices[0]["logprobs"] = None
-                        _rename_reasoning_field_in_delta(choices[0])
-                    out_lines.append(b"data: " + json.dumps(chunk, separators=(",", ":")).encode())
-                except Exception:
-                    out_lines.append(line_bytes)
-            else:
-                out_lines.append(line_bytes)
-        return b"\n".join(out_lines)
-
-    def _handle_streaming(
-        self, url: str, headers: dict, payload: dict, httpx: Any
-    ) -> None:
-        self.send_response(200)
-        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
-        self.send_header("Cache-Control", "no-cache")
-        self.end_headers()
-
-        with self.server.client.stream(
-            "POST", url, headers=headers, json=payload
-        ) as resp:
-            # Buffer raw bytes and emit complete SSE events with logprobs stripped.
-            # Stripping is required: top_logprobs=20 makes each data: line thousands
-            # of bytes long; the OpenClaw gateway SSE parser fails on such large lines.
-            buf = b""
-            for raw_chunk in resp.iter_raw():
-                buf += raw_chunk
-                while b"\n\n" in buf:
-                    event_bytes, buf = buf.split(b"\n\n", 1)
-                    stripped = self._strip_and_capture_event(event_bytes)
-                    try:
-                        self.wfile.write(stripped + b"\n\n")
-                        self.wfile.flush()
-                    except (BrokenPipeError, ConnectionResetError):
-                        return
-            if buf:
-                try:
-                    self.wfile.write(buf)
-                    self.wfile.flush()
-                except (BrokenPipeError, ConnectionResetError):
-                    pass
-
-
-class _OpenClawLogprobServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
-    daemon_threads = True
-
-    def __init__(self, upstream: str, top_logprobs: int) -> None:
-        super().__init__(("0.0.0.0", 0), _OpenClawLogprobProxyHandler)
-        self.upstream = upstream
-        self.top_logprobs = top_logprobs
-        self.raw_responses: list[dict] = []
-        self.streaming_logprobs: list[dict] = []
-        self.lock = threading.Lock()
-        import httpx as _httpx
-        self.client = _httpx.Client(timeout=120.0)
-
-
-class OpenClawLogprobProxy:
-    """Host-side MITM proxy accessible from Docker containers via host bridge IP.
-
-    ``start()`` is idempotent — repeat calls within an agent's lifetime are
-    no-ops once the server is up. This avoids the ``AssertionError: self._server
-    is not None`` race under ``max_concurrent>=2`` where a second concurrent
-    task would otherwise tear down a still-in-use proxy mid-stream (finding #8).
-    """
-
-    def __init__(self, upstream: str, top_logprobs: int) -> None:
-        self._upstream = upstream
-        self._top_logprobs = top_logprobs
-        self._server: _OpenClawLogprobServer | None = None
-        self._thread: threading.Thread | None = None
-        self._lifecycle_lock = threading.Lock()
-
-    def start(self) -> None:
-        with self._lifecycle_lock:
-            if self._server is not None:
-                return
-            self._server = _OpenClawLogprobServer(self._upstream, self._top_logprobs)
-            self._thread = threading.Thread(
-                target=self._server.serve_forever, daemon=True
-            )
-            self._thread.start()
-
-    def stop(self) -> None:
-        with self._lifecycle_lock:
-            server = self._server
-            if server is None:
-                return
-            self._server = None
-            self._thread = None
-        try:
-            server.shutdown()
-            server.client.close()
-        except Exception:
-            pass
-
-    @property
-    def local_port(self) -> int:
-        with self._lifecycle_lock:
-            if self._server is None:
-                raise RuntimeError(
-                    "OpenClaw logprob proxy is not running; call start() first"
-                )
-            return self._server.server_address[1]
-
-    def proxy_url_for_docker(self, docker_host_ip: str = "") -> str:
-        """Return the URL that Docker containers can use to reach this proxy."""
-        host = docker_host_ip or resolve_logprob_proxy_advertise_host(self._upstream)
-        return f"http://{host}:{self.local_port}"
-
-    def captured_records(self) -> list[dict]:
-        """Return all captured per-token logprob dicts (SSE preferred over buffered)."""
-        if self._server is None:
-            return []
-        from alphadiana.harness.proxies.logprob_capture import raw_token_logprob_dict_to_record, extract_openai_logprob_records
-        records: list[dict] = []
-        token_index = 0
-        with self._server.lock:
-            sse_tokens = list(self._server.streaming_logprobs)
-            payloads = list(self._server.raw_responses)
-        if sse_tokens:
-            for item in sse_tokens:
-                records.append(raw_token_logprob_dict_to_record(item, token_index))
-                token_index += 1
-        else:
-            for payload in payloads:
-                new_records, token_index = extract_openai_logprob_records(
-                    payload, start_index=token_index
-                )
-                records.extend(new_records)
-        return records
 
 
 def _is_ready_probe_status(status_code: int) -> bool:
@@ -465,6 +195,8 @@ class OpenClawRuntimeManager:
     def __init__(self, config: dict) -> None:
         self._gateway_token = _resolve_gateway_token(config.get("gateway_token", "OPENCLAW"))
         self._gateway_model = config.get("model", "openclaw")
+        self._responses_enabled = bool(config.get("responses_enabled", True))
+        self._external_provider_proxy = False
         self._gateway_port = int(config.get("gateway_port", 8080))
         self._rock_agent_config_path = str(self._resolve_config_path(config.get("rock_agent_config_path", ""))) if config.get("rock_agent_config_path") else ""
         self._openclaw_config_path = str(self._resolve_config_path(config.get("openclaw_config_path", ""))) if config.get("openclaw_config_path") else ""
@@ -562,6 +294,7 @@ class OpenClawRuntimeManager:
         for candidate in [
             (PROJECT_ROOT / path).resolve(),
             path.resolve(),
+            (PROJECT_ROOT.parent / path).resolve(),
         ]:
             if candidate.exists():
                 return candidate
@@ -602,6 +335,12 @@ class OpenClawRuntimeManager:
 
     def set_provider_api_key(self, api_key: str) -> None:
         self._provider_env["OPENAI_API_KEY"] = str(api_key or "").strip()
+
+    def set_external_provider_proxy(self, api_base: str, api_key: str) -> None:
+        """Use the agent-owned capture endpoint without creating a second proxy."""
+        self.set_provider_api_base(api_base)
+        self.set_provider_api_key(api_key)
+        self._external_provider_proxy = True
 
     def inject_agent_md(self, sandbox: Any) -> None:
         """Inject or modify AGENTS.md in the sandbox based on mode."""
@@ -706,6 +445,9 @@ class OpenClawRuntimeManager:
         gateway["bind"] = "lan"
         gateway.pop("customBindHost", None)
 
+        if self._responses_enabled:
+            endpoints = gateway.setdefault("http", {}).setdefault("endpoints", {})
+            endpoints.setdefault("responses", {})["enabled"] = True
         self._ensure_image_capability_metadata(config)
         self._apply_generation_params(config)
         return config
@@ -1168,7 +910,7 @@ class OpenClawRuntimeManager:
         # Start Docker-accessible MITM logprob proxy when capture is enabled.
         # The proxy intercepts calls from the OpenClaw container to vLLM,
         # captures per-token logprob dicts, and is accessible via the host bridge IP.
-        if self._logprob_capture.get("enabled"):
+        if self._logprob_capture.get("enabled") and not self._external_provider_proxy:
             upstream_base_url = env_cfg.get("OPENAI_BASE_URL", "").rstrip("/")
             if upstream_base_url:
                 top_logprobs = int(self._logprob_capture.get("top_logprobs", 20))
@@ -1698,11 +1440,11 @@ class OpenClawPodmanRuntimeManager(OpenClawRuntimeManager):
         if size > size_limit:
             return f"[truncated: file size {size} bytes exceeds {size_limit} byte cap]\n"
 
-        return self._podman_exec_stdout(
-            rt,
-            f"cat {shlex.quote(path)} 2>/dev/null || true",
-            timeout=30.0,
-        )
+        try:
+            return rt.read_text(path, max_bytes=size_limit, timeout=30.0)
+        except Exception as exc:
+            _logger.warning("Could not capture complete OpenClaw file %s: %s", path, exc)
+            return ""
 
     def teardown(self) -> None:
         try:
@@ -1814,7 +1556,7 @@ class OpenClawPodmanRuntimeManager(OpenClawRuntimeManager):
                 f"OpenClaw Podman runtime requires {key} to be set either in agent.config "
                 f"or the local environment."
             )
-        if self._logprob_capture.get("enabled"):
+        if self._logprob_capture.get("enabled") and not self._external_provider_proxy:
             upstream_base_url = env_cfg.get("OPENAI_BASE_URL", "").rstrip("/")
             if upstream_base_url:
                 top_logprobs = int(self._logprob_capture.get("top_logprobs", 20))

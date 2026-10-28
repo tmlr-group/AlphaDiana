@@ -1,0 +1,31 @@
+{
+  "source": "Harbor db-wal-recovery trial result.json (host path omitted)",
+  "source_sha256": "42b4d8f5d50eabf00681a6fee801a398340b78e180bbbd5b0d10b265dbacd0a6",
+  "task_name": "db-wal-recovery",
+  "exception_info": {
+    "exception_type": "APIError",
+    "exception_message": "litellm.APIError: APIError: OpenAIException - <!DOCTYPE html> <title>Access Denied</title>"
+  },
+  "agent_execution": {
+    "started_at": "2026-10-09T20:25:01.344241Z",
+    "finished_at": "2026-10-09T20:25:30.781868Z"
+  },
+  "verifier_result": null,
+  "agent_result": {
+    "n_input_tokens": 0,
+    "n_cache_tokens": 0,
+    "n_output_tokens": 0,
+    "cost_usd": null,
+    "rollout_details": [],
+    "metadata": {
+      "n_episodes": 1,
+      "api_request_times_msec": [],
+      "summarization_count": 0
+    }
+  },
+  "provider_evidence": {
+    "access_denied_title": true,
+    "wp_marker_count": 4
+  },
+  "projection": "Captured native result fields; HTML body and traceback omitted. No model call."
+}

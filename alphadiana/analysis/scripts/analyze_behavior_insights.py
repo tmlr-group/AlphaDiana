@@ -9,30 +9,19 @@ import sys
 from pathlib import Path
 from typing import Any, Mapping
 
-from alphadiana.analysis.action_events import extract_action_event_rows
-from alphadiana.analysis.insight_cases import select_insight_case_anchors
-from alphadiana.analysis.insight_corpus import (
-    ENV_CORPUS_VARS,
+from alphadiana.analysis.actions.keyword_baseline import extract_action_event_rows
+from alphadiana.analysis.actions.trajectories import compute_outcome_conditioned_metrics
+from alphadiana.analysis.insights.cases import select_insight_case_anchors
+from alphadiana.analysis.insights.claims import build_insight_claims
+from alphadiana.analysis.insights.corpus import (
     build_denominator_ledger,
-    load_phase15_corpus_specs,
+    load_insight_corpus_specs,
     load_selected_task_records,
 )
-from alphadiana.analysis.insight_measurements import build_insight_claims
-from alphadiana.analysis.insight_reports import write_phase15_outputs
-from alphadiana.analysis.result_reader import load_run_bundle
-from alphadiana.analysis.trajectory_metrics import compute_outcome_conditioned_metrics
+from alphadiana.analysis.insights.reports import write_behavior_insight_outputs
+from alphadiana.results.reader import load_run_bundle
 
 DEFAULT_OUTPUT_DIR = Path("results/phase15_behavior_insights")
-DEFAULT_MEASUREMENT_SUMMARY = (
-    Path(__file__).resolve().parent / "analyze_tools" / "data" / "measurement_summary.json"
-)
-PHASE15_INPUT_ENV_VARS = (
-    "PHASE15_HLE_OPENCODE_LOGPROBS",
-    "PHASE15_HLE_ZEROCLAW_LOGPROBS",
-    "PHASE15_COLLAB_RESULTS_ROOT",
-)
-
-assert PHASE15_INPUT_ENV_VARS == ENV_CORPUS_VARS
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -42,11 +31,18 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--measurement-summary",
         type=Path,
-        default=DEFAULT_MEASUREMENT_SUMMARY,
+        default=None,
         help="Optional analyze_tools measurement_summary.json to fold into insight measurements.",
     )
-    parser.add_argument("--include-hf-synced", dest="include_hf_synced", action="store_true", default=True)
-    parser.add_argument("--no-include-hf-synced", dest="include_hf_synced", action="store_false")
+    parser.add_argument(
+        "--include-hf-synced",
+        dest="include_hf_synced",
+        action="store_true",
+        default=True,
+    )
+    parser.add_argument(
+        "--no-include-hf-synced", dest="include_hf_synced", action="store_false"
+    )
     parser.add_argument("--stdout", action="store_true")
     return parser
 
@@ -54,9 +50,13 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     measurement_summary = _load_measurement_summary(args.measurement_summary)
-    specs = load_phase15_corpus_specs(args.results_dir, include_hf_synced=args.include_hf_synced)
+    specs = load_insight_corpus_specs(
+        args.results_dir, include_hf_synced=args.include_hf_synced
+    )
     denominator_rows = build_denominator_ledger(specs)
-    denominator_by_label = {str(row.get("corpus_label") or ""): row for row in denominator_rows}
+    denominator_by_label = {
+        str(row.get("corpus_label") or ""): row for row in denominator_rows
+    }
 
     selected_records: list[dict[str, Any]] = []
     event_rows: list[dict[str, Any]] = []
@@ -65,7 +65,10 @@ def main(argv: list[str] | None = None) -> int:
         if not row or row.get("status") != "validated_records":
             continue
         bundle = load_run_bundle(spec.results_dir, spec.run_id)
-        spec_records = [_record_with_spec_defaults(record, spec) for record in load_selected_task_records(bundle)]
+        spec_records = [
+            _record_with_spec_defaults(record, spec)
+            for record in load_selected_task_records(bundle)
+        ]
         selected_records.extend(spec_records)
         event_rows.extend(extract_action_event_rows(bundle, harness=spec.harness))
 
@@ -85,7 +88,7 @@ def main(argv: list[str] | None = None) -> int:
         measurement_summary=measurement_summary,
         case_anchors=case_anchors,
     )
-    output_paths = write_phase15_outputs(
+    output_paths = write_behavior_insight_outputs(
         args.output_dir,
         denominator_rows=denominator_rows,
         event_rows=event_rows,
@@ -95,8 +98,6 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.stdout:
         sys.stdout.write(output_paths["markdown"].read_text(encoding="utf-8"))
-        sys.stdout.write("\n\n")
-        sys.stdout.write(output_paths["markdown_zh"].read_text(encoding="utf-8"))
         sys.stdout.write("\n")
 
     for path in output_paths.values():
@@ -104,8 +105,8 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _load_measurement_summary(path: Path) -> dict[str, Any] | None:
-    if not path.exists():
+def _load_measurement_summary(path: Path | None) -> dict[str, Any] | None:
+    if path is None or not path.exists():
         return None
     return json.loads(path.read_text(encoding="utf-8"))
 

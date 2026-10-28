@@ -1,0 +1,4 @@
+interface:
+  display_name: "Write Clear Code"
+  short_description: "Keep Diana code simple, coherent, and traceable"
+  default_prompt: "Use $write-clear-code to implement this change with the smallest clear design."

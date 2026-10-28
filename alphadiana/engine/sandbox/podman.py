@@ -17,7 +17,7 @@ from typing import Any
 from alphadiana.engine.container_runtime.podman_cli import PodmanCLI, PodmanResult
 from alphadiana.engine.container_runtime.ports import PublishedPort, first_published_port
 from alphadiana.engine.sandbox.base import ExecutionResult, Sandbox, SandboxSession
-from alphadiana.engine.sandbox.registry import register_sandbox
+from alphadiana.engine.components import register_sandbox
 
 
 _UNSAFE_SHELL_TOKENS = (";", "|", "&", "\n", "`", "$(")

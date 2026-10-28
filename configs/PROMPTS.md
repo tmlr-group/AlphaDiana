@@ -1,9 +1,24 @@
-# Canonical System Prompts
+# System prompt conventions and release variants
 
-This is the prompt reference for release configs under `macro_runs/` and
-`micro_runs/`. A config may intentionally use a different prompt only when the
-prompt itself is an experimental variable; document that difference in its
-metadata or directory README.
+The resolved `agent.config.system_prompt` in each YAML config is the executable
+source of truth. The examples below describe prompt conventions; the runtime
+does not load this document. Existing macro and micro configs retain their
+published prompt text. For new experiments, declare prompt changes in metadata
+when comparing conditions.
+
+The GPQA macro DirectLLM prompt asks for careful reasoning and a final option
+letter. The GPQA macro harness prompts ask agents to use tools when useful.
+These are deliberate release variants, rather than byte-identical copies of
+the longer examples below. Inspect the named YAML before running a condition.
+
+The SHA256 below covers the YAML scalar before environment expansion.
+
+| GPQA macro config | Prompt SHA256 |
+| --- | --- |
+| `gpqa_directllm_qwen35_27b.yaml` | `04129b222841a52873cce2e8af1afdb82844fb525dae75bf93b5bf99b584deee` |
+| `gpqa_openclaw_qwen35_27b.yaml` | `15ee1584646e5f563c9881f6013a67c1344b0d11ddad054de73667477d17b147` |
+| `gpqa_opencode_qwen35_27b.yaml` | `15ee1584646e5f563c9881f6013a67c1344b0d11ddad054de73667477d17b147` |
+| `gpqa_zeroclaw_qwen35_27b.yaml` | `15ee1584646e5f563c9881f6013a67c1344b0d11ddad054de73667477d17b147` |
 
 ## Harness types
 

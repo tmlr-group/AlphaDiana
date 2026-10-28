@@ -18,12 +18,13 @@ From the repository root, activate the AlphaDiana environment and install the
 dashboard dependencies:
 
 ```bash
-source scripts/activate.sh
+# Activate the virtual environment used for the README quick start.
+source .venv/bin/activate
 pip install -e '.[dashboard]'
 
-cd alphadiana/analysis/dashboard/frontend
+cd alphadiana/dashboard/frontend
 npm install
-cd ../../../..
+cd ../../..
 ```
 
 Development mode starts Vite and FastAPI separately and reloads source changes.
@@ -32,7 +33,7 @@ Production mode builds the frontend before serving it from FastAPI.
 ## Start
 
 ```bash
-cd alphadiana/analysis/dashboard
+cd alphadiana/dashboard
 ./run.sh
 ```
 
@@ -42,7 +43,7 @@ The launcher prints the selected URLs. It prefers ports `5173` (frontend) and
 To build and serve the frontend and API together:
 
 ```bash
-cd alphadiana/analysis/dashboard
+cd alphadiana/dashboard
 ./run.sh --prod
 ```
 

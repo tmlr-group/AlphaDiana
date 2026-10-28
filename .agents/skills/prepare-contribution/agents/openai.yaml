@@ -1,0 +1,4 @@
+interface:
+  display_name: "Prepare Contribution"
+  short_description: "Search, draft, and manage Diana issues and PRs"
+  default_prompt: "Use $prepare-contribution to search related work and prepare an Diana issue or pull request."

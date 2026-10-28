@@ -55,6 +55,10 @@ Provider failures, context overflow, control-plane failures, verifier anomalies,
 
 `ResultStore` persists one sample per task JSON file entry and one JSONL record per `(task_id, sample_index)`. Result records include the response, score, status, trajectories, metadata, and references to larger artifacts. Reports compute accuracy, mean score, Pass@k, Avg@k, completion/error counts, and per-category variants.
 
+Shared registry mechanics and deferred built-in imports live in `alphadiana/engine/components.py`. Low-level logprob conversion and entropy math live in `alphadiana/results/logprobs.py`. `results/statistics.py` owns latest-sample selection, reliability, and common run statistics; `analysis/export.py` projects those statistics into run reports and exports figures. Action-space reports live in `analysis/actions/action_space_report.py`. Public `ad.*` entry points remain; old internal module paths migrate according to the [import map](../../alphadiana/analysis/README.md).
+
+For module ownership, see the [analysis map](../../alphadiana/analysis/README.md). The [operator workflow map](../../scripts/README.md) covers setup and validation. Dashboard code lives under `alphadiana/dashboard/`.
+
 ## Terminology
 
 - **Dashboard UI**: the React analysis application.

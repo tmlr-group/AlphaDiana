@@ -2,7 +2,7 @@
 
 Every AlphaDiana run is defined by a single YAML file. The CLI parses it into the
 `ExperimentConfig` dataclass (`alphadiana/engine/config/experiment_config.py`), validates
-it, and hands the four blocks (agent / benchmark / sandbox / scorer) to the runner. The
+it, and hands the four blocks (agent / data / env / scorer) to the runner. The
 annotated core-shape reference lives at `configs/schema.yaml` and this page
 summarizes it. Harness and benchmark `config` blocks are open pass-throughs;
 their dedicated pages are the reference for path-specific keys and defaults.
@@ -17,11 +17,11 @@ agent:
   version: "1.0"               # required
   config: {}                   # pass-through dict for the harness
 
-benchmark:
+data:
   name: aime                   # required
   config: {}
 
-sandbox: null                  # null, or { name, config }
+env: null                      # null, or { name, config }
 
 scorer:
   name: math_verify            # required
@@ -33,8 +33,8 @@ output_dir: ./results          # default ./results
 metadata: {}                   # free-form tags
 ```
 
-`sandbox: null` is used for `direct_llm` and for OpenCode controller modes that
-self-manage their runtime. The generic ZeroClaw harness requires a live sandbox.
+`env: null` is used for `direct_llm` and for OpenCode controller modes that
+self-manage their runtime. ZeroClaw requires a live sandbox or its configured Podman runtime.
 
 ## Top-level fields
 
@@ -47,9 +47,9 @@ These map one-to-one onto `ExperimentConfig` in
 | `agent.name` | string | required | e.g. `direct_llm`, `openclaw`, `opencode`, `zeroclaw`, `swebench_docker`. |
 | `agent.version` | string | required | Version label containing at least one digit, such as `"1.0"` or `"0.6.9"`; `"latest"` is rejected. |
 | `agent.config` | dict | `{}` | Open pass-through to the harness (see below). |
-| `benchmark.name` | string | required | e.g. `aime`, `gpqa_diamond`, `hle`, `mmmu_pro`, `terminal_bench2`, `swe_bench`. |
-| `benchmark.config` | dict | `{}` | `split`, `year`, `subset`, `data_path`, etc. |
-| `sandbox` | null \| object | `null` | `{ name, config }`; name in `local` / `rock` / `podman` / `swebench_container`. |
+| `data.name` | string | required | e.g. `aime`, `gpqa_diamond`, `hle`, `mmmu_pro`, `terminal_bench2`, `swe_bench`. |
+| `data.config` | dict | `{}` | `split`, `year`, `subset`, `data_path`, etc. |
+| `env` | null \| object | `null` | `{ name, config }`; name in `local` / `rock` / `podman` / `swebench_container`. |
 | `scorer.name` | string | required | Registered values are listed in the scorer table below. |
 | `scorer.config` | dict | `{}` | Scorer-specific params. |
 | `max_concurrent` | int | `1` | Parallel task executions; validator requires `1 <= n <= 64`. |
@@ -68,6 +68,8 @@ These map one-to-one onto `ExperimentConfig` in
 > validator accepts any positive value for GPQA or AIME. Record the chosen value
 > and keep it fixed across cells being compared.
 
+
+The public names `data` and `env` match Python composition. Legacy `benchmark` and `sandbox` remain supported, including overrides. Providing both names for one block raises an error.
 
 ## The four blocks
 
@@ -107,15 +109,15 @@ and [`openclaw`](../harnesses/openclaw.md).
 > inject reasoning flags into the proxy plumbing.
 
 
-### benchmark.config
+### data.config
 
 Benchmark-specific. Typical keys: `split`, `year`, `subset`, `data_path`. For smoke configs
 you may also see pinned `dataset_index` / `max_tasks`.
 
-### sandbox
+### env
 
-Set to `null` when the harness manages its own runtime. When present, `sandbox.name`
-selects the backend (`local`, `rock`, `podman`, `swebench_container`) and `sandbox.config`
+Set to `null` when the harness manages its own runtime. When present, `env.name`
+selects the backend (`local`, `rock`, `podman`, `swebench_container`) and `env.config`
 carries backend params (ROCK `admin_base_url` / `proxy_base_url` / `image` / `memory` /
 `cpus`; Podman `ports` / `network` / `name_prefix`; etc.). A ROCK preflight runs only for
 ROCK-backed runs.
@@ -233,7 +235,7 @@ Re-invoking the same config **resumes**: `run` loads the existing `<run_id>` rec
 skips already-completed tasks (or samples, when `num_samples > 1`) unless `--redo-all` is
 given. The checkpoint source of truth is `output_dir/<run_id>.jsonl`; the
 manifest, task JSON, lifecycle events, and artifacts live under
-`output_dir/<run_id>/` (see `alphadiana/analysis/io/result_store.py`).
+`output_dir/<run_id>/` (see `alphadiana/results/store.py`).
 
 ## Editing configs
 

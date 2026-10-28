@@ -1,8 +1,6 @@
 # Micro runs
 
-Runnable micro experiments for AlphaDiana. The release distinguishes the
-experiments reported in the [paper](https://openreview.net/forum?id=4vARlk9o95)
-from later framework extensions.
+Runnable micro experiments for AlphaDiana. The release distinguishes the experiments reported in the [paper](https://openreview.net/forum?id=4vARlk9o95) from later framework extensions.
 
 ## Paper coverage
 
@@ -32,32 +30,28 @@ micro_runs/
     └── cross_task/
 ```
 
-The Skill study reuses the 8 `_tool_full.yaml` files as its Full Harness
-baselines. This keeps the matched baseline identical across Tables 2 and 3.
+The Skill study reuses the 8 `_tool_full.yaml` files as its Full Harness baselines. This keeps the matched baseline identical across Tables 2 and 3.
 
 ## Environment
 
-Build or pull the harness images on the execution host, start ROCK for
-ZeroClaw, and export provider settings:
+Build or pull the harness images on the execution host, start ROCK for ZeroClaw, and export provider settings:
 
 ```bash
 docker build --network host \
-  -f alphadiana/benchmarks/terminal_bench2/deploy/dockerfiles/Dockerfile.opencode-controller \
+  -f alphadiana/harness/opencode/deploy/Dockerfile.controller \
   -t alphadiana/tb2-opencode-controller:latest .
 docker build --network host \
   -f alphadiana/harness/zeroclaw/deploy/Dockerfile \
   -t zeroclaw-reasoning:0.6.9 .
 
-bash scripts/start_zeroclaw.sh
+bash scripts/setup/start_zeroclaw.sh
 source scripts/rock_env.sh
 
 export OPENAI_BASE_URL=http://HOST_REACHABLE_FROM_SANDBOX:PORT/v1
 export OPENAI_API_KEY=sk-EMPTY
 ```
 
-For Kimi-K2.6, use a compatible OpenAI-style provider endpoint. For
-ZeroClaw + Kimi, route through the supplied proxy with `--rename-reasoning` so
-thinking content survives normalization.
+For Kimi-K2.6, use a compatible OpenAI-style provider endpoint. For ZeroClaw + Kimi, route through the supplied proxy with `--rename-reasoning` so thinking content survives normalization.
 
 ## Validate
 
@@ -91,10 +85,7 @@ python -m alphadiana.cli run \
   --redo-all
 ```
 
-Use `--harness-strip opencode` for OpenCode. Do not omit `--block '.*'`:
-`--harness-strip` rewrites the prompt but does not itself remove tool schemas.
-A Minimal YAML without this correctly configured proxy does not implement the
-paper intervention.
+Use `--harness-strip opencode` for OpenCode. Do not omit `--block '.*'`: `--harness-strip` rewrites the prompt but does not itself remove tool schemas. A Minimal YAML without this correctly configured proxy does not implement the paper intervention.
 
 ## Run paper Skill conditions
 
@@ -108,12 +99,8 @@ python -m alphadiana.cli run \
   --redo-all
 ```
 
-The bundles are checked in under `alphadiana/harness/skills/`; no private
-absolute path is required.
+The bundles are checked in under `alphadiana/harness/skills/`; no private absolute path is required.
 
 ## Memory extension
 
-Memory configs remain available for AlphaDiana's `intra_task`, `cross_sample`,
-and `cross_task` scopes. They are useful follow-up experiments but are not
-evidence for Tables 2 or 3. See `Memory/README.md` for their state and resume
-semantics.
+Memory configs remain available for AlphaDiana's `intra_task`, `cross_sample`, and `cross_task` scopes. They are useful follow-up experiments but are not evidence for Tables 2 or 3. See `Memory/README.md` for their state and resume semantics.

@@ -1,0 +1,26 @@
+# One Pi rollout on one EvoX problem from a clean SkyDiscover checkout.
+# python -m alphadiana.cli.single_rollout configs/examples/single_rollout/pi_evox_problems.yaml \
+#   --import alphahebe.integrations.diana.benchmarks.evox_problems --output result.json
+run_id: pi-evox-problems
+output_dir: ./results/single_rollout
+agent:
+  name: pi
+  version: model-deployment-v1
+  config:
+    image: ${PI_HARNESS_IMAGE}
+    model: ${OPENAI_MODEL_NAME}
+    api_base: ${OPENAI_BASE_URL}
+    api_key: ${OPENAI_API_KEY}
+    timeout: 3600
+    max_tokens: 32768
+benchmark:
+  name: evox_problems
+  config:
+    repository_path: ${SKYDISCOVER_PATH}
+    revision: 700711ec4c37d0be677456f66d38461310c0bcf8
+    problems:
+      - id: third_autocorr_ineq
+        path: benchmarks/math/third_autocorr_ineq
+        mode: train
+scorer:
+  name: evox_problems

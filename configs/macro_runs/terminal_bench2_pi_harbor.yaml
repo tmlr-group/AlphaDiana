@@ -1,0 +1,45 @@
+run_id: macro_terminal_bench2_pi_harbor
+agent:
+  name: terminal_bench2_pi_harbor
+  version: '1.0'
+  config:
+    harbor_bin: harbor
+    jobs_dir: "${ALPHADIANA_PI_HARBOR_JOBS_DIR}"
+    pi_install_path: "${META_HARNESS_PI_INSTALL}"
+    node_bin_path: "${META_HARNESS_NODE_BIN}"
+    models_path: "${PI_MODELS_PATH}"
+    candidate_path: "${PI_EXTENSION_PATH}"
+    pi_version: "086c32e74530564922d011ade23ff582c9d63116"
+    pi_model: "luna-local/gpt-5.6-luna"
+    harbor_model: "luna-local/gpt-5.6-luna"
+    reasoning: max
+    dataset: terminal-bench@2.0
+    timeout_multiplier: 1.0
+    harbor_max_retries: 0
+    subprocess_timeout_sec: 14400
+    # Preserve flat-denominator experiments. Omit this to fail closed when
+    # Harbor does not produce a finite numeric verifier reward.
+    missing_reward_policy: zero
+benchmark:
+  name: terminal_bench2
+  config:
+    tasks_dir: "${TERMINAL_BENCH2_DIR}"
+    harbor_task_index: true
+    task_ids:
+      - cancel-async-tasks
+    max_tasks: 1
+scorer:
+  name: terminal_bench2
+metrics:
+  - name: answer_length
+    config:
+      source: final_answer
+max_concurrent: 1
+num_samples: 1
+output_dir: ./results
+strict_report: true
+strict_isolation: true
+metadata:
+  runtime_owner: harbor
+  evaluation_owner: alphadiana
+  metric_demo: answer_length

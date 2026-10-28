@@ -32,7 +32,10 @@ The repository image and Podman configs pin OpenClaw `2026.3.14`. Runtime
 preflight compares the installed binary with `agent.version` and stops with a
 clear version-mismatch error before any benchmark request is made.
 
-Verify the required executable and Python runtime before starting a pilot. This
+Verify the required executable and Python runtime before starting a pilot.
+The checked-in images below include Python and SciPy; native historical images
+may instead provide only `python3`. Use the command required by the selected
+recipe, rather than assuming identical contents across image tags. This
 avoids waiting through a gateway timeout when a local tag points at an
 incompatible historical image:
 
@@ -75,7 +78,7 @@ it:
 ```bash
 export OPENCLAW_GATEWAY_TOKEN="$(python3 -c \
   'import secrets; print(secrets.token_urlsafe(32))')"
-python scripts/security_guard.py --check
+python scripts/setup/security_guard.py --check
 ```
 
 ## Network choices
@@ -109,8 +112,8 @@ Validate before making real provider requests:
 
 ```bash
 export PODMAN_SCALE_RUN_PREFIX=podman_scale_$(date +%Y%m%d_%H%M%S)
-bash scripts/run_podman_scale_readiness.sh validate
-bash scripts/run_podman_scale_readiness.sh gate
+bash scripts/validation/run_podman_scale_readiness.sh validate
+bash scripts/validation/run_podman_scale_readiness.sh gate
 ```
 
 `gate` attempts every matrix cell, preserves each exit code and raw log, and
@@ -140,8 +143,8 @@ checks in addition to the benchmark-specific preflight:
 - Put results, task logs, and dual logprob sidecars on a large data volume; do
   not assume the home filesystem can hold a full sweep.
 - Confirm every selected image digest and run its required binary/Python
-  preflight. TerminalBench2 controller definitions live under
-  `alphadiana/benchmarks/terminal_bench2/deploy/dockerfiles/`.
+  preflight. Controller definitions live with their harnesses:
+  `alphadiana/harness/{openclaw,opencode,zeroclaw}/deploy/Dockerfile.controller`.
 - Confirm the network mode matches provider reachability. A loopback provider
   requires host networking unless the harness explicitly advertises a host
   proxy through rootless networking.

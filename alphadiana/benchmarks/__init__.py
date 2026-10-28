@@ -1,6 +1,5 @@
+"""Dataset contracts; built-ins are discovered explicitly by engine.components."""
 from alphadiana.benchmarks.base import Benchmark, BenchmarkTask
-from alphadiana.benchmarks.registry import BenchmarkRegistry
-import alphadiana.benchmarks.mmmu_pro.benchmark  # noqa: F401
-import alphadiana.benchmarks.gpqa.benchmark  # noqa: F401
+from alphadiana.engine.components import BenchmarkRegistry
 
 __all__ = ["Benchmark", "BenchmarkTask", "BenchmarkRegistry"]

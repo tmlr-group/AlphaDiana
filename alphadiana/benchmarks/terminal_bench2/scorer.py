@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from alphadiana.scorer.base import Scorer, ScoreResult
-from alphadiana.scorer.registry import register_scorer
+from alphadiana.engine.components import register_scorer
 
 
 @register_scorer("terminal_bench2")
@@ -17,6 +17,18 @@ class TerminalBench2Scorer(Scorer):
       - response.answer == "1"  → correct=True,  score=1.0
       - anything else (including "0", empty, None, missing file) → correct=False, score=0.0
     """
+
+    requires_environment = True
+
+    def rescore(self, task, response, *, artifacts) -> ScoreResult:
+        from dataclasses import replace
+        from alphadiana.benchmarks.terminal_bench2.replay import VerifierReplay
+        result, snapshot = VerifierReplay().run(
+            task, output_dir=artifacts.path.parent / "verifier_replays")
+        score = self.score(task, replace(response, answer=result.reward))
+        score.metadata.update(verifier_snapshot=snapshot, verifier_status=result.status,
+                              reward_path=result.reward_path, replayed=True)
+        return score
 
     @property
     def name(self) -> str:

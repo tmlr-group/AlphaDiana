@@ -21,6 +21,24 @@ Controller mode is independent of the benchmark sandbox. Podman is preferred for
 
 The controller receives the task directory, generated OpenCode config, provider environment, and attachments. Container execution is a stronger runtime boundary, not a formal security guarantee.
 
+## Build the Podman controller image
+
+From the repository root:
+
+```bash
+podman build \
+  -f alphadiana/harness/opencode/deploy/Containerfile.podman-controller \
+  -t localhost/alphadiana-opencode-podman:latest \
+  alphadiana/harness/opencode/deploy
+```
+
+This builds a local image from Ubuntu 22.04 with Node.js 22, OpenCode 1.3.2,
+and task tools. The final argument is the build context; `-t` names the image.
+Set `controller_image` to that same tag. The image runs OpenCode; inference
+uses the configured provider endpoint. Record the installed image identity
+and binary version for experiments. See the [Python API example](../getting-started/python-api.md)
+for the complete run and export sequence.
+
 ## Generated provider config
 
 For the CLI path, the harness writes `xdg-config/opencode/opencode.json`. The custom OpenAI provider includes the resolved base URL, API key, timeout, optional sampling settings, streaming, thinking template arguments, logprob options, and model capabilities.
@@ -114,8 +132,10 @@ Unknown keys are not a reliable feature flag. Verify that a key is read by `Open
 ```yaml
 agent:
   name: opencode
+  version: "1.3.2"
   config:
     controller_mode: podman
+    controller_image: localhost/alphadiana-opencode-podman:latest
     model: custom/${OPENAI_MODEL_NAME}
     model_name: ${OPENAI_MODEL_NAME}
     api_base: ${OPENAI_BASE_URL}

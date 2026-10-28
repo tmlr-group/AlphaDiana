@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review Pull Request"
+  short_description: "Independently review Diana PRs with evidence"
+  default_prompt: "Use $review-pr to independently review this Diana pull request and report evidence-backed findings."

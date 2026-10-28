@@ -89,6 +89,16 @@ ZeroClaw's native `runtime-trace.jsonl` is more than a prompt/final-answer summa
 
 When logprob capture is enabled, runtime trace mode is forced to full. For persistent-memory runs, the solve trace is stashed before the store turn and both solve/store evidence are preserved separately.
 
+The native runtime trace is a rolling log. Matching request/response counts do
+not prove that earlier pairs or turns were retained. Token counts from that log
+are saved under `metadata.native_trace_coverage.observed_token_usage` for
+inspection, with `usage_complete: false` and
+`usage_incomplete_reason: whole_run_coverage_unverified`. They are not published
+as whole-run `token_usage`; the analyzer reports missing token measurements
+rather than treating the retained suffix as a total. Raw events and action
+trajectories remain available. Older reported token totals from this trace
+require an independent coverage audit before being used in cost comparisons.
+
 The trace is bounded and may be incomplete. For precise claims, compare the normalized trajectory with the raw trace, CLI output, and provider request summaries.
 
 ## Errors and checkpointing

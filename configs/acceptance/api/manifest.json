@@ -1,0 +1,346 @@
+{
+  "schema_version": 1,
+  "model": "Qwen/Qwen3.5-27B",
+  "expected_cells": 28,
+  "require_pins": true,
+  "fixtures": "fixtures.json",
+  "cells": [
+    {
+      "id": "aime2026_directllm",
+      "config": "aime2026_directllm.yaml",
+      "expected_tasks": 3,
+      "task_ids": [
+        "aime_1",
+        "aime_2",
+        "aime_3"
+      ],
+      "model_config_key": "model",
+      "fixture": "aime2026"
+    },
+    {
+      "id": "aime2026_openclaw",
+      "config": "aime2026_openclaw.yaml",
+      "expected_tasks": 3,
+      "task_ids": [
+        "aime_1",
+        "aime_2",
+        "aime_3"
+      ],
+      "model_config_key": "OPENAI_MODEL_NAME",
+      "fixture": "aime2026"
+    },
+    {
+      "id": "aime2026_zeroclaw",
+      "config": "aime2026_zeroclaw.yaml",
+      "expected_tasks": 3,
+      "task_ids": [
+        "aime_1",
+        "aime_2",
+        "aime_3"
+      ],
+      "model_config_key": "model",
+      "fixture": "aime2026"
+    },
+    {
+      "id": "aime2026_opencode",
+      "config": "aime2026_opencode.yaml",
+      "expected_tasks": 3,
+      "task_ids": [
+        "aime_1",
+        "aime_2",
+        "aime_3"
+      ],
+      "model_config_key": "api_model",
+      "fixture": "aime2026"
+    },
+    {
+      "id": "gpqa_directllm",
+      "config": "gpqa_directllm.yaml",
+      "expected_tasks": 3,
+      "task_ids": [
+        "gpqa_0",
+        "gpqa_1",
+        "gpqa_2"
+      ],
+      "model_config_key": "model",
+      "fixture": "gpqa"
+    },
+    {
+      "id": "gpqa_openclaw",
+      "config": "gpqa_openclaw.yaml",
+      "expected_tasks": 3,
+      "task_ids": [
+        "gpqa_0",
+        "gpqa_1",
+        "gpqa_2"
+      ],
+      "model_config_key": "OPENAI_MODEL_NAME",
+      "fixture": "gpqa"
+    },
+    {
+      "id": "gpqa_zeroclaw",
+      "config": "gpqa_zeroclaw.yaml",
+      "expected_tasks": 3,
+      "task_ids": [
+        "gpqa_0",
+        "gpqa_1",
+        "gpqa_2"
+      ],
+      "model_config_key": "model",
+      "fixture": "gpqa"
+    },
+    {
+      "id": "gpqa_opencode",
+      "config": "gpqa_opencode.yaml",
+      "expected_tasks": 3,
+      "task_ids": [
+        "gpqa_0",
+        "gpqa_1",
+        "gpqa_2"
+      ],
+      "model_config_key": "api_model",
+      "fixture": "gpqa"
+    },
+    {
+      "id": "hle_directllm",
+      "config": "hle_directllm.yaml",
+      "expected_tasks": 3,
+      "task_ids": [
+        "hle_1",
+        "hle_11",
+        "hle_13"
+      ],
+      "model_config_key": "model",
+      "fixture": "hle"
+    },
+    {
+      "id": "hle_openclaw",
+      "config": "hle_openclaw.yaml",
+      "expected_tasks": 3,
+      "task_ids": [
+        "hle_1",
+        "hle_11",
+        "hle_13"
+      ],
+      "model_config_key": "OPENAI_MODEL_NAME",
+      "fixture": "hle"
+    },
+    {
+      "id": "hle_zeroclaw",
+      "config": "hle_zeroclaw.yaml",
+      "expected_tasks": 3,
+      "task_ids": [
+        "hle_1",
+        "hle_11",
+        "hle_13"
+      ],
+      "model_config_key": "model",
+      "fixture": "hle"
+    },
+    {
+      "id": "hle_opencode",
+      "config": "hle_opencode.yaml",
+      "expected_tasks": 3,
+      "task_ids": [
+        "hle_1",
+        "hle_11",
+        "hle_13"
+      ],
+      "model_config_key": "api_model",
+      "fixture": "hle"
+    },
+    {
+      "id": "imo_answerbench_directllm",
+      "config": "imo_answerbench_directllm.yaml",
+      "expected_tasks": 3,
+      "task_ids": [
+        "imo-bench-algebra-001",
+        "imo-bench-algebra-002",
+        "imo-bench-algebra-003"
+      ],
+      "model_config_key": "model",
+      "fixture": "imo_answerbench"
+    },
+    {
+      "id": "imo_answerbench_openclaw",
+      "config": "imo_answerbench_openclaw.yaml",
+      "expected_tasks": 3,
+      "task_ids": [
+        "imo-bench-algebra-001",
+        "imo-bench-algebra-002",
+        "imo-bench-algebra-003"
+      ],
+      "model_config_key": "OPENAI_MODEL_NAME",
+      "fixture": "imo_answerbench"
+    },
+    {
+      "id": "imo_answerbench_zeroclaw",
+      "config": "imo_answerbench_zeroclaw.yaml",
+      "expected_tasks": 3,
+      "task_ids": [
+        "imo-bench-algebra-001",
+        "imo-bench-algebra-002",
+        "imo-bench-algebra-003"
+      ],
+      "model_config_key": "model",
+      "fixture": "imo_answerbench"
+    },
+    {
+      "id": "imo_answerbench_opencode",
+      "config": "imo_answerbench_opencode.yaml",
+      "expected_tasks": 3,
+      "task_ids": [
+        "imo-bench-algebra-001",
+        "imo-bench-algebra-002",
+        "imo-bench-algebra-003"
+      ],
+      "model_config_key": "api_model",
+      "fixture": "imo_answerbench"
+    },
+    {
+      "id": "mmmu_pro_directllm",
+      "config": "mmmu_pro_directllm.yaml",
+      "expected_tasks": 3,
+      "task_ids": [
+        "mmmu_pro_test_History_1",
+        "mmmu_pro_test_Art_113",
+        "mmmu_pro_validation_Design_19"
+      ],
+      "model_config_key": "model",
+      "fixture": "mmmu_pro"
+    },
+    {
+      "id": "mmmu_pro_openclaw",
+      "config": "mmmu_pro_openclaw.yaml",
+      "expected_tasks": 3,
+      "task_ids": [
+        "mmmu_pro_test_History_1",
+        "mmmu_pro_test_Art_113",
+        "mmmu_pro_validation_Design_19"
+      ],
+      "model_config_key": "OPENAI_MODEL_NAME",
+      "fixture": "mmmu_pro"
+    },
+    {
+      "id": "mmmu_pro_zeroclaw",
+      "config": "mmmu_pro_zeroclaw.yaml",
+      "expected_tasks": 3,
+      "task_ids": [
+        "mmmu_pro_test_History_1",
+        "mmmu_pro_test_Art_113",
+        "mmmu_pro_validation_Design_19"
+      ],
+      "model_config_key": "model",
+      "fixture": "mmmu_pro"
+    },
+    {
+      "id": "mmmu_pro_opencode",
+      "config": "mmmu_pro_opencode.yaml",
+      "expected_tasks": 3,
+      "task_ids": [
+        "mmmu_pro_test_History_1",
+        "mmmu_pro_test_Art_113",
+        "mmmu_pro_validation_Design_19"
+      ],
+      "model_config_key": "api_model",
+      "fixture": "mmmu_pro"
+    },
+    {
+      "id": "swe_mini_openclaw",
+      "config": "swe_mini_openclaw.yaml",
+      "expected_tasks": 3,
+      "task_ids": [
+        "swe_django__django-11790",
+        "swe_django__django-11815",
+        "swe_django__django-11848"
+      ],
+      "model_config_key": "OPENAI_MODEL_NAME",
+      "fixture": "swe_mini"
+    },
+    {
+      "id": "swe_mini_zeroclaw",
+      "config": "swe_mini_zeroclaw.yaml",
+      "expected_tasks": 3,
+      "task_ids": [
+        "swe_django__django-11790",
+        "swe_django__django-11815",
+        "swe_django__django-11848"
+      ],
+      "model_config_key": "model",
+      "fixture": "swe_mini"
+    },
+    {
+      "id": "swe_mini_opencode",
+      "config": "swe_mini_opencode.yaml",
+      "expected_tasks": 3,
+      "task_ids": [
+        "swe_django__django-11790",
+        "swe_django__django-11815",
+        "swe_django__django-11848"
+      ],
+      "model_config_key": "api_model",
+      "fixture": "swe_mini"
+    },
+    {
+      "id": "swe_mini_sweagent",
+      "config": "swe_mini_sweagent.yaml",
+      "expected_tasks": 3,
+      "task_ids": [
+        "swe_django__django-11790",
+        "swe_django__django-11815",
+        "swe_django__django-11848"
+      ],
+      "model_config_key": "model",
+      "fixture": "swe_mini"
+    },
+    {
+      "id": "terminal_bench2_openclaw",
+      "config": "terminal_bench2_openclaw.yaml",
+      "expected_tasks": 3,
+      "task_ids": [
+        "tb2_adaptive-rejection-sampler",
+        "tb2_db-wal-recovery",
+        "tb2_overfull-hbox"
+      ],
+      "model_config_key": "model_name",
+      "fixture": "terminal_bench2"
+    },
+    {
+      "id": "terminal_bench2_zeroclaw",
+      "config": "terminal_bench2_zeroclaw.yaml",
+      "expected_tasks": 3,
+      "task_ids": [
+        "tb2_adaptive-rejection-sampler",
+        "tb2_db-wal-recovery",
+        "tb2_overfull-hbox"
+      ],
+      "model_config_key": "model_name",
+      "fixture": "terminal_bench2"
+    },
+    {
+      "id": "terminal_bench2_opencode",
+      "config": "terminal_bench2_opencode.yaml",
+      "expected_tasks": 3,
+      "task_ids": [
+        "tb2_adaptive-rejection-sampler",
+        "tb2_db-wal-recovery",
+        "tb2_overfull-hbox"
+      ],
+      "model_config_key": "model_name",
+      "fixture": "terminal_bench2"
+    },
+    {
+      "id": "terminal_bench2_terminus2",
+      "config": "terminal_bench2_terminus2.yaml",
+      "expected_tasks": 3,
+      "task_ids": [
+        "tb2_adaptive-rejection-sampler",
+        "tb2_db-wal-recovery",
+        "tb2_overfull-hbox"
+      ],
+      "model_config_key": "model",
+      "fixture": "terminal_bench2"
+    }
+  ],
+  "require_clean_source": true
+}

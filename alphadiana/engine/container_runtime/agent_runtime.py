@@ -214,7 +214,9 @@ class PodmanAgentRuntime:
                 command=list(spec.container_command),
                 detach=True,
                 env=dict(spec.env),
-                workdir=spec.workdir,
+                # A pinned controller image need not contain the task workspace.
+                # Start the container at its root; agent commands use spec.workdir.
+                workdir="/",
                 ports=spec.port_mapping(),
                 network=spec.network,
                 entrypoint=spec.container_entrypoint,
@@ -226,6 +228,13 @@ class PodmanAgentRuntime:
             self._container_id = container_id
             self._runtime_identity = self._inspect_runtime_identity(container_id)
 
+            self._runtime.exec(
+                container_id,
+                ["mkdir", "-p", "--", spec.workdir],
+                workdir="/",
+                timeout=spec.startup_timeout,
+                check=True,
+            )
             self._copy_files(spec, container_id)
             self._run_install_commands(spec, container_id)
             self._process_id = self._launch_process(spec, container_id)
@@ -348,6 +357,41 @@ class PodmanAgentRuntime:
             timeout=timeout if timeout is not None else spec.request_timeout,
             check=check,
         )
+
+    def read_text(
+        self,
+        path: str,
+        *,
+        max_bytes: int,
+        timeout: float = 30.0,
+    ) -> str:
+        """Copy a bounded regular file without relying on exec stdout transport.
+
+        Some Podman/conmon versions return success with truncated stdout for
+        large ``exec cat`` responses. File copying uses the archive transport;
+        reject incomplete copies, symlinks and files that exceed the bound.
+        """
+        if max_bytes < 0:
+            raise ValueError("max_bytes must be nonnegative")
+        if not self._container_id:
+            raise RuntimeError("PodmanAgentRuntime has no active container")
+        size_result = self.exec(
+            ["stat", "-c", "%s", "--", path], timeout=timeout,
+        )
+        expected_size = int(size_result.stdout.strip())
+        if expected_size < 0 or expected_size > max_bytes:
+            raise ValueError(f"Runtime file exceeds {max_bytes} byte limit: {path}")
+        with tempfile.TemporaryDirectory(prefix="alphadiana-capture-") as directory:
+            target = Path(directory) / "snapshot"
+            self._runtime.cp(
+                f"{self._container_id}:{path}", str(target),
+                timeout=timeout, check=True,
+            )
+            if target.is_symlink() or not target.is_file():
+                raise ValueError(f"Runtime artifact is not a regular file: {path}")
+            if target.stat().st_size != expected_size:
+                raise ValueError(f"Runtime artifact changed size or copy is incomplete: {path}")
+            return target.read_text(encoding="utf-8", errors="replace")
 
     def _copy_files(self, spec: PodmanAgentSpec, container_id: str) -> None:
         for item in spec.files:

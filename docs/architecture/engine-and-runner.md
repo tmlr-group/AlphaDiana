@@ -6,12 +6,12 @@
 
 1. `ExperimentConfig.from_yaml()` loads YAML, expands environment references, applies `-o` overrides, and constructs typed component blocks.
 2. `ConfigValidator.validate()` checks component compatibility and numeric constraints.
-3. `Runner.setup()` imports built-in modules for registration side effects, resolves the configured components, calls their `setup()` methods, and creates the result store and report generator.
+3. `Runner.setup()` calls `register_builtin_components()` from `engine/components.py` for registration side effects, resolves the configured components, calls their `setup()` methods, and creates the result store and report generator.
 4. `Runner.run()` loads benchmark tasks, expands them by `num_samples`, removes checkpoint-complete samples, dispatches the remaining work, scores responses, and persists each outcome.
 5. The report generator reads persisted records and the run manifest to produce `RunSummary` and Markdown output.
 6. `Runner.teardown()` releases agent and sandbox resources.
 
-Registration is explicit: adding a backend normally does not change dispatch logic, but it does require importing the module in `Runner.setup()` so its registration call executes. See [Registries](./registries.md).
+Registration is explicit: adding a backend normally does not change dispatch logic, but it does require importing the module in the matching `load_builtin_*()` function in `engine/components.py` so its registration call executes. See [Registries](./registries.md).
 
 ## Core config
 
@@ -49,6 +49,19 @@ The normal dispatcher limits concurrency with `max_concurrent`. Sandbox acquisit
 - ordinary backends create or borrow a session without task binding;
 - `swebench_container` receives the current `BenchmarkTask`;
 - OpenClaw gateway predeployment uses its own pool and quarantines dead sessions rather than requeueing them.
+
+`OpenClawGatewayPool` in `harness/openclaw/gateway_pool.py` owns predeployment,
+leases, health probes, replenishment, resets, quarantine, and session shutdown.
+Runner prepares this pool, acquires a session for each task, persists the outcome,
+then releases the session. `harness/openclaw/integrity.py` checks response integrity
+before Runner invokes the scorer.
+
+SWE task projection lives in `benchmarks/swe_bench/tasks.py`. Both the sandbox and
+the scorer use that schema. Container build hooks live in
+`engine/container_runtime/swebench_build.py`; official SWE-bench runtime imports
+remain deferred until a build is requested. `utils/swebench.py` and
+`utils/rollout_campaign.py` are replaced by these owners and
+`engine/rollout_campaign.py` respectively.
 
 Recoverable task failures may be retried on fresh infrastructure according to `task_retries` and `task_retry_on_recoverable_only`. This retry layer is distinct from checkpoint resume across separate CLI invocations.
 
@@ -96,3 +109,93 @@ Use the exact command syntax shown by `python -m alphadiana.cli --help` in the c
 - [Architecture Overview](./)
 - [Scoring & Results](./scoring-and-results.md)
 - [Observability & Proxies](./observability.md)
+
+## Shared runtime and evidence owners
+
+- `engine/config/experiment_config.py` resolves provider fields for DirectLLM, OpenCode and ZeroClaw. Their explicit value, EMPTY and environment precedence remains unchanged.
+- `engine/container_runtime/swebench_build.py` owns the scoped Podman environment used by both the sandbox and official scorer. Class `_docker_client` hooks remain for their verifier test consumers.
+- `engine/sandbox/rock.py` owns ROCK image/install policy; `rock_ports.py` resolves service ports and ownership.
+- `harness/base.py` resolves runtime skill folders against the packaged `harness/skills/` bundle.
+- `harness/openclaw/trace.py` parses saved sessions and recovers partial response/reasoning/error evidence.
+- `harness/openclaw/security.py` owns gateway token creation and validation; `integrity.py` checks response completeness and request identity.
+- `harness/proxies/openclaw.py` owns the gateway-specific SSE/logprob wire protocol. Generic capture remains in `logprob_proxy.py`; their downstream contracts differ.
+- `scorer/answers.py` owns answer text parsing; `harness/attachments.py` owns binary input conversion. These primitives are shared by execution and scoring.
+- `results/lifecycle.py` appends redacted task lifecycle evidence.
+
+Former internal `utils.*` imports migrate to these owners. No forwarding package remains.
+
+## Dataset, harness, and observation ownership
+
+`benchmarks/` owns dataset loading, task projection, and benchmark-specific
+scoring/replay. `harness/` owns agent execution and response projection. Both use
+`BenchmarkTask` from `benchmarks/base.py`; that contract does not discover any
+concrete dataset. `engine/components.py` explicitly loads each registry family.
+The `benchmarks` package no longer registers GPQA/MMMU merely on import.
+
+Execution adapters live under the executor that runs them: `harness/openclaw/`,
+`harness/opencode/`, `harness/zeroclaw/`, `harness/pi/`, `harness/direct_llm/`,
+`harness/terminus2/`, and `harness/sweagent.py`. The shared Docker patch controller
+and its resources live in `harness/container_patch/`. Native agent image preparation and in-container execution
+are shared in `harness/_internal/container_agent_runtime.py`. TB2 task-container startup,
+workspace commands, verifier execution, snapshots, and cleanup share one owner:
+`engine/sandbox/terminal_bench2.py`. Official replay uses that owner directly and
+never imports solver adapters. Controller Dockerfiles live in each agent's
+`deploy/` directory because those images also serve reasoning and SWE tasks.
+
+```mermaid
+flowchart LR
+    B["benchmarks: dataset → BenchmarkTask"] --> R["Runner"]
+    R --> H["harness: task → AgentResponse"]
+    H --> E["engine/sandbox: task container"]
+    S["benchmark scorer / official replay"] --> E
+    H --> R
+    R --> S
+    S --> O["engine/observations: per-task observations"]
+    O --> D["results: saved evidence"]
+    D --> M["analysis/measurements: batch tables and figures"]
+```
+
+`engine/observations.py` holds `EvaluationMetric`, `MetricResult`, the built-in
+`AnswerLengthMetric`, and isolated observation execution. Plugins receive copies
+of the task, response, and score after scoring. Unserializable observations and
+plugin failures are recorded separately, so the primary result remains saveable.
+The configuration key `metrics` and saved `evaluation_metrics` /
+`evaluation_metric_errors` fields keep their existing meanings.
+
+`analysis/measurements.py` reads saved `Artifacts` and computes batch reliability,
+usage, and token/request entropy. It produces measurement tables and figure
+specifications for `analysis/export.py`; it does not run per-task plugins.
+
+### Import migration
+
+Old internal entrypoints were removed; update callers as follows:
+
+| Previous path | Current path |
+| --- | --- |
+| `alphadiana.benchmarks.swe_bench.harness` | `alphadiana.harness.container_patch.agent` |
+| `alphadiana.benchmarks.swe_bench.sweagent` | `alphadiana.harness.sweagent` |
+| `alphadiana.benchmarks.terminal_bench2.harness.<adapter>` | `alphadiana.harness.<executor>.terminal` (OpenClaw/OpenCode/ZeroClaw), `direct_llm.terminal`, `terminus2.agent`, or `pi.harbor` |
+| TB2 `harness.common` and `snapshot` | `alphadiana.engine.sandbox.terminal_bench2` |
+| Snapshot functions imported from TB2 `replay` | `alphadiana.engine.sandbox.terminal_bench2` |
+| `alphadiana.metrics.base` / `answer_length` | `alphadiana.engine.observations` |
+| `alphadiana.metrics.registry` | `alphadiana.engine.components` |
+
+For example:
+
+```python
+from alphadiana.engine.observations import EvaluationMetric, MetricResult
+from alphadiana.engine.components import register_metric
+```
+
+Custom plugins keep their registry names and configuration. External deep-import
+callers must update their paths; their usage is not discoverable from this repo.
+
+### Executor import migration
+
+Internal benchmark-named harness packages are removed. Configuration registry keys
+remain unchanged. Import DirectLLMAgent from `alphadiana.harness.direct_llm.agent`;
+SWEAgent from `alphadiana.harness.sweagent`; SWEBenchDockerAgent from
+`alphadiana.harness.container_patch.agent`. Terminus2 execution and its child job
+now live in `alphadiana.harness.terminus2.agent` and `.job`. Pi Harbor execution,
+optional installed adapter and result projection live beside Pi in `.pi.harbor`,
+`.pi.harbor_adapter` and `.pi.harbor_results`. No forwarding entry points remain.

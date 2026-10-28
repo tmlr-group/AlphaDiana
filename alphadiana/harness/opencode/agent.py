@@ -17,6 +17,18 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+from alphadiana.scorer.answers import extract_answer_candidate, extract_boxed
+from alphadiana.harness.attachments import iter_binary_attachments, write_attachments
+from alphadiana.benchmarks.base import BenchmarkTask
+from alphadiana.engine.config.experiment_config import resolve_agent_setting
+from alphadiana.engine.container_runtime import (
+    PodmanAgentRuntime,
+    PodmanAgentSpec,
+    PodmanCLI,
+    PodmanError,
+    podman_proxy_env,
+)
+from alphadiana.harness.base import Agent, AgentResponse, resolve_runtime_skill_folder
 from alphadiana.harness.proxies.logprob_capture import (
     apply_openai_logprob_request,
     extract_openai_logprob_records,
@@ -25,44 +37,14 @@ from alphadiana.harness.proxies.logprob_capture import (
     resolve_logprob_capture_config,
 )
 from alphadiana.harness.proxies.logprob_proxy import LogprobCaptureProxy
-from alphadiana.harness.base import Agent, AgentResponse
 from alphadiana.harness.proxies.preservation import (
     add_artifact_file_refs,
     build_event_trajectories,
     build_runtime_trace_summary,
 )
-from alphadiana.harness.registry import AgentRegistry
-from alphadiana.benchmarks.base import BenchmarkTask
-from alphadiana.engine.container_runtime import (
-    PodmanAgentRuntime,
-    PodmanAgentSpec,
-    PodmanCLI,
-    PodmanError,
-    podman_proxy_env,
-)
-from alphadiana.utils.attachments import iter_binary_attachments, write_attachments
-from alphadiana.utils.math_answer import extract_answer_candidate, extract_boxed
+from alphadiana.engine.components import AgentRegistry
 
 logger = logging.getLogger(__name__)
-
-
-def _resolve_skill_folder(raw: Any) -> str | None:
-    """Resolve agent.config.skill_folder.
-
-    - Empty/None  -> None (skill mounting disabled)
-    - Absolute path -> use as-is
-    - Path with "/" -> resolve relative to cwd
-    - Bare name like "advanced-maths" -> alphadiana/harness/skills/<name>/
-    """
-    text = str(raw or "").strip()
-    if not text:
-        return None
-    if os.path.isabs(text):
-        return text
-    if "/" in text or os.path.exists(text):
-        return str(Path(text).resolve())
-    pkg_root = Path(__file__).resolve().parent.parent  # alphadiana/
-    return str(pkg_root / "skills" / text)
 
 
 _SUPPORTED_CONTROLLER_MODES = {"host", "docker", "podman"}
@@ -223,6 +205,29 @@ def _opencode_event_type(obj: dict[str, Any]) -> str:
     return ""
 
 
+def _opencode_trajectory_records(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Translate native events; lifecycle bookkeeping is not an agent action."""
+    records = []
+    for event in events:
+        if _opencode_event_type(event) in _LIFECYCLE_EVENT_TYPES:
+            continue
+        part = event.get("part")
+        if isinstance(part, dict) and part.get("type") == "tool":
+            state = part.get("state") or {}
+            records.append({"type": "tool_use", "message": {
+                "role": "assistant", "content": json.dumps({
+                    "tool": part.get("tool"), "input": state.get("input"),
+                    "call_id": part.get("callID")}, ensure_ascii=False)}})
+            if "output" in state or "error" in state:
+                records.append({"type": "tool_result", "message": {
+                    "role": "tool", "content": json.dumps({
+                        "output": state.get("output"), "error": state.get("error"),
+                        "call_id": part.get("callID")}, ensure_ascii=False)}})
+        else:
+            records.append(event)
+    return records
+
+
 def _opencode_event_types(events: list[dict[str, Any]]) -> list[str]:
     return [event_type for event_type in (_opencode_event_type(event) for event in events) if event_type]
 
@@ -337,10 +342,45 @@ def _classify_opencode_error(name: str, message: str) -> str:
     return "agent_error"
 
 
-def _extract_opencode_error(events: list[dict[str, Any]]) -> dict[str, str] | None:
-    """Return the last OpenCode error event, if present."""
-    for event in reversed(events):
+def _completed_after_error(events: list[dict[str, Any]], index: int) -> bool:
+    """Require an explicit terminal response in the same native session."""
+    session = events[index].get("sessionID")
+    if not session:
+        return False
+    following = [
+        event for event in events[index + 1:] if event.get("sessionID") == session
+    ]
+    states = [
+        event for event in following
+        if event.get("type") in {"step_start", "step_finish", "error"}
+    ]
+    if not states or states[-1].get("type") != "step_finish":
+        return False
+    finish = states[-1].get("part")
+    if not isinstance(finish, dict):
+        return False
+    message = finish.get("messageID")
+    if finish.get("reason") != "stop" or finish.get("sessionID") != session or not message:
+        return False
+    return any(
+        event.get("type") == "text"
+        and isinstance(event.get("part"), dict)
+        and event["part"].get("sessionID") == session
+        and event["part"].get("messageID") == message
+        and str(event["part"].get("text") or "").strip()
+        for event in following
+    )
+
+
+def _extract_opencode_error(
+    events: list[dict[str, Any]], *, returncode: int | None = None
+) -> dict[str, str] | None:
+    """Return the last unrecovered error; preserve all events in raw artifacts."""
+    for index in range(len(events) - 1, -1, -1):
+        event = events[index]
         if str(event.get("type", "")).strip().lower() != "error":
+            continue
+        if returncode == 0 and _completed_after_error(events, index):
             continue
         error_obj = event.get("error")
         if not isinstance(error_obj, dict):
@@ -705,7 +745,7 @@ class OpenCodeAgent(Agent):
           -t alphadiana-opencode-podman:latest .
 
         docker build --network host \\
-          -f alphadiana/benchmarks/terminal_bench2/deploy/dockerfiles/Dockerfile.opencode-controller \\
+          -f alphadiana/harness/opencode/deploy/Dockerfile.controller \\
           -t alphadiana/tb2-opencode-controller:latest .
     """
 
@@ -731,15 +771,17 @@ class OpenCodeAgent(Agent):
             or default_controller_image
         ).strip()
         self._controller_network = str(config.get("controller_network", "host") or "host").strip()
-        self._cli_model = self._resolve_setting(config, "model", "OPENAI_MODEL_NAME")
-        self._api_base = self._resolve_setting(config, "api_base", "OPENAI_BASE_URL")
-        self._api_key = self._resolve_setting(
+        self._cli_model = resolve_agent_setting(config, "model", "OPENAI_MODEL_NAME")
+        self._api_base = resolve_agent_setting(config, "api_base", "OPENAI_BASE_URL")
+        self._api_key = resolve_agent_setting(
             config,
             "api_key",
             "OPENAI_API_KEY",
             default="EMPTY",
         )
-        self._model_name = self._resolve_setting(config, "model_name", "OPENAI_MODEL_NAME")
+        self._model_name = resolve_agent_setting(
+            config, "model_name", "OPENAI_MODEL_NAME"
+        )
         if not self._cli_model and self._model_name:
             self._cli_model = f"custom/{self._model_name}"
         self._api_model = str(config.get("api_model", "")).strip() or _derive_api_model(
@@ -764,7 +806,9 @@ class OpenCodeAgent(Agent):
         self._print_logs = bool(config.get("print_logs", False))
         self._log_level = str(config.get("log_level", "")).strip()
         self._system_prompt = config.get("system_prompt", _DEFAULT_SYSTEM_PROMPT)
-        self._skill_folder = _resolve_skill_folder(config.get("skill_folder", ""))
+        self._skill_folder = resolve_runtime_skill_folder(
+            config.get("skill_folder", "")
+        )
         self._opencode_bin = config.get("opencode_bin", "opencode")
         self._streaming = config.get("streaming") if "streaming" in config else None
         self._logprob_capture = resolve_logprob_capture_config(config)
@@ -831,26 +875,6 @@ class OpenCodeAgent(Agent):
         metadata.update(dict(self._last_controller_metadata or {}))
         return metadata
 
-    @staticmethod
-    def _resolve_setting(
-        config: dict,
-        key: str,
-        env_var: str,
-        *,
-        default: str = "",
-    ) -> str:
-        value = config.get(key, default)
-        if value is None:
-            value = default
-        if isinstance(value, str):
-            stripped = value.strip()
-            if stripped and stripped.upper() != "EMPTY":
-                return stripped
-        env_value = os.environ.get(env_var, "").strip()
-        if env_value:
-            return env_value
-        return value if isinstance(value, str) else default
-
     def solve(self, task: BenchmarkTask, sandbox: Any = None) -> AgentResponse:
         if self._runtime == "swebench_container":
             if sandbox is None:
@@ -896,7 +920,7 @@ class OpenCodeAgent(Agent):
         full_content = assistant_text or raw_stdout
         trajectory, reasoning_trajectory = build_event_trajectories(
             request_messages,
-            events,
+            _opencode_trajectory_records(events),
             final_output=full_content,
         )
 
@@ -952,7 +976,7 @@ class OpenCodeAgent(Agent):
             },
         )
 
-        error_info = _extract_opencode_error(events)
+        error_info = _extract_opencode_error(events, returncode=exit_code)
         response_metadata = {
             "runtime": "swebench_container",
             "returncode": exit_code,
@@ -1452,6 +1476,8 @@ class OpenCodeAgent(Agent):
                     "context": int(self._context_limit),
                     "output": int(self._output_limit) if self._output_limit else 32000,
                 }
+            if self._config.get("input_limit") is not None:
+                model_spec.setdefault("limit", {})["input"] = int(self._config["input_limit"])
             if _has_image_attachments(task.attachments):
                 model_spec["attachment"] = True
                 model_spec["modalities"] = {
@@ -1534,6 +1560,7 @@ class OpenCodeAgent(Agent):
                     self._logprob_capture["top_logprobs"],
                     client_timeout=logprob_proxy_client_timeout,
                     request_overrides=request_overrides or None,
+                    upstream_api_key=self._api_key,
                 )
                 proxy.start()
                 effective_api_base = proxy.proxy_url + "/v1"
@@ -1747,7 +1774,7 @@ class OpenCodeAgent(Agent):
             else ("opencode_cli_podman" if self._controller_mode == "podman" else "opencode_cli")
         )
 
-        error_info = _extract_opencode_error(events)
+        error_info = _extract_opencode_error(events, returncode=returncode)
         response_metadata = {
             "returncode": returncode,
             "stderr": stderr[:2000] if stderr else "",
@@ -1823,7 +1850,7 @@ class OpenCodeAgent(Agent):
 
         trajectory, reasoning_trajectory = build_event_trajectories(
             request_messages,
-            events,
+            _opencode_trajectory_records(events),
             final_output=full_content,
         )
 

@@ -1,6 +1,6 @@
 # Harnesses Overview
 
-AlphaDiana has four generic harness families plus benchmark-specific agent adapters. A harness implements the `Agent` contract; an adapter may bind one of those agents or a custom controller to a benchmark-specific container and verifier flow.
+AlphaDiana provides generic reasoning harnesses, dedicated native executors, and benchmark-specific agent adapters. A harness implements the `Agent` contract; an adapter may bind one of those agents or a custom controller to a benchmark-specific container and verifier flow.
 
 ## Generic harness families
 
@@ -13,12 +13,24 @@ AlphaDiana has four generic harness families plus benchmark-specific agent adapt
 
 These memory paths are opt-in and now exist in the current source. They are not implied by ordinary fresh-per-task runs, and their transfer-experiment controls must be configured explicitly.
 
+## Additional native executors
+
+| Key | Runtime guide |
+| --- | --- |
+| `pi`, `deepseek_harness` | [Rootless Podman native agents](native-podman.md) |
+| `sweagent` | [Native SWE-Agent on SWE-bench Verified Mini](../benchmarks/swebench-verified-mini.md) |
+| `terminus2` | [Native Terminus2 with Harbor on Terminal-Bench 2](../benchmarks/terminal-bench-2.md) |
+
+These executors retain their native agent loops. Their guides define runtime
+identities, task environments, and verification prerequisites.
+
 ## Benchmark-specific adapters
 
 The agent registry also contains:
 
 - `swebench_docker`;
-- `terminal_bench2_docker`, `terminal_bench2_openclaw`, `terminal_bench2_opencode`, and `terminal_bench2_zeroclaw`.
+- `terminal_bench2_docker`, `terminal_bench2_openclaw`, `terminal_bench2_opencode`, and `terminal_bench2_zeroclaw`;
+- [`terminal_bench2_pi_harbor`](./pi-harbor.md), where Harbor owns the disposable Pi/TB2 runtime and AlphaDiana imports completed evidence for scoring and post-run metrics.
 
 These keys are selectable agents but are not additional generic harness families. Their benchmark runbooks define image, verifier, and artifact contracts.
 
@@ -28,20 +40,23 @@ These keys are selectable agents but are not additional generic harness families
 
 - `setup(config)` once per runner instance;
 - `solve(task, sandbox)` once per work item;
+- optional `validate_experiment_config(config)` for adapter-owned validation;
 - optional `teardown()`.
+
+An adapter that owns its complete task runtime declares `owns_task_runtime` and `runtime_isolation_mode`. The runner consumes those capabilities without special-casing the adapter name.
 
 `solve()` returns an `AgentResponse`. Important fields include `answer`, `raw_output`, `finish_reason`, token/timing data, request/response envelopes, trajectories, sandbox metadata, workspace artifacts, and harness metadata. The scorer, not the harness, produces the universal top-level score.
 
 ## Registration
 
-Agent registration is import-triggered. `Runner.setup()` imports all built-in harness and adapter modules before resolving the configured key. The current complete inventory is maintained in [Registries](../architecture/registries.md).
+Agent registration is import-triggered. `engine/components.py` imports all built-in harness and adapter modules before the runner resolves the configured key. The config validator loads only lightweight adapter-local validation hooks. The current complete inventory is maintained in [Registries](../architecture/registries.md).
 
 To add an agent:
 
 1. implement `Agent`;
 2. register a stable key;
-3. import its module in `Runner.setup()`;
-4. add config validation and focused tests;
+3. import its module from `alphadiana.engine.components`;
+4. add adapter-local config validation and focused tests;
 5. run a real task in the intended container runtime before claiming support;
 6. preserve intermediate artifacts needed to review the integration.
 
@@ -60,6 +75,7 @@ Logprob and trajectory coverage varies by harness and runtime:
 - OpenCode parses JSON events;
 - OpenClaw preserves gateway and local-agent evidence;
 - ZeroClaw preserves a bounded native runtime trace plus normalized trajectories.
+- Pi-Harbor imports Pi JSON events and Harbor verifier evidence after the task container finishes.
 
 Do not infer capture from config inspection alone. Verify task metadata and sidecars from a real run. Shared proxy mechanics are documented once in [Observability & Proxies](../architecture/observability.md).
 
@@ -74,3 +90,6 @@ Do not infer capture from config inspection alone. Verify task metadata and side
 ## Security boundary
 
 Harness tool controls, prompt filtering, and container execution are separate mechanisms. None alone is a formal security guarantee. Review mounts, network access, secrets, controller mode, task artifacts, and sandbox provenance for the exact run.
+
+- [Pi and DeepSeek Harness (rootless Podman)](native-podman.md)
+- [Pi native-token SFT and GRPO capture](pi-training.md)

@@ -52,7 +52,7 @@ Runner lifecycle events feed terminal progress and the live status file at `stat
 
 ## Logprob artifacts
 
-The result store can write raw float records and compact Int16 records when metadata uses the expected `logprob_records` and `logprob_int16_records` fields. See [Scoring & Results](./scoring-and-results.md) for the DirectLLM `logprobs_format: int16` caveat; do not infer sidecar validity merely from a filename.
+The result store can write raw float records and compact Int16 records when metadata uses the expected `logprob_records` and `logprob_int16_records` fields. DirectLLM supplies raw records; ResultStore owns compact conversion. Check references and file contents as described in [Scoring & Results](./scoring-and-results.md).
 
 Entropy and behavioral analysis operate on captured records and normalized trajectories. Always report the denominator: tasks without a usable trace or logprob sidecar are not evidence for trace-wide conclusions.
 

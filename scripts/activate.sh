@@ -23,7 +23,7 @@ from pathlib import Path
 project_root = Path(sys.argv[1]).resolve()
 sys.path.insert(0, str(project_root))
 
-from alphadiana.utils.rock_ports import default_checkout_env_name
+from alphadiana.engine.sandbox.rock_ports import default_checkout_env_name
 
 print(default_checkout_env_name(project_root))
 PYEOF
@@ -56,7 +56,7 @@ eval "$(conda shell.bash hook)" 2>/dev/null
 conda activate "${_activate_env_name}" 2>/dev/null
 if [ $? -ne 0 ]; then
   echo "Warning: could not activate conda env '${_activate_env_name}'." >&2
-  echo "Run 'bash scripts/quickstart.sh ${_activate_env_name}' first to create the checkout-local environment." >&2
+  echo "Run 'bash scripts/setup/quickstart.sh ${_activate_env_name}' first to create the checkout-local environment." >&2
 fi
 
 # ── 2. Clear proxy variables ─────────────────────────────────────────────────
@@ -102,7 +102,7 @@ fi
 
 if [ -d "${ALPHADIANA_ROCK_ROOT:-${_activate_rock_root}}" ]; then
   if [ ! -f "${_activate_script_dir}/.rock_ports.env" ]; then
-    echo "Warning: scripts/.rock_ports.env not found. Run 'python scripts/find_rock_ports.py --write-env scripts/.rock_ports.env' first." >&2
+    echo "Warning: scripts/.rock_ports.env not found. Run 'python scripts/setup/find_rock_ports.py --write-env scripts/.rock_ports.env' first." >&2
   fi
   # Reuse the shared ROCK helper so activate.sh and quickstart agree on the
   # dynamic config location and default local ports.

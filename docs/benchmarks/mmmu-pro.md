@@ -7,14 +7,15 @@ MMMU-Pro evaluates multimodal multiple-choice reasoning on `MMMU/MMMU_Pro`.
 Run from the repository root:
 
 ```bash
-source scripts/activate.sh
+# Plain package installation; ROCK users instead use scripts/activate.sh.
+source .venv/bin/activate
 
 export OPENAI_BASE_URL=http://127.0.0.1:8011/v1
 export OPENAI_API_KEY=sk-EMPTY
 export OPENAI_MODEL_NAME=Qwen/Qwen3.5-27B
 ```
 
-When running from a local checkout, prefer the module entrypoint:
+For ROCK-backed configurations only, check service health:
 
 ```bash
 python -m alphadiana.cli env
@@ -70,7 +71,7 @@ export HF_HOME=<hf-cache-dir>
 export HF_DATASETS_CACHE=<hf-datasets-cache-dir>
 export PODMAN_MMMU_RUN_PREFIX=podman_mmmu_pro_$(date +%Y%m%d_%H%M%S)
 
-bash scripts/run_podman_mmmu_pro_readiness.sh all
+bash scripts/validation/run_podman_mmmu_pro_readiness.sh all
 ```
 
 The patched preflight runs inside Podman, keeps thinking mode on, uses at
@@ -222,7 +223,7 @@ ZeroClaw benchmark smoke is documented only for sandboxed execution:
 Start ROCK first:
 
 ```bash
-bash scripts/start_zeroclaw.sh
+bash scripts/setup/start_zeroclaw.sh
 source scripts/rock_env.sh
 ```
 
@@ -234,7 +235,7 @@ python -m alphadiana.cli run configs/macro_runs/mmmu_pro_zeroclaw_qwen35_27b.yam
   -o run_id=mmmu_pro_zeroclaw_smoke
 ```
 
-On an OpenAI-compatible `qwen3vl` endpoint, multimodal ZeroClaw currently works most
+On the SJTU `qwen3vl` endpoint, multimodal ZeroClaw currently works most
 reliably through the same single sandbox CLI path now used for HLE on current
 main. No extra override is required for the intended path: when a live ROCK
 sandbox is present and the task carries image attachments, AlphaDiana uploads

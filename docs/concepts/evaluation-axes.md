@@ -155,7 +155,7 @@ The config also pins `rock_image: zeroclaw-reasoning:0.6.9`, which makes the
 runner auto-create a ROCK sandbox, so the ROCK mode prerequisites on the
 [ZeroClaw](../harnesses/zeroclaw.md) page apply first: build that image locally (it
 is not published on Docker Hub), then start the host ROCK services with
-`bash scripts/start_zeroclaw.sh` and export their URLs with
+`bash scripts/setup/start_zeroclaw.sh` and export their URLs with
 `source scripts/rock_env.sh`. Both scripts need the `ref/ROCK` checkout that the
 one-time setup in [Installation](../getting-started/installation.md) creates, and
 abort without it, which is what leaves the two `ROCK_*` variables unset.
@@ -174,7 +174,7 @@ pass@k estimates.
 ### Reading the results
 
 Memory results land through the result store at
-`alphadiana/analysis/io/result_store.py`; the run loop lives under
+`alphadiana/results/store.py`; the run loop lives under
 `alphadiana/engine/` (`alphadiana/engine/runner.py`). The plots and the scope
 ladder are regenerated from the recorded results.
 

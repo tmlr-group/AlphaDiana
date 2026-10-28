@@ -20,8 +20,8 @@ This wrapper supports two modes:
 Deployment reference:
   https://github.com/alibaba/ROCK/blob/master/examples/agents/openclaw/REAMDE.md
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 import json
 import logging
@@ -36,6 +36,31 @@ from collections import deque
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
+from alphadiana.scorer.answers import extract_answer_candidate
+from alphadiana.harness.attachments import build_openai_multimodal_user_content
+from alphadiana.benchmarks.base import BenchmarkTask
+from alphadiana.engine.sandbox.rock_ports import resolve_rock_ports_from_env
+from alphadiana.harness.base import Agent, AgentResponse
+from alphadiana.harness.openclaw.responses import (
+    build_responses_payload,
+    event_as_chat,
+    has_images,
+    response_as_chat,
+)
+from alphadiana.harness.openclaw.security import (
+    is_weak_openclaw_gateway_token,
+    resolve_openclaw_gateway_token,
+)
+from alphadiana.harness.openclaw.trace import (
+    coerce_text_content,
+    extract_reasoning_trajectory,
+    extract_system_prompt,
+    extract_trajectory_error,
+    parse_session,
+    recover_partial_output,
+    slice_trajectory_to_request,
+    trajectory_matches_request,
+)
 from alphadiana.harness.proxies.logprob_capture import (
     apply_openai_logprob_request,
     extract_openai_logprob_records,
@@ -47,18 +72,9 @@ from alphadiana.harness.proxies.logprob_proxy import (
     normalize_openai_proxy_upstream,
     resolve_logprob_proxy_advertise_host,
 )
-from alphadiana.harness.base import Agent, AgentResponse
 from alphadiana.harness.proxies.preservation import add_artifact_file_refs
-from alphadiana.harness.registry import AgentRegistry
-from alphadiana.benchmarks.base import BenchmarkTask
-from alphadiana.utils.attachments import build_openai_multimodal_user_content
-from alphadiana.utils.lifecycle_events import append_lifecycle_event
-from alphadiana.utils.math_answer import extract_answer_candidate
-from alphadiana.utils.rock_ports import resolve_rock_ports_from_env
-from alphadiana.utils.openclaw_security import (
-    is_weak_openclaw_gateway_token,
-    resolve_openclaw_gateway_token,
-)
+from alphadiana.engine.components import AgentRegistry
+from alphadiana.results.lifecycle import append_lifecycle_event
 
 logger = logging.getLogger(__name__)
 
@@ -292,20 +308,6 @@ def _extract_repo_patch_from_sandbox(sandbox: Any) -> str:
     return str(result.stdout or "").strip()
 
 
-def extract_system_prompt(trajectory: list[dict]) -> str:
-    """Extract system prompt from a trajectory list."""
-    for entry in trajectory:
-        if entry.get("role") == "system":
-            return entry.get("content", "")
-    # Fallback: check first assistant message for agent-like instructions
-    for entry in trajectory:
-        if entry.get("role") == "assistant":
-            content = entry.get("content", "")
-            if "You are" in content:
-                return content
-    return ""
-
-
 # ---------------------------------------------------------------------------
 # Session pollution detection
 # ---------------------------------------------------------------------------
@@ -498,162 +500,6 @@ def _coerce_bool_config(value: Any, *, default: bool) -> bool:
     raise ValueError(f"Invalid boolean value: {value!r}")
 
 
-def _coerce_text_content(content: Any) -> str:
-    """Coerce various content formats to a plain string."""
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for item in content:
-            if isinstance(item, str):
-                parts.append(item)
-                continue
-            if not isinstance(item, dict):
-                continue
-            text = item.get("text")
-            if isinstance(text, str):
-                parts.append(text)
-                continue
-            if item.get("type") == "output_text":
-                value = item.get("text") or item.get("content")
-                if isinstance(value, str):
-                    parts.append(value)
-        return "".join(parts).strip()
-    return ""
-
-
-def _extract_raw_output_from_payload(payload: Any) -> str:
-    """Extract assistant text from various gateway response formats."""
-    if not isinstance(payload, dict):
-        return ""
-
-    # Standard OpenAI format
-    choices = payload.get("choices")
-    if isinstance(choices, list) and choices:
-        message = choices[0].get("message", {})
-        if isinstance(message, dict):
-            content = _coerce_text_content(message.get("content"))
-            if content:
-                return content
-        delta = choices[0].get("delta", {})
-        if isinstance(delta, dict):
-            content = _coerce_text_content(delta.get("content"))
-            if content:
-                return content
-        text = choices[0].get("text")
-        if isinstance(text, str) and text.strip():
-            return text.strip()
-
-    # Gateway-specific variants
-    output_text = payload.get("output_text")
-    if isinstance(output_text, str) and output_text.strip():
-        return output_text.strip()
-
-    output = payload.get("output")
-    if isinstance(output, list):
-        for item in output:
-            if not isinstance(item, dict):
-                continue
-            content = _coerce_text_content(item.get("content"))
-            if content:
-                return content
-
-    message = payload.get("message")
-    if isinstance(message, dict):
-        content = _coerce_text_content(message.get("content"))
-        if content:
-            return content
-
-    return ""
-
-
-def _extract_reasoning_trajectory_from_payload(payload: Any) -> list[dict]:
-    """Best-effort extraction of a structured reasoning/tool trajectory."""
-    if not isinstance(payload, dict):
-        return []
-
-    for key in (
-        "trajectory",
-        "reasoning_trajectory",
-        "reasoning_trace",
-        "trace",
-        "steps",
-        "events",
-    ):
-        value = payload.get(key)
-        if isinstance(value, list):
-            return [item for item in value if isinstance(item, dict)]
-
-    output = payload.get("output")
-    if isinstance(output, list):
-        extracted = [item for item in output if isinstance(item, dict)]
-        if extracted:
-            return extracted
-
-    choices = payload.get("choices")
-    if isinstance(choices, list) and choices:
-        message = choices[0].get("message")
-        if isinstance(message, dict):
-            tool_calls = message.get("tool_calls")
-            if isinstance(tool_calls, list):
-                return [item for item in tool_calls if isinstance(item, dict)]
-
-    return []
-
-
-def _is_empty_tool_call_payload(tool_name: Any, tool_input: Any) -> bool:
-    name = str(tool_name or "").strip()
-    if name:
-        return False
-    if tool_input is None:
-        return True
-    if isinstance(tool_input, dict):
-        return not tool_input
-    if isinstance(tool_input, str):
-        return tool_input.strip() in {"", "{}"}
-    return False
-
-
-def _recover_partial_output_from_trajectory(trajectory: list[dict]) -> tuple[str, str]:
-    """Recover partial assistant output and reasoning from session trajectory."""
-    if not isinstance(trajectory, list):
-        return "", ""
-
-    text_parts: list[str] = []
-    reasoning_parts: list[str] = []
-    for entry in trajectory:
-        if not isinstance(entry, dict):
-            continue
-        if entry.get("role") != "assistant":
-            continue
-        content = entry.get("content", "")
-        thinking = entry.get("thinking", "")
-        content_text = _coerce_text_content(content)
-        thinking_text = _coerce_text_content(thinking)
-        if content_text:
-            text_parts.append(content_text)
-        if thinking_text:
-            reasoning_parts.append(thinking_text)
-
-    return "\n".join(text_parts).strip(), "\n".join(reasoning_parts).strip()
-
-
-def _extract_trajectory_error(trajectory: list[dict]) -> str:
-    """Return the latest explicit assistant error recorded in a session trajectory."""
-    if not isinstance(trajectory, list):
-        return ""
-
-    for entry in reversed(trajectory):
-        if not isinstance(entry, dict):
-            continue
-        if entry.get("role") != "assistant":
-            continue
-        error = _coerce_text_content(entry.get("error", "")).strip()
-        if error:
-            return error
-    return ""
-
-
 def _resolve_final_finish_reason(
     *,
     timeout_scored_zero: bool,
@@ -724,167 +570,6 @@ def _classify_terminal_upstream_error(error_text: str) -> str | None:
     return None
 
 
-def _normalize_request_content(content: Any) -> str:
-    """Normalize request text for transcript matching."""
-    return _coerce_text_content(content).replace("\r\n", "\n").strip()
-
-
-def _trajectory_matches_request(
-    trajectory: list[dict], expected_user_content: str,
-) -> bool:
-    """Return whether a transcript contains the current request message."""
-    expected = _normalize_request_content(expected_user_content)
-    if not expected:
-        return False
-
-    for entry in trajectory:
-        if not isinstance(entry, dict) or entry.get("role") != "user":
-            continue
-        candidate = _normalize_request_content(_coerce_text_content(entry.get("content", "")))
-        if candidate == expected:
-            return True
-    return False
-
-
-def _slice_trajectory_to_request(
-    trajectory: list[dict], expected_user_content: str,
-) -> list[dict]:
-    """Return the OpenClaw session segment for the current benchmark request."""
-    expected = _normalize_request_content(expected_user_content)
-    if not expected or not isinstance(trajectory, list):
-        return trajectory
-
-    start: int | None = None
-    for index, entry in enumerate(trajectory):
-        if not isinstance(entry, dict) or entry.get("role") != "user":
-            continue
-        candidate = _normalize_request_content(_coerce_text_content(entry.get("content", "")))
-        if candidate == expected:
-            start = index
-            break
-    if start is None:
-        return trajectory
-
-    end = len(trajectory)
-    for index in range(start + 1, len(trajectory)):
-        entry = trajectory[index]
-        if not isinstance(entry, dict) or entry.get("role") != "user":
-            continue
-        candidate = _normalize_request_content(_coerce_text_content(entry.get("content", "")))
-        if candidate != expected:
-            end = index
-            break
-
-    return trajectory[start:end]
-
-
-def _parse_openclaw_session(session_jsonl: str) -> list[dict]:
-    """Parse an OpenClaw session JSONL file into a trajectory list.
-
-    OpenClaw stores each event as a JSONL line with a "type" field:
-      - "session": session metadata (id, cwd, timestamp)
-      - "model_change": model provider switch
-      - "message": user/assistant message with content blocks:
-          - "text": plain text output
-          - "thinking": model's internal reasoning (chain-of-thought)
-          - "toolCall": tool invocation (name + arguments)
-          - "toolResult": tool execution result
-          - "tool_use" / "tool_result": alternative names for the above
-      - "custom": custom events (model-snapshot, etc.)
-      - "thinking_level_change": thinking mode changes
-    """
-    trajectory = []
-    for line in session_jsonl.strip().splitlines():
-        if not line.strip():
-            continue
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-
-        event_type = event.get("type", "")
-
-        if event_type == "message":
-            msg = event.get("message", {})
-            role = msg.get("role", "unknown")
-            content = msg.get("content", "")
-            if isinstance(content, list):
-                text_parts = []
-                thinking_parts = []
-                tool_calls = []
-                tool_results = []
-                for block in content:
-                    if not isinstance(block, dict):
-                        continue
-                    block_type = block.get("type", "")
-                    if block_type == "text":
-                        text_parts.append(block.get("text", ""))
-                    elif block_type == "thinking":
-                        thinking_parts.append(block.get("thinking", ""))
-                    elif block_type in ("toolCall", "tool_use"):
-                        tool_name = block.get("name", "")
-                        tool_input = block.get("arguments", block.get("input", {}))
-                        if not _is_empty_tool_call_payload(tool_name, tool_input):
-                            tool_calls.append({
-                                "id": block.get("id", ""),
-                                "tool": tool_name,
-                                "input": tool_input,
-                            })
-                    elif block_type in ("toolResult", "tool_result"):
-                        tc = block.get("content", "")
-                        if isinstance(tc, list):
-                            tc = "\n".join(
-                                b.get("text", "")
-                                for b in tc
-                                if isinstance(b, dict)
-                            )
-                        tool_results.append({
-                            "tool_use_id": block.get("tool_use_id", block.get("id", "")),
-                            "content": tc,
-                            "is_error": block.get("isError", block.get("is_error", False)),
-                        })
-                content_text = "\n".join(text_parts) if text_parts else ""
-                entry = {"role": role, "content": content_text}
-                if thinking_parts:
-                    entry["thinking"] = "\n".join(thinking_parts)
-                if tool_calls:
-                    entry["tool_calls"] = tool_calls
-                if tool_results:
-                    entry["tool_results"] = tool_results
-            else:
-                entry = {"role": role, "content": content}
-
-            usage = msg.get("usage")
-            if usage:
-                entry["usage"] = usage
-            stop_reason = msg.get("stopReason")
-            if stop_reason:
-                entry["stop_reason"] = stop_reason
-            error = msg.get("errorMessage")
-            if error:
-                entry["error"] = error
-
-            trajectory.append(entry)
-
-        elif event_type == "tool_use":
-            trajectory.append({
-                "role": "tool_use",
-                "tool": event.get("name", ""),
-                "input": event.get("input", {}),
-                "id": event.get("id", ""),
-            })
-
-        elif event_type == "tool_result":
-            trajectory.append({
-                "role": "tool_result",
-                "tool_use_id": event.get("toolUseId", ""),
-                "content": event.get("content", ""),
-                "is_error": event.get("isError", False),
-            })
-
-    return trajectory
-
-
 def _clean_local_agent_reply(text: str) -> str:
     """Remove OpenClaw CLI diagnostics and reject its no-reply sentinel."""
     lines = [
@@ -906,7 +591,7 @@ def _extract_reasoning_trajectory_from_openclaw_trajectory(
     for entry in trajectory:
         if not isinstance(entry, dict):
             continue
-        thinking = _coerce_text_content(entry.get("thinking", "")).strip()
+        thinking = coerce_text_content(entry.get("thinking", "")).strip()
         if thinking:
             reasoning.append(
                 {
@@ -964,18 +649,18 @@ def _recover_openclaw_session_artifacts(
     fallback_reasoning: list[dict] = []
     fallback_session_text = ""
     for _, session_text in [*preferred_candidates, *fallback_candidates]:
-        trajectory = _parse_openclaw_session(session_text)
+        trajectory = parse_session(session_text)
         if trajectory and not fallback_trajectory:
             fallback_trajectory = trajectory
             fallback_reasoning = _extract_reasoning_trajectory_from_openclaw_trajectory(
                 trajectory
             )
             fallback_session_text = session_text
-        if expected_user_content and _trajectory_matches_request(
+        if expected_user_content and trajectory_matches_request(
             trajectory,
             expected_user_content,
         ):
-            trajectory = _slice_trajectory_to_request(trajectory, expected_user_content)
+            trajectory = slice_trajectory_to_request(trajectory, expected_user_content)
             return (
                 trajectory,
                 _extract_reasoning_trajectory_from_openclaw_trajectory(trajectory),
@@ -1326,6 +1011,11 @@ class OpenClawAgent(Agent):
             if started is None:
                 return None
             proxy, proxy_api_base, proxy_api_key = started
+            configure_proxy = getattr(self._runtime_manager, "set_external_provider_proxy", None)
+            if callable(configure_proxy):
+                configure_proxy(proxy_api_base, proxy_api_key)
+                self._logprob_proxy = proxy
+                return proxy
             setter = getattr(self._runtime_manager, "set_provider_api_base", None)
             if callable(setter):
                 setter(proxy_api_base)
@@ -1519,14 +1209,16 @@ class OpenClawAgent(Agent):
                     f"cat {shlex.quote(session_file)}",
                     session="trajectory",
                 )
-                trajectory = _parse_openclaw_session(result.output)
+                trajectory = parse_session(result.output)
                 if trajectory and not fallback_trajectory:
                     fallback_trajectory = trajectory
-                if expected_user_content and _trajectory_matches_request(
+                if expected_user_content and trajectory_matches_request(
                     trajectory,
                     expected_user_content,
                 ):
-                    return _slice_trajectory_to_request(trajectory, expected_user_content)
+                    return slice_trajectory_to_request(
+                        trajectory, expected_user_content
+                    )
 
             # Do NOT return an unmatched fallback trajectory: it likely belongs
             # to a different task/run on the same sandbox and would cause the
@@ -1632,14 +1324,16 @@ class OpenClawAgent(Agent):
                 if not session_text.strip():
                     continue
 
-                trajectory = _parse_openclaw_session(session_text)
+                trajectory = parse_session(session_text)
                 if trajectory and not fallback_trajectory:
                     fallback_trajectory = trajectory
-                if expected_user_content and _trajectory_matches_request(
+                if expected_user_content and trajectory_matches_request(
                     trajectory,
                     expected_user_content,
                 ):
-                    return _slice_trajectory_to_request(trajectory, expected_user_content)
+                    return slice_trajectory_to_request(
+                        trajectory, expected_user_content
+                    )
 
             # Match the stricter async retrieval path: if the caller provided
             # expected content, an unmatched fallback is stale state from a
@@ -2364,6 +2058,10 @@ const lancedb = require("/app/node_modules/@lancedb/lancedb");
         self._health_check(url, headers)
 
         request_payload = self._build_request_payload(request_messages)
+        use_responses = has_images(request_messages)
+        if use_responses:
+            url = f"{runtime_info['api_base'].rstrip('/')}/responses"
+            request_payload = build_responses_payload(request_payload)
 
         # Retry loop with exponential backoff
         response_json: dict = {}
@@ -2520,8 +2218,12 @@ const lancedb = require("/app/node_modules/@lancedb/lancedb");
                     ),
                     url,
                 )
-                with httpx.Client(timeout=self._build_httpx_timeout(), trust_env=False) as client:
-                    with client.stream("POST", url, headers=headers, json=request_payload) as response:
+                with httpx.Client(
+                    timeout=self._build_httpx_timeout(), trust_env=False
+                ) as client:
+                    with client.stream(
+                        "POST", url, headers=headers, json=request_payload
+                    ) as response:
                         status_code = response.status_code
                         resp_headers = dict(response.headers)
                         content_type = response.headers.get("content-type", "")
@@ -2553,6 +2255,8 @@ const lancedb = require("/app/node_modules/@lancedb/lancedb");
                                 # Error response — preserve the JSON body for diagnostics.
                                 pass
                             else:
+                                if use_responses:
+                                    response_json = response_as_chat(response_json)
                                 # Successful non-streaming JSON — extract assistant content.
                                 received_done = True
                                 choices = response_json.get("choices") or []
@@ -2574,16 +2278,34 @@ const lancedb = require("/app/node_modules/@lancedb/lancedb");
                                         or ""
                                     )
                                     if assistant_content:
-                                        chunks.append(_coerce_text_content(assistant_content))
+                                        chunks.append(
+                                            coerce_text_content(assistant_content)
+                                        )
                                         _record_task_lifecycle_once(
                                             "content_seen",
-                                            {"attempt": attempt, "chars": len(_coerce_text_content(assistant_content))},
+                                            {
+                                                "attempt": attempt,
+                                                "chars": len(
+                                                    coerce_text_content(
+                                                        assistant_content
+                                                    )
+                                                ),
+                                            },
                                         )
                                     elif reasoning_content:
-                                        reasoning_chunks.append(_coerce_text_content(reasoning_content))
+                                        reasoning_chunks.append(
+                                            coerce_text_content(reasoning_content)
+                                        )
                                         _record_task_lifecycle_once(
                                             "reasoning_seen",
-                                            {"attempt": attempt, "chars": len(_coerce_text_content(reasoning_content))},
+                                            {
+                                                "attempt": attempt,
+                                                "chars": len(
+                                                    coerce_text_content(
+                                                        reasoning_content
+                                                    )
+                                                ),
+                                            },
                                         )
                                     upstream_finish_reason = (
                                         choices[0].get("finish_reason") or upstream_finish_reason
@@ -2662,6 +2384,12 @@ const lancedb = require("/app/node_modules/@lancedb/lancedb");
                                             )
                                         continue
                                     last_sse_progress_at = now
+                                    if use_responses:
+                                        if chunk_json.get("type") in {"response.completed", "response.failed", "response.incomplete"}:
+                                            response_json = {"native_response": chunk_json.get("response", {})}
+                                        chunk_json = event_as_chat(chunk_json)
+                                        if chunk_json.get("native_response"):
+                                            response_json = chunk_json
                                     choices = chunk_json.get("choices") or []
                                     choice = choices[0] if choices else {}
                                     provider_finish_reason = str(
@@ -2682,13 +2410,27 @@ const lancedb = require("/app/node_modules/@lancedb/lancedb");
                                         chunks.append(content)
                                         _record_task_lifecycle_once(
                                             "content_seen",
-                                            {"attempt": attempt, "chars": len(_coerce_text_content(content))},
+                                            {
+                                                "attempt": attempt,
+                                                "chars": len(
+                                                    coerce_text_content(content)
+                                                ),
+                                            },
                                         )
                                     if reasoning_content:
-                                        reasoning_chunks.append(_coerce_text_content(reasoning_content))
+                                        reasoning_chunks.append(
+                                            coerce_text_content(reasoning_content)
+                                        )
                                         _record_task_lifecycle_once(
                                             "reasoning_seen",
-                                            {"attempt": attempt, "chars": len(_coerce_text_content(reasoning_content))},
+                                            {
+                                                "attempt": attempt,
+                                                "chars": len(
+                                                    coerce_text_content(
+                                                        reasoning_content
+                                                    )
+                                                ),
+                                            },
                                         )
                                     # Capture upstream finish_reason from any chunk that
                                     # carries one (typically the last). Used downstream
@@ -2736,8 +2478,8 @@ const lancedb = require("/app/node_modules/@lancedb/lancedb");
                         rock_sandbox_url=actual_rock_sandbox_url,
                         expected_user_content=request_messages[0]["content"],
                     )
-                    trajectory_error = _extract_trajectory_error(recovered_trajectory)
-                    recovered_content, recovered_reasoning = _recover_partial_output_from_trajectory(
+                    trajectory_error = extract_trajectory_error(recovered_trajectory)
+                    recovered_content, recovered_reasoning = recover_partial_output(
                         recovered_trajectory
                     )
                     if recovered_content and not raw_output:
@@ -2993,7 +2735,9 @@ const lancedb = require("/app/node_modules/@lancedb/lancedb");
                 if logprob_proxy is not None:
                     attempt_proxy_logprob_records = logprob_proxy.drain_records()
                 # Extract status code / body from httpx HTTPStatusError if available.
-                exc_status = getattr(getattr(exc, "response", None), "status_code", None)
+                exc_status = getattr(
+                    getattr(exc, "response", None), "status_code", None
+                )
                 exc_body = str(exc)
                 if exc_status is not None:
                     try:
@@ -3001,7 +2745,9 @@ const lancedb = require("/app/node_modules/@lancedb/lancedb");
                         response_json = json.loads(exc_body)
                     except Exception:
                         pass
-                error_type = classify_error(exc, response_json=response_json or None, status_code=exc_status)
+                error_type = classify_error(
+                    exc, response_json=response_json or None, status_code=exc_status
+                )
                 if error_type == "timeout":
                     timeout_error_message = str(exc)
                     recovered_trajectory = self._retrieve_trajectory_sync(
@@ -3010,7 +2756,7 @@ const lancedb = require("/app/node_modules/@lancedb/lancedb");
                         rock_sandbox_url=actual_rock_sandbox_url,
                         expected_user_content=request_messages[0]["content"],
                     )
-                    recovered_content, recovered_reasoning = _recover_partial_output_from_trajectory(
+                    recovered_content, recovered_reasoning = recover_partial_output(
                         recovered_trajectory
                     )
                     if recovered_content and not raw_output:
@@ -3042,8 +2788,12 @@ const lancedb = require("/app/node_modules/@lancedb/lancedb");
                         selected_logprob_records = list(
                             attempt_logprob_records or attempt_proxy_logprob_records
                         )
-                        logprob_source_attempt = attempt if selected_logprob_records else 0
-                        selected_proxy_logprob_count = len(attempt_proxy_logprob_records)
+                        logprob_source_attempt = (
+                            attempt if selected_logprob_records else 0
+                        )
+                        selected_proxy_logprob_count = len(
+                            attempt_proxy_logprob_records
+                        )
                         if attempt_logprob_records:
                             logprob_source = "gateway_response"
                         elif attempt_proxy_logprob_records:
@@ -3056,8 +2806,12 @@ const lancedb = require("/app/node_modules/@lancedb/lancedb");
                         selected_logprob_records = list(
                             attempt_logprob_records or attempt_proxy_logprob_records
                         )
-                        logprob_source_attempt = attempt if selected_logprob_records else 0
-                        selected_proxy_logprob_count = len(attempt_proxy_logprob_records)
+                        logprob_source_attempt = (
+                            attempt if selected_logprob_records else 0
+                        )
+                        selected_proxy_logprob_count = len(
+                            attempt_proxy_logprob_records
+                        )
                         if attempt_logprob_records:
                             logprob_source = "gateway_response"
                         elif attempt_proxy_logprob_records:
@@ -3075,7 +2829,9 @@ const lancedb = require("/app/node_modules/@lancedb/lancedb");
                     {
                         "attempt": attempt,
                         "status_code": exc_status,
-                        "headers": dict(getattr(getattr(exc, "response", None), "headers", {})),
+                        "headers": dict(
+                            getattr(getattr(exc, "response", None), "headers", {})
+                        ),
                         "body": exc_body,
                         "elapsed_sec": elapsed,
                         "error_type": error_type,
@@ -3148,6 +2904,15 @@ const lancedb = require("/app/node_modules/@lancedb/lancedb");
                 jitter = random.uniform(0, delay * 0.3)
                 logger.info("Retry delay: %.1fs (error_type=%s)", delay + jitter, last_error_type)
                 time.sleep(delay + jitter)
+
+        if use_responses and (response_json.get("native_response") or {}).get("status") != "completed":
+            raise OpenClawRequestError(
+                "OpenClaw Responses did not return a completed native response",
+                error_type="incomplete_native_response",
+                request_payload=request_payload,
+                response_body=response_json,
+                retry_responses=retry_responses,
+            )
 
         if request_payload.get("stream") and (raw_output or partial_reasoning_only) and not received_done:
             status_code = retry_responses[-1]["status_code"] if retry_responses else None
@@ -3325,14 +3090,16 @@ const lancedb = require("/app/node_modules/@lancedb/lancedb");
         if session_trajectory and (
             not trajectory
             or (
-                not _trajectory_matches_request(trajectory, expected_user_content)
-                and _trajectory_matches_request(session_trajectory, expected_user_content)
+                not trajectory_matches_request(trajectory, expected_user_content)
+                and trajectory_matches_request(
+                    session_trajectory, expected_user_content
+                )
             )
         ):
             trajectory = session_trajectory
         if not trajectory:
             # Also try extracting from response payload
-            trajectory = _extract_reasoning_trajectory_from_payload(response_json)
+            trajectory = extract_reasoning_trajectory(response_json)
         if not trajectory and session_trajectory:
             trajectory = session_trajectory
         if not trajectory:
@@ -3345,7 +3112,7 @@ const lancedb = require("/app/node_modules/@lancedb/lancedb");
                 assistant_entry,
             ]
         reasoning_trajectory = (
-            session_reasoning_trajectory or _extract_reasoning_trajectory_from_payload(response_json)
+            session_reasoning_trajectory or extract_reasoning_trajectory(response_json)
         )
         if not reasoning_trajectory and raw_reasoning:
             reasoning_trajectory = [
@@ -3406,6 +3173,7 @@ const lancedb = require("/app/node_modules/@lancedb/lancedb");
             )
 
         response_metadata = {
+            "gateway_protocol": "responses" if use_responses else "chat_completions",
             "gateway_response_id": response_json.get("id", ""),
             "sandbox_id": runtime_info.get("sandbox_id", "") or sandbox_id,
             "model": self._model,

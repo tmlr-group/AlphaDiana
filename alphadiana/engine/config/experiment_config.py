@@ -17,6 +17,26 @@ _ENV_PLACEHOLDER_RE = re.compile(
 )
 
 
+def resolve_agent_setting(
+    config: dict,
+    key: str,
+    env_var: str,
+    *,
+    default: str = "",
+) -> str:
+    value = config.get(key, default)
+    if value is None:
+        value = default
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped and stripped.upper() != "EMPTY":
+            return stripped
+    env_value = os.environ.get(env_var, "").strip()
+    if env_value:
+        return env_value
+    return value if isinstance(value, str) else default
+
+
 def _expand_env_vars(obj: Any) -> Any:
     """Recursively expand $VAR and ${VAR} in string values."""
     if isinstance(obj, str):
@@ -109,6 +129,12 @@ def _apply_agent_env_defaults(agent_name: str, agent_config: Any) -> dict:
             "terminal_bench2_zeroclaw",
         }:
             env_defaults["model_name"] = "OPENAI_MODEL_NAME"
+            # These adapters consume model_name as the provider model. Resolve an
+            # explicit model before applying environment fallbacks (Python and YAML).
+            if _is_blank_config_value(resolved.get("model_name")) and not _is_blank_config_value(
+                resolved.get("model")
+            ):
+                resolved["model_name"] = str(resolved["model"]).removeprefix("custom/")
 
         for key, env_var in env_defaults.items():
             if not _is_blank_config_value(resolved.get(key, "")):
@@ -161,6 +187,17 @@ def deep_merge(base: dict, override: dict) -> dict:
         else:
             result[key] = copy.deepcopy(value)
     return result
+
+
+def _normalize_component_names(config: dict) -> dict:
+    """Accept API component names while retaining legacy YAML and overrides."""
+    normalized = dict(config)
+    for public, internal in (("data", "benchmark"), ("env", "sandbox")):
+        if public in normalized:
+            if internal in normalized:
+                raise ValueError(f"Use either {public} or {internal}, not both")
+            normalized[internal] = normalized.pop(public)
+    return normalized
 
 
 def parse_override(s: str) -> dict:
@@ -218,6 +255,7 @@ class ExperimentConfig:
     strict_report: bool = False
     strict_isolation: bool = False
     metadata: dict = field(default_factory=dict)
+    metrics: list[dict] = field(default_factory=list)
 
     def __post_init__(self):
         if not self.run_id:
@@ -237,10 +275,10 @@ class ExperimentConfig:
         if not isinstance(data, dict):
             raise ValueError("top-level YAML document must be a mapping")
 
-        data = _expand_env_vars(data)
+        data = _normalize_component_names(_expand_env_vars(data))
 
         if overrides:
-            data = deep_merge(data, overrides)
+            data = deep_merge(data, _normalize_component_names(overrides))
 
         data = _clear_unresolved_env_placeholders(data)
 
@@ -273,4 +311,21 @@ class ExperimentConfig:
             strict_report=data.get("strict_report", False),
             strict_isolation=data.get("strict_isolation", False),
             metadata=data.get("metadata", {}),
+            metrics=data.get("metrics", []),
         )
+
+
+def coerce_config_bool(value: object, *, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+    return default

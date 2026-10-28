@@ -184,8 +184,15 @@ class OpenCodeContainerRuntimeManager:
             config.get("logprob_proxy_advertise_host", config.get("logprob_proxy_host", ""))
             or ""
         ).strip()
+        self._opencode_version = str(config.get("opencode_version", "")).strip()
+        default_install = DEFAULT_INSTALL_OPENCODE_COMMAND
+        if self._opencode_version:
+            default_install = default_install.replace(
+                f"opencode-ai@{OPENCODE_VERSION}",
+                shlex.quote(f"opencode-ai@{self._opencode_version}"),
+            )
         self._install_opencode_command = config.get(
-            "install_opencode_command", DEFAULT_INSTALL_OPENCODE_COMMAND
+            "install_opencode_command", default_install
         )
         # Track which sandboxes have opencode installed
         self._installed_sandboxes: set[str] = set()
@@ -323,7 +330,12 @@ print(json.dumps(summary, ensure_ascii=False, indent=2))
             )
         )
         if check.exit_code == 0:
-            _logger.debug("opencode already installed: %s", check.stdout.strip())
+            actual = check.stdout.strip()
+            if self._opencode_version and actual != self._opencode_version:
+                raise RuntimeError(
+                    f"Expected OpenCode {self._opencode_version}, found {actual}"
+                )
+            _logger.debug("opencode already installed: %s", actual)
             return
 
         if not self._install_opencode_command:
@@ -339,6 +351,10 @@ print(json.dumps(summary, ensure_ascii=False, indent=2))
                 "Failed to install opencode inside container.\n"
                 f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
             )
+        if self._opencode_version:
+            check = sandbox.execute(self._with_node_path("opencode --version"))
+            if check.exit_code != 0 or check.stdout.strip() != self._opencode_version:
+                raise RuntimeError("Installed OpenCode does not match opencode_version")
         _progress("opencode installed successfully")
 
     # ------------------------------------------------------------------
@@ -411,6 +427,18 @@ print(json.dumps(summary, ensure_ascii=False, indent=2))
             "model": f"custom/{model_name}",
             "small_model": f"custom/{model_name}",
         }
+        if self._config.get("context_limit") is not None:
+            context = int(self._config["context_limit"])
+            output = int(self._config.get("output_limit", self._max_tokens or 32000))
+            if not 0 < output < context:
+                raise ValueError("OpenCode requires 0 < output_limit < context_limit")
+            limits = {"context": context, "output": output}
+            if self._config.get("input_limit") is not None:
+                incoming = int(self._config["input_limit"])
+                if not 0 < incoming <= context:
+                    raise ValueError("OpenCode input_limit must be within context_limit")
+                limits["input"] = incoming
+            cfg["provider"]["custom"]["models"][model_name]["limit"] = limits
         permission_cfg = self._config.get("permission")
         if isinstance(permission_cfg, dict) and permission_cfg:
             cfg["permission"] = permission_cfg

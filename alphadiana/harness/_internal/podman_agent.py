@@ -1,0 +1,553 @@
+"""Native CLI execution in Podman or explicit host processes for trusted tasks."""
+
+from __future__ import annotations
+
+import copy
+import hashlib
+import json
+import math
+import re
+import subprocess
+import tempfile
+import time
+import uuid
+from pathlib import Path, PurePosixPath
+
+from alphadiana.engine.container_runtime.podman_cli import PodmanCLI, PodmanError
+from alphadiana.harness.base import Agent, AgentResponse
+from alphadiana.harness._internal.deploy.bridge import pi_compaction_settings
+from alphadiana.harness._internal.native_process import (
+    run_bridge,
+    validate_process_settings,
+)
+
+IMAGE = re.compile(r"(?:sha256:|[^\s]+@sha256:)[0-9a-f]{64}$")
+AGENTS = frozenset({"pi", "deepseek_harness"})
+FIELDS = frozenset(
+    {
+        "image",
+        "model",
+        "api_base",
+        "api_key",
+        "system_prompt",
+        "timeout",
+        "max_tokens",
+        "context_window",
+        "presence_penalty",
+        "bash_timeout",
+        "reasoning",
+        "candidate_root",
+        "candidate_entry",
+        "candidate_digest",
+        "runtime",
+        "pi_bin",
+        "dsh_python",
+        "process_root",
+        "training",
+        "_execution_id",
+    }
+)
+
+
+def relative_file(value: str) -> str:
+    path = PurePosixPath(value)
+    if (
+        not value
+        or path.is_absolute()
+        or any(p in {".", ".."} for p in value.split("/"))
+        or "\\" in value
+    ):
+        raise ValueError("Expected a safe relative file path")
+    return str(path)
+
+
+def tree_digest(root: Path) -> str:
+    """Hash all retained files/modes; reject symlinks and special files."""
+    digest = hashlib.sha256()
+    for path in sorted(root.rglob("*")):
+        if path.is_symlink():
+            raise ValueError("Candidate symlinks are forbidden")
+        if path.is_dir():
+            continue
+        if not path.is_file():
+            raise ValueError("Candidate contains a special file")
+        mode = "100755" if path.stat().st_mode & 0o111 else "100644"
+        digest.update(
+            path.relative_to(root).as_posix().encode() + b"\0" + mode.encode() + b"\0"
+        )
+        digest.update(hashlib.sha256(path.read_bytes()).digest())
+    return digest.hexdigest()
+
+
+def validate_config(config: dict, *, harness: str = "pi") -> None:
+    if set(config) - FIELDS:
+        raise ValueError("Unsupported native Podman harness configuration fields")
+    runtime = config.get("runtime", "podman")
+    if runtime not in {"podman", "process"}:
+        raise ValueError("Native harnesses require Podman or explicit process mode")
+    if runtime == "process":
+        if "image" in config:
+            raise ValueError("process runtime uses a local executable, not an image")
+        validate_process_settings(config, "pi_bin" if harness == "pi" else "dsh_python")
+    else:
+        if {"pi_bin", "dsh_python", "process_root"}.intersection(config):
+            raise ValueError("local process settings require runtime=process")
+        if not isinstance(config.get("image"), str) or not IMAGE.fullmatch(
+            config["image"]
+        ):
+            raise ValueError(
+                "image must be an immutable sha256 ID or repository@sha256 digest"
+            )
+    for field in ("model", "api_base"):
+        if not isinstance(config.get(field), str) or not config[field].strip():
+            raise ValueError(f"{field} is required")
+    timeout = config.get("timeout", 120)
+    if (
+        isinstance(timeout, bool)
+        or not isinstance(timeout, (int, float))
+        or not math.isfinite(timeout)
+        or timeout <= 0
+    ):
+        raise ValueError("timeout must be positive and finite")
+    if "max_tokens" in config and (
+        type(config["max_tokens"]) is not int or config["max_tokens"] < 1
+    ):
+        raise ValueError("max_tokens must be a positive integer")
+    for field in ("context_window", "presence_penalty", "bash_timeout"):
+        if harness != "pi" and field in config:
+            raise ValueError(f"{field} is supported only by Pi")
+    if harness == "pi":
+        pi_compaction_settings(
+            config.get("context_window", 128000), config.get("max_tokens", 4096)
+        )
+    if "presence_penalty" in config:
+        penalty = config["presence_penalty"]
+        if (
+            isinstance(penalty, bool)
+            or not isinstance(penalty, (int, float))
+            or not math.isfinite(penalty)
+            or not -2 <= penalty <= 2
+        ):
+            raise ValueError("presence_penalty must be a finite number between -2 and 2")
+    if "bash_timeout" in config:
+        budget = config["bash_timeout"]
+        if type(budget) is not int or not 0 < budget < timeout:
+            raise ValueError("bash_timeout must be a positive integer below timeout")
+        if runtime != "podman":
+            raise ValueError("bash_timeout requires the Pi Podman image")
+    if "system_prompt" in config and not isinstance(config["system_prompt"], str):
+        raise ValueError("system_prompt must be a string")
+    if "reasoning" in config and (
+        not isinstance(config["reasoning"], str) or not config["reasoning"]
+    ):
+        raise ValueError("reasoning must be a nonempty string")
+    if "reasoning" in config and "training" in config:
+        raise ValueError("reasoning and training cannot be enabled together")
+    if "training" in config:
+        # Keep the optional HTTP client and training contract out of ordinary
+        # native imports.  Native SFT/GRPO runs opt in explicitly and require
+        # the pinned AlphaDiana agent extra at runtime.
+        from alphadiana.harness._internal.training import validate_training_config
+
+        validate_training_config(config["training"])
+        if (
+            "presence_penalty" in config
+            and config["training"] is not None
+            and config["training"].get("enabled", True)
+        ):
+            raise ValueError(
+                "presence_penalty cannot be combined with enabled training; "
+                "native capture owns the sampling policy"
+            )
+    if "_execution_id" in config and not re.fullmatch(
+        r"[0-9a-f]{32}", config["_execution_id"]
+    ):
+        raise ValueError("Invalid private execution identifier")
+    source = {"candidate_root", "candidate_entry", "candidate_digest"}
+    if source.intersection(config):
+        if not source.issubset(config):
+            raise ValueError("Candidate requires root, entry and digest together")
+        entry = relative_file(config["candidate_entry"])
+        root = Path(config["candidate_root"])
+        if not root.is_dir() or root.is_symlink() or not (root / entry).is_file():
+            raise ValueError("Candidate root/entry is unavailable")
+        if (
+            not re.fullmatch(r"[0-9a-f]{64}", config["candidate_digest"])
+            or tree_digest(root) != config["candidate_digest"]
+        ):
+            raise ValueError("Candidate content identity differs")
+
+
+def remove_container(cli: PodmanCLI, container: str) -> None:
+    """Bounded force-stop/removal; absent containers are already cleaned."""
+    for attempt in range(3):
+        try:
+            cli.stop(container, stop_timeout=0, timeout=5, check=False)
+            cli.rm(container, force=True, ignore_missing=True, check=True, timeout=15)
+            return
+        except PodmanError as exc:
+            transient = exc.result.returncode == 124 or any(
+                message in exc.result.stderr.lower()
+                for message in ("device or resource busy", "being removed")
+            )
+            if attempt == 2 or not transient:
+                raise
+            time.sleep(0.1 * 2**attempt)
+
+
+def cleanup_execution(execution_id: str, runtime: PodmanCLI | None = None) -> None:
+    if not re.fullmatch(r"[0-9a-f]{32}", execution_id):
+        raise ValueError("Invalid execution identifier")
+    cli = runtime or PodmanCLI()
+    for container in cli.list_ids(labels={"alphadiana.execution": execution_id}):
+        remove_container(cli, container)
+
+
+class _TaskBudgetExpired(TimeoutError):
+    """Only the evaluator-owned execution deadline may produce scored zero."""
+
+
+class NativeHarnessError(RuntimeError):
+    """Native failures enter Runner's error path rather than a scored zero."""
+
+    error_type = "native_harness_failure"
+
+
+class NativePodmanAgent(Agent):
+    """One owned workspace per solve, with an explicit container or process runtime."""
+
+    supports_training_capture = False
+
+    def _capture_class(self):
+        from alphadiana.harness._internal.training import NativeCapture
+
+        return NativeCapture
+
+    def setup(self, config: dict) -> None:
+        validate_config(config, harness=self.name)
+        if config.get("training") is not None and not self.supports_training_capture:
+            raise ValueError(
+                "native-token training capture is unsupported by this harness"
+            )
+        self.config = dict(config)
+        self._containers = set()
+        self.execution_id = config.get("_execution_id") or uuid.uuid4().hex
+        if config.get("runtime") == "process":
+            self.runtime = None
+            return
+        self.runtime = PodmanCLI()
+        if not self.runtime.rootless():
+            raise ValueError("Native harnesses require rootless Podman")
+        if not self.runtime.image_exists(config["image"]):
+            raise ValueError(
+                "Pinned harness image is not installed; build/pull it explicitly"
+            )
+
+    def solve(self, task, sandbox=None) -> AgentResponse:
+        if sandbox is not None:
+            raise ValueError(
+                "This agent owns Podman isolation; an additional sandbox is unsupported"
+            )
+        validate_config(self.config, harness=self.name)
+        name = f"diana-{self.name.replace('_', '-')}-{uuid.uuid4().hex}"
+        started = time.monotonic()
+        timeout = float(self.config.get("timeout", 120))
+        capture = None
+        capture_endpoint = None
+        local = self.config.get("runtime") == "process"
+        runtime_metadata = (
+            {
+                "runtime": "process",
+                "native_executable": self.config.get(
+                    "pi_bin", self.config.get("dsh_python")
+                ),
+            }
+            if local
+            else {"runtime": "podman", "image": self.config["image"]}
+        )
+        isolation = (
+            "host_process_workspace" if local else "podman_disposable_task_container"
+        )
+        with tempfile.TemporaryDirectory(
+            prefix="diana-harness-", dir=self.config["process_root"] if local else None
+        ) as directory:
+            root = Path(directory)
+            # Container uid can traverse this public task input, but cannot change it.
+            root.chmod(0o755)
+            public = root / "public"
+            public.mkdir()
+            for key, data in task.attachments.items():
+                relative = relative_file(key)
+                target = public / "attachments" / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(data)
+            # Set public input permissions explicitly, independently of host umask.
+            # Only this disposable task projection is made readable, never source
+            # workspaces or evaluator evidence. The container mount remains read-only.
+            public.chmod(0o755)
+            for path in public.rglob("*"):
+                path.chmod(0o755 if path.is_dir() else 0o644)
+            request_config = {
+                k: v
+                for k, v in self.config.items()
+                if k not in {"candidate_root", "_execution_id"}
+            }
+            if self.config.get("training") is not None:
+                from alphadiana.harness._internal.training import (
+                    Backend,
+                    TokenCaptureEndpoint,
+                    capture_config_from_dict,
+                )
+
+                sample_index = task.metadata.get("sample_index", 0)
+                attempt_id = task.metadata.get("execution_id", self.execution_id)
+                capture_config = capture_config_from_dict(
+                    self.config["training"],
+                    task_id=task.task_id,
+                    sample_index=sample_index,
+                    model_name=self.config["model"],
+                    attempt_id=attempt_id,
+                )
+                if capture_config is not None:
+                    capture = self._capture_class()(
+                        capture_config.plan,
+                        capture_config.task_id,
+                        capture_config.sample_index,
+                        capture_config.model_name,
+                        capture_config.max_calls,
+                        require_logprobs=capture_config.require_logprobs,
+                        attempt_id=capture_config.attempt_id,
+                        model_identity=capture_config.plan.model_identity,
+                        require_policy_attestation=capture_config.require_policy_attestation,
+                        require_model_attestation=capture_config.require_model_attestation,
+                        finalize_at_budget=capture_config.finalize_at_budget,
+                    )
+                    # The backend credential stays on the host.  Pi receives a
+                    # short-lived proxy credential and can therefore never
+                    # persist or print the model-service key.
+                    capture_endpoint = TokenCaptureEndpoint(
+                        Backend(
+                            self.config["api_base"],
+                            self.config.get("api_key") or "keyless",
+                        ),
+                        capture,
+                        # Training requests are forced to ``stream=false``, so
+                        # no bytes arrive until generation ends.  The upstream
+                        # call is bounded by the remaining task budget, never a
+                        # fixed 120-second cap.
+                        max(
+                            0.001,
+                            timeout - (time.monotonic() - started),
+                        ),
+                        bind_host="127.0.0.1" if local else "0.0.0.0",
+                        advertise_host="127.0.0.1"
+                        if local
+                        else str(
+                            self.config["training"].get(
+                                "proxy_host", "host.containers.internal"
+                            )
+                        ),
+                    )
+                    try:
+                        capture_endpoint.start()
+                    except Exception:
+                        capture_endpoint.close()
+                        capture_endpoint = None
+                        raise
+                    request_config["api_base"] = capture_endpoint.base_url
+                    request_config["api_key"] = capture_endpoint.key
+                    request_config["training"] = capture_config.to_dict()
+            request = {
+                "harness": self.name,
+                "problem": task.problem,
+                "config": request_config,
+            }
+            if capture is not None:
+                request.update(
+                    task_id=task.task_id,
+                    sample_index=task.metadata.get("sample_index", 0),
+                    execution_id=task.metadata.get("execution_id", self.execution_id),
+                )
+            try:
+                if local:
+                    remaining = timeout - (time.monotonic() - started)
+                    if remaining <= 0:
+                        raise _TaskBudgetExpired(
+                            "Task deadline exhausted before native launch"
+                        )
+                    try:
+                        result = run_bridge(
+                            request,
+                            public,
+                            root,
+                            self.config,
+                            remaining,
+                            self.execution_id,
+                        )
+                    except subprocess.TimeoutExpired:
+                        raise _TaskBudgetExpired() from None
+                else:
+                    volumes = [f"{public}:/input:ro"]
+                    if "candidate_root" in self.config:
+                        volumes.append(
+                            f"{Path(self.config['candidate_root']).resolve()}:/candidate:ro"
+                        )
+                    self._containers.add(name)
+                    self.runtime.create(
+                        self.config["image"],
+                        name=name,
+                        remove=False,
+                        command=["/opt/runtime/bin/python", "/opt/bridge.py"],
+                        user="1000:1000",
+                        workdir="/work",
+                        network="slirp4netns:allow_host_loopback=true",
+                        volumes=volumes,
+                        env={"HOME": "/tmp/home", "PYTHONDONTWRITEBYTECODE": "1"},
+                        extra_args=[
+                            "--pull=never",
+                            "--http-proxy=false",
+                            "--interactive",
+                            "--read-only",
+                            "--stop-timeout=0",
+                            "--cap-drop=ALL",
+                            "--security-opt=no-new-privileges",
+                            "--tmpfs=/work:rw,mode=1777",
+                            "--tmpfs=/tmp:rw,mode=1777",
+                            "--label",
+                            f"alphadiana.execution={self.execution_id}",
+                        ],
+                        timeout=30,
+                    )
+                    remaining = timeout - (time.monotonic() - started)
+                    if remaining <= 0:
+                        raise _TaskBudgetExpired(
+                            "Task deadline exhausted after container creation"
+                        )
+                    try:
+                        result = self.runtime.start_attached(
+                            name, input_text=json.dumps(request), timeout=remaining
+                        )
+                    except PodmanError as exc:
+                        # Only start/attach uses the remaining task budget. A timeout
+                        # from create/cleanup is infrastructure failure, not a score.
+                        if exc.result.returncode == 124:
+                            raise _TaskBudgetExpired() from None
+                        raise
+                response = json.loads(result.stdout)
+                if (
+                    not isinstance(response, dict)
+                    or not isinstance(response.get("answer"), str)
+                    or (
+                        not response["answer"].strip()
+                        and response.get("finish_reason") != "length"
+                    )
+                ):
+                    raise ValueError("Missing final assistant response")
+                if response.get("finish_reason") not in {"stop", "completed", "length"}:
+                    raise ValueError("Harness did not complete normally")
+                training_capture = None
+                if capture is not None:
+                    training_capture = capture.capture().to_dict()
+                    training_capture["harness"] = self.name
+                    response["training_capture"] = training_capture
+                    # Cross-repository consumers read a slimmed projection and
+                    # dereference the full native calls through the evidence
+                    # refs; the full capture is stored exactly once.
+                    hebe_training = copy.deepcopy(training_capture)
+                    hebe_training.pop("calls", None)
+                    response["hebe_training"] = hebe_training
+                    response_json_value = response.get("response_json")
+                    response_json = (
+                        dict(response_json_value)
+                        if isinstance(response_json_value, dict)
+                        else {}
+                    )
+                    # Keep the exact native requests/responses for replay and
+                    # contract audits, referenced rather than duplicated.
+                    response_json["native_training_capture"] = {
+                        "schema": "alphadiana.native-training-ref.v1",
+                        "reference": "metadata.training_capture",
+                    }
+                    response["response_json"] = response_json
+                return AgentResponse(
+                    answer=response["answer"],
+                    trajectory=response.get("trajectory", []),
+                    reasoning_trajectory=response.get("reasoning_trajectory", []),
+                    token_usage=response.get("token_usage", {}),
+                    response_json=response.get("response_json", {}),
+                    finish_reason=response["finish_reason"],
+                    wall_time_sec=time.monotonic() - started,
+                    metadata={
+                        **runtime_metadata,
+                        "candidate_digest": self.config.get("candidate_digest"),
+                        "usage_status": "reported"
+                        if response.get("token_usage")
+                        else "unavailable",
+                        **(
+                            {"training_capture": training_capture}
+                            if training_capture is not None
+                            else {}
+                        ),
+                        **(
+                            {"hebe_training": hebe_training}
+                            if training_capture is not None
+                            else {}
+                        ),
+                    },
+                    sandbox_metadata={"isolation_mode": isolation},
+                )
+            except _TaskBudgetExpired:
+                if capture is not None:
+                    error = NativeHarnessError(
+                        "Native training capture did not complete before the task deadline"
+                    )
+                    error.error_type = "native_harness_training_timeout"
+                    raise error from None
+                return AgentResponse(
+                    answer=None,
+                    finish_reason="timeout",
+                    wall_time_sec=time.monotonic() - started,
+                    metadata={
+                        **runtime_metadata,
+                        "native_harness_timeout_scored_zero": True,
+                        "native_harness_timeout_seconds": timeout,
+                        "usage_status": "unavailable",
+                    },
+                    sandbox_metadata={"isolation_mode": isolation},
+                )
+            except Exception as exc:
+                # Runner treats answer=None as a scored zero. Raise a sanitized
+                # error so failed solvers never contribute valid evidence.
+                stage = "protocol"
+                if isinstance(exc, (PodmanError, subprocess.CalledProcessError)):
+                    failure = exc.result if isinstance(exc, PodmanError) else exc
+                    stage = "timeout" if failure.returncode == 124 else "container"
+                    try:
+                        diagnostic = json.loads(failure.stderr.strip().splitlines()[-1])
+                        if diagnostic.get("stage") in {
+                            "initialization",
+                            "plugin",
+                            "execution",
+                            "protocol",
+                        }:
+                            stage = diagnostic["stage"]
+                    except (ValueError, IndexError, AttributeError):
+                        pass
+                elif isinstance(exc, TimeoutError):
+                    stage = "timeout"
+                error = NativeHarnessError(f"Native harness failed during {stage}")
+                error.error_type = f"native_harness_{stage}"
+                raise error from None
+            finally:
+                if capture_endpoint is not None:
+                    capture_endpoint.close()
+                if not local:
+                    remove_container(self.runtime, name)
+                    self._containers.discard(name)
+
+    def teardown(self) -> None:
+        # Runner may tear down one recreated agent while siblings still solve.
+        # Only the outer evaluator may clean the whole execution label.
+        for name in tuple(getattr(self, "_containers", ())):
+            remove_container(self.runtime, name)
+            self._containers.discard(name)

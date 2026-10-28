@@ -34,7 +34,11 @@ Task records include response content, `score`, `correct`, rationale, `score_sta
 
 The stable artifact references are `logprobs_float` and `logprobs_int16`, when those files exist.
 
-There is a current DirectLLM caveat: DirectLLM defaults to `logprobs_format: int16`, which places quantized records in `logprob_records` rather than `logprob_int16_records`. The result store therefore treats them as raw input and may quantize them again. Do not claim that this mode preserves a valid float-plus-compact pair until the field contract is corrected and covered by an artifact-shape test. Set `logprobs_format: float` explicitly when artifact fidelity matters.
+DirectLLM preserves raw float observations in `logprob_records` for both
+`logprobs_format` settings. ResultStore owns compact conversion, so captured
+records can produce raw and Int16 sidecars without double quantization. See
+[Main review corrections](../validation/main-review-fixes.md) for the repair and
+regression scope. Existing damaged historical sidecars remain unchanged.
 
 ## Redaction and sharing
 
@@ -48,7 +52,39 @@ This is defense in depth, not a guarantee that a result bundle is safe to publis
 
 ## `score_status` validity
 
-`infer_score_status()` in `alphadiana/analysis/io/status.py` is the canonical classifier. `valid_scored` requires normal score fields and no disqualifying failure evidence. Common invalid statuses include `unscored`, `preserved_failure`, `no_answer`, `agent_empty_output`, `agent_error`, `provider_error`, `runtime_error`, `verifier_error`, and `scorer_error`.
+`infer_score_status()` in `alphadiana/results/status.py` is the canonical classifier. `valid_scored` requires normal score fields and no disqualifying failure evidence. Common invalid statuses include `unscored`, `preserved_failure`, `no_answer`, `agent_empty_output`, `agent_error`, `provider_error`, `runtime_error`, `verifier_error`, and `scorer_error`.
+
+Some scorer adapters retain a numeric fallback when the evaluator throws and
+record the exception in `score_metadata.error`. That row is `verifier_error`
+for ALE-Bench or EvoX and `scorer_error` otherwise, regardless of a stored
+`score_status: valid_scored`. It is excluded from completed-score aggregates
+and must not be used as a negative training reward. The raw fallback remains
+available for diagnosis. An official judge's candidate failure, such as
+ALE `COMPILATION_ERROR` without an evaluator exception, remains a measured
+candidate result. ALE `INTERNAL_ERROR` is a judge failure and remains
+`verifier_error` even when the adapter supplies a finite fallback. Legacy
+timeout normalization never overrides evaluator-error evidence.
+
+For EvoX, numeric `score_metadata.metrics.error` is a pinned SkyDiscover
+machinery-failure sentinel and is disqualifying. A textual evaluator-returned
+error is instead a candidate verdict (invalid output, candidate timeout, or
+invalid Python). The companion Hebe scorer retains the message in
+`score_metadata.candidate_error`, returns `correct=False` and the finite upstream
+score or configured failure score, and reserves typed `verifier_error` for
+machinery/protocol/cleanup failures. Genuine low scores stay valid.
+
+Historical `artifact_keys` containing `traceback`, `exit_code`, or `raw_output`
+retain explicit machinery-failure evidence even when artifact values were lost.
+These records are `verifier_error`, matching the companion Hebe scorer, even if
+they stored a numeric fallback and `score_status: valid_scored`. They also cannot
+be normalized into legacy timeout-zero scores.
+
+By contrast, `error` / `status` key names alone cannot distinguish a returned
+candidate verdict from a wrapper protocol error: those keys do not invalidate
+a score on their own. Rerun such ambiguous historical records when attribution
+is required; do not invent a verdict from a missing message. An upstream
+evaluator that catches an internal fault as a candidate verdict is not
+distinguishable at this boundary.
 
 ### Timeout completion
 
@@ -65,6 +101,20 @@ For `terminal_bench2`, ordinary score fields are not sufficient. `verifier_statu
 `RunSummary` includes expected/written sample counts, valid and invalid counts, errors, missing samples/tasks, accuracy, mean score, mean wall time, total tokens, Pass@k, Avg@k, and per-category variants. `k` is the configured `num_samples`; the engine does not assign benchmark-specific values.
 
 Strict reporting compares the manifest's expected samples with written valid/invalid records and can fail the command when required samples are missing or inconsistent.
+
+## Observational evaluation metrics
+
+Top-level `metrics` are post-run observations, not scorers. The runner first
+creates the authoritative `ScoreResult`, then invokes each metric with deep
+copies of the task, response, and score. Results are persisted under
+`evaluation_metrics`; plugin exceptions are persisted under
+`evaluation_metric_errors` and do not alter the primary score.
+
+Reports and dashboard summaries aggregate numeric observation values
+separately as count, mean, minimum, maximum, and unit. This aggregation includes
+any record that contains the metric, independently of score validity. Use the
+canonical `score_status` fields for benchmark accuracy and the observational
+section only for behavioral analysis.
 
 ## Reading results safely
 

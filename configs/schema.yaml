@@ -1,6 +1,8 @@
 # AlphaDiana Experiment Configuration Schema
 #
 # All experiments are defined by a single YAML file with the following structure.
+# API-aligned names: data and env. Legacy benchmark and sandbox remain aliases.
+# Use only one spelling for each component.
 
 # run_id: (optional) Unique identifier for this run. Auto-generated if omitted.
 run_id: string
@@ -29,6 +31,7 @@ agent:
     opencode_bin: string
     zeroclaw_bin: string
     api_key: string
+    training: object                 # Pi native-token SFT/GRPO capture contract; see docs/harnesses/pi-training.md
     dockerhub_repo: string           # `swebench_docker` image repo prefix (default: "jefzda/sweap-images")
     image: string                    # Explicit SWE-bench image override
     output_dir: string               # Local artifact directory for Docker-backed agents
@@ -69,6 +72,21 @@ agent:
     tool_call: boolean
     thinking: string
     verbose: string
+    harbor_bin: string              # Pi/TB2 Harbor bridge: Harbor executable
+    jobs_dir: string                # Pi/TB2 Harbor bridge: immutable Harbor artifact root
+    pi_install_path: string         # Exact host Pi installation mounted read-only
+    node_bin_path: string           # Exact host Node binary mounted read-only
+    candidate_path: string          # Optional Pi extension; defaults to stock-Pi no-op
+    audit_path: string              # Optional provenance extension
+    models_path: string             # Pi models.json for the configured endpoint
+    compose_path: string            # Optional Harbor compose overlay
+    pi_model: string                # Pi provider/model selector
+    harbor_model: string            # Harbor model label recorded in trial metadata
+    reasoning: string               # Pi thinking level
+    timeout_multiplier: float       # Harbor official task timeout multiplier
+    harbor_max_retries: integer     # Harbor trial retry budget (default 0)
+    subprocess_timeout_sec: float   # Host-side upper bound for the Harbor job
+    missing_reward_policy: string   # error (default) or zero
     env:                             # Nested env contract for `swebench_docker` OpenClaw/OpenCode/ZeroClaw modes
       OPENAI_MODEL_NAME: string      # Required for `agent_type: openclaw|opencode|zeroclaw`
       OPENAI_BASE_URL: string        # Required for `agent_type: openclaw|opencode|zeroclaw`
@@ -82,8 +100,8 @@ agent:
     #   - `agent_type: direct_llm` uses top-level `model/api_base/api_key`
     #   - `agent_type: openclaw|opencode|zeroclaw` uses nested `config.env.OPENAI_*`
 
-# benchmark: (required) Benchmark configuration.
-benchmark:
+# data: (required) Dataset/benchmark configuration (legacy alias: benchmark).
+data:
   name: string        # e.g. "aime", "gpqa_diamond", "hle", "mmmu_pro", "imo_answerbench", "swe_bench", "terminal_bench2", "custom"
   config:             # Benchmark-specific params
     split: string
@@ -97,8 +115,8 @@ benchmark:
     attempt_timeout_sec: integer
     total_timeout_sec: integer
 
-# sandbox: (optional) Execution environment. Set to null if not needed.
-sandbox:
+# env: (optional) Execution environment (legacy alias: sandbox). Set to null if not needed.
+env:
   name: string        # "local", "rock", "podman", or "swebench_container"
   config:             # Sandbox-specific params
     # ROCK SDK config
@@ -171,6 +189,18 @@ task_retries: integer                     # YAML-loader default 0; per-item retr
 task_retry_on_recoverable_only: boolean   # default false
 strict_report: boolean                    # default false; non-zero exit for incomplete/invalid reports
 strict_isolation: boolean                 # default false; fail closed on supported ROCK setup failures
+
+# Optional read-only post-run observations. They never replace scorer.score.
+metrics:
+  - name: string
+    config: object
+
+# terminal_bench2 benchmark option for Harbor-backed agents. In this mode the
+# local directory is only a task-name/instruction index; Harbor owns runtime,
+# timeout, image, and verifier configuration.
+# benchmark:
+#   config:
+#     harbor_task_index: boolean
 
 # metadata: (optional) Free-form tags for tracking experiments.
 metadata:

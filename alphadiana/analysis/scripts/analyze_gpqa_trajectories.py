@@ -9,16 +9,19 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from alphadiana.analysis.action_events import extract_action_event_rows, inventory_corpus, select_directllm_baseline
-from alphadiana.analysis.case_studies import select_case_studies
-from alphadiana.analysis.result_reader import load_run_bundle
-from alphadiana.analysis.trajectory_metrics import compute_outcome_conditioned_metrics
-from alphadiana.analysis.trajectory_reports import write_phase14_outputs
+from alphadiana.analysis.actions.keyword_baseline import (
+    extract_action_event_rows,
+    inventory_corpus,
+    select_directllm_baseline,
+)
+from alphadiana.analysis.actions.trajectories import (
+    compute_outcome_conditioned_metrics,
+    select_case_studies,
+)
+from alphadiana.analysis.actions.trajectory_report import write_trajectory_outputs
+from alphadiana.results.reader import load_run_bundle
 
 DEFAULT_OUTPUT_DIR = Path("results/phase14_gpqa_trajectory_analysis")
-DEFAULT_MEASUREMENT_SUMMARY = (
-    Path(__file__).resolve().parent / "analyze_tools" / "data" / "measurement_summary.json"
-)
 DEFAULT_PRIMARY_RUNS = {
     "openclaw": "full_gpqa_v2_openclaw_qwen35_27b_logprobs",
     "opencode": "full_gpqa_v2_opencode_qwen35_27b_logprobs",
@@ -33,7 +36,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--measurement-summary",
         type=Path,
-        default=DEFAULT_MEASUREMENT_SUMMARY,
+        default=None,
         help="Optional analyze_tools measurement_summary.json to fold into trajectory metrics.",
     )
     parser.add_argument("--stdout", action="store_true")
@@ -44,22 +47,32 @@ def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     results_dir = args.results_dir
     corpus_specs: dict[str, tuple[Path, str]] = {
-        harness: (results_dir, run_id) for harness, run_id in DEFAULT_PRIMARY_RUNS.items()
+        harness: (results_dir, run_id)
+        for harness, run_id in DEFAULT_PRIMARY_RUNS.items()
     }
 
     directllm = select_directllm_baseline(results_dir)
     direct_bundle = directllm.get("bundle")
     if direct_bundle is not None and directllm.get("run_id"):
-        direct_results_dir, direct_bundle = _resolve_directllm_bundle(results_dir, str(directllm["run_id"]), direct_bundle)
+        direct_results_dir, direct_bundle = _resolve_directllm_bundle(
+            results_dir, str(directllm["run_id"]), direct_bundle
+        )
         directllm = {
             **directllm,
             "valid_scored": sum(
-                1 for record in direct_bundle.records if record.get("score_status") == "valid_scored"
+                1
+                for record in direct_bundle.records
+                if record.get("score_status") == "valid_scored"
             ),
             "jsonl_records": len(direct_bundle.records),
-            "task_records": sum(len(records) for records in direct_bundle.task_records.values()),
+            "task_records": sum(
+                len(records) for records in direct_bundle.task_records.values()
+            ),
         }
-        corpus_specs = {"directllm": (direct_results_dir, str(directllm["run_id"])), **corpus_specs}
+        corpus_specs = {
+            "directllm": (direct_results_dir, str(directllm["run_id"])),
+            **corpus_specs,
+        }
 
     inventory_rows: list[dict[str, Any]] = []
     event_rows: list[dict[str, Any]] = []
@@ -78,7 +91,8 @@ def main(argv: list[str] | None = None) -> int:
         "directllm_selection": {
             key: value
             for key, value in directllm.items()
-            if key in {"candidate", "run_id", "valid_scored", "task_records", "jsonl_records"}
+            if key
+            in {"candidate", "run_id", "valid_scored", "task_records", "jsonl_records"}
         },
     }
     metrics = compute_outcome_conditioned_metrics(
@@ -87,7 +101,7 @@ def main(argv: list[str] | None = None) -> int:
         measurement_summary=_load_measurement_summary(args.measurement_summary),
     )
     case_studies = select_case_studies(event_rows)
-    output_paths = write_phase14_outputs(
+    output_paths = write_trajectory_outputs(
         args.output_dir,
         inventory=inventory,
         event_rows=event_rows,
@@ -98,7 +112,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.stdout:
         sys.stdout.write((output_paths["latex_appendix"]).read_text(encoding="utf-8"))
         sys.stdout.write("\n\n")
-        sys.stdout.write((output_paths["chinese_discussion"]).read_text(encoding="utf-8"))
+        sys.stdout.write(
+            (output_paths["discussion"]).read_text(encoding="utf-8")
+        )
         sys.stdout.write("\n")
 
     for path in output_paths.values():
@@ -116,8 +132,8 @@ def _resolve_directllm_bundle(results_dir: Path, run_id: str, bundle):
     return results_dir, bundle
 
 
-def _load_measurement_summary(path: Path) -> dict[str, Any] | None:
-    if not path.exists():
+def _load_measurement_summary(path: Path | None) -> dict[str, Any] | None:
+    if path is None or not path.exists():
         return None
     return json.loads(path.read_text(encoding="utf-8"))
 

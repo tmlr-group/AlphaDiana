@@ -1,0 +1,22 @@
+# One Pi rollout on one HLE-Verified multiple-choice task.
+# python -m alphadiana.cli.single_rollout configs/examples/single_rollout/pi_hle_verified.yaml \
+#   --import alphahebe.integrations.diana.benchmarks.hle_verified --output result.json
+run_id: pi-hle-verified
+output_dir: ./results/single_rollout
+agent:
+  name: pi
+  version: model-deployment-v1
+  config:
+    image: ${PI_HARNESS_IMAGE}
+    model: ${OPENAI_MODEL_NAME}
+    api_base: ${OPENAI_BASE_URL}
+    api_key: ${OPENAI_API_KEY}
+    timeout: 3600
+    max_tokens: 32768
+benchmark:
+  name: hle_verified
+  config:
+    answer_types: [multipleChoice]
+    max_tasks: 1
+scorer:
+  name: hle_verified

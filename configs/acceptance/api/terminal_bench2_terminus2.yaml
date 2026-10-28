@@ -1,0 +1,51 @@
+agent:
+  name: terminus2
+  version: harbor-0.6.1
+  config:
+    executable: ${AD_ACCEPTANCE_HARBOR_BIN}
+    model: Qwen/Qwen3.5-27B
+    api_base: ${AD_ACCEPTANCE_API_BASE}
+    api_key: ${AD_ACCEPTANCE_API_KEY}
+    capture_logprobs: true
+    top_logprobs: 20
+    max_tokens: 8192
+    agent_timeout: 1800
+    timeout: 2700
+    output_dir: ${AD_ACCEPTANCE_WORK}/native-terminus
+    llm_call_kwargs:
+      extra_body:
+        chat_template_kwargs:
+          enable_thinking: false
+    model_info:
+      max_input_tokens: 32768
+      max_output_tokens: 8192
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      litellm_provider: openai
+      mode: chat
+    max_turns: 30
+    retain_verifier_snapshot: true
+    python_executable: ${AD_ACCEPTANCE_HARBOR_PYTHON}
+benchmark:
+  name: terminal_bench2
+  config:
+    tasks_dir: ${AD_ACCEPTANCE_TB2_DIR}
+    task_ids:
+    - adaptive-rejection-sampler
+    - db-wal-recovery
+    - overfull-hbox
+    max_tasks: 3
+scorer:
+  name: terminal_bench2
+run_id: api_accept_terminal_bench2_terminus2
+output_dir: ${AD_ACCEPTANCE_RESULTS}
+num_samples: 1
+max_concurrent: 1
+task_retries: 0
+strict_report: true
+strict_isolation: true
+metadata:
+  validation_suite: api
+  fixture: terminal_bench2
+  model_family: Qwen/Qwen3.5-27B
+  capture_requirement: report actual coverage; do not impute missing observations

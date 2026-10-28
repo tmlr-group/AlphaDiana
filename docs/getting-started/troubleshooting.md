@@ -9,7 +9,7 @@ A quick mental model: a run is defined by one YAML, parsed into
 `ExperimentConfig` (`alphadiana/engine/config/experiment_config.py`), validated
 by `ConfigValidator` (`alphadiana/engine/config/validator.py`), and executed by
 the runner (`alphadiana/engine/runner.py`). Results are written through the
-result store (`alphadiana/analysis/io/result_store.py`). When something breaks,
+result store (`alphadiana/results/store.py`). When something breaks,
 the symptom usually points to one of those layers.
 
 If a run fails to even start, run `alphadiana validate <config.yaml>` first. It
@@ -206,7 +206,7 @@ If the pre-flight reports a port-ownership mismatch, resolve the actual ports
 and write them to the environment file the CLI reads:
 
 ```bash
-python scripts/find_rock_ports.py --write-env scripts/.rock_ports.env
+python scripts/setup/find_rock_ports.py --write-env scripts/.rock_ports.env
 ```
 
 See [../harnesses/openclaw](../harnesses/openclaw.md) for the OpenClaw reliability
@@ -232,23 +232,23 @@ If `ray start --head` aborts with `Session name ... does not match persisted
 value ... Perhaps there was an error connecting to Redis`, this checkout's
 isolated Redis still holds stale Ray session metadata. Recreate that checkout's
 `ROCK_REDIS_CONTAINER` and clear its `RAY_TMPDIR` before retrying the Ray
-startup. The start scripts (`scripts/start_zeroclaw.sh`,
-`scripts/start_openclaw.sh`) also restart an unhealthy local Ray head instead of
+startup. The start scripts (`scripts/setup/start_zeroclaw.sh`,
+`scripts/setup/start_openclaw.sh`) also restart an unhealthy local Ray head instead of
 reusing any listener on the GCS port, so re-running them is the simplest fix.
 
 ### `alphadiana env` loses `admin` while the GCS port is still open
 
 A stale Ray head can keep listening on the GCS port (e.g. `6380`) while being
 unhealthy, so `alphadiana env` reports the `admin` endpoint as down. Restart the
-Ray head by re-running `bash scripts/start_zeroclaw.sh` or
-`bash scripts/start_openclaw.sh`.
+Ray head by re-running `bash scripts/setup/start_zeroclaw.sh` or
+`bash scripts/setup/start_openclaw.sh`.
 
 ### `start_async` returns `404`
 
 ROCK admin and proxy bind to different ports, and `/start_async` is served by
 the admin. A `404` usually means the request hit the proxy port instead. The
 admin and proxy ports default to `9000` and `9001`
-(`alphadiana/utils/rock_ports.py`, overridable via `ROCK_ADMIN_PORT` /
+(`alphadiana/engine/sandbox/rock_ports.py`, overridable via `ROCK_ADMIN_PORT` /
 `ROCK_PROXY_PORT`). Disambiguate which process owns which port:
 
 ```bash
@@ -279,7 +279,7 @@ provider from the final `alphadiana.cli run ...` argv or `/proc/<pid>/environ`.
 
 ### Long-lived services and stale env files
 
-`scripts/quickstart.sh` is a bootstrap helper, not a daemon supervisor. If your
+`scripts/setup/quickstart.sh` is a bootstrap helper, not a daemon supervisor. If your
 shell runner reaps background children after a command exits, keep
 `ray start --head --block`, ROCK admin, and ROCK proxy in dedicated long-lived
 terminal sessions for the duration of the run. If you start ROCK admin manually,
@@ -291,7 +291,7 @@ exits with `GCS unavailable` even though the intended Ray head is healthy.
 checkout or the wrong ROCK root, regenerate it:
 
 ```bash
-bash scripts/setup_alphadiana_rock.sh   # or: bash scripts/quickstart.sh
+bash scripts/setup/setup_alphadiana_rock.sh   # or: bash scripts/setup/quickstart.sh
 ```
 
 ## vLLM transient crashes producing `None` records
@@ -356,7 +356,7 @@ Fixes:
 `configs/macro_runs/` contains release configs that may load a full selected
 split. Inspect the selectors before launch and add a bounded override for a
 smoke. The `_campaign.yaml` file is a rollout manifest for
-`alphadiana.benchmark_rollout_cli`, not a generic `alphadiana run` config.
+`alphadiana.cli.campaign`, not a generic `alphadiana run` config.
 
 ## Quick checklist
 
@@ -375,6 +375,6 @@ smoke. The `_campaign.yaml` file is a rollout manifest for
 | `start_async` returns `404` | Hit proxy port instead of admin | `ss -ltnp \| grep ':9000\|:9001'` (admin 9000, proxy 9001 by default) |
 | `ROCK proxy failed` after ~120s | Old proxy stream timeout or shared stale ports/env | dedicated env + ports, current `ref/ROCK` patch active |
 | Wrong provider despite exported vars | `OPENAI_BASE_URL:-` default kept stale `.env` value | export `OPENAI_*` explicitly or unset first; check argv |
-| Stale `scripts/.alphadiana_env` | Points at missing checkout/wrong ROCK root | `bash scripts/setup_alphadiana_rock.sh` |
+| Stale `scripts/.alphadiana_env` | Points at missing checkout/wrong ROCK root | `bash scripts/setup/setup_alphadiana_rock.sh` |
 | Records have `predicted: null` | Provider/runtime failure | check `/v1/models`, then rerun the same run id |
 | Run completes with 0 tasks | `max_tasks: 0` | omit `max_tasks` or use a positive count |

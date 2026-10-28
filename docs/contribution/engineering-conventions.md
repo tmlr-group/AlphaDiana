@@ -90,12 +90,12 @@ rather than leaking the literal placeholder into the request.
 
 ## Run `security_guard` before launching services
 
-`scripts/security_guard.py --check` is a hard pre-flight gate (it is wired into
+`scripts/setup/security_guard.py --check` is a hard pre-flight gate (it is wired into
 `start_openclaw.sh`). A non-zero exit blocks the launch; clear the finding
 before bringing services up.
 
 ```bash
-python3 scripts/security_guard.py --check     # exits non-zero on failure
+python3 scripts/setup/security_guard.py --check     # exits non-zero on failure
 ```
 
 Use `--daemon` for a continuous 10s watch loop, and `SECURITY_GUARD_BYPASS=1`

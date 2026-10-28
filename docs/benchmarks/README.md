@@ -1,27 +1,15 @@
 # Benchmarks Overview
 
-A benchmark in AlphaDiana is a self-registering loader that turns a dataset into
-a list of `BenchmarkTask` objects. The runner resolves the loader by name,
-calls its `load_tasks(config)`, and feeds each task to the selected harness and
-scorer. This page covers the task data model, the registered benchmark names and
-their default scorers, how a benchmark is selected from config, and the smoke vs
-full convention. Per-benchmark detail lives in the sibling pages linked below.
+A benchmark in AlphaDiana is a self-registering loader that turns a dataset into a list of `BenchmarkTask` objects. The runner resolves the loader by name, calls its `load_tasks(config)`, and feeds each task to the selected harness and scorer. This page covers the task data model, the registered benchmark names and their default scorers, how a benchmark is selected from config, and the smoke vs full convention. Per-benchmark detail lives in the sibling pages linked below.
 
-For the opt-in container runtime shared by several benchmark paths, see the
-[Podman runtime readiness runbook](./podman.md).
+For the opt-in container runtime shared by several benchmark paths, see the [Podman runtime readiness runbook](./podman.md).
 
-> [!CAUTION] **Evidence availability**
-> This repository checkout does not include `results/` or the reviewer-facing
-> `context/` archive. Dated run IDs on the benchmark pages are provenance
-> pointers, not independently verifiable artifacts in this branch. Before citing
-> an exact result or promoting a support claim, obtain the matching task JSONs,
-> raw run log, and audit context from the release evidence archive.
+> [!CAUTION] **Evidence availability** This repository checkout does not include `results/` or the reviewer-facing `context/` archive. Dated run IDs on the benchmark pages are provenance pointers, not independently verifiable artifacts in this branch. Before citing an exact result or promoting a support claim, obtain the matching task JSONs, raw run log, and audit context from the release evidence archive.
 
 
 ## The `BenchmarkTask` data model
 
-Every loader emits `BenchmarkTask` instances defined in
-`alphadiana/benchmarks/base.py`:
+Every loader emits `BenchmarkTask` instances defined in `alphadiana/benchmarks/base.py`:
 
 | Field | Type | Notes |
 | --- | --- | --- |
@@ -33,31 +21,18 @@ Every loader emits `BenchmarkTask` instances defined in
 
 ### `ground_truth` is intentionally polymorphic
 
-`ground_truth` is typed `Any` and its shape varies by benchmark. Treat it
-per-benchmark, never as one type:
+`ground_truth` is typed `Any` and its shape varies by benchmark. Treat it per-benchmark, never as one type:
 
-- **String** for text, multiple-choice, and patch benchmarks: `aime`, `gpqa_diamond`,
-  `hle`, `mmmu_pro`, `imo_answerbench`, `custom`, and the SWE-bench patch.
-- **The literal string `"1"`** for `terminal_bench2`: the scorer compares
-  `response.answer.strip() == "1"` against the reward observed by the verifier.
+- **String** for text, multiple-choice, and patch benchmarks: `aime`, `gpqa_diamond`, `hle`, `mmmu_pro`, `imo_answerbench`, `custom`, and the SWE-bench patch.
+- **The literal string `"1"`** for `terminal_bench2`: the scorer compares `response.answer.strip() == "1"` against the reward observed by the verifier.
 
 ### Robust dataset loading
 
-HuggingFace-backed loaders fetch through `load_dataset_with_retry()` in
-`alphadiana/benchmarks/base.py`: up to four total attempts (the initial call plus
-three retries) with exponential backoff (base `2.0s`,
-cap `60.0s`, jitter) for transient `ConnectionError`/`TimeoutError`. It does not
-retry `NON_RETRYABLE_DATASET_ERRORS` (`PermissionError`, `FileNotFoundError`,
-`ValueError`, `OSError`), and a read-only HF cache is converted into an
-actionable error asking you to set `HF_DATASETS_CACHE`.
+HuggingFace-backed loaders fetch through `load_dataset_with_retry()` in `alphadiana/benchmarks/base.py`: up to four total attempts (the initial call plus three retries) with exponential backoff (base `2.0s`, cap `60.0s`, jitter) for transient `ConnectionError`/`TimeoutError`. It does not retry `NON_RETRYABLE_DATASET_ERRORS` (`PermissionError`, `FileNotFoundError`, `ValueError`, `OSError`), and a read-only HF cache is converted into an actionable error asking you to set `HF_DATASETS_CACHE`.
 
 ## Registered benchmarks and default scorers
 
-A `Benchmark` subclass sets a class attribute `name`, implements
-`load_tasks(config: dict) -> list[BenchmarkTask]`, and may override
-`default_scorer()` (the base default is `exact_match`). Registrations use either
-an explicit `BenchmarkRegistry.register(<name>, <cls>)` call or the
-`register_benchmark(<name>)` decorator.
+A `Benchmark` subclass sets a class attribute `name`, implements `load_tasks(config: dict) -> list[BenchmarkTask]`, and may override `default_scorer()` (the base default is `exact_match`). Registrations use either an explicit `BenchmarkRegistry.register(<name>, <cls>)` call or the `register_benchmark(<name>)` decorator.
 
 | `benchmark.name` | Default scorer | Source / shape |
 | --- | --- | --- |
@@ -70,10 +45,7 @@ an explicit `BenchmarkRegistry.register(<name>, <cls>)` call or the
 | `swe_bench` | `swe_bench` | `SWE-bench/SWE-bench_Verified`; ground truth is a patch. |
 | `terminal_bench2` | `terminal_bench2` | Local task tree; ground truth is `"1"`. |
 
-`BenchmarkRegistry` (`alphadiana/benchmarks/registry.py`) keeps a class-level
-`_registry` dict. `BenchmarkRegistry.get(name)` raises `KeyError` listing the
-available names if the loader was never imported, and `BenchmarkRegistry.list()`
-returns the sorted names. Shipped benchmarks use explicit `.register()` calls.
+`BenchmarkRegistry` (`alphadiana/benchmarks/registry.py`) keeps a class-level `_registry` dict. `BenchmarkRegistry.get(name)` raises `KeyError` listing the available names if the loader was never imported, and `BenchmarkRegistry.list()` returns the sorted names. Shipped benchmarks use explicit `.register()` calls.
 
 The CLI also provides a quick diagnostic list:
 
@@ -81,25 +53,17 @@ The CLI also provides a quick diagnostic list:
 python -m alphadiana.cli list-benchmarks
 ```
 
-Because registration is import-side-effect driven, that command reports the
-modules imported by its own command path; use the `Runner.setup()` import block
-and the table above as the complete shipped inventory.
+This command calls `load_builtin_benchmarks()` from `alphadiana/engine/components.py`, the same loader used during Runner setup. It lists the complete built-in benchmark registry.
 
 ## How a benchmark is selected
 
-Registration is import-side-effect driven. Importing the package does not
-auto-load every loader, so `Runner.setup()` (`alphadiana/engine/runner.py`)
-explicitly imports all shipped benchmark registrations, plus scorer and harness
-modules, before resolving the class:
+Registration is import-side-effect driven. Importing the package does not auto-load every loader, so `register_builtin_components()` in `alphadiana/engine/components.py` explicitly loads benchmark, scorer, and harness registrations. `Runner.setup()` then resolves the class:
 
 ```python
 BenchmarkRegistry.get(self.config.benchmark_name)
 ```
 
-`Runner.run()` then calls `self.benchmark.load_tasks(self.config.benchmark_config)`
-and writes the resulting per-task metadata into the run manifest. Adding a new
-benchmark file without adding it to that explicit import block would make
-`get()` raise `KeyError` even though the file exists on disk.
+`Runner.run()` then calls `self.benchmark.load_tasks(self.config.benchmark_config)` and writes the resulting per-task metadata into the run manifest. Adding a new benchmark file without adding it to `load_builtin_benchmarks()` would make `get()` raise `KeyError` even though the file exists on disk.
 
 In config, you select the benchmark by its registry-name string:
 
@@ -115,8 +79,7 @@ num_samples: 4        # top-level runner setting
 
 ### Common `benchmark.config` keys
 
-These keys are read by the loaders via `config.get(...)`. Not every key applies
-to every benchmark; see the per-benchmark page for the full set.
+These keys are read by the loaders via `config.get(...)`. Not every key applies to every benchmark; see the per-benchmark page for the full set.
 
 | Key | Used by | Meaning |
 | --- | --- | --- |
@@ -134,33 +97,23 @@ to every benchmark; see the per-benchmark page for the full set.
 | `tasks_dir` / `categories` / `task_ids` | `terminal_bench2` | Local task tree and dir-name filters. |
 | `problems` | `custom` | Inline list of `{id, problem, answer}` dicts. |
 
-For AIME, `max_tasks` slices the split as `f"{split}[:{N}]"` rather than
-post-filtering, unless a single index is pinned or the split is already sliced.
+For AIME, `max_tasks` slices the split as `f"{split}[:{N}]"` rather than post-filtering, unless a single index is pinned or the split is already sliced.
 
-HF-backed loaders honor the HF mirror via `export HF_ENDPOINT=https://hf-mirror.com`
-(and `HF_TOKEN` for the gated `cais/hle`). TerminalBench2 has no network
-dependency; it reads tasks off disk and needs `tasks_dir` or the
-`TERMINAL_BENCH2_DIR` environment variable.
+HF-backed loaders honor the HF mirror via `export HF_ENDPOINT=https://hf-mirror.com` (and `HF_TOKEN` for the gated `cais/hle`). TerminalBench2 has no network dependency; it reads tasks off disk and needs `tasks_dir` or the `TERMINAL_BENCH2_DIR` environment variable.
 
 ## Smoke vs full convention
 
-Configs under `configs/macro_runs/` are release experiment definitions. They
-default to one sample and one worker, but their benchmark selection may still
-cover a full split. Add `-o benchmark.config.max_tasks=1` for a first smoke and
-use a fresh `run_id`.
+Configs under `configs/macro_runs/` are release experiment definitions. They default to one sample and one worker, but their benchmark selection may still cover a full split. Add `-o benchmark.config.max_tasks=1` for a first smoke and use a fresh `run_id`.
 
-> Smoke-test success means the evaluation path loads tasks, invokes the selected
-> agent mode, and writes scored results. It does not mean the model answered
-> correctly.
+> Smoke-test success means the evaluation path loads tasks, invokes the selected agent mode, and writes scored results. It does not mean the model answered correctly.
 
-For a single-task smoke, pin `benchmark.config.dataset_index=<i>`. Do not also
-set `max_tasks` together with a sliced split such as `train[16:17]`; pick one
-selection mechanism.
+For a single-task smoke, pin `benchmark.config.dataset_index=<i>`. Do not also set `max_tasks` together with a sliced split such as `train[16:17]`; pick one selection mechanism.
 
 Common setup for the macro configs:
 
 ```bash
-source scripts/activate.sh
+# Plain package installation; ROCK users instead use scripts/activate.sh.
+source .venv/bin/activate
 
 export OPENAI_BASE_URL=http://127.0.0.1:8011/v1
 export OPENAI_API_KEY=sk-EMPTY
@@ -175,19 +128,11 @@ python -m alphadiana.cli run <config.yaml> \
 alphadiana report ./results/my_run
 ```
 
-For most macro configs, switching backends only requires changing the three
-standard environment variables before `python -m alphadiana.cli run ...`. Some
-micro configs pin the model in YAML; for those, override
-`agent.config.model` / `agent.config.api_base` / `agent.config.api_key` with `-o`.
+For most macro configs, switching backends only requires changing the three standard environment variables before `python -m alphadiana.cli run ...`. Some micro configs pin the model in YAML; for those, override `agent.config.model` / `agent.config.api_base` / `agent.config.api_key` with `-o`.
 
 ## A note on `memory_mode`
 
-`memory_mode` is a memory-experiment hook, not core benchmark metadata. Only the
-`custom` loader injects it at load time (`metadata={"memory_mode": ...}`, default
-`"build"`). The three agentic harnesses read `task.metadata.get("memory_mode", "build")`
-and special-case `"frozen"` to suppress the post-task memory store. See
-[Evaluation Axes](../concepts/evaluation-axes.md) and the
-[harness pages](../harnesses/README.md) for how this ties into the Memory axis.
+`memory_mode` is a memory-experiment hook, not core benchmark metadata. Only the `custom` loader injects it at load time (`metadata={"memory_mode": ...}`, default `"build"`). The three agentic harnesses read `task.metadata.get("memory_mode", "build")` and special-case `"frozen"` to suppress the post-task memory store. See [Evaluation Axes](../concepts/evaluation-axes.md) and the [harness pages](../harnesses/README.md) for how this ties into the Memory axis.
 
 ## Per-benchmark pages
 
@@ -202,10 +147,4 @@ and special-case `"frozen"` to suppress the post-task memory store. See
 
 ## Where results land
 
-Scored results are written by `ResultStore`
-(`alphadiana/analysis/io/result_store.py`): one redacted JSON record per
-`(task_id, sample_index)` appended to `{run_id}.jsonl`, plus per-task JSON sample
-lists (even when `num_samples=1`),
-artifacts, and logprob sidecars under `{run_id}/`. See
-[Scoring & Results](../architecture/scoring-and-results.md) and the per-benchmark pages
-for reading and reporting on a run.
+Scored results are written by `ResultStore` (`alphadiana/results/store.py`): one redacted JSON record per `(task_id, sample_index)` appended to `{run_id}.jsonl`, plus per-task JSON sample lists (even when `num_samples=1`), artifacts, and logprob sidecars under `{run_id}/`. See [Scoring & Results](../architecture/scoring-and-results.md) and the per-benchmark pages for reading and reporting on a run.

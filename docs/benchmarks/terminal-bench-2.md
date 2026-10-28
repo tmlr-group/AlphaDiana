@@ -4,6 +4,12 @@ This runbook describes the current AlphaDiana path for `terminal-bench-2`.
 
 Use it for local AlphaDiana evaluation and smoke validation. It is not a claim of strict Harbor-equivalent leaderboard execution.
 
+For the Harbor-backed Pi integration, use
+[`terminal_bench2_pi_harbor`](../harnesses/pi-harbor.md). Unlike the local
+controller paths documented below, that adapter delegates the disposable task
+container, timeout lifecycle, and official verifier to Harbor, then imports the
+completed trial into AlphaDiana for reporting and optional post-run metrics.
+
 For the benchmark-plan `direct_llm` baseline, use the official
 `terminal-bench-2` repository and Harbor's built-in `terminus-2` agent. The
 April 19, 2026 OpenRouter/Qwen evidence for that official path is summarized
@@ -31,7 +37,7 @@ Entry points:
 - Config:
   `configs/macro_runs/terminal_bench2_opencode_qwen35_27b.yaml`
 - Runner:
-  `scripts/run_podman_terminal_bench2_readiness.sh`
+  `scripts/validation/run_podman_terminal_bench2_readiness.sh`
 
 Run shape:
 
@@ -44,10 +50,10 @@ export TB2_OPENCODE_RUNTIME_IMAGE=localhost/alphadiana/tb2-opencode-controller:l
 export ALPHADIANA_TB2_LOGS_DIR="$PWD/logs/podman-terminal-bench2-readiness/task-logs"
 export PODMAN_TB2_RUN_PREFIX=podman_tb2_$(date +%Y%m%d_%H%M%S)
 
-bash scripts/run_podman_terminal_bench2_readiness.sh validate
-bash scripts/run_podman_terminal_bench2_readiness.sh preflight
-bash scripts/run_podman_terminal_bench2_readiness.sh pilot
-bash scripts/run_podman_terminal_bench2_readiness.sh audit
+bash scripts/validation/run_podman_terminal_bench2_readiness.sh validate
+bash scripts/validation/run_podman_terminal_bench2_readiness.sh preflight
+bash scripts/validation/run_podman_terminal_bench2_readiness.sh pilot
+bash scripts/validation/run_podman_terminal_bench2_readiness.sh audit
 ```
 
 Passing evidence:
@@ -219,13 +225,33 @@ Local repair follow-up in the same official checkout:
 Treat that repaired bundle as the current local smoke-valid signal for the
 official `direct_llm` path on OpenRouter/Qwen.
 
+## Native Terminus2 through Runner and the Python API
+
+Select `agent.name: terminus2` to use `alphadiana/harness/terminus2/agent.py`.
+Runner passes a native TB2 task directory to Harbor. Harbor owns the Terminus2
+agent loop, Docker task environment, and verifier lifecycle. AlphaDiana retains
+the native evidence and scores the observed verifier reward. Omit an external
+`sandbox` for this executor.
+
+The three-task, one-sample
+[acceptance config](../../configs/acceptance/api/terminal_bench2_terminus2.yaml)
+requires the installed Harbor executable, official task assets, and its model
+provider settings. With `retain_verifier_snapshot: true`, also supply the
+Harbor installation's `python_executable` for the native snapshot callback.
+Preserve the snapshot image and verifier inputs for independent replay.
+See [runtime inputs](../../configs/acceptance/api/README.md#runtime-inputs)
+and [saved-run rescoring](../getting-started/python-api.md#reopen-and-rescore).
+
+This Runner path is separate from the standalone `harbor run` reproduction
+below; each route keeps its own config and output schema.
+
 ## Official leaderboard path (Harbor + Terminus-2)
 
 The sections above are the AlphaDiana container-agent path. To run the
 *official/leaderboard* configuration instead (standalone Harbor CLI + the
 upstream `terminus-2` agent), use the path below. Harbor owns the system prompt;
 the AlphaDiana task-container harness at
-`alphadiana/benchmarks/terminal_bench2/harness/docker.py` is not on this path.
+`alphadiana/harness/direct_llm/terminal.py` is not on this path.
 
 vLLM endpoint (Qwen3.5-27B; the serve-side flags match the official spec):
 
@@ -254,13 +280,13 @@ uv tool install harbor          # installs the `harbor` binary
 
 No official Terminal-Bench 2 campaign manifest is checked into this checkout.
 Use Harbor directly for that leaderboard path, or add and review a campaign
-manifest before invoking `alphadiana.benchmark_rollout_cli`.
+manifest before invoking `alphadiana.cli.campaign`.
 
 The intended campaign command runs `harbor run --dataset terminal-bench@2.0 --agent
 terminus-2 --model openai/qwen3.5-27b ...` at `temperature=0.0`,
 `reasoning_effort=high`, `top_p=0.95`, `max_tokens=131072`, `--n-concurrent 10`
 (pass@1). Outputs land in `$DIRECTLLM_TB2_ROOT/jobs/<run_id>/`. Renderer and
-dispatch live in `alphadiana/utils/rollout_campaign.py`
+dispatch live in `alphadiana/engine/rollout_campaign.py`
 (`_render_official_tb2_command`, `render_run_command`); Harbor upstream is
 [github.com/laude-institute/harbor](https://github.com/laude-institute/harbor).
 

@@ -1,0 +1,95 @@
+run_id: api_accept_swe_mini_opencode
+agent:
+  name: opencode
+  version: 1.3.2
+  config:
+    runtime: swebench_container
+    tool_call: true
+    permission:
+      edit: deny
+      bash: allow
+    timeout: 1800
+    system_prompt: 'You are an expert software engineer. You will be given a GitHub
+      issue description
+
+      for a Python repository. Your task is to fix the issue by making the minimal
+
+      necessary code changes.
+
+
+      Guidelines:
+
+      - Use your file reading and editing tools to inspect and modify the repository.
+
+      - Prefer using bash or short Python commands to modify files in place.
+
+      - Avoid the edit tool for file changes; use bash-based edits instead.
+
+      - Make the smallest correct change needed; avoid unrelated refactoring.
+
+      - Do not modify test files.
+
+      - After making your changes, ensure the code is syntactically correct.
+
+      - You do not need to run the full test suite; just fix the issue described.
+
+      '
+    model: custom/Qwen/Qwen3.5-27B
+    model_name: Qwen/Qwen3.5-27B
+    api_base: ${AD_ACCEPTANCE_API_BASE}
+    api_key: ${AD_ACCEPTANCE_API_KEY}
+    temperature: 0.0
+    top_p: 0.95
+    max_tokens: 8192
+    enable_thinking: false
+    capture_logprobs: true
+    top_logprobs: 20
+    api_model: Qwen/Qwen3.5-27B
+    context_limit: 32768
+    input_limit: 24576
+    output_limit: 8192
+    opencode_version: 1.3.2
+benchmark:
+  name: swe_bench
+  config:
+    dataset: MariusHobbhahn/swe-bench-verified-mini
+    split: test
+    include_hints: false
+    max_tasks: 3
+    task_ids:
+    - django__django-11790
+    - django__django-11815
+    - django__django-11848
+sandbox:
+  name: swebench_container
+  config:
+    namespace: swebench
+    force_rebuild: false
+    keep_container: false
+    keep_logs: true
+    log_dir: ${AD_ACCEPTANCE_WORK}/swe-sandbox
+    gateway_host: 127.0.0.1
+    gateway_port: 8080
+    container_engine: docker
+    instance_image_tag: ${AD_ACCEPTANCE_SWE_IMAGE_TAG}
+scorer:
+  name: swe_bench
+  config:
+    timeout: 1800
+    cache_level: env
+    namespace: swebench
+    force_rebuild: false
+    log_dir: ${AD_ACCEPTANCE_WORK}/swe-verifier
+    container_engine: docker
+    instance_image_tag: ${AD_ACCEPTANCE_SWE_IMAGE_TAG}
+max_concurrent: 1
+num_samples: 1
+output_dir: ${AD_ACCEPTANCE_RESULTS}
+strict_report: true
+strict_isolation: true
+metadata:
+  validation_suite: api
+  fixture: swe_mini
+  model_family: Qwen/Qwen3.5-27B
+  capture_requirement: report actual coverage; do not impute missing observations
+task_retries: 0
