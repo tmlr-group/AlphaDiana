@@ -327,7 +327,7 @@ If you find the project helpful, please cite:
 ```bibtex
 @article{zhou2026alphadiana,
   title = {{AlphaDiana}: A Measurement System for Agents in Verifiable Reasoning Tasks},
-  author={Zhanke Zhou and Zongze Li and Weikai Huang and Xuan Li and Chentao Cao and Xiao Feng and Xiangyu Lu and Jinbo Hu and Menghan Lu and Yi Xie and Nico Pelleriti and Shiyang Liu and Max Zimmer and Brando Miranda and Jiangchao Yao and Bo Liu and Sanmi Koyejo and Sebastian Pokutta and Bo Han},
+  author={Zhanke Zhou and Zongze Li and Weikai Huang and Xuan Li and Chentao Cao and Xiao Feng and Xiangyu Lu and Jinbo Hu and Yi Xie and Nico Pelleriti and Shiyang Liu and Menghan Lu and Max Zimmer and Brando Miranda and Jiangchao Yao and Bo Liu and Sanmi Koyejo and Sebastian Pokutta and Bo Han},
   journal = {arXiv preprint arXiv:2610.20675},
   year = {2026}
 }
