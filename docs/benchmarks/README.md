@@ -44,6 +44,7 @@ A `Benchmark` subclass sets a class attribute `name`, implements `load_tasks(con
 | `custom` | `numeric` | Inline `problems` defined in YAML. |
 | `swe_bench` | `swe_bench` | `SWE-bench/SWE-bench_Verified`; ground truth is a patch. |
 | `terminal_bench2` | `terminal_bench2` | Local task tree; ground truth is `"1"`. |
+| `gears_perturb` | `gears_perturb` | Norman 2019 single/combinatorial perturbation expression prediction (`ground_truth=None`; verified replay). |
 
 `BenchmarkRegistry` (`alphadiana/benchmarks/registry.py`) keeps a class-level `_registry` dict. `BenchmarkRegistry.get(name)` raises `KeyError` listing the available names if the loader was never imported, and `BenchmarkRegistry.list()` returns the sorted names. Shipped benchmarks use explicit `.register()` calls.
 
@@ -144,6 +145,7 @@ For most macro configs, switching backends only requires changing the three stan
 - [SWE-bench Verified](./swebench-verified.md)
 - [SWE-bench Verified Mini](./swebench-verified-mini.md)
 - [Terminal-Bench 2](./terminal-bench-2.md)
+- [GEARS Perturbation](./gears-perturb.md)
 
 ## Where results land
 

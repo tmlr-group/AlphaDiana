@@ -1,0 +1,26 @@
+run_id: gears_norman_seed42_gears
+output_dir: ${VC_REPO}/results/gears/gears_norman_seed42_gears
+max_concurrent: 1
+num_samples: 1
+task_retries: 0
+agent:
+  name: gears
+  version: 0.1.0
+  config:
+    public_manifest: ${VC_WORKSPACE}/live_gears/prepared/norman_seed42/public_manifest.json
+    registry_path: ${VC_WORKSPACE}/live_gears/outputs/norman_seed42/gears/registry.json
+    registry_sha256: 2afad4318fcca0909cd25f03cf9efa2156ac49868937d21f758d1ef84865277c
+    predictor_mode: gears
+benchmark:
+  name: gears_perturb
+  config:
+    public_manifest: ${VC_WORKSPACE}/live_gears/prepared/norman_seed42/public_manifest.json
+    task_id: gears_perturb:norman_simulation_seed42
+scorer:
+  name: gears_perturb
+  config:
+    private_manifest: ${VC_WORKSPACE}/live_gears/prepared/norman_seed42/private_manifest.json
+    private_sha256: 2f13d776fdf51b4f228cb85deda5e3485089bc6bd5ecf8d6d055b18531e509b1
+    registry_path: ${VC_WORKSPACE}/live_gears/outputs/norman_seed42/gears/registry.json
+    registry_sha256: 2afad4318fcca0909cd25f03cf9efa2156ac49868937d21f758d1ef84865277c
+    pass_threshold: 0.0

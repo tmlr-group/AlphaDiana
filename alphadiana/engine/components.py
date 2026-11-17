@@ -139,6 +139,7 @@ def register_metric(name: str):
 
 
 def load_builtin_benchmarks() -> None:
+    import alphadiana.benchmarks.gears_perturb.benchmark  # noqa: F401
     import alphadiana.benchmarks.aime.benchmark  # noqa: F401
     import alphadiana.benchmarks.custom.benchmark  # noqa: F401
     import alphadiana.benchmarks.gpqa.benchmark  # noqa: F401
@@ -150,6 +151,7 @@ def load_builtin_benchmarks() -> None:
 
 
 def load_builtin_agents() -> None:
+    import alphadiana.harness.gears.agent  # noqa: F401
     import alphadiana.harness.sweagent  # noqa: F401
     import alphadiana.harness.terminus2.agent  # noqa: F401
     import alphadiana.harness.container_patch.agent  # noqa: F401
@@ -167,6 +169,7 @@ def load_builtin_agents() -> None:
 
 
 def load_builtin_agent_validators() -> None:
+    import alphadiana.harness.gears.agent  # noqa: F401
     """Load only adapters that expose config hooks without optional runtimes."""
     import alphadiana.harness.pi.harbor  # noqa: F401
 
@@ -179,6 +182,7 @@ def load_builtin_sandboxes() -> None:
 
 
 def load_builtin_scorers() -> None:
+    import alphadiana.benchmarks.gears_perturb.scorer  # noqa: F401
     import alphadiana.benchmarks.imo.verify  # noqa: F401
     import alphadiana.benchmarks.swe_bench.scorer  # noqa: F401
     import alphadiana.benchmarks.terminal_bench2.scorer  # noqa: F401

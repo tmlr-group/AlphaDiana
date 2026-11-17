@@ -52,6 +52,11 @@ dump.rdb
 !/configs/README.md
 !/configs/PROMPTS.md
 !/configs/schema.yaml
+!/configs/gears/
+/configs/gears/*
+!/configs/gears/norman_seed42_gears.yaml
+!/configs/gears/norman_seed42_cell_mean.yaml
+!/configs/gears/norman_seed42_train_mean.yaml
 !/configs/macro_runs/
 !/configs/macro_runs/**
 !/configs/micro_runs/
